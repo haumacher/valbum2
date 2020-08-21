@@ -328,7 +328,7 @@ public class ImageServlet extends HttpServlet {
 		try (FileInputStream in = new FileInputStream(file)) {
 			ServletOutputStream out = response.getOutputStream();
 			
-			byte[] buffer = new byte[8*1024];
+			byte[] buffer = new byte[64*1024];
 			while (true) {
 				int direct = in.read(buffer);
 				if (direct < 0) {
