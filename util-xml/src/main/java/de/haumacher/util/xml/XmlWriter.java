@@ -168,7 +168,7 @@ public class XmlWriter extends Writer implements XmlAppendable {
 				// [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
 				break;
 			case '<':
-				_out.append("&gt;");
+				_out.append("&lt;");
 				break;
 			case '&':
 				_out.append("&amp;");
@@ -227,7 +227,7 @@ public class XmlWriter extends Writer implements XmlAppendable {
 				// [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
 				break;
 			case '<':
-				_out.append("&gt;");
+				_out.append("&lt;");
 				break;
 			case '&':
 				_out.append("&amp;");
