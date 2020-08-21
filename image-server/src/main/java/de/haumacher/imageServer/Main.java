@@ -3,11 +3,12 @@
  */
 package de.haumacher.imageServer;
 
+import java.io.File;
+
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.HandlerCollection;
 import org.eclipse.jetty.servlet.ServletHolder;
-import org.eclipse.jetty.util.resource.Resource;
 import org.eclipse.jetty.webapp.WebAppContext;
 
 /**
@@ -26,7 +27,7 @@ public class Main {
 
 	private int _port = 8080;
 	private String _contextPath = "";
-	private String _basePath = ".";
+	private File _basePath = new File(".");
 
 	private void start() throws Exception {
 		final Server server = new Server();
@@ -40,8 +41,9 @@ public class Main {
 
 		WebAppContext webapp = new WebAppContext();
 		webapp.setContextPath(_contextPath);
-		webapp.setBaseResource(Resource.newResource(_basePath));
-		webapp.addServlet(new ServletHolder(new ImageServlet()), "/");
+		webapp.setResourceBase(_basePath.toString());
+		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath)), "/*");
+		webapp.setClassLoader(Main.class.getClassLoader());
 
 		handlers.addHandler(webapp);
 		server.setHandler(handlers);
