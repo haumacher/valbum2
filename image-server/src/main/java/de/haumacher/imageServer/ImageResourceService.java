@@ -3,6 +3,8 @@
  */
 package de.haumacher.imageServer;
 
+import static de.haumacher.util.xml.HTML.*;
+
 import java.awt.Graphics2D;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
@@ -49,7 +51,6 @@ import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.google.gson.stream.JsonReader;
 
-import de.haumacher.util.xml.HTML;
 import de.haumacher.util.xml.XmlWriter;
 
 /**
@@ -375,21 +376,21 @@ public class ImageResourceService extends ResourceService {
 		response.setCharacterEncoding("utf-8");
 		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
 			try (XmlWriter out = new XmlWriter(w)) {
-				out.begin(HTML.HTML);
+				out.begin(HTML);
 				{
-					out.begin(HTML.HEAD);
+					out.begin(HEAD);
 					{
-						out.begin(HTML.TITLE);
+						out.begin(TITLE);
 						out.append("VAlbum");
 						out.end();
 					}
 					out.end();
-					out.begin(HTML.BODY);
+					out.begin(BODY);
 					{
-						out.begin(HTML.H1);
+						out.begin(H1);
 						out.append(index.getTitle());
 						out.end();
-						out.begin(HTML.H2);
+						out.begin(H2);
 						out.append(index.getSubTitle());
 						out.end();
 
@@ -434,33 +435,33 @@ public class ImageResourceService extends ResourceService {
 		double rowHeight = row.getHeight();
 		int spacing = row.getSpacing();
 
-		out.begin(HTML.DIV);
+		out.begin(DIV);
 		out.attr("style", "display: table; margin-top: " + spacing + "px;");
 		{
-			out.begin(HTML.DIV);
-			out.attr(HTML.STYLE_ATTR, "display: table-row;");
+			out.begin(DIV);
+			out.attr(STYLE_ATTR, "display: table-row;");
 			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
 				if (n > 0) {
-					out.begin(HTML.DIV);
-					out.attr(HTML.STYLE_ATTR, "display: table-cell; width: " + spacing + "px;");
+					out.begin(DIV);
+					out.attr(STYLE_ATTR, "display: table-cell; width: " + spacing + "px;");
 					out.end();
 				}
 				
 				ImageData image = row.getImage(n);
 
-				out.begin(HTML.A);
-				out.attr(HTML.STYLE_ATTR, "display: table-cell;");
-				out.attr(HTML.HREF_ATTR, image.getName());
+				out.begin(A);
+				out.attr(STYLE_ATTR, "display: table-cell;");
+				out.attr(HREF_ATTR, image.getName());
 				{
-					out.begin(HTML.IMG);
+					out.begin(IMG);
 
-					out.openAttr(HTML.SRC_ATTR);
+					out.openAttr(SRC_ATTR);
 					out.append(image.getName());
 					out.append("?tn=true");
 					out.closeAttr();
 					
-					out.attr(HTML.WIDTH_ATTR, row.getScaledWidth(n));
-					out.attr(HTML.HEIGHT_ATTR, rowHeight);
+					out.attr(WIDTH_ATTR, row.getScaledWidth(n));
+					out.attr(HEIGHT_ATTR, rowHeight);
 					out.end();
 				}
 				out.end();
