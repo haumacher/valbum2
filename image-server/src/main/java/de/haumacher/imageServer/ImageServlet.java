@@ -12,12 +12,10 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -243,13 +241,13 @@ public class ImageServlet extends HttpServlet {
 		}
 		
 		if ("json".equals(request.getParameter("type"))) {
-			serveFolderJson(response, dir, index, images);
+			serveFolderJson(response, index, images);
 		} else {
-			serveFolderHtml(response, dir, index, images);
+			serveFolderHtml(response, index, images);
 		}
 	}
 
-	private void serveFolderJson(HttpServletResponse response, File dir, AlbumIndex index, List<ImageData> images) throws IOException {
+	private void serveFolderJson(HttpServletResponse response, AlbumIndex index, List<ImageData> images) throws IOException {
 		response.setContentType("application/json");
 		try (JsonWriter json = new JsonWriter(new OutputStreamWriter(response.getOutputStream(), "utf-8"))) {
 			json.beginObject();
@@ -266,9 +264,7 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
-	private void serveFolderHtml(HttpServletResponse response, File dir,
-			AlbumIndex index, List<ImageData> images) throws UnsupportedEncodingException,
-			IOException, FileNotFoundException {
+	private void serveFolderHtml(HttpServletResponse response, AlbumIndex index, List<ImageData> images) throws IOException {
 		response.setContentType("text/html");
 		response.setCharacterEncoding("utf-8");
 		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
