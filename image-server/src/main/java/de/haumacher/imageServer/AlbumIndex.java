@@ -32,6 +32,7 @@ public class AlbumIndex {
 			switch (json.nextName()) {
 				case "title": result.setTitle(json.nextString()); break;
 				case "sub-title": result.setSubTitle(json.nextString()); break;
+				default: json.skipValue();
 			}
 		}
 		json.endObject();
