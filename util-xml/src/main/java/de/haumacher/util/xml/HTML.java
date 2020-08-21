@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2020 Bernhard Haumacher. All Rights Reserved.
  */
-package de.haumacher.imageServer.html;
+package de.haumacher.util.xml;
 
 /**
  * TODO
