@@ -49,6 +49,7 @@ import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.google.gson.stream.JsonReader;
 
+import de.haumacher.imageServer.html.HTML;
 import de.haumacher.imageServer.html.XmlWriter;
 
 /**
