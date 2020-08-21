@@ -14,6 +14,26 @@ import java.util.ArrayList;
  */
 public class XmlWriter extends Writer implements XmlAppendable {
 
+	enum State {
+		/**
+		 * Element content. Opening new tags is possible, see
+		 * {@link XmlAppendable#begin(String)}.
+		 */
+		CONTENT,
+
+		/**
+		 * Within an opening tag. Writing attributes is possible, see
+		 * {@link XmlAppendable#attr(String, CharSequence)}.
+		 */
+		ATTRIBUTES,
+
+		/**
+		 * Within an open attribute, writing text is possible, see
+		 * {@link XmlAppendable#append(CharSequence)}.
+		 */
+		ATTRIBUTE,
+	}
+
 	private final ArrayList<String> _openTags = new ArrayList<String>();
 
 	private final Appendable _out;
