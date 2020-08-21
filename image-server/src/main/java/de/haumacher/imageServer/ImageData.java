@@ -19,6 +19,7 @@ import com.drew.metadata.jpeg.JpegCommentDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
+import com.google.gson.stream.JsonWriter;
 
 /**
  * TODO
@@ -185,6 +186,26 @@ public class ImageData {
 	 */
 	public int getWidth() {
 		return _width;
+	}
+
+	/** 
+	 * TODO
+	 *
+	 * @param json
+	 * @throws IOException 
+	 */
+	public void writeTo(JsonWriter json) throws IOException {
+		json.beginObject();
+		json.name("name");
+		json.value(getName());
+		json.name("width");
+		json.value(getWidth());
+		json.name("height");
+		json.value(getHeight());
+		json.name("date");
+		json.value(getDate().getTime());
+		Json.value(json, "comment", getComment());
+		json.endObject();
 	}
 
 }

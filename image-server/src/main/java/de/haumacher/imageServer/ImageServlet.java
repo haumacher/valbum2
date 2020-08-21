@@ -12,10 +12,12 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -51,6 +53,7 @@ import com.drew.metadata.exif.ExifThumbnailDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonWriter;
 
 import de.haumacher.util.xml.XmlWriter;
 
@@ -87,8 +90,8 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	@Override
-	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-		String pathInfo = req.getPathInfo();
+	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		String pathInfo = request.getPathInfo();
 		
 		Path resourcePath;
 		if (pathInfo == null) {
@@ -96,7 +99,7 @@ public class ImageServlet extends HttpServlet {
 		} else {
 			Path path = Paths.get(pathInfo.substring(1)).normalize();
 			if (path.startsWith("..")) {
-				error404(resp);
+				error404(response);
 				return;
 			}
 			resourcePath = _basePath.resolve(path);
@@ -104,26 +107,248 @@ public class ImageServlet extends HttpServlet {
 		
 		File file = resourcePath.toFile();
 		if (!file.exists()) {
-			error404(resp);
+			error404(response);
 			return;
 		}
 
 		if (file.isDirectory()) {
 			if (pathInfo == null) {
-				resp.sendRedirect(req.getContextPath() + "/");
+				response.sendRedirect(request.getContextPath() + "/");
 				return;
 			}
 			if (!pathInfo.endsWith("/")) {
-				resp.sendRedirect(req.getContextPath() + pathInfo + "/");
+				response.sendRedirect(request.getContextPath() + pathInfo + "/");
 				return;
 			}
 			
-			serveFolder(resp, file);
+			serveFolder(request, response, file);
 		} else if (IMAGES.accept(file)) {
-			serveImage(req, resp, file);
+			serveImage(request, response, file);
 		} else {
-			error404(resp);
+			error404(response);
 		}
+	}
+
+	private void serveListing(HttpServletResponse response, File dir) throws IOException {
+		File[] dirs = dir.listFiles(DIRECTORIES);
+		if (dirs == null) {
+			error404(response);
+			return;
+		}
+		
+		Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
+		
+		response.setContentType("text/html");
+		response.setCharacterEncoding("utf-8");
+		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
+			try (XmlWriter out = new XmlWriter(w)) {
+				out.begin(HTML);
+				{
+					out.begin(HEAD);
+					{
+						out.begin(TITLE); out.append("VAlbum"); out.end();
+					}
+					out.end();
+					
+					out.begin(BODY);
+					{
+						out.begin(UL);
+						{
+							out.begin(LI);
+							{
+								out.begin(A);
+								out.attr(HREF_ATTR, "..");
+								{
+									out.append("<- Go back");
+								}
+								out.end();
+							}
+							out.end();
+	
+							for (File sub : dirs) {
+								out.begin(LI);
+								{
+									out.begin(A);
+									out.openAttr(HREF_ATTR);
+									out.append(sub.getName());
+									out.append('/');
+									out.closeAttr();
+									{
+										out.append(sub.getName());
+									}
+									out.end();
+								}
+								out.end();
+							}
+						}
+						out.end();
+					}
+					out.end();
+				}
+				out.end();
+			}
+		}
+	}
+
+	private void serveFolder(HttpServletRequest request, HttpServletResponse response, File dir) throws IOException {
+		File[] files = dir.listFiles(IMAGES);
+		if (files == null) {
+			error404(response);
+			return;
+		}
+
+		if (files.length == 0) {
+			serveListing(response, dir);
+			return;
+		}
+		
+		List<ImageData> images = new ArrayList<>();
+		for (File file : files) {
+			try {
+				ImageData image = ImageData.analyze(file);
+				if (image == null) {
+					continue;
+				}
+				images.add(image);
+			} catch (ImageProcessingException | IOException
+					| MetadataException ex) {
+				LOG.log(Level.WARNING,
+						"Cannot access '" + file + "': " + ex.getMessage(), ex);
+				continue;
+			}
+		}
+		
+		Collections.sort(images, (a, b) -> a.getDate().compareTo(b.getDate()));
+
+		AlbumIndex index;
+		File indexResource = new File(dir, "index.json");
+		if (indexResource.exists()) {
+			try (InputStream in = new FileInputStream(indexResource)) {
+				JsonReader json = new JsonReader(
+						new InputStreamReader(in, "utf-8"));
+				index = AlbumIndex.read(json);
+			}
+		} else {
+			index = new AlbumIndex();
+			String dirName = dir.getName();
+			
+			Pattern prefixPattern = Pattern.compile("[-_\\.\\s0-9]*");
+			Matcher matcher = prefixPattern.matcher(dirName);
+			if (matcher.lookingAt()) {
+				index.setTitle(dirName.substring(matcher.end()));
+				index.setSubTitle(dirName.substring(0, matcher.end()));
+			} else {
+				index.setTitle(dirName);
+			}
+		}
+		
+		if ("json".equals(request.getParameter("type"))) {
+			serveFolderJson(response, dir, index, images);
+		} else {
+			serveFolderHtml(response, dir, index, images);
+		}
+	}
+
+	private void serveFolderJson(HttpServletResponse response, File dir, AlbumIndex index, List<ImageData> images) throws IOException {
+		response.setContentType("application/json");
+		try (JsonWriter json = new JsonWriter(new OutputStreamWriter(response.getOutputStream(), "utf-8"))) {
+			json.beginObject();
+			json.name("index");
+			index.writeTo(json);
+			
+			json.name("images");
+			json.beginArray();
+			for (ImageData image : images) {
+				image.writeTo(json);
+			}
+			json.endArray();
+			json.endObject();
+		}
+	}
+
+	private void serveFolderHtml(HttpServletResponse response, File dir,
+			AlbumIndex index, List<ImageData> images) throws UnsupportedEncodingException,
+			IOException, FileNotFoundException {
+		response.setContentType("text/html");
+		response.setCharacterEncoding("utf-8");
+		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
+			try (XmlWriter out = new XmlWriter(w)) {
+				out.begin(HTML);
+				{
+					out.begin(HEAD);
+					{
+						out.begin(TITLE);
+						out.append("VAlbum");
+						out.end();
+					}
+					out.end();
+					out.begin(BODY);
+					{
+						out.begin(H1);
+						out.append(index.getTitle());
+						out.end();
+						out.begin(H2);
+						out.append(index.getSubTitle());
+						out.end();
+
+						ImageRow row = new ImageRow(1280, 400);
+						for (ImageData image : images) {
+							if (row.isComplete()) {
+								writeRow(out, row);
+								row.clear();
+							}
+							row.add(image);
+						}
+						writeRow(out, row);
+					}
+					out.end();
+				}
+				out.end();
+			}
+		}
+	}
+
+	private void writeRow(XmlWriter out, ImageRow row) throws IOException {
+		if (row.getSize() == 0) {
+			return;
+		}
+		double rowHeight = row.getHeight();
+		int spacing = row.getSpacing();
+
+		out.begin(DIV);
+		out.attr("style", "display: table; margin-top: " + spacing + "px;");
+		{
+			out.begin(DIV);
+			out.attr(STYLE_ATTR, "display: table-row;");
+			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
+				if (n > 0) {
+					out.begin(DIV);
+					out.attr(STYLE_ATTR, "display: table-cell; width: " + spacing + "px;");
+					out.end();
+				}
+				
+				ImageData image = row.getImage(n);
+
+				out.begin(A);
+				out.attr(STYLE_ATTR, "display: table-cell;");
+				out.attr(HREF_ATTR, image.getName());
+				{
+					out.begin(IMG);
+
+					out.openAttr(SRC_ATTR);
+					out.append(image.getName());
+					out.append("?tn=true");
+					out.closeAttr();
+					
+					out.attr(WIDTH_ATTR, row.getScaledWidth(n));
+					out.attr(HEIGHT_ATTR, rowHeight);
+					out.end();
+				}
+				out.end();
+			}
+			out.end();
+		}
+		out.end();
 	}
 
 	private void serveImage(HttpServletRequest request, HttpServletResponse response, File file) throws IOException {
@@ -156,7 +381,7 @@ public class ImageServlet extends HttpServlet {
 							// At least images from Canon EOS have no extra thumbnail information. Instead, the thumbnail is oriented the same as the original image.
 							tnOrientation = origOrientation;
 						}
-
+	
 						{
 							// The thumbnail cannot be delivered directly,
 							// since the image data has no orientation
@@ -339,97 +564,6 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
-	private void serveFolder(HttpServletResponse response, File dir) throws IOException {
-		File[] files = dir.listFiles(IMAGES);
-		if (files == null) {
-			error404(response);
-			return;
-		}
-
-		if (files.length == 0) {
-			serveListing(response, dir);
-			return;
-		}
-		
-		List<ImageData> images = new ArrayList<>();
-		for (File file : files) {
-			try {
-				ImageData image = ImageData.analyze(file);
-				if (image == null) {
-					continue;
-				}
-				images.add(image);
-			} catch (ImageProcessingException | IOException
-					| MetadataException ex) {
-				LOG.log(Level.WARNING,
-						"Cannot access '" + file + "': " + ex.getMessage(), ex);
-				continue;
-			}
-		}
-		
-		Collections.sort(images, (a, b) -> a.getDate().compareTo(b.getDate()));
-
-		AlbumIndex index;
-		File indexResource = new File(dir, "index.json");
-		if (indexResource.exists()) {
-			try (InputStream in = new FileInputStream(indexResource)) {
-				JsonReader json = new JsonReader(
-						new InputStreamReader(in, "utf-8"));
-				index = AlbumIndex.read(json);
-			}
-		} else {
-			index = new AlbumIndex();
-			String dirName = dir.getName();
-			
-			Pattern prefixPattern = Pattern.compile("[-_\\.\\s0-9]*");
-			Matcher matcher = prefixPattern.matcher(dirName);
-			if (matcher.lookingAt()) {
-				index.setTitle(dirName.substring(matcher.end()));
-				index.setSubTitle(dirName.substring(0, matcher.end()));
-			} else {
-				index.setTitle(dirName);
-			}
-		}
-		
-		response.setContentType("text/html");
-		response.setCharacterEncoding("utf-8");
-		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
-			try (XmlWriter out = new XmlWriter(w)) {
-				out.begin(HTML);
-				{
-					out.begin(HEAD);
-					{
-						out.begin(TITLE);
-						out.append("VAlbum");
-						out.end();
-					}
-					out.end();
-					out.begin(BODY);
-					{
-						out.begin(H1);
-						out.append(index.getTitle());
-						out.end();
-						out.begin(H2);
-						out.append(index.getSubTitle());
-						out.end();
-
-						ImageRow row = new ImageRow(1280, 400);
-						for (ImageData image : images) {
-							if (row.isComplete()) {
-								writeRow(out, row);
-								row.clear();
-							}
-							row.add(image);
-						}
-						writeRow(out, row);
-					}
-					out.end();
-				}
-				out.end();
-			}
-		}
-	}
-
 	/** 
 	 * TODO
 	 *
@@ -437,109 +571,5 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private void error404(HttpServletResponse response) {
 		response.setStatus(HttpStatus.NOT_FOUND_404);
-	}
-	
-	private void serveListing(HttpServletResponse response, File dir) throws IOException {
-		File[] dirs = dir.listFiles(DIRECTORIES);
-		if (dirs == null) {
-			error404(response);
-			return;
-		}
-		
-		Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
-		
-		response.setContentType("text/html");
-		response.setCharacterEncoding("utf-8");
-		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
-			try (XmlWriter out = new XmlWriter(w)) {
-				out.begin(HTML);
-				{
-					out.begin(HEAD);
-					{
-						
-					}
-					out.end();
-					
-					out.begin(BODY);
-					{
-						out.begin(UL);
-						{
-							out.begin(LI);
-							{
-								out.begin(A);
-								out.attr(HREF_ATTR, "..");
-								{
-									out.append("<- Go back");
-								}
-								out.end();
-							}
-							out.end();
-
-							for (File sub : dirs) {
-								out.begin(LI);
-								{
-									out.begin(A);
-									out.openAttr(HREF_ATTR);
-									out.append(sub.getName());
-									out.append('/');
-									out.closeAttr();
-									{
-										out.append(sub.getName());
-									}
-									out.end();
-								}
-								out.end();
-							}
-						}
-						out.end();
-					}
-					out.end();
-				}
-				out.end();
-			}
-		}
-	}
-
-	private void writeRow(XmlWriter out, ImageRow row) throws IOException {
-		if (row.getSize() == 0) {
-			return;
-		}
-		double rowHeight = row.getHeight();
-		int spacing = row.getSpacing();
-
-		out.begin(DIV);
-		out.attr("style", "display: table; margin-top: " + spacing + "px;");
-		{
-			out.begin(DIV);
-			out.attr(STYLE_ATTR, "display: table-row;");
-			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
-				if (n > 0) {
-					out.begin(DIV);
-					out.attr(STYLE_ATTR, "display: table-cell; width: " + spacing + "px;");
-					out.end();
-				}
-				
-				ImageData image = row.getImage(n);
-
-				out.begin(A);
-				out.attr(STYLE_ATTR, "display: table-cell;");
-				out.attr(HREF_ATTR, image.getName());
-				{
-					out.begin(IMG);
-
-					out.openAttr(SRC_ATTR);
-					out.append(image.getName());
-					out.append("?tn=true");
-					out.closeAttr();
-					
-					out.attr(WIDTH_ATTR, row.getScaledWidth(n));
-					out.attr(HEIGHT_ATTR, rowHeight);
-					out.end();
-				}
-				out.end();
-			}
-			out.end();
-		}
-		out.end();
 	}
 }
