@@ -32,5 +32,6 @@ public interface HTML {
 	String A = "a";
 	String HREF_ATTR = "href";
 	String STYLE_ATTR = "style";
+	String CLASS_ATTR = "class";
 
 }
