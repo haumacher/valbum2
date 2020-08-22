@@ -42,6 +42,7 @@ public class Main {
 		WebAppContext webapp = new WebAppContext();
 		webapp.setContextPath(_contextPath);
 		webapp.setResourceBase(_basePath.toString());
+		webapp.addServlet(new ServletHolder(new ResourceServlet()), "/static/*");
 		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath)), "/*");
 		webapp.setClassLoader(Main.class.getClassLoader());
 

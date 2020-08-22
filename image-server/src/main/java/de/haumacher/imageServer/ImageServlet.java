@@ -32,7 +32,6 @@ import java.util.regex.Pattern;
 
 import javax.imageio.ImageIO;
 import javax.servlet.ServletException;
-import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -144,6 +143,11 @@ public class ImageServlet extends HttpServlet {
 				{
 					out.begin(HEAD);
 					{
+						out.begin(META);
+						out.attr(NAME_ATTR, "viewport");
+						out.attr(CONTENT_ATTR, "width=device-width, initial-scale=1.0");
+						out.endEmpty();
+
 						out.begin(TITLE); out.append("VAlbum"); out.end();
 					}
 					out.end();
@@ -243,7 +247,7 @@ public class ImageServlet extends HttpServlet {
 		if ("json".equals(request.getParameter("type"))) {
 			serveFolderJson(response, index, images);
 		} else {
-			serveFolderHtml(response, index, images);
+			serveFolderHtml(request, response, index, images);
 		}
 	}
 
@@ -264,7 +268,7 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
-	private void serveFolderHtml(HttpServletResponse response, AlbumIndex index, List<ImageData> images) throws IOException {
+	private void serveFolderHtml(HttpServletRequest request, HttpServletResponse response, AlbumIndex index, List<ImageData> images) throws IOException {
 		response.setContentType("text/html");
 		response.setCharacterEncoding("utf-8");
 		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
@@ -273,6 +277,18 @@ public class ImageServlet extends HttpServlet {
 				{
 					out.begin(HEAD);
 					{
+						out.begin(META);
+						out.attr(NAME_ATTR, "viewport");
+						out.attr(CONTENT_ATTR, "width=device-width, initial-scale=1.0");
+						out.endEmpty();
+						
+						// <link rel="stylesheet" type="text/css" href="https://cdn.sstatic.net/Sites/stackoverflow/primary.css?v=905b10e527f0">
+						out.begin(LINK);
+						out.attr(REL_ATTR, "stylesheet");
+						out.attr(TYPE_ATTR, "text/css");
+						out.attr(HREF_ATTR, request.getContextPath() + "/static/style/valbum.css");
+						out.endEmpty();
+						
 						out.begin(TITLE);
 						out.append("VAlbum");
 						out.end();
@@ -317,27 +333,35 @@ public class ImageServlet extends HttpServlet {
 			out.begin(DIV);
 			out.attr(STYLE_ATTR, "display: table-row;");
 			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
-				if (n > 0) {
-					out.begin(DIV);
-					out.attr(STYLE_ATTR, "display: table-cell; width: " + spacing + "px;");
-					out.end();
-				}
-				
 				ImageData image = row.getImage(n);
 
-				out.begin(A);
-				out.attr(STYLE_ATTR, "display: table-cell;");
-				out.attr(HREF_ATTR, image.getName());
+				out.begin(DIV);
+				out.openAttr(STYLE_ATTR);
+				out.append("display: table-cell;");
+				out.closeAttr();
 				{
-					out.begin(IMG);
-
-					out.openAttr(SRC_ATTR);
-					out.append(image.getName());
-					out.append("?tn=true");
+					out.begin(A);
+					out.openAttr(STYLE_ATTR);
+					out.append("display: block;");
+					if (n > 0) {
+						out.append("margin-left: ");
+						out.append(spacing);
+						out.append("px;");
+					}
 					out.closeAttr();
-					
-					out.attr(WIDTH_ATTR, row.getScaledWidth(n));
-					out.attr(HEIGHT_ATTR, rowHeight);
+					out.attr(HREF_ATTR, image.getName());
+					{
+						out.begin(IMG);
+						
+						out.openAttr(SRC_ATTR);
+						out.append(image.getName());
+						out.append("?tn=true");
+						out.closeAttr();
+						
+						out.attr(WIDTH_ATTR, row.getScaledWidth(n));
+						out.attr(HEIGHT_ATTR, rowHeight);
+						out.end();
+					}
 					out.end();
 				}
 				out.end();
@@ -547,16 +571,7 @@ public class ImageServlet extends HttpServlet {
 			response.setContentLength((int) length);
 		}
 		try (FileInputStream in = new FileInputStream(file)) {
-			ServletOutputStream out = response.getOutputStream();
-			
-			byte[] buffer = new byte[64*1024];
-			while (true) {
-				int direct = in.read(buffer);
-				if (direct < 0) {
-					break;
-				}
-				out.write(buffer, 0, direct);
-			}
+			Util.sendBytes(response, in);
 		}
 	}
 

@@ -116,4 +116,35 @@ public interface XmlAppendable extends Appendable {
 		attr(name, Double.toString(value));
 	}
 
+	/**
+	 * Convenience method for {@link #append(CharSequence)} with a
+	 * <code>boolean</code> value.
+	 */
+	default void append(boolean value) throws IOException {
+		append(Boolean.toString(value));
+	}
+
+	/**
+	 * Convenience method for {@link #append(CharSequence)} with an
+	 * <code>int</code> value.
+	 */
+	default void append(int value) throws IOException {
+		append(Integer.toString(value));
+	}
+
+	/**
+	 * Convenience method for {@link #append(CharSequence)} with a
+	 * <code>float</code> value.
+	 */
+	default void append(float value) throws IOException {
+		append(Float.toString(value));
+	}
+
+	/**
+	 * Convenience method for {@link #append(CharSequence)} with a
+	 * <code>double</code> value.
+	 */
+	default void append(double value) throws IOException {
+		append(Double.toString(value));
+	}
 }

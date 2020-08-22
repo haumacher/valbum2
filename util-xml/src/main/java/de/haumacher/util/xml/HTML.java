@@ -14,6 +14,12 @@ public interface HTML {
 	String HEAD = "head";
 	String BODY = "body";
 	String TITLE = "title";
+	String META = "meta";
+	String NAME_ATTR = "name";
+	String CONTENT_ATTR = "content";
+	String LINK = "link";
+	String REL_ATTR = "rel";
+	String TYPE_ATTR = "type";
 	String H1 = "h1";
 	String H2 = "h2";
 	String DIV = "div";
