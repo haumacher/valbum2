@@ -19,21 +19,17 @@ import com.drew.metadata.jpeg.JpegCommentDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
-import com.google.gson.stream.JsonWriter;
+
+import de.haumacher.imageServer.shared.model.ImageInfo;
 
 /**
  * TODO
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ImageData {
+public class ImageData extends ImageInfo {
 	
 	private static final Logger LOG = Logger.getLogger(ImageData.class.getName());
-	private String _name;
-	private Date _date;
-	private int _width;
-	private int _height;
-	private String _comment;
 
 	/** 
 	 * Creates a {@link ImageData}.
@@ -41,27 +37,9 @@ public class ImageData {
 	 * @param name
 	 */
 	public ImageData(String name) {
-		_name = name;
+		super(name);
 	}
 	
-	/**
-	 * TODO
-	 */
-	public String getName() {
-		return _name;
-	}
-	
-	/**
-	 * TODO
-	 */
-	public Date getDate() {
-		return _date;
-	}
-	
-	private void setDate(Date date) {
-		_date = date;
-	}
-
 	/** 
 	 * TODO
 	 *
@@ -143,69 +121,6 @@ public class ImageData {
 			return null;
 		}
 		return directory.getDateOriginal();
-	}
-
-	/**
-	 * TODO
-	 */
-	public String getComment() {
-		return _comment;
-	}
-	
-	/** 
-	 * TODO
-	 *
-	 * @param string
-	 */
-	private void setComment(String comment) {
-		_comment = comment;
-	}
-
-	/**
-	 * TODO
-	 */
-	public int getHeight() {
-		return _height;
-	}
-	
-	/** 
-	 * TODO
-	 *
-	 * @param imageHeight
-	 */
-	private void setHeight(int height) {
-		_height = height;
-	}
-
-	private void setWidth(int width) {
-		_width = width;
-	}
-	
-	/**
-	 * TODO
-	 */
-	public int getWidth() {
-		return _width;
-	}
-
-	/** 
-	 * TODO
-	 *
-	 * @param json
-	 * @throws IOException 
-	 */
-	public void writeTo(JsonWriter json) throws IOException {
-		json.beginObject();
-		json.name("name");
-		json.value(getName());
-		json.name("width");
-		json.value(getWidth());
-		json.name("height");
-		json.value(getHeight());
-		json.name("date");
-		json.value(getDate().getTime());
-		Json.value(json, "comment", getComment());
-		json.endObject();
 	}
 
 }

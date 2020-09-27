@@ -19,11 +19,9 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -53,6 +51,12 @@ import com.drew.metadata.mp4.Mp4Directory;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 
+import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AlbumProperties;
+import de.haumacher.imageServer.shared.model.ImageInfo;
+import de.haumacher.imageServer.shared.model.ListingInfo;
+import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.ui.ResourceRenderer;
 import de.haumacher.util.xml.XmlWriter;
 
 /**
@@ -137,18 +141,19 @@ public class ImageServlet extends HttpServlet {
 		}
 	
 		if (files.length == 0) {
-			serveListing(response, dir);
+			serveListing(request, response, dir);
 			return;
 		}
 		
-		List<ImageData> images = new ArrayList<>();
+		AlbumInfo album = new AlbumInfo();
+		
 		for (File file : files) {
 			try {
 				ImageData image = ImageData.analyze(file);
 				if (image == null) {
 					continue;
 				}
-				images.add(image);
+				album.addImage(image);
 			} catch (ImageProcessingException | IOException
 					| MetadataException ex) {
 				LOG.log(Level.WARNING,
@@ -157,38 +162,41 @@ public class ImageServlet extends HttpServlet {
 			}
 		}
 		
-		Collections.sort(images, (a, b) -> a.getDate().compareTo(b.getDate()));
+		Collections.sort(album.getImages(), (a, b) -> a.getDate().compareTo(b.getDate()));
 	
-		AlbumIndex index;
 		File indexResource = new File(dir, "index.json");
+		AlbumProperties header = album.getHeader();
 		if (indexResource.exists()) {
 			try (InputStream in = new FileInputStream(indexResource)) {
 				JsonReader json = new JsonReader(
 						new InputStreamReader(in, "utf-8"));
-				index = AlbumIndex.read(json);
+				header.readFrom(json);
 			}
 		} else {
-			index = new AlbumIndex();
 			String dirName = dir.getName();
 			
 			Pattern prefixPattern = Pattern.compile("[-_\\.\\s0-9]*");
 			Matcher matcher = prefixPattern.matcher(dirName);
 			if (matcher.lookingAt()) {
-				index.setTitle(dirName.substring(matcher.end()));
-				index.setSubTitle(dirName.substring(0, matcher.end()));
+				header.setTitle(dirName.substring(matcher.end()));
+				header.setSubTitle(dirName.substring(0, matcher.end()));
 			} else {
-				index.setTitle(dirName);
+				header.setTitle(dirName);
 			}
 		}
 		
-		if ("json".equals(request.getParameter("type"))) {
-			serveFolderJson(response, index, images);
+		if (jsonRequested(request)) {
+			serveJson(response, album);
 		} else {
-			serveFolderHtml(request, response, index, images);
+			serveFolderHtml(request, response, album);
 		}
 	}
 
-	private void serveListing(HttpServletResponse response, File dir) throws IOException {
+	private static boolean jsonRequested(HttpServletRequest request) {
+		return "json".equals(request.getParameter("type"));
+	}
+
+	private void serveListing(HttpServletRequest request, HttpServletResponse response, File dir) throws IOException {
 		File[] dirs = dir.listFiles(DIRECTORIES);
 		if (dirs == null) {
 			error404(response);
@@ -197,6 +205,17 @@ public class ImageServlet extends HttpServlet {
 		
 		Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
 		
+		ListingInfo listing = new ListingInfo(dir.getName());
+		load(listing, dirs);
+		
+		if (jsonRequested(request)) {
+			serveJson(response, listing);
+		} else {
+			serveListingHtml(response, listing);
+		}
+	}
+	
+	private void serveListingHtml(HttpServletResponse response, ListingInfo listing) throws IOException {
 		response.setContentType("text/html");
 		response.setCharacterEncoding("utf-8");
 		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
@@ -216,36 +235,7 @@ public class ImageServlet extends HttpServlet {
 					
 					out.begin(BODY);
 					{
-						out.begin(UL);
-						{
-							out.begin(LI);
-							{
-								out.begin(A);
-								out.attr(HREF_ATTR, "..");
-								{
-									out.append("<- Go back");
-								}
-								out.end();
-							}
-							out.end();
-	
-							for (File sub : dirs) {
-								out.begin(LI);
-								{
-									out.begin(A);
-									out.openAttr(HREF_ATTR);
-									out.append(sub.getName());
-									out.append('/');
-									out.closeAttr();
-									{
-										out.append(sub.getName());
-									}
-									out.end();
-								}
-								out.end();
-							}
-						}
-						out.end();
+						ResourceRenderer.INSTANCE.visit(listing, out);
 					}
 					out.end();
 				}
@@ -254,24 +244,13 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
-	private void serveFolderJson(HttpServletResponse response, AlbumIndex index, List<ImageData> images) throws IOException {
-		response.setContentType("application/json");
-		try (JsonWriter json = new JsonWriter(new OutputStreamWriter(response.getOutputStream(), "utf-8"))) {
-			json.beginObject();
-			json.name("index");
-			index.writeTo(json);
-			
-			json.name("images");
-			json.beginArray();
-			for (ImageData image : images) {
-				image.writeTo(json);
-			}
-			json.endArray();
-			json.endObject();
+	private void load(ListingInfo listing, File[] dirs) {
+		for (File dir : dirs) {
+			listing.addFolder(dir.getName());
 		}
 	}
 
-	private void serveFolderHtml(HttpServletRequest request, HttpServletResponse response, AlbumIndex index, List<ImageData> images) throws IOException {
+	private void serveFolderHtml(HttpServletRequest request, HttpServletResponse response, AlbumInfo album) throws IOException {
 		response.setContentType("text/html");
 		response.setCharacterEncoding("utf-8");
 		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
@@ -300,17 +279,18 @@ public class ImageServlet extends HttpServlet {
 					out.begin(BODY);
 					{
 						out.begin(H1);
-						out.append(index.getTitle());
+						AlbumProperties header = album.getHeader();
+						out.append(header.getTitle());
 						out.end();
 						out.begin(H2);
-						out.append(index.getSubTitle());
+						out.append(header.getSubTitle());
 						out.end();
 
 						out.begin(DIV);
 						out.attr(CLASS_ATTR, "image-rows");
 						{
 							ImageRow row = new ImageRow(1280, 400);
-							for (ImageData image : images) {
+							for (ImageInfo image : album.getImages()) {
 								if (row.isComplete()) {
 									writeRow(out, row);
 									row.clear();
@@ -341,7 +321,7 @@ public class ImageServlet extends HttpServlet {
 			out.begin(DIV);
 			out.attr(STYLE_ATTR, "display: table-row;");
 			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
-				ImageData image = row.getImage(n);
+				ImageInfo image = row.getImage(n);
 
 				out.begin(DIV);
 				out.openAttr(STYLE_ATTR);
@@ -652,6 +632,13 @@ public class ImageServlet extends HttpServlet {
 			return exifIFD0Directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
 		}
 		return 1;
+	}
+
+	private void serveJson(HttpServletResponse response, Resource album) throws IOException {
+		response.setContentType("application/json");
+		try (JsonWriter json = new JsonWriter(new OutputStreamWriter(response.getOutputStream(), "utf-8"))) {
+			album.writePolymorphic(json);
+		}
 	}
 
 	private void serveData(HttpServletRequest request, HttpServletResponse response, File file) throws IOException {
