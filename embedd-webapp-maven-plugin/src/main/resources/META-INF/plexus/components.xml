@@ -1,0 +1,26 @@
+<component-set>
+	<components>
+		<component>
+			<role>org.apache.maven.lifecycle.mapping.LifecycleMapping</role>
+			<role-hint>your-binding</role-hint>
+			<implementation>org.apache.maven.lifecycle.mapping.DefaultLifecycleMapping
+			</implementation>
+			<configuration>
+				<phases>
+					<compile>de.haumacher:maven-embedd-webapp-plugin:build</compile>
+					<test>de.haumacher:maven-embedd-webapp-plugin:test</test>
+				</phases>
+			</configuration>
+		</component>
+
+		<component>
+			<role>org.apache.maven.artifact.handler.ArtifactHandler</role>
+			<role-hint>your-binding</role-hint>
+			<implementation>org.apache.maven.artifact.handler.DefaultArtifactHandler
+			</implementation>
+			<configuration>
+				<type>your-binding</type>
+			</configuration>
+		</component>
+	</components>
+</component-set>
