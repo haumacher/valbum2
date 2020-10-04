@@ -16,7 +16,7 @@ import com.google.gson.stream.JsonWriter;
 public interface Resource {
 	
 	enum Type {
-		listing, album;
+		listing, album, image, error;
 	}
 
 	Type type();
@@ -24,8 +24,10 @@ public interface Resource {
 	<R,A,E extends Throwable> R visit(Visitor<R,A,E> v, A arg) throws E;
 	
 	interface Visitor<R,A,E extends Throwable> {
-		R visit(AlbumInfo resource, A arg) throws E;
-		R visit(ListingInfo resource, A arg) throws E;
+		R visit(AlbumInfo album, A arg) throws E;
+		R visit(ListingInfo listing, A arg) throws E;
+		R visit(ImageInfo image, A arg) throws E;
+		R visit(ErrorInfo error, A arg) throws E;
 	}
 	
 	default void writePolymorphic(JsonWriter json) throws IOException {

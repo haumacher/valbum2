@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2020 Bernhard Haumacher. All Rights Reserved.
  */
-package de.haumacher.imageServer;
+package de.haumacher.imageServer.shared.ui;
 
 import java.util.ArrayList;
 import java.util.List;

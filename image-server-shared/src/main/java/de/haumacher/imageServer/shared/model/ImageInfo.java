@@ -14,7 +14,7 @@ import com.google.gson.stream.JsonWriter;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ImageInfo {
+public class ImageInfo implements Resource {
 
 	private String _name;
 	private Date _date;
@@ -36,6 +36,11 @@ public class ImageInfo {
 		super();
 	}
 	
+	@Override
+	public Type type() {
+		return Type.image;
+	}
+
 	/**
 	 * TODO
 	 */
@@ -54,7 +59,7 @@ public class ImageInfo {
 		return _date;
 	}
 	
-	protected void setDate(Date date) {
+	public void setDate(Date date) {
 		_date = date;
 	}
 
@@ -70,7 +75,7 @@ public class ImageInfo {
 	 *
 	 * @param string
 	 */
-	protected void setComment(String comment) {
+	public void setComment(String comment) {
 		_comment = comment;
 	}
 
@@ -86,11 +91,11 @@ public class ImageInfo {
 	 *
 	 * @param imageHeight
 	 */
-	protected void setHeight(int height) {
+	public void setHeight(int height) {
 		_height = height;
 	}
 
-	protected void setWidth(int width) {
+	public void setWidth(int width) {
 		_width = width;
 	}
 	
@@ -154,6 +159,11 @@ public class ImageInfo {
 					break;
 			}
 		}
+	}
+
+	@Override
+	public <R, A, E extends Throwable> R visit(Visitor<R, A, E> v, A arg) throws E {
+		return v.visit(this, arg);
 	}
 
 }
