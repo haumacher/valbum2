@@ -11,6 +11,15 @@ import org.eclipse.jetty.server.handler.HandlerCollection;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.webapp.WebAppContext;
 
+import net.sourceforge.argparse4j.ArgumentParsers;
+import net.sourceforge.argparse4j.helper.HelpScreenException;
+import net.sourceforge.argparse4j.impl.type.FileArgumentType;
+import net.sourceforge.argparse4j.inf.Argument;
+import net.sourceforge.argparse4j.inf.ArgumentParser;
+import net.sourceforge.argparse4j.inf.ArgumentParserException;
+import net.sourceforge.argparse4j.inf.ArgumentType;
+import net.sourceforge.argparse4j.inf.Namespace;
+
 /**
  * Starts the image server.
  *
@@ -22,13 +31,41 @@ public class Main {
 	 * Image server main method.
 	 */
 	public static void main(String[] args) throws Exception {
-		new Main().start();
+		ArgumentParser parser = ArgumentParsers.newFor("imageserver").build().description("Start the image server");
+		ArgumentType<Integer> type = new ArgumentType<Integer>() {
+			@Override
+			public Integer convert(ArgumentParser self, Argument arg, String value) throws ArgumentParserException {
+				return Integer.parseInt(value);
+			}
+		};
+		parser.addArgument("-p", "--port").type(type).setDefault(8080).help("The port to start the server.");
+		parser.addArgument("-b", "--basepath").type(new FileArgumentType()).setDefault(new File(".")).help("The path containing albums to serve");
+		parser.addArgument("-c", "--contextpath").setDefault("").help("The context path the albums are available over HTTP");
+
+		try {
+			Namespace ns = parser.parseArgs(args);
+			
+			new Main(ns).start();
+		} catch (HelpScreenException ex) {
+			System.exit(-1);
+		} catch (ArgumentParserException ex) {
+			System.exit(-1);
+		}
 	}
+	
+	private final int _port;
+	private final String _contextPath;
+	private final File _basePath;
 
-	private int _port = 8080;
-	private String _contextPath = "";
-	private File _basePath = new File(".");
-
+	/** 
+	 * Creates a {@link Main}.
+	 */
+	public Main(Namespace ns) {
+		_port = ns.getInt("port");
+		_basePath = ns.get("basepath");
+		_contextPath = ns.get("contextpath");
+	}
+	
 	private void start() throws Exception {
 		final Server server = new Server();
 
