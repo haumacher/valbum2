@@ -6,23 +6,14 @@ package de.haumacher.imageServer;
 import static de.haumacher.util.xml.HTML.*;
 
 import java.io.File;
-import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -31,13 +22,11 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.jetty.http.HttpStatus;
 
-import com.drew.imaging.ImageProcessingException;
-import com.drew.metadata.MetadataException;
-import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
-import de.haumacher.imageServer.shared.model.AlbumProperties;
+import de.haumacher.imageServer.shared.model.ErrorInfo;
+import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.ResourceRenderer;
@@ -48,17 +37,9 @@ import de.haumacher.util.xml.XmlWriter;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ImageServlet extends HttpServlet {
-
-	private static Set<String> ACCEPTED = new HashSet<>(Arrays.asList("jpg", "mp4"));
-	
-	private static final FileFilter IMAGES = f -> {
-		return f.isFile() && ACCEPTED.contains(Util.suffix(f.getName()));
-	};
+public class ImageServlet extends HttpServlet implements Resource.Visitor<Void, ImageServlet.Context, IOException> { 
 
 	private static final Logger LOG = Logger.getLogger(ImageServlet.class.getName());
-
-	private static final FileFilter DIRECTORIES = f -> f.isDirectory();
 
 	static {
 		LOG.info("Loading: " + ExifReaderPatch.class);
@@ -78,6 +59,7 @@ public class ImageServlet extends HttpServlet {
 	@Override
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
+		Context context = new Context(request, response);
 		
 		Path resourcePath;
 		if (pathInfo == null) {
@@ -85,7 +67,7 @@ public class ImageServlet extends HttpServlet {
 		} else {
 			Path path = Paths.get(pathInfo.substring(1)).normalize();
 			if (path.startsWith("..")) {
-				error404(response);
+				error404(context);
 				return;
 			}
 			resourcePath = _basePath.resolve(path);
@@ -93,7 +75,7 @@ public class ImageServlet extends HttpServlet {
 		
 		File file = resourcePath.toFile();
 		if (!file.exists()) {
-			error404(response);
+			error404(context);
 			return;
 		}
 
@@ -107,97 +89,74 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			
-			serveFolder(request, response, file);
-		} else if (IMAGES.accept(file)) {
-			serveImage(request, response, file);
+			serveFolder(context, file);
+		} else if (ResourceCache.isImage(file)) {
+			serveImage(context, file);
 		} else {
-			error404(response);
+			error404(context);
 		}
 	}
 
-	private void serveFolder(HttpServletRequest request, HttpServletResponse response, File dir) throws IOException {
-		File[] files = dir.listFiles(IMAGES);
-		if (files == null) {
-			error404(response);
-			return;
+	private void serveFolder(Context context, File file) throws IOException {
+		Resource resource = ResourceCache.lookup(file);
+		if (jsonRequested(context)) {
+			serveJson(context.response(), resource);
+		} else {
+			resource.visit(this, context);
 		}
+	}
 	
-		if (files.length == 0) {
-			serveListing(request, response, dir);
+	private void serveImage(Context context, File file) throws IOException {
+		if (jsonRequested(context)) {
+			Resource resource = ResourceCache.lookup(file);
+			serveJson(context.response(), resource);
 			return;
 		}
-		
-		AlbumInfo album = new AlbumInfo();
-		
-		for (File file : files) {
+
+		File data;
+		if ("tn".equals(context.getParameter("type"))) {
 			try {
-				ImageData image = ImageData.analyze(file);
-				if (image == null) {
-					continue;
-				}
-				album.addImage(image);
-			} catch (ImageProcessingException | IOException
-					| MetadataException ex) {
-				LOG.log(Level.WARNING,
-						"Cannot access '" + file + "': " + ex.getMessage(), ex);
-				continue;
-			}
-		}
-		
-		Collections.sort(album.getImages(), (a, b) -> a.getDate().compareTo(b.getDate()));
-	
-		File indexResource = new File(dir, "index.json");
-		AlbumProperties header = album.getHeader();
-		if (indexResource.exists()) {
-			try (InputStream in = new FileInputStream(indexResource)) {
-				JsonReader json = new JsonReader(
-						new InputStreamReader(in, "utf-8"));
-				header.readFrom(json);
+				data = PreviewCache.createPreview(file);
+			} catch (PreviewException ex) {
+				LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
+				error404(context);
+				return;
 			}
 		} else {
-			String dirName = dir.getName();
-			
-			Pattern prefixPattern = Pattern.compile("[-_\\.\\s0-9]*");
-			Matcher matcher = prefixPattern.matcher(dirName);
-			if (matcher.lookingAt()) {
-				header.setTitle(dirName.substring(matcher.end()));
-				header.setSubTitle(dirName.substring(0, matcher.end()));
-			} else {
-				header.setTitle(dirName);
-			}
+			data = file;
 		}
-		
-		if (jsonRequested(request)) {
-			serveJson(response, album);
-		} else {
-			serveFolderHtml(request, response, album);
-		}
+		serveData(context, data);
 	}
 
-	private static boolean jsonRequested(HttpServletRequest request) {
-		return "json".equals(request.getParameter("type"));
-	}
-
-	private void serveListing(HttpServletRequest request, HttpServletResponse response, File dir) throws IOException {
-		File[] dirs = dir.listFiles(DIRECTORIES);
-		if (dirs == null) {
-			error404(response);
-			return;
-		}
-		
-		Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
-		
-		ListingInfo listing = new ListingInfo(dir.getName());
-		load(listing, dirs);
-		
-		if (jsonRequested(request)) {
-			serveJson(response, listing);
-		} else {
-			serveListingHtml(response, listing);
-		}
+	@Override
+	public Void visit(ErrorInfo error, Context context) throws IOException {
+		error404(context);
+		return null;
 	}
 	
-	private void serveListingHtml(HttpServletResponse response, ListingInfo listing) throws IOException {
+	@Override
+	public Void visit(ImageInfo image, Context context) throws IOException {
+		throw new UnsupportedOperationException("Image data is always served directly.");
+	}
+	
+	@Override
+	public Void visit(AlbumInfo album, Context context) throws IOException {
+		if (jsonRequested(context)) {
+			serveJson(context.response(), album);
+		} else {
+			serveFolderHtml(context, album);
+		}
+		return null;
+	}
+
+	private static boolean jsonRequested(Context context) {
+		return "json".equals(context.getParameter("type"));
+	}
+
+	@Override
+	public Void visit(ListingInfo listing, Context context) throws IOException {
+		HttpServletResponse response = context.response();
+		
 		response.setContentType("text/html");
 		response.setCharacterEncoding("utf-8");
 		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
@@ -224,15 +183,14 @@ public class ImageServlet extends HttpServlet {
 				out.end();
 			}
 		}
+		
+		return null;
 	}
 
-	private void load(ListingInfo listing, File[] dirs) {
-		for (File dir : dirs) {
-			listing.addFolder(dir.getName());
-		}
-	}
+	private void serveFolderHtml(Context context, AlbumInfo album) throws IOException {
+		HttpServletResponse response = context.response();
+		HttpServletRequest request = context.request();
 
-	private void serveFolderHtml(HttpServletRequest request, HttpServletResponse response, AlbumInfo album) throws IOException {
 		response.setContentType("text/html");
 		response.setCharacterEncoding("utf-8");
 		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
@@ -269,25 +227,6 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
-	private void serveImage(HttpServletRequest request, HttpServletResponse response, File file) throws IOException {
-		String type = request.getParameter("type");
-		if (!"tn".equals(type)) {
-			serveData(request, response, file);
-			return;
-		}
-		
-		File previewCache;
-		try {
-			previewCache = PreviewCache.createPreview(file);
-		} catch (PreviewException ex) {
-			LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
-			error404(response);
-			return;
-		}
-		
-		serveData(request, response, previewCache);
-	}
-
 	private void serveJson(HttpServletResponse response, Resource album) throws IOException {
 		response.setContentType("application/json");
 		try (JsonWriter json = new JsonWriter(new OutputStreamWriter(response.getOutputStream(), "utf-8"))) {
@@ -295,7 +234,10 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
-	private void serveData(HttpServletRequest request, HttpServletResponse response, File file) throws IOException {
+	private void serveData(Context context, File file) throws IOException {
+		HttpServletRequest request = context.request();
+		HttpServletResponse response = context.response();
+
 		String mimeType = request.getServletContext().getMimeType(file.getName());
 		response.setContentType(mimeType);
 		long length = file.length();
@@ -307,7 +249,40 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
-	private void error404(HttpServletResponse response) {
-		response.setStatus(HttpStatus.NOT_FOUND_404);
+	private void error404(Context context) {
+		context.response().setStatus(HttpStatus.NOT_FOUND_404);
+	}
+
+	static class Context {
+	
+		private final HttpServletRequest _request;
+		private final HttpServletResponse _response;
+	
+		/** 
+		 * Creates a {@link Context}.
+		 */
+		public Context(HttpServletRequest request, HttpServletResponse response) {
+			_request = request;
+			_response = response;
+		}
+
+		public String getParameter(String name) {
+			return request().getParameter(name);
+		}
+
+		/**
+		 * TODO
+		 */
+		public HttpServletRequest request() {
+			return _request;
+		}
+		
+		/**
+		 * TODO
+		 */
+		public HttpServletResponse response() {
+			return _response;
+		}
+		
 	}
 }
