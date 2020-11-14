@@ -5,9 +5,7 @@ package de.haumacher.imageServer;
 
 import static de.haumacher.util.html.HTML.*;
 
-import java.io.IOError;
 import java.io.IOException;
-import java.util.Properties;
 
 import de.haumacher.util.xml.RenderContext;
 import de.haumacher.util.xml.XmlAppendable;
@@ -26,13 +24,7 @@ public class Page implements XmlFragment {
 	static final String FA_VERSION;
 	
 	static {
-		try {
-			Properties faProperties = new Properties();
-			faProperties.load(Page.class.getResourceAsStream("/META-INF/maven/org.webjars/font-awesome/pom.properties"));
-			FA_VERSION = faProperties.getProperty("version");
-		} catch (IOException ex) {
-			throw new IOError(ex);
-		}
+		FA_VERSION = MavenUtil.artifactVersion("org.webjars", "font-awesome");
 	}
 
 	/** 
