@@ -51,7 +51,12 @@ public class Page implements XmlFragment {
 				out.begin(LINK);
 				out.attr(REL_ATTR, "stylesheet");
 				out.attr(TYPE_ATTR, "text/css");
-				out.attr(HREF_ATTR, context.getContextPath() + "/static/style/valbum.css");
+				out.openAttr(HREF_ATTR);
+				{
+					out.append(context.getContextPath());
+					out.append("/static/style/valbum.css");
+				}
+				out.closeAttr();
 				out.endEmpty();
 				
 				out.begin(LINK);
