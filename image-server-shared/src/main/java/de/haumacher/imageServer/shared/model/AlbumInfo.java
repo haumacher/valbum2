@@ -82,19 +82,17 @@ public class AlbumInfo implements Resource {
 		json.endObject();
 	}
 
+	/**
+	 * Reads an {@link AlbumInfo} as JSON object from the given {@link JsonReader}.
+	 */
 	public static AlbumInfo read(JsonReader json) throws IOException {
 		AlbumInfo result = new AlbumInfo();
 		result.readFrom(json);
 		return result;
 	}
 
-	/**
-	 * TODO
-	 *
-	 * @param json
-	 * @throws IOException
-	 */
-	private void readFrom(JsonReader json) throws IOException {
+	@Override
+	public void readFrom(JsonReader json) throws IOException {
 		json.beginObject();
 		while (json.hasNext()) {
 			switch (json.nextName()) {

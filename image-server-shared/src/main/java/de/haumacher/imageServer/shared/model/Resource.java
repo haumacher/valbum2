@@ -9,16 +9,50 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 
 /**
- * TODO
+ * Common interface for types describing resources being served.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public interface Resource {
 	
+	/**
+	 * The type of a {@link Resource}.
+	 * 
+	 * @see Resource#type()
+	 */
 	enum Type {
-		listing, album, image, error;
+		/**
+		 * A directory containing no images but other directories.
+		 * 
+		 * {@link ListingInfo}
+		 */
+		listing, 
+		
+		/**
+		 * A directory containing images.
+		 * 
+		 * @see AlbumInfo
+		 */
+		album, 
+		
+		/**
+		 * A single image.
+		 * 
+		 * @see ImageInfo
+		 */
+		image, 
+		
+		/**
+		 * A resource that does not exist or cannot be retrieved. 
+		 * 
+		 * @see ErrorInfo
+		 */
+		error;
 	}
 
+	/**
+	 * The resource type.
+	 */
 	Type type();
 	
 	<R,A,E extends Throwable> R visit(Visitor<R,A,E> v, A arg) throws E;
@@ -40,6 +74,16 @@ public interface Resource {
 		json.endObject();
 	}
 	
+	/**
+	 * Reads a polymorphic {@link Resource} as JSON object encoding the concrete
+	 * type of the Resource and the {@link Resource} data as JSON array.
+	 * 
+	 * <p>
+	 * <code>
+	 * { "resource": [ "resource-type", { resource-data } ] }
+	 * </code>
+	 * </p>
+	 */
 	static Resource readPolymorphic(JsonReader json) throws IOException {
 		Resource result;
 		json.beginObject();
@@ -50,6 +94,8 @@ public interface Resource {
 		switch (type) {
 			case album: result = AlbumInfo.read(json); break;
 			case listing: result = ListingInfo.read(json); break;
+			case image: result = ImageInfo.read(json); break;
+			case error: result = ErrorInfo.read(json); break;
 			default: throw new IllegalArgumentException("No such resource type: " + type);
 		}
 		json.endArray();
@@ -58,9 +104,16 @@ public interface Resource {
 	}
 
 	/** 
-	 * TODO
+	 * Serializes the specific contents of this {@link Resource}.
 	 *
-	 * @param json
+	 * @param json The {@link JsonWriter} to write to.
 	 */
 	void writeTo(JsonWriter json) throws IOException;
+
+	/** 
+	 * Reads specific contents of this {@link Resource} from a JSON stream produced by {@link #writeTo(JsonWriter)}.
+	 *
+	 * @param json {@link JsonReader} containing contents produced by {@link #writeTo(JsonWriter)}.
+	 */
+	void readFrom(JsonReader json) throws IOException;
 }

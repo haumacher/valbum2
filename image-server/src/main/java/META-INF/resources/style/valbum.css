@@ -1,6 +1,21 @@
+* {
+	padding: 0;
+	margin: 0;
+}
+
 body {
 	background-color: black;
 	color: white;
+}
+
+h1 {
+	margin-top: 10px;
+	margin-bottom: 10px;
+}
+
+h2 {
+	margin-top: 5px;
+	margin-bottom: 5px;
 }
 
 h1, h2 {
@@ -11,4 +26,67 @@ div.image-rows {
 	width: 1280px;
 	margin-left: auto;
 	margin-right: auto;
+	padding: 5px;
+}
+
+div.image-page {
+	position: relative;
+	width: 100%;
+	height: 100%;
+}
+
+img.image-display {
+    max-height: 100%;
+    max-width: 100%;
+    width: auto;
+    height: auto;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin: auto;
+}
+
+div.hover-pane {
+	padding: 10px;
+}
+	
+div.hover-pane > * {
+	visibility:hidden;
+	opacity: 0.7;
+}
+
+div.hover-pane:hover > * {
+	visibility:visible;
+}
+
+div.vcenter {
+	display: table;
+	width: 100%;
+	height: 100%;
+}
+
+div.vcenter-content {
+	display: table-cell;
+	vertical-align: middle;
+}
+
+div.goto-previous,
+div.goto-next {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	font-size: 40px;
+}
+
+div.goto-previous {
+	left: 0;
+	width: 40px;
+}
+
+div.goto-next {
+	text-align: right;
+	right: 0;
+	width: 40px;
 }

@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2020 Bernhard Haumacher. All Rights Reserved.
  */
-package de.haumacher.util.xml;
+package de.haumacher.util.html;
 
 /**
  * TODO
@@ -29,6 +29,7 @@ public interface HTML {
 	String SRC_ATTR = "src";
 	String WIDTH_ATTR = "width";
 	String HEIGHT_ATTR = "height";
+	String I = "i";
 	String A = "a";
 	String HREF_ATTR = "href";
 	String STYLE_ATTR = "style";

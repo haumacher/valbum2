@@ -7,5 +7,6 @@
 
 	<!-- Specify the paths for translatable code -->
 	<source path='xml' />
+	<source path='html' />
 
 </module>

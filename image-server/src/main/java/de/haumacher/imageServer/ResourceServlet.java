@@ -16,7 +16,7 @@ import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.http.HttpStatus;
 
 /**
- * TODO
+ * {@link HttpServlet} serving static resources from <code>/META-INF/resources</code>.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */

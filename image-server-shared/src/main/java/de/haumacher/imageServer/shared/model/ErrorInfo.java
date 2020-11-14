@@ -5,6 +5,7 @@ package de.haumacher.imageServer.shared.model;
 
 import java.io.IOException;
 
+import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 
 /**
@@ -21,7 +22,15 @@ public class ErrorInfo implements Resource {
 	 *
 	 */
 	public ErrorInfo(String message) {
+		this();
 		_message = message;
+	}
+
+	/** 
+	 * Creates a {@link ErrorInfo}.
+	 */
+	protected ErrorInfo() {
+		super();
 	}
 
 	@Override
@@ -49,6 +58,26 @@ public class ErrorInfo implements Resource {
 		json.name("message");
 		json.value(_message);
 		json.endObject();
+	}
+	
+	@Override
+	public void readFrom(JsonReader json) throws IOException {
+		json.beginObject();
+		while (json.hasNext()) {
+			switch (json.nextName()) {
+				case "message": _message = json.nextString(); break;
+			}
+		}
+		json.endObject();
+	}
+
+	/**
+	 * Reads an {@link ErrorInfo} as JSON object from the given {@link JsonReader}.
+	 */
+	public static ErrorInfo read(JsonReader json) throws IOException {
+		ErrorInfo result = new ErrorInfo();
+		result.readFrom(json);
+		return result;
 	}
 
 }

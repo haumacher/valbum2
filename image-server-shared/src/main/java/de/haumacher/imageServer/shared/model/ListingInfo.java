@@ -95,13 +95,17 @@ public class ListingInfo implements Resource {
 		json.endObject();
 	}
 	
+	/**
+	 * Reads a {@link ListingInfo} as JSON object from the given {@link JsonReader}.
+	 */
 	public static ListingInfo read(JsonReader json) throws IOException {
 		ListingInfo result = new ListingInfo();
 		result.readFrom(json);
 		return result;
 	}
 
-	private void readFrom(JsonReader json) throws IOException {
+	@Override
+	public void readFrom(JsonReader json) throws IOException {
 		json.beginObject();
 		while (json.hasNext()) {
 			switch(json.nextName()) {

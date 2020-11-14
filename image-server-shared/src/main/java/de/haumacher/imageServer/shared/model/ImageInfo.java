@@ -23,7 +23,7 @@ public class ImageInfo implements Resource {
 	private String _comment;
 	
 	/** 
-	 * Creates a {@link ImageInfo}.
+	 * Creates an {@link ImageInfo}.
 	 *
 	 * @param name
 	 */
@@ -126,19 +126,17 @@ public class ImageInfo implements Resource {
 		json.endObject();
 	}
 	
+	/**
+	 * Reads an {@link ImageInfo} as JSON object from the given {@link JsonReader}.
+	 */
 	public static ImageInfo read(JsonReader json) throws IOException {
 		ImageInfo result = new ImageInfo();
 		result.readFrom(json);
 		return result;
 	}
 
-	/** 
-	 * TODO
-	 *
-	 * @param json
-	 * @throws IOException 
-	 */
-	private void readFrom(JsonReader json) throws IOException {
+	@Override
+	public void readFrom(JsonReader json) throws IOException {
 		json.beginObject();
 		while (json.hasNext()) {
 			switch (json.nextName()) {
@@ -159,6 +157,7 @@ public class ImageInfo implements Resource {
 					break;
 			}
 		}
+		json.endObject();
 	}
 
 	@Override

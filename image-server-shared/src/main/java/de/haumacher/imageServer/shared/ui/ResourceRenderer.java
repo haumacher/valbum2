@@ -3,7 +3,7 @@
  */
 package de.haumacher.imageServer.shared.ui;
 
-import static de.haumacher.util.xml.HTML.*;
+import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
 
@@ -14,14 +14,15 @@ import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.util.xml.Renderer;
 import de.haumacher.util.xml.XmlAppendable;
 
 /**
- * TODO
+ * {@link de.haumacher.imageServer.shared.model.Resource.Visitor} rendering a {@link Resource} to a {@link XmlAppendable}.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, IOException> {
+public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, IOException>, Renderer<Resource> {
 	
 	/**
 	 * Singleton {@link ResourceRenderer} instance.
@@ -30,6 +31,11 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 
 	private ResourceRenderer() {
 		// Singleton constructor.
+	}
+	
+	@Override
+	public void write(XmlAppendable out, Resource value) throws IOException {
+		value.visit(this, out);
 	}
 
 	@Override
@@ -88,17 +94,23 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 						out.append("px;");
 					}
 					out.closeAttr();
-					out.attr(HREF_ATTR, image.getName());
+					out.openAttr(HREF_ATTR);
+					{
+						out.append(image.getName());
+						out.append("?type=page");
+					}
+					out.closeAttr();
 					{
 						out.begin(IMG);
-						
-						out.openAttr(SRC_ATTR);
-						out.append(image.getName());
-						out.append("?type=tn");
-						out.closeAttr();
-						
-						out.attr(WIDTH_ATTR, row.getScaledWidth(n));
-						out.attr(HEIGHT_ATTR, rowHeight);
+						{
+							out.openAttr(SRC_ATTR);
+							out.append(image.getName());
+							out.append("?type=tn");
+							out.closeAttr();
+							
+							out.attr(WIDTH_ATTR, row.getScaledWidth(n));
+							out.attr(HEIGHT_ATTR, rowHeight);
+						}
 						out.end();
 					}
 					out.end();
@@ -147,9 +159,51 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 
 	@Override
 	public Void visit(ImageInfo image, XmlAppendable out) throws IOException {
-		out.begin(IMG);
-		out.attr(SRC_ATTR, image.getName());
-		out.endEmpty();
+		out.begin(DIV);
+		out.attr(CLASS_ATTR, "image-page");
+		{
+			out.begin(IMG);
+			out.attr(CLASS_ATTR, "image-display");
+			out.attr(SRC_ATTR, image.getName());
+			out.endEmpty();
+			
+			out.begin(DIV);
+			out.attr(CLASS_ATTR, "goto-previous hover-pane");
+			{
+				out.begin(DIV);
+				out.attr(CLASS_ATTR, "vcenter");
+				{
+					out.begin(DIV);
+					out.attr(CLASS_ATTR, "vcenter-content");
+					{
+						out.begin(I);
+						out.attr(CLASS_ATTR, "fas fa-chevron-left");
+						out.end();
+					}
+					out.end();
+				}
+				out.end();
+			}
+			out.end();
+			
+			out.begin(DIV);
+			out.attr(CLASS_ATTR, "goto-next hover-pane");
+			{
+				out.begin(DIV);
+				out.attr(CLASS_ATTR, "vcenter");
+				{
+					out.begin(DIV);
+					out.attr(CLASS_ATTR, "vcenter-content");
+					{
+						out.begin(I);
+						out.attr(CLASS_ATTR, "fas fa-chevron-right");
+						out.end();
+					}
+				}
+			}
+			out.end();
+		}
+		out.end();
 		return null;
 	}
 

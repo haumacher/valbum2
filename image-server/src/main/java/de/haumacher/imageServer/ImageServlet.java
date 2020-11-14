@@ -3,12 +3,11 @@
  */
 package de.haumacher.imageServer;
 
-import static de.haumacher.util.xml.HTML.*;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -24,12 +23,10 @@ import org.eclipse.jetty.http.HttpStatus;
 
 import com.google.gson.stream.JsonWriter;
 
-import de.haumacher.imageServer.shared.model.AlbumInfo;
-import de.haumacher.imageServer.shared.model.ErrorInfo;
-import de.haumacher.imageServer.shared.model.ImageInfo;
-import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.ResourceRenderer;
+import de.haumacher.util.xml.RenderContext;
+import de.haumacher.util.xml.ValueFragment;
 import de.haumacher.util.xml.XmlWriter;
 
 /**
@@ -37,7 +34,7 @@ import de.haumacher.util.xml.XmlWriter;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ImageServlet extends HttpServlet implements Resource.Visitor<Void, ImageServlet.Context, IOException> { 
+public class ImageServlet extends HttpServlet { 
 
 	private static final Logger LOG = Logger.getLogger(ImageServlet.class.getName());
 
@@ -102,7 +99,7 @@ public class ImageServlet extends HttpServlet implements Resource.Visitor<Void, 
 		if (jsonRequested(context)) {
 			serveJson(context.response(), resource);
 		} else {
-			resource.visit(this, context);
+			render(context, resource);
 		}
 	}
 	
@@ -113,8 +110,9 @@ public class ImageServlet extends HttpServlet implements Resource.Visitor<Void, 
 			return;
 		}
 
-		File data;
-		if ("tn".equals(context.getParameter("type"))) {
+		String type = context.getParameter("type");
+		if ("tn".equals(type)) {
+			File data;
 			try {
 				data = PreviewCache.createPreview(file);
 			} catch (PreviewException ex) {
@@ -122,107 +120,24 @@ public class ImageServlet extends HttpServlet implements Resource.Visitor<Void, 
 				error404(context);
 				return;
 			}
+			serveData(context, data);
+		} else if ("page".equals(type)) {
+			Resource resource = ResourceCache.lookup(file);
+			render(context, resource);
 		} else {
-			data = file;
+			File data = file;
+			serveData(context, data);
 		}
-		serveData(context, data);
 	}
 
-	@Override
-	public Void visit(ErrorInfo error, Context context) throws IOException {
-		error404(context);
-		return null;
-	}
-	
-	@Override
-	public Void visit(ImageInfo image, Context context) throws IOException {
-		throw new UnsupportedOperationException("Image data is always served directly.");
-	}
-	
-	@Override
-	public Void visit(AlbumInfo album, Context context) throws IOException {
-		if (jsonRequested(context)) {
-			serveJson(context.response(), album);
-		} else {
-			serveFolderHtml(context, album);
-		}
-		return null;
-	}
-
-	private static boolean jsonRequested(Context context) {
-		return "json".equals(context.getParameter("type"));
-	}
-
-	@Override
-	public Void visit(ListingInfo listing, Context context) throws IOException {
+	private void render(Context context, Resource resource) throws IOException, UnsupportedEncodingException {
 		HttpServletResponse response = context.response();
 		
 		response.setContentType("text/html");
 		response.setCharacterEncoding("utf-8");
 		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
 			try (XmlWriter out = new XmlWriter(w)) {
-				out.begin(HTML);
-				{
-					out.begin(HEAD);
-					{
-						out.begin(META);
-						out.attr(NAME_ATTR, "viewport");
-						out.attr(CONTENT_ATTR, "width=device-width, initial-scale=1.0");
-						out.endEmpty();
-
-						out.begin(TITLE); out.append("VAlbum"); out.end();
-					}
-					out.end();
-					
-					out.begin(BODY);
-					{
-						ResourceRenderer.INSTANCE.visit(listing, out);
-					}
-					out.end();
-				}
-				out.end();
-			}
-		}
-		
-		return null;
-	}
-
-	private void serveFolderHtml(Context context, AlbumInfo album) throws IOException {
-		HttpServletResponse response = context.response();
-		HttpServletRequest request = context.request();
-
-		response.setContentType("text/html");
-		response.setCharacterEncoding("utf-8");
-		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
-			try (XmlWriter out = new XmlWriter(w)) {
-				out.begin(HTML);
-				{
-					out.begin(HEAD);
-					{
-						out.begin(META);
-						out.attr(NAME_ATTR, "viewport");
-						out.attr(CONTENT_ATTR, "width=device-width, initial-scale=1.0");
-						out.endEmpty();
-						
-						// <link rel="stylesheet" type="text/css" href="https://cdn.sstatic.net/Sites/stackoverflow/primary.css?v=905b10e527f0">
-						out.begin(LINK);
-						out.attr(REL_ATTR, "stylesheet");
-						out.attr(TYPE_ATTR, "text/css");
-						out.attr(HREF_ATTR, request.getContextPath() + "/static/style/valbum.css");
-						out.endEmpty();
-						
-						out.begin(TITLE);
-						out.append("VAlbum");
-						out.end();
-					}
-					out.end();
-					out.begin(BODY);
-					{
-						album.visit(ResourceRenderer.INSTANCE, out);
-					}
-					out.end();
-				}
-				out.end();
+				new Page("VAlbum", ValueFragment.create(ResourceRenderer.INSTANCE, resource)).write(context, out);
 			}
 		}
 	}
@@ -249,11 +164,15 @@ public class ImageServlet extends HttpServlet implements Resource.Visitor<Void, 
 		}
 	}
 
+	private static boolean jsonRequested(Context context) {
+		return "json".equals(context.getParameter("type"));
+	}
+
 	private void error404(Context context) {
 		context.response().setStatus(HttpStatus.NOT_FOUND_404);
 	}
 
-	static class Context {
+	static class Context implements RenderContext {
 	
 		private final HttpServletRequest _request;
 		private final HttpServletResponse _response;
@@ -265,20 +184,25 @@ public class ImageServlet extends HttpServlet implements Resource.Visitor<Void, 
 			_request = request;
 			_response = response;
 		}
+		
+		@Override
+		public String getContextPath() {
+			return _request.getContextPath();
+		}
 
 		public String getParameter(String name) {
 			return request().getParameter(name);
 		}
 
 		/**
-		 * TODO
+		 * The current {@link HttpServletRequest}.
 		 */
 		public HttpServletRequest request() {
 			return _request;
 		}
 		
 		/**
-		 * TODO
+		 * The current {@link HttpServletResponse}.
 		 */
 		public HttpServletResponse response() {
 			return _response;
