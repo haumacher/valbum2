@@ -26,12 +26,11 @@ public class App implements EntryPoint {
 	public void onModuleLoad() {
 		displayError("Started.");
 
-		RequestBuilder builder = new RequestBuilder(RequestBuilder.GET, "/?type=json");
+		RequestBuilder builder = new RequestBuilder(RequestBuilder.GET, "/data/?type=json");
 		try {
-			Request request = builder.sendRequest(null, new RequestCallback() {
+			builder.sendRequest(null, new RequestCallback() {
 				@Override
-				public void onResponseReceived(Request request,
-						Response response) {
+				public void onResponseReceived(Request request, Response response) {
 					if (response.getStatusCode() == Response.SC_OK) {
 						JsonReader json = new JsonReader(new StringReader(response.getText()));
 						

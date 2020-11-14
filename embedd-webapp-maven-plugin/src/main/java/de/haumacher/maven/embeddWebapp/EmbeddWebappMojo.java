@@ -19,7 +19,7 @@ import org.apache.maven.project.MavenProject;
 
 /**
  * Goal to embed dependencies of type <code>war</code> to the
- * <code>META-INF/resources</code> folder of the built <code>jar</code>.
+ * <code>META-INF/resources</code> folder of the <code>jar</code> file being built.
  */
 @Mojo(name = "embeddWebapp", 
 	defaultPhase = LifecyclePhase.GENERATE_RESOURCES, 
@@ -44,6 +44,8 @@ public class EmbeddWebappMojo extends AbstractMojo {
     
 	@Override
 	public void execute() throws MojoExecutionException {
+		byte[] buffer = new byte[8096];
+
 		@SuppressWarnings("unchecked")
 		Set<Artifact> artifacts = project.getArtifacts();
 		for (Artifact artifact : artifacts) {
@@ -78,7 +80,6 @@ public class EmbeddWebappMojo extends AbstractMojo {
 					parent.mkdirs();
 					
 					try (FileOutputStream out = new FileOutputStream(target)) {
-						byte[] buffer = new byte[8096];
 						while (true) {
 							int direct = zip.read(buffer);
 							if (direct < 0) {
