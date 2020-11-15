@@ -20,6 +20,7 @@ import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 
+import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
 
 /**
@@ -30,14 +31,22 @@ import de.haumacher.imageServer.shared.model.ImageInfo;
 public class ImageData extends ImageInfo {
 	
 	private static final Logger LOG = Logger.getLogger(ImageData.class.getName());
+	private File _file;
 
 	/** 
 	 * Creates a {@link ImageData}.
-	 *
-	 * @param name
 	 */
-	public ImageData(String name) {
-		super(name);
+	public ImageData(AlbumInfo owner, File file, String name) {
+		super(owner, name);
+
+		_file = file;
+	}
+	
+	/**
+	 * The {@link File} this {@link ImageInfo} was built for.
+	 */
+	public File getFile() {
+		return _file;
 	}
 	
 	/** 
@@ -49,8 +58,8 @@ public class ImageData extends ImageInfo {
 	 * @throws ImageProcessingException 
 	 * @throws MetadataException 
 	 */
-	public static ImageData analyze(File file) throws ImageProcessingException, IOException, MetadataException {
-		ImageData result = new ImageData(file.getName());
+	public static ImageData analyze(AlbumInfo album, File file) throws ImageProcessingException, IOException, MetadataException {
+		ImageData result = new ImageData(album, file, file.getName());
 		
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
 		Date date = date(metadata);

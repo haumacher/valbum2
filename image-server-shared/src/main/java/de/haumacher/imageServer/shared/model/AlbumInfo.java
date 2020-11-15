@@ -5,7 +5,11 @@ package de.haumacher.imageServer.shared.model;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
@@ -20,6 +24,10 @@ public class AlbumInfo implements Resource {
 	private final AlbumProperties _header = new AlbumProperties();
 
 	private final List<ImageInfo> _images = new ArrayList<>();
+	
+	private final Map<String, ImageInfo> _imageByName = new HashMap<>();
+	
+	private final List<ImageInfo> _imagesUnmodifiable = Collections.unmodifiableList(_images);
 	
 	/** 
 	 * Creates a {@link AlbumInfo}.
@@ -40,16 +48,64 @@ public class AlbumInfo implements Resource {
 	 * @param image
 	 */
 	public void addImage(ImageInfo image) {
+		ImageInfo clash = _imageByName.put(image.getName(), image);
+		assert clash == null : "Duplicate name '" + image.getName() + "'.";
+		
+		int size = _images.size();
+		if (size > 0) {
+			ImageInfo previous = _images.get(size - 1);
+			previous.setNext(image);
+			image.setPrevious(previous);
+		} else {
+			image.setPrevious(null);
+		}
+		image.setNext(null);
+		
 		_images.add(image);
+	}
+	
+	/**
+	 * The {@link ImageInfo} with the given name.
+	 * 
+	 * @param name
+	 *        The name to search.
+	 * @return The {@link ImageInfo} with the the given name, or
+	 *         <code>null</code> if no such {@link ImageInfo} exists in this
+	 *         {@link AlbumInfo}.
+	 */
+	public ImageInfo getImage(String name) {
+		return _imageByName.get(name);
 	}
 
 	/**
-	 * TODO
-	 *
-	 * @return
+	 * All {@link ImageInfo}s in this {@link AlbumInfo}.
 	 */
 	public List<ImageInfo> getImages() {
-		return _images;
+		return _imagesUnmodifiable;
+	}
+
+	/** 
+	 * Sorts this {@link AlbumInfo} according to the given {@link Comparator order}.
+	 */
+	public void sort(Comparator<? super ImageInfo> order) {
+		_images.sort(order);
+		updateLinks();
+	}
+
+	private void updateLinks() {
+		for (int n = 0, size = _images.size(); n < size; n++) {
+			ImageInfo current = _images.get(n);
+			if (n > 0) {
+				current.setPrevious(_images.get(n - 1));
+			} else {
+				current.setPrevious(null);
+			}
+			if (n + 1 < size) {
+				current.setNext(_images.get(n + 1));
+			} else {
+				current.setNext(null);
+			}
+		}
 	}
 
 	/**
@@ -109,6 +165,8 @@ public class AlbumInfo implements Resource {
 			}
 		}
 		json.endObject();
+		
+		updateLinks();
 	}
 	
 	@Override

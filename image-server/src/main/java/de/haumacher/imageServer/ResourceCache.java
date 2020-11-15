@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.Level;
@@ -56,8 +55,19 @@ public class ResourceCache {
 		return IMAGES.accept(file);
 	}
 
-	public static Resource lookup(File dir) {
-		return _cache.getUnchecked(dir);
+	public static Resource lookup(File file) {
+		if (file.isDirectory()) {
+			return _cache.getUnchecked(file);
+		} else {
+			Resource resource = _cache.getUnchecked(file.getParentFile());
+			if (resource instanceof AlbumInfo) {
+				ImageInfo result = ((AlbumInfo) resource).getImage(file.getName());
+				if (result != null) {
+					return result;
+				}
+			}
+			return new ErrorInfo("No such image '" + file + "'.");
+		}
 	}
 
 	static final class Loader extends CacheLoader<File, Resource> {
@@ -70,16 +80,7 @@ public class ResourceCache {
 			if (file.isDirectory()) {
 				return loadDir(file);
 			} else {
-				if (isImage(file)) {
-					try {
-						return ImageData.analyze(file);
-					} catch (IOException | ImageProcessingException | MetadataException ex) {
-						LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
-						return new ErrorInfo("Cannot access image information.");
-					}
-				} else {
-					return new ErrorInfo("Unsupported file.");
-				}
+				throw new UnsupportedOperationException("Not a directory: " + file);
 			}
 		}
 
@@ -115,13 +116,17 @@ public class ResourceCache {
 			AlbumInfo album = new AlbumInfo();
 			
 			for (File file : files) {
-				Resource resource = lookup(file);
-				if (resource instanceof ImageInfo) {
-					album.addImage((ImageInfo) resource);
+				ImageData image;
+				try {
+					image = ImageData.analyze(album, file);
+				} catch (IOException | ImageProcessingException | MetadataException ex) {
+					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
+					continue;
 				}
+				album.addImage(image);
 			}
 			
-			Collections.sort(album.getImages(), (a, b) -> a.getDate().compareTo(b.getDate()));
+			album.sort((a, b) -> a.getDate().compareTo(b.getDate()));
 		
 			File indexResource = new File(dir, "index.json");
 			AlbumProperties header = album.getHeader();

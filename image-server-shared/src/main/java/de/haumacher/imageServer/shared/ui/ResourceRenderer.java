@@ -167,41 +167,49 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 			out.attr(SRC_ATTR, image.getName());
 			out.endEmpty();
 			
-			out.begin(DIV);
-			out.attr(CLASS_ATTR, "goto-previous hover-pane");
-			{
-				out.begin(DIV);
-				out.attr(CLASS_ATTR, "vcenter");
+			ImageInfo previous = image.getPrevious();
+			if (previous != null) {
+				out.begin(A);
+				out.attr(HREF_ATTR, previous.getName() + "?type=page");
+				out.attr(CLASS_ATTR, "goto-previous hover-pane");
 				{
 					out.begin(DIV);
-					out.attr(CLASS_ATTR, "vcenter-content");
+					out.attr(CLASS_ATTR, "vcenter");
 					{
-						out.begin(I);
-						out.attr(CLASS_ATTR, "fas fa-chevron-left");
+						out.begin(DIV);
+						out.attr(CLASS_ATTR, "vcenter-content");
+						{
+							out.begin(I);
+							out.attr(CLASS_ATTR, "fas fa-chevron-left");
+							out.end();
+						}
 						out.end();
 					}
 					out.end();
 				}
 				out.end();
 			}
-			out.end();
 			
-			out.begin(DIV);
-			out.attr(CLASS_ATTR, "goto-next hover-pane");
-			{
-				out.begin(DIV);
-				out.attr(CLASS_ATTR, "vcenter");
+			ImageInfo next = image.getNext();
+			if (next != null) {
+				out.begin(A);
+				out.attr(HREF_ATTR, next.getName() + "?type=page");
+				out.attr(CLASS_ATTR, "goto-next hover-pane");
 				{
 					out.begin(DIV);
-					out.attr(CLASS_ATTR, "vcenter-content");
+					out.attr(CLASS_ATTR, "vcenter");
 					{
-						out.begin(I);
-						out.attr(CLASS_ATTR, "fas fa-chevron-right");
-						out.end();
+						out.begin(DIV);
+						out.attr(CLASS_ATTR, "vcenter-content");
+						{
+							out.begin(I);
+							out.attr(CLASS_ATTR, "fas fa-chevron-right");
+							out.end();
+						}
 					}
 				}
+				out.end();
 			}
-			out.end();
 		}
 		out.end();
 		return null;

@@ -16,20 +16,29 @@ import com.google.gson.stream.JsonWriter;
  */
 public class ImageInfo implements Resource {
 
+	private AlbumInfo _owner;
 	private String _name;
 	private Date _date;
 	private int _width;
 	private int _height;
 	private String _comment;
+	private ImageInfo _previous;
+	private ImageInfo _next;
 	
 	/** 
 	 * Creates an {@link ImageInfo}.
-	 *
-	 * @param name
 	 */
-	public ImageInfo(String name) {
+	public ImageInfo(AlbumInfo owner, String name) {
 		this();
+		_owner = owner;
 		_name = name;
+	}
+	
+	/**
+	 * The {@link AlbumInfo} this {@link ImageInfo} belongs to.
+	 */
+	public AlbumInfo getAlbum() {
+		return _owner;
 	}
 	
 	public ImageInfo() {
@@ -163,6 +172,28 @@ public class ImageInfo implements Resource {
 	@Override
 	public <R, A, E extends Throwable> R visit(Visitor<R, A, E> v, A arg) throws E {
 		return v.visit(this, arg);
+	}
+	
+	/**
+	 * The {@link ImageInfo} preceding this one in its {@link #getAlbum()}.
+	 */
+	public ImageInfo getPrevious() {
+		return _previous;
+	}
+
+	void setPrevious(ImageInfo previous) {
+		_previous = previous;
+	}
+	
+	/**
+	 * The {@link ImageInfo} following this one in its {@link #getAlbum()}.
+	 */
+	public ImageInfo getNext() {
+		return _next;
+	}
+
+	void setNext(ImageInfo next) {
+		_next = next;
 	}
 
 }

@@ -48,44 +48,45 @@ img.image-display {
     margin: auto;
 }
 
-div.hover-pane {
+.hover-pane {
 	padding: 10px;
+	color: white;
 }
 	
-div.hover-pane > * {
+.hover-pane > * {
 	visibility:hidden;
 	opacity: 0.7;
 }
 
-div.hover-pane:hover > * {
+.hover-pane:hover > * {
 	visibility:visible;
 }
 
-div.vcenter {
+.vcenter {
 	display: table;
 	width: 100%;
 	height: 100%;
 }
 
-div.vcenter-content {
+.vcenter-content {
 	display: table-cell;
 	vertical-align: middle;
 }
 
-div.goto-previous,
-div.goto-next {
+.goto-previous,
+.goto-next {
 	position: absolute;
 	top: 0;
 	bottom: 0;
 	font-size: 40px;
 }
 
-div.goto-previous {
+.goto-previous {
 	left: 0;
 	width: 40px;
 }
 
-div.goto-next {
+.goto-next {
 	text-align: right;
 	right: 0;
 	width: 40px;
