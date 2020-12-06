@@ -162,10 +162,31 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, "image-page");
 		{
-			out.begin(IMG);
-			out.attr(CLASS_ATTR, "image-display");
-			out.attr(SRC_ATTR, image.getName());
-			out.endEmpty();
+			switch (image.getKind()) {
+				case IMAGE: {
+					out.begin(IMG);
+					out.attr(CLASS_ATTR, "image-display");
+					out.attr(SRC_ATTR, image.getName());
+					out.endEmpty();
+					break;
+				}
+				
+				case VIDEO: {
+					out.begin(VIDEO);
+					out.attr(CLASS_ATTR, "image-display");
+					out.attr("controls", "controls");
+					{
+						out.begin(SOURCE);
+						out.attr(SRC_ATTR, image.getName());
+						{
+							out.append("Your browser doesn't support embedded videos.");
+						}
+						out.end();
+					}
+					out.end();
+					break;
+				}
+			}
 			
 			ImageInfo previous = image.getPrevious();
 			if (previous != null) {

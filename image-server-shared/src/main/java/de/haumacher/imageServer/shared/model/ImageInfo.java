@@ -24,7 +24,12 @@ public class ImageInfo implements Resource {
 	private String _comment;
 	private ImageInfo _previous;
 	private ImageInfo _next;
+	private Kind _kind;
 	
+	public enum Kind {
+		IMAGE, VIDEO;
+	}
+
 	/** 
 	 * Creates an {@link ImageInfo}.
 	 */
@@ -34,15 +39,15 @@ public class ImageInfo implements Resource {
 		_name = name;
 	}
 	
+	public ImageInfo() {
+		super();
+	}
+	
 	/**
 	 * The {@link AlbumInfo} this {@link ImageInfo} belongs to.
 	 */
 	public AlbumInfo getAlbum() {
 		return _owner;
-	}
-	
-	public ImageInfo() {
-		super();
 	}
 	
 	@Override
@@ -60,7 +65,22 @@ public class ImageInfo implements Resource {
 	public void setName(String name) {
 		_name = name;
 	}
+
+	/**
+	 * TODO
+	 */
+	public Kind getKind() {
+		return _kind;
+	}
 	
+	/** 
+	 * TODO
+	 *
+	 */
+	public void setKind(Kind kind) {
+		_kind = kind;
+	}
+
 	/**
 	 * TODO
 	 */
@@ -132,6 +152,7 @@ public class ImageInfo implements Resource {
 		json.name("date");
 		json.value(getDate().getTime());
 		Json.value(json, "comment", getComment());
+		Json.value(json, "kind", getKind().name());
 		json.endObject();
 	}
 	
@@ -163,6 +184,9 @@ public class ImageInfo implements Resource {
 					break;
 				case "comment":
 					setComment(json.nextString());
+					break;
+				case "kind":
+					setKind(Kind.valueOf(json.nextString()));
 					break;
 			}
 		}

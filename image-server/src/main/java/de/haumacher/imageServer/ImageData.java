@@ -70,6 +70,7 @@ public class ImageData extends ImageInfo {
 		
 		JpegDirectory jpegDirectory = metadata.getFirstDirectoryOfType(JpegDirectory.class);
 		if (jpegDirectory != null) {
+			result.setKind(Kind.IMAGE);
 			int rawWidth = jpegDirectory.getImageWidth();
 			int rawHeight = jpegDirectory.getImageHeight();
 			
@@ -104,6 +105,8 @@ public class ImageData extends ImageInfo {
 			
 			Mp4VideoDirectory mp4VideoDirectory = metadata.getFirstDirectoryOfType(Mp4VideoDirectory.class);
 			if (mp4VideoDirectory != null) {
+				result.setKind(Kind.VIDEO);
+
 				int rawWidth = mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_WIDTH);
 				int rawHeight = mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_HEIGHT);
 				

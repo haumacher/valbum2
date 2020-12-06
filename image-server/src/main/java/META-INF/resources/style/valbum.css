@@ -35,7 +35,7 @@ div.image-page {
 	height: 100%;
 }
 
-img.image-display {
+img.image-display, video.image-display {
     max-height: 100%;
     max-width: 100%;
     width: auto;

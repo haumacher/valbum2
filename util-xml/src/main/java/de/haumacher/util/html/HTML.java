@@ -26,6 +26,8 @@ public interface HTML {
 	String UL = "ul";
 	String LI = "li";
 	String IMG = "img";
+	String VIDEO = "video";
+	String SOURCE = "source";
 	String SRC_ATTR = "src";
 	String WIDTH_ATTR = "width";
 	String HEIGHT_ATTR = "height";
