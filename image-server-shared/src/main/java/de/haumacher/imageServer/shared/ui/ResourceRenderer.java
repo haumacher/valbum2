@@ -125,6 +125,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 	@Override
 	public Void visit(ListingInfo resource, XmlAppendable out) throws IOException {
 		out.begin(UL);
+		out.attr(CLASS_ATTR, "listing");
 		{
 			out.begin(LI);
 			{
