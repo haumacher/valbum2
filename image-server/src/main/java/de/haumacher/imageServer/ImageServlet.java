@@ -58,16 +58,16 @@ public class ImageServlet extends HttpServlet {
 		String pathInfo = request.getPathInfo();
 		Context context = new Context(request, response);
 		
-		Path resourcePath;
+		PathInfo resourcePath;
 		if (pathInfo == null) {
-			resourcePath = _basePath;
+			resourcePath = new PathInfo(_basePath);
 		} else {
 			Path path = Paths.get(pathInfo.substring(1)).normalize();
 			if (path.startsWith("..")) {
 				error404(context);
 				return;
 			}
-			resourcePath = _basePath.resolve(path);
+			resourcePath = new PathInfo(_basePath, path);
 		}
 		
 		File file = resourcePath.toFile();
@@ -86,16 +86,16 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			
-			serveFolder(context, file);
+			serveFolder(context, resourcePath);
 		} else if (ResourceCache.isImage(file)) {
-			serveImage(context, file);
+			serveImage(context, resourcePath);
 		} else {
 			error404(context);
 		}
 	}
 
-	private void serveFolder(Context context, File file) throws IOException {
-		Resource resource = ResourceCache.lookup(file);
+	private void serveFolder(Context context, PathInfo pathInfo) throws IOException {
+		Resource resource = ResourceCache.lookup(pathInfo);
 		if (jsonRequested(context)) {
 			serveJson(context.response(), resource);
 		} else {
@@ -103,9 +103,9 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 	
-	private void serveImage(Context context, File file) throws IOException {
+	private void serveImage(Context context, PathInfo pathInfo) throws IOException {
 		if (jsonRequested(context)) {
-			Resource resource = ResourceCache.lookup(file);
+			Resource resource = ResourceCache.lookup(pathInfo);
 			serveJson(context.response(), resource);
 			return;
 		}
@@ -114,7 +114,7 @@ public class ImageServlet extends HttpServlet {
 		if ("tn".equals(type)) {
 			File data;
 			try {
-				data = PreviewCache.createPreview(file);
+				data = PreviewCache.createPreview(pathInfo.toFile());
 			} catch (PreviewException ex) {
 				LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
 				error404(context);
@@ -122,11 +122,10 @@ public class ImageServlet extends HttpServlet {
 			}
 			serveData(context, data);
 		} else if ("page".equals(type)) {
-			Resource resource = ResourceCache.lookup(file);
+			Resource resource = ResourceCache.lookup(pathInfo);
 			render(context, resource);
 		} else {
-			File data = file;
-			serveData(context, data);
+			serveData(context, pathInfo.toFile());
 		}
 	}
 

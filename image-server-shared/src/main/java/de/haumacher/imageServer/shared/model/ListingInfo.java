@@ -17,15 +17,18 @@ import com.google.gson.stream.JsonWriter;
  */
 public class ListingInfo implements Resource {
 	
+	private int _depth;
 	private String _name;
 	private List<FolderInfo> _folders = new ArrayList<>();
 
 	/** 
 	 * Creates a {@link ListingInfo}.
+	 * @param depth 
 	 *
 	 */
-	public ListingInfo(String name) {
+	public ListingInfo(int depth, String name) {
 		this();
+		_depth = depth;
 		_name = name;
 	}
 	
@@ -41,9 +44,16 @@ public class ListingInfo implements Resource {
 	public ListingInfo() {
 		super();
 	}
+	
+	/**
+	 * The number of ancestors this listing has.
+	 */
+	public int getDepth() {
+		return _depth;
+	}
 
 	/**
-	 * TODO
+	 * The name of this listing's directory.
 	 */
 	public String getName() {
 		return _name;
@@ -84,6 +94,8 @@ public class ListingInfo implements Resource {
 	@Override
 	public void writeTo(JsonWriter json) throws IOException {
 		json.beginObject();
+		json.name("depth");
+		json.value(getDepth());
 		json.name("name");
 		json.value(getName());
 		json.name("folders");
@@ -109,6 +121,9 @@ public class ListingInfo implements Resource {
 		json.beginObject();
 		while (json.hasNext()) {
 			switch(json.nextName()) {
+				case "depth":
+					_depth = json.nextInt();
+					break;
 				case "name":
 					_name = json.nextString();
 					break;

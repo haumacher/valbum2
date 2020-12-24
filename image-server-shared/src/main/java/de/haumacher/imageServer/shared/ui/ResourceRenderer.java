@@ -201,9 +201,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 						out.begin(DIV);
 						out.attr(CLASS_ATTR, "vcenter-content");
 						{
-							out.begin(I);
-							out.attr(CLASS_ATTR, "fas fa-chevron-left");
-							out.end();
+							icon(out, "fas fa-chevron-left");
 						}
 						out.end();
 					}
@@ -224,17 +222,48 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 						out.begin(DIV);
 						out.attr(CLASS_ATTR, "vcenter-content");
 						{
-							out.begin(I);
-							out.attr(CLASS_ATTR, "fas fa-chevron-right");
-							out.end();
+							icon(out, "fas fa-chevron-right");
 						}
 					}
 				}
 				out.end();
 			}
+			
+			out.begin(DIV);
+			out.attr(CLASS_ATTR, "toolbar");
+			{
+				out.begin(A);
+				out.attr(HREF_ATTR, parentUrl(image.getAlbum().getDepth()));
+				{
+					icon(out, "fas fa-home");
+				}
+				out.end();
+				
+				out.begin(A);
+				out.attr(HREF_ATTR, "./");
+				{
+					icon(out, "fas fa-chevron-up");
+				}
+				out.end();
+			}
+			out.end();
 		}
 		out.end();
 		return null;
+	}
+
+	private void icon(XmlAppendable out, String cssClass) throws IOException {
+		out.begin(I);
+		out.attr(CLASS_ATTR, cssClass);
+		out.end();
+	}
+
+	private CharSequence parentUrl(int depth) {
+		StringBuilder result = new StringBuilder();
+		for (int n = 0; n < depth; n++) {
+			result.append("../");
+		}
+		return result;
 	}
 
 	@Override

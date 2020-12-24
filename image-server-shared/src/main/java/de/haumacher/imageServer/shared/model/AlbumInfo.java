@@ -21,6 +21,8 @@ import com.google.gson.stream.JsonWriter;
  */
 public class AlbumInfo implements Resource {
 
+	private int _depth;
+	
 	private final AlbumProperties _header = new AlbumProperties();
 
 	private final List<ImageInfo> _images = new ArrayList<>();
@@ -28,10 +30,9 @@ public class AlbumInfo implements Resource {
 	private final Map<String, ImageInfo> _imageByName = new HashMap<>();
 	
 	private final List<ImageInfo> _imagesUnmodifiable = Collections.unmodifiableList(_images);
-	
+
 	/** 
 	 * Creates a {@link AlbumInfo}.
-	 *
 	 */
 	public AlbumInfo() {
 		super();
@@ -41,7 +42,21 @@ public class AlbumInfo implements Resource {
 	public Type type() {
 		return Type.album;
 	}
+	
+	/**
+	 * The number of ancestor resources that exist.
+	 */
+	public int getDepth() {
+		return _depth;
+	}
 
+	/**
+	 * @see #getDepth()
+	 */
+	public void setDepth(int depth) {
+		_depth = depth;
+	}
+	
 	/**
 	 * TODO
 	 *
@@ -126,6 +141,8 @@ public class AlbumInfo implements Resource {
 	@Override
 	public void writeTo(JsonWriter json) throws IOException {
 		json.beginObject();
+		json.name("depth");
+		json.value(getDepth());
 		json.name("index");
 		_header.writeTo(json);
 
@@ -152,6 +169,9 @@ public class AlbumInfo implements Resource {
 		json.beginObject();
 		while (json.hasNext()) {
 			switch (json.nextName()) {
+				case "depth":
+					setDepth(json.nextInt());
+					break;
 				case "index":
 					_header.readFrom(json);
 					break;

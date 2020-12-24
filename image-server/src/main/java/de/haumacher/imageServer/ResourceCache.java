@@ -44,10 +44,10 @@ public class ResourceCache {
 		return f.isFile() && ACCEPTED.contains(Util.suffix(f.getName()));
 	};
 
-	private static LoadingCache<File, Resource> _cache;
+	private static LoadingCache<PathInfo, Resource> _cache;
 
 	static {
-		CacheLoader<File, Resource> loader = new Loader();
+		CacheLoader<PathInfo, Resource> loader = new Loader();
 		_cache = CacheBuilder.newBuilder().maximumSize(1000).build(loader);
 	}
 
@@ -55,37 +55,37 @@ public class ResourceCache {
 		return IMAGES.accept(file);
 	}
 
-	public static Resource lookup(File file) {
-		if (file.isDirectory()) {
-			return _cache.getUnchecked(file);
+	public static Resource lookup(PathInfo pathInfo) {
+		if (pathInfo.toFile().isDirectory()) {
+			return _cache.getUnchecked(pathInfo);
 		} else {
-			Resource resource = _cache.getUnchecked(file.getParentFile());
+			Resource resource = _cache.getUnchecked(pathInfo.parent());
 			if (resource instanceof AlbumInfo) {
-				ImageInfo result = ((AlbumInfo) resource).getImage(file.getName());
+				ImageInfo result = ((AlbumInfo) resource).getImage(pathInfo.getName());
 				if (result != null) {
 					return result;
 				}
 			}
-			return new ErrorInfo("No such image '" + file + "'.");
+			return new ErrorInfo("No such image '" + pathInfo + "'.");
 		}
 	}
 
-	static final class Loader extends CacheLoader<File, Resource> {
+	static final class Loader extends CacheLoader<PathInfo, Resource> {
 		private static final FileFilter DIRECTORIES = f -> f.isDirectory();
 
 		private static final Logger LOG = Logger.getLogger(ResourceCache.class.getName());
 
 		@Override
-		public Resource load(File file) {
-			if (file.isDirectory()) {
-				return loadDir(file);
+		public Resource load(PathInfo pathInfo) {
+			if (pathInfo.isDirectory()) {
+				return loadDir(pathInfo);
 			} else {
-				throw new UnsupportedOperationException("Not a directory: " + file);
+				throw new UnsupportedOperationException("Not a directory: " + pathInfo);
 			}
 		}
 
-		private Resource loadDir(File dir) {
-			File[] images = dir.listFiles(IMAGES);
+		private Resource loadDir(PathInfo dir) {
+			File[] images = dir.toFile().listFiles(IMAGES);
 			if (images == null) {
 				return new ErrorInfo("Cannot list folder.");
 			}
@@ -97,23 +97,24 @@ public class ResourceCache {
 			}
 		}
 		
-		private static Resource loadListing(File dir) {
-			File[] dirs = dir.listFiles(DIRECTORIES);
+		private static Resource loadListing(PathInfo dir) {
+			File[] dirs = dir.toFile().listFiles(DIRECTORIES);
 			if (dirs == null) {
 				return new ErrorInfo("Cannot list files.");
 			}
 			
 			Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
 			
-			ListingInfo listing = new ListingInfo(dir.getName());
+			ListingInfo listing = new ListingInfo(dir.getDepth(), dir.getName());
 			for (File dir1 : dirs) {
 				listing.addFolder(dir1.getName());
 			}
 			return listing;
 		}
 		
-		private static Resource loadAlbum(File dir, File[] files) {
+		private static Resource loadAlbum(PathInfo dir, File[] files) {
 			AlbumInfo album = new AlbumInfo();
+			album.setDepth(dir.getDepth());
 			
 			for (File file : files) {
 				ImageData image;
@@ -128,7 +129,7 @@ public class ResourceCache {
 			
 			album.sort((a, b) -> a.getDate().compareTo(b.getDate()));
 		
-			File indexResource = new File(dir, "index.json");
+			File indexResource = new File(dir.toFile(), "index.json");
 			AlbumProperties header = album.getHeader();
 			if (indexResource.exists()) {
 				try {
