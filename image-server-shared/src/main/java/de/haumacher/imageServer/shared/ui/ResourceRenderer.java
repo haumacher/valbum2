@@ -6,6 +6,7 @@ package de.haumacher.imageServer.shared.ui;
 import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
+import java.util.List;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumProperties;
@@ -195,6 +196,15 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 			out.attr("data-right", nextUrl);
 		}
 		out.attr("data-up", "./");
+		
+		AlbumInfo album = image.getAlbum();
+		List<ImageInfo> images = album.getImages();
+		String homeUrl = images.get(0).getName() + "?type=page";
+		out.attr("data-home", homeUrl);
+		
+		String endUrl = images.get(images.size() - 1).getName() + "?type=page";
+		out.attr("data-end", endUrl);
+		
 		{
 			switch (image.getKind()) {
 				case IMAGE: {
@@ -261,7 +271,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 				out.end();
 			}
 			
-			writeAlbumToolbar(out, image.getAlbum().getDepth(), true);
+			writeAlbumToolbar(out, album.getDepth(), true);
 		}
 		out.end();
 		return null;

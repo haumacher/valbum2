@@ -10,6 +10,12 @@ function onKeyDown(event) {
 	else if (keyName === 'ArrowRight' || keyName === ' ') {
 		navigate("right");
 	}
+	else if (keyName === 'Home') {
+		navigate("home");
+	}
+	else if (keyName === 'End') {
+		navigate("end");
+	}
 }
 
 function navigate(attr) {
