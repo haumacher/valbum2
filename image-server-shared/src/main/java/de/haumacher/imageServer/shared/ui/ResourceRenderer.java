@@ -225,6 +225,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 							icon(out, "fas fa-chevron-right");
 						}
 					}
+					out.end();
 				}
 				out.end();
 			}
