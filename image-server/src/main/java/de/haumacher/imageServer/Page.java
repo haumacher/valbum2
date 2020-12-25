@@ -71,6 +71,11 @@ public class Page implements XmlFragment {
 				}
 				out.closeAttr();
 				out.endEmpty();
+				
+				out.begin(SCRIPT);
+				out.attr(TYPE_ATTR, "text/javascript");
+				out.attr(SRC_ATTR, "/static/script/valbum.js");
+				out.end();
 			}
 			out.end();
 			

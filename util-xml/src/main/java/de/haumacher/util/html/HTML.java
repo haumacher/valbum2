@@ -18,6 +18,7 @@ public interface HTML {
 	String NAME_ATTR = "name";
 	String CONTENT_ATTR = "content";
 	String LINK = "link";
+	String SCRIPT = "script";
 	String REL_ATTR = "rel";
 	String TYPE_ATTR = "type";
 	String H1 = "h1";
@@ -35,6 +36,7 @@ public interface HTML {
 	String A = "a";
 	String HREF_ATTR = "href";
 	String STYLE_ATTR = "style";
+	String ID_ATTR = "id";
 	String CLASS_ATTR = "class";
 
 }

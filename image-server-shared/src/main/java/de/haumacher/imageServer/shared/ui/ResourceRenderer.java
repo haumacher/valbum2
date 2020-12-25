@@ -179,8 +179,22 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 
 	@Override
 	public Void visit(ImageInfo image, XmlAppendable out) throws IOException {
+		ImageInfo previous = image.getPrevious();
+		String previousUrl = previous == null ? null : previous.getName() + "?type=page";
+		
+		ImageInfo next = image.getNext();
+		String nextUrl = next == null ? null : next.getName() + "?type=page";
+		
 		out.begin(DIV);
+		out.attr(ID_ATTR, "page");
 		out.attr(CLASS_ATTR, "image-page");
+		if (previousUrl != null) {
+			out.attr("data-left", previousUrl);
+		}
+		if (nextUrl != null) {
+			out.attr("data-right", nextUrl);
+		}
+		out.attr("data-up", "./");
 		{
 			switch (image.getKind()) {
 				case IMAGE: {
@@ -208,10 +222,9 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 				}
 			}
 			
-			ImageInfo previous = image.getPrevious();
-			if (previous != null) {
+			if (previousUrl != null) {
 				out.begin(A);
-				out.attr(HREF_ATTR, previous.getName() + "?type=page");
+				out.attr(HREF_ATTR, previousUrl);
 				out.attr(CLASS_ATTR, "goto-previous hover-pane");
 				{
 					out.begin(DIV);
@@ -229,10 +242,9 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 				out.end();
 			}
 			
-			ImageInfo next = image.getNext();
-			if (next != null) {
+			if (nextUrl != null) {
 				out.begin(A);
-				out.attr(HREF_ATTR, next.getName() + "?type=page");
+				out.attr(HREF_ATTR, nextUrl);
 				out.attr(CLASS_ATTR, "goto-next hover-pane");
 				{
 					out.begin(DIV);
