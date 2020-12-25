@@ -62,10 +62,16 @@ public class ImageServlet extends HttpServlet {
 		if (pathInfo == null) {
 			resourcePath = new PathInfo(_basePath);
 		} else {
-			Path path = Paths.get(pathInfo.substring(1)).normalize();
-			if (path.startsWith("..")) {
-				error404(context);
-				return;
+			String relativePath = pathInfo.substring(1);
+			Path path;
+			if (relativePath.isEmpty()) {
+				path = null;
+			} else {
+				path = Paths.get(relativePath).normalize();
+				if (path.startsWith("..")) {
+					error404(context);
+					return;
+				}
 			}
 			resourcePath = new PathInfo(_basePath, path);
 		}

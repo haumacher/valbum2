@@ -32,17 +32,17 @@ public class ListingInfo implements Resource {
 		_name = name;
 	}
 	
-	@Override
-	public Type type() {
-		return Type.listing;
-	}
-	
 	/** 
 	 * Creates a {@link ListingInfo}.
 	 *
 	 */
 	public ListingInfo() {
 		super();
+	}
+	
+	@Override
+	public Type type() {
+		return Type.listing;
 	}
 	
 	/**

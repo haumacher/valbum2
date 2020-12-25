@@ -97,15 +97,15 @@ public class ResourceCache {
 			}
 		}
 		
-		private static Resource loadListing(PathInfo dir) {
-			File[] dirs = dir.toFile().listFiles(DIRECTORIES);
+		private static Resource loadListing(PathInfo pathInfo) {
+			File[] dirs = pathInfo.toFile().listFiles(DIRECTORIES);
 			if (dirs == null) {
 				return new ErrorInfo("Cannot list files.");
 			}
 			
 			Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
 			
-			ListingInfo listing = new ListingInfo(dir.getDepth(), dir.getName());
+			ListingInfo listing = new ListingInfo(pathInfo.getDepth(), pathInfo.getName());
 			for (File dir1 : dirs) {
 				listing.addFolder(dir1.getName());
 			}

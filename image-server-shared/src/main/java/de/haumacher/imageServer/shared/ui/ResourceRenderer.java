@@ -62,7 +62,34 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 			writeRow(out, row);
 		}
 		out.end();
+		
+		writeAlbumToolbar(out, album.getDepth(), false);
+
 		return null;
+	}
+
+	private void writeAlbumToolbar(XmlAppendable out, int depth, boolean isFile) throws IOException {
+		if (depth == 0) {
+			return;
+		}
+		out.begin(DIV);
+		out.attr(CLASS_ATTR, "toolbar");
+		{
+			out.begin(A);
+			out.attr(HREF_ATTR, parentUrl(depth));
+			{
+				icon(out, "fas fa-home");
+			}
+			out.end();
+
+			out.begin(A);
+			out.attr(HREF_ATTR, isFile ? "./" : "../");
+			{
+				icon(out, "fas fa-chevron-up");
+			}
+			out.end();
+		}
+		out.end();
 	}
 
 	private void writeRow(XmlAppendable out, ImageRow row) throws IOException {
@@ -127,17 +154,6 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 		out.begin(UL);
 		out.attr(CLASS_ATTR, "listing");
 		{
-			out.begin(LI);
-			{
-				out.begin(A);
-				out.attr(HREF_ATTR, "..");
-				{
-					out.append("<- Go back");
-				}
-				out.end();
-			}
-			out.end();
-
 			for (FolderInfo folder : resource.getFolders()) {
 				out.begin(LI);
 				{
@@ -155,6 +171,9 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 			}
 		}
 		out.end();
+		
+		writeAlbumToolbar(out, resource.getDepth(), false);
+
 		return null;
 	}
 
@@ -230,24 +249,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 				out.end();
 			}
 			
-			out.begin(DIV);
-			out.attr(CLASS_ATTR, "toolbar");
-			{
-				out.begin(A);
-				out.attr(HREF_ATTR, parentUrl(image.getAlbum().getDepth()));
-				{
-					icon(out, "fas fa-home");
-				}
-				out.end();
-				
-				out.begin(A);
-				out.attr(HREF_ATTR, "./");
-				{
-					icon(out, "fas fa-chevron-up");
-				}
-				out.end();
-			}
-			out.end();
+			writeAlbumToolbar(out, image.getAlbum().getDepth(), true);
 		}
 		out.end();
 		return null;
