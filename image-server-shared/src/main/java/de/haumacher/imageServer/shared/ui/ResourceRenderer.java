@@ -216,6 +216,8 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 						out.attr(ID_ATTR, "image");
 						out.attr(DRAGGABLE_ATTR, "false");
 						out.attr(SRC_ATTR, image.getName());
+						out.attr("data-width", image.getWidth());
+						out.attr("data-height", image.getHeight());
 						out.endEmpty();
 					}
 					out.end();
