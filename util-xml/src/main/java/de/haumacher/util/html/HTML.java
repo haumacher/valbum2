@@ -38,5 +38,6 @@ public interface HTML {
 	String STYLE_ATTR = "style";
 	String ID_ATTR = "id";
 	String CLASS_ATTR = "class";
+	String DRAGGABLE_ATTR = "draggable";
 
 }
