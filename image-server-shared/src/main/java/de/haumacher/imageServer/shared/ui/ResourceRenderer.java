@@ -208,10 +208,16 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 		{
 			switch (image.getKind()) {
 				case IMAGE: {
-					out.begin(IMG);
-					out.attr(CLASS_ATTR, "image-display");
-					out.attr(SRC_ATTR, image.getName());
-					out.endEmpty();
+					out.begin(DIV);
+					out.attr(ID_ATTR, "image-container");
+					{
+						out.begin(IMG);
+						out.attr(CLASS_ATTR, "image-display");
+						out.attr(ID_ATTR, "image");
+						out.attr(SRC_ATTR, image.getName());
+						out.endEmpty();
+					}
+					out.end();
 					break;
 				}
 				
