@@ -13,11 +13,11 @@ import com.google.gson.stream.JsonWriter;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class FolderInfo {
+public class FolderInfo extends AlbumProperties {
 
 	private String _name;
 
-	/** 
+	/**
 	 * Creates a {@link FolderInfo}.
 	 *
 	 * @param name
@@ -26,8 +26,8 @@ public class FolderInfo {
 		this();
 		_name = name;
 	}
-	
-	/** 
+
+	/**
 	 * Creates a {@link FolderInfo}.
 	 *
 	 */
@@ -42,40 +42,27 @@ public class FolderInfo {
 		return _name;
 	}
 
-	/** 
-	 * TODO
-	 *
-	 * @param json
-	 * @throws IOException 
-	 */
-	public void writeTo(JsonWriter json) throws IOException {
-		json.beginObject();
+	@Override
+	public void writeContents(JsonWriter json) throws IOException {
+		super.writeContents(json);
+		
 		json.name("name");
 		json.value(getName());
-		json.endObject();
 	}
 
-	/** 
-	 * TODO
-	 *
-	 * @param json
-	 * @return
-	 * @throws IOException 
-	 */
-	public static FolderInfo readFrom(JsonReader json) throws IOException {
+	public static FolderInfo read(JsonReader json) throws IOException {
 		FolderInfo result = new FolderInfo();
-		result.doReadFrom(json);
+		result.readFrom(json);
 		return result;
 	}
 
-	private void doReadFrom(JsonReader json) throws IOException {
-		json.beginObject();
-		while (json.hasNext()) {
-			switch (json.nextName()) {
-				case "name": _name=json.nextString();
-			}
+	@Override
+	public void readProperty(JsonReader json, String property)
+			throws IOException {
+		switch (property) {
+			case "name": _name = json.nextString(); break;
+			default: super.readProperty(json, property);
 		}
-		json.endObject();
 	}
 
 }

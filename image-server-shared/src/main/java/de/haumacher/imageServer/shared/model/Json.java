@@ -8,20 +8,19 @@ import java.io.IOException;
 import com.google.gson.stream.JsonWriter;
 
 /**
- * TODO
+ * Utilities for JSON serialization.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class Json {
 
 	/** 
-	 * TODO
+	 * Writes an optional object property.
 	 *
-	 * @param json
-	 * @param value TODO
-	 * @throws IOException
+	 * @param json The {@link JsonWriter} to write to.
+	 * @param value The value to write (may be <code>null</code>).
 	 */
-	public static void value(JsonWriter json, String name, String value) throws IOException {
+	public static void optionalProperty(JsonWriter json, String name, String value) throws IOException {
 		if (value != null) {
 			json.name(name);
 			json.value(value);

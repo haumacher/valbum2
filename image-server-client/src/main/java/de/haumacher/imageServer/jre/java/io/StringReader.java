@@ -64,7 +64,8 @@ public class StringReader extends Reader {
      *
      * @exception  IOException  If an I/O error occurs
      */
-    public int read() throws IOException {
+    @Override
+	public int read() throws IOException {
         {
             ensureOpen();
             if (next >= length)
@@ -85,7 +86,8 @@ public class StringReader extends Reader {
      *
      * @exception  IOException  If an I/O error occurs
      */
-    public int read(char cbuf[], int off, int len) throws IOException {
+    @Override
+	public int read(char cbuf[], int off, int len) throws IOException {
         {
             ensureOpen();
             if ((off < 0) || (off > cbuf.length) || (len < 0) ||
@@ -119,7 +121,8 @@ public class StringReader extends Reader {
      *
      * @exception  IOException  If an I/O error occurs
      */
-    public long skip(long ns) throws IOException {
+    @Override
+	public long skip(long ns) throws IOException {
         {
             ensureOpen();
             if (next >= length)
@@ -139,7 +142,8 @@ public class StringReader extends Reader {
      *
      * @exception  IOException  If the stream is closed
      */
-    public boolean ready() throws IOException {
+    @Override
+	public boolean ready() throws IOException {
         {
         ensureOpen();
         return true;
@@ -149,7 +153,8 @@ public class StringReader extends Reader {
     /**
      * Tells whether this stream supports the mark() operation, which it does.
      */
-    public boolean markSupported() {
+    @Override
+	public boolean markSupported() {
         return true;
     }
 
@@ -166,7 +171,8 @@ public class StringReader extends Reader {
      * @exception  IllegalArgumentException  If {@code readAheadLimit < 0}
      * @exception  IOException  If an I/O error occurs
      */
-    public void mark(int readAheadLimit) throws IOException {
+    @Override
+	public void mark(int readAheadLimit) throws IOException {
         if (readAheadLimit < 0){
             throw new IllegalArgumentException("Read-ahead limit < 0");
         }
@@ -182,7 +188,8 @@ public class StringReader extends Reader {
      *
      * @exception  IOException  If an I/O error occurs
      */
-    public void reset() throws IOException {
+    @Override
+	public void reset() throws IOException {
         {
             ensureOpen();
             next = mark;
@@ -195,7 +202,8 @@ public class StringReader extends Reader {
      * ready(), mark(), or reset() invocations will throw an IOException.
      * Closing a previously closed stream has no effect.
      */
-    public void close() {
+    @Override
+	public void close() {
         str = null;
     }
 }

@@ -152,19 +152,41 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 
 	@Override
 	public Void visit(ListingInfo resource, XmlAppendable out) throws IOException {
-		out.begin(UL);
+		out.begin(H1);
+		out.append(resource.getName());
+		out.end();
+
+		out.begin(DIV);
 		out.attr(CLASS_ATTR, "listing");
 		{
 			for (FolderInfo folder : resource.getFolders()) {
-				out.begin(LI);
+				out.begin(A);
+				out.attr(CLASS_ATTR, "entry");
+				out.openAttr(HREF_ATTR);
 				{
-					out.begin(A);
-					out.openAttr(HREF_ATTR);
 					out.append(folder.getName());
 					out.append('/');
-					out.closeAttr();
+				}
+				out.closeAttr();
+				{
+					out.begin(DIV);
+					out.attr(CLASS_ATTR, "preview");
+					if (folder.getIndexPicture() != null) {
+						out.begin(IMG);
+						out.attr(CLASS_ATTR, "image-display");
+						out.attr(SRC_ATTR, folder.getName() + "/" + folder.getIndexPicture());
+						out.endEmpty();
+					} else {
+						out.begin(I);
+						out.attr(CLASS_ATTR, "far fa-folder-open");
+						out.end();
+					}
+					out.end();
+					
+					out.begin(DIV);
+					out.attr(CLASS_ATTR, "title");
 					{
-						out.append(folder.getName());
+						out.append(folder.getTitle());
 					}
 					out.end();
 				}

@@ -6,7 +6,6 @@ package de.haumacher.imageServer.shared.model;
 import java.io.IOException;
 
 import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
 
 /**
@@ -14,10 +13,11 @@ import com.google.gson.stream.JsonWriter;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class AlbumProperties {
+public class AlbumProperties implements JsonSerializable {
 	
 	private String title;
 	private String subTitle;
+	private String indexPicture;
 	
 	/** 
 	 * Creates an {@link AlbumProperties}.
@@ -48,6 +48,20 @@ public class AlbumProperties {
 	public void setSubTitle(String subTitle) {
 		this.subTitle = subTitle;
 	}
+	
+	/**
+	 * Name of the resource to display, if this album is shown in a listing.
+	 */
+	public String getIndexPicture() {
+		return indexPicture;
+	}
+	
+	/**
+	 * @see #getIndexPicture()
+	 */
+	public void setIndexPicture(String indexPicture) {
+		this.indexPicture = indexPicture;
+	}
 
 	/** 
 	 * TODO
@@ -62,32 +76,22 @@ public class AlbumProperties {
 		return result;
 	}
 
-	/** 
-	 * TODO
-	 *
-	 * @param json
-	 * @param result
-	 * @return
-	 * @throws IOException
-	 */
-	public void readFrom(JsonReader json) throws IOException {
-		json.beginObject();
-		while (json.peek() == JsonToken.NAME) {
-			switch (json.nextName()) {
-				case "title": setTitle(json.nextString()); break;
-				case "sub-title": setSubTitle(json.nextString()); break;
-				default: json.skipValue();
-			}
+	@Override
+	public void readProperty(JsonReader json, String property) throws IOException {
+		switch (property) {
+			case "title": setTitle(json.nextString()); break;
+			case "sub-title": setSubTitle(json.nextString()); break;
+			case "index-picture": setIndexPicture(json.nextString()); break;
+			default: JsonSerializable.super.readProperty(json, property);
 		}
-		json.endObject();
 	}
 
-	public void writeTo(JsonWriter json) throws IOException {
-		json.beginObject();
+	@Override
+	public void writeContents(JsonWriter json) throws IOException {
 		json.name("title");
 		json.value(getTitle());
-		Json.value(json, "sub-title", getSubTitle());
-		json.endObject();
+		Json.optionalProperty(json, "sub-title", getSubTitle());
+		Json.optionalProperty(json, "index-picture", getIndexPicture());
 	}
 
 }

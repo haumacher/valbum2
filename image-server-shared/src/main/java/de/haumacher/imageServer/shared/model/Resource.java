@@ -13,7 +13,7 @@ import com.google.gson.stream.JsonWriter;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public interface Resource {
+public interface Resource extends JsonSerializable {
 	
 	/**
 	 * The type of a {@link Resource}.
@@ -103,17 +103,4 @@ public interface Resource {
 		return result;
 	}
 
-	/** 
-	 * Serializes the specific contents of this {@link Resource}.
-	 *
-	 * @param json The {@link JsonWriter} to write to.
-	 */
-	void writeTo(JsonWriter json) throws IOException;
-
-	/** 
-	 * Reads specific contents of this {@link Resource} from a JSON stream produced by {@link #writeTo(JsonWriter)}.
-	 *
-	 * @param json {@link JsonReader} containing contents produced by {@link #writeTo(JsonWriter)}.
-	 */
-	void readFrom(JsonReader json) throws IOException;
 }

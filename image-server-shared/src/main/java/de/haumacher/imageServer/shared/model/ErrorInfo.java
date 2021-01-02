@@ -53,11 +53,9 @@ public class ErrorInfo implements Resource {
 	}
 
 	@Override
-	public void writeTo(JsonWriter json) throws IOException {
-		json.beginObject();
+	public void writeContents(JsonWriter json) throws IOException {
 		json.name("message");
 		json.value(_message);
-		json.endObject();
 	}
 	
 	@Override

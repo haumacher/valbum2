@@ -27,7 +27,9 @@ import com.google.gson.stream.JsonReader;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumProperties;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
+import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
+import de.haumacher.imageServer.shared.model.JsonSerializable;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 
@@ -98,7 +100,9 @@ public class ResourceCache {
 		}
 		
 		private static Resource loadListing(PathInfo pathInfo) {
-			File[] dirs = pathInfo.toFile().listFiles(DIRECTORIES);
+			File dir = pathInfo.toFile();
+			
+			File[] dirs = dir.listFiles(DIRECTORIES);
 			if (dirs == null) {
 				return new ErrorInfo("Cannot list files.");
 			}
@@ -106,15 +110,33 @@ public class ResourceCache {
 			Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
 			
 			ListingInfo listing = new ListingInfo(pathInfo.getDepth(), pathInfo.getName());
-			for (File dir1 : dirs) {
-				listing.addFolder(dir1.getName());
+			for (File folder : dirs) {
+				FolderInfo folderInfo = new FolderInfo(folder.getName());
+				
+				File index = new File(folder, "index.json");
+				if (index.isFile()) {
+					try {
+						loadJSON(index, folderInfo);
+					} catch (IOException ex) {
+						LOG.log(Level.WARNING, "Cannot read listing index '" + index + "'.", ex);
+					}
+				} else {
+					folderInfo.setTitle(folder.getName());
+					
+					File[] images = folder.listFiles(IMAGES);
+					if (images != null && images.length > 0) {
+						folderInfo.setIndexPicture(images[0].getName());
+					}
+				}
+				
+				listing.addFolder(folderInfo);
 			}
 			return listing;
 		}
 		
-		private static Resource loadAlbum(PathInfo dir, File[] files) {
+		private static Resource loadAlbum(PathInfo pathInfo, File[] files) {
 			AlbumInfo album = new AlbumInfo();
-			album.setDepth(dir.getDepth());
+			album.setDepth(pathInfo.getDepth());
 			
 			for (File file : files) {
 				ImageData image;
@@ -129,20 +151,19 @@ public class ResourceCache {
 			
 			album.sort((a, b) -> a.getDate().compareTo(b.getDate()));
 		
-			File indexResource = new File(dir.toFile(), "index.json");
+			File dir = pathInfo.toFile();
+			
+			File indexResource = new File(dir, "index.json");
 			AlbumProperties header = album.getHeader();
 			if (indexResource.exists()) {
 				try {
-					try (InputStream in = new FileInputStream(indexResource)) {
-						JsonReader json = new JsonReader(new InputStreamReader(in, "utf-8"));
-						header.readFrom(json);
-					}
+					loadJSON(indexResource, header);
 				} catch (IOException ex) {
 					LOG.log(Level.WARNING, "Faild to load album index.", ex);
 					return new ErrorInfo("Cannot load album info.");
 				}
 			} else {
-				String dirName = dir.getName();
+				String dirName = pathInfo.getName();
 				
 				Pattern prefixPattern = Pattern.compile("[-_\\.\\s0-9]*");
 				Matcher matcher = prefixPattern.matcher(dirName);
@@ -155,6 +176,13 @@ public class ResourceCache {
 			}
 			
 			return album;
+		}
+
+		private static void loadJSON(File file, JsonSerializable resource) throws IOException {
+			try (InputStream in = new FileInputStream(file)) {
+				JsonReader json = new JsonReader(new InputStreamReader(in, "utf-8"));
+				resource.readFrom(json);
+			}
 		}
 	}
 

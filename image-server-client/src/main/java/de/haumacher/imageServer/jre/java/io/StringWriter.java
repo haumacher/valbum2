@@ -71,7 +71,8 @@ public class StringWriter extends Writer {
     /**
      * Write a single character.
      */
-    public void write(int c) {
+    @Override
+	public void write(int c) {
         buf.append((char) c);
     }
 
@@ -82,7 +83,8 @@ public class StringWriter extends Writer {
      * @param  off   Offset from which to start writing characters
      * @param  len   Number of characters to write
      */
-    public void write(char cbuf[], int off, int len) {
+    @Override
+	public void write(char cbuf[], int off, int len) {
         if ((off < 0) || (off > cbuf.length) || (len < 0) ||
             ((off + len) > cbuf.length) || ((off + len) < 0)) {
             throw new IndexOutOfBoundsException();
@@ -95,7 +97,8 @@ public class StringWriter extends Writer {
     /**
      * Write a string.
      */
-    public void write(String str) {
+    @Override
+	public void write(String str) {
         buf.append(str);
     }
 
@@ -106,7 +109,8 @@ public class StringWriter extends Writer {
      * @param  off  Offset from which to start writing characters
      * @param  len  Number of characters to write
      */
-    public void write(String str, int off, int len)  {
+    @Override
+	public void write(String str, int off, int len)  {
         buf.append(str.substring(off, off + len));
     }
 
@@ -134,7 +138,8 @@ public class StringWriter extends Writer {
      *
      * @since  1.5
      */
-    public StringWriter append(CharSequence csq) {
+    @Override
+	public StringWriter append(CharSequence csq) {
         if (csq == null)
             write("null");
         else
@@ -174,7 +179,8 @@ public class StringWriter extends Writer {
      *
      * @since  1.5
      */
-    public StringWriter append(CharSequence csq, int start, int end) {
+    @Override
+	public StringWriter append(CharSequence csq, int start, int end) {
         CharSequence cs = (csq == null ? "null" : csq);
         write(cs.subSequence(start, end).toString());
         return this;
@@ -196,7 +202,8 @@ public class StringWriter extends Writer {
      *
      * @since 1.5
      */
-    public StringWriter append(char c) {
+    @Override
+	public StringWriter append(char c) {
         write(c);
         return this;
     }
@@ -204,7 +211,8 @@ public class StringWriter extends Writer {
     /**
      * Return the buffer's current value as a string.
      */
-    public String toString() {
+    @Override
+	public String toString() {
         return buf.toString();
     }
 
@@ -220,7 +228,8 @@ public class StringWriter extends Writer {
     /**
      * Flush the stream.
      */
-    public void flush() {
+    @Override
+	public void flush() {
     }
 
     /**
@@ -228,7 +237,8 @@ public class StringWriter extends Writer {
      * class can be called after the stream has been closed without generating
      * an <tt>IOException</tt>.
      */
-    public void close() throws IOException {
+    @Override
+	public void close() throws IOException {
     }
 
 }

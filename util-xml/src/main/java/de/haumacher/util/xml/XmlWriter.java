@@ -77,6 +77,7 @@ public class XmlWriter extends Writer implements XmlAppendable {
 		closePotentialAttr();
 		assertOpenTag();
 
+		popTag();
 		_out.append('/');
 		_out.append('>');
 		_state = State.CONTENT;
@@ -241,16 +242,21 @@ public class XmlWriter extends Writer implements XmlAppendable {
 	public void end() throws IOException {
 		closePotentialTag();
 
+		String name = popTag();
+		_out.append('<');
+		_out.append('/');
+		_out.append(name);
+		_out.append('>');
+	}
+
+	private String popTag() {
 		int top = _openTags.size() - 1;
 		if (top < 0) {
 			throw new IllegalStateException("No open tag to close.");
 		}
 
 		String name = _openTags.remove(top);
-		_out.append('<');
-		_out.append('/');
-		_out.append(name);
-		_out.append('>');
+		return name;
 	}
 
 	@Override

@@ -135,14 +135,8 @@ public class ImageInfo implements Resource {
 		return _width;
 	}
 
-	/** 
-	 * TODO
-	 *
-	 * @param json
-	 * @throws IOException 
-	 */
-	public void writeTo(JsonWriter json) throws IOException {
-		json.beginObject();
+	@Override
+	public void writeContents(JsonWriter json) throws IOException {
 		json.name("name");
 		json.value(getName());
 		json.name("width");
@@ -151,9 +145,8 @@ public class ImageInfo implements Resource {
 		json.value(getHeight());
 		json.name("date");
 		json.value(getDate().getTime());
-		Json.value(json, "comment", getComment());
-		Json.value(json, "kind", getKind().name());
-		json.endObject();
+		Json.optionalProperty(json, "comment", getComment());
+		Json.optionalProperty(json, "kind", getKind().name());
 	}
 	
 	/**

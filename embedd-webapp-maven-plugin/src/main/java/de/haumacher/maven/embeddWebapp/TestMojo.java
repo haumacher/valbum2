@@ -11,6 +11,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 @Mojo(name = "test", defaultPhase = LifecyclePhase.TEST)
 public class TestMojo extends AbstractMojo {
 
+	@Override
 	public void execute() throws MojoExecutionException {
 		getLog().info("Tests executed");
 	}

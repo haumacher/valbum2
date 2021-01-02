@@ -52,11 +52,48 @@ video.image-display {
     
 }
 
-ul.listing {
+.listing {
 	margin-top: 50px;
 	margin-left: 150px;
 	font-size: 20px;
 	font-weight: bold;
+}
+
+.listing a
+{
+	color: inherit;	
+}
+
+.listing > .entry {
+	float: left;
+	margin: 5px;
+	display: block;
+	position: relative;
+	width: 300px;
+	height: 400px;
+}
+
+.listing > .entry > .preview {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	right: 0px;
+	height: 300px;
+	overflow: hidden;
+}
+
+.preview > i {
+	font-size: 200px;
+}
+
+.listing > .entry > .title {
+	position: absolute;
+	top: 300px;
+	left: 0px;
+	right: 0px;
+	bottom: 0px;
+	overflow: hidden;
+	text-align: center;
 }
 
 .listing a {

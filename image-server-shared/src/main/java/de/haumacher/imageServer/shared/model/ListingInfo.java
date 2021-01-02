@@ -62,16 +62,6 @@ public class ListingInfo implements Resource {
 	/** 
 	 * TODO
 	 *
-	 * @param name
-	 */
-	public void addFolder(String name) {
-		FolderInfo folder = new FolderInfo(name);
-		addFolder(folder);
-	}
-
-	/** 
-	 * TODO
-	 *
 	 * @param folder
 	 */
 	public void addFolder(FolderInfo folder) {
@@ -85,15 +75,8 @@ public class ListingInfo implements Resource {
 		return _folders;
 	}
 
-	/** 
-	 * TODO
-	 *
-	 * @param json
-	 * @throws IOException 
-	 */
 	@Override
-	public void writeTo(JsonWriter json) throws IOException {
-		json.beginObject();
+	public void writeContents(JsonWriter json) throws IOException {
 		json.name("depth");
 		json.value(getDepth());
 		json.name("name");
@@ -104,7 +87,6 @@ public class ListingInfo implements Resource {
 			folder.writeTo(json);
 		}
 		json.endArray();
-		json.endObject();
 	}
 	
 	/**
@@ -130,7 +112,7 @@ public class ListingInfo implements Resource {
 				case "folders":
 					json.beginArray();
 					while (json.hasNext()) {
-						addFolder(FolderInfo.readFrom(json));
+						addFolder(FolderInfo.read(json));
 					}
 					json.endArray();
 					break;

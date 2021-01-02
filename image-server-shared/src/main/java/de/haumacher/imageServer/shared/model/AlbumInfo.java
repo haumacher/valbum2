@@ -132,15 +132,8 @@ public class AlbumInfo implements Resource {
 		return _header;
 	}
 
-	/**
-	 * TODO
-	 *
-	 * @param json
-	 * @throws IOException
-	 */
 	@Override
-	public void writeTo(JsonWriter json) throws IOException {
-		json.beginObject();
+	public void writeContents(JsonWriter json) throws IOException {
 		json.name("depth");
 		json.value(getDepth());
 		json.name("index");
@@ -152,7 +145,6 @@ public class AlbumInfo implements Resource {
 			image.writeTo(json);
 		}
 		json.endArray();
-		json.endObject();
 	}
 
 	/**
