@@ -59,8 +59,7 @@ video.image-display {
 	font-weight: bold;
 }
 
-.listing a
-{
+a {
 	color: inherit;	
 }
 
@@ -177,4 +176,80 @@ video.image-display {
 	left: 0;
 	right: 0;
 	overflow: hidden;
+}
+
+.toolbar-embedded {
+	visibility: hidden;
+	position: absolute;
+	font-size: 20px;
+}
+
+.toolbar-top {
+	top: 5px;
+	right: 5px;
+}
+
+.toolbar-bottom {
+	bottom: 5px;
+	right: 5px;
+}
+
+.icon-link {
+	display: block;
+}
+
+.icon {
+	position: relative;
+}
+
+.icon-link:hover > .toolbar-embedded {
+	visibility: visible;
+}
+
+.toolbar-button {
+	float: right;
+	text-align: center;
+	margin-right: 5px;
+	width: 20px;
+	padding: 2px;
+	opacity: 0.7;
+}
+
+.check-button {
+	visibility: hidden;
+	position: absolute;
+	top: 5px;
+	left: 8px;
+	font-size: 25px;
+	text-align: center;
+	width: 25px;
+	padding: 2px;
+	border-radius: 2px;
+}
+
+.icon-link:hover > .check-button {
+	visibility: visible;
+	background-color: black;
+}
+
+.check-button.checked {
+	visibility: visible;
+	color: white;
+}
+
+.check-button > .display-checked {
+	display: none;
+}
+
+.check-button.checked > .display-checked {
+	display: inline-block;
+}
+
+.check-button.checked > .display-unchecked {
+	display: none;
+}
+
+.toolbar-button:hover {
+	background-color: white;
+	color: black;
 }

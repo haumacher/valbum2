@@ -102,6 +102,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 		int spacing = row.getSpacing();
 
 		out.begin(DIV);
+		out.attr(CLASS_ATTR, "icons");
 		out.attr("style", "display: table; margin-top: " + spacing + "px;");
 		{
 			out.begin(DIV);
@@ -110,19 +111,20 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 				ImageInfo image = row.getImage(n);
 
 				out.begin(DIV);
+				out.attr(CLASS_ATTR, "icon");
 				out.openAttr(STYLE_ATTR);
 				out.append("display: table-cell;");
 				out.closeAttr();
 				{
 					out.begin(A);
-					out.openAttr(STYLE_ATTR);
-					out.append("display: block;");
+					out.attr(CLASS_ATTR, "icon-link");
 					if (n > 0) {
+						out.openAttr(STYLE_ATTR);
 						out.append("margin-left: ");
 						out.append(spacing);
 						out.append("px;");
+						out.closeAttr();
 					}
-					out.closeAttr();
 					out.openAttr(HREF_ATTR);
 					{
 						out.append(image.getName());
@@ -131,6 +133,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 					out.closeAttr();
 					{
 						out.begin(IMG);
+						out.attr(CLASS_ATTR, "icon-display");
 						{
 							out.openAttr(SRC_ATTR);
 							out.append(image.getName());
@@ -141,6 +144,8 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 							out.attr(HEIGHT_ATTR, rowHeight);
 						}
 						out.end();
+						
+						writeToolbars(out);
 					}
 					out.end();
 				}
@@ -149,6 +154,106 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 			out.end();
 		}
 		out.end();
+	}
+
+	private void writeToolbars(XmlAppendable out) throws IOException {
+		boolean editMode = false;
+		if (editMode) {
+			out.begin(SPAN);
+			out.attr(CLASS_ATTR, "check-button" + (Math.random() > 0.5 ? " checked" : ""));
+			{
+				out.begin(I);
+				out.attr(CLASS_ATTR, "display-unchecked far fa-square");
+				out.end();
+				
+				out.begin(I);
+				out.attr(CLASS_ATTR, "display-checked far fa-check-square");
+				out.end();
+			}
+			out.end();
+			
+			out.begin(SPAN);
+			out.attr(CLASS_ATTR, "toolbar-embedded toolbar-top");
+			{
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "fas fa-redo-alt");
+					out.end();
+				}
+				out.end();
+				
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "fas fa-arrows-alt-v");
+					out.end();
+				}
+				out.end();
+				
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "fas fa-undo-alt");
+					out.end();
+				}
+				out.end();
+			}
+			out.end();
+			
+			out.begin(SPAN);
+			out.attr(CLASS_ATTR, "toolbar-embedded toolbar-bottom");
+			{
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "fas fa-star");
+					out.end();
+				}
+				out.end();
+				
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "fas fa-plus");
+					out.end();
+				}
+				out.end();
+				
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "far fa-dot-circle");
+					out.end();
+				}
+				out.end();
+				
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "fas fa-minus");
+					out.end();
+				}
+				out.end();
+				
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "fas fa-trash-alt");
+					out.end();
+				}
+				out.end();
+			}
+			out.end();
+		}
 	}
 
 	@Override

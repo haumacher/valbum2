@@ -47,20 +47,24 @@ public class PreviewCache {
 			if (!cacheDir.exists()) {
 				cacheDir.mkdir();
 			}
-			if (suffix.equals("jpg")) {
-				try {
-					createImagePreview(file, previewCache);
-				} catch (ImageProcessingException | MetadataException | IOException ex) {
-					throw new PreviewException("Cannot create image preview for '" + name  + "'.", ex);
-				}
-			} else if (suffix.equals("mp4")) {
-				try {
-					createVideoPreview(file, previewCache);
-				} catch (ImageProcessingException | MetadataException | IOException ex) {
-					throw new PreviewException("Cannot create video preview for '" + name  + "'.", ex);
-				}
-			} else {
-				throw new PreviewException("Unsupported format: " + name);
+			switch (suffix) {
+				case "jpg":
+				case "jpeg":
+					try {
+						createImagePreview(file, previewCache);
+					} catch (ImageProcessingException | MetadataException | IOException ex) {
+						throw new PreviewException("Cannot create image preview for '" + name  + "'.", ex);
+					}
+					break;
+				case "mp4":
+					try {
+						createVideoPreview(file, previewCache);
+					} catch (ImageProcessingException | MetadataException | IOException ex) {
+						throw new PreviewException("Cannot create video preview for '" + name  + "'.", ex);
+					}
+					break;
+				default:
+					throw new PreviewException("Unsupported format: " + name);
 			}
 		}
 		return previewCache;

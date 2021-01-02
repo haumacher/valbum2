@@ -24,6 +24,7 @@ public interface HTML {
 	String H1 = "h1";
 	String H2 = "h2";
 	String DIV = "div";
+	String SPAN = "span";
 	String UL = "ul";
 	String LI = "li";
 	String IMG = "img";

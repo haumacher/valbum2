@@ -45,7 +45,7 @@ import de.haumacher.imageServer.shared.model.ThumbnailInfo;
  */
 public class ResourceCache {
 	
-	private static Set<String> ACCEPTED = new HashSet<>(Arrays.asList("jpg", "mp4"));
+	private static Set<String> ACCEPTED = new HashSet<>(Arrays.asList("jpg", "jpeg", "mp4"));
 	
 	static final FileFilter IMAGES = f -> {
 		return f.isFile() && ACCEPTED.contains(Util.suffix(f.getName()));
