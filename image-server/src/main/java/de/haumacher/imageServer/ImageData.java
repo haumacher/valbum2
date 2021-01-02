@@ -50,13 +50,7 @@ public class ImageData extends ImageInfo {
 	}
 	
 	/** 
-	 * TODO
-	 *
-	 * @param file
-	 * @return
-	 * @throws IOException 
-	 * @throws ImageProcessingException 
-	 * @throws MetadataException 
+	 * Loads {@link ImageData} from the given image file.
 	 */
 	public static ImageData analyze(AlbumInfo album, File file) throws ImageProcessingException, IOException, MetadataException {
 		ImageData result = new ImageData(album, file, file.getName());
@@ -67,7 +61,7 @@ public class ImageData extends ImageInfo {
 			date = new Date(file.lastModified());
 		}
 		result.setDate(date);
-		
+
 		JpegDirectory jpegDirectory = metadata.getFirstDirectoryOfType(JpegDirectory.class);
 		if (jpegDirectory != null) {
 			result.setKind(Kind.IMAGE);
@@ -90,6 +84,7 @@ public class ImageData extends ImageInfo {
 			if (jpegCommentDirectory != null) {
 				result.setComment(jpegCommentDirectory.getString(JpegCommentDirectory.TAG_COMMENT));
 			}
+			
 			return result;
 		}
 		

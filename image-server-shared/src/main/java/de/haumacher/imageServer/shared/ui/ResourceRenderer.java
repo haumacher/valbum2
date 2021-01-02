@@ -153,7 +153,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 	@Override
 	public Void visit(ListingInfo resource, XmlAppendable out) throws IOException {
 		out.begin(H1);
-		out.append(resource.getName());
+		out.append(resource.getTitle());
 		out.end();
 
 		out.begin(DIV);
@@ -186,7 +186,16 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 					out.begin(DIV);
 					out.attr(CLASS_ATTR, "title");
 					{
+						out.begin(DIV);
 						out.append(folder.getTitle());
+						out.end();
+						
+						if (folder.getSubTitle() != null) {
+							out.begin(DIV);
+							out.attr(CLASS_ATTR, "subtitle");
+							out.append(folder.getSubTitle());
+							out.end();
+						}
 					}
 					out.end();
 				}

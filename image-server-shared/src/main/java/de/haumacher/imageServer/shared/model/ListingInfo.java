@@ -19,6 +19,7 @@ public class ListingInfo implements Resource {
 	
 	private int _depth;
 	private String _name;
+	private String _title;
 	private List<FolderInfo> _folders = new ArrayList<>();
 
 	/** 
@@ -26,10 +27,11 @@ public class ListingInfo implements Resource {
 	 * @param depth 
 	 *
 	 */
-	public ListingInfo(int depth, String name) {
+	public ListingInfo(int depth, String name, String title) {
 		this();
 		_depth = depth;
 		_name = name;
+		_title = title;
 	}
 	
 	/** 
@@ -59,6 +61,20 @@ public class ListingInfo implements Resource {
 		return _name;
 	}
 	
+	/**
+	 * The title of the grouping folder.
+	 */
+	public String getTitle() {
+		return _title;
+	}
+	
+	/**
+	 * @see #getTitle()
+	 */
+	public void setTitle(String title) {
+		_title = title;
+	}
+	
 	/** 
 	 * TODO
 	 *
@@ -81,6 +97,8 @@ public class ListingInfo implements Resource {
 		json.value(getDepth());
 		json.name("name");
 		json.value(getName());
+		json.name("title");
+		json.value(getTitle());
 		json.name("folders");
 		json.beginArray();
 		for (FolderInfo folder : getFolders()) {
@@ -108,6 +126,9 @@ public class ListingInfo implements Resource {
 					break;
 				case "name":
 					_name = json.nextString();
+					break;
+				case "title":
+					setTitle(json.nextString());
 					break;
 				case "folders":
 					json.beginArray();

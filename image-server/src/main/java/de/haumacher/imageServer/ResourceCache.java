@@ -9,7 +9,11 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.text.DateFormat;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.GregorianCalendar;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.Level;
@@ -47,6 +51,10 @@ public class ResourceCache {
 	};
 
 	private static LoadingCache<PathInfo, Resource> _cache;
+	
+	private static final String SEP = "[-_\\.]";
+	static final Pattern DATE_PATTERN = Pattern.compile(
+			"(" + "\\d{4}" + ")" + SEP + "(" + "\\d{2}" + ")" + SEP + "(" + "\\d{2}" + ")");
 
 	static {
 		CacheLoader<PathInfo, Resource> loader = new Loader();
@@ -109,9 +117,11 @@ public class ResourceCache {
 			
 			Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
 			
-			ListingInfo listing = new ListingInfo(pathInfo.getDepth(), pathInfo.getName());
+			String listingName = pathInfo.getName();
+			ListingInfo listing = new ListingInfo(pathInfo.getDepth(), listingName, fromTechnicalName(listingName));
 			for (File folder : dirs) {
-				FolderInfo folderInfo = new FolderInfo(folder.getName());
+				String folderName = folder.getName();
+				FolderInfo folderInfo = new FolderInfo(folderName);
 				
 				File index = new File(folder, "index.json");
 				if (index.isFile()) {
@@ -121,19 +131,86 @@ public class ResourceCache {
 						LOG.log(Level.WARNING, "Cannot read listing index '" + index + "'.", ex);
 					}
 				} else {
-					folderInfo.setTitle(folder.getName());
-					
 					File[] images = folder.listFiles(IMAGES);
+					File indexPicture;
 					if (images != null && images.length > 0) {
-						folderInfo.setIndexPicture(images[0].getName());
+						indexPicture = images[0];
+						folderInfo.setIndexPicture(indexPicture.getName());
+					} else {
+						indexPicture = null;
 					}
+					
+					Matcher matcher = DATE_PATTERN.matcher(folderName);
+					if (matcher.find()) {
+						int year = Integer.parseInt(matcher.group(1));
+						int month = Integer.parseInt(matcher.group(2));
+						int day = Integer.parseInt(matcher.group(3));
+						
+						folderInfo.setSubTitle(dateString(year, month, day));
+						folderName = removeMatch(folderName, matcher);
+					} else {
+						if (indexPicture != null) {
+							try {
+								ImageData imageData = ImageData.analyze(null, indexPicture);
+								if (imageData.getDate() != null) {
+									folderInfo.setSubTitle(formatDate(imageData.getDate()));
+								}
+							} catch (ImageProcessingException
+									| MetadataException | IOException ex) {
+								LOG.log(Level.WARNING, "Cannot analyze index picture: " + indexPicture, ex);
+							}
+						}
+					}
+					folderInfo.setTitle(fromTechnicalName(folderName));
+					
 				}
 				
 				listing.addFolder(folderInfo);
 			}
 			return listing;
 		}
+
+		private static String dateString(int year, int month, int day) {
+			GregorianCalendar calendar = new GregorianCalendar();
+			calendar.set(Calendar.YEAR, year);
+			calendar.set(Calendar.MONTH, month);
+			calendar.set(Calendar.DAY_OF_MONTH, day);
+			calendar.set(Calendar.HOUR, 0);
+			calendar.set(Calendar.MINUTE, 0);
+			calendar.set(Calendar.SECOND, 0);
+			calendar.set(Calendar.MILLISECOND, 0);
+			Date date = calendar.getTime();
+			return formatDate(date);
+		}
+
+		private static String formatDate(Date date) {
+			return DateFormat.getDateInstance(DateFormat.LONG).format(date);
+		}
+
+		private static String removeMatch(String name, Matcher match) {
+			String before = name.substring(0, match.start()).trim();
+			String after = name.substring(match.end()).trim();
+			if (before.isEmpty()) {
+				name = after;
+			} else if (after.isEmpty()) {
+				name = before;
+			} else {
+				name = before + " " + after;
+			}
+			return name;
+		}
 		
+		private static String fromTechnicalName(String name) {
+			return uppercaseStart(name.replaceAll("_+|(?<=\\p{javaLowerCase})(?=\\p{javaUpperCase})", " "));
+		}
+
+		private static String uppercaseStart(String expanded) {
+			if (expanded.isEmpty()) {
+				return expanded;
+			}
+			return Character.toUpperCase(expanded.charAt(0)) + expanded.substring(1);
+		}
+
 		private static Resource loadAlbum(PathInfo pathInfo, File[] files) {
 			AlbumInfo album = new AlbumInfo();
 			album.setDepth(pathInfo.getDepth());
