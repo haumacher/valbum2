@@ -36,6 +36,7 @@ import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.JsonSerializable;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 
 /**
  * TODO
@@ -133,11 +134,37 @@ public class ResourceCache {
 				} else {
 					File[] images = folder.listFiles(IMAGES);
 					File indexPicture;
+					ImageData imageData;
 					if (images != null && images.length > 0) {
 						indexPicture = images[0];
-						folderInfo.setIndexPicture(indexPicture.getName());
+						
+						double scale;
+						try {
+							imageData = ImageData.analyze(null, indexPicture);
+							
+							double width = imageData.getWidth();
+							double height = imageData.getHeight();
+							
+							scale = width / height;
+							double ty;
+							if (scale < 1.0) {
+								scale = 1.0 / scale;
+								ty = (height - width) / height * 150;
+							} else {
+								ty = 0.0;
+							}
+							
+							ThumbnailInfo thumbnail = new ThumbnailInfo(indexPicture.getName(), scale);
+							thumbnail.setTy(ty);
+							folderInfo.setIndexPicture(thumbnail);
+						} catch (ImageProcessingException
+								| MetadataException | IOException ex) {
+							LOG.log(Level.WARNING, "Cannot analyze index picture: " + indexPicture, ex);
+							imageData = null;
+						}
 					} else {
 						indexPicture = null;
+						imageData = null;
 					}
 					
 					Matcher matcher = DATE_PATTERN.matcher(folderName);
@@ -149,15 +176,10 @@ public class ResourceCache {
 						folderInfo.setSubTitle(dateString(year, month, day));
 						folderName = removeMatch(folderName, matcher);
 					} else {
-						if (indexPicture != null) {
-							try {
-								ImageData imageData = ImageData.analyze(null, indexPicture);
-								if (imageData.getDate() != null) {
-									folderInfo.setSubTitle(formatDate(imageData.getDate()));
-								}
-							} catch (ImageProcessingException
-									| MetadataException | IOException ex) {
-								LOG.log(Level.WARNING, "Cannot analyze index picture: " + indexPicture, ex);
+						if (imageData != null) {
+							Date date = imageData.getDate();
+							if (date != null) {
+								folderInfo.setSubTitle(formatDate(date));
 							}
 						}
 					}

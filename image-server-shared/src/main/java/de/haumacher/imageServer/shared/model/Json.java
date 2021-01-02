@@ -27,4 +27,17 @@ public class Json {
 		}
 	}
 
+	/** 
+	 * Writes an optional object property.
+	 *
+	 * @param json The {@link JsonWriter} to write to.
+	 * @param value The value to write (may be <code>null</code>).
+	 */
+	public static void optionalProperty(JsonWriter json, String name, JsonSerializable value) throws IOException {
+		if (value != null) {
+			json.name(name);
+			value.writeTo(json);
+		}
+	}
+	
 }

@@ -17,7 +17,7 @@ public class AlbumProperties implements JsonSerializable {
 	
 	private String title;
 	private String subTitle;
-	private String indexPicture;
+	private ThumbnailInfo indexPicture;
 	
 	/** 
 	 * Creates an {@link AlbumProperties}.
@@ -52,23 +52,19 @@ public class AlbumProperties implements JsonSerializable {
 	/**
 	 * Name of the resource to display, if this album is shown in a listing.
 	 */
-	public String getIndexPicture() {
+	public ThumbnailInfo getIndexPicture() {
 		return indexPicture;
 	}
 	
 	/**
 	 * @see #getIndexPicture()
 	 */
-	public void setIndexPicture(String indexPicture) {
+	public void setIndexPicture(ThumbnailInfo indexPicture) {
 		this.indexPicture = indexPicture;
 	}
 
 	/** 
-	 * TODO
-	 *
-	 * @param json
-	 * @return
-	 * @throws IOException 
+	 * Reads {@link AlbumProperties} from the given reader.
 	 */
 	public static AlbumProperties read(JsonReader json) throws IOException {
 		AlbumProperties result = new AlbumProperties();
@@ -81,7 +77,7 @@ public class AlbumProperties implements JsonSerializable {
 		switch (property) {
 			case "title": setTitle(json.nextString()); break;
 			case "sub-title": setSubTitle(json.nextString()); break;
-			case "index-picture": setIndexPicture(json.nextString()); break;
+			case "index-picture": indexPicture = ThumbnailInfo.read(json); break;
 			default: JsonSerializable.super.readProperty(json, property);
 		}
 	}

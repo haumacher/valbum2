@@ -15,6 +15,7 @@ import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.util.xml.Renderer;
 import de.haumacher.util.xml.XmlAppendable;
 
@@ -171,10 +172,12 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 				{
 					out.begin(DIV);
 					out.attr(CLASS_ATTR, "preview");
-					if (folder.getIndexPicture() != null) {
+					ThumbnailInfo indexPicture = folder.getIndexPicture();
+					if (indexPicture != null) {
 						out.begin(IMG);
 						out.attr(CLASS_ATTR, "image-display");
-						out.attr(SRC_ATTR, folder.getName() + "/" + folder.getIndexPicture());
+						out.attr(STYLE_ATTR, "transform: scale(" + indexPicture.getScale() + ") translate(" + indexPicture.getTx() + "px, " + indexPicture.getTy() + "px);");
+						out.attr(SRC_ATTR, folder.getName() + "/" + indexPicture.getImage());
 						out.endEmpty();
 					} else {
 						out.begin(I);
