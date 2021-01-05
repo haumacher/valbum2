@@ -49,7 +49,6 @@ video.image-display {
     left: 0;
     right: 0;
     margin: auto;
-    
 }
 
 .listing {
@@ -199,7 +198,23 @@ a {
 }
 
 .icon {
+	display: table-cell;
 	position: relative;
+}
+
+.icon .video-overlay {
+	position: absolute;
+	display: block;
+	font-size: 60px;
+	opacity: 60%;
+
+    max-height: 100%;
+    max-width: 100%;
+
+    top: 50%;
+    left: 50%;
+    margin-right: -50%;
+    transform: translate(-50%, -50%)
 }
 
 .icon-link:hover > .toolbar-embedded {

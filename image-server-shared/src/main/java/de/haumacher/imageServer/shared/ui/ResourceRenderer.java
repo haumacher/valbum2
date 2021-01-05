@@ -13,6 +13,7 @@ import de.haumacher.imageServer.shared.model.AlbumProperties;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
+import de.haumacher.imageServer.shared.model.ImageInfo.Kind;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
@@ -112,9 +113,6 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 
 				out.begin(DIV);
 				out.attr(CLASS_ATTR, "icon");
-				out.openAttr(STYLE_ATTR);
-				out.append("display: table-cell;");
-				out.closeAttr();
 				{
 					out.begin(A);
 					out.attr(CLASS_ATTR, "icon-link");
@@ -144,6 +142,17 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 							out.attr(HEIGHT_ATTR, rowHeight);
 						}
 						out.end();
+						
+						if (image.getKind() == Kind.VIDEO) {
+							out.begin(DIV);
+							out.attr(CLASS_ATTR, "video-overlay");
+							{
+								out.begin(I);
+								out.attr(CLASS_ATTR, "far fa-play-circle");
+								out.end();
+							}
+							out.end();
+						}
 						
 						writeToolbars(out);
 					}
