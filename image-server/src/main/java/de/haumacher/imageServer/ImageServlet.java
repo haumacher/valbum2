@@ -48,9 +48,9 @@ public class ImageServlet extends HttpServlet {
 	/** 
 	 * Creates a {@link ImageServlet}.
 	 *
-	 * @param basePath
+	 * @param basePath The root path of the photo album to serve.
 	 */
-	public ImageServlet(File basePath) {
+	public ImageServlet(File basePath) throws IOException {
 		_basePath = basePath.toPath();
 		_cache = new ResourceCache();
 	}

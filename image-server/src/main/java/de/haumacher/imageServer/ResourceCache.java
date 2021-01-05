@@ -3,18 +3,25 @@
  */
 package de.haumacher.imageServer;
 
+import static java.nio.file.StandardWatchEventKinds.*;
+
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.file.FileSystems;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.text.DateFormat;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -51,15 +58,20 @@ public class ResourceCache {
 		return f.isFile() && ACCEPTED.contains(Util.suffix(f.getName()));
 	};
 
-	private LoadingCache<PathInfo, Resource> _cache;
-	
 	private static final String SEP = "[-_\\.]";
 	static final Pattern DATE_PATTERN = Pattern.compile(
 			"(" + "\\d{4}" + ")" + SEP + "(" + "\\d{2}" + ")" + SEP + "(" + "\\d{2}" + ")");
 
-	{
-		CacheLoader<PathInfo, Resource> loader = new Loader();
-		_cache = CacheBuilder.newBuilder().maximumSize(1000).build(loader);
+	private Loader _loader;
+
+	private LoadingCache<PathInfo, Resource> _cache;
+	
+	/** 
+	 * Creates a {@link ResourceCache}.
+	 */
+	public ResourceCache() throws IOException {
+		_loader = new Loader();
+		_cache = CacheBuilder.newBuilder().maximumSize(1000).build(_loader);
 	}
 
 	/**
@@ -76,6 +88,7 @@ public class ResourceCache {
 	 * @return The {@link Resource} describing the system resource.
 	 */
 	public Resource lookup(PathInfo pathInfo) {
+		_loader.processEvents(_cache);
 		if (pathInfo.toFile().isDirectory()) {
 			return _cache.getUnchecked(pathInfo);
 		} else {
@@ -95,6 +108,17 @@ public class ResourceCache {
 
 		private static final Logger LOG = Logger.getLogger(ResourceCache.class.getName());
 
+		private final WatchService _watcher;
+		
+		private final Map<WatchKey, PathInfo> _watchedDirs = new HashMap<>();
+		
+		/** 
+		 * Creates a {@link ResourceCache.Loader}.
+		 */
+		public Loader() throws IOException {
+			_watcher = FileSystems.getDefault().newWatchService();
+		}
+
 		@Override
 		public Resource load(PathInfo pathInfo) {
 			if (pathInfo.isDirectory()) {
@@ -103,17 +127,44 @@ public class ResourceCache {
 				throw new UnsupportedOperationException("Not a directory: " + pathInfo);
 			}
 		}
+		
+		public void processEvents(LoadingCache<PathInfo, Resource> cache) {
+			while (true) {
+				WatchKey key = _watcher.poll();
+				if (key == null) {
+					break;
+				}
+				if (!key.isValid()) {
+					continue;
+				}
+				
+				PathInfo path = _watchedDirs.remove(key);
+				if (path != null) {
+					cache.invalidate(path);
+				}
+				key.cancel();
+			}
+		}
 
-		private Resource loadDir(PathInfo dir) {
-			File[] images = dir.toFile().listFiles(IMAGES);
+		private Resource loadDir(PathInfo path) {
+			File dir = path.toFile();
+			
+			File[] images = dir.listFiles(IMAGES);
 			if (images == null) {
 				return new ErrorInfo("Cannot list folder.");
 			}
+			
+			try {
+				WatchKey key = dir.toPath().register(_watcher, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
+				_watchedDirs.put(key, path);
+			} catch (IOException ex) {
+				LOG.log(Level.WARNING, "Cannot register directory watcher on '" + dir + "'.", ex);
+			}
 		
 			if (images.length == 0) {
-				return loadListing(dir);
+				return loadListing(path);
 			} else {
-				return loadAlbum(dir, images);
+				return loadAlbum(path, images);
 			}
 		}
 		
