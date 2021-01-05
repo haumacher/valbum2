@@ -43,6 +43,7 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	private Path _basePath;
+	private ResourceCache _cache;
 
 	/** 
 	 * Creates a {@link ImageServlet}.
@@ -51,6 +52,7 @@ public class ImageServlet extends HttpServlet {
 	 */
 	public ImageServlet(File basePath) {
 		_basePath = basePath.toPath();
+		_cache = new ResourceCache();
 	}
 
 	@Override
@@ -101,7 +103,7 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	private void serveFolder(Context context, PathInfo pathInfo) throws IOException {
-		Resource resource = ResourceCache.lookup(pathInfo);
+		Resource resource = _cache.lookup(pathInfo);
 		if (jsonRequested(context)) {
 			serveJson(context.response(), resource);
 		} else {
@@ -111,7 +113,7 @@ public class ImageServlet extends HttpServlet {
 	
 	private void serveImage(Context context, PathInfo pathInfo) throws IOException {
 		if (jsonRequested(context)) {
-			Resource resource = ResourceCache.lookup(pathInfo);
+			Resource resource = _cache.lookup(pathInfo);
 			serveJson(context.response(), resource);
 			return;
 		}
@@ -128,7 +130,7 @@ public class ImageServlet extends HttpServlet {
 			}
 			serveData(context, data);
 		} else if ("page".equals(type)) {
-			Resource resource = ResourceCache.lookup(pathInfo);
+			Resource resource = _cache.lookup(pathInfo);
 			render(context, resource);
 		} else {
 			serveData(context, pathInfo.toFile());

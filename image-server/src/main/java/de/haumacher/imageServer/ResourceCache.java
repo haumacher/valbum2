@@ -39,7 +39,7 @@ import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 
 /**
- * TODO
+ * Cache of {@link Resource}s representing directories and files in a photo album.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
@@ -51,22 +51,31 @@ public class ResourceCache {
 		return f.isFile() && ACCEPTED.contains(Util.suffix(f.getName()));
 	};
 
-	private static LoadingCache<PathInfo, Resource> _cache;
+	private LoadingCache<PathInfo, Resource> _cache;
 	
 	private static final String SEP = "[-_\\.]";
 	static final Pattern DATE_PATTERN = Pattern.compile(
 			"(" + "\\d{4}" + ")" + SEP + "(" + "\\d{2}" + ")" + SEP + "(" + "\\d{2}" + ")");
 
-	static {
+	{
 		CacheLoader<PathInfo, Resource> loader = new Loader();
 		_cache = CacheBuilder.newBuilder().maximumSize(1000).build(loader);
 	}
 
+	/**
+	 * Whether the given {@link File} is a supported image or video file.
+	 */
 	public static boolean isImage(File file) {
 		return IMAGES.accept(file);
 	}
 
-	public static Resource lookup(PathInfo pathInfo) {
+	/**
+	 * Retrieves the {@link Resource} description for the given {@link PathInfo}.
+	 *
+	 * @param pathInfo The file-system resource to analyze.
+	 * @return The {@link Resource} describing the system resource.
+	 */
+	public Resource lookup(PathInfo pathInfo) {
 		if (pathInfo.toFile().isDirectory()) {
 			return _cache.getUnchecked(pathInfo);
 		} else {
@@ -267,7 +276,7 @@ public class ResourceCache {
 				Pattern prefixPattern = Pattern.compile("[-_\\.\\s0-9]*");
 				Matcher matcher = prefixPattern.matcher(dirName);
 				if (matcher.lookingAt()) {
-					header.setTitle(dirName.substring(matcher.end()));
+					header.setTitle(fromTechnicalName(dirName.substring(matcher.end())));
 					header.setSubTitle(dirName.substring(0, matcher.end()));
 				} else {
 					header.setTitle(dirName);
