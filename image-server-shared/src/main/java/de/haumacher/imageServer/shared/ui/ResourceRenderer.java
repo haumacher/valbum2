@@ -301,8 +301,13 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 						out.closeAttr();
 						out.endEmpty();
 					} else {
-						out.begin(I);
-						out.attr(CLASS_ATTR, "far fa-folder-open");
+						out.begin(DIV);
+						out.attr(CLASS_ATTR, "no-image");
+						{
+							out.begin(I);
+							out.attr(CLASS_ATTR, "far fa-folder-open");
+							out.end();
+						}
 						out.end();
 					}
 					out.end();
