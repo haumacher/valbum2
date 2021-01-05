@@ -282,7 +282,14 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 						out.begin(IMG);
 						out.attr(CLASS_ATTR, "image-display");
 						out.attr(STYLE_ATTR, "transform: scale(" + indexPicture.getScale() + ") translate(" + indexPicture.getTx() + "px, " + indexPicture.getTy() + "px);");
-						out.attr(SRC_ATTR, folder.getName() + "/" + indexPicture.getImage());
+						out.openAttr(SRC_ATTR);
+						{
+							out.append(folder.getName());
+							out.append("/");
+							out.append(indexPicture.getImage());
+							out.append("?type=tn");
+						}
+						out.closeAttr();
 						out.endEmpty();
 					} else {
 						out.begin(I);
