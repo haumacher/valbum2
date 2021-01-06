@@ -3,13 +3,19 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
-	<!-- POM file generated with GWT webAppCreator -->
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>de.haumacher</groupId>
+	
+	<parent>
+		<groupId>de.haumacher</groupId>
+		<artifactId>image-server-parent</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+		<relativePath>../image-server-parent/pom.xml</relativePath>
+	</parent>
+	
 	<artifactId>image-server-client</artifactId>
+	<name>ImageServer Client App</name>
+	
 	<packaging>war</packaging>
-	<version>1.0-SNAPSHOT</version>
-	<name>ImageServer client app</name>
 
 	<properties>
 		<!-- Setting maven.compiler.source to something different to 1.8 needs 
@@ -41,24 +47,26 @@
 			<groupId>de.haumacher</groupId>
 			<artifactId>image-server-shared</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>image-server-shared</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
 			<classifier>sources</classifier>
+			<version>0.0.1-SNAPSHOT</version>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-xml</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-xml</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
 			<classifier>sources</classifier>
+			<version>0.0.1-SNAPSHOT</version>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
@@ -85,16 +93,38 @@
 	</dependencies>
 
 	<build>
-		<!-- Output classes directly into the webapp, so that IDEs and "mvn process-classes" 
-			update them in DevMode -->
-		<outputDirectory>${project.build.directory}/${project.build.finalName}/WEB-INF/classes</outputDirectory>
-
 		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-source-plugin</artifactId>
+				<version>3.2.0</version>
+				<executions>
+					<execution>
+						<id>attach-sources</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>jar-no-fork</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.8.1</version>
+				
+				<configuration>
+					<excludes>de/haumacher/imageServer/jre/**</excludes>
+				</configuration>
+			</plugin>
+
 			<!-- GWT Maven Plugin -->
 			<plugin>
 				<groupId>net.ltgt.gwt.maven</groupId>
 				<artifactId>gwt-maven-plugin</artifactId>
 				<version>1.0-rc-6</version>
+				
 				<executions>
 					<execution>
 						<goals>
@@ -105,13 +135,17 @@
 						</goals>
 					</execution>
 				</executions>
+
 				<configuration>
 					<moduleName>de.haumacher.imageServer.client</moduleName>
 					<moduleShortName>image-server-client</moduleShortName>
+					
 					<failOnError>true</failOnError>
+
 					<!-- GWT compiler 2.8 requires 1.8, hence define sourceLevel here if 
 						you use a different source language for java compilation -->
 					<sourceLevel>1.8</sourceLevel>
+
 					<!-- Compiler configuration -->
 					<compilerArgs>
 						<!-- Ask GWT to create the Story of Your Compile (SOYC) (gwt:compile) -->
@@ -120,21 +154,17 @@
 						<arg>-style</arg>
 						<arg>PRETTY</arg>
 					</compilerArgs>
+					
+					<detail>true</detail>
+					
 					<!-- DevMode configuration -->
-					<warDir>${project.build.directory}/${project.build.finalName}</warDir>
+					<warDir>${project.build.directory}/classes/META-INF/resources</warDir>
 					<classpathScope>compile+runtime</classpathScope>
+
 					<!-- URL(s) that should be opened by DevMode (gwt:devmode). -->
 					<startupUrls>
 						<startupUrl>index.html</startupUrl>
 					</startupUrls>
-				</configuration>
-			</plugin>
-
-			<plugin>
-				<artifactId>maven-war-plugin</artifactId>
-				<version>3.3.1</version>
-				<configuration>
-					<packagingExcludes>WEB-INF/lib/**,WEB-INF/classes/**</packagingExcludes>
 				</configuration>
 			</plugin>
 

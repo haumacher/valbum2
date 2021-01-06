@@ -2,22 +2,20 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>de.haumacher</groupId>
+
 	<artifactId>util-xml</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
 	<name>XML Utilities</name>
 
+	<parent>
+		<groupId>de.haumacher</groupId>
+		<artifactId>image-server-parent</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+		<relativePath>../image-server-parent/pom.xml</relativePath>
+	</parent>
+	
 	<build>
 		<finalName>${project.artifactId}</finalName>
 		<plugins>
-			<plugin>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<configuration>
-					<source>1.8</source>
-					<target>1.8</target>
-				</configuration>
-			</plugin>
-
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-source-plugin</artifactId>
