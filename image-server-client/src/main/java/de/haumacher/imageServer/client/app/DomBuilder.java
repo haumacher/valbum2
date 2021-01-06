@@ -82,6 +82,13 @@ public class DomBuilder implements XmlAppendable {
 	public void attr(String name, CharSequence value) throws IOException {
 		_current.setAttribute(name, value.toString());
 	}
+	
+	/**
+	 * The current {@link Element} being built.
+	 */
+	public Element current() {
+		return _current;
+	}
 
 	@Override
 	public void openAttr(String name) throws IOException {

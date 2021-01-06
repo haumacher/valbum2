@@ -358,12 +358,14 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 		out.attr("data-up", "./");
 		
 		AlbumInfo album = image.getAlbum();
-		List<ImageInfo> images = album.getImages();
-		String homeUrl = images.get(0).getName() + "?type=page";
-		out.attr("data-home", homeUrl);
-		
-		String endUrl = images.get(images.size() - 1).getName() + "?type=page";
-		out.attr("data-end", endUrl);
+		if (album != null) {
+			List<ImageInfo> images = album.getImages();
+			String homeUrl = images.get(0).getName() + "?type=page";
+			out.attr("data-home", homeUrl);
+			
+			String endUrl = images.get(images.size() - 1).getName() + "?type=page";
+			out.attr("data-end", endUrl);
+		}
 		
 		{
 			switch (image.getKind()) {
@@ -440,7 +442,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 				out.end();
 			}
 			
-			writeAlbumToolbar(out, album.getDepth(), true);
+			writeAlbumToolbar(out, image.getDepth(), true);
 		}
 		out.end();
 		return null;

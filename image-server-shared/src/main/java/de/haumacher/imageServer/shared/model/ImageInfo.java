@@ -16,7 +16,9 @@ import com.google.gson.stream.JsonWriter;
  */
 public class ImageInfo implements Resource {
 
-	private AlbumInfo _owner;
+	private transient AlbumInfo _owner;
+	
+	private int _depth;
 	private String _name;
 	private Date _date;
 	private int _width;
@@ -37,10 +39,25 @@ public class ImageInfo implements Resource {
 		this();
 		_owner = owner;
 		_name = name;
+		_depth = owner != null ? owner.getDepth() : 0;
 	}
 	
 	public ImageInfo() {
 		super();
+	}
+	
+	/**
+	 * Number of parent resources of this resource.
+	 */
+	public int getDepth() {
+		return _depth;
+	}
+	
+	/**
+	 * @see #getDepth()
+	 */
+	public void setDepth(int depth) {
+		_depth = depth;
 	}
 	
 	/**
@@ -145,6 +162,8 @@ public class ImageInfo implements Resource {
 		json.value(getHeight());
 		json.name("date");
 		json.value(getDate().getTime());
+		json.name("depth");
+		json.value(getDepth());
 		Json.optionalProperty(json, "comment", getComment());
 		Json.optionalProperty(json, "kind", getKind().name());
 	}
@@ -157,33 +176,35 @@ public class ImageInfo implements Resource {
 		result.readFrom(json);
 		return result;
 	}
-
+	
 	@Override
-	public void readFrom(JsonReader json) throws IOException {
-		json.beginObject();
-		while (json.hasNext()) {
-			switch (json.nextName()) {
-				case "name": 
-					setName(json.nextString());
-					break;
-				case "widht":
-					setWidth(json.nextInt());
-					break;
-				case "height":
-					setHeight(json.nextInt());
-					break;
-				case "date":
-					setDate(new Date(json.nextLong()));
-					break;
-				case "comment":
-					setComment(json.nextString());
-					break;
-				case "kind":
-					setKind(Kind.valueOf(json.nextString()));
-					break;
-			}
+	public void readProperty(JsonReader json, String property)
+			throws IOException {
+		switch (property) {
+			case "name": 
+				setName(json.nextString());
+				break;
+			case "width":
+				setWidth(json.nextInt());
+				break;
+			case "height":
+				setHeight(json.nextInt());
+				break;
+			case "date":
+				setDate(new Date(json.nextLong()));
+				break;
+			case "depth":
+				setDepth(json.nextInt());
+				break;
+			case "comment":
+				setComment(json.nextString());
+				break;
+			case "kind":
+				setKind(Kind.valueOf(json.nextString()));
+				break;
+			default:
+				Resource.super.readProperty(json, property);
 		}
-		json.endObject();
 	}
 
 	@Override
