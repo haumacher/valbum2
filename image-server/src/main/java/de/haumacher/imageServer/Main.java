@@ -27,6 +27,11 @@ import net.sourceforge.argparse4j.inf.Namespace;
  */
 public class Main {
 	
+	/**
+	 * Prefix for resources served from <code>META-INF/resources</code>.
+	 */
+	public static final String STATIC_PREFIX = "/static";
+
 	/** 
 	 * Image server main method.
 	 */
@@ -79,7 +84,7 @@ public class Main {
 		WebAppContext webapp = new WebAppContext();
 		webapp.setContextPath(_contextPath);
 		webapp.setResourceBase(_basePath.toString());
-		webapp.addServlet(new ServletHolder(new ResourceServlet()), "/static/*");
+		webapp.addServlet(new ServletHolder(new ResourceServlet()), STATIC_PREFIX + "/*");
 		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath)), "/*");
 		webapp.setClassLoader(Main.class.getClassLoader());
 

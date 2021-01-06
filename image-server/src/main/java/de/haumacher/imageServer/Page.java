@@ -54,7 +54,7 @@ public class Page implements XmlFragment {
 				out.openAttr(HREF_ATTR);
 				{
 					out.append(context.getContextPath());
-					out.append("/static/style/valbum.css");
+					out.append(Main.STATIC_PREFIX + "/style/valbum.css");
 				}
 				out.closeAttr();
 				out.endEmpty();
@@ -65,7 +65,7 @@ public class Page implements XmlFragment {
 				out.openAttr(HREF_ATTR);
 				{
 					out.append(context.getContextPath());
-					out.append("/static/webjars/font-awesome/");
+					out.append(Main.STATIC_PREFIX + "/webjars/font-awesome/");
 					out.append(FA_VERSION);
 					out.append("/css/all.css");
 				}
@@ -74,7 +74,7 @@ public class Page implements XmlFragment {
 				
 				out.begin(SCRIPT);
 				out.attr(TYPE_ATTR, "text/javascript");
-				out.attr(SRC_ATTR, "/static/script/valbum.js");
+				out.attr(SRC_ATTR, Main.STATIC_PREFIX + "/script/valbum.js");
 				out.end();
 			}
 			out.end();
