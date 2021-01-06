@@ -191,7 +191,9 @@ public class ResourceCache {
 					} catch (IOException ex) {
 						LOG.log(Level.WARNING, "Cannot read listing index '" + index + "'.", ex);
 					}
-				} else {
+				}
+				
+				if (folderInfo.getIndexPicture() == null) {
 					File[] images = folder.listFiles(IMAGES);
 					File indexPicture;
 					ImageData imageData;
