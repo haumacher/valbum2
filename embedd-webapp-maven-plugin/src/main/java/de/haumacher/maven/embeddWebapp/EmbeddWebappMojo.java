@@ -22,7 +22,7 @@ import org.apache.maven.project.MavenProject;
  * <code>META-INF/resources</code> folder of the <code>jar</code> file being built.
  */
 @Mojo(name = "embeddWebapp", 
-	defaultPhase = LifecyclePhase.GENERATE_RESOURCES, 
+	defaultPhase = LifecyclePhase.PREPARE_PACKAGE, 
 	requiresDependencyCollection = ResolutionScope.COMPILE, 
 	requiresDependencyResolution = ResolutionScope.COMPILE)
 public class EmbeddWebappMojo extends AbstractMojo {
