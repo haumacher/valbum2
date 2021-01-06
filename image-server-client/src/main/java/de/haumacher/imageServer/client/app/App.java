@@ -31,6 +31,14 @@ import de.haumacher.util.html.HTML;
  */
 public class App implements EntryPoint {
 	
+	/**
+	 * ID of the static element on the host page that should display the currently rendered resource.
+	 */
+	private static final String MAIN_ID = "main";
+	
+	/**
+	 * The path of the (JSON) resource currently being displayed in the main element of the page.
+	 */
 	private List<String> _path = new ArrayList<>();
 
 	@Override
@@ -72,7 +80,7 @@ public class App implements EntryPoint {
 	
 	void updatePage(String base, Resource resource) throws IOException {
 		Document document = Document.get();
-		Element main = document.getElementById("main");
+		Element main = document.getElementById(MAIN_ID);
 		main.removeAllChildren();
 		
 		HeadElement head = document.getHead();
@@ -114,15 +122,8 @@ public class App implements EntryPoint {
 		Element target = event.getCurrentEventTarget().cast();
 		String href = target.getAttribute(HTML.HREF_ATTR);
 		
-		if (href.startsWith("/")) {
-			_path.clear();
-			href = href.substring(1);
-		}
-		
-		int paramIndex = href.indexOf('?');
-		if (paramIndex >= 0) {
-			href = href.substring(0, paramIndex);
-		}
+		href = removeQuery(href);
+		href = processAbsoluteUrl(href);
 		
 		String[] relative = href.split("(?<=/)");
 		for (String name : relative) {
@@ -132,23 +133,13 @@ public class App implements EntryPoint {
 					
 				case ".":
 				case "./": {
-					int size = _path.size();
-					if (size > 0 && !_path.get(size - 1).endsWith("/")) {
-						_path.remove(size - 1);
-					}
+					gotoCurrentDir();
 					continue;
 				}
 					
 				case "..":
 				case "../": {
-					int size = _path.size();
-					if (size > 0 && !_path.get(size - 1).endsWith("/")) {
-						_path.remove(size - 1);
-						size--;
-					}
-					if (size > 0) {
-						_path.remove(size - 1);
-					}
+					gotoParentDir();
 					break;
 				}
 					
@@ -159,6 +150,50 @@ public class App implements EntryPoint {
 		}
 		
 		loadPage();
+	}
+
+	/** 
+	 * Navigates to the parent directory of the directory containing the current resource.
+	 */
+	private void gotoParentDir() {
+		gotoCurrentDir();
+		
+		int size = _path.size();
+		if (size > 0) {
+			_path.remove(size - 1);
+		}
+	}
+
+	/** 
+	 * Navigates to the current directory of the resource currently being displayed.
+	 */
+	private void gotoCurrentDir() {
+		int size = _path.size();
+		if (size > 0 && !_path.get(size - 1).endsWith("/")) {
+			_path.remove(size - 1);
+		}
+	}
+
+	/** 
+	 * Navigates to the root resource, if the given URL is absolute.
+	 */
+	private String processAbsoluteUrl(String url) {
+		if (url.startsWith("/")) {
+			_path.clear();
+			url = url.substring(1);
+		}
+		return url;
+	}
+
+	/** 
+	 * Removes the query part from the given URL.
+	 */
+	private String removeQuery(String url) {
+		int paramIndex = url.indexOf('?');
+		if (paramIndex >= 0) {
+			url = url.substring(0, paramIndex);
+		}
+		return url;
 	}
 
 	static void displayError(String message) {
