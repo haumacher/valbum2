@@ -3,12 +3,17 @@ package de.haumacher.imageServer.client.app;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import com.google.gson.stream.JsonReader;
 import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.dom.client.BaseElement;
+import com.google.gwt.dom.client.BodyElement;
 import com.google.gwt.dom.client.DivElement;
 import com.google.gwt.dom.client.Document;
 import com.google.gwt.dom.client.Element;
@@ -23,27 +28,88 @@ import com.google.gwt.http.client.Response;
 import com.google.gwt.user.client.Event;
 
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.ui.Controls;
 import de.haumacher.imageServer.shared.ui.ResourceRenderer;
 import de.haumacher.util.html.HTML;
+import de.haumacher.util.xml.XmlAppendable;
 
 /**
  * {@link EntryPoint} of the application.
  */
 public class App implements EntryPoint {
 	
+	private static final Logger LOG = Logger.getLogger(App.class.getName());
+	
 	/**
 	 * ID of the static element on the host page that should display the currently rendered resource.
 	 */
 	private static final String MAIN_ID = "main";
+
+	private static final ControlHandler NONE = new ControlHandler() {
+		@Override
+		public boolean handleEvent(Element target, Event event) {
+			return false;
+		}
+	};
 	
 	/**
 	 * The path of the (JSON) resource currently being displayed in the main element of the page.
 	 */
 	private List<String> _path = new ArrayList<>();
+	
+	private Map<String, ControlHandler> _controlHandlers = new HashMap<>();
+
+	private ControlHandler _handler = NONE;
+	
+	private static App INSTANCE;
+	
+	/**
+	 * The {@link App} instance.
+	 */
+	public static App getInstance() {
+		return INSTANCE;
+	}
 
 	@Override
 	public void onModuleLoad() {
+		INSTANCE = this;
+		
+		_controlHandlers.put(Controls.PAGE_CONTROL, new PageControlHandler());
+		
+		BodyElement body = Document.get().getBody();
+	    Event.sinkEvents(body, Event.ONCLICK);
+	    Event.sinkEvents(body, Event.ONKEYDOWN);
+	    Event.setEventListener(body, this::handleEvent);
+	    
 		loadPage();
+	}
+	
+	void handleEvent(Event event) {
+		Element orig = event.getEventTarget().cast();
+		Element target = orig;
+		while (target != null) {
+			if (target.hasAttribute(HTML.DATA_CONTROL_ATTR)) {
+				String controlName = target.getAttribute(HTML.DATA_CONTROL_ATTR);
+				ControlHandler handler = getHandler(controlName);
+				if (handler != null) {
+					if (handler.handleEvent(target, event)) {
+						return;
+					}
+				}
+				return;
+			}
+			target = target.getParentElement();
+		}
+		
+		_handler.handleEvent(orig, event);
+	}
+
+	private ControlHandler getHandler(String controlName) {
+		ControlHandler handler = _controlHandlers.get(controlName);
+		if (handler == null) {
+			LOG.log(Level.WARNING, "No handler registered for control '" + controlName + "'.");
+		}
+		return handler;
 	}
 
 	private void loadPage() {
@@ -59,7 +125,7 @@ public class App implements EntryPoint {
 						
 						try {
 							Resource resource = Resource.readPolymorphic(json);
-							updatePage(base, resource);
+							updatePage(currentDir(base), resource);
 						} catch (IOException ex) {
 							displayError("Couldn't parse response: " + response.getStatusText());
 						}
@@ -79,10 +145,22 @@ public class App implements EntryPoint {
 	}
 	
 	void updatePage(String base, Resource resource) throws IOException {
-		Document document = Document.get();
-		Element main = document.getElementById(MAIN_ID);
-		main.removeAllChildren();
+		setBaseUrl(base);
+		resource.visit(ResourceRenderer.INSTANCE, createUpdater());
+		installHandler(resource.getHandler());
+	}
+
+	private void installHandler(String handlerName) {
+		if (handlerName == null) {
+			_handler = NONE;
+			return;
+		}
 		
+		_handler = getHandler(handlerName);
+	}
+
+	private void setBaseUrl(String base) {
+		Document document = Document.get();
 		HeadElement head = document.getHead();
 		NodeList<Element> baseElements = head.getElementsByTagName("base");
 		for (int n = 0, cnt = baseElements.getLength(); n < cnt; n++) {
@@ -90,16 +168,14 @@ public class App implements EntryPoint {
 		}
 		
 		BaseElement baseElement = document.createBaseElement();
-		if (!base.endsWith("/")) {
-			int sepIndex = base.lastIndexOf('/');
-			if (sepIndex >= 0) {
-				base = base.substring(0, sepIndex + 1);
-			}
-		}
 		baseElement.setHref(base);
 		head.appendChild(baseElement);
-		
-		resource.visit(ResourceRenderer.INSTANCE, new DomBuilder(main) {
+	}
+
+	private XmlAppendable createUpdater() {
+		Element main = getMainElement();
+		main.removeAllChildren();
+		XmlAppendable out = new DomBuilder(main) {
 			@Override
 			public void attr(String name, CharSequence value) throws IOException {
 				super.attr(name, value);
@@ -112,7 +188,27 @@ public class App implements EntryPoint {
 					}
 				}
 			}
-		});
+		};
+		return out;
+	}
+
+	private Element getMainElement() {
+		Document document = Document.get();
+		Element main = document.getElementById(MAIN_ID);
+		return main;
+	}
+
+	/** 
+	 * URL pointing to the current directory of the given URL.
+	 */
+	static final String currentDir(String url) {
+		if (!url.endsWith("/")) {
+			int sepIndex = url.lastIndexOf('/');
+			if (sepIndex >= 0) {
+				url = url.substring(0, sepIndex + 1);
+			}
+		}
+		return url;
 	}
 
 	void handleNavigation(Event event) {
@@ -122,9 +218,17 @@ public class App implements EntryPoint {
 		Element target = event.getCurrentEventTarget().cast();
 		String href = target.getAttribute(HTML.HREF_ATTR);
 		
+		gotoTarget(href);
+	}
+
+	/** 
+	 * Navigates to a new resource.
+	 *
+	 * @param href URL of the target resource to display.
+	 */
+	public void gotoTarget(String href) {
 		href = removeQuery(href);
 		href = processAbsoluteUrl(href);
-		
 		gotoCurrentDir();
 		
 		String[] relative = href.split("(?<=/)");

@@ -339,7 +339,6 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 
 	@Override
 	public Void visit(ImageInfo image, XmlAppendable out) throws IOException {
-		
 		out.begin(DIV);
 		out.attr(ID_ATTR, "page");
 		out.attr(CLASS_ATTR, "image-page");

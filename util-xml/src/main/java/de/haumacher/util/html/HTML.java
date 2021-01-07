@@ -41,4 +41,5 @@ public interface HTML {
 	String CLASS_ATTR = "class";
 	String DRAGGABLE_ATTR = "draggable";
 
+	String DATA_CONTROL_ATTR = "data-control";
 }
