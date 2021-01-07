@@ -58,24 +58,15 @@ public class AlbumInfo implements Resource {
 	}
 	
 	/**
-	 * TODO
-	 *
-	 * @param image
+	 * Adds the given image.
+	 * 
+	 * <p>
+	 * This is part of a bulk operation that must be completed with a call to {@link #updateLinks()}.
+	 * </p>
 	 */
-	public void addImage(ImageInfo image) {
+	public void bulkAddImage(ImageInfo image) {
 		ImageInfo clash = _imageByName.put(image.getName(), image);
 		assert clash == null : "Duplicate name '" + image.getName() + "'.";
-		
-		int size = _images.size();
-		if (size > 0) {
-			ImageInfo previous = _images.get(size - 1);
-			previous.setNext(image);
-			image.setPrevious(previous);
-		} else {
-			image.setPrevious(null);
-		}
-		image.setNext(null);
-		
 		_images.add(image);
 	}
 	
@@ -107,16 +98,25 @@ public class AlbumInfo implements Resource {
 		updateLinks();
 	}
 
-	private void updateLinks() {
+	/**
+	 * Updates internal links after a number of {@link #bulkAddImage(ImageInfo)} operations.
+	 */
+	public void updateLinks() {
+		List<ImageInfo> images = _images;
+		String home= images.get(0).getName();
+		String end = images.get(images.size() - 1).getName();
+
 		for (int n = 0, size = _images.size(); n < size; n++) {
 			ImageInfo current = _images.get(n);
+			current.setHome(home);
+			current.setEnd(end);
 			if (n > 0) {
-				current.setPrevious(_images.get(n - 1));
+				current.setPrevious(_images.get(n - 1).getName());
 			} else {
 				current.setPrevious(null);
 			}
 			if (n + 1 < size) {
-				current.setNext(_images.get(n + 1));
+				current.setNext(_images.get(n + 1).getName());
 			} else {
 				current.setNext(null);
 			}
@@ -170,7 +170,7 @@ public class AlbumInfo implements Resource {
 				case "images":
 					json.beginArray();
 					while (json.hasNext()) {
-						addImage(ImageInfo.read(json));
+						bulkAddImage(ImageInfo.read(json));
 					}
 					json.endArray();
 					break;

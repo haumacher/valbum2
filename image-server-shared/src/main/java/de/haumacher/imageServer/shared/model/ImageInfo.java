@@ -19,14 +19,17 @@ public class ImageInfo implements Resource {
 	private transient AlbumInfo _owner;
 	
 	private int _depth;
+	private Kind _kind;
 	private String _name;
 	private Date _date;
 	private int _width;
 	private int _height;
 	private String _comment;
-	private ImageInfo _previous;
-	private ImageInfo _next;
-	private Kind _kind;
+	
+	private String _previous;
+	private String _next;
+	private String _home;
+	private String _end;
 	
 	public enum Kind {
 		IMAGE, VIDEO;
@@ -152,20 +155,63 @@ public class ImageInfo implements Resource {
 		return _width;
 	}
 
+	/**
+	 * Name of the resource preceding this one in its {@link #getAlbum()}.
+	 */
+	public String getPrevious() {
+		return _previous;
+	}
+
+	void setPrevious(String name) {
+		_previous = name;
+	}
+
+	/**
+	 * Name of the resource following this one in its {@link #getAlbum()}.
+	 */
+	public String getNext() {
+		return _next;
+	}
+
+	void setNext(String name) {
+		_next = name;		
+	}
+
+	/** 
+	 * Name of the first resource of the album of this image.
+	 */
+	public String getHome() {
+		return _home;
+	}
+
+	void setHome(String home) {
+		_home = home;
+	}
+
+	/** 
+	 * Name of the last resource of the album of this image.
+	 */
+	public String getEnd() {
+		return _end;
+	}
+
+	void setEnd(String end) {
+		_end = end;
+	}
+
 	@Override
 	public void writeContents(JsonWriter json) throws IOException {
-		json.name("name");
-		json.value(getName());
-		json.name("width");
-		json.value(getWidth());
-		json.name("height");
-		json.value(getHeight());
-		json.name("date");
-		json.value(getDate().getTime());
-		json.name("depth");
-		json.value(getDepth());
-		Json.optionalProperty(json, "comment", getComment());
-		Json.optionalProperty(json, "kind", getKind().name());
+		Json.property(json, "name", getName());
+		Json.property(json, "width", getWidth());
+		Json.property(json, "height", getHeight());
+		Json.property(json, "date", getDate().getTime());
+		Json.property(json, "depth", getDepth());
+		Json.propertyOptional(json, "comment", getComment());
+		Json.propertyOptional(json, "kind", getKind().name());
+		Json.propertyOptional(json, "prev", getPrevious());
+		Json.propertyOptional(json, "next", getNext());
+		Json.property(json, "home", getHome());
+		Json.property(json, "end", getEnd());
 	}
 	
 	/**
@@ -202,6 +248,18 @@ public class ImageInfo implements Resource {
 			case "kind":
 				setKind(Kind.valueOf(json.nextString()));
 				break;
+			case "prev":
+				setPrevious(json.nextString());
+				break;
+			case "next":
+				setNext(json.nextString());
+				break;
+			case "home":
+				setHome(json.nextString());
+				break;
+			case "end":
+				setEnd(json.nextString());
+				break;
 			default:
 				Resource.super.readProperty(json, property);
 		}
@@ -210,28 +268,6 @@ public class ImageInfo implements Resource {
 	@Override
 	public <R, A, E extends Throwable> R visit(Visitor<R, A, E> v, A arg) throws E {
 		return v.visit(this, arg);
-	}
-	
-	/**
-	 * The {@link ImageInfo} preceding this one in its {@link #getAlbum()}.
-	 */
-	public ImageInfo getPrevious() {
-		return _previous;
-	}
-
-	void setPrevious(ImageInfo previous) {
-		_previous = previous;
-	}
-	
-	/**
-	 * The {@link ImageInfo} following this one in its {@link #getAlbum()}.
-	 */
-	public ImageInfo getNext() {
-		return _next;
-	}
-
-	void setNext(ImageInfo next) {
-		_next = next;
 	}
 
 }

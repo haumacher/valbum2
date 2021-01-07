@@ -18,15 +18,63 @@ public class Json {
 	 * Writes an optional object property.
 	 *
 	 * @param json The {@link JsonWriter} to write to.
+	 * @param name The property name.
 	 * @param value The value to write (may be <code>null</code>).
 	 */
-	public static void optionalProperty(JsonWriter json, String name, String value) throws IOException {
+	public static void propertyOptional(JsonWriter json, String name, String value) throws IOException {
 		if (value != null) {
-			json.name(name);
-			json.value(value);
+			property(json, name, value);
 		}
 	}
 
+	/** 
+	 * Writes an object property.
+	 *
+	 * @param json The {@link JsonWriter} to write to.
+	 * @param name The property name.
+	 * @param value The value to write (may be <code>null</code>).
+	 */
+	public static void property(JsonWriter json, String name, String value) throws IOException {
+		json.name(name);
+		json.value(value);
+	}
+
+	/** 
+	 * Writes an object property.
+	 *
+	 * @param json The {@link JsonWriter} to write to.
+	 * @param name The property name.
+	 * @param value The value to write (may be <code>null</code>).
+	 */
+	public static void property(JsonWriter json, String name, boolean value) throws IOException {
+		json.name(name);
+		json.value(value);
+	}
+	
+	/** 
+	 * Writes an object property.
+	 *
+	 * @param json The {@link JsonWriter} to write to.
+	 * @param name The property name.
+	 * @param value The value to write (may be <code>null</code>).
+	 */
+	public static void property(JsonWriter json, String name, double value) throws IOException {
+		json.name(name);
+		json.value(value);
+	}
+	
+	/** 
+	 * Writes an object property.
+	 *
+	 * @param json The {@link JsonWriter} to write to.
+	 * @param name The property name.
+	 * @param value The value to write (may be <code>null</code>).
+	 */
+	public static void property(JsonWriter json, String name, long value) throws IOException {
+		json.name(name);
+		json.value(value);
+	}
+	
 	/** 
 	 * Writes an optional object property.
 	 *

@@ -125,6 +125,8 @@ public class App implements EntryPoint {
 		href = removeQuery(href);
 		href = processAbsoluteUrl(href);
 		
+		gotoCurrentDir();
+		
 		String[] relative = href.split("(?<=/)");
 		for (String name : relative) {
 			switch (name) {

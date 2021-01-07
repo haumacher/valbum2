@@ -307,8 +307,9 @@ public class ResourceCache {
 					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
 					continue;
 				}
-				album.addImage(image);
+				album.bulkAddImage(image);
 			}
+			album.updateLinks();
 			
 			album.sort((a, b) -> a.getDate().compareTo(b.getDate()));
 		

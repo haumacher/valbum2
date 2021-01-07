@@ -86,7 +86,7 @@ public class AlbumProperties implements JsonSerializable {
 	public void writeContents(JsonWriter json) throws IOException {
 		json.name("title");
 		json.value(getTitle());
-		Json.optionalProperty(json, "sub-title", getSubTitle());
+		Json.propertyOptional(json, "sub-title", getSubTitle());
 		Json.optionalProperty(json, "index-picture", getIndexPicture());
 	}
 

@@ -6,7 +6,6 @@ package de.haumacher.imageServer.shared.ui;
 import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
-import java.util.List;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumProperties;
@@ -340,32 +339,26 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 
 	@Override
 	public Void visit(ImageInfo image, XmlAppendable out) throws IOException {
-		ImageInfo previous = image.getPrevious();
-		String previousUrl = previous == null ? null : previous.getName() + "?type=page";
-		
-		ImageInfo next = image.getNext();
-		String nextUrl = next == null ? null : next.getName() + "?type=page";
 		
 		out.begin(DIV);
 		out.attr(ID_ATTR, "page");
 		out.attr(CLASS_ATTR, "image-page");
+
+		String previous = image.getPrevious();
+		String previousUrl = previous == null ? null : previous + "?type=page";
 		if (previousUrl != null) {
 			out.attr("data-left", previousUrl);
 		}
+		
+		String next = image.getNext();
+		String nextUrl = next == null ? null : next + "?type=page";
 		if (nextUrl != null) {
 			out.attr("data-right", nextUrl);
 		}
+
 		out.attr("data-up", "./");
-		
-		AlbumInfo album = image.getAlbum();
-		if (album != null) {
-			List<ImageInfo> images = album.getImages();
-			String homeUrl = images.get(0).getName() + "?type=page";
-			out.attr("data-home", homeUrl);
-			
-			String endUrl = images.get(images.size() - 1).getName() + "?type=page";
-			out.attr("data-end", endUrl);
-		}
+		out.attr("data-home", image.getHome() + "?type=page");
+		out.attr("data-end", image.getEnd() +  "?type=page");
 		
 		{
 			switch (image.getKind()) {
@@ -436,6 +429,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 						{
 							icon(out, "fas fa-chevron-right");
 						}
+						out.end();
 					}
 					out.end();
 				}
