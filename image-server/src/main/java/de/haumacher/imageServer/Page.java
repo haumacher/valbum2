@@ -74,7 +74,13 @@ public class Page implements XmlFragment {
 				
 				out.begin(SCRIPT);
 				out.attr(TYPE_ATTR, "text/javascript");
-				out.attr(SRC_ATTR, Main.STATIC_PREFIX + "/script/valbum.js");
+				out.openAttr(SRC_ATTR);
+				{
+					out.append(context.getContextPath());
+					out.append(Main.STATIC_PREFIX);
+					out.append("/script/valbum.js");
+				}
+				out.closeAttr();
 				out.end();
 			}
 			out.end();
