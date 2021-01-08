@@ -172,8 +172,8 @@ a {
 .goto-previous,
 .goto-next {
 	position: absolute;
-	top: 0;
-	bottom: 0;
+	top: 200px;
+	bottom: 200px;
 	font-size: 40px;
 }
 
