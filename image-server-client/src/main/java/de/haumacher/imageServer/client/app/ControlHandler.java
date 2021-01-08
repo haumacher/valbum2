@@ -3,8 +3,8 @@
  */
 package de.haumacher.imageServer.client.app;
 
-import com.google.gwt.dom.client.Element;
-import com.google.gwt.user.client.Event;
+import elemental2.dom.Element;
+import elemental2.dom.Event;
 
 /**
  * Controller functionality for a UI element.

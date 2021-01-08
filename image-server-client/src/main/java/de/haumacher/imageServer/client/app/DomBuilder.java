@@ -5,10 +5,9 @@ package de.haumacher.imageServer.client.app;
 
 import java.io.IOException;
 
-import com.google.gwt.dom.client.Document;
-import com.google.gwt.dom.client.Element;
-
 import de.haumacher.util.xml.XmlAppendable;
+import elemental2.dom.Document;
+import elemental2.dom.Element;
 
 /**
  * {@link XmlAppendable} directly creating DOM structures.
@@ -27,7 +26,7 @@ public class DomBuilder implements XmlAppendable {
 	 */
 	public DomBuilder(Element parent) {
 		_current = parent;
-		_document = _current.getOwnerDocument();
+		_document = _current.ownerDocument;
 	}
 
 	@Override
@@ -70,7 +69,7 @@ public class DomBuilder implements XmlAppendable {
 
 	@Override
 	public void end() throws IOException {
-		_current = _current.getParentElement();
+		_current = _current.parentElement;
 	}
 
 	@Override

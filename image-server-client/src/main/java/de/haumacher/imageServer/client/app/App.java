@@ -12,26 +12,26 @@ import java.util.stream.Collectors;
 
 import com.google.gson.stream.JsonReader;
 import com.google.gwt.core.client.EntryPoint;
-import com.google.gwt.dom.client.BaseElement;
-import com.google.gwt.dom.client.BodyElement;
-import com.google.gwt.dom.client.DivElement;
-import com.google.gwt.dom.client.Document;
-import com.google.gwt.dom.client.Element;
-import com.google.gwt.dom.client.HeadElement;
-import com.google.gwt.dom.client.Node;
-import com.google.gwt.dom.client.NodeList;
 import com.google.gwt.http.client.Request;
 import com.google.gwt.http.client.RequestBuilder;
 import com.google.gwt.http.client.RequestCallback;
 import com.google.gwt.http.client.RequestException;
 import com.google.gwt.http.client.Response;
-import com.google.gwt.user.client.Event;
 
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.Controls;
 import de.haumacher.imageServer.shared.ui.ResourceRenderer;
 import de.haumacher.util.html.HTML;
 import de.haumacher.util.xml.XmlAppendable;
+import elemental2.dom.Document;
+import elemental2.dom.DomGlobal;
+import elemental2.dom.Element;
+import elemental2.dom.Event;
+import elemental2.dom.HTMLBaseElement;
+import elemental2.dom.HTMLBodyElement;
+import elemental2.dom.HTMLHeadElement;
+import elemental2.dom.Node;
+import elemental2.dom.NodeList;
 
 /**
  * {@link EntryPoint} of the application.
@@ -76,16 +76,18 @@ public class App implements EntryPoint {
 		
 		_controlHandlers.put(Controls.PAGE_CONTROL, new PageControlHandler());
 		
-		BodyElement body = Document.get().getBody();
-	    Event.sinkEvents(body, Event.ONCLICK);
-	    Event.sinkEvents(body, Event.ONKEYDOWN);
-	    Event.setEventListener(body, this::handleEvent);
+		HTMLBodyElement body = DomGlobal.document.body;
+		
+		body.addEventListener("click", this::handleEvent);
+		body.addEventListener("keydown", this::handleEvent);
+		body.addEventListener("wheel", this::handleEvent);
+		body.addEventListener("mousedown", this::handleEvent);
 	    
 		loadPage();
 	}
-	
+		
 	void handleEvent(Event event) {
-		Element orig = event.getEventTarget().cast();
+		Element orig = (Element) event.target;
 		Element target = orig;
 		while (target != null) {
 			if (target.hasAttribute(HTML.DATA_CONTROL_ATTR)) {
@@ -98,7 +100,7 @@ public class App implements EntryPoint {
 				}
 				return;
 			}
-			target = target.getParentElement();
+			target = target.parentElement;
 		}
 		
 		_handler.handleEvent(orig, event);
@@ -160,21 +162,21 @@ public class App implements EntryPoint {
 	}
 
 	private void setBaseUrl(String base) {
-		Document document = Document.get();
-		HeadElement head = document.getHead();
+		Document document = DomGlobal.document;
+		HTMLHeadElement head = document.head;
 		NodeList<Element> baseElements = head.getElementsByTagName("base");
 		for (int n = 0, cnt = baseElements.getLength(); n < cnt; n++) {
-			baseElements.getItem(n).removeFromParent();
+			baseElements.item(n).remove();
 		}
 		
-		BaseElement baseElement = document.createBaseElement();
-		baseElement.setHref(base);
+		HTMLBaseElement baseElement = (HTMLBaseElement) document.createElement(HTML.BASE);
+		baseElement.href = base;
 		head.appendChild(baseElement);
 	}
 
 	private XmlAppendable createUpdater() {
 		Element main = getMainElement();
-		main.removeAllChildren();
+		removeAllChildren(main);
 		XmlAppendable out = new DomBuilder(main) {
 			@Override
 			public void attr(String name, CharSequence value) throws IOException {
@@ -182,9 +184,8 @@ public class App implements EntryPoint {
 
 				if (HTML.HREF_ATTR.equals(name)) {
 					Element current = current();
-					if (HTML.A.equals(current.getTagName().toLowerCase())) {
-					    Event.sinkEvents(current, Event.ONCLICK);
-					    Event.setEventListener(current, App.this::handleNavigation); 											
+					if (HTML.A.equalsIgnoreCase(current.tagName)) {
+					    current.addEventListener("click", App.this::handleNavigation);
 					}
 				}
 			}
@@ -192,8 +193,16 @@ public class App implements EntryPoint {
 		return out;
 	}
 
+	private void removeAllChildren(Element parent) {
+		Node lastChild = parent.lastChild;
+		while (lastChild != null) {
+			parent.removeChild(lastChild);
+			lastChild = parent.lastChild;
+		}
+	}
+
 	private Element getMainElement() {
-		Document document = Document.get();
+		Document document = DomGlobal.document;
 		Element main = document.getElementById(MAIN_ID);
 		return main;
 	}
@@ -215,7 +224,7 @@ public class App implements EntryPoint {
 		event.stopPropagation();
 		event.preventDefault();
 		
-		Element target = event.getCurrentEventTarget().cast();
+		Element target = (Element) event.currentTarget;
 		String href = target.getAttribute(HTML.HREF_ATTR);
 		
 		gotoTarget(href);
@@ -303,17 +312,17 @@ public class App implements EntryPoint {
 	}
 
 	static void displayError(String message) {
-		Document.get().getBody().appendChild(div(message));
+		DomGlobal.document.body.appendChild(div(message));
 	}
 
-	static DivElement div(String message) {
-		DivElement result = Document.get().createDivElement();
+	static Element div(String message) {
+		Element result = DomGlobal.document.createElement(HTML.DIV);
 		result.appendChild(text(message));
 		return result;
 	}
 
 	static Node text(String message) {
-		return Document.get().createTextNode(message);
+		return DomGlobal.document.createTextNode(message);
 	}
 
 }
