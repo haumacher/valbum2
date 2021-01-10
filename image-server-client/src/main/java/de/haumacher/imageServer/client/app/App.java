@@ -2,13 +2,10 @@ package de.haumacher.imageServer.client.app;
 
 import java.io.IOException;
 import java.io.StringReader;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import com.google.gson.stream.JsonReader;
 import com.google.gwt.core.client.EntryPoint;
@@ -32,6 +29,9 @@ import elemental2.dom.HTMLBodyElement;
 import elemental2.dom.HTMLHeadElement;
 import elemental2.dom.Node;
 import elemental2.dom.NodeList;
+import elemental2.dom.PopStateEvent;
+import elemental2.dom.ScrollToOptions;
+import elemental2.dom.Window;
 
 /**
  * {@link EntryPoint} of the application.
@@ -52,10 +52,7 @@ public class App implements EntryPoint {
 		}
 	};
 	
-	/**
-	 * The path of the (JSON) resource currently being displayed in the main element of the page.
-	 */
-	private List<String> _path = new ArrayList<>();
+	private Map<String, Double> _scrollOffset = new HashMap<>();
 	
 	private Map<String, ControlHandler> _controlHandlers = new HashMap<>();
 
@@ -82,8 +79,10 @@ public class App implements EntryPoint {
 		body.addEventListener("keydown", this::handleEvent);
 		body.addEventListener("wheel", this::handleEvent);
 		body.addEventListener("mousedown", this::handleEvent);
+		
+		DomGlobal.window.addEventListener("popstate", this::onPopState);
 	    
-		loadPage();
+		loadPage(ResourcePath.toPath(DomGlobal.window.location.hash), false);
 	}
 		
 	void handleEvent(Event event) {
@@ -114,9 +113,8 @@ public class App implements EntryPoint {
 		return handler;
 	}
 
-	private void loadPage() {
-		String base = "/" + _path.stream().collect(Collectors.joining(""));
-		String url = base + "?type=json";
+	private void loadPage(String path, boolean back) {
+		String url = path + "?type=json";
 		RequestBuilder builder = new RequestBuilder(RequestBuilder.GET, url);
 		try {
 			builder.sendRequest(null, new RequestCallback() {
@@ -127,12 +125,12 @@ public class App implements EntryPoint {
 						
 						try {
 							Resource resource = Resource.readPolymorphic(json);
-							updatePage(currentDir(base), resource);
+							updatePage(path, resource, back);
 						} catch (IOException ex) {
-							displayError("Couldn't parse response: " + response.getStatusText());
+							displayError("Couldn't parse response from '" + url + "': " + response.getText());
 						}
 					} else {
-						displayError("Couldn't retrieve JSON (" + response.getStatusText() + "): " + url);
+						displayError("Couldn't retrieve JSON (" + response.getText() + "): " + url);
 					}
 				}
 
@@ -146,10 +144,38 @@ public class App implements EntryPoint {
 		}
 	}
 	
-	void updatePage(String base, Resource resource) throws IOException {
-		setBaseUrl(base);
+	void onPopState(Event event) {
+		onPopState((PopStateEvent) event);
+	}
+	
+	void onPopState(PopStateEvent event) {
+		Window window = DomGlobal.window;
+		String newPath = ResourcePath.toPath(window.location.hash);
+		gotoTarget(newPath, true);
+	}
+	
+	void updatePage(String path, Resource resource, boolean back) throws IOException {
+		Window window = DomGlobal.window;
+		
+		setBaseUrl(currentDir(path));
 		resource.visit(ResourceRenderer.INSTANCE, createUpdater());
 		installHandler(resource.getHandler());
+		
+		if (!back) {
+			window.history.pushState(null, "", window.location.pathname + "#" + path);
+		}
+		
+		Double lastOffset = _scrollOffset.get(path);
+		if (lastOffset != null) {
+			ScrollToOptions options = ScrollToOptions.create();
+			options.setTop(lastOffset.doubleValue());
+			window.scroll(options);
+		}
+	}
+
+	private void rememberScrollOffset() {
+		Window window = DomGlobal.window;
+		_scrollOffset.put(ResourcePath.toPath(window.location.hash), Double.valueOf(window.scrollY));
 	}
 
 	private void installHandler(String handlerName) {
@@ -223,7 +249,9 @@ public class App implements EntryPoint {
 	void handleNavigation(Event event) {
 		event.stopPropagation();
 		event.preventDefault();
-		
+
+		rememberScrollOffset();
+
 		Element target = (Element) event.currentTarget;
 		String href = target.getAttribute(HTML.HREF_ATTR);
 		
@@ -236,68 +264,11 @@ public class App implements EntryPoint {
 	 * @param href URL of the target resource to display.
 	 */
 	public void gotoTarget(String href) {
-		href = removeQuery(href);
-		href = processAbsoluteUrl(href);
-		gotoCurrentDir();
-		
-		String[] relative = href.split("(?<=/)");
-		for (String name : relative) {
-			switch (name) {
-				case "":
-					continue;
-					
-				case ".":
-				case "./": {
-					gotoCurrentDir();
-					continue;
-				}
-					
-				case "..":
-				case "../": {
-					gotoParentDir();
-					break;
-				}
-					
-				default:
-					_path.add(name);
-					break;
-			}
-		}
-		
-		loadPage();
+		gotoTarget(href, false);
 	}
-
-	/** 
-	 * Navigates to the parent directory of the directory containing the current resource.
-	 */
-	private void gotoParentDir() {
-		gotoCurrentDir();
-		
-		int size = _path.size();
-		if (size > 0) {
-			_path.remove(size - 1);
-		}
-	}
-
-	/** 
-	 * Navigates to the current directory of the resource currently being displayed.
-	 */
-	private void gotoCurrentDir() {
-		int size = _path.size();
-		if (size > 0 && !_path.get(size - 1).endsWith("/")) {
-			_path.remove(size - 1);
-		}
-	}
-
-	/** 
-	 * Navigates to the root resource, if the given URL is absolute.
-	 */
-	private String processAbsoluteUrl(String url) {
-		if (url.startsWith("/")) {
-			_path.clear();
-			url = url.substring(1);
-		}
-		return url;
+	
+	void gotoTarget(String href, boolean back) {
+		loadPage(new ResourcePath(DomGlobal.window.location.hash).navigateTo(removeQuery(href)).getPath(), back);
 	}
 
 	/** 
