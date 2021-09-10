@@ -94,7 +94,7 @@ public class Main {
 		server.setHandler(handlers);
 		server.start();
 
-		System.out.println("Image server started: http://localhost:" + _port + _contextPath + "/");
+		System.out.println("Image server started: http://localhost:" + _port + _contextPath + "/ serving folder: " + _basePath);
 		server.join();	
 	}
 

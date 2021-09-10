@@ -11,7 +11,6 @@
 		<module>../embedd-webapp-maven-plugin</module>
 		<module>../util-servlet</module>
 		<module>../util-xml</module>
-		<module>../util-gwt</module>
 		<module>../image-server-shared</module>
 		<module>../image-server-client</module>
 		<module>../image-server</module>
