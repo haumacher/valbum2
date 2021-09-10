@@ -70,7 +70,7 @@ public class Main {
 	public Main(Namespace ns) {
 		_port = ns.getInt("port");
 		_basePath = ns.get("basepath");
-		_contextPath = ns.get("contextpath");
+		_contextPath = normlizeContextPath(ns.get("contextpath"));
 	}
 	
 	private void start() throws Exception {
@@ -91,11 +91,32 @@ public class Main {
 		webapp.setClassLoader(Main.class.getClassLoader());
 
 		handlers.addHandler(webapp);
+		
+		if (!_contextPath.equals("")) {
+			WebAppContext redirect = new WebAppContext();
+			redirect.setContextPath("");
+			redirect.setResourceBase(_basePath.toString());
+			redirect.addServlet(new ServletHolder(new RedirectServlet(_contextPath + "/")), "/");
+			handlers.addHandler(redirect);
+		}
+		
 		server.setHandler(handlers);
 		server.start();
 
 		System.out.println("Image server started: http://localhost:" + _port + _contextPath + "/ serving folder: " + _basePath);
 		server.join();	
+	}
+
+	private String normlizeContextPath(String contextPath) {
+		if (!contextPath.isEmpty()) {
+			if (!contextPath.startsWith("/")) {
+				contextPath = "/" + contextPath;
+			}
+			while (contextPath.endsWith("/")) {
+				contextPath = contextPath.substring(0, contextPath.length() - 1);
+			}
+		}
+		return contextPath;
 	}
 
 }

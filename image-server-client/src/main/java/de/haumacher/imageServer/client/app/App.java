@@ -60,8 +60,10 @@ public class App implements EntryPoint {
 
 	private ControlHandler _handler = NONE;
 	
-	private static App INSTANCE;
+	private String _contextPath;
 	
+	private static App INSTANCE;
+
 	/**
 	 * The {@link App} instance.
 	 */
@@ -73,6 +75,7 @@ public class App implements EntryPoint {
 	public void onModuleLoad() {
 		INSTANCE = this;
 		
+		_contextPath = extractContextPath(DomGlobal.window.location.pathname);
 		_controlHandlers.put(Controls.PAGE_CONTROL, new PageControlHandler());
 		
 		HTMLBodyElement body = DomGlobal.document.body;
@@ -87,6 +90,15 @@ public class App implements EntryPoint {
 		loadPage(ResourcePath.toPath(DomGlobal.window.location.hash), false);
 	}
 		
+	private String extractContextPath(String pathname) {
+		int index = pathname.lastIndexOf('/');
+		if (index >= 0) {
+			return pathname.substring(0, index); 
+		}
+		
+		return "";
+	}
+
 	void handleEvent(Event event) {
 		Element orig = (Element) event.target;
 		Element target = orig;
@@ -116,7 +128,7 @@ public class App implements EntryPoint {
 	}
 
 	private void loadPage(String path, boolean back) {
-		String url = Settings.DATA_PREFIX + path + "?type=json";
+		String url = _contextPath + Settings.DATA_PREFIX + path + "?type=json";
 		RequestBuilder builder = new RequestBuilder(RequestBuilder.GET, url);
 		try {
 			builder.sendRequest(null, new RequestCallback() {
@@ -238,14 +250,14 @@ public class App implements EntryPoint {
 	/** 
 	 * URL pointing to the current directory of the given URL.
 	 */
-	static final String currentDir(String url) {
+	final String currentDir(String url) {
 		if (!url.endsWith("/")) {
 			int sepIndex = url.lastIndexOf('/');
 			if (sepIndex >= 0) {
 				url = url.substring(0, sepIndex + 1);
 			}
 		}
-		return Settings.DATA_PREFIX + url;
+		return _contextPath + Settings.DATA_PREFIX + url;
 	}
 
 	void handleNavigation(Event event) {
