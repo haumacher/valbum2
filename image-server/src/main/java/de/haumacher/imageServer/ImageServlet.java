@@ -3,6 +3,8 @@
  */
 package de.haumacher.imageServer;
 
+import static de.haumacher.util.html.HTML.*;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -25,6 +27,7 @@ import com.google.gson.stream.JsonWriter;
 
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.ResourceRenderer;
+import de.haumacher.util.servlet.Util;
 import de.haumacher.util.xml.RenderContext;
 import de.haumacher.util.xml.ValueFragment;
 import de.haumacher.util.xml.XmlWriter;
@@ -59,6 +62,14 @@ public class ImageServlet extends HttpServlet {
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
 		Context context = new Context(request, response);
+
+		String type = context.getParameter("type");
+		if (type == null) {
+			if (pathInfo == null || pathInfo.equals("/")) {
+				serveIndex(context);
+				return;
+			}
+		}
 		
 		PathInfo resourcePath;
 		if (pathInfo == null) {
@@ -70,7 +81,7 @@ public class ImageServlet extends HttpServlet {
 				path = null;
 			} else {
 				path = Paths.get(relativePath).normalize();
-				if (path.startsWith("..")) {
+				if (path.startsWith("..") || path.startsWith("/")) {
 					error404(context);
 					return;
 				}
@@ -99,6 +110,77 @@ public class ImageServlet extends HttpServlet {
 			serveImage(context, resourcePath);
 		} else {
 			error404(context);
+		}
+	}
+
+	private void serveIndex(Context context) throws IOException {
+		HttpServletResponse response = context.response();
+		
+		response.setContentType("text/html");
+		response.setCharacterEncoding("utf-8");
+		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
+			try (XmlWriter out = new XmlWriter(w)) {
+				out.special("<!doctype html>");
+				out.begin(HTML);
+				{
+					out.begin(HEAD);
+					{
+						out.begin(META);
+						out.attr(HTTP_EQUIV_ATTR, "content-type");
+						out.attr(CONTENT_ATTR, "text/html; charset=UTF-8");
+						out.endEmpty();
+						
+						out.begin(LINK);
+						out.attr(TYPE_ATTR, "text/css");
+						out.attr(REL_ATTR, "stylesheet");
+						out.attr(HREF_ATTR, context.getContextPath() + "/style/valbum.css");
+						out.endEmpty();
+						
+						out.begin(LINK);
+						out.attr(TYPE_ATTR, "text/css");
+						out.attr(REL_ATTR, "stylesheet");
+						out.attr(HREF_ATTR, context.getContextPath() + "/webjars/font-awesome/" + Page.FA_VERSION + "/css/all.css");
+						out.endEmpty();
+						
+						out.begin(TITLE);
+						out.append("Virtual Photo Album");
+						out.end();
+						
+						out.begin(SCRIPT);
+						out.attr(TYPE_ATTR, "text/javascript");
+						out.attr(SRC_ATTR, context.getContextPath() + "/client/client.nocache.js");
+						out.end();
+					}
+					out.end();
+					
+					out.begin(BODY);
+					{
+						out.begin(NOSCRIPT);
+						{
+							out.append("Without JavaScript, you must enter here.");
+							
+							out.begin(A);
+							out.attr(HREF_ATTR, "./?type=html");
+							{
+								out.append("here");
+							}
+							out.end();
+							
+							out.append(".");
+						}
+						out.end();
+						
+						out.begin(DIV);
+						out.attr(ID_ATTR, "main");
+						{
+							out.append("Loading app...");
+						}
+						out.end();
+					}
+					out.end();
+				}
+				out.end();
+			}
 		}
 	}
 
@@ -197,6 +279,9 @@ public class ImageServlet extends HttpServlet {
 			return _request.getContextPath();
 		}
 
+		/**
+		 * See {@link HttpServletRequest#getParameter(String)}.
+		 */
 		public String getParameter(String name) {
 			return request().getParameter(name);
 		}

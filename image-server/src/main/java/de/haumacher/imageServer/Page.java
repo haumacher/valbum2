@@ -7,6 +7,7 @@ import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
 
+import de.haumacher.util.servlet.MavenUtil;
 import de.haumacher.util.xml.RenderContext;
 import de.haumacher.util.xml.XmlAppendable;
 import de.haumacher.util.xml.XmlFragment;
@@ -21,7 +22,7 @@ public class Page implements XmlFragment {
 	private CharSequence _title;
 	private XmlFragment _content;
 
-	static final String FA_VERSION;
+	public static final String FA_VERSION;
 	
 	static {
 		FA_VERSION = MavenUtil.artifactVersion("org.webjars", "font-awesome");
@@ -37,6 +38,7 @@ public class Page implements XmlFragment {
 
 	@Override
 	public void write(RenderContext context, XmlAppendable out) throws IOException {
+		out.special("<!doctype html>");
 		out.begin(HTML);
 		{
 			out.begin(HEAD);

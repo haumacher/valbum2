@@ -44,6 +44,7 @@ import de.haumacher.imageServer.shared.model.JsonSerializable;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
+import de.haumacher.util.servlet.Util;
 
 /**
  * Cache of {@link Resource}s representing directories and files in a photo album.

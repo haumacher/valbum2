@@ -27,6 +27,12 @@
 
 		<dependency>
 			<groupId>de.haumacher</groupId>
+			<artifactId>util-servlet</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
+
+		<dependency>
+			<groupId>de.haumacher</groupId>
 			<artifactId>util-xml</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
 		</dependency>

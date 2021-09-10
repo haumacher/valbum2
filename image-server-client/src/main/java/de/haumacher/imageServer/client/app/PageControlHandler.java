@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.client.app;
 
+import de.haumacher.util.gwt.Native;
 import elemental2.dom.CSSStyleDeclaration;
 import elemental2.dom.DomGlobal;
 import elemental2.dom.Element;
@@ -128,26 +129,14 @@ public class PageControlHandler implements ControlHandler {
 	}
 
 	private TXInfo txInfo(Element image) {
-		TXInfo result = get(image, "txInfo");
+		TXInfo result = Native.get(image, "txInfo");
 		if (result == null) {
 			result = new TXInfo();
-			set(image, "txInfo", result);
+			Native.set(image, "txInfo", result);
 		}
 		return result;
 	}
 
-	private native <T> T get(Element element, String property) /*-{
-	    return element[property];
-	}-*/;
-	
-	private native void delete(Element element, String property) /*-{
-	    delete element[property];
-	}-*/;
-	
-	private native void set(Element element, String property, Object value) /*-{
-	    element[property] = value;
-	}-*/;
-	
 	private <T> T withDefault(T value, T defaultValue) {
 		return value == null ? defaultValue : value;
 	}
@@ -200,7 +189,7 @@ public class PageControlHandler implements ControlHandler {
 			setTransform(image, tx, ty, scale);
 		} else {
 			image.style.transform = "none";
-			delete(image, "txInfo");
+			Native.delete(image, "txInfo");
 		}
 	}
 
@@ -215,8 +204,8 @@ public class PageControlHandler implements ControlHandler {
 		double tx = txInfo.getTx();
 		double ty = txInfo.getTy();
 		
-		set(container, "dragInfo", new Pos(startX - tx, startY - ty));
-		delete(container, "moved");
+		Native.set(container, "dragInfo", new Pos(startX - tx, startY - ty));
+		Native.delete(container, "moved");
 		
 		container.addEventListener("mousemove", _onImagePan);
 		container.addEventListener("mouseup", _onImagePanStop);
@@ -246,8 +235,8 @@ public class PageControlHandler implements ControlHandler {
 		container.removeEventListener("mouseup", _onImagePanStop);
 		container.removeEventListener("mousemove", _onImagePan);
 		
-		if (get(container, "moved") != null) {
-			delete(container, "moved");
+		if (Native.get(container, "moved") != null) {
+			Native.delete(container, "moved");
 			event.stopPropagation();
 			event.preventDefault();
 		} else {
@@ -274,11 +263,11 @@ public class PageControlHandler implements ControlHandler {
 		double scale = txInfo(image).getScale();
 		
 		setTransform(image, tx, ty, scale);
-		set(container, "moved", Boolean.TRUE);
+		Native.set(container, "moved", Boolean.TRUE);
 	}
 
 	private Pos dragInfo(HTMLElement container) {
-		return get(container, "dragInfo");
+		return Native.get(container, "dragInfo");
 	}
 	
 

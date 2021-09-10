@@ -297,6 +297,11 @@ public class XmlWriter extends Writer implements XmlAppendable {
 	}
 	
 	@Override
+	public void special(String value) throws IOException {
+		_out.append(value);
+	}
+	
+	@Override
 	public void flush() throws IOException {
 		// Nothing to flush.
 	}

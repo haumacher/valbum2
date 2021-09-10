@@ -18,6 +18,8 @@ import com.google.gwt.http.client.Response;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.Controls;
 import de.haumacher.imageServer.shared.ui.ResourceRenderer;
+import de.haumacher.imageServer.shared.ui.Settings;
+import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.html.HTML;
 import de.haumacher.util.xml.XmlAppendable;
 import elemental2.dom.Document;
@@ -114,7 +116,7 @@ public class App implements EntryPoint {
 	}
 
 	private void loadPage(String path, boolean back) {
-		String url = path + "?type=json";
+		String url = Settings.DATA_PREFIX + path + "?type=json";
 		RequestBuilder builder = new RequestBuilder(RequestBuilder.GET, url);
 		try {
 			builder.sendRequest(null, new RequestCallback() {
@@ -205,9 +207,9 @@ public class App implements EntryPoint {
 		removeAllChildren(main);
 		XmlAppendable out = new DomBuilder(main) {
 			@Override
-			public void attr(String name, CharSequence value) throws IOException {
-				super.attr(name, value);
-
+			protected void attrNonNull(String name, CharSequence value) {
+				super.attrNonNull(name, value);
+				
 				if (HTML.HREF_ATTR.equals(name)) {
 					Element current = current();
 					if (HTML.A.equalsIgnoreCase(current.tagName)) {
@@ -243,7 +245,7 @@ public class App implements EntryPoint {
 				url = url.substring(0, sepIndex + 1);
 			}
 		}
-		return url;
+		return Settings.DATA_PREFIX + url;
 	}
 
 	void handleNavigation(Event event) {

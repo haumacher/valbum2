@@ -25,6 +25,8 @@ import com.drew.metadata.exif.ExifThumbnailDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 
+import de.haumacher.util.servlet.Util;
+
 /**
  * Algorithm to generated and cache preview versions of image and video data.
  *

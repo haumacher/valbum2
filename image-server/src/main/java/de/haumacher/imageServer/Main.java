@@ -11,6 +11,8 @@ import org.eclipse.jetty.server.handler.HandlerCollection;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.webapp.WebAppContext;
 
+import de.haumacher.imageServer.shared.ui.Settings;
+import de.haumacher.util.servlet.ResourceServlet;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.helper.HelpScreenException;
 import net.sourceforge.argparse4j.impl.type.FileArgumentType;
@@ -30,7 +32,7 @@ public class Main {
 	/**
 	 * Prefix for resources served from <code>META-INF/resources</code>.
 	 */
-	public static final String STATIC_PREFIX = "/static";
+	public static final String STATIC_PREFIX = "";
 
 	/** 
 	 * Image server main method.
@@ -84,8 +86,8 @@ public class Main {
 		WebAppContext webapp = new WebAppContext();
 		webapp.setContextPath(_contextPath);
 		webapp.setResourceBase(_basePath.toString());
+		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath)), Settings.DATA_PREFIX + "/*");
 		webapp.addServlet(new ServletHolder(new ResourceServlet()), STATIC_PREFIX + "/*");
-		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath)), "/*");
 		webapp.setClassLoader(Main.class.getClassLoader());
 
 		handlers.addHandler(webapp);

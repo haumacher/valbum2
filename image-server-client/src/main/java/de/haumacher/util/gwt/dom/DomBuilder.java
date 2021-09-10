@@ -1,13 +1,12 @@
 /*
  * Copyright (c) 2020 Bernhard Haumacher. All Rights Reserved.
  */
-package de.haumacher.imageServer.client.app;
-
-import java.io.IOException;
+package de.haumacher.util.gwt.dom;
 
 import de.haumacher.util.xml.XmlAppendable;
 import elemental2.dom.Document;
 import elemental2.dom.Element;
+import elemental2.dom.Node;
 
 /**
  * {@link XmlAppendable} directly creating DOM structures.
@@ -20,17 +19,51 @@ public class DomBuilder implements XmlAppendable {
 	private Element _current;
 	private String _attributeName;
 	private StringBuilder _buffer;
+	private Element _last;
+	private Node _before;
 	
 	/** 
 	 * Creates a {@link DomBuilder}.
 	 */
 	public DomBuilder(Element parent) {
+		this(parent, null);
+	}
+	
+	/**
+	 * Creates a {@link DomBuilder}.
+	 *
+	 * @param parent
+	 *        The parent {@link Element} to insert to.
+	 * @param before
+	 *        The reference element that is a child of the given parent. New
+	 *        contents is inserted before this reference {@link Node}.
+	 */
+	public DomBuilder(Element parent, Node before) {
 		_current = parent;
+		_before = before;
 		_document = _current.ownerDocument;
 	}
 
+	/**
+	 * The current {@link Element} being created.
+	 */
+	public Element getCurrent() {
+		return _current;
+	}
+	
+	/**
+	 * The last {@link Element} that was created.
+	 * 
+	 * <p>
+	 * The last {@link Element} created is the one last closed with a call to {@link #end()}.
+	 * </p>
+	 */
+	public Element getLast() {
+		return _last;
+	}
+
 	@Override
-	public XmlAppendable append(CharSequence csq) throws IOException {
+	public XmlAppendable append(CharSequence csq) {
 		if (_buffer != null) {
 			_buffer.append(csq);
 		} else {
@@ -41,7 +74,7 @@ public class DomBuilder implements XmlAppendable {
 
 	@Override
 	public XmlAppendable append(CharSequence csq, int start, int end)
-			throws IOException {
+			{
 		if (_buffer != null) {
 			_buffer.append(csq, start, end);
 		} else {
@@ -51,7 +84,7 @@ public class DomBuilder implements XmlAppendable {
 	}
 
 	@Override
-	public XmlAppendable append(char c) throws IOException {
+	public XmlAppendable append(char c) {
 		if (_buffer != null) {
 			_buffer.append(c);
 		} else {
@@ -61,24 +94,38 @@ public class DomBuilder implements XmlAppendable {
 	}
 
 	@Override
-	public void begin(String name) throws IOException {
+	public void begin(String name) {
 		Element child = _document.createElement(name);
-		_current.appendChild(child);
+		_current.insertBefore(child, _before);
 		_current = child;
+		_before = null;
 	}
 
 	@Override
-	public void end() throws IOException {
+	public void end() {
+		_last = _current;
 		_current = _current.parentElement;
+		_before = _last.nextSibling;
 	}
 
 	@Override
-	public void endEmpty() throws IOException {
+	public void endEmpty() {
 		end();
 	}
 
 	@Override
-	public void attr(String name, CharSequence value) throws IOException {
+	public final void attr(String name, CharSequence value) {
+		if (value != null) {
+			attrNonNull(name, value);
+		}
+	}
+
+	/** 
+	 * Sets the non-<code>null</code> attribute value.
+	 * 
+	 * @see #attr(String, CharSequence)
+	 */
+	protected void attrNonNull(String name, CharSequence value) {
 		_current.setAttribute(name, value.toString());
 	}
 	
@@ -90,15 +137,20 @@ public class DomBuilder implements XmlAppendable {
 	}
 
 	@Override
-	public void openAttr(String name) throws IOException {
+	public void openAttr(String name) {
 		_attributeName = name;
 		_buffer = new StringBuilder();
 	}
 
 	@Override
-	public void closeAttr() throws IOException {
+	public void closeAttr() {
 		attr(_attributeName, _buffer);
 		_buffer = null;
+	}
+	
+	@Override
+	public void special(String value) {
+		// Ignore.
 	}
 
 }

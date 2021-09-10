@@ -147,4 +147,13 @@ public interface XmlAppendable extends Appendable {
 	default void append(double value) throws IOException {
 		append(Double.toString(value));
 	}
+
+	/**
+	 * Directly produces the given contents without escaping.
+	 * 
+	 * <p>
+	 * This function must be exclusively used to write doctypes.
+	 * </p>
+	 */
+	void special(String value) throws IOException;
 }

@@ -13,10 +13,13 @@ public interface HTML {
 	String HTML = "html";
 	String HEAD = "head";
 	String BODY = "body";
+	String BUTTON = "button";
+	String NOSCRIPT = "noscript";
 	String TITLE = "title";
 	String META = "meta";
-	String NAME_ATTR = "name";
+	String HTTP_EQUIV_ATTR = "http-equiv";
 	String CONTENT_ATTR = "content";
+	String NAME_ATTR = "name";
 	String LINK = "link";
 	String SCRIPT = "script";
 	String REL_ATTR = "rel";
@@ -33,6 +36,7 @@ public interface HTML {
 	String SRC_ATTR = "src";
 	String WIDTH_ATTR = "width";
 	String HEIGHT_ATTR = "height";
+	String INPUT = "input";
 	String I = "i";
 	String A = "a";
 	String HREF_ATTR = "href";
