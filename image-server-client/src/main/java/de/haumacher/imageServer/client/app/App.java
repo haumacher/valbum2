@@ -14,6 +14,7 @@ import com.google.gwt.http.client.RequestBuilder;
 import com.google.gwt.http.client.RequestCallback;
 import com.google.gwt.http.client.RequestException;
 import com.google.gwt.http.client.Response;
+import com.google.gwt.user.client.Timer;
 
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.Controls;
@@ -61,6 +62,10 @@ public class App implements EntryPoint {
 	private ControlHandler _handler = NONE;
 	
 	private String _contextPath;
+
+	Timer _resizeTimer;
+
+	private Resource _currentResource;
 	
 	private static App INSTANCE;
 
@@ -86,10 +91,28 @@ public class App implements EntryPoint {
 		body.addEventListener("mousedown", this::handleEvent);
 		
 		DomGlobal.window.addEventListener("popstate", this::onPopState);
+		DomGlobal.window.addEventListener("resize", this::handleResize);
 	    
 		loadPage(ResourcePath.toPath(DomGlobal.window.location.hash), false);
 	}
+
+	private void handleResize(@SuppressWarnings("unused") Event event) {
+		if (_resizeTimer != null) {
+			_resizeTimer.cancel();
+			_resizeTimer = null;
+		}
 		
+		_resizeTimer = new Timer() {
+			@Override
+			public void run() {
+				renderPage();
+				_resizeTimer = null;
+			}
+		};
+		
+		_resizeTimer.schedule(200);
+	}
+
 	private String extractContextPath(String pathname) {
 		int index = pathname.lastIndexOf('/');
 		if (index >= 0) {
@@ -168,22 +191,33 @@ public class App implements EntryPoint {
 		gotoTarget(newPath, true);
 	}
 	
-	void updatePage(String path, Resource resource, boolean back) throws IOException {
-		Window window = DomGlobal.window;
-		
+	void updatePage(String path, Resource resource, boolean back) {
 		setBaseUrl(currentDir(path));
-		resource.visit(ResourceRenderer.INSTANCE, createUpdater());
+		setCurrentResource(resource);
+		renderPage();
 		installHandler(resource.getHandler());
 		
 		if (!back) {
-			window.history.pushState(null, "", window.location.pathname + "#" + path);
+			DomGlobal.window.history.pushState(null, "", DomGlobal.window.location.pathname + "#" + path);
 		}
 		
 		Double lastOffset = _scrollOffset.get(path);
 		if (lastOffset != null) {
 			ScrollToOptions options = ScrollToOptions.create();
 			options.setTop(lastOffset.doubleValue());
-			window.scroll(options);
+			DomGlobal.window.scroll(options);
+		}
+	}
+
+	private void setCurrentResource(Resource resource) {
+		_currentResource = resource;
+	}
+
+	final void renderPage() {
+		try {
+			_currentResource.visit(new ResourceRenderer(DomGlobal.window.innerWidth - 20), createUpdater());
+		} catch (IOException ex) {
+			LOG.warning("Rendering failed: " + ex.getMessage());
 		}
 	}
 

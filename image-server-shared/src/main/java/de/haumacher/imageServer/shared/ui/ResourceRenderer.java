@@ -26,13 +26,10 @@ import de.haumacher.util.xml.XmlAppendable;
  */
 public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, IOException>, Renderer<Resource> {
 	
-	/**
-	 * Singleton {@link ResourceRenderer} instance.
-	 */
-	public static final ResourceRenderer INSTANCE = new ResourceRenderer();
+	private int _width;
 
-	private ResourceRenderer() {
-		// Singleton constructor.
+	public ResourceRenderer(int width) {
+		_width = width;
 	}
 	
 	@Override
@@ -52,8 +49,9 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, "image-rows");
+		out.attr(STYLE_ATTR, "width: " + _width + "px;");
 		{
-			ImageRow row = new ImageRow(1280, 400);
+			ImageRow row = new ImageRow(_width, 400);
 			for (ImageInfo image : album.getImages()) {
 				if (row.isComplete()) {
 					writeRow(out, row);

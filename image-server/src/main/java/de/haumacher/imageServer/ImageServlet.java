@@ -226,7 +226,7 @@ public class ImageServlet extends HttpServlet {
 		response.setCharacterEncoding("utf-8");
 		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
 			try (XmlWriter out = new XmlWriter(w)) {
-				new Page("VAlbum", ValueFragment.create(ResourceRenderer.INSTANCE, resource)).write(context, out);
+				new Page("VAlbum", ValueFragment.create(new ResourceRenderer(1280), resource)).write(context, out);
 			}
 		}
 	}
