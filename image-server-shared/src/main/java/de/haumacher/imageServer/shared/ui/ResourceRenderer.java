@@ -27,6 +27,8 @@ import de.haumacher.util.xml.XmlAppendable;
 public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, IOException>, Renderer<Resource> {
 	
 	private static final String TOOLBAR_CLASS = "toolbar";
+
+	private static final String TOOLBAR_RIGHT_CLASS = "tb-right";
 	
 	private int _width;
 
@@ -102,6 +104,16 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 			out.attr(HREF_ATTR, isFile ? "./" : "../");
 			{
 				icon(out, "fas fa-chevron-up");
+			}
+			out.end();
+			
+			out.begin(DIV);
+			out.attr(CLASS_ATTR, TOOLBAR_RIGHT_CLASS);
+			boolean editMode = false;
+			if (editMode) {
+				icon(out, "fas fa-save");
+			} else {
+				icon(out, "fas fa-edit");
 			}
 			out.end();
 		}
