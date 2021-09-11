@@ -34,15 +34,31 @@ public abstract class AbstractDisplay implements Display {
 			throw new RuntimeException(ex);
 		}
 		_element = out.getLast();
+		onAttach(_element);
 	}
 	
+	/** 
+	 * TODO
+	 *
+	 * @param element
+	 */
+	protected void onAttach(Element element) {}
+
 	public void redraw() {
+		onDetach(_element);
 		Element parent = _element.parentElement;
 		parent.removeChild(_element);
 		_element = null;
 		
 		show(_context, _context.createDomBuilderImpl(parent));
 	}
+
+	/** 
+	 * TODO
+	 *
+	 * @param element
+	 */
+	protected void onDetach(Element element) {}
 
 	/** 
 	 * TODO

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.google.gson.stream.JsonReader;
@@ -20,8 +19,6 @@ import de.haumacher.imageServer.client.ui.Display;
 import de.haumacher.imageServer.client.ui.ResourceControlProvider;
 import de.haumacher.imageServer.client.ui.UIContext;
 import de.haumacher.imageServer.shared.model.Resource;
-import de.haumacher.imageServer.shared.ui.Controls;
-import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.gwt.dom.DomBuilderImpl;
@@ -60,10 +57,6 @@ public class App implements EntryPoint, UIContext {
 	
 	private Map<String, Double> _scrollOffset = new HashMap<>();
 	
-	private Map<String, ControlHandler> _controlHandlers = new HashMap<>();
-
-	private ControlHandler _handler = NONE;
-	
 	private String _contextPath;
 
 	Timer _resizeTimer;
@@ -84,8 +77,6 @@ public class App implements EntryPoint, UIContext {
 		INSTANCE = this;
 		
 		_contextPath = extractContextPath(DomGlobal.window.location.pathname);
-		_controlHandlers.put(Controls.PAGE_CONTROL, new PageControlHandler());
-		_controlHandlers.put(Controls.ALBUM_CONTROL, new AlbumControlHandler());
 		
 		HTMLBodyElement body = DomGlobal.document.body;
 		
@@ -130,28 +121,18 @@ public class App implements EntryPoint, UIContext {
 		Element orig = (Element) event.target;
 		Element target = orig;
 		while (target != null) {
-			if (target.hasAttribute(DataAttributes.DATA_CONTROL)) {
-				String controlName = target.getAttribute(DataAttributes.DATA_CONTROL);
-				ControlHandler handler = getHandler(controlName);
-				if (handler != null) {
-					if (handler.handleEvent(target, event)) {
-						return;
-					}
+			ControlHandler handler = ControlHandler.getControlHandler(target);
+			if (handler != null) {
+				if (handler.handleEvent(target, event)) {
+					return;
 				}
-				return;
 			}
 			target = target.parentElement;
 		}
 		
-		_handler.handleEvent(orig, event);
-	}
-
-	private ControlHandler getHandler(String controlName) {
-		ControlHandler handler = _controlHandlers.get(controlName);
-		if (handler == null) {
-			LOG.log(Level.WARNING, "No handler registered for control '" + controlName + "'.");
+		if (_display instanceof ControlHandler) {
+			((ControlHandler) _display).handleEvent(orig, event);
 		}
-		return handler;
 	}
 
 	private void loadPage(String path, boolean back) {
@@ -199,7 +180,6 @@ public class App implements EntryPoint, UIContext {
 		setBaseUrl(currentDir(path));
 		setDisplay(resource);
 		renderPage();
-		installHandler(resource.getHandler());
 		
 		if (!back) {
 			DomGlobal.window.history.pushState(null, "", DomGlobal.window.location.pathname + "#" + path);
@@ -238,15 +218,6 @@ public class App implements EntryPoint, UIContext {
 	private void rememberScrollOffset() {
 		Window window = DomGlobal.window;
 		_scrollOffset.put(ResourcePath.toPath(window.location.hash), Double.valueOf(window.scrollY));
-	}
-
-	private void installHandler(String handlerName) {
-		if (handlerName == null) {
-			_handler = NONE;
-			return;
-		}
-		
-		_handler = getHandler(handlerName);
 	}
 
 	private void setBaseUrl(String base) {

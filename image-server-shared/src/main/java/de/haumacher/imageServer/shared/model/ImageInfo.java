@@ -9,8 +9,6 @@ import java.util.Date;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 
-import de.haumacher.imageServer.shared.ui.Controls;
-
 /**
  * TODO
  *
@@ -51,11 +49,6 @@ public class ImageInfo implements Resource {
 	
 	public ImageInfo() {
 		super();
-	}
-	
-	@Override
-	public String getHandler() {
-		return Controls.PAGE_CONTROL;
 	}
 	
 	/**

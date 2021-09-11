@@ -103,13 +103,4 @@ public interface Resource extends JsonSerializable {
 		return result;
 	}
 
-	/** 
-	 * Name of the handler that processes global events such as key-down.
-	 * 
-	 * @return The handler name or <code>null</code> if no handler should be installed.
-	 */
-	default String getHandler() {
-		return null;
-	}
-
 }

@@ -14,8 +14,6 @@ import java.util.Map;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 
-import de.haumacher.imageServer.shared.ui.Controls;
-
 /**
  * TODO
  *
@@ -38,11 +36,6 @@ public class AlbumInfo implements Resource {
 	 */
 	public AlbumInfo() {
 		super();
-	}
-	
-	@Override
-	public String getHandler() {
-		return Controls.ALBUM_CONTROL;
 	}
 	
 	@Override
