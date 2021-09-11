@@ -10,8 +10,7 @@ import java.io.IOException;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
-import de.haumacher.util.xml.RenderContext;
-import de.haumacher.util.xml.XmlAppendable;
+import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
 
 /**
@@ -33,7 +32,7 @@ public class ListingDisplay extends ResourceDisplay {
 	}
 
 	@Override
-	public void write(RenderContext context, XmlAppendable out) throws IOException {
+	protected void render(UIContext context, DomBuilder out) throws IOException {
 		out.begin(H1);
 		out.append(_listing.getTitle());
 		out.end();

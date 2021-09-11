@@ -12,11 +12,4 @@ public interface RenderContext {
 	
 	String getContextPath();
 
-	/** 
-	 * TODO
-	 *
-	 * @return
-	 */
-	int getPageWidth();
-
 }

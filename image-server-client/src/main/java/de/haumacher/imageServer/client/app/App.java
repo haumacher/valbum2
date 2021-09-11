@@ -16,16 +16,16 @@ import com.google.gwt.http.client.RequestException;
 import com.google.gwt.http.client.Response;
 import com.google.gwt.user.client.Timer;
 
+import de.haumacher.imageServer.client.ui.Display;
 import de.haumacher.imageServer.client.ui.ResourceControlProvider;
+import de.haumacher.imageServer.client.ui.UIContext;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.Controls;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.util.gwt.dom.DomBuilder;
+import de.haumacher.util.gwt.dom.DomBuilderImpl;
 import de.haumacher.util.html.HTML;
-import de.haumacher.util.xml.RenderContext;
-import de.haumacher.util.xml.XmlAppendable;
-import de.haumacher.util.xml.XmlFragment;
 import elemental2.dom.Document;
 import elemental2.dom.DomGlobal;
 import elemental2.dom.Element;
@@ -42,7 +42,7 @@ import elemental2.dom.Window;
 /**
  * {@link EntryPoint} of the application.
  */
-public class App implements EntryPoint, RenderContext {
+public class App implements EntryPoint, UIContext {
 	
 	private static final Logger LOG = Logger.getLogger(App.class.getName());
 	
@@ -68,7 +68,7 @@ public class App implements EntryPoint, RenderContext {
 
 	Timer _resizeTimer;
 
-	private XmlFragment _display;
+	private Display _display;
 	
 	private static App INSTANCE;
 
@@ -219,7 +219,7 @@ public class App implements EntryPoint, RenderContext {
 
 	final void renderPage() {
 		try {
-			_display.write(this, createUpdater());
+			_display.show(this, createUpdater());
 		} catch (IOException ex) {
 			LOG.warning("Rendering failed: " + ex.getMessage());
 		}
@@ -262,10 +262,15 @@ public class App implements EntryPoint, RenderContext {
 		head.appendChild(baseElement);
 	}
 
-	private XmlAppendable createUpdater() {
+	private DomBuilder createUpdater() {
 		Element main = getMainElement();
 		removeAllChildren(main);
-		XmlAppendable out = new DomBuilder(main) {
+		return createDomBuilderImpl(main);
+	}
+	
+	@Override
+	public DomBuilder createDomBuilderImpl(Element parent) {
+		return new DomBuilderImpl(parent) {
 			@Override
 			protected void attrNonNull(String name, CharSequence value) {
 				super.attrNonNull(name, value);
@@ -278,7 +283,6 @@ public class App implements EntryPoint, RenderContext {
 				}
 			}
 		};
-		return out;
 	}
 
 	private void removeAllChildren(Element parent) {

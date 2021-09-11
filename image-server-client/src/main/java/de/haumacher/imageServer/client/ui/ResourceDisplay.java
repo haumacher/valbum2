@@ -7,22 +7,23 @@ import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
 
-import de.haumacher.util.xml.XmlAppendable;
-import de.haumacher.util.xml.XmlFragment;
+import de.haumacher.util.gwt.dom.DomBuilder;
+import elemental2.dom.Event;
 
 /**
  * TODO
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public abstract class ResourceDisplay implements XmlFragment {
+public abstract class ResourceDisplay extends AbstractDisplay {
 
 	private static final String TOOLBAR_CLASS = "toolbar";
 
 	private static final String TOOLBAR_RIGHT_CLASS = "tb-right";
 	
-	protected void writeAlbumToolbar(XmlAppendable out, boolean isFile,
-			CharSequence parentUrl) throws IOException {
+	private boolean _editMode;
+
+	protected void writeAlbumToolbar(DomBuilder out, boolean isFile, CharSequence parentUrl) throws IOException {
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, TOOLBAR_CLASS);
 		{
@@ -42,16 +43,29 @@ public abstract class ResourceDisplay implements XmlFragment {
 			
 			out.begin(DIV);
 			out.attr(CLASS_ATTR, TOOLBAR_RIGHT_CLASS);
-			boolean editMode = false;
-			if (editMode) {
+			if (isEditMode()) {
 				RenderUtil.icon(out, "fas fa-save");
 			} else {
 				RenderUtil.icon(out, "fas fa-edit");
 			}
+			out.getLast().addEventListener("click", this::handleToggelEditMode);
 			out.end();
 		}
 		out.end();
 	}
 
+	private void handleToggelEditMode(Event event) {
+		_editMode = !_editMode;
+		redraw();
+	}
+
+	/** 
+	 * TODO
+	 *
+	 * @return
+	 */
+	protected final boolean isEditMode() {
+		return _editMode;
+	}
 
 }

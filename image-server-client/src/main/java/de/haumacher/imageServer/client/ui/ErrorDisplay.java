@@ -3,13 +3,11 @@
  */
 package de.haumacher.imageServer.client.ui;
 
-import static de.haumacher.util.html.HTML.*;
-
 import java.io.IOException;
 
 import de.haumacher.imageServer.shared.model.ErrorInfo;
-import de.haumacher.util.xml.RenderContext;
-import de.haumacher.util.xml.XmlAppendable;
+import de.haumacher.util.gwt.dom.DomBuilder;
+import de.haumacher.util.html.HTML;
 import de.haumacher.util.xml.XmlFragment;
 
 /**
@@ -17,7 +15,7 @@ import de.haumacher.util.xml.XmlFragment;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ErrorDisplay implements XmlFragment {
+public class ErrorDisplay implements Display {
 
 	private ErrorInfo _error;
 
@@ -29,8 +27,8 @@ public class ErrorDisplay implements XmlFragment {
 	}
 
 	@Override
-	public void write(RenderContext context, XmlAppendable out) throws IOException {
-		out.begin(H1);
+	public void show(UIContext context, DomBuilder out) throws IOException {
+		out.begin(HTML.H1);
 		out.append(_error.getMessage());
 		out.end();
 	}

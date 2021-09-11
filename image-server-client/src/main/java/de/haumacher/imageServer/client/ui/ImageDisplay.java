@@ -9,8 +9,7 @@ import java.io.IOException;
 
 import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
-import de.haumacher.util.xml.RenderContext;
-import de.haumacher.util.xml.XmlAppendable;
+import de.haumacher.util.gwt.dom.DomBuilder;
 
 /**
  * {@link ResourceDisplay} displaying an {@link ImageInfo} model.
@@ -29,27 +28,27 @@ public class ImageDisplay extends ResourceDisplay {
 	}
 
 	@Override
-	public void write(RenderContext context, XmlAppendable out) throws IOException {
+	protected void render(UIContext context, DomBuilder out) throws IOException {
 		out.begin(DIV);
 		out.attr(ID_ATTR, "page");
 		out.attr(CLASS_ATTR, "image-page");
 
 		String previous = _image.getPrevious();
-		String previousUrl = previous == null ? null : previous + "?type=page";
+		String previousUrl = previous == null ? null : previous;
 		if (previousUrl != null) {
 			out.attr(DataAttributes.DATA_LEFT, previousUrl);
 		}
 		
 		String next = _image.getNext();
-		String nextUrl = next == null ? null : next + "?type=page";
+		String nextUrl = next == null ? null : next;
 		if (nextUrl != null) {
 			out.attr(DataAttributes.DATA_RIGHT, nextUrl);
 		}
 
 		out.attr(DataAttributes.DATA_ESCAPE, "./");
 		out.attr(DataAttributes.DATA_UP, "./");
-		out.attr(DataAttributes.DATA_HOME, _image.getHome() + "?type=page");
-		out.attr(DataAttributes.DATA_END, _image.getEnd() +  "?type=page");
+		out.attr(DataAttributes.DATA_HOME, _image.getHome());
+		out.attr(DataAttributes.DATA_END, _image.getEnd());
 		
 		{
 			switch (_image.getKind()) {

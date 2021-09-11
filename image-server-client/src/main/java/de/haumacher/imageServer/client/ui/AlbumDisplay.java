@@ -13,7 +13,7 @@ import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo.Kind;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
-import de.haumacher.util.xml.RenderContext;
+import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlAppendable;
 import de.haumacher.util.xml.XmlFragment;
 
@@ -25,7 +25,7 @@ import de.haumacher.util.xml.XmlFragment;
 public class AlbumDisplay extends ResourceDisplay {
 
 	private AlbumInfo _album;
-
+	
 	/** 
 	 * Creates a {@link AlbumDisplay}.
 	 */
@@ -34,7 +34,7 @@ public class AlbumDisplay extends ResourceDisplay {
 	}
 
 	@Override
-	public void write(RenderContext context, XmlAppendable out) throws IOException {
+	protected void render(UIContext context, DomBuilder out) throws IOException {
 		int width = context.getPageWidth();
 		String parentUrl = RenderUtil.parentUrl(_album.getDepth());
 
@@ -105,7 +105,6 @@ public class AlbumDisplay extends ResourceDisplay {
 					out.openAttr(HREF_ATTR);
 					{
 						out.append(image.getName());
-						out.append("?type=page");
 					}
 					out.closeAttr();
 					{
@@ -145,8 +144,7 @@ public class AlbumDisplay extends ResourceDisplay {
 	}
 
 	private void writeToolbars(XmlAppendable out) throws IOException {
-		boolean editMode = false;
-		if (editMode) {
+		if (isEditMode()) {
 			out.begin(SPAN);
 			out.attr(CLASS_ATTR, "check-button" + (Math.random() > 0.5 ? " checked" : ""));
 			{
