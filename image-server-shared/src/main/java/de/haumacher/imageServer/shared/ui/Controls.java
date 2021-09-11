@@ -13,8 +13,13 @@ import de.haumacher.util.html.HTML;
 public interface Controls {
 
 	/**
-	 * {@link HTML#DATA_CONTROL_ATTR} value marking an image page.
+	 * {@link HTML#DATA_CONTROL} value marking an image page.
 	 */
 	String PAGE_CONTROL = "PageControl";
+
+	/**
+	 * Server-side functionality for an album page.
+	 */
+	String ALBUM_CONTROL = "AlbumControl";
 
 }

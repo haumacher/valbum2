@@ -27,8 +27,14 @@ import de.haumacher.util.xml.XmlAppendable;
 public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, IOException>, Renderer<Resource> {
 	
 	private static final String TOOLBAR_CLASS = "toolbar";
+	
 	private int _width;
 
+	/**
+	 * Creates a {@link ResourceRenderer}.
+	 *
+	 * @param width The available page width.
+	 */
 	public ResourceRenderer(int width) {
 		_width = width;
 	}
@@ -40,6 +46,14 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 
 	@Override
 	public Void visit(AlbumInfo album, XmlAppendable out) throws IOException {
+		String parentUrl = parentUrl(album.getDepth());
+
+		out.begin(DIV);
+		out.attr(ID_ATTR, "page");
+		if (parentUrl != null) {
+			out.attr(DataAttributes.DATA_ESCAPE, parentUrl);
+		}
+		
 		out.begin(H1);
 		AlbumProperties header = album.getHeader();
 		out.append(header.getTitle());
@@ -64,20 +78,21 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 		}
 		out.end();
 		
-		writeAlbumToolbar(out, album.getDepth(), false);
+		if (parentUrl != null) {
+			writeAlbumToolbar(out, false, parentUrl);
+		}
+		out.end();
 
 		return null;
 	}
 
-	private void writeAlbumToolbar(XmlAppendable out, int depth, boolean isFile) throws IOException {
-		if (depth == 0) {
-			return;
-		}
+	private void writeAlbumToolbar(XmlAppendable out, boolean isFile,
+			CharSequence parentUrl) throws IOException {
 		out.begin(DIV);
-		out.attr(CLASS_ATTR, TOOLBAR_CLASS);
+		out.attr(CLASS_ATTR, ResourceRenderer.TOOLBAR_CLASS);
 		{
 			out.begin(A);
-			out.attr(HREF_ATTR, parentUrl(depth));
+			out.attr(HREF_ATTR, parentUrl);
 			{
 				icon(out, "fas fa-home");
 			}
@@ -331,7 +346,10 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 		}
 		out.end();
 		
-		writeAlbumToolbar(out, resource.getDepth(), false);
+		String parentUrl = parentUrl(resource.getDepth());
+		if (parentUrl != null) {
+			writeAlbumToolbar(out, false, parentUrl);
+		}
 
 		return null;
 	}
@@ -345,18 +363,19 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 		String previous = image.getPrevious();
 		String previousUrl = previous == null ? null : previous + "?type=page";
 		if (previousUrl != null) {
-			out.attr("data-left", previousUrl);
+			out.attr(DataAttributes.DATA_LEFT, previousUrl);
 		}
 		
 		String next = image.getNext();
 		String nextUrl = next == null ? null : next + "?type=page";
 		if (nextUrl != null) {
-			out.attr("data-right", nextUrl);
+			out.attr(DataAttributes.DATA_RIGHT, nextUrl);
 		}
 
-		out.attr("data-up", "./");
-		out.attr("data-home", image.getHome() + "?type=page");
-		out.attr("data-end", image.getEnd() +  "?type=page");
+		out.attr(DataAttributes.DATA_ESCAPE, "./");
+		out.attr(DataAttributes.DATA_UP, "./");
+		out.attr(DataAttributes.DATA_HOME, image.getHome() + "?type=page");
+		out.attr(DataAttributes.DATA_END, image.getEnd() +  "?type=page");
 		
 		{
 			switch (image.getKind()) {
@@ -369,8 +388,8 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 						out.attr(ID_ATTR, "image");
 						out.attr(DRAGGABLE_ATTR, "false");
 						out.attr(SRC_ATTR, image.getName());
-						out.attr("data-width", image.getWidth());
-						out.attr("data-height", image.getHeight());
+						out.attr(DataAttributes.DATA_WIDTH, image.getWidth());
+						out.attr(DataAttributes.DATA_HEIGHT, image.getHeight());
 						out.endEmpty();
 					}
 					out.end();
@@ -434,7 +453,10 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 				out.end();
 			}
 			
-			writeAlbumToolbar(out, image.getDepth(), true);
+			String parentUrl = parentUrl(image.getDepth());
+			if (parentUrl != null) {
+				writeAlbumToolbar(out, true, parentUrl);
+			}
 		}
 		out.end();
 		return null;
@@ -446,12 +468,15 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 		out.end();
 	}
 
-	private CharSequence parentUrl(int depth) {
+	private String parentUrl(int depth) {
+		if (depth == 0) {
+			return null;
+		}
 		StringBuilder result = new StringBuilder();
 		for (int n = 0; n < depth; n++) {
 			result.append("../");
 		}
-		return result;
+		return result.toString();
 	}
 
 	@Override

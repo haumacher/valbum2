@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.client.app;
 
+import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.util.gwt.Native;
 import elemental2.dom.CSSStyleDeclaration;
 import elemental2.dom.DomGlobal;
@@ -10,7 +11,6 @@ import elemental2.dom.Element;
 import elemental2.dom.Event;
 import elemental2.dom.EventListener;
 import elemental2.dom.HTMLElement;
-import elemental2.dom.KeyboardEvent;
 import elemental2.dom.MouseEvent;
 import elemental2.dom.WheelEvent;
 import jsinterop.base.Js;
@@ -20,29 +20,11 @@ import jsinterop.base.Js;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class PageControlHandler implements ControlHandler {
+public class PageControlHandler extends NavigationHandler {
 
 	@Override
 	public boolean handleEvent(Element target, Event event) {
 		switch (event.type) {
-			case "keydown": {
-				String key = ((KeyboardEvent) event).key;
-				switch (key) {
-					case KeyCodes.ARROW_UP:
-						return navigate(target, "data-up");
-					case KeyCodes.ARROW_LEFT:
-						return navigate(target, "data-left");
-					case KeyCodes.ARROW_RIGHT:
-						return navigate(target, "data-right");
-					case KeyCodes.HOME:
-						return navigate(target, "data-home");
-					case KeyCodes.END:
-						return navigate(target, "data-end");
-					default:
-						return false;
-				}
-			}
-			
 			case "wheel": {
 				onImageZoom((WheelEvent) event);
 				return true;
@@ -53,20 +35,11 @@ public class PageControlHandler implements ControlHandler {
 				return true;
 			}
 			
-			default: 
-				return false;
+			default:
+				return super.handleEvent(target, event);
 		}
 	}
 
-	private boolean navigate(Element target, String navigationAttr) {
-		Element page = target.ownerDocument.getElementById("page");
-		if (page.hasAttribute(navigationAttr)) {
-			String url = page.getAttribute(navigationAttr);
-			App.getInstance().gotoTarget(url);
-		}
-		return false;
-	}
-	
 	private void onImageZoom(WheelEvent event) {
 		HTMLElement container = containerElement();
 		HTMLElement image = imageElement();
@@ -149,8 +122,8 @@ public class PageControlHandler implements ControlHandler {
 		if (transform == "none" || transform == "") {
 			HTMLElement container = containerElement();
 			
-			int width = Integer.parseInt(image.getAttribute("data-width"));
-			int height = Integer.parseInt(image.getAttribute("data-height"));
+			int width = Integer.parseInt(image.getAttribute(DataAttributes.DATA_WIDTH));
+			int height = Integer.parseInt(image.getAttribute(DataAttributes.DATA_HEIGHT));
 			
 			int containerWidth = container.offsetWidth;
 			int containerHeight = container.offsetHeight;

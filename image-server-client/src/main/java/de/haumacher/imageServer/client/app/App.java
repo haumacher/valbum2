@@ -18,6 +18,7 @@ import com.google.gwt.user.client.Timer;
 
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.Controls;
+import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ResourceRenderer;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.util.gwt.dom.DomBuilder;
@@ -82,6 +83,7 @@ public class App implements EntryPoint {
 		
 		_contextPath = extractContextPath(DomGlobal.window.location.pathname);
 		_controlHandlers.put(Controls.PAGE_CONTROL, new PageControlHandler());
+		_controlHandlers.put(Controls.ALBUM_CONTROL, new AlbumControlHandler());
 		
 		HTMLBodyElement body = DomGlobal.document.body;
 		
@@ -126,8 +128,8 @@ public class App implements EntryPoint {
 		Element orig = (Element) event.target;
 		Element target = orig;
 		while (target != null) {
-			if (target.hasAttribute(HTML.DATA_CONTROL_ATTR)) {
-				String controlName = target.getAttribute(HTML.DATA_CONTROL_ATTR);
+			if (target.hasAttribute(DataAttributes.DATA_CONTROL)) {
+				String controlName = target.getAttribute(DataAttributes.DATA_CONTROL);
 				ControlHandler handler = getHandler(controlName);
 				if (handler != null) {
 					if (handler.handleEvent(target, event)) {
