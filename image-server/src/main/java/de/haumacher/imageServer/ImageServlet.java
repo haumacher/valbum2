@@ -9,7 +9,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -26,10 +25,8 @@ import org.eclipse.jetty.http.HttpStatus;
 import com.google.gson.stream.JsonWriter;
 
 import de.haumacher.imageServer.shared.model.Resource;
-import de.haumacher.imageServer.shared.ui.ResourceRenderer;
 import de.haumacher.util.servlet.Util;
 import de.haumacher.util.xml.RenderContext;
-import de.haumacher.util.xml.ValueFragment;
 import de.haumacher.util.xml.XmlWriter;
 
 /**
@@ -189,7 +186,7 @@ public class ImageServlet extends HttpServlet {
 		if (jsonRequested(context)) {
 			serveJson(context.response(), resource);
 		} else {
-			render(context, resource);
+			error404(context);
 		}
 	}
 	
@@ -211,23 +208,8 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			serveData(context, data);
-		} else if ("page".equals(type)) {
-			Resource resource = _cache.lookup(pathInfo);
-			render(context, resource);
 		} else {
 			serveData(context, pathInfo.toFile());
-		}
-	}
-
-	private void render(Context context, Resource resource) throws IOException, UnsupportedEncodingException {
-		HttpServletResponse response = context.response();
-		
-		response.setContentType("text/html");
-		response.setCharacterEncoding("utf-8");
-		try (Writer w = new OutputStreamWriter(response.getOutputStream(), "utf-8")) {
-			try (XmlWriter out = new XmlWriter(w)) {
-				new Page("VAlbum", ValueFragment.create(new ResourceRenderer(1280), resource)).write(context, out);
-			}
 		}
 	}
 
