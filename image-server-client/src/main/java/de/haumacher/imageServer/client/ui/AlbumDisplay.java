@@ -6,18 +6,19 @@ package de.haumacher.imageServer.client.ui;
 import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
-import java.util.function.Consumer;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumProperties;
 import de.haumacher.imageServer.shared.model.ImageInfo;
-import de.haumacher.imageServer.shared.model.ImageInfo.Kind;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
-import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
-import elemental2.dom.Element;
+import elemental2.dom.MouseEvent;
 
 /**
  * {@link XmlFragment} displaying a {@link AlbumInfo} model.
@@ -27,6 +28,8 @@ import elemental2.dom.Element;
 public class AlbumDisplay extends ResourceDisplay {
 
 	private AlbumInfo _album;
+	private Set<ImageInfo> _selected = new HashSet<>();
+	private ImageInfo _lastClicked;
 	
 	/** 
 	 * Creates a {@link AlbumDisplay}.
@@ -58,15 +61,17 @@ public class AlbumDisplay extends ResourceDisplay {
 		out.attr(CLASS_ATTR, "image-rows");
 		out.attr(STYLE_ATTR, "width: " + width + "px;");
 		{
+			Map<ImageInfo, ImagePreviewDisplay> imageDisplays = new HashMap<>();
+			
 			ImageRow row = new ImageRow(width, 400);
 			for (ImageInfo image : _album.getImages()) {
 				if (row.isComplete()) {
-					writeRow(out, row);
+					writeRow(context, out, imageDisplays, row);
 					row.clear();
 				}
 				row.add(image);
 			}
-			writeRow(out, row);
+			writeRow(context, out, imageDisplays, row);
 		}
 		out.end();
 		
@@ -76,7 +81,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		out.end();
 	}
 
-	private void writeRow(DomBuilder out, ImageRow row) throws IOException {
+	private void writeRow(UIContext context, DomBuilder out, Map<ImageInfo, ImagePreviewDisplay> imageDisplays, ImageRow row) throws IOException {
 		if (row.getSize() == 0) {
 			return;
 		}
@@ -89,162 +94,70 @@ public class AlbumDisplay extends ResourceDisplay {
 		{
 			out.begin(DIV);
 			out.attr(STYLE_ATTR, "display: table-row;");
+			
+			boolean editMode = isEditMode();
 			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
 				ImageInfo image = row.getImage(n);
+				
+				ImagePreviewDisplay previewDisplay = new ImagePreviewDisplay(image, n, row.getScaledWidth(n), rowHeight, spacing);
+				previewDisplay.setEditMode(editMode);
+				previewDisplay.setSelected(_selected.contains(image));
+				previewDisplay.show(context, out);
+				
+				imageDisplays.put(image, previewDisplay);
 
-				out.begin(DIV);
-				out.attr(CLASS_ATTR, "icon");
-				{
-					out.begin(A);
-					out.attr(CLASS_ATTR, "icon-link");
-					if (n > 0) {
-						out.openAttr(STYLE_ATTR);
-						out.append("margin-left: ");
-						out.append(spacing);
-						out.append("px;");
-						out.closeAttr();
-					}
-					out.openAttr(HREF_ATTR);
-					{
-						out.append(image.getName());
-					}
-					out.closeAttr();
-					{
-						out.begin(IMG);
-						out.attr(CLASS_ATTR, "icon-display");
-						{
-							out.openAttr(SRC_ATTR);
-							out.append(image.getName());
-							out.append("?type=tn");
-							out.closeAttr();
-							
-							out.attr(WIDTH_ATTR, row.getScaledWidth(n));
-							out.attr(HEIGHT_ATTR, rowHeight);
-						}
-						out.end();
-						
-						if (image.getKind() == Kind.VIDEO) {
-							out.begin(DIV);
-							out.attr(CLASS_ATTR, "video-overlay");
-							{
-								out.begin(I);
-								out.attr(CLASS_ATTR, "far fa-play-circle");
-								out.end();
+				if (editMode) {
+					previewDisplay.addEventListener("click", event -> {
+						MouseEvent mouseEvent = (MouseEvent) event;
+						if (mouseEvent.shiftKey) {
+							if (_lastClicked == null) {
+								_lastClicked = _album.getImages().get(0);
 							}
-							out.end();
+							
+							boolean select = _selected.contains(_lastClicked);
+							
+							int start = _album.getImages().indexOf(_lastClicked);
+							int stop = _album.getImages().indexOf(previewDisplay.getImage());
+							int delta = start < stop ? 1 : -1;
+							for (int index = start + delta; index != stop + delta; index+=delta) {
+								ImageInfo current = _album.getImages().get(index);
+								ImagePreviewDisplay currentDisplay = imageDisplays.get(current);
+								setSelected(currentDisplay, select);
+							}
+						} else if (mouseEvent.ctrlKey) {
+							toggleSelection(previewDisplay);
+						} else {
+							for (ImageInfo selectedInfo : _selected) {
+								imageDisplays.get(selectedInfo).setSelected(false);
+							}
+							_selected.clear();
+
+							setSelected(previewDisplay, true);
 						}
 						
-						writeToolbars(out, image);
-					}
-					out.end();
+						_lastClicked = previewDisplay.getImage();
+						
+						event.stopPropagation();
+						event.preventDefault();
+					});
 				}
-				out.end();
 			}
 			out.end();
 		}
 		out.end();
 	}
 
-	private void writeToolbars(DomBuilder out, ImageInfo image) throws IOException {
-		if (isEditMode()) {
-			out.begin(SPAN);
-			out.attr(CLASS_ATTR, "check-button" + (Math.random() > 0.5 ? " checked" : ""));
-			{
-				out.begin(I);
-				out.attr(CLASS_ATTR, "display-unchecked far fa-square");
-				out.end();
-				
-				out.begin(I);
-				out.attr(CLASS_ATTR, "display-checked far fa-check-square");
-				out.end();
-			}
-			out.end();
-			
-			out.begin(SPAN);
-			out.attr(CLASS_ATTR, "toolbar-embedded toolbar-top");
-			{
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-redo-alt");
-					out.end();
-				}
-				out.end();
-				
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-arrows-alt-v");
-					out.end();
-				}
-				out.end();
-				
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-undo-alt");
-					out.end();
-				}
-				out.end();
-			}
-			out.end();
-			
-			int rating = image.getRating();
-			
-			out.begin(SPAN);
-			out.attr(CLASS_ATTR, "toolbar-embedded toolbar-bottom");
-			makeChoice(
-				data -> image.setRating((int) data),
-				() -> image.setRating(0),
-				createChoiceButton(out, "fas fa-star", rating >= 2, 2),
-				createChoiceButton(out, "fas fa-plus", rating == 1, 1),
-				createChoiceButton(out, "fas fa-minus", rating == -1, -1),
-				createChoiceButton(out, "fas fa-trash-alt", rating <= -2, -2)
-			);
-			out.end();
-		}
+	private void toggleSelection(ImagePreviewDisplay previewDisplay) {
+		setSelected(previewDisplay, !previewDisplay.isSelected());
 	}
 
-	private void makeChoice(Consumer<Object> onSet, Runnable onReset, Element... buttons) {
-		for (Element button : buttons) {
-			button.addEventListener("click", event -> {
-				if (button.classList.contains("active")) {
-					button.classList.remove("active");
-					onReset.run();
-				} else {
-					reset(buttons);
-					button.classList.add("active");
-					onSet.accept(Native.get(button, "vaUserData"));
-				}
-				
-				event.stopPropagation();
-				event.preventDefault();
-			});
+	private void setSelected(ImagePreviewDisplay previewDisplay, boolean select) {
+		if (select) {
+			_selected.add(previewDisplay.getImage());
+		} else {
+			_selected.remove(previewDisplay.getImage());
 		}
-	}
-
-	private void reset(Element[] buttons) {
-		for (Element button : buttons) {
-			button.className = "toolbar-button";
-		}
-	}
-
-	private Element createChoiceButton(DomBuilder out, String iconClass, boolean active, Object userValue) throws IOException {
-		out.begin(SPAN);
-		out.attr(CLASS_ATTR, active ? "toolbar-button active" : "toolbar-button");
-		{
-			out.begin(I);
-			out.attr(CLASS_ATTR, iconClass);
-			out.end();
-		}
-		out.end();
-		
-		Element result = out.getLast();
-		Native.set(result, "vaUserData", userValue);
-		return result;
+		previewDisplay.setSelected(select);
 	}
 
 }

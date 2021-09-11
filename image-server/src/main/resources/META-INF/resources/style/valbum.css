@@ -293,25 +293,7 @@ a {
 	border-radius: 2px;
 }
 
-.icon-link:hover > .check-button {
-	visibility: visible;
-	background-color: black;
-}
-
-.check-button.checked {
+.selected .check-button {
 	visibility: visible;
 	color: white;
 }
-
-.check-button > .display-checked {
-	display: none;
-}
-
-.check-button.checked > .display-checked {
-	display: inline-block;
-}
-
-.check-button.checked > .display-unchecked {
-	display: none;
-}
-

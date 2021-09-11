@@ -17,6 +17,13 @@ public abstract class AbstractDisplay implements Display {
 	
 	private Element _element;
 	private UIContext _context;
+	
+	/**
+	 * TODO
+	 */
+	public Element element() {
+		return _element;
+	}
 
 	@Override
 	public final void show(UIContext context, DomBuilder out) {
