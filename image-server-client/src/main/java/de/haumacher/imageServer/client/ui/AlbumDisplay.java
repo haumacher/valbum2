@@ -127,12 +127,15 @@ public class AlbumDisplay extends ResourceDisplay {
 						} else if (mouseEvent.ctrlKey) {
 							toggleSelection(previewDisplay);
 						} else {
+							boolean toggle = (_selected.size() == 1 && _selected.contains(previewDisplay.getImage()));
 							for (ImageInfo selectedInfo : _selected) {
 								imageDisplays.get(selectedInfo).setSelected(false);
 							}
 							_selected.clear();
 
-							setSelected(previewDisplay, true);
+							if (!toggle) {
+								setSelected(previewDisplay, true);
+							}
 						}
 						
 						_lastClicked = previewDisplay.getImage();
