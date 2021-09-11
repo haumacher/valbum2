@@ -26,6 +26,7 @@ import de.haumacher.util.xml.XmlAppendable;
  */
 public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, IOException>, Renderer<Resource> {
 	
+	private static final String TOOLBAR_CLASS = "toolbar";
 	private int _width;
 
 	public ResourceRenderer(int width) {
@@ -73,7 +74,7 @@ public class ResourceRenderer implements Resource.Visitor<Void, XmlAppendable, I
 			return;
 		}
 		out.begin(DIV);
-		out.attr(CLASS_ATTR, "toolbar");
+		out.attr(CLASS_ATTR, TOOLBAR_CLASS);
 		{
 			out.begin(A);
 			out.attr(HREF_ATTR, parentUrl(depth));
