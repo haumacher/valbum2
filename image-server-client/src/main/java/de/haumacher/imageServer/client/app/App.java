@@ -16,14 +16,16 @@ import com.google.gwt.http.client.RequestException;
 import com.google.gwt.http.client.Response;
 import com.google.gwt.user.client.Timer;
 
+import de.haumacher.imageServer.client.ui.ResourceControlProvider;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.Controls;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
-import de.haumacher.imageServer.shared.ui.ResourceRenderer;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.html.HTML;
+import de.haumacher.util.xml.RenderContext;
 import de.haumacher.util.xml.XmlAppendable;
+import de.haumacher.util.xml.XmlFragment;
 import elemental2.dom.Document;
 import elemental2.dom.DomGlobal;
 import elemental2.dom.Element;
@@ -40,7 +42,7 @@ import elemental2.dom.Window;
 /**
  * {@link EntryPoint} of the application.
  */
-public class App implements EntryPoint {
+public class App implements EntryPoint, RenderContext {
 	
 	private static final Logger LOG = Logger.getLogger(App.class.getName());
 	
@@ -66,7 +68,7 @@ public class App implements EntryPoint {
 
 	Timer _resizeTimer;
 
-	private Resource _currentResource;
+	private XmlFragment _display;
 	
 	private static App INSTANCE;
 
@@ -195,7 +197,7 @@ public class App implements EntryPoint {
 	
 	void updatePage(String path, Resource resource, boolean back) {
 		setBaseUrl(currentDir(path));
-		setCurrentResource(resource);
+		setDisplay(resource);
 		renderPage();
 		installHandler(resource.getHandler());
 		
@@ -211,16 +213,26 @@ public class App implements EntryPoint {
 		}
 	}
 
-	private void setCurrentResource(Resource resource) {
-		_currentResource = resource;
+	private void setDisplay(Resource resource) {
+		_display = resource.visit(ResourceControlProvider.INSTANCE, null);
 	}
 
 	final void renderPage() {
 		try {
-			_currentResource.visit(new ResourceRenderer(DomGlobal.window.innerWidth - 20), createUpdater());
+			_display.write(this, createUpdater());
 		} catch (IOException ex) {
 			LOG.warning("Rendering failed: " + ex.getMessage());
 		}
+	}
+	
+	@Override
+	public int getPageWidth() {
+		return DomGlobal.window.innerWidth - 20;
+	}
+
+	@Override
+	public String getContextPath() {
+		return _contextPath;
 	}
 
 	private void rememberScrollOffset() {

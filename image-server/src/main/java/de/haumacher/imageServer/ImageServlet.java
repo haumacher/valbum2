@@ -26,7 +26,6 @@ import com.google.gson.stream.JsonWriter;
 
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.util.servlet.Util;
-import de.haumacher.util.xml.RenderContext;
 import de.haumacher.util.xml.XmlWriter;
 
 /**
@@ -243,7 +242,7 @@ public class ImageServlet extends HttpServlet {
 		context.response().setStatus(HttpStatus.NOT_FOUND_404);
 	}
 
-	static class Context implements RenderContext {
+	static class Context {
 	
 		private final HttpServletRequest _request;
 		private final HttpServletResponse _response;
@@ -256,7 +255,6 @@ public class ImageServlet extends HttpServlet {
 			_response = response;
 		}
 		
-		@Override
 		public String getContextPath() {
 			return _request.getContextPath();
 		}
