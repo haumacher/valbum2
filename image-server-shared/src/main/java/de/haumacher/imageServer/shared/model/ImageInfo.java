@@ -32,6 +32,8 @@ public class ImageInfo implements Resource {
 	private String _next;
 	private String _home;
 	private String _end;
+
+	private int _rating;
 	
 	public enum Kind {
 		IMAGE, VIDEO;
@@ -106,6 +108,19 @@ public class ImageInfo implements Resource {
 	 */
 	public void setKind(Kind kind) {
 		_kind = kind;
+	}
+
+	/** 
+	 * TODO
+	 *
+	 * @return
+	 */
+	public int getRating() {
+		return _rating;
+	}
+	
+	public void setRating(int rating) {
+		_rating = rating;
 	}
 
 	/**
@@ -209,6 +224,7 @@ public class ImageInfo implements Resource {
 	@Override
 	public void writeContents(JsonWriter json) throws IOException {
 		Json.property(json, "name", getName());
+		Json.property(json, "rating", getRating());
 		Json.property(json, "width", getWidth());
 		Json.property(json, "height", getHeight());
 		Json.property(json, "date", getDate().getTime());
@@ -236,6 +252,9 @@ public class ImageInfo implements Resource {
 		switch (property) {
 			case "name": 
 				setName(json.nextString());
+				break;
+			case "rating": 
+				setRating(json.nextInt());
 				break;
 			case "width":
 				setWidth(json.nextInt());

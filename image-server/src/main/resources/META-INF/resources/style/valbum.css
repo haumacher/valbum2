@@ -249,6 +249,14 @@ a {
 	visibility: visible;
 }
 
+.icon-link > .toolbar-embedded .toolbar-button {
+	display: none;
+}
+
+.icon-link:hover > .toolbar-embedded .toolbar-button {
+	display: initial;
+}
+
 .toolbar-button {
 	float: right;
 	text-align: center;
@@ -256,6 +264,21 @@ a {
 	width: 20px;
 	padding: 2px;
 	opacity: 0.7;
+}
+
+.toolbar-button:hover {
+	background-color: white;
+	color: black;
+}
+
+.icon-link > .toolbar-embedded .toolbar-button.active {
+	display: initial;
+	visibility: visible;
+}
+
+.icon-link:hover > .toolbar-embedded .toolbar-button.active, 
+.icon-link > .toolbar-embedded .toolbar-button.active:hover {
+	color: fuchsia;
 }
 
 .check-button {
@@ -292,7 +315,3 @@ a {
 	display: none;
 }
 
-.toolbar-button:hover {
-	background-color: white;
-	color: black;
-}

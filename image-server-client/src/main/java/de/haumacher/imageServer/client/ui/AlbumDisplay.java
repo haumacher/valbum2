@@ -6,6 +6,7 @@ package de.haumacher.imageServer.client.ui;
 import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
+import java.util.function.Consumer;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumProperties;
@@ -13,9 +14,10 @@ import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo.Kind;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
+import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
-import de.haumacher.util.xml.XmlAppendable;
 import de.haumacher.util.xml.XmlFragment;
+import elemental2.dom.Element;
 
 /**
  * {@link XmlFragment} displaying a {@link AlbumInfo} model.
@@ -74,7 +76,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		out.end();
 	}
 
-	private void writeRow(XmlAppendable out, ImageRow row) throws IOException {
+	private void writeRow(DomBuilder out, ImageRow row) throws IOException {
 		if (row.getSize() == 0) {
 			return;
 		}
@@ -132,7 +134,7 @@ public class AlbumDisplay extends ResourceDisplay {
 							out.end();
 						}
 						
-						writeToolbars(out);
+						writeToolbars(out, image);
 					}
 					out.end();
 				}
@@ -143,7 +145,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		out.end();
 	}
 
-	private void writeToolbars(XmlAppendable out) throws IOException {
+	private void writeToolbars(DomBuilder out, ImageInfo image) throws IOException {
 		if (isEditMode()) {
 			out.begin(SPAN);
 			out.attr(CLASS_ATTR, "check-button" + (Math.random() > 0.5 ? " checked" : ""));
@@ -190,56 +192,59 @@ public class AlbumDisplay extends ResourceDisplay {
 			}
 			out.end();
 			
+			int rating = image.getRating();
+			
 			out.begin(SPAN);
 			out.attr(CLASS_ATTR, "toolbar-embedded toolbar-bottom");
-			{
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-star");
-					out.end();
-				}
-				out.end();
-				
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-plus");
-					out.end();
-				}
-				out.end();
-				
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "far fa-dot-circle");
-					out.end();
-				}
-				out.end();
-				
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-minus");
-					out.end();
-				}
-				out.end();
-				
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-trash-alt");
-					out.end();
-				}
-				out.end();
-			}
+			makeChoice(
+				data -> image.setRating((int) data),
+				() -> image.setRating(0),
+				createChoiceButton(out, "fas fa-star", rating >= 2, 2),
+				createChoiceButton(out, "fas fa-plus", rating == 1, 1),
+				createChoiceButton(out, "fas fa-minus", rating == -1, -1),
+				createChoiceButton(out, "fas fa-trash-alt", rating <= -2, -2)
+			);
 			out.end();
 		}
+	}
+
+	private void makeChoice(Consumer<Object> onSet, Runnable onReset, Element... buttons) {
+		for (Element button : buttons) {
+			button.addEventListener("click", event -> {
+				if (button.classList.contains("active")) {
+					button.classList.remove("active");
+					onReset.run();
+				} else {
+					reset(buttons);
+					button.classList.add("active");
+					onSet.accept(Native.get(button, "vaUserData"));
+				}
+				
+				event.stopPropagation();
+				event.preventDefault();
+			});
+		}
+	}
+
+	private void reset(Element[] buttons) {
+		for (Element button : buttons) {
+			button.className = "toolbar-button";
+		}
+	}
+
+	private Element createChoiceButton(DomBuilder out, String iconClass, boolean active, Object userValue) throws IOException {
+		out.begin(SPAN);
+		out.attr(CLASS_ATTR, active ? "toolbar-button active" : "toolbar-button");
+		{
+			out.begin(I);
+			out.attr(CLASS_ATTR, iconClass);
+			out.end();
+		}
+		out.end();
+		
+		Element result = out.getLast();
+		Native.set(result, "vaUserData", userValue);
+		return result;
 	}
 
 }
