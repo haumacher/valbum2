@@ -27,7 +27,7 @@ public class AlbumInfo extends Resource {
 
 	private ThumbnailInfo _indexPicture = null;
 
-	private final java.util.List<ImageInfo> _images = new java.util.ArrayList<>();
+	private final java.util.List<AlbumPart> _images = new java.util.ArrayList<>();
 
 	/**
 	 * The title of this album.
@@ -84,14 +84,14 @@ public class AlbumInfo extends Resource {
 	/**
 	 * The list of images in this album.
 	 */
-	public final java.util.List<ImageInfo> getImages() {
+	public final java.util.List<AlbumPart> getImages() {
 		return _images;
 	}
 
 	/**
 	 * @see #getImages()
 	 */
-	public final AlbumInfo setImages(java.util.List<ImageInfo> value) {
+	public final AlbumInfo setImages(java.util.List<AlbumPart> value) {
 		_images.clear();
 		_images.addAll(value);
 		return this;
@@ -100,7 +100,7 @@ public class AlbumInfo extends Resource {
 	/**
 	 * Adds a value to the {@link #getImages()} list.
 	 */
-	public final AlbumInfo addImage(ImageInfo value) {
+	public final AlbumInfo addImage(AlbumPart value) {
 		_images.add(value);
 		return this;
 	}
@@ -136,7 +136,7 @@ public class AlbumInfo extends Resource {
 			case "title": setTitle((String) value); break;
 			case "subTitle": setSubTitle((String) value); break;
 			case "indexPicture": setIndexPicture((ThumbnailInfo) value); break;
-			case "images": setImages((java.util.List<ImageInfo>) value); break;
+			case "images": setImages((java.util.List<AlbumPart>) value); break;
 			default: super.set(field, value); break;
 		}
 	}
@@ -154,8 +154,8 @@ public class AlbumInfo extends Resource {
 		}
 		out.name("images");
 		out.beginArray();
-		for (ImageInfo x : getImages()) {
-			x.writeContent(out);
+		for (AlbumPart x : getImages()) {
+			x.writeTo(out);
 		}
 		out.endArray();
 	}
@@ -169,7 +169,7 @@ public class AlbumInfo extends Resource {
 			case "images": {
 				in.beginArray();
 				while (in.hasNext()) {
-					addImage(ImageInfo.readImageInfo(in));
+					addImage(AlbumPart.readAlbumPart(in));
 				}
 				in.endArray();
 			}
@@ -180,7 +180,7 @@ public class AlbumInfo extends Resource {
 
 	@Override
 	public int typeId() {
-		return 2;
+		return 1;
 	}
 
 	@Override
@@ -196,9 +196,9 @@ public class AlbumInfo extends Resource {
 		}
 		out.name(5);
 		{
-			java.util.List<ImageInfo> values = getImages();
+			java.util.List<AlbumPart> values = getImages();
 			out.beginArray(de.haumacher.msgbuf.binary.DataType.OBJECT, values.size());
-			for (ImageInfo x : values) {
+			for (AlbumPart x : values) {
 				x.writeTo(out);
 			}
 			out.endArray();
@@ -214,7 +214,7 @@ public class AlbumInfo extends Resource {
 			case 5: {
 				in.beginArray();
 				while (in.hasNext()) {
-					addImage(ImageInfo.readImageInfo(in));
+					addImage(AlbumPart.readAlbumPart(in));
 				}
 				in.endArray();
 			}

@@ -44,6 +44,7 @@ import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
+import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.util.servlet.Util;
 
@@ -335,7 +336,7 @@ public class ResourceCache {
 				album.addImage(image);
 			}
 			
-			Collections.sort(album.getImages(), (a, b) -> Long.compare(a.getDate(), b.getDate()));
+			Collections.sort(album.getImages(), (a, b) -> Long.compare(ToImage.toImage(a).getDate(), ToImage.toImage(b).getDate()));
 		
 			AlbumData result = new AlbumData(album);
 			return result;

@@ -12,9 +12,11 @@ import java.util.Map;
 import java.util.Set;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
+import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
 import elemental2.dom.MouseEvent;
@@ -28,7 +30,7 @@ public class AlbumDisplay extends ResourceDisplay {
 
 	private AlbumInfo _album;
 	private Set<ImageInfo> _selected = new HashSet<>();
-	private ImageInfo _lastClicked;
+	private AlbumPart _lastClicked;
 	
 	/** 
 	 * Creates a {@link AlbumDisplay}.
@@ -62,12 +64,12 @@ public class AlbumDisplay extends ResourceDisplay {
 			Map<ImageInfo, ImagePreviewDisplay> imageDisplays = new HashMap<>();
 			
 			ImageRow row = new ImageRow(width, 400);
-			for (ImageInfo image : _album.getImages()) {
+			for (AlbumPart image : _album.getImages()) {
 				if (row.isComplete()) {
 					writeRow(context, out, imageDisplays, row);
 					row.clear();
 				}
-				row.add(image);
+				row.add(ToImage.toImage(image));
 			}
 			writeRow(context, out, imageDisplays, row);
 		}
@@ -118,7 +120,7 @@ public class AlbumDisplay extends ResourceDisplay {
 							int stop = _album.getImages().indexOf(previewDisplay.getImage());
 							int delta = start < stop ? 1 : -1;
 							for (int index = start + delta; index != stop + delta; index+=delta) {
-								ImageInfo current = _album.getImages().get(index);
+								ImageInfo current = ToImage.toImage(_album.getImages().get(index));
 								ImagePreviewDisplay currentDisplay = imageDisplays.get(current);
 								setSelected(currentDisplay, select);
 							}

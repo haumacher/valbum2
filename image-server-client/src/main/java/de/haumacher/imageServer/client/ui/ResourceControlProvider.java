@@ -5,9 +5,11 @@ package de.haumacher.imageServer.client.ui;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
+import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.util.ToImage;
 
 /**
  * TODO
@@ -43,6 +45,11 @@ public class ResourceControlProvider implements Resource.Visitor<Display, Void> 
 	@Override
 	public Display visit(ErrorInfo error, Void arg) {
 		return new ErrorDisplay(error);
+	}
+
+	@Override
+	public Display visit(ImageGroup self, Void arg) {
+		return new ImageDisplay(ToImage.toImage(self));
 	}
 
 }

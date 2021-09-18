@@ -8,8 +8,38 @@ abstract message Resource {
 
 }
 
+/** {@link Resource} describing collection of {@link ImageInfo}s found in a directory. */
+message AlbumInfo extends Resource {
+	/** The title of this album. */
+	string title;
+	
+	/** The subtitle of this album. */
+	string subTitle;
+	
+	/** Description of the image used to display this whole album in a listing. */
+	ThumbnailInfo indexPicture;
+
+	/** The list of images in this album. */
+	repeated AlbumPart images;
+}
+
+/** Base class for contents of an {@link AlbumInfo}. */
+abstract message AlbumPart extends Resource {
+}
+
+/** A group of multiple images showing the same content. */
+message ImageGroup extends AlbumPart {
+
+	/** The index of the {@link ImageInfo} in {@link #images} of the image that should be displayed when displaying this {@link ImageGroup} in an album. */
+	int representative;
+
+	/** List of images that all show the same content. Only the image with  in this album. */
+	repeated ImageInfo images;
+
+}
+
 /** {@link Resource} describing a single image or video file. */
-message ImageInfo extends Resource {
+message ImageInfo extends AlbumPart {
 
 	/** Kind of image. */
 	enum Kind {
@@ -56,21 +86,6 @@ message ImageInfo extends Resource {
 	/** The {@link #name} of the last image of the {@link #owner}. */
 	string end;
 
-}
-
-/** {@link Resource} describing collection of {@link ImageInfo}s found in a directory. */
-message AlbumInfo extends Resource {
-	/** The title of this album. */
-	string title;
-	
-	/** The subtitle of this album. */
-	string subTitle;
-	
-	/** Description of the image used to display this whole album in a listing. */
-	ThumbnailInfo indexPicture;
-
-	/** The list of images in this album. */
-	repeated ImageInfo images;
 }
 
 /** {@link Resource} describing collection {@link FolderInfo}s found in a directory. */

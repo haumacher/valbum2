@@ -8,8 +8,10 @@ import java.util.List;
 import java.util.Map;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.util.ToImage;
 
 /**
  * TODO
@@ -69,12 +71,12 @@ public class AlbumData extends Resource {
 	 * Updates internal links.
 	 */
 	private void updateLinks() {
-		List<ImageInfo> images = _album.getImages();
-		String home= images.get(0).getName();
-		String end = images.get(images.size() - 1).getName();
+		List<AlbumPart> images = _album.getImages();
+		String home= ToImage.toImage(images.get(0)).getName();
+		String end = ToImage.toImage(images.get(images.size() - 1)).getName();
 
 		for (int n = 0, size = images.size(); n < size; n++) {
-			ImageInfo current = images.get(n);
+			ImageInfo current = ToImage.toImage(images.get(n));
 			
 			ImageInfo clash = _imageByName.put(current.getName(), current);
 			assert clash == null : "Duplicate name '" + current.getName() + "'.";
@@ -82,12 +84,12 @@ public class AlbumData extends Resource {
 			current.setHome(home);
 			current.setEnd(end);
 			if (n > 0) {
-				current.setPrevious(images.get(n - 1).getName());
+				current.setPrevious(ToImage.toImage(images.get(n - 1)).getName());
 			} else {
 				current.setPrevious(null);
 			}
 			if (n + 1 < size) {
-				current.setNext(images.get(n + 1).getName());
+				current.setNext(ToImage.toImage(images.get(n + 1)).getName());
 			} else {
 				current.setNext(null);
 			}

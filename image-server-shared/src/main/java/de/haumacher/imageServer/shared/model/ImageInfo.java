@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * {@link Resource} describing a single image or video file.
  */
-public class ImageInfo extends Resource {
+public class ImageInfo extends AlbumPart {
 
 	/**
 	 * Kind of image.
@@ -386,7 +386,7 @@ public class ImageInfo extends Resource {
 
 	@Override
 	public int typeId() {
-		return 1;
+		return 3;
 	}
 
 	@Override
@@ -449,7 +449,7 @@ public class ImageInfo extends Resource {
 	}
 
 	@Override
-	public <R,A> R visit(Resource.Visitor<R,A> v, A arg) {
+	public <R,A> R visit(AlbumPart.Visitor<R,A> v, A arg) {
 		return v.visit(this, arg);
 	}
 

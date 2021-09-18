@@ -85,7 +85,7 @@ public class ErrorInfo extends Resource {
 
 	@Override
 	public int typeId() {
-		return 4;
+		return 5;
 	}
 
 	@Override
