@@ -118,7 +118,7 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 
 	private boolean navigate(Element target, String navigationAttr) {
 		Element page = target.ownerDocument.getElementById("page");
-		if (page.hasAttribute(navigationAttr)) {
+		if (page != null && page.hasAttribute(navigationAttr)) {
 			String url = page.getAttribute(navigationAttr);
 			App.getInstance().gotoTarget(url);
 		}

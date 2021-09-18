@@ -1,149 +1,216 @@
-/*
- * Copyright (c) 2020 Bernhard Haumacher. All Rights Reserved.
- */
 package de.haumacher.imageServer.shared.model;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+public class ListingInfo extends Resource {
 
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonWriter;
-
-/**
- * Description of a directory listing containing links to other directories.
- *
- * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
- */
-public class ListingInfo implements Resource {
-	
-	private int _depth;
-	private String _name;
-	private String _title;
-	private List<FolderInfo> _folders = new ArrayList<>();
-
-	/** 
-	 * Creates a {@link ListingInfo}.
-	 * @param depth 
-	 *
+	/**
+	 * Creates a {@link ListingInfo} instance.
 	 */
-	public ListingInfo(int depth, String name, String title) {
-		this();
-		_depth = depth;
-		_name = name;
-		_title = title;
+	public static ListingInfo create() {
+		return new ListingInfo();
 	}
-	
-	/** 
-	 * Creates a {@link ListingInfo}.
+
+	/**
+	 * Creates a {@link ListingInfo} instance.
 	 *
+	 * @see #create()
 	 */
-	public ListingInfo() {
+	protected ListingInfo() {
 		super();
 	}
-	
-	@Override
-	public Type type() {
-		return Type.listing;
-	}
-	
-	/**
-	 * The number of ancestors this listing has.
-	 */
-	public int getDepth() {
+
+	private int _depth = 0;
+
+	private String _name = "";
+
+	private String _title = "";
+
+	private final java.util.List<FolderInfo> _folders = new java.util.ArrayList<>();
+
+	public final int getDepth() {
 		return _depth;
 	}
 
 	/**
-	 * The name of this listing's directory.
+	 * @see #getDepth()
 	 */
-	public String getName() {
+	public final ListingInfo setDepth(int value) {
+		_depth = value;
+		return this;
+	}
+
+	public final String getName() {
 		return _name;
 	}
-	
+
 	/**
-	 * The title of the grouping folder.
+	 * @see #getName()
 	 */
-	public String getTitle() {
+	public final ListingInfo setName(String value) {
+		_name = value;
+		return this;
+	}
+
+	public final String getTitle() {
 		return _title;
 	}
-	
+
 	/**
 	 * @see #getTitle()
 	 */
-	public void setTitle(String title) {
-		_title = title;
+	public final ListingInfo setTitle(String value) {
+		_title = value;
+		return this;
 	}
-	
-	/** 
-	 * TODO
-	 *
-	 * @param folder
-	 */
-	public void addFolder(FolderInfo folder) {
-		_folders.add(folder);
-	}
-	
-	/**
-	 * TODO
-	 */
-	public List<FolderInfo> getFolders() {
+
+	public final java.util.List<FolderInfo> getFolders() {
 		return _folders;
 	}
 
-	@Override
-	public void writeContents(JsonWriter json) throws IOException {
-		json.name("depth");
-		json.value(getDepth());
-		json.name("name");
-		json.value(getName());
-		json.name("title");
-		json.value(getTitle());
-		json.name("folders");
-		json.beginArray();
-		for (FolderInfo folder : getFolders()) {
-			folder.writeTo(json);
-		}
-		json.endArray();
-	}
-	
 	/**
-	 * Reads a {@link ListingInfo} as JSON object from the given {@link JsonReader}.
+	 * @see #getFolders()
 	 */
-	public static ListingInfo read(JsonReader json) throws IOException {
+	public final ListingInfo setFolders(java.util.List<FolderInfo> value) {
+		_folders.clear();
+		_folders.addAll(value);
+		return this;
+	}
+
+	/**
+	 * Adds a value to the {@link #getFolders()} list.
+	 */
+	public final ListingInfo addFolder(FolderInfo value) {
+		_folders.add(value);
+		return this;
+	}
+
+	/** Reads a new instance from the given reader. */
+	public static ListingInfo readListingInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		ListingInfo result = new ListingInfo();
-		result.readFrom(json);
+		in.beginObject();
+		result.readFields(in);
+		in.endObject();
 		return result;
 	}
 
 	@Override
-	public void readFrom(JsonReader json) throws IOException {
-		json.beginObject();
-		while (json.hasNext()) {
-			switch(json.nextName()) {
-				case "depth":
-					_depth = json.nextInt();
-					break;
-				case "name":
-					_name = json.nextString();
-					break;
-				case "title":
-					setTitle(json.nextString());
-					break;
-				case "folders":
-					json.beginArray();
-					while (json.hasNext()) {
-						addFolder(FolderInfo.read(json));
-					}
-					json.endArray();
-					break;
-			}
-		}
-		json.endObject();
+	public String jsonType() {
+		return "ListingInfo";
 	}
 
 	@Override
-	public <R, A, E extends Throwable> R visit(Visitor<R, A, E> v, A arg) throws E {
+	public Object get(String field) {
+		switch (field) {
+			case "depth": return getDepth();
+			case "name": return getName();
+			case "title": return getTitle();
+			case "folders": return getFolders();
+			default: return super.get(field);
+		}
+	}
+
+	@Override
+	public void set(String field, Object value) {
+		switch (field) {
+			case "depth": setDepth((int) value); break;
+			case "name": setName((String) value); break;
+			case "title": setTitle((String) value); break;
+			case "folders": setFolders((java.util.List<FolderInfo>) value); break;
+			default: super.set(field, value); break;
+		}
+	}
+
+	@Override
+	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
+		super.writeFields(out);
+		out.name("depth");
+		out.value(getDepth());
+		out.name("name");
+		out.value(getName());
+		out.name("title");
+		out.value(getTitle());
+		out.name("folders");
+		out.beginArray();
+		for (FolderInfo x : getFolders()) {
+			x.writeTo(out);
+		}
+		out.endArray();
+	}
+
+	@Override
+	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
+		switch (field) {
+			case "depth": setDepth(in.nextInt()); break;
+			case "name": setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case "title": setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case "folders": {
+				in.beginArray();
+				while (in.hasNext()) {
+					addFolder(FolderInfo.readFolderInfo(in));
+				}
+				in.endArray();
+			}
+			break;
+			default: super.readField(in, field);
+		}
+	}
+
+	@Override
+	public int typeId() {
+		return 3;
+	}
+
+	@Override
+	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
+		super.writeFields(out);
+		out.name(1);
+		out.value(getDepth());
+		out.name(2);
+		out.value(getName());
+		out.name(3);
+		out.value(getTitle());
+		out.name(4);
+		{
+			java.util.List<FolderInfo> values = getFolders();
+			out.beginArray(de.haumacher.msgbuf.binary.DataType.OBJECT, values.size());
+			for (FolderInfo x : values) {
+				x.writeTo(out);
+			}
+			out.endArray();
+		}
+	}
+
+	@Override
+	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
+		switch (field) {
+			case 1: setDepth(in.nextInt()); break;
+			case 2: setName(in.nextString()); break;
+			case 3: setTitle(in.nextString()); break;
+			case 4: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addFolder(FolderInfo.readFolderInfo(in));
+				}
+				in.endArray();
+			}
+			break;
+			default: super.readField(in, field);
+		}
+	}
+
+	/** Reads a new instance from the given reader. */
+	public static ListingInfo readListingInfo(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
+		in.beginObject();
+		ListingInfo result = new ListingInfo();
+		while (in.hasNext()) {
+			int field = in.nextName();
+			result.readField(in, field);
+		}
+		in.endObject();
+		return result;
+	}
+
+	@Override
+	public <R,A> R visit(Resource.Visitor<R,A> v, A arg) {
 		return v.visit(this, arg);
 	}
 

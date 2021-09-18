@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2020 Bernhard Haumacher. All Rights Reserved.
  */
-package de.haumacher.imageServer;
+package de.haumacher.imageServer.cache;
 
 import static java.nio.file.StandardWatchEventKinds.*;
 
@@ -17,6 +17,7 @@ import java.nio.file.WatchService;
 import java.text.DateFormat;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
@@ -33,17 +34,17 @@ import com.drew.metadata.MetadataException;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import com.google.gson.stream.JsonReader;
 
+import de.haumacher.imageServer.PathInfo;
+import de.haumacher.imageServer.io.ReaderAdapter;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
-import de.haumacher.imageServer.shared.model.AlbumProperties;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
-import de.haumacher.imageServer.shared.model.JsonSerializable;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
+import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.util.servlet.Util;
 
 /**
@@ -91,16 +92,20 @@ public class ResourceCache {
 	public Resource lookup(PathInfo pathInfo) {
 		_loader.processEvents(_cache);
 		if (pathInfo.toFile().isDirectory()) {
-			return _cache.getUnchecked(pathInfo);
+			Resource result = _cache.getUnchecked(pathInfo);
+			if (result instanceof AlbumData) {
+				return ((AlbumData) result).getAlbum();
+			}
+			return result;
 		} else {
 			Resource resource = _cache.getUnchecked(pathInfo.parent());
-			if (resource instanceof AlbumInfo) {
-				ImageInfo result = ((AlbumInfo) resource).getImage(pathInfo.getName());
+			if (resource instanceof AlbumData) {
+				ImageInfo result = ((AlbumData) resource).getImage(pathInfo.getName());
 				if (result != null) {
 					return result;
 				}
 			}
-			return new ErrorInfo("No such image '" + pathInfo + "'.");
+			return ErrorInfo.create().setMessage("No such image '" + pathInfo + "'.");
 		}
 	}
 
@@ -152,7 +157,7 @@ public class ResourceCache {
 			
 			File[] images = dir.listFiles(IMAGES);
 			if (images == null) {
-				return new ErrorInfo("Cannot list folder.");
+				return ErrorInfo.create().setMessage("Cannot list folder.");
 			}
 			
 			try {
@@ -174,25 +179,29 @@ public class ResourceCache {
 			
 			File[] dirs = dir.listFiles(DIRECTORIES);
 			if (dirs == null) {
-				return new ErrorInfo("Cannot list files.");
+				return ErrorInfo.create().setMessage("Cannot list files.");
 			}
 			
 			Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
 			
 			String listingName = pathInfo.getName();
-			ListingInfo listing = new ListingInfo(pathInfo.getDepth(), listingName, fromTechnicalName(listingName));
+			ListingInfo listing = ListingInfo.create().setDepth(pathInfo.getDepth()).setName(listingName).setTitle(fromTechnicalName(listingName));
 			for (File folder : dirs) {
 				String folderName = folder.getName();
-				FolderInfo folderInfo = new FolderInfo(folderName);
+				FolderInfo folderInfo;
 				
 				File index = new File(folder, "index.json");
 				if (index.isFile()) {
 					try {
-						loadJSON(index, folderInfo);
+						folderInfo = loadJSON(index, FolderInfo::readFolderInfo);
 					} catch (IOException ex) {
 						LOG.log(Level.WARNING, "Cannot read listing index '" + index + "'.", ex);
+						folderInfo = FolderInfo.create();
 					}
+				} else {
+					folderInfo = FolderInfo.create();
 				}
+				folderInfo.setName(folderName);
 				
 				if (folderInfo.getIndexPicture() == null) {
 					File[] images = folder.listFiles(IMAGES);
@@ -217,7 +226,7 @@ public class ResourceCache {
 								ty = 0.0;
 							}
 							
-							ThumbnailInfo thumbnail = new ThumbnailInfo(indexPicture.getName(), scale);
+							ThumbnailInfo thumbnail = ThumbnailInfo.create().setImage(indexPicture.getName()).setScale(scale);
 							thumbnail.setTy(ty);
 							folderInfo.setIndexPicture(thumbnail);
 						} catch (ImageProcessingException
@@ -240,7 +249,7 @@ public class ResourceCache {
 						folderName = removeMatch(folderName, matcher);
 					} else {
 						if (imageData != null) {
-							Date date = imageData.getDate();
+							Date date = new Date(imageData.getDate());
 							if (date != null) {
 								folderInfo.setSubTitle(formatDate(date));
 							}
@@ -296,8 +305,21 @@ public class ResourceCache {
 			return Character.toUpperCase(expanded.charAt(0)) + expanded.substring(1);
 		}
 
-		private static Resource loadAlbum(PathInfo pathInfo, File[] files) {
-			AlbumInfo album = new AlbumInfo();
+		private static AlbumData loadAlbum(PathInfo pathInfo, File[] files) {
+			AlbumInfo album;
+			
+			File dir = pathInfo.toFile();
+			File indexResource = new File(dir, "index.json");
+			if (indexResource.exists()) {
+				try {
+					album = loadJSON(indexResource);
+				} catch (IOException ex) {
+					LOG.log(Level.WARNING, "Faild to load album index.", ex);
+					album = createGenericAlbumInfo(pathInfo);
+				}
+			} else {
+				album = createGenericAlbumInfo(pathInfo);
+			}
 			album.setDepth(pathInfo.getDepth());
 			
 			for (File file : files) {
@@ -308,44 +330,43 @@ public class ResourceCache {
 					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
 					continue;
 				}
-				album.bulkAddImage(image);
+				album.addImage(image);
 			}
-			album.updateLinks();
 			
-			album.sort((a, b) -> a.getDate().compareTo(b.getDate()));
+			Collections.sort(album.getImages(), (a, b) -> Long.compare(a.getDate(), b.getDate()));
 		
-			File dir = pathInfo.toFile();
+			AlbumData result = new AlbumData(album);
+			return result;
+		}
+
+		private static AlbumInfo createGenericAlbumInfo(PathInfo pathInfo) {
+			AlbumInfo album = AlbumInfo.create();
+			String dirName = pathInfo.getName();
 			
-			File indexResource = new File(dir, "index.json");
-			AlbumProperties header = album.getHeader();
-			if (indexResource.exists()) {
-				try {
-					loadJSON(indexResource, header);
-				} catch (IOException ex) {
-					LOG.log(Level.WARNING, "Faild to load album index.", ex);
-					return new ErrorInfo("Cannot load album info.");
-				}
+			Pattern prefixPattern = Pattern.compile("[-_\\.\\s0-9]*");
+			Matcher matcher = prefixPattern.matcher(dirName);
+			if (matcher.lookingAt()) {
+				album.setTitle(fromTechnicalName(dirName.substring(matcher.end())));
+				album.setSubTitle(dirName.substring(0, matcher.end()));
 			} else {
-				String dirName = pathInfo.getName();
-				
-				Pattern prefixPattern = Pattern.compile("[-_\\.\\s0-9]*");
-				Matcher matcher = prefixPattern.matcher(dirName);
-				if (matcher.lookingAt()) {
-					header.setTitle(fromTechnicalName(dirName.substring(matcher.end())));
-					header.setSubTitle(dirName.substring(0, matcher.end()));
-				} else {
-					header.setTitle(dirName);
-				}
+				album.setTitle(dirName);
 			}
-			
 			return album;
 		}
 
-		private static void loadJSON(File file, JsonSerializable resource) throws IOException {
+		interface LoaderFunction<T> {
+			T load(JsonReader json) throws IOException;
+		}
+		
+		private static <T> T loadJSON(File file, LoaderFunction<T> loader) throws IOException {
 			try (InputStream in = new FileInputStream(file)) {
-				JsonReader json = new JsonReader(new InputStreamReader(in, "utf-8"));
-				resource.readFrom(json);
+				JsonReader json = new JsonReader(new ReaderAdapter(new InputStreamReader(in, "utf-8")));
+				return loader.load(json);
 			}
+		}
+		
+		private static AlbumInfo loadJSON(File file) throws IOException {
+			return loadJSON(file, AlbumInfo::readAlbumInfo);
 		}
 	}
 

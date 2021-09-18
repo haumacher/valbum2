@@ -1,12 +1,10 @@
 package de.haumacher.imageServer.client.app;
 
 import java.io.IOException;
-import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
 
-import com.google.gson.stream.JsonReader;
 import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.http.client.Request;
 import com.google.gwt.http.client.RequestBuilder;
@@ -20,6 +18,8 @@ import de.haumacher.imageServer.client.ui.ResourceControlProvider;
 import de.haumacher.imageServer.client.ui.UIContext;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.Settings;
+import de.haumacher.msgbuf.io.StringR;
+import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.gwt.dom.DomBuilderImpl;
 import de.haumacher.util.html.HTML;
@@ -143,10 +143,10 @@ public class App implements EntryPoint, UIContext {
 				@Override
 				public void onResponseReceived(Request request, Response response) {
 					if (response.getStatusCode() == Response.SC_OK) {
-						JsonReader json = new JsonReader(new StringReader(response.getText()));
+						JsonReader json = new JsonReader(new StringR(response.getText()));
 						
 						try {
-							Resource resource = Resource.readPolymorphic(json);
+							Resource resource = Resource.readResource(json);
 							updatePage(path, resource, back);
 						} catch (IOException ex) {
 							displayError("Couldn't parse response from '" + url + "': " + response.getText());

@@ -5,6 +5,8 @@
   "http://www.gwtproject.org/doctype/2.8.1/gwt-module.dtd">
 <module rename-to='shared'>
 
+	<inherits name="de.haumacher.msgbuf.MsgBuf"/>
+
 	<!-- Specify the paths for translatable code -->
 	<source path='shared' />
 

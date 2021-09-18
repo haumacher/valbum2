@@ -1,81 +1,117 @@
-/*
- * Copyright (c) 2020 Bernhard Haumacher. All Rights Reserved.
- */
 package de.haumacher.imageServer.shared.model;
 
-import java.io.IOException;
+public class ErrorInfo extends Resource {
 
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonWriter;
-
-/**
- * TODO
- *
- * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
- */
-public class ErrorInfo implements Resource {
-	
-	private String _message;
-
-	/** 
-	 * Creates a {@link ErrorInfo}.
-	 *
+	/**
+	 * Creates a {@link ErrorInfo} instance.
 	 */
-	public ErrorInfo(String message) {
-		this();
-		_message = message;
+	public static ErrorInfo create() {
+		return new ErrorInfo();
 	}
 
-	/** 
-	 * Creates a {@link ErrorInfo}.
+	/**
+	 * Creates a {@link ErrorInfo} instance.
+	 *
+	 * @see #create()
 	 */
 	protected ErrorInfo() {
 		super();
 	}
 
-	@Override
-	public Type type() {
-		return Type.error;
-	}
+	private String _message = "";
 
-	/** 
-	 * TODO
-	 *
-	 * @return
-	 */
-	public String getMessage() {
+	public final String getMessage() {
 		return _message;
 	}
 
-	@Override
-	public <R, A, E extends Throwable> R visit(Visitor<R, A, E> v, A arg) throws E {
-		return v.visit(this, arg);
-	}
-
-	@Override
-	public void writeContents(JsonWriter json) throws IOException {
-		json.name("message");
-		json.value(_message);
-	}
-	
-	@Override
-	public void readFrom(JsonReader json) throws IOException {
-		json.beginObject();
-		while (json.hasNext()) {
-			switch (json.nextName()) {
-				case "message": _message = json.nextString(); break;
-			}
-		}
-		json.endObject();
-	}
-
 	/**
-	 * Reads an {@link ErrorInfo} as JSON object from the given {@link JsonReader}.
+	 * @see #getMessage()
 	 */
-	public static ErrorInfo read(JsonReader json) throws IOException {
+	public final ErrorInfo setMessage(String value) {
+		_message = value;
+		return this;
+	}
+
+	/** Reads a new instance from the given reader. */
+	public static ErrorInfo readErrorInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		ErrorInfo result = new ErrorInfo();
-		result.readFrom(json);
+		in.beginObject();
+		result.readFields(in);
+		in.endObject();
 		return result;
+	}
+
+	@Override
+	public String jsonType() {
+		return "ErrorInfo";
+	}
+
+	@Override
+	public Object get(String field) {
+		switch (field) {
+			case "message": return getMessage();
+			default: return super.get(field);
+		}
+	}
+
+	@Override
+	public void set(String field, Object value) {
+		switch (field) {
+			case "message": setMessage((String) value); break;
+			default: super.set(field, value); break;
+		}
+	}
+
+	@Override
+	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
+		super.writeFields(out);
+		out.name("message");
+		out.value(getMessage());
+	}
+
+	@Override
+	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
+		switch (field) {
+			case "message": setMessage(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			default: super.readField(in, field);
+		}
+	}
+
+	@Override
+	public int typeId() {
+		return 4;
+	}
+
+	@Override
+	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
+		super.writeFields(out);
+		out.name(1);
+		out.value(getMessage());
+	}
+
+	@Override
+	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
+		switch (field) {
+			case 1: setMessage(in.nextString()); break;
+			default: super.readField(in, field);
+		}
+	}
+
+	/** Reads a new instance from the given reader. */
+	public static ErrorInfo readErrorInfo(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
+		in.beginObject();
+		ErrorInfo result = new ErrorInfo();
+		while (in.hasNext()) {
+			int field = in.nextName();
+			result.readField(in, field);
+		}
+		in.endObject();
+		return result;
+	}
+
+	@Override
+	public <R,A> R visit(Resource.Visitor<R,A> v, A arg) {
+		return v.visit(this, arg);
 	}
 
 }

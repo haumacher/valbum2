@@ -14,7 +14,7 @@ import de.haumacher.imageServer.shared.model.Resource;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ResourceControlProvider implements Resource.Visitor<Display, Void, RuntimeException> {
+public class ResourceControlProvider implements Resource.Visitor<Display, Void> {
 	
 	/**
 	 * Singleton {@link ResourceControlProvider} instance.
@@ -26,22 +26,22 @@ public class ResourceControlProvider implements Resource.Visitor<Display, Void, 
 	}
 
 	@Override
-	public Display visit(AlbumInfo album, Void arg) throws RuntimeException {
+	public Display visit(AlbumInfo album, Void arg) {
 		return new AlbumDisplay(album);
 	}
 
 	@Override
-	public Display visit(ListingInfo listing, Void arg) throws RuntimeException {
+	public Display visit(ListingInfo listing, Void arg) {
 		return new ListingDisplay(listing);
 	}
 
 	@Override
-	public Display visit(ImageInfo image, Void arg) throws RuntimeException {
+	public Display visit(ImageInfo image, Void arg) {
 		return new ImageDisplay(image);
 	}
 
 	@Override
-	public Display visit(ErrorInfo error, Void arg) throws RuntimeException {
+	public Display visit(ErrorInfo error, Void arg) {
 		return new ErrorDisplay(error);
 	}
 

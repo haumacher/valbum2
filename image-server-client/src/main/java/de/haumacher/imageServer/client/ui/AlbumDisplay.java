@@ -12,7 +12,6 @@ import java.util.Map;
 import java.util.Set;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
-import de.haumacher.imageServer.shared.model.AlbumProperties;
 import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
@@ -50,11 +49,10 @@ public class AlbumDisplay extends ResourceDisplay {
 		}
 		
 		out.begin(H1);
-		AlbumProperties header = _album.getHeader();
-		out.append(header.getTitle());
+		out.append(_album.getTitle());
 		out.end();
 		out.begin(H2);
-		out.append(header.getSubTitle());
+		out.append(_album.getSubTitle());
 		out.end();
 
 		out.begin(DIV);

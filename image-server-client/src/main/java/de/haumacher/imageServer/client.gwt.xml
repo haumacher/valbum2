@@ -12,6 +12,7 @@
 	<inherits name='de.haumacher.imageServer.shared' />
 	<inherits name='de.haumacher.util.xml' />
 	<inherits name='de.haumacher.util.gwt' />
+	<inherits name='de.haumacher.msgbuf.MsgBuf' />
 
 	<!-- Specify the app entry point class. -->
 	<entry-point

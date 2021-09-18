@@ -2,10 +2,10 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	
+
 	<artifactId>image-server-shared</artifactId>
 	<name>Image Server Model</name>
-	
+
 	<parent>
 		<groupId>de.haumacher</groupId>
 		<artifactId>image-server-parent</artifactId>
@@ -26,7 +26,21 @@
 			<artifactId>util-xml</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
-	
+
+		<dependency>
+			<groupId>de.haumacher.msgbuf</groupId>
+			<artifactId>msgbuf-api</artifactId>
+			<version>0.2.1-SNAPSHOT</version>
+		</dependency>
+
+		<dependency>
+			<groupId>de.haumacher.msgbuf</groupId>
+			<artifactId>msgbuf-api</artifactId>
+			<version>0.2.1-SNAPSHOT</version>
+			<scope>provided</scope>
+			<classifier>sources</classifier>
+		</dependency>
+
 		<dependency>
 			<groupId>com.google.code.gson</groupId>
 			<artifactId>gson</artifactId>

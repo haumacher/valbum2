@@ -1,106 +1,112 @@
-/*
- * Copyright (c) 2020 Bernhard Haumacher. All Rights Reserved.
- */
 package de.haumacher.imageServer.shared.model;
 
-import java.io.IOException;
+public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObject implements de.haumacher.msgbuf.binary.BinaryDataObject {
 
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonWriter;
+	/** Visitor interface for the {@link Resource} hierarchy.*/
+	public interface Visitor<R,A> {
 
-/**
- * Common interface for types describing resources being served.
- *
- * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
- */
-public interface Resource extends JsonSerializable {
-	
-	/**
-	 * The type of a {@link Resource}.
-	 * 
-	 * @see Resource#type()
-	 */
-	enum Type {
-		/**
-		 * A directory containing no images but other directories.
-		 * 
-		 * {@link ListingInfo}
-		 */
-		listing, 
-		
-		/**
-		 * A directory containing images.
-		 * 
-		 * @see AlbumInfo
-		 */
-		album, 
-		
-		/**
-		 * A single image.
-		 * 
-		 * @see ImageInfo
-		 */
-		image, 
-		
-		/**
-		 * A resource that does not exist or cannot be retrieved. 
-		 * 
-		 * @see ErrorInfo
-		 */
-		error;
+		/** Visit case for {@link ImageInfo}.*/
+		R visit(ImageInfo self, A arg);
+
+		/** Visit case for {@link AlbumInfo}.*/
+		R visit(AlbumInfo self, A arg);
+
+		/** Visit case for {@link ListingInfo}.*/
+		R visit(ListingInfo self, A arg);
+
+		/** Visit case for {@link ErrorInfo}.*/
+		R visit(ErrorInfo self, A arg);
+
 	}
 
 	/**
-	 * The resource type.
+	 * Creates a {@link Resource} instance.
 	 */
-	Type type();
-	
-	<R,A,E extends Throwable> R visit(Visitor<R,A,E> v, A arg) throws E;
-	
-	interface Visitor<R,A,E extends Throwable> {
-		R visit(AlbumInfo album, A arg) throws E;
-		R visit(ListingInfo listing, A arg) throws E;
-		R visit(ImageInfo image, A arg) throws E;
-		R visit(ErrorInfo error, A arg) throws E;
+	protected Resource() {
+		super();
 	}
-	
-	default void writePolymorphic(JsonWriter json) throws IOException {
-		json.beginObject();
-		json.name("resource");
-		json.beginArray();
-		json.value(type().name());
-		writeTo(json);
-		json.endArray();
-		json.endObject();
-	}
-	
-	/**
-	 * Reads a polymorphic {@link Resource} as JSON object encoding the concrete
-	 * type of the Resource and the {@link Resource} data as JSON array.
-	 * 
-	 * <p>
-	 * <code>
-	 * { "resource": [ "resource-type", { resource-data } ] }
-	 * </code>
-	 * </p>
-	 */
-	static Resource readPolymorphic(JsonReader json) throws IOException {
+
+	/** Reads a new instance from the given reader. */
+	public static Resource readResource(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		Resource result;
-		json.beginObject();
-		String name = json.nextName();
-		assert name.equals("resource");
-		json.beginArray();
-		Type type = Type.valueOf(json.nextString());
+		in.beginArray();
+		String type = in.nextString();
 		switch (type) {
-			case album: result = AlbumInfo.read(json); break;
-			case listing: result = ListingInfo.read(json); break;
-			case image: result = ImageInfo.read(json); break;
-			case error: result = ErrorInfo.read(json); break;
-			default: throw new IllegalArgumentException("No such resource type: " + type);
+			case "ImageInfo": result = ImageInfo.readImageInfo(in); break;
+			case "AlbumInfo": result = AlbumInfo.readAlbumInfo(in); break;
+			case "ListingInfo": result = ListingInfo.readListingInfo(in); break;
+			case "ErrorInfo": result = ErrorInfo.readErrorInfo(in); break;
+			default: in.skipValue(); result = null; break;
 		}
-		json.endArray();
-		json.endObject();
+		in.endArray();
 		return result;
 	}
+
+	@Override
+	public final void writeTo(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
+		out.beginArray();
+		out.value(jsonType());
+		writeContent(out);
+		out.endArray();
+	}
+
+	/** The type identifier for this concrete subtype. */
+	public abstract String jsonType();
+
+	@Override
+	public final void writeTo(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
+		out.beginObject();
+		out.name(0);
+		out.value(typeId());
+		writeFields(out);
+		out.endObject();
+	}
+
+	/** The binary identifier for this concrete type in the polymorphic {@link Resource} hierarchy. */
+	public abstract int typeId();
+
+	/**
+	 * Serializes all fields of this instance to the given binary output.
+	 *
+	 * @param out
+	 *        The binary output to write to.
+	 * @throws java.io.IOException If writing fails.
+	 */
+	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
+		// No fields to write, hook for subclasses.
+	}
+
+	/** Consumes the value for the field with the given ID and assigns its value. */
+	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
+		switch (field) {
+			default: in.skipValue(); 
+		}
+	}
+
+	/** Reads a new instance from the given reader. */
+	public static Resource readResource(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
+		in.beginObject();
+		Resource result;
+		int typeField = in.nextName();
+		assert typeField == 0;
+		int type = in.nextInt();
+		switch (type) {
+			case 1: result = ImageInfo.create(); break;
+			case 2: result = AlbumInfo.create(); break;
+			case 3: result = ListingInfo.create(); break;
+			case 4: result = ErrorInfo.create(); break;
+			default: while (in.hasNext()) {in.skipValue(); } in.endObject(); return null;
+		}
+		while (in.hasNext()) {
+			int field = in.nextName();
+			result.readField(in, field);
+		}
+		in.endObject();
+		return result;
+	}
+
+	/** Accepts the given visitor. */
+	public abstract <R,A> R visit(Visitor<R,A> v, A arg);
+
 
 }

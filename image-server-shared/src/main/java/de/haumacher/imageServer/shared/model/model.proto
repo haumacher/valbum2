@@ -1,0 +1,66 @@
+package de.haumacher.imageServer.shared.model;
+
+abstract message Resource {
+
+}
+
+message ImageInfo extends Resource {
+
+	enum Kind {
+		IMAGE;
+		VIDEO;
+	}
+
+	transient AlbumInfo owner;
+	int depth;
+	
+	Kind kind;
+	string name;
+	long date;
+	int width;
+	int height;
+	string comment;
+	
+	string previous;
+	string next;
+	string home;
+	string end;
+
+	int rating;
+}
+
+message AlbumInfo extends Resource {
+	string title;
+	string subTitle;
+	ThumbnailInfo indexPicture;
+
+	int depth;
+	repeated ImageInfo images;
+}
+
+message ListingInfo extends Resource {
+	int depth;
+	string name;
+	string title;
+	repeated FolderInfo folders;
+}
+
+message FolderInfo {
+	string name;
+	string title;
+	string subTitle;
+	ThumbnailInfo indexPicture;
+}
+
+message ThumbnailInfo {
+	string image;
+	
+	double scale;
+	double tx;
+	double ty;
+}
+
+message ErrorInfo extends Resource {
+	string `message`;
+}
+

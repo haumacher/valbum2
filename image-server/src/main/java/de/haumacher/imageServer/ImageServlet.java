@@ -22,9 +22,10 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.jetty.http.HttpStatus;
 
-import com.google.gson.stream.JsonWriter;
-
+import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.io.WriterAdapter;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.util.servlet.Util;
 import de.haumacher.util.xml.XmlWriter;
 
@@ -214,8 +215,8 @@ public class ImageServlet extends HttpServlet {
 
 	private void serveJson(HttpServletResponse response, Resource album) throws IOException {
 		response.setContentType("application/json");
-		try (JsonWriter json = new JsonWriter(new OutputStreamWriter(response.getOutputStream(), "utf-8"))) {
-			album.writePolymorphic(json);
+		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(response.getOutputStream(), "utf-8")))) {
+			album.writeTo(json);
 		}
 	}
 

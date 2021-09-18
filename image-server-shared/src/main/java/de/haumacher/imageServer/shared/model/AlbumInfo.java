@@ -1,188 +1,250 @@
-/*
- * Copyright (c) 2020 Bernhard Haumacher. All Rights Reserved.
- */
 package de.haumacher.imageServer.shared.model;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+public class AlbumInfo extends Resource {
 
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonWriter;
-
-/**
- * TODO
- *
- * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
- */
-public class AlbumInfo implements Resource {
-
-	private int _depth;
-	
-	private final AlbumProperties _header = new AlbumProperties();
-
-	private final List<ImageInfo> _images = new ArrayList<>();
-	
-	private final Map<String, ImageInfo> _imageByName = new HashMap<>();
-	
-	private final List<ImageInfo> _imagesUnmodifiable = Collections.unmodifiableList(_images);
-
-	/** 
-	 * Creates a {@link AlbumInfo}.
+	/**
+	 * Creates a {@link AlbumInfo} instance.
 	 */
-	public AlbumInfo() {
+	public static AlbumInfo create() {
+		return new AlbumInfo();
+	}
+
+	/**
+	 * Creates a {@link AlbumInfo} instance.
+	 *
+	 * @see #create()
+	 */
+	protected AlbumInfo() {
 		super();
 	}
-	
-	@Override
-	public Type type() {
-		return Type.album;
+
+	private String _title = "";
+
+	private String _subTitle = "";
+
+	private ThumbnailInfo _indexPicture = null;
+
+	private int _depth = 0;
+
+	private final java.util.List<ImageInfo> _images = new java.util.ArrayList<>();
+
+	public final String getTitle() {
+		return _title;
 	}
-	
+
 	/**
-	 * The number of ancestor resources that exist.
+	 * @see #getTitle()
 	 */
-	public int getDepth() {
+	public final AlbumInfo setTitle(String value) {
+		_title = value;
+		return this;
+	}
+
+	public final String getSubTitle() {
+		return _subTitle;
+	}
+
+	/**
+	 * @see #getSubTitle()
+	 */
+	public final AlbumInfo setSubTitle(String value) {
+		_subTitle = value;
+		return this;
+	}
+
+	public final ThumbnailInfo getIndexPicture() {
+		return _indexPicture;
+	}
+
+	/**
+	 * @see #getIndexPicture()
+	 */
+	public final AlbumInfo setIndexPicture(ThumbnailInfo value) {
+		_indexPicture = value;
+		return this;
+	}
+
+	/**
+	 * Checks, whether {@link #getIndexPicture()} has a value.
+	 */
+	public final boolean hasIndexPicture() {
+		return _indexPicture != null;
+	}
+
+	public final int getDepth() {
 		return _depth;
 	}
 
 	/**
 	 * @see #getDepth()
 	 */
-	public void setDepth(int depth) {
-		_depth = depth;
+	public final AlbumInfo setDepth(int value) {
+		_depth = value;
+		return this;
 	}
-	
-	/**
-	 * Adds the given image.
-	 * 
-	 * <p>
-	 * This is part of a bulk operation that must be completed with a call to {@link #updateLinks()}.
-	 * </p>
-	 */
-	public void bulkAddImage(ImageInfo image) {
-		ImageInfo clash = _imageByName.put(image.getName(), image);
-		assert clash == null : "Duplicate name '" + image.getName() + "'.";
-		_images.add(image);
-	}
-	
-	/**
-	 * The {@link ImageInfo} with the given name.
-	 * 
-	 * @param name
-	 *        The name to search.
-	 * @return The {@link ImageInfo} with the the given name, or
-	 *         <code>null</code> if no such {@link ImageInfo} exists in this
-	 *         {@link AlbumInfo}.
-	 */
-	public ImageInfo getImage(String name) {
-		return _imageByName.get(name);
+
+	public final java.util.List<ImageInfo> getImages() {
+		return _images;
 	}
 
 	/**
-	 * All {@link ImageInfo}s in this {@link AlbumInfo}.
+	 * @see #getImages()
 	 */
-	public List<ImageInfo> getImages() {
-		return _imagesUnmodifiable;
-	}
-
-	/** 
-	 * Sorts this {@link AlbumInfo} according to the given {@link Comparator order}.
-	 */
-	public void sort(Comparator<? super ImageInfo> order) {
-		_images.sort(order);
-		updateLinks();
+	public final AlbumInfo setImages(java.util.List<ImageInfo> value) {
+		_images.clear();
+		_images.addAll(value);
+		return this;
 	}
 
 	/**
-	 * Updates internal links after a number of {@link #bulkAddImage(ImageInfo)} operations.
+	 * Adds a value to the {@link #getImages()} list.
 	 */
-	public void updateLinks() {
-		List<ImageInfo> images = _images;
-		String home= images.get(0).getName();
-		String end = images.get(images.size() - 1).getName();
-
-		for (int n = 0, size = _images.size(); n < size; n++) {
-			ImageInfo current = _images.get(n);
-			current.setHome(home);
-			current.setEnd(end);
-			if (n > 0) {
-				current.setPrevious(_images.get(n - 1).getName());
-			} else {
-				current.setPrevious(null);
-			}
-			if (n + 1 < size) {
-				current.setNext(_images.get(n + 1).getName());
-			} else {
-				current.setNext(null);
-			}
-		}
+	public final AlbumInfo addImage(ImageInfo value) {
+		_images.add(value);
+		return this;
 	}
 
-	/**
-	 * TODO
-	 *
-	 * @return
-	 */
-	public AlbumProperties getHeader() {
-		return _header;
-	}
-
-	@Override
-	public void writeContents(JsonWriter json) throws IOException {
-		json.name("depth");
-		json.value(getDepth());
-		json.name("index");
-		_header.writeTo(json);
-
-		json.name("images");
-		json.beginArray();
-		for (ImageInfo image : getImages()) {
-			image.writeTo(json);
-		}
-		json.endArray();
-	}
-
-	/**
-	 * Reads an {@link AlbumInfo} as JSON object from the given {@link JsonReader}.
-	 */
-	public static AlbumInfo read(JsonReader json) throws IOException {
+	/** Reads a new instance from the given reader. */
+	public static AlbumInfo readAlbumInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		AlbumInfo result = new AlbumInfo();
-		result.readFrom(json);
+		in.beginObject();
+		result.readFields(in);
+		in.endObject();
 		return result;
 	}
 
 	@Override
-	public void readFrom(JsonReader json) throws IOException {
-		json.beginObject();
-		while (json.hasNext()) {
-			switch (json.nextName()) {
-				case "depth":
-					setDepth(json.nextInt());
-					break;
-				case "index":
-					_header.readFrom(json);
-					break;
-				case "images":
-					json.beginArray();
-					while (json.hasNext()) {
-						bulkAddImage(ImageInfo.read(json));
-					}
-					json.endArray();
-					break;
-			}
-		}
-		json.endObject();
-		
-		updateLinks();
+	public String jsonType() {
+		return "AlbumInfo";
 	}
-	
+
 	@Override
-	public <R, A, E extends Throwable> R visit(Visitor<R, A, E> v, A arg) throws E {
+	public Object get(String field) {
+		switch (field) {
+			case "title": return getTitle();
+			case "subTitle": return getSubTitle();
+			case "indexPicture": return getIndexPicture();
+			case "depth": return getDepth();
+			case "images": return getImages();
+			default: return super.get(field);
+		}
+	}
+
+	@Override
+	public void set(String field, Object value) {
+		switch (field) {
+			case "title": setTitle((String) value); break;
+			case "subTitle": setSubTitle((String) value); break;
+			case "indexPicture": setIndexPicture((ThumbnailInfo) value); break;
+			case "depth": setDepth((int) value); break;
+			case "images": setImages((java.util.List<ImageInfo>) value); break;
+			default: super.set(field, value); break;
+		}
+	}
+
+	@Override
+	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
+		super.writeFields(out);
+		out.name("title");
+		out.value(getTitle());
+		out.name("subTitle");
+		out.value(getSubTitle());
+		if (hasIndexPicture()) {
+			out.name("indexPicture");
+			getIndexPicture().writeTo(out);
+		}
+		out.name("depth");
+		out.value(getDepth());
+		out.name("images");
+		out.beginArray();
+		for (ImageInfo x : getImages()) {
+			x.writeContent(out);
+		}
+		out.endArray();
+	}
+
+	@Override
+	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
+		switch (field) {
+			case "title": setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case "subTitle": setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case "indexPicture": setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
+			case "depth": setDepth(in.nextInt()); break;
+			case "images": {
+				in.beginArray();
+				while (in.hasNext()) {
+					addImage(ImageInfo.readImageInfo(in));
+				}
+				in.endArray();
+			}
+			break;
+			default: super.readField(in, field);
+		}
+	}
+
+	@Override
+	public int typeId() {
+		return 2;
+	}
+
+	@Override
+	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
+		super.writeFields(out);
+		out.name(1);
+		out.value(getTitle());
+		out.name(2);
+		out.value(getSubTitle());
+		if (hasIndexPicture()) {
+			out.name(3);
+			getIndexPicture().writeTo(out);
+		}
+		out.name(4);
+		out.value(getDepth());
+		out.name(5);
+		{
+			java.util.List<ImageInfo> values = getImages();
+			out.beginArray(de.haumacher.msgbuf.binary.DataType.OBJECT, values.size());
+			for (ImageInfo x : values) {
+				x.writeTo(out);
+			}
+			out.endArray();
+		}
+	}
+
+	@Override
+	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
+		switch (field) {
+			case 1: setTitle(in.nextString()); break;
+			case 2: setSubTitle(in.nextString()); break;
+			case 3: setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
+			case 4: setDepth(in.nextInt()); break;
+			case 5: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addImage(ImageInfo.readImageInfo(in));
+				}
+				in.endArray();
+			}
+			break;
+			default: super.readField(in, field);
+		}
+	}
+
+	/** Reads a new instance from the given reader. */
+	public static AlbumInfo readAlbumInfo(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
+		in.beginObject();
+		AlbumInfo result = new AlbumInfo();
+		while (in.hasNext()) {
+			int field = in.nextName();
+			result.readField(in, field);
+		}
+		in.endObject();
+		return result;
+	}
+
+	@Override
+	public <R,A> R visit(Resource.Visitor<R,A> v, A arg) {
 		return v.visit(this, arg);
 	}
+
 }

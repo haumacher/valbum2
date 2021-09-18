@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2020 Bernhard Haumacher. All Rights Reserved.
  */
-package de.haumacher.imageServer;
+package de.haumacher.imageServer.cache;
 
 import java.io.File;
 import java.io.IOException;
@@ -37,7 +37,10 @@ public class ImageData extends ImageInfo {
 	 * Creates a {@link ImageData}.
 	 */
 	public ImageData(AlbumInfo owner, File file, String name) {
-		super(owner, name);
+		super();
+		
+		setOwner(owner);
+		setName(name);
 
 		_file = file;
 	}
@@ -60,7 +63,7 @@ public class ImageData extends ImageInfo {
 		if (date == null) {
 			date = new Date(file.lastModified());
 		}
-		result.setDate(date);
+		result.setDate(date.getTime());
 
 		JpegDirectory jpegDirectory = metadata.getFirstDirectoryOfType(JpegDirectory.class);
 		if (jpegDirectory != null) {
