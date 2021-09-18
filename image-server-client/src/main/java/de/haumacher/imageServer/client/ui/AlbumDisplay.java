@@ -6,10 +6,13 @@ package de.haumacher.imageServer.client.ui;
 import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
@@ -28,9 +31,14 @@ import elemental2.dom.MouseEvent;
  */
 public class AlbumDisplay extends ResourceDisplay {
 
+	private static final String NO_MULTI_SELECTION_CSS = "no-multi-selection";
+	private static final String MULTI_SELECTION_CSS = "multi-selection";
+	private static final String NO_SELECTION_CSS = "no-selection";
+	private static final String SELECTION_CSS = "selection";
 	private AlbumInfo _album;
 	private Set<ImagePart> _selected = new HashSet<>();
 	private AlbumPart _lastClicked;
+	private Map<ImagePart, ImagePreviewDisplay> _imageDisplays;
 	
 	/** 
 	 * Creates a {@link AlbumDisplay}.
@@ -46,6 +54,7 @@ public class AlbumDisplay extends ResourceDisplay {
 
 		out.begin(DIV);
 		out.attr(ID_ATTR, "page");
+		out.attr(CLASS_ATTR, classes());
 		if (parentUrl != null) {
 			out.attr(DataAttributes.DATA_ESCAPE, parentUrl);
 		}
@@ -61,17 +70,17 @@ public class AlbumDisplay extends ResourceDisplay {
 		out.attr(CLASS_ATTR, "image-rows");
 		out.attr(STYLE_ATTR, "width: " + width + "px;");
 		{
-			Map<ImagePart, ImagePreviewDisplay> imageDisplays = new HashMap<>();
+			_imageDisplays = new HashMap<>();
 			
 			ImageRow row = new ImageRow(width, 400);
 			for (AlbumPart image : _album.getParts()) {
 				if (row.isComplete()) {
-					writeRow(context, out, imageDisplays, row);
+					writeRow(context, out, row);
 					row.clear();
 				}
 				row.add(ToImage.toImage(image));
 			}
-			writeRow(context, out, imageDisplays, row);
+			writeRow(context, out, row);
 		}
 		out.end();
 		
@@ -81,7 +90,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		out.end();
 	}
 
-	private void writeRow(UIContext context, DomBuilder out, Map<ImagePart, ImagePreviewDisplay> imageDisplays, ImageRow row) throws IOException {
+	private void writeRow(UIContext context, DomBuilder out, ImageRow row) throws IOException {
 		if (row.getSize() == 0) {
 			return;
 		}
@@ -99,12 +108,11 @@ public class AlbumDisplay extends ResourceDisplay {
 			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
 				ImagePart image = row.getImage(n);
 				
-				ImagePreviewDisplay previewDisplay = new ImagePreviewDisplay(image, n, row.getScaledWidth(n), rowHeight, spacing);
-				previewDisplay.setEditMode(editMode);
+				ImagePreviewDisplay previewDisplay = new ImagePreviewDisplay(this, image, n, row.getScaledWidth(n), rowHeight, spacing);
 				previewDisplay.setSelected(_selected.contains(image));
 				previewDisplay.show(context, out);
 				
-				imageDisplays.put(image, previewDisplay);
+				_imageDisplays.put(image, previewDisplay);
 
 				if (editMode) {
 					previewDisplay.addEventListener("click", event -> {
@@ -121,7 +129,7 @@ public class AlbumDisplay extends ResourceDisplay {
 							int delta = start < stop ? 1 : -1;
 							for (int index = start + delta; index != stop + delta; index+=delta) {
 								ImagePart current = ToImage.toImage(_album.getParts().get(index));
-								ImagePreviewDisplay currentDisplay = imageDisplays.get(current);
+								ImagePreviewDisplay currentDisplay = _imageDisplays.get(current);
 								setSelected(currentDisplay, select);
 							}
 						} else if (mouseEvent.ctrlKey) {
@@ -129,7 +137,7 @@ public class AlbumDisplay extends ResourceDisplay {
 						} else {
 							boolean toggle = (_selected.size() == 1 && _selected.contains(previewDisplay.getImage()));
 							for (ImagePart selectedInfo : _selected) {
-								imageDisplays.get(selectedInfo).setSelected(false);
+								_imageDisplays.get(selectedInfo).setSelected(false);
 							}
 							_selected.clear();
 
@@ -160,7 +168,43 @@ public class AlbumDisplay extends ResourceDisplay {
 		} else {
 			_selected.remove(previewDisplay.getImage());
 		}
-		previewDisplay.setSelected(select);
+		
+		element().className = classes();
+		
+		if (!select) {
+			previewDisplay.setSelected(false);
+		}
+		for (ImagePart selected : _selected) {
+			// Update due to multi-selection property has changed.
+			_imageDisplays.get(selected).setSelected(true);
+		}
+	}
+	
+	private String classes() {
+		List<String> classList = new ArrayList<>();
+		
+		int selectionSize = _selected.size();
+		if (selectionSize > 0) {
+			classList.add(SELECTION_CSS);
+		} else {
+			classList.add(NO_SELECTION_CSS);
+		}
+		
+		if (selectionSize > 1) {
+			classList.add(MULTI_SELECTION_CSS);
+		} else {
+			classList.add(NO_MULTI_SELECTION_CSS);
+		}
+		
+		String result = classList.stream().collect(Collectors.joining(" "));
+		return result;
+	}
+
+	/** 
+	 * Whether more than one image is selected.
+	 */
+	public boolean hasMultiSelection() {
+		return isEditMode() && _selected.size() > 1;
 	}
 
 }

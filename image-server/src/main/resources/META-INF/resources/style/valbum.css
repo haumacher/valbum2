@@ -216,6 +216,13 @@ a {
 	right: 5px;
 }
 
+.toolbar-center {
+    top: 50%;
+    left: 50%;
+    margin-right: -50%;
+    transform: translate(-50%, -50%);   
+}
+
 .toolbar-bottom {
 	bottom: 5px;
 	right: 5px;
@@ -245,15 +252,15 @@ a {
     transform: translate(-50%, -50%)
 }
 
-.icon-link:hover > .toolbar-embedded {
+.icon-link:hover .toolbar-embedded {
 	visibility: visible;
 }
 
-.icon-link > .toolbar-embedded .toolbar-button {
+.icon-link .toolbar-embedded .toolbar-button {
 	display: none;
 }
 
-.icon-link:hover > .toolbar-embedded .toolbar-button {
+.icon-link:hover .toolbar-embedded .toolbar-button {
 	display: initial;
 }
 
@@ -271,13 +278,13 @@ a {
 	color: black;
 }
 
-.icon-link > .toolbar-embedded .toolbar-button.active {
+.icon-link .toolbar-embedded .toolbar-button.active {
 	display: initial;
 	visibility: visible;
 }
 
-.icon-link:hover > .toolbar-embedded .toolbar-button.active, 
-.icon-link > .toolbar-embedded .toolbar-button.active:hover {
+.icon-link:hover .toolbar-embedded .toolbar-button.active, 
+.icon-link .toolbar-embedded .toolbar-button.active:hover {
 	color: fuchsia;
 }
 

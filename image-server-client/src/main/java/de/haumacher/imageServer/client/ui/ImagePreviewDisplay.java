@@ -13,6 +13,7 @@ import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Element;
 import elemental2.dom.EventListener;
+import elemental2.dom.Node;
 
 /**
  * TODO
@@ -21,24 +22,34 @@ import elemental2.dom.EventListener;
  */
 public class ImagePreviewDisplay extends AbstractDisplay {
 
-	private ImagePart _image;
+	private final AlbumDisplay _owner;
+	private final ImagePart _image;
 	private boolean _selected;
 	private final int _rowIndex;
 	private final double _width;
 	private final double _rowHeight;
 	private final int _spacing;
-	private boolean _editMode;
+	private Element _toolbarContainer;
+	private UIContext _context;
 
 	/** 
 	 * Creates a {@link ImagePreviewDisplay}.
 	 */
-	public ImagePreviewDisplay(ImagePart image, int rowIndex, double width, double rowHeight, int spacing) {
+	public ImagePreviewDisplay(AlbumDisplay owner, ImagePart image, int rowIndex, double width, double rowHeight, int spacing) {
 		super();
+		_owner = owner;
 		_image = image;
 		_rowIndex = rowIndex;
 		_width = width;
 		_rowHeight = rowHeight;
 		_spacing = spacing;
+	}
+	
+	/**
+	 * TODO
+	 */
+	public AlbumDisplay getOwner() {
+		return _owner;
 	}
 	
 	/**
@@ -54,8 +65,6 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 
 	/** 
 	 * TODO
-	 *
-	 * @param contains
 	 */
 	public void setSelected(boolean value) {
 		_selected = value;
@@ -68,23 +77,31 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 				element.classList.remove("selected");
 			}
 		}
+		
+		updateToolbars();
 	}
 	
-	/** 
-	 * TODO
-	 *
-	 * @return
-	 */
-	public boolean isEditMode() {
-		return _editMode;
+	private void updateToolbars() {
+		if (_toolbarContainer != null) {
+			try {
+				clear(_toolbarContainer);
+				writeToolbars(_context.createDomBuilderImpl(_toolbarContainer));
+			} catch (IOException ex) {
+				throw new RuntimeException(ex);
+			}
+		}
 	}
 
-	public void setEditMode(boolean editMode) {
-		_editMode = editMode;
+	private static void clear(Node container) {
+		while (container.lastChild != null) {
+			container.removeChild(container.lastChild);
+		}
 	}
 
 	@Override
 	protected void render(UIContext context, DomBuilder out) throws IOException {
+		_context = context;
+		
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, "icon");
 		{
@@ -129,63 +146,112 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 					out.end();
 				}
 				
-				writeToolbars(out, _image);
+				if (isEditMode()) {
+					out.begin(SPAN);
+					{
+						writeToolbars(out);
+					}
+					out.end();
+					_toolbarContainer = out.getLast();
+				} else {
+					_toolbarContainer = null;
+				}
 			}
 			out.end();
 		}
 		out.end();
 	}
 
-	private void writeToolbars(DomBuilder out, ImagePart image) throws IOException {
-		if (isEditMode()) {
-			writeSelectedDisplay(out);
-			
+	private boolean isEditMode() {
+		return getOwner().isEditMode();
+	}
+
+	private void writeToolbars(DomBuilder out) throws IOException {
+		writeSelectedDisplay(out);
+		
+		out.begin(SPAN);
+		out.attr(CLASS_ATTR, "toolbar-embedded toolbar-top");
+		{
 			out.begin(SPAN);
-			out.attr(CLASS_ATTR, "toolbar-embedded toolbar-top");
+			out.attr(CLASS_ATTR, "toolbar-button");
 			{
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-redo-alt");
-					out.end();
-				}
-				out.end();
-				
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-arrows-alt-v");
-					out.end();
-				}
-				out.end();
-				
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-undo-alt");
-					out.end();
-				}
+				out.begin(I);
+				out.attr(CLASS_ATTR, "fas fa-redo-alt");
 				out.end();
 			}
 			out.end();
 			
-			int rating = image.getRating();
+			out.begin(SPAN);
+			out.attr(CLASS_ATTR, "toolbar-button");
+			{
+				out.begin(I);
+				out.attr(CLASS_ATTR, "fas fa-arrows-alt-v");
+				out.end();
+			}
+			out.end();
 			
 			out.begin(SPAN);
-			out.attr(CLASS_ATTR, "toolbar-embedded toolbar-bottom");
-			makeChoice(
-				data -> image.setRating((int) data),
-				() -> image.setRating(0),
+			out.attr(CLASS_ATTR, "toolbar-button");
+			{
+				out.begin(I);
+				out.attr(CLASS_ATTR, "fas fa-undo-alt");
+				out.end();
+			}
+			out.end();
+		}
+		out.end();
+		
+		out.begin(DIV);
+		out.attr(CLASS_ATTR, "toolbar-embedded toolbar-center");
+		{
+			if (isSelected() && !getOwner().hasMultiSelection()) {
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "fas fa-heading");
+					out.end();
+				}
+				out.end();
+			}
+			
+			if (isSelected() && getOwner().hasMultiSelection()) {
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "far fa-object-group");
+					out.end();
+				}
+				out.end();
+			}
+			
+			if (false) {
+				out.begin(SPAN);
+				out.attr(CLASS_ATTR, "toolbar-button");
+				{
+					out.begin(I);
+					out.attr(CLASS_ATTR, "far fa-object-ungroup");
+					out.end();
+				}
+				out.end();
+			}
+		}
+		out.end();
+		
+		int rating = _image.getRating();
+		
+		out.begin(DIV);
+		out.attr(CLASS_ATTR, "toolbar-embedded toolbar-bottom");
+		makeChoice(
+				data -> _image.setRating((int) data),
+				() -> _image.setRating(0),
 				createChoiceButton(out, "fas fa-star", rating >= 2, 2),
 				createChoiceButton(out, "fas fa-plus", rating == 1, 1),
 				createChoiceButton(out, "fas fa-minus", rating == -1, -1),
 				createChoiceButton(out, "fas fa-trash-alt", rating <= -2, -2)
-			);
-			out.end();
-		}
+				);
+		out.end();
 	}
 
 	private Element writeSelectedDisplay(DomBuilder out) throws IOException {
