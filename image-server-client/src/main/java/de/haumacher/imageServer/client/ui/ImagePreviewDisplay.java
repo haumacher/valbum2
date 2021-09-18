@@ -8,10 +8,13 @@ import static de.haumacher.util.html.HTML.*;
 import java.io.IOException;
 import java.util.function.Consumer;
 
+import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Element;
+import elemental2.dom.Event;
 import elemental2.dom.EventListener;
 import elemental2.dom.Node;
 
@@ -23,6 +26,7 @@ import elemental2.dom.Node;
 public class ImagePreviewDisplay extends AbstractDisplay {
 
 	private final AlbumDisplay _owner;
+	private AlbumPart _part;
 	private final ImagePart _image;
 	private boolean _selected;
 	private final int _rowIndex;
@@ -35,10 +39,11 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	/** 
 	 * Creates a {@link ImagePreviewDisplay}.
 	 */
-	public ImagePreviewDisplay(AlbumDisplay owner, ImagePart image, int rowIndex, double width, double rowHeight, int spacing) {
+	public ImagePreviewDisplay(AlbumDisplay owner, AlbumPart part, int rowIndex, double width, double rowHeight, int spacing) {
 		super();
 		_owner = owner;
-		_image = image;
+		_part = part;
+		_image = ToImage.toImage(part);
 		_rowIndex = rowIndex;
 		_width = width;
 		_rowHeight = rowHeight;
@@ -55,10 +60,10 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	/**
 	 * TODO
 	 */
-	public ImagePart getImage() {
-		return _image;
+	public AlbumPart getPart() {
+		return _part;
 	}
-
+	
 	public boolean isSelected() {
 		return _selected;
 	}
@@ -76,9 +81,9 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 			} else {
 				element.classList.remove("selected");
 			}
+			
+			updateToolbars();
 		}
-		
-		updateToolbars();
 	}
 	
 	private void updateToolbars() {
@@ -224,6 +229,8 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 					out.end();
 				}
 				out.end();
+				
+				out.getLast().addEventListener("click", this::handleGroup);
 			}
 			
 			if (false) {
@@ -254,6 +261,13 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		out.end();
 	}
 
+	private void handleGroup(Event event) {
+		getOwner().groupSelection(getPart());
+		
+		event.stopPropagation();
+		event.preventDefault();
+	}
+	
 	private Element writeSelectedDisplay(DomBuilder out) throws IOException {
 		boolean value = isSelected();
 		
@@ -331,5 +345,5 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	public void addEventListener(String type, EventListener listener) {
 		element().addEventListener(type, listener);
 	}
-	
+
 }

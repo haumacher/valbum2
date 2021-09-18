@@ -7,6 +7,7 @@ import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -16,6 +17,7 @@ import java.util.stream.Collectors;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
+import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
@@ -36,9 +38,9 @@ public class AlbumDisplay extends ResourceDisplay {
 	private static final String NO_SELECTION_CSS = "no-selection";
 	private static final String SELECTION_CSS = "selection";
 	private AlbumInfo _album;
-	private Set<ImagePart> _selected = new HashSet<>();
+	private Set<AlbumPart> _selected = new HashSet<>();
 	private AlbumPart _lastClicked;
-	private Map<ImagePart, ImagePreviewDisplay> _imageDisplays;
+	private Map<AlbumPart, ImagePreviewDisplay> _imageDisplays;
 	
 	/** 
 	 * Creates a {@link AlbumDisplay}.
@@ -78,7 +80,7 @@ public class AlbumDisplay extends ResourceDisplay {
 					writeRow(context, out, row);
 					row.clear();
 				}
-				row.add(ToImage.toImage(image));
+				row.add(image);
 			}
 			writeRow(context, out, row);
 		}
@@ -106,7 +108,7 @@ public class AlbumDisplay extends ResourceDisplay {
 			
 			boolean editMode = isEditMode();
 			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
-				ImagePart image = row.getImage(n);
+				AlbumPart image = row.getImage(n);
 				
 				ImagePreviewDisplay previewDisplay = new ImagePreviewDisplay(this, image, n, row.getScaledWidth(n), rowHeight, spacing);
 				previewDisplay.setSelected(_selected.contains(image));
@@ -125,7 +127,7 @@ public class AlbumDisplay extends ResourceDisplay {
 							boolean select = _selected.contains(_lastClicked);
 							
 							int start = _album.getParts().indexOf(_lastClicked);
-							int stop = _album.getParts().indexOf(previewDisplay.getImage());
+							int stop = _album.getParts().indexOf(previewDisplay.getPart());
 							int delta = start < stop ? 1 : -1;
 							for (int index = start + delta; index != stop + delta; index+=delta) {
 								ImagePart current = ToImage.toImage(_album.getParts().get(index));
@@ -135,8 +137,8 @@ public class AlbumDisplay extends ResourceDisplay {
 						} else if (mouseEvent.ctrlKey) {
 							toggleSelection(previewDisplay);
 						} else {
-							boolean toggle = (_selected.size() == 1 && _selected.contains(previewDisplay.getImage()));
-							for (ImagePart selectedInfo : _selected) {
+							boolean toggle = (_selected.size() == 1 && _selected.contains(previewDisplay.getPart()));
+							for (AlbumPart selectedInfo : _selected) {
 								_imageDisplays.get(selectedInfo).setSelected(false);
 							}
 							_selected.clear();
@@ -146,7 +148,7 @@ public class AlbumDisplay extends ResourceDisplay {
 							}
 						}
 						
-						_lastClicked = previewDisplay.getImage();
+						_lastClicked = previewDisplay.getPart();
 						
 						event.stopPropagation();
 						event.preventDefault();
@@ -164,9 +166,9 @@ public class AlbumDisplay extends ResourceDisplay {
 
 	private void setSelected(ImagePreviewDisplay previewDisplay, boolean select) {
 		if (select) {
-			_selected.add(previewDisplay.getImage());
+			_selected.add(previewDisplay.getPart());
 		} else {
-			_selected.remove(previewDisplay.getImage());
+			_selected.remove(previewDisplay.getPart());
 		}
 		
 		element().className = classes();
@@ -174,7 +176,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		if (!select) {
 			previewDisplay.setSelected(false);
 		}
-		for (ImagePart selected : _selected) {
+		for (AlbumPart selected : _selected) {
 			// Update due to multi-selection property has changed.
 			_imageDisplays.get(selected).setSelected(true);
 		}
@@ -205,6 +207,35 @@ public class AlbumDisplay extends ResourceDisplay {
 	 */
 	public boolean hasMultiSelection() {
 		return isEditMode() && _selected.size() > 1;
+	}
+
+	public void groupSelection(AlbumPart representative) {
+		ImageGroup group = ImageGroup.create();
+		for (AlbumPart selected : _selected) {
+			selected.visit(new AlbumPart.Visitor<Void, List<ImagePart>>() {
+				@Override
+				public Void visit(ImageGroup self, List<ImagePart> arg) {
+					arg.addAll(self.getImages());
+					return null;
+				}
+
+				@Override
+				public Void visit(ImagePart self, List<ImagePart> arg) {
+					arg.add(self);
+					return null;
+				}
+				
+			}, group.getImages());
+		}
+		Collections.sort(group.getImages(), (a, b) -> Long.compare(a.getDate(), b.getDate()));
+		group.setRepresentative(group.getImages().indexOf(ToImage.toImage(representative)));
+		
+		List<AlbumPart> newParts = _album.getParts().stream().map(p -> p == representative ? group : p).filter(p -> !_selected.contains(p)).collect(Collectors.toList());
+		_album.setParts(newParts);
+		
+		_selected.clear();
+		
+		redraw();
 	}
 
 }
