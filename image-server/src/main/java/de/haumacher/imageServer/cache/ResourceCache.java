@@ -41,10 +41,12 @@ import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.shared.util.ToImage;
+import de.haumacher.imageServer.shared.util.UpdateTransient;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.util.servlet.Util;
 
@@ -93,17 +95,20 @@ public class ResourceCache {
 	public Resource lookup(PathInfo pathInfo) {
 		_loader.processEvents(_cache);
 		if (pathInfo.toFile().isDirectory()) {
-			Resource result = _cache.getUnchecked(pathInfo);
-			if (result instanceof AlbumData) {
-				return ((AlbumData) result).getAlbum();
-			}
-			return result;
+			return _cache.getUnchecked(pathInfo);
 		} else {
 			Resource resource = _cache.getUnchecked(pathInfo.parent());
-			if (resource instanceof AlbumData) {
-				ImageInfo result = ((AlbumData) resource).getImage(pathInfo.getName());
+			if (resource instanceof AlbumInfo) {
+				AlbumInfo album = (AlbumInfo) resource;
+				ImagePart result = album.getImageByName().get(pathInfo.getName());
 				if (result != null) {
-					return result;
+					return ImageInfo.create()
+						.setImage(result)
+						.setHome(result.getHome())
+						.setEnd(result.getEnd())
+						.setPrevious(result.getPrevious())
+						.setNext(result.getNext())
+						.setDepth(album.getDepth() + 1);
 				}
 			}
 			return ErrorInfo.create().setMessage("No such image '" + pathInfo + "'.");
@@ -308,7 +313,7 @@ public class ResourceCache {
 			return Character.toUpperCase(expanded.charAt(0)) + expanded.substring(1);
 		}
 
-		private static AlbumData loadAlbum(PathInfo pathInfo, File[] files) {
+		private static AlbumInfo loadAlbum(PathInfo pathInfo, File[] files) {
 			AlbumInfo album;
 			
 			File dir = pathInfo.toFile();
@@ -333,13 +338,12 @@ public class ResourceCache {
 					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
 					continue;
 				}
-				album.addImage(image);
+				album.addPart(image);
 			}
 			
-			Collections.sort(album.getImages(), (a, b) -> Long.compare(ToImage.toImage(a).getDate(), ToImage.toImage(b).getDate()));
-		
-			AlbumData result = new AlbumData(album);
-			return result;
+			Collections.sort(album.getParts(), (a, b) -> Long.compare(ToImage.toImage(a).getDate(), ToImage.toImage(b).getDate()));
+			UpdateTransient.updateTransient(album);
+			return album;
 		}
 
 		private static AlbumInfo createGenericAlbumInfo(PathInfo pathInfo) {

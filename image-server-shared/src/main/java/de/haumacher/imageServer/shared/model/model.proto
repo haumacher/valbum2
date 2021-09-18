@@ -20,11 +20,14 @@ message AlbumInfo extends Resource {
 	ThumbnailInfo indexPicture;
 
 	/** The list of images in this album. */
-	repeated AlbumPart images;
+	repeated AlbumPart parts;
+	
+	/** All {@link ImageInfo}s indexed by their {@link ImageInfo#name}. */
+	transient map<string, ImagePart> imageByName;
 }
 
 /** Base class for contents of an {@link AlbumInfo}. */
-abstract message AlbumPart extends Resource {
+abstract message AlbumPart {
 }
 
 /** A group of multiple images showing the same content. */
@@ -34,12 +37,31 @@ message ImageGroup extends AlbumPart {
 	int representative;
 
 	/** List of images that all show the same content. Only the image with  in this album. */
-	repeated ImageInfo images;
+	repeated ImagePart images;
+
+}
+
+/** Description of a single image resource part of an album. */
+message ImageInfo extends Resource {
+	/** Information about the image contents. */
+	ImagePart image;
+	
+	/** The {@link #name} of the previous image in the {@link #owner}. */
+	string previous;
+	
+	/** The {@link #name} of the next image in the {@link #owner}. */
+	string next;
+	
+	/** The {@link #name} of the first image of the {@link #owner}. */
+	string home;
+	
+	/** The {@link #name} of the last image of the {@link #owner}. */
+	string end;
 
 }
 
 /** {@link Resource} describing a single image or video file. */
-message ImageInfo extends AlbumPart {
+message ImagePart extends AlbumPart {
 
 	/** Kind of image. */
 	enum Kind {
@@ -73,19 +95,18 @@ message ImageInfo extends AlbumPart {
 	
 	/** A comment describing what this image contains. */
 	string comment;
-	
+
 	/** The {@link #name} of the previous image in the {@link #owner}. */
-	string previous;
+	transient string previous;
 	
 	/** The {@link #name} of the next image in the {@link #owner}. */
-	string next;
+	transient string next;
 	
 	/** The {@link #name} of the first image of the {@link #owner}. */
-	string home;
+	transient string home;
 	
 	/** The {@link #name} of the last image of the {@link #owner}. */
-	string end;
-
+	transient string end;
 }
 
 /** {@link Resource} describing collection {@link FolderInfo}s found in a directory. */

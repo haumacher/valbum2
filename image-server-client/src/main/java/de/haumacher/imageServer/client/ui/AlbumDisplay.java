@@ -13,7 +13,7 @@ import java.util.Set;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
-import de.haumacher.imageServer.shared.model.ImageInfo;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
 import de.haumacher.imageServer.shared.util.ToImage;
@@ -29,7 +29,7 @@ import elemental2.dom.MouseEvent;
 public class AlbumDisplay extends ResourceDisplay {
 
 	private AlbumInfo _album;
-	private Set<ImageInfo> _selected = new HashSet<>();
+	private Set<ImagePart> _selected = new HashSet<>();
 	private AlbumPart _lastClicked;
 	
 	/** 
@@ -61,10 +61,10 @@ public class AlbumDisplay extends ResourceDisplay {
 		out.attr(CLASS_ATTR, "image-rows");
 		out.attr(STYLE_ATTR, "width: " + width + "px;");
 		{
-			Map<ImageInfo, ImagePreviewDisplay> imageDisplays = new HashMap<>();
+			Map<ImagePart, ImagePreviewDisplay> imageDisplays = new HashMap<>();
 			
 			ImageRow row = new ImageRow(width, 400);
-			for (AlbumPart image : _album.getImages()) {
+			for (AlbumPart image : _album.getParts()) {
 				if (row.isComplete()) {
 					writeRow(context, out, imageDisplays, row);
 					row.clear();
@@ -81,7 +81,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		out.end();
 	}
 
-	private void writeRow(UIContext context, DomBuilder out, Map<ImageInfo, ImagePreviewDisplay> imageDisplays, ImageRow row) throws IOException {
+	private void writeRow(UIContext context, DomBuilder out, Map<ImagePart, ImagePreviewDisplay> imageDisplays, ImageRow row) throws IOException {
 		if (row.getSize() == 0) {
 			return;
 		}
@@ -97,7 +97,7 @@ public class AlbumDisplay extends ResourceDisplay {
 			
 			boolean editMode = isEditMode();
 			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
-				ImageInfo image = row.getImage(n);
+				ImagePart image = row.getImage(n);
 				
 				ImagePreviewDisplay previewDisplay = new ImagePreviewDisplay(image, n, row.getScaledWidth(n), rowHeight, spacing);
 				previewDisplay.setEditMode(editMode);
@@ -111,16 +111,16 @@ public class AlbumDisplay extends ResourceDisplay {
 						MouseEvent mouseEvent = (MouseEvent) event;
 						if (mouseEvent.shiftKey) {
 							if (_lastClicked == null) {
-								_lastClicked = _album.getImages().get(0);
+								_lastClicked = _album.getParts().get(0);
 							}
 							
 							boolean select = _selected.contains(_lastClicked);
 							
-							int start = _album.getImages().indexOf(_lastClicked);
-							int stop = _album.getImages().indexOf(previewDisplay.getImage());
+							int start = _album.getParts().indexOf(_lastClicked);
+							int stop = _album.getParts().indexOf(previewDisplay.getImage());
 							int delta = start < stop ? 1 : -1;
 							for (int index = start + delta; index != stop + delta; index+=delta) {
-								ImageInfo current = ToImage.toImage(_album.getImages().get(index));
+								ImagePart current = ToImage.toImage(_album.getParts().get(index));
 								ImagePreviewDisplay currentDisplay = imageDisplays.get(current);
 								setSelected(currentDisplay, select);
 							}
@@ -128,7 +128,7 @@ public class AlbumDisplay extends ResourceDisplay {
 							toggleSelection(previewDisplay);
 						} else {
 							boolean toggle = (_selected.size() == 1 && _selected.contains(previewDisplay.getImage()));
-							for (ImageInfo selectedInfo : _selected) {
+							for (ImagePart selectedInfo : _selected) {
 								imageDisplays.get(selectedInfo).setSelected(false);
 							}
 							_selected.clear();

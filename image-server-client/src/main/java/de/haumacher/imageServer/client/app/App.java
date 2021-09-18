@@ -18,6 +18,7 @@ import de.haumacher.imageServer.client.ui.ResourceControlProvider;
 import de.haumacher.imageServer.client.ui.UIContext;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.Settings;
+import de.haumacher.imageServer.shared.util.UpdateTransient;
 import de.haumacher.msgbuf.io.StringR;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.util.gwt.dom.DomBuilder;
@@ -147,6 +148,7 @@ public class App implements EntryPoint, UIContext {
 						
 						try {
 							Resource resource = Resource.readResource(json);
+							UpdateTransient.updateTransient(resource);
 							updatePage(path, resource, back);
 						} catch (IOException ex) {
 							displayError("Couldn't parse response from '" + url + "': " + response.getText());

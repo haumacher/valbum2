@@ -6,7 +6,7 @@ package de.haumacher.imageServer.shared.ui;
 import java.util.ArrayList;
 import java.util.List;
 
-import de.haumacher.imageServer.shared.model.ImageInfo;
+import de.haumacher.imageServer.shared.model.ImagePart;
 
 /**
  * TODO
@@ -21,7 +21,7 @@ public class ImageRow {
 	private final int _width;
 	private final int _maxHeight;
 	
-	private final List<ImageInfo> _images = new ArrayList<>();
+	private final List<ImagePart> _images = new ArrayList<>();
 	
 	private double _sumNormWidth = 0.0;
 
@@ -37,7 +37,7 @@ public class ImageRow {
 		return _images.size();
 	}
 
-	public ImageInfo getImage(int n) {
+	public ImagePart getImage(int n) {
 		return _images.get(n);
 	}
 	
@@ -48,7 +48,7 @@ public class ImageRow {
 		return _spacing;
 	}
 
-	public void add(ImageInfo image) {
+	public void add(ImagePart image) {
 		double normWidth = normWidth(image);
 		double newNormWidth = _sumNormWidth + normWidth;
 		_sumNormWidth = newNormWidth;
@@ -64,7 +64,7 @@ public class ImageRow {
 	}
 
 	public double getScaledWidth(int n) {
-		ImageInfo image = _images.get(n);
+		ImagePart image = _images.get(n);
 		if (isComplete()) {
 			return normWidth(image) * (getAvailableWidth() / _sumNormWidth);
 		} else {
@@ -88,7 +88,7 @@ public class ImageRow {
 		return _width - (size > 1 ? _spacing * (size - 1) : 0);
 	}
 
-	private double normWidth(ImageInfo image) {
+	private double normWidth(ImagePart image) {
 		return ((double) image.getWidth()) / image.getHeight();
 	}
 

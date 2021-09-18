@@ -23,7 +23,7 @@ public class ImageGroup extends AlbumPart {
 
 	private int _representative = 0;
 
-	private final java.util.List<ImageInfo> _images = new java.util.ArrayList<>();
+	private final java.util.List<ImagePart> _images = new java.util.ArrayList<>();
 
 	/**
 	 * The index of the {@link ImageInfo} in {@link #getImages()} of the image that should be displayed when displaying this {@link ImageGroup} in an album.
@@ -43,14 +43,14 @@ public class ImageGroup extends AlbumPart {
 	/**
 	 * List of images that all show the same content. Only the image with  in this album.
 	 */
-	public final java.util.List<ImageInfo> getImages() {
+	public final java.util.List<ImagePart> getImages() {
 		return _images;
 	}
 
 	/**
 	 * @see #getImages()
 	 */
-	public final ImageGroup setImages(java.util.List<ImageInfo> value) {
+	public final ImageGroup setImages(java.util.List<ImagePart> value) {
 		_images.clear();
 		_images.addAll(value);
 		return this;
@@ -59,7 +59,7 @@ public class ImageGroup extends AlbumPart {
 	/**
 	 * Adds a value to the {@link #getImages()} list.
 	 */
-	public final ImageGroup addImage(ImageInfo value) {
+	public final ImageGroup addImage(ImagePart value) {
 		_images.add(value);
 		return this;
 	}
@@ -91,7 +91,7 @@ public class ImageGroup extends AlbumPart {
 	public void set(String field, Object value) {
 		switch (field) {
 			case "representative": setRepresentative((int) value); break;
-			case "images": setImages((java.util.List<ImageInfo>) value); break;
+			case "images": setImages((java.util.List<ImagePart>) value); break;
 			default: super.set(field, value); break;
 		}
 	}
@@ -103,7 +103,7 @@ public class ImageGroup extends AlbumPart {
 		out.value(getRepresentative());
 		out.name("images");
 		out.beginArray();
-		for (ImageInfo x : getImages()) {
+		for (ImagePart x : getImages()) {
 			x.writeContent(out);
 		}
 		out.endArray();
@@ -116,7 +116,7 @@ public class ImageGroup extends AlbumPart {
 			case "images": {
 				in.beginArray();
 				while (in.hasNext()) {
-					addImage(ImageInfo.readImageInfo(in));
+					addImage(ImagePart.readImagePart(in));
 				}
 				in.endArray();
 			}
@@ -127,19 +127,19 @@ public class ImageGroup extends AlbumPart {
 
 	@Override
 	public int typeId() {
-		return 2;
+		return 1;
 	}
 
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name(2);
+		out.name(1);
 		out.value(getRepresentative());
-		out.name(3);
+		out.name(2);
 		{
-			java.util.List<ImageInfo> values = getImages();
+			java.util.List<ImagePart> values = getImages();
 			out.beginArray(de.haumacher.msgbuf.binary.DataType.OBJECT, values.size());
-			for (ImageInfo x : values) {
+			for (ImagePart x : values) {
 				x.writeTo(out);
 			}
 			out.endArray();
@@ -149,11 +149,11 @@ public class ImageGroup extends AlbumPart {
 	@Override
 	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
 		switch (field) {
-			case 2: setRepresentative(in.nextInt()); break;
-			case 3: {
+			case 1: setRepresentative(in.nextInt()); break;
+			case 2: {
 				in.beginArray();
 				while (in.hasNext()) {
-					addImage(ImageInfo.readImageInfo(in));
+					addImage(ImagePart.readImagePart(in));
 				}
 				in.endArray();
 			}

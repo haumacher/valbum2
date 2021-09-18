@@ -27,7 +27,9 @@ public class AlbumInfo extends Resource {
 
 	private ThumbnailInfo _indexPicture = null;
 
-	private final java.util.List<AlbumPart> _images = new java.util.ArrayList<>();
+	private final java.util.List<AlbumPart> _parts = new java.util.ArrayList<>();
+
+	private transient java.util.Map<String, ImagePart> _imageByName = new java.util.HashMap<>();
 
 	/**
 	 * The title of this album.
@@ -84,25 +86,51 @@ public class AlbumInfo extends Resource {
 	/**
 	 * The list of images in this album.
 	 */
-	public final java.util.List<AlbumPart> getImages() {
-		return _images;
+	public final java.util.List<AlbumPart> getParts() {
+		return _parts;
 	}
 
 	/**
-	 * @see #getImages()
+	 * @see #getParts()
 	 */
-	public final AlbumInfo setImages(java.util.List<AlbumPart> value) {
-		_images.clear();
-		_images.addAll(value);
+	public final AlbumInfo setParts(java.util.List<AlbumPart> value) {
+		_parts.clear();
+		_parts.addAll(value);
 		return this;
 	}
 
 	/**
-	 * Adds a value to the {@link #getImages()} list.
+	 * Adds a value to the {@link #getParts()} list.
 	 */
-	public final AlbumInfo addImage(AlbumPart value) {
-		_images.add(value);
+	public final AlbumInfo addPart(AlbumPart value) {
+		_parts.add(value);
 		return this;
+	}
+
+	/**
+	 * All {@link ImageInfo}s indexed by their {@link ImageInfo#name}.
+	 */
+	public final java.util.Map<String, ImagePart> getImageByName() {
+		return _imageByName;
+	}
+
+	/**
+	 * @see #getImageByName()
+	 */
+	public final AlbumInfo setImageByName(java.util.Map<String, ImagePart> value) {
+		_imageByName.clear();
+		_imageByName.putAll(value);
+		return this;
+	}
+
+	/**
+	 * Adds a value to the {@link #getImageByName()} map.
+	 */
+	public final void addImageByName(String key, ImagePart value) {
+		if (_imageByName.containsKey(key)) {
+			throw new IllegalArgumentException("Property 'imageByName' already contains a value for key '" + key + "'.");
+		}
+		_imageByName.put(key, value);
 	}
 
 	/** Reads a new instance from the given reader. */
@@ -125,7 +153,8 @@ public class AlbumInfo extends Resource {
 			case "title": return getTitle();
 			case "subTitle": return getSubTitle();
 			case "indexPicture": return getIndexPicture();
-			case "images": return getImages();
+			case "parts": return getParts();
+			case "imageByName": return getImageByName();
 			default: return super.get(field);
 		}
 	}
@@ -136,7 +165,8 @@ public class AlbumInfo extends Resource {
 			case "title": setTitle((String) value); break;
 			case "subTitle": setSubTitle((String) value); break;
 			case "indexPicture": setIndexPicture((ThumbnailInfo) value); break;
-			case "images": setImages((java.util.List<AlbumPart>) value); break;
+			case "parts": setParts((java.util.List<AlbumPart>) value); break;
+			case "imageByName": setImageByName((java.util.Map<String, ImagePart>) value); break;
 			default: super.set(field, value); break;
 		}
 	}
@@ -152,9 +182,9 @@ public class AlbumInfo extends Resource {
 			out.name("indexPicture");
 			getIndexPicture().writeTo(out);
 		}
-		out.name("images");
+		out.name("parts");
 		out.beginArray();
-		for (AlbumPart x : getImages()) {
+		for (AlbumPart x : getParts()) {
 			x.writeTo(out);
 		}
 		out.endArray();
@@ -166,10 +196,10 @@ public class AlbumInfo extends Resource {
 			case "title": setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "subTitle": setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "indexPicture": setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
-			case "images": {
+			case "parts": {
 				in.beginArray();
 				while (in.hasNext()) {
-					addImage(AlbumPart.readAlbumPart(in));
+					addPart(AlbumPart.readAlbumPart(in));
 				}
 				in.endArray();
 			}
@@ -196,7 +226,7 @@ public class AlbumInfo extends Resource {
 		}
 		out.name(5);
 		{
-			java.util.List<AlbumPart> values = getImages();
+			java.util.List<AlbumPart> values = getParts();
 			out.beginArray(de.haumacher.msgbuf.binary.DataType.OBJECT, values.size());
 			for (AlbumPart x : values) {
 				x.writeTo(out);
@@ -214,7 +244,7 @@ public class AlbumInfo extends Resource {
 			case 5: {
 				in.beginArray();
 				while (in.hasNext()) {
-					addImage(AlbumPart.readAlbumPart(in));
+					addPart(AlbumPart.readAlbumPart(in));
 				}
 				in.endArray();
 			}

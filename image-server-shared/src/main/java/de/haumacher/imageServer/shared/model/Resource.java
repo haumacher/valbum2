@@ -6,10 +6,13 @@ package de.haumacher.imageServer.shared.model;
 public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObject implements de.haumacher.msgbuf.binary.BinaryDataObject {
 
 	/** Visitor interface for the {@link Resource} hierarchy.*/
-	public interface Visitor<R,A> extends AlbumPart.Visitor<R,A> {
+	public interface Visitor<R,A> {
 
 		/** Visit case for {@link AlbumInfo}.*/
 		R visit(AlbumInfo self, A arg);
+
+		/** Visit case for {@link ImageInfo}.*/
+		R visit(ImageInfo self, A arg);
 
 		/** Visit case for {@link ListingInfo}.*/
 		R visit(ListingInfo self, A arg);
@@ -50,10 +53,9 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 		String type = in.nextString();
 		switch (type) {
 			case "AlbumInfo": result = AlbumInfo.readAlbumInfo(in); break;
+			case "ImageInfo": result = ImageInfo.readImageInfo(in); break;
 			case "ListingInfo": result = ListingInfo.readListingInfo(in); break;
 			case "ErrorInfo": result = ErrorInfo.readErrorInfo(in); break;
-			case "ImageGroup": result = ImageGroup.readImageGroup(in); break;
-			case "ImageInfo": result = ImageInfo.readImageInfo(in); break;
 			default: in.skipValue(); result = null; break;
 		}
 		in.endArray();
@@ -142,10 +144,9 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 		int type = in.nextInt();
 		switch (type) {
 			case 1: result = AlbumInfo.create(); break;
-			case 4: result = ListingInfo.create(); break;
-			case 5: result = ErrorInfo.create(); break;
-			case 2: result = ImageGroup.create(); break;
-			case 3: result = ImageInfo.create(); break;
+			case 2: result = ImageInfo.create(); break;
+			case 3: result = ListingInfo.create(); break;
+			case 4: result = ErrorInfo.create(); break;
 			default: while (in.hasNext()) {in.skipValue(); } in.endObject(); return null;
 		}
 		while (in.hasNext()) {

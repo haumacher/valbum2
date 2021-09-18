@@ -149,7 +149,7 @@ public class ListingInfo extends Resource {
 
 	@Override
 	public int typeId() {
-		return 4;
+		return 3;
 	}
 
 	@Override

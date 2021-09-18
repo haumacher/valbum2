@@ -22,13 +22,14 @@ import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
+import de.haumacher.imageServer.shared.model.ImagePart;
 
 /**
  * TODO
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ImageData extends ImageInfo {
+public class ImageData extends ImagePart {
 	
 	private static final Logger LOG = Logger.getLogger(ImageData.class.getName());
 	private File _file;
@@ -67,7 +68,7 @@ public class ImageData extends ImageInfo {
 
 		JpegDirectory jpegDirectory = metadata.getFirstDirectoryOfType(JpegDirectory.class);
 		if (jpegDirectory != null) {
-			result.setKind(Kind.IMAGE);
+			result.setKind(ImagePart.Kind.IMAGE);
 			int rawWidth = jpegDirectory.getImageWidth();
 			int rawHeight = jpegDirectory.getImageHeight();
 			

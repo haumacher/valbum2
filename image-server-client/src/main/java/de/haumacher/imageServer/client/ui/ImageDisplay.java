@@ -10,6 +10,7 @@ import java.io.IOException;
 import de.haumacher.imageServer.client.app.Pos;
 import de.haumacher.imageServer.client.app.TXInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
@@ -63,7 +64,8 @@ public class ImageDisplay extends ResourceDisplay {
 		out.attr(DataAttributes.DATA_END, _image.getEnd());
 		
 		{
-			switch (_image.getKind()) {
+			ImagePart imagePart = _image.getImage();
+			switch (imagePart.getKind()) {
 				case IMAGE: {
 					out.begin(DIV);
 					out.attr(ID_ATTR, "image-container");
@@ -72,9 +74,9 @@ public class ImageDisplay extends ResourceDisplay {
 						out.attr(CLASS_ATTR, "image-display");
 						out.attr(ID_ATTR, "image");
 						out.attr(DRAGGABLE_ATTR, "false");
-						out.attr(SRC_ATTR, _image.getName());
-						out.attr(DataAttributes.DATA_WIDTH, _image.getWidth());
-						out.attr(DataAttributes.DATA_HEIGHT, _image.getHeight());
+						out.attr(SRC_ATTR, imagePart.getName());
+						out.attr(DataAttributes.DATA_WIDTH, imagePart.getWidth());
+						out.attr(DataAttributes.DATA_HEIGHT, imagePart.getHeight());
 						out.endEmpty();
 					}
 					out.end();
@@ -87,7 +89,7 @@ public class ImageDisplay extends ResourceDisplay {
 					out.attr("controls", "controls");
 					{
 						out.begin(SOURCE);
-						out.attr(SRC_ATTR, _image.getName());
+						out.attr(SRC_ATTR, imagePart.getName());
 						{
 							out.append("Your browser doesn't support embedded videos.");
 						}

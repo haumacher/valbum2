@@ -8,8 +8,7 @@ import static de.haumacher.util.html.HTML.*;
 import java.io.IOException;
 import java.util.function.Consumer;
 
-import de.haumacher.imageServer.shared.model.ImageInfo;
-import de.haumacher.imageServer.shared.model.ImageInfo.Kind;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Element;
@@ -22,7 +21,7 @@ import elemental2.dom.EventListener;
  */
 public class ImagePreviewDisplay extends AbstractDisplay {
 
-	private ImageInfo _image;
+	private ImagePart _image;
 	private boolean _selected;
 	private final int _rowIndex;
 	private final double _width;
@@ -33,7 +32,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	/** 
 	 * Creates a {@link ImagePreviewDisplay}.
 	 */
-	public ImagePreviewDisplay(ImageInfo image, int rowIndex, double width, double rowHeight, int spacing) {
+	public ImagePreviewDisplay(ImagePart image, int rowIndex, double width, double rowHeight, int spacing) {
 		super();
 		_image = image;
 		_rowIndex = rowIndex;
@@ -45,7 +44,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	/**
 	 * TODO
 	 */
-	public ImageInfo getImage() {
+	public ImagePart getImage() {
 		return _image;
 	}
 
@@ -119,7 +118,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 				}
 				out.end();
 				
-				if (_image.getKind() == Kind.VIDEO) {
+				if (_image.getKind() == ImagePart.Kind.VIDEO) {
 					out.begin(DIV);
 					out.attr(CLASS_ATTR, "video-overlay");
 					{
@@ -137,7 +136,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		out.end();
 	}
 
-	private void writeToolbars(DomBuilder out, ImageInfo image) throws IOException {
+	private void writeToolbars(DomBuilder out, ImagePart image) throws IOException {
 		if (isEditMode()) {
 			writeSelectedDisplay(out);
 			
