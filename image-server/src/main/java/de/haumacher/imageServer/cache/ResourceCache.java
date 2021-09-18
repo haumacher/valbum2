@@ -250,8 +250,9 @@ public class ResourceCache {
 						folderName = removeMatch(folderName, matcher);
 					} else {
 						if (imageData != null) {
-							Date date = new Date(imageData.getDate());
-							if (date != null) {
+							long imageDate = imageData.getDate();
+							if (imageDate > 0L) {
+								Date date = new Date(imageDate);
 								folderInfo.setSubTitle(formatDate(date));
 							}
 						}
