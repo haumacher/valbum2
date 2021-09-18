@@ -1,66 +1,123 @@
 package de.haumacher.imageServer.shared.model;
 
+/** Base class for a resource being displayed as view in a photo album. */
 abstract message Resource {
+
+	/** The nesting level of this {@link Resource}. */
+	int depth;
 
 }
 
+/** {@link Resource} describing a single image or video file. */
 message ImageInfo extends Resource {
 
+	/** Kind of image. */
 	enum Kind {
+		/** A still image. */
 		IMAGE;
+		
+		/** A video. */
 		VIDEO;
 	}
 
+	/** The {@link AlbumInfo} this {@link ImageInfo} is part of. */
 	transient AlbumInfo owner;
-	int depth;
 	
+	/** The kind of this {@link ImageInfo}. */
 	Kind kind;
+	
+	/** The image (file) name. */
 	string name;
+	
+	/** The last modification date of the image in milliseconds since epoch. */
 	long date;
+	
+	/** The width of the original image in pixels. */
 	int width;
+	
+	/** The height of the original image in pixels. */
 	int height;
+	
+	/** A rating of this image from -2 to 2. */
+	int rating;
+	
+	/** A comment describing what this image contains. */
 	string comment;
 	
+	/** The {@link #name} of the previous image in the {@link #owner}. */
 	string previous;
+	
+	/** The {@link #name} of the next image in the {@link #owner}. */
 	string next;
+	
+	/** The {@link #name} of the first image of the {@link #owner}. */
 	string home;
+	
+	/** The {@link #name} of the last image of the {@link #owner}. */
 	string end;
 
-	int rating;
 }
 
+/** {@link Resource} describing collection of {@link ImageInfo}s found in a directory. */
 message AlbumInfo extends Resource {
+	/** The title of this album. */
 	string title;
+	
+	/** The subtitle of this album. */
 	string subTitle;
+	
+	/** Description of the image used to display this whole album in a listing. */
 	ThumbnailInfo indexPicture;
 
-	int depth;
+	/** The list of images in this album. */
 	repeated ImageInfo images;
 }
 
+/** {@link Resource} describing collection {@link FolderInfo}s found in a directory. */
 message ListingInfo extends Resource {
-	int depth;
+	/** The directory name of this {@link ListingInfo}. */
 	string name;
+	
+	/** The title to display for this {@link ListingInfo}. */
 	string title;
+	
+	/** Description of the folders within this {@link ListingInfo}. */
 	repeated FolderInfo folders;
 }
 
+/** Part of a {@link ListingInfo} describing a reference to a single album directory. */
 message FolderInfo {
+	/** The directory name of this {@link FolderInfo}. */
 	string name;
+	
+	/** The title of the {@link AlbumInfo} referenced by this {@link FolderInfo}. */
 	string title;
+	
+	/** The subtitle of the {@link AlbumInfo} referenced by this {@link FolderInfo}. */
 	string subTitle;
+	
+	/** The index picture of the {@link AlbumInfo} referenced by this {@link FolderInfo}. */
 	ThumbnailInfo indexPicture;
 }
 
+/** Part of a {@link FolderInfo} describing the thumbnail image for displaying this folder in a {@link ListingInfo}. */
 message ThumbnailInfo {
+	/** Name of the image to use as thumbnail. */
 	string image;
 	
+	/** The factor to scale the original image for producing the thumbnail image. */
 	double scale;
+	
+	/** The translation in X to apply to the the original image for producing the thumbnail image. */
 	double tx;
+	
+	/** The translation in Y to apply to the the original image for producing the thumbnail image. */
 	double ty;
 }
 
+/** {@link Resource} that produced a server-side error while loading. */
 message ErrorInfo extends Resource {
+	/** The error message. */
 	string `message`;
 }
 

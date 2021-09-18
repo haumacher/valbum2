@@ -1,5 +1,8 @@
 package de.haumacher.imageServer.shared.model;
 
+/**
+ * {@link Resource} describing collection of {@link ImageInfo}s found in a directory.
+ */
 public class AlbumInfo extends Resource {
 
 	/**
@@ -24,10 +27,11 @@ public class AlbumInfo extends Resource {
 
 	private ThumbnailInfo _indexPicture = null;
 
-	private int _depth = 0;
-
 	private final java.util.List<ImageInfo> _images = new java.util.ArrayList<>();
 
+	/**
+	 * The title of this album.
+	 */
 	public final String getTitle() {
 		return _title;
 	}
@@ -40,6 +44,9 @@ public class AlbumInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * The subtitle of this album.
+	 */
 	public final String getSubTitle() {
 		return _subTitle;
 	}
@@ -52,6 +59,9 @@ public class AlbumInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * Description of the image used to display this whole album in a listing.
+	 */
 	public final ThumbnailInfo getIndexPicture() {
 		return _indexPicture;
 	}
@@ -71,18 +81,9 @@ public class AlbumInfo extends Resource {
 		return _indexPicture != null;
 	}
 
-	public final int getDepth() {
-		return _depth;
-	}
-
 	/**
-	 * @see #getDepth()
+	 * The list of images in this album.
 	 */
-	public final AlbumInfo setDepth(int value) {
-		_depth = value;
-		return this;
-	}
-
 	public final java.util.List<ImageInfo> getImages() {
 		return _images;
 	}
@@ -124,7 +125,6 @@ public class AlbumInfo extends Resource {
 			case "title": return getTitle();
 			case "subTitle": return getSubTitle();
 			case "indexPicture": return getIndexPicture();
-			case "depth": return getDepth();
 			case "images": return getImages();
 			default: return super.get(field);
 		}
@@ -136,7 +136,6 @@ public class AlbumInfo extends Resource {
 			case "title": setTitle((String) value); break;
 			case "subTitle": setSubTitle((String) value); break;
 			case "indexPicture": setIndexPicture((ThumbnailInfo) value); break;
-			case "depth": setDepth((int) value); break;
 			case "images": setImages((java.util.List<ImageInfo>) value); break;
 			default: super.set(field, value); break;
 		}
@@ -153,8 +152,6 @@ public class AlbumInfo extends Resource {
 			out.name("indexPicture");
 			getIndexPicture().writeTo(out);
 		}
-		out.name("depth");
-		out.value(getDepth());
 		out.name("images");
 		out.beginArray();
 		for (ImageInfo x : getImages()) {
@@ -169,7 +166,6 @@ public class AlbumInfo extends Resource {
 			case "title": setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "subTitle": setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "indexPicture": setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
-			case "depth": setDepth(in.nextInt()); break;
 			case "images": {
 				in.beginArray();
 				while (in.hasNext()) {
@@ -190,16 +186,14 @@ public class AlbumInfo extends Resource {
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name(1);
-		out.value(getTitle());
 		out.name(2);
+		out.value(getTitle());
+		out.name(3);
 		out.value(getSubTitle());
 		if (hasIndexPicture()) {
-			out.name(3);
+			out.name(4);
 			getIndexPicture().writeTo(out);
 		}
-		out.name(4);
-		out.value(getDepth());
 		out.name(5);
 		{
 			java.util.List<ImageInfo> values = getImages();
@@ -214,10 +208,9 @@ public class AlbumInfo extends Resource {
 	@Override
 	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
 		switch (field) {
-			case 1: setTitle(in.nextString()); break;
-			case 2: setSubTitle(in.nextString()); break;
-			case 3: setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
-			case 4: setDepth(in.nextInt()); break;
+			case 2: setTitle(in.nextString()); break;
+			case 3: setSubTitle(in.nextString()); break;
+			case 4: setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
 			case 5: {
 				in.beginArray();
 				while (in.hasNext()) {

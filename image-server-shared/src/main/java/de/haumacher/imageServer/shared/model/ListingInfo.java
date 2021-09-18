@@ -1,5 +1,8 @@
 package de.haumacher.imageServer.shared.model;
 
+/**
+ * {@link Resource} describing collection {@link FolderInfo}s found in a directory.
+ */
 public class ListingInfo extends Resource {
 
 	/**
@@ -18,26 +21,15 @@ public class ListingInfo extends Resource {
 		super();
 	}
 
-	private int _depth = 0;
-
 	private String _name = "";
 
 	private String _title = "";
 
 	private final java.util.List<FolderInfo> _folders = new java.util.ArrayList<>();
 
-	public final int getDepth() {
-		return _depth;
-	}
-
 	/**
-	 * @see #getDepth()
+	 * The directory name of this {@link ListingInfo}.
 	 */
-	public final ListingInfo setDepth(int value) {
-		_depth = value;
-		return this;
-	}
-
 	public final String getName() {
 		return _name;
 	}
@@ -50,6 +42,9 @@ public class ListingInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * The title to display for this {@link ListingInfo}.
+	 */
 	public final String getTitle() {
 		return _title;
 	}
@@ -62,6 +57,9 @@ public class ListingInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * Description of the folders within this {@link ListingInfo}.
+	 */
 	public final java.util.List<FolderInfo> getFolders() {
 		return _folders;
 	}
@@ -100,7 +98,6 @@ public class ListingInfo extends Resource {
 	@Override
 	public Object get(String field) {
 		switch (field) {
-			case "depth": return getDepth();
 			case "name": return getName();
 			case "title": return getTitle();
 			case "folders": return getFolders();
@@ -111,7 +108,6 @@ public class ListingInfo extends Resource {
 	@Override
 	public void set(String field, Object value) {
 		switch (field) {
-			case "depth": setDepth((int) value); break;
 			case "name": setName((String) value); break;
 			case "title": setTitle((String) value); break;
 			case "folders": setFolders((java.util.List<FolderInfo>) value); break;
@@ -122,8 +118,6 @@ public class ListingInfo extends Resource {
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name("depth");
-		out.value(getDepth());
 		out.name("name");
 		out.value(getName());
 		out.name("title");
@@ -139,7 +133,6 @@ public class ListingInfo extends Resource {
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "depth": setDepth(in.nextInt()); break;
 			case "name": setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "title": setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "folders": {
@@ -162,8 +155,6 @@ public class ListingInfo extends Resource {
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name(1);
-		out.value(getDepth());
 		out.name(2);
 		out.value(getName());
 		out.name(3);
@@ -182,7 +173,6 @@ public class ListingInfo extends Resource {
 	@Override
 	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
 		switch (field) {
-			case 1: setDepth(in.nextInt()); break;
 			case 2: setName(in.nextString()); break;
 			case 3: setTitle(in.nextString()); break;
 			case 4: {

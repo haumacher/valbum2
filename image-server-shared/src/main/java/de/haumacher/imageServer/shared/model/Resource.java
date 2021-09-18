@@ -1,5 +1,8 @@
 package de.haumacher.imageServer.shared.model;
 
+/**
+ * Base class for a resource being displayed as view in a photo album.
+ */
 public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObject implements de.haumacher.msgbuf.binary.BinaryDataObject {
 
 	/** Visitor interface for the {@link Resource} hierarchy.*/
@@ -24,6 +27,23 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 	 */
 	protected Resource() {
 		super();
+	}
+
+	private int _depth = 0;
+
+	/**
+	 * The nesting level of this {@link Resource}.
+	 */
+	public final int getDepth() {
+		return _depth;
+	}
+
+	/**
+	 * @see #getDepth()
+	 */
+	public final Resource setDepth(int value) {
+		_depth = value;
+		return this;
 	}
 
 	/** Reads a new instance from the given reader. */
@@ -54,6 +74,36 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 	public abstract String jsonType();
 
 	@Override
+	public Object get(String field) {
+		switch (field) {
+			case "depth": return getDepth();
+			default: return super.get(field);
+		}
+	}
+
+	@Override
+	public void set(String field, Object value) {
+		switch (field) {
+			case "depth": setDepth((int) value); break;
+		}
+	}
+
+	@Override
+	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
+		super.writeFields(out);
+		out.name("depth");
+		out.value(getDepth());
+	}
+
+	@Override
+	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
+		switch (field) {
+			case "depth": setDepth(in.nextInt()); break;
+			default: super.readField(in, field);
+		}
+	}
+
+	@Override
 	public final void writeTo(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
 		out.beginObject();
 		out.name(0);
@@ -73,12 +123,14 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 	 * @throws java.io.IOException If writing fails.
 	 */
 	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		// No fields to write, hook for subclasses.
+		out.name(1);
+		out.value(getDepth());
 	}
 
 	/** Consumes the value for the field with the given ID and assigns its value. */
 	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
 		switch (field) {
+			case 1: setDepth(in.nextInt()); break;
 			default: in.skipValue(); 
 		}
 	}

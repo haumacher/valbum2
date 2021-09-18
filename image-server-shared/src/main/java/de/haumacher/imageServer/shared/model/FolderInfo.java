@@ -1,5 +1,8 @@
 package de.haumacher.imageServer.shared.model;
 
+/**
+ * Part of a {@link ListingInfo} describing a reference to a single album directory.
+ */
 public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject implements de.haumacher.msgbuf.binary.BinaryDataObject {
 
 	/**
@@ -26,6 +29,9 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject impl
 
 	private ThumbnailInfo _indexPicture = null;
 
+	/**
+	 * The directory name of this {@link FolderInfo}.
+	 */
 	public final String getName() {
 		return _name;
 	}
@@ -38,6 +44,9 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject impl
 		return this;
 	}
 
+	/**
+	 * The title of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
+	 */
 	public final String getTitle() {
 		return _title;
 	}
@@ -50,6 +59,9 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject impl
 		return this;
 	}
 
+	/**
+	 * The subtitle of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
+	 */
 	public final String getSubTitle() {
 		return _subTitle;
 	}
@@ -62,6 +74,9 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject impl
 		return this;
 	}
 
+	/**
+	 * The index picture of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
+	 */
 	public final ThumbnailInfo getIndexPicture() {
 		return _indexPicture;
 	}

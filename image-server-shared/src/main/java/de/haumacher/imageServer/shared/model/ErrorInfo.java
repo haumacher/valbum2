@@ -1,5 +1,8 @@
 package de.haumacher.imageServer.shared.model;
 
+/**
+ * {@link Resource} that produced a server-side error while loading.
+ */
 public class ErrorInfo extends Resource {
 
 	/**
@@ -20,6 +23,9 @@ public class ErrorInfo extends Resource {
 
 	private String _message = "";
 
+	/**
+	 * The error message.
+	 */
 	public final String getMessage() {
 		return _message;
 	}
@@ -85,14 +91,14 @@ public class ErrorInfo extends Resource {
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name(1);
+		out.name(2);
 		out.value(getMessage());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
 		switch (field) {
-			case 1: setMessage(in.nextString()); break;
+			case 2: setMessage(in.nextString()); break;
 			default: super.readField(in, field);
 		}
 	}

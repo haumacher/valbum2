@@ -1,5 +1,8 @@
 package de.haumacher.imageServer.shared.model;
 
+/**
+ * Part of a {@link FolderInfo} describing the thumbnail image for displaying this folder in a {@link ListingInfo}.
+ */
 public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject implements de.haumacher.msgbuf.binary.BinaryDataObject {
 
 	/**
@@ -26,6 +29,9 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 
 	private double _ty = 0.0d;
 
+	/**
+	 * Name of the image to use as thumbnail.
+	 */
 	public final String getImage() {
 		return _image;
 	}
@@ -38,6 +44,9 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 		return this;
 	}
 
+	/**
+	 * The factor to scale the original image for producing the thumbnail image.
+	 */
 	public final double getScale() {
 		return _scale;
 	}
@@ -50,6 +59,9 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 		return this;
 	}
 
+	/**
+	 * The translation in X to apply to the the original image for producing the thumbnail image.
+	 */
 	public final double getTx() {
 		return _tx;
 	}
@@ -62,6 +74,9 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 		return this;
 	}
 
+	/**
+	 * The translation in Y to apply to the the original image for producing the thumbnail image.
+	 */
 	public final double getTy() {
 		return _ty;
 	}

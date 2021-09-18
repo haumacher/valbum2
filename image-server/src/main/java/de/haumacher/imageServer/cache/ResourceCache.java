@@ -185,7 +185,8 @@ public class ResourceCache {
 			Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
 			
 			String listingName = pathInfo.getName();
-			ListingInfo listing = ListingInfo.create().setDepth(pathInfo.getDepth()).setName(listingName).setTitle(fromTechnicalName(listingName));
+			ListingInfo listing = ListingInfo.create().setName(listingName).setTitle(fromTechnicalName(listingName));
+			listing.setDepth(pathInfo.getDepth());
 			for (File folder : dirs) {
 				String folderName = folder.getName();
 				FolderInfo folderInfo;

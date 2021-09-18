@@ -1,11 +1,23 @@
 package de.haumacher.imageServer.shared.model;
 
+/**
+ * {@link Resource} describing a single image or video file.
+ */
 public class ImageInfo extends Resource {
 
+	/**
+	 * Kind of image.
+	 */
 	public enum Kind {
 
+		/**
+		 * A still image.
+		 */
 		IMAGE,
 
+		/**
+		 * A video.
+		 */
 		VIDEO,
 
 		;
@@ -57,8 +69,6 @@ public class ImageInfo extends Resource {
 
 	private transient AlbumInfo _owner = null;
 
-	private int _depth = 0;
-
 	private Kind _kind = Kind.IMAGE;
 
 	private String _name = "";
@@ -68,6 +78,8 @@ public class ImageInfo extends Resource {
 	private int _width = 0;
 
 	private int _height = 0;
+
+	private int _rating = 0;
 
 	private String _comment = "";
 
@@ -79,8 +91,9 @@ public class ImageInfo extends Resource {
 
 	private String _end = "";
 
-	private int _rating = 0;
-
+	/**
+	 * The {@link AlbumInfo} this {@link ImageInfo} is part of.
+	 */
 	public final AlbumInfo getOwner() {
 		return _owner;
 	}
@@ -100,18 +113,9 @@ public class ImageInfo extends Resource {
 		return _owner != null;
 	}
 
-	public final int getDepth() {
-		return _depth;
-	}
-
 	/**
-	 * @see #getDepth()
+	 * The kind of this {@link ImageInfo}.
 	 */
-	public final ImageInfo setDepth(int value) {
-		_depth = value;
-		return this;
-	}
-
 	public final Kind getKind() {
 		return _kind;
 	}
@@ -131,6 +135,9 @@ public class ImageInfo extends Resource {
 		return _kind != null;
 	}
 
+	/**
+	 * The image (file) name.
+	 */
 	public final String getName() {
 		return _name;
 	}
@@ -143,6 +150,9 @@ public class ImageInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * The last modification date of the image in milliseconds since epoch.
+	 */
 	public final long getDate() {
 		return _date;
 	}
@@ -155,6 +165,9 @@ public class ImageInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * The width of the original image in pixels.
+	 */
 	public final int getWidth() {
 		return _width;
 	}
@@ -167,6 +180,9 @@ public class ImageInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * The height of the original image in pixels.
+	 */
 	public final int getHeight() {
 		return _height;
 	}
@@ -179,6 +195,24 @@ public class ImageInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * A rating of this image from -2 to 2.
+	 */
+	public final int getRating() {
+		return _rating;
+	}
+
+	/**
+	 * @see #getRating()
+	 */
+	public final ImageInfo setRating(int value) {
+		_rating = value;
+		return this;
+	}
+
+	/**
+	 * A comment describing what this image contains.
+	 */
 	public final String getComment() {
 		return _comment;
 	}
@@ -191,6 +225,9 @@ public class ImageInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * The {@link #getName()} of the previous image in the {@link #getOwner()}.
+	 */
 	public final String getPrevious() {
 		return _previous;
 	}
@@ -203,6 +240,9 @@ public class ImageInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * The {@link #getName()} of the next image in the {@link #getOwner()}.
+	 */
 	public final String getNext() {
 		return _next;
 	}
@@ -215,6 +255,9 @@ public class ImageInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * The {@link #getName()} of the first image of the {@link #getOwner()}.
+	 */
 	public final String getHome() {
 		return _home;
 	}
@@ -227,6 +270,9 @@ public class ImageInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * The {@link #getName()} of the last image of the {@link #getOwner()}.
+	 */
 	public final String getEnd() {
 		return _end;
 	}
@@ -236,18 +282,6 @@ public class ImageInfo extends Resource {
 	 */
 	public final ImageInfo setEnd(String value) {
 		_end = value;
-		return this;
-	}
-
-	public final int getRating() {
-		return _rating;
-	}
-
-	/**
-	 * @see #getRating()
-	 */
-	public final ImageInfo setRating(int value) {
-		_rating = value;
 		return this;
 	}
 
@@ -269,18 +303,17 @@ public class ImageInfo extends Resource {
 	public Object get(String field) {
 		switch (field) {
 			case "owner": return getOwner();
-			case "depth": return getDepth();
 			case "kind": return getKind();
 			case "name": return getName();
 			case "date": return getDate();
 			case "width": return getWidth();
 			case "height": return getHeight();
+			case "rating": return getRating();
 			case "comment": return getComment();
 			case "previous": return getPrevious();
 			case "next": return getNext();
 			case "home": return getHome();
 			case "end": return getEnd();
-			case "rating": return getRating();
 			default: return super.get(field);
 		}
 	}
@@ -289,18 +322,17 @@ public class ImageInfo extends Resource {
 	public void set(String field, Object value) {
 		switch (field) {
 			case "owner": setOwner((AlbumInfo) value); break;
-			case "depth": setDepth((int) value); break;
 			case "kind": setKind((Kind) value); break;
 			case "name": setName((String) value); break;
 			case "date": setDate((long) value); break;
 			case "width": setWidth((int) value); break;
 			case "height": setHeight((int) value); break;
+			case "rating": setRating((int) value); break;
 			case "comment": setComment((String) value); break;
 			case "previous": setPrevious((String) value); break;
 			case "next": setNext((String) value); break;
 			case "home": setHome((String) value); break;
 			case "end": setEnd((String) value); break;
-			case "rating": setRating((int) value); break;
 			default: super.set(field, value); break;
 		}
 	}
@@ -308,8 +340,6 @@ public class ImageInfo extends Resource {
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name("depth");
-		out.value(getDepth());
 		if (hasKind()) {
 			out.name("kind");
 			getKind().writeTo(out);
@@ -322,6 +352,8 @@ public class ImageInfo extends Resource {
 		out.value(getWidth());
 		out.name("height");
 		out.value(getHeight());
+		out.name("rating");
+		out.value(getRating());
 		out.name("comment");
 		out.value(getComment());
 		out.name("previous");
@@ -332,25 +364,22 @@ public class ImageInfo extends Resource {
 		out.value(getHome());
 		out.name("end");
 		out.value(getEnd());
-		out.name("rating");
-		out.value(getRating());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "depth": setDepth(in.nextInt()); break;
 			case "kind": setKind(Kind.readKind(in)); break;
 			case "name": setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "date": setDate(in.nextLong()); break;
 			case "width": setWidth(in.nextInt()); break;
 			case "height": setHeight(in.nextInt()); break;
+			case "rating": setRating(in.nextInt()); break;
 			case "comment": setComment(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "previous": setPrevious(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "next": setNext(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "home": setHome(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case "end": setEnd(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "rating": setRating(in.nextInt()); break;
 			default: super.readField(in, field);
 		}
 	}
@@ -363,8 +392,6 @@ public class ImageInfo extends Resource {
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name(2);
-		out.value(getDepth());
 		if (hasKind()) {
 			out.name(3);
 			getKind().writeTo(out);
@@ -378,34 +405,33 @@ public class ImageInfo extends Resource {
 		out.name(7);
 		out.value(getHeight());
 		out.name(8);
-		out.value(getComment());
-		out.name(9);
-		out.value(getPrevious());
-		out.name(10);
-		out.value(getNext());
-		out.name(11);
-		out.value(getHome());
-		out.name(12);
-		out.value(getEnd());
-		out.name(13);
 		out.value(getRating());
+		out.name(9);
+		out.value(getComment());
+		out.name(10);
+		out.value(getPrevious());
+		out.name(11);
+		out.value(getNext());
+		out.name(12);
+		out.value(getHome());
+		out.name(13);
+		out.value(getEnd());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
 		switch (field) {
-			case 2: setDepth(in.nextInt()); break;
 			case 3: setKind(Kind.readKind(in)); break;
 			case 4: setName(in.nextString()); break;
 			case 5: setDate(in.nextLong()); break;
 			case 6: setWidth(in.nextInt()); break;
 			case 7: setHeight(in.nextInt()); break;
-			case 8: setComment(in.nextString()); break;
-			case 9: setPrevious(in.nextString()); break;
-			case 10: setNext(in.nextString()); break;
-			case 11: setHome(in.nextString()); break;
-			case 12: setEnd(in.nextString()); break;
-			case 13: setRating(in.nextInt()); break;
+			case 8: setRating(in.nextInt()); break;
+			case 9: setComment(in.nextString()); break;
+			case 10: setPrevious(in.nextString()); break;
+			case 11: setNext(in.nextString()); break;
+			case 12: setHome(in.nextString()); break;
+			case 13: setEnd(in.nextString()); break;
 			default: super.readField(in, field);
 		}
 	}
