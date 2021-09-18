@@ -7,8 +7,10 @@ import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
 
+import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ListingInfo;
+import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
@@ -24,11 +26,15 @@ public class ListingDisplay extends ResourceDisplay {
 
 	/** 
 	 * Creates a {@link ListingDisplay}.
-	 *
-	 * @param listing
 	 */
-	public ListingDisplay(ListingInfo listing) {
+	public ListingDisplay(ListingInfo listing, ResourceHandler handler) {
+		super(handler);
 		_listing = listing;
+	}
+	
+	@Override
+	protected Resource getResource() {
+		return _listing;
 	}
 
 	@Override

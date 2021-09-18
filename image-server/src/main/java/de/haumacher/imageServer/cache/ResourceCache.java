@@ -15,6 +15,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.text.DateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
@@ -22,6 +23,7 @@ import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
@@ -320,7 +322,7 @@ public class ResourceCache {
 			File indexResource = new File(dir, "index.json");
 			if (indexResource.exists()) {
 				try {
-					album = loadJSON(indexResource);
+					album = (AlbumInfo) loadJSON(indexResource, AlbumInfo::readResource);
 				} catch (IOException ex) {
 					LOG.log(Level.WARNING, "Faild to load album index.", ex);
 					album = createGenericAlbumInfo(pathInfo);
@@ -329,8 +331,19 @@ public class ResourceCache {
 				album = createGenericAlbumInfo(pathInfo);
 			}
 			album.setDepth(pathInfo.getDepth());
+			UpdateTransient.updateTransient(album);
 			
+			Set<String> existingNames = new HashSet<>();
+			List<ImageData> newImages = new ArrayList<>();
 			for (File file : files) {
+				String name = file.getName();
+				existingNames.add(name);
+				
+				ImagePart existing = album.getImageByName().get(name);
+				if (existing != null) {
+					continue;
+				}
+				
 				ImageData image;
 				try {
 					image = ImageData.analyze(album, file);
@@ -338,11 +351,16 @@ public class ResourceCache {
 					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
 					continue;
 				}
-				album.addPart(image);
+				
+				newImages.add(image);
 			}
 			
-			Collections.sort(album.getParts(), (a, b) -> Long.compare(ToImage.toImage(a).getDate(), ToImage.toImage(b).getDate()));
-			UpdateTransient.updateTransient(album);
+			Collections.sort(newImages, (a, b) -> Long.compare(ToImage.toImage(a).getDate(), ToImage.toImage(b).getDate()));
+			for (ImageData newImage : newImages) {
+				album.addPart(newImage);
+				album.addImageByName(newImage.getName(), newImage);
+			}
+			
 			return album;
 		}
 
@@ -370,10 +388,6 @@ public class ResourceCache {
 				JsonReader json = new JsonReader(new ReaderAdapter(new InputStreamReader(in, "utf-8")));
 				return loader.load(json);
 			}
-		}
-		
-		private static AlbumInfo loadJSON(File file) throws IOException {
-			return loadJSON(file, AlbumInfo::readAlbumInfo);
 		}
 	}
 

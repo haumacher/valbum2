@@ -5,9 +5,12 @@ package de.haumacher.imageServer;
 
 import static de.haumacher.util.html.HTML.*;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.file.Path;
@@ -108,6 +111,77 @@ public class ImageServlet extends HttpServlet {
 		} else {
 			error404(context);
 		}
+	}
+	
+	@Override
+	protected void doPut(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		String pathInfo = request.getPathInfo();
+		Context context = new Context(request, response);
+
+		if (pathInfo == null) {
+			error(context, HttpStatus.METHOD_NOT_ALLOWED_405);
+			return;
+		}
+		
+		PathInfo resourcePath;
+		{
+			String relativePath = pathInfo.substring(1);
+			if (relativePath.isEmpty()) {
+				error(context, HttpStatus.METHOD_NOT_ALLOWED_405);
+				return;
+			}
+			
+			Path path = Paths.get(relativePath).normalize();
+			if (path.startsWith("..") || path.startsWith("/")) {
+				error404(context);
+				return;
+			}
+			
+			resourcePath = new PathInfo(_basePath, path);
+		}
+		
+		File file = resourcePath.toFile();
+		if (!file.exists()) {
+			error404(context);
+			return;
+		}
+
+		if (!file.isDirectory()) {
+			error(context, HttpStatus.METHOD_NOT_ALLOWED_405);
+			return;
+		}
+		
+		if (!context.request().getContentType().equals("application/json")) {
+			error(context, HttpStatus.UNSUPPORTED_MEDIA_TYPE_415);
+			return;
+		}
+		
+		storeFolder(context, resourcePath);
+	}
+
+	private void storeFolder(Context context, PathInfo resourcePath) throws IOException {
+		File directory = resourcePath.toFile();
+		File indexFile = new File(directory, "index.json");
+		
+		File tmpFile = File.createTempFile("index", ".json", directory);
+
+		try (OutputStream stream = new FileOutputStream(tmpFile); Writer out = new OutputStreamWriter(stream, "utf-8")) {
+			BufferedReader reader = context.request().getReader();
+			char[] buffer = new char[4096];
+			while (true) {
+				int direct = reader.read(buffer);
+				if (direct < 0) {
+					break;
+				}
+				out.write(buffer, 0, direct);
+			}
+		}
+
+		if (indexFile.exists()) {
+			indexFile.renameTo(new File(directory, "index.json." + indexFile.lastModified()));
+		}
+		
+		tmpFile.renameTo(indexFile);
 	}
 
 	private void serveIndex(Context context) throws IOException {
@@ -240,7 +314,11 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	private void error404(Context context) {
-		context.response().setStatus(HttpStatus.NOT_FOUND_404);
+		error(context, HttpStatus.NOT_FOUND_404);
+	}
+
+	private void error(Context context, int errorCode) {
+		context.response().setStatus(errorCode);
 	}
 
 	static class Context {

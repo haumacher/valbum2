@@ -64,6 +64,10 @@ public class UpdateTransient implements Resource.Visitor<Void, Void> {
 	 */
 	public static void updateTransient(AlbumInfo album) {
 		List<AlbumPart> parts = album.getParts();
+		if (parts.isEmpty()) {
+			return;
+		}
+		
 		String home= ToImage.toImage(parts.get(0)).getName();
 		String end = ToImage.toImage(parts.get(parts.size() - 1)).getName();
 		

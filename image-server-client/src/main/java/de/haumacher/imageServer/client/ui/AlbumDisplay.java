@@ -15,10 +15,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
 import de.haumacher.imageServer.shared.util.ToImage;
@@ -41,12 +43,19 @@ public class AlbumDisplay extends ResourceDisplay {
 	private Set<AlbumPart> _selected = new HashSet<>();
 	private AlbumPart _lastClicked;
 	private Map<AlbumPart, ImagePreviewDisplay> _imageDisplays;
-	
+
 	/** 
 	 * Creates a {@link AlbumDisplay}.
+	 * @param handler 
 	 */
-	public AlbumDisplay(AlbumInfo album) {
+	public AlbumDisplay(AlbumInfo album, ResourceHandler handler) {
+		super(handler);
 		_album = album;
+	}
+	
+	@Override
+	protected Resource getResource() {
+		return _album;
 	}
 
 	@Override

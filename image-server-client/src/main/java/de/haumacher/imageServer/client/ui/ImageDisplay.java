@@ -8,9 +8,11 @@ import static de.haumacher.util.html.HTML.*;
 import java.io.IOException;
 
 import de.haumacher.imageServer.client.app.Pos;
+import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.client.app.TXInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
@@ -36,8 +38,14 @@ public class ImageDisplay extends ResourceDisplay {
 	/** 
 	 * Creates a {@link ImageDisplay}.
 	 */
-	public ImageDisplay(ImageInfo image) {
+	public ImageDisplay(ImageInfo image, ResourceHandler handler) {
+		super(handler);
 		_image = image;
+	}
+	
+	@Override
+	protected Resource getResource() {
+		return _image;
 	}
 
 	@Override

@@ -10,6 +10,8 @@ import java.io.IOException;
 import de.haumacher.imageServer.client.app.App;
 import de.haumacher.imageServer.client.app.ControlHandler;
 import de.haumacher.imageServer.client.app.KeyCodes;
+import de.haumacher.imageServer.client.app.ResourceHandler;
+import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Element;
@@ -26,9 +28,21 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 	private static final String TOOLBAR_CLASS = "toolbar";
 
 	private static final String TOOLBAR_RIGHT_CLASS = "tb-right";
-	
+
+
+	/**
+	 * The path of the displayed {@link Resource}.
+	 */
+	private ResourceHandler _handler;
+
 	private boolean _editMode;
-	
+
+	/** 
+	 * Creates a {@link ResourceDisplay}.
+	 */
+	public ResourceDisplay(ResourceHandler handler) {
+		_handler = handler;
+	}
 
 	protected void writeAlbumToolbar(DomBuilder out, boolean isFile, CharSequence parentUrl) throws IOException {
 		out.begin(DIV);
@@ -62,15 +76,21 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 	}
 
 	private void handleToggelEditMode(Event event) {
-		_editMode = !_editMode;
+		boolean newEditMode = !_editMode;
+		
+		_editMode = newEditMode;
+		
+		if (!newEditMode) {
+			_handler.store(getResource());
+		}
 		redraw();
+		
+		event.stopPropagation();
+		event.preventDefault();
 	}
 
-	/** 
-	 * TODO
-	 *
-	 * @return
-	 */
+	protected abstract Resource getResource();
+
 	protected final boolean isEditMode() {
 		return _editMode;
 	}

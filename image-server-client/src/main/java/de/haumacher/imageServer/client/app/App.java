@@ -58,7 +58,7 @@ public class App implements EntryPoint, UIContext {
 	
 	private Map<String, Double> _scrollOffset = new HashMap<>();
 	
-	private String _contextPath;
+	String _contextPath;
 
 	Timer _resizeTimer;
 
@@ -180,7 +180,7 @@ public class App implements EntryPoint, UIContext {
 	
 	void updatePage(String path, Resource resource, boolean back) {
 		setBaseUrl(currentDir(path));
-		setDisplay(resource);
+		setDisplay(path, resource);
 		renderPage();
 		
 		if (!back) {
@@ -195,8 +195,10 @@ public class App implements EntryPoint, UIContext {
 		}
 	}
 
-	private void setDisplay(Resource resource) {
-		_display = resource.visit(ResourceControlProvider.INSTANCE, null);
+	private void setDisplay(String path, Resource resource) {
+		String url = _contextPath + Settings.DATA_PREFIX + path;
+		DefaultResourceHandler handler = new DefaultResourceHandler(url);
+		_display = resource.visit(ResourceControlProvider.INSTANCE, handler);
 	}
 
 	final void renderPage() {
