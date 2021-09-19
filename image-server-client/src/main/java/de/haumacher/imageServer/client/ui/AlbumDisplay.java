@@ -16,6 +16,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import de.haumacher.imageServer.client.app.ResourceHandler;
+import de.haumacher.imageServer.client.bulma.form.Input;
+import de.haumacher.imageServer.client.bulma.modal.ModalCard;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImageGroup;
@@ -27,6 +29,7 @@ import de.haumacher.imageServer.shared.ui.ImageRow;
 import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
+import elemental2.dom.Event;
 import elemental2.dom.MouseEvent;
 
 /**
@@ -244,6 +247,45 @@ public class AlbumDisplay extends ResourceDisplay {
 		_selected.clear();
 		
 		redraw();
+	}
+	
+	@Override
+	protected void openSettings(UIContext context, DomBuilder out) {
+		new ModalCard() {
+			
+			private Input _titleInput;
+			private Input _subtitleInput;
+
+			protected void renderTitle(UIContext context, DomBuilder out) throws IOException {
+				out.append("Eigenschaften bearbeiten");
+			}
+			
+			@Override
+			protected void renderContent(UIContext context, DomBuilder out) {
+				_titleInput = new Input().setLabel("Titel").setValue(_album.getTitle());
+				_titleInput.show(context, out);
+				
+				_subtitleInput = new Input().setLabel("Subtitel").setValue(_album.getSubTitle());
+				_subtitleInput.show(context, out);
+			}
+			
+			protected void renderButtons(UIContext context, DomBuilder out) throws IOException {
+				out.begin(BUTTON);
+				out.classAttr("button is-success");
+				out.append("Übernehmen");
+				out.end();
+				
+				out.getLast().addEventListener("click", this::handleOk);
+			}
+			
+			private void handleOk(Event event) {
+				_album.setTitle(_titleInput.getValue());
+				_album.setSubTitle(_subtitleInput.getValue());
+				
+				remove();
+				AlbumDisplay.this.redraw();
+			}
+		}.show(context(), out);
 	}
 
 }

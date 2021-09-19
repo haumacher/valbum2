@@ -52,12 +52,18 @@ public abstract class AbstractDisplay implements Display {
 	protected void onAttach(Element element) {}
 
 	public void redraw() {
+		if (_element == null) {
+			return;
+		}
 		Element parent = _element.parentElement;
 		remove();
 		show(_context, _context.createDomBuilderImpl(parent));
 	}
 	
 	public void remove() {
+		if (_element == null) {
+			return;
+		}
 		onDetach(_element);
 		Element parent = _element.parentElement;
 		parent.removeChild(_element);

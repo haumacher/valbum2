@@ -76,13 +76,15 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 				out.end();
 				out.getLast().addEventListener("click", this::handleToggelEditMode);
 				
-				out.begin(SPAN);
-				out.classAttr(CssClasses.TOOLBAR_BUTTON);
-				{
-					RenderUtil.icon(out, "fas fa-bars");
+				if (isEditMode()) {
+					out.begin(SPAN);
+					out.classAttr(CssClasses.TOOLBAR_BUTTON);
+					{
+						RenderUtil.icon(out, "fas fa-bars");
+					}
+					out.end();
+					out.getLast().addEventListener("click", this::handleOpenSettings);
 				}
-				out.end();
-				out.getLast().addEventListener("click", this::handleOpenSettings);
 			}
 			out.end();
 		}
@@ -106,10 +108,14 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 	private void handleOpenSettings(Event event) {
 		DomBuilder out = context().createDomBuilderImpl(DomGlobal.document.body);
 
-		new Modal().show(context(), out);
+		openSettings(context(), out);
 		
 		event.stopPropagation();
 		event.preventDefault();
+	}
+
+	protected void openSettings(UIContext context, DomBuilder out) {
+		
 	}
 
 	protected abstract Resource getResource();

@@ -14,6 +14,10 @@ public interface HTML {
 	String HEAD = "head";
 	String BODY = "body";
 	String BUTTON = "button";
+	String HEADER = "header";
+	String SECTION = "section";
+	String P = "p";
+	String FOOTER = "footer";
 	String NOSCRIPT = "noscript";
 	String TITLE = "title";
 	String META = "meta";
@@ -46,4 +50,10 @@ public interface HTML {
 	String DRAGGABLE_ATTR = "draggable";
 	String BASE = "base";
 	String ARIA_LABEL_ATTR = "aria-label";
+	String VALUE_ATTR = "value";
+	String PLACEHOLDER_ATTR = "placeholder";
+	String FIELD = "field";
+	String LABEL = "label";
+	String TYPE_EMAIL_VALUE = "email";
+	String TYPE_TEXT_VALUE = "text";
 }

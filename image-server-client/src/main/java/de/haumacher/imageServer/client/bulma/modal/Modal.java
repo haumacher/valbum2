@@ -1,12 +1,14 @@
 /*
  * Copyright (c) 2021 Bernhard Haumacher et al. All Rights Reserved.
  */
-package de.haumacher.imageServer.client.ui;
+package de.haumacher.imageServer.client.bulma.modal;
 
 import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
 
+import de.haumacher.imageServer.client.ui.AbstractDisplay;
+import de.haumacher.imageServer.client.ui.UIContext;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Event;
 
@@ -23,7 +25,6 @@ public class Modal extends AbstractDisplay {
 		{
 			out.beginDiv("modal-background");
 			out.end();
-			
 			out.getLast().addEventListener("click", this::handleClose);
 			
 			out.beginDiv("modal-content");

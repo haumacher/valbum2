@@ -56,17 +56,18 @@ public class DomBuilderImpl implements DomBuilder {
 
 	@Override
 	public XmlAppendable append(CharSequence csq) {
-		if (_buffer != null) {
-			_buffer.append(csq);
-		} else {
-			_current.appendChild(_document.createTextNode(csq.toString()));
+		if (csq != null) {
+			if (_buffer != null) {
+				_buffer.append(csq);
+			} else {
+				_current.appendChild(_document.createTextNode(csq.toString()));
+			}
 		}
 		return this;
 	}
 
 	@Override
-	public XmlAppendable append(CharSequence csq, int start, int end)
-			{
+	public XmlAppendable append(CharSequence csq, int start, int end) {
 		if (_buffer != null) {
 			_buffer.append(csq, start, end);
 		} else {

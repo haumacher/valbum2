@@ -16,7 +16,7 @@ public interface DomBuilder extends XmlAppendable {
 	/**
 	 * The {@link Element} whose contents is currently created.
 	 */
-	Element getCurrent();
+	<E extends Element> E getCurrent();
 
 	/**
 	 * The {@link Element} that was finished last.
@@ -25,6 +25,6 @@ public interface DomBuilder extends XmlAppendable {
 	 * The last {@link Element} created is the one last closed with a call to {@link #end()}.
 	 * </p>
 	 */
-	Element getLast();
+	<E extends Element> E getLast();
 
 }
