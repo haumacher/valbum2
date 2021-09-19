@@ -29,6 +29,7 @@ import de.haumacher.imageServer.shared.ui.ImageRow;
 import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
+import elemental2.dom.Element;
 import elemental2.dom.Event;
 import elemental2.dom.MouseEvent;
 
@@ -43,6 +44,7 @@ public class AlbumDisplay extends ResourceDisplay {
 	private Set<AlbumPart> _selected = new HashSet<>();
 	private AlbumPart _lastClicked;
 	private Map<AlbumPart, ImagePreviewDisplay> _imageDisplays;
+	private int _minRating = 0;
 
 	/** 
 	 * Creates a {@link AlbumDisplay}.
@@ -87,6 +89,10 @@ public class AlbumDisplay extends ResourceDisplay {
 			
 			ImageRow row = new ImageRow(width, 400);
 			for (AlbumPart image : _album.getParts()) {
+				if (ToImage.toImage(image).getRating() < _minRating) {
+					continue;
+				}
+				
 				if (row.isComplete()) {
 					writeRow(context, out, row);
 					row.clear();
@@ -247,6 +253,29 @@ public class AlbumDisplay extends ResourceDisplay {
 		_selected.clear();
 		
 		redraw();
+	}
+	
+	@Override
+	protected boolean handleKeyDown(Element target, String key) {
+		switch (key) {
+		case "+": {
+			if (_minRating > -1) {
+				// Show more images.
+				_minRating--;
+			}
+			redraw();
+			return false;
+		}
+		case "-": {
+			if (_minRating < 2) {
+				// Show less images.
+				_minRating++;
+			}
+			redraw();
+			return false;
+		}
+		}
+		return super.handleKeyDown(target, key);
 	}
 	
 	@Override

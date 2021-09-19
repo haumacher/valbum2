@@ -143,23 +143,27 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 		switch (event.type) {
 			case "keydown": {
 				String key = ((KeyboardEvent) event).key;
-				switch (key) {
-					case KeyCodes.Escape:
-						return navigate(target, DataAttributes.DATA_ESCAPE);
-					case KeyCodes.ArrowUp:
-						return navigate(target, DataAttributes.DATA_UP);
-					case KeyCodes.ArrowLeft:
-						return navigate(target, DataAttributes.DATA_LEFT);
-					case KeyCodes.ArrowRight:
-						return navigate(target, DataAttributes.DATA_RIGHT);
-					case KeyCodes.Home:
-						return navigate(target, DataAttributes.DATA_HOME);
-					case KeyCodes.End:
-						return navigate(target, DataAttributes.DATA_END);
-					default:
-						return false;
-				}
+				return handleKeyDown(target, key);
 			}
+			default:
+				return false;
+		}
+	}
+
+	protected boolean handleKeyDown(Element target, String key) {
+		switch (key) {
+			case KeyCodes.Escape:
+				return navigate(target, DataAttributes.DATA_ESCAPE);
+			case KeyCodes.ArrowUp:
+				return navigate(target, DataAttributes.DATA_UP);
+			case KeyCodes.ArrowLeft:
+				return navigate(target, DataAttributes.DATA_LEFT);
+			case KeyCodes.ArrowRight:
+				return navigate(target, DataAttributes.DATA_RIGHT);
+			case KeyCodes.Home:
+				return navigate(target, DataAttributes.DATA_HOME);
+			case KeyCodes.End:
+				return navigate(target, DataAttributes.DATA_END);
 			default:
 				return false;
 		}
