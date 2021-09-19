@@ -13,6 +13,7 @@ import de.haumacher.imageServer.client.app.TXInfo;
 import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
@@ -52,7 +53,7 @@ public class ImageDisplay extends ResourceDisplay {
 	protected void render(UIContext context, DomBuilder out) throws IOException {
 		out.begin(DIV);
 		out.attr(ID_ATTR, "page");
-		out.attr(CLASS_ATTR, "image-page");
+		out.attr(CLASS_ATTR, CssClasses.IMAGE_PAGE);
 
 		String previous = _image.getPrevious();
 		String previousUrl = previous == null ? null : previous;
@@ -79,7 +80,7 @@ public class ImageDisplay extends ResourceDisplay {
 					out.attr(ID_ATTR, "image-container");
 					{
 						out.begin(IMG);
-						out.attr(CLASS_ATTR, "image-display");
+						out.attr(CLASS_ATTR, CssClasses.IMAGE_DISPLAY);
 						out.attr(ID_ATTR, "image");
 						out.attr(DRAGGABLE_ATTR, "false");
 						out.attr(SRC_ATTR, imagePart.getName());
@@ -93,7 +94,7 @@ public class ImageDisplay extends ResourceDisplay {
 				
 				case VIDEO: {
 					out.begin(VIDEO);
-					out.attr(CLASS_ATTR, "image-display");
+					out.attr(CLASS_ATTR, CssClasses.IMAGE_DISPLAY);
 					out.attr("controls", "controls");
 					{
 						out.begin(SOURCE);
@@ -111,13 +112,13 @@ public class ImageDisplay extends ResourceDisplay {
 			if (previousUrl != null) {
 				out.begin(A);
 				out.attr(HREF_ATTR, previousUrl);
-				out.attr(CLASS_ATTR, "goto-previous hover-pane");
+				out.attr(CLASS_ATTR, CssClasses.GOTO_PREVIOUS + " " + CssClasses.HOVER_PANE);
 				{
 					out.begin(DIV);
-					out.attr(CLASS_ATTR, "vcenter");
+					out.attr(CLASS_ATTR, CssClasses.VCENTER);
 					{
 						out.begin(DIV);
-						out.attr(CLASS_ATTR, "vcenter-content");
+						out.attr(CLASS_ATTR, CssClasses.VCENTER_CONTENT);
 						{
 							RenderUtil.icon(out, "fas fa-chevron-left");
 						}
@@ -131,13 +132,13 @@ public class ImageDisplay extends ResourceDisplay {
 			if (nextUrl != null) {
 				out.begin(A);
 				out.attr(HREF_ATTR, nextUrl);
-				out.attr(CLASS_ATTR, "goto-next hover-pane");
+				out.attr(CLASS_ATTR, CssClasses.GOTO_NEXT + " " + CssClasses.HOVER_PANE);
 				{
 					out.begin(DIV);
-					out.attr(CLASS_ATTR, "vcenter");
+					out.attr(CLASS_ATTR, CssClasses.VCENTER);
 					{
 						out.begin(DIV);
-						out.attr(CLASS_ATTR, "vcenter-content");
+						out.attr(CLASS_ATTR, CssClasses.VCENTER_CONTENT);
 						{
 							RenderUtil.icon(out, "fas fa-chevron-right");
 						}

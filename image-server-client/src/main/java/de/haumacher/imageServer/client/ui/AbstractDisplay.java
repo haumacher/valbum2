@@ -24,6 +24,13 @@ public abstract class AbstractDisplay implements Display {
 	public Element element() {
 		return _element;
 	}
+	
+	/**
+	 * TODO
+	 */
+	public UIContext context() {
+		return _context;
+	}
 
 	@Override
 	public final void show(UIContext context, DomBuilder out) {
@@ -45,12 +52,16 @@ public abstract class AbstractDisplay implements Display {
 	protected void onAttach(Element element) {}
 
 	public void redraw() {
+		Element parent = _element.parentElement;
+		remove();
+		show(_context, _context.createDomBuilderImpl(parent));
+	}
+	
+	public void remove() {
 		onDetach(_element);
 		Element parent = _element.parentElement;
 		parent.removeChild(_element);
 		_element = null;
-		
-		show(_context, _context.createDomBuilderImpl(parent));
 	}
 
 	/** 

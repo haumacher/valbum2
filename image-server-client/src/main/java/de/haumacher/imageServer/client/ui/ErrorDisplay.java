@@ -6,6 +6,7 @@ package de.haumacher.imageServer.client.ui;
 import java.io.IOException;
 
 import de.haumacher.imageServer.shared.model.ErrorInfo;
+import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.html.HTML;
 import de.haumacher.util.xml.XmlFragment;
@@ -29,6 +30,7 @@ public class ErrorDisplay implements Display {
 	@Override
 	public void show(UIContext context, DomBuilder out) throws IOException {
 		out.begin(HTML.H1);
+		out.classAttr(CssClasses.HEADER);
 		out.append(_error.getMessage());
 		out.end();
 	}

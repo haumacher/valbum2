@@ -10,6 +10,7 @@ import java.util.function.Consumer;
 
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
@@ -77,9 +78,9 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		Element element = element();
 		if (element != null) {
 			if (value) {
-				element.classList.add("selected");
+				element.classList.add(CssClasses.SELECTED);
 			} else {
-				element.classList.remove("selected");
+				element.classList.remove(CssClasses.SELECTED);
 			}
 			
 			updateToolbars();
@@ -108,10 +109,10 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		_context = context;
 		
 		out.begin(DIV);
-		out.attr(CLASS_ATTR, "icon");
+		out.attr(CLASS_ATTR, CssClasses.ICON);
 		{
 			out.begin(A);
-			out.attr(CLASS_ATTR, "icon-link");
+			out.attr(CLASS_ATTR, CssClasses.ICON_LINK);
 			if (_rowIndex > 0) {
 				out.openAttr(STYLE_ATTR);
 				out.append("margin-left: ");
@@ -128,7 +129,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 			out.closeAttr();
 			{
 				out.begin(IMG);
-				out.attr(CLASS_ATTR, "icon-display");
+				out.attr(CLASS_ATTR, CssClasses.ICON_DISPLAY);
 				{
 					out.openAttr(SRC_ATTR);
 					out.append(_image.getName());
@@ -142,7 +143,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 				
 				if (_image.getKind() == ImagePart.Kind.VIDEO) {
 					out.begin(DIV);
-					out.attr(CLASS_ATTR, "video-overlay");
+					out.attr(CLASS_ATTR, CssClasses.VIDEO_OVERLAY);
 					{
 						out.begin(I);
 						out.attr(CLASS_ATTR, "far fa-play-circle");
@@ -175,10 +176,10 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		writeSelectedDisplay(out);
 		
 		out.begin(SPAN);
-		out.attr(CLASS_ATTR, "toolbar-embedded toolbar-top");
+		out.attr(CLASS_ATTR, CssClasses.TOOLBAR_EMBEDDED + " " + CssClasses.TOOLBAR_TOP);
 		{
 			out.begin(SPAN);
-			out.attr(CLASS_ATTR, "toolbar-button");
+			out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
 			{
 				out.begin(I);
 				out.attr(CLASS_ATTR, "fas fa-redo-alt");
@@ -187,7 +188,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 			out.end();
 			
 			out.begin(SPAN);
-			out.attr(CLASS_ATTR, "toolbar-button");
+			out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
 			{
 				out.begin(I);
 				out.attr(CLASS_ATTR, "fas fa-arrows-alt-v");
@@ -196,7 +197,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 			out.end();
 			
 			out.begin(SPAN);
-			out.attr(CLASS_ATTR, "toolbar-button");
+			out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
 			{
 				out.begin(I);
 				out.attr(CLASS_ATTR, "fas fa-undo-alt");
@@ -207,11 +208,11 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		out.end();
 		
 		out.begin(DIV);
-		out.attr(CLASS_ATTR, "toolbar-embedded toolbar-center");
+		out.attr(CLASS_ATTR, CssClasses.TOOLBAR_EMBEDDED + " " + CssClasses.TOOLBAR_CENTER);
 		{
 			if (isSelected() && !getOwner().hasMultiSelection()) {
 				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
+				out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
 				{
 					out.begin(I);
 					out.attr(CLASS_ATTR, "fas fa-heading");
@@ -222,7 +223,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 			
 			if (isSelected() && getOwner().hasMultiSelection()) {
 				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
+				out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
 				{
 					out.begin(I);
 					out.attr(CLASS_ATTR, "far fa-object-group");
@@ -235,7 +236,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 			
 			if (false) {
 				out.begin(SPAN);
-				out.attr(CLASS_ATTR, "toolbar-button");
+				out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
 				{
 					out.begin(I);
 					out.attr(CLASS_ATTR, "far fa-object-ungroup");
@@ -249,7 +250,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		int rating = _image.getRating();
 		
 		out.begin(DIV);
-		out.attr(CLASS_ATTR, "toolbar-embedded toolbar-bottom");
+		out.attr(CLASS_ATTR, CssClasses.TOOLBAR_EMBEDDED + " " + CssClasses.TOOLBAR_BOTTOM);
 		makeChoice(
 				data -> _image.setRating((int) data),
 				() -> _image.setRating(0),
@@ -272,7 +273,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		boolean value = isSelected();
 		
 		out.begin(SPAN);
-		out.attr(CLASS_ATTR, (value ? "check-button" + " " + "checked" : "check-button"));
+		out.attr(CLASS_ATTR, (value ? CssClasses.CHECK_BUTTON + " " + CssClasses.CHECKED : CssClasses.CHECK_BUTTON));
 		{
 			out.begin(I);
 			out.attr(CLASS_ATTR, "far fa-check-square");
@@ -285,11 +286,11 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 
 	private void makeToggleButton(Element toggleButton, Consumer<Boolean> onChange) {
 		toggleButton.addEventListener("click", event -> {
-			boolean checked = toggleButton.classList.contains("checked");
+			boolean checked = toggleButton.classList.contains(CssClasses.CHECKED);
 			if (checked) {
-				toggleButton.classList.remove("checked");
+				toggleButton.classList.remove(CssClasses.CHECKED);
 			} else {
-				toggleButton.classList.add("checked");
+				toggleButton.classList.add(CssClasses.CHECKED);
 			}
 			onChange.accept(!checked);
 			event.stopPropagation();
@@ -300,12 +301,12 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	private void makeChoice(Consumer<Object> onSet, Runnable onReset, Element... buttons) {
 		for (Element button : buttons) {
 			button.addEventListener("click", event -> {
-				if (button.classList.contains("active")) {
-					button.classList.remove("active");
+				if (button.classList.contains(CssClasses.ACTIVE)) {
+					button.classList.remove(CssClasses.ACTIVE);
 					onReset.run();
 				} else {
 					reset(buttons);
-					button.classList.add("active");
+					button.classList.add(CssClasses.ACTIVE);
 					onSet.accept(Native.get(button, "vaUserData"));
 				}
 				
@@ -317,13 +318,13 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 
 	private void reset(Element[] buttons) {
 		for (Element button : buttons) {
-			button.className = "toolbar-button";
+			button.className = CssClasses.TOOLBAR_BUTTON;
 		}
 	}
 
 	private Element createChoiceButton(DomBuilder out, String iconClass, boolean active, Object userValue) throws IOException {
 		out.begin(SPAN);
-		out.attr(CLASS_ATTR, active ? "toolbar-button" + " " + "active" : "toolbar-button");
+		out.attr(CLASS_ATTR, active ? CssClasses.TOOLBAR_BUTTON + " " + CssClasses.ACTIVE : CssClasses.TOOLBAR_BUTTON);
 		{
 			out.begin(I);
 			out.attr(CLASS_ATTR, iconClass);

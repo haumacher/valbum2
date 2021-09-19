@@ -11,40 +11,40 @@
 	bottom: 0px;
 	left: 0px;
 	right: 0px;
-}
-
-body {
 	background-color: black;
 	color: white;
 }
 
-h1 {
+h1.va-header {
+	font-size: 30px;
+	font-weight: bold;
 	margin-top: 10px;
 	margin-bottom: 10px;
 }
 
-h2 {
+h2.va-header {
+	font-size: 20px;
 	margin-top: 5px;
 	margin-bottom: 5px;
 }
 
-h1, h2 {
+h1.va-header, h2.va-header {
 	text-align: center;
 }
 
-div.image-rows {
+div.va-image-rows {
 	margin-left: auto;
 	margin-right: auto;
 }
 
-div.image-page {
+div.va-image-page {
 	position: relative;
 	width: 100%;
 	height: 100%;
 }
 
-img.image-display, 
-video.image-display {
+img.va-image-display, 
+video.va-image-display {
     max-height: 100%;
     max-width: 100%;
     width: auto;
@@ -57,7 +57,7 @@ video.image-display {
     margin: auto;
 }
 
-.listing {
+.va-listing {
 	margin-top: 50px;
 	margin-left: 30px;
 	margin-right: 30px;
@@ -69,7 +69,7 @@ a {
 	color: inherit;	
 }
 
-.listing > .entry {
+.va-listing > .va-entry {
 	float: left;
 	margin: 5px;
 	display: block;
@@ -78,7 +78,7 @@ a {
 	height: 400px;
 }
 
-.listing > .entry > .preview {
+.va-listing > .va-entry > .va-preview {
 	position: absolute;
 	top: 0px;
 	left: 0px;
@@ -87,7 +87,7 @@ a {
 	overflow: hidden;
 }
 
-.preview > .no-image {
+.va-preview > .va-no-image {
 	position: absolute;
     max-height: 100%;
     max-width: 100%;
@@ -98,11 +98,11 @@ a {
     transform: translate(-50%, -50%)
 }
 
-.no-image > i {
+.va-no-image > i {
 	font-size: 200px;
 }
 
-.listing > .entry > .title {
+.va-listing > .va-entry > .va-title {
 	position: absolute;
 	top: 300px;
 	left: 0px;
@@ -112,12 +112,12 @@ a {
 	text-align: center;
 }
 
-.listing a {
+.va-listing a {
 	font-style: normal;	
 	text-decoration: none;
 }
 
-.toolbar {
+.va-toolbar {
 	padding: 10px;
 	position: fixed;
 	top: 0;
@@ -127,70 +127,63 @@ a {
 	font-size: 40px;
 }
 
-.toolbar > * {
+.va-toolbar > * {
 	visibility:hidden;
 	opacity: 0.7;
 }
 
-.toolbar:hover > * {
+.va-toolbar:hover > * {
 	visibility:visible;
 }
 
-.toolbar a {
+.va-toolbar .va-toolbar-button {
 	color: white;
-}
-	
-.toolbar > a {
 	padding-right: 20px;
 }
 
-.toolbar > .tb-right {
+.va-toolbar > .va-tb-right {
 	float: right;
 }
 
-.tb-right > a {
-	padding-left: 20px;
-}
-
-.hover-pane {
+.va-hover-pane {
 	padding: 10px;
 	color: white;
 }
 	
-.hover-pane > * {
+.va-hover-pane > * {
 	visibility:hidden;
 	opacity: 0.7;
 }
 
-.hover-pane:hover > * {
+.va-hover-pane:hover > * {
 	visibility:visible;
 }
 
-.vcenter {
+.va-vcenter {
 	display: table;
 	width: 100%;
 	height: 100%;
 }
 
-.vcenter-content {
+.va-vcenter-content {
 	display: table-cell;
 	vertical-align: middle;
 }
 
-.goto-previous,
-.goto-next {
+.va-goto-previous,
+.va-goto-next {
 	position: absolute;
 	top: 200px;
 	bottom: 200px;
 	font-size: 40px;
 }
 
-.goto-previous {
+.va-goto-previous {
 	left: 0;
 	width: 40px;
 }
 
-.goto-next {
+.va-goto-next {
 	text-align: right;
 	right: 0;
 	width: 40px;
@@ -205,39 +198,39 @@ a {
 	overflow: hidden;
 }
 
-.toolbar-embedded {
+.va-toolbar-embedded {
 	visibility: hidden;
 	position: absolute;
 	font-size: 20px;
 }
 
-.toolbar-top {
+.va-toolbar-top {
 	top: 5px;
 	right: 5px;
 }
 
-.toolbar-center {
+.va-toolbar-center {
     top: 50%;
     left: 50%;
     margin-right: -50%;
     transform: translate(-50%, -50%);   
 }
 
-.toolbar-bottom {
+.va-toolbar-bottom {
 	bottom: 5px;
 	right: 5px;
 }
 
-.icon-link {
+.va-icon-link {
 	display: block;
 }
 
-.icon {
+.va-icon {
 	display: table-cell;
 	position: relative;
 }
 
-.icon .video-overlay {
+.va-icon .va-video-overlay {
 	position: absolute;
 	display: block;
 	font-size: 60px;
@@ -252,43 +245,44 @@ a {
     transform: translate(-50%, -50%)
 }
 
-.icon-link:hover .toolbar-embedded {
+.va-icon-link:hover .va-toolbar-embedded {
 	visibility: visible;
 }
 
-.icon-link .toolbar-embedded .toolbar-button {
+.va-icon-link .va-toolbar-embedded .va-toolbar-button {
 	display: none;
 }
 
-.icon-link:hover .toolbar-embedded .toolbar-button {
-	display: initial;
+.va-icon-link:hover .va-toolbar-embedded .va-toolbar-button {
+	display: inline-block;
 }
 
-.toolbar-button {
+.va-toolbar-embedded .va-toolbar-button {
+	color: white;
 	float: right;
 	text-align: center;
 	margin-right: 5px;
-	width: 20px;
+	width: 40px;
 	padding: 2px;
 	opacity: 0.7;
 }
 
-.toolbar-button:hover {
+.va-toolbar-embedded .va-toolbar-button:hover {
 	background-color: white;
 	color: black;
 }
 
-.icon-link .toolbar-embedded .toolbar-button.active {
-	display: initial;
+.va-icon-link .va-toolbar-embedded .va-toolbar-button.va-active {
+	display: inline-block;
 	visibility: visible;
 }
 
-.icon-link:hover .toolbar-embedded .toolbar-button.active, 
-.icon-link .toolbar-embedded .toolbar-button.active:hover {
+.va-icon-link:hover .va-toolbar-embedded .va-toolbar-button.va-active, 
+.va-icon-link .va-toolbar-embedded .va-toolbar-button.va-active:hover {
 	color: fuchsia;
 }
 
-.check-button {
+.va-check-button {
 	visibility: hidden;
 	position: absolute;
 	top: 5px;
@@ -300,7 +294,7 @@ a {
 	border-radius: 2px;
 }
 
-.selected .check-button {
+.va-selected .va-check-button {
 	visibility: visible;
 	color: white;
 }

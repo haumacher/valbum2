@@ -5,6 +5,8 @@ package de.haumacher.util.xml;
 
 import java.io.IOException;
 
+import de.haumacher.util.html.HTML;
+
 /**
  * {@link Appendable} for XML creation.
  *
@@ -27,6 +29,14 @@ public interface XmlAppendable extends Appendable {
 	 *        The tag name.
 	 */
 	void begin(String name) throws IOException;
+	
+	/**
+	 * Short-cut for rendering a {@link HTML#DIV} with the given {@link HTML#CLASS_ATTR} attribute value.
+	 */
+	default void beginDiv(String classAttr) throws IOException {
+		begin(HTML.DIV);
+		classAttr(classAttr);
+	}
 
 	/**
 	 * Closes the last tag opended with {@link #begin(String)}.
@@ -59,6 +69,13 @@ public interface XmlAppendable extends Appendable {
 	 *        The value of the attribute.
 	 */
 	void attr(String name, CharSequence value) throws IOException;
+	
+	/**
+	 * Short-cut for rendering a {@link HTML#CLASS_ATTR} attribute.
+	 */
+	default void classAttr(CharSequence value) throws IOException {
+		attr(HTML.CLASS_ATTR, value);
+	}
 
 	/**
 	 * Opens an attribute with the given name in the context of the currently

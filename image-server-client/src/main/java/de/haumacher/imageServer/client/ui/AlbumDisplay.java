@@ -21,6 +21,7 @@ import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
 import de.haumacher.imageServer.shared.util.ToImage;
@@ -35,10 +36,6 @@ import elemental2.dom.MouseEvent;
  */
 public class AlbumDisplay extends ResourceDisplay {
 
-	private static final String NO_MULTI_SELECTION_CSS = "no-multi-selection";
-	private static final String MULTI_SELECTION_CSS = "multi-selection";
-	private static final String NO_SELECTION_CSS = "no-selection";
-	private static final String SELECTION_CSS = "selection";
 	private AlbumInfo _album;
 	private Set<AlbumPart> _selected = new HashSet<>();
 	private AlbumPart _lastClicked;
@@ -71,14 +68,16 @@ public class AlbumDisplay extends ResourceDisplay {
 		}
 		
 		out.begin(H1);
+		out.classAttr(CssClasses.HEADER);
 		out.append(_album.getTitle());
 		out.end();
 		out.begin(H2);
+		out.classAttr(CssClasses.HEADER);
 		out.append(_album.getSubTitle());
 		out.end();
 
 		out.begin(DIV);
-		out.attr(CLASS_ATTR, "image-rows");
+		out.attr(CLASS_ATTR, CssClasses.IMAGE_ROWS);
 		out.attr(STYLE_ATTR, "width: " + width + "px;");
 		{
 			_imageDisplays = new HashMap<>();
@@ -109,7 +108,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		int spacing = row.getSpacing();
 
 		out.begin(DIV);
-		out.attr(CLASS_ATTR, "icons");
+		out.attr(CLASS_ATTR, CssClasses.ICONS);
 		out.attr("style", "display: table; margin-top: " + spacing + "px;");
 		{
 			out.begin(DIV);
@@ -196,15 +195,15 @@ public class AlbumDisplay extends ResourceDisplay {
 		
 		int selectionSize = _selected.size();
 		if (selectionSize > 0) {
-			classList.add(SELECTION_CSS);
+			classList.add(CssClasses.SELECTION);
 		} else {
-			classList.add(NO_SELECTION_CSS);
+			classList.add(CssClasses.NO_SELECTION);
 		}
 		
 		if (selectionSize > 1) {
-			classList.add(MULTI_SELECTION_CSS);
+			classList.add(CssClasses.MULTI_SELECTION);
 		} else {
-			classList.add(NO_MULTI_SELECTION_CSS);
+			classList.add(CssClasses.NO_MULTI_SELECTION);
 		}
 		
 		String result = classList.stream().collect(Collectors.joining(" "));

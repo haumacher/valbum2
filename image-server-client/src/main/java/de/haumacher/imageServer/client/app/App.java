@@ -244,8 +244,8 @@ public class App implements EntryPoint, UIContext {
 	}
 	
 	@Override
-	public DomBuilder createDomBuilderImpl(Element parent) {
-		return new DomBuilderImpl(parent) {
+	public DomBuilder createDomBuilderImpl(Element parent, Element before) {
+		return new DomBuilderImpl(parent, before) {
 			@Override
 			protected void attrNonNull(String name, CharSequence value) {
 				super.attrNonNull(name, value);

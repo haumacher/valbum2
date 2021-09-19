@@ -12,8 +12,10 @@ import de.haumacher.imageServer.client.app.ControlHandler;
 import de.haumacher.imageServer.client.app.KeyCodes;
 import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.util.gwt.dom.DomBuilder;
+import elemental2.dom.DomGlobal;
 import elemental2.dom.Element;
 import elemental2.dom.Event;
 import elemental2.dom.KeyboardEvent;
@@ -24,11 +26,6 @@ import elemental2.dom.KeyboardEvent;
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public abstract class ResourceDisplay extends AbstractDisplay implements ControlHandler {
-
-	private static final String TOOLBAR_CLASS = "toolbar";
-
-	private static final String TOOLBAR_RIGHT_CLASS = "tb-right";
-
 
 	/**
 	 * The path of the displayed {@link Resource}.
@@ -46,9 +43,10 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 
 	protected void writeAlbumToolbar(DomBuilder out, boolean isFile, CharSequence parentUrl) throws IOException {
 		out.begin(DIV);
-		out.attr(CLASS_ATTR, TOOLBAR_CLASS);
+		out.attr(CLASS_ATTR, CssClasses.TOOLBAR);
 		{
 			out.begin(A);
+			out.classAttr(CssClasses.TOOLBAR_BUTTON);
 			out.attr(HREF_ATTR, parentUrl);
 			{
 				RenderUtil.icon(out, "fas fa-home");
@@ -56,6 +54,7 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 			out.end();
 
 			out.begin(A);
+			out.classAttr(CssClasses.TOOLBAR_BUTTON);
 			out.attr(HREF_ATTR, isFile ? "./" : "../");
 			{
 				RenderUtil.icon(out, "fas fa-chevron-up");
@@ -63,13 +62,28 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 			out.end();
 			
 			out.begin(DIV);
-			out.attr(CLASS_ATTR, TOOLBAR_RIGHT_CLASS);
-			if (isEditMode()) {
-				RenderUtil.icon(out, "fas fa-save");
-			} else {
-				RenderUtil.icon(out, "fas fa-edit");
+			out.attr(CLASS_ATTR, CssClasses.TOOLBAR_RIGHT);
+			{
+				out.begin(SPAN);
+				out.classAttr(CssClasses.TOOLBAR_BUTTON);
+				{
+					if (isEditMode()) {
+						RenderUtil.icon(out, "fas fa-save");
+					} else {
+						RenderUtil.icon(out, "fas fa-edit");
+					}
+				}
+				out.end();
+				out.getLast().addEventListener("click", this::handleToggelEditMode);
+				
+				out.begin(SPAN);
+				out.classAttr(CssClasses.TOOLBAR_BUTTON);
+				{
+					RenderUtil.icon(out, "fas fa-bars");
+				}
+				out.end();
+				out.getLast().addEventListener("click", this::handleOpenSettings);
 			}
-			out.getLast().addEventListener("click", this::handleToggelEditMode);
 			out.end();
 		}
 		out.end();
@@ -84,6 +98,15 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 			_handler.store(getResource());
 		}
 		redraw();
+		
+		event.stopPropagation();
+		event.preventDefault();
+	}
+
+	private void handleOpenSettings(Event event) {
+		DomBuilder out = context().createDomBuilderImpl(DomGlobal.document.body);
+
+		new Modal().show(context(), out);
 		
 		event.stopPropagation();
 		event.preventDefault();

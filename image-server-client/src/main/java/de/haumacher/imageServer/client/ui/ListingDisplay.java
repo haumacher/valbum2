@@ -12,6 +12,7 @@ import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
+import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
 
@@ -40,15 +41,16 @@ public class ListingDisplay extends ResourceDisplay {
 	@Override
 	protected void render(UIContext context, DomBuilder out) throws IOException {
 		out.begin(H1);
+		out.classAttr(CssClasses.HEADER);
 		out.append(_listing.getTitle());
 		out.end();
 
 		out.begin(DIV);
-		out.attr(CLASS_ATTR, "listing");
+		out.attr(CLASS_ATTR, CssClasses.LISTING);
 		{
 			for (FolderInfo folder : _listing.getFolders()) {
 				out.begin(A);
-				out.attr(CLASS_ATTR, "entry");
+				out.attr(CLASS_ATTR, CssClasses.ENTRY);
 				out.openAttr(HREF_ATTR);
 				{
 					out.append(folder.getName());
@@ -57,11 +59,11 @@ public class ListingDisplay extends ResourceDisplay {
 				out.closeAttr();
 				{
 					out.begin(DIV);
-					out.attr(CLASS_ATTR, "preview");
+					out.attr(CLASS_ATTR, CssClasses.PREVIEW);
 					ThumbnailInfo indexPicture = folder.getIndexPicture();
 					if (indexPicture != null) {
 						out.begin(IMG);
-						out.attr(CLASS_ATTR, "image-display");
+						out.attr(CLASS_ATTR, CssClasses.IMAGE_DISPLAY);
 						out.attr(STYLE_ATTR, "transform: scale(" + indexPicture.getScale() + ") translate(" + indexPicture.getTx() + "px, " + indexPicture.getTy() + "px);");
 						out.openAttr(SRC_ATTR);
 						{
@@ -74,7 +76,7 @@ public class ListingDisplay extends ResourceDisplay {
 						out.endEmpty();
 					} else {
 						out.begin(DIV);
-						out.attr(CLASS_ATTR, "no-image");
+						out.attr(CLASS_ATTR, CssClasses.NO_IMAGE);
 						{
 							out.begin(I);
 							out.attr(CLASS_ATTR, "far fa-folder-open");
@@ -85,7 +87,7 @@ public class ListingDisplay extends ResourceDisplay {
 					out.end();
 					
 					out.begin(DIV);
-					out.attr(CLASS_ATTR, "title");
+					out.attr(CLASS_ATTR, CssClasses.TITLE);
 					{
 						out.begin(DIV);
 						out.append(folder.getTitle());
@@ -93,7 +95,7 @@ public class ListingDisplay extends ResourceDisplay {
 						
 						if (folder.getSubTitle() != null) {
 							out.begin(DIV);
-							out.attr(CLASS_ATTR, "subtitle");
+							out.attr(CLASS_ATTR, CssClasses.SUBTITLE);
 							out.append(folder.getSubTitle());
 							out.end();
 						}

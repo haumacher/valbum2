@@ -21,12 +21,16 @@ public interface UIContext extends RenderContext {
 	 */
 	int getPageWidth();
 
+	default DomBuilder createDomBuilderImpl(Element parent) {
+		return createDomBuilderImpl(parent, null);
+	}
+	
 	/** 
 	 * TODO
 	 *
 	 * @param parent
 	 * @return
 	 */
-	DomBuilder createDomBuilderImpl(Element parent);
+	DomBuilder createDomBuilderImpl(Element parent, Element before);
 
 }

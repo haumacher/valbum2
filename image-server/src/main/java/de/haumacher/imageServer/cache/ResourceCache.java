@@ -200,7 +200,7 @@ public class ResourceCache {
 				FolderInfo folderInfo;
 				
 				File index = new File(folder, "index.json");
-				if (index.isFile()) {
+				if (false) {
 					try {
 						folderInfo = loadJSON(index, FolderInfo::readFolderInfo);
 					} catch (IOException ex) {

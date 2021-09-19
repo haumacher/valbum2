@@ -45,4 +45,5 @@ public interface HTML {
 	String CLASS_ATTR = "class";
 	String DRAGGABLE_ATTR = "draggable";
 	String BASE = "base";
+	String ARIA_LABEL_ATTR = "aria-label";
 }
