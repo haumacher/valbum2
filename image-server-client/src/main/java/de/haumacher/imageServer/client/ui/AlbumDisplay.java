@@ -257,7 +257,7 @@ public class AlbumDisplay extends ResourceDisplay {
 			private Input _subtitleInput;
 
 			protected void renderTitle(UIContext context, DomBuilder out) throws IOException {
-				out.append("Eigenschaften bearbeiten");
+				out.append("Eigenschaften des Albums bearbeiten");
 			}
 			
 			@Override
