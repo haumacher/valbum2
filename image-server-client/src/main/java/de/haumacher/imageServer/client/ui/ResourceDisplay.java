@@ -15,7 +15,6 @@ import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.util.gwt.dom.DomBuilder;
-import elemental2.dom.DomGlobal;
 import elemental2.dom.Element;
 import elemental2.dom.Event;
 import elemental2.dom.KeyboardEvent;
@@ -106,16 +105,14 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 	}
 
 	private void handleOpenSettings(Event event) {
-		DomBuilder out = context().createDomBuilderImpl(DomGlobal.document.body);
-
-		openSettings(context(), out);
+		openSettings();
 		
 		event.stopPropagation();
 		event.preventDefault();
 	}
 
-	protected void openSettings(UIContext context, DomBuilder out) {
-		
+	protected void openSettings() {
+		// Hook for subclasses.
 	}
 
 	protected abstract Resource getResource();

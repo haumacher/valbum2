@@ -31,7 +31,15 @@ public interface XmlAppendable extends Appendable {
 	void begin(String name) throws IOException;
 	
 	/**
-	 * Short-cut for rendering a {@link HTML#DIV} with the given {@link HTML#CLASS_ATTR} attribute value.
+	 * Short-cut for rendering an element with the given {@link HTML#CLASS_ATTR} value.
+	 */
+	default void begin(String name, String cssClasses) throws IOException {
+		begin(name);
+		classAttr(cssClasses);
+	}
+	
+	/**
+	 * Short-cut for rendering a {@link HTML#DIV} with the given {@link HTML#CLASS_ATTR} value.
 	 */
 	default void beginDiv(String classAttr) throws IOException {
 		begin(HTML.DIV);

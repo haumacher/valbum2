@@ -30,8 +30,19 @@ message AlbumInfo extends Resource {
 abstract message AlbumPart {
 }
 
+abstract message AbstractImage extends AlbumPart {
+}
+
+/** A heading row separating images in an album. */
+message Heading extends AlbumPart {
+
+	/** The text to display. */
+	string text;
+
+}
+
 /** A group of multiple images showing the same content. */
-message ImageGroup extends AlbumPart {
+message ImageGroup extends AbstractImage {
 
 	/** The index of the {@link ImageInfo} in {@link #images} of the image that should be displayed when displaying this {@link ImageGroup} in an album. */
 	int representative;
@@ -61,7 +72,7 @@ message ImageInfo extends Resource {
 }
 
 /** {@link Resource} describing a single image or video file. */
-message ImagePart extends AlbumPart {
+message ImagePart extends AbstractImage {
 
 	/** Kind of image. */
 	enum Kind {

@@ -6,6 +6,7 @@ package de.haumacher.imageServer.shared.util;
 import java.util.List;
 import java.util.Map;
 
+import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -68,38 +69,70 @@ public class UpdateTransient implements Resource.Visitor<Void, Void> {
 			return;
 		}
 		
-		String home= ToImage.toImage(parts.get(0)).getName();
-		String end = ToImage.toImage(parts.get(parts.size() - 1)).getName();
+		AbstractImage firstImage = nextImage(parts, 0);
+		AbstractImage lastImage = prevImage(parts, parts.size() - 1);
+		
+		String home= firstImage != null ? ToImage.toImage(firstImage).getName() : null;
+		String end = lastImage != null ? ToImage.toImage(lastImage).getName() : null;
 		
 		Map<String, ImagePart> imageByName = album.getImageByName();
 	
 		for (int n = 0, size = parts.size(); n < size; n++) {
 			int index = n;
-			String previous = (index > 0) ?  ToImage.toImage(parts.get(index - 1)).getName() : null;
-			String next = (index + 1 < size) ? ToImage.toImage(parts.get(index + 1)).getName() : null;
 			
-			parts.get(index).visit(new AlbumPart.Visitor<Void, Void>() {
-				@Override
-				public Void visit(ImageGroup self, Void arg) {
-					for (ImagePart image : self.getImages()) {
-						visit(image, arg);
+			AlbumPart part = parts.get(index);
+			if (part instanceof AbstractImage) {
+				AbstractImage image = (AbstractImage) part;
+				
+				AbstractImage prevImage = prevImage(parts, index - 1);
+				AbstractImage nextImage = nextImage(parts, index + 1);
+				
+				String previous = (prevImage != null) ?  ToImage.toImage(prevImage).getName() : null;
+				String next = (nextImage != null) ? ToImage.toImage(nextImage).getName() : null;
+				
+				image.visit(new AbstractImage.Visitor<Void, Void>() {
+					@Override
+					public Void visit(ImageGroup self, Void arg) {
+						for (ImagePart groupImage : self.getImages()) {
+							visit(groupImage, arg);
+						}
+						return null;
 					}
-					return null;
-				}
-	
-				@Override
-				public Void visit(ImagePart self, Void arg) {
-					ImagePart clash = imageByName.put(self.getName(), self);
-					assert clash == null : "Duplicate name '" + self.getName() + "'.";
-	
-					self.setHome(home);
-					self.setEnd(end);
-					self.setPrevious(previous);	
-					self.setNext(next);	
-					return null;
-				}
-			}, null);
+					
+					@Override
+					public Void visit(ImagePart self, Void arg) {
+						ImagePart clash = imageByName.put(self.getName(), self);
+						assert clash == null : "Duplicate name '" + self.getName() + "'.";
+						
+						self.setHome(home);
+						self.setEnd(end);
+						self.setPrevious(previous);	
+						self.setNext(next);	
+						return null;
+					}
+				}, null);
+			}
 		}
+	}
+
+	private static AbstractImage prevImage(List<AlbumPart> parts, int i) {
+		while (i > 0) {
+			AlbumPart part = parts.get(i--);
+			if (part instanceof AbstractImage) {
+				return (AbstractImage) part;
+			}
+		}
+		return null;
+	}
+
+	private static AbstractImage nextImage(List<AlbumPart> parts, int i) {
+		while (i < parts.size()) {
+			AlbumPart part = parts.get(i++);
+			if (part instanceof AbstractImage) {
+				return (AbstractImage) part;
+			}
+		}
+		return null;
 	}
 
 }

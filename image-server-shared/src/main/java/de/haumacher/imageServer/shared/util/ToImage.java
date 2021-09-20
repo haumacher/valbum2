@@ -3,17 +3,17 @@
  */
 package de.haumacher.imageServer.shared.util;
 
-import de.haumacher.imageServer.shared.model.AlbumPart;
-import de.haumacher.imageServer.shared.model.AlbumPart.Visitor;
+import de.haumacher.imageServer.shared.model.AbstractImage;
+import de.haumacher.imageServer.shared.model.AbstractImage.Visitor;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 
 /**
- * {@link Visitor} selecting the {@link ImagePart} to display for a given {@link AlbumPart}.
+ * {@link Visitor} selecting the {@link ImagePart} to display for a given {@link AbstractImage}.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ToImage implements AlbumPart.Visitor<ImagePart, Void> {
+public class ToImage implements AbstractImage.Visitor<ImagePart, Void> {
 	
 	/**
 	 * Singleton {@link ToImage} instance.
@@ -35,9 +35,9 @@ public class ToImage implements AlbumPart.Visitor<ImagePart, Void> {
 	}
 
 	/**
-	 * Invokes {@link ToImage} on the given {@link AlbumPart}.
+	 * Invokes {@link ToImage} on the given {@link AbstractImage}.
 	 */
-	public static ImagePart toImage(AlbumPart image) {
+	public static ImagePart toImage(AbstractImage image) {
 		return image.visit(INSTANCE, null);
 	}
 

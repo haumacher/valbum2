@@ -3,9 +3,8 @@
  */
 package de.haumacher.imageServer.client.ui;
 
-import java.io.IOException;
-
 import de.haumacher.util.gwt.dom.DomBuilder;
+import elemental2.dom.DomGlobal;
 
 /**
  * TODO
@@ -14,6 +13,11 @@ import de.haumacher.util.gwt.dom.DomBuilder;
  */
 public interface Display {
 	
-	void show(UIContext context, DomBuilder out) throws IOException;
+	void show(UIContext context, DomBuilder out);
+	
+	default void showTopLevel(UIContext context) {
+		DomBuilder out = context.createDomBuilderImpl(DomGlobal.document.body);
+		show(context, out);
+	}
 
 }

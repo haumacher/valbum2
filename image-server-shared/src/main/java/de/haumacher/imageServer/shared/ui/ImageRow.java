@@ -6,7 +6,7 @@ package de.haumacher.imageServer.shared.ui;
 import java.util.ArrayList;
 import java.util.List;
 
-import de.haumacher.imageServer.shared.model.AlbumPart;
+import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.util.ToImage;
 
@@ -23,7 +23,7 @@ public class ImageRow {
 	private final int _width;
 	private final int _maxHeight;
 	
-	private final List<AlbumPart> _images = new ArrayList<>();
+	private final List<AbstractImage> _images = new ArrayList<>();
 	
 	private double _sumNormWidth = 0.0;
 
@@ -39,7 +39,7 @@ public class ImageRow {
 		return _images.size();
 	}
 
-	public AlbumPart getImage(int n) {
+	public AbstractImage getImage(int n) {
 		return _images.get(n);
 	}
 	
@@ -50,7 +50,7 @@ public class ImageRow {
 		return _spacing;
 	}
 
-	public void add(AlbumPart image) {
+	public void add(AbstractImage image) {
 		double normWidth = normWidth(image);
 		double newNormWidth = _sumNormWidth + normWidth;
 		_sumNormWidth = newNormWidth;
@@ -66,7 +66,7 @@ public class ImageRow {
 	}
 
 	public double getScaledWidth(int n) {
-		AlbumPart image = _images.get(n);
+		AbstractImage image = _images.get(n);
 		if (isComplete()) {
 			return normWidth(image) * (getAvailableWidth() / _sumNormWidth);
 		} else {
@@ -90,7 +90,7 @@ public class ImageRow {
 		return _width - (size > 1 ? _spacing * (size - 1) : 0);
 	}
 
-	private double normWidth(AlbumPart part) {
+	private double normWidth(AbstractImage part) {
 		ImagePart image = ToImage.toImage(part);
 		return ((double) image.getWidth()) / image.getHeight();
 	}

@@ -8,7 +8,9 @@ import static de.haumacher.util.html.HTML.*;
 import java.io.IOException;
 import java.util.function.Consumer;
 
-import de.haumacher.imageServer.shared.model.AlbumPart;
+import de.haumacher.imageServer.shared.model.AbstractImage;
+import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.Heading;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.util.ToImage;
@@ -27,7 +29,7 @@ import elemental2.dom.Node;
 public class ImagePreviewDisplay extends AbstractDisplay {
 
 	private final AlbumDisplay _owner;
-	private AlbumPart _part;
+	private AbstractImage _part;
 	private final ImagePart _image;
 	private boolean _selected;
 	private final int _rowIndex;
@@ -40,7 +42,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	/** 
 	 * Creates a {@link ImagePreviewDisplay}.
 	 */
-	public ImagePreviewDisplay(AlbumDisplay owner, AlbumPart part, int rowIndex, double width, double rowHeight, int spacing) {
+	public ImagePreviewDisplay(AlbumDisplay owner, AbstractImage part, int rowIndex, double width, double rowHeight, int spacing) {
 		super();
 		_owner = owner;
 		_part = part;
@@ -61,7 +63,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	/**
 	 * TODO
 	 */
-	public AlbumPart getPart() {
+	public AbstractImage getPart() {
 		return _part;
 	}
 	
@@ -219,6 +221,8 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 					out.end();
 				}
 				out.end();
+				
+				out.getLast().addEventListener("click", this::handleCreateHeading);
 			}
 			
 			if (isSelected() && getOwner().hasMultiSelection()) {
@@ -262,6 +266,24 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		out.end();
 	}
 
+	private void handleCreateHeading(Event event) {
+		new HeadingPropertiesEditor() {
+			@Override
+			protected void onSave(Event event) {
+				Heading heading = save(Heading.create());
+				
+				AlbumDisplay owner = getOwner();
+				AlbumInfo album = owner.getResource();
+				int index = album.getParts().indexOf(getPart());
+				album.getParts().add(index, heading);
+				owner.redraw();
+			}
+		}.showTopLevel(context());
+		
+		event.stopPropagation();
+		event.preventDefault();
+	}
+	
 	private void handleGroup(Event event) {
 		getOwner().groupSelection(getPart());
 		

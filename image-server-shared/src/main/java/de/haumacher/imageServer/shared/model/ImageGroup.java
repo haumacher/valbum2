@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * A group of multiple images showing the same content.
  */
-public class ImageGroup extends AlbumPart {
+public class ImageGroup extends AbstractImage {
 
 	/**
 	 * Creates a {@link ImageGroup} instance.
@@ -175,7 +175,7 @@ public class ImageGroup extends AlbumPart {
 	}
 
 	@Override
-	public <R,A> R visit(AlbumPart.Visitor<R,A> v, A arg) {
+	public <R,A> R visit(AbstractImage.Visitor<R,A> v, A arg) {
 		return v.visit(this, arg);
 	}
 

@@ -16,13 +16,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import de.haumacher.imageServer.client.app.ResourceHandler;
+import de.haumacher.imageServer.client.bulma.Button;
 import de.haumacher.imageServer.client.bulma.form.Input;
 import de.haumacher.imageServer.client.bulma.modal.ModalCard;
+import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
+import de.haumacher.imageServer.shared.model.Heading;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
-import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
@@ -41,7 +43,7 @@ import elemental2.dom.MouseEvent;
 public class AlbumDisplay extends ResourceDisplay {
 
 	private AlbumInfo _album;
-	private Set<AlbumPart> _selected = new HashSet<>();
+	private Set<AbstractImage> _selected = new HashSet<>();
 	private AlbumPart _lastClicked;
 	private Map<AlbumPart, ImagePreviewDisplay> _imageDisplays;
 	private int _minRating = 0;
@@ -56,7 +58,7 @@ public class AlbumDisplay extends ResourceDisplay {
 	}
 	
 	@Override
-	protected Resource getResource() {
+	protected AlbumInfo getResource() {
 		return _album;
 	}
 
@@ -88,16 +90,25 @@ public class AlbumDisplay extends ResourceDisplay {
 			_imageDisplays = new HashMap<>();
 			
 			ImageRow row = new ImageRow(width, 400);
-			for (AlbumPart image : _album.getParts()) {
-				if (ToImage.toImage(image).getRating() < _minRating) {
-					continue;
-				}
-				
-				if (row.isComplete()) {
+			for (AlbumPart part : _album.getParts()) {
+				if (part instanceof AbstractImage) {
+					AbstractImage image = (AbstractImage) part;
+					if (ToImage.toImage(image).getRating() < _minRating) {
+						continue;
+					}
+					
+					if (row.isComplete()) {
+						writeRow(context, out, row);
+						row.clear();
+					}
+					row.add(image);
+				} else {
 					writeRow(context, out, row);
 					row.clear();
+					
+					Heading heading = (Heading) part;
+					new HeadingDisplay(this, heading).show(context, out);
 				}
-				row.add(image);
 			}
 			writeRow(context, out, row);
 		}
@@ -125,7 +136,7 @@ public class AlbumDisplay extends ResourceDisplay {
 			
 			boolean editMode = isEditMode();
 			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
-				AlbumPart image = row.getImage(n);
+				AbstractImage image = row.getImage(n);
 				
 				ImagePreviewDisplay previewDisplay = new ImagePreviewDisplay(this, image, n, row.getScaledWidth(n), rowHeight, spacing);
 				previewDisplay.setSelected(_selected.contains(image));
@@ -147,15 +158,18 @@ public class AlbumDisplay extends ResourceDisplay {
 							int stop = _album.getParts().indexOf(previewDisplay.getPart());
 							int delta = start < stop ? 1 : -1;
 							for (int index = start + delta; index != stop + delta; index+=delta) {
-								ImagePart current = ToImage.toImage(_album.getParts().get(index));
-								ImagePreviewDisplay currentDisplay = _imageDisplays.get(current);
-								setSelected(currentDisplay, select);
+								AlbumPart rangePart = _album.getParts().get(index);
+								if (rangePart instanceof AbstractImage) {
+									ImagePart current = ToImage.toImage((AbstractImage) rangePart);
+									ImagePreviewDisplay currentDisplay = _imageDisplays.get(current);
+									setSelected(currentDisplay, select);
+								}
 							}
 						} else if (mouseEvent.ctrlKey) {
 							toggleSelection(previewDisplay);
 						} else {
 							boolean toggle = (_selected.size() == 1 && _selected.contains(previewDisplay.getPart()));
-							for (AlbumPart selectedInfo : _selected) {
+							for (AbstractImage selectedInfo : _selected) {
 								_imageDisplays.get(selectedInfo).setSelected(false);
 							}
 							_selected.clear();
@@ -193,7 +207,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		if (!select) {
 			previewDisplay.setSelected(false);
 		}
-		for (AlbumPart selected : _selected) {
+		for (AbstractImage selected : _selected) {
 			// Update due to multi-selection property has changed.
 			_imageDisplays.get(selected).setSelected(true);
 		}
@@ -226,10 +240,10 @@ public class AlbumDisplay extends ResourceDisplay {
 		return isEditMode() && _selected.size() > 1;
 	}
 
-	public void groupSelection(AlbumPart representative) {
+	public void groupSelection(AbstractImage representative) {
 		ImageGroup group = ImageGroup.create();
-		for (AlbumPart selected : _selected) {
-			selected.visit(new AlbumPart.Visitor<Void, List<ImagePart>>() {
+		for (AbstractImage selected : _selected) {
+			selected.visit(new AbstractImage.Visitor<Void, List<ImagePart>>() {
 				@Override
 				public Void visit(ImageGroup self, List<ImagePart> arg) {
 					arg.addAll(self.getImages());
@@ -279,9 +293,8 @@ public class AlbumDisplay extends ResourceDisplay {
 	}
 	
 	@Override
-	protected void openSettings(UIContext context, DomBuilder out) {
+	protected void openSettings() {
 		new ModalCard() {
-			
 			private Input _titleInput;
 			private Input _subtitleInput;
 
@@ -299,12 +312,7 @@ public class AlbumDisplay extends ResourceDisplay {
 			}
 			
 			protected void renderButtons(UIContext context, DomBuilder out) throws IOException {
-				out.begin(BUTTON);
-				out.classAttr("button is-success");
-				out.append("Übernehmen");
-				out.end();
-				
-				out.getLast().addEventListener("click", this::handleOk);
+				new Button().setLabel("Übernehmen").onClick(this::handleOk).show(context, out);
 			}
 			
 			private void handleOk(Event event) {
@@ -314,7 +322,7 @@ public class AlbumDisplay extends ResourceDisplay {
 				remove();
 				AlbumDisplay.this.redraw();
 			}
-		}.show(context(), out);
+		}.showTopLevel(context());
 	}
 
 }

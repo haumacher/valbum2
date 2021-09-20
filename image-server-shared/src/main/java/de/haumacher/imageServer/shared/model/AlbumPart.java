@@ -6,13 +6,10 @@ package de.haumacher.imageServer.shared.model;
 public abstract class AlbumPart extends de.haumacher.msgbuf.data.AbstractDataObject implements de.haumacher.msgbuf.binary.BinaryDataObject {
 
 	/** Visitor interface for the {@link AlbumPart} hierarchy.*/
-	public interface Visitor<R,A> {
+	public interface Visitor<R,A> extends AbstractImage.Visitor<R,A> {
 
-		/** Visit case for {@link ImageGroup}.*/
-		R visit(ImageGroup self, A arg);
-
-		/** Visit case for {@link ImagePart}.*/
-		R visit(ImagePart self, A arg);
+		/** Visit case for {@link Heading}.*/
+		R visit(Heading self, A arg);
 
 	}
 
@@ -29,6 +26,7 @@ public abstract class AlbumPart extends de.haumacher.msgbuf.data.AbstractDataObj
 		in.beginArray();
 		String type = in.nextString();
 		switch (type) {
+			case "Heading": result = Heading.readHeading(in); break;
 			case "ImageGroup": result = ImageGroup.readImageGroup(in); break;
 			case "ImagePart": result = ImagePart.readImagePart(in); break;
 			default: in.skipValue(); result = null; break;
@@ -86,6 +84,7 @@ public abstract class AlbumPart extends de.haumacher.msgbuf.data.AbstractDataObj
 		assert typeField == 0;
 		int type = in.nextInt();
 		switch (type) {
+			case 3: result = Heading.create(); break;
 			case 1: result = ImageGroup.create(); break;
 			case 2: result = ImagePart.create(); break;
 			default: while (in.hasNext()) {in.skipValue(); } in.endObject(); return null;

@@ -30,6 +30,14 @@ h1.va-header, h2.va-header {
 	text-align: center;
 }
 
+h3.va-header {
+	font-size: 20px;
+	font-weight: bold;
+	
+	margin-top: 20px;
+	margin-bottom: 10px;
+}
+
 div.va-image-rows {
 	margin-left: auto;
 	margin-right: auto;
@@ -136,7 +144,8 @@ a {
 
 .va-toolbar .va-toolbar-button {
 	color: white;
-	padding-right: 20px;
+	margin-right: 5px;
+	width: 60px;
 }
 
 .va-toolbar > .va-tb-right {
@@ -196,6 +205,10 @@ a {
 	overflow: hidden;
 }
 
+.va-toolbar-inline {
+	margin-left: 10px; 
+}
+
 .va-toolbar-embedded {
 	visibility: hidden;
 	position: absolute;
@@ -251,6 +264,16 @@ a {
 	display: none;
 }
 
+.va-toolbar-button {
+	display: inline-block;
+	width: 30px;
+	text-align: center;
+}
+
+.va-toolbar-button:hover {
+	background-color: gray;
+}
+
 .va-icon-link:hover .va-toolbar-embedded .va-toolbar-button {
 	display: inline-block;
 }
@@ -258,10 +281,6 @@ a {
 .va-toolbar-embedded .va-toolbar-button {
 	color: white;
 	float: right;
-	text-align: center;
-	margin-right: 5px;
-	width: 40px;
-	padding: 2px;
 	opacity: 0.7;
 }
 
@@ -271,7 +290,6 @@ a {
 }
 
 .va-icon-link .va-toolbar-embedded .va-toolbar-button.va-active {
-	display: inline-block;
 	visibility: visible;
 }
 

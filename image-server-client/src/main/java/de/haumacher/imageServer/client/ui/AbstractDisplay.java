@@ -56,8 +56,9 @@ public abstract class AbstractDisplay implements Display {
 			return;
 		}
 		Element parent = _element.parentElement;
+		Element before = _element.nextElementSibling;
 		remove();
-		show(_context, _context.createDomBuilderImpl(parent));
+		show(_context, _context.createDomBuilderImpl(parent, before));
 	}
 	
 	public void remove() {

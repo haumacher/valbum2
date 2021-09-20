@@ -30,6 +30,10 @@ public interface HTML {
 	String TYPE_ATTR = "type";
 	String H1 = "h1";
 	String H2 = "h2";
+	String H3 = "h3";
+	String H4 = "h4";
+	String H5 = "h5";
+	String H6 = "h6";
 	String DIV = "div";
 	String SPAN = "span";
 	String UL = "ul";

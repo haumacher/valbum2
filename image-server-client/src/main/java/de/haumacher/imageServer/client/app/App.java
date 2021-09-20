@@ -202,11 +202,7 @@ public class App implements EntryPoint, UIContext {
 	}
 
 	final void renderPage() {
-		try {
-			_display.show(this, createUpdater());
-		} catch (IOException ex) {
-			LOG.warning("Rendering failed: " + ex.getMessage());
-		}
+		_display.show(this, createUpdater());
 	}
 	
 	@Override

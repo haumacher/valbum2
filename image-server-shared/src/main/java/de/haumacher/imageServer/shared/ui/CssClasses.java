@@ -32,6 +32,7 @@ public class CssClasses {
 	public static final String CHECK_BUTTON = "va-check-button";
 	public static final String CHECKED = "va-checked";
 	public static final String TOOLBAR_EMBEDDED = "va-toolbar-embedded";
+	public static final String TOOLBAR_INLINE = "va-toolbar-inline";
 	public static final String TOOLBAR_TOP = "va-toolbar-top";
 	public static final String TOOLBAR_CENTER = "va-toolbar-center";
 	public static final String TOOLBAR_BOTTOM = "va-toolbar-bottom";

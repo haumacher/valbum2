@@ -16,7 +16,7 @@ import de.haumacher.util.xml.XmlFragment;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ErrorDisplay implements Display {
+public class ErrorDisplay extends AbstractDisplay {
 
 	private ErrorInfo _error;
 
@@ -26,9 +26,9 @@ public class ErrorDisplay implements Display {
 	public ErrorDisplay(ErrorInfo error) {
 		_error = error;
 	}
-
+	
 	@Override
-	public void show(UIContext context, DomBuilder out) throws IOException {
+	protected void render(UIContext context, DomBuilder out) throws IOException {
 		out.begin(HTML.H1);
 		out.classAttr(CssClasses.HEADER);
 		out.append(_error.getMessage());
