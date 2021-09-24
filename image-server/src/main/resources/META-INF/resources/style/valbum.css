@@ -318,3 +318,12 @@ a {
 	visibility: visible;
 	color: white;
 }
+
+.va-comment {
+	position: absolute;
+	left: 0px;
+	right: 0px;
+	bottom: 5px;
+	text-align: center;
+	white-space: pre;
+}

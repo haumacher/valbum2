@@ -28,7 +28,7 @@ public interface XmlAppendable extends Appendable {
 	 * @param name
 	 *        The tag name.
 	 */
-	void begin(String name) throws IOException;
+	int begin(String name) throws IOException;
 	
 	/**
 	 * Short-cut for rendering an element with the given {@link HTML#CLASS_ATTR} value.
@@ -50,6 +50,16 @@ public interface XmlAppendable extends Appendable {
 	 * Closes the last tag opended with {@link #begin(String)}.
 	 */
 	void end() throws IOException;
+	
+	/**
+	 * Closes the last tag opended with {@link #begin(String)}.
+	 * 
+	 * @param level The value returned by {@link #begin(String)} to check correct nesting and fail fast.
+	 */
+	default void end(int level) throws IOException {
+		checkLevel(level);
+		end();
+	}
 
 	/**
 	 * Closes the last tag opened with {@link #begin(String)} as XML empty tag.
@@ -60,7 +70,36 @@ public interface XmlAppendable extends Appendable {
 	 * </p>
 	 */
 	void endEmpty() throws IOException;
+	
+	/**
+	 * Closes the last tag opened with {@link #begin(String)} as XML empty tag.
+	 * 
+	 * <p>
+	 * Only {@link #attr(String, CharSequence) attributes} may have been written
+	 * after {@link #begin(String)}.
+	 * </p>
+	 * 
+	 * @param level The value returned by {@link #begin(String)} to check correct nesting and fail fast.
+	 */
+	default void endEmpty(int level) throws IOException {
+		checkLevel(level);
+		endEmpty();
+	}
 
+	/**
+	 * The current nesting level.
+	 */
+	int level();
+	
+	/**
+	 * Checks that the writer is currently back at the same level as reported by the corresponding call to
+	 * {@link #level()}.
+	 *
+	 * @param level
+	 *        The value returned by the corresponding call to {@link #level()}.
+	 */
+	void checkLevel(int level);
+	
 	/**
 	 * Writes an attribute to the currently open tag.
 	 * 

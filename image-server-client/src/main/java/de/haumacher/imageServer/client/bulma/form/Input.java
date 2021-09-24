@@ -7,7 +7,6 @@ import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
 
-import de.haumacher.imageServer.client.ui.AbstractDisplay;
 import de.haumacher.imageServer.client.ui.UIContext;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Event;
@@ -18,31 +17,15 @@ import elemental2.dom.HTMLInputElement;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class Input extends AbstractDisplay {
+public class Input extends AbstractFieldDisplay<Input> {
 
-	private String _label;
 	private String _placeholder;
 	private String _type = TYPE_TEXT_VALUE;
 	private String _typeIcon;
 	private String _value;
-	private State _state = State.NONE;
 	private String _stateIcon;
-	private String _message;
 	
 	private HTMLInputElement _inputElement;
-	
-	/**
-	 * TODO
-	 */
-	public String getLabel() {
-		return _label;
-	}
-	
-	public Input setLabel(String label) {
-		_label = label;
-		redraw();
-		return this;
-	}
 	
 	/**
 	 * TODO
@@ -99,19 +82,6 @@ public class Input extends AbstractDisplay {
 	/**
 	 * TODO
 	 */
-	public State getState() {
-		return _state;
-	}
-	
-	public Input setState(State state) {
-		_state = state;
-		redraw();
-		return this;
-	}
-	
-	/**
-	 * TODO
-	 */
 	public String getStateIcon() {
 		return _stateIcon;
 	}
@@ -122,21 +92,8 @@ public class Input extends AbstractDisplay {
 		return this;
 	}
 	
-	/**
-	 * TODO
-	 */
-	public String getMessage() {
-		return _message;
-	}
-	
-	public Input setMessage(String message) {
-		_message = message;
-		redraw();
-		return this;
-	}
-	
 	@Override
-	protected void render(UIContext context, DomBuilder out) throws IOException {
+	protected void renderFieldValue(UIContext context, DomBuilder out) throws IOException {
 //		<div class="field">
 //		  <label class="label">Email</label>
 //		  <div class="control has-icons-left has-icons-right">
@@ -151,59 +108,49 @@ public class Input extends AbstractDisplay {
 //		  <p class="help is-danger">This email is invalid</p>
 //		</div>
 
-		out.beginDiv(FIELD);
+		out.beginDiv("control" + " " + (_typeIcon != null ? "has-icons-left" : "") + " " + (_stateIcon != null ? "has-icons-right" : null));
 		{
-			out.begin(LABEL);
-			out.classAttr("label");
-			out.append(_label);
+			out.begin(INPUT);
+			out.classAttr("input" + " " + getState());
+			out.attr(TYPE_ATTR, _type);
+			out.attr(PLACEHOLDER_ATTR, _placeholder);
+			out.attr(VALUE_ATTR, _value);
 			out.end();
-
-			out.beginDiv("control" + " " + (_typeIcon != null ? "has-icons-left" : "") + " " + (_stateIcon != null ? "has-icons-right" : null));
-			{
-				out.begin(INPUT);
-				out.classAttr("input" + " " + _state);
-				out.attr(TYPE_ATTR, _type);
-				out.attr(PLACEHOLDER_ATTR, _placeholder);
-				out.attr(VALUE_ATTR, _value);
-				out.end();
-				_inputElement = out.getLast();
-				_inputElement.addEventListener("change", this::handleChange);
-				
-				if (_typeIcon != null) {
-					out.begin(SPAN);
-					out.classAttr("icon is-small is-left");
-					{
-						out.begin(I);
-						out.classAttr(_typeIcon);
-						out.end();
-					}
-					out.end();
-				}
-
-				if (_stateIcon != null) {
-					out.begin(SPAN);
-					out.classAttr("icon is-small is-right");
-					{
-						out.begin(I);
-						out.classAttr(_stateIcon);
-						out.end();
-					}
-					out.end();
-				}
-			}
-			out.end();
+			_inputElement = out.getLast();
+			_inputElement.addEventListener("change", this::handleChange);
 			
-			out.beginDiv("help" + " " + _state);
-			{
-				out.append(_message);
+			if (_typeIcon != null) {
+				out.begin(SPAN);
+				out.classAttr("icon is-small is-left");
+				{
+					out.begin(I);
+					out.classAttr(_typeIcon);
+					out.end();
+				}
+				out.end();
 			}
-			out.end();
+
+			if (_stateIcon != null) {
+				out.begin(SPAN);
+				out.classAttr("icon is-small is-right");
+				{
+					out.begin(I);
+					out.classAttr(_stateIcon);
+					out.end();
+				}
+				out.end();
+			}
 		}
 		out.end();
 	}
 
 	private void handleChange(Event event) {
 		_value = _inputElement.value;
+	}
+	
+	@Override
+	protected Input self() {
+		return this;
 	}
 
 }

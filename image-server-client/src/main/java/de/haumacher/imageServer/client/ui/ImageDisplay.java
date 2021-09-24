@@ -154,6 +154,14 @@ public class ImageDisplay extends ResourceDisplay {
 				writeAlbumToolbar(out, true, parentUrl);
 			}
 		}
+		
+		String comment = _image.getImage().getComment();
+		if (comment != null && !comment.isEmpty()) {
+			out.beginDiv("va-comment");
+			out.append(comment);
+			out.end();
+		}
+		
 		out.end();
 	}
 

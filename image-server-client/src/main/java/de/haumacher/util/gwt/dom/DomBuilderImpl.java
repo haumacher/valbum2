@@ -21,6 +21,7 @@ public class DomBuilderImpl implements DomBuilder {
 	private StringBuilder _buffer;
 	private Element _last;
 	private Node _before;
+	private int _level;
 	
 	/** 
 	 * Creates a {@link DomBuilderImpl}.
@@ -87,11 +88,13 @@ public class DomBuilderImpl implements DomBuilder {
 	}
 
 	@Override
-	public void begin(String name) {
+	public int begin(String name) {
 		Element child = _document.createElement(name);
 		_current.insertBefore(child, _before);
 		_current = child;
 		_before = null;
+		
+		return ++_level;
 	}
 
 	@Override
@@ -99,8 +102,20 @@ public class DomBuilderImpl implements DomBuilder {
 		_last = _current;
 		_current = _current.parentElement;
 		_before = _last.nextSibling;
+		
+		_level--;
 	}
 
+	@Override
+	public int level() {
+		return _level;
+	}
+	
+	@Override
+	public void checkLevel(int level) {
+		assert level == _level;
+	}
+	
 	@Override
 	public void endEmpty() {
 		end();

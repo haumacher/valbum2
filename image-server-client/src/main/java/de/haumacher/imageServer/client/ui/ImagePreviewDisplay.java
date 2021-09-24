@@ -132,6 +132,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 			{
 				out.begin(IMG);
 				out.attr(CLASS_ATTR, CssClasses.ICON_DISPLAY);
+				out.attr("title", _image.getComment());
 				{
 					out.openAttr(SRC_ATTR);
 					out.append(_image.getName());
@@ -175,8 +176,21 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	}
 
 	private void writeToolbars(DomBuilder out) throws IOException {
+		int level = out.level();
 		writeSelectedDisplay(out);
-		
+		out.checkLevel(level);
+
+		writeToolbarTop(out);
+		out.checkLevel(level);
+
+		writeToolbarCenter(out);
+		out.checkLevel(level);
+
+		writeToolbarBottom(out);
+		out.checkLevel(level);
+	}
+
+	private void writeToolbarTop(DomBuilder out) throws IOException {
 		out.begin(SPAN);
 		out.attr(CLASS_ATTR, CssClasses.TOOLBAR_EMBEDDED + " " + CssClasses.TOOLBAR_TOP);
 		{
@@ -208,34 +222,47 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 			out.end();
 		}
 		out.end();
-		
+	}
+
+	private void writeToolbarCenter(DomBuilder out) throws IOException {
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, CssClasses.TOOLBAR_EMBEDDED + " " + CssClasses.TOOLBAR_CENTER);
 		{
-			if (isSelected() && !getOwner().hasMultiSelection()) {
+			if (isSelected()) {
+				if (getOwner().hasMultiSelection()) {
+					out.begin(SPAN);
+					out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
+					{
+						out.begin(I);
+						out.attr(CLASS_ATTR, "far fa-object-group");
+						out.end();
+					}
+					out.end();
+					
+					out.getLast().addEventListener("click", this::handleGroup);
+				} else {
+					out.begin(SPAN);
+					out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
+					{
+						out.begin(I);
+						out.attr(CLASS_ATTR, "fas fa-heading");
+						out.end();
+					}
+					out.end();
+					
+					out.getLast().addEventListener("click", this::handleCreateHeading);
+				}
+				
 				out.begin(SPAN);
 				out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
 				{
 					out.begin(I);
-					out.attr(CLASS_ATTR, "fas fa-heading");
+					out.attr(CLASS_ATTR, "fas fa-bars");
 					out.end();
 				}
 				out.end();
 				
-				out.getLast().addEventListener("click", this::handleCreateHeading);
-			}
-			
-			if (isSelected() && getOwner().hasMultiSelection()) {
-				out.begin(SPAN);
-				out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
-				{
-					out.begin(I);
-					out.attr(CLASS_ATTR, "far fa-object-group");
-					out.end();
-				}
-				out.end();
-				
-				out.getLast().addEventListener("click", this::handleGroup);
+				out.getLast().addEventListener("click", this::handleEditSettings);
 			}
 			
 			if (false) {
@@ -250,11 +277,13 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 			}
 		}
 		out.end();
-		
-		int rating = _image.getRating();
-		
+	}
+
+	private void writeToolbarBottom(DomBuilder out) throws IOException {
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, CssClasses.TOOLBAR_EMBEDDED + " " + CssClasses.TOOLBAR_BOTTOM);
+		
+		int rating = _image.getRating();
 		makeChoice(
 				data -> _image.setRating((int) data),
 				() -> _image.setRating(0),
@@ -286,6 +315,13 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	
 	private void handleGroup(Event event) {
 		getOwner().groupSelection(getPart());
+		
+		event.stopPropagation();
+		event.preventDefault();
+	}
+	
+	private void handleEditSettings(Event event) {
+		new ImagePropertiesEditor(_image).showTopLevel(context());
 		
 		event.stopPropagation();
 		event.preventDefault();

@@ -36,7 +36,9 @@ public abstract class AbstractDisplay implements Display {
 	public final void show(UIContext context, DomBuilder out) {
 		_context = context;
 		try {
+			int level = out.level();
 			render(context, out);
+			out.checkLevel(level);
 		} catch (IOException ex) {
 			throw new RuntimeException(ex);
 		}

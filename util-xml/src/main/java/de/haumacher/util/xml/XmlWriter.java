@@ -40,6 +40,8 @@ public class XmlWriter extends Writer implements XmlAppendable {
 
 	private State _state = State.CONTENT;
 
+	private int _level;
+
 	/**
 	 * Creates a {@link XmlWriter}.
 	 */
@@ -48,13 +50,15 @@ public class XmlWriter extends Writer implements XmlAppendable {
 	}
 
 	@Override
-	public void begin(String name) throws IOException {
+	public int begin(String name) throws IOException {
 		closePotentialTag();
 		
 		_out.append('<');
 		_out.append(name);
 		_openTags.add(name);
 		_state = State.ATTRIBUTES;
+		
+		return ++_level;
 	}
 
 	private void closePotentialTag() throws IOException {
@@ -247,6 +251,18 @@ public class XmlWriter extends Writer implements XmlAppendable {
 		_out.append('/');
 		_out.append(name);
 		_out.append('>');
+		
+		_level--;
+	}
+	
+	@Override
+	public int level() {
+		return _level;
+	}
+
+	@Override
+	public void checkLevel(int level) {
+		assert level == _level;
 	}
 
 	private String popTag() {
