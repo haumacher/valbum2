@@ -70,6 +70,20 @@
 		</dependency>
 
 		<dependency>
+			<groupId>de.haumacher.msgbuf</groupId>
+			<artifactId>msgbuf-api</artifactId>
+			<version>0.2.1</version>
+		</dependency>
+
+		<dependency>
+			<groupId>de.haumacher.msgbuf</groupId>
+			<artifactId>msgbuf-api</artifactId>
+			<version>0.2.1</version>
+			<scope>provided</scope>
+			<classifier>sources</classifier>
+		</dependency>
+
+		<dependency>
 			<groupId>com.google.elemental2</groupId>
 			<artifactId>elemental2-dom</artifactId>
 			<version>1.1.0</version>
