@@ -253,10 +253,6 @@ public class ImageDisplay extends ResourceDisplay {
 		return result;
 	}
 
-	private <T> T withDefault(T value, T defaultValue) {
-		return value == null ? defaultValue : value;
-	}
-
 	private void onImageClick(MouseEvent event) {
 		HTMLElement image = imageElement();
 
