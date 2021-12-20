@@ -16,6 +16,9 @@
         <dependent-module archiveName="util-xml-0.0.1-SNAPSHOT.jar" deploy-path="/WEB-INF/lib" handle="module:/resource/util-xml/util-xml">
             <dependency-type>uses</dependency-type>
         </dependent-module>
+        <dependent-module archiveName="msgbuf-api-1.0.2-SNAPSHOT.jar" deploy-path="/WEB-INF/lib" handle="module:/resource/de.haumacher.msgbuf/de.haumacher.msgbuf">
+            <dependency-type>uses</dependency-type>
+        </dependent-module>
                 
         <property name="java-output-path" value="/image-server-client/target/image-server-client-1.0-SNAPSHOT/WEB-INF/classes"/>
                 
