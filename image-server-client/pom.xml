@@ -57,6 +57,12 @@
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
+			<artifactId>util-gwt</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>de.haumacher</groupId>
 			<artifactId>util-xml</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
 			<scope>provided</scope>

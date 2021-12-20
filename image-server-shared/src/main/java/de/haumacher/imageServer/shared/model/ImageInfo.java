@@ -12,14 +12,23 @@ public class ImageInfo extends Resource {
 		return new ImageInfo();
 	}
 
-	/**
-	 * Creates a {@link ImageInfo} instance.
-	 *
-	 * @see #create()
-	 */
-	protected ImageInfo() {
-		super();
-	}
+	/** Identifier for the {@link ImageInfo} type in JSON format. */
+	public static final String IMAGE_INFO__TYPE = "ImageInfo";
+
+	/** @see #getImage() */
+	private static final String IMAGE = "image";
+
+	/** @see #getPrevious() */
+	private static final String PREVIOUS = "previous";
+
+	/** @see #getNext() */
+	private static final String NEXT = "next";
+
+	/** @see #getHome() */
+	private static final String HOME = "home";
+
+	/** @see #getEnd() */
+	private static final String END = "end";
 
 	private ImagePart _image = null;
 
@@ -30,6 +39,20 @@ public class ImageInfo extends Resource {
 	private String _home = "";
 
 	private String _end = "";
+
+	/**
+	 * Creates a {@link ImageInfo} instance.
+	 *
+	 * @see #create()
+	 */
+	protected ImageInfo() {
+		super();
+	}
+
+	@Override
+	public TypeKind kind() {
+		return TypeKind.IMAGE_INFO;
+	}
 
 	/**
 	 * Information about the image contents.
@@ -124,106 +147,36 @@ public class ImageInfo extends Resource {
 
 	@Override
 	public String jsonType() {
-		return "ImageInfo";
-	}
-
-	@Override
-	public Object get(String field) {
-		switch (field) {
-			case "image": return getImage();
-			case "previous": return getPrevious();
-			case "next": return getNext();
-			case "home": return getHome();
-			case "end": return getEnd();
-			default: return super.get(field);
-		}
-	}
-
-	@Override
-	public void set(String field, Object value) {
-		switch (field) {
-			case "image": setImage((ImagePart) value); break;
-			case "previous": setPrevious((String) value); break;
-			case "next": setNext((String) value); break;
-			case "home": setHome((String) value); break;
-			case "end": setEnd((String) value); break;
-			default: super.set(field, value); break;
-		}
+		return IMAGE_INFO__TYPE;
 	}
 
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
 		if (hasImage()) {
-			out.name("image");
+			out.name(IMAGE);
 			getImage().writeContent(out);
 		}
-		out.name("previous");
+		out.name(PREVIOUS);
 		out.value(getPrevious());
-		out.name("next");
+		out.name(NEXT);
 		out.value(getNext());
-		out.name("home");
+		out.name(HOME);
 		out.value(getHome());
-		out.name("end");
+		out.name(END);
 		out.value(getEnd());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "image": setImage(ImagePart.readImagePart(in)); break;
-			case "previous": setPrevious(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "next": setNext(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "home": setHome(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "end": setEnd(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case IMAGE: setImage(ImagePart.readImagePart(in)); break;
+			case PREVIOUS: setPrevious(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case NEXT: setNext(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case HOME: setHome(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case END: setEnd(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
-	}
-
-	@Override
-	public int typeId() {
-		return 2;
-	}
-
-	@Override
-	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		super.writeFields(out);
-		if (hasImage()) {
-			out.name(2);
-			getImage().writeTo(out);
-		}
-		out.name(3);
-		out.value(getPrevious());
-		out.name(4);
-		out.value(getNext());
-		out.name(5);
-		out.value(getHome());
-		out.name(6);
-		out.value(getEnd());
-	}
-
-	@Override
-	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
-		switch (field) {
-			case 2: setImage(ImagePart.readImagePart(in)); break;
-			case 3: setPrevious(in.nextString()); break;
-			case 4: setNext(in.nextString()); break;
-			case 5: setHome(in.nextString()); break;
-			case 6: setEnd(in.nextString()); break;
-			default: super.readField(in, field);
-		}
-	}
-
-	/** Reads a new instance from the given reader. */
-	public static ImageInfo readImageInfo(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
-		in.beginObject();
-		ImageInfo result = new ImageInfo();
-		while (in.hasNext()) {
-			int field = in.nextName();
-			result.readField(in, field);
-		}
-		in.endObject();
-		return result;
 	}
 
 	@Override

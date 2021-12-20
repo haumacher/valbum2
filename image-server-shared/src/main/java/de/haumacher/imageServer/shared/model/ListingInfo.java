@@ -12,6 +12,24 @@ public class ListingInfo extends Resource {
 		return new ListingInfo();
 	}
 
+	/** Identifier for the {@link ListingInfo} type in JSON format. */
+	public static final String LISTING_INFO__TYPE = "ListingInfo";
+
+	/** @see #getName() */
+	private static final String NAME = "name";
+
+	/** @see #getTitle() */
+	private static final String TITLE = "title";
+
+	/** @see #getFolders() */
+	private static final String FOLDERS = "folders";
+
+	private String _name = "";
+
+	private String _title = "";
+
+	private final java.util.List<FolderInfo> _folders = new java.util.ArrayList<>();
+
 	/**
 	 * Creates a {@link ListingInfo} instance.
 	 *
@@ -21,11 +39,10 @@ public class ListingInfo extends Resource {
 		super();
 	}
 
-	private String _name = "";
-
-	private String _title = "";
-
-	private final java.util.List<FolderInfo> _folders = new java.util.ArrayList<>();
+	@Override
+	public TypeKind kind() {
+		return TypeKind.LISTING_INFO;
+	}
 
 	/**
 	 * The directory name of this {@link ListingInfo}.
@@ -68,6 +85,7 @@ public class ListingInfo extends Resource {
 	 * @see #getFolders()
 	 */
 	public final ListingInfo setFolders(java.util.List<FolderInfo> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'folders' cannot be null.");
 		_folders.clear();
 		_folders.addAll(value);
 		return this;
@@ -92,37 +110,17 @@ public class ListingInfo extends Resource {
 
 	@Override
 	public String jsonType() {
-		return "ListingInfo";
-	}
-
-	@Override
-	public Object get(String field) {
-		switch (field) {
-			case "name": return getName();
-			case "title": return getTitle();
-			case "folders": return getFolders();
-			default: return super.get(field);
-		}
-	}
-
-	@Override
-	public void set(String field, Object value) {
-		switch (field) {
-			case "name": setName((String) value); break;
-			case "title": setTitle((String) value); break;
-			case "folders": setFolders((java.util.List<FolderInfo>) value); break;
-			default: super.set(field, value); break;
-		}
+		return LISTING_INFO__TYPE;
 	}
 
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name("name");
+		out.name(NAME);
 		out.value(getName());
-		out.name("title");
+		out.name(TITLE);
 		out.value(getTitle());
-		out.name("folders");
+		out.name(FOLDERS);
 		out.beginArray();
 		for (FolderInfo x : getFolders()) {
 			x.writeTo(out);
@@ -133,9 +131,9 @@ public class ListingInfo extends Resource {
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "name": setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "title": setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "folders": {
+			case NAME: setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case TITLE: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case FOLDERS: {
 				in.beginArray();
 				while (in.hasNext()) {
 					addFolder(FolderInfo.readFolderInfo(in));
@@ -145,58 +143,6 @@ public class ListingInfo extends Resource {
 			break;
 			default: super.readField(in, field);
 		}
-	}
-
-	@Override
-	public int typeId() {
-		return 3;
-	}
-
-	@Override
-	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		super.writeFields(out);
-		out.name(2);
-		out.value(getName());
-		out.name(3);
-		out.value(getTitle());
-		out.name(4);
-		{
-			java.util.List<FolderInfo> values = getFolders();
-			out.beginArray(de.haumacher.msgbuf.binary.DataType.OBJECT, values.size());
-			for (FolderInfo x : values) {
-				x.writeTo(out);
-			}
-			out.endArray();
-		}
-	}
-
-	@Override
-	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
-		switch (field) {
-			case 2: setName(in.nextString()); break;
-			case 3: setTitle(in.nextString()); break;
-			case 4: {
-				in.beginArray();
-				while (in.hasNext()) {
-					addFolder(FolderInfo.readFolderInfo(in));
-				}
-				in.endArray();
-			}
-			break;
-			default: super.readField(in, field);
-		}
-	}
-
-	/** Reads a new instance from the given reader. */
-	public static ListingInfo readListingInfo(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
-		in.beginObject();
-		ListingInfo result = new ListingInfo();
-		while (in.hasNext()) {
-			int field = in.nextName();
-			result.readField(in, field);
-		}
-		in.endObject();
-		return result;
 	}
 
 	@Override

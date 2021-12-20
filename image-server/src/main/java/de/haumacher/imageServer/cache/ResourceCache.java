@@ -38,7 +38,6 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 
 import de.haumacher.imageServer.PathInfo;
-import de.haumacher.imageServer.io.ReaderAdapter;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
@@ -50,6 +49,7 @@ import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.imageServer.shared.util.UpdateTransient;
 import de.haumacher.msgbuf.json.JsonReader;
+import de.haumacher.msgbuf.server.io.ReaderAdapter;
 import de.haumacher.util.servlet.Util;
 
 /**
@@ -358,7 +358,7 @@ public class ResourceCache {
 			Collections.sort(newImages, (a, b) -> Long.compare(ToImage.toImage(a).getDate(), ToImage.toImage(b).getDate()));
 			for (ImageData newImage : newImages) {
 				album.addPart(newImage);
-				album.addImageByName(newImage.getName(), newImage);
+				album.putImageByName(newImage.getName(), newImage);
 			}
 			
 			return album;

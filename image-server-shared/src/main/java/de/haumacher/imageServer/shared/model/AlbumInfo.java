@@ -12,14 +12,23 @@ public class AlbumInfo extends Resource {
 		return new AlbumInfo();
 	}
 
-	/**
-	 * Creates a {@link AlbumInfo} instance.
-	 *
-	 * @see #create()
-	 */
-	protected AlbumInfo() {
-		super();
-	}
+	/** Identifier for the {@link AlbumInfo} type in JSON format. */
+	public static final String ALBUM_INFO__TYPE = "AlbumInfo";
+
+	/** @see #getTitle() */
+	private static final String TITLE = "title";
+
+	/** @see #getSubTitle() */
+	private static final String SUB_TITLE = "subTitle";
+
+	/** @see #getIndexPicture() */
+	private static final String INDEX_PICTURE = "indexPicture";
+
+	/** @see #getParts() */
+	private static final String PARTS = "parts";
+
+	/** @see #getImageByName() */
+	private static final String IMAGE_BY_NAME = "imageByName";
 
 	private String _title = "";
 
@@ -29,7 +38,21 @@ public class AlbumInfo extends Resource {
 
 	private final java.util.List<AlbumPart> _parts = new java.util.ArrayList<>();
 
-	private transient java.util.Map<String, ImagePart> _imageByName = new java.util.HashMap<>();
+	private transient final java.util.Map<String, ImagePart> _imageByName = new java.util.HashMap<>();
+
+	/**
+	 * Creates a {@link AlbumInfo} instance.
+	 *
+	 * @see #create()
+	 */
+	protected AlbumInfo() {
+		super();
+	}
+
+	@Override
+	public TypeKind kind() {
+		return TypeKind.ALBUM_INFO;
+	}
 
 	/**
 	 * The title of this album.
@@ -94,6 +117,7 @@ public class AlbumInfo extends Resource {
 	 * @see #getParts()
 	 */
 	public final AlbumInfo setParts(java.util.List<AlbumPart> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'parts' cannot be null.");
 		_parts.clear();
 		_parts.addAll(value);
 		return this;
@@ -118,6 +142,7 @@ public class AlbumInfo extends Resource {
 	 * @see #getImageByName()
 	 */
 	public final AlbumInfo setImageByName(java.util.Map<String, ImagePart> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'imageByName' cannot be null.");
 		_imageByName.clear();
 		_imageByName.putAll(value);
 		return this;
@@ -126,7 +151,7 @@ public class AlbumInfo extends Resource {
 	/**
 	 * Adds a value to the {@link #getImageByName()} map.
 	 */
-	public final void addImageByName(String key, ImagePart value) {
+	public final void putImageByName(String key, ImagePart value) {
 		if (_imageByName.containsKey(key)) {
 			throw new IllegalArgumentException("Property 'imageByName' already contains a value for key '" + key + "'.");
 		}
@@ -144,45 +169,21 @@ public class AlbumInfo extends Resource {
 
 	@Override
 	public String jsonType() {
-		return "AlbumInfo";
-	}
-
-	@Override
-	public Object get(String field) {
-		switch (field) {
-			case "title": return getTitle();
-			case "subTitle": return getSubTitle();
-			case "indexPicture": return getIndexPicture();
-			case "parts": return getParts();
-			case "imageByName": return getImageByName();
-			default: return super.get(field);
-		}
-	}
-
-	@Override
-	public void set(String field, Object value) {
-		switch (field) {
-			case "title": setTitle((String) value); break;
-			case "subTitle": setSubTitle((String) value); break;
-			case "indexPicture": setIndexPicture((ThumbnailInfo) value); break;
-			case "parts": setParts((java.util.List<AlbumPart>) value); break;
-			case "imageByName": setImageByName((java.util.Map<String, ImagePart>) value); break;
-			default: super.set(field, value); break;
-		}
+		return ALBUM_INFO__TYPE;
 	}
 
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name("title");
+		out.name(TITLE);
 		out.value(getTitle());
-		out.name("subTitle");
+		out.name(SUB_TITLE);
 		out.value(getSubTitle());
 		if (hasIndexPicture()) {
-			out.name("indexPicture");
+			out.name(INDEX_PICTURE);
 			getIndexPicture().writeTo(out);
 		}
-		out.name("parts");
+		out.name(PARTS);
 		out.beginArray();
 		for (AlbumPart x : getParts()) {
 			x.writeTo(out);
@@ -193,10 +194,10 @@ public class AlbumInfo extends Resource {
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "title": setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "subTitle": setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "indexPicture": setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
-			case "parts": {
+			case TITLE: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case SUB_TITLE: setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case INDEX_PICTURE: setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
+			case PARTS: {
 				in.beginArray();
 				while (in.hasNext()) {
 					addPart(AlbumPart.readAlbumPart(in));
@@ -206,63 +207,6 @@ public class AlbumInfo extends Resource {
 			break;
 			default: super.readField(in, field);
 		}
-	}
-
-	@Override
-	public int typeId() {
-		return 1;
-	}
-
-	@Override
-	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		super.writeFields(out);
-		out.name(2);
-		out.value(getTitle());
-		out.name(3);
-		out.value(getSubTitle());
-		if (hasIndexPicture()) {
-			out.name(4);
-			getIndexPicture().writeTo(out);
-		}
-		out.name(5);
-		{
-			java.util.List<AlbumPart> values = getParts();
-			out.beginArray(de.haumacher.msgbuf.binary.DataType.OBJECT, values.size());
-			for (AlbumPart x : values) {
-				x.writeTo(out);
-			}
-			out.endArray();
-		}
-	}
-
-	@Override
-	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
-		switch (field) {
-			case 2: setTitle(in.nextString()); break;
-			case 3: setSubTitle(in.nextString()); break;
-			case 4: setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
-			case 5: {
-				in.beginArray();
-				while (in.hasNext()) {
-					addPart(AlbumPart.readAlbumPart(in));
-				}
-				in.endArray();
-			}
-			break;
-			default: super.readField(in, field);
-		}
-	}
-
-	/** Reads a new instance from the given reader. */
-	public static AlbumInfo readAlbumInfo(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
-		in.beginObject();
-		AlbumInfo result = new AlbumInfo();
-		while (in.hasNext()) {
-			int field = in.nextName();
-			result.readField(in, field);
-		}
-		in.endObject();
-		return result;
 	}
 
 	@Override

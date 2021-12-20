@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * Part of a {@link FolderInfo} describing the thumbnail image for displaying this folder in a {@link ListingInfo}.
  */
-public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject implements de.haumacher.msgbuf.binary.BinaryDataObject {
+public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 
 	/**
 	 * Creates a {@link ThumbnailInfo} instance.
@@ -11,6 +11,29 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 	public static ThumbnailInfo create() {
 		return new ThumbnailInfo();
 	}
+
+	/** Identifier for the {@link ThumbnailInfo} type in JSON format. */
+	public static final String THUMBNAIL_INFO__TYPE = "ThumbnailInfo";
+
+	/** @see #getImage() */
+	private static final String IMAGE = "image";
+
+	/** @see #getScale() */
+	private static final String SCALE = "scale";
+
+	/** @see #getTx() */
+	private static final String TX = "tx";
+
+	/** @see #getTy() */
+	private static final String TY = "ty";
+
+	private String _image = "";
+
+	private double _scale = 0.0d;
+
+	private double _tx = 0.0d;
+
+	private double _ty = 0.0d;
 
 	/**
 	 * Creates a {@link ThumbnailInfo} instance.
@@ -20,14 +43,6 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 	protected ThumbnailInfo() {
 		super();
 	}
-
-	private String _image = "";
-
-	private double _scale = 0.0d;
-
-	private double _tx = 0.0d;
-
-	private double _ty = 0.0d;
 
 	/**
 	 * Name of the image to use as thumbnail.
@@ -104,96 +119,27 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 	}
 
 	@Override
-	public Object get(String field) {
-		switch (field) {
-			case "image": return getImage();
-			case "scale": return getScale();
-			case "tx": return getTx();
-			case "ty": return getTy();
-			default: return super.get(field);
-		}
-	}
-
-	@Override
-	public void set(String field, Object value) {
-		switch (field) {
-			case "image": setImage((String) value); break;
-			case "scale": setScale((double) value); break;
-			case "tx": setTx((double) value); break;
-			case "ty": setTy((double) value); break;
-		}
-	}
-
-	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name("image");
+		out.name(IMAGE);
 		out.value(getImage());
-		out.name("scale");
+		out.name(SCALE);
 		out.value(getScale());
-		out.name("tx");
+		out.name(TX);
 		out.value(getTx());
-		out.name("ty");
+		out.name(TY);
 		out.value(getTy());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "image": setImage(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "scale": setScale(in.nextDouble()); break;
-			case "tx": setTx(in.nextDouble()); break;
-			case "ty": setTy(in.nextDouble()); break;
+			case IMAGE: setImage(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case SCALE: setScale(in.nextDouble()); break;
+			case TX: setTx(in.nextDouble()); break;
+			case TY: setTy(in.nextDouble()); break;
 			default: super.readField(in, field);
 		}
-	}
-
-	@Override
-	public final void writeTo(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		out.beginObject();
-		writeFields(out);
-		out.endObject();
-	}
-
-	/**
-	 * Serializes all fields of this instance to the given binary output.
-	 *
-	 * @param out
-	 *        The binary output to write to.
-	 * @throws java.io.IOException If writing fails.
-	 */
-	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		out.name(1);
-		out.value(getImage());
-		out.name(2);
-		out.value(getScale());
-		out.name(3);
-		out.value(getTx());
-		out.name(4);
-		out.value(getTy());
-	}
-
-	/** Consumes the value for the field with the given ID and assigns its value. */
-	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
-		switch (field) {
-			case 1: setImage(in.nextString()); break;
-			case 2: setScale(in.nextDouble()); break;
-			case 3: setTx(in.nextDouble()); break;
-			case 4: setTy(in.nextDouble()); break;
-			default: in.skipValue(); 
-		}
-	}
-
-	/** Reads a new instance from the given reader. */
-	public static ThumbnailInfo readThumbnailInfo(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
-		in.beginObject();
-		ThumbnailInfo result = new ThumbnailInfo();
-		while (in.hasNext()) {
-			int field = in.nextName();
-			result.readField(in, field);
-		}
-		in.endObject();
-		return result;
 	}
 
 }

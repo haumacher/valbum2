@@ -12,6 +12,14 @@ public class ErrorInfo extends Resource {
 		return new ErrorInfo();
 	}
 
+	/** Identifier for the {@link ErrorInfo} type in JSON format. */
+	public static final String ERROR_INFO__TYPE = "ErrorInfo";
+
+	/** @see #getMessage() */
+	private static final String MESSAGE = "message";
+
+	private String _message = "";
+
 	/**
 	 * Creates a {@link ErrorInfo} instance.
 	 *
@@ -21,7 +29,10 @@ public class ErrorInfo extends Resource {
 		super();
 	}
 
-	private String _message = "";
+	@Override
+	public TypeKind kind() {
+		return TypeKind.ERROR_INFO;
+	}
 
 	/**
 	 * The error message.
@@ -49,70 +60,22 @@ public class ErrorInfo extends Resource {
 
 	@Override
 	public String jsonType() {
-		return "ErrorInfo";
-	}
-
-	@Override
-	public Object get(String field) {
-		switch (field) {
-			case "message": return getMessage();
-			default: return super.get(field);
-		}
-	}
-
-	@Override
-	public void set(String field, Object value) {
-		switch (field) {
-			case "message": setMessage((String) value); break;
-			default: super.set(field, value); break;
-		}
+		return ERROR_INFO__TYPE;
 	}
 
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name("message");
+		out.name(MESSAGE);
 		out.value(getMessage());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "message": setMessage(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case MESSAGE: setMessage(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
-	}
-
-	@Override
-	public int typeId() {
-		return 4;
-	}
-
-	@Override
-	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		super.writeFields(out);
-		out.name(2);
-		out.value(getMessage());
-	}
-
-	@Override
-	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
-		switch (field) {
-			case 2: setMessage(in.nextString()); break;
-			default: super.readField(in, field);
-		}
-	}
-
-	/** Reads a new instance from the given reader. */
-	public static ErrorInfo readErrorInfo(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
-		in.beginObject();
-		ErrorInfo result = new ErrorInfo();
-		while (in.hasNext()) {
-			int field = in.nextName();
-			result.readField(in, field);
-		}
-		in.endObject();
-		return result;
 	}
 
 	@Override

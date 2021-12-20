@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * Part of a {@link ListingInfo} describing a reference to a single album directory.
  */
-public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject implements de.haumacher.msgbuf.binary.BinaryDataObject {
+public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 
 	/**
 	 * Creates a {@link FolderInfo} instance.
@@ -11,6 +11,29 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject impl
 	public static FolderInfo create() {
 		return new FolderInfo();
 	}
+
+	/** Identifier for the {@link FolderInfo} type in JSON format. */
+	public static final String FOLDER_INFO__TYPE = "FolderInfo";
+
+	/** @see #getName() */
+	private static final String NAME = "name";
+
+	/** @see #getTitle() */
+	private static final String TITLE = "title";
+
+	/** @see #getSubTitle() */
+	private static final String SUB_TITLE = "subTitle";
+
+	/** @see #getIndexPicture() */
+	private static final String INDEX_PICTURE = "indexPicture";
+
+	private String _name = "";
+
+	private String _title = "";
+
+	private String _subTitle = "";
+
+	private ThumbnailInfo _indexPicture = null;
 
 	/**
 	 * Creates a {@link FolderInfo} instance.
@@ -20,14 +43,6 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject impl
 	protected FolderInfo() {
 		super();
 	}
-
-	private String _name = "";
-
-	private String _title = "";
-
-	private String _subTitle = "";
-
-	private ThumbnailInfo _indexPicture = null;
 
 	/**
 	 * The directory name of this {@link FolderInfo}.
@@ -111,37 +126,16 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject impl
 	}
 
 	@Override
-	public Object get(String field) {
-		switch (field) {
-			case "name": return getName();
-			case "title": return getTitle();
-			case "subTitle": return getSubTitle();
-			case "indexPicture": return getIndexPicture();
-			default: return super.get(field);
-		}
-	}
-
-	@Override
-	public void set(String field, Object value) {
-		switch (field) {
-			case "name": setName((String) value); break;
-			case "title": setTitle((String) value); break;
-			case "subTitle": setSubTitle((String) value); break;
-			case "indexPicture": setIndexPicture((ThumbnailInfo) value); break;
-		}
-	}
-
-	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name("name");
+		out.name(NAME);
 		out.value(getName());
-		out.name("title");
+		out.name(TITLE);
 		out.value(getTitle());
-		out.name("subTitle");
+		out.name(SUB_TITLE);
 		out.value(getSubTitle());
 		if (hasIndexPicture()) {
-			out.name("indexPicture");
+			out.name(INDEX_PICTURE);
 			getIndexPicture().writeTo(out);
 		}
 	}
@@ -149,62 +143,12 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject impl
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "name": setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "title": setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "subTitle": setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "indexPicture": setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
+			case NAME: setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case TITLE: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case SUB_TITLE: setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case INDEX_PICTURE: setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
 			default: super.readField(in, field);
 		}
-	}
-
-	@Override
-	public final void writeTo(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		out.beginObject();
-		writeFields(out);
-		out.endObject();
-	}
-
-	/**
-	 * Serializes all fields of this instance to the given binary output.
-	 *
-	 * @param out
-	 *        The binary output to write to.
-	 * @throws java.io.IOException If writing fails.
-	 */
-	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		out.name(1);
-		out.value(getName());
-		out.name(2);
-		out.value(getTitle());
-		out.name(3);
-		out.value(getSubTitle());
-		if (hasIndexPicture()) {
-			out.name(4);
-			getIndexPicture().writeTo(out);
-		}
-	}
-
-	/** Consumes the value for the field with the given ID and assigns its value. */
-	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
-		switch (field) {
-			case 1: setName(in.nextString()); break;
-			case 2: setTitle(in.nextString()); break;
-			case 3: setSubTitle(in.nextString()); break;
-			case 4: setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
-			default: in.skipValue(); 
-		}
-	}
-
-	/** Reads a new instance from the given reader. */
-	public static FolderInfo readFolderInfo(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
-		in.beginObject();
-		FolderInfo result = new FolderInfo();
-		while (in.hasNext()) {
-			int field = in.nextName();
-			result.readField(in, field);
-		}
-		in.endObject();
-		return result;
 	}
 
 }

@@ -1,5 +1,8 @@
 package de.haumacher.imageServer.shared.model;
 
+/**
+ * Part of an album that can be represented as an image.
+ */
 public abstract class AbstractImage extends AlbumPart {
 
 	/** Visitor interface for the {@link AbstractImage} hierarchy.*/
@@ -26,31 +29,11 @@ public abstract class AbstractImage extends AlbumPart {
 		in.beginArray();
 		String type = in.nextString();
 		switch (type) {
-			case "ImageGroup": result = ImageGroup.readImageGroup(in); break;
-			case "ImagePart": result = ImagePart.readImagePart(in); break;
+			case ImageGroup.IMAGE_GROUP__TYPE: result = ImageGroup.readImageGroup(in); break;
+			case ImagePart.IMAGE_PART__TYPE: result = ImagePart.readImagePart(in); break;
 			default: in.skipValue(); result = null; break;
 		}
 		in.endArray();
-		return result;
-	}
-
-	/** Reads a new instance from the given reader. */
-	public static AbstractImage readAbstractImage(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
-		in.beginObject();
-		AbstractImage result;
-		int typeField = in.nextName();
-		assert typeField == 0;
-		int type = in.nextInt();
-		switch (type) {
-			case 1: result = ImageGroup.create(); break;
-			case 2: result = ImagePart.create(); break;
-			default: while (in.hasNext()) {in.skipValue(); } in.endObject(); return null;
-		}
-		while (in.hasNext()) {
-			int field = in.nextName();
-			result.readField(in, field);
-		}
-		in.endObject();
 		return result;
 	}
 

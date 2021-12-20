@@ -12,6 +12,14 @@ public class Heading extends AlbumPart {
 		return new Heading();
 	}
 
+	/** Identifier for the {@link Heading} type in JSON format. */
+	public static final String HEADING__TYPE = "Heading";
+
+	/** @see #getText() */
+	private static final String TEXT = "text";
+
+	private String _text = "";
+
 	/**
 	 * Creates a {@link Heading} instance.
 	 *
@@ -21,7 +29,10 @@ public class Heading extends AlbumPart {
 		super();
 	}
 
-	private String _text = "";
+	@Override
+	public TypeKind kind() {
+		return TypeKind.HEADING;
+	}
 
 	/**
 	 * The text to display.
@@ -49,70 +60,22 @@ public class Heading extends AlbumPart {
 
 	@Override
 	public String jsonType() {
-		return "Heading";
-	}
-
-	@Override
-	public Object get(String field) {
-		switch (field) {
-			case "text": return getText();
-			default: return super.get(field);
-		}
-	}
-
-	@Override
-	public void set(String field, Object value) {
-		switch (field) {
-			case "text": setText((String) value); break;
-			default: super.set(field, value); break;
-		}
+		return HEADING__TYPE;
 	}
 
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name("text");
+		out.name(TEXT);
 		out.value(getText());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "text": setText(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case TEXT: setText(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
-	}
-
-	@Override
-	public int typeId() {
-		return 3;
-	}
-
-	@Override
-	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		super.writeFields(out);
-		out.name(1);
-		out.value(getText());
-	}
-
-	@Override
-	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
-		switch (field) {
-			case 1: setText(in.nextString()); break;
-			default: super.readField(in, field);
-		}
-	}
-
-	/** Reads a new instance from the given reader. */
-	public static Heading readHeading(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
-		in.beginObject();
-		Heading result = new Heading();
-		while (in.hasNext()) {
-			int field = in.nextName();
-			result.readField(in, field);
-		}
-		in.endObject();
-		return result;
 	}
 
 	@Override

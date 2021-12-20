@@ -12,6 +12,19 @@ public class ImageGroup extends AbstractImage {
 		return new ImageGroup();
 	}
 
+	/** Identifier for the {@link ImageGroup} type in JSON format. */
+	public static final String IMAGE_GROUP__TYPE = "ImageGroup";
+
+	/** @see #getRepresentative() */
+	private static final String REPRESENTATIVE = "representative";
+
+	/** @see #getImages() */
+	private static final String IMAGES = "images";
+
+	private int _representative = 0;
+
+	private final java.util.List<ImagePart> _images = new java.util.ArrayList<>();
+
 	/**
 	 * Creates a {@link ImageGroup} instance.
 	 *
@@ -21,9 +34,10 @@ public class ImageGroup extends AbstractImage {
 		super();
 	}
 
-	private int _representative = 0;
-
-	private final java.util.List<ImagePart> _images = new java.util.ArrayList<>();
+	@Override
+	public TypeKind kind() {
+		return TypeKind.IMAGE_GROUP;
+	}
 
 	/**
 	 * The index of the {@link ImageInfo} in {@link #getImages()} of the image that should be displayed when displaying this {@link ImageGroup} in an album.
@@ -51,6 +65,7 @@ public class ImageGroup extends AbstractImage {
 	 * @see #getImages()
 	 */
 	public final ImageGroup setImages(java.util.List<ImagePart> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'images' cannot be null.");
 		_images.clear();
 		_images.addAll(value);
 		return this;
@@ -75,33 +90,15 @@ public class ImageGroup extends AbstractImage {
 
 	@Override
 	public String jsonType() {
-		return "ImageGroup";
-	}
-
-	@Override
-	public Object get(String field) {
-		switch (field) {
-			case "representative": return getRepresentative();
-			case "images": return getImages();
-			default: return super.get(field);
-		}
-	}
-
-	@Override
-	public void set(String field, Object value) {
-		switch (field) {
-			case "representative": setRepresentative((int) value); break;
-			case "images": setImages((java.util.List<ImagePart>) value); break;
-			default: super.set(field, value); break;
-		}
+		return IMAGE_GROUP__TYPE;
 	}
 
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name("representative");
+		out.name(REPRESENTATIVE);
 		out.value(getRepresentative());
-		out.name("images");
+		out.name(IMAGES);
 		out.beginArray();
 		for (ImagePart x : getImages()) {
 			x.writeContent(out);
@@ -112,8 +109,8 @@ public class ImageGroup extends AbstractImage {
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "representative": setRepresentative(in.nextInt()); break;
-			case "images": {
+			case REPRESENTATIVE: setRepresentative(in.nextInt()); break;
+			case IMAGES: {
 				in.beginArray();
 				while (in.hasNext()) {
 					addImage(ImagePart.readImagePart(in));
@@ -123,55 +120,6 @@ public class ImageGroup extends AbstractImage {
 			break;
 			default: super.readField(in, field);
 		}
-	}
-
-	@Override
-	public int typeId() {
-		return 1;
-	}
-
-	@Override
-	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		super.writeFields(out);
-		out.name(1);
-		out.value(getRepresentative());
-		out.name(2);
-		{
-			java.util.List<ImagePart> values = getImages();
-			out.beginArray(de.haumacher.msgbuf.binary.DataType.OBJECT, values.size());
-			for (ImagePart x : values) {
-				x.writeTo(out);
-			}
-			out.endArray();
-		}
-	}
-
-	@Override
-	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
-		switch (field) {
-			case 1: setRepresentative(in.nextInt()); break;
-			case 2: {
-				in.beginArray();
-				while (in.hasNext()) {
-					addImage(ImagePart.readImagePart(in));
-				}
-				in.endArray();
-			}
-			break;
-			default: super.readField(in, field);
-		}
-	}
-
-	/** Reads a new instance from the given reader. */
-	public static ImageGroup readImageGroup(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
-		in.beginObject();
-		ImageGroup result = new ImageGroup();
-		while (in.hasNext()) {
-			int field = in.nextName();
-			result.readField(in, field);
-		}
-		in.endObject();
-		return result;
 	}
 
 	@Override

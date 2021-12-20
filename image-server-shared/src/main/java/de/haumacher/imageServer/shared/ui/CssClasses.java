@@ -46,5 +46,6 @@ public class CssClasses {
 	public static final String SUBTITLE = "va-subtitle";
 	public static final String TOOLBAR = "va-toolbar";
 	public static final String SELECTED = "va-selected";
+	public static final String COMMENT = "va-comment";
 
 }

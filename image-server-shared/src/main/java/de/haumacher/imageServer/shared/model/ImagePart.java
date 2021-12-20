@@ -58,14 +58,44 @@ public class ImagePart extends AbstractImage {
 		return new ImagePart();
 	}
 
-	/**
-	 * Creates a {@link ImagePart} instance.
-	 *
-	 * @see #create()
-	 */
-	protected ImagePart() {
-		super();
-	}
+	/** Identifier for the {@link ImagePart} type in JSON format. */
+	public static final String IMAGE_PART__TYPE = "ImagePart";
+
+	/** @see #getOwner() */
+	private static final String OWNER = "owner";
+
+	/** @see #getKind() */
+	private static final String KIND = "kind";
+
+	/** @see #getName() */
+	private static final String NAME = "name";
+
+	/** @see #getDate() */
+	private static final String DATE = "date";
+
+	/** @see #getWidth() */
+	private static final String WIDTH = "width";
+
+	/** @see #getHeight() */
+	private static final String HEIGHT = "height";
+
+	/** @see #getRating() */
+	private static final String RATING = "rating";
+
+	/** @see #getComment() */
+	private static final String COMMENT = "comment";
+
+	/** @see #getPrevious() */
+	private static final String PREVIOUS = "previous";
+
+	/** @see #getNext() */
+	private static final String NEXT = "next";
+
+	/** @see #getHome() */
+	private static final String HOME = "home";
+
+	/** @see #getEnd() */
+	private static final String END = "end";
 
 	private transient AlbumInfo _owner = null;
 
@@ -90,6 +120,20 @@ public class ImagePart extends AbstractImage {
 	private transient String _home = "";
 
 	private transient String _end = "";
+
+	/**
+	 * Creates a {@link ImagePart} instance.
+	 *
+	 * @see #create()
+	 */
+	protected ImagePart() {
+		super();
+	}
+
+	@Override
+	public TypeKind kind() {
+		return TypeKind.IMAGE_PART;
+	}
 
 	/**
 	 * The {@link AlbumInfo} this {@link ImageInfo} is part of.
@@ -124,15 +168,9 @@ public class ImagePart extends AbstractImage {
 	 * @see #getKind()
 	 */
 	public final ImagePart setKind(Kind value) {
+		if (value == null) throw new IllegalArgumentException("Property 'kind' cannot be null.");
 		_kind = value;
 		return this;
-	}
-
-	/**
-	 * Checks, whether {@link #getKind()} has a value.
-	 */
-	public final boolean hasKind() {
-		return _kind != null;
 	}
 
 	/**
@@ -296,132 +334,40 @@ public class ImagePart extends AbstractImage {
 
 	@Override
 	public String jsonType() {
-		return "ImagePart";
-	}
-
-	@Override
-	public Object get(String field) {
-		switch (field) {
-			case "owner": return getOwner();
-			case "kind": return getKind();
-			case "name": return getName();
-			case "date": return getDate();
-			case "width": return getWidth();
-			case "height": return getHeight();
-			case "rating": return getRating();
-			case "comment": return getComment();
-			case "previous": return getPrevious();
-			case "next": return getNext();
-			case "home": return getHome();
-			case "end": return getEnd();
-			default: return super.get(field);
-		}
-	}
-
-	@Override
-	public void set(String field, Object value) {
-		switch (field) {
-			case "owner": setOwner((AlbumInfo) value); break;
-			case "kind": setKind((Kind) value); break;
-			case "name": setName((String) value); break;
-			case "date": setDate((long) value); break;
-			case "width": setWidth((int) value); break;
-			case "height": setHeight((int) value); break;
-			case "rating": setRating((int) value); break;
-			case "comment": setComment((String) value); break;
-			case "previous": setPrevious((String) value); break;
-			case "next": setNext((String) value); break;
-			case "home": setHome((String) value); break;
-			case "end": setEnd((String) value); break;
-			default: super.set(field, value); break;
-		}
+		return IMAGE_PART__TYPE;
 	}
 
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		if (hasKind()) {
-			out.name("kind");
-			getKind().writeTo(out);
-		}
-		out.name("name");
+		out.name(KIND);
+		getKind().writeTo(out);
+		out.name(NAME);
 		out.value(getName());
-		out.name("date");
+		out.name(DATE);
 		out.value(getDate());
-		out.name("width");
+		out.name(WIDTH);
 		out.value(getWidth());
-		out.name("height");
+		out.name(HEIGHT);
 		out.value(getHeight());
-		out.name("rating");
+		out.name(RATING);
 		out.value(getRating());
-		out.name("comment");
+		out.name(COMMENT);
 		out.value(getComment());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case "kind": setKind(Kind.readKind(in)); break;
-			case "name": setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case "date": setDate(in.nextLong()); break;
-			case "width": setWidth(in.nextInt()); break;
-			case "height": setHeight(in.nextInt()); break;
-			case "rating": setRating(in.nextInt()); break;
-			case "comment": setComment(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case KIND: setKind(Kind.readKind(in)); break;
+			case NAME: setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case DATE: setDate(in.nextLong()); break;
+			case WIDTH: setWidth(in.nextInt()); break;
+			case HEIGHT: setHeight(in.nextInt()); break;
+			case RATING: setRating(in.nextInt()); break;
+			case COMMENT: setComment(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
-	}
-
-	@Override
-	public int typeId() {
-		return 2;
-	}
-
-	@Override
-	protected void writeFields(de.haumacher.msgbuf.binary.DataWriter out) throws java.io.IOException {
-		super.writeFields(out);
-		if (hasKind()) {
-			out.name(2);
-			getKind().writeTo(out);
-		}
-		out.name(3);
-		out.value(getName());
-		out.name(4);
-		out.value(getDate());
-		out.name(5);
-		out.value(getWidth());
-		out.name(6);
-		out.value(getHeight());
-		out.name(7);
-		out.value(getRating());
-		out.name(8);
-		out.value(getComment());
-	}
-
-	@Override
-	protected void readField(de.haumacher.msgbuf.binary.DataReader in, int field) throws java.io.IOException {
-		switch (field) {
-			case 2: setKind(Kind.readKind(in)); break;
-			case 3: setName(in.nextString()); break;
-			case 4: setDate(in.nextLong()); break;
-			case 5: setWidth(in.nextInt()); break;
-			case 6: setHeight(in.nextInt()); break;
-			case 7: setRating(in.nextInt()); break;
-			case 8: setComment(in.nextString()); break;
-			default: super.readField(in, field);
-		}
-	}
-
-	/** Reads a new instance from the given reader. */
-	public static ImagePart readImagePart(de.haumacher.msgbuf.binary.DataReader in) throws java.io.IOException {
-		in.beginObject();
-		ImagePart result = new ImagePart();
-		while (in.hasNext()) {
-			int field = in.nextName();
-			result.readField(in, field);
-		}
-		in.endObject();
-		return result;
 	}
 
 	@Override

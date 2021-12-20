@@ -1,5 +1,8 @@
 package de.haumacher.imageServer.shared.model;
 
+option NoBinary;
+option NoReflection;
+
 /** Base class for a resource being displayed as view in a photo album. */
 abstract message Resource {
 
@@ -30,6 +33,7 @@ message AlbumInfo extends Resource {
 abstract message AlbumPart {
 }
 
+/** Part of an album that can be represented as an image. */
 abstract message AbstractImage extends AlbumPart {
 }
 

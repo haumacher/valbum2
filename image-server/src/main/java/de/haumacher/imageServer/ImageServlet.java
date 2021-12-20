@@ -26,9 +26,9 @@ import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.http.HttpStatus;
 
 import de.haumacher.imageServer.cache.ResourceCache;
-import de.haumacher.imageServer.io.WriterAdapter;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.msgbuf.json.JsonWriter;
+import de.haumacher.msgbuf.server.io.WriterAdapter;
 import de.haumacher.util.servlet.Util;
 import de.haumacher.util.xml.XmlWriter;
 
