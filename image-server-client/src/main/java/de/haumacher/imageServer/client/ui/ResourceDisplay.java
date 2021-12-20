@@ -142,16 +142,17 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 	public boolean handleEvent(Element target, Event event) {
 		switch (event.type) {
 			case "keydown": {
-				String key = ((KeyboardEvent) event).key;
-				return handleKeyDown(target, event, key);
+				KeyboardEvent keyEvent = (KeyboardEvent) event;
+				String key = keyEvent.key;
+				return handleKeyDown(target, keyEvent, key);
 			}
 			default:
 				return false;
 		}
 	}
 
-	protected boolean handleKeyDown(Element target, Event event, String key) {
-		return true;
+	protected boolean handleKeyDown(Element target, KeyboardEvent event, String key) {
+		return false;
 	}
 
 }

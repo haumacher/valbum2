@@ -27,6 +27,7 @@ import elemental2.dom.Element;
 import elemental2.dom.Event;
 import elemental2.dom.EventListener;
 import elemental2.dom.HTMLElement;
+import elemental2.dom.KeyboardEvent;
 import elemental2.dom.MouseEvent;
 import elemental2.dom.WheelEvent;
 import jsinterop.base.Js;
@@ -175,27 +176,29 @@ public class ImageDisplay extends ResourceDisplay {
 	}
 	
 	@Override
-	protected boolean handleKeyDown(Element target, Event event, String key) {
-		switch (key) {
+	protected boolean handleKeyDown(Element target, KeyboardEvent event, String key) {
+		if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+			switch (key) {
 			case KeyCodes.Escape:
 			case KeyCodes.ArrowUp:
 				showParent(event);
-				return false;
+				return true;
 				
 			case KeyCodes.ArrowLeft:
 				showPrevious(event);
-				return false;
+				return true;
 				
 			case KeyCodes.ArrowRight:
 				return showNext(event);
 				
 			case KeyCodes.Home:
 				showFirst(event);
-				return false;
+				return true;
 				
 			case KeyCodes.End:
 				showLast(event);
-				return false;
+				return true;
+			}
 		}
 		
 		return super.handleKeyDown(target, event, key);

@@ -133,6 +133,8 @@ public class App implements EntryPoint, UIContext {
 			ControlHandler handler = ControlHandler.getControlHandler(target);
 			if (handler != null) {
 				if (handler.handleEvent(target, event)) {
+					event.preventDefault();
+					event.stopPropagation();
 					return;
 				}
 			}

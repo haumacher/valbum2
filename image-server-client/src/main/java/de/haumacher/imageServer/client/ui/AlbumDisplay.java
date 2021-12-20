@@ -30,6 +30,7 @@ import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
 import elemental2.dom.Element;
 import elemental2.dom.Event;
+import elemental2.dom.KeyboardEvent;
 import elemental2.dom.MouseEvent;
 
 /**
@@ -262,7 +263,7 @@ public class AlbumDisplay extends ResourceDisplay {
 	}
 	
 	@Override
-	protected boolean handleKeyDown(Element target, Event event, String key) {
+	protected boolean handleKeyDown(Element target, KeyboardEvent event, String key) {
 		switch (key) {
 		case "+": {
 			if (_minRating > -1) {
@@ -270,7 +271,7 @@ public class AlbumDisplay extends ResourceDisplay {
 				_minRating--;
 			}
 			redraw();
-			return false;
+			return true;
 		}
 		case "-": {
 			if (_minRating < 2) {
@@ -278,7 +279,7 @@ public class AlbumDisplay extends ResourceDisplay {
 				_minRating++;
 			}
 			redraw();
-			return false;
+			return true;
 		}
 		}
 		return super.handleKeyDown(target, event, key);
