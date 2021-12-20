@@ -49,6 +49,11 @@ public class ErrorInfo extends Resource {
 		return this;
 	}
 
+	@Override
+	public String jsonType() {
+		return ERROR_INFO__TYPE;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static ErrorInfo readErrorInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		ErrorInfo result = new ErrorInfo();
@@ -56,11 +61,6 @@ public class ErrorInfo extends Resource {
 		result.readFields(in);
 		in.endObject();
 		return result;
-	}
-
-	@Override
-	public String jsonType() {
-		return ERROR_INFO__TYPE;
 	}
 
 	@Override
@@ -79,7 +79,7 @@ public class ErrorInfo extends Resource {
 	}
 
 	@Override
-	public <R,A> R visit(Resource.Visitor<R,A> v, A arg) {
+	public <R,A,E extends Throwable> R visit(Resource.Visitor<R,A,E> v, A arg) throws E {
 		return v.visit(this, arg);
 	}
 

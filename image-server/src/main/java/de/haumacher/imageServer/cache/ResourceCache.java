@@ -41,7 +41,6 @@ import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
-import de.haumacher.imageServer.shared.model.ImageInfo;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
@@ -99,20 +98,6 @@ public class ResourceCache {
 		if (pathInfo.toFile().isDirectory()) {
 			return _cache.getUnchecked(pathInfo);
 		} else {
-			Resource resource = _cache.getUnchecked(pathInfo.parent());
-			if (resource instanceof AlbumInfo) {
-				AlbumInfo album = (AlbumInfo) resource;
-				ImagePart result = album.getImageByName().get(pathInfo.getName());
-				if (result != null) {
-					return ImageInfo.create()
-						.setImage(result)
-						.setHome(result.getHome())
-						.setEnd(result.getEnd())
-						.setPrevious(result.getPrevious())
-						.setNext(result.getNext())
-						.setDepth(album.getDepth() + 1);
-				}
-			}
 			return ErrorInfo.create().setMessage("No such image '" + pathInfo + "'.");
 		}
 	}
@@ -136,7 +121,8 @@ public class ResourceCache {
 		@Override
 		public Resource load(PathInfo pathInfo) {
 			if (pathInfo.isDirectory()) {
-				return loadDir(pathInfo);
+				Resource result = loadDir(pathInfo);
+				return result;
 			} else {
 				throw new UnsupportedOperationException("Not a directory: " + pathInfo);
 			}
@@ -193,8 +179,7 @@ public class ResourceCache {
 			Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
 			
 			String listingName = pathInfo.getName();
-			ListingInfo listing = ListingInfo.create().setName(listingName).setTitle(fromTechnicalName(listingName));
-			listing.setDepth(pathInfo.getDepth());
+			ListingInfo listing = ListingInfo.create().setTitle(fromTechnicalName(listingName));
 			for (File folder : dirs) {
 				String folderName = folder.getName();
 				FolderInfo folderInfo;
@@ -330,7 +315,6 @@ public class ResourceCache {
 			} else {
 				album = createGenericAlbumInfo(pathInfo);
 			}
-			album.setDepth(pathInfo.getDepth());
 			UpdateTransient.updateTransient(album);
 			
 			Set<String> existingNames = new HashSet<>();

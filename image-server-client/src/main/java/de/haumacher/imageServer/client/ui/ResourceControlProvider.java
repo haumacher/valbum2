@@ -6,7 +6,9 @@ package de.haumacher.imageServer.client.ui;
 import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
-import de.haumacher.imageServer.shared.model.ImageInfo;
+import de.haumacher.imageServer.shared.model.Heading;
+import de.haumacher.imageServer.shared.model.ImageGroup;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 
@@ -19,7 +21,7 @@ import de.haumacher.imageServer.shared.model.Resource;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ResourceControlProvider implements Resource.Visitor<Display, ResourceHandler> {
+public class ResourceControlProvider implements Resource.Visitor<Display, ResourceHandler, RuntimeException> {
 	
 	/**
 	 * Singleton {@link ResourceControlProvider} instance.
@@ -41,13 +43,23 @@ public class ResourceControlProvider implements Resource.Visitor<Display, Resour
 	}
 
 	@Override
-	public Display visit(ImageInfo image, ResourceHandler handler) {
-		return new ImageDisplay(image, handler);
+	public Display visit(ImagePart self, ResourceHandler handler) {
+		return new ImageDisplay(self, handler);
 	}
-
+	
+	@Override
+	public Display visit(ImageGroup self, ResourceHandler arg) throws RuntimeException {
+		return new ImageDisplay(self, arg);
+	}
+	
 	@Override
 	public Display visit(ErrorInfo error, ResourceHandler handler) {
 		return new ErrorDisplay(error);
+	}
+	
+	@Override
+	public Display visit(Heading self, ResourceHandler arg) throws RuntimeException {
+		throw new UnsupportedOperationException();
 	}
 
 }

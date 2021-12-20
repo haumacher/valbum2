@@ -16,6 +16,9 @@ import com.google.gwt.user.client.Timer;
 import de.haumacher.imageServer.client.ui.Display;
 import de.haumacher.imageServer.client.ui.ResourceControlProvider;
 import de.haumacher.imageServer.client.ui.UIContext;
+import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.FolderResource;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.imageServer.shared.util.UpdateTransient;
@@ -42,6 +45,11 @@ import elemental2.dom.Window;
  */
 public class App implements EntryPoint, UIContext {
 	
+	/**
+	 * Suffix to a regular picture URI if the group is referenced that the picture is a representative for.
+	 */
+	static final String ALTERNATIVES_SUFFIX = "/alternatives/";
+
 	private static final Logger LOG = Logger.getLogger(App.class.getName());
 	
 	/**
@@ -137,8 +145,34 @@ public class App implements EntryPoint, UIContext {
 	}
 
 	private void loadPage(String path, boolean back) {
-		String url = _contextPath + Settings.DATA_PREFIX + path + "?type=json";
-		RequestBuilder builder = new RequestBuilder(RequestBuilder.GET, url);
+		int slashIdx = path.lastIndexOf('/');
+		String pictureId;
+		String albumPath;
+		boolean isGroup;
+		if (slashIdx >= 0 && slashIdx < path.length() - 1) {
+			pictureId = path.substring(slashIdx + 1);
+			albumPath = path.substring(0, slashIdx + 1);
+			isGroup = false;
+		} else {
+			if (path.endsWith(ALTERNATIVES_SUFFIX)) {
+				int dirIdx = path.lastIndexOf('/', path.length() - ALTERNATIVES_SUFFIX.length());
+				if (dirIdx >= 0) {
+					albumPath = path.substring(0, dirIdx + 1);
+					pictureId = path.substring(dirIdx + 1, path.length() - ALTERNATIVES_SUFFIX.length() + 1);
+				} else {
+					albumPath = "/";
+					pictureId = path.substring(0, path.length() - ALTERNATIVES_SUFFIX.length() + 1);
+				}
+				isGroup = true;
+			} else {
+				albumPath = path;
+				pictureId = null;
+				isGroup = false;
+			}
+		}
+		
+		String albumUrl = _contextPath + Settings.DATA_PREFIX + albumPath + "?type=json";
+		RequestBuilder builder = new RequestBuilder(RequestBuilder.GET, albumUrl);
 		try {
 			builder.sendRequest(null, new RequestCallback() {
 				@Override
@@ -147,24 +181,35 @@ public class App implements EntryPoint, UIContext {
 						JsonReader json = new JsonReader(new StringR(response.getText()));
 						
 						try {
-							Resource resource = Resource.readResource(json);
+							Resource resource = AlbumInfo.readResource(json);
 							UpdateTransient.updateTransient(resource);
-							updatePage(path, resource, back);
+							if (resource instanceof FolderResource<?>) {
+								((FolderResource<?>) resource).setPath(albumPath);
+							}
+							if (pictureId != null && resource instanceof AlbumInfo) {
+								ImagePart imagePart = ((AlbumInfo) resource).getImageByName().get(pictureId);
+								if (isGroup) {
+									resource = imagePart.getGroup();
+								} else {
+									resource = imagePart;
+								}
+							}
+							showPage(resource, back);
 						} catch (IOException ex) {
-							displayError("Couldn't parse response from '" + url + "': " + response.getText());
+							displayError("Couldn't parse response from '" + albumUrl + "': " + response.getText());
 						}
 					} else {
-						displayError("Couldn't retrieve JSON (" + response.getText() + "): " + url);
+						displayError("Couldn't retrieve JSON (" + response.getText() + "): " + albumUrl);
 					}
 				}
 
 				@Override
 				public void onError(Request request, Throwable exception) {
-					displayError("Couldn’t retrieve JSON: " + url);
+					displayError("Couldn’t retrieve JSON: " + albumUrl);
 				}
 			});
 		} catch (RequestException ex) {
-			displayError("Couldn’t retrieve JSON: " + url);
+			displayError("Couldn’t retrieve JSON: " + albumUrl);
 		}
 	}
 	
@@ -178,7 +223,17 @@ public class App implements EntryPoint, UIContext {
 		gotoTarget(newPath, true);
 	}
 	
-	void updatePage(String path, Resource resource, boolean back) {
+	/**
+	 * Shows the given {@link Resource}.
+	 *
+	 * @param resource
+	 *        The {@link Resource} to display.
+	 * @param back
+	 *        Whether the navigation was issued by pressing backspace. If this is the case, no navigation history entry
+	 *        is created.
+	 */
+	public void showPage(Resource resource, boolean back) {
+		String path = resource.visit(ToPath.INSTANCE, null);
 		setBaseUrl(currentDir(path));
 		setDisplay(path, resource);
 		renderPage();
@@ -246,7 +301,7 @@ public class App implements EntryPoint, UIContext {
 			protected void attrNonNull(String name, CharSequence value) {
 				super.attrNonNull(name, value);
 				
-				if (HTML.HREF_ATTR.equals(name)) {
+				if (HTML.HREF_ATTR.equals(name) && !"#".equals(value)) {
 					Element current = current();
 					if (HTML.A.equalsIgnoreCase(current.tagName)) {
 					    current.addEventListener("click", App.this::handleNavigation);
@@ -296,10 +351,12 @@ public class App implements EntryPoint, UIContext {
 	}
 
 	/** 
-	 * Navigates to a new resource.
-	 *
-	 * @param href URL of the target resource to display.
+	 * Navigates to the given resource.
 	 */
+	public void gotoTarget(Resource resource) {
+		showPage(resource, false);
+	}
+	
 	public void gotoTarget(String href) {
 		gotoTarget(href, false);
 	}

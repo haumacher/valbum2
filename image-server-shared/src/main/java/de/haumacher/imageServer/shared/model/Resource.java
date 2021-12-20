@@ -11,11 +11,17 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 		/** Type literal for {@link AlbumInfo}. */
 		ALBUM_INFO,
 
-		/** Type literal for {@link ImageInfo}. */
-		IMAGE_INFO,
-
 		/** Type literal for {@link ListingInfo}. */
 		LISTING_INFO,
+
+		/** Type literal for {@link Heading}. */
+		HEADING,
+
+		/** Type literal for {@link ImageGroup}. */
+		IMAGE_GROUP,
+
+		/** Type literal for {@link ImagePart}. */
+		IMAGE_PART,
 
 		/** Type literal for {@link ErrorInfo}. */
 		ERROR_INFO,
@@ -24,26 +30,12 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 	}
 
 	/** Visitor interface for the {@link Resource} hierarchy.*/
-	public interface Visitor<R,A> {
-
-		/** Visit case for {@link AlbumInfo}.*/
-		R visit(AlbumInfo self, A arg);
-
-		/** Visit case for {@link ImageInfo}.*/
-		R visit(ImageInfo self, A arg);
-
-		/** Visit case for {@link ListingInfo}.*/
-		R visit(ListingInfo self, A arg);
+	public interface Visitor<R,A,E extends Throwable> extends FolderResource.Visitor<R,A,E>, AlbumPart.Visitor<R,A,E> {
 
 		/** Visit case for {@link ErrorInfo}.*/
-		R visit(ErrorInfo self, A arg);
+		R visit(ErrorInfo self, A arg) throws E;
 
 	}
-
-	/** @see #getDepth() */
-	private static final String DEPTH = "depth";
-
-	private int _depth = 0;
 
 	/**
 	 * Creates a {@link Resource} instance.
@@ -55,20 +47,8 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 	/** The type code of this instance. */
 	public abstract TypeKind kind();
 
-	/**
-	 * The nesting level of this {@link Resource}.
-	 */
-	public final int getDepth() {
-		return _depth;
-	}
-
-	/**
-	 * @see #getDepth()
-	 */
-	public final Resource setDepth(int value) {
-		_depth = value;
-		return this;
-	}
+	/** The type identifier for this concrete subtype. */
+	public abstract String jsonType();
 
 	/** Reads a new instance from the given reader. */
 	public static Resource readResource(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
@@ -76,10 +56,12 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 		in.beginArray();
 		String type = in.nextString();
 		switch (type) {
-			case AlbumInfo.ALBUM_INFO__TYPE: result = AlbumInfo.readAlbumInfo(in); break;
-			case ImageInfo.IMAGE_INFO__TYPE: result = ImageInfo.readImageInfo(in); break;
-			case ListingInfo.LISTING_INFO__TYPE: result = ListingInfo.readListingInfo(in); break;
-			case ErrorInfo.ERROR_INFO__TYPE: result = ErrorInfo.readErrorInfo(in); break;
+			case ErrorInfo.ERROR_INFO__TYPE: result = de.haumacher.imageServer.shared.model.ErrorInfo.readErrorInfo(in); break;
+			case AlbumInfo.ALBUM_INFO__TYPE: result = de.haumacher.imageServer.shared.model.AlbumInfo.readAlbumInfo(in); break;
+			case ListingInfo.LISTING_INFO__TYPE: result = de.haumacher.imageServer.shared.model.ListingInfo.readListingInfo(in); break;
+			case Heading.HEADING__TYPE: result = de.haumacher.imageServer.shared.model.Heading.readHeading(in); break;
+			case ImageGroup.IMAGE_GROUP__TYPE: result = de.haumacher.imageServer.shared.model.ImageGroup.readImageGroup(in); break;
+			case ImagePart.IMAGE_PART__TYPE: result = de.haumacher.imageServer.shared.model.ImagePart.readImagePart(in); break;
 			default: in.skipValue(); result = null; break;
 		}
 		in.endArray();
@@ -94,26 +76,8 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 		out.endArray();
 	}
 
-	/** The type identifier for this concrete subtype. */
-	public abstract String jsonType();
-
-	@Override
-	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
-		super.writeFields(out);
-		out.name(DEPTH);
-		out.value(getDepth());
-	}
-
-	@Override
-	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
-		switch (field) {
-			case DEPTH: setDepth(in.nextInt()); break;
-			default: super.readField(in, field);
-		}
-	}
-
 	/** Accepts the given visitor. */
-	public abstract <R,A> R visit(Visitor<R,A> v, A arg);
+	public abstract <R,A,E extends Throwable> R visit(Visitor<R,A,E> v, A arg) throws E;
 
 
 }

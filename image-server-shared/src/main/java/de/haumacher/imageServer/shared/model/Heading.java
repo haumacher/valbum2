@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * A heading row separating images in an album.
  */
-public class Heading extends AlbumPart {
+public class Heading extends AlbumPart<Heading> {
 
 	/**
 	 * Creates a {@link Heading} instance.
@@ -30,6 +30,11 @@ public class Heading extends AlbumPart {
 	}
 
 	@Override
+	protected final Heading self() {
+		return this;
+	}
+
+	@Override
 	public TypeKind kind() {
 		return TypeKind.HEADING;
 	}
@@ -49,6 +54,11 @@ public class Heading extends AlbumPart {
 		return this;
 	}
 
+	@Override
+	public String jsonType() {
+		return HEADING__TYPE;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static Heading readHeading(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		Heading result = new Heading();
@@ -56,11 +66,6 @@ public class Heading extends AlbumPart {
 		result.readFields(in);
 		in.endObject();
 		return result;
-	}
-
-	@Override
-	public String jsonType() {
-		return HEADING__TYPE;
 	}
 
 	@Override
@@ -79,7 +84,7 @@ public class Heading extends AlbumPart {
 	}
 
 	@Override
-	public <R,A> R visit(AlbumPart.Visitor<R,A> v, A arg) {
+	public <R,A,E extends Throwable> R visit(AlbumPart.Visitor<R,A,E> v, A arg) throws E {
 		return v.visit(this, arg);
 	}
 

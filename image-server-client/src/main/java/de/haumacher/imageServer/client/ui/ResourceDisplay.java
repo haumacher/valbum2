@@ -9,14 +9,13 @@ import java.io.IOException;
 
 import de.haumacher.imageServer.client.app.App;
 import de.haumacher.imageServer.client.app.ControlHandler;
-import de.haumacher.imageServer.client.app.KeyCodes;
 import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.CssClasses;
-import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Element;
 import elemental2.dom.Event;
+import elemental2.dom.EventListener;
 import elemental2.dom.KeyboardEvent;
 
 /**
@@ -40,25 +39,29 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 		_handler = handler;
 	}
 
-	protected void writeAlbumToolbar(DomBuilder out, boolean isFile, CharSequence parentUrl) throws IOException {
+	protected void writeAlbumToolbar(DomBuilder out, boolean isFile, EventListener gotoParent) throws IOException {
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, CssClasses.TOOLBAR);
 		{
-			out.begin(A);
-			out.classAttr(CssClasses.TOOLBAR_BUTTON);
-			out.attr(HREF_ATTR, parentUrl);
-			{
-				RenderUtil.icon(out, "fas fa-home");
+			if (gotoParent != null) {
+				out.begin(A);
+				out.classAttr(CssClasses.TOOLBAR_BUTTON);
+				out.attr(HREF_ATTR, "#");
+				{
+					RenderUtil.icon(out, "fas fa-home");
+				}
+				out.end();
+				out.getLast().addEventListener("click", e -> {App.getInstance().gotoTarget("/"); e.stopPropagation(); e.preventDefault(); });
+				
+				out.begin(A);
+				out.classAttr(CssClasses.TOOLBAR_BUTTON);
+				out.attr(HREF_ATTR, "#");
+				{
+					RenderUtil.icon(out, "fas fa-chevron-up");
+				}
+				out.end();
+				out.getLast().addEventListener("click", gotoParent);
 			}
-			out.end();
-
-			out.begin(A);
-			out.classAttr(CssClasses.TOOLBAR_BUTTON);
-			out.attr(HREF_ATTR, isFile ? "./" : "../");
-			{
-				RenderUtil.icon(out, "fas fa-chevron-up");
-			}
-			out.end();
 			
 			out.begin(DIV);
 			out.attr(CLASS_ATTR, CssClasses.TOOLBAR_RIGHT);
@@ -140,39 +143,15 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 		switch (event.type) {
 			case "keydown": {
 				String key = ((KeyboardEvent) event).key;
-				return handleKeyDown(target, key);
+				return handleKeyDown(target, event, key);
 			}
 			default:
 				return false;
 		}
 	}
 
-	protected boolean handleKeyDown(Element target, String key) {
-		switch (key) {
-			case KeyCodes.Escape:
-				return navigate(target, DataAttributes.DATA_ESCAPE);
-			case KeyCodes.ArrowUp:
-				return navigate(target, DataAttributes.DATA_UP);
-			case KeyCodes.ArrowLeft:
-				return navigate(target, DataAttributes.DATA_LEFT);
-			case KeyCodes.ArrowRight:
-				return navigate(target, DataAttributes.DATA_RIGHT);
-			case KeyCodes.Home:
-				return navigate(target, DataAttributes.DATA_HOME);
-			case KeyCodes.End:
-				return navigate(target, DataAttributes.DATA_END);
-			default:
-				return false;
-		}
-	}
-
-	private boolean navigate(Element target, String navigationAttr) {
-		Element page = target.ownerDocument.getElementById("page");
-		if (page != null && page.hasAttribute(navigationAttr)) {
-			String url = page.getAttribute(navigationAttr);
-			App.getInstance().gotoTarget(url);
-		}
-		return false;
+	protected boolean handleKeyDown(Element target, Event event, String key) {
+		return true;
 	}
 
 }

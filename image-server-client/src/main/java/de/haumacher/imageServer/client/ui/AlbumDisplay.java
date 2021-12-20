@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import de.haumacher.imageServer.client.app.App;
 import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -23,12 +24,12 @@ import de.haumacher.imageServer.shared.model.Heading;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.ui.CssClasses;
-import de.haumacher.imageServer.shared.ui.DataAttributes;
 import de.haumacher.imageServer.shared.ui.ImageRow;
 import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
 import elemental2.dom.Element;
+import elemental2.dom.Event;
 import elemental2.dom.MouseEvent;
 
 /**
@@ -61,14 +62,10 @@ public class AlbumDisplay extends ResourceDisplay {
 	@Override
 	protected void render(UIContext context, DomBuilder out) throws IOException {
 		int width = context.getPageWidth();
-		String parentUrl = RenderUtil.parentUrl(_album.getDepth());
 
 		out.begin(DIV);
 		out.attr(ID_ATTR, "page");
 		out.attr(CLASS_ATTR, classes());
-		if (parentUrl != null) {
-			out.attr(DataAttributes.DATA_ESCAPE, parentUrl);
-		}
 		
 		out.begin(H1);
 		out.classAttr(CssClasses.HEADER);
@@ -110,9 +107,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		}
 		out.end();
 		
-		if (parentUrl != null) {
-			writeAlbumToolbar(out, false, parentUrl);
-		}
+		writeAlbumToolbar(out, false, this::showParent);
 		out.end();
 	}
 
@@ -239,8 +234,8 @@ public class AlbumDisplay extends ResourceDisplay {
 
 	public void groupSelection(AbstractImage representative) {
 		ImageGroup group = ImageGroup.create();
-		for (AbstractImage selected : _selected) {
-			selected.visit(new AbstractImage.Visitor<Void, List<ImagePart>>() {
+		for (AbstractImage<?> selected : _selected) {
+			selected.visit(new AbstractImage.Visitor<Void, List<ImagePart>, RuntimeException>() {
 				@Override
 				public Void visit(ImageGroup self, List<ImagePart> arg) {
 					arg.addAll(self.getImages());
@@ -258,7 +253,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		Collections.sort(group.getImages(), (a, b) -> Long.compare(a.getDate(), b.getDate()));
 		group.setRepresentative(group.getImages().indexOf(ToImage.toImage(representative)));
 		
-		List<AlbumPart> newParts = _album.getParts().stream().map(p -> p == representative ? group : p).filter(p -> !_selected.contains(p)).collect(Collectors.toList());
+		List<AlbumPart<?>> newParts = _album.getParts().stream().map(p -> p == representative ? group : p).filter(p -> !_selected.contains(p)).collect(Collectors.toList());
 		_album.setParts(newParts);
 		
 		_selected.clear();
@@ -267,7 +262,7 @@ public class AlbumDisplay extends ResourceDisplay {
 	}
 	
 	@Override
-	protected boolean handleKeyDown(Element target, String key) {
+	protected boolean handleKeyDown(Element target, Event event, String key) {
 		switch (key) {
 		case "+": {
 			if (_minRating > -1) {
@@ -286,12 +281,19 @@ public class AlbumDisplay extends ResourceDisplay {
 			return false;
 		}
 		}
-		return super.handleKeyDown(target, key);
+		return super.handleKeyDown(target, event, key);
 	}
 	
 	@Override
 	protected void openSettings() {
 		new AlbumPropertiesEditor(this, _album).showTopLevel(context());
+	}
+
+	private void showParent(Event event) {
+		String parentUrl = RenderUtil.parentUrl(_album.getPath());
+		App.getInstance().gotoTarget(parentUrl);
+		event.stopPropagation();
+		event.preventDefault();
 	}
 
 }

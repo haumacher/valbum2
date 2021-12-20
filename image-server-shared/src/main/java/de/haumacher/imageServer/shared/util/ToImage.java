@@ -13,7 +13,7 @@ import de.haumacher.imageServer.shared.model.ImagePart;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ToImage implements AbstractImage.Visitor<ImagePart, Void> {
+public class ToImage implements AbstractImage.Visitor<ImagePart, Void, RuntimeException> {
 	
 	/**
 	 * Singleton {@link ToImage} instance.
@@ -37,7 +37,7 @@ public class ToImage implements AbstractImage.Visitor<ImagePart, Void> {
 	/**
 	 * Invokes {@link ToImage} on the given {@link AbstractImage}.
 	 */
-	public static ImagePart toImage(AbstractImage image) {
+	public static ImagePart toImage(AbstractImage<?> image) {
 		return image.visit(INSTANCE, null);
 	}
 

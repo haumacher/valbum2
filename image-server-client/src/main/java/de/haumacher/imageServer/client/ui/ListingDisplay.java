@@ -7,6 +7,7 @@ import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
 
+import de.haumacher.imageServer.client.app.App;
 import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ListingInfo;
@@ -107,10 +108,8 @@ public class ListingDisplay extends ResourceDisplay {
 		}
 		out.end();
 		
-		String parentUrl = RenderUtil.parentUrl(_listing.getDepth());
-		if (parentUrl != null) {
-			writeAlbumToolbar(out, false, parentUrl);
-		}
+		String parentUrl = RenderUtil.parentUrl(_listing.getPath());
+		writeAlbumToolbar(out, false, e -> {App.getInstance().gotoTarget(parentUrl); e.stopPropagation(); e.preventDefault();});
 	}
 
 }

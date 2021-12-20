@@ -22,15 +22,12 @@ public class RenderUtil {
 		out.end();
 	}
 
-	public static String parentUrl(int depth) {
-		if (depth == 0) {
-			return null;
+	public static String parentUrl(String path) {
+		int slashIndex = path.endsWith("/") ? path.lastIndexOf('/', path.length() - 2) : path.lastIndexOf('/');
+		if (slashIndex < 0) {
+			return "/";
 		}
-		StringBuilder result = new StringBuilder();
-		for (int n = 0; n < depth; n++) {
-			result.append("../");
-		}
-		return result.toString();
+		return path.substring(0, slashIndex + 1);
 	}
 
 }

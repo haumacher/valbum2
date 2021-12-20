@@ -3,33 +3,59 @@ package de.haumacher.imageServer.shared.model;
 /**
  * {@link Resource} describing a single image or video file.
  */
-public class ImagePart extends AbstractImage {
+public class ImagePart extends AbstractImage<ImagePart> {
 
 	/**
 	 * Kind of image.
 	 */
-	public enum Kind {
+	public enum Kind implements de.haumacher.msgbuf.data.ProtocolEnum {
 
 		/**
 		 * A still image.
 		 */
-		IMAGE,
+		IMAGE("IMAGE"),
 
 		/**
 		 * A video.
 		 */
-		VIDEO,
+		VIDEO("VIDEO"),
 
 		;
 
+		private final String _protocolName;
+
+		private Kind(String protocolName) {
+			_protocolName = protocolName;
+		}
+
+		/**
+		 * The protocol name of a {@link Kind} constant.
+		 *
+		 * @see #valueOfProtocol(String)
+		 */
+		@Override
+		public String protocolName() {
+			return _protocolName;
+		}
+
+		/** Looks up a {@link Kind} constant by it's protocol name. */
+		public static Kind valueOfProtocol(String protocolName) {
+			if (protocolName == null) { return null; }
+			switch (protocolName) {
+				case "IMAGE": return IMAGE;
+				case "VIDEO": return VIDEO;
+			}
+			return IMAGE;
+		}
+
 		/** Writes this instance to the given output. */
 		public final void writeTo(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
-			out.value(name());
+			out.value(protocolName());
 		}
 
 		/** Reads a new instance from the given reader. */
 		public static Kind readKind(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
-			return valueOf(in.nextString());
+			return valueOfProtocol(in.nextString());
 		}
 
 		/** Writes this instance to the given binary output. */
@@ -61,9 +87,6 @@ public class ImagePart extends AbstractImage {
 	/** Identifier for the {@link ImagePart} type in JSON format. */
 	public static final String IMAGE_PART__TYPE = "ImagePart";
 
-	/** @see #getOwner() */
-	private static final String OWNER = "owner";
-
 	/** @see #getKind() */
 	private static final String KIND = "kind";
 
@@ -85,21 +108,10 @@ public class ImagePart extends AbstractImage {
 	/** @see #getComment() */
 	private static final String COMMENT = "comment";
 
-	/** @see #getPrevious() */
-	private static final String PREVIOUS = "previous";
+	/** @see #getGroup() */
+	private static final String GROUP = "group";
 
-	/** @see #getNext() */
-	private static final String NEXT = "next";
-
-	/** @see #getHome() */
-	private static final String HOME = "home";
-
-	/** @see #getEnd() */
-	private static final String END = "end";
-
-	private transient AlbumInfo _owner = null;
-
-	private Kind _kind = Kind.IMAGE;
+	private Kind _kind = de.haumacher.imageServer.shared.model.ImagePart.Kind.IMAGE;
 
 	private String _name = "";
 
@@ -113,13 +125,7 @@ public class ImagePart extends AbstractImage {
 
 	private String _comment = "";
 
-	private transient String _previous = "";
-
-	private transient String _next = "";
-
-	private transient String _home = "";
-
-	private transient String _end = "";
+	private transient ImageGroup _group = null;
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -131,30 +137,13 @@ public class ImagePart extends AbstractImage {
 	}
 
 	@Override
-	public TypeKind kind() {
-		return TypeKind.IMAGE_PART;
-	}
-
-	/**
-	 * The {@link AlbumInfo} this {@link ImageInfo} is part of.
-	 */
-	public final AlbumInfo getOwner() {
-		return _owner;
-	}
-
-	/**
-	 * @see #getOwner()
-	 */
-	public final ImagePart setOwner(AlbumInfo value) {
-		_owner = value;
+	protected final ImagePart self() {
 		return this;
 	}
 
-	/**
-	 * Checks, whether {@link #getOwner()} has a value.
-	 */
-	public final boolean hasOwner() {
-		return _owner != null;
+	@Override
+	public TypeKind kind() {
+		return TypeKind.IMAGE_PART;
 	}
 
 	/**
@@ -264,63 +253,30 @@ public class ImagePart extends AbstractImage {
 	}
 
 	/**
-	 * The {@link #getName()} of the previous image in the {@link #getOwner()}.
+	 * The {@link ImageGroup}, this {@link ImagePart} is part of, or <code>null</code>, if this {@link ImagePart} is not part of a group.
 	 */
-	public final String getPrevious() {
-		return _previous;
+	public final ImageGroup getGroup() {
+		return _group;
 	}
 
 	/**
-	 * @see #getPrevious()
+	 * @see #getGroup()
 	 */
-	public final ImagePart setPrevious(String value) {
-		_previous = value;
+	public final ImagePart setGroup(ImageGroup value) {
+		_group = value;
 		return this;
 	}
 
 	/**
-	 * The {@link #getName()} of the next image in the {@link #getOwner()}.
+	 * Checks, whether {@link #getGroup()} has a value.
 	 */
-	public final String getNext() {
-		return _next;
+	public final boolean hasGroup() {
+		return _group != null;
 	}
 
-	/**
-	 * @see #getNext()
-	 */
-	public final ImagePart setNext(String value) {
-		_next = value;
-		return this;
-	}
-
-	/**
-	 * The {@link #getName()} of the first image of the {@link #getOwner()}.
-	 */
-	public final String getHome() {
-		return _home;
-	}
-
-	/**
-	 * @see #getHome()
-	 */
-	public final ImagePart setHome(String value) {
-		_home = value;
-		return this;
-	}
-
-	/**
-	 * The {@link #getName()} of the last image of the {@link #getOwner()}.
-	 */
-	public final String getEnd() {
-		return _end;
-	}
-
-	/**
-	 * @see #getEnd()
-	 */
-	public final ImagePart setEnd(String value) {
-		_end = value;
-		return this;
+	@Override
+	public String jsonType() {
+		return IMAGE_PART__TYPE;
 	}
 
 	/** Reads a new instance from the given reader. */
@@ -330,11 +286,6 @@ public class ImagePart extends AbstractImage {
 		result.readFields(in);
 		in.endObject();
 		return result;
-	}
-
-	@Override
-	public String jsonType() {
-		return IMAGE_PART__TYPE;
 	}
 
 	@Override
@@ -359,7 +310,7 @@ public class ImagePart extends AbstractImage {
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case KIND: setKind(Kind.readKind(in)); break;
+			case KIND: setKind(de.haumacher.imageServer.shared.model.ImagePart.Kind.readKind(in)); break;
 			case NAME: setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case DATE: setDate(in.nextLong()); break;
 			case WIDTH: setWidth(in.nextInt()); break;
@@ -371,7 +322,7 @@ public class ImagePart extends AbstractImage {
 	}
 
 	@Override
-	public <R,A> R visit(AbstractImage.Visitor<R,A> v, A arg) {
+	public <R,A,E extends Throwable> R visit(AbstractImage.Visitor<R,A,E> v, A arg) throws E {
 		return v.visit(this, arg);
 	}
 

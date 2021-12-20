@@ -111,6 +111,11 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		return _indexPicture != null;
 	}
 
+	/** The type identifier for this concrete subtype. */
+	public String jsonType() {
+		return FOLDER_INFO__TYPE;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static FolderInfo readFolderInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		FolderInfo result = new FolderInfo();
@@ -146,7 +151,7 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case NAME: setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case TITLE: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SUB_TITLE: setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case INDEX_PICTURE: setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
+			case INDEX_PICTURE: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			default: super.readField(in, field);
 		}
 	}

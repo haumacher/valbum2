@@ -2,17 +2,23 @@ package de.haumacher.imageServer.shared.model;
 
 option NoBinary;
 option NoReflection;
+option NoListener;
 
 /** Base class for a resource being displayed as view in a photo album. */
 abstract message Resource {
 
-	/** The nesting level of this {@link Resource}. */
-	int depth;
+}
+
+/** {@link Resource} representing a directory. */
+abstract message FolderResource extends Resource {
+
+	/** The path where the {@link Resource} is located on the server relative to it's base directory */
+	transient string path;
 
 }
 
-/** {@link Resource} describing collection of {@link ImageInfo}s found in a directory. */
-message AlbumInfo extends Resource {
+/** {@link Resource} describing a collection of {@link AlbumPart}s. */
+message AlbumInfo extends FolderResource {
 	/** The title of this album. */
 	string title;
 	
@@ -30,11 +36,9 @@ message AlbumInfo extends Resource {
 }
 
 /** Base class for contents of an {@link AlbumInfo}. */
-abstract message AlbumPart {
-}
-
-/** Part of an album that can be represented as an image. */
-abstract message AbstractImage extends AlbumPart {
+abstract message AlbumPart extends Resource {
+	/** The {@link AlbumInfo}, this one is part of. */
+	transient AlbumInfo owner;
 }
 
 /** A heading row separating images in an album. */
@@ -45,6 +49,21 @@ message Heading extends AlbumPart {
 
 }
 
+/** Part of an album that can be represented as an image. */
+abstract message AbstractImage extends AlbumPart {
+	/** The previous image in the {@link #owner}. */
+	transient AbstractImage previous;
+	
+	/** The next image in the {@link #owner}. */
+	transient AbstractImage next;
+	
+	/** The first image of the {@link #owner}. */
+	transient AbstractImage home;
+	
+	/** The last image of the {@link #owner}. */
+	transient AbstractImage end;
+}
+
 /** A group of multiple images showing the same content. */
 message ImageGroup extends AbstractImage {
 
@@ -53,25 +72,6 @@ message ImageGroup extends AbstractImage {
 
 	/** List of images that all show the same content. Only the image with  in this album. */
 	repeated ImagePart images;
-
-}
-
-/** Description of a single image resource part of an album. */
-message ImageInfo extends Resource {
-	/** Information about the image contents. */
-	ImagePart image;
-	
-	/** The {@link #name} of the previous image in the {@link #owner}. */
-	string previous;
-	
-	/** The {@link #name} of the next image in the {@link #owner}. */
-	string next;
-	
-	/** The {@link #name} of the first image of the {@link #owner}. */
-	string home;
-	
-	/** The {@link #name} of the last image of the {@link #owner}. */
-	string end;
 
 }
 
@@ -87,9 +87,6 @@ message ImagePart extends AbstractImage {
 		VIDEO;
 	}
 
-	/** The {@link AlbumInfo} this {@link ImageInfo} is part of. */
-	transient AlbumInfo owner;
-	
 	/** The kind of this {@link ImageInfo}. */
 	Kind kind;
 	
@@ -110,25 +107,13 @@ message ImagePart extends AbstractImage {
 	
 	/** A comment describing what this image contains. */
 	string comment;
-
-	/** The {@link #name} of the previous image in the {@link #owner}. */
-	transient string previous;
 	
-	/** The {@link #name} of the next image in the {@link #owner}. */
-	transient string next;
-	
-	/** The {@link #name} of the first image of the {@link #owner}. */
-	transient string home;
-	
-	/** The {@link #name} of the last image of the {@link #owner}. */
-	transient string end;
+	/** The {@link ImageGroup}, this {@link ImagePart} is part of, or <code>null</code>, if this {@link ImagePart} is not part of a group. */
+	transient ImageGroup group;
 }
 
 /** {@link Resource} describing collection {@link FolderInfo}s found in a directory. */
-message ListingInfo extends Resource {
-	/** The directory name of this {@link ListingInfo}. */
-	string name;
-	
+message ListingInfo extends FolderResource {
 	/** The title to display for this {@link ListingInfo}. */
 	string title;
 	

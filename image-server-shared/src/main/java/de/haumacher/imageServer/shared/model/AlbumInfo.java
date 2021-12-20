@@ -1,9 +1,9 @@
 package de.haumacher.imageServer.shared.model;
 
 /**
- * {@link Resource} describing collection of {@link ImageInfo}s found in a directory.
+ * {@link Resource} describing a collection of {@link AlbumPart}s.
  */
-public class AlbumInfo extends Resource {
+public class AlbumInfo extends FolderResource<AlbumInfo> {
 
 	/**
 	 * Creates a {@link AlbumInfo} instance.
@@ -36,7 +36,7 @@ public class AlbumInfo extends Resource {
 
 	private ThumbnailInfo _indexPicture = null;
 
-	private final java.util.List<AlbumPart> _parts = new java.util.ArrayList<>();
+	private final java.util.List<AlbumPart<?>> _parts = new java.util.ArrayList<>();
 
 	private transient final java.util.Map<String, ImagePart> _imageByName = new java.util.HashMap<>();
 
@@ -47,6 +47,11 @@ public class AlbumInfo extends Resource {
 	 */
 	protected AlbumInfo() {
 		super();
+	}
+
+	@Override
+	protected final AlbumInfo self() {
+		return this;
 	}
 
 	@Override
@@ -109,14 +114,14 @@ public class AlbumInfo extends Resource {
 	/**
 	 * The list of images in this album.
 	 */
-	public final java.util.List<AlbumPart> getParts() {
+	public final java.util.List<AlbumPart<?>> getParts() {
 		return _parts;
 	}
 
 	/**
 	 * @see #getParts()
 	 */
-	public final AlbumInfo setParts(java.util.List<AlbumPart> value) {
+	public final AlbumInfo setParts(java.util.List<AlbumPart<?>> value) {
 		if (value == null) throw new IllegalArgumentException("Property 'parts' cannot be null.");
 		_parts.clear();
 		_parts.addAll(value);
@@ -126,8 +131,16 @@ public class AlbumInfo extends Resource {
 	/**
 	 * Adds a value to the {@link #getParts()} list.
 	 */
-	public final AlbumInfo addPart(AlbumPart value) {
+	public final AlbumInfo addPart(AlbumPart<?> value) {
 		_parts.add(value);
+		return this;
+	}
+
+	/**
+	 * Removes a value from the {@link #getParts()} list.
+	 */
+	public final AlbumInfo removePart(AlbumPart<?> value) {
+		_parts.remove(value);
 		return this;
 	}
 
@@ -151,11 +164,25 @@ public class AlbumInfo extends Resource {
 	/**
 	 * Adds a value to the {@link #getImageByName()} map.
 	 */
-	public final void putImageByName(String key, ImagePart value) {
+	public final AlbumInfo putImageByName(String key, ImagePart value) {
 		if (_imageByName.containsKey(key)) {
 			throw new IllegalArgumentException("Property 'imageByName' already contains a value for key '" + key + "'.");
 		}
 		_imageByName.put(key, value);
+		return this;
+	}
+
+	/**
+	 * Removes a key from the {@link #getImageByName()} map.
+	 */
+	public final AlbumInfo removeImageByName(String key) {
+		_imageByName.remove(key);
+		return this;
+	}
+
+	@Override
+	public String jsonType() {
+		return ALBUM_INFO__TYPE;
 	}
 
 	/** Reads a new instance from the given reader. */
@@ -165,11 +192,6 @@ public class AlbumInfo extends Resource {
 		result.readFields(in);
 		in.endObject();
 		return result;
-	}
-
-	@Override
-	public String jsonType() {
-		return ALBUM_INFO__TYPE;
 	}
 
 	@Override
@@ -185,7 +207,7 @@ public class AlbumInfo extends Resource {
 		}
 		out.name(PARTS);
 		out.beginArray();
-		for (AlbumPart x : getParts()) {
+		for (AlbumPart<?> x : getParts()) {
 			x.writeTo(out);
 		}
 		out.endArray();
@@ -196,11 +218,11 @@ public class AlbumInfo extends Resource {
 		switch (field) {
 			case TITLE: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SUB_TITLE: setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
-			case INDEX_PICTURE: setIndexPicture(ThumbnailInfo.readThumbnailInfo(in)); break;
+			case INDEX_PICTURE: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			case PARTS: {
 				in.beginArray();
 				while (in.hasNext()) {
-					addPart(AlbumPart.readAlbumPart(in));
+					addPart(de.haumacher.imageServer.shared.model.AlbumPart.readAlbumPart(in));
 				}
 				in.endArray();
 			}
@@ -210,7 +232,7 @@ public class AlbumInfo extends Resource {
 	}
 
 	@Override
-	public <R,A> R visit(Resource.Visitor<R,A> v, A arg) {
+	public <R,A,E extends Throwable> R visit(FolderResource.Visitor<R,A,E> v, A arg) throws E {
 		return v.visit(this, arg);
 	}
 

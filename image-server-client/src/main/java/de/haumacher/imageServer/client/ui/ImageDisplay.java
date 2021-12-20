@@ -7,14 +7,18 @@ import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
 
+import de.haumacher.imageServer.client.app.App;
+import de.haumacher.imageServer.client.app.KeyCodes;
 import de.haumacher.imageServer.client.app.Pos;
 import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.client.app.TXInfo;
-import de.haumacher.imageServer.shared.model.ImageInfo;
+import de.haumacher.imageServer.client.app.ToPath;
+import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
+import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.CSSStyleDeclaration;
@@ -34,19 +38,19 @@ import jsinterop.base.Js;
  */
 public class ImageDisplay extends ResourceDisplay {
 
-	private ImageInfo _image;
+	private AbstractImage<?> _image;
 
 	/** 
 	 * Creates a {@link ImageDisplay}.
 	 */
-	public ImageDisplay(ImageInfo image, ResourceHandler handler) {
+	public ImageDisplay(AbstractImage<?> image, ResourceHandler handler) {
 		super(handler);
 		_image = image;
 	}
 	
 	@Override
 	protected Resource getResource() {
-		return _image;
+		return _image.getOwner();
 	}
 
 	@Override
@@ -55,25 +59,11 @@ public class ImageDisplay extends ResourceDisplay {
 		out.attr(ID_ATTR, "page");
 		out.attr(CLASS_ATTR, CssClasses.IMAGE_PAGE);
 
-		String previous = _image.getPrevious();
-		String previousUrl = previous == null ? null : previous;
-		if (previousUrl != null) {
-			out.attr(DataAttributes.DATA_LEFT, previousUrl);
-		}
-		
-		String next = _image.getNext();
-		String nextUrl = next == null ? null : next;
-		if (nextUrl != null) {
-			out.attr(DataAttributes.DATA_RIGHT, nextUrl);
-		}
+		AbstractImage<?> previous = _image.getPrevious();
+		AbstractImage<?> next = _image.getNext();
 
-		out.attr(DataAttributes.DATA_ESCAPE, "./");
-		out.attr(DataAttributes.DATA_UP, "./");
-		out.attr(DataAttributes.DATA_HOME, _image.getHome());
-		out.attr(DataAttributes.DATA_END, _image.getEnd());
-		
+		ImagePart imagePart = ToImage.toImage(_image);
 		{
-			ImagePart imagePart = _image.getImage();
 			switch (imagePart.getKind()) {
 				case IMAGE: {
 					out.begin(DIV);
@@ -109,9 +99,9 @@ public class ImageDisplay extends ResourceDisplay {
 				}
 			}
 			
-			if (previousUrl != null) {
+			if (previous != null) {
 				out.begin(A);
-				out.attr(HREF_ATTR, previousUrl);
+				out.attr(HREF_ATTR, "#");
 				out.attr(CLASS_ATTR, CssClasses.GOTO_PREVIOUS + " " + CssClasses.HOVER_PANE);
 				{
 					out.begin(DIV);
@@ -127,11 +117,13 @@ public class ImageDisplay extends ResourceDisplay {
 					out.end();
 				}
 				out.end();
+				
+				out.getLast().addEventListener("click", this::showPrevious);
 			}
 			
-			if (nextUrl != null) {
+			if (next != null) {
 				out.begin(A);
-				out.attr(HREF_ATTR, nextUrl);
+				out.attr(HREF_ATTR, "#");
 				out.attr(CLASS_ATTR, CssClasses.GOTO_NEXT + " " + CssClasses.HOVER_PANE);
 				{
 					out.begin(DIV);
@@ -147,15 +139,14 @@ public class ImageDisplay extends ResourceDisplay {
 					out.end();
 				}
 				out.end();
+				
+				out.getLast().addEventListener("click", this::showNext);
 			}
 			
-			String parentUrl = RenderUtil.parentUrl(_image.getDepth());
-			if (parentUrl != null) {
-				writeAlbumToolbar(out, true, parentUrl);
-			}
+			writeAlbumToolbar(out, true, this::showParent);
 		}
 		
-		String comment = _image.getImage().getComment();
+		String comment = imagePart.getComment();
 		if (comment != null && !comment.isEmpty()) {
 			out.beginDiv("va-comment");
 			out.append(comment);
@@ -181,6 +172,33 @@ public class ImageDisplay extends ResourceDisplay {
 			default:
 				return super.handleEvent(target, event);
 		}
+	}
+	
+	@Override
+	protected boolean handleKeyDown(Element target, Event event, String key) {
+		switch (key) {
+			case KeyCodes.Escape:
+			case KeyCodes.ArrowUp:
+				showParent(event);
+				return false;
+				
+			case KeyCodes.ArrowLeft:
+				showPrevious(event);
+				return false;
+				
+			case KeyCodes.ArrowRight:
+				return showNext(event);
+				
+			case KeyCodes.Home:
+				showFirst(event);
+				return false;
+				
+			case KeyCodes.End:
+				showLast(event);
+				return false;
+		}
+		
+		return super.handleKeyDown(target, event, key);
 	}
 
 	private void onImageZoom(WheelEvent event) {
@@ -380,6 +398,39 @@ public class ImageDisplay extends ResourceDisplay {
 
 	private Pos dragInfo(HTMLElement container) {
 		return Native.get(container, "dragInfo");
+	}
+
+	private boolean showNext(Event event) {
+		return show(event, _image.getNext());
+	}
+
+	private boolean showPrevious(Event event) {
+		return show(event, _image.getPrevious());
+	}
+
+	private boolean showFirst(Event event) {
+		return show(event, _image.getHome());
+	}
+	
+	private boolean showLast(Event event) {
+		return show(event, _image.getEnd());
+	}
+	
+	private boolean show(Event event, Resource other) {
+		if (other != null) {
+			App.getInstance().gotoTarget(other);
+		}
+		event.stopPropagation();
+		event.preventDefault();
+		return false;
+	}
+
+	private void showParent(Event event) {
+		String path = _image.visit(ToPath.INSTANCE, null);
+		String parent = RenderUtil.parentUrl(path);
+		App.getInstance().gotoTarget(parent);
+		event.stopPropagation();
+		event.preventDefault();
 	}
 	
 }

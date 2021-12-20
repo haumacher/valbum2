@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * A group of multiple images showing the same content.
  */
-public class ImageGroup extends AbstractImage {
+public class ImageGroup extends AbstractImage<ImageGroup> {
 
 	/**
 	 * Creates a {@link ImageGroup} instance.
@@ -32,6 +32,11 @@ public class ImageGroup extends AbstractImage {
 	 */
 	protected ImageGroup() {
 		super();
+	}
+
+	@Override
+	protected final ImageGroup self() {
+		return this;
 	}
 
 	@Override
@@ -79,6 +84,19 @@ public class ImageGroup extends AbstractImage {
 		return this;
 	}
 
+	/**
+	 * Removes a value from the {@link #getImages()} list.
+	 */
+	public final ImageGroup removeImage(ImagePart value) {
+		_images.remove(value);
+		return this;
+	}
+
+	@Override
+	public String jsonType() {
+		return IMAGE_GROUP__TYPE;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static ImageGroup readImageGroup(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		ImageGroup result = new ImageGroup();
@@ -86,11 +104,6 @@ public class ImageGroup extends AbstractImage {
 		result.readFields(in);
 		in.endObject();
 		return result;
-	}
-
-	@Override
-	public String jsonType() {
-		return IMAGE_GROUP__TYPE;
 	}
 
 	@Override
@@ -113,7 +126,7 @@ public class ImageGroup extends AbstractImage {
 			case IMAGES: {
 				in.beginArray();
 				while (in.hasNext()) {
-					addImage(ImagePart.readImagePart(in));
+					addImage(de.haumacher.imageServer.shared.model.ImagePart.readImagePart(in));
 				}
 				in.endArray();
 			}
@@ -123,7 +136,7 @@ public class ImageGroup extends AbstractImage {
 	}
 
 	@Override
-	public <R,A> R visit(AbstractImage.Visitor<R,A> v, A arg) {
+	public <R,A,E extends Throwable> R visit(AbstractImage.Visitor<R,A,E> v, A arg) throws E {
 		return v.visit(this, arg);
 	}
 

@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * {@link Resource} describing collection {@link FolderInfo}s found in a directory.
  */
-public class ListingInfo extends Resource {
+public class ListingInfo extends FolderResource<ListingInfo> {
 
 	/**
 	 * Creates a {@link ListingInfo} instance.
@@ -15,16 +15,11 @@ public class ListingInfo extends Resource {
 	/** Identifier for the {@link ListingInfo} type in JSON format. */
 	public static final String LISTING_INFO__TYPE = "ListingInfo";
 
-	/** @see #getName() */
-	private static final String NAME = "name";
-
 	/** @see #getTitle() */
 	private static final String TITLE = "title";
 
 	/** @see #getFolders() */
 	private static final String FOLDERS = "folders";
-
-	private String _name = "";
 
 	private String _title = "";
 
@@ -40,23 +35,13 @@ public class ListingInfo extends Resource {
 	}
 
 	@Override
+	protected final ListingInfo self() {
+		return this;
+	}
+
+	@Override
 	public TypeKind kind() {
 		return TypeKind.LISTING_INFO;
-	}
-
-	/**
-	 * The directory name of this {@link ListingInfo}.
-	 */
-	public final String getName() {
-		return _name;
-	}
-
-	/**
-	 * @see #getName()
-	 */
-	public final ListingInfo setName(String value) {
-		_name = value;
-		return this;
 	}
 
 	/**
@@ -99,6 +84,19 @@ public class ListingInfo extends Resource {
 		return this;
 	}
 
+	/**
+	 * Removes a value from the {@link #getFolders()} list.
+	 */
+	public final ListingInfo removeFolder(FolderInfo value) {
+		_folders.remove(value);
+		return this;
+	}
+
+	@Override
+	public String jsonType() {
+		return LISTING_INFO__TYPE;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static ListingInfo readListingInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		ListingInfo result = new ListingInfo();
@@ -109,15 +107,8 @@ public class ListingInfo extends Resource {
 	}
 
 	@Override
-	public String jsonType() {
-		return LISTING_INFO__TYPE;
-	}
-
-	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name(NAME);
-		out.value(getName());
 		out.name(TITLE);
 		out.value(getTitle());
 		out.name(FOLDERS);
@@ -131,12 +122,11 @@ public class ListingInfo extends Resource {
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case NAME: setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case TITLE: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case FOLDERS: {
 				in.beginArray();
 				while (in.hasNext()) {
-					addFolder(FolderInfo.readFolderInfo(in));
+					addFolder(de.haumacher.imageServer.shared.model.FolderInfo.readFolderInfo(in));
 				}
 				in.endArray();
 			}
@@ -146,7 +136,7 @@ public class ListingInfo extends Resource {
 	}
 
 	@Override
-	public <R,A> R visit(Resource.Visitor<R,A> v, A arg) {
+	public <R,A,E extends Throwable> R visit(FolderResource.Visitor<R,A,E> v, A arg) throws E {
 		return v.visit(this, arg);
 	}
 

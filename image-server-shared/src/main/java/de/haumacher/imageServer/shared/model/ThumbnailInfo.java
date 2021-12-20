@@ -104,6 +104,11 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		return this;
 	}
 
+	/** The type identifier for this concrete subtype. */
+	public String jsonType() {
+		return THUMBNAIL_INFO__TYPE;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static ThumbnailInfo readThumbnailInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		ThumbnailInfo result = new ThumbnailInfo();

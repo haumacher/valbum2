@@ -45,6 +45,13 @@ public class PathInfo {
 	}
 	
 	/**
+	 * The client-side view of this path.
+	 */
+	public String toPath() {
+		return _path != null ? "/" + _path.toString() : "/";
+	}
+	
+	/**
 	 * Whether this is the top-level path.
 	 */
 	public boolean isRoot() {
