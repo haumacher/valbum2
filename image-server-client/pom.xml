@@ -46,7 +46,6 @@
 			<groupId>de.haumacher</groupId>
 			<artifactId>image-server-shared</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
-			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
@@ -59,13 +58,18 @@
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-gwt</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
+		<dependency>
+			<groupId>de.haumacher</groupId>
+			<artifactId>util-gwt</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+			<classifier>sources</classifier>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-xml</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
-			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>

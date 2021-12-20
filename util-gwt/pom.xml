@@ -2,9 +2,14 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>de.haumacher</groupId>
+	
+	<parent>
+		<groupId>de.haumacher</groupId>
+		<artifactId>image-server-parent</artifactId>	
+		<version>0.0.1-SNAPSHOT</version>
+	</parent>
+	
 	<artifactId>util-gwt</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
 
 	<properties>
 		<!-- Setting maven.compiler.source to something different to 1.8 needs 
