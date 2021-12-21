@@ -26,6 +26,8 @@ import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.http.HttpStatus;
 
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.ImagePart.Kind;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.WriterAdapter;
@@ -281,10 +283,31 @@ public class ImageServlet extends HttpServlet {
 				error404(context);
 				return;
 			}
-			serveData(context, data);
+			serveData(context, data, "image/jpeg");
 		} else {
-			serveData(context, pathInfo.toFile());
+			Resource resource = _cache.lookup(pathInfo);
+			if (resource != null) {
+				String mimeType = mimeType(context, resource);
+				
+				serveData(context, pathInfo.toFile(), mimeType);
+			}
 		}
+	}
+
+	private String mimeType(Context context, Resource resource) {
+		if (resource instanceof ImagePart) {
+			ImagePart image = (ImagePart) resource;
+			Kind kind = image.getKind();
+			switch (kind) {
+			case VIDEO:
+				return "video/mpeg";
+			case QUICKTIME:
+				return "video/quicktime";
+			case IMAGE:
+				return context.request().getServletContext().getMimeType(image.getName()); 
+			}
+		}
+		return "application/binary";
 	}
 
 	private void serveJson(HttpServletResponse response, Resource album) throws IOException {
@@ -294,11 +317,10 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
-	private void serveData(Context context, File file) throws IOException {
+	private void serveData(Context context, File file, String mimeType) throws IOException {
 		HttpServletRequest request = context.request();
 		HttpServletResponse response = context.response();
 
-		String mimeType = request.getServletContext().getMimeType(file.getName());
 		response.setContentType(mimeType);
 		long length = file.length();
 		if (length <= Integer.MAX_VALUE) {

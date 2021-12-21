@@ -15,6 +15,7 @@ import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.client.app.TXInfo;
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.ImagePart.Kind;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.ui.DataAttributes;
@@ -64,39 +65,33 @@ public class ImageDisplay extends ResourceDisplay {
 
 		ImagePart imagePart = ToImage.toImage(_image);
 		{
-			switch (imagePart.getKind()) {
-				case IMAGE: {
-					out.begin(DIV);
-					out.attr(ID_ATTR, "image-container");
+			if (isVideo(imagePart.getKind())) {
+				out.begin(VIDEO);
+				out.attr(CLASS_ATTR, CssClasses.IMAGE_DISPLAY);
+				out.attr("controls", "controls");
+				{
+					out.begin(SOURCE);
+					out.attr(SRC_ATTR, imagePart.getName());
 					{
-						out.begin(IMG);
-						out.attr(CLASS_ATTR, CssClasses.IMAGE_DISPLAY);
-						out.attr(ID_ATTR, "image");
-						out.attr(DRAGGABLE_ATTR, "false");
-						out.attr(SRC_ATTR, imagePart.getName());
-						out.attr(DataAttributes.DATA_WIDTH, imagePart.getWidth());
-						out.attr(DataAttributes.DATA_HEIGHT, imagePart.getHeight());
-						out.endEmpty();
+						out.append("Your browser doesn't support embedded videos.");
 					}
 					out.end();
-					break;
 				}
-				
-				case VIDEO: {
-					out.begin(VIDEO);
+				out.end();
+			} else {
+				out.begin(DIV);
+				out.attr(ID_ATTR, "image-container");
+				{
+					out.begin(IMG);
 					out.attr(CLASS_ATTR, CssClasses.IMAGE_DISPLAY);
-					out.attr("controls", "controls");
-					{
-						out.begin(SOURCE);
-						out.attr(SRC_ATTR, imagePart.getName());
-						{
-							out.append("Your browser doesn't support embedded videos.");
-						}
-						out.end();
-					}
-					out.end();
-					break;
+					out.attr(ID_ATTR, "image");
+					out.attr(DRAGGABLE_ATTR, "false");
+					out.attr(SRC_ATTR, imagePart.getName());
+					out.attr(DataAttributes.DATA_WIDTH, imagePart.getWidth());
+					out.attr(DataAttributes.DATA_HEIGHT, imagePart.getHeight());
+					out.endEmpty();
 				}
+				out.end();
 			}
 			
 			AbstractImage<?> previous = previous();
@@ -156,6 +151,15 @@ public class ImageDisplay extends ResourceDisplay {
 		}
 		
 		out.end();
+	}
+
+	public static boolean isVideo(Kind kind) {
+		switch (kind) {
+		case IMAGE: return false;
+		case VIDEO:
+		case QUICKTIME : return true;
+		}
+		throw new IllegalArgumentException("No such kind: " + kind);
 	}
 
 	private AbstractImage<?> previous() {
@@ -375,6 +379,9 @@ public class ImageDisplay extends ResourceDisplay {
 	private void onImagePanStart(MouseEvent event) {
 		HTMLElement container = containerElement();
 		HTMLElement image = imageElement();
+		if (image == null || container == null) {
+			return;
+		}
 
 		double startX = event.clientX;
 		double startY = event.clientY;

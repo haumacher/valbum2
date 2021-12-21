@@ -11,14 +11,21 @@ public class ImagePart extends AbstractImage<ImagePart> {
 	public enum Kind implements de.haumacher.msgbuf.data.ProtocolEnum {
 
 		/**
-		 * A still image.
+		 * A JPEG image.
 		 */
 		IMAGE("IMAGE"),
 
 		/**
-		 * A video.
+		 * A mp4 video. 
+		 *
+		 * <p>For historical reason, this kind is named "video" and not "mp4".</p>
 		 */
 		VIDEO("VIDEO"),
+
+		/**
+		 * A quicktime video.
+		 */
+		QUICKTIME("QUICKTIME"),
 
 		;
 
@@ -44,6 +51,7 @@ public class ImagePart extends AbstractImage<ImagePart> {
 			switch (protocolName) {
 				case "IMAGE": return IMAGE;
 				case "VIDEO": return VIDEO;
+				case "QUICKTIME": return QUICKTIME;
 			}
 			return IMAGE;
 		}
@@ -63,6 +71,7 @@ public class ImagePart extends AbstractImage<ImagePart> {
 			switch (this) {
 				case IMAGE: out.value(1); break;
 				case VIDEO: out.value(2); break;
+				case QUICKTIME: out.value(3); break;
 				default: out.value(0);
 			}
 		}
@@ -72,6 +81,7 @@ public class ImagePart extends AbstractImage<ImagePart> {
 			switch (in.nextInt()) {
 				case 1: return IMAGE;
 				case 2: return VIDEO;
+				case 3: return QUICKTIME;
 				default: return IMAGE;
 			}
 		}
@@ -147,7 +157,7 @@ public class ImagePart extends AbstractImage<ImagePart> {
 	}
 
 	/**
-	 * The kind of this {@link ImageInfo}.
+	 * The kind of this {@link ImagePart}.
 	 */
 	public final Kind getKind() {
 		return _kind;

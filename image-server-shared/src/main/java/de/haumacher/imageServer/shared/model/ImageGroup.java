@@ -45,7 +45,7 @@ public class ImageGroup extends AbstractImage<ImageGroup> {
 	}
 
 	/**
-	 * The index of the {@link ImageInfo} in {@link #getImages()} of the image that should be displayed when displaying this {@link ImageGroup} in an album.
+	 * The index of the {@link ImagePart} in {@link #getImages()} of the image that should be displayed when displaying this {@link ImageGroup} in an album.
 	 */
 	public final int getRepresentative() {
 		return _representative;

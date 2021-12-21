@@ -143,7 +143,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 					}
 					out.end();
 					
-					if (_image.getKind() == ImagePart.Kind.VIDEO) {
+					if (ImageDisplay.isVideo(_image.getKind())) {
 						out.begin(DIV);
 						out.attr(CLASS_ATTR, CssClasses.VIDEO_OVERLAY);
 						{

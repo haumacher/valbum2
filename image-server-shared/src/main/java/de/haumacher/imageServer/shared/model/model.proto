@@ -31,7 +31,7 @@ message AlbumInfo extends FolderResource {
 	/** The list of images in this album. */
 	repeated AlbumPart parts;
 	
-	/** All {@link ImageInfo}s indexed by their {@link ImageInfo#name}. */
+	/** All {@link ImagePart}s indexed by their {@link ImagePart#name}. */
 	transient map<string, ImagePart> imageByName;
 	
 	/**
@@ -74,7 +74,7 @@ abstract message AbstractImage extends AlbumPart {
 /** A group of multiple images showing the same content. */
 message ImageGroup extends AbstractImage {
 
-	/** The index of the {@link ImageInfo} in {@link #images} of the image that should be displayed when displaying this {@link ImageGroup} in an album. */
+	/** The index of the {@link ImagePart} in {@link #images} of the image that should be displayed when displaying this {@link ImageGroup} in an album. */
 	int representative;
 
 	/** List of images that all show the same content. Only the image with  in this album. */
@@ -87,14 +87,21 @@ message ImagePart extends AbstractImage {
 
 	/** Kind of image. */
 	enum Kind {
-		/** A still image. */
+		/** A JPEG image. */
 		IMAGE;
 		
-		/** A video. */
+		/** 
+		 * A mp4 video. 
+		 * 
+		 * <p>For historical reason, this kind is named "video" and not "mp4".</p> 
+		 */
 		VIDEO;
+		
+		/** A quicktime video. */
+		QUICKTIME;
 	}
 
-	/** The kind of this {@link ImageInfo}. */
+	/** The kind of this {@link ImagePart}. */
 	Kind kind;
 	
 	/** The image (file) name. */

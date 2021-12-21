@@ -98,7 +98,8 @@ public class ResourceCache {
 		if (pathInfo.toFile().isDirectory()) {
 			return _cache.getUnchecked(pathInfo);
 		} else {
-			return ErrorInfo.create().setMessage("No such image '" + pathInfo + "'.");
+			AlbumInfo container = (AlbumInfo) _cache.getUnchecked(pathInfo.parent());
+			return container.getImageByName().get(pathInfo.getName());
 		}
 	}
 

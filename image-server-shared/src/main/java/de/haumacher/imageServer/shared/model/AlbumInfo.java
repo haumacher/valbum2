@@ -150,7 +150,7 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	}
 
 	/**
-	 * All {@link ImageInfo}s indexed by their {@link ImageInfo#name}.
+	 * All {@link ImagePart}s indexed by their {@link ImagePart#getName()}.
 	 */
 	public final java.util.Map<String, ImagePart> getImageByName() {
 		return _imageByName;

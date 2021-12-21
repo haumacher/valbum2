@@ -6,7 +6,6 @@ package de.haumacher.imageServer.cache;
 import java.io.File;
 import java.io.IOException;
 import java.util.Date;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.drew.imaging.ImageMetadataReader;
@@ -17,6 +16,8 @@ import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.drew.metadata.jpeg.JpegCommentDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
+import com.drew.metadata.mov.QuickTimeDirectory;
+import com.drew.metadata.mov.media.QuickTimeVideoDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 
@@ -31,6 +32,7 @@ import de.haumacher.imageServer.shared.model.ImagePart;
 public class ImageData extends ImagePart {
 	
 	private static final Logger LOG = Logger.getLogger(ImageData.class.getName());
+	private String _contentType;
 	private File _file;
 
 	/** 
@@ -91,22 +93,53 @@ public class ImageData extends ImagePart {
 			return result;
 		}
 		
-		try {
+		Mp4Directory mp4Directory = metadata.getFirstDirectoryOfType(Mp4Directory.class);
+		if (mp4Directory != null) {
+			try {
+				int rotation;
+				if (mp4Directory.hasTagName(Mp4Directory.TAG_ROTATION)) {
+					rotation = mp4Directory.getInt(Mp4Directory.TAG_ROTATION);
+				} else {
+					rotation = 0;
+				}
+				
+				Mp4VideoDirectory mp4VideoDirectory = metadata.getFirstDirectoryOfType(Mp4VideoDirectory.class);
+				if (mp4VideoDirectory != null) {
+					result.setKind(Kind.VIDEO);
+					
+					int rawWidth = mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_WIDTH);
+					int rawHeight = mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_HEIGHT);
+					
+					if (rotation == 90 || rotation == 270) {
+						result.setWidth(rawHeight);
+						result.setHeight(rawWidth);
+					} else {
+						result.setWidth(rawWidth);
+						result.setHeight(rawHeight);
+					}
+					
+					return result;
+				}
+			} catch (MetadataException ex) {
+				throw new IllegalArgumentException("Cannot get MP4 meta data: " + file);
+			}
+		}
+		
+		QuickTimeDirectory movDirectory = metadata.getFirstDirectoryOfType(QuickTimeDirectory.class);
+		if (movDirectory != null) {
 			int rotation;
-			
-			Mp4Directory mp4Directory = metadata.getFirstDirectoryOfType(Mp4Directory.class);
-			if (mp4Directory != null && mp4Directory.hasTagName(Mp4Directory.TAG_ROTATION)) {
-				rotation = mp4Directory.getInt(Mp4Directory.TAG_ROTATION);
+			if (movDirectory.hasTagName(QuickTimeDirectory.TAG_ROTATION)) {
+				rotation = movDirectory.getInt(QuickTimeDirectory.TAG_ROTATION);
 			} else {
 				rotation = 0;
 			}
 			
-			Mp4VideoDirectory mp4VideoDirectory = metadata.getFirstDirectoryOfType(Mp4VideoDirectory.class);
-			if (mp4VideoDirectory != null) {
-				result.setKind(Kind.VIDEO);
-
-				int rawWidth = mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_WIDTH);
-				int rawHeight = mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_HEIGHT);
+			QuickTimeVideoDirectory movVideoDirectory = metadata.getFirstDirectoryOfType(QuickTimeVideoDirectory.class);
+			if (movVideoDirectory != null) {
+				result.setKind(Kind.QUICKTIME);
+				
+				int rawWidth = movVideoDirectory.getInt(QuickTimeVideoDirectory.TAG_WIDTH);
+				int rawHeight = movVideoDirectory.getInt(QuickTimeVideoDirectory.TAG_HEIGHT);
 				
 				if (rotation == 90 || rotation == 270) {
 					result.setWidth(rawHeight);
@@ -115,14 +148,12 @@ public class ImageData extends ImagePart {
 					result.setWidth(rawWidth);
 					result.setHeight(rawHeight);
 				}
-
+				
 				return result;
 			}
-		} catch (MetadataException ex) {
-			LOG.log(Level.WARNING, "Cannot get MP4 meta data from '" + file.getName()  + "'.");
 		}
 		
-		throw new IllegalArgumentException("Neither JPG nor MP4 file.");
+		throw new IllegalArgumentException("Neither JPG nor MP4 file: " + file);
 	}
 
 	private static Date date(Metadata metadata) {
