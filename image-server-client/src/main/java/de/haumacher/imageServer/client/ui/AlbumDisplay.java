@@ -291,7 +291,7 @@ public class AlbumDisplay extends ResourceDisplay {
 
 	private void showParent(Event event) {
 		String parentUrl = RenderUtil.parentUrl(_album.getPath());
-		App.getInstance().gotoTarget(parentUrl);
+		App.getInstance().showPage(parentUrl);
 		event.stopPropagation();
 		event.preventDefault();
 	}

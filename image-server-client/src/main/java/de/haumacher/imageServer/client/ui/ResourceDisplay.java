@@ -51,7 +51,7 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 					RenderUtil.icon(out, "fas fa-home");
 				}
 				out.end();
-				out.getLast().addEventListener("click", e -> {App.getInstance().gotoTarget("/"); e.stopPropagation(); e.preventDefault(); });
+				out.getLast().addEventListener("click", e -> {App.getInstance().showPage("/"); e.stopPropagation(); e.preventDefault(); });
 				
 				out.begin(A);
 				out.classAttr(CssClasses.TOOLBAR_BUTTON);

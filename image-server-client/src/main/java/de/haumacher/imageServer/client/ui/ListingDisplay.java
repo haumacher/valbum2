@@ -109,7 +109,7 @@ public class ListingDisplay extends ResourceDisplay {
 		out.end();
 		
 		String parentUrl = RenderUtil.parentUrl(_listing.getPath());
-		writeAlbumToolbar(out, false, e -> {App.getInstance().gotoTarget(parentUrl); e.stopPropagation(); e.preventDefault();});
+		writeAlbumToolbar(out, false, e -> {App.getInstance().showPage(parentUrl); e.stopPropagation(); e.preventDefault();});
 	}
 
 }

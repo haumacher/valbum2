@@ -13,7 +13,6 @@ import de.haumacher.imageServer.client.app.KeyCodes;
 import de.haumacher.imageServer.client.app.Pos;
 import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.client.app.TXInfo;
-import de.haumacher.imageServer.client.app.ToPath;
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Resource;
@@ -472,7 +471,7 @@ public class ImageDisplay extends ResourceDisplay {
 	
 	private boolean show(Event event, AbstractImage<?> resource, DisplayMode mode) {
 		if (resource != null) {
-			App.getInstance().gotoTarget(resource, mode);
+			App.getInstance().showPage(resource, mode);
 		}
 		event.stopPropagation();
 		event.preventDefault();
@@ -480,9 +479,17 @@ public class ImageDisplay extends ResourceDisplay {
 	}
 
 	private void showParent(Event event) {
-		String path = ToPath.toPath(_image, _mode);
-		String parent = RenderUtil.parentUrl(path);
-		App.getInstance().gotoTarget(parent);
+		switch (_mode) {
+		case DEFAULT: {
+			App.getInstance().showPage(_image.getOwner());
+			break;
+		}
+		
+		case DETAIL: {
+			App.getInstance().showPage(ToImage.toImage(_image).getGroup(), DisplayMode.DETAIL);
+			break;
+		}
+		}
 		event.stopPropagation();
 		event.preventDefault();
 	}

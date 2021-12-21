@@ -8,6 +8,7 @@ import static de.haumacher.util.html.HTML.*;
 import java.io.IOException;
 import java.util.function.Consumer;
 
+import de.haumacher.imageServer.client.app.App;
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.Heading;
@@ -114,59 +115,65 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		out.attr(CLASS_ATTR, CssClasses.ICON);
 		{
 			out.begin(A);
-			out.attr(CLASS_ATTR, CssClasses.ICON_LINK);
-			if (_rowIndex > 0) {
-				out.openAttr(STYLE_ATTR);
-				out.append("margin-left: ");
-				out.append(_spacing);
-				out.append("px;");
-				out.closeAttr();
-			}
-			if (!isEditMode()) {
-				out.openAttr(HREF_ATTR);
-				{
-					out.append(_image.getName());
-				}
-			}
-			out.closeAttr();
 			{
-				out.begin(IMG);
-				out.attr(CLASS_ATTR, CssClasses.ICON_DISPLAY);
-				out.attr("title", _image.getComment());
-				{
-					out.openAttr(SRC_ATTR);
-					out.append(_image.getName());
-					out.append("?type=tn");
+				out.attr(CLASS_ATTR, CssClasses.ICON_LINK);
+				if (_rowIndex > 0) {
+					out.openAttr(STYLE_ATTR);
+					out.append("margin-left: ");
+					out.append(_spacing);
+					out.append("px;");
 					out.closeAttr();
-					
-					out.attr(WIDTH_ATTR, _width);
-					out.attr(HEIGHT_ATTR, _rowHeight);
 				}
-				out.end();
-				
-				if (_image.getKind() == ImagePart.Kind.VIDEO) {
-					out.begin(DIV);
-					out.attr(CLASS_ATTR, CssClasses.VIDEO_OVERLAY);
+				if (!isEditMode()) {
+					out.attr(HREF_ATTR, "#");
+				}
+				out.closeAttr();
+				{
+					out.begin(IMG);
+					out.attr(CLASS_ATTR, CssClasses.ICON_DISPLAY);
+					out.attr("title", _image.getComment());
 					{
-						out.begin(I);
-						out.attr(CLASS_ATTR, "far fa-play-circle");
+						out.openAttr(SRC_ATTR);
+						out.append(_image.getName());
+						out.append("?type=tn");
+						out.closeAttr();
+						
+						out.attr(WIDTH_ATTR, _width);
+						out.attr(HEIGHT_ATTR, _rowHeight);
+					}
+					out.end();
+					
+					if (_image.getKind() == ImagePart.Kind.VIDEO) {
+						out.begin(DIV);
+						out.attr(CLASS_ATTR, CssClasses.VIDEO_OVERLAY);
+						{
+							out.begin(I);
+							out.attr(CLASS_ATTR, "far fa-play-circle");
+							out.end();
+						}
 						out.end();
 					}
-					out.end();
-				}
-				
-				if (isEditMode()) {
-					out.begin(SPAN);
-					{
-						writeToolbars(out);
+					
+					if (isEditMode()) {
+						out.begin(SPAN);
+						{
+							writeToolbars(out);
+						}
+						out.end();
+						_toolbarContainer = out.getLast();
+					} else {
+						_toolbarContainer = null;
 					}
-					out.end();
-					_toolbarContainer = out.getLast();
-				} else {
-					_toolbarContainer = null;
 				}
 			}
 			out.end();
+			if (!isEditMode()) {
+				out.getLast().addEventListener("click", e -> {
+					App.getInstance().showPage(_part, DisplayMode.DEFAULT);
+					e.preventDefault();
+					e.stopPropagation();
+				});
+			}
 		}
 		out.end();
 	}

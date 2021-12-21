@@ -223,7 +223,7 @@ public class App implements EntryPoint, UIContext {
 	void onPopState(PopStateEvent event) {
 		Window window = DomGlobal.window;
 		String newPath = ResourcePath.toPath(window.location.hash);
-		gotoTarget(newPath, true);
+		showPage(newPath, true);
 	}
 	
 	/**
@@ -236,7 +236,7 @@ public class App implements EntryPoint, UIContext {
 	 *        Whether the navigation was issued by pressing backspace. If this is the case, no navigation history entry
 	 *        is created.
 	 */
-	public void showPage(Resource resource, DisplayMode mode, boolean back) {
+	final void showPage(Resource resource, DisplayMode mode, boolean back) {
 		String path = ToPath.toPath(resource, mode);
 		setBaseUrl(currentDir(path));
 		setDisplay(resource, mode);
@@ -349,23 +349,30 @@ public class App implements EntryPoint, UIContext {
 		Element target = (Element) event.currentTarget;
 		String href = target.getAttribute(HTML.HREF_ATTR);
 		
-		gotoTarget(href);
+		showPage(href);
 	}
 
+	/** 
+	 * Navigates to the given resource in its default display mode.
+	 */
+	public void showPage(Resource resource) {
+		showPage(resource, DisplayMode.DEFAULT);
+	}
+	
 	/** 
 	 * Navigates to the given resource.
 	 * 
 	 * @param mode The {@link DisplayMode} to show the given {@link Resource} in.
 	 */
-	public void gotoTarget(Resource resource, DisplayMode mode) {
+	public void showPage(Resource resource, DisplayMode mode) {
 		showPage(resource, mode, false);
 	}
 	
-	public void gotoTarget(String href) {
-		gotoTarget(href, false);
+	public void showPage(String href) {
+		showPage(href, false);
 	}
 	
-	void gotoTarget(String href, boolean back) {
+	void showPage(String href, boolean back) {
 		loadPage(new ResourcePath(DomGlobal.window.location.hash).navigateTo(removeQuery(href)).getPath(), back);
 	}
 
