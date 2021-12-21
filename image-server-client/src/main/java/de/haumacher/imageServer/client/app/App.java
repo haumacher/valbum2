@@ -239,6 +239,8 @@ public class App implements EntryPoint, UIContext {
 	 *        is created.
 	 */
 	final void showPage(Resource resource, DisplayMode mode, boolean back) {
+		rememberScrollOffset();
+		
 		String path = ToPath.toPath(resource, mode);
 		setBaseUrl(currentDir(path));
 		setDisplay(resource, mode);
@@ -345,8 +347,6 @@ public class App implements EntryPoint, UIContext {
 	void handleNavigation(Event event) {
 		event.stopPropagation();
 		event.preventDefault();
-
-		rememberScrollOffset();
 
 		Element target = (Element) event.currentTarget;
 		String href = target.getAttribute(HTML.HREF_ATTR);
