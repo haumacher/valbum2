@@ -119,7 +119,7 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 	 * @return The {@link AbstractImage} preceding the given index, or <code>null</code> if there is no such image.
 	 */
 	private static AbstractImage<?> prevImage(List<? extends AlbumPart<?>> parts, int i) {
-		while (i > 0) {
+		while (i >= 0) {
 			AlbumPart<?> part = parts.get(i--);
 			if (part instanceof AbstractImage) {
 				return (AbstractImage<?>) part;
