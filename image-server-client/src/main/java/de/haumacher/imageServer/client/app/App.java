@@ -13,6 +13,8 @@ import com.google.gwt.http.client.RequestException;
 import com.google.gwt.http.client.Response;
 import com.google.gwt.user.client.Timer;
 
+import de.haumacher.imageServer.client.bulma.Button;
+import de.haumacher.imageServer.client.bulma.modal.ModalCard;
 import de.haumacher.imageServer.client.ui.Display;
 import de.haumacher.imageServer.client.ui.DisplayMode;
 import de.haumacher.imageServer.client.ui.ResourceControlProvider;
@@ -387,8 +389,29 @@ public class App implements EntryPoint, UIContext {
 		return url;
 	}
 
-	static void displayError(String message) {
-		DomGlobal.document.body.appendChild(div(message));
+	public void displayError(String message) {
+		ModalCard card = new ModalCard() {
+			@Override
+			protected void renderTitle(UIContext context, DomBuilder out) throws IOException {
+				out.append("Es ist ein Fehler aufgetreten");
+			}
+			
+			@Override
+			protected void renderContent(UIContext context, DomBuilder out) throws IOException {
+				out.append(message);
+			}
+			
+			@Override
+			protected void renderButtons(UIContext context, DomBuilder out) throws IOException {
+				new Button().setLabel("Ok").onClick(this::close).show(context, out);
+			}
+			
+			private void close(Event e) {
+				remove();
+			}
+		};
+		
+		card.showTopLevel(this);
 	}
 
 	static Element div(String message) {
