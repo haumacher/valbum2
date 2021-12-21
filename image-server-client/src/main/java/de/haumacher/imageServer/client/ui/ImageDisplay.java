@@ -261,7 +261,9 @@ public class ImageDisplay extends ResourceDisplay {
 		TXInfo txInfo = txInfo(image);
 		double origScale = txInfo.getScale();
 		
-		double scaleBy = 1 - event.deltaY * 0.05;
+		double direction = Math.signum(event.deltaY);
+		
+		double scaleBy = 1 + direction * 0.2;
 		double newScale = origScale * scaleBy;
 		if (newScale <= 0.1) {
 			// Limit scale.
