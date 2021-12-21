@@ -299,7 +299,7 @@ a {
 }
 
 .va-icon-link:hover .va-toolbar-embedded .va-toolbar-button.va-active, 
-.va-icon-link .va-toolbar-embedded .va-toolbar-button.va-active:hover {
+.va-icon-link .va-toolbar-embedded .va-toolbar-button.va-active {
 	color: fuchsia;
 }
 
