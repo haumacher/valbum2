@@ -263,7 +263,7 @@ public class ResourceCache {
 		private static String dateString(int year, int month, int day) {
 			GregorianCalendar calendar = new GregorianCalendar();
 			calendar.set(Calendar.YEAR, year);
-			calendar.set(Calendar.MONTH, month);
+			calendar.set(Calendar.MONTH, month - 1 + Calendar.JANUARY);
 			calendar.set(Calendar.DAY_OF_MONTH, day);
 			calendar.set(Calendar.HOUR, 0);
 			calendar.set(Calendar.MINUTE, 0);
