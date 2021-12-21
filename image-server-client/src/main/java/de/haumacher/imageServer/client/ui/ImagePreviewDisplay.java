@@ -291,9 +291,11 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		out.attr(CLASS_ATTR, CssClasses.TOOLBAR_EMBEDDED + " " + CssClasses.TOOLBAR_BOTTOM);
 		
 		int rating = _image.getRating();
+		Consumer<Object> setter = data -> _image.setRating((int) data);
+		Runnable reset = () -> _image.setRating(0);
 		makeChoice(
-				data -> _image.setRating((int) data),
-				() -> _image.setRating(0),
+				setter,
+				reset,
 				createChoiceButton(out, "fas fa-star", rating >= 2, 2),
 				createChoiceButton(out, "fas fa-plus", rating == 1, 1),
 				createChoiceButton(out, "fas fa-minus", rating == -1, -1),
@@ -372,7 +374,10 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 				} else {
 					reset(buttons);
 					button.classList.add(CssClasses.ACTIVE);
-					onSet.accept(Native.get(button, "vaUserData"));
+					Object data = Native.get(button, "vaUserData");
+					if (data != null) {
+						onSet.accept(data);
+					}
 				}
 				
 				event.stopPropagation();
