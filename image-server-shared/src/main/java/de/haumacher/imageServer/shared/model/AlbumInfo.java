@@ -30,6 +30,9 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	/** @see #getImageByName() */
 	private static final String IMAGE_BY_NAME = "imageByName";
 
+	/** @see #getMinRating() */
+	private static final String MIN_RATING = "minRating";
+
 	private String _title = "";
 
 	private String _subTitle = "";
@@ -39,6 +42,8 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	private final java.util.List<AlbumPart<?>> _parts = new java.util.ArrayList<>();
 
 	private transient final java.util.Map<String, ImagePart> _imageByName = new java.util.HashMap<>();
+
+	private transient int _minRating = 0;
 
 	/**
 	 * Creates a {@link AlbumInfo} instance.
@@ -177,6 +182,23 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	 */
 	public final AlbumInfo removeImageByName(String key) {
 		_imageByName.remove(key);
+		return this;
+	}
+
+	/**
+	 * The minimum {@link ImagePart#getRating()} of an {@link ImagePart} to be displayed.
+	 *
+	 * <p>The value is set by the UI to remember the current display settings of an {@link AlbumInfo} while browsing its contents</p>
+	 */
+	public final int getMinRating() {
+		return _minRating;
+	}
+
+	/**
+	 * @see #getMinRating()
+	 */
+	public final AlbumInfo setMinRating(int value) {
+		_minRating = value;
 		return this;
 	}
 

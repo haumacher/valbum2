@@ -44,7 +44,6 @@ public class AlbumDisplay extends ResourceDisplay {
 	private Set<AbstractImage> _selected = new HashSet<>();
 	private AlbumPart _lastClicked;
 	private Map<AlbumPart, ImagePreviewDisplay> _imageDisplays;
-	private int _minRating = 0;
 
 	/** 
 	 * Creates a {@link AlbumDisplay}.
@@ -87,7 +86,7 @@ public class AlbumDisplay extends ResourceDisplay {
 			for (AlbumPart part : _album.getParts()) {
 				if (part instanceof AbstractImage) {
 					AbstractImage image = (AbstractImage) part;
-					if (ToImage.toImage(image).getRating() < _minRating) {
+					if (ToImage.toImage(image).getRating() < getMinRating()) {
 						continue;
 					}
 					
@@ -266,17 +265,17 @@ public class AlbumDisplay extends ResourceDisplay {
 	protected boolean handleKeyDown(Element target, KeyboardEvent event, String key) {
 		switch (key) {
 		case "+": {
-			if (_minRating > -1) {
+			if (getMinRating() > -1) {
 				// Show more images.
-				_minRating--;
+				setMinRating(getMinRating() - 1);
 			}
 			redraw();
 			return true;
 		}
 		case "-": {
-			if (_minRating < 2) {
+			if (getMinRating() < 2) {
 				// Show less images.
-				_minRating++;
+				setMinRating(getMinRating() + 1);
 			}
 			redraw();
 			return true;
@@ -295,6 +294,14 @@ public class AlbumDisplay extends ResourceDisplay {
 		App.getInstance().gotoTarget(parentUrl);
 		event.stopPropagation();
 		event.preventDefault();
+	}
+
+	private int getMinRating() {
+		return _album.getMinRating();
+	}
+
+	private void setMinRating(int minRating) {
+		_album.setMinRating(minRating);
 	}
 
 }

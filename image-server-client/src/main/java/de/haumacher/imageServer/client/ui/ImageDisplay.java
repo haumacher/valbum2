@@ -6,6 +6,7 @@ package de.haumacher.imageServer.client.ui;
 import static de.haumacher.util.html.HTML.*;
 
 import java.io.IOException;
+import java.util.function.Function;
 
 import de.haumacher.imageServer.client.app.App;
 import de.haumacher.imageServer.client.app.KeyCodes;
@@ -33,7 +34,7 @@ import elemental2.dom.WheelEvent;
 import jsinterop.base.Js;
 
 /**
- * {@link ResourceDisplay} displaying an {@link ImageInfo} model.
+ * {@link ResourceDisplay} displaying an {@link AbstractImage} model.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
@@ -59,9 +60,6 @@ public class ImageDisplay extends ResourceDisplay {
 		out.begin(DIV);
 		out.attr(ID_ATTR, "page");
 		out.attr(CLASS_ATTR, CssClasses.IMAGE_PAGE);
-
-		AbstractImage<?> previous = _image.getPrevious();
-		AbstractImage<?> next = _image.getNext();
 
 		ImagePart imagePart = ToImage.toImage(_image);
 		{
@@ -100,6 +98,7 @@ public class ImageDisplay extends ResourceDisplay {
 				}
 			}
 			
+			AbstractImage<?> previous = previous();
 			if (previous != null) {
 				out.begin(A);
 				out.attr(HREF_ATTR, "#");
@@ -119,9 +118,10 @@ public class ImageDisplay extends ResourceDisplay {
 				}
 				out.end();
 				
-				out.getLast().addEventListener("click", this::showPrevious);
+				out.getLast().addEventListener("click", show(previous));
 			}
 			
+			AbstractImage<?> next = next();
 			if (next != null) {
 				out.begin(A);
 				out.attr(HREF_ATTR, "#");
@@ -141,7 +141,7 @@ public class ImageDisplay extends ResourceDisplay {
 				}
 				out.end();
 				
-				out.getLast().addEventListener("click", this::showNext);
+				out.getLast().addEventListener("click", show(next));
 			}
 			
 			writeAlbumToolbar(out, true, this::showParent);
@@ -155,6 +155,51 @@ public class ImageDisplay extends ResourceDisplay {
 		}
 		
 		out.end();
+	}
+
+	private AbstractImage<?> previous() {
+		return navigate1(_image, AbstractImage::getPrevious);
+	}
+	
+	private AbstractImage<?> next() {
+		return navigate1(_image, AbstractImage::getNext);
+	}
+	
+	private AbstractImage<?> home() {
+		return navigate0(_image.getHome(), AbstractImage::getNext);
+	}
+	
+	private AbstractImage<?> end() {
+		return navigate0(_image.getEnd(), AbstractImage::getPrevious);
+	}
+	
+	private AbstractImage<?> navigate0(AbstractImage<?> image, Function<AbstractImage<?>, AbstractImage<?>> step) {
+		int minRating = image.getOwner().getMinRating();
+		return matches(minRating, image) ? image : doNavigate(minRating, step, image);
+	}
+	
+	private AbstractImage<?> navigate1(AbstractImage<?> image, Function<AbstractImage<?>, AbstractImage<?>> step) {
+		return doNavigate(image.getOwner().getMinRating(), step, image);
+	}
+
+	private AbstractImage<?> doNavigate(int minRating, Function<AbstractImage<?>, AbstractImage<?>> step,
+			AbstractImage<?> current) {
+		while (true) {
+			AbstractImage<?> previous = step.apply(current);
+			if (previous == null) {
+				return null;
+			}
+			
+			if (matches(minRating, previous)) {
+				return previous;
+			}
+			
+			current = previous;
+		}
+	}
+
+	private boolean matches(int minRating, AbstractImage<?> image) {
+		return ToImage.toImage(image).getRating() >= minRating;
 	}
 
 	@Override
@@ -404,24 +449,28 @@ public class ImageDisplay extends ResourceDisplay {
 	}
 
 	private boolean showNext(Event event) {
-		return show(event, _image.getNext());
+		return show(event, next());
 	}
 
 	private boolean showPrevious(Event event) {
-		return show(event, _image.getPrevious());
+		return show(event, previous());
 	}
 
 	private boolean showFirst(Event event) {
-		return show(event, _image.getHome());
+		return show(event, home());
 	}
 	
 	private boolean showLast(Event event) {
-		return show(event, _image.getEnd());
+		return show(event, end());
 	}
 	
-	private boolean show(Event event, Resource other) {
-		if (other != null) {
-			App.getInstance().gotoTarget(other);
+	private EventListener show(AbstractImage<?> resource) {
+		return e -> show(e, resource);
+	}
+	
+	private boolean show(Event event, AbstractImage<?> resource) {
+		if (resource != null) {
+			App.getInstance().gotoTarget(ToImage.toImage(resource));
 		}
 		event.stopPropagation();
 		event.preventDefault();

@@ -33,6 +33,13 @@ message AlbumInfo extends FolderResource {
 	
 	/** All {@link ImageInfo}s indexed by their {@link ImageInfo#name}. */
 	transient map<string, ImagePart> imageByName;
+	
+	/**
+	 * The minimum {@link ImagePart#rating} of an {@link ImagePart} to be displayed.
+	 * 
+	 * <p>The value is set by the UI to remember the current display settings of an {@link AlbumInfo} while browsing its contents</p>
+	 */
+	transient int minRating;
 }
 
 /** Base class for contents of an {@link AlbumInfo}. */
