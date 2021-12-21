@@ -26,6 +26,7 @@ import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.ui.ImageRow;
 import de.haumacher.imageServer.shared.util.ToImage;
+import de.haumacher.imageServer.shared.util.UpdateTransient;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
 import elemental2.dom.Element;
@@ -257,6 +258,9 @@ public class AlbumDisplay extends ResourceDisplay {
 		_album.setParts(newParts);
 		
 		_selected.clear();
+		
+		// Recompute linking.
+		UpdateTransient.updateTransient(_album);
 		
 		redraw();
 	}
