@@ -278,7 +278,8 @@ a {
 	background-color: gray;
 }
 
-.va-icon-link:hover .va-toolbar-embedded .va-toolbar-button {
+.va-icon-link:hover .va-toolbar-embedded .va-toolbar-button,
+.va-icon-link .va-toolbar-embedded .va-toolbar-button.va-active {
 	display: inline-block;
 }
 
