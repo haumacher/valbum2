@@ -14,6 +14,7 @@ import com.google.gwt.http.client.Response;
 import com.google.gwt.user.client.Timer;
 
 import de.haumacher.imageServer.client.ui.Display;
+import de.haumacher.imageServer.client.ui.DisplayMode;
 import de.haumacher.imageServer.client.ui.ResourceControlProvider;
 import de.haumacher.imageServer.client.ui.UIContext;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -196,7 +197,7 @@ public class App implements EntryPoint, UIContext {
 									resource = imagePart;
 								}
 							}
-							showPage(resource, back);
+							showPage(resource, DisplayMode.DEFAULT, back);
 						} catch (IOException ex) {
 							displayError("Couldn't parse response from '" + albumUrl + "': " + response.getText());
 						}
@@ -230,14 +231,15 @@ public class App implements EntryPoint, UIContext {
 	 *
 	 * @param resource
 	 *        The {@link Resource} to display.
+	 * @param mode The {@link DisplayMode} to show the given {@link Resource} in.
 	 * @param back
 	 *        Whether the navigation was issued by pressing backspace. If this is the case, no navigation history entry
 	 *        is created.
 	 */
-	public void showPage(Resource resource, boolean back) {
-		String path = resource.visit(ToPath.INSTANCE, null);
+	public void showPage(Resource resource, DisplayMode mode, boolean back) {
+		String path = ToPath.toPath(resource, mode);
 		setBaseUrl(currentDir(path));
-		setDisplay(path, resource);
+		setDisplay(resource, mode);
 		renderPage();
 		
 		if (!back) {
@@ -252,10 +254,8 @@ public class App implements EntryPoint, UIContext {
 		}
 	}
 
-	private void setDisplay(String path, Resource resource) {
-		String url = _contextPath + Settings.DATA_PREFIX + path;
-		DefaultResourceHandler handler = new DefaultResourceHandler(url);
-		_display = resource.visit(ResourceControlProvider.INSTANCE, handler);
+	private void setDisplay(Resource resource, DisplayMode mode) {
+		_display = resource.visit(ResourceControlProvider.INSTANCE, mode);
 	}
 
 	final void renderPage() {
@@ -354,9 +354,11 @@ public class App implements EntryPoint, UIContext {
 
 	/** 
 	 * Navigates to the given resource.
+	 * 
+	 * @param mode The {@link DisplayMode} to show the given {@link Resource} in.
 	 */
-	public void gotoTarget(Resource resource) {
-		showPage(resource, false);
+	public void gotoTarget(Resource resource, DisplayMode mode) {
+		showPage(resource, mode, false);
 	}
 	
 	public void gotoTarget(String href) {

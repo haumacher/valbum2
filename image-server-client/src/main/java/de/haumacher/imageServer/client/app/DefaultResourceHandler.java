@@ -11,6 +11,7 @@ import com.google.gwt.http.client.RequestCallback;
 import com.google.gwt.http.client.RequestException;
 import com.google.gwt.http.client.Response;
 
+import de.haumacher.imageServer.client.ui.DisplayMode;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.msgbuf.io.StringW;
 import de.haumacher.msgbuf.json.JsonWriter;
@@ -20,19 +21,12 @@ import de.haumacher.msgbuf.json.JsonWriter;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-final class DefaultResourceHandler implements ResourceHandler {
-	private final String _url;
-
-	/** 
-	 * Creates a {@link DefaultResourceHandler}.
-	 */
-	DefaultResourceHandler(String url) {
-		_url = url;
-	}
+public final class DefaultResourceHandler implements ResourceHandler {
 
 	@Override
 	public void store(Resource resource) {
-		RequestBuilder builder = new RequestBuilder(RequestBuilder.PUT, _url);
+		String url = ToPath.toPath(resource, DisplayMode.DEFAULT);
+		RequestBuilder builder = new RequestBuilder(RequestBuilder.PUT, url);
 		builder.setHeader("content-type", "application/json");
 		try {
 			StringW out = new StringW();
@@ -45,17 +39,17 @@ final class DefaultResourceHandler implements ResourceHandler {
 				@Override
 				public void onResponseReceived(Request request, Response response) {
 					if (response.getStatusCode() != Response.SC_OK) {
-						App.displayError("Couldn't store resource: " + _url);
+						App.displayError("Couldn't store resource: " + url);
 					}
 				}
 
 				@Override
 				public void onError(Request request, Throwable exception) {
-					App.displayError("Couldn't store resource: " + _url);
+					App.displayError("Couldn't store resource: " + url);
 				}
 			});
 		} catch (RequestException | IOException ex) {
-			App.displayError("Couldn't store resource: " + _url);
+			App.displayError("Couldn't store resource: " + url);
 		}
 	}
 }

@@ -41,13 +41,15 @@ import jsinterop.base.Js;
 public class ImageDisplay extends ResourceDisplay {
 
 	private AbstractImage<?> _image;
+	private DisplayMode _mode;
 
 	/** 
 	 * Creates a {@link ImageDisplay}.
 	 */
-	public ImageDisplay(AbstractImage<?> image, ResourceHandler handler) {
+	public ImageDisplay(AbstractImage<?> image, DisplayMode mode, ResourceHandler handler) {
 		super(handler);
 		_image = image;
+		_mode = mode;
 	}
 	
 	@Override
@@ -449,28 +451,28 @@ public class ImageDisplay extends ResourceDisplay {
 	}
 
 	private boolean showNext(Event event) {
-		return show(event, next());
+		return show(event, next(), _mode);
 	}
 
 	private boolean showPrevious(Event event) {
-		return show(event, previous());
+		return show(event, previous(), _mode);
 	}
 
 	private boolean showFirst(Event event) {
-		return show(event, home());
+		return show(event, home(), _mode);
 	}
 	
 	private boolean showLast(Event event) {
-		return show(event, end());
+		return show(event, end(), _mode);
 	}
 	
 	private EventListener show(AbstractImage<?> resource) {
-		return e -> show(e, resource);
+		return e -> show(e, resource, _mode);
 	}
 	
-	private boolean show(Event event, AbstractImage<?> resource) {
+	private boolean show(Event event, AbstractImage<?> resource, DisplayMode mode) {
 		if (resource != null) {
-			App.getInstance().gotoTarget(ToImage.toImage(resource));
+			App.getInstance().gotoTarget(resource, mode);
 		}
 		event.stopPropagation();
 		event.preventDefault();
@@ -478,7 +480,7 @@ public class ImageDisplay extends ResourceDisplay {
 	}
 
 	private void showParent(Event event) {
-		String path = _image.visit(ToPath.INSTANCE, null);
+		String path = ToPath.toPath(_image, _mode);
 		String parent = RenderUtil.parentUrl(path);
 		App.getInstance().gotoTarget(parent);
 		event.stopPropagation();

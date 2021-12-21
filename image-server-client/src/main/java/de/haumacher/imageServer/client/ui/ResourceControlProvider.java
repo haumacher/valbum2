@@ -3,7 +3,7 @@
  */
 package de.haumacher.imageServer.client.ui;
 
-import de.haumacher.imageServer.client.app.ResourceHandler;
+import de.haumacher.imageServer.client.app.DefaultResourceHandler;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.Heading;
@@ -21,7 +21,7 @@ import de.haumacher.imageServer.shared.model.Resource;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ResourceControlProvider implements Resource.Visitor<Display, ResourceHandler, RuntimeException> {
+public class ResourceControlProvider implements Resource.Visitor<Display, DisplayMode, RuntimeException> {
 	
 	/**
 	 * Singleton {@link ResourceControlProvider} instance.
@@ -33,32 +33,39 @@ public class ResourceControlProvider implements Resource.Visitor<Display, Resour
 	}
 
 	@Override
-	public Display visit(AlbumInfo album, ResourceHandler handler) {
-		return new AlbumDisplay(album, handler);
+	public Display visit(AlbumInfo album, DisplayMode arg) {
+		return new AlbumDisplay(album, new DefaultResourceHandler());
 	}
 
 	@Override
-	public Display visit(ListingInfo listing, ResourceHandler handler) {
-		return new ListingDisplay(listing, handler);
+	public Display visit(ListingInfo listing, DisplayMode arg) {
+		return new ListingDisplay(listing, new DefaultResourceHandler());
 	}
 
 	@Override
-	public Display visit(ImagePart self, ResourceHandler handler) {
-		return new ImageDisplay(self, handler);
+	public Display visit(ImagePart self, DisplayMode arg) {
+		return new ImageDisplay(self, arg, new DefaultResourceHandler());
 	}
 	
 	@Override
-	public Display visit(ImageGroup self, ResourceHandler arg) throws RuntimeException {
-		return new ImageDisplay(self, arg);
+	public Display visit(ImageGroup self, DisplayMode arg) throws RuntimeException {
+		switch (arg) {
+		case DEFAULT:
+			return new ImageDisplay(self, arg, new DefaultResourceHandler());
+		case DETAIL:
+			// TODO
+			// return new GroupDisplay(self, new DefaultResourceHandler());
+		}
+		throw new IllegalArgumentException("No such mode: " + arg);
 	}
 	
 	@Override
-	public Display visit(ErrorInfo error, ResourceHandler handler) {
+	public Display visit(ErrorInfo error, DisplayMode arg) {
 		return new ErrorDisplay(error);
 	}
 	
 	@Override
-	public Display visit(Heading self, ResourceHandler arg) throws RuntimeException {
+	public Display visit(Heading self, DisplayMode arg) throws RuntimeException {
 		throw new UnsupportedOperationException();
 	}
 
