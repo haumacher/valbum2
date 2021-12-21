@@ -316,6 +316,8 @@ public class ResourceCache {
 			} else {
 				album = createGenericAlbumInfo(pathInfo);
 			}
+			
+			// Update early to be able to match new images against existing image.
 			UpdateTransient.updateTransient(album);
 			
 			Set<String> existingNames = new HashSet<>();
@@ -340,10 +342,15 @@ public class ResourceCache {
 				newImages.add(image);
 			}
 			
-			Collections.sort(newImages, (a, b) -> Long.compare(ToImage.toImage(a).getDate(), ToImage.toImage(b).getDate()));
-			for (ImageData newImage : newImages) {
-				album.addPart(newImage);
-				album.putImageByName(newImage.getName(), newImage);
+			if (!newImages.isEmpty()) {
+				Collections.sort(newImages, (a, b) -> Long.compare(ToImage.toImage(a).getDate(), ToImage.toImage(b).getDate()));
+				for (ImageData newImage : newImages) {
+					album.addPart(newImage);
+					album.putImageByName(newImage.getName(), newImage);
+				}
+
+				// Update again to fix internal linking structure.
+				UpdateTransient.updateTransient(album);
 			}
 			
 			return album;
