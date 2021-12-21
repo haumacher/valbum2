@@ -61,10 +61,11 @@ public class ResourcePath {
 		if (hash == null) {
 			return "/";
 		}
-		if (hash.startsWith("#")) {
-			hash = hash.substring(1);
+		String decoded = com.google.gwt.http.client.URL.decode(hash);
+		if (decoded.startsWith("#")) {
+			decoded = decoded.substring(1);
 		}
-		return hash.isEmpty() ? "/" : hash;
+		return decoded.isEmpty() ? "/" : decoded;
 	}
 
 	/** 
