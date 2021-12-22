@@ -16,6 +16,7 @@ import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import de.haumacher.util.xml.XmlFragment;
+import elemental2.dom.Event;
 
 /**
  * {@link XmlFragment} displaying a {@link ListingInfo} model.
@@ -108,8 +109,13 @@ public class ListingDisplay extends ResourceDisplay {
 		}
 		out.end();
 		
+		writeAlbumToolbar(out);
+	}
+
+	@Override
+	protected void showParent(Event e) {
 		String parentUrl = RenderUtil.parentUrl(_listing.getPath());
-		writeAlbumToolbar(out, false, e -> {App.getInstance().showPage(parentUrl); e.stopPropagation(); e.preventDefault();});
+		App.getInstance().showPage(parentUrl); e.stopPropagation(); e.preventDefault();
 	}
 
 }

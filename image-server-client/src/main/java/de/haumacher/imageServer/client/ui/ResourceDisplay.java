@@ -15,7 +15,6 @@ import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Element;
 import elemental2.dom.Event;
-import elemental2.dom.EventListener;
 import elemental2.dom.KeyboardEvent;
 
 /**
@@ -39,59 +38,78 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 		_handler = handler;
 	}
 
-	protected void writeAlbumToolbar(DomBuilder out, boolean isFile, EventListener gotoParent) throws IOException {
+	protected void writeAlbumToolbar(DomBuilder out) throws IOException {
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, CssClasses.TOOLBAR);
 		{
-			if (gotoParent != null) {
-				out.begin(A);
-				out.classAttr(CssClasses.TOOLBAR_BUTTON);
-				out.attr(HREF_ATTR, "#");
-				{
-					RenderUtil.icon(out, "fas fa-home");
-				}
-				out.end();
-				out.getLast().addEventListener("click", e -> {App.getInstance().showPage("/"); e.stopPropagation(); e.preventDefault(); });
-				
-				out.begin(A);
-				out.classAttr(CssClasses.TOOLBAR_BUTTON);
-				out.attr(HREF_ATTR, "#");
-				{
-					RenderUtil.icon(out, "fas fa-chevron-up");
-				}
-				out.end();
-				out.getLast().addEventListener("click", gotoParent);
-			}
-			
-			out.begin(DIV);
-			out.attr(CLASS_ATTR, CssClasses.TOOLBAR_RIGHT);
-			{
-				out.begin(SPAN);
-				out.classAttr(CssClasses.TOOLBAR_BUTTON);
-				{
-					if (isEditMode()) {
-						RenderUtil.icon(out, "fas fa-save");
-					} else {
-						RenderUtil.icon(out, "fas fa-edit");
-					}
-				}
-				out.end();
-				out.getLast().addEventListener("click", this::handleToggelEditMode);
-				
-				if (isEditMode()) {
-					out.begin(SPAN);
-					out.classAttr(CssClasses.TOOLBAR_BUTTON);
-					{
-						RenderUtil.icon(out, "fas fa-bars");
-					}
-					out.end();
-					out.getLast().addEventListener("click", this::handleOpenSettings);
-				}
-			}
-			out.end();
+			writeToolbarContents(out);
 		}
 		out.end();
 	}
+
+	private void writeToolbarContents(DomBuilder out) throws IOException {
+		writeToolbarContentsLeft(out);
+		
+		out.begin(DIV);
+		out.attr(CLASS_ATTR, CssClasses.TOOLBAR_RIGHT);
+		{
+			writeToolbarContentsRight(out);
+		}
+		out.end();
+	}
+
+	protected void writeToolbarContentsLeft(DomBuilder out) throws IOException {
+		writeHomeButton(out);
+		writeUpButton(out);
+	}
+
+	protected void writeHomeButton(DomBuilder out) throws IOException {
+		out.begin(A);
+		out.classAttr(CssClasses.TOOLBAR_BUTTON);
+		out.attr(HREF_ATTR, "#");
+		{
+			RenderUtil.icon(out, "fas fa-home");
+		}
+		out.end();
+		out.getLast().addEventListener("click", e -> {App.getInstance().showPage("/"); e.stopPropagation(); e.preventDefault(); });
+	}
+
+	protected void writeUpButton(DomBuilder out) throws IOException {
+		out.begin(A);
+		out.classAttr(CssClasses.TOOLBAR_BUTTON);
+		out.attr(HREF_ATTR, "#");
+		{
+			RenderUtil.icon(out, "fas fa-chevron-up");
+		}
+		out.end();
+		out.getLast().addEventListener("click", this::showParent);
+	}
+
+	protected void writeToolbarContentsRight(DomBuilder out) throws IOException {
+		out.begin(SPAN);
+		out.classAttr(CssClasses.TOOLBAR_BUTTON);
+		{
+			if (isEditMode()) {
+				RenderUtil.icon(out, "fas fa-save");
+			} else {
+				RenderUtil.icon(out, "fas fa-edit");
+			}
+		}
+		out.end();
+		out.getLast().addEventListener("click", this::handleToggelEditMode);
+		
+		if (isEditMode()) {
+			out.begin(SPAN);
+			out.classAttr(CssClasses.TOOLBAR_BUTTON);
+			{
+				RenderUtil.icon(out, "fas fa-bars");
+			}
+			out.end();
+			out.getLast().addEventListener("click", this::handleOpenSettings);
+		}
+	}
+
+	protected abstract void showParent(Event event);
 
 	private void handleToggelEditMode(Event event) {
 		boolean newEditMode = !_editMode;

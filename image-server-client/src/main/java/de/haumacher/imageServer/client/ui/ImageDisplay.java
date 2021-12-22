@@ -140,7 +140,7 @@ public class ImageDisplay extends ResourceDisplay {
 				out.getLast().addEventListener("click", show(next));
 			}
 			
-			writeAlbumToolbar(out, true, this::showParent);
+			writeAlbumToolbar(out);
 		}
 		
 		String comment = imagePart.getComment();
@@ -487,7 +487,8 @@ public class ImageDisplay extends ResourceDisplay {
 		return false;
 	}
 
-	private void showParent(Event event) {
+	@Override
+	protected void showParent(Event event) {
 		switch (_mode) {
 		case DEFAULT: {
 			App.getInstance().showPage(_image.getOwner());

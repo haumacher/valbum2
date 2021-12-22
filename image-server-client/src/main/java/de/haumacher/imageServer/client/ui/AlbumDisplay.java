@@ -108,7 +108,7 @@ public class AlbumDisplay extends ResourceDisplay {
 		}
 		out.end();
 		
-		writeAlbumToolbar(out, false, this::showParent);
+		writeAlbumToolbar(out);
 		out.end();
 	}
 
@@ -293,7 +293,8 @@ public class AlbumDisplay extends ResourceDisplay {
 		new AlbumPropertiesEditor(this, _album).showTopLevel(context());
 	}
 
-	private void showParent(Event event) {
+	@Override
+	protected void showParent(Event event) {
 		String parentUrl = RenderUtil.parentUrl(_album.getPath());
 		App.getInstance().showPage(parentUrl);
 		event.stopPropagation();
