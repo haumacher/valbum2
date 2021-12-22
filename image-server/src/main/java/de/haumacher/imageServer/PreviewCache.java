@@ -25,6 +25,8 @@ import com.drew.metadata.exif.ExifThumbnailDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 
+import de.haumacher.imageServer.shared.model.Orientation;
+import de.haumacher.imageServer.shared.util.Orientations;
 import de.haumacher.util.servlet.Util;
 
 /**
@@ -88,7 +90,7 @@ public class PreviewCache {
 			int previewHeight = PREVIEW_HEIGHT;
 			int previewWidth = ((int) Math.round(previewHeight / dimension.getRatio()));
 			
-			int orientation = getImageOrientation(metadata);
+			Orientation orientation = Orientations.fromCode(getImageOrientation(metadata));
 			
 			BufferedImage copy = new BufferedImage(previewWidth, previewHeight, orig.getType());
 			Graphics2D g = (Graphics2D) copy.getGraphics();
@@ -107,34 +109,34 @@ public class PreviewCache {
 		}
 	}
 
-	private static void applyOrientation(AffineTransform tx, int orientation, int centerX, int centerY) {
+	private static void applyOrientation(AffineTransform tx, Orientation orientation, int centerX, int centerY) {
 		int rotation = 0;
 		boolean flip = false;
 		switch (orientation) {
-			case 1: 
+			case IDENTITY: 
 				break;
-			case 2:
+			case FLIP_H:
 				flip = true;
 				break;
-			case 3:
+			case ROT_180:
 				rotation = 180;
 				break;
-			case 4:
+			case FLIP_V:
 				rotation = 180;
 				flip = true;
 				break;
-			case 5:
+			case ROT_L_FLIP_V:
 				rotation = -90;
 				flip = true;
 				break;
-			case 6:
+			case ROT_L:
 				rotation = 90;
 				break;
-			case 7:
+			case ROT_L_FLIP_H:
 				rotation = 90;
 				flip = true;
 				break;
-			case 8:
+			case ROT_R:
 				rotation = -90;
 				break;
 			default:

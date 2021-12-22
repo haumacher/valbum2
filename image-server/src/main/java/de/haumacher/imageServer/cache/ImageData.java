@@ -23,6 +23,8 @@ import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.Orientation;
+import de.haumacher.imageServer.shared.util.Orientations;
 
 /**
  * TODO
@@ -74,16 +76,11 @@ public class ImageData extends ImagePart {
 			int rawHeight = jpegDirectory.getImageHeight();
 			
 			ExifIFD0Directory exifIFD0Directory = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
-			int orientation = exifIFD0Directory == null || !exifIFD0Directory.containsTag(ExifIFD0Directory.TAG_ORIENTATION) ? 0 : exifIFD0Directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
+			int orientation = exifIFD0Directory == null || !exifIFD0Directory.containsTag(ExifIFD0Directory.TAG_ORIENTATION) ? 1 : exifIFD0Directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
 			
-			// See http://sylvana.net/jpegcrop/exif_orientation.html
-			if (orientation >= 5) {
-				result.setWidth(rawHeight);
-				result.setHeight(rawWidth);
-			} else {
-				result.setWidth(rawWidth);
-				result.setHeight(rawHeight);
-			}
+			Orientation tx = Orientations.fromCode(orientation);
+			result.setWidth(Orientations.width(tx, rawWidth, rawHeight));
+			result.setHeight(Orientations.height(tx, rawWidth, rawHeight));
 			
 			JpegCommentDirectory jpegCommentDirectory = metadata.getFirstDirectoryOfType(JpegCommentDirectory.class);
 			if (jpegCommentDirectory != null) {

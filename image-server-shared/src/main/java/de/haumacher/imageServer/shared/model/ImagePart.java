@@ -112,8 +112,14 @@ public class ImagePart extends AbstractImage<ImagePart> {
 	/** @see #getHeight() */
 	private static final String HEIGHT = "height";
 
+	/** @see #getOrientation() */
+	private static final String ORIENTATION = "orientation";
+
 	/** @see #getRating() */
 	private static final String RATING = "rating";
+
+	/** @see #getPrivacy() */
+	private static final String PRIVACY = "privacy";
 
 	/** @see #getComment() */
 	private static final String COMMENT = "comment";
@@ -131,7 +137,11 @@ public class ImagePart extends AbstractImage<ImagePart> {
 
 	private int _height = 0;
 
+	private Orientation _orientation = de.haumacher.imageServer.shared.model.Orientation.IDENTITY;
+
 	private int _rating = 0;
+
+	private int _privacy = 0;
 
 	private String _comment = "";
 
@@ -233,6 +243,22 @@ public class ImagePart extends AbstractImage<ImagePart> {
 	}
 
 	/**
+	 * A transformation applied to the image (in addition to the transformation encoded in the image itself).
+	 */
+	public final Orientation getOrientation() {
+		return _orientation;
+	}
+
+	/**
+	 * @see #getOrientation()
+	 */
+	public final ImagePart setOrientation(Orientation value) {
+		if (value == null) throw new IllegalArgumentException("Property 'orientation' cannot be null.");
+		_orientation = value;
+		return this;
+	}
+
+	/**
 	 * A rating of this image from -2 to 2.
 	 */
 	public final int getRating() {
@@ -244,6 +270,21 @@ public class ImagePart extends AbstractImage<ImagePart> {
 	 */
 	public final ImagePart setRating(int value) {
 		_rating = value;
+		return this;
+	}
+
+	/**
+	 * A privacy level from 0 to 2.
+	 */
+	public final int getPrivacy() {
+		return _privacy;
+	}
+
+	/**
+	 * @see #getPrivacy()
+	 */
+	public final ImagePart setPrivacy(int value) {
+		_privacy = value;
 		return this;
 	}
 
@@ -311,8 +352,12 @@ public class ImagePart extends AbstractImage<ImagePart> {
 		out.value(getWidth());
 		out.name(HEIGHT);
 		out.value(getHeight());
+		out.name(ORIENTATION);
+		getOrientation().writeTo(out);
 		out.name(RATING);
 		out.value(getRating());
+		out.name(PRIVACY);
+		out.value(getPrivacy());
 		out.name(COMMENT);
 		out.value(getComment());
 	}
@@ -325,7 +370,9 @@ public class ImagePart extends AbstractImage<ImagePart> {
 			case DATE: setDate(in.nextLong()); break;
 			case WIDTH: setWidth(in.nextInt()); break;
 			case HEIGHT: setHeight(in.nextInt()); break;
+			case ORIENTATION: setOrientation(de.haumacher.imageServer.shared.model.Orientation.readOrientation(in)); break;
 			case RATING: setRating(in.nextInt()); break;
+			case PRIVACY: setPrivacy(in.nextInt()); break;
 			case COMMENT: setComment(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
