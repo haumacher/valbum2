@@ -9,6 +9,7 @@ import java.io.IOException;
 
 import de.haumacher.imageServer.client.app.App;
 import de.haumacher.imageServer.client.app.ControlHandler;
+import de.haumacher.imageServer.client.app.KeyCodes;
 import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.CssClasses;
@@ -109,8 +110,6 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 		}
 	}
 
-	protected abstract void showParent(Event event);
-
 	private void handleToggelEditMode(Event event) {
 		boolean newEditMode = !_editMode;
 		
@@ -170,7 +169,29 @@ public abstract class ResourceDisplay extends AbstractDisplay implements Control
 	}
 
 	protected boolean handleKeyDown(Element target, KeyboardEvent event, String key) {
+		if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+			switch (key) {
+			case KeyCodes.Escape:
+				showParent(event);
+				return true;
+				
+			}
+		}
 		return false;
 	}
+
+	protected abstract void showParent(Event event);
+	
+	protected final void show(Event event, Resource resource) {
+		show(event, resource, DisplayMode.DEFAULT);
+	}
+
+	protected final void show(Event event, Resource resource, DisplayMode mode) {
+		App.getInstance().showPage(resource, mode);
+		event.stopPropagation();
+		event.preventDefault();
+	}
+
+	
 
 }

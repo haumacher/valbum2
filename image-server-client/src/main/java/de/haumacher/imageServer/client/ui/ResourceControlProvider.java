@@ -34,29 +34,32 @@ public class ResourceControlProvider implements Resource.Visitor<Display, Displa
 
 	@Override
 	public Display visit(AlbumInfo album, DisplayMode arg) {
-		return new AlbumDisplay(album, new DefaultResourceHandler());
+		return new AlbumDisplay(album, handler());
 	}
 
 	@Override
 	public Display visit(ListingInfo listing, DisplayMode arg) {
-		return new ListingDisplay(listing, new DefaultResourceHandler());
+		return new ListingDisplay(listing, handler());
 	}
 
 	@Override
 	public Display visit(ImagePart self, DisplayMode arg) {
-		return new ImageDisplay(self, arg, new DefaultResourceHandler());
+		return new ImageDisplay(self, arg, handler());
 	}
 	
 	@Override
 	public Display visit(ImageGroup self, DisplayMode arg) throws RuntimeException {
 		switch (arg) {
 		case DEFAULT:
-			return new ImageDisplay(self, arg, new DefaultResourceHandler());
+			return new ImageDisplay(self, DisplayMode.DEFAULT, handler());
 		case DETAIL:
-			// TODO
-			// return new GroupDisplay(self, new DefaultResourceHandler());
+			return new GroupDisplay(self, handler());
 		}
 		throw new IllegalArgumentException("No such mode: " + arg);
+	}
+
+	private DefaultResourceHandler handler() {
+		return new DefaultResourceHandler();
 	}
 	
 	@Override

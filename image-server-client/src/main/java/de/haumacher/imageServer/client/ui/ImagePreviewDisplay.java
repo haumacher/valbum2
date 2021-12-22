@@ -8,13 +8,11 @@ import static de.haumacher.util.html.HTML.*;
 import java.io.IOException;
 import java.util.function.Consumer;
 
-import de.haumacher.imageServer.client.app.App;
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.Heading;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.ui.CssClasses;
-import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Element;
@@ -27,16 +25,11 @@ import elemental2.dom.Node;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class ImagePreviewDisplay extends AbstractDisplay {
+public class ImagePreviewDisplay extends PreviewDisplay {
 
 	private final AlbumDisplay _owner;
-	private AbstractImage _part;
-	private final ImagePart _image;
+	
 	private boolean _selected;
-	private final int _rowIndex;
-	private final double _width;
-	private final double _rowHeight;
-	private final int _spacing;
 	private Element _toolbarContainer;
 	private UIContext _context;
 
@@ -44,14 +37,8 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	 * Creates a {@link ImagePreviewDisplay}.
 	 */
 	public ImagePreviewDisplay(AlbumDisplay owner, AbstractImage part, int rowIndex, double width, double rowHeight, int spacing) {
-		super();
+		super(part, rowIndex, width, rowHeight, spacing);
 		_owner = owner;
-		_part = part;
-		_image = ToImage.toImage(part);
-		_rowIndex = rowIndex;
-		_width = width;
-		_rowHeight = rowHeight;
-		_spacing = spacing;
 	}
 	
 	/**
@@ -59,13 +46,6 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	 */
 	public AlbumDisplay getOwner() {
 		return _owner;
-	}
-	
-	/**
-	 * TODO
-	 */
-	public AbstractImage getPart() {
-		return _part;
 	}
 	
 	public boolean isSelected() {
@@ -108,78 +88,29 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	}
 
 	@Override
+	protected boolean isEditMode() {
+		return getOwner().isEditMode();
+	}
+	
+	@Override
 	protected void render(UIContext context, DomBuilder out) throws IOException {
 		_context = context;
 		
-		out.begin(DIV);
-		out.attr(CLASS_ATTR, CssClasses.ICON);
-		{
-			out.begin(A);
+		super.render(context, out);
+	}
+	
+	@Override
+	protected void renderToolbar(UIContext context, DomBuilder out) throws IOException {
+		if (isEditMode()) {
+			out.begin(SPAN);
 			{
-				out.attr(CLASS_ATTR, CssClasses.ICON_LINK);
-				if (_rowIndex > 0) {
-					out.openAttr(STYLE_ATTR);
-					out.append("margin-left: ");
-					out.append(_spacing);
-					out.append("px;");
-					out.closeAttr();
-				}
-				if (!isEditMode()) {
-					out.attr(HREF_ATTR, "#");
-				}
-				out.closeAttr();
-				{
-					out.begin(IMG);
-					out.attr(CLASS_ATTR, CssClasses.ICON_DISPLAY);
-					out.attr("title", _image.getComment());
-					{
-						out.openAttr(SRC_ATTR);
-						out.append(_image.getName());
-						out.append("?type=tn");
-						out.closeAttr();
-						
-						out.attr(WIDTH_ATTR, _width);
-						out.attr(HEIGHT_ATTR, _rowHeight);
-					}
-					out.end();
-					
-					if (ImageDisplay.isVideo(_image.getKind())) {
-						out.begin(DIV);
-						out.attr(CLASS_ATTR, CssClasses.VIDEO_OVERLAY);
-						{
-							out.begin(I);
-							out.attr(CLASS_ATTR, "far fa-play-circle");
-							out.end();
-						}
-						out.end();
-					}
-					
-					if (isEditMode()) {
-						out.begin(SPAN);
-						{
-							writeToolbars(out);
-						}
-						out.end();
-						_toolbarContainer = out.getLast();
-					} else {
-						_toolbarContainer = null;
-					}
-				}
+				writeToolbars(out);
 			}
 			out.end();
-			if (!isEditMode()) {
-				out.getLast().addEventListener("click", e -> {
-					App.getInstance().showPage(_part, DisplayMode.DEFAULT);
-					e.preventDefault();
-					e.stopPropagation();
-				});
-			}
+			_toolbarContainer = out.getLast();
+		} else {
+			_toolbarContainer = null;
 		}
-		out.end();
-	}
-
-	private boolean isEditMode() {
-		return getOwner().isEditMode();
 	}
 
 	private void writeToolbars(DomBuilder out) throws IOException {
@@ -290,9 +221,10 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, CssClasses.TOOLBAR_EMBEDDED + " " + CssClasses.TOOLBAR_BOTTOM);
 		
-		int rating = _image.getRating();
-		Consumer<Object> setter = data -> _image.setRating((int) data);
-		Runnable reset = () -> _image.setRating(0);
+		ImagePart image = getImage();
+		int rating = image.getRating();
+		Consumer<Object> setter = data -> image.setRating((int) data);
+		Runnable reset = () -> image.setRating(0);
 		makeChoice(
 				setter,
 				reset,
@@ -330,7 +262,7 @@ public class ImagePreviewDisplay extends AbstractDisplay {
 	}
 	
 	private void handleEditSettings(Event event) {
-		new ImagePropertiesEditor(_image).showTopLevel(context());
+		new ImagePropertiesEditor(getImage()).showTopLevel(context());
 		
 		event.stopPropagation();
 		event.preventDefault();

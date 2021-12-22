@@ -152,6 +152,22 @@ public class ImageDisplay extends ResourceDisplay {
 		
 		out.end();
 	}
+	
+	@Override
+	protected void writeToolbarContentsLeft(DomBuilder out) throws IOException {
+		super.writeToolbarContentsLeft(out);
+		
+		if (ToImage.toImage(_image).getGroup() != null) {
+			out.begin(A);
+			out.classAttr(CssClasses.TOOLBAR_BUTTON);
+			out.attr(HREF_ATTR, "#");
+			{
+				RenderUtil.icon(out, "fas fa-chevron-down");
+			}
+			out.end();
+			out.getLast().addEventListener("click", this::showDetail);
+		}
+	}
 
 	public static boolean isVideo(Kind kind) {
 		switch (kind) {
@@ -178,16 +194,16 @@ public class ImageDisplay extends ResourceDisplay {
 		return navigate0(_image.getEnd(), AbstractImage::getPrevious);
 	}
 	
-	private AbstractImage<?> navigate0(AbstractImage<?> image, Function<AbstractImage<?>, AbstractImage<?>> step) {
+	public static AbstractImage<?> navigate0(AbstractImage<?> image, Function<AbstractImage<?>, AbstractImage<?>> step) {
 		int minRating = image.getOwner().getMinRating();
 		return matches(minRating, image) ? image : doNavigate(minRating, step, image);
 	}
 	
-	private AbstractImage<?> navigate1(AbstractImage<?> image, Function<AbstractImage<?>, AbstractImage<?>> step) {
+	private static AbstractImage<?> navigate1(AbstractImage<?> image, Function<AbstractImage<?>, AbstractImage<?>> step) {
 		return doNavigate(image.getOwner().getMinRating(), step, image);
 	}
 
-	private AbstractImage<?> doNavigate(int minRating, Function<AbstractImage<?>, AbstractImage<?>> step,
+	private static AbstractImage<?> doNavigate(int minRating, Function<AbstractImage<?>, AbstractImage<?>> step,
 			AbstractImage<?> current) {
 		while (true) {
 			AbstractImage<?> previous = step.apply(current);
@@ -203,7 +219,7 @@ public class ImageDisplay extends ResourceDisplay {
 		}
 	}
 
-	private boolean matches(int minRating, AbstractImage<?> image) {
+	private static boolean matches(int minRating, AbstractImage<?> image) {
 		return ToImage.toImage(image).getRating() >= minRating;
 	}
 
@@ -229,7 +245,6 @@ public class ImageDisplay extends ResourceDisplay {
 	protected boolean handleKeyDown(Element target, KeyboardEvent event, String key) {
 		if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
 			switch (key) {
-			case KeyCodes.Escape:
 			case KeyCodes.ArrowUp:
 				showParent(event);
 				return true;
@@ -240,6 +255,9 @@ public class ImageDisplay extends ResourceDisplay {
 				
 			case KeyCodes.ArrowRight:
 				return showNext(event);
+				
+			case KeyCodes.ArrowDown:
+				return showDetail(event);
 				
 			case KeyCodes.Home:
 				showFirst(event);
@@ -465,6 +483,10 @@ public class ImageDisplay extends ResourceDisplay {
 	private boolean showPrevious(Event event) {
 		return show(event, previous(), _mode);
 	}
+	
+	private boolean showDetail(Event event) {
+		return show(event, ToImage.toImage(_image).getGroup(), DisplayMode.DETAIL);
+	}
 
 	private boolean showFirst(Event event) {
 		return show(event, home(), _mode);
@@ -481,9 +503,10 @@ public class ImageDisplay extends ResourceDisplay {
 	private boolean show(Event event, AbstractImage<?> resource, DisplayMode mode) {
 		if (resource != null) {
 			App.getInstance().showPage(resource, mode);
+			event.stopPropagation();
+			event.preventDefault();
+			return true;
 		}
-		event.stopPropagation();
-		event.preventDefault();
 		return false;
 	}
 
@@ -491,17 +514,15 @@ public class ImageDisplay extends ResourceDisplay {
 	protected void showParent(Event event) {
 		switch (_mode) {
 		case DEFAULT: {
-			App.getInstance().showPage(_image.getOwner());
+			show(event, _image.getOwner());
 			break;
 		}
 		
 		case DETAIL: {
-			App.getInstance().showPage(ToImage.toImage(_image).getGroup(), DisplayMode.DETAIL);
+			show(event, ToImage.toImage(_image).getGroup(), DisplayMode.DETAIL);
 			break;
 		}
 		}
-		event.stopPropagation();
-		event.preventDefault();
 	}
 	
 }

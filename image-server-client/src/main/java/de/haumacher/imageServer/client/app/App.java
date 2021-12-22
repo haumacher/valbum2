@@ -269,7 +269,7 @@ public class App implements EntryPoint, UIContext {
 		rememberScrollOffset();
 		
 		String path = ToPath.toPath(resource, mode);
-		setBaseUrl(currentDir(path));
+		setBaseUrl(getContextPath() + Settings.DATA_PREFIX + ResourcePaths.toBasePath(resource, mode));
 		setDisplay(resource, mode);
 		renderPage();
 		
