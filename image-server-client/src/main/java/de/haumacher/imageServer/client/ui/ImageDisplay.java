@@ -146,7 +146,11 @@ public class ImageDisplay extends ResourceDisplay {
 		String comment = imagePart.getComment();
 		if (comment != null && !comment.isEmpty()) {
 			out.beginDiv("va-comment");
-			out.append(comment);
+			for (String p : comment.split("\\s*\\r?\\n\\s*")) {
+				out.begin(P);
+				out.append(p);
+				out.end();
+			}
 			out.end();
 		}
 		

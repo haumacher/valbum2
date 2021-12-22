@@ -325,6 +325,10 @@ a {
 	left: 0px;
 	right: 0px;
 	bottom: 5px;
-	text-align: center;
-	white-space: pre;
+	margin-left: 5px;
+	margin-right: 5px;
+}
+
+.va-comment p {
+	margin-top: 5px;
 }
