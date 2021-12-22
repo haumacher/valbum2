@@ -150,16 +150,40 @@ public class App implements EntryPoint, UIContext {
 	}
 
 	private void loadPage(String path, boolean back) {
-		int slashIdx = path.lastIndexOf('/');
 		String pictureId;
 		String albumPath;
-		boolean isGroup;
+		boolean showGroup;
+		DisplayMode mode;
+		
+		int slashIdx = path.lastIndexOf('/');
 		if (slashIdx >= 0 && slashIdx < path.length() - 1) {
+			// Does not end with slash, an image is displayed.
 			pictureId = path.substring(slashIdx + 1);
-			albumPath = path.substring(0, slashIdx + 1);
-			isGroup = false;
+			String basePath = path.substring(0, slashIdx + 1);
+			if (basePath.endsWith(ALTERNATIVES_SUFFIX)) {
+				// An image in the group detail is shown. Cut of the name of the representative image of the displayed
+				// group.
+				int dirIdx = basePath.lastIndexOf('/', basePath.length() - ALTERNATIVES_SUFFIX.length());
+				if (dirIdx >= 0) {
+					albumPath = basePath.substring(0, dirIdx);
+				} else {
+					albumPath = "/";
+				}
+				// Show the individual image, not the group as a whole.
+				showGroup = false;
+				mode = DisplayMode.DETAIL;
+			} else {
+				// A regular image (or group) is shown as part of an album.
+				albumPath = basePath;
+				
+				// De-facto show the group, not the image.
+				showGroup = true;
+				mode = DisplayMode.DEFAULT;
+			}
 		} else {
+			// Ends with slash.
 			if (path.endsWith(ALTERNATIVES_SUFFIX)) {
+				// A group listing.
 				int dirIdx = path.lastIndexOf('/', path.length() - ALTERNATIVES_SUFFIX.length());
 				if (dirIdx >= 0) {
 					albumPath = path.substring(0, dirIdx + 1);
@@ -168,11 +192,14 @@ public class App implements EntryPoint, UIContext {
 					albumPath = "/";
 					pictureId = path.substring(0, path.length() - ALTERNATIVES_SUFFIX.length() + 1);
 				}
-				isGroup = true;
+				showGroup = true;
+				mode = DisplayMode.DETAIL;
 			} else {
+				// An album.
 				albumPath = path;
 				pictureId = null;
-				isGroup = false;
+				showGroup = false;
+				mode = DisplayMode.DEFAULT;
 			}
 		}
 		
@@ -193,13 +220,13 @@ public class App implements EntryPoint, UIContext {
 							}
 							if (pictureId != null && resource instanceof AlbumInfo) {
 								ImagePart imagePart = ((AlbumInfo) resource).getImageByName().get(pictureId);
-								if (isGroup) {
+								if (showGroup) {
 									resource = imagePart.getGroup();
 								} else {
 									resource = imagePart;
 								}
 							}
-							showPage(resource, DisplayMode.DEFAULT, back);
+							showPage(resource, mode, back);
 						} catch (IOException ex) {
 							displayError("Couldn't parse response from '" + albumUrl + "': " + response.getText());
 						}
