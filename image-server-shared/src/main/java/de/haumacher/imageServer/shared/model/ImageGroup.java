@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * A group of multiple images showing the same content.
  */
-public class ImageGroup extends AbstractImage {
+public class ImageGroup extends AbstractImage<ImageGroup> {
 
 	/**
 	 * Creates a {@link ImageGroup} instance.
@@ -35,6 +35,11 @@ public class ImageGroup extends AbstractImage {
 	}
 
 	@Override
+	protected final ImageGroup self() {
+		return this;
+	}
+
+	@Override
 	public TypeKind kind() {
 		return TypeKind.IMAGE_GROUP;
 	}
@@ -49,15 +54,10 @@ public class ImageGroup extends AbstractImage {
 	/**
 	 * @see #getRepresentative()
 	 */
-	public ImageGroup setRepresentative(int value) {
-		internalSetRepresentative(value);
+	public final ImageGroup setRepresentative(int value) {
+		_representative = value;
 		return this;
 	}
-	/** Internal setter for {@link #getRepresentative()} without chain call utility. */
-	protected final void internalSetRepresentative(int value) {
-		_representative = value;
-	}
-
 
 	/**
 	 * List of images that all show the same content. Only the image with  in this album.
@@ -69,65 +69,26 @@ public class ImageGroup extends AbstractImage {
 	/**
 	 * @see #getImages()
 	 */
-	public ImageGroup setImages(java.util.List<ImagePart> value) {
-		internalSetImages(value);
-		return this;
-	}
-	/** Internal setter for {@link #getImages()} without chain call utility. */
-	protected final void internalSetImages(java.util.List<ImagePart> value) {
+	public final ImageGroup setImages(java.util.List<ImagePart> value) {
 		if (value == null) throw new IllegalArgumentException("Property 'images' cannot be null.");
 		_images.clear();
 		_images.addAll(value);
+		return this;
 	}
-
 
 	/**
 	 * Adds a value to the {@link #getImages()} list.
 	 */
-	public ImageGroup addImage(ImagePart value) {
-		internalAddImage(value);
-		return this;
-	}
-
-	/** Implementation of {@link #addImage(ImagePart)} without chain call utility. */
-	protected final void internalAddImage(ImagePart value) {
+	public final ImageGroup addImage(ImagePart value) {
 		_images.add(value);
+		return this;
 	}
 
 	/**
 	 * Removes a value from the {@link #getImages()} list.
 	 */
-	public final void removeImage(ImagePart value) {
+	public final ImageGroup removeImage(ImagePart value) {
 		_images.remove(value);
-	}
-
-	@Override
-	public ImageGroup setPrevious(AbstractImage value) {
-		internalSetPrevious(value);
-		return this;
-	}
-
-	@Override
-	public ImageGroup setNext(AbstractImage value) {
-		internalSetNext(value);
-		return this;
-	}
-
-	@Override
-	public ImageGroup setHome(AbstractImage value) {
-		internalSetHome(value);
-		return this;
-	}
-
-	@Override
-	public ImageGroup setEnd(AbstractImage value) {
-		internalSetEnd(value);
-		return this;
-	}
-
-	@Override
-	public ImageGroup setOwner(AlbumInfo value) {
-		internalSetOwner(value);
 		return this;
 	}
 

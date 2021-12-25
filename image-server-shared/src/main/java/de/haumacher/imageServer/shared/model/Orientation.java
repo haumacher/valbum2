@@ -1,7 +1,7 @@
 package de.haumacher.imageServer.shared.model;
 
 /**
- * JPEG orientation tag.
+ * Values of a JPEG orientation tag.
  *
  * <pre>
  *   1        2       3      4         5            6           7          8
@@ -17,20 +17,77 @@ package de.haumacher.imageServer.shared.model;
  */
 public enum Orientation implements de.haumacher.msgbuf.data.ProtocolEnum {
 
+	/**
+	 * No transformation, use raw image data.
+	 *
+	 * <pre>
+	 * Value	0th Row		0th Column
+	 * 1		top			left side
+	 * </pre>
+	 */
 	IDENTITY("IDENTITY"),
 
+	/**
+	 * <pre>
+	 * Value: 2
+	 * 0th Row: top
+	 * 0th Column: right side
+	 * </pre>
+	 */
 	FLIP_H("FLIP_H"),
 
+	/**
+	 * <pre>
+	 * Value: 3 
+	 * 0th Row: bottom
+	 * 0th Column: right side
+	 * </pre>
+	 */
 	ROT_180("ROT_180"),
 
+	/**
+	 * <pre>
+	 * Value: 4
+	 * 0th Row: bottom 
+	 * 0th Column: left side
+	 * </pre>
+	 */
 	FLIP_V("FLIP_V"),
 
+	/**
+	 * <pre>
+	 * Value: 5
+	 * 0th Row: left side
+	 * 0th Column: top
+	 * </pre>
+	 */
 	ROT_L_FLIP_V("ROT_L_FLIP_V"),
 
+	/**
+	 * <pre>
+	 * Value: 6
+	 * 0th Row: right side
+	 * 0th Column: top
+	 * </pre>
+	 */
 	ROT_L("ROT_L"),
 
+	/**
+	 * <pre>
+	 * Value: 7
+	 * 0th Row: right side
+	 * 0th Column: bottom
+	 * </pre>
+	 */
 	ROT_L_FLIP_H("ROT_L_FLIP_H"),
 
+	/**
+	 * <pre>
+	 * Value: 8
+	 * 0th Row: left side
+	 * 0th Column: bottom
+	 * </pre>
+	 */
 	ROT_R("ROT_R"),
 
 	;

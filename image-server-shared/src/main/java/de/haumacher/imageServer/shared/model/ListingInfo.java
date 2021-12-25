@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * {@link Resource} describing collection {@link FolderInfo}s found in a directory.
  */
-public class ListingInfo extends FolderResource {
+public class ListingInfo extends FolderResource<ListingInfo> {
 
 	/**
 	 * Creates a {@link ListingInfo} instance.
@@ -35,6 +35,11 @@ public class ListingInfo extends FolderResource {
 	}
 
 	@Override
+	protected final ListingInfo self() {
+		return this;
+	}
+
+	@Override
 	public TypeKind kind() {
 		return TypeKind.LISTING_INFO;
 	}
@@ -49,15 +54,10 @@ public class ListingInfo extends FolderResource {
 	/**
 	 * @see #getTitle()
 	 */
-	public ListingInfo setTitle(String value) {
-		internalSetTitle(value);
+	public final ListingInfo setTitle(String value) {
+		_title = value;
 		return this;
 	}
-	/** Internal setter for {@link #getTitle()} without chain call utility. */
-	protected final void internalSetTitle(String value) {
-		_title = value;
-	}
-
 
 	/**
 	 * Description of the folders within this {@link ListingInfo}.
@@ -69,41 +69,26 @@ public class ListingInfo extends FolderResource {
 	/**
 	 * @see #getFolders()
 	 */
-	public ListingInfo setFolders(java.util.List<FolderInfo> value) {
-		internalSetFolders(value);
-		return this;
-	}
-	/** Internal setter for {@link #getFolders()} without chain call utility. */
-	protected final void internalSetFolders(java.util.List<FolderInfo> value) {
+	public final ListingInfo setFolders(java.util.List<FolderInfo> value) {
 		if (value == null) throw new IllegalArgumentException("Property 'folders' cannot be null.");
 		_folders.clear();
 		_folders.addAll(value);
+		return this;
 	}
-
 
 	/**
 	 * Adds a value to the {@link #getFolders()} list.
 	 */
-	public ListingInfo addFolder(FolderInfo value) {
-		internalAddFolder(value);
-		return this;
-	}
-
-	/** Implementation of {@link #addFolder(FolderInfo)} without chain call utility. */
-	protected final void internalAddFolder(FolderInfo value) {
+	public final ListingInfo addFolder(FolderInfo value) {
 		_folders.add(value);
+		return this;
 	}
 
 	/**
 	 * Removes a value from the {@link #getFolders()} list.
 	 */
-	public final void removeFolder(FolderInfo value) {
+	public final ListingInfo removeFolder(FolderInfo value) {
 		_folders.remove(value);
-	}
-
-	@Override
-	public ListingInfo setPath(String value) {
-		internalSetPath(value);
 		return this;
 	}
 

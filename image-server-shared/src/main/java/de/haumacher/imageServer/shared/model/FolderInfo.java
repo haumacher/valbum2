@@ -54,15 +54,10 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/**
 	 * @see #getName()
 	 */
-	public FolderInfo setName(String value) {
-		internalSetName(value);
+	public final FolderInfo setName(String value) {
+		_name = value;
 		return this;
 	}
-	/** Internal setter for {@link #getName()} without chain call utility. */
-	protected final void internalSetName(String value) {
-		_name = value;
-	}
-
 
 	/**
 	 * The title of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
@@ -74,15 +69,10 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/**
 	 * @see #getTitle()
 	 */
-	public FolderInfo setTitle(String value) {
-		internalSetTitle(value);
+	public final FolderInfo setTitle(String value) {
+		_title = value;
 		return this;
 	}
-	/** Internal setter for {@link #getTitle()} without chain call utility. */
-	protected final void internalSetTitle(String value) {
-		_title = value;
-	}
-
 
 	/**
 	 * The subtitle of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
@@ -94,15 +84,10 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/**
 	 * @see #getSubTitle()
 	 */
-	public FolderInfo setSubTitle(String value) {
-		internalSetSubTitle(value);
+	public final FolderInfo setSubTitle(String value) {
+		_subTitle = value;
 		return this;
 	}
-	/** Internal setter for {@link #getSubTitle()} without chain call utility. */
-	protected final void internalSetSubTitle(String value) {
-		_subTitle = value;
-	}
-
 
 	/**
 	 * The index picture of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
@@ -114,15 +99,10 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/**
 	 * @see #getIndexPicture()
 	 */
-	public FolderInfo setIndexPicture(ThumbnailInfo value) {
-		internalSetIndexPicture(value);
+	public final FolderInfo setIndexPicture(ThumbnailInfo value) {
+		_indexPicture = value;
 		return this;
 	}
-	/** Internal setter for {@link #getIndexPicture()} without chain call utility. */
-	protected final void internalSetIndexPicture(ThumbnailInfo value) {
-		_indexPicture = value;
-	}
-
 
 	/**
 	 * Checks, whether {@link #getIndexPicture()} has a value.

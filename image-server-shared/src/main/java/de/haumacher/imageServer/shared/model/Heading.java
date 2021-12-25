@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * A heading row separating images in an album.
  */
-public class Heading extends AlbumPart {
+public class Heading extends AlbumPart<Heading> {
 
 	/**
 	 * Creates a {@link Heading} instance.
@@ -30,6 +30,11 @@ public class Heading extends AlbumPart {
 	}
 
 	@Override
+	protected final Heading self() {
+		return this;
+	}
+
+	@Override
 	public TypeKind kind() {
 		return TypeKind.HEADING;
 	}
@@ -44,19 +49,8 @@ public class Heading extends AlbumPart {
 	/**
 	 * @see #getText()
 	 */
-	public Heading setText(String value) {
-		internalSetText(value);
-		return this;
-	}
-	/** Internal setter for {@link #getText()} without chain call utility. */
-	protected final void internalSetText(String value) {
+	public final Heading setText(String value) {
 		_text = value;
-	}
-
-
-	@Override
-	public Heading setOwner(AlbumInfo value) {
-		internalSetOwner(value);
 		return this;
 	}
 

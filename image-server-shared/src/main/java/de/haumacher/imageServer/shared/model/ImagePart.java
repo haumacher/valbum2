@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * {@link Resource} describing a single image or video file.
  */
-public class ImagePart extends AbstractImage {
+public class ImagePart extends AbstractImage<ImagePart> {
 
 	/**
 	 * Kind of image.
@@ -124,6 +124,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getComment() */
 	private static final String COMMENT = "comment";
 
+	/** @see #getGroup() */
+	private static final String GROUP = "group";
+
 	private Kind _kind = de.haumacher.imageServer.shared.model.ImagePart.Kind.IMAGE;
 
 	private String _name = "";
@@ -154,6 +157,11 @@ public class ImagePart extends AbstractImage {
 	}
 
 	@Override
+	protected final ImagePart self() {
+		return this;
+	}
+
+	@Override
 	public TypeKind kind() {
 		return TypeKind.IMAGE_PART;
 	}
@@ -168,16 +176,11 @@ public class ImagePart extends AbstractImage {
 	/**
 	 * @see #getKind()
 	 */
-	public ImagePart setKind(Kind value) {
-		internalSetKind(value);
-		return this;
-	}
-	/** Internal setter for {@link #getKind()} without chain call utility. */
-	protected final void internalSetKind(Kind value) {
+	public final ImagePart setKind(Kind value) {
 		if (value == null) throw new IllegalArgumentException("Property 'kind' cannot be null.");
 		_kind = value;
+		return this;
 	}
-
 
 	/**
 	 * The image (file) name.
@@ -189,15 +192,10 @@ public class ImagePart extends AbstractImage {
 	/**
 	 * @see #getName()
 	 */
-	public ImagePart setName(String value) {
-		internalSetName(value);
+	public final ImagePart setName(String value) {
+		_name = value;
 		return this;
 	}
-	/** Internal setter for {@link #getName()} without chain call utility. */
-	protected final void internalSetName(String value) {
-		_name = value;
-	}
-
 
 	/**
 	 * The last modification date of the image in milliseconds since epoch.
@@ -209,15 +207,10 @@ public class ImagePart extends AbstractImage {
 	/**
 	 * @see #getDate()
 	 */
-	public ImagePart setDate(long value) {
-		internalSetDate(value);
+	public final ImagePart setDate(long value) {
+		_date = value;
 		return this;
 	}
-	/** Internal setter for {@link #getDate()} without chain call utility. */
-	protected final void internalSetDate(long value) {
-		_date = value;
-	}
-
 
 	/**
 	 * The width of the original image in pixels.
@@ -229,15 +222,10 @@ public class ImagePart extends AbstractImage {
 	/**
 	 * @see #getWidth()
 	 */
-	public ImagePart setWidth(int value) {
-		internalSetWidth(value);
+	public final ImagePart setWidth(int value) {
+		_width = value;
 		return this;
 	}
-	/** Internal setter for {@link #getWidth()} without chain call utility. */
-	protected final void internalSetWidth(int value) {
-		_width = value;
-	}
-
 
 	/**
 	 * The height of the original image in pixels.
@@ -249,15 +237,10 @@ public class ImagePart extends AbstractImage {
 	/**
 	 * @see #getHeight()
 	 */
-	public ImagePart setHeight(int value) {
-		internalSetHeight(value);
+	public final ImagePart setHeight(int value) {
+		_height = value;
 		return this;
 	}
-	/** Internal setter for {@link #getHeight()} without chain call utility. */
-	protected final void internalSetHeight(int value) {
-		_height = value;
-	}
-
 
 	/**
 	 * A transformation applied to the image (in addition to the transformation encoded in the image itself).
@@ -269,16 +252,11 @@ public class ImagePart extends AbstractImage {
 	/**
 	 * @see #getOrientation()
 	 */
-	public ImagePart setOrientation(Orientation value) {
-		internalSetOrientation(value);
-		return this;
-	}
-	/** Internal setter for {@link #getOrientation()} without chain call utility. */
-	protected final void internalSetOrientation(Orientation value) {
+	public final ImagePart setOrientation(Orientation value) {
 		if (value == null) throw new IllegalArgumentException("Property 'orientation' cannot be null.");
 		_orientation = value;
+		return this;
 	}
-
 
 	/**
 	 * A rating of this image from -2 to 2.
@@ -290,15 +268,10 @@ public class ImagePart extends AbstractImage {
 	/**
 	 * @see #getRating()
 	 */
-	public ImagePart setRating(int value) {
-		internalSetRating(value);
+	public final ImagePart setRating(int value) {
+		_rating = value;
 		return this;
 	}
-	/** Internal setter for {@link #getRating()} without chain call utility. */
-	protected final void internalSetRating(int value) {
-		_rating = value;
-	}
-
 
 	/**
 	 * A privacy level from 0 to 2.
@@ -310,15 +283,10 @@ public class ImagePart extends AbstractImage {
 	/**
 	 * @see #getPrivacy()
 	 */
-	public ImagePart setPrivacy(int value) {
-		internalSetPrivacy(value);
+	public final ImagePart setPrivacy(int value) {
+		_privacy = value;
 		return this;
 	}
-	/** Internal setter for {@link #getPrivacy()} without chain call utility. */
-	protected final void internalSetPrivacy(int value) {
-		_privacy = value;
-	}
-
 
 	/**
 	 * A comment describing what this image contains.
@@ -330,15 +298,10 @@ public class ImagePart extends AbstractImage {
 	/**
 	 * @see #getComment()
 	 */
-	public ImagePart setComment(String value) {
-		internalSetComment(value);
+	public final ImagePart setComment(String value) {
+		_comment = value;
 		return this;
 	}
-	/** Internal setter for {@link #getComment()} without chain call utility. */
-	protected final void internalSetComment(String value) {
-		_comment = value;
-	}
-
 
 	/**
 	 * The {@link ImageGroup}, this {@link ImagePart} is part of, or <code>null</code>, if this {@link ImagePart} is not part of a group.
@@ -350,51 +313,16 @@ public class ImagePart extends AbstractImage {
 	/**
 	 * @see #getGroup()
 	 */
-	public ImagePart setGroup(ImageGroup value) {
-		internalSetGroup(value);
+	public final ImagePart setGroup(ImageGroup value) {
+		_group = value;
 		return this;
 	}
-	/** Internal setter for {@link #getGroup()} without chain call utility. */
-	protected final void internalSetGroup(ImageGroup value) {
-		_group = value;
-	}
-
 
 	/**
 	 * Checks, whether {@link #getGroup()} has a value.
 	 */
 	public final boolean hasGroup() {
 		return _group != null;
-	}
-
-	@Override
-	public ImagePart setPrevious(AbstractImage value) {
-		internalSetPrevious(value);
-		return this;
-	}
-
-	@Override
-	public ImagePart setNext(AbstractImage value) {
-		internalSetNext(value);
-		return this;
-	}
-
-	@Override
-	public ImagePart setHome(AbstractImage value) {
-		internalSetHome(value);
-		return this;
-	}
-
-	@Override
-	public ImagePart setEnd(AbstractImage value) {
-		internalSetEnd(value);
-		return this;
-	}
-
-	@Override
-	public ImagePart setOwner(AlbumInfo value) {
-		internalSetOwner(value);
-		return this;
 	}
 
 	@Override

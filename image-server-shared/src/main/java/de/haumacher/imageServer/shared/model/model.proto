@@ -133,7 +133,7 @@ message ImagePart extends AbstractImage {
 }
 
 /**
- * JPEG orientation tag.
+ * Values of a JPEG orientation tag.
  * 
  * <pre>
  *   1        2       3      4         5            6           7          8
@@ -148,36 +148,77 @@ message ImagePart extends AbstractImage {
  * @see "http://sylvana.net/jpegcrop/exif_orientation.html"
  */
 enum Orientation {
-	// Value	0th Row		0th Column
-	// 1		top			left side
+	/**
+	 * No transformation, use raw image data.
+	 *
+	 * <pre>
+	 * Value	0th Row		0th Column
+	 * 1		top			left side
+	 * </pre>   
+	 */
 	IDENTITY;
 	
-	// Value	0th Row		0th Column
-	// 2		top			right side
+	/**
+	 * <pre>
+	 * Value: 2
+	 * 0th Row: top
+	 * 0th Column: right side
+	 * </pre>
+	 */
 	FLIP_H;
 	
-	// Value	0th Row		0th Column
-	// 3		bottom		right side
+	/**
+	 * <pre>
+	 * Value: 3 
+	 * 0th Row: bottom
+	 * 0th Column: right side
+	 * </pre>
+	 */
 	ROT_180;
 	
-	// Value	0th Row		0th Column
-	// 4		bottom		left side
+	/**
+	 * <pre>
+	 * Value: 4
+	 * 0th Row: bottom 
+	 * 0th Column: left side
+	 * </pre>
+	 */
 	FLIP_V;
 	
-	// Value	0th Row		0th Column
-	// 5		left side	top
+	/**
+	 * <pre>
+	 * Value: 5
+	 * 0th Row: left side
+	 * 0th Column: top
+	 * </pre>
+	 */
 	ROT_L_FLIP_V;
 
-	// Value	0th Row		0th Column
-	// 6		right side	top
+	/**
+	 * <pre>
+	 * Value: 6
+	 * 0th Row: right side
+	 * 0th Column: top
+	 * </pre>
+	 */
 	ROT_L;
 
-	// Value	0th Row		0th Column
-	// 7		right side	bottom
+	/**
+	 * <pre>
+	 * Value: 7
+	 * 0th Row: right side
+	 * 0th Column: bottom
+	 * </pre>
+	 */
 	ROT_L_FLIP_H;
 	
-	// Value	0th Row		0th Column
-	// 8		left side	bottom
+	/**
+	 * <pre>
+	 * Value: 8
+	 * 0th Row: left side
+	 * 0th Column: bottom
+	 * </pre>
+	 */
 	ROT_R;
 }
 

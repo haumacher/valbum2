@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * Base class for contents of an {@link AlbumInfo}.
  */
-public abstract class AlbumPart extends Resource {
+public abstract class AlbumPart<S extends AlbumPart<S>> extends Resource {
 
 	/** Visitor interface for the {@link AlbumPart} hierarchy.*/
 	public interface Visitor<R,A,E extends Throwable> extends AbstractImage.Visitor<R,A,E> {
@@ -13,6 +13,9 @@ public abstract class AlbumPart extends Resource {
 
 	}
 
+	/** @see #getOwner() */
+	private static final String OWNER = "owner";
+
 	private transient AlbumInfo _owner = null;
 
 	/**
@@ -21,6 +24,9 @@ public abstract class AlbumPart extends Resource {
 	protected AlbumPart() {
 		super();
 	}
+
+	/** This instance with the concrete type. */
+	protected abstract S self();
 
 	/**
 	 * The {@link AlbumInfo}, this one is part of.
@@ -32,15 +38,10 @@ public abstract class AlbumPart extends Resource {
 	/**
 	 * @see #getOwner()
 	 */
-	public AlbumPart setOwner(AlbumInfo value) {
-		internalSetOwner(value);
-		return this;
-	}
-	/** Internal setter for {@link #getOwner()} without chain call utility. */
-	protected final void internalSetOwner(AlbumInfo value) {
+	public final S setOwner(AlbumInfo value) {
 		_owner = value;
+		return self();
 	}
-
 
 	/**
 	 * Checks, whether {@link #getOwner()} has a value.
@@ -53,8 +54,8 @@ public abstract class AlbumPart extends Resource {
 	public abstract String jsonType();
 
 	/** Reads a new instance from the given reader. */
-	public static AlbumPart readAlbumPart(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
-		AlbumPart result;
+	public static AlbumPart<?> readAlbumPart(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
+		AlbumPart<?> result;
 		in.beginArray();
 		String type = in.nextString();
 		switch (type) {

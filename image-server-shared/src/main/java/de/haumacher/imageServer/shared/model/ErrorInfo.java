@@ -44,15 +44,10 @@ public class ErrorInfo extends Resource {
 	/**
 	 * @see #getMessage()
 	 */
-	public ErrorInfo setMessage(String value) {
-		internalSetMessage(value);
+	public final ErrorInfo setMessage(String value) {
+		_message = value;
 		return this;
 	}
-	/** Internal setter for {@link #getMessage()} without chain call utility. */
-	protected final void internalSetMessage(String value) {
-		_message = value;
-	}
-
 
 	@Override
 	public String jsonType() {
