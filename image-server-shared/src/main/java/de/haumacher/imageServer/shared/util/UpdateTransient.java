@@ -78,26 +78,26 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 		return null;
 	}
 	
-	private void initOwner(AlbumPart<?> self, AlbumInfo arg) {
+	private void initOwner(AlbumPart self, AlbumInfo arg) {
 		self.setOwner(arg);
 	}
 	
 	/** 
 	 * Updates internal links of the given {@link AlbumInfo}.
 	 */
-	private void updateContents(List<? extends AlbumPart<?>> parts, AlbumInfo owner) {
-		AbstractImage<?> firstImage = nextImage(parts, 0);
-		AbstractImage<?> lastImage = prevImage(parts, parts.size() - 1);
+	private void updateContents(List<? extends AlbumPart> parts, AlbumInfo owner) {
+		AbstractImage firstImage = nextImage(parts, 0);
+		AbstractImage lastImage = prevImage(parts, parts.size() - 1);
 		
 		for (int n = 0, size = parts.size(); n < size; n++) {
 			int index = n;
 			
-			AlbumPart<?> part = parts.get(index);
+			AlbumPart part = parts.get(index);
 			if (part instanceof AbstractImage) {
-				AbstractImage<?> image = (AbstractImage<?>) part;
+				AbstractImage image = (AbstractImage) part;
 				
-				AbstractImage<?> prevImage = prevImage(parts, index - 1);
-				AbstractImage<?> nextImage = nextImage(parts, index + 1);
+				AbstractImage prevImage = prevImage(parts, index - 1);
+				AbstractImage nextImage = nextImage(parts, index + 1);
 				
 				image.setHome(firstImage);
 				image.setEnd(lastImage);
@@ -118,11 +118,11 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 	 *        The index to search the preceding image for.
 	 * @return The {@link AbstractImage} preceding the given index, or <code>null</code> if there is no such image.
 	 */
-	private static AbstractImage<?> prevImage(List<? extends AlbumPart<?>> parts, int i) {
+	private static AbstractImage prevImage(List<? extends AlbumPart> parts, int i) {
 		while (i >= 0) {
-			AlbumPart<?> part = parts.get(i--);
+			AlbumPart part = parts.get(i--);
 			if (part instanceof AbstractImage) {
-				return (AbstractImage<?>) part;
+				return (AbstractImage) part;
 			}
 		}
 		return null;
@@ -131,11 +131,11 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 	/**
 	 * @see #prevImage(List, int)
 	 */
-	private static AbstractImage<?> nextImage(List<? extends AlbumPart<?>> parts, int i) {
+	private static AbstractImage nextImage(List<? extends AlbumPart> parts, int i) {
 		while (i < parts.size()) {
-			AlbumPart<?> part = parts.get(i++);
+			AlbumPart part = parts.get(i++);
 			if (part instanceof AbstractImage) {
-				return (AbstractImage<?>) part;
+				return (AbstractImage) part;
 			}
 		}
 		return null;

@@ -96,6 +96,7 @@ public class App implements EntryPoint, UIContext {
 		body.addEventListener("keydown", this::handleEvent);
 		body.addEventListener("wheel", this::handleEvent);
 		body.addEventListener("mousedown", this::handleEvent);
+		body.addEventListener("mousedown", this::handleEvent);
 		
 		DomGlobal.window.addEventListener("popstate", this::onPopState);
 		DomGlobal.window.addEventListener("resize", this::handleResize);
@@ -215,13 +216,21 @@ public class App implements EntryPoint, UIContext {
 						try {
 							Resource resource = AlbumInfo.readResource(json);
 							UpdateTransient.updateTransient(resource);
-							if (resource instanceof FolderResource<?>) {
-								((FolderResource<?>) resource).setPath(albumPath);
+							if (resource instanceof FolderResource) {
+								((FolderResource) resource).setPath(albumPath);
 							}
 							if (pictureId != null && resource instanceof AlbumInfo) {
 								ImagePart imagePart = ((AlbumInfo) resource).getImageByName().get(pictureId);
+								if (imagePart == null) {
+									displayError("No such image: " + pictureId);
+									return;
+								}
 								if (showGroup) {
 									resource = imagePart.getGroup();
+									if (resource == null) {
+										// Not part of a group, show the image itself.
+										resource = imagePart;
+									}
 								} else {
 									resource = imagePart;
 								}

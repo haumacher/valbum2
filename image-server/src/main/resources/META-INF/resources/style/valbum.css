@@ -47,10 +47,24 @@ div.va-image-rows {
 	margin-right: auto;
 }
 
+div.va-icons {
+	display: table; 
+	margin-top: 2px;
+}
+
+div.va-icon-row {
+	display: table-row;
+}
+
 div.va-image-page {
 	position: relative;
 	width: 100%;
 	height: 100%;
+	touch-action: none;
+}
+
+a.va-icon-link {
+	font-size: 0px;
 }
 
 img.va-image-display, 

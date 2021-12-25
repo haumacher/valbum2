@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * Part of an album that can be represented as an image.
  */
-public abstract class AbstractImage<S extends AbstractImage<S>> extends AlbumPart<S> {
+public abstract class AbstractImage extends AlbumPart {
 
 	/** Visitor interface for the {@link AbstractImage} hierarchy.*/
 	public interface Visitor<R,A,E extends Throwable> {
@@ -28,13 +28,13 @@ public abstract class AbstractImage<S extends AbstractImage<S>> extends AlbumPar
 	/** @see #getEnd() */
 	private static final String END = "end";
 
-	private transient AbstractImage<?> _previous = null;
+	private transient AbstractImage _previous = null;
 
-	private transient AbstractImage<?> _next = null;
+	private transient AbstractImage _next = null;
 
-	private transient AbstractImage<?> _home = null;
+	private transient AbstractImage _home = null;
 
-	private transient AbstractImage<?> _end = null;
+	private transient AbstractImage _end = null;
 
 	/**
 	 * Creates a {@link AbstractImage} instance.
@@ -46,17 +46,22 @@ public abstract class AbstractImage<S extends AbstractImage<S>> extends AlbumPar
 	/**
 	 * The previous image in the {@link #getOwner()}.
 	 */
-	public final AbstractImage<?> getPrevious() {
+	public final AbstractImage getPrevious() {
 		return _previous;
 	}
 
 	/**
 	 * @see #getPrevious()
 	 */
-	public final S setPrevious(AbstractImage<?> value) {
-		_previous = value;
-		return self();
+	public AbstractImage setPrevious(AbstractImage value) {
+		internalSetPrevious(value);
+		return this;
 	}
+	/** Internal setter for {@link #getPrevious()} without chain call utility. */
+	protected final void internalSetPrevious(AbstractImage value) {
+		_previous = value;
+	}
+
 
 	/**
 	 * Checks, whether {@link #getPrevious()} has a value.
@@ -68,17 +73,22 @@ public abstract class AbstractImage<S extends AbstractImage<S>> extends AlbumPar
 	/**
 	 * The next image in the {@link #getOwner()}.
 	 */
-	public final AbstractImage<?> getNext() {
+	public final AbstractImage getNext() {
 		return _next;
 	}
 
 	/**
 	 * @see #getNext()
 	 */
-	public final S setNext(AbstractImage<?> value) {
-		_next = value;
-		return self();
+	public AbstractImage setNext(AbstractImage value) {
+		internalSetNext(value);
+		return this;
 	}
+	/** Internal setter for {@link #getNext()} without chain call utility. */
+	protected final void internalSetNext(AbstractImage value) {
+		_next = value;
+	}
+
 
 	/**
 	 * Checks, whether {@link #getNext()} has a value.
@@ -90,17 +100,22 @@ public abstract class AbstractImage<S extends AbstractImage<S>> extends AlbumPar
 	/**
 	 * The first image of the {@link #getOwner()}.
 	 */
-	public final AbstractImage<?> getHome() {
+	public final AbstractImage getHome() {
 		return _home;
 	}
 
 	/**
 	 * @see #getHome()
 	 */
-	public final S setHome(AbstractImage<?> value) {
-		_home = value;
-		return self();
+	public AbstractImage setHome(AbstractImage value) {
+		internalSetHome(value);
+		return this;
 	}
+	/** Internal setter for {@link #getHome()} without chain call utility. */
+	protected final void internalSetHome(AbstractImage value) {
+		_home = value;
+	}
+
 
 	/**
 	 * Checks, whether {@link #getHome()} has a value.
@@ -112,17 +127,22 @@ public abstract class AbstractImage<S extends AbstractImage<S>> extends AlbumPar
 	/**
 	 * The last image of the {@link #getOwner()}.
 	 */
-	public final AbstractImage<?> getEnd() {
+	public final AbstractImage getEnd() {
 		return _end;
 	}
 
 	/**
 	 * @see #getEnd()
 	 */
-	public final S setEnd(AbstractImage<?> value) {
-		_end = value;
-		return self();
+	public AbstractImage setEnd(AbstractImage value) {
+		internalSetEnd(value);
+		return this;
 	}
+	/** Internal setter for {@link #getEnd()} without chain call utility. */
+	protected final void internalSetEnd(AbstractImage value) {
+		_end = value;
+	}
+
 
 	/**
 	 * Checks, whether {@link #getEnd()} has a value.
@@ -132,11 +152,17 @@ public abstract class AbstractImage<S extends AbstractImage<S>> extends AlbumPar
 	}
 
 	@Override
+	public AbstractImage setOwner(AlbumInfo value) {
+		internalSetOwner(value);
+		return this;
+	}
+
+	@Override
 	public abstract String jsonType();
 
 	/** Reads a new instance from the given reader. */
-	public static AbstractImage<?> readAbstractImage(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
-		AbstractImage<?> result;
+	public static AbstractImage readAbstractImage(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
+		AbstractImage result;
 		in.beginArray();
 		String type = in.nextString();
 		switch (type) {

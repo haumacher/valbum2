@@ -32,7 +32,7 @@ public class GroupDisplay extends AbstractAlbumDisplay {
 	}
 
 	@Override
-	protected List<? extends AlbumPart<?>> getParts() {
+	protected List<? extends AlbumPart> getParts() {
 		return _group.getImages();
 	}
 

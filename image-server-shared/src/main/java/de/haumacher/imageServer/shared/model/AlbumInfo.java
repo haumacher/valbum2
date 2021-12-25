@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * {@link Resource} describing a collection of {@link AlbumPart}s.
  */
-public class AlbumInfo extends FolderResource<AlbumInfo> {
+public class AlbumInfo extends FolderResource {
 
 	/**
 	 * Creates a {@link AlbumInfo} instance.
@@ -39,7 +39,7 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 
 	private ThumbnailInfo _indexPicture = null;
 
-	private final java.util.List<AlbumPart<?>> _parts = new java.util.ArrayList<>();
+	private final java.util.List<AlbumPart> _parts = new java.util.ArrayList<>();
 
 	private transient final java.util.Map<String, ImagePart> _imageByName = new java.util.HashMap<>();
 
@@ -52,11 +52,6 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	 */
 	protected AlbumInfo() {
 		super();
-	}
-
-	@Override
-	protected final AlbumInfo self() {
-		return this;
 	}
 
 	@Override
@@ -74,10 +69,15 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	/**
 	 * @see #getTitle()
 	 */
-	public final AlbumInfo setTitle(String value) {
-		_title = value;
+	public AlbumInfo setTitle(String value) {
+		internalSetTitle(value);
 		return this;
 	}
+	/** Internal setter for {@link #getTitle()} without chain call utility. */
+	protected final void internalSetTitle(String value) {
+		_title = value;
+	}
+
 
 	/**
 	 * The subtitle of this album.
@@ -89,10 +89,15 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	/**
 	 * @see #getSubTitle()
 	 */
-	public final AlbumInfo setSubTitle(String value) {
-		_subTitle = value;
+	public AlbumInfo setSubTitle(String value) {
+		internalSetSubTitle(value);
 		return this;
 	}
+	/** Internal setter for {@link #getSubTitle()} without chain call utility. */
+	protected final void internalSetSubTitle(String value) {
+		_subTitle = value;
+	}
+
 
 	/**
 	 * Description of the image used to display this whole album in a listing.
@@ -104,10 +109,15 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	/**
 	 * @see #getIndexPicture()
 	 */
-	public final AlbumInfo setIndexPicture(ThumbnailInfo value) {
-		_indexPicture = value;
+	public AlbumInfo setIndexPicture(ThumbnailInfo value) {
+		internalSetIndexPicture(value);
 		return this;
 	}
+	/** Internal setter for {@link #getIndexPicture()} without chain call utility. */
+	protected final void internalSetIndexPicture(ThumbnailInfo value) {
+		_indexPicture = value;
+	}
+
 
 	/**
 	 * Checks, whether {@link #getIndexPicture()} has a value.
@@ -119,34 +129,43 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	/**
 	 * The list of images in this album.
 	 */
-	public final java.util.List<AlbumPart<?>> getParts() {
+	public final java.util.List<AlbumPart> getParts() {
 		return _parts;
 	}
 
 	/**
 	 * @see #getParts()
 	 */
-	public final AlbumInfo setParts(java.util.List<AlbumPart<?>> value) {
+	public AlbumInfo setParts(java.util.List<AlbumPart> value) {
+		internalSetParts(value);
+		return this;
+	}
+	/** Internal setter for {@link #getParts()} without chain call utility. */
+	protected final void internalSetParts(java.util.List<AlbumPart> value) {
 		if (value == null) throw new IllegalArgumentException("Property 'parts' cannot be null.");
 		_parts.clear();
 		_parts.addAll(value);
-		return this;
 	}
+
 
 	/**
 	 * Adds a value to the {@link #getParts()} list.
 	 */
-	public final AlbumInfo addPart(AlbumPart<?> value) {
-		_parts.add(value);
+	public AlbumInfo addPart(AlbumPart value) {
+		internalAddPart(value);
 		return this;
+	}
+
+	/** Implementation of {@link #addPart(AlbumPart)} without chain call utility. */
+	protected final void internalAddPart(AlbumPart value) {
+		_parts.add(value);
 	}
 
 	/**
 	 * Removes a value from the {@link #getParts()} list.
 	 */
-	public final AlbumInfo removePart(AlbumPart<?> value) {
+	public final void removePart(AlbumPart value) {
 		_parts.remove(value);
-		return this;
 	}
 
 	/**
@@ -159,30 +178,39 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	/**
 	 * @see #getImageByName()
 	 */
-	public final AlbumInfo setImageByName(java.util.Map<String, ImagePart> value) {
+	public AlbumInfo setImageByName(java.util.Map<String, ImagePart> value) {
+		internalSetImageByName(value);
+		return this;
+	}
+	/** Internal setter for {@link #getImageByName()} without chain call utility. */
+	protected final void internalSetImageByName(java.util.Map<String, ImagePart> value) {
 		if (value == null) throw new IllegalArgumentException("Property 'imageByName' cannot be null.");
 		_imageByName.clear();
 		_imageByName.putAll(value);
+	}
+
+
+	/**
+	 * Adds a key value pair to the {@link #getImageByName()} map.
+	 */
+	public AlbumInfo putImageByName(String key, ImagePart value) {
+		internalPutImageByName(key, value);
 		return this;
 	}
 
-	/**
-	 * Adds a value to the {@link #getImageByName()} map.
-	 */
-	public final AlbumInfo putImageByName(String key, ImagePart value) {
+	/** Implementation of {@link #putImageByName(String, ImagePart)} without chain call utility. */
+	protected final void  internalPutImageByName(String key, ImagePart value) {
 		if (_imageByName.containsKey(key)) {
 			throw new IllegalArgumentException("Property 'imageByName' already contains a value for key '" + key + "'.");
 		}
 		_imageByName.put(key, value);
-		return this;
 	}
 
 	/**
 	 * Removes a key from the {@link #getImageByName()} map.
 	 */
-	public final AlbumInfo removeImageByName(String key) {
+	public final void removeImageByName(String key) {
 		_imageByName.remove(key);
-		return this;
 	}
 
 	/**
@@ -197,8 +225,19 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 	/**
 	 * @see #getMinRating()
 	 */
-	public final AlbumInfo setMinRating(int value) {
+	public AlbumInfo setMinRating(int value) {
+		internalSetMinRating(value);
+		return this;
+	}
+	/** Internal setter for {@link #getMinRating()} without chain call utility. */
+	protected final void internalSetMinRating(int value) {
 		_minRating = value;
+	}
+
+
+	@Override
+	public AlbumInfo setPath(String value) {
+		internalSetPath(value);
 		return this;
 	}
 
@@ -229,7 +268,7 @@ public class AlbumInfo extends FolderResource<AlbumInfo> {
 		}
 		out.name(PARTS);
 		out.beginArray();
-		for (AlbumPart<?> x : getParts()) {
+		for (AlbumPart x : getParts()) {
 			x.writeTo(out);
 		}
 		out.endArray();

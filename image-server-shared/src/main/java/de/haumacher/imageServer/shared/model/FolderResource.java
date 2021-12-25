@@ -3,7 +3,7 @@ package de.haumacher.imageServer.shared.model;
 /**
  * {@link Resource} representing a directory.
  */
-public abstract class FolderResource<S extends FolderResource<S>> extends Resource {
+public abstract class FolderResource extends Resource {
 
 	/** Visitor interface for the {@link FolderResource} hierarchy.*/
 	public interface Visitor<R,A,E extends Throwable> {
@@ -28,9 +28,6 @@ public abstract class FolderResource<S extends FolderResource<S>> extends Resour
 		super();
 	}
 
-	/** This instance with the concrete type. */
-	protected abstract S self();
-
 	/**
 	 * The path where the {@link Resource} is located on the server relative to it's base directory
 	 */
@@ -41,17 +38,22 @@ public abstract class FolderResource<S extends FolderResource<S>> extends Resour
 	/**
 	 * @see #getPath()
 	 */
-	public final S setPath(String value) {
-		_path = value;
-		return self();
+	public FolderResource setPath(String value) {
+		internalSetPath(value);
+		return this;
 	}
+	/** Internal setter for {@link #getPath()} without chain call utility. */
+	protected final void internalSetPath(String value) {
+		_path = value;
+	}
+
 
 	@Override
 	public abstract String jsonType();
 
 	/** Reads a new instance from the given reader. */
-	public static FolderResource<?> readFolderResource(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
-		FolderResource<?> result;
+	public static FolderResource readFolderResource(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
+		FolderResource result;
 		in.beginArray();
 		String type = in.nextString();
 		switch (type) {

@@ -18,7 +18,7 @@ import de.haumacher.imageServer.shared.util.ToImage;
 public class ImageRow {
 
 	/** @see #getSpacing() */
-	private int _spacing = 5;
+	private int _spacing = 2;
 	
 	private final int _width;
 	private final int _maxHeight;

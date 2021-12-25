@@ -37,7 +37,7 @@ public class ToImage implements AbstractImage.Visitor<ImagePart, Void, RuntimeEx
 	/**
 	 * Invokes {@link ToImage} on the given {@link AbstractImage}.
 	 */
-	public static ImagePart toImage(AbstractImage<?> image) {
+	public static ImagePart toImage(AbstractImage image) {
 		return image.visit(INSTANCE, null);
 	}
 

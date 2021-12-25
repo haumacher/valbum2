@@ -12,15 +12,15 @@ import elemental2.dom.Element;
  */
 public class Native {
 
-	public static native <T> T get(Element element, String property) /*-{
+	public static native <T> T get(Object element, String property) /*-{
 	    return element[property];
 	}-*/;
 
-	public static native void delete(Element element, String property) /*-{
+	public static native void delete(Object element, String property) /*-{
 	    delete element[property];
 	}-*/;
 
-	public static native void set(Element element, String property, Object value) /*-{
+	public static native void set(Object element, String property, Object value) /*-{
 	    element[property] = value;
 	}-*/;
 

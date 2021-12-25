@@ -40,13 +40,35 @@ import jsinterop.base.Js;
  */
 public class ImageDisplay extends ResourceDisplay {
 
-	private AbstractImage<?> _image;
+	private AbstractImage _image;
 	private DisplayMode _mode;
+	
+	private TouchHandler _gestures = new TouchHandler() {
+		@Override
+		public void onSwipe(Status status, SwipeImpl data) {
+			if (status == Status.COMPLETED) {
+				switch (data.getDirection()) {
+				case LEFT:
+					showNext(null);
+					break;
+				case RIGHT:
+					showPrevious(null);
+					break;
+				case UP: 
+					showDetail(null);
+					break;
+				case DOWN: 
+					showParent(null);
+					break;
+				}
+			}
+		}
+	};
 
 	/** 
 	 * Creates a {@link ImageDisplay}.
 	 */
-	public ImageDisplay(AbstractImage<?> image, DisplayMode mode, ResourceHandler handler) {
+	public ImageDisplay(AbstractImage image, DisplayMode mode, ResourceHandler handler) {
 		super(handler);
 		_image = image;
 		_mode = mode;
@@ -94,7 +116,7 @@ public class ImageDisplay extends ResourceDisplay {
 				out.end();
 			}
 			
-			AbstractImage<?> previous = previous();
+			AbstractImage previous = previous();
 			if (previous != null) {
 				out.begin(A);
 				out.attr(HREF_ATTR, "#");
@@ -117,7 +139,7 @@ public class ImageDisplay extends ResourceDisplay {
 				out.getLast().addEventListener("click", show(previous));
 			}
 			
-			AbstractImage<?> next = next();
+			AbstractImage next = next();
 			if (next != null) {
 				out.begin(A);
 				out.attr(HREF_ATTR, "#");
@@ -155,8 +177,23 @@ public class ImageDisplay extends ResourceDisplay {
 		}
 		
 		out.end();
+		
+		_gestures.attach(out.getLast());
+		
+		if (Native.get(DomGlobal.screen, "orientation") != null) {
+			// If on a mobile device.
+			
+			DomGlobal.document.documentElement.requestFullscreen();
+		}
 	}
 	
+	@Override
+	protected void onDetach(Element element) {
+		_gestures.detach();
+		
+		super.onDetach(element);
+	}
+
 	@Override
 	protected void writeToolbarContentsLeft(DomBuilder out) throws IOException {
 		super.writeToolbarContentsLeft(out);
@@ -182,35 +219,35 @@ public class ImageDisplay extends ResourceDisplay {
 		throw new IllegalArgumentException("No such kind: " + kind);
 	}
 
-	private AbstractImage<?> previous() {
+	private AbstractImage previous() {
 		return navigate1(_image, AbstractImage::getPrevious);
 	}
 	
-	private AbstractImage<?> next() {
+	private AbstractImage next() {
 		return navigate1(_image, AbstractImage::getNext);
 	}
 	
-	private AbstractImage<?> home() {
+	private AbstractImage home() {
 		return navigate0(_image.getHome(), AbstractImage::getNext);
 	}
 	
-	private AbstractImage<?> end() {
+	private AbstractImage end() {
 		return navigate0(_image.getEnd(), AbstractImage::getPrevious);
 	}
 	
-	public static AbstractImage<?> navigate0(AbstractImage<?> image, Function<AbstractImage<?>, AbstractImage<?>> step) {
+	public static AbstractImage navigate0(AbstractImage image, Function<AbstractImage, AbstractImage> step) {
 		int minRating = image.getOwner().getMinRating();
 		return matches(minRating, image) ? image : doNavigate(minRating, step, image);
 	}
 	
-	private static AbstractImage<?> navigate1(AbstractImage<?> image, Function<AbstractImage<?>, AbstractImage<?>> step) {
+	private static AbstractImage navigate1(AbstractImage image, Function<AbstractImage, AbstractImage> step) {
 		return doNavigate(image.getOwner().getMinRating(), step, image);
 	}
 
-	private static AbstractImage<?> doNavigate(int minRating, Function<AbstractImage<?>, AbstractImage<?>> step,
-			AbstractImage<?> current) {
+	private static AbstractImage doNavigate(int minRating, Function<AbstractImage, AbstractImage> step,
+			AbstractImage current) {
 		while (true) {
-			AbstractImage<?> previous = step.apply(current);
+			AbstractImage previous = step.apply(current);
 			if (previous == null) {
 				return null;
 			}
@@ -223,7 +260,7 @@ public class ImageDisplay extends ResourceDisplay {
 		}
 	}
 
-	private static boolean matches(int minRating, AbstractImage<?> image) {
+	private static boolean matches(int minRating, AbstractImage image) {
 		return ToImage.toImage(image).getRating() >= minRating;
 	}
 
@@ -480,15 +517,15 @@ public class ImageDisplay extends ResourceDisplay {
 		return Native.get(container, "dragInfo");
 	}
 
-	private boolean showNext(Event event) {
+	final boolean showNext(Event event) {
 		return show(event, next(), _mode);
 	}
 
-	private boolean showPrevious(Event event) {
+	final boolean showPrevious(Event event) {
 		return show(event, previous(), _mode);
 	}
 	
-	private boolean showDetail(Event event) {
+	final boolean showDetail(Event event) {
 		return show(event, ToImage.toImage(_image).getGroup(), DisplayMode.DETAIL);
 	}
 
@@ -500,15 +537,17 @@ public class ImageDisplay extends ResourceDisplay {
 		return show(event, end(), _mode);
 	}
 	
-	private EventListener show(AbstractImage<?> resource) {
+	private EventListener show(AbstractImage resource) {
 		return e -> show(e, resource, _mode);
 	}
 	
-	private boolean show(Event event, AbstractImage<?> resource, DisplayMode mode) {
+	private boolean show(Event event, AbstractImage resource, DisplayMode mode) {
 		if (resource != null) {
 			App.getInstance().showPage(resource, mode);
-			event.stopPropagation();
-			event.preventDefault();
+			if (event != null) {
+				event.stopPropagation();
+				event.preventDefault();
+			}
 			return true;
 		}
 		return false;

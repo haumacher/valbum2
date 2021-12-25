@@ -26,6 +26,7 @@ public class CssClasses {
 	public static final String TOOLBAR_BUTTON = "va-toolbar-button";
 	public static final String ACTIVE = "va-active";
 	public static final String VIDEO_OVERLAY = "va-video-overlay";
+	public static final String ICON_ROW = "va-icon-row";
 	public static final String ICON_DISPLAY = "va-icon-display";
 	public static final String ICON_LINK = "va-icon-link";
 	public static final String ICON = "va-icon";

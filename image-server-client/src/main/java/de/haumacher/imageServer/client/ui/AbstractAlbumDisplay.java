@@ -19,6 +19,7 @@ import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.ui.ImageRow;
 import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.dom.DomBuilder;
+import elemental2.dom.DomGlobal;
 import elemental2.dom.Element;
 import elemental2.dom.KeyboardEvent;
 
@@ -73,12 +74,14 @@ public abstract class AbstractAlbumDisplay extends ResourceDisplay {
 	}
 
 	protected void renderImages(UIContext context, DomBuilder out) throws IOException {
+		int maxRowHeight = Math.min(400, DomGlobal.window.innerHeight * 2 / 3);
+		
 		int width = context.getPageWidth();
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, CssClasses.IMAGE_ROWS);
 		out.attr(STYLE_ATTR, "width: " + width + "px;");
 		{
-			ImageRow row = new ImageRow(width, 400);
+			ImageRow row = new ImageRow(width, maxRowHeight);
 			for (AlbumPart part : getParts()) {
 				if (part instanceof AbstractImage) {
 					AbstractImage image = (AbstractImage) part;
@@ -114,7 +117,7 @@ public abstract class AbstractAlbumDisplay extends ResourceDisplay {
 	/** 
 	 * The parts to display.
 	 */
-	protected abstract List<? extends AlbumPart<?>> getParts();
+	protected abstract List<? extends AlbumPart> getParts();
 
 	private void writeRow(UIContext context, DomBuilder out, ImageRow row) throws IOException {
 		if (row.getSize() == 0) {
@@ -125,10 +128,9 @@ public abstract class AbstractAlbumDisplay extends ResourceDisplay {
 
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, CssClasses.ICONS);
-		out.attr("style", "display: table; margin-top: " + spacing + "px;");
 		{
 			out.begin(DIV);
-			out.attr(STYLE_ATTR, "display: table-row;");
+			out.attr(CLASS_ATTR, CssClasses.ICON_ROW);
 			
 			for (int n = 0, cnt = row.getSize(); n < cnt; n++) {
 				AbstractImage image = row.getImage(n);

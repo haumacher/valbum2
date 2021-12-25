@@ -54,10 +54,15 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/**
 	 * @see #getImage()
 	 */
-	public final ThumbnailInfo setImage(String value) {
-		_image = value;
+	public ThumbnailInfo setImage(String value) {
+		internalSetImage(value);
 		return this;
 	}
+	/** Internal setter for {@link #getImage()} without chain call utility. */
+	protected final void internalSetImage(String value) {
+		_image = value;
+	}
+
 
 	/**
 	 * The factor to scale the original image for producing the thumbnail image.
@@ -69,10 +74,15 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/**
 	 * @see #getScale()
 	 */
-	public final ThumbnailInfo setScale(double value) {
-		_scale = value;
+	public ThumbnailInfo setScale(double value) {
+		internalSetScale(value);
 		return this;
 	}
+	/** Internal setter for {@link #getScale()} without chain call utility. */
+	protected final void internalSetScale(double value) {
+		_scale = value;
+	}
+
 
 	/**
 	 * The translation in X to apply to the the original image for producing the thumbnail image.
@@ -84,10 +94,15 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/**
 	 * @see #getTx()
 	 */
-	public final ThumbnailInfo setTx(double value) {
-		_tx = value;
+	public ThumbnailInfo setTx(double value) {
+		internalSetTx(value);
 		return this;
 	}
+	/** Internal setter for {@link #getTx()} without chain call utility. */
+	protected final void internalSetTx(double value) {
+		_tx = value;
+	}
+
 
 	/**
 	 * The translation in Y to apply to the the original image for producing the thumbnail image.
@@ -99,10 +114,15 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/**
 	 * @see #getTy()
 	 */
-	public final ThumbnailInfo setTy(double value) {
-		_ty = value;
+	public ThumbnailInfo setTy(double value) {
+		internalSetTy(value);
 		return this;
 	}
+	/** Internal setter for {@link #getTy()} without chain call utility. */
+	protected final void internalSetTy(double value) {
+		_ty = value;
+	}
+
 
 	/** The type identifier for this concrete subtype. */
 	public String jsonType() {

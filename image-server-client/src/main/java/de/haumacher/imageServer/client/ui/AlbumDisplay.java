@@ -76,7 +76,7 @@ public class AlbumDisplay extends AbstractAlbumDisplay {
 	}
 
 	@Override
-	protected List<? extends AlbumPart<?>> getParts() {
+	protected List<? extends AlbumPart> getParts() {
 		return _album.getParts();
 	}
 	
@@ -101,7 +101,7 @@ public class AlbumDisplay extends AbstractAlbumDisplay {
 			previewDisplay.addEventListener("click", event -> {
 				MouseEvent mouseEvent = (MouseEvent) event;
 				if (mouseEvent.shiftKey) {
-					List<? extends AlbumPart<?>> parts = getParts();
+					List<? extends AlbumPart> parts = getParts();
 					if (_lastClicked == null) {
 						_lastClicked = parts.get(0);
 					}
@@ -201,7 +201,7 @@ public class AlbumDisplay extends AbstractAlbumDisplay {
 
 	public void groupSelection(AbstractImage representative) {
 		ImageGroup group = ImageGroup.create();
-		for (AbstractImage<?> selected : _selected) {
+		for (AbstractImage selected : _selected) {
 			selected.visit(new AbstractImage.Visitor<Void, List<ImagePart>, RuntimeException>() {
 				@Override
 				public Void visit(ImageGroup self, List<ImagePart> arg) {
@@ -220,7 +220,7 @@ public class AlbumDisplay extends AbstractAlbumDisplay {
 		Collections.sort(group.getImages(), (a, b) -> Long.compare(a.getDate(), b.getDate()));
 		group.setRepresentative(group.getImages().indexOf(ToImage.toImage(representative)));
 		
-		List<AlbumPart<?>> newParts = getParts().stream().map(p -> p == representative ? group : p).filter(p -> !_selected.contains(p)).collect(Collectors.toList());
+		List<AlbumPart> newParts = getParts().stream().map(p -> p == representative ? group : p).filter(p -> !_selected.contains(p)).collect(Collectors.toList());
 		_album.setParts(newParts);
 		
 		_selected.clear();
@@ -281,10 +281,10 @@ public class AlbumDisplay extends AbstractAlbumDisplay {
 		return ImageDisplay.navigate0(firstImage(), AbstractImage::getNext);
 	}
 
-	private AbstractImage<?> firstImage() {
-		for (AlbumPart<?> part : _album.getParts()) {
+	private AbstractImage firstImage() {
+		for (AlbumPart part : _album.getParts()) {
 			if (part instanceof AbstractImage) {
-				return (AbstractImage<?>) part;
+				return (AbstractImage) part;
 			}
 		}
 		return null;
@@ -295,12 +295,12 @@ public class AlbumDisplay extends AbstractAlbumDisplay {
 		return ImageDisplay.navigate0(lastImage(), AbstractImage::getPrevious);
 	}
 
-	private AbstractImage<?> lastImage() {
-		List<AlbumPart<?>> parts = _album.getParts();
+	private AbstractImage lastImage() {
+		List<AlbumPart> parts = _album.getParts();
 		for (int n = parts.size() - 1; n >= 0; n--) {
-			AlbumPart<?> part = parts.get(n);
+			AlbumPart part = parts.get(n);
 			if (part instanceof AbstractImage) {
-				return (AbstractImage<?>) part;
+				return (AbstractImage) part;
 			}
 		}
 		return null;
