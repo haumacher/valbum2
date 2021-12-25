@@ -27,12 +27,6 @@ public class AlbumInfo extends FolderResource {
 	/** @see #getParts() */
 	private static final String PARTS = "parts";
 
-	/** @see #getImageByName() */
-	private static final String IMAGE_BY_NAME = "imageByName";
-
-	/** @see #getMinRating() */
-	private static final String MIN_RATING = "minRating";
-
 	private String _title = "";
 
 	private String _subTitle = "";

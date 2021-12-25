@@ -16,18 +16,6 @@ public abstract class AbstractImage extends AlbumPart {
 
 	}
 
-	/** @see #getPrevious() */
-	private static final String PREVIOUS = "previous";
-
-	/** @see #getNext() */
-	private static final String NEXT = "next";
-
-	/** @see #getHome() */
-	private static final String HOME = "home";
-
-	/** @see #getEnd() */
-	private static final String END = "end";
-
 	private transient AbstractImage _previous = null;
 
 	private transient AbstractImage _next = null;

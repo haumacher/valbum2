@@ -124,9 +124,6 @@ public class ImagePart extends AbstractImage {
 	/** @see #getComment() */
 	private static final String COMMENT = "comment";
 
-	/** @see #getGroup() */
-	private static final String GROUP = "group";
-
 	private Kind _kind = de.haumacher.imageServer.shared.model.ImagePart.Kind.IMAGE;
 
 	private String _name = "";

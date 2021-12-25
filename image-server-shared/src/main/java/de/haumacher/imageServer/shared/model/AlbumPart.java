@@ -13,9 +13,6 @@ public abstract class AlbumPart extends Resource {
 
 	}
 
-	/** @see #getOwner() */
-	private static final String OWNER = "owner";
-
 	private transient AlbumInfo _owner = null;
 
 	/**

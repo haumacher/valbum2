@@ -16,9 +16,6 @@ public abstract class FolderResource extends Resource {
 
 	}
 
-	/** @see #getPath() */
-	private static final String PATH = "path";
-
 	private transient String _path = "";
 
 	/**
