@@ -18,13 +18,6 @@ import java.nio.file.Paths;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
-import org.eclipse.jetty.http.HttpStatus;
-
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ImagePart.Kind;
@@ -33,6 +26,10 @@ import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.WriterAdapter;
 import de.haumacher.util.servlet.Util;
 import de.haumacher.util.xml.XmlWriter;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * {@link HttpServlet} serving image, video, preview and directory listing data.
@@ -121,7 +118,7 @@ public class ImageServlet extends HttpServlet {
 		Context context = new Context(request, response);
 
 		if (pathInfo == null) {
-			error(context, HttpStatus.METHOD_NOT_ALLOWED_405);
+			error(context, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
 			return;
 		}
 		
@@ -129,7 +126,7 @@ public class ImageServlet extends HttpServlet {
 		{
 			String relativePath = pathInfo.substring(1);
 			if (relativePath.isEmpty()) {
-				error(context, HttpStatus.METHOD_NOT_ALLOWED_405);
+				error(context, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
 				return;
 			}
 			
@@ -149,12 +146,12 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		if (!file.isDirectory()) {
-			error(context, HttpStatus.METHOD_NOT_ALLOWED_405);
+			error(context, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
 			return;
 		}
 		
 		if (!context.request().getContentType().equals("application/json")) {
-			error(context, HttpStatus.UNSUPPORTED_MEDIA_TYPE_415);
+			error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
 			return;
 		}
 		
@@ -336,7 +333,7 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	private void error404(Context context) {
-		error(context, HttpStatus.NOT_FOUND_404);
+		error(context, HttpServletResponse.SC_NOT_FOUND);
 	}
 
 	private void error(Context context, int errorCode) {

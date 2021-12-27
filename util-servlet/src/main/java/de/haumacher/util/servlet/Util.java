@@ -11,8 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * TODO
@@ -31,7 +30,7 @@ public class Util {
 	}
 
 	public static void sendBytes(HttpServletResponse response, InputStream in) throws IOException {
-		ServletOutputStream out = response.getOutputStream();
+		OutputStream out = response.getOutputStream();
 		transfer(in, out);
 	}
 
