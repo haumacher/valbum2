@@ -18,7 +18,7 @@ package de.haumacher.imageServer.shared.model;
 public enum Orientation implements de.haumacher.msgbuf.data.ProtocolEnum {
 
 	/**
-	 * No transformation, use raw image data.
+	 * No transformation, use raw image data from top to bottom and left to right.
 	 *
 	 * <pre>
 	 * Value	0th Row		0th Column

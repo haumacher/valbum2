@@ -3,15 +3,16 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<artifactId>image-server-shared</artifactId>
-	<name>Image Server Model</name>
-
 	<parent>
 		<groupId>de.haumacher</groupId>
 		<artifactId>image-server-parent</artifactId>
 		<version>0.0.1-SNAPSHOT</version>
 		<relativePath>../image-server-parent/pom.xml</relativePath>
 	</parent>
+	
+	<artifactId>image-server-shared</artifactId>
+
+	<name>Image Server Model</name>
 
 	<properties>
 		<maven.compiler.source>1.8</maven.compiler.source>
@@ -30,13 +31,11 @@
 		<dependency>
 			<groupId>de.haumacher.msgbuf</groupId>
 			<artifactId>msgbuf-api</artifactId>
-			<version>1.0.2-SNAPSHOT</version>
 		</dependency>
 
 		<dependency>
 			<groupId>de.haumacher.msgbuf</groupId>
 			<artifactId>msgbuf-api</artifactId>
-			<version>1.0.2-SNAPSHOT</version>
 			<scope>provided</scope>
 			<classifier>sources</classifier>
 		</dependency>

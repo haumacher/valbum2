@@ -17,6 +17,27 @@
 		<module>../image-server</module>
 	</modules>
 	
+	<properties>
+		<msgbuf.version>1.0.3</msgbuf.version>
+	</properties>
+	
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>de.haumacher.msgbuf</groupId>
+				<artifactId>msgbuf-api</artifactId>
+				<version>${msgbuf.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>de.haumacher.msgbuf</groupId>
+				<artifactId>msgbuf-api</artifactId>
+				<version>${msgbuf.version}</version>
+				<classifier>sources</classifier>
+				<scope>provided</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+	
 	<build>
 		<plugins>
 			<plugin>
