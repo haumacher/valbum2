@@ -10,7 +10,6 @@ import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.Resource;
-import de.haumacher.imageServer.shared.ui.ImageRow;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Event;
 
@@ -37,10 +36,10 @@ public class GroupDisplay extends AbstractAlbumDisplay {
 	}
 
 	@Override
-	protected void renderImage(UIContext context, DomBuilder out, ImageRow row,
-			double rowHeight, int spacing, int n, AbstractImage image) {
+	protected void renderImage(UIContext context, DomBuilder out, double scaledWidth,
+			double rowHeight, int marginLeft, AbstractImage image) {
 		
-		PreviewDisplay display = new PreviewDisplay(image, n, row.getScaledWidth(n), rowHeight, spacing);
+		PreviewDisplay display = new PreviewDisplay(image, scaledWidth, rowHeight, marginLeft);
 		display.show(context, out);
 	}
 

@@ -36,8 +36,8 @@ public class ImagePreviewDisplay extends PreviewDisplay {
 	/** 
 	 * Creates a {@link ImagePreviewDisplay}.
 	 */
-	public ImagePreviewDisplay(AlbumDisplay owner, AbstractImage part, int rowIndex, double width, double rowHeight, int spacing) {
-		super(part, rowIndex, width, rowHeight, spacing);
+	public ImagePreviewDisplay(AlbumDisplay owner, AbstractImage part, double width, double rowHeight, int marginLeft) {
+		super(part, width, rowHeight, marginLeft);
 		_owner = owner;
 	}
 	

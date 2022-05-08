@@ -17,6 +17,8 @@ public class CssClasses {
 	public static final String SELECTION = "va-selection";
 	public static final String IMAGE_ROWS = "va-image-rows";
 	public static final String ICONS = "va-icons";
+	public static final String ICON_STACK = "va-icon-stack";
+	public static final String STACK_ROW = "va-stack-row";
 	public static final String IMAGE_PAGE = "va-image-page";
 	public static final String GOTO_PREVIOUS = "va-goto-previous";
 	public static final String HOVER_PANE = "va-hover-pane";

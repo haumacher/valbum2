@@ -24,7 +24,6 @@ import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.CssClasses;
-import de.haumacher.imageServer.shared.ui.ImageRow;
 import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.imageServer.shared.util.UpdateTransient;
 import de.haumacher.util.gwt.dom.DomBuilder;
@@ -88,10 +87,10 @@ public class AlbumDisplay extends AbstractAlbumDisplay {
 	}
 	
 	@Override
-	protected void renderImage(UIContext context, DomBuilder out, ImageRow row,
-			double rowHeight, int spacing, int n, AbstractImage image) {
+	protected void renderImage(UIContext context, DomBuilder out, double scaledWidth,
+			double rowHeight, int marginLeft, AbstractImage image) {
 		ImagePreviewDisplay previewDisplay = 
-			new ImagePreviewDisplay(this, image, n, row.getScaledWidth(n), rowHeight, spacing);
+			new ImagePreviewDisplay(this, image, scaledWidth, rowHeight, marginLeft);
 		previewDisplay.setSelected(_selected.contains(image));
 		previewDisplay.show(context, out);
 		

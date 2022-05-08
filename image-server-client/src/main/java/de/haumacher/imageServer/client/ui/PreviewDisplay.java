@@ -22,21 +22,19 @@ public class PreviewDisplay extends AbstractDisplay {
 
 	private AbstractImage _part;
 	private final ImagePart _image;
-	private final int _rowIndex;
 	private final double _width;
 	private final double _rowHeight;
-	private final int _spacing;
+	private final int _marginLeft;
 
 	/** 
 	 * Creates a {@link PreviewDisplay}.
 	 */
-	public PreviewDisplay(AbstractImage part, int rowIndex, double width, double rowHeight, int spacing) {
+	public PreviewDisplay(AbstractImage part, double width, double rowHeight, int marginLeft) {
 		_part = part;
 		_image = ToImage.toImage(part);
-		_rowIndex = rowIndex;
 		_width = width;
 		_rowHeight = rowHeight;
-		_spacing = spacing;
+		_marginLeft = marginLeft;
 	}
 	
 	/**
@@ -61,10 +59,10 @@ public class PreviewDisplay extends AbstractDisplay {
 			out.begin(A);
 			{
 				out.attr(CLASS_ATTR, CssClasses.ICON_LINK);
-				if (_rowIndex > 0) {
+				if (_marginLeft > 0) {
 					out.openAttr(STYLE_ATTR);
 					out.append("margin-left: ");
-					out.append(_spacing);
+					out.append(_marginLeft);
 					out.append("px;");
 					out.closeAttr();
 				}
@@ -75,6 +73,7 @@ public class PreviewDisplay extends AbstractDisplay {
 				{
 					out.begin(IMG);
 					out.attr(CLASS_ATTR, CssClasses.ICON_DISPLAY);
+					out.attr(STYLE_ATTR, "width: " + _width + "px; height: " + _rowHeight + "px;");
 					out.attr("title", _image.getComment());
 					{
 						out.openAttr(SRC_ATTR);
