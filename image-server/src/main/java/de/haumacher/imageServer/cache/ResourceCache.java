@@ -346,7 +346,6 @@ public class ResourceCache {
 				Collections.sort(newImages, (a, b) -> Long.compare(ToImage.toImage(a).getDate(), ToImage.toImage(b).getDate()));
 				for (ImageData newImage : newImages) {
 					album.addPart(newImage);
-					album.putImageByName(newImage.getName(), newImage);
 				}
 
 				// Update again to fix internal linking structure.

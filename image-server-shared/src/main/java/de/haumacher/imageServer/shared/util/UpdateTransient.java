@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.shared.util;
 
+import java.util.Collections;
 import java.util.List;
 
 import de.haumacher.imageServer.shared.model.AbstractImage;
@@ -88,6 +89,8 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 	private void updateContents(List<? extends AlbumPart> parts, AlbumInfo owner) {
 		AbstractImage firstImage = nextImage(parts, 0);
 		AbstractImage lastImage = prevImage(parts, parts.size() - 1);
+		
+		owner.setImageByName(Collections.emptyMap());
 		
 		for (int n = 0, size = parts.size(); n < size; n++) {
 			int index = n;
