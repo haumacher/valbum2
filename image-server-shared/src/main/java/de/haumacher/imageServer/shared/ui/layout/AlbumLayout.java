@@ -28,9 +28,20 @@ public class AlbumLayout implements Iterable<Row> {
 	public AlbumLayout(double pageWidth, double maxRowHeight, List<ImagePart> images) {
 		_pageWidth = pageWidth;
 		DefaultRowBuffer buffer = new DefaultRowBuffer();
-		RowComputation rowComputation = new SimpleRowComputation(buffer, pageWidth / maxRowHeight);
+		double minWidth = pageWidth / maxRowHeight;
+		RowComputation rowComputation = new SimpleRowComputation(buffer, minWidth);
 		for (ImagePart image : images) {
-			rowComputation = rowComputation.addImage(new Img(image));
+			Img content = new Img(image);
+			
+			if (content.getUnitWidth() >= minWidth) {
+				// Take care of panorama images. Do not combine them with other images, because they would get scaled
+				// down to a thumbnail.
+				Row fullWidthRow = new Row();
+				fullWidthRow.addContent(content);
+				buffer.addRow(fullWidthRow);
+			} else {
+				rowComputation = rowComputation.addImage(content);
+			}
 		}
 		rowComputation.end();
 		
