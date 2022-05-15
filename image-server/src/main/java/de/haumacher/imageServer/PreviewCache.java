@@ -52,7 +52,7 @@ public class PreviewCache {
 	 */
 	public static long lastUpdate() {
 		try {
-			return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss zzzz").parse("2022-05-15 12:35:00 MEST").getTime();
+			return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss zzzz").parse("2022-05-15 13:30:00 MEST").getTime();
 		} catch (ParseException ex) {
 			Logger.getLogger(PreviewCache.class.getName()).log(Level.WARNING, "Failed to parse update time.", ex);
 			return 0L;
@@ -223,6 +223,9 @@ public class PreviewCache {
 		Mp4Directory mp4Directory = metadata.getFirstDirectoryOfType(Mp4Directory.class);
 		if (mp4Directory != null && mp4Directory.containsTag(Mp4Directory.TAG_ROTATION)) {
 			int rotation = mp4Directory.getInt(Mp4Directory.TAG_ROTATION);
+			while (rotation < 0) {
+				rotation += 360;
+			}
 			if (rotation != 0) {
 				// Apply transformation to the preview image.
 				
@@ -242,7 +245,7 @@ public class PreviewCache {
 				Graphics2D g = (Graphics2D) copy.getGraphics();
 				AffineTransform tx = new AffineTransform();
 		        tx.translate((width - rawWidth) / 2, (height - rawHeight) / 2);
-				tx.rotate(Math.toRadians(rotation), rawWidth / 2, rawHeight / 2);
+				tx.rotate(-Math.toRadians(rotation), rawWidth / 2, rawHeight / 2);
 		        g.setTransform(tx);
 		        g.drawImage(image, null, 0, 0);
 		        
