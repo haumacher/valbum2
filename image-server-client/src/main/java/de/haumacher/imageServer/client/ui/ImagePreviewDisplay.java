@@ -12,7 +12,9 @@ import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.Heading;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.ui.CssClasses;
+import de.haumacher.imageServer.shared.util.Orientations;
 import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Element;
@@ -53,7 +55,11 @@ public class ImagePreviewDisplay extends PreviewDisplay {
 	}
 
 	/** 
-	 * TODO
+	 * Marks/unmarks this image as selected.
+	 * 
+	 * <p>
+	 * Only selected images can be commented or grouped.
+	 * </p>
 	 */
 	public void setSelected(boolean value) {
 		_selected = value;
@@ -140,6 +146,7 @@ public class ImagePreviewDisplay extends PreviewDisplay {
 				out.end();
 			}
 			out.end();
+			out.getLast().addEventListener("click", this::onRotateRight);
 			
 			out.begin(SPAN);
 			out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
@@ -149,6 +156,7 @@ public class ImagePreviewDisplay extends PreviewDisplay {
 				out.end();
 			}
 			out.end();
+			out.getLast().addEventListener("click", this::onFlipVertically);
 			
 			out.begin(SPAN);
 			out.attr(CLASS_ATTR, CssClasses.TOOLBAR_BUTTON);
@@ -158,10 +166,39 @@ public class ImagePreviewDisplay extends PreviewDisplay {
 				out.end();
 			}
 			out.end();
+			out.getLast().addEventListener("click", this::onRotateLeft);
 		}
 		out.end();
 	}
+	
+	private void onRotateLeft(Event evt) {
+		setDownScale(true);
 
+		Orientation orientation = getImage().getOrientation();
+		Orientation newOrientation = Orientations.rotL(orientation);
+		getImage().setOrientation(newOrientation);
+
+		redraw();
+		evt.preventDefault();
+		evt.stopPropagation();
+	}
+
+	private void onRotateRight(Event evt) {
+		setDownScale(true);
+
+		Orientation orientation = getImage().getOrientation();
+		Orientation newOrientation = Orientations.rotR(orientation);
+		getImage().setOrientation(newOrientation);
+
+		redraw();
+		evt.preventDefault();
+		evt.stopPropagation();
+	}
+	
+	private void onFlipVertically(Event evt) {
+		
+	}
+	
 	private void writeToolbarCenter(DomBuilder out) throws IOException {
 		out.begin(DIV);
 		out.attr(CLASS_ATTR, CssClasses.TOOLBAR_EMBEDDED + " " + CssClasses.TOOLBAR_CENTER);

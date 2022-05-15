@@ -45,9 +45,31 @@ public class Orientations {
 	}
 	
 	/**
+	 * The display width of an image with the given {@link Orientation} and raw pixel width and height.
+	 */
+	public static double width(Orientation self, double rawWidth, double rawHeight) {
+		if (toCode(self) >= 5) {
+			return rawHeight;
+		} else {
+			return rawWidth;
+		}
+	}
+	
+	/**
 	 * The display height of an image with the given {@link Orientation} and raw pixel width and height.
 	 */
 	public static int height(Orientation self, int rawWidth, int rawHeight) {
+		if (toCode(self) >= 5) {
+			return rawWidth;
+		} else {
+			return rawHeight;
+		}
+	}
+	
+	/**
+	 * The display height of an image with the given {@link Orientation} and raw pixel width and height.
+	 */
+	public static double height(Orientation self, double rawWidth, double rawHeight) {
 		if (toCode(self) >= 5) {
 			return rawWidth;
 		} else {

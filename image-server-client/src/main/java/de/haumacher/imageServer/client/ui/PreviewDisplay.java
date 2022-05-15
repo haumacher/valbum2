@@ -10,7 +10,9 @@ import java.io.IOException;
 import de.haumacher.imageServer.client.app.App;
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.ui.CssClasses;
+import de.haumacher.imageServer.shared.util.Orientations;
 import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.dom.DomBuilder;
 import elemental2.dom.Event;
@@ -25,6 +27,8 @@ public class PreviewDisplay extends AbstractDisplay {
 	private final double _width;
 	private final double _rowHeight;
 	private final int _marginLeft;
+	private boolean _orientationChanged;
+	private Orientation _origOrientation;
 
 	/** 
 	 * Creates a {@link PreviewDisplay}.
@@ -35,6 +39,29 @@ public class PreviewDisplay extends AbstractDisplay {
 		_width = width;
 		_rowHeight = rowHeight;
 		_marginLeft = marginLeft;
+	}
+	
+	/**
+	 * Whether the image must be scaled down so that its fits into its original dimensions (before the orientation
+	 * change).
+	 * 
+	 * <p>
+	 * This option is set, while an image is being rotated while being displayed in a layout with multiple image to not
+	 * disturb the layout of other images.
+	 * </p>
+	 */
+	public boolean isOrientationChanged() {
+		return _orientationChanged;
+	}
+	
+	/**
+	 * @see #isOrientationChanged()
+	 */
+	public void setDownScale(boolean downScale) {
+		if (!_orientationChanged) {
+			_origOrientation = _image.getOrientation();
+			_orientationChanged = downScale;
+		}
 	}
 	
 	/**
@@ -71,20 +98,89 @@ public class PreviewDisplay extends AbstractDisplay {
 				}
 				out.closeAttr();
 				{
+					boolean wrapImage; 
+					
+					Orientation orientation = _image.getOrientation();
+					switch (orientation) {
+					case ROT_L:
+					case ROT_L_FLIP_H:
+					case ROT_L_FLIP_V:
+					case ROT_R:
+						wrapImage = true;
+						break;
+
+					default:
+						wrapImage = isOrientationChanged();
+						break;
+					}
+					
+					if (wrapImage) {
+						out.begin(DIV);
+						out.classAttr(CssClasses.ICON_WRAPPER);
+						out.attr(STYLE_ATTR, "width: " + _width + "px; height: " + _rowHeight + "px;");
+					}
+					
 					out.begin(IMG);
 					out.attr(CLASS_ATTR, CssClasses.ICON_DISPLAY);
-					out.attr(STYLE_ATTR, "width: " + _width + "px; height: " + _rowHeight + "px;");
-					out.attr("title", _image.getComment());
+					out.openAttr(STYLE_ATTR);
+					
+					double imgWidth;
+					double imgHeight;
+					
+					double scale;
+					if (isOrientationChanged()) {
+						// The image is being rotated within the album layout. To prevent disturbing other images while
+						// rotating, the rotated variant must fit into its original dimensions.
+
+						// The width and height of the display area was computed by applying the original orientation to the
+						// image height. By applying it again, the image dimension is recovered.  
+						imgWidth = Orientations.width(_origOrientation, _width, _rowHeight);
+						imgHeight = Orientations.height(_origOrientation, _width, _rowHeight);
+
+						// The width an height of the display area under the current orientation.
+						double width = Orientations.width(orientation, imgWidth, imgHeight);
+						double height = Orientations.height(orientation, imgWidth, imgHeight);
+						
+						scale = Math.min(_width / width, _rowHeight/ height);
+					} else {
+						imgWidth = Orientations.width(orientation, _width, _rowHeight);
+						imgHeight = Orientations.height(orientation, _width, _rowHeight);
+						
+						scale = 1.0;
+					}
+					
+					out.append("width: " + imgWidth + "px; height: " + imgHeight + "px;");
+					
+					switch (orientation) {
+					case ROT_L:
+						out.append(" transform-origin: top left; transform: scale(" + scale + ") translateY(" + imgWidth + "px) rotate(-90deg);");
+						break;
+					case ROT_R:
+						out.append(" transform-origin: top left; transform: scale(" + scale + ") translateX(" + imgHeight + "px) rotate(90deg);");
+						break;
+					case ROT_180:
+						out.append(" transform-origin: top left; transform: scale(" + scale + ") translate(" + imgWidth + "px, " + imgHeight + "px) rotate(180deg);");
+						break;
+					case IDENTITY:
+						out.append(" transform-origin: top left; transform: scale(" + scale + ");");
+						break;
+					}
+					out.closeAttr();
+					out.attr(TITLE_ATTR, _image.getComment());
 					{
 						out.openAttr(SRC_ATTR);
 						out.append(_image.getName());
 						out.append("?type=tn");
 						out.closeAttr();
 						
-						out.attr(WIDTH_ATTR, _width);
-						out.attr(HEIGHT_ATTR, _rowHeight);
+						out.attr(WIDTH_ATTR, imgWidth);
+						out.attr(HEIGHT_ATTR, imgHeight);
 					}
 					out.end();
+					
+					if (wrapImage) {
+						out.end();
+					}
 					
 					if (ImageDisplay.isVideo(_image.getKind())) {
 						out.begin(DIV);

@@ -49,6 +49,7 @@ public interface HTML {
 	String A = "a";
 	String HREF_ATTR = "href";
 	String STYLE_ATTR = "style";
+	String TITLE_ATTR = "title";
 	String ID_ATTR = "id";
 	String CLASS_ATTR = "class";
 	String DRAGGABLE_ATTR = "draggable";

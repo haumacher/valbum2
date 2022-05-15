@@ -5,6 +5,8 @@ package de.haumacher.imageServer.shared.ui.layout;
 
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.Orientation;
+import de.haumacher.imageServer.shared.util.Orientations;
 import de.haumacher.imageServer.shared.util.ToImage;
 
 /**
@@ -21,7 +23,14 @@ public class Img implements Content {
 	public Img(AbstractImage image) {
 		_image = image;
 		ImagePart representative = ToImage.toImage(image);
-		_unitWidth = ((double) representative.getWidth()) / representative.getHeight();
+		int width = representative.getWidth();
+		int height = representative.getHeight();
+		Orientation orientation = representative.getOrientation();
+		
+		int displayWidth = Orientations.width(orientation, width, height);
+		int displayHeight = Orientations.height(orientation, width, height);
+		
+		_unitWidth = ((double) displayWidth) / displayHeight;
 	}
 	
 	/**

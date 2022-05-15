@@ -30,6 +30,7 @@ public class CssClasses {
 	public static final String VIDEO_OVERLAY = "va-video-overlay";
 	public static final String ICON_ROW = "va-icon-row";
 	public static final String ICON_DISPLAY = "va-icon-display";
+	public static final String ICON_WRAPPER = "va-icon-wrap";
 	public static final String ICON_LINK = "va-icon-link";
 	public static final String ICON = "va-icon";
 	public static final String CHECK_BUTTON = "va-check-button";

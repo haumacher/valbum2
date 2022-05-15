@@ -67,6 +67,16 @@ a.va-icon-link {
 	font-size: 0px;
 }
 
+div.va-icon-wrap {
+	overflow: hidden;
+	position: relative;
+}
+
+img.va-icon-display {
+	max-width: none;
+	max-height: none;
+}
+
 img.va-image-display, 
 video.va-image-display {
     max-height: 100%;
@@ -257,6 +267,7 @@ a {
 
 .va-icon {
 	display: table-cell;
+	vertical-align: top;
 	position: relative;
 }
 
