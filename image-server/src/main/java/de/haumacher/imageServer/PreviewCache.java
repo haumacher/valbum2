@@ -8,6 +8,10 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.imageio.ImageIO;
 
@@ -26,6 +30,7 @@ import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 
 import de.haumacher.imageServer.shared.model.Orientation;
+import de.haumacher.imageServer.shared.ui.layout.Content;
 import de.haumacher.imageServer.shared.util.Orientations;
 import de.haumacher.util.servlet.Util;
 
@@ -38,6 +43,22 @@ public class PreviewCache {
 
 	private static final int PREVIEW_HEIGHT = 600;
 	
+	private static final int PREVIEW_HEIGHT_PORTRAIT = 2 * PREVIEW_HEIGHT;
+	
+	private static final long LAST_UPDATE = lastUpdate();
+
+	/**
+	 * Time of the last update that required to re-build preview images.
+	 */
+	public static long lastUpdate() {
+		try {
+			return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss zzzz").parse("2022-05-15 12:35:00 MEST").getTime();
+		} catch (ParseException ex) {
+			Logger.getLogger(PreviewCache.class.getName()).log(Level.WARNING, "Failed to parse update time.", ex);
+			return 0L;
+		}
+	}
+	
 	/** 
 	 * Lookup or creates the preview data for the given image or video file.
 	 */
@@ -47,7 +68,7 @@ public class PreviewCache {
 		
 		File cacheDir = new File(file.getParentFile(), ".vacache");
 		File previewCache = new File(cacheDir, "preview-" + file.getName() + (suffix.equals("jpg") ? "" : ".jpg"));
-		if (!previewCache.exists() || file.lastModified() > previewCache.lastModified()) {
+		if (!previewCache.exists() || file.lastModified() > previewCache.lastModified() || previewCache.lastModified() < LAST_UPDATE) {
 			if (!cacheDir.exists()) {
 				cacheDir.mkdir();
 			}
@@ -79,7 +100,19 @@ public class PreviewCache {
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
 		ImageDimension dimension = getImageDimension(metadata);
 		
-		if (dimension.getHeight() <= PREVIEW_HEIGHT) {
+		int origWidth = dimension.getWidth();
+		int origHeight = dimension.getHeight();
+
+		int previewHeight;
+
+		double unitWidth = ((double) origWidth) / origHeight;
+		if (unitWidth <= Content.MAX_PORTRAIT_UNIT_WIDTH) {
+			previewHeight = PREVIEW_HEIGHT_PORTRAIT;
+		} else {
+			previewHeight = PREVIEW_HEIGHT;
+		}
+		
+		if (origHeight <= previewHeight) {
 			// Use orig as preview.
 			Util.copy(file, previewCache);
 		} else {
@@ -87,7 +120,6 @@ public class PreviewCache {
 			int rawWidth = orig.getWidth();
 			int rawHeight = orig.getHeight();
 			
-			int previewHeight = PREVIEW_HEIGHT;
 			int previewWidth = ((int) Math.round(previewHeight / dimension.getRatio()));
 			
 			Orientation orientation = Orientations.fromCode(getImageOrientation(metadata));
@@ -95,8 +127,8 @@ public class PreviewCache {
 			BufferedImage copy = new BufferedImage(previewWidth, previewHeight, orig.getType());
 			Graphics2D g = (Graphics2D) copy.getGraphics();
 			
-			double scaleX = ((double)previewWidth) / dimension.getWidth();
-			double scaleY = ((double)previewHeight) / dimension.getHeight();
+			double scaleX = ((double)previewWidth) / origWidth;
+			double scaleY = ((double)previewHeight) / origHeight;
 			
 			AffineTransform tx = new AffineTransform();
 			tx.translate((previewWidth - rawWidth * scaleX) / 2, (previewHeight - rawHeight * scaleY) / 2);

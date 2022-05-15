@@ -9,6 +9,12 @@ package de.haumacher.imageServer.shared.ui.layout;
 public interface Content {
 	
 	/**
+	 * The maximum width of an image (relative to its height) to interpret it as an portrait image (taking two lines in
+	 * an {@link AlbumLayout}).
+	 */
+	public static final double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
+
+	/**
 	 * The width of the content, if it's height is scaled to <code>1.0</code>.
 	 */
 	double getUnitWidth();
@@ -22,7 +28,7 @@ public interface Content {
 	 * Whether this is a portrait image, with a height considerably larger than its width.
 	 */
 	default boolean isPortrait() {
-		return getUnitWidth() <= 0.75;
+		return getUnitWidth() <= MAX_PORTRAIT_UNIT_WIDTH;
 	}
 	
 	/**
