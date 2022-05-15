@@ -12,7 +12,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.msgbuf.io.StringR;
 import de.haumacher.msgbuf.json.JsonReader;
 import junit.framework.TestCase;
@@ -225,7 +227,7 @@ public class TestAlbumLayout extends TestCase {
 
 		@Override
 		public AsciiArt visitImg(Img content, Integer padding) {
-			return print(padding, content.getImage().getName());
+			return print(padding, name(content.getImage()));
 		}
 
 		@Override
@@ -280,6 +282,10 @@ public class TestAlbumLayout extends TestCase {
 		return result.toString();
 	}
 	
+	static final String name(AbstractImage image) {
+		return ToImage.toImage(image).getName();
+	}
+
 	static void space(StringBuilder buffer, int cnt) {
 		for (int n = 0; n < cnt; n++) {
 			buffer.append(' ');
@@ -308,7 +314,7 @@ public class TestAlbumLayout extends TestCase {
 
 		@Override
 		public Integer visitImg(Img content, Void arg) {
-			return 2 + content.getImage().getName().length();
+			return 2 + name(content.getImage()).length();
 		}
 		
 		@Override

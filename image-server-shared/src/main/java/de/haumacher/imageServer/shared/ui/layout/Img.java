@@ -3,7 +3,9 @@
  */
 package de.haumacher.imageServer.shared.ui.layout;
 
+import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.util.ToImage;
 
 /**
  * An atomic image placed in a {@link Row}.
@@ -11,20 +13,21 @@ import de.haumacher.imageServer.shared.model.ImagePart;
 public class Img implements Content {
 	
 	private final double _unitWidth;
-	private ImagePart _image;
+	private AbstractImage _image;
 	
 	/** 
 	 * Creates a {@link Img}.
 	 */
-	public Img(ImagePart image) {
+	public Img(AbstractImage image) {
 		_image = image;
-		_unitWidth = ((double) image.getWidth()) / image.getHeight();
+		ImagePart representative = ToImage.toImage(image);
+		_unitWidth = ((double) representative.getWidth()) / representative.getHeight();
 	}
 	
 	/**
-	 * The {@link ImagePart} represented by this {@link Content}.
+	 * The {@link AbstractImage} represented by this {@link Content}.
 	 */
-	public ImagePart getImage() {
+	public AbstractImage getImage() {
 		return _image;
 	}
 	

@@ -14,7 +14,6 @@ import de.haumacher.imageServer.client.app.KeyCodes;
 import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.AlbumPart;
-import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.CssClasses;
 import de.haumacher.imageServer.shared.ui.layout.AlbumLayout;
@@ -88,10 +87,10 @@ public abstract class AbstractAlbumDisplay extends ResourceDisplay {
 		out.attr(CLASS_ATTR, CssClasses.IMAGE_ROWS);
 		out.attr(STYLE_ATTR, "width: " + pageWidth + "px;");
 		{
-			List<ImagePart> images = new ArrayList<>();
+			List<AbstractImage> images = new ArrayList<>();
 			for (AlbumPart part : getParts()) {
 				if (part instanceof AbstractImage) {
-					ImagePart image = (ImagePart) part;
+					AbstractImage image = (AbstractImage) part;
 					if (ToImage.toImage(image).getRating() < getMinRating()) {
 						continue;
 					}
@@ -108,7 +107,7 @@ public abstract class AbstractAlbumDisplay extends ResourceDisplay {
 		out.end();
 	}
 
-	private void flush(UIContext context, DomBuilder out, double pageWidth, double maxRowHeight, List<ImagePart> images) throws IOException {
+	private void flush(UIContext context, DomBuilder out, double pageWidth, double maxRowHeight, List<AbstractImage> images) throws IOException {
 		if (images.isEmpty()) {
 			return;
 		}

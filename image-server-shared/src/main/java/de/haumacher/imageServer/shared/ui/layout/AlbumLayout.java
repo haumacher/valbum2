@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
 
 /**
@@ -25,12 +26,12 @@ public class AlbumLayout implements Iterable<Row> {
 	 * @param maxRowHeight The maximum height to scale a landscape image to.
 	 * @param images the image to place on the page.
 	 */
-	public AlbumLayout(double pageWidth, double maxRowHeight, List<ImagePart> images) {
+	public AlbumLayout(double pageWidth, double maxRowHeight, List<? extends AbstractImage> images) {
 		_pageWidth = pageWidth;
 		DefaultRowBuffer buffer = new DefaultRowBuffer();
 		double minWidth = pageWidth / maxRowHeight;
 		RowComputation rowComputation = new SimpleRowComputation(buffer, minWidth);
-		for (ImagePart image : images) {
+		for (AbstractImage image : images) {
 			Img content = new Img(image);
 			
 			if (content.getUnitWidth() >= minWidth) {
@@ -51,10 +52,10 @@ public class AlbumLayout implements Iterable<Row> {
 	/** 
 	 * Extracts all {@link ImagePart}s in this layout.
 	 */
-	public List<ImagePart> getAllImages() {
+	public List<AbstractImage> getAllImages() {
 		class Collector implements ContentVisitor<Void, Void, RuntimeException> {
 			
-			List<ImagePart> _images = new ArrayList<>();
+			List<AbstractImage> _images = new ArrayList<>();
 
 			@Override
 			public Void visitRow(Row content, Void arg) throws RuntimeException {
@@ -85,7 +86,7 @@ public class AlbumLayout implements Iterable<Row> {
 			/**
 			 * All collected images.
 			 */
-			public List<ImagePart> getImages() {
+			public List<AbstractImage> getImages() {
 				return _images;
 			}
 		}
