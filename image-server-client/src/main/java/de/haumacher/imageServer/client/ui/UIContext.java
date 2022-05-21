@@ -20,6 +20,8 @@ public interface UIContext extends RenderContext {
 	 * @return
 	 */
 	int getPageWidth();
+	
+	int getPageHeight();
 
 	default DomBuilder createDomBuilderImpl(Element parent) {
 		return createDomBuilderImpl(parent, null);

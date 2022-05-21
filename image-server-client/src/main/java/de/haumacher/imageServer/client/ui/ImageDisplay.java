@@ -16,13 +16,13 @@ import de.haumacher.imageServer.client.app.TXInfo;
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ImagePart.Kind;
+import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.CssClasses;
-import de.haumacher.imageServer.shared.ui.DataAttributes;
+import de.haumacher.imageServer.shared.util.Orientations;
 import de.haumacher.imageServer.shared.util.ToImage;
 import de.haumacher.util.gwt.Native;
 import de.haumacher.util.gwt.dom.DomBuilder;
-import elemental2.dom.CSSStyleDeclaration;
 import elemental2.dom.DomGlobal;
 import elemental2.dom.Element;
 import elemental2.dom.Event;
@@ -31,7 +31,6 @@ import elemental2.dom.HTMLElement;
 import elemental2.dom.KeyboardEvent;
 import elemental2.dom.MouseEvent;
 import elemental2.dom.WheelEvent;
-import jsinterop.base.Js;
 
 /**
  * {@link ResourceDisplay} displaying an {@link AbstractImage} model.
@@ -101,17 +100,20 @@ public class ImageDisplay extends ResourceDisplay {
 				}
 				out.end();
 			} else {
+				TXInfo txInfo = createTx(context, imagePart);
+				
 				out.begin(DIV);
 				out.attr(ID_ATTR, "image-container");
 				{
 					out.begin(IMG);
 					out.attr(CLASS_ATTR, CssClasses.IMAGE_DISPLAY);
 					out.attr(ID_ATTR, "image");
+					out.attr(STYLE_ATTR, "transform-origin: top left; transform: " + txInfo.getTransform() + ";");
 					out.attr(DRAGGABLE_ATTR, "false");
 					out.attr(SRC_ATTR, imagePart.getName());
-					out.attr(DataAttributes.DATA_WIDTH, imagePart.getWidth());
-					out.attr(DataAttributes.DATA_HEIGHT, imagePart.getHeight());
 					out.endEmpty();
+					
+					setTxInfo(out.getLast(), txInfo);
 				}
 				out.end();
 			}
@@ -183,8 +185,34 @@ public class ImageDisplay extends ResourceDisplay {
 		if (Native.get(DomGlobal.screen, "orientation") != null) {
 			// If on a mobile device.
 			
-			DomGlobal.document.documentElement.requestFullscreen();
+			// DomGlobal.document.documentElement.requestFullscreen();
 		}
+	}
+
+	private TXInfo createTx(UIContext context, ImagePart imagePart) {
+		double imgWidth = imagePart.getWidth();
+		double imgHeight = imagePart.getHeight();
+		
+		Orientation orientation = imagePart.getOrientation();
+		
+		double width = Orientations.width(orientation, imgWidth, imgHeight);
+		double height = Orientations.height(orientation, imgWidth, imgHeight);
+		
+		int pageWidth = context.getPageWidth();
+		int pageHeight = context.getPageHeight();
+		
+		double scale = Math.min(pageWidth / width, pageHeight / height);
+		if (scale > 1.0) {
+			scale = 1.0;
+		}
+		
+		double displayWidth = scale * width;
+		double displayHeight = scale * height;
+		
+		double tx = (pageWidth - displayWidth) / 2;
+		double ty = (pageHeight - displayHeight) / 2;
+		
+		return new TXInfo(orientation, imgWidth, imgHeight, scale, tx, ty);
 	}
 	
 	@Override
@@ -317,42 +345,87 @@ public class ImageDisplay extends ResourceDisplay {
 		HTMLElement container = containerElement();
 		HTMLElement image = imageElement();
 				
-		TXInfo txInfo = txInfo(image);
+		TXInfo txInfo = getTxInfo(image);
 		double origScale = txInfo.getScale();
 		
 		double direction = Math.signum(event.deltaY);
 		
 		double scaleBy = 1 + direction * 0.2;
 		double newScale = origScale * scaleBy;
-		if (newScale <= 0.1) {
-			// Limit scale.
-			return;
+		if (newScale <= txInfo.getOrigScale()) {
+			txInfo.reset();
+		} else {
+			Pos pos = position(event, container);	
+			
+			double currentTx = txInfo.getTx();
+			double currentTy = txInfo.getTy();
+				
+			// Point in the original picture, where now should be the scale origin.
+			double origX = (pos.getX() - currentTx) / origScale;
+			double origY = (pos.getY() - currentTy) / origScale;
+			
+			double newTx = pos.getX() - origX * newScale;
+			double newTy = pos.getY() - origY * newScale;
+			
+			if (direction < 0) {
+				// Zoom out, ensure that image fits to its original position (centered on the screen), if the zoom level
+				// reaches again the original zoom level.
+				
+				{
+					int pageWidth = container.clientWidth;
+					double newWidth = txInfo.getWidth() * newScale;
+					double paddingLeft = newTx;
+					double paddingRight = pageWidth - newWidth - newTx;
+					if (paddingLeft > 0 || paddingRight > 0) {
+						// Shift to the right to distribute empty space evenly.
+						double shift = (paddingRight - paddingLeft) / 2;
+						
+						// A positive value means shift to the right.
+						double shiftDirection = Math.signum(shift);
+						double shiftValue = Math.abs(shift);
+						
+						// Limit shift so that the larger padding does not become smaller than zero. 
+						double maxPadding = Math.max(paddingLeft, paddingRight);
+						shiftValue = Math.min(shiftValue, maxPadding);
+						
+						newTx += shiftValue * shiftDirection;
+					}
+				}
+				
+				{
+					int pageHeight = container.clientHeight;
+					double newHeight = txInfo.getHeight() * newScale;
+					double paddingTop = newTy;
+					double paddingBottom = pageHeight - newHeight - newTy;
+					if (paddingTop > 0 || paddingBottom > 0) {
+						// Shift down to distribute empty space evenly.
+						double shift = (paddingBottom - paddingTop) / 2;
+						
+						// A positive value means shift down.
+						double shiftDirection = Math.signum(shift);
+						double shiftValue = Math.abs(shift);
+						
+						// Limit shift so that the larger padding does not become smaller than zero. 
+						double maxPadding = Math.max(paddingTop, paddingBottom);
+						shiftValue = Math.min(shiftValue, maxPadding);
+						
+						newTy += shiftValue * shiftDirection;
+					}
+				}
+			}
+			
+			txInfo.setCustom(newTx, newTy, newScale);
 		}
-
-		Pos pos = position(event, container, image);	
-		
-		double tx1 = txInfo.getTx();
-		double ty1 = txInfo.getTy();
-			
-		// Point in the original picture, where now should be the scale origin.
-		double origX = (pos.getX() - tx1) / origScale;
-		double origY = (pos.getY() - ty1) / origScale;
-		
-		double tx = pos.getX() - newScale * origX;
-		double ty = pos.getY() - newScale * origY;
-		
-		setTransform(image, tx, ty, newScale);
-			
+		updateTransform(image, txInfo);
 		event.preventDefault();
 	}
 
 	/**
-	 * Event position relative to untransformed image.
+	 * Event position relative to the container element..
 	 */
-	private Pos position(MouseEvent event, HTMLElement container, HTMLElement image) {
-		MouseEvent mouseEvent = event;
-		double x = mouseEvent.clientX;
-		double y = mouseEvent.clientY;
+	private Pos position(MouseEvent event, HTMLElement container) {
+		double x = event.clientX;
+		double y = event.clientY;
 		
 		// Make event relative to the image container.
 		HTMLElement parent = container;
@@ -362,79 +435,47 @@ public class ImageDisplay extends ResourceDisplay {
 			parent = (HTMLElement) parent.offsetParent;
 		}
 		
-		x -= image.offsetLeft;
-		y -= image.offsetTop;
-		
 		return new Pos(x, y);
 	}
 
-	private void setTransform(HTMLElement image, double tx, double ty, double scale) {
-		CSSStyleDeclaration style = image.style;
-		style.transformOrigin = Js.cast("0px 0px");
-		style.transform = "translate(" + tx + "px, " + ty + "px) scale(" + scale + ")";
-
-		txInfo(image).set(scale, tx, ty);
+	private TXInfo getTxInfo(HTMLElement image) {
+		return Native.get(image, "txInfo");
 	}
 
-	private TXInfo txInfo(Element image) {
-		TXInfo result = Native.get(image, "txInfo");
-		if (result == null) {
-			result = new TXInfo();
-			Native.set(image, "txInfo", result);
-		}
-		return result;
+	private void setTxInfo(Element image, TXInfo tx) {
+		Native.set(image, "txInfo", tx);
 	}
 
+	private void updateTransform(HTMLElement image, TXInfo tx) {
+		image.style.transform = tx.getTransform();
+	}
+	
 	private void onImageClick(MouseEvent event) {
 		HTMLElement image = imageElement();
 
-		String transform = image.style.transform;
-		
-		if (transform == "none" || transform == "") {
+		TXInfo txInfo = getTxInfo(image);
+		if (txInfo.isInitial()) {
 			HTMLElement container = containerElement();
 			
-			int width = Integer.parseInt(image.getAttribute(DataAttributes.DATA_WIDTH));
-			int height = Integer.parseInt(image.getAttribute(DataAttributes.DATA_HEIGHT));
+			// Scale to display the image 1:1 on screen.
+			double newScale = 1.0;
 			
-			int containerWidth = container.offsetWidth;
-			int containerHeight = container.offsetHeight;
-			
-			int middleX = containerWidth / 2;
-			int middleY = containerHeight / 2;
+			// Position of the click relative to the image container in screen coordinates.
+			Pos clickPos = position(event, container);	
 		
-			// Scale to display the image 1:1 on screen (it is fit to it's container using CSS scaling).
-			double scale = 1.0 / Math.min(((double) containerWidth) / width, ((double) containerHeight) / height);
+			// Click position relative to the image top-left corner in image pixels.
+			double currentScale = txInfo.getScale();
+			double imgX = (clickPos.getX() - txInfo.getTx()) / currentScale;
+			double imgY = (clickPos.getY() - txInfo.getTy()) / currentScale;
 			
-			Pos pos = position(event, container, image);	
-		
-			double tx = -pos.getX() * scale + middleX - image.offsetLeft;
-			double ty = -pos.getY() * scale + middleY - image.offsetTop;
-
-			int maxTx = -image.offsetLeft;		
-			int minTx = -image.offsetLeft - width + containerWidth;		
-			if (minTx < maxTx) {
-				if (tx > maxTx) {
-					tx = maxTx;
-				} else if (tx < minTx) {
-					tx = minTx;
-				}
-			}
-
-			int maxTy = -image.offsetTop;
-			int minTy = -image.offsetTop - height + containerHeight;
-			if (minTy < maxTy) {
-				if (ty > maxTy) {
-					ty = maxTy;
-				} else if (ty < minTy) {
-					ty = minTy;
-				}
-			}
+			double newTx = clickPos.getX() - imgX * newScale;
+			double newTy = clickPos.getY() - imgY * newScale;
 			
-			setTransform(image, tx, ty, scale);
+			txInfo.setCustom(newTx, newTy, newScale);
 		} else {
-			image.style.transform = "none";
-			Native.delete(image, "txInfo");
+			txInfo.reset();
 		}
+		updateTransform(image, txInfo);
 	}
 
 	private void onImagePanStart(MouseEvent event) {
@@ -447,7 +488,7 @@ public class ImageDisplay extends ResourceDisplay {
 		double startX = event.clientX;
 		double startY = event.clientY;
 		
-		TXInfo txInfo = txInfo(image);
+		TXInfo txInfo = getTxInfo(image);
 		double tx = txInfo.getTx();
 		double ty = txInfo.getTy();
 		
@@ -507,9 +548,10 @@ public class ImageDisplay extends ResourceDisplay {
 		double tx = x - dragStart.getX();
 		double ty = y - dragStart.getY();
 		
-		double scale = txInfo(image).getScale();
-		
-		setTransform(image, tx, ty, scale);
+		TXInfo txInfo = getTxInfo(image);
+		double scale = txInfo.getScale();
+		txInfo.setCustom(tx, ty, scale);
+		updateTransform(image, txInfo);
 		Native.set(container, "moved", Boolean.TRUE);
 	}
 

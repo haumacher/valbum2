@@ -150,21 +150,9 @@ public class PreviewDisplay extends AbstractDisplay {
 					}
 					
 					out.append("width: " + imgWidth + "px; height: " + imgHeight + "px;");
-					
-					switch (orientation) {
-					case ROT_L:
-						out.append(" transform-origin: top left; transform: scale(" + scale + ") translateY(" + imgWidth + "px) rotate(-90deg);");
-						break;
-					case ROT_R:
-						out.append(" transform-origin: top left; transform: scale(" + scale + ") translateX(" + imgHeight + "px) rotate(90deg);");
-						break;
-					case ROT_180:
-						out.append(" transform-origin: top left; transform: scale(" + scale + ") translate(" + imgWidth + "px, " + imgHeight + "px) rotate(180deg);");
-						break;
-					case IDENTITY:
-						out.append(" transform-origin: top left; transform: scale(" + scale + ");");
-						break;
-					}
+					out.append("transform-origin: top left; transform: ");
+					out.append(Orientations.cssTransform(orientation, imgWidth, imgHeight, scale));
+					out.append(";");
 					out.closeAttr();
 					out.attr(TITLE_ATTR, _image.getComment());
 					{

@@ -308,6 +308,11 @@ public class App implements EntryPoint, UIContext {
 	}
 
 	@Override
+	public int getPageHeight() {
+		return DomGlobal.window.innerHeight;
+	}
+	
+	@Override
 	public String getContextPath() {
 		return _contextPath;
 	}

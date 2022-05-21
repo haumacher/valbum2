@@ -162,5 +162,44 @@ public class Orientations {
 		throw new IllegalArgumentException("No such orientation: " + tx);
 	}
 	
+	/** 
+	 * CSS style properties that transform the image into the correct orientation.
+	 *
+	 * @param imgWidth Width of the image.
+	 * @param imgHeight Height of the image.
+	 */
+	public static String cssTransform(Orientation orientation, double imgWidth, double imgHeight, double scale) {
+		return cssTransform(orientation, imgWidth, imgHeight, scale, 0, 0);
+	}
+	
+	/** 
+	 * CSS style properties that transform the image into the correct orientation.
+	 *
+	 * @param rawWidth Width of the image in its physical orientation.
+	 * @param rawHeight Height of the image in its physical orientation.
+	 * @param tx An extras translation in X direction.
+	 * @param ty An extras translation in Y direction.
+	 */
+	public static String cssTransform(Orientation orientation, double rawWidth, double rawHeight, double scale, double tx, double ty) {
+		String txStyle;
+		switch (orientation) {
+		case ROT_L:
+			txStyle = " translate(" + tx + "px, " + ty + "px) scale(" + scale + ") translateY(" + rawWidth + "px) rotate(-90deg)";
+			break;
+		case ROT_R:
+			txStyle = " translate(" + tx + "px, " + ty + "px) scale(" + scale + ") translateX(" + rawHeight + "px) rotate(90deg)";
+			break;
+		case ROT_180:
+			txStyle = " translate(" + tx + "px, " + ty + "px) scale(" + scale + ") translate(" + rawWidth + "px, " + rawHeight + "px) rotate(180deg)";
+			break;
+		case IDENTITY:
+			txStyle = " translate(" + tx + "px, " + ty + "px) scale(" + scale + ")";
+			break;
+		default: 
+			txStyle = "";
+		}
+		return txStyle;
+	}
+
 	
 }

@@ -45,6 +45,7 @@ public class CssClasses {
 	public static final String ENTRY = "va-entry";
 	public static final String PREVIEW = "va-preview";
 	public static final String IMAGE_DISPLAY = "va-image-display";
+	public static final String LISTING_DISPLAY = "va-listing-display";
 	public static final String NO_IMAGE = "va-no-image";
 	public static final String TITLE = "va-title";
 	public static final String SUBTITLE = "va-subtitle";

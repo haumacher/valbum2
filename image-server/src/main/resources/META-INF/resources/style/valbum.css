@@ -77,8 +77,8 @@ img.va-icon-display {
 	max-height: none;
 }
 
-img.va-image-display, 
-video.va-image-display {
+img.va-listing-display, 
+video.va-listing-display {
     max-height: 100%;
     max-width: 100%;
     width: auto;
@@ -89,6 +89,15 @@ video.va-image-display {
     left: 0;
     right: 0;
     margin: auto;
+}
+
+img.va-image-display, 
+video.va-image-display {
+    max-height: none;
+    max-width: none;
+    position: absolute;
+    top: 0;
+    left: 0;
 }
 
 .va-listing {

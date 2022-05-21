@@ -136,6 +136,9 @@
 					<descriptorRefs>
 						<descriptorRef>jar-with-dependencies</descriptorRef>
 					</descriptorRefs>
+					<archive>
+						<compress>false</compress>
+					</archive>
 				</configuration>
 
 				<executions>

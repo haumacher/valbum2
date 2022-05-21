@@ -65,7 +65,7 @@ public class ListingDisplay extends ResourceDisplay {
 					ThumbnailInfo indexPicture = folder.getIndexPicture();
 					if (indexPicture != null) {
 						out.begin(IMG);
-						out.attr(CLASS_ATTR, CssClasses.IMAGE_DISPLAY);
+						out.attr(CLASS_ATTR, CssClasses.LISTING_DISPLAY);
 						out.attr(STYLE_ATTR, "transform: scale(" + indexPicture.getScale() + ") translate(" + indexPicture.getTx() + "px, " + indexPicture.getTy() + "px);");
 						out.openAttr(SRC_ATTR);
 						{
