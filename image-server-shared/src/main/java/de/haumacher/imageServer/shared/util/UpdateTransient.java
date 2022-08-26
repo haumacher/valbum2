@@ -106,9 +106,8 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 				image.setEnd(lastImage);
 				image.setPrevious(prevImage);	
 				image.setNext(nextImage);
-				
-				image.visit(this, owner);
 			}
+			part.visit(this, owner);
 		}
 	}
 
