@@ -18,7 +18,6 @@ import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
-import java.util.Collections;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
@@ -45,7 +44,7 @@ import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
-import de.haumacher.imageServer.shared.util.ToImage;
+import de.haumacher.imageServer.shared.util.AlbumUtil;
 import de.haumacher.imageServer.shared.util.UpdateTransient;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
@@ -342,15 +341,7 @@ public class ResourceCache {
 				newImages.add(image);
 			}
 			
-			if (!newImages.isEmpty()) {
-				Collections.sort(newImages, (a, b) -> Long.compare(ToImage.toImage(a).getDate(), ToImage.toImage(b).getDate()));
-				for (ImageData newImage : newImages) {
-					album.addPart(newImage);
-				}
-
-				// Update again to fix internal linking structure.
-				UpdateTransient.updateTransient(album);
-			}
+			AlbumUtil.insertSorted(album, newImages);
 			
 			return album;
 		}
