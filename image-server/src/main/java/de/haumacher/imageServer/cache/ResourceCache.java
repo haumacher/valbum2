@@ -319,14 +319,13 @@ public class ResourceCache {
 			// Update early to be able to match new images against existing image.
 			UpdateTransient.updateTransient(album);
 			
-			Set<String> existingNames = new HashSet<>();
 			List<ImageData> newImages = new ArrayList<>();
 			for (File file : files) {
 				String name = file.getName();
-				existingNames.add(name);
 				
 				ImagePart existing = album.getImageByName().get(name);
 				if (existing != null) {
+					// Already known.
 					continue;
 				}
 				
