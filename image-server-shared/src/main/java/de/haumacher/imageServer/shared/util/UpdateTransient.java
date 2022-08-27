@@ -41,6 +41,7 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 	
 	@Override
 	public Void visit(AlbumInfo self, AlbumInfo arg) throws RuntimeException {
+		self.setImageByName(Collections.emptyMap());
 		updateContents(self.getParts(), self);
 		return null;
 	}
@@ -89,8 +90,6 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 	private void updateContents(List<? extends AlbumPart> parts, AlbumInfo owner) {
 		AbstractImage firstImage = nextImage(parts, 0);
 		AbstractImage lastImage = prevImage(parts, parts.size() - 1);
-		
-		owner.setImageByName(Collections.emptyMap());
 		
 		for (int n = 0, size = parts.size(); n < size; n++) {
 			int index = n;
