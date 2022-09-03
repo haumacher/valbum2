@@ -117,7 +117,7 @@ public class ImageData extends ImagePart {
 				} else {
 					rotation = 0;
 				}
-				if (rotation < 0) {
+				while (rotation < 0) {
 					rotation += 360;
 				}
 				

@@ -25,7 +25,6 @@ import com.drew.imaging.ImageProcessingException;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.MetadataException;
 import com.drew.metadata.exif.ExifIFD0Directory;
-import com.drew.metadata.exif.ExifThumbnailDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.png.PngDirectory;
@@ -211,18 +210,6 @@ public class PreviewCache {
 		throw new IllegalArgumentException("Neither JPG nor PNG image.");
 	}
 
-	private static int getThumbnailOrientation(Metadata metadata,
-			ExifThumbnailDirectory tnDirectory) throws MetadataException {
-		int tnOrientation = 1;
-		if (tnDirectory.containsTag(ExifThumbnailDirectory.TAG_ORIENTATION)) {
-			tnOrientation = tnDirectory.getInt(ExifThumbnailDirectory.TAG_ORIENTATION);
-		} else {
-			// At least images from Canon EOS have no extra thumbnail information. Instead, the thumbnail is oriented the same as the original image.
-			tnOrientation = getImageOrientation(metadata);
-		}
-		return tnOrientation;
-	}
-
 	private static int getImageOrientation(Metadata metadata) throws MetadataException {
 		ExifIFD0Directory exifIFD0Directory = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
 		if (exifIFD0Directory != null && exifIFD0Directory.containsTag(ExifIFD0Directory.TAG_ORIENTATION)) {
@@ -275,7 +262,9 @@ public class PreviewCache {
 		try (FFmpegFrameGrabber g = new FFmpegFrameGrabber(file)) {
 			g.start();
 			Frame firstFrame = g.grabKeyFrame();
-			return new Java2DFrameConverter().convert(firstFrame);
+			try (Java2DFrameConverter converter = new Java2DFrameConverter()) {
+				return converter.convert(firstFrame);
+			}
 		}
 	}
 
