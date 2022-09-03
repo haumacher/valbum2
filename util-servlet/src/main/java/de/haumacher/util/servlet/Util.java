@@ -14,19 +14,22 @@ import java.io.OutputStream;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * TODO
+ * Collection of static utilities.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class Util {
 
-	public static String suffix(String name) {
-		int sepIndex = name.lastIndexOf('.');
+	/**
+	 * The lower-case file name suffix of the given file name, or <code>null</code> if the given file name has no suffix.
+	 */
+	public static String suffix(String fileName) {
+		int sepIndex = fileName.lastIndexOf('.');
 		if (sepIndex < 0) {
 			return null;
 		}
 	
-		return name.substring(sepIndex + 1).toLowerCase();
+		return fileName.substring(sepIndex + 1).toLowerCase();
 	}
 
 	public static void sendBytes(HttpServletResponse response, InputStream in) throws IOException {

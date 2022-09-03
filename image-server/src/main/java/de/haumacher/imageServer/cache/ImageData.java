@@ -20,6 +20,7 @@ import com.drew.metadata.mov.QuickTimeDirectory;
 import com.drew.metadata.mov.media.QuickTimeVideoDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
+import com.drew.metadata.png.PngDirectory;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ImagePart;
@@ -90,6 +91,23 @@ public class ImageData extends ImagePart {
 			return result;
 		}
 		
+		PngDirectory pngDirectory = metadata.getFirstDirectoryOfType(PngDirectory.class);
+		if (pngDirectory != null) {
+			result.setKind(ImagePart.Kind.IMAGE);
+
+			int rawWidth = pngDirectory.getInt(PngDirectory.TAG_IMAGE_WIDTH);
+			int rawHeight = pngDirectory.getInt(PngDirectory.TAG_IMAGE_HEIGHT);
+			String comment = pngDirectory.getString(PngDirectory.TAG_TEXTUAL_DATA);
+			if (comment != null) {
+				result.setComment(comment);
+			}
+			
+			Orientation tx = Orientation.IDENTITY;
+			result.setWidth(Orientations.width(tx, rawWidth, rawHeight));
+			result.setHeight(Orientations.height(tx, rawWidth, rawHeight));
+			return result;
+		}
+		
 		Mp4Directory mp4Directory = metadata.getFirstDirectoryOfType(Mp4Directory.class);
 		if (mp4Directory != null) {
 			try {
@@ -150,7 +168,7 @@ public class ImageData extends ImagePart {
 			}
 		}
 		
-		throw new IllegalArgumentException("Neither JPG nor MP4 file: " + file);
+		throw new IllegalArgumentException("Neither JPG, PNG, MOV, nor MP4 file: " + file);
 	}
 
 	private static Date date(Metadata metadata) {

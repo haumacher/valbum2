@@ -28,6 +28,7 @@ import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.exif.ExifThumbnailDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
+import com.drew.metadata.png.PngDirectory;
 
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.ui.layout.Content;
@@ -63,11 +64,12 @@ public class PreviewCache {
 	 * Lookup or creates the preview data for the given image or video file.
 	 */
 	public static File createPreview(File file) throws PreviewException {
-		String name = file.getName();
-		String suffix = Util.suffix(name);
+		String fileName = file.getName();
+		String suffix = Util.suffix(fileName);
+		String imageType = imageType(suffix);
 		
 		File cacheDir = new File(file.getParentFile(), ".vacache");
-		File previewCache = new File(cacheDir, "preview-" + file.getName() + (suffix.equals("jpg") ? "" : ".jpg"));
+		File previewCache = new File(cacheDir, "preview-" + fileName + (suffix.equals(imageType) ? "" : "." + imageType));
 		if (!previewCache.exists() || file.lastModified() > previewCache.lastModified() || previewCache.lastModified() < LAST_UPDATE) {
 			if (!cacheDir.exists()) {
 				cacheDir.mkdir();
@@ -75,27 +77,35 @@ public class PreviewCache {
 			switch (suffix) {
 				case "jpg":
 				case "jpeg":
+				case "png":
 					try {
-						createImagePreview(file, previewCache);
+						createImagePreview(file, previewCache, imageType);
 					} catch (ImageProcessingException | MetadataException | IOException ex) {
-						throw new PreviewException("Cannot create image preview for '" + name  + "'.", ex);
+						throw new PreviewException("Cannot create image preview for '" + fileName  + "'.", ex);
 					}
 					break;
 				case "mp4":
 					try {
 						createVideoPreview(file, previewCache);
 					} catch (ImageProcessingException | MetadataException | IOException ex) {
-						throw new PreviewException("Cannot create video preview for '" + name  + "'.", ex);
+						throw new PreviewException("Cannot create video preview for '" + fileName  + "'.", ex);
 					}
 					break;
 				default:
-					throw new PreviewException("Unsupported format: " + name);
+					throw new PreviewException("Unsupported format: " + fileName);
 			}
 		}
 		return previewCache;
 	}
 
-	private static void createImagePreview(File file, File previewCache)
+	private static String imageType(String suffix) {
+		switch (suffix) {
+		case "png": return "png";
+		}
+		return "jpg";
+	}
+
+	private static void createImagePreview(File file, File previewCache, String imgType)
 			throws ImageProcessingException, IOException, MetadataException {
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
 		ImageDimension dimension = getImageDimension(metadata);
@@ -112,33 +122,28 @@ public class PreviewCache {
 			previewHeight = PREVIEW_HEIGHT;
 		}
 		
-		if (origHeight <= previewHeight) {
-			// Use orig as preview.
-			Util.copy(file, previewCache);
-		} else {
-			BufferedImage orig = ImageIO.read(file);
-			int rawWidth = orig.getWidth();
-			int rawHeight = orig.getHeight();
-			
-			int previewWidth = ((int) Math.round(previewHeight / dimension.getRatio()));
-			
-			Orientation orientation = Orientations.fromCode(getImageOrientation(metadata));
-			
-			BufferedImage copy = new BufferedImage(previewWidth, previewHeight, orig.getType());
-			Graphics2D g = (Graphics2D) copy.getGraphics();
-			
-			double scaleX = ((double)previewWidth) / origWidth;
-			double scaleY = ((double)previewHeight) / origHeight;
-			
-			AffineTransform tx = new AffineTransform();
-			tx.translate((previewWidth - rawWidth * scaleX) / 2, (previewHeight - rawHeight * scaleY) / 2);
-			tx.scale(scaleX, scaleY);
-			applyOrientation(tx, orientation, rawWidth / 2, rawHeight / 2);
-			g.setTransform(tx);
-			
-			g.drawImage(orig, null, 0, 0);
-			ImageIO.write(copy, "jpg", previewCache);
-		}
+		BufferedImage orig = ImageIO.read(file);
+		int rawWidth = orig.getWidth();
+		int rawHeight = orig.getHeight();
+		
+		int previewWidth = ((int) Math.round(previewHeight / dimension.getRatio()));
+		
+		Orientation orientation = Orientations.fromCode(getImageOrientation(metadata));
+		
+		BufferedImage copy = new BufferedImage(previewWidth, previewHeight, orig.getType());
+		Graphics2D g = (Graphics2D) copy.getGraphics();
+		
+		double scaleX = Math.min(1.0, ((double)previewWidth) / origWidth);
+		double scaleY = Math.min(1.0, ((double)previewHeight) / origHeight);
+		
+		AffineTransform tx = new AffineTransform();
+		tx.translate((previewWidth - rawWidth * scaleX) / 2, (previewHeight - rawHeight * scaleY) / 2);
+		tx.scale(scaleX, scaleY);
+		applyOrientation(tx, orientation, rawWidth / 2, rawHeight / 2);
+		g.setTransform(tx);
+		
+		g.drawImage(orig, null, 0, 0);
+		ImageIO.write(copy, imgType, previewCache);
 	}
 
 	private static void applyOrientation(AffineTransform tx, Orientation orientation, int centerX, int centerY) {
@@ -182,17 +187,28 @@ public class PreviewCache {
 
 	private static ImageDimension getImageDimension(Metadata metadata) throws MetadataException {
 		JpegDirectory jpegDirectory = metadata.getFirstDirectoryOfType(JpegDirectory.class);
-		int rawWidth = jpegDirectory.getImageWidth();
-		int rawHeight = jpegDirectory.getImageHeight();
-		int width, height;
-		if (getImageOrientation(metadata) >= 5) {
-			width = rawHeight;
-			height = rawWidth;
-		} else {
-			width = rawWidth;
-			height = rawHeight;
+		if (jpegDirectory != null) {
+			int rawWidth = jpegDirectory.getImageWidth();
+			int rawHeight = jpegDirectory.getImageHeight();
+			int width, height;
+			if (getImageOrientation(metadata) >= 5) {
+				width = rawHeight;
+				height = rawWidth;
+			} else {
+				width = rawWidth;
+				height = rawHeight;
+			}
+			return new ImageDimension(width, height);
 		}
-		return new ImageDimension(width, height);
+		
+		PngDirectory pngDirectory = metadata.getFirstDirectoryOfType(PngDirectory.class);
+		if (pngDirectory != null) {
+			int width = pngDirectory.getInt(PngDirectory.TAG_IMAGE_WIDTH);
+			int height = pngDirectory.getInt(PngDirectory.TAG_IMAGE_HEIGHT);
+			return new ImageDimension(width, height);
+		}
+		
+		throw new IllegalArgumentException("Neither JPG nor PNG image.");
 	}
 
 	private static int getThumbnailOrientation(Metadata metadata,

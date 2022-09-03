@@ -57,7 +57,7 @@ import de.haumacher.util.servlet.Util;
  */
 public class ResourceCache {
 	
-	private static Set<String> ACCEPTED = new HashSet<>(Arrays.asList("jpg", "jpeg", "mp4"));
+	private static Set<String> ACCEPTED = new HashSet<>(Arrays.asList("jpg", "jpeg", "png", "mp4"));
 	
 	static final FileFilter IMAGES = f -> {
 		return f.isFile() && ACCEPTED.contains(Util.suffix(f.getName()));
