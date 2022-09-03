@@ -117,6 +117,9 @@ public class ImageData extends ImagePart {
 				} else {
 					rotation = 0;
 				}
+				if (rotation < 0) {
+					rotation += 360;
+				}
 				
 				Mp4VideoDirectory mp4VideoDirectory = metadata.getFirstDirectoryOfType(Mp4VideoDirectory.class);
 				if (mp4VideoDirectory != null) {
