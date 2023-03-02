@@ -52,13 +52,13 @@
 		<dependency>
 			<groupId>org.apache.maven.plugin-tools</groupId>
 			<artifactId>maven-plugin-tools-annotations</artifactId>
-			<version>3.6.2</version>
+			<version>3.8.1</version>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.maven.shared</groupId>
 			<artifactId>file-management</artifactId>
-			<version>3.0.0</version>
+			<version>3.1.0</version>
 		</dependency>
 		<dependency>
 			<groupId>junit</groupId>
@@ -113,10 +113,11 @@
 					</execution>
 				</executions>
 			</plugin>
+			 -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-plugin-plugin</artifactId>
-				<version>3.5</version>
+			    <version>3.6.4</version>
 				<configuration>
 					<goalPrefix>embedd-webapp</goalPrefix>
 					<skipErrorNoDescriptorsFound>true</skipErrorNoDescriptorsFound>
@@ -136,7 +137,6 @@
 					</execution>
 				</executions>
 			</plugin>
-			 -->
 		</plugins>
 		<pluginManagement>
 			<plugins>
