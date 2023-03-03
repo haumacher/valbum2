@@ -22,15 +22,14 @@ neben Deinen Photos gespeichert.
 Du benötigtst Git, eine Java 11 Runtime und Apache Maven. Nachdem Du das Repository geclont hast, baust Du mit dem 
 folgenden Befehl im Projekt-Hauptverzeichnis:
 
-{{{
+```
 mvn clean install
-}}}
+```
 
 Eine Demo-Version kannst Du dann direkt starten und ausprobieren:
 
-{{{
+```
 mvn exec:java@test-server -pl :image-server
-}}}
+```
 
 Ist das geschafft, kannst Du die VAlbum-URL http://localhost:9090/valbum/ im Browser aufrufen.
-
