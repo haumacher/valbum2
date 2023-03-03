@@ -7,13 +7,12 @@
 	<parent>
 		<groupId>de.haumacher</groupId>
 		<artifactId>image-server-parent</artifactId>
-		<version>0.0.1-SNAPSHOT</version>
-		<relativePath>../image-server-parent/pom.xml</relativePath>
+		<version>0.0.2-SNAPSHOT</version>
+		
+		<relativePath>../image-server-parent</relativePath>
 	</parent>
 
 	<artifactId>image-server</artifactId>
-
-	<packaging>jar</packaging>
 
 	<properties>
 	</properties>
@@ -22,26 +21,21 @@
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>image-server-shared</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-servlet</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-xml</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>image-server-client</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
-			<type>war</type>
 		</dependency>
 
 		<dependency>
@@ -87,12 +81,6 @@
 		</dependency>
 
 		<dependency>
-			<groupId>com.google.code.gson</groupId>
-			<artifactId>gson</artifactId>
-			<version>2.10.1</version>
-		</dependency>
-
-		<dependency>
 			<groupId>org.bytedeco</groupId>
 			<artifactId>javacv-platform</artifactId>
 			<version>1.5.8</version>
@@ -101,7 +89,6 @@
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
-			<version>4.13.2</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
@@ -109,19 +96,6 @@
 	<build>
 		<finalName>${project.artifactId}</finalName>
 		<plugins>
-			<plugin>
-				<groupId>de.haumacher</groupId>
-				<artifactId>embedd-webapp-maven-plugin</artifactId>
-				<version>0.0.1-SNAPSHOT</version>
-				<executions>
-					<execution>
-						<goals>
-							<goal>embeddWebapp</goal>
-						</goals>
-					</execution>
-				</executions>
-			</plugin>
-
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-assembly-plugin</artifactId>

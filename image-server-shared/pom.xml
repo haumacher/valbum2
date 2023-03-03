@@ -6,8 +6,9 @@
 	<parent>
 		<groupId>de.haumacher</groupId>
 		<artifactId>image-server-parent</artifactId>
-		<version>0.0.1-SNAPSHOT</version>
-		<relativePath>../image-server-parent/pom.xml</relativePath>
+		<version>0.0.2-SNAPSHOT</version>
+		
+		<relativePath>../image-server-parent</relativePath>
 	</parent>
 	
 	<artifactId>image-server-shared</artifactId>
@@ -25,7 +26,6 @@
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-xml</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 
 		<dependency>
@@ -41,15 +41,8 @@
 		</dependency>
 
 		<dependency>
-			<groupId>com.google.code.gson</groupId>
-			<artifactId>gson</artifactId>
-			<version>2.10.1</version>
-		</dependency>
-
-		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
-			<version>4.13.2</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>

@@ -8,14 +8,14 @@
 	<parent>
 		<groupId>de.haumacher</groupId>
 		<artifactId>image-server-parent</artifactId>
-		<version>0.0.1-SNAPSHOT</version>
-		<relativePath>../image-server-parent/pom.xml</relativePath>
+		<version>0.0.2-SNAPSHOT</version>
+		
+		<relativePath>../image-server-parent</relativePath>
 	</parent>
 
 	<artifactId>image-server-client</artifactId>
 	<name>ImageServer Client App</name>
 
-	<packaging>war</packaging>
 	<properties>
 		<!-- Setting maven.compiler.source to something different to 1.8 needs 
 			that you configure the sourceLevel in gwt-maven-plugin since GWT compiler 
@@ -45,37 +45,36 @@
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>image-server-shared</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>image-server-shared</artifactId>
 			<classifier>sources</classifier>
-			<version>0.0.1-SNAPSHOT</version>
+			<version>${project.version}</version>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-gwt</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-gwt</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+			<version>${project.version}</version>
 			<classifier>sources</classifier>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-xml</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-xml</artifactId>
 			<classifier>sources</classifier>
-			<version>0.0.1-SNAPSHOT</version>
+			<version>${project.version}</version>
 			<scope>provided</scope>
 		</dependency>
 
@@ -94,19 +93,19 @@
 			<groupId>com.google.elemental2</groupId>
 			<artifactId>elemental2-dom</artifactId>
 			<version>1.1.0</version>
-			<scope>compile</scope>
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>com.google.elemental2</groupId>
 			<artifactId>elemental2-core</artifactId>
 			<version>1.1.0</version>
-			<scope>compile</scope>
+			<scope>provided</scope>
 		</dependency>
 
 		<dependency>
 			<groupId>com.google.gwt</groupId>
 			<artifactId>gwt-servlet</artifactId>
-			<scope>runtime</scope>
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>com.google.gwt</groupId>
@@ -121,7 +120,6 @@
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
-			<version>4.13.2</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
@@ -130,14 +128,7 @@
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-war-plugin</artifactId>
-				<version>3.2.2</version>
-			</plugin>
-
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-source-plugin</artifactId>
-				<version>3.2.0</version>
 				<executions>
 					<execution>
 						<id>attach-sources</id>
@@ -152,10 +143,11 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.8.1</version>
 
+				<!-- Java sources in this project are only for GWT compilation. -->
 				<configuration>
-					<excludes>de/haumacher/imageServer/jre/**</excludes>
+					<skipMain>true</skipMain>
+					<skipTest>true</skipTest>
 				</configuration>
 			</plugin>
 
@@ -163,15 +155,11 @@
 			<plugin>
 				<groupId>net.ltgt.gwt.maven</groupId>
 				<artifactId>gwt-maven-plugin</artifactId>
-				<version>1.0-rc-6</version>
 
 				<executions>
 					<execution>
 						<goals>
-							<goal>import-sources</goal>
 							<goal>compile</goal>
-							<goal>import-test-sources</goal>
-							<goal>test</goal>
 						</goals>
 					</execution>
 				</executions>
@@ -199,6 +187,10 @@
 
 					<!-- DevMode configuration -->
 					<warDir>${project.build.directory}/classes/META-INF/resources</warDir>
+					
+					<!-- Compile to location that will be embedded into the generated JAR as webapp resource. -->
+					<webappDirectory>${project.build.directory}/classes/META-INF/resources</webappDirectory>
+					
 					<classpathScope>compile+runtime</classpathScope>
 
 					<!-- URL(s) that should be opened by DevMode (gwt:devmode). -->
@@ -211,7 +203,6 @@
 			<!-- Skip normal test execution, we use gwt:test instead -->
 			<plugin>
 				<artifactId>maven-surefire-plugin</artifactId>
-				<version>2.17</version>
 				<configuration>
 					<skip>true</skip>
 				</configuration>

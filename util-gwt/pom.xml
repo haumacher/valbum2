@@ -6,7 +6,9 @@
 	<parent>
 		<groupId>de.haumacher</groupId>
 		<artifactId>image-server-parent</artifactId>	
-		<version>0.0.1-SNAPSHOT</version>
+		<version>0.0.2-SNAPSHOT</version>
+		
+		<relativePath>../image-server-parent</relativePath>
 	</parent>
 	
 	<artifactId>util-gwt</artifactId>
@@ -27,12 +29,14 @@
 		<dependency>
 			<groupId>de.haumacher</groupId>
 			<artifactId>util-xml</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+			<scope>provided</scope>
 		</dependency>
+		
 		<dependency>
 			<groupId>com.google.elemental2</groupId>
 			<artifactId>elemental2-dom</artifactId>
 			<version>1.1.0</version>
+			<scope>provided</scope>
 		</dependency>
 	</dependencies>
 </project>
