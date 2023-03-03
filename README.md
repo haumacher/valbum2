@@ -39,3 +39,12 @@ hat, erhälst du ungefähr so eine Ansicht:
 
 ![valbum-demo](https://user-images.githubusercontent.com/5607145/222806653-c4945966-c730-4af4-8d72-8037d4bba205.png)
 
+## Wie startet man VAlbum?
+
+Wenn Du VAlbum gebaut hast (siehe oben), dann entsteht in dem Ordner `image-server/target` eine Datei mit Namen `image-server-jar-with-dependencies.jar`. In dieser Datei ist der gesamte ausführbare Code von VAlbum enthalten. Du kannst diese Datei auf Deinen Album-Server kopieren, oder einfach lokal auf Deinem Rechner starten:
+
+```
+java -jar image-server-jar-with-dependencies.jar --basepath C:\path\to\your\photos
+```
+
+Den Port, auf dem der Server läuft kann man z.B. mit der zusätzlichen Option `--port 8080` ändern. Der Erste Teil in der URL kann z.B. über `--contextpath photos` geändert werden.
