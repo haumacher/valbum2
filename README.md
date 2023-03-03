@@ -26,7 +26,7 @@ folgenden Befehl im Projekt-Hauptverzeichnis:
 mvn clean install
 ```
 
-Eine Demo-Version kannst Du dann direkt starten und ausprobieren:
+Eine Demo-Version mit einem Test-Album kannst Du dann direkt starten und ausprobieren:
 
 ```
 mvn exec:java@test-server -pl :image-server
