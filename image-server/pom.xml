@@ -163,7 +163,7 @@
 						<argument>--contextpath</argument>
 						<argument>valbum</argument>
 						<argument>--basepath</argument>
-						<argument>./src/test/fixtures/test-album</argument>
+						<argument>${project.basedir}/src/test/fixtures/test-album</argument>
 					</arguments>
 				</configuration>
 			</plugin>
