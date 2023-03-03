@@ -9,8 +9,6 @@
 		<groupId>de.haumacher</groupId>
 		<artifactId>image-server-parent</artifactId>
 		<version>0.0.2-SNAPSHOT</version>
-		
-		<relativePath>../image-server-parent</relativePath>
 	</parent>
 
 	<artifactId>image-server-client</artifactId>

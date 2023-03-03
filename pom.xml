@@ -3,17 +3,17 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>de.haumacher</groupId>
-	<artifactId>image-server-parent</artifactId>
+	<artifactId>valbum2</artifactId>
 	<version>0.0.2-SNAPSHOT</version>
 	<packaging>pom</packaging>
 
 	<modules>
-		<module>../image-server-shared</module>
-		<module>../image-server-client</module>
-		<module>../image-server</module>
-		<module>../util-gwt</module>
-		<module>../util-servlet</module>
-		<module>../util-xml</module>
+		<module>image-server-shared</module>
+		<module>image-server-client</module>
+		<module>image-server</module>
+		<module>util-gwt</module>
+		<module>util-servlet</module>
+		<module>util-xml</module>
 	</modules>
 	
 	<properties>
