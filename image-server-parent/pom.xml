@@ -8,7 +8,6 @@
 	<packaging>pom</packaging>
 
 	<modules>
-		<module>../embedd-webapp-maven-plugin</module>
 		<module>../image-server-shared</module>
 		<module>../image-server-client</module>
 		<module>../image-server</module>
