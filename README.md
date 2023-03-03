@@ -34,4 +34,8 @@ Eine Demo-Version mit einem Test-Album kannst Du dann direkt starten und ausprob
 mvn exec:java@test-server -pl :image-server
 ```
 
-Ist das geschafft, kannst Du die VAlbum-URL http://localhost:9090/valbum/ im Browser aufrufen.
+Ist das geschafft, kannst Du die VAlbum-URL http://localhost:9090/valbum/ im Browser aufrufen. Wenn das funktioniert
+hat, erhälst du ungefähr so eine Ansicht:
+
+![valbum-demo](https://user-images.githubusercontent.com/5607145/222806653-c4945966-c730-4af4-8d72-8037d4bba205.png)
+
