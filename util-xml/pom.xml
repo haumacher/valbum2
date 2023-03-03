@@ -13,6 +13,13 @@
 		<relativePath>../image-server-parent/pom.xml</relativePath>
 	</parent>
 	
+	<dependencies>
+		<dependency>
+			<groupId>de.haumacher.msgbuf</groupId>
+			<artifactId>msgbuf-api</artifactId>
+		</dependency>
+	</dependencies>
+	
 	<build>
 		<finalName>${project.artifactId}</finalName>
 		<plugins>

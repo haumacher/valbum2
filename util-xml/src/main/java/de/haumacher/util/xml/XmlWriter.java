@@ -4,15 +4,16 @@
 package de.haumacher.util.xml;
 
 import java.io.IOException;
-import java.io.Writer;
 import java.util.ArrayList;
+
+import de.haumacher.msgbuf.io.Writer;
 
 /**
  * {@link XmlAppendable} writing to an {@link Appendable} output.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class XmlWriter extends Writer implements XmlAppendable {
+public class XmlWriter implements Writer, XmlAppendable, AutoCloseable {
 
 	enum State {
 		/**
@@ -94,12 +95,12 @@ public class XmlWriter extends Writer implements XmlAppendable {
 	}
 	
 	@Override
-	public void write(int c) throws IOException {
+	public void write(char c) throws IOException {
 		if (_state == State.ATTRIBUTE) {
-			writeAttributeChar((char) c);
+			writeAttributeChar(c);
 		} else {
 			closePotentialTag();
-			writeElementChar((char) c);
+			writeElementChar(c);
 		}
 	}
 	
@@ -110,20 +111,6 @@ public class XmlWriter extends Writer implements XmlAppendable {
 		} else {
 			closePotentialTag();
 			writeElementText(str, off, off + len);
-		}
-	}
-	
-	@Override
-	public void write(char[] cbuf, int off, int len) throws IOException {
-		if (_state == State.ATTRIBUTE) {
-			for (int n = off, stop = off + len; n < stop; n++) {
-				writeAttributeChar(cbuf[n]);
-			}
-		} else {
-			closePotentialTag();
-			for (int n = off, stop = off + len; n < stop; n++) {
-				writeElementChar(cbuf[n]);
-			}
 		}
 	}
 	
@@ -329,6 +316,26 @@ public class XmlWriter extends Writer implements XmlAppendable {
 			end();
 		}
 		flush();
+	}
+
+	@Override
+	public Appendable append(CharSequence csq) throws IOException {
+		if (csq != null) {
+			write(csq.toString());
+		}
+		return this;
+	}
+
+	@Override
+	public Appendable append(CharSequence csq, int start, int end) throws IOException {
+		write(csq.toString(), start, end - start);
+		return this;
+	}
+
+	@Override
+	public Appendable append(char c) throws IOException {
+		write(c);
+		return this;
 	}
 
 }
