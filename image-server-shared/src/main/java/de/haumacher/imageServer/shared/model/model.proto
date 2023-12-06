@@ -3,6 +3,8 @@ package de.haumacher.imageServer.shared.model;
 option NoBinary;
 option NoReflection;
 option NoListener;
+option NoInterfaces;
+option NoXml;
 
 /** Base class for a resource being displayed as view in a photo album. */
 abstract message Resource {
@@ -82,27 +84,27 @@ message ImageGroup extends AbstractImage {
 
 }
 
+/** Kind of image. */
+enum ImageKind {
+	/** A JPEG image. */
+	IMAGE;
+	
+	/** 
+	 * A mp4 video. 
+	 * 
+	 * <p>For historical reason, this kind is named "video" and not "mp4".</p> 
+	 */
+	VIDEO;
+	
+	/** A quicktime video. */
+	QUICKTIME;
+}
+
 /** {@link Resource} describing a single image or video file. */
 message ImagePart extends AbstractImage {
 
-	/** Kind of image. */
-	enum Kind {
-		/** A JPEG image. */
-		IMAGE;
-		
-		/** 
-		 * A mp4 video. 
-		 * 
-		 * <p>For historical reason, this kind is named "video" and not "mp4".</p> 
-		 */
-		VIDEO;
-		
-		/** A quicktime video. */
-		QUICKTIME;
-	}
-
 	/** The kind of this {@link ImagePart}. */
-	Kind kind;
+	ImageKind kind;
 	
 	/** The image (file) name. */
 	string name;

@@ -19,8 +19,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
-import de.haumacher.imageServer.shared.model.ImagePart.Kind;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.WriterAdapter;
@@ -294,7 +294,7 @@ public class ImageServlet extends HttpServlet {
 	private String mimeType(Context context, Resource resource) {
 		if (resource instanceof ImagePart) {
 			ImagePart image = (ImagePart) resource;
-			Kind kind = image.getKind();
+			ImageKind kind = image.getKind();
 			switch (kind) {
 			case VIDEO:
 				return "video/mpeg";
@@ -309,16 +309,20 @@ public class ImageServlet extends HttpServlet {
 
 	private void serveJson(HttpServletResponse response, Resource album) throws IOException {
 		response.setContentType("application/json");
+		
+		// Allow access from mobile app.
+		response.setHeader("Access-Control-Allow-Origin", "*");
 		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(response.getOutputStream(), "utf-8")))) {
 			album.writeTo(json);
 		}
 	}
 
 	private void serveData(Context context, File file, String mimeType) throws IOException {
-		HttpServletRequest request = context.request();
 		HttpServletResponse response = context.response();
 
 		response.setContentType(mimeType);
+		// Allow access from mobile app (is required even for images, since they are rendered using WebGL from Flutter).
+		response.setHeader("Access-Control-Allow-Origin", "*");
 		long length = file.length();
 		if (length <= Integer.MAX_VALUE) {
 			response.setContentLength((int) length);

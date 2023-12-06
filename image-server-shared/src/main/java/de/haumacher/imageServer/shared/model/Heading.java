@@ -6,24 +6,24 @@ package de.haumacher.imageServer.shared.model;
 public class Heading extends AlbumPart {
 
 	/**
-	 * Creates a {@link Heading} instance.
+	 * Creates a {@link de.haumacher.imageServer.shared.model.Heading} instance.
 	 */
-	public static Heading create() {
-		return new Heading();
+	public static de.haumacher.imageServer.shared.model.Heading create() {
+		return new de.haumacher.imageServer.shared.model.Heading();
 	}
 
-	/** Identifier for the {@link Heading} type in JSON format. */
+	/** Identifier for the {@link de.haumacher.imageServer.shared.model.Heading} type in JSON format. */
 	public static final String HEADING__TYPE = "Heading";
 
 	/** @see #getText() */
-	private static final String TEXT = "text";
+	private static final String TEXT__PROP = "text";
 
 	private String _text = "";
 
 	/**
 	 * Creates a {@link Heading} instance.
 	 *
-	 * @see #create()
+	 * @see de.haumacher.imageServer.shared.model.Heading#create()
 	 */
 	protected Heading() {
 		super();
@@ -44,18 +44,18 @@ public class Heading extends AlbumPart {
 	/**
 	 * @see #getText()
 	 */
-	public Heading setText(String value) {
+	public de.haumacher.imageServer.shared.model.Heading setText(String value) {
 		internalSetText(value);
 		return this;
 	}
+
 	/** Internal setter for {@link #getText()} without chain call utility. */
 	protected final void internalSetText(String value) {
 		_text = value;
 	}
 
-
 	@Override
-	public Heading setOwner(AlbumInfo value) {
+	public de.haumacher.imageServer.shared.model.Heading setOwner(de.haumacher.imageServer.shared.model.AlbumInfo value) {
 		internalSetOwner(value);
 		return this;
 	}
@@ -66,31 +66,29 @@ public class Heading extends AlbumPart {
 	}
 
 	/** Reads a new instance from the given reader. */
-	public static Heading readHeading(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
-		Heading result = new Heading();
-		in.beginObject();
-		result.readFields(in);
-		in.endObject();
+	public static de.haumacher.imageServer.shared.model.Heading readHeading(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
+		de.haumacher.imageServer.shared.model.Heading result = new de.haumacher.imageServer.shared.model.Heading();
+		result.readContent(in);
 		return result;
 	}
 
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name(TEXT);
+		out.name(TEXT__PROP);
 		out.value(getText());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case TEXT: setText(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case TEXT__PROP: setText(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}
 
 	@Override
-	public <R,A,E extends Throwable> R visit(AlbumPart.Visitor<R,A,E> v, A arg) throws E {
+	public <R,A,E extends Throwable> R visit(de.haumacher.imageServer.shared.model.AlbumPart.Visitor<R,A,E> v, A arg) throws E {
 		return v.visit(this, arg);
 	}
 

@@ -5,15 +5,15 @@ package de.haumacher.imageServer.shared.model;
  */
 public abstract class AlbumPart extends Resource {
 
-	/** Visitor interface for the {@link AlbumPart} hierarchy.*/
-	public interface Visitor<R,A,E extends Throwable> extends AbstractImage.Visitor<R,A,E> {
+	/** Visitor interface for the {@link de.haumacher.imageServer.shared.model.AlbumPart} hierarchy.*/
+	public interface Visitor<R,A,E extends Throwable> extends de.haumacher.imageServer.shared.model.AbstractImage.Visitor<R,A,E> {
 
-		/** Visit case for {@link Heading}.*/
-		R visit(Heading self, A arg) throws E;
+		/** Visit case for {@link de.haumacher.imageServer.shared.model.Heading}.*/
+		R visit(de.haumacher.imageServer.shared.model.Heading self, A arg) throws E;
 
 	}
 
-	private transient AlbumInfo _owner = null;
+	private transient de.haumacher.imageServer.shared.model.AlbumInfo _owner = null;
 
 	/**
 	 * Creates a {@link AlbumPart} instance.
@@ -25,22 +25,22 @@ public abstract class AlbumPart extends Resource {
 	/**
 	 * The {@link AlbumInfo}, this one is part of.
 	 */
-	public final AlbumInfo getOwner() {
+	public final de.haumacher.imageServer.shared.model.AlbumInfo getOwner() {
 		return _owner;
 	}
 
 	/**
 	 * @see #getOwner()
 	 */
-	public AlbumPart setOwner(AlbumInfo value) {
+	public de.haumacher.imageServer.shared.model.AlbumPart setOwner(de.haumacher.imageServer.shared.model.AlbumInfo value) {
 		internalSetOwner(value);
 		return this;
 	}
+
 	/** Internal setter for {@link #getOwner()} without chain call utility. */
-	protected final void internalSetOwner(AlbumInfo value) {
+	protected final void internalSetOwner(de.haumacher.imageServer.shared.model.AlbumInfo value) {
 		_owner = value;
 	}
-
 
 	/**
 	 * Checks, whether {@link #getOwner()} has a value.
@@ -49,12 +49,9 @@ public abstract class AlbumPart extends Resource {
 		return _owner != null;
 	}
 
-	@Override
-	public abstract String jsonType();
-
 	/** Reads a new instance from the given reader. */
-	public static AlbumPart readAlbumPart(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
-		AlbumPart result;
+	public static de.haumacher.imageServer.shared.model.AlbumPart readAlbumPart(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
+		de.haumacher.imageServer.shared.model.AlbumPart result;
 		in.beginArray();
 		String type = in.nextString();
 		switch (type) {
@@ -82,10 +79,9 @@ public abstract class AlbumPart extends Resource {
 	/** Accepts the given visitor. */
 	public abstract <R,A,E extends Throwable> R visit(Visitor<R,A,E> v, A arg) throws E;
 
-
 	@Override
-	public final <R,A,E extends Throwable> R visit(Resource.Visitor<R,A,E> v, A arg) throws E {
-		return visit((Visitor<R,A,E>) v, arg);
+	public final <R,A,E extends Throwable> R visit(de.haumacher.imageServer.shared.model.Resource.Visitor<R,A,E> v, A arg) throws E {
+		return visit((de.haumacher.imageServer.shared.model.AlbumPart.Visitor<R,A,E>) v, arg);
 	}
 
 }

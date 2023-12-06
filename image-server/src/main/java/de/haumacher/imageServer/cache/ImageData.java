@@ -23,6 +23,7 @@ import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 import com.drew.metadata.png.PngDirectory;
 
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.util.Orientations;
@@ -72,7 +73,7 @@ public class ImageData extends ImagePart {
 
 		JpegDirectory jpegDirectory = metadata.getFirstDirectoryOfType(JpegDirectory.class);
 		if (jpegDirectory != null) {
-			result.setKind(ImagePart.Kind.IMAGE);
+			result.setKind(ImageKind.IMAGE);
 			int rawWidth = jpegDirectory.getImageWidth();
 			int rawHeight = jpegDirectory.getImageHeight();
 			
@@ -93,7 +94,7 @@ public class ImageData extends ImagePart {
 		
 		PngDirectory pngDirectory = metadata.getFirstDirectoryOfType(PngDirectory.class);
 		if (pngDirectory != null) {
-			result.setKind(ImagePart.Kind.IMAGE);
+			result.setKind(ImageKind.IMAGE);
 
 			int rawWidth = pngDirectory.getInt(PngDirectory.TAG_IMAGE_WIDTH);
 			int rawHeight = pngDirectory.getInt(PngDirectory.TAG_IMAGE_HEIGHT);
@@ -123,7 +124,7 @@ public class ImageData extends ImagePart {
 				
 				Mp4VideoDirectory mp4VideoDirectory = metadata.getFirstDirectoryOfType(Mp4VideoDirectory.class);
 				if (mp4VideoDirectory != null) {
-					result.setKind(Kind.VIDEO);
+					result.setKind(ImageKind.VIDEO);
 					
 					int rawWidth = mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_WIDTH);
 					int rawHeight = mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_HEIGHT);
@@ -154,7 +155,7 @@ public class ImageData extends ImagePart {
 			
 			QuickTimeVideoDirectory movVideoDirectory = metadata.getFirstDirectoryOfType(QuickTimeVideoDirectory.class);
 			if (movVideoDirectory != null) {
-				result.setKind(Kind.QUICKTIME);
+				result.setKind(ImageKind.QUICKTIME);
 				
 				int rawWidth = movVideoDirectory.getInt(QuickTimeVideoDirectory.TAG_WIDTH);
 				int rawHeight = movVideoDirectory.getInt(QuickTimeVideoDirectory.TAG_HEIGHT);

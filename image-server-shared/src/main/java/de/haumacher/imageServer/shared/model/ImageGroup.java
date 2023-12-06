@@ -6,29 +6,29 @@ package de.haumacher.imageServer.shared.model;
 public class ImageGroup extends AbstractImage {
 
 	/**
-	 * Creates a {@link ImageGroup} instance.
+	 * Creates a {@link de.haumacher.imageServer.shared.model.ImageGroup} instance.
 	 */
-	public static ImageGroup create() {
-		return new ImageGroup();
+	public static de.haumacher.imageServer.shared.model.ImageGroup create() {
+		return new de.haumacher.imageServer.shared.model.ImageGroup();
 	}
 
-	/** Identifier for the {@link ImageGroup} type in JSON format. */
+	/** Identifier for the {@link de.haumacher.imageServer.shared.model.ImageGroup} type in JSON format. */
 	public static final String IMAGE_GROUP__TYPE = "ImageGroup";
 
 	/** @see #getRepresentative() */
-	private static final String REPRESENTATIVE = "representative";
+	private static final String REPRESENTATIVE__PROP = "representative";
 
 	/** @see #getImages() */
-	private static final String IMAGES = "images";
+	private static final String IMAGES__PROP = "images";
 
 	private int _representative = 0;
 
-	private final java.util.List<ImagePart> _images = new java.util.ArrayList<>();
+	private final java.util.List<de.haumacher.imageServer.shared.model.ImagePart> _images = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link ImageGroup} instance.
 	 *
-	 * @see #create()
+	 * @see de.haumacher.imageServer.shared.model.ImageGroup#create()
 	 */
 	protected ImageGroup() {
 		super();
@@ -49,84 +49,84 @@ public class ImageGroup extends AbstractImage {
 	/**
 	 * @see #getRepresentative()
 	 */
-	public ImageGroup setRepresentative(int value) {
+	public de.haumacher.imageServer.shared.model.ImageGroup setRepresentative(int value) {
 		internalSetRepresentative(value);
 		return this;
 	}
+
 	/** Internal setter for {@link #getRepresentative()} without chain call utility. */
 	protected final void internalSetRepresentative(int value) {
 		_representative = value;
 	}
 
-
 	/**
 	 * List of images that all show the same content. Only the image with  in this album.
 	 */
-	public final java.util.List<ImagePart> getImages() {
+	public final java.util.List<de.haumacher.imageServer.shared.model.ImagePart> getImages() {
 		return _images;
 	}
 
 	/**
 	 * @see #getImages()
 	 */
-	public ImageGroup setImages(java.util.List<ImagePart> value) {
+	public de.haumacher.imageServer.shared.model.ImageGroup setImages(java.util.List<? extends de.haumacher.imageServer.shared.model.ImagePart> value) {
 		internalSetImages(value);
 		return this;
 	}
+
 	/** Internal setter for {@link #getImages()} without chain call utility. */
-	protected final void internalSetImages(java.util.List<ImagePart> value) {
+	protected final void internalSetImages(java.util.List<? extends de.haumacher.imageServer.shared.model.ImagePart> value) {
 		if (value == null) throw new IllegalArgumentException("Property 'images' cannot be null.");
 		_images.clear();
 		_images.addAll(value);
 	}
 
-
 	/**
 	 * Adds a value to the {@link #getImages()} list.
 	 */
-	public ImageGroup addImage(ImagePart value) {
+	public de.haumacher.imageServer.shared.model.ImageGroup addImage(de.haumacher.imageServer.shared.model.ImagePart value) {
 		internalAddImage(value);
 		return this;
 	}
 
-	/** Implementation of {@link #addImage(ImagePart)} without chain call utility. */
-	protected final void internalAddImage(ImagePart value) {
+	/** Implementation of {@link #addImage(de.haumacher.imageServer.shared.model.ImagePart)} without chain call utility. */
+	protected final void internalAddImage(de.haumacher.imageServer.shared.model.ImagePart value) {
 		_images.add(value);
 	}
 
 	/**
 	 * Removes a value from the {@link #getImages()} list.
 	 */
-	public final void removeImage(ImagePart value) {
+	public final void removeImage(de.haumacher.imageServer.shared.model.ImagePart value) {
 		_images.remove(value);
 	}
 
 	@Override
-	public ImageGroup setPrevious(AbstractImage value) {
+	public de.haumacher.imageServer.shared.model.ImageGroup setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
 		return this;
 	}
 
 	@Override
-	public ImageGroup setNext(AbstractImage value) {
+	public de.haumacher.imageServer.shared.model.ImageGroup setNext(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetNext(value);
 		return this;
 	}
 
 	@Override
-	public ImageGroup setHome(AbstractImage value) {
+	public de.haumacher.imageServer.shared.model.ImageGroup setHome(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetHome(value);
 		return this;
 	}
 
 	@Override
-	public ImageGroup setEnd(AbstractImage value) {
+	public de.haumacher.imageServer.shared.model.ImageGroup setEnd(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetEnd(value);
 		return this;
 	}
 
 	@Override
-	public ImageGroup setOwner(AlbumInfo value) {
+	public de.haumacher.imageServer.shared.model.ImageGroup setOwner(de.haumacher.imageServer.shared.model.AlbumInfo value) {
 		internalSetOwner(value);
 		return this;
 	}
@@ -137,22 +137,20 @@ public class ImageGroup extends AbstractImage {
 	}
 
 	/** Reads a new instance from the given reader. */
-	public static ImageGroup readImageGroup(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
-		ImageGroup result = new ImageGroup();
-		in.beginObject();
-		result.readFields(in);
-		in.endObject();
+	public static de.haumacher.imageServer.shared.model.ImageGroup readImageGroup(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
+		de.haumacher.imageServer.shared.model.ImageGroup result = new de.haumacher.imageServer.shared.model.ImageGroup();
+		result.readContent(in);
 		return result;
 	}
 
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
-		out.name(REPRESENTATIVE);
+		out.name(REPRESENTATIVE__PROP);
 		out.value(getRepresentative());
-		out.name(IMAGES);
+		out.name(IMAGES__PROP);
 		out.beginArray();
-		for (ImagePart x : getImages()) {
+		for (de.haumacher.imageServer.shared.model.ImagePart x : getImages()) {
 			x.writeContent(out);
 		}
 		out.endArray();
@@ -161,8 +159,8 @@ public class ImageGroup extends AbstractImage {
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
-			case REPRESENTATIVE: setRepresentative(in.nextInt()); break;
-			case IMAGES: {
+			case REPRESENTATIVE__PROP: setRepresentative(in.nextInt()); break;
+			case IMAGES__PROP: {
 				in.beginArray();
 				while (in.hasNext()) {
 					addImage(de.haumacher.imageServer.shared.model.ImagePart.readImagePart(in));
@@ -175,7 +173,7 @@ public class ImageGroup extends AbstractImage {
 	}
 
 	@Override
-	public <R,A,E extends Throwable> R visit(AbstractImage.Visitor<R,A,E> v, A arg) throws E {
+	public <R,A,E extends Throwable> R visit(de.haumacher.imageServer.shared.model.AbstractImage.Visitor<R,A,E> v, A arg) throws E {
 		return v.visit(this, arg);
 	}
 

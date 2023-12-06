@@ -5,35 +5,35 @@ package de.haumacher.imageServer.shared.model;
  */
 public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObject {
 
-	/** Type codes for the {@link Resource} hierarchy. */
+	/** Type codes for the {@link de.haumacher.imageServer.shared.model.Resource} hierarchy. */
 	public enum TypeKind {
 
-		/** Type literal for {@link AlbumInfo}. */
+		/** Type literal for {@link de.haumacher.imageServer.shared.model.AlbumInfo}. */
 		ALBUM_INFO,
 
-		/** Type literal for {@link ListingInfo}. */
+		/** Type literal for {@link de.haumacher.imageServer.shared.model.ListingInfo}. */
 		LISTING_INFO,
 
-		/** Type literal for {@link Heading}. */
+		/** Type literal for {@link de.haumacher.imageServer.shared.model.Heading}. */
 		HEADING,
 
-		/** Type literal for {@link ImageGroup}. */
+		/** Type literal for {@link de.haumacher.imageServer.shared.model.ImageGroup}. */
 		IMAGE_GROUP,
 
-		/** Type literal for {@link ImagePart}. */
+		/** Type literal for {@link de.haumacher.imageServer.shared.model.ImagePart}. */
 		IMAGE_PART,
 
-		/** Type literal for {@link ErrorInfo}. */
+		/** Type literal for {@link de.haumacher.imageServer.shared.model.ErrorInfo}. */
 		ERROR_INFO,
 		;
 
 	}
 
-	/** Visitor interface for the {@link Resource} hierarchy.*/
-	public interface Visitor<R,A,E extends Throwable> extends FolderResource.Visitor<R,A,E>, AlbumPart.Visitor<R,A,E> {
+	/** Visitor interface for the {@link de.haumacher.imageServer.shared.model.Resource} hierarchy.*/
+	public interface Visitor<R,A,E extends Throwable> extends de.haumacher.imageServer.shared.model.FolderResource.Visitor<R,A,E>, de.haumacher.imageServer.shared.model.AlbumPart.Visitor<R,A,E> {
 
-		/** Visit case for {@link ErrorInfo}.*/
-		R visit(ErrorInfo self, A arg) throws E;
+		/** Visit case for {@link de.haumacher.imageServer.shared.model.ErrorInfo}.*/
+		R visit(de.haumacher.imageServer.shared.model.ErrorInfo self, A arg) throws E;
 
 	}
 
@@ -51,8 +51,8 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 	public abstract String jsonType();
 
 	/** Reads a new instance from the given reader. */
-	public static Resource readResource(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
-		Resource result;
+	public static de.haumacher.imageServer.shared.model.Resource readResource(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
+		de.haumacher.imageServer.shared.model.Resource result;
 		in.beginArray();
 		String type = in.nextString();
 		switch (type) {
@@ -78,6 +78,5 @@ public abstract class Resource extends de.haumacher.msgbuf.data.AbstractDataObje
 
 	/** Accepts the given visitor. */
 	public abstract <R,A,E extends Throwable> R visit(Visitor<R,A,E> v, A arg) throws E;
-
 
 }

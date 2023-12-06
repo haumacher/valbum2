@@ -5,24 +5,24 @@ package de.haumacher.imageServer.shared.model;
  */
 public abstract class AbstractImage extends AlbumPart {
 
-	/** Visitor interface for the {@link AbstractImage} hierarchy.*/
+	/** Visitor interface for the {@link de.haumacher.imageServer.shared.model.AbstractImage} hierarchy.*/
 	public interface Visitor<R,A,E extends Throwable> {
 
-		/** Visit case for {@link ImageGroup}.*/
-		R visit(ImageGroup self, A arg) throws E;
+		/** Visit case for {@link de.haumacher.imageServer.shared.model.ImageGroup}.*/
+		R visit(de.haumacher.imageServer.shared.model.ImageGroup self, A arg) throws E;
 
-		/** Visit case for {@link ImagePart}.*/
-		R visit(ImagePart self, A arg) throws E;
+		/** Visit case for {@link de.haumacher.imageServer.shared.model.ImagePart}.*/
+		R visit(de.haumacher.imageServer.shared.model.ImagePart self, A arg) throws E;
 
 	}
 
-	private transient AbstractImage _previous = null;
+	private transient de.haumacher.imageServer.shared.model.AbstractImage _previous = null;
 
-	private transient AbstractImage _next = null;
+	private transient de.haumacher.imageServer.shared.model.AbstractImage _next = null;
 
-	private transient AbstractImage _home = null;
+	private transient de.haumacher.imageServer.shared.model.AbstractImage _home = null;
 
-	private transient AbstractImage _end = null;
+	private transient de.haumacher.imageServer.shared.model.AbstractImage _end = null;
 
 	/**
 	 * Creates a {@link AbstractImage} instance.
@@ -34,22 +34,22 @@ public abstract class AbstractImage extends AlbumPart {
 	/**
 	 * The previous image in the {@link #getOwner()}.
 	 */
-	public final AbstractImage getPrevious() {
+	public final de.haumacher.imageServer.shared.model.AbstractImage getPrevious() {
 		return _previous;
 	}
 
 	/**
 	 * @see #getPrevious()
 	 */
-	public AbstractImage setPrevious(AbstractImage value) {
+	public de.haumacher.imageServer.shared.model.AbstractImage setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
 		return this;
 	}
+
 	/** Internal setter for {@link #getPrevious()} without chain call utility. */
-	protected final void internalSetPrevious(AbstractImage value) {
+	protected final void internalSetPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		_previous = value;
 	}
-
 
 	/**
 	 * Checks, whether {@link #getPrevious()} has a value.
@@ -61,22 +61,22 @@ public abstract class AbstractImage extends AlbumPart {
 	/**
 	 * The next image in the {@link #getOwner()}.
 	 */
-	public final AbstractImage getNext() {
+	public final de.haumacher.imageServer.shared.model.AbstractImage getNext() {
 		return _next;
 	}
 
 	/**
 	 * @see #getNext()
 	 */
-	public AbstractImage setNext(AbstractImage value) {
+	public de.haumacher.imageServer.shared.model.AbstractImage setNext(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetNext(value);
 		return this;
 	}
+
 	/** Internal setter for {@link #getNext()} without chain call utility. */
-	protected final void internalSetNext(AbstractImage value) {
+	protected final void internalSetNext(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		_next = value;
 	}
-
 
 	/**
 	 * Checks, whether {@link #getNext()} has a value.
@@ -88,22 +88,22 @@ public abstract class AbstractImage extends AlbumPart {
 	/**
 	 * The first image of the {@link #getOwner()}.
 	 */
-	public final AbstractImage getHome() {
+	public final de.haumacher.imageServer.shared.model.AbstractImage getHome() {
 		return _home;
 	}
 
 	/**
 	 * @see #getHome()
 	 */
-	public AbstractImage setHome(AbstractImage value) {
+	public de.haumacher.imageServer.shared.model.AbstractImage setHome(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetHome(value);
 		return this;
 	}
+
 	/** Internal setter for {@link #getHome()} without chain call utility. */
-	protected final void internalSetHome(AbstractImage value) {
+	protected final void internalSetHome(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		_home = value;
 	}
-
 
 	/**
 	 * Checks, whether {@link #getHome()} has a value.
@@ -115,22 +115,22 @@ public abstract class AbstractImage extends AlbumPart {
 	/**
 	 * The last image of the {@link #getOwner()}.
 	 */
-	public final AbstractImage getEnd() {
+	public final de.haumacher.imageServer.shared.model.AbstractImage getEnd() {
 		return _end;
 	}
 
 	/**
 	 * @see #getEnd()
 	 */
-	public AbstractImage setEnd(AbstractImage value) {
+	public de.haumacher.imageServer.shared.model.AbstractImage setEnd(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetEnd(value);
 		return this;
 	}
+
 	/** Internal setter for {@link #getEnd()} without chain call utility. */
-	protected final void internalSetEnd(AbstractImage value) {
+	protected final void internalSetEnd(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		_end = value;
 	}
-
 
 	/**
 	 * Checks, whether {@link #getEnd()} has a value.
@@ -140,17 +140,14 @@ public abstract class AbstractImage extends AlbumPart {
 	}
 
 	@Override
-	public AbstractImage setOwner(AlbumInfo value) {
+	public de.haumacher.imageServer.shared.model.AbstractImage setOwner(de.haumacher.imageServer.shared.model.AlbumInfo value) {
 		internalSetOwner(value);
 		return this;
 	}
 
-	@Override
-	public abstract String jsonType();
-
 	/** Reads a new instance from the given reader. */
-	public static AbstractImage readAbstractImage(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
-		AbstractImage result;
+	public static de.haumacher.imageServer.shared.model.AbstractImage readAbstractImage(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
+		de.haumacher.imageServer.shared.model.AbstractImage result;
 		in.beginArray();
 		String type = in.nextString();
 		switch (type) {
@@ -177,10 +174,9 @@ public abstract class AbstractImage extends AlbumPart {
 	/** Accepts the given visitor. */
 	public abstract <R,A,E extends Throwable> R visit(Visitor<R,A,E> v, A arg) throws E;
 
-
 	@Override
-	public final <R,A,E extends Throwable> R visit(AlbumPart.Visitor<R,A,E> v, A arg) throws E {
-		return visit((Visitor<R,A,E>) v, arg);
+	public final <R,A,E extends Throwable> R visit(de.haumacher.imageServer.shared.model.AlbumPart.Visitor<R,A,E> v, A arg) throws E {
+		return visit((de.haumacher.imageServer.shared.model.AbstractImage.Visitor<R,A,E>) v, arg);
 	}
 
 }

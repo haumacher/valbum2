@@ -5,14 +5,14 @@ package de.haumacher.imageServer.shared.model;
  */
 public abstract class FolderResource extends Resource {
 
-	/** Visitor interface for the {@link FolderResource} hierarchy.*/
+	/** Visitor interface for the {@link de.haumacher.imageServer.shared.model.FolderResource} hierarchy.*/
 	public interface Visitor<R,A,E extends Throwable> {
 
-		/** Visit case for {@link AlbumInfo}.*/
-		R visit(AlbumInfo self, A arg) throws E;
+		/** Visit case for {@link de.haumacher.imageServer.shared.model.AlbumInfo}.*/
+		R visit(de.haumacher.imageServer.shared.model.AlbumInfo self, A arg) throws E;
 
-		/** Visit case for {@link ListingInfo}.*/
-		R visit(ListingInfo self, A arg) throws E;
+		/** Visit case for {@link de.haumacher.imageServer.shared.model.ListingInfo}.*/
+		R visit(de.haumacher.imageServer.shared.model.ListingInfo self, A arg) throws E;
 
 	}
 
@@ -35,22 +35,19 @@ public abstract class FolderResource extends Resource {
 	/**
 	 * @see #getPath()
 	 */
-	public FolderResource setPath(String value) {
+	public de.haumacher.imageServer.shared.model.FolderResource setPath(String value) {
 		internalSetPath(value);
 		return this;
 	}
+
 	/** Internal setter for {@link #getPath()} without chain call utility. */
 	protected final void internalSetPath(String value) {
 		_path = value;
 	}
 
-
-	@Override
-	public abstract String jsonType();
-
 	/** Reads a new instance from the given reader. */
-	public static FolderResource readFolderResource(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
-		FolderResource result;
+	public static de.haumacher.imageServer.shared.model.FolderResource readFolderResource(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
+		de.haumacher.imageServer.shared.model.FolderResource result;
 		in.beginArray();
 		String type = in.nextString();
 		switch (type) {
@@ -77,10 +74,9 @@ public abstract class FolderResource extends Resource {
 	/** Accepts the given visitor. */
 	public abstract <R,A,E extends Throwable> R visit(Visitor<R,A,E> v, A arg) throws E;
 
-
 	@Override
-	public final <R,A,E extends Throwable> R visit(Resource.Visitor<R,A,E> v, A arg) throws E {
-		return visit((Visitor<R,A,E>) v, arg);
+	public final <R,A,E extends Throwable> R visit(de.haumacher.imageServer.shared.model.Resource.Visitor<R,A,E> v, A arg) throws E {
+		return visit((de.haumacher.imageServer.shared.model.FolderResource.Visitor<R,A,E>) v, arg);
 	}
 
 }

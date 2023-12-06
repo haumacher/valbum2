@@ -14,8 +14,8 @@ import de.haumacher.imageServer.client.app.Pos;
 import de.haumacher.imageServer.client.app.ResourceHandler;
 import de.haumacher.imageServer.client.app.TXInfo;
 import de.haumacher.imageServer.shared.model.AbstractImage;
+import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
-import de.haumacher.imageServer.shared.model.ImagePart.Kind;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.ui.CssClasses;
@@ -238,7 +238,7 @@ public class ImageDisplay extends ResourceDisplay {
 		}
 	}
 
-	public static boolean isVideo(Kind kind) {
+	public static boolean isVideo(ImageKind kind) {
 		switch (kind) {
 		case IMAGE: return false;
 		case VIDEO:
