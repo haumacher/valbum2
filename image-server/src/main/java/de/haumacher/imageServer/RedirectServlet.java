@@ -11,7 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * {@link HttpServlet} sinding a static redirect.
+ * {@link HttpServlet} sending a static redirect.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */

@@ -96,11 +96,13 @@ public class ImageServlet extends HttpServlet {
 
 		if (file.isDirectory()) {
 			if (pathInfo == null) {
-				response.sendRedirect(request.getContextPath() + "/");
+				response.setHeader("Access-Control-Allow-Origin", "*");
+				response.sendRedirect(request.getContextPath() + request.getServletPath() + "/?type=" + type);
 				return;
 			}
 			if (!pathInfo.endsWith("/")) {
-				response.sendRedirect(request.getContextPath() + pathInfo + "/");
+				response.setHeader("Access-Control-Allow-Origin", "*");
+				response.sendRedirect(request.getContextPath() + request.getServletPath() + pathInfo + "/?type=" + type);
 				return;
 			}
 			
@@ -341,7 +343,9 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	private void error(Context context, int errorCode) {
-		context.response().setStatus(errorCode);
+		HttpServletResponse response = context.response();
+		response.setHeader("Access-Control-Allow-Origin", "*");
+		response.setStatus(errorCode);
 	}
 
 	static class Context {
