@@ -5,6 +5,7 @@ option NoReflection;
 option NoListener;
 option NoInterfaces;
 option NoXml;
+option DartLib="../../../../valbum_ui/lib/resource.dart";
 
 /** Base class for a resource being displayed as view in a photo album. */
 abstract message Resource {
