@@ -157,12 +157,14 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     }
     return Scaffold(
       appBar: AppBar(
-        title: Text(self.title),
+        title: Text("${self.title} ${self.subTitle}"),
+        centerTitle: true,
       ),
       body: Wrap(
         children: self.parts.where((part) => part is ImagePart).map((part) => part as ImagePart).map((part) {
           return Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: GestureDetector(
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, part.name]))),
                 child: Column(
                   children: [
                     Padding(
@@ -189,20 +191,31 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   }
 
   @override
-  Widget visitHeading(Heading self, BuildContext arg) {
-    // TODO: implement visitHeading
-    throw UnimplementedError();
+  Widget visitImagePart(ImagePart self, BuildContext arg) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(self.name),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          Image.network(baseUrl,
+            fit: BoxFit.fill,
+          ),
+          Text(self.comment),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {},
+        tooltip: 'Add',
+        child: const Icon(Icons.add),
+      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
   }
 
   @override
   Widget visitImageGroup(ImageGroup self, BuildContext arg) {
     // TODO: implement visitImageGroup
-    throw UnimplementedError();
-  }
-
-  @override
-  Widget visitImagePart(ImagePart self, BuildContext arg) {
-    // TODO: implement visitImagePart
     throw UnimplementedError();
   }
 
@@ -223,5 +236,10 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         child: const Icon(Icons.update),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  @override
+  Widget visitHeading(Heading self, BuildContext arg) {
+    throw UnimplementedError();
   }
 }
