@@ -1,4 +1,5 @@
 import 'dart:js_util';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -119,34 +120,52 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       appBar: AppBar(
         title: Text(self.title),
       ),
-      body: Wrap(
-        children: self.folders.map((folder) {
-          return Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, folder.name]))),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Image.network("$baseUrl/${folder.name}/${folder.indexPicture!.image}",
-                        width: 300,
-                        height: 300,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    Text(folder.title, style: const TextStyle(fontWeight: FontWeight.bold),),
-                    Text(folder.subTitle)
-                  ],
-                )
-            ),
-          );
-        }).toList(),
-      ),
+      body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
+        double imageBorder = 8;
+        var preferredImageWidth = 300;
+        var maxWidth = constraints.maxWidth;
+        double preferredImageSpace = preferredImageWidth + 2 * imageBorder;
+        double imagesPerRowFrag = maxWidth / preferredImageSpace;
+        var imagesPerRow = imagesPerRowFrag.round();
+        bool underflow = self.folders.length < imagesPerRow;
+        double difference = underflow ? 0 : maxWidth - imagesPerRow * preferredImageSpace;
+        double imageSpace = preferredImageSpace + difference / imagesPerRow;
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.vertical,
+          child: buildFolderList(self, imageSpace - 2 * imageBorder, imageBorder));
+      }),
       floatingActionButton: FloatingActionButton(
         onPressed: () {},
         tooltip: 'Add',
         child: const Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+
+  Wrap buildFolderList(ListingInfo self, double imageWidth, double imageBorder) {
+    return Wrap(
+      children: self.folders.map((folder) {
+        return Padding(padding: EdgeInsets.all(imageBorder),
+          child: GestureDetector(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, folder.name]))),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Image.network("$baseUrl/${folder.name}/${folder.indexPicture!.image}",
+                      width: imageWidth,
+                      height: imageWidth,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Text(folder.title, style: const TextStyle(fontWeight: FontWeight.bold),),
+                  Text(folder.subTitle)
+                ],
+              )
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -160,33 +179,53 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         title: Text("${self.title} ${self.subTitle}"),
         centerTitle: true,
       ),
-      body: Wrap(
-        children: self.parts.where((part) => part is ImagePart).map((part) => part as ImagePart).map((part) {
-          return Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, part.name]))),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Image.network("$baseUrl/${part.name}",
-                        width: 300,
-                        height: 300,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    Text(part.name, style: const TextStyle(fontWeight: FontWeight.bold),),
-                  ],
-                )
-            ),
-          );
-        }).toList(),
-      ),
+      body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
+        var images = self.parts.where((part) => part is ImagePart).map((part) => part as ImagePart);
+
+        double imageBorder = 8;
+        var preferredImageWidth = 300;
+        var maxWidth = constraints.maxWidth;
+        double preferredImageSpace = preferredImageWidth + 2 * imageBorder;
+        double imagesPerRowFrag = maxWidth / preferredImageSpace;
+        var imagesPerRow = imagesPerRowFrag.round();
+        bool underflow = images.length < imagesPerRow;
+        double difference = underflow ? 0 : maxWidth - imagesPerRow * preferredImageSpace;
+        double imageSpace = preferredImageSpace + difference / imagesPerRow;
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.vertical,
+          child: imageList(images, imageSpace - 2 * imageBorder, imageBorder));
+      }),
       floatingActionButton: FloatingActionButton(
         onPressed: () {},
         tooltip: 'Add',
         child: const Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+
+  Wrap imageList(Iterable<ImagePart> images, double imageWidth, double imageBorder) {
+    return Wrap(
+      children: images.map((part) {
+        return Padding(padding: EdgeInsets.symmetric(horizontal: imageBorder, vertical: imageBorder),
+          child: GestureDetector(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, part.name]))),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Image.network("$baseUrl/${part.name}",
+                      width: imageWidth,
+                      height: imageWidth,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Text(part.name, style: const TextStyle(fontWeight: FontWeight.bold),),
+                ],
+              )
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -197,14 +236,18 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         title: Text(self.name),
         centerTitle: true,
       ),
-      body: Column(
-        children: [
-          Image.network(baseUrl,
-            fit: BoxFit.fill,
-          ),
-          Text(self.comment),
-        ],
-      ),
+      body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
+        return InteractiveViewer(
+          panEnabled: true,
+          minScale: 0.25,
+          maxScale: 4,
+          child: Image.network(baseUrl,
+            width: constraints.maxWidth,
+            height: constraints.maxHeight,
+            fit: BoxFit.contain,
+          )
+        );
+      }),
       floatingActionButton: FloatingActionButton(
         onPressed: () {},
         tooltip: 'Add',
