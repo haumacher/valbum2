@@ -199,12 +199,12 @@ class DoubleRowComputation implements RowComputation {
 
 }
 
-class Collector implements ContentVisitor<Void, Void> {
+class Collector implements ContentVisitor<void, void> {
 	
 	List<AbstractImage> _images = new ArrayList<>();
 
 	@override
-	Void visitRow(Row content, Void arg) {
+	void visitRow(Row content, void arg) {
 		for (Content element in content) {
 			element.visit(this, arg);
 		}
@@ -212,20 +212,20 @@ class Collector implements ContentVisitor<Void, Void> {
 	}
 
 	@override
-	Void visitImg(Img content, Void arg) {
+	void visitImg(Img content, void arg) {
 		_images.add(content.getImage());
 		return null;
 	}
 
 	@override
-	Void visitDoubleRow(DoubleRow content, Void arg) {
+	void visitDoubleRow(DoubleRow content, void arg) {
 		content.getUpper().visit(this, arg);
 		content.getLower().visit(this, arg);
 		return null;
 	}
 
 	@override
-	Void visitPadding(Padding content, Void arg) {
+	void visitPadding(Padding content, void arg) {
 		return null;
 	}
 	
