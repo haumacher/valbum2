@@ -187,32 +187,28 @@ class DoubleRowComputation implements RowComputation {
 
 class Collector implements ContentVisitor<void, void> {
 	
-	List<AbstractImage> _images = [];
+	final List<AbstractImage> _images = [];
 
 	@override
 	void visitRow(Row content, void arg) {
 		for (Content element in content) {
 			element.visit(this, arg);
 		}
-		return null;
 	}
 
 	@override
 	void visitImg(Img content, void arg) {
 		_images.add(content.getImage());
-		return null;
 	}
 
 	@override
 	void visitDoubleRow(DoubleRow content, void arg) {
 		content.getUpper().visit(this, arg);
 		content.getLower().visit(this, arg);
-		return null;
 	}
 
 	@override
 	void visitPadding(Padding content, void arg) {
-		return null;
 	}
 	
 	/// All collected images.
@@ -226,7 +222,7 @@ abstract class Content {
 	
 	/// The maximum width of an image (relative to its height) to interpret it as an portrait image (taking two lines in
 	/// an [AlbumLayout]).
-	static const double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
+	static const double maxPortraitUnitWidth = 0.75;
 
 	/// The width of the content, if it's height is scaled to <code>1.0</code>.
 	double getUnitWidth();
@@ -236,7 +232,7 @@ abstract class Content {
 
 	/// Whether this is a portrait image, with a height considerably larger than its width.
 	bool isPortrait() {
-		return getUnitWidth() <= MAX_PORTRAIT_UNIT_WIDTH;
+		return getUnitWidth() <= maxPortraitUnitWidth;
 	}
 	
 	/// Visits this [Content] with the given [ContentVisitor]
@@ -259,7 +255,7 @@ abstract class ContentVisitor<R, A> {
 /// [RowBuffer] building a [List] of [Row]s.
 class DefaultRowBuffer implements RowBuffer {
 
-	List<Row> _rows = [];
+	final List<Row> _rows = [];
 
 	@override
 	void addRow(Row newRow) {
@@ -276,8 +272,8 @@ class DefaultRowBuffer implements RowBuffer {
 /// Builder for a [DoubleRow].
 class DoubleRowBuilder with IterableMixin<Content> {
 	
-	static final double LOWER_LIMIT = 3.0 / 4.0;
-	static final double UPPER_LIMIT = 4.0 / 3.0;
+	static const double lowerLimit = 3.0 / 4.0;
+	static const double upperLimit = 4.0 / 3.0;
 	
 	Row _upper = Row();
 	Row _lower = Row();
@@ -457,7 +453,7 @@ class RowState {
 			
 			double hQuot = _h1 / _h2;
 			
-			_acceptable = DoubleRowBuilder.LOWER_LIMIT <= hQuot && hQuot <= DoubleRowBuilder.UPPER_LIMIT;
+			_acceptable = DoubleRowBuilder.lowerLimit <= hQuot && hQuot <= DoubleRowBuilder.upperLimit;
 		}
 	}
 	
@@ -499,9 +495,9 @@ class DoubleRow extends Content {
 	final Row _upper;
 	final Row _lower;
 
-	double _h1;
+	final double _h1;
 
-	double _h2;
+	final double _h2;
 
 	/// Creates a [DoubleRow].
 	DoubleRow(Row upper, Row lower, double unitWidth, double h1, double h2) :
@@ -552,7 +548,7 @@ class DoubleRow extends Content {
 class Img extends Content {
 	
 	late final double _unitWidth;
-	AbstractImage _image;
+	final AbstractImage _image;
 	
 	/// Creates a [Img].
 	Img(AbstractImage image) :
@@ -595,7 +591,7 @@ class Img extends Content {
 /// Empty space inserted to a layout to make it's constraints acceptable.
 class Padding extends Content {
 
-	double _unitWidth;
+	final double _unitWidth;
 
 	/// Creates a [Padding].
 	Padding(double unitWidth) :
@@ -700,7 +696,7 @@ class Row extends Content with IterableMixin<Content> {
 class ToImage implements AbstractImageVisitor<ImagePart, void> {
 
   /// Singleton [ToImage] instance.
-  static final ToImage INSTANCE = ToImage();
+  static final ToImage instance = ToImage();
 
   ToImage() {
     // Singleton constructor.
@@ -718,7 +714,7 @@ class ToImage implements AbstractImageVisitor<ImagePart, void> {
 
   /// Invokes [ToImage] on the given [AbstractImage].
   static ImagePart toImage(AbstractImage image) {
-    return image.visitAbstractImage(INSTANCE, null);
+    return image.visitAbstractImage(instance, null);
   }
 
 }
@@ -732,7 +728,7 @@ class Orientations {
       return Orientation.identity;
     }
     if (code < 1 || code > 8) {
-      throw "Invalid JPEG orientation code: " + code.toString();
+      throw "Invalid JPEG orientation code: $code";
     }
     return Orientation.values[code - 1];
   }
