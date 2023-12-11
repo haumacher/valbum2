@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:jsontool/jsontool.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
@@ -29,9 +30,13 @@ class VAlbumApp extends StatelessWidget {
 }
 
 class VAlbumView extends StatefulWidget {
+  /// The image to display.
+  final AbstractImage? image;
+  
+  // The path of the resource to load (and then display).
   final List<String> path;
 
-  const VAlbumView({super.key, this.path = const []});
+  const VAlbumView({super.key, this.path = const [], this.image});
 
   @override
   State<VAlbumView> createState() => _VAlbumState();
@@ -44,7 +49,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   void initState() {
     super.initState();
 
-    _resourceFuture = load(widget.path);
+    _resourceFuture = widget.image == null ? load(widget.path) : Future.value(widget.image);
   }
 
   List<String> get path => widget.path;
@@ -58,6 +63,9 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     var response = await http.get(Uri.parse("http://localhost:9090/valbum/data/$pathString?type=json"));
     var reader = JsonReader.fromString(response.body);
     var resource = Resource.read(reader);
+    if (resource is AlbumInfo) {
+      AlbumInitializer().init(resource);
+    }
     return resource;
   }
 
@@ -172,12 +180,6 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
 
   @override
   Widget visitAlbumInfo(AlbumInfo self, BuildContext arg) {
-    if (kDebugMode) {
-      print("Rendering album '${self.path}': ${self.title}");
-    }
-    
-    var albumUrl = "$baseUrl/${self.path}";
-    
     return Scaffold(
       appBar: AppBar(
         title: Text("${self.title} ${self.subTitle}"),
@@ -189,7 +191,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         var layout = layouter.AlbumLayout(constraints.maxWidth, 250, images);
         double pageWidth = layout.getPageWidth();
 
-        var builder = ContentWidgetBuilder(pageWidth, albumUrl, pushPart);
+        var builder = ContentWidgetBuilder(pageWidth, "$baseUrl/${self.path}", pushPart);
 
         return SingleChildScrollView(
             scrollDirection: Axis.vertical,
@@ -206,19 +208,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     );
   }
 
-  Widget imageDisplay(ImagePart part, double imageWidth, double imageHeight) {
-    var partName = part.name;
-    return GestureDetector(
-        onTap: () => pushPart(partName),
-        child: Image.network("$baseUrl/${part.name}",
-          width: imageWidth,
-          height: imageHeight,
-          fit: BoxFit.cover,
-        )
-    );
-  }
-
-  Future<dynamic> pushPart(String partName) =>  Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, partName])));
+  Future<dynamic> pushPart(AbstractImage image, String name) =>  Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: path, image: image)));
 
   @override
   Widget visitImagePart(ImagePart self, BuildContext arg) {
@@ -228,16 +218,41 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         centerTitle: true,
       ),
       body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
-        return InteractiveViewer(
-          panEnabled: true,
-          minScale: 0.25,
-          maxScale: 4,
-          child: Image.network(baseUrl,
-            width: constraints.maxWidth,
-            height: constraints.maxHeight,
-            fit: BoxFit.contain,
-          )
+        return CallbackShortcuts(
+            bindings: <ShortcutActivator, VoidCallback> {
+              const SingleActivator(LogicalKeyboardKey.arrowLeft): () {
+                if (self.previous != null) {
+                  setState(() {
+                    _resourceFuture = Future.value(self.previous);
+                  });
+                }
+              },
+              const SingleActivator(LogicalKeyboardKey.arrowRight): () {
+                if (self.next != null) {
+                  setState(() {
+                    _resourceFuture = Future.value(self.next);
+                  });
+                }
+              },
+              const SingleActivator(LogicalKeyboardKey.arrowUp): () {
+                Navigator.pop(context);
+              },
+            },
+            child: Focus(
+              autofocus: true,
+              child: InteractiveViewer(
+                  panEnabled: true,
+                  minScale: 0.25,
+                  maxScale: 4,
+                  child: Image.network("$baseUrl/${self.name}",
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                    fit: BoxFit.contain,
+                  )
+              ),
+            )
         );
+
       }),
       floatingActionButton: FloatingActionButton(
         onPressed: () {},
@@ -281,7 +296,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
 class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
   final double pageWidth;
   final String albumUrl;
-  final Future Function(String partName) pushPart;
+  final Future Function(AbstractImage, String) pushPart;
   
   const ContentWidgetBuilder(this.pageWidth, this.albumUrl, this.pushPart);
 
@@ -332,15 +347,16 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
 class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   final String albumUrl;
   final double width, height;
-  final Future Function(String partName) pushPart;
+  final Future Function(AbstractImage, String) pushPart;
   
   const ImageWidgetBuilder(this.albumUrl, this.width, this.height, this.pushPart);
   
   @override
   Widget visitImageGroup(ImageGroup self, void arg) {
-    var partName = self.images[self.representative].name;
+    var image = self.images[self.representative];
+    var partName = image.name;
     return GestureDetector(
-        onTap: () => pushPart(partName),
+        onTap: () => pushPart(image, partName),
         child: Image.network(albumUrl + partName,
           width: width,
           height: height,
@@ -352,7 +368,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   @override
   Widget visitImagePart(ImagePart self, void arg) {
     return GestureDetector(
-        onTap: () => pushPart(self.name),
+        onTap: () => pushPart(self, self.name),
         child: Image.network(albumUrl + self.name,
           width: width,
           height: height,
@@ -360,4 +376,50 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
         )
     );
   }
+}
+
+enum Direction {
+  previous, next;
+}
+
+/// Initializes [AbstractImage.next] and [AbstractImage.previous] fields.
+class AlbumInitializer implements AlbumPartVisitor<AbstractImage?, Direction> {
+  AbstractImage? previous;
+  AbstractImage? next;
+
+  void init(AlbumInfo self) {
+    for (var part in self.parts) {
+      AbstractImage? self = part.visitAlbumPart(this, Direction.previous);
+      if (self != null) previous = self;
+    }
+    for (var part in self.parts.reversed) {
+      AbstractImage? self = part.visitAlbumPart(this, Direction.next);
+      if (self != null) next = self;
+    }
+  }
+
+  @override
+  AbstractImage? visitHeading(Heading self, Direction arg) {
+    return null;
+  }
+
+  @override
+  AbstractImage? visitImageGroup(ImageGroup self, Direction arg) {
+    return initImage(arg, self);
+  }
+
+  @override
+  AbstractImage? visitImagePart(ImagePart self, Direction arg) {
+    return initImage(arg, self);
+  }
+
+  AbstractImage initImage(Direction arg, AbstractImage self) {
+    if (arg == Direction.previous) {
+      self.previous = previous;
+    } else {
+      self.next = next;
+    }
+    return self;
+  }
+
 }
