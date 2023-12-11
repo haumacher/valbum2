@@ -4,8 +4,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:valbum_ui/resource.dart';
 
-/// Algorithm layouting a sequence of image so that a given page width is filled allocating appropriate space for all
-/// images.
+/// Algorithm to compute a layout of a sequence of image so that a given page width is filled
+/// allocating appropriate space for all images.
 class AlbumLayout with IterableMixin<Row> {
 	
 	final double _pageWidth;
@@ -123,7 +123,7 @@ class DoubleRowComputation implements RowComputation {
 	
 	DoubleRowBuilder buffer = DoubleRowBuilder.empty();
 
-	/// Creates a [AlbumLayout.DoubleRowComputation].
+	/// Creates a [DoubleRowComputation].
 	DoubleRowComputation(RowBuffer out, double minWidth) :
 		_out = out,
 		_minWidth = minWidth,
@@ -242,7 +242,7 @@ abstract class Content {
 
 /// Visitor for [Content].
 ///
-/// @see Content#visit
+/// See [Content.visit]
 abstract class ContentVisitor<R, A> {
 	
 	R visitRow(Row content, A arg);
@@ -624,7 +624,7 @@ abstract class RowBuffer {
 
 /// Algorithm for placing images into rows.
 ///
-/// @see [RowBuffer]
+/// See [RowBuffer]
 abstract class RowComputation {
 
 	/// Adds the given image.
