@@ -7,8 +7,8 @@ import 'package:valbum_ui/resource.dart';
 class AlbumLayout implements Iterable<Row> {
 	
 	final double _pageWidth;
-	final List<Row> _rows;
-	
+	late final List<Row> _rows;
+
 	/** 
 	 * Creates a {@link AlbumLayout}.
 	 *
@@ -16,8 +16,9 @@ class AlbumLayout implements Iterable<Row> {
 	 * @param maxRowHeight The maximum height to scale a landscape image to.
 	 * @param images the image to place on the page.
 	 */
-	AlbumLayout(double pageWidth, double maxRowHeight, List<? extends AbstractImage> images) {
-		_pageWidth = pageWidth;
+	AlbumLayout(double pageWidth, double maxRowHeight, List<AbstractImage> images) :
+		_pageWidth = pageWidth
+  {
 		DefaultRowBuffer buffer = new DefaultRowBuffer();
 		double minWidth = pageWidth / maxRowHeight;
 		RowComputation rowComputation = new SimpleRowComputation(buffer, minWidth);
@@ -58,8 +59,8 @@ class AlbumLayout implements Iterable<Row> {
 	}
 	
 	@override
-	Iterator<Row> iterator() {
-		return _rows.iterator();
+	get Iterator<Row> iterator {
+		return _rows.iterator;
 	}
 	
 	/**
@@ -196,12 +197,12 @@ class DoubleRowComputation implements RowComputation {
 
 }
 
-class Collector implements ContentVisitor<Void, Void, RuntimeException> {
+class Collector implements ContentVisitor<Void, Void> {
 	
 	List<AbstractImage> _images = new ArrayList<>();
 
 	@override
-	Void visitRow(Row content, Void arg) throws RuntimeException {
+	Void visitRow(Row content, Void arg) {
 		for (Content element : content) {
 			element.visit(this, arg);
 		}
@@ -209,20 +210,20 @@ class Collector implements ContentVisitor<Void, Void, RuntimeException> {
 	}
 
 	@override
-	Void visitImg(Img content, Void arg) throws RuntimeException {
+	Void visitImg(Img content, Void arg) {
 		_images.add(content.getImage());
 		return null;
 	}
 
 	@override
-	Void visitDoubleRow(DoubleRow content, Void arg) throws RuntimeException {
+	Void visitDoubleRow(DoubleRow content, Void arg) {
 		content.getUpper().visit(this, arg);
 		content.getLower().visit(this, arg);
 		return null;
 	}
 
 	@override
-	Void visitPadding(Padding content, Void arg) throws RuntimeException {
+	Void visitPadding(Padding content, Void arg) {
 		return null;
 	}
 	
@@ -266,7 +267,7 @@ interface Content {
 	/**
 	 * Visits this {@link Content} with the given {@link ContentVisitor}
 	 */
-	<R,A,E extends Throwable> R visit(ContentVisitor<R,A,E> visitor, A arg) throws E;
+	R visit<R,A>(ContentVisitor<R,A> visitor, A arg);
 
 
 }
@@ -276,12 +277,12 @@ interface Content {
  * 
  * @see Content#visit
  */
-interface ContentVisitor<R, A, E extends Throwable> {
+interface ContentVisitor<R, A> {
 	
-	R visitRow(Row content, A arg) throws E;
-	R visitImg(Img content, A arg) throws E;
-	R visitDoubleRow(DoubleRow content, A arg) throws E;
-	R visitPadding(Padding content, A arg) throws E;
+	R visitRow(Row content, A arg);
+	R visitImg(Img content, A arg);
+	R visitDoubleRow(DoubleRow content, A arg);
+	R visitPadding(Padding content, A arg);
 
 }
 
@@ -600,7 +601,7 @@ class DoubleRow implements Content {
 	}
 
 	@override
-	<R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
+	R visit<R, A>(ContentVisitor<R, A> visitor, A arg) {
 		return visitor.visitDoubleRow(this, arg);
 	}
 	
@@ -651,7 +652,7 @@ class Img implements Content {
 	}
 	
 	@override
-	<R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
+	R visit<R, A>(ContentVisitor<R, A> visitor, A arg) {
 		return visitor.visitImg(this, arg);
 	}
 	
@@ -682,7 +683,7 @@ class Padding implements Content {
 	}
 
 	@override
-	<R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
+	R visit<R, A>(ContentVisitor<R, A> visitor, A arg) {
 		return visitor.visitPadding(this, arg);
 	}
 
@@ -762,7 +763,7 @@ class Row implements Content, Iterable<Content> {
 	}
 	
 	@override
-	<R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
+	R visit<R, A>(ContentVisitor<R, A> visitor, A arg) {
 		return visitor.visitRow(this, arg);
 	}
 
