@@ -19,16 +19,16 @@ class AlbumLayout with IterableMixin<Row> {
 	AlbumLayout(double pageWidth, double maxRowHeight, List<AbstractImage> images) :
 		_pageWidth = pageWidth
   {
-		DefaultRowBuffer buffer = new DefaultRowBuffer();
+		DefaultRowBuffer buffer = DefaultRowBuffer();
 		double minWidth = pageWidth / maxRowHeight;
-		RowComputation rowComputation = new SimpleRowComputation(buffer, minWidth);
+		RowComputation rowComputation = SimpleRowComputation(buffer, minWidth);
 		for (AbstractImage image in images) {
-			Img content = new Img(image);
+			Img content = Img(image);
 			
 			if (content.getUnitWidth() >= minWidth) {
 				// Take care of panorama images. Do not combine them with other images, because they would get scaled
 				// down to a thumbnail.
-				Row fullWidthRow = new Row();
+				Row fullWidthRow = Row();
 				fullWidthRow.addContent(content);
 				buffer.addRow(fullWidthRow);
 			} else {
@@ -42,7 +42,7 @@ class AlbumLayout with IterableMixin<Row> {
 
 	/// Extracts all [ImagePart]s in this layout.
 	List<AbstractImage> getAllImages() {
-		Collector collector = new Collector();
+		Collector collector = Collector();
 		for (Row row in _rows) {
 			row.visit(collector, null);
 		}
@@ -71,7 +71,7 @@ class SimpleRowComputation implements RowComputation {
 	
 	final double _minWidth;
 	
-	Row currentRow = new Row();
+	Row currentRow = Row();
 
 	/// Creates a [AlbumLayout.SimpleRowComputation].
 	SimpleRowComputation(RowBuffer out, double minWidth) :
@@ -82,7 +82,7 @@ class SimpleRowComputation implements RowComputation {
 	@override
 	RowComputation addImage(Content img) {
 		if (img.isPortrait()) {
-			RowComputation inner = new DoubleRowComputation(_out, _minWidth);
+			RowComputation inner = DoubleRowComputation(_out, _minWidth);
 			for (Content buffered in currentRow) {
 				inner = inner.addImage(buffered);
 			}
@@ -91,7 +91,7 @@ class SimpleRowComputation implements RowComputation {
 			currentRow.addContent(img);
 			if (isAcceptableWidth(currentRow.getUnitWidth())) {
 				_out.addRow(currentRow);
-				currentRow = new Row();
+				currentRow = Row();
 			}
 			return this;
 		}
@@ -119,9 +119,9 @@ class DoubleRowComputation implements RowComputation {
 	
 	final double _halfMinWidth;
 	
-	Row currentRow = new Row();
+	Row currentRow = Row();
 	
-	DoubleRowBuilder buffer = new DoubleRowBuilder.empty();
+	DoubleRowBuilder buffer = DoubleRowBuilder.empty();
 
 	/// Creates a [AlbumLayout.DoubleRowComputation].
 	DoubleRowComputation(RowBuffer out, double minWidth) :
@@ -147,7 +147,7 @@ class DoubleRowComputation implements RowComputation {
 				_out.addRow(currentRow);
 				
 				// Re-do layout of buffered images.
-				RowComputation result = new SimpleRowComputation(_out, _minWidth);
+				RowComputation result = SimpleRowComputation(_out, _minWidth);
 				for (Content content in buffer) {
 					result = result.addImage(content);
 				}
@@ -162,7 +162,7 @@ class DoubleRowComputation implements RowComputation {
 					currentRow.addContent(buffer.build());
 					_out.addRow(currentRow);
 					
-					return new SimpleRowComputation(_out, _minWidth);
+					return SimpleRowComputation(_out, _minWidth);
 				}
 			}
 		}
@@ -279,8 +279,8 @@ class DoubleRowBuilder with IterableMixin<Content> {
 	static final double LOWER_LIMIT = 3.0 / 4.0;
 	static final double UPPER_LIMIT = 4.0 / 3.0;
 	
-	Row _upper = new Row();
-	Row _lower = new Row();
+	Row _upper = Row();
+	Row _lower = Row();
 	
 	List<RowState> _states = [];
 	
@@ -313,14 +313,14 @@ class DoubleRowBuilder with IterableMixin<Content> {
 	DoubleRowBuilder split() {
 		for (int index = _states.length - 1; index > 0 ; index--) {
 			if (_states[index].isAcceptable()) {
-				DoubleRowBuilder prefix = new DoubleRowBuilder(_states.sublist(1, index + 1));
-				DoubleRowBuilder suffix = new DoubleRowBuilder(_states.sublist(index + 1, _states.length));
+				DoubleRowBuilder prefix = DoubleRowBuilder(_states.sublist(1, index + 1));
+				DoubleRowBuilder suffix = DoubleRowBuilder(_states.sublist(index + 1, _states.length));
 				resetTo(suffix);
 				return prefix;
 			}
 		}
 		
-		return new DoubleRowBuilder.empty();
+		return DoubleRowBuilder.empty();
 	}
 
 	void resetTo(DoubleRowBuilder other) {
@@ -335,7 +335,7 @@ class DoubleRowBuilder with IterableMixin<Content> {
 	}
 
 	void addState(Content content) {
-		_states.add(new RowState(this, content));
+		_states.add(RowState(this, content));
 	}
 
   @nonVirtual
@@ -379,7 +379,7 @@ class DoubleRowBuilder with IterableMixin<Content> {
 			double w1 = upperWidth();
 			double w2 = lowerWidth();
 			
-			addContent(new Padding((w1 - w2).abs()));
+			addContent(Padding((w1 - w2).abs()));
 			
 			if (w2 > w1) {
 				flip();
@@ -389,7 +389,7 @@ class DoubleRowBuilder with IterableMixin<Content> {
 		}
 
 		RowState top = topState();
-		return new DoubleRow(_upper, _lower, top.getUnitWidth(), top.getH1(), top.getH2());
+		return DoubleRow(_upper, _lower, top.getUnitWidth(), top.getH1(), top.getH2());
 	}
 	
 	void flip() {
@@ -401,7 +401,7 @@ class DoubleRowBuilder with IterableMixin<Content> {
 	@override
 	Iterator<Content> get iterator {
 		Iterator<RowState> inner = _states.sublist(1, _states.length).iterator;
-		return new RowIterator(inner);
+		return RowIterator(inner);
 	}
 
 	/// Adds all [Content] to this builder.
@@ -692,7 +692,7 @@ class Row extends Content with IterableMixin<Content> {
 	void end(double minWidth) {
 		double unitWidth = getUnitWidth();
 		if (unitWidth < minWidth) {
-			addContent(new Padding(minWidth - unitWidth));
+			addContent(Padding(minWidth - unitWidth));
 		}
 	}
 }
@@ -700,7 +700,7 @@ class Row extends Content with IterableMixin<Content> {
 class ToImage implements AbstractImageVisitor<ImagePart, void> {
 
   /// Singleton [ToImage] instance.
-  static final ToImage INSTANCE = new ToImage();
+  static final ToImage INSTANCE = ToImage();
 
   ToImage() {
     // Singleton constructor.
