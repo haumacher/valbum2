@@ -18,7 +18,7 @@ class AlbumLayout with IterableMixin<Row> {
 	/// @param pageWidth The width of the page on which the result should be rendered.
 	/// @param maxRowHeight The maximum height to scale a landscape image to.
 	/// @param images the image to place on the page.
-	factory AlbumLayout(double pageWidth, double maxRowHeight, List<AbstractImage> images) {
+	factory AlbumLayout(double pageWidth, double maxRowHeight, Iterable<AbstractImage> images) {
 		DefaultRowBuffer buffer = DefaultRowBuffer();
 		double minWidth = pageWidth / maxRowHeight;
 		RowComputation rowComputation = SimpleRowComputation(buffer, minWidth);

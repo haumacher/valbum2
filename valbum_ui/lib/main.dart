@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:jsontool/jsontool.dart';
+import 'package:valbum_ui/album_layout.dart' as layouter;
 import 'resource.dart';
 
 void main() {
@@ -18,7 +19,7 @@ class VAlbumApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Virtual Photo Album',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
@@ -174,27 +175,28 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     if (kDebugMode) {
       print("Rendering album '${self.path}': ${self.title}");
     }
+    
+    var albumUrl = "$baseUrl/${self.path}";
+    
     return Scaffold(
       appBar: AppBar(
         title: Text("${self.title} ${self.subTitle}"),
         centerTitle: true,
       ),
       body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
-        var images = self.parts.where((part) => part is ImagePart).map((part) => part as ImagePart);
+        var images = self.parts.whereType<AbstractImage>();
 
-        double imageBorder = 8;
-        var preferredImageWidth = 300;
-        var maxWidth = constraints.maxWidth;
-        double preferredImageSpace = preferredImageWidth + 2 * imageBorder;
-        double imagesPerRowFrag = maxWidth / preferredImageSpace;
-        var imagesPerRow = imagesPerRowFrag.round();
-        bool underflow = images.length < imagesPerRow;
-        double difference = underflow ? 0 : maxWidth - imagesPerRow * preferredImageSpace;
-        double imageSpace = preferredImageSpace + difference / imagesPerRow;
+        var layout = layouter.AlbumLayout(constraints.maxWidth, 250, images);
+        double pageWidth = layout.getPageWidth();
+
+        var builder = ContentWidgetBuilder(pageWidth, albumUrl);
 
         return SingleChildScrollView(
-          scrollDirection: Axis.vertical,
-          child: imageList(images, imageSpace - 2 * imageBorder, imageBorder));
+            scrollDirection: Axis.vertical,
+            child: Column(
+                children: layout.map((row) => row.visit(builder, 0)).toList(),
+            ),
+        );
       }),
       floatingActionButton: FloatingActionButton(
         onPressed: () {},
@@ -284,5 +286,79 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   @override
   Widget visitHeading(Heading self, BuildContext arg) {
     throw UnimplementedError();
+  }
+}
+
+class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
+  final double pageWidth;
+  final String albumUrl;
+  
+  const ContentWidgetBuilder(this.pageWidth, this.albumUrl);
+
+  @override
+  Widget visitImg(layouter.Img content, double rowHeight) {
+    var image = content.getImage();
+    
+    var width = content.getUnitWidth() * rowHeight;
+    var height = rowHeight;
+    
+    return image.visitAbstractImage(ImageWidgetBuilder(albumUrl, width, height), null);
+  }
+
+  @override
+  Widget visitRow(layouter.Row content, double rowHeight) {
+    double scale = pageWidth / content.getUnitWidth();
+    double rowHeight = scale;
+
+    return Row(
+      children: content.map((content) => content.visit(this, rowHeight)).toList(),
+    );
+  }
+
+  @override
+  Widget visitDoubleRow(layouter.DoubleRow content, double rowHeight) {
+    var width = content.getUnitWidth() * rowHeight;
+    var height = rowHeight;
+
+    var upper = content.getUpper();
+    var upperRow = upper.visit(ContentWidgetBuilder(width, albumUrl), rowHeight * content.getH1());
+
+    var lower = content.getLower();
+    var lowerRow = lower.visit(ContentWidgetBuilder(width, albumUrl), rowHeight * content.getH2());
+
+    return Column(children: [upperRow, lowerRow],);
+  }
+
+  @override
+  Widget visitPadding(layouter.Padding content, double rowHeight) {
+    var width = content.getUnitWidth() * rowHeight;
+    var height = rowHeight;
+
+    return SizedBox(width: width, height: height);
+  }
+}
+
+class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
+  final String albumUrl;
+  final double width, height;
+  
+  const ImageWidgetBuilder(this.albumUrl, this.width, this.height);
+  
+  @override
+  Widget visitImageGroup(ImageGroup self, void arg) {
+    return Image.network(albumUrl + self.images[self.representative].name,
+      width: width,
+      height: height,
+      fit: BoxFit.contain,
+    );
+  }
+
+  @override
+  Widget visitImagePart(ImagePart self, void arg) {
+    return Image.network(albumUrl + self.name,
+      width: width,
+      height: height,
+      fit: BoxFit.contain,
+    );
   }
 }
