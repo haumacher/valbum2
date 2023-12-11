@@ -43,44 +43,6 @@ class AlbumLayout implements Iterable<Row> {
 	 * Extracts all {@link ImagePart}s in this layout.
 	 */
 	List<AbstractImage> getAllImages() {
-		class Collector implements ContentVisitor<Void, Void, RuntimeException> {
-			
-			List<AbstractImage> _images = new ArrayList<>();
-
-			@override
-			Void visitRow(Row content, Void arg) throws RuntimeException {
-				for (Content element : content) {
-					element.visit(this, arg);
-				}
-				return null;
-			}
-
-			@override
-			Void visitImg(Img content, Void arg) throws RuntimeException {
-				_images.add(content.getImage());
-				return null;
-			}
-
-			@override
-			Void visitDoubleRow(DoubleRow content, Void arg) throws RuntimeException {
-				content.getUpper().visit(this, arg);
-				content.getLower().visit(this, arg);
-				return null;
-			}
-
-			@override
-			Void visitPadding(Padding content, Void arg) throws RuntimeException {
-				return null;
-			}
-			
-			/**
-			 * All collected images.
-			 */
-			List<AbstractImage> getImages() {
-				return _images;
-			}
-		}
-		
 		Collector collector = new Collector();
 		for (Row row : _rows) {
 			row.visit(collector, null);
@@ -106,134 +68,172 @@ class AlbumLayout implements Iterable<Row> {
 	List<Row> getRows() {
 		return _rows;
 	}
+}
+
+class SimpleRowComputation implements RowComputation {
 	
-	static class SimpleRowComputation implements RowComputation {
-		
-		final RowBuffer _out;
-		
-		final double _minWidth;
-		
-		Row currentRow = new Row();
+	final RowBuffer _out;
+	
+	final double _minWidth;
+	
+	Row currentRow = new Row();
 
-		/** 
-		 * Creates a {@link AlbumLayout.SimpleRowComputation}.
-		 */
-		SimpleRowComputation(RowBuffer out, double minWidth) {
-			_out = out;
-			_minWidth = minWidth;
-		}
-		
-		@override
-		RowComputation addImage(Content img) {
-			if (img.isPortrait()) {
-				RowComputation inner = new DoubleRowComputation(_out, _minWidth);
-				for (Content buffered : currentRow) {
-					inner = inner.addImage(buffered);
-				}
-				return inner.addImage(img);
-			} else {
-				currentRow.addContent(img);
-				if (isAcceptableWidth(currentRow.getUnitWidth())) {
-					_out.addRow(currentRow);
-					currentRow = new Row();
-				}
-				return this;
-			}
-		}
-		
-		@override
-		void end() {
-			if (!currentRow.isEmpty()) {
-				currentRow.end(_minWidth);
-				_out.addRow(currentRow);
-			}
-		}
-
-		boolean isAcceptableWidth(double currentWidth) {
-			return  currentWidth >= _minWidth;
-		}
+	/** 
+	 * Creates a {@link AlbumLayout.SimpleRowComputation}.
+	 */
+	SimpleRowComputation(RowBuffer out, double minWidth) {
+		_out = out;
+		_minWidth = minWidth;
 	}
 	
-	/**
-	 * {@link RowComputation} placing landscape images in two vertically aligned rows.
-	 */
-	static class DoubleRowComputation implements RowComputation {
-		
-		final RowBuffer _out;
-		
-		final double _minWidth;
-		
-		final double _halfMinWidth;
-		
-		Row currentRow = new Row();
-		
-		DoubleRowBuilder buffer = new DoubleRowBuilder();
-
-		/** 
-		 * Creates a {@link AlbumLayout.DoubleRowComputation}.
-		 */
-		DoubleRowComputation(RowBuffer out, double minWidth) {
-			_out = out;
-			_minWidth = minWidth;
-			_halfMinWidth = minWidth / 2;
-		}
-
-		@override
-		RowComputation addImage(Content img) {
-			if (img.isPortrait()) {
-				DoubleRowBuilder prefix = buffer.split();
-				if (prefix.acceptable()) {
-					currentRow.addContent(prefix.build());
-				} else {
-					if (!prefix.isEmpty()) {
-						// Revert to original state.
-						prefix.addAll(buffer);
-						buffer = prefix;
-					}
-				}
-				currentRow.addContent(img);
-				if (isAcceptableWidth(currentRow.getUnitWidth())) {
-					_out.addRow(currentRow);
-					
-					// Re-do layout of buffered images.
-					RowComputation result = new SimpleRowComputation(_out, _minWidth);
-					for (Content content : buffer) {
-						result = result.addImage(content);
-					}
-
-					return result;
-				}
-			} else {
-				buffer.addContent(img);
-				
-				if (buffer.acceptable()) {
-					if (isAcceptableWidth(currentRow.getUnitWidth() + buffer.getUnitWidth())) {
-						currentRow.addContent(buffer.build());
-						_out.addRow(currentRow);
-						
-						return new SimpleRowComputation(_out, _minWidth);
-					}
-				}
+	@override
+	RowComputation addImage(Content img) {
+		if (img.isPortrait()) {
+			RowComputation inner = new DoubleRowComputation(_out, _minWidth);
+			for (Content buffered : currentRow) {
+				inner = inner.addImage(buffered);
+			}
+			return inner.addImage(img);
+		} else {
+			currentRow.addContent(img);
+			if (isAcceptableWidth(currentRow.getUnitWidth())) {
+				_out.addRow(currentRow);
+				currentRow = new Row();
 			}
 			return this;
 		}
-
-		@override
-		void end() {
-			if (!buffer.isEmpty()) {
-				currentRow.addContent(buffer.build());
-			}
-			currentRow.end(_halfMinWidth);
+	}
+	
+	@override
+	void end() {
+		if (!currentRow.isEmpty()) {
+			currentRow.end(_minWidth);
 			_out.addRow(currentRow);
 		}
-		
-		final boolean isAcceptableWidth(double currentWidth) {
-			return  currentWidth >= _halfMinWidth;
-		}
+	}
 
+	boolean isAcceptableWidth(double currentWidth) {
+		return  currentWidth >= _minWidth;
+	}
+}
+
+/**
+ * {@link RowComputation} placing landscape images in two vertically aligned rows.
+ */
+class DoubleRowComputation implements RowComputation {
+	
+	final RowBuffer _out;
+	
+	final double _minWidth;
+	
+	final double _halfMinWidth;
+	
+	Row currentRow = new Row();
+	
+	DoubleRowBuilder buffer = new DoubleRowBuilder();
+
+	/** 
+	 * Creates a {@link AlbumLayout.DoubleRowComputation}.
+	 */
+	DoubleRowComputation(RowBuffer out, double minWidth) {
+		_out = out;
+		_minWidth = minWidth;
+		_halfMinWidth = minWidth / 2;
+	}
+
+	@override
+	RowComputation addImage(Content img) {
+		if (img.isPortrait()) {
+			DoubleRowBuilder prefix = buffer.split();
+			if (prefix.acceptable()) {
+				currentRow.addContent(prefix.build());
+			} else {
+				if (!prefix.isEmpty()) {
+					// Revert to original state.
+					prefix.addAll(buffer);
+					buffer = prefix;
+				}
+			}
+			currentRow.addContent(img);
+			if (isAcceptableWidth(currentRow.getUnitWidth())) {
+				_out.addRow(currentRow);
+				
+				// Re-do layout of buffered images.
+				RowComputation result = new SimpleRowComputation(_out, _minWidth);
+				for (Content content : buffer) {
+					result = result.addImage(content);
+				}
+
+				return result;
+			}
+		} else {
+			buffer.addContent(img);
+			
+			if (buffer.acceptable()) {
+				if (isAcceptableWidth(currentRow.getUnitWidth() + buffer.getUnitWidth())) {
+					currentRow.addContent(buffer.build());
+					_out.addRow(currentRow);
+					
+					return new SimpleRowComputation(_out, _minWidth);
+				}
+			}
+		}
+		return this;
+	}
+
+	@override
+	void end() {
+		if (!buffer.isEmpty()) {
+			currentRow.addContent(buffer.build());
+		}
+		currentRow.end(_halfMinWidth);
+		_out.addRow(currentRow);
+	}
+	
+	final boolean isAcceptableWidth(double currentWidth) {
+		return  currentWidth >= _halfMinWidth;
 	}
 
 }
+
+class Collector implements ContentVisitor<Void, Void, RuntimeException> {
+	
+	List<AbstractImage> _images = new ArrayList<>();
+
+	@override
+	Void visitRow(Row content, Void arg) throws RuntimeException {
+		for (Content element : content) {
+			element.visit(this, arg);
+		}
+		return null;
+	}
+
+	@override
+	Void visitImg(Img content, Void arg) throws RuntimeException {
+		_images.add(content.getImage());
+		return null;
+	}
+
+	@override
+	Void visitDoubleRow(DoubleRow content, Void arg) throws RuntimeException {
+		content.getUpper().visit(this, arg);
+		content.getLower().visit(this, arg);
+		return null;
+	}
+
+	@override
+	Void visitPadding(Padding content, Void arg) throws RuntimeException {
+		return null;
+	}
+	
+	/**
+	 * All collected images.
+	 */
+	List<AbstractImage> getImages() {
+		return _images;
+	}
+}
+
 
 /**
  * A part of a {@link Row}.
@@ -318,79 +318,6 @@ class DoubleRowBuilder implements Iterable<Content> {
 	Row _lower = new Row();
 	
 	List<RowState> _states = new ArrayList<>();
-	
-	class RowState {
-		final double _unitWidth;
-		final boolean _acceptable;
-		final Content _lastAdded;
-		double _h1;
-		double _h2;
-
-		RowState(Content lastAdded) {
-			_lastAdded = lastAdded;
-			
-			double w1 = upperWidth();
-			double w2 = lowerWidth();
-			if (w1 == 0.0) {
-				_unitWidth = w2;
-				_acceptable = false;
-			} else if (w2 == 0.0) {
-				_unitWidth = w1;
-				_acceptable = false;
-			} else {
-				double w1Inv = 1/w1;
-				double w2Inv = 1/w2;
-				double invSum = w1Inv + w2Inv;
-				
-				_unitWidth = 1 / invSum;
-				
-				_h1 = w1Inv / invSum;
-				_h2 = w2Inv / invSum;
-				
-				double hQuot = _h1 / _h2;
-				
-				_acceptable = LOWER_LIMIT <= hQuot && hQuot <= UPPER_LIMIT;
-			}
-		}
-		
-		/**
-		 * The relative height of the upper row.
-		 */
-		double getH1() {
-			return _h1;
-		}
-		
-		/**
-		 * The relative height of the lower row.
-		 */
-		double getH2() {
-			return _h2;
-		}
-		
-		/**
-		 * The content that was added just before the {@link RowState} computation was done.
-		 * 
-		 * @return The {@link Content} added before the computation was done, or <code>null</code>, if this is the
-		 *         initial value.
-		 */
-		Content getLastAdded() {
-			return _lastAdded;
-		}
-
-		/**
-		 * The computed unit width just after {@link #getLastAdded()} was added.
-		 */
-		double getUnitWidth() {
-			return _unitWidth;
-		}
-
-		/**
-		 * The computed acceptable state just after {@link #getLastAdded()} was added.
-		 */
-		boolean isAcceptable() {
-			return _acceptable;
-		}
-	}
 	
 	DoubleRowBuilder() {
 		addState(null);
@@ -533,8 +460,81 @@ class DoubleRowBuilder implements Iterable<Content> {
 			addContent(content);
 		}
 	}
-	
 }
+
+class RowState {
+	final double _unitWidth;
+	final boolean _acceptable;
+	final Content _lastAdded;
+	double _h1;
+	double _h2;
+
+	RowState(Content lastAdded) {
+		_lastAdded = lastAdded;
+		
+		double w1 = upperWidth();
+		double w2 = lowerWidth();
+		if (w1 == 0.0) {
+			_unitWidth = w2;
+			_acceptable = false;
+		} else if (w2 == 0.0) {
+			_unitWidth = w1;
+			_acceptable = false;
+		} else {
+			double w1Inv = 1/w1;
+			double w2Inv = 1/w2;
+			double invSum = w1Inv + w2Inv;
+			
+			_unitWidth = 1 / invSum;
+			
+			_h1 = w1Inv / invSum;
+			_h2 = w2Inv / invSum;
+			
+			double hQuot = _h1 / _h2;
+			
+			_acceptable = LOWER_LIMIT <= hQuot && hQuot <= UPPER_LIMIT;
+		}
+	}
+	
+	/**
+	 * The relative height of the upper row.
+	 */
+	double getH1() {
+		return _h1;
+	}
+	
+	/**
+	 * The relative height of the lower row.
+	 */
+	double getH2() {
+		return _h2;
+	}
+	
+	/**
+	 * The content that was added just before the {@link RowState} computation was done.
+	 * 
+	 * @return The {@link Content} added before the computation was done, or <code>null</code>, if this is the
+	 *         initial value.
+	 */
+	Content getLastAdded() {
+		return _lastAdded;
+	}
+
+	/**
+	 * The computed unit width just after {@link #getLastAdded()} was added.
+	 */
+	double getUnitWidth() {
+		return _unitWidth;
+	}
+
+	/**
+	 * The computed acceptable state just after {@link #getLastAdded()} was added.
+	 */
+	boolean isAcceptable() {
+		return _acceptable;
+	}
+}
+
 
 /**
  * A vertical placements of two {@link Row}s scaled to the same width.
