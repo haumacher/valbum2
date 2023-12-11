@@ -189,7 +189,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         var layout = layouter.AlbumLayout(constraints.maxWidth, 250, images);
         double pageWidth = layout.getPageWidth();
 
-        var builder = ContentWidgetBuilder(pageWidth, albumUrl);
+        var builder = ContentWidgetBuilder(pageWidth, albumUrl, pushPart);
 
         return SingleChildScrollView(
             scrollDirection: Axis.vertical,
@@ -206,30 +206,19 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     );
   }
 
-  Wrap imageList(Iterable<ImagePart> images, double imageWidth, double imageBorder) {
-    return Wrap(
-      children: images.map((part) {
-        return Padding(padding: EdgeInsets.symmetric(horizontal: imageBorder, vertical: imageBorder),
-          child: GestureDetector(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, part.name]))),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Image.network("$baseUrl/${part.name}",
-                      width: imageWidth,
-                      height: imageWidth,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  Text(part.name, style: const TextStyle(fontWeight: FontWeight.bold),),
-                ],
-              )
-          ),
-        );
-      }).toList(),
+  Widget imageDisplay(ImagePart part, double imageWidth, double imageHeight) {
+    var partName = part.name;
+    return GestureDetector(
+        onTap: () => pushPart(partName),
+        child: Image.network("$baseUrl/${part.name}",
+          width: imageWidth,
+          height: imageHeight,
+          fit: BoxFit.cover,
+        )
     );
   }
+
+  Future<dynamic> pushPart(String partName) =>  Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, partName])));
 
   @override
   Widget visitImagePart(ImagePart self, BuildContext arg) {
@@ -292,8 +281,9 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
 class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
   final double pageWidth;
   final String albumUrl;
+  final Future Function(String partName) pushPart;
   
-  const ContentWidgetBuilder(this.pageWidth, this.albumUrl);
+  const ContentWidgetBuilder(this.pageWidth, this.albumUrl, this.pushPart);
 
   @override
   Widget visitImg(layouter.Img content, double rowHeight) {
@@ -301,8 +291,8 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
     
     var width = content.getUnitWidth() * rowHeight;
     var height = rowHeight;
-    
-    return image.visitAbstractImage(ImageWidgetBuilder(albumUrl, width, height), null);
+
+    return image.visitAbstractImage(ImageWidgetBuilder(albumUrl, width, height, pushPart), null);
   }
 
   @override
@@ -321,10 +311,11 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
     var height = rowHeight;
 
     var upper = content.getUpper();
-    var upperRow = upper.visit(ContentWidgetBuilder(width, albumUrl), rowHeight * content.getH1());
+    var contentBuilder = ContentWidgetBuilder(width, albumUrl, pushPart);
+    var upperRow = upper.visit(contentBuilder, rowHeight * content.getH1());
 
     var lower = content.getLower();
-    var lowerRow = lower.visit(ContentWidgetBuilder(width, albumUrl), rowHeight * content.getH2());
+    var lowerRow = lower.visit(contentBuilder, rowHeight * content.getH2());
 
     return Column(children: [upperRow, lowerRow],);
   }
@@ -341,24 +332,32 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
 class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   final String albumUrl;
   final double width, height;
+  final Future Function(String partName) pushPart;
   
-  const ImageWidgetBuilder(this.albumUrl, this.width, this.height);
+  const ImageWidgetBuilder(this.albumUrl, this.width, this.height, this.pushPart);
   
   @override
   Widget visitImageGroup(ImageGroup self, void arg) {
-    return Image.network(albumUrl + self.images[self.representative].name,
-      width: width,
-      height: height,
-      fit: BoxFit.contain,
+    var partName = self.images[self.representative].name;
+    return GestureDetector(
+        onTap: () => pushPart(partName),
+        child: Image.network(albumUrl + partName,
+          width: width,
+          height: height,
+          fit: BoxFit.contain,
+        )
     );
   }
 
   @override
   Widget visitImagePart(ImagePart self, void arg) {
-    return Image.network(albumUrl + self.name,
-      width: width,
-      height: height,
-      fit: BoxFit.contain,
+    return GestureDetector(
+        onTap: () => pushPart(self.name),
+        child: Image.network(albumUrl + self.name,
+          width: width,
+          height: height,
+          fit: BoxFit.contain,
+        )
     );
   }
 }
