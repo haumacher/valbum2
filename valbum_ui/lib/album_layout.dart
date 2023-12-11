@@ -1,11 +1,13 @@
+import 'package:valbum_ui/resource.dart';
+
 /**
  * Algorithm layouting a sequence of image so that a given page width is filled allocating appropriate space for all
  * images.
  */
-public class AlbumLayout implements Iterable<Row> {
+class AlbumLayout implements Iterable<Row> {
 	
-	private final double _pageWidth;
-	private final List<Row> _rows;
+	final double _pageWidth;
+	final List<Row> _rows;
 	
 	/** 
 	 * Creates a {@link AlbumLayout}.
@@ -14,7 +16,7 @@ public class AlbumLayout implements Iterable<Row> {
 	 * @param maxRowHeight The maximum height to scale a landscape image to.
 	 * @param images the image to place on the page.
 	 */
-	public AlbumLayout(double pageWidth, double maxRowHeight, List<? extends AbstractImage> images) {
+	AlbumLayout(double pageWidth, double maxRowHeight, List<? extends AbstractImage> images) {
 		_pageWidth = pageWidth;
 		DefaultRowBuffer buffer = new DefaultRowBuffer();
 		double minWidth = pageWidth / maxRowHeight;
@@ -40,41 +42,41 @@ public class AlbumLayout implements Iterable<Row> {
 	/** 
 	 * Extracts all {@link ImagePart}s in this layout.
 	 */
-	public List<AbstractImage> getAllImages() {
+	List<AbstractImage> getAllImages() {
 		class Collector implements ContentVisitor<Void, Void, RuntimeException> {
 			
 			List<AbstractImage> _images = new ArrayList<>();
 
-			@Override
-			public Void visitRow(Row content, Void arg) throws RuntimeException {
+			@override
+			Void visitRow(Row content, Void arg) throws RuntimeException {
 				for (Content element : content) {
 					element.visit(this, arg);
 				}
 				return null;
 			}
 
-			@Override
-			public Void visitImg(Img content, Void arg) throws RuntimeException {
+			@override
+			Void visitImg(Img content, Void arg) throws RuntimeException {
 				_images.add(content.getImage());
 				return null;
 			}
 
-			@Override
-			public Void visitDoubleRow(DoubleRow content, Void arg) throws RuntimeException {
+			@override
+			Void visitDoubleRow(DoubleRow content, Void arg) throws RuntimeException {
 				content.getUpper().visit(this, arg);
 				content.getLower().visit(this, arg);
 				return null;
 			}
 
-			@Override
-			public Void visitPadding(Padding content, Void arg) throws RuntimeException {
+			@override
+			Void visitPadding(Padding content, Void arg) throws RuntimeException {
 				return null;
 			}
 			
 			/**
 			 * All collected images.
 			 */
-			public List<AbstractImage> getImages() {
+			List<AbstractImage> getImages() {
 				return _images;
 			}
 		}
@@ -89,40 +91,40 @@ public class AlbumLayout implements Iterable<Row> {
 	/**
 	 * The width of the page, this layout is computed for.
 	 */
-	public double getPageWidth() {
+	double getPageWidth() {
 		return _pageWidth;
 	}
 	
-	@Override
-	public Iterator<Row> iterator() {
+	@override
+	Iterator<Row> iterator() {
 		return _rows.iterator();
 	}
 	
 	/**
 	 * The {@link Row}s with content.
 	 */
-	public List<Row> getRows() {
+	List<Row> getRows() {
 		return _rows;
 	}
 	
-	private static class SimpleRowComputation implements RowComputation {
+	static class SimpleRowComputation implements RowComputation {
 		
-		private final RowBuffer _out;
+		final RowBuffer _out;
 		
-		private final double _minWidth;
+		final double _minWidth;
 		
-		private Row currentRow = new Row();
+		Row currentRow = new Row();
 
 		/** 
 		 * Creates a {@link AlbumLayout.SimpleRowComputation}.
 		 */
-		public SimpleRowComputation(RowBuffer out, double minWidth) {
+		SimpleRowComputation(RowBuffer out, double minWidth) {
 			_out = out;
 			_minWidth = minWidth;
 		}
 		
-		@Override
-		public RowComputation addImage(Content img) {
+		@override
+		RowComputation addImage(Content img) {
 			if (img.isPortrait()) {
 				RowComputation inner = new DoubleRowComputation(_out, _minWidth);
 				for (Content buffered : currentRow) {
@@ -139,15 +141,15 @@ public class AlbumLayout implements Iterable<Row> {
 			}
 		}
 		
-		@Override
-		public void end() {
+		@override
+		void end() {
 			if (!currentRow.isEmpty()) {
 				currentRow.end(_minWidth);
 				_out.addRow(currentRow);
 			}
 		}
 
-		private boolean isAcceptableWidth(double currentWidth) {
+		boolean isAcceptableWidth(double currentWidth) {
 			return  currentWidth >= _minWidth;
 		}
 	}
@@ -155,29 +157,29 @@ public class AlbumLayout implements Iterable<Row> {
 	/**
 	 * {@link RowComputation} placing landscape images in two vertically aligned rows.
 	 */
-	private static class DoubleRowComputation implements RowComputation {
+	static class DoubleRowComputation implements RowComputation {
 		
-		private final RowBuffer _out;
+		final RowBuffer _out;
 		
-		private final double _minWidth;
+		final double _minWidth;
 		
-		private final double _halfMinWidth;
+		final double _halfMinWidth;
 		
-		private Row currentRow = new Row();
+		Row currentRow = new Row();
 		
-		private DoubleRowBuilder buffer = new DoubleRowBuilder();
+		DoubleRowBuilder buffer = new DoubleRowBuilder();
 
 		/** 
 		 * Creates a {@link AlbumLayout.DoubleRowComputation}.
 		 */
-		public DoubleRowComputation(RowBuffer out, double minWidth) {
+		DoubleRowComputation(RowBuffer out, double minWidth) {
 			_out = out;
 			_minWidth = minWidth;
 			_halfMinWidth = minWidth / 2;
 		}
 
-		@Override
-		public RowComputation addImage(Content img) {
+		@override
+		RowComputation addImage(Content img) {
 			if (img.isPortrait()) {
 				DoubleRowBuilder prefix = buffer.split();
 				if (prefix.acceptable()) {
@@ -216,8 +218,8 @@ public class AlbumLayout implements Iterable<Row> {
 			return this;
 		}
 
-		@Override
-		public void end() {
+		@override
+		void end() {
 			if (!buffer.isEmpty()) {
 				currentRow.addContent(buffer.build());
 			}
@@ -236,13 +238,13 @@ public class AlbumLayout implements Iterable<Row> {
 /**
  * A part of a {@link Row}.
  */
-public interface Content {
+interface Content {
 	
 	/**
 	 * The maximum width of an image (relative to its height) to interpret it as an portrait image (taking two lines in
 	 * an {@link AlbumLayout}).
 	 */
-	public static final double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
+	static final double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
 
 	/**
 	 * The width of the content, if it's height is scaled to <code>1.0</code>.
@@ -274,7 +276,7 @@ public interface Content {
  * 
  * @see Content#visit
  */
-public interface ContentVisitor<R, A, E extends Throwable> {
+interface ContentVisitor<R, A, E extends Throwable> {
 	
 	R visitRow(Row content, A arg) throws E;
 	R visitImg(Img content, A arg) throws E;
@@ -286,19 +288,19 @@ public interface ContentVisitor<R, A, E extends Throwable> {
 /**
  * {@link RowBuffer} building a {@link List} of {@link Row}s.
  */
-public class DefaultRowBuffer implements RowBuffer {
+class DefaultRowBuffer implements RowBuffer {
 
-	private List<Row> _rows = new ArrayList<>();
+	List<Row> _rows = new ArrayList<>();
 
-	@Override
-	public void addRow(Row newRow) {
+	@override
+	void addRow(Row newRow) {
 		_rows.add(newRow);
 	}
 	
 	/**
 	 * The created rows.
 	 */
-	public List<Row> getRows() {
+	List<Row> getRows() {
 		return _rows;
 	}
 
@@ -307,24 +309,24 @@ public class DefaultRowBuffer implements RowBuffer {
 /**
  * Builder for a {@link DoubleRow}.
  */
-public class DoubleRowBuilder implements Iterable<Content> {
+class DoubleRowBuilder implements Iterable<Content> {
 	
-	private static final double LOWER_LIMIT = 3.0 / 4.0;
-	private static final double UPPER_LIMIT = 4.0 / 3.0;
+	static final double LOWER_LIMIT = 3.0 / 4.0;
+	static final double UPPER_LIMIT = 4.0 / 3.0;
 	
-	private Row _upper = new Row();
-	private Row _lower = new Row();
+	Row _upper = new Row();
+	Row _lower = new Row();
 	
-	private List<RowState> _states = new ArrayList<>();
+	List<RowState> _states = new ArrayList<>();
 	
-	private class RowState {
-		private final double _unitWidth;
-		private final boolean _acceptable;
-		private final Content _lastAdded;
-		private double _h1;
-		private double _h2;
+	class RowState {
+		final double _unitWidth;
+		final boolean _acceptable;
+		final Content _lastAdded;
+		double _h1;
+		double _h2;
 
-		public RowState(Content lastAdded) {
+		RowState(Content lastAdded) {
 			_lastAdded = lastAdded;
 			
 			double w1 = upperWidth();
@@ -354,14 +356,14 @@ public class DoubleRowBuilder implements Iterable<Content> {
 		/**
 		 * The relative height of the upper row.
 		 */
-		public double getH1() {
+		double getH1() {
 			return _h1;
 		}
 		
 		/**
 		 * The relative height of the lower row.
 		 */
-		public double getH2() {
+		double getH2() {
 			return _h2;
 		}
 		
@@ -371,21 +373,21 @@ public class DoubleRowBuilder implements Iterable<Content> {
 		 * @return The {@link Content} added before the computation was done, or <code>null</code>, if this is the
 		 *         initial value.
 		 */
-		public Content getLastAdded() {
+		Content getLastAdded() {
 			return _lastAdded;
 		}
 
 		/**
 		 * The computed unit width just after {@link #getLastAdded()} was added.
 		 */
-		public double getUnitWidth() {
+		double getUnitWidth() {
 			return _unitWidth;
 		}
 
 		/**
 		 * The computed acceptable state just after {@link #getLastAdded()} was added.
 		 */
-		public boolean isAcceptable() {
+		boolean isAcceptable() {
 			return _acceptable;
 		}
 	}
@@ -397,7 +399,7 @@ public class DoubleRowBuilder implements Iterable<Content> {
 	/** 
 	 * Creates a {@link DoubleRowBuilder}.
 	 */
-	private DoubleRowBuilder(List<RowState> states) {
+	DoubleRowBuilder(List<RowState> states) {
 		this();
 		for (RowState state : states) {
 			addContent(state.getLastAdded());
@@ -407,14 +409,14 @@ public class DoubleRowBuilder implements Iterable<Content> {
 	/**
 	 * The upper {@link Row}.
 	 */
-	public Row getUpper() {
+	Row getUpper() {
 		return _upper;
 	}
 	
 	/**
 	 * The lower {@link Row}.
 	 */
-	public Row getLower() {
+	Row getLower() {
 		return _lower;
 	}
 
@@ -425,7 +427,7 @@ public class DoubleRowBuilder implements Iterable<Content> {
 	 * The state after this method returns only contains contents in the suffix after the split out prefix.
 	 * </p>
 	 */
-	public DoubleRowBuilder split() {
+	DoubleRowBuilder split() {
 		for (int index = _states.size() - 1; index > 0 ; index--) {
 			if (_states.get(index).isAcceptable()) {
 				DoubleRowBuilder prefix = new DoubleRowBuilder(_states.subList(1, index + 1));
@@ -438,7 +440,7 @@ public class DoubleRowBuilder implements Iterable<Content> {
 		return new DoubleRowBuilder();
 	}
 
-	private void resetTo(DoubleRowBuilder other) {
+	void resetTo(DoubleRowBuilder other) {
 		_upper = other._upper;
 		_lower = other._lower;
 		_states = other._states;
@@ -448,7 +450,7 @@ public class DoubleRowBuilder implements Iterable<Content> {
 		return _states.size() == 1;
 	}
 
-	private void addState(Content content) {
+	void addState(Content content) {
 		_states.add(new RowState(content));
 	}
 
@@ -460,7 +462,7 @@ public class DoubleRowBuilder implements Iterable<Content> {
 		return top().isAcceptable();
 	}
 	
-	private RowState top() {
+	RowState top() {
 		return _states.get(_states.size() - 1);
 	}
 	
@@ -470,7 +472,7 @@ public class DoubleRowBuilder implements Iterable<Content> {
 		addState(content);
 	}
 	
-	private Row smaller() {
+	Row smaller() {
 		return _upper.getUnitWidth() <=_lower.getUnitWidth() ? _upper : _lower;
 	}
 
@@ -500,24 +502,24 @@ public class DoubleRowBuilder implements Iterable<Content> {
 		return new DoubleRow(_upper, _lower, top.getUnitWidth(), top.getH1(), top.getH2());
 	}
 	
-	private void flip() {
+	void flip() {
 		Row upper = _upper;
 		_upper = _lower;
 		_lower = upper;
 	}
 
-	@Override
-	public Iterator<Content> iterator() {
+	@override
+	Iterator<Content> iterator() {
 		Iterator<RowState> inner = _states.subList(1, _states.size()).iterator();
 		
 		return new Iterator<Content>() {
-			@Override
-			public boolean hasNext() {
+			@override
+			boolean hasNext() {
 				return inner.hasNext();
 			}
 
-			@Override
-			public Content next() {
+			@override
+			Content next() {
 				return inner.next().getLastAdded();
 			}
 		};
@@ -526,7 +528,7 @@ public class DoubleRowBuilder implements Iterable<Content> {
 	/** 
 	 * Adds all {@link Content} to this builder.
 	 */
-	public void addAll(Iterable<Content> contents) {
+	void addAll(Iterable<Content> contents) {
 		for (Content content : contents) {
 			addContent(content);
 		}
@@ -537,21 +539,21 @@ public class DoubleRowBuilder implements Iterable<Content> {
 /**
  * A vertical placements of two {@link Row}s scaled to the same width.
  */
-public class DoubleRow implements Content {
+class DoubleRow implements Content {
 
-	private final double _unitWidth;
+	final double _unitWidth;
 	
-	private final Row _upper;
-	private final Row _lower;
+	final Row _upper;
+	final Row _lower;
 
-	private double _h1;
+	double _h1;
 
-	private double _h2;
+	double _h2;
 
 	/** 
 	 * Creates a {@link DoubleRow}.
 	 */
-	public DoubleRow(Row upper, Row lower, double unitWidth, double h1, double h2) {
+	DoubleRow(Row upper, Row lower, double unitWidth, double h1, double h2) {
 		_upper = upper;
 		_lower = lower;
 		_unitWidth = unitWidth;
@@ -562,43 +564,43 @@ public class DoubleRow implements Content {
 	/**
 	 * The upper {@link Row}.
 	 */
-	public Row getUpper() {
+	Row getUpper() {
 		return _upper;
 	}
 	
 	/**
 	 * The lower {@link Row}.
 	 */
-	public Row getLower() {
+	Row getLower() {
 		return _lower;
 	}
 	
 	/**
 	 * Relative height of {@link #getUpper()}.
 	 */
-	public double getH1() {
+	double getH1() {
 		return _h1;
 	}
 	
 	/**
 	 * Relative height of {@link #getLower()}.
 	 */
-	public double getH2() {
+	double getH2() {
 		return _h2;
 	}
 
-	@Override
-	public double getUnitWidth() {
+	@override
+	double getUnitWidth() {
 		return _unitWidth;
 	}
 
-	@Override
-	public int getUnitHeight() {
+	@override
+	int getUnitHeight() {
 		return 2;
 	}
 
-	@Override
-	public <R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
+	@override
+	<R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
 		return visitor.visitDoubleRow(this, arg);
 	}
 	
@@ -607,15 +609,15 @@ public class DoubleRow implements Content {
 /**
  * An atomic image placed in a {@link Row}.
  */
-public class Img implements Content {
+class Img implements Content {
 	
-	private final double _unitWidth;
-	private AbstractImage _image;
+	final double _unitWidth;
+	AbstractImage _image;
 	
 	/** 
 	 * Creates a {@link Img}.
 	 */
-	public Img(AbstractImage image) {
+	Img(AbstractImage image) {
 		_image = image;
 		ImagePart representative = ToImage.toImage(image);
 		int width = representative.getWidth();
@@ -631,25 +633,25 @@ public class Img implements Content {
 	/**
 	 * The {@link AbstractImage} represented by this {@link Content}.
 	 */
-	public AbstractImage getImage() {
+	AbstractImage getImage() {
 		return _image;
 	}
 	
 	/**
 	 * The width of the image, if it was scaled to a height of <code>1.0</code>.
 	 */
-	@Override
-	public double getUnitWidth() {
+	@override
+	double getUnitWidth() {
 		return _unitWidth;
 	}
 	
-	@Override
-	public int getUnitHeight() {
+	@override
+	int getUnitHeight() {
 		return 1;
 	}
 	
-	@Override
-	public <R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
+	@override
+	<R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
 		return visitor.visitImg(this, arg);
 	}
 	
@@ -658,29 +660,29 @@ public class Img implements Content {
 /**
  * Empty space inserted to a layout to make it's constraints acceptable. 
  */
-public class Padding implements Content {
+class Padding implements Content {
 
-	private double _unitWidth;
+	double _unitWidth;
 
 	/** 
 	 * Creates a {@link Padding}.
 	 */
-	public Padding(double unitWidth) {
+	Padding(double unitWidth) {
 		_unitWidth = unitWidth;
 	}
 
-	@Override
-	public double getUnitWidth() {
+	@override
+	double getUnitWidth() {
 		return _unitWidth;
 	}
 	
-	@Override
-	public int getUnitHeight() {
+	@override
+	int getUnitHeight() {
 		return 1;
 	}
 
-	@Override
-	public <R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
+	@override
+	<R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
 		return visitor.visitPadding(this, arg);
 	}
 
@@ -689,7 +691,7 @@ public class Padding implements Content {
 /**
  * Buffer of {@link Row} used in a {@link RowComputation}.
  */
-public interface RowBuffer {
+interface RowBuffer {
 
 	/** 
 	 * Adds the next completed row.
@@ -723,13 +725,13 @@ interface RowComputation {
 /**
  * A horizontal layout of {@link Content}.
  */
-public class Row implements Content, Iterable<Content> {
+class Row implements Content, Iterable<Content> {
 	
-	private final List<Content> _contents = new ArrayList<>();
+	final List<Content> _contents = new ArrayList<>();
 	
-	private double _unitWidth;
+	double _unitWidth;
 
-	private int _height = 1;
+	int _height = 1;
 	
 	final void addContent(Content content) {
 		_contents.add(content);
@@ -737,13 +739,13 @@ public class Row implements Content, Iterable<Content> {
 		_height = Math.max(_height, content.getUnitHeight());
 	}
 	
-	@Override
-	public double getUnitWidth() {
+	@override
+	double getUnitWidth() {
 		return _unitWidth;
 	}
 	
-	@Override
-	public int getUnitHeight() {
+	@override
+	int getUnitHeight() {
 		return _height;
 	}
 
@@ -754,20 +756,20 @@ public class Row implements Content, Iterable<Content> {
 		return _contents.isEmpty();
 	}
 
-	@Override
-	public Iterator<Content> iterator() {
+	@override
+	Iterator<Content> iterator() {
 		return _contents.iterator();
 	}
 	
-	@Override
-	public <R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
+	@override
+	<R, A, E extends Throwable> R visit(ContentVisitor<R, A, E> visitor, A arg) throws E {
 		return visitor.visitRow(this, arg);
 	}
 
 	/** 
 	 * The number of {@link Content}s in this {@link Row}.
 	 */
-	public int size() {
+	int size() {
 		return _contents.size();
 	}
 
