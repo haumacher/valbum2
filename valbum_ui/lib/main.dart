@@ -220,46 +220,69 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
         return CallbackShortcuts(
             bindings: <ShortcutActivator, VoidCallback> {
-              const SingleActivator(LogicalKeyboardKey.arrowLeft): () {
-                if (self.previous != null) {
-                  setState(() {
-                    _resourceFuture = Future.value(self.previous);
-                  });
-                }
-              },
-              const SingleActivator(LogicalKeyboardKey.arrowRight): () {
-                if (self.next != null) {
-                  setState(() {
-                    _resourceFuture = Future.value(self.next);
-                  });
-                }
-              },
+              const SingleActivator(LogicalKeyboardKey.arrowLeft): () => gotoPrevious(self),
+              const SingleActivator(LogicalKeyboardKey.arrowRight): () => gotoNext(self),
               const SingleActivator(LogicalKeyboardKey.arrowUp): () {
                 Navigator.pop(context);
               },
             },
             child: Focus(
               autofocus: true,
-              child: InteractiveViewer(
-                  panEnabled: true,
-                  minScale: 0.25,
-                  maxScale: 4,
-                  child: Image.network("$baseUrl/${self.name}",
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
-                    fit: BoxFit.contain,
-                  )
-              ),
+              child: createViewer(self, constraints),
             )
         );
-
       }),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        tooltip: 'Add',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  InteractiveViewer createViewer(ImagePart self, BoxConstraints constraints) {
+    var tx = TransformationController();
+
+    return InteractiveViewer(
+      panEnabled: true,
+      minScale: 0.25,
+      maxScale: 4,
+      transformationController: tx,
+      onInteractionEnd: (details) {
+        if (details.pointerCount > 1 || tx.value.hasScale()) {
+          return;
+        }
+        if (details.velocity.pixelsPerSecond.distance > 50) {
+          var primaryVelocity = details.velocity.pixelsPerSecond.dx;
+          if (kDebugMode) {
+            print(details);
+          }
+          if (primaryVelocity > 40) {
+            gotoPrevious(self);
+          }
+          // Swiping to the left.
+          else if (primaryVelocity < 40) {
+            gotoNext(self);
+          }
+        }
+      },
+      child: Image.network("$baseUrl/${self.name}",
+        width: constraints.maxWidth,
+        height: constraints.maxHeight,
+        fit: BoxFit.contain,
+      )
+    );
+  }
+
+  void gotoPrevious(AbstractImage self) {
+    if (self.previous != null) {
+      setState(() {
+        _resourceFuture = Future.value(self.previous);
+      });
+    }
+  }
+
+  void gotoNext(AbstractImage self) {
+    if (self.next != null) {
+      setState(() {
+        _resourceFuture = Future.value(self.next);
+      });
+    }
   }
 
   @override
@@ -290,6 +313,12 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   @override
   Widget visitHeading(Heading self, BuildContext arg) {
     throw UnimplementedError();
+  }
+}
+
+extension AlmostIdentity on Matrix4 {
+  bool hasScale() {
+    return (row0.x - 1).abs() + (row1.y - 1).abs() + (row2.z - 1).abs() > 0.001;
   }
 }
 
