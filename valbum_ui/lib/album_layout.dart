@@ -9,16 +9,16 @@ import 'package:valbum_ui/resource.dart';
 class AlbumLayout with IterableMixin<Row> {
 	
 	final double _pageWidth;
-	late final List<Row> _rows;
+	final List<Row> _rows;
+
+  AlbumLayout._init(this._pageWidth, this._rows);
 
 	/// Creates a [AlbumLayout].
 	///
 	/// @param pageWidth The width of the page on which the result should be rendered.
 	/// @param maxRowHeight The maximum height to scale a landscape image to.
 	/// @param images the image to place on the page.
-	AlbumLayout(double pageWidth, double maxRowHeight, List<AbstractImage> images) :
-		_pageWidth = pageWidth
-  {
+	factory AlbumLayout(double pageWidth, double maxRowHeight, List<AbstractImage> images) {
 		DefaultRowBuffer buffer = DefaultRowBuffer();
 		double minWidth = pageWidth / maxRowHeight;
 		RowComputation rowComputation = SimpleRowComputation(buffer, minWidth);
@@ -37,7 +37,7 @@ class AlbumLayout with IterableMixin<Row> {
 		}
 		rowComputation.end();
 		
-		_rows = buffer.getRows();
+		return AlbumLayout._init(pageWidth, buffer.getRows());
 	}
 
 	/// Extracts all [ImagePart]s in this layout.
@@ -350,12 +350,11 @@ class DoubleRowBuilder with IterableMixin<Content> {
 
   @nonVirtual
   void addContent(Content content) {
-		Row smaller = isSmaller();
 		smaller.addContent(content);
 		addState(content);
 	}
 	
-	Row isSmaller() {
+	Row get smaller {
 		return _upper.getUnitWidth() <=_lower.getUnitWidth() ? _upper : _lower;
 	}
 
@@ -424,37 +423,39 @@ class RowIterator implements Iterator<Content> {
 
 class RowState {
   final DoubleRowBuilder builder;
-	late final double _unitWidth;
-  late final bool _acceptable;
-  late final Content? _lastAdded;
-	late double _h1;
-  late double _h2;
+	final double _unitWidth;
+  final bool _acceptable;
+  final Content? _lastAdded;
+	double _h1;
+  double _h2;
 
-	RowState(this.builder, Content? lastAdded) {
-		_lastAdded = lastAdded;
-		
+  RowState._init(this.builder, this._unitWidth, this._lastAdded, this._h1, this._h2, this._acceptable);
+
+	factory RowState(DoubleRowBuilder builder, Content? lastAdded) {
 		double w1 = builder.upperWidth();
 		double w2 = builder.lowerWidth();
+
+    double unitWidth, h1 = 0, h2 = 0;
+    bool acceptable;
 		if (w1 == 0.0) {
-			_unitWidth = w2;
-			_acceptable = false;
+			unitWidth = w2;
+			acceptable = false;
 		} else if (w2 == 0.0) {
-			_unitWidth = w1;
-			_acceptable = false;
+			unitWidth = w1;
+			acceptable = false;
 		} else {
 			double w1Inv = 1/w1;
 			double w2Inv = 1/w2;
 			double invSum = w1Inv + w2Inv;
+
+			unitWidth = 1 / invSum;
+			h1 = w1Inv / invSum;
+			h2 = w2Inv / invSum;
 			
-			_unitWidth = 1 / invSum;
-			
-			_h1 = w1Inv / invSum;
-			_h2 = w2Inv / invSum;
-			
-			double hQuot = _h1 / _h2;
-			
-			_acceptable = DoubleRowBuilder.lowerLimit <= hQuot && hQuot <= DoubleRowBuilder.upperLimit;
+			double hQuot = h1 / h2;
+			acceptable = DoubleRowBuilder.lowerLimit <= hQuot && hQuot <= DoubleRowBuilder.upperLimit;
 		}
+    return RowState._init(builder, unitWidth, lastAdded, h1, h2, acceptable);
 	}
 	
 	/// The relative height of the upper row.
@@ -546,14 +547,13 @@ class DoubleRow extends Content {
 
 /// An atomic image placed in a [Row].
 class Img extends Content {
-	
-	late final double _unitWidth;
-	final AbstractImage _image;
-	
+  final AbstractImage _image;
+	final double _unitWidth;
+
+  Img._init(this._image, this._unitWidth);
+
 	/// Creates a [Img].
-	Img(AbstractImage image) :
-		_image = image
-  {
+	factory Img(AbstractImage image) {
 		ImagePart representative = ToImage.toImage(image);
 		int width = representative.width;
 		int height = representative.height;
@@ -562,7 +562,7 @@ class Img extends Content {
 		int displayWidth = Orientations.widthInt(orientation, width, height);
 		int displayHeight = Orientations.heightInt(orientation, width, height);
 		
-		_unitWidth = (displayWidth as double) / displayHeight;
+		return Img._init(image, (displayWidth as double) / displayHeight);
 	}
 	
 	/// The [AbstractImage] represented by this [Content].
