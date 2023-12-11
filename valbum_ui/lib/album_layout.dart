@@ -287,7 +287,7 @@ class DoubleRowBuilder with IterableMixin<Content> {
 	/// Creates a [DoubleRowBuilder].
 	DoubleRowBuilder(List<RowState> states) {
 		for (RowState state in states) {
-			addContent(state.getLastAdded());
+			addContent(state.getLastAdded()!);
 		}
 	}
 	
@@ -330,7 +330,7 @@ class DoubleRowBuilder with IterableMixin<Content> {
 		return _states.length == 1;
 	}
 
-	void addState(Content content) {
+	void addState(Content? content) {
 		_states.add(RowState(this, content));
 	}
 
@@ -419,18 +419,18 @@ class RowIterator implements Iterator<Content> {
   }
 
   @override
-  get current => inner.current.getLastAdded();
+  get current => inner.current.getLastAdded()!;
 }
 
 class RowState {
   final DoubleRowBuilder builder;
 	late final double _unitWidth;
   late final bool _acceptable;
-  late final Content _lastAdded;
+  late final Content? _lastAdded;
 	late double _h1;
   late double _h2;
 
-	RowState(this.builder, Content lastAdded) {
+	RowState(this.builder, Content? lastAdded) {
 		_lastAdded = lastAdded;
 		
 		double w1 = builder.upperWidth();
@@ -471,7 +471,7 @@ class RowState {
 	///
 	/// @return The [Content] added before the computation was done, or <code>null</code>, if this is the
 	///         initial value.
-	Content getLastAdded() {
+	Content? getLastAdded() {
 		return _lastAdded;
 	}
 
