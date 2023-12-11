@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:valbum_ui/resource.dart';
 
 /**
@@ -22,7 +23,7 @@ class AlbumLayout implements Iterable<Row> {
 		DefaultRowBuffer buffer = new DefaultRowBuffer();
 		double minWidth = pageWidth / maxRowHeight;
 		RowComputation rowComputation = new SimpleRowComputation(buffer, minWidth);
-		for (AbstractImage image : images) {
+		for (AbstractImage image in images) {
 			Img content = new Img(image);
 			
 			if (content.getUnitWidth() >= minWidth) {
@@ -45,7 +46,7 @@ class AlbumLayout implements Iterable<Row> {
 	 */
 	List<AbstractImage> getAllImages() {
 		Collector collector = new Collector();
-		for (Row row : _rows) {
+		for (Row row in _rows) {
 			row.visit(collector, null);
 		}
 		return collector.getImages();
@@ -91,7 +92,7 @@ class SimpleRowComputation implements RowComputation {
 	RowComputation addImage(Content img) {
 		if (img.isPortrait()) {
 			RowComputation inner = new DoubleRowComputation(_out, _minWidth);
-			for (Content buffered : currentRow) {
+			for (Content buffered in currentRow) {
 				inner = inner.addImage(buffered);
 			}
 			return inner.addImage(img);
@@ -161,7 +162,7 @@ class DoubleRowComputation implements RowComputation {
 				
 				// Re-do layout of buffered images.
 				RowComputation result = new SimpleRowComputation(_out, _minWidth);
-				for (Content content : buffer) {
+				for (Content content in buffer) {
 					result = result.addImage(content);
 				}
 
@@ -190,8 +191,9 @@ class DoubleRowComputation implements RowComputation {
 		currentRow.end(_halfMinWidth);
 		_out.addRow(currentRow);
 	}
-	
-	final bool isAcceptableWidth(double currentWidth) {
+
+  @nonVirtual
+  bool isAcceptableWidth(double currentWidth) {
 		return  currentWidth >= _halfMinWidth;
 	}
 
@@ -203,7 +205,7 @@ class Collector implements ContentVisitor<Void, Void> {
 
 	@override
 	Void visitRow(Row content, Void arg) {
-		for (Content element : content) {
+		for (Content element in content) {
 			element.visit(this, arg);
 		}
 		return null;
@@ -245,7 +247,7 @@ interface Content {
 	 * The maximum width of an image (relative to its height) to interpret it as an portrait image (taking two lines in
 	 * an {@link AlbumLayout}).
 	 */
-	static final double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
+	const double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
 
 	/**
 	 * The width of the content, if it's height is scaled to <code>1.0</code>.
@@ -260,7 +262,7 @@ interface Content {
 	/**
 	 * Whether this is a portrait image, with a height considerably larger than its width.
 	 */
-	default bool isPortrait() {
+	bool isPortrait() {
 		return getUnitWidth() <= MAX_PORTRAIT_UNIT_WIDTH;
 	}
 	
@@ -320,7 +322,7 @@ class DoubleRowBuilder implements Iterable<Content> {
 	
 	List<RowState> _states = new ArrayList<>();
 	
-	DoubleRowBuilder() {
+	DoubleRowBuilder.empty() {
 		addState(null);
 	}
 
@@ -328,8 +330,7 @@ class DoubleRowBuilder implements Iterable<Content> {
 	 * Creates a {@link DoubleRowBuilder}.
 	 */
 	DoubleRowBuilder(List<RowState> states) {
-		this();
-		for (RowState state : states) {
+		for (RowState state in states) {
 			addContent(state.getLastAdded());
 		}
 	}
@@ -356,16 +357,16 @@ class DoubleRowBuilder implements Iterable<Content> {
 	 * </p>
 	 */
 	DoubleRowBuilder split() {
-		for (int index = _states.size() - 1; index > 0 ; index--) {
-			if (_states.get(index).isAcceptable()) {
-				DoubleRowBuilder prefix = new DoubleRowBuilder(_states.subList(1, index + 1));
-				DoubleRowBuilder suffix = new DoubleRowBuilder(_states.subList(index + 1, _states.size()));
+		for (int index = _states.length - 1; index > 0 ; index--) {
+			if (_states[index].isAcceptable()) {
+				DoubleRowBuilder prefix = new DoubleRowBuilder(_states.sublist(1, index + 1));
+				DoubleRowBuilder suffix = new DoubleRowBuilder(_states.sublist(index + 1, _states.size()));
 				resetTo(suffix);
 				return prefix;
 			}
 		}
 		
-		return new DoubleRowBuilder();
+		return new DoubleRowBuilder.empty();
 	}
 
 	void resetTo(DoubleRowBuilder other) {
@@ -374,59 +375,66 @@ class DoubleRowBuilder implements Iterable<Content> {
 		_states = other._states;
 	}
 
-	final bool isEmpty() {
-		return _states.size() == 1;
+  @override
+  bool get isEmpty {
+		return _states.length == 1;
 	}
 
 	void addState(Content content) {
 		_states.add(new RowState(content));
 	}
 
-	final double getUnitWidth() {
-		return top().getUnitWidth();
+  @nonVirtual
+  double getUnitWidth() {
+		return topState().getUnitWidth();
+	}
+
+  @nonVirtual
+  bool acceptable() {
+		return topState().isAcceptable();
 	}
 	
-	final bool acceptable() {
-		return top().isAcceptable();
+	RowState topState() {
+		return _states[_states.length - 1];
 	}
-	
-	RowState top() {
-		return _states.get(_states.size() - 1);
-	}
-	
-	final void addContent(Content content) {
-		Row smaller = smaller();
+
+  @nonVirtual
+  void addContent(Content content) {
+		Row smaller = isSmaller();
 		smaller.addContent(content);
 		addState(content);
 	}
 	
-	Row smaller() {
+	Row isSmaller() {
 		return _upper.getUnitWidth() <=_lower.getUnitWidth() ? _upper : _lower;
 	}
 
-	final double upperWidth() {
+  @nonVirtual
+  double upperWidth() {
 		return _upper.getUnitWidth();
 	}
 
-	final double lowerWidth() {
+  @nonVirtual
+  double lowerWidth() {
 		return _lower.getUnitWidth();
 	}
-	
-	final DoubleRow build() {
+
+  @nonVirtual
+  DoubleRow build() {
 		if (!acceptable()) {
 			double w1 = upperWidth();
 			double w2 = lowerWidth();
 			
-			addContent(new Padding(Math.abs(w1 - w2)));
+			addContent(new Padding((w1 - w2).abs()));
 			
 			if (w2 > w1) {
 				flip();
 			}
 			
-			assert acceptable();
+			assert(acceptable());
 		}
 
-		RowState top = top();
+		RowState top = topState();
 		return new DoubleRow(_upper, _lower, top.getUnitWidth(), top.getH1(), top.getH2());
 	}
 	
@@ -438,35 +446,38 @@ class DoubleRowBuilder implements Iterable<Content> {
 
 	@override
 	Iterator<Content> iterator() {
-		Iterator<RowState> inner = _states.subList(1, _states.size()).iterator();
-		
-		return new Iterator<Content>() {
-			@override
-			bool hasNext() {
-				return inner.hasNext();
-			}
-
-			@override
-			Content next() {
-				return inner.next().getLastAdded();
-			}
-		};
+		Iterator<RowState> inner = _states.sublist(1, _states.length).iterator;
+		return new RowIterator(inner);
 	}
 
 	/** 
 	 * Adds all {@link Content} to this builder.
 	 */
 	void addAll(Iterable<Content> contents) {
-		for (Content content : contents) {
+		for (Content content in contents) {
 			addContent(content);
 		}
 	}
 }
 
+class RowIterator implements Iterator<Content> {
+  Iterator<RowState> inner;
+
+  RowIterator(this.inner);
+
+  @override
+  bool moveNext() {
+    return inner.moveNext();
+  }
+
+  @override
+  get current => inner.current.getLastAdded()
+}
+
 class RowState {
-	final double _unitWidth;
-	final bool _acceptable;
-	final Content _lastAdded;
+	late final double _unitWidth;
+  late final bool _acceptable;
+  late final Content _lastAdded;
 	double _h1;
 	double _h2;
 
@@ -554,14 +565,13 @@ class DoubleRow implements Content {
 	/** 
 	 * Creates a {@link DoubleRow}.
 	 */
-	DoubleRow(Row upper, Row lower, double unitWidth, double h1, double h2) {
-		_upper = upper;
-		_lower = lower;
-		_unitWidth = unitWidth;
-		_h1 = h1;
+	DoubleRow(Row upper, Row lower, double unitWidth, double h1, double h2) :
+		_upper = upper,
+		_lower = lower,
+		_unitWidth = unitWidth,
+    _h1 = h1,
 		_h2 = h2;
-	}
-	
+
 	/**
 	 * The upper {@link Row}.
 	 */
@@ -612,14 +622,15 @@ class DoubleRow implements Content {
  */
 class Img implements Content {
 	
-	final double _unitWidth;
+	late final double _unitWidth;
 	AbstractImage _image;
 	
 	/** 
 	 * Creates a {@link Img}.
 	 */
-	Img(AbstractImage image) {
-		_image = image;
+	Img(AbstractImage image) :
+		_image = image
+  {
 		ImagePart representative = ToImage.toImage(image);
 		int width = representative.getWidth();
 		int height = representative.getHeight();
@@ -628,7 +639,7 @@ class Img implements Content {
 		int displayWidth = Orientations.width(orientation, width, height);
 		int displayHeight = Orientations.height(orientation, width, height);
 		
-		_unitWidth = ((double) displayWidth) / displayHeight;
+		_unitWidth = (displayWidth as double) / displayHeight;
 	}
 	
 	/**
@@ -668,9 +679,8 @@ class Padding implements Content {
 	/** 
 	 * Creates a {@link Padding}.
 	 */
-	Padding(double unitWidth) {
+	Padding(double unitWidth) :
 		_unitWidth = unitWidth;
-	}
 
 	@override
 	double getUnitWidth() {
@@ -733,8 +743,9 @@ class Row implements Content, Iterable<Content> {
 	double _unitWidth;
 
 	int _height = 1;
-	
-	final void addContent(Content content) {
+
+  @nonVirtual
+	void addContent(Content content) {
 		_contents.add(content);
 		_unitWidth += content.getUnitWidth();
 		_height = Math.max(_height, content.getUnitHeight());
@@ -753,7 +764,8 @@ class Row implements Content, Iterable<Content> {
 	/**
 	 * Whether this {@link Row} has no contents.
 	 */
-	final bool isEmpty() {
+  @nonVirtual
+  bool isEmpty() {
 		return _contents.isEmpty();
 	}
 
