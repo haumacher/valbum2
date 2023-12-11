@@ -4,22 +4,18 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:valbum_ui/resource.dart';
 
-/**
- * Algorithm layouting a sequence of image so that a given page width is filled allocating appropriate space for all
- * images.
- */
+/// Algorithm layouting a sequence of image so that a given page width is filled allocating appropriate space for all
+/// images.
 class AlbumLayout with IterableMixin<Row> {
 	
 	final double _pageWidth;
 	late final List<Row> _rows;
 
-	/** 
-	 * Creates a {@link AlbumLayout}.
-	 *
-	 * @param pageWidth The width of the page on which the result should be rendered.
-	 * @param maxRowHeight The maximum height to scale a landscape image to.
-	 * @param images the image to place on the page.
-	 */
+	/// Creates a [AlbumLayout].
+	///
+	/// @param pageWidth The width of the page on which the result should be rendered.
+	/// @param maxRowHeight The maximum height to scale a landscape image to.
+	/// @param images the image to place on the page.
 	AlbumLayout(double pageWidth, double maxRowHeight, List<AbstractImage> images) :
 		_pageWidth = pageWidth
   {
@@ -44,9 +40,7 @@ class AlbumLayout with IterableMixin<Row> {
 		_rows = buffer.getRows();
 	}
 
-	/** 
-	 * Extracts all {@link ImagePart}s in this layout.
-	 */
+	/// Extracts all [ImagePart]s in this layout.
 	List<AbstractImage> getAllImages() {
 		Collector collector = new Collector();
 		for (Row row in _rows) {
@@ -55,9 +49,7 @@ class AlbumLayout with IterableMixin<Row> {
 		return collector.getImages();
 	}
 	
-	/**
-	 * The width of the page, this layout is computed for.
-	 */
+	/// The width of the page, this layout is computed for.
 	double getPageWidth() {
 		return _pageWidth;
 	}
@@ -67,9 +59,7 @@ class AlbumLayout with IterableMixin<Row> {
 		return _rows.iterator;
 	}
 	
-	/**
-	 * The {@link Row}s with content.
-	 */
+	/// The [Row]s with content.
 	List<Row> getRows() {
 		return _rows;
 	}
@@ -83,9 +73,7 @@ class SimpleRowComputation implements RowComputation {
 	
 	Row currentRow = new Row();
 
-	/** 
-	 * Creates a {@link AlbumLayout.SimpleRowComputation}.
-	 */
+	/// Creates a [AlbumLayout.SimpleRowComputation].
 	SimpleRowComputation(RowBuffer out, double minWidth) :
 		_out = out,
 		_minWidth = minWidth;
@@ -122,9 +110,7 @@ class SimpleRowComputation implements RowComputation {
 	}
 }
 
-/**
- * {@link RowComputation} placing landscape images in two vertically aligned rows.
- */
+/// [RowComputation] placing landscape images in two vertically aligned rows.
 class DoubleRowComputation implements RowComputation {
 	
 	final RowBuffer _out;
@@ -137,9 +123,7 @@ class DoubleRowComputation implements RowComputation {
 	
 	DoubleRowBuilder buffer = new DoubleRowBuilder.empty();
 
-	/** 
-	 * Creates a {@link AlbumLayout.DoubleRowComputation}.
-	 */
+	/// Creates a [AlbumLayout.DoubleRowComputation].
 	DoubleRowComputation(RowBuffer out, double minWidth) :
 		_out = out,
 		_minWidth = minWidth,
@@ -231,54 +215,38 @@ class Collector implements ContentVisitor<void, void> {
 		return null;
 	}
 	
-	/**
-	 * All collected images.
-	 */
+	/// All collected images.
 	List<AbstractImage> getImages() {
 		return _images;
 	}
 }
 
-/**
- * A part of a {@link Row}.
- */
+/// A part of a [Row].
 abstract class Content {
 	
-	/**
-	 * The maximum width of an image (relative to its height) to interpret it as an portrait image (taking two lines in
-	 * an {@link AlbumLayout}).
-	 */
+	/// The maximum width of an image (relative to its height) to interpret it as an portrait image (taking two lines in
+	/// an [AlbumLayout]).
 	static const double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
 
-	/**
-	 * The width of the content, if it's height is scaled to <code>1.0</code>.
-	 */
+	/// The width of the content, if it's height is scaled to <code>1.0</code>.
 	double getUnitWidth();
 	
-	/** 
-	 * The number of grid rows, this {@link Content} spans.
-	 */
+	/// The number of grid rows, this [Content] spans.
 	int getUnitHeight();
 
-	/**
-	 * Whether this is a portrait image, with a height considerably larger than its width.
-	 */
+	/// Whether this is a portrait image, with a height considerably larger than its width.
 	bool isPortrait() {
 		return getUnitWidth() <= MAX_PORTRAIT_UNIT_WIDTH;
 	}
 	
-	/**
-	 * Visits this {@link Content} with the given {@link ContentVisitor}
-	 */
+	/// Visits this [Content] with the given [ContentVisitor]
 	R visit<R,A>(ContentVisitor<R,A> visitor, A arg);
 
 }
 
-/**
- * Visitor for {@link Content}.
- * 
- * @see Content#visit
- */
+/// Visitor for [Content].
+///
+/// @see Content#visit
 abstract class ContentVisitor<R, A> {
 	
 	R visitRow(Row content, A arg);
@@ -288,9 +256,7 @@ abstract class ContentVisitor<R, A> {
 
 }
 
-/**
- * {@link RowBuffer} building a {@link List} of {@link Row}s.
- */
+/// [RowBuffer] building a [List] of [Row]s.
 class DefaultRowBuffer implements RowBuffer {
 
 	List<Row> _rows = [];
@@ -300,18 +266,14 @@ class DefaultRowBuffer implements RowBuffer {
 		_rows.add(newRow);
 	}
 	
-	/**
-	 * The created rows.
-	 */
+	/// The created rows.
 	List<Row> getRows() {
 		return _rows;
 	}
 
 }
 
-/**
- * Builder for a {@link DoubleRow}.
- */
+/// Builder for a [DoubleRow].
 class DoubleRowBuilder with IterableMixin<Content> {
 	
 	static final double LOWER_LIMIT = 3.0 / 4.0;
@@ -326,36 +288,28 @@ class DoubleRowBuilder with IterableMixin<Content> {
 		addState(null);
 	}
 
-	/** 
-	 * Creates a {@link DoubleRowBuilder}.
-	 */
+	/// Creates a [DoubleRowBuilder].
 	DoubleRowBuilder(List<RowState> states) {
 		for (RowState state in states) {
 			addContent(state.getLastAdded());
 		}
 	}
 	
-	/**
-	 * The upper {@link Row}.
-	 */
+	/// The upper [Row].
 	Row getUpper() {
 		return _upper;
 	}
 	
-	/**
-	 * The lower {@link Row}.
-	 */
+	/// The lower [Row].
 	Row getLower() {
 		return _lower;
 	}
 
-	/** 
-	 * Tries to split of the largest acceptable prefix. 
-	 * 
-	 * <p>
-	 * The state after this method returns only contains contents in the suffix after the split out prefix.
-	 * </p>
-	 */
+	/// Tries to split of the largest acceptable prefix.
+	///
+	/// <p>
+	/// The state after this method returns only contains contents in the suffix after the split out prefix.
+	/// </p>
 	DoubleRowBuilder split() {
 		for (int index = _states.length - 1; index > 0 ; index--) {
 			if (_states[index].isAcceptable()) {
@@ -450,9 +404,7 @@ class DoubleRowBuilder with IterableMixin<Content> {
 		return new RowIterator(inner);
 	}
 
-	/** 
-	 * Adds all {@link Content} to this builder.
-	 */
+	/// Adds all [Content] to this builder.
 	void addAll(Iterable<Content> contents) {
 		for (Content content in contents) {
 			addContent(content);
@@ -509,49 +461,37 @@ class RowState {
 		}
 	}
 	
-	/**
-	 * The relative height of the upper row.
-	 */
+	/// The relative height of the upper row.
 	double getH1() {
 		return _h1;
 	}
 	
-	/**
-	 * The relative height of the lower row.
-	 */
+	/// The relative height of the lower row.
 	double getH2() {
 		return _h2;
 	}
 	
-	/**
-	 * The content that was added just before the {@link RowState} computation was done.
-	 * 
-	 * @return The {@link Content} added before the computation was done, or <code>null</code>, if this is the
-	 *         initial value.
-	 */
+	/// The content that was added just before the [RowState] computation was done.
+	///
+	/// @return The [Content] added before the computation was done, or <code>null</code>, if this is the
+	///         initial value.
 	Content getLastAdded() {
 		return _lastAdded;
 	}
 
-	/**
-	 * The computed unit width just after {@link #getLastAdded()} was added.
-	 */
+	/// The computed unit width just after [#getLastAdded()] was added.
 	double getUnitWidth() {
 		return _unitWidth;
 	}
 
-	/**
-	 * The computed acceptable state just after {@link #getLastAdded()} was added.
-	 */
+	/// The computed acceptable state just after [#getLastAdded()] was added.
 	bool isAcceptable() {
 		return _acceptable;
 	}
 }
 
 
-/**
- * A vertical placements of two {@link Row}s scaled to the same width.
- */
+/// A vertical placements of two [Row]s scaled to the same width.
 class DoubleRow extends Content {
 
 	final double _unitWidth;
@@ -563,9 +503,7 @@ class DoubleRow extends Content {
 
 	double _h2;
 
-	/** 
-	 * Creates a {@link DoubleRow}.
-	 */
+	/// Creates a [DoubleRow].
 	DoubleRow(Row upper, Row lower, double unitWidth, double h1, double h2) :
 		_upper = upper,
 		_lower = lower,
@@ -573,30 +511,22 @@ class DoubleRow extends Content {
     _h1 = h1,
 		_h2 = h2;
 
-	/**
-	 * The upper {@link Row}.
-	 */
+	/// The upper [Row].
 	Row getUpper() {
 		return _upper;
 	}
 	
-	/**
-	 * The lower {@link Row}.
-	 */
+	/// The lower [Row].
 	Row getLower() {
 		return _lower;
 	}
 	
-	/**
-	 * Relative height of {@link #getUpper()}.
-	 */
+	/// Relative height of [#getUpper()].
 	double getH1() {
 		return _h1;
 	}
 	
-	/**
-	 * Relative height of {@link #getLower()}.
-	 */
+	/// Relative height of [#getLower()].
 	double getH2() {
 		return _h2;
 	}
@@ -618,17 +548,13 @@ class DoubleRow extends Content {
 	
 }
 
-/**
- * An atomic image placed in a {@link Row}.
- */
+/// An atomic image placed in a [Row].
 class Img extends Content {
 	
 	late final double _unitWidth;
 	AbstractImage _image;
 	
-	/** 
-	 * Creates a {@link Img}.
-	 */
+	/// Creates a [Img].
 	Img(AbstractImage image) :
 		_image = image
   {
@@ -643,16 +569,12 @@ class Img extends Content {
 		_unitWidth = (displayWidth as double) / displayHeight;
 	}
 	
-	/**
-	 * The {@link AbstractImage} represented by this {@link Content}.
-	 */
+	/// The [AbstractImage] represented by this [Content].
 	AbstractImage getImage() {
 		return _image;
 	}
 	
-	/**
-	 * The width of the image, if it was scaled to a height of <code>1.0</code>.
-	 */
+	/// The width of the image, if it was scaled to a height of <code>1.0</code>.
 	@override
 	double getUnitWidth() {
 		return _unitWidth;
@@ -670,16 +592,12 @@ class Img extends Content {
 	
 }
 
-/**
- * Empty space inserted to a layout to make it's constraints acceptable. 
- */
+/// Empty space inserted to a layout to make it's constraints acceptable.
 class Padding extends Content {
 
 	double _unitWidth;
 
-	/** 
-	 * Creates a {@link Padding}.
-	 */
+	/// Creates a [Padding].
 	Padding(double unitWidth) :
 		_unitWidth = unitWidth;
 
@@ -700,43 +618,31 @@ class Padding extends Content {
 
 }
 
-/**
- * Buffer of {@link Row} used in a {@link RowComputation}.
- */
+/// Buffer of [Row] used in a [RowComputation].
 abstract class RowBuffer {
 
-	/** 
-	 * Adds the next completed row.
-	 */
+	/// Adds the next completed row.
 	void addRow(Row newRow);
 
 }
 
-/**
- * Algorithm for placing images into rows.
- * 
- * @see {@link RowBuffer}
- */
+/// Algorithm for placing images into rows.
+///
+/// @see [RowBuffer]
 abstract class RowComputation {
 
-	/**
-	 * Adds the given image.
-	 *
-	 * @param img The image to place next.
-	 * @return The {@link RowComputation} algorithm to continue with.
-	 */
+	/// Adds the given image.
+	///
+	/// @param img The image to place next.
+	/// @return The [RowComputation] algorithm to continue with.
 	RowComputation addImage(Content img);
 
-	/**
-	 * Flushes buffers and completes the computation.
-	 */
+	/// Flushes buffers and completes the computation.
 	void end();
 	
 }
 
-/**
- * A horizontal layout of {@link Content}.
- */
+/// A horizontal layout of [Content].
 class Row extends Content with IterableMixin<Content> {
 	
 	final List<Content> _contents = [];
@@ -762,9 +668,7 @@ class Row extends Content with IterableMixin<Content> {
 		return _height;
 	}
 
-	/**
-	 * Whether this {@link Row} has no contents.
-	 */
+	/// Whether this [Row] has no contents.
   @override
   bool get isEmpty {
 		return _contents.isEmpty;
@@ -780,9 +684,7 @@ class Row extends Content with IterableMixin<Content> {
 		return visitor.visitRow(this, arg);
 	}
 
-	/** 
-	 * The number of {@link Content}s in this {@link Row}.
-	 */
+	/// The number of [Content]s in this [Row].
 	int size() {
 		return _contents.length;
 	}
@@ -797,9 +699,7 @@ class Row extends Content with IterableMixin<Content> {
 
 class ToImage implements AbstractImageVisitor<ImagePart, void> {
 
-  /**
-   * Singleton {@link ToImage} instance.
-   */
+  /// Singleton [ToImage] instance.
   static final ToImage INSTANCE = new ToImage();
 
   ToImage() {
@@ -816,9 +716,7 @@ class ToImage implements AbstractImageVisitor<ImagePart, void> {
     return self;
   }
 
-  /**
-   * Invokes {@link ToImage} on the given {@link AbstractImage}.
-   */
+  /// Invokes [ToImage] on the given [AbstractImage].
   static ImagePart toImage(AbstractImage image) {
     return image.visitAbstractImage(INSTANCE, null);
   }
@@ -827,9 +725,7 @@ class ToImage implements AbstractImageVisitor<ImagePart, void> {
 
 class Orientations {
 
-  /**
-   * Parses the given JPEG orientation code.
-   */
+  /// Parses the given JPEG orientation code.
   static Orientation fromCode(int code) {
     if (code == 0) {
       // For safety reasons "unassigned".
@@ -841,16 +737,12 @@ class Orientations {
     return Orientation.values[code - 1];
   }
 
-  /**
-   * The JPEG orientation code.
-   */
+  /// The JPEG orientation code.
   static int toCode(Orientation self) {
     return self.index + 1;
   }
 
-  /**
-   * The display width of an image with the given {@link Orientation} and raw pixel width and height.
-   */
+  /// The display width of an image with the given [Orientation] and raw pixel width and height.
   static int widthInt(Orientation self, int rawWidth, int rawHeight) {
     if (toCode(self) >= 5) {
       return rawHeight;
@@ -859,9 +751,7 @@ class Orientations {
     }
   }
 
-  /**
-   * The display width of an image with the given {@link Orientation} and raw pixel width and height.
-   */
+  /// The display width of an image with the given [Orientation] and raw pixel width and height.
   static double width(Orientation self, double rawWidth, double rawHeight) {
     if (toCode(self) >= 5) {
       return rawHeight;
@@ -870,9 +760,7 @@ class Orientations {
     }
   }
 
-  /**
-   * The display height of an image with the given {@link Orientation} and raw pixel width and height.
-   */
+  /// The display height of an image with the given [Orientation] and raw pixel width and height.
   static int heightInt(Orientation self, int rawWidth, int rawHeight) {
     if (toCode(self) >= 5) {
       return rawWidth;
@@ -881,9 +769,7 @@ class Orientations {
     }
   }
 
-  /**
-   * The display height of an image with the given {@link Orientation} and raw pixel width and height.
-   */
+  /// The display height of an image with the given [Orientation] and raw pixel width and height.
   static double height(Orientation self, double rawWidth, double rawHeight) {
     if (toCode(self) >= 5) {
       return rawWidth;
@@ -892,9 +778,7 @@ class Orientations {
     }
   }
 
-  /**
-   * Rotates this orientation to the left.
-   */
+  /// Rotates this orientation to the left.
   static Orientation rotL(Orientation self) {
     switch (self) {
       case Orientation.identity:		return Orientation.rotL;
