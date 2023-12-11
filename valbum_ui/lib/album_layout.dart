@@ -1,3 +1,6 @@
+import 'dart:collection';
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:valbum_ui/resource.dart';
 
@@ -5,7 +8,7 @@ import 'package:valbum_ui/resource.dart';
  * Algorithm layouting a sequence of image so that a given page width is filled allocating appropriate space for all
  * images.
  */
-class AlbumLayout implements Iterable<Row> {
+class AlbumLayout with IterableMixin<Row> {
 	
 	final double _pageWidth;
 	late final List<Row> _rows;
@@ -60,7 +63,7 @@ class AlbumLayout implements Iterable<Row> {
 	}
 	
 	@override
-	get Iterator<Row> iterator {
+	Iterator<Row> get iterator {
 		return _rows.iterator;
 	}
 	
@@ -83,10 +86,10 @@ class SimpleRowComputation implements RowComputation {
 	/** 
 	 * Creates a {@link AlbumLayout.SimpleRowComputation}.
 	 */
-	SimpleRowComputation(RowBuffer out, double minWidth) {
-		_out = out;
+	SimpleRowComputation(RowBuffer out, double minWidth) :
+		_out = out,
 		_minWidth = minWidth;
-	}
+
 	
 	@override
 	RowComputation addImage(Content img) {
@@ -108,7 +111,7 @@ class SimpleRowComputation implements RowComputation {
 	
 	@override
 	void end() {
-		if (!currentRow.isEmpty()) {
+		if (!currentRow.isEmpty) {
 			currentRow.end(_minWidth);
 			_out.addRow(currentRow);
 		}
@@ -132,16 +135,15 @@ class DoubleRowComputation implements RowComputation {
 	
 	Row currentRow = new Row();
 	
-	DoubleRowBuilder buffer = new DoubleRowBuilder();
+	DoubleRowBuilder buffer = new DoubleRowBuilder.empty();
 
 	/** 
 	 * Creates a {@link AlbumLayout.DoubleRowComputation}.
 	 */
-	DoubleRowComputation(RowBuffer out, double minWidth) {
-		_out = out;
-		_minWidth = minWidth;
+	DoubleRowComputation(RowBuffer out, double minWidth) :
+		_out = out,
+		_minWidth = minWidth,
 		_halfMinWidth = minWidth / 2;
-	}
 
 	@override
 	RowComputation addImage(Content img) {
@@ -150,7 +152,7 @@ class DoubleRowComputation implements RowComputation {
 			if (prefix.acceptable()) {
 				currentRow.addContent(prefix.build());
 			} else {
-				if (!prefix.isEmpty()) {
+				if (!prefix.isEmpty) {
 					// Revert to original state.
 					prefix.addAll(buffer);
 					buffer = prefix;
@@ -185,7 +187,7 @@ class DoubleRowComputation implements RowComputation {
 
 	@override
 	void end() {
-		if (!buffer.isEmpty()) {
+		if (!buffer.isEmpty) {
 			currentRow.addContent(buffer.build());
 		}
 		currentRow.end(_halfMinWidth);
@@ -201,7 +203,7 @@ class DoubleRowComputation implements RowComputation {
 
 class Collector implements ContentVisitor<void, void> {
 	
-	List<AbstractImage> _images = new ArrayList<>();
+	List<AbstractImage> _images = [];
 
 	@override
 	void visitRow(Row content, void arg) {
@@ -237,17 +239,16 @@ class Collector implements ContentVisitor<void, void> {
 	}
 }
 
-
 /**
  * A part of a {@link Row}.
  */
-interface Content {
+abstract class Content {
 	
 	/**
 	 * The maximum width of an image (relative to its height) to interpret it as an portrait image (taking two lines in
 	 * an {@link AlbumLayout}).
 	 */
-	const double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
+	static const double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
 
 	/**
 	 * The width of the content, if it's height is scaled to <code>1.0</code>.
@@ -271,7 +272,6 @@ interface Content {
 	 */
 	R visit<R,A>(ContentVisitor<R,A> visitor, A arg);
 
-
 }
 
 /**
@@ -279,7 +279,7 @@ interface Content {
  * 
  * @see Content#visit
  */
-interface ContentVisitor<R, A> {
+abstract class ContentVisitor<R, A> {
 	
 	R visitRow(Row content, A arg);
 	R visitImg(Img content, A arg);
@@ -293,7 +293,7 @@ interface ContentVisitor<R, A> {
  */
 class DefaultRowBuffer implements RowBuffer {
 
-	List<Row> _rows = new ArrayList<>();
+	List<Row> _rows = [];
 
 	@override
 	void addRow(Row newRow) {
@@ -312,7 +312,7 @@ class DefaultRowBuffer implements RowBuffer {
 /**
  * Builder for a {@link DoubleRow}.
  */
-class DoubleRowBuilder implements Iterable<Content> {
+class DoubleRowBuilder with IterableMixin<Content> {
 	
 	static final double LOWER_LIMIT = 3.0 / 4.0;
 	static final double UPPER_LIMIT = 4.0 / 3.0;
@@ -320,7 +320,7 @@ class DoubleRowBuilder implements Iterable<Content> {
 	Row _upper = new Row();
 	Row _lower = new Row();
 	
-	List<RowState> _states = new ArrayList<>();
+	List<RowState> _states = [];
 	
 	DoubleRowBuilder.empty() {
 		addState(null);
@@ -360,7 +360,7 @@ class DoubleRowBuilder implements Iterable<Content> {
 		for (int index = _states.length - 1; index > 0 ; index--) {
 			if (_states[index].isAcceptable()) {
 				DoubleRowBuilder prefix = new DoubleRowBuilder(_states.sublist(1, index + 1));
-				DoubleRowBuilder suffix = new DoubleRowBuilder(_states.sublist(index + 1, _states.size()));
+				DoubleRowBuilder suffix = new DoubleRowBuilder(_states.sublist(index + 1, _states.length));
 				resetTo(suffix);
 				return prefix;
 			}
@@ -381,7 +381,7 @@ class DoubleRowBuilder implements Iterable<Content> {
 	}
 
 	void addState(Content content) {
-		_states.add(new RowState(content));
+		_states.add(new RowState(this, content));
 	}
 
   @nonVirtual
@@ -445,7 +445,7 @@ class DoubleRowBuilder implements Iterable<Content> {
 	}
 
 	@override
-	Iterator<Content> iterator() {
+	Iterator<Content> get iterator {
 		Iterator<RowState> inner = _states.sublist(1, _states.length).iterator;
 		return new RowIterator(inner);
 	}
@@ -471,21 +471,22 @@ class RowIterator implements Iterator<Content> {
   }
 
   @override
-  get current => inner.current.getLastAdded()
+  get current => inner.current.getLastAdded();
 }
 
 class RowState {
+  final DoubleRowBuilder builder;
 	late final double _unitWidth;
   late final bool _acceptable;
   late final Content _lastAdded;
-	double _h1;
-	double _h2;
+	late double _h1;
+  late double _h2;
 
-	RowState(Content lastAdded) {
+	RowState(this.builder, Content lastAdded) {
 		_lastAdded = lastAdded;
 		
-		double w1 = upperWidth();
-		double w2 = lowerWidth();
+		double w1 = builder.upperWidth();
+		double w2 = builder.lowerWidth();
 		if (w1 == 0.0) {
 			_unitWidth = w2;
 			_acceptable = false;
@@ -504,7 +505,7 @@ class RowState {
 			
 			double hQuot = _h1 / _h2;
 			
-			_acceptable = LOWER_LIMIT <= hQuot && hQuot <= UPPER_LIMIT;
+			_acceptable = DoubleRowBuilder.LOWER_LIMIT <= hQuot && hQuot <= DoubleRowBuilder.UPPER_LIMIT;
 		}
 	}
 	
@@ -551,7 +552,7 @@ class RowState {
 /**
  * A vertical placements of two {@link Row}s scaled to the same width.
  */
-class DoubleRow implements Content {
+class DoubleRow extends Content {
 
 	final double _unitWidth;
 	
@@ -620,7 +621,7 @@ class DoubleRow implements Content {
 /**
  * An atomic image placed in a {@link Row}.
  */
-class Img implements Content {
+class Img extends Content {
 	
 	late final double _unitWidth;
 	AbstractImage _image;
@@ -632,12 +633,12 @@ class Img implements Content {
 		_image = image
   {
 		ImagePart representative = ToImage.toImage(image);
-		int width = representative.getWidth();
-		int height = representative.getHeight();
-		Orientation orientation = representative.getOrientation();
+		int width = representative.width;
+		int height = representative.height;
+		Orientation orientation = representative.orientation;
 		
-		int displayWidth = Orientations.width(orientation, width, height);
-		int displayHeight = Orientations.height(orientation, width, height);
+		int displayWidth = Orientations.widthInt(orientation, width, height);
+		int displayHeight = Orientations.heightInt(orientation, width, height);
 		
 		_unitWidth = (displayWidth as double) / displayHeight;
 	}
@@ -672,7 +673,7 @@ class Img implements Content {
 /**
  * Empty space inserted to a layout to make it's constraints acceptable. 
  */
-class Padding implements Content {
+class Padding extends Content {
 
 	double _unitWidth;
 
@@ -702,7 +703,7 @@ class Padding implements Content {
 /**
  * Buffer of {@link Row} used in a {@link RowComputation}.
  */
-interface RowBuffer {
+abstract class RowBuffer {
 
 	/** 
 	 * Adds the next completed row.
@@ -716,7 +717,7 @@ interface RowBuffer {
  * 
  * @see {@link RowBuffer}
  */
-interface RowComputation {
+abstract class RowComputation {
 
 	/**
 	 * Adds the given image.
@@ -736,11 +737,11 @@ interface RowComputation {
 /**
  * A horizontal layout of {@link Content}.
  */
-class Row implements Content, Iterable<Content> {
+class Row extends Content with IterableMixin<Content> {
 	
-	final List<Content> _contents = new ArrayList<>();
+	final List<Content> _contents = [];
 	
-	double _unitWidth;
+	double _unitWidth = 0;
 
 	int _height = 1;
 
@@ -748,7 +749,7 @@ class Row implements Content, Iterable<Content> {
 	void addContent(Content content) {
 		_contents.add(content);
 		_unitWidth += content.getUnitWidth();
-		_height = Math.max(_height, content.getUnitHeight());
+		_height = max(_height, content.getUnitHeight());
 	}
 	
 	@override
@@ -764,14 +765,14 @@ class Row implements Content, Iterable<Content> {
 	/**
 	 * Whether this {@link Row} has no contents.
 	 */
-  @nonVirtual
-  bool isEmpty() {
-		return _contents.isEmpty();
+  @override
+  bool get isEmpty {
+		return _contents.isEmpty;
 	}
 
 	@override
-	Iterator<Content> iterator() {
-		return _contents.iterator();
+	Iterator<Content> get iterator {
+		return _contents.iterator;
 	}
 	
 	@override
@@ -783,7 +784,7 @@ class Row implements Content, Iterable<Content> {
 	 * The number of {@link Content}s in this {@link Row}.
 	 */
 	int size() {
-		return _contents.size();
+		return _contents.length;
 	}
 
 	void end(double minWidth) {
@@ -792,4 +793,118 @@ class Row implements Content, Iterable<Content> {
 			addContent(new Padding(minWidth - unitWidth));
 		}
 	}
+}
+
+class ToImage implements AbstractImageVisitor<ImagePart, void> {
+
+  /**
+   * Singleton {@link ToImage} instance.
+   */
+  static final ToImage INSTANCE = new ToImage();
+
+  ToImage() {
+    // Singleton constructor.
+  }
+
+  @override
+  ImagePart visitImageGroup(ImageGroup self, void arg) {
+    return self.images[self.representative];
+  }
+
+  @override
+  ImagePart visitImagePart(ImagePart self, void arg) {
+    return self;
+  }
+
+  /**
+   * Invokes {@link ToImage} on the given {@link AbstractImage}.
+   */
+  static ImagePart toImage(AbstractImage image) {
+    return image.visitAbstractImage(INSTANCE, null);
+  }
+
+}
+
+class Orientations {
+
+  /**
+   * Parses the given JPEG orientation code.
+   */
+  static Orientation fromCode(int code) {
+    if (code == 0) {
+      // For safety reasons "unassigned".
+      return Orientation.identity;
+    }
+    if (code < 1 || code > 8) {
+      throw "Invalid JPEG orientation code: " + code.toString();
+    }
+    return Orientation.values[code - 1];
+  }
+
+  /**
+   * The JPEG orientation code.
+   */
+  static int toCode(Orientation self) {
+    return self.index + 1;
+  }
+
+  /**
+   * The display width of an image with the given {@link Orientation} and raw pixel width and height.
+   */
+  static int widthInt(Orientation self, int rawWidth, int rawHeight) {
+    if (toCode(self) >= 5) {
+      return rawHeight;
+    } else {
+      return rawWidth;
+    }
+  }
+
+  /**
+   * The display width of an image with the given {@link Orientation} and raw pixel width and height.
+   */
+  static double width(Orientation self, double rawWidth, double rawHeight) {
+    if (toCode(self) >= 5) {
+      return rawHeight;
+    } else {
+      return rawWidth;
+    }
+  }
+
+  /**
+   * The display height of an image with the given {@link Orientation} and raw pixel width and height.
+   */
+  static int heightInt(Orientation self, int rawWidth, int rawHeight) {
+    if (toCode(self) >= 5) {
+      return rawWidth;
+    } else {
+      return rawHeight;
+    }
+  }
+
+  /**
+   * The display height of an image with the given {@link Orientation} and raw pixel width and height.
+   */
+  static double height(Orientation self, double rawWidth, double rawHeight) {
+    if (toCode(self) >= 5) {
+      return rawWidth;
+    } else {
+      return rawHeight;
+    }
+  }
+
+  /**
+   * Rotates this orientation to the left.
+   */
+  static Orientation rotL(Orientation self) {
+    switch (self) {
+      case Orientation.identity:		return Orientation.rotL;
+      case Orientation.flipH:		return Orientation.rotLFlipV;
+      case Orientation.rot180:		return Orientation.rotR;
+      case Orientation.flipV:		return Orientation.rotLFlipH;
+      case Orientation.rotLFlipV:	return Orientation.flipV;
+      case Orientation.rotL: 		return Orientation.rot180;
+      case Orientation.rotLFlipH:	return Orientation.flipH;
+      case Orientation.rotR: 		return Orientation.identity;
+    }
+  }
 }
