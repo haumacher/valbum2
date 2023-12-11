@@ -113,7 +113,7 @@ class SimpleRowComputation implements RowComputation {
 		}
 	}
 
-	boolean isAcceptableWidth(double currentWidth) {
+	bool isAcceptableWidth(double currentWidth) {
 		return  currentWidth >= _minWidth;
 	}
 }
@@ -191,7 +191,7 @@ class DoubleRowComputation implements RowComputation {
 		_out.addRow(currentRow);
 	}
 	
-	final boolean isAcceptableWidth(double currentWidth) {
+	final bool isAcceptableWidth(double currentWidth) {
 		return  currentWidth >= _halfMinWidth;
 	}
 
@@ -260,7 +260,7 @@ interface Content {
 	/**
 	 * Whether this is a portrait image, with a height considerably larger than its width.
 	 */
-	default boolean isPortrait() {
+	default bool isPortrait() {
 		return getUnitWidth() <= MAX_PORTRAIT_UNIT_WIDTH;
 	}
 	
@@ -374,7 +374,7 @@ class DoubleRowBuilder implements Iterable<Content> {
 		_states = other._states;
 	}
 
-	final boolean isEmpty() {
+	final bool isEmpty() {
 		return _states.size() == 1;
 	}
 
@@ -386,7 +386,7 @@ class DoubleRowBuilder implements Iterable<Content> {
 		return top().getUnitWidth();
 	}
 	
-	final boolean acceptable() {
+	final bool acceptable() {
 		return top().isAcceptable();
 	}
 	
@@ -442,7 +442,7 @@ class DoubleRowBuilder implements Iterable<Content> {
 		
 		return new Iterator<Content>() {
 			@override
-			boolean hasNext() {
+			bool hasNext() {
 				return inner.hasNext();
 			}
 
@@ -465,7 +465,7 @@ class DoubleRowBuilder implements Iterable<Content> {
 
 class RowState {
 	final double _unitWidth;
-	final boolean _acceptable;
+	final bool _acceptable;
 	final Content _lastAdded;
 	double _h1;
 	double _h2;
@@ -531,7 +531,7 @@ class RowState {
 	/**
 	 * The computed acceptable state just after {@link #getLastAdded()} was added.
 	 */
-	boolean isAcceptable() {
+	bool isAcceptable() {
 		return _acceptable;
 	}
 }
@@ -753,7 +753,7 @@ class Row implements Content, Iterable<Content> {
 	/**
 	 * Whether this {@link Row} has no contents.
 	 */
-	final boolean isEmpty() {
+	final bool isEmpty() {
 		return _contents.isEmpty();
 	}
 
