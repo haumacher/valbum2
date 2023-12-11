@@ -286,6 +286,7 @@ class DoubleRowBuilder with IterableMixin<Content> {
 
 	/// Creates a [DoubleRowBuilder].
 	DoubleRowBuilder(List<RowState> states) {
+		addState(null);
 		for (RowState state in states) {
 			addContent(state.getLastAdded()!);
 		}
