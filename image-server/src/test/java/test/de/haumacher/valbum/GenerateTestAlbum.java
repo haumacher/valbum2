@@ -22,7 +22,7 @@ import junit.framework.TestCase;
  */
 public class GenerateTestAlbum extends TestCase {
 	public void testGenerate() throws IOException {
-		File dir = new File("./src/test/fixtures/test-album/generated");
+		File dir = new File("./target/test-album");
 		dir.mkdirs();
 		
 		Random rnd = new Random();
