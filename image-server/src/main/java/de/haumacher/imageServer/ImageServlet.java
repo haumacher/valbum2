@@ -65,6 +65,7 @@ public class ImageServlet extends HttpServlet {
 		String type = context.getParameter("type");
 		if (type == null) {
 			if (pathInfo == null || pathInfo.equals("/")) {
+				LOG.log(Level.FINE, "Delivering main page.");
 				serveIndex(context);
 				return;
 			}
@@ -96,13 +97,13 @@ public class ImageServlet extends HttpServlet {
 
 		if (file.isDirectory()) {
 			if (pathInfo == null) {
-				response.setHeader("Access-Control-Allow-Origin", "*");
-				response.sendRedirect(request.getContextPath() + request.getServletPath() + "/?type=" + type);
+				String location = request.getContextPath() + request.getServletPath() + "/?type=" + type;
+				sendRedirect(response, location);
 				return;
 			}
 			if (!pathInfo.endsWith("/")) {
-				response.setHeader("Access-Control-Allow-Origin", "*");
-				response.sendRedirect(request.getContextPath() + request.getServletPath() + pathInfo + "/?type=" + type);
+				String location = request.getContextPath() + request.getServletPath() + pathInfo + "/?type=" + type;
+				sendRedirect(response, location);
 				return;
 			}
 			
@@ -112,6 +113,13 @@ public class ImageServlet extends HttpServlet {
 		} else {
 			error404(context);
 		}
+	}
+
+	private void sendRedirect(HttpServletResponse response, String location) throws IOException {
+		LOG.log(Level.INFO, "Redirecting to: " + location);
+		
+		response.setHeader("Access-Control-Allow-Origin", "*");
+		response.sendRedirect(location);
 	}
 	
 	@Override
@@ -310,6 +318,8 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	private void serveJson(HttpServletResponse response, Resource album) throws IOException {
+		LOG.log(Level.FINE, "Delivering JSON.");
+		
 		response.setContentType("application/json");
 		response.setCharacterEncoding("utf-8");
 		
@@ -321,6 +331,7 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	private void serveData(Context context, File file, String mimeType) throws IOException {
+		LOG.log(Level.FINE, "Delivering image data: " + mimeType);
 		HttpServletResponse response = context.response();
 
 		response.setContentType(mimeType);
