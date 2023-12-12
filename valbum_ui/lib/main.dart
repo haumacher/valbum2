@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:jsontool/jsontool.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 import 'resource.dart';
@@ -222,14 +223,24 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         );
       }),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+        onPressed: () async {
+          ImagePicker picker = ImagePicker();
+          List<XFile> files = await picker.pickMultiImage();
+          if (kDebugMode) {
+            print("Files picked: ${files}");
+          }
+        },
         tooltip: 'Add',
         child: const Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 
-  Future<dynamic> pushPart(AbstractImage image, String name) =>  Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: path, image: image)));
+  Future<dynamic> pushPart(AbstractImage image, String name) =>
+    Navigator.push(context, MaterialPageRoute(
+      builder: (context) => VAlbumView(path: path, image: image)
+    )
+  );
 
   @override
   Widget visitImagePart(ImagePart self, BuildContext arg) {
