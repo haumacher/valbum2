@@ -3,7 +3,7 @@
    <application
         android:label="valbum_ui"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/va_logo">
         <activity
             android:name=".MainActivity"
             android:exported="true"

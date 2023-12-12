@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="512"
+   height="512"
+   viewBox="0 0 135.46666 135.46667"
+   version="1.1"
+   id="svg827"
+   inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
+   sodipodi:docname="va-logo.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview829"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:document-units="mm"
+     showgrid="false"
+     units="px"
+     inkscape:zoom="1.2810466"
+     inkscape:cx="297.02277"
+     inkscape:cy="299.3646"
+     inkscape:window-width="2560"
+     inkscape:window-height="1372"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs824" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <text
+       xml:space="preserve"
+       style="font-weight:bold;font-size:159.785px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif Bold';letter-spacing:0px;word-spacing:0px;fill:#6546ef;fill-opacity:1;stroke-width:0.264583"
+       x="5.9024663"
+       y="125.97528"
+       id="text2650"><tspan
+         id="tspan2648"
+         style="font-size:159.785px;fill:#6546ef;fill-opacity:1;stroke-width:0.264583"
+         x="5.9024663"
+         y="125.97528"
+         sodipodi:role="line">V</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-weight:bold;font-size:37.5632px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif Bold';letter-spacing:0px;word-spacing:0px;fill:#ec3b24;fill-opacity:1;stroke:none;stroke-width:0.264583;stroke-opacity:1"
+       x="1.7684628"
+       y="114.48019"
+       id="text10999"><tspan
+         sodipodi:role="line"
+         id="tspan10997"
+         style="fill:#ec3b24;fill-opacity:1;stroke:none;stroke-width:0.264583;stroke-opacity:1"
+         x="1.7684628"
+         y="114.48019">Album</tspan></text>
+  </g>
+</svg>

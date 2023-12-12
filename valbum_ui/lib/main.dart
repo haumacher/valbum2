@@ -1,4 +1,3 @@
-import 'dart:js_util';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:jsontool/jsontool.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 import 'resource.dart';
+
+const String host = "http://localhost:9090/valbum/data";
 
 void main() {
   runApp(const VAlbumApp());
@@ -53,14 +54,14 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   }
 
   List<String> get path => widget.path;
-  String get baseUrl => "http://localhost:9090/valbum/data${path.isEmpty ? "" : "/${path.join("/")}"}";
+  String get baseUrl => "$host${path.isEmpty ? "" : "/${path.join("/")}"}";
 
   static Future<Resource?> load(List<String> path) async {
     var pathString = path.join("/");
     if (kDebugMode) {
       print("Fetching data: '$pathString'");
     }
-    var response = await http.get(Uri.parse("http://localhost:9090/valbum/data/$pathString?type=json"));
+    var response = await http.get(Uri.parse("$host$pathString?type=json"));
     var reader = JsonReader.fromString(response.body);
     var resource = Resource.read(reader);
     if (resource is AlbumInfo) {
