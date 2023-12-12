@@ -343,6 +343,8 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	private void error(Context context, int errorCode) {
+		LOG.log(Level.WARNING, "Faild to access '" + context.request().getPathInfo() + "': " + errorCode);
+
 		HttpServletResponse response = context.response();
 		response.setHeader("Access-Control-Allow-Origin", "*");
 		response.setStatus(errorCode);
