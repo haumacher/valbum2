@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="512"
+   height="512"
+   viewBox="0 0 135.46666 135.46667"
+   version="1.1"
+   id="svg827"
+   inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
+   sodipodi:docname="va-logo-2.svg"
+   inkscape:export-filename="/home/bhu/git/valbum2/valbum_ui/android/app/src/main/res/mipmap-hdpi/va-logo.png"
+   inkscape:export-xdpi="13.5"
+   inkscape:export-ydpi="13.5"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview829"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:document-units="mm"
+     showgrid="false"
+     units="px"
+     inkscape:zoom="0.90583672"
+     inkscape:cx="28.150769"
+     inkscape:cy="171.66449"
+     inkscape:window-width="1920"
+     inkscape:window-height="1012"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs824" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       style="fill:none;fill-opacity:1;stroke:#301eff;stroke-width:1;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers fill stroke"
+       d="M 29.024065,28.518223 82.266534,3.986543 82.54354,20.757125"
+       id="path15295" />
+    <path
+       style="fill:#e4e4e4;fill-opacity:1;stroke:#301eff;stroke-width:0.3;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers fill stroke"
+       d="M 35.667725,28.240879 81.340043,7.3024614 C 93.624228,8.9574169 98.684796,12.833733 102.36152,17.135602 L 58.845065,30.255869 c -8.011628,-0.534487 -17.242313,-0.483958 -23.17734,-2.01499 z"
+       id="path15297"
+       sodipodi:nodetypes="ccccc" />
+    <path
+       id="path14168"
+       style="fill:#eeeafe;fill-opacity:1;stroke:#301eff;stroke-width:1;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers fill stroke"
+       d="M 56.674209,28.20079 C 94.464354,16.182843 105.8452,14.457765 105.8452,14.457765 l -0.40278,97.755515 c 0,0 -38.115428,10.85552 -49.065623,18.43117 M 29.024065,28.518224 28.173339,130.56597 c 9.239752,2.70651 18.649171,2.5954 28.203458,0.0785 l 0.297412,-102.4437 c -8.955854,2.005028 -18.147147,2.295922 -27.650144,0.317434 z"
+       sodipodi:nodetypes="ccccccccc" />
+    <text
+       xml:space="preserve"
+       style="font-weight:bold;font-size:20.2474px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif Bold';letter-spacing:0px;word-spacing:0px;stroke-width:0.264583"
+       x="-127.83947"
+       y="49.455055"
+       id="text18742"
+       transform="rotate(-90)"><tspan
+         sodipodi:role="line"
+         id="tspan18740"
+         style="stroke-width:0.264583"
+         x="-127.83947"
+         y="49.455055">PHOTOS</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-weight:bold;font-size:16.2185px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif Bold';letter-spacing:0px;word-spacing:0px;stroke-width:0.264583"
+       x="19.341652"
+       y="127.43041"
+       id="text21912"
+       transform="rotate(-20.197134)"><tspan
+         sodipodi:role="line"
+         style="stroke-width:0.264583"
+         x="19.341652"
+         y="127.43041"
+         id="tspan21916">2023</tspan></text>
+    <path
+       style="fill:#8e73f8;fill-opacity:1;stroke:#301eff;stroke-width:0.3;stroke-linecap:square;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers fill stroke"
+       d="M 61.394027,43.202309 61.148846,76.63503 C 73.914117,72.443519 82.012335,67.543068 99.451492,64.061535 L 100.12147,30.905062 C 85.120872,33.666731 73.685673,38.915666 61.394027,43.202309 Z"
+       id="path26971"
+       sodipodi:nodetypes="ccccc" />
+  </g>
+</svg>
