@@ -15,18 +15,27 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import org.apache.commons.fileupload2.jakarta.JakartaServletFileUpload;
 
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.upload.UploadFactory;
+import de.haumacher.imageServer.upload.UploadItem;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.WriterAdapter;
 import de.haumacher.util.servlet.Util;
 import de.haumacher.util.xml.XmlWriter;
+import jakarta.activation.MimeType;
+import jakarta.activation.MimeTypeParseException;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -36,6 +45,7 @@ import jakarta.servlet.http.HttpServletResponse;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
+@MultipartConfig
 public class ImageServlet extends HttpServlet { 
 
 	private static final Logger LOG = Logger.getLogger(ImageServlet.class.getName());
@@ -46,6 +56,8 @@ public class ImageServlet extends HttpServlet {
 
 	private Path _basePath;
 	private ResourceCache _cache;
+	
+	private JakartaServletFileUpload<UploadItem, UploadFactory> _fileUpload;
 
 	/** 
 	 * Creates a {@link ImageServlet}.
@@ -55,6 +67,16 @@ public class ImageServlet extends HttpServlet {
 	public ImageServlet(File basePath) throws IOException {
 		_basePath = basePath.toPath();
 		_cache = new ResourceCache();
+	}
+	
+	@Override
+	public void init() throws ServletException {
+		super.init();
+		
+		File repository = new File(_basePath.toFile(), ".upload");
+		repository.mkdirs();
+		
+		_fileUpload = new JakartaServletFileUpload<UploadItem, UploadFactory>(new UploadFactory(repository));
 	}
 
 	@Override
@@ -151,6 +173,27 @@ public class ImageServlet extends HttpServlet {
 		
 		File file = resourcePath.toFile();
 		if (!file.exists()) {
+			File parent = file.getParentFile();
+			if (parent.exists() && parent.isDirectory()) {
+				if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(file.getName()))) {
+					LOG.warning("Unsupported upload extension: " + file.getName());
+					error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+					return;
+				}
+				
+				// Process upload.
+				List<UploadItem> uploads = _fileUpload.parseRequest(request);
+				
+				if (uploads.size() != 1) {
+					LOG.warning("Tried to upload multiple files to a single image location " + file.getName() + ": " + uploads.stream().map(u -> u.getName()).collect(Collectors.joining(", ")));
+					error(context, HttpServletResponse.SC_BAD_REQUEST);
+					return;
+				}
+				
+				uploads.get(0).getUpload().renameTo(file);
+				return;
+			}
+			
 			error404(context);
 			return;
 		}
@@ -160,12 +203,54 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		
-		if (!context.request().getContentType().equals("application/json")) {
+		String contentType = context.request().getContentType();
+		MimeType mimeType;
+		try {
+			mimeType = new MimeType(contentType);
+		} catch (MimeTypeParseException ex) {
+			LOG.warning("Invalid content type: " + contentType);
+			error(context, HttpServletResponse.SC_BAD_REQUEST);
+			return;
+		}
+		String baseType = mimeType.getBaseType();
+		if (baseType.equals("multipart/form-data")) {
+			List<UploadItem> uploads = _fileUpload.parseRequest(request);
+			for (UploadItem upload : uploads) {
+				String name = upload.getName();
+				if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(name))) {
+					LOG.warning("Unsupported upload extension: " + name);
+					error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+					return;
+				}
+				
+				upload.getUpload().renameTo(new File(file, baseName(name)));
+			}
+			return;
+		}
+		
+		if (!baseType.equals("application/json")) {
+			LOG.warning("Unsupported content type: " + contentType);
 			error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
 			return;
 		}
 		
 		storeFolder(context, resourcePath);
+	}
+
+	private static String baseName(String name) {
+		int index = name.lastIndexOf('/');
+		if (index < 0) {
+			return name;
+		}
+		return name.substring(index + 1);
+	}
+
+	private static String extension(String name) {
+		int index = name.lastIndexOf('.');
+		if (index < 0) {
+			return "";
+		}
+		return name.substring(index + 1).toLowerCase();
 	}
 
 	private void storeFolder(Context context, PathInfo resourcePath) throws IOException {

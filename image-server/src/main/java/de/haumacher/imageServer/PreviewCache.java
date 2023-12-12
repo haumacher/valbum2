@@ -10,6 +10,10 @@ import java.io.File;
 import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -40,6 +44,16 @@ import de.haumacher.util.servlet.Util;
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class PreviewCache {
+
+	private static final String MP4 = "mp4";
+
+	private static final String PNG = "png";
+
+	private static final String JPEG = "jpeg";
+
+	private static final String JPG = "jpg";
+	
+	public static final Set<String> SUPPORTED_EXTENSIONS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, MP4)));
 
 	private static final int PREVIEW_HEIGHT = 600;
 	
@@ -74,16 +88,16 @@ public class PreviewCache {
 				cacheDir.mkdir();
 			}
 			switch (suffix) {
-				case "jpg":
-				case "jpeg":
-				case "png":
+				case JPG:
+				case JPEG:
+				case PNG:
 					try {
 						createImagePreview(file, previewCache, imageType);
 					} catch (ImageProcessingException | MetadataException | IOException ex) {
 						throw new PreviewException("Cannot create image preview for '" + fileName  + "'.", ex);
 					}
 					break;
-				case "mp4":
+				case MP4:
 					try {
 						createVideoPreview(file, previewCache);
 					} catch (ImageProcessingException | MetadataException | IOException ex) {
@@ -99,9 +113,9 @@ public class PreviewCache {
 
 	private static String imageType(String suffix) {
 		switch (suffix) {
-		case "png": return "png";
+		case PNG: return PNG;
 		}
-		return "jpg";
+		return JPG;
 	}
 
 	private static void createImagePreview(File file, File previewCache, String imgType)
@@ -255,7 +269,7 @@ public class PreviewCache {
 		        image = copy;
 			}
 		}
-		ImageIO.write(image, "jpg", previewCache);
+		ImageIO.write(image, JPG, previewCache);
 	}
 
 	private static BufferedImage getPreviewFrame(File file) throws Exception {

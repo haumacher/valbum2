@@ -55,14 +55,14 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   }
 
   List<String> get path => widget.path;
-  String get baseUrl => "$host/${path.isEmpty ? "" : "${path.join("/")}"}";
+  String get baseUrl => "$host${path.isEmpty ? "" : "/${path.join("/")}"}";
 
   static Future<Resource?> load(List<String> path) async {
     var pathString = path.join("/");
     if (kDebugMode) {
       print("Fetching data: '$pathString'");
     }
-    var response = await http.get(Uri.parse("$host/$pathString?type=json"));
+    var response = await http.get(Uri.parse("$host/$pathString/?type=json"));
     var reader = JsonReader.fromString(response.body);
     var resource = Resource.read(reader);
     if (resource is AlbumInfo) {
@@ -193,7 +193,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       );
     }
 
-    return Image.network("$baseUrl/${folder.name}/${indexPicture!.image}?type=tn",
+    return Image.network("$baseUrl/${folder.name}/${indexPicture.image}?type=tn",
       width: width,
       height: width,
       fit: BoxFit.cover,
@@ -229,9 +229,21 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
           if (kDebugMode) {
             print("Files picked: ${files}");
           }
+
+          var request = http.MultipartRequest("PUT", Uri.parse(baseUrl));
+          for (var file in files) {
+            request.files.add(await http.MultipartFile.fromPath(file.name, file.path, filename: file.path));
+          }
+          request.send().then((response) {
+            if (response.statusCode == 200) {
+              if (kDebugMode) {
+                print("Upload complete.");
+              }
+            }
+          });
         },
-        tooltip: 'Add',
-        child: const Icon(Icons.add),
+        tooltip: 'Upload',
+        child: const Icon(Icons.cloud_upload),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }

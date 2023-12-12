@@ -13,6 +13,7 @@
 	<artifactId>image-server</artifactId>
 
 	<properties>
+		<jetty.version>11.0.18</jetty.version>
 	</properties>
 
 	<dependencies>
@@ -67,15 +68,27 @@
 		</dependency>
 
 		<dependency>
+		    <groupId>org.apache.commons</groupId>
+		    <artifactId>commons-fileupload2-jakarta</artifactId>
+		    <version>2.0.0-M1</version>
+		</dependency>
+
+		<dependency>
+		    <groupId>jakarta.activation</groupId>
+		    <artifactId>jakarta.activation-api</artifactId>
+		    <version>2.1.2</version>
+		</dependency>
+
+		<dependency>
 			<groupId>org.eclipse.jetty</groupId>
 			<artifactId>jetty-servlet</artifactId>
-			<version>11.0.14</version>
+			<version>${jetty.version}</version>
 		</dependency>
 
 		<dependency>
 			<groupId>org.eclipse.jetty</groupId>
 			<artifactId>jetty-webapp</artifactId>
-			<version>11.0.14</version>
+			<version>${jetty.version}</version>
 		</dependency>
 
 		<dependency>
