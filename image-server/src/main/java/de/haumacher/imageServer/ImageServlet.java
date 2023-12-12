@@ -311,6 +311,7 @@ public class ImageServlet extends HttpServlet {
 
 	private void serveJson(HttpServletResponse response, Resource album) throws IOException {
 		response.setContentType("application/json");
+		response.setCharacterEncoding("utf-8");
 		
 		// Allow access from mobile app.
 		response.setHeader("Access-Control-Allow-Origin", "*");
