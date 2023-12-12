@@ -116,6 +116,7 @@
 							<descriptorRefs>
 								<descriptorRef>jar-with-dependencies</descriptorRef>
 							</descriptorRefs>
+							<finalName>${project.artifactId}-${javacpp.platform}</finalName>
 						</configuration>
 					</execution>
 				</executions>
