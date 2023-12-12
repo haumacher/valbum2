@@ -54,14 +54,14 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   }
 
   List<String> get path => widget.path;
-  String get baseUrl => "$host${path.isEmpty ? "" : "/${path.join("/")}"}";
+  String get baseUrl => "$host/${path.isEmpty ? "" : "${path.join("/")}"}";
 
   static Future<Resource?> load(List<String> path) async {
     var pathString = path.join("/");
     if (kDebugMode) {
       print("Fetching data: '$pathString'");
     }
-    var response = await http.get(Uri.parse("$host$pathString?type=json"));
+    var response = await http.get(Uri.parse("$host/$pathString?type=json"));
     var reader = JsonReader.fromString(response.body);
     var resource = Resource.read(reader);
     if (resource is AlbumInfo) {
@@ -76,11 +76,11 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       future: _resourceFuture,
       builder: (BuildContext context, AsyncSnapshot<Resource?> snapshot) {
         if (snapshot.hasError) {
-          return buildError();
+          return buildError(snapshot.error);
         } else if (snapshot.hasData) {
           var resource = snapshot.data;
           if (resource == null) {
-            return buildError();
+            return buildError("No data loaded");
           }
           return resource.visitResource(this, context);
         } else {
@@ -103,14 +103,14 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     );
   }
 
-  Widget buildError() {
+  Widget buildError(Object? error) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Virtual photo album"),
       ),
       body: Center(
         child: Text(
-          'Loading failed.',
+          'Loading failed: ${error?.toString()}',
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -163,11 +163,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
-                    child: Image.network("$baseUrl/${folder.name}/${folder.indexPicture!.image}",
-                      width: imageWidth,
-                      height: imageWidth,
-                      fit: BoxFit.cover,
-                    ),
+                    child: buildFolderWidget(folder, imageWidth),
                   ),
                   Text(folder.title, style: const TextStyle(fontWeight: FontWeight.bold),),
                   Text(folder.subTitle)
@@ -176,6 +172,22 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget buildFolderWidget(FolderInfo folder, double width) {
+    var indexPicture = folder.indexPicture;
+    if (indexPicture == null) {
+      return Container(width: width, height: width,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(5), border: Border.all(color: Colors.blue, width: 3)),
+        child: Center(child: Icon(Icons.folder, size: width / 2, color: Colors.blue,)),
+      );
+    }
+
+    return Image.network("$baseUrl/${folder.name}/${indexPicture!.image}",
+      width: width,
+      height: width,
+      fit: BoxFit.cover,
     );
   }
 
