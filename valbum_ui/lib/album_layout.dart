@@ -563,7 +563,7 @@ class Img extends Content {
 		int displayWidth = Orientations.widthInt(orientation, width, height);
 		int displayHeight = Orientations.heightInt(orientation, width, height);
 		
-		return Img._init(image, (displayWidth as double) / displayHeight);
+		return Img._init(image, displayWidth.toDouble() / displayHeight);
 	}
 	
 	/// The [AbstractImage] represented by this [Content].

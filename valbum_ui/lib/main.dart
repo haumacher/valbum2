@@ -184,7 +184,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       );
     }
 
-    return Image.network("$baseUrl/${folder.name}/${indexPicture!.image}",
+    return Image.network("$baseUrl/${folder.name}/${indexPicture!.image}?type=tn",
       width: width,
       height: width,
       fit: BoxFit.cover,
@@ -209,7 +209,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         return SingleChildScrollView(
             scrollDirection: Axis.vertical,
             child: Column(
-                children: layout.map((row) => row.visit(builder, 0)).toList(),
+                children: layout.map((row) => row.visit(builder, 0.0)).toList(),
             ),
         );
       }),
@@ -399,7 +399,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
     var partName = image.name;
     return GestureDetector(
         onTap: () => pushPart(image, partName),
-        child: Image.network(albumUrl + partName,
+        child: Image.network("$albumUrl$partName?type=tn",
           width: width,
           height: height,
           fit: BoxFit.contain,
@@ -411,7 +411,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   Widget visitImagePart(ImagePart self, void arg) {
     return GestureDetector(
         onTap: () => pushPart(self, self.name),
-        child: Image.network(albumUrl + self.name,
+        child: Image.network("$albumUrl${self.name}?type=tn",
           width: width,
           height: height,
           fit: BoxFit.contain,
