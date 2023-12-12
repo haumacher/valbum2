@@ -132,7 +132,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       ),
       body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
         double imageBorder = 8;
-        var preferredImageWidth = 300;
+        var preferredImageWidth = 200;
         var maxWidth = constraints.maxWidth;
         double preferredImageSpace = preferredImageWidth + 2 * imageBorder;
         double imagesPerRowFrag = maxWidth / preferredImageSpace;
@@ -159,16 +159,24 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         return Padding(padding: EdgeInsets.all(imageBorder),
           child: GestureDetector(
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, folder.name]))),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: buildFolderWidget(folder, imageWidth),
-                  ),
-                  Text(folder.title, style: const TextStyle(fontWeight: FontWeight.bold),),
-                  Text(folder.subTitle)
-                ],
+              child: SizedBox(width: imageWidth,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: buildFolderWidget(folder, imageWidth),
+                    ),
+                    Text(folder.title,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    Text(folder.subTitle,
+                      textAlign: TextAlign.center,
+                    )
+                  ],
+                ),
               )
+
           ),
         );
       }).toList(),
@@ -274,7 +282,9 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
           }
         }
       },
-      child: Image.network("$baseUrl/${self.name}",
+
+      // TODO: Support video playback
+      child: Image.network("$baseUrl/${self.name}${self.kind == ImageKind.video ? "?type=tn" : ""}",
         width: constraints.maxWidth,
         height: constraints.maxHeight,
         fit: BoxFit.contain,
