@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:date_field/date_field.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:jsontool/jsontool.dart';
 import 'package:sn_progress_dialog/options/cancel.dart';
 import 'package:sn_progress_dialog/progress_dialog.dart';
@@ -142,14 +146,11 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       appBar: AppBar(
         title: Text(self.title),
         actions: <Widget>[
-          PopupMenuButton<Action>(
-            itemBuilder: (context) => [
-              PopupMenuItem<Action>(value: createAlbum, child: menuEntry(Icons.create_new_folder, 'Create album')),
-              PopupMenuItem<Action>(value: createFolder, child: menuEntry(Icons.create_new_folder_outlined, 'Create folder')),
-              PopupMenuItem<Action>(value: (_) => setState(doLoad), child: menuEntry(Icons.update, "Reload")),
-            ],
-            onSelected: (action) => action(context),
-          ),
+          menu(context, [
+            menuItem(Icons.create_new_folder, 'Create album', createAlbum),
+            menuItem(Icons.create_new_folder_outlined, 'Create folder', createFolder),
+            menuItem(Icons.update, "Reload", (_) => reload()),
+          ]),
         ],
       ),
       body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
@@ -169,15 +170,6 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       }),
     );
   }
-
-  Row menuEntry(IconData icon, String text) => Row(
-    children: [
-      Padding(
-        padding: const EdgeInsets.only(right: 16),
-        child: Icon(icon, color: Colors.blueAccent)),
-      Text(text)
-    ]
-  );
 
   Wrap buildFolderList(ListingInfo self, double imageWidth, double imageBorder) {
     return Wrap(
@@ -225,55 +217,46 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     );
   }
 
-  void createFolder(BuildContext context) {
-    showGeneralDialog(context: context, pageBuilder: (context, _, __) {
-      return Dialog(
-        child: Form(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DefaultTextStyle(
-                  style: DialogTheme.of(context).titleTextStyle ?? Theme.of(context).textTheme.titleLarge!,
-                  child: Semantics(
-                    // For iOS platform, the focus always lands on the title.
-                    // Set nameRoute to false to avoid title being announce twice.
-                    namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
-                    container: true,
-                    child: Text("Ordner anlegen"),
-                  ),
-                ),
-                TextFormField(
-                  decoration: InputDecoration(label: Text("Folder name")),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.check),
-                        label: Text("Anlegen"),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                    ],
-                  )
-                )
-              ],
-            ),
-          ),
-        ),
-      );
-    });
+  void createFolder(BuildContext context) async {
+    ListingInfo? folder = await showGeneralDialog(
+        context: context,
+        pageBuilder: (context, _, __) => const CreateFolderDialog()
+    );
+
+    if (folder == null) {
+      return;
+    }
+
+    await http.put(Uri.parse("$baseUrl/${folder.path}"),
+        encoding: Encoding.getByName("utf-8"),
+        body: folder.toString(),
+        headers: {
+          "Content-Type": "application/json",
+        }
+    );
+
+    reload();
   }
 
-  void createAlbum(BuildContext context) {
+  void createAlbum(BuildContext context) async {
+    AlbumInfo? album = await showGeneralDialog(
+      context: context,
+      pageBuilder: (context, _, __) => const CreateAlbumDialog()
+    );
 
+    if (album == null) {
+      return;
+    }
+
+    await http.put(Uri.parse("$baseUrl/${album.path}"),
+        encoding: Encoding.getByName("utf-8"),
+        body: album.toString(),
+        headers: {
+          "Content-Type": "application/json",
+        }
+    );
+
+    reload();
   }
 
   @override
@@ -384,6 +367,10 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       }
     }
 
+    reload();
+  }
+
+  void reload() {
     setState(doLoad);
   }
 
@@ -498,6 +485,195 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   @override
   Widget visitHeading(Heading self, BuildContext arg) {
     throw UnimplementedError();
+  }
+}
+
+class CreateAlbumDialog extends StatefulWidget {
+  const CreateAlbumDialog({super.key});
+
+  @override
+  State<StatefulWidget> createState() => CreateAlbumDialogState();
+}
+
+class CreateAlbumDialogState extends State<CreateAlbumDialog> {
+  var formKey = GlobalKey<FormState>();
+  String? albumTitle;
+  String? albumSubTitle;
+  DateTime? albumDate;
+
+  @override
+  Widget build(BuildContext context) {
+    var now = DateTime.now();
+
+    return Dialog(
+      child: Form(
+        key: formKey,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DefaultTextStyle(
+                style: DialogTheme.of(context).titleTextStyle ?? Theme.of(context).textTheme.titleLarge!,
+                child: Semantics(
+                  // For iOS platform, the focus always lands on the title.
+                  // Set nameRoute to false to avoid title being announced twice.
+                  namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
+                  container: true,
+                  child: Text("Neues Album"),
+                ),
+              ),
+              DateTimeFormField(
+                mode: DateTimeFieldPickerMode.date,
+                firstDate: DateTime(1900),
+                lastDate: now,
+                initialDate: now,
+                onSaved: (value) => albumDate = value,
+                dateFormat: DateFormat("yyyy-MM-dd"),
+                validator: (value) {
+                  return value == null ? "Muss angegeben werden." : null;
+                },
+                decoration: InputDecoration(
+                    label: Text("Datum"),
+                    suffixIcon: Icon(Icons.date_range)
+                ),
+              ),
+              TextFormField(
+                decoration: InputDecoration(
+                  label: Text("Titel"),
+                ),
+                onSaved: (value) => albumTitle = value,
+                validator: (String? value) {
+                  return value == null || value.isEmpty ? "Darf nicht leer sein" : null;
+                },
+              ),
+              TextFormField(
+                decoration: InputDecoration(label: Text("Untertitel")),
+                onSaved: (value) => albumSubTitle = value,
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.check),
+                      label: Text("Anlegen"),
+                      onPressed: createPressed,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void createPressed() {
+    var formState = formKey.currentState;
+    if (!formState!.validate()) {
+      return;
+    }
+
+    formState.save();
+
+    var title = albumTitle!;
+    var date = albumDate;
+
+    var info = AlbumInfo(
+      title: title,
+      subTitle: albumSubTitle ?? "",
+      path: (date != null ? DateFormat("yyyy-MM-dd ").format(date) : "") + title,
+    );
+
+    Navigator.of(context).pop(info);
+  }
+}
+
+class CreateFolderDialog extends StatefulWidget {
+  const CreateFolderDialog({super.key});
+
+  @override
+  State<StatefulWidget> createState() => CreateFolderDialogState();
+}
+
+class CreateFolderDialogState extends State<CreateFolderDialog> {
+  var formKey = GlobalKey<FormState>();
+  String? folderName;
+
+  @override
+  Widget build(BuildContext context) {
+    var now = DateTime.now();
+
+    return Dialog(
+      child: Form(
+        key: formKey,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DefaultTextStyle(
+                style: DialogTheme.of(context).titleTextStyle ?? Theme.of(context).textTheme.titleLarge!,
+                child: Semantics(
+                  // For iOS platform, the focus always lands on the title.
+                  // Set nameRoute to false to avoid title being announced twice.
+                  namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
+                  container: true,
+                  child: Text("Neuer Ordner"),
+                ),
+              ),
+              TextFormField(
+                decoration: InputDecoration(
+                  label: Text("Name"),
+                ),
+                onSaved: (value) => folderName = value,
+                validator: (String? value) {
+                  return value == null || value.isEmpty ? "Darf nicht leer sein" : null;
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.check),
+                      label: Text("Anlegen"),
+                      onPressed: createPressed,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void createPressed() {
+    var formState = formKey.currentState;
+    if (!formState!.validate()) {
+      return;
+    }
+
+    formState.save();
+
+    var name = folderName!;
+
+    var info = ListingInfo(
+      title: name,
+      path: name,
+    );
+
+    Navigator.of(context).pop(info);
   }
 }
 
@@ -637,3 +813,20 @@ class AlbumInitializer implements AlbumPartVisitor<AbstractImage?, Direction> {
   }
 
 }
+
+Widget menu(BuildContext context, List<PopupMenuItem<Action>> entries) => PopupMenuButton<Action>(
+  itemBuilder: (context) => entries,
+  onSelected: (action) => action(context),
+);
+
+PopupMenuItem<Action> menuItem(IconData icon, String text, Action action) => PopupMenuItem<Action>(
+  value: action,
+  child: Row(
+    children: [
+      Padding(
+        padding: const EdgeInsets.only(right: 16),
+        child: Icon(icon, color: Colors.blueAccent)),
+      Text(text)
+    ]
+  )
+);

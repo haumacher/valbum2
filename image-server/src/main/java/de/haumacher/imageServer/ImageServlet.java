@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
@@ -23,12 +24,15 @@ import java.util.stream.Collectors;
 import org.apache.commons.fileupload2.jakarta.JakartaServletFileUpload;
 
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.upload.UploadFactory;
 import de.haumacher.imageServer.upload.UploadItem;
+import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.json.JsonWriter;
+import de.haumacher.msgbuf.server.io.ReaderAdapter;
 import de.haumacher.msgbuf.server.io.WriterAdapter;
 import de.haumacher.util.servlet.Util;
 import de.haumacher.util.xml.XmlWriter;
@@ -171,26 +175,62 @@ public class ImageServlet extends HttpServlet {
 			resourcePath = new PathInfo(_basePath, path);
 		}
 		
+		String contentType = context.request().getContentType();
+		MimeType mimeType;
+		try {
+			mimeType = new MimeType(contentType);
+		} catch (MimeTypeParseException ex) {
+			LOG.warning("Invalid content type: " + contentType);
+			error(context, HttpServletResponse.SC_BAD_REQUEST);
+			return;
+		}
+		String baseType = mimeType.getBaseType();
+		
 		File file = resourcePath.toFile();
 		if (!file.exists()) {
 			File parent = file.getParentFile();
 			if (parent.exists() && parent.isDirectory()) {
-				if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(file.getName()))) {
-					LOG.warning("Unsupported upload extension: " + file.getName());
-					error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
-					return;
+				if (baseType.equals("application/json")) {
+					Resource resource = Resource.readResource(new JsonReader(new ReaderAdapter(request.getReader())));
+					if (!(resource instanceof FolderResource)) {
+						LOG.warning("Invalid resource: " + resource);
+						error(context, HttpServletResponse.SC_BAD_REQUEST);
+						return;
+					}
+					
+					FolderResource album = (FolderResource) resource;
+					boolean ok = file.mkdirs();
+					if (!ok) {
+						LOG.warning("Cannot create path: " + file.getAbsolutePath());
+						error(context, HttpServletResponse.SC_BAD_REQUEST);
+						return;
+					}
+					
+					try (FileOutputStream out = new FileOutputStream(new File(file, "index.json"))) {
+						try (OutputStreamWriter w = new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
+							album.writeTo(new JsonWriter(new WriterAdapter(w)));
+						}
+					}
+					
+					LOG.info("Created album: " + file.getName());
+				} else {
+					if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(file.getName()))) {
+						LOG.warning("Unsupported upload extension: " + file.getName());
+						error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+						return;
+					}
+					
+					// Process upload.
+					List<UploadItem> uploads = _fileUpload.parseRequest(request);
+					
+					if (uploads.size() != 1) {
+						LOG.warning("Tried to upload multiple files to a single image location " + file.getName() + ": " + uploads.stream().map(u -> u.getName()).collect(Collectors.joining(", ")));
+						error(context, HttpServletResponse.SC_BAD_REQUEST);
+						return;
+					}
+					
+					uploads.get(0).getUpload().renameTo(file);
 				}
-				
-				// Process upload.
-				List<UploadItem> uploads = _fileUpload.parseRequest(request);
-				
-				if (uploads.size() != 1) {
-					LOG.warning("Tried to upload multiple files to a single image location " + file.getName() + ": " + uploads.stream().map(u -> u.getName()).collect(Collectors.joining(", ")));
-					error(context, HttpServletResponse.SC_BAD_REQUEST);
-					return;
-				}
-				
-				uploads.get(0).getUpload().renameTo(file);
 				return;
 			}
 			
@@ -203,16 +243,6 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		
-		String contentType = context.request().getContentType();
-		MimeType mimeType;
-		try {
-			mimeType = new MimeType(contentType);
-		} catch (MimeTypeParseException ex) {
-			LOG.warning("Invalid content type: " + contentType);
-			error(context, HttpServletResponse.SC_BAD_REQUEST);
-			return;
-		}
-		String baseType = mimeType.getBaseType();
 		if (baseType.equals("multipart/form-data")) {
 			List<UploadItem> uploads = _fileUpload.parseRequest(request);
 			for (UploadItem upload : uploads) {

@@ -39,6 +39,8 @@ dependencies:
   jsontool: 1.1.0
   image_picker: ^1.0.4
   sn_progress_dialog: ^1.1.3
+  intl: ^0.18.1
+  date_field: ^3.0.5
 
 dev_dependencies:
   flutter_test:
