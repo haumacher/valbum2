@@ -296,6 +296,10 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       print("Files picked: ${files.map((e) => e.name)}");
     }
 
+    if (files.isEmpty) {
+      return;
+    }
+
     var uri = Uri.parse(baseUrl);
 
     var multipartRequest = http.MultipartRequest("PUT", uri);
