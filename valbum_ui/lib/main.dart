@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -6,10 +8,13 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:jsontool/jsontool.dart';
+import 'package:sn_progress_dialog/options/cancel.dart';
+import 'package:sn_progress_dialog/progress_dialog.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 import 'resource.dart';
 
-const String host = "http://localhost:9090/valbum/data";
+// const String host = "http://homepi:9091/valbum/data";
+const String host = "http://192.168.178.40:9090/valbum/data";
 
 void main() {
   runApp(const VAlbumApp());
@@ -51,6 +56,10 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   void initState() {
     super.initState();
 
+    doLoad();
+  }
+
+  void doLoad() {
     _resourceFuture = widget.image == null ? load(widget.path) : Future.value(widget.image);
   }
 
@@ -59,10 +68,11 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
 
   static Future<Resource?> load(List<String> path) async {
     var pathString = path.join("/");
+    var uri = "$host/${pathString.isEmpty ? "" : "$pathString/"}?type=json";
     if (kDebugMode) {
-      print("Fetching data: '$pathString'");
+      print("Fetching: $uri");
     }
-    var response = await http.get(Uri.parse("$host/$pathString/?type=json"));
+    var response = await http.get(Uri.parse(uri));
     var reader = JsonReader.fromString(response.body);
     var resource = Resource.read(reader);
     if (resource is AlbumInfo) {
@@ -115,7 +125,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+        onPressed: doLoad,
         tooltip: 'Reload',
         child: const Icon(Icons.update),
       ), // This trailing comma makes auto-formatting nicer for build methods.
@@ -227,20 +237,81 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
           ImagePicker picker = ImagePicker();
           List<XFile> files = await picker.pickMultiImage();
           if (kDebugMode) {
-            print("Files picked: ${files}");
+            print("Files picked: ${files.map((e) => e.name)}");
           }
 
-          var request = http.MultipartRequest("PUT", Uri.parse(baseUrl));
+          var uri = Uri.parse(baseUrl);
+
+          var multipartRequest = http.MultipartRequest("PUT", uri);
           for (var file in files) {
-            request.files.add(await http.MultipartFile.fromPath(file.name, file.path, filename: file.path));
+            var multipart = http.MultipartFile.fromPath(file.name, file.path, filename: file.name);
+            multipartRequest.files.add(await multipart);
           }
-          request.send().then((response) {
-            if (response.statusCode == 200) {
-              if (kDebugMode) {
-                print("Upload complete.");
-              }
+          var multipartStream = multipartRequest.finalize();
+          var contentLength = multipartRequest.contentLength;
+
+          var client = HttpClient();
+          var put = await client.putUrl(uri);
+
+          if (!context.mounted) {
+            if (kDebugMode) {
+              print("Context was destroyed.");
             }
-          });
+            return;
+          }
+
+          ProgressDialog pd = ProgressDialog(context: context);
+          pd.show(
+              msg: "Uploading files...",
+              max: 100,
+              closeWithDelay: 500,
+              cancel: Cancel(
+                cancelClicked: () {
+                  if (kDebugMode) {
+                    print("Aborting upload.");
+                  }
+                  put.abort();
+                },
+              )
+          );
+
+          put.contentLength = contentLength;
+          multipartRequest.headers.forEach((key, value) => put.headers.set(key, value));
+
+          var bytesTransferred = 0;
+          await put.addStream(multipartStream.transform(StreamTransformer.fromHandlers(
+            handleData: (data, sink) {
+              sink.add(data);
+
+              bytesTransferred += data.length;
+              pd.update(value: (100 * bytesTransferred / contentLength).round());
+              // Show progress.
+            },
+          )));
+
+          if (kDebugMode) {
+            print("Starting upload.");
+          }
+
+          var response = await put.close();
+
+          if (kDebugMode) {
+            print("Upload complete.");
+          }
+
+          pd.close(delay: 500);
+
+          if (response.statusCode == 200) {
+            if (kDebugMode) {
+              print("Upload complete.");
+            }
+          } else {
+            if (kDebugMode) {
+              print("Upload failed: ${response.statusCode}");
+            }
+          }
+
+          setState(doLoad);
         },
         tooltip: 'Upload',
         child: const Icon(Icons.cloud_upload),
