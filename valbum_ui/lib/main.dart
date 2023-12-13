@@ -19,6 +19,8 @@ void main() {
   runApp(const VAlbumApp());
 }
 
+typedef void Action(BuildContext context);
+
 class VAlbumApp extends StatelessWidget {
   const VAlbumApp({super.key});
 
@@ -139,6 +141,16 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     return Scaffold(
       appBar: AppBar(
         title: Text(self.title),
+        actions: <Widget>[
+          PopupMenuButton<Action>(
+            itemBuilder: (context) => [
+              PopupMenuItem<Action>(value: createAlbum, child: menuEntry(Icons.create_new_folder, 'Create album')),
+              PopupMenuItem<Action>(value: createFolder, child: menuEntry(Icons.create_new_folder_outlined, 'Create folder')),
+              PopupMenuItem<Action>(value: (_) => setState(doLoad), child: menuEntry(Icons.update, "Reload")),
+            ],
+            onSelected: (action) => action(context),
+          ),
+        ],
       ),
       body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
         double imageBorder = 8;
@@ -155,13 +167,17 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
           scrollDirection: Axis.vertical,
           child: buildFolderList(self, imageSpace - 2 * imageBorder, imageBorder));
       }),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        tooltip: 'Add',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
+
+  Row menuEntry(IconData icon, String text) => Row(
+    children: [
+      Padding(
+        padding: const EdgeInsets.only(right: 16),
+        child: Icon(icon, color: Colors.blueAccent)),
+      Text(text)
+    ]
+  );
 
   Wrap buildFolderList(ListingInfo self, double imageWidth, double imageBorder) {
     return Wrap(
@@ -209,6 +225,57 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     );
   }
 
+  void createFolder(BuildContext context) {
+    showGeneralDialog(context: context, pageBuilder: (context, _, __) {
+      return Dialog(
+        child: Form(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DefaultTextStyle(
+                  style: DialogTheme.of(context).titleTextStyle ?? Theme.of(context).textTheme.titleLarge!,
+                  child: Semantics(
+                    // For iOS platform, the focus always lands on the title.
+                    // Set nameRoute to false to avoid title being announce twice.
+                    namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
+                    container: true,
+                    child: Text("Ordner anlegen"),
+                  ),
+                ),
+                TextFormField(
+                  decoration: InputDecoration(label: Text("Folder name")),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.check),
+                        label: Text("Anlegen"),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                    ],
+                  )
+                )
+              ],
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
+  void createAlbum(BuildContext context) {
+
+  }
+
   @override
   Widget visitAlbumInfo(AlbumInfo self, BuildContext arg) {
     return Scaffold(
@@ -232,90 +299,92 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         );
       }),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          ImagePicker picker = ImagePicker();
-          List<XFile> files = await picker.pickMultiImage();
-          if (kDebugMode) {
-            print("Files picked: ${files.map((e) => e.name)}");
-          }
-
-          var uri = Uri.parse(baseUrl);
-
-          var multipartRequest = http.MultipartRequest("PUT", uri);
-          for (var file in files) {
-            var multipart = http.MultipartFile.fromPath(file.name, file.path, filename: file.name);
-            multipartRequest.files.add(await multipart);
-          }
-          var multipartStream = multipartRequest.finalize();
-          var contentLength = multipartRequest.contentLength;
-
-          var client = HttpClient();
-          var put = await client.putUrl(uri);
-
-          if (!context.mounted) {
-            if (kDebugMode) {
-              print("Context was destroyed.");
-            }
-            return;
-          }
-
-          ProgressDialog pd = ProgressDialog(context: context);
-          pd.show(
-              msg: "Uploading files...",
-              max: 100,
-              closeWithDelay: 500,
-              cancel: Cancel(
-                cancelClicked: () {
-                  if (kDebugMode) {
-                    print("Aborting upload.");
-                  }
-                  put.abort();
-                },
-              )
-          );
-
-          put.contentLength = contentLength;
-          multipartRequest.headers.forEach((key, value) => put.headers.set(key, value));
-
-          var bytesTransferred = 0;
-          await put.addStream(multipartStream.transform(StreamTransformer.fromHandlers(
-            handleData: (data, sink) {
-              sink.add(data);
-
-              bytesTransferred += data.length;
-              pd.update(value: (100 * bytesTransferred / contentLength).round());
-              // Show progress.
-            },
-          )));
-
-          if (kDebugMode) {
-            print("Starting upload.");
-          }
-
-          var response = await put.close();
-
-          if (kDebugMode) {
-            print("Upload complete.");
-          }
-
-          pd.close(delay: 500);
-
-          if (response.statusCode == 200) {
-            if (kDebugMode) {
-              print("Upload complete.");
-            }
-          } else {
-            if (kDebugMode) {
-              print("Upload failed: ${response.statusCode}");
-            }
-          }
-
-          setState(doLoad);
-        },
+        onPressed: uploadImages,
         tooltip: 'Upload',
         child: const Icon(Icons.cloud_upload),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  void uploadImages() async {
+    ImagePicker picker = ImagePicker();
+    List<XFile> files = await picker.pickMultiImage();
+    if (kDebugMode) {
+      print("Files picked: ${files.map((e) => e.name)}");
+    }
+
+    var uri = Uri.parse(baseUrl);
+
+    var multipartRequest = http.MultipartRequest("PUT", uri);
+    for (var file in files) {
+      var multipart = http.MultipartFile.fromPath(file.name, file.path, filename: file.name);
+      multipartRequest.files.add(await multipart);
+    }
+    var multipartStream = multipartRequest.finalize();
+    var contentLength = multipartRequest.contentLength;
+
+    var client = HttpClient();
+    var put = await client.putUrl(uri);
+
+    if (!context.mounted) {
+      if (kDebugMode) {
+        print("Context was destroyed.");
+      }
+      return;
+    }
+
+    ProgressDialog pd = ProgressDialog(context: context);
+    pd.show(
+        msg: "Uploading files...",
+        max: 100,
+        closeWithDelay: 500,
+        cancel: Cancel(
+          cancelClicked: () {
+            if (kDebugMode) {
+              print("Aborting upload.");
+            }
+            put.abort();
+          },
+        )
+    );
+
+    put.contentLength = contentLength;
+    multipartRequest.headers.forEach((key, value) => put.headers.set(key, value));
+
+    var bytesTransferred = 0;
+    await put.addStream(multipartStream.transform(StreamTransformer.fromHandlers(
+      handleData: (data, sink) {
+        sink.add(data);
+
+        bytesTransferred += data.length;
+        pd.update(value: (100 * bytesTransferred / contentLength).round());
+        // Show progress.
+      },
+    )));
+
+    if (kDebugMode) {
+      print("Starting upload.");
+    }
+
+    var response = await put.close();
+
+    if (kDebugMode) {
+      print("Upload complete.");
+    }
+
+    pd.close(delay: 500);
+
+    if (response.statusCode == 200) {
+      if (kDebugMode) {
+        print("Upload complete.");
+      }
+    } else {
+      if (kDebugMode) {
+        print("Upload failed: ${response.statusCode}");
+      }
+    }
+
+    setState(doLoad);
   }
 
   Future<dynamic> pushPart(AbstractImage image, String name) =>
