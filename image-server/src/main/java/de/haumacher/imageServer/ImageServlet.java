@@ -217,13 +217,28 @@ public class ImageServlet extends HttpServlet {
 			List<UploadItem> uploads = _fileUpload.parseRequest(request);
 			for (UploadItem upload : uploads) {
 				String name = upload.getName();
-				if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(name))) {
+				String extension = extension(name);
+				if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension)) {
 					LOG.warning("Unsupported upload extension: " + name);
 					error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
 					return;
 				}
 				
-				upload.getUpload().renameTo(new File(file, baseName(name)));
+				String fileName = baseName(name);
+				File targetFile = new File(file, fileName);
+				if (targetFile.exists()) {
+					// Name clash.
+					
+					String baseName = fileName.substring(0, fileName.length() - extension.length() - 1);
+					int num = 2;
+					do {
+						targetFile = new File(file, baseName + "-" + num + "." + extension);
+						num ++;
+					} while (targetFile.exists());
+				}
+				
+				LOG.info("Storing image: " + targetFile);
+				upload.getUpload().renameTo(targetFile);
 			}
 			return;
 		}
