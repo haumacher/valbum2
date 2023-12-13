@@ -103,7 +103,7 @@ public class ResourceCache {
 	}
 
 	static final class Loader extends CacheLoader<PathInfo, Resource> {
-		private static final FileFilter DIRECTORIES = f -> f.isDirectory();
+		private static final FileFilter DIRECTORIES = f -> f.isDirectory() && !f.getName().startsWith(".");
 
 		private static final Logger LOG = Logger.getLogger(ResourceCache.class.getName());
 

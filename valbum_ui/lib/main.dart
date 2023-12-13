@@ -13,8 +13,7 @@ import 'package:sn_progress_dialog/progress_dialog.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 import 'resource.dart';
 
-// const String host = "http://homepi:9091/valbum/data";
-const String host = "http://192.168.178.40:9090/valbum/data";
+const String host = "http://localhost:9090/valbum/data";
 
 void main() {
   runApp(const VAlbumApp());
