@@ -264,11 +264,12 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   @override
   Widget visitAlbumInfo(AlbumInfo self, BuildContext arg) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: self.parts.isNotEmpty ? null : AppBar(
         title: Text("${self.title} ${self.subTitle}"),
         centerTitle: true,
       ),
-      body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
+      backgroundColor: Colors.black,
+      body: self.parts.isEmpty ? null : LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
         var images = self.parts.whereType<AbstractImage>();
 
         var layout = layouter.AlbumLayout(constraints.maxWidth, 250, images);
@@ -279,7 +280,12 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
         return SingleChildScrollView(
             scrollDirection: Axis.vertical,
             child: Column(
-                children: layout.map((row) => row.visit(builder, 0.0)).toList(),
+                children: [
+                  Padding(padding: EdgeInsets.only(top: 20, bottom: 4), child: Text(self.title, style: TextStyle(fontSize: 28, color: Colors.white),)),
+                  if (self.subTitle.isNotEmpty)
+                    Padding(padding: EdgeInsets.only(bottom: 4), child: Text(self.subTitle, style: TextStyle(fontSize: 16, color: Colors.white))),
+                  ...layout.map((row) => row.visit(builder, 0.0)).toList(),
+                ]
             ),
         );
       }),
@@ -389,10 +395,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   @override
   Widget visitImagePart(ImagePart self, BuildContext arg) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(self.name),
-        centerTitle: true,
-      ),
+      backgroundColor: Colors.black,
       body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
         return CallbackShortcuts(
             bindings: <ShortcutActivator, VoidCallback> {
