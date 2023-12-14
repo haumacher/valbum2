@@ -40,6 +40,7 @@ import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
+import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
@@ -148,6 +149,8 @@ public class ResourceCache {
 
 		private Resource loadDir(PathInfo path) {
 			File dir = path.toFile();
+
+			FolderResource resource = loadDirIndex(dir);
 			
 			File[] images = dir.listFiles(IMAGES);
 			if (images == null) {
@@ -161,14 +164,34 @@ public class ResourceCache {
 				LOG.log(Level.WARNING, "Cannot register directory watcher on '" + dir + "'.", ex);
 			}
 		
-			if (images.length == 0) {
-				return loadListing(path);
+			if (resource instanceof AlbumInfo || images.length > 0) {
+				AlbumInfo album = resource == null ? createGenericAlbumInfo(path) : (AlbumInfo) resource;
+				
+				return loadAlbum(album, images);
 			} else {
-				return loadAlbum(path, images);
+				ListingInfo listing = resource == null ? createGenericListingInfo(path) : (ListingInfo) resource;
+
+				return loadListing(path, listing);
 			}
 		}
+
+		private static FolderResource loadDirIndex(File dir) {
+			File indexFile = new File(dir, "index.json");
+			FolderResource resource;
+			if (indexFile.exists()) {
+				try {
+					resource = loadJSON(indexFile, FolderResource::readFolderResource);
+				} catch (IOException ex) {
+					LOG.log(Level.WARNING, "Faild to directory index: " + indexFile.getAbsolutePath(), ex);
+					resource = null;
+				}
+			} else {
+				resource = null;
+			}
+			return resource;
+		}
 		
-		private static Resource loadListing(PathInfo pathInfo) {
+		private static Resource loadListing(PathInfo pathInfo, ListingInfo listing) {
 			File dir = pathInfo.toFile();
 			
 			File[] dirs = dir.listFiles(DIRECTORIES);
@@ -178,85 +201,92 @@ public class ResourceCache {
 			
 			Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
 			
-			String listingName = pathInfo.getName();
-			ListingInfo listing = ListingInfo.create().setTitle(fromTechnicalName(listingName));
+			listing.getFolders().clear();
 			for (File folder : dirs) {
-				String folderName = folder.getName();
-				FolderInfo folderInfo;
-				
-				File index = new File(folder, "index.json");
-				if (false) {
-					try {
-						folderInfo = loadJSON(index, FolderInfo::readFolderInfo);
-					} catch (IOException ex) {
-						LOG.log(Level.WARNING, "Cannot read listing index '" + index + "'.", ex);
-						folderInfo = FolderInfo.create();
-					}
-				} else {
-					folderInfo = FolderInfo.create();
-				}
-				folderInfo.setName(folderName);
-				
-				if (folderInfo.getIndexPicture() == null) {
-					File[] images = folder.listFiles(IMAGES);
-					File indexPicture;
-					ImageData imageData;
-					if (images != null && images.length > 0) {
-						indexPicture = images[0];
-						
-						double scale;
-						try {
-							imageData = ImageData.analyze(null, indexPicture);
-							
-							double width = imageData.getWidth();
-							double height = imageData.getHeight();
-							
-							scale = width / height;
-							double ty;
-							if (scale < 1.0) {
-								scale = 1.0 / scale;
-								ty = (height - width) / height * 150;
-							} else {
-								ty = 0.0;
-							}
-							
-							ThumbnailInfo thumbnail = ThumbnailInfo.create().setImage(indexPicture.getName()).setScale(scale);
-							thumbnail.setTy(ty);
-							folderInfo.setIndexPicture(thumbnail);
-						} catch (ImageProcessingException
-								| MetadataException | IOException ex) {
-							LOG.log(Level.WARNING, "Cannot analyze index picture: " + indexPicture, ex);
-							imageData = null;
-						}
-					} else {
-						indexPicture = null;
-						imageData = null;
-					}
-					
-					Matcher matcher = DATE_PATTERN.matcher(folderName);
-					if (matcher.find()) {
-						int year = Integer.parseInt(matcher.group(1));
-						int month = Integer.parseInt(matcher.group(2));
-						int day = Integer.parseInt(matcher.group(3));
-						
-						folderInfo.setSubTitle(dateString(year, month, day));
-						folderName = removeMatch(folderName, matcher);
-					} else {
-						if (imageData != null) {
-							long imageDate = imageData.getDate();
-							if (imageDate > 0L) {
-								Date date = new Date(imageDate);
-								folderInfo.setSubTitle(formatDate(date));
-							}
-						}
-					}
-					folderInfo.setTitle(fromTechnicalName(folderName));
-					
-				}
-				
+				FolderInfo folderInfo = loadFolderInfo(folder);
 				listing.addFolder(folderInfo);
 			}
 			return listing;
+		}
+
+		private static FolderInfo loadFolderInfo(File folder) {
+			String folderName = folder.getName();
+
+			FolderInfo folderInfo = FolderInfo.create();
+			folderInfo.setName(folderName);
+			
+			FolderResource folderResource = loadDirIndex(folder);
+			if (folderResource != null) {
+				if (folderResource instanceof AlbumInfo) {
+					AlbumInfo albumInfo = (AlbumInfo) folderResource;
+					folderInfo.setTitle(albumInfo.getTitle());
+					folderInfo.setSubTitle(albumInfo.getSubTitle());
+					folderInfo.setIndexPicture(albumInfo.getIndexPicture());
+					return folderInfo;
+				}
+				else if (folderResource instanceof ListingInfo) {
+					ListingInfo listingInfo = (ListingInfo) folderResource;
+					folderInfo.setTitle(listingInfo.getTitle());
+					return folderInfo;
+				}
+			}
+			
+			if (folderInfo.getIndexPicture() == null) {
+				File[] images = folder.listFiles(IMAGES);
+				File indexPicture;
+				ImageData imageData;
+				if (images != null && images.length > 0) {
+					indexPicture = images[0];
+					
+					double scale;
+					try {
+						imageData = ImageData.analyze(null, indexPicture);
+						
+						double width = imageData.getWidth();
+						double height = imageData.getHeight();
+						
+						scale = width / height;
+						double ty;
+						if (scale < 1.0) {
+							scale = 1.0 / scale;
+							ty = (height - width) / height * 150;
+						} else {
+							ty = 0.0;
+						}
+						
+						ThumbnailInfo thumbnail = ThumbnailInfo.create().setImage(indexPicture.getName()).setScale(scale);
+						thumbnail.setTy(ty);
+						folderInfo.setIndexPicture(thumbnail);
+					} catch (ImageProcessingException
+							| MetadataException | IOException ex) {
+						LOG.log(Level.WARNING, "Cannot analyze index picture: " + indexPicture, ex);
+						imageData = null;
+					}
+				} else {
+					indexPicture = null;
+					imageData = null;
+				}
+				
+				Matcher matcher = DATE_PATTERN.matcher(folderName);
+				if (matcher.find()) {
+					int year = Integer.parseInt(matcher.group(1));
+					int month = Integer.parseInt(matcher.group(2));
+					int day = Integer.parseInt(matcher.group(3));
+					
+					folderInfo.setSubTitle(dateString(year, month, day));
+					folderName = removeMatch(folderName, matcher);
+				} else {
+					if (imageData != null) {
+						long imageDate = imageData.getDate();
+						if (imageDate > 0L) {
+							Date date = new Date(imageDate);
+							folderInfo.setSubTitle(formatDate(date));
+						}
+					}
+				}
+				folderInfo.setTitle(fromTechnicalName(folderName));
+			}
+			return folderInfo;
 		}
 
 		private static String dateString(int year, int month, int day) {
@@ -300,22 +330,7 @@ public class ResourceCache {
 			return Character.toUpperCase(expanded.charAt(0)) + expanded.substring(1);
 		}
 
-		private static AlbumInfo loadAlbum(PathInfo pathInfo, File[] files) {
-			AlbumInfo album;
-			
-			File dir = pathInfo.toFile();
-			File indexResource = new File(dir, "index.json");
-			if (indexResource.exists()) {
-				try {
-					album = (AlbumInfo) loadJSON(indexResource, AlbumInfo::readResource);
-				} catch (IOException ex) {
-					LOG.log(Level.WARNING, "Faild to load album index.", ex);
-					album = createGenericAlbumInfo(pathInfo);
-				}
-			} else {
-				album = createGenericAlbumInfo(pathInfo);
-			}
-			
+		private static AlbumInfo loadAlbum(AlbumInfo album, File[] files) {
 			// Update early to be able to match new images against existing image.
 			UpdateTransient.updateTransient(album);
 			
@@ -358,6 +373,11 @@ public class ResourceCache {
 				album.setTitle(dirName);
 			}
 			return album;
+		}
+
+		private static ListingInfo createGenericListingInfo(PathInfo path) {
+			String listingName = path.getName();
+			return ListingInfo.create().setTitle(fromTechnicalName(listingName));
 		}
 
 		interface LoaderFunction<T> {
