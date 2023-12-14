@@ -176,7 +176,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       children: self.folders.map((folder) {
         return Padding(padding: EdgeInsets.all(imageBorder),
           child: GestureDetector(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, folder.name]))),
+              onTap: () => showElement(folder.name)(),
               child: SizedBox(width: imageWidth,
                 child: Column(
                   children: [
@@ -236,6 +236,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     );
 
     reload();
+    showElement(folder.path);
   }
 
   void createAlbum(BuildContext context) async {
@@ -257,6 +258,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     );
 
     reload();
+    showElement(album.path);
   }
 
   @override
@@ -489,6 +491,10 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
   @override
   Widget visitHeading(Heading self, BuildContext arg) {
     throw UnimplementedError();
+  }
+
+  showElement(String name) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, name])));
   }
 }
 
