@@ -484,6 +484,18 @@ class AlbumContent extends StatefulWidget {
   }
 }
 
+enum SelectionState {
+  none, single, multiple;
+
+  static SelectionState fromSize(int size) {
+    switch (size) {
+      case 0: return SelectionState.none;
+      case 1: return SelectionState.single;
+      default: return SelectionState.multiple;
+    }
+  }
+}
+
 class AlbumContentState extends State<AlbumContent> {
   bool editMode = false;
 
@@ -497,17 +509,38 @@ class AlbumContentState extends State<AlbumContent> {
   });
 
   void addToSelection(ThumbnailEditorState selected) {
+    if (selection.contains(selected)) {
+      return;
+    }
+
+    var stateBefore = SelectionState.fromSize(selection.length);
     selection.add(selected);
-    selected.selected = true;
+    var stateAfter = SelectionState.fromSize(selection.length);
+
+    if (stateAfter != stateBefore) {
+      for (var x in selection) {
+        x.updateSelectionState(stateAfter);
+      }
+    } else {
+      selected.updateSelectionState(stateAfter);
+    }
   }
 
   void removeFromSelection(ThumbnailEditorState selected) {
+    var stateBefore = SelectionState.fromSize(selection.length);
     selection.remove(selected);
-    selected.selected = false;
+    var stateAfter = SelectionState.fromSize(selection.length);
+
+    if (stateAfter != stateBefore) {
+      for (var x in selection) {
+        x.updateSelectionState(stateAfter);
+      }
+    }
+    selected.updateSelectionState(SelectionState.none);
   }
 
   void setSelection(ThumbnailEditorState selected) {
-    selection.where((element) => element != selected).forEach((element) => element.selected = false);
+    selection.where((element) => element != selected).forEach((element) => element.updateSelectionState(SelectionState.none));
     selection.removeWhere((element) => element != selected);
 
     addToSelection(selected);
@@ -521,7 +554,9 @@ class AlbumContentState extends State<AlbumContent> {
   }
 
   void clearSelection() {
-    for (var x in selection) x.selected = false;
+    for (var x in selection) {
+      x.updateSelectionState(SelectionState.none);
+    }
     selection.clear();
   }
 
@@ -704,21 +739,22 @@ class ThumbnailEditor extends StatefulWidget {
 }
 
 class ThumbnailEditorState extends State<ThumbnailEditor> {
-
-  bool _selected = false;
+  SelectionState _selected = SelectionState.none;
   bool _hovered = false;
 
-  bool get selected => _selected;
+  bool get selected => _selected != SelectionState.none;
+  bool get multiSelected => _selected == SelectionState.multiple;
+
   bool get active => selected || _hovered;
 
-  set selected(value) => setState(() => _selected = value);
+  void updateSelectionState(SelectionState value) => setState(() => _selected = value);
 
   @override
   void initState() {
     super.initState();
 
     if (widget.state.selectionRequest == widget.image) {
-      _selected = true;
+      _selected = SelectionState.single;
       widget.state.selection.add(this);
       widget.state.selectionRequest = null;
     }
@@ -739,7 +775,22 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     if (active) {
       return Stack(
         children: [
-          _selected ? widget.builder.imageThumbnail(widget.image) : onClickImage(),
+          selected ? widget.builder.imageThumbnail(widget.image) : onClickImage(),
+          if (multiSelected) SizedBox(
+            width: widget.builder.width,
+            height: widget.builder.height,
+            child: Center(
+              child: CircleAvatar(
+                radius: 20,
+                backgroundColor: Colors.blueAccent,
+                child: IconButton(
+                  color: Colors.white,
+                  icon: const Icon(Icons.join_left),
+                  onPressed: createGroup,
+                ),
+              ),
+            ),
+          ),
           Positioned(
             top: 4,
             left: 4,
@@ -753,6 +804,10 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     } else {
       return onClickImage();
     }
+  }
+
+  void createGroup() {
+
   }
 
   GestureDetector onClickImage() {
