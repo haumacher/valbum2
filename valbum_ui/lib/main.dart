@@ -706,8 +706,10 @@ class ThumbnailEditor extends StatefulWidget {
 class ThumbnailEditorState extends State<ThumbnailEditor> {
 
   bool _selected = false;
+  bool _hovered = false;
 
   bool get selected => _selected;
+  bool get active => selected || _hovered;
 
   set selected(value) => setState(() => _selected = value);
 
@@ -724,27 +726,41 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
 
   @override
   Widget build(BuildContext context) {
-    if (selected) {
+    return MouseRegion(
+      hitTestBehavior: HitTestBehavior.translucent,
+      opaque: false,
+      onEnter: (event) => setState(() => _hovered = true),
+      onExit: (event) => setState(() => _hovered = false),
+      child: thumbnailView(),
+    );
+  }
+
+  Widget thumbnailView() {
+    if (active) {
       return Stack(
         children: [
-          widget.builder.imageThumbnail(widget.image),
+          _selected ? widget.builder.imageThumbnail(widget.image) : onClickImage(),
           Positioned(
             top: 4,
             left: 4,
             child: Checkbox(
-              value: true,
+              value: selected,
               onChanged: (value) => setSelected(value ?? false),
             )
           ),
         ],
       );
     } else {
-      return GestureDetector(
-          onTap: select,
-          onLongPress: addToSelection,
-          child: widget.builder.imageThumbnail(widget.image)
-      );
+      return onClickImage();
     }
+  }
+
+  GestureDetector onClickImage() {
+    return GestureDetector(
+        onTap: select,
+        onLongPress: addToSelection,
+        child: widget.builder.imageThumbnail(widget.image)
+    );
   }
 
   void setSelected(bool value) {
