@@ -51,10 +51,10 @@ class VAlbumView extends StatefulWidget {
   const VAlbumView({super.key, this.path = const [], this.image});
 
   @override
-  State<VAlbumView> createState() => _VAlbumState();
+  State<VAlbumView> createState() => VAlbumState();
 }
 
-class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, BuildContext> {
+class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, BuildContext> {
   Future<Resource?>? _resourceFuture;
 
   @override
@@ -176,7 +176,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
       children: self.folders.map((folder) {
         return Padding(padding: EdgeInsets.all(imageBorder),
           child: GestureDetector(
-              onTap: () => showElement(folder.name)(),
+              onTap: () => showElement(folder.name),
               child: SizedBox(width: imageWidth,
                 child: Column(
                   children: [
@@ -263,38 +263,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
 
   @override
   Widget visitAlbumInfo(AlbumInfo self, BuildContext arg) {
-    return Scaffold(
-      appBar: self.parts.isNotEmpty ? null : AppBar(
-        title: Text("${self.title} ${self.subTitle}"),
-        centerTitle: true,
-      ),
-      backgroundColor: Colors.black,
-      body: self.parts.isEmpty ? null : LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
-        var images = self.parts.whereType<AbstractImage>();
-
-        var layout = layouter.AlbumLayout(constraints.maxWidth, 250, images);
-        double pageWidth = layout.getPageWidth();
-
-        var builder = ContentWidgetBuilder(pageWidth, "$baseUrl/${self.path}", pushPart);
-
-        return SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            child: Column(
-                children: [
-                  Padding(padding: EdgeInsets.only(top: 20, bottom: 4), child: Text(self.title, style: TextStyle(fontSize: 28, color: Colors.white),)),
-                  if (self.subTitle.isNotEmpty)
-                    Padding(padding: EdgeInsets.only(bottom: 4), child: Text(self.subTitle, style: TextStyle(fontSize: 16, color: Colors.white))),
-                  ...layout.map((row) => row.visit(builder, 0.0)).toList(),
-                ]
-            ),
-        );
-      }),
-      floatingActionButton: FloatingActionButton(
-        onPressed: uploadImages,
-        tooltip: 'Upload',
-        child: const Icon(Icons.cloud_upload),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-    );
+    return AlbumContent(this, self, baseUrl, pushPart);
   }
 
   void uploadImages() async {
@@ -386,7 +355,7 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     setState(doLoad);
   }
 
-  Future<dynamic> pushPart(AbstractImage image, String name) =>
+  Future<void> pushPart(AbstractImage image, String name) =>
     Navigator.push(context, MaterialPageRoute(
       builder: (context) => VAlbumView(path: path, image: image)
     )
@@ -496,9 +465,308 @@ class _VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, 
     throw UnimplementedError();
   }
 
-  showElement(String name) {
+  void showElement(String name) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, name])));
   }
+}
+
+class AlbumContent extends StatefulWidget {
+  final VAlbumState albumState;
+  final AlbumInfo album;
+  final String baseUrl;
+  final Future Function(AbstractImage image, String name) pushPart;
+
+  const AlbumContent(this.albumState, this.album, this.baseUrl, this.pushPart, {super.key});
+
+  @override
+  State<StatefulWidget> createState() {
+    return AlbumContentState();
+  }
+}
+
+class AlbumContentState extends State<AlbumContent> {
+  bool editMode = false;
+
+  Set<ThumbnailEditorState> selection = {};
+
+  AbstractImage? selectionRequest;
+
+  void setEditMode(AbstractImage selected) => setState(() {
+    editMode = true;
+    selectionRequest = selected;
+  });
+
+  void addToSelection(ThumbnailEditorState selected) {
+    selection.add(selected);
+    selected.selected = true;
+  }
+
+  void removeFromSelection(ThumbnailEditorState selected) {
+    selection.remove(selected);
+    selected.selected = false;
+  }
+
+  void setSelection(ThumbnailEditorState selected) {
+    selection.where((element) => element != selected).forEach((element) => element.selected = false);
+    selection.removeWhere((element) => element != selected);
+
+    addToSelection(selected);
+  }
+
+  void save() {
+    setState(() {
+      editMode = false;
+      clearSelection();
+    });
+  }
+
+  void clearSelection() {
+    for (var x in selection) x.selected = false;
+    selection.clear();
+  }
+
+  String get albumUrl => "${widget.baseUrl}/${widget.album.path}";
+
+  @override
+  Widget build(BuildContext context) {
+    var self = widget.album;
+    
+    return Scaffold(
+      appBar: !editMode && self.parts.isNotEmpty ? null : AppBar(
+        title: Column(
+          children: [
+            Text(self.title),
+            if (self.subTitle.isNotEmpty) Text(self.subTitle)
+          ],
+        ),
+        centerTitle: true,
+        actions: [
+          if (editMode) IconButton(
+            onPressed: save,
+            icon: const Icon(Icons.save))
+        ],
+      ),
+      backgroundColor: Colors.black,
+      body: self.parts.isEmpty ? null : contentView(self),
+      floatingActionButton: FloatingActionButton(
+        onPressed: widget.albumState.uploadImages,
+        tooltip: 'Upload',
+        child: const Icon(Icons.cloud_upload),
+      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+
+  LayoutBuilder contentView(AlbumInfo self) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        var images = self.parts.whereType<AbstractImage>();
+
+        var layout = layouter.AlbumLayout(constraints.maxWidth, 250, images);
+        double pageWidth = layout.getPageWidth();
+
+        var builder = ContentWidgetBuilder(this, pageWidth);
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.vertical,
+          child: Column(
+            children: [
+              if (!editMode) Padding(
+                padding: const EdgeInsets.only(top: 20, bottom: 4),
+                child: Text(self.title,
+                  style: const TextStyle(fontSize: 28, color: Colors.white),
+                )
+              ),
+              if (!editMode) if (self.subTitle.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(self.subTitle,
+                      style: const TextStyle(fontSize: 16, color: Colors.white)
+                  )
+                ),
+              ...layout.map((row) => row.visit(builder, 0.0)).toList(),
+            ]
+          ),
+        );
+      }
+    );
+  }
+
+}
+
+class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
+  final AlbumContentState state;
+  final double pageWidth;
+
+  const ContentWidgetBuilder(this.state, this.pageWidth);
+
+  @override
+  Widget visitImg(layouter.Img content, double rowHeight) {
+    var image = content.getImage();
+
+    var width = content.getUnitWidth() * rowHeight;
+    var height = rowHeight;
+
+    return image.visitAbstractImage(ImageWidgetBuilder(state, width, height), null);
+  }
+
+  @override
+  Widget visitRow(layouter.Row content, double rowHeight) {
+    double scale = pageWidth / content.getUnitWidth();
+    double rowHeight = scale;
+
+    return Row(
+      children: content.map((content) => content.visit(this, rowHeight)).toList(),
+    );
+  }
+
+  @override
+  Widget visitDoubleRow(layouter.DoubleRow content, double rowHeight) {
+    var width = content.getUnitWidth() * rowHeight;
+    var height = rowHeight;
+
+    var upper = content.getUpper();
+    var contentBuilder = ContentWidgetBuilder(state, width);
+    var upperRow = upper.visit(contentBuilder, rowHeight * content.getH1());
+
+    var lower = content.getLower();
+    var lowerRow = lower.visit(contentBuilder, rowHeight * content.getH2());
+
+    return Column(children: [upperRow, lowerRow],);
+  }
+
+  @override
+  Widget visitPadding(layouter.Padding content, double rowHeight) {
+    var width = content.getUnitWidth() * rowHeight;
+    var height = rowHeight;
+
+    return SizedBox(width: width, height: height);
+  }
+}
+
+class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
+  final AlbumContentState state;
+  final double width, height;
+
+  const ImageWidgetBuilder(this.state, this.width, this.height);
+
+  @override
+  Widget visitImageGroup(ImageGroup self, void arg) {
+    var image = self.images[self.representative];
+    return thumbnailView(image);
+  }
+
+  @override
+  Widget visitImagePart(ImagePart self, void arg) {
+    return thumbnailView(self);
+  }
+
+  Widget thumbnailView(ImagePart self) {
+    if (state.editMode) {
+      return ThumbnailEditor(state, this, self);
+    } else {
+      return GestureDetector(
+        onTap: () => state.widget.pushPart(self, self.name),
+        onLongPress: () => state.setEditMode(self),
+        child: imageThumbnail(self)
+      );
+    }
+  }
+
+  Image imageThumbnail(AbstractImage image) {
+    return Image.network("${state.albumUrl}${image.thumbnailName}?type=tn",
+      width: width,
+      height: height,
+      fit: BoxFit.contain,
+    );
+  }
+}
+
+extension on AbstractImage {
+  String get thumbnailName {
+    if (this is ImagePart) {
+      return (this as ImagePart).name;
+    } else {
+      var group = this as ImageGroup;
+      return group.images[group.representative].name;
+    }
+  }
+}
+
+class ThumbnailEditor extends StatefulWidget {
+  final AlbumContentState state;
+  final ImageWidgetBuilder builder;
+  final AbstractImage image;
+
+  const ThumbnailEditor(this.state, this.builder, this.image, {super.key});
+
+  @override
+  State<StatefulWidget> createState() => ThumbnailEditorState();
+}
+
+class ThumbnailEditorState extends State<ThumbnailEditor> {
+
+  bool _selected = false;
+
+  bool get selected => _selected;
+
+  set selected(value) => setState(() => _selected = value);
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.state.selectionRequest == widget.image) {
+      _selected = true;
+      widget.state.selection.add(this);
+      widget.state.selectionRequest = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (selected) {
+      return Stack(
+        children: [
+          widget.builder.imageThumbnail(widget.image),
+          Positioned(
+            top: 4,
+            left: 4,
+            child: Checkbox(
+              value: true,
+              onChanged: (value) => setSelected(value ?? false),
+            )
+          ),
+        ],
+      );
+    } else {
+      return GestureDetector(
+          onTap: select,
+          onLongPress: addToSelection,
+          child: widget.builder.imageThumbnail(widget.image)
+      );
+    }
+  }
+
+  void setSelected(bool value) {
+    if (value && !selected) {
+      addToSelection();
+    } else if (selected && !value) {
+      removeFromSelection();
+    }
+  }
+
+  void addToSelection() {
+    widget.state.addToSelection(this);
+  }
+
+  void removeFromSelection() {
+    widget.state.removeFromSelection(this);
+  }
+
+  void select() {
+    widget.state.setSelection(this);
+  }
+
 }
 
 class CreateAlbumDialog extends StatefulWidget {
@@ -696,90 +964,6 @@ extension AlmostIdentity on Matrix4 {
   }
 }
 
-class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
-  final double pageWidth;
-  final String albumUrl;
-  final Future Function(AbstractImage, String) pushPart;
-  
-  const ContentWidgetBuilder(this.pageWidth, this.albumUrl, this.pushPart);
-
-  @override
-  Widget visitImg(layouter.Img content, double rowHeight) {
-    var image = content.getImage();
-    
-    var width = content.getUnitWidth() * rowHeight;
-    var height = rowHeight;
-
-    return image.visitAbstractImage(ImageWidgetBuilder(albumUrl, width, height, pushPart), null);
-  }
-
-  @override
-  Widget visitRow(layouter.Row content, double rowHeight) {
-    double scale = pageWidth / content.getUnitWidth();
-    double rowHeight = scale;
-
-    return Row(
-      children: content.map((content) => content.visit(this, rowHeight)).toList(),
-    );
-  }
-
-  @override
-  Widget visitDoubleRow(layouter.DoubleRow content, double rowHeight) {
-    var width = content.getUnitWidth() * rowHeight;
-    var height = rowHeight;
-
-    var upper = content.getUpper();
-    var contentBuilder = ContentWidgetBuilder(width, albumUrl, pushPart);
-    var upperRow = upper.visit(contentBuilder, rowHeight * content.getH1());
-
-    var lower = content.getLower();
-    var lowerRow = lower.visit(contentBuilder, rowHeight * content.getH2());
-
-    return Column(children: [upperRow, lowerRow],);
-  }
-
-  @override
-  Widget visitPadding(layouter.Padding content, double rowHeight) {
-    var width = content.getUnitWidth() * rowHeight;
-    var height = rowHeight;
-
-    return SizedBox(width: width, height: height);
-  }
-}
-
-class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
-  final String albumUrl;
-  final double width, height;
-  final Future Function(AbstractImage, String) pushPart;
-  
-  const ImageWidgetBuilder(this.albumUrl, this.width, this.height, this.pushPart);
-  
-  @override
-  Widget visitImageGroup(ImageGroup self, void arg) {
-    var image = self.images[self.representative];
-    var partName = image.name;
-    return GestureDetector(
-        onTap: () => pushPart(image, partName),
-        child: Image.network("$albumUrl$partName?type=tn",
-          width: width,
-          height: height,
-          fit: BoxFit.contain,
-        )
-    );
-  }
-
-  @override
-  Widget visitImagePart(ImagePart self, void arg) {
-    return GestureDetector(
-        onTap: () => pushPart(self, self.name),
-        child: Image.network("$albumUrl${self.name}?type=tn",
-          width: width,
-          height: height,
-          fit: BoxFit.contain,
-        )
-    );
-  }
-}
 
 enum Direction {
   previous, next;
