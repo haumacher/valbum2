@@ -129,6 +129,33 @@
 					</execution>
 				</executions>
 			</plugin>
+
+			<!--
+				Lightweight Java linting/formatting. Deliberately NOT bound to a
+				lifecycle phase, so it never breaks the existing build. Run on demand:
+				  mvn spotless:check   (report violations)
+				  mvn spotless:apply   (fix in place)
+				Rules preserve the existing tab indentation and brace style; they only
+				tidy imports, trailing whitespace, and the final newline. Generated
+				msgbuf sources live under target/ and are not touched.
+			-->
+			<plugin>
+				<groupId>com.diffplug.spotless</groupId>
+				<artifactId>spotless-maven-plugin</artifactId>
+				<version>2.43.0</version>
+				<configuration>
+					<java>
+						<includes>
+							<include>src/main/java/**/*.java</include>
+							<include>src/test/java/**/*.java</include>
+						</includes>
+						<removeUnusedImports/>
+						<importOrder/>
+						<trimTrailingWhitespace/>
+						<endWithNewline/>
+					</java>
+				</configuration>
+			</plugin>
 		</plugins>
 		
 		<pluginManagement>
