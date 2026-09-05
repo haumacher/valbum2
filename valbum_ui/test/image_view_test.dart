@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/image_view.dart';
 import 'package:valbum_ui/resource.dart';
+import 'package:valbum_ui/video_view.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
@@ -271,7 +272,7 @@ void main() {
     expect(find.byIcon(Icons.expand_more), findsNothing);
   });
 
-  testWidgets('a video is shown by its thumbnail', (tester) async {
+  testWidgets('a video is played in the image slot', (tester) async {
     var video = ImagePart(
       name: "clip.mp4",
       kind: ImageKind.video,
@@ -282,6 +283,11 @@ void main() {
 
     await pumpViewer(tester, video);
 
+    // The viewer hands the video to the player instead of showing its
+    // thumbnail; the thumbnail is only the poster behind it. Playback itself
+    // is covered by `video_view_test.dart` (which fakes the platform); here no
+    // platform is installed, so the player reports that it cannot play.
+    expect(find.byType(VideoView), findsOneWidget);
     expect(
         shownUrl(tester), "http://server/valbum/data/album/clip.mp4?type=tn");
   });
