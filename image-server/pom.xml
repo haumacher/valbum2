@@ -14,7 +14,35 @@
 
 	<properties>
 		<jetty.version>11.0.18</jetty.version>
+
+		<!--
+			The name of the executable JAR with all dependencies. The 'platform-jar' profile below
+			appends the JavaCPP platform, if the build was restricted to a single platform.
+		-->
+		<assembly.finalName>${project.artifactId}</assembly.finalName>
+
+		<!-- The Flutter web build to bundle into the server JAR, if it exists. -->
+		<webapp.dir>${project.basedir}/../valbum_ui/build/web</webapp.dir>
 	</properties>
+
+	<profiles>
+		<!--
+			When the build is restricted to a single JavaCPP platform (-Djavacpp.platform=linux-x86_64),
+			the resulting JAR contains the native libraries of that platform only and is named
+			accordingly.
+		-->
+		<profile>
+			<id>platform-jar</id>
+			<activation>
+				<property>
+					<name>javacpp.platform</name>
+				</property>
+			</activation>
+			<properties>
+				<assembly.finalName>${project.artifactId}-${javacpp.platform}</assembly.finalName>
+			</properties>
+		</profile>
+	</profiles>
 
 	<dependencies>
 		<dependency>
@@ -85,6 +113,35 @@
 	<build>
 		<finalName>${project.artifactId}</finalName>
 		<plugins>
+			<!--
+				Bundle the Flutter web build (if it was built) into the server JAR, so that the
+				server can host the web application at its context root. A missing directory is not
+				an error: a server JAR without the web application is a valid API-only deployment.
+			-->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-resources-plugin</artifactId>
+
+				<executions>
+					<execution>
+						<id>bundle-webapp</id>
+						<phase>prepare-package</phase>
+						<goals>
+							<goal>copy-resources</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${project.build.outputDirectory}/META-INF/resources</outputDirectory>
+							<resources>
+								<resource>
+									<directory>${webapp.dir}</directory>
+									<filtering>false</filtering>
+								</resource>
+							</resources>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-assembly-plugin</artifactId>
@@ -107,7 +164,7 @@
 							<descriptorRefs>
 								<descriptorRef>jar-with-dependencies</descriptorRef>
 							</descriptorRefs>
-							<finalName>${project.artifactId}-${javacpp.platform}</finalName>
+							<finalName>${assembly.finalName}</finalName>
 						</configuration>
 					</execution>
 				</executions>

@@ -10,9 +10,8 @@ and `CLAUDE.md` for the Flutter toolchain.
 
 ## Prerequisites
 
-- **JDK 11** — a [Java 11 JDK](https://adoptium.net/temurin/releases/?version=11)
-  is recommended (the project compiles to Java 8 bytecode, so JDK 8 or newer
-  works, but the runtime documented in the `README.md` is Java 11).
+- **JDK 21** — a [Java 21 JDK](https://adoptium.net/temurin/releases/?version=21).
+  The modules compile with `--release 21`; the build enforces a JDK 21 or newer.
 - **Apache Maven 3.6.0 or newer** — see [maven.apache.org](https://maven.apache.org/).
   The build enforces this minimum version.
 - **Git** — to clone the repository.
@@ -48,8 +47,18 @@ After a successful build you can start a demo server with a sample album:
 mvn exec:java@test-server -pl :image-server
 ```
 
-Then open http://localhost:9090/valbum/ in your browser. See the `README.md` for
-more details on running and deploying VAlbum.
+Then open http://localhost:9090/valbum/data/?type=json in your browser to see the
+JSON API. The web front end is the Flutter app in `valbum_ui/`; its web build
+(`flutter build web`) is bundled into the server JAR when it exists, and can be
+served from disk during development:
+
+```
+java -jar image-server/target/image-server-jar-with-dependencies.jar \
+    --basepath image-server/src/test/fixtures/test-album \
+    --webroot valbum_ui/build/web
+```
+
+See the `README.md` for more details on running and deploying VAlbum.
 
 ## Submitting changes
 

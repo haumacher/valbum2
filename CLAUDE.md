@@ -16,7 +16,8 @@ This repo mixes **Maven** (Java backend, multi-module: `image-server`, `image-se
 
 - Build everything: `mvn clean install` (run from repo root)
 - Run the demo server: `mvn exec:java@test-server -pl :image-server` → http://localhost:9090/valbum/ (port 9090, non-standard)
-- Run the packaged jar: `java -jar image-server/target/image-server-jar-with-dependencies.jar --basepath /path/to/photos [--port 8080] [--contextpath valbum]`
+- Run the packaged jar: `java -jar image-server/target/image-server-jar-with-dependencies.jar --basepath /path/to/photos [--port 8080] [--contextpath valbum] [--webroot /path/to/flutter/build/web]`
+- Static web content: the server serves `META-INF/resources` of the class path (favicons, plus the Flutter web build if `valbum_ui/build/web` existed at `package` time) at the context root; `--webroot <dir>` serves a directory from disk with precedence over the class path. Unknown paths without a file extension fall back to `index.html` (client-side deep links).
 - Test fixtures live at `image-server/src/test/fixtures/test-album`.
 - Java lint/format (Spotless, lightweight — tidies imports/whitespace, preserves tab indentation; **not** bound to a build phase): `mvn spotless:check` / `mvn spotless:apply`.
 
@@ -28,7 +29,7 @@ This repo mixes **Maven** (Java backend, multi-module: `image-server`, `image-se
 ## Gotchas
 
 - **Model classes are generated.** `image-server-shared/src/main/java/.../shared/model/model.proto` is the source of truth; the msgbuf-generator Maven plugin regenerates the model on every build. Edit the `.proto`, never the generated output. This generates **both** the Java model classes **and** the Dart file `valbum_ui/lib/resource.dart` (see the `option DartLib=...` line in `model.proto`) — `resource.dart` is generated, so don't hand-edit or reformat it.
-- **Java 1.8 source/target** is a leftover from the GWT client; raising it to 21 is ROADMAP issue #11.
+- **Java 21** (`maven.compiler.release` in the root pom). The former 1.8 setting was a GWT constraint and is gone; a JDK 21 is required to build (the Maven enforcer checks it).
 
 ## Conventions
 

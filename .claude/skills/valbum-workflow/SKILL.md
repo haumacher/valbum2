@@ -188,8 +188,13 @@ Two things to run, always in this order:
 
 ```bash
 mvn exec:java@test-server -pl :image-server        # backend API on http://localhost:9090/valbum/data/
-cd valbum_ui && flutter run -d chrome              # the Flutter app, against localhost:9090/valbum/data
+cd valbum_ui && flutter run -d chrome              # the Flutter app with hot reload, against localhost:9090/valbum/data
 ```
+
+The server also hosts the built web app: `cd valbum_ui && flutter build web`, then `mvn install`
+bundles `valbum_ui/build/web` into the jar (a missing build is skipped, not an error), or pass
+`--webroot valbum_ui/build/web` to the jar to serve a directory. The served `index.html` gets its
+`<base href>` rewritten to the context path, and any extension-less path falls back to the app.
 
 The demo server serves the fixture album; after a backend change, rebuild and restart it (it does
 not hot-reload). It creates an empty `.upload` directory in the fixture album — remove it before

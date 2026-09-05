@@ -6,6 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.util.servlet.ResourceServlet;
 import java.io.File;
+import java.nio.file.Path;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.helper.HelpScreenException;
 import net.sourceforge.argparse4j.impl.type.FileArgumentType;
@@ -46,6 +47,9 @@ public class Main {
 		parser.addArgument("-p", "--port").type(type).setDefault(8080).help("The port to start the server.");
 		parser.addArgument("-b", "--basepath").type(new FileArgumentType()).setDefault(new File(".")).help("The path containing albums to serve");
 		parser.addArgument("-c", "--contextpath").setDefault("").help("The context path the albums are available over HTTP");
+		parser.addArgument("-w", "--webroot").type(new FileArgumentType()).help(
+			"A directory with the web application to serve (e.g. the output of 'flutter build web'), "
+				+ "taking precedence over the web application bundled into this JAR");
 
 		try {
 			Namespace ns = parser.parseArgs(args);
@@ -62,6 +66,8 @@ public class Main {
 	private final String _contextPath;
 	private final File _basePath;
 
+	private final File _webRoot;
+
 	/**
 	 * Creates a {@link Main}.
 	 */
@@ -69,6 +75,7 @@ public class Main {
 		_port = ns.getInt("port");
 		_basePath = ns.get("basepath");
 		_contextPath = normlizeContextPath(ns.get("contextpath"));
+		_webRoot = ns.get("webroot");
 	}
 
 	private void start() throws Exception {
@@ -85,7 +92,8 @@ public class Main {
 		webapp.setContextPath(_contextPath);
 		webapp.setResourceBase(_basePath.toString());
 		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath)), Settings.DATA_PREFIX + "/*");
-		webapp.addServlet(new ServletHolder(new ResourceServlet()), STATIC_PREFIX + "/*");
+		Path webRoot = _webRoot == null ? null : _webRoot.toPath();
+		webapp.addServlet(new ServletHolder(new ResourceServlet(webRoot, Settings.DATA_PREFIX)), STATIC_PREFIX + "/*");
 		webapp.setClassLoader(Main.class.getClassLoader());
 
 		handlers.addHandler(webapp);
@@ -102,6 +110,9 @@ public class Main {
 		server.start();
 
 		System.out.println("Image server started: http://localhost:" + _port + _contextPath + "/ serving folder: " + _basePath);
+		if (_webRoot != null) {
+			System.out.println("Serving the web application from: " + _webRoot);
+		}
 		server.join();
 	}
 
