@@ -9,6 +9,8 @@ VAlbum2 — a self-hosted photo/video album. A Java backend (Jetty) serves album
 - **`valbum_ui/`** — Flutter app. **This is the active development focus.**
 - **`image-server-client/`** — legacy GWT web UI (compiled to JS, served by the backend).
 
+Direction, phases and decisions are recorded in `ROADMAP.md` (the GWT client is being retired; see Phase 0).
+
 ## Two separate toolchains
 
 This repo mixes **Maven** (Java/GWT, multi-module) and **Flutter/Dart** (`valbum_ui/`), with independent dependency management. A full build means running both.

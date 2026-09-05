@@ -7,8 +7,9 @@ description: The working method for developing VAlbum2 — orchestrating sub-age
 
 This skill is the meta-knowledge of how a session on this repository should run. It complements,
 never duplicates, `CLAUDE.md` (build facts, gotchas, conventions) and `CONTRIBUTING.md` (the
-public build instructions). Read both first. There is no design record in this repository; the
-GitHub issue tracker **is** the work queue and the record of decisions (see §1 and §8).
+public build instructions). Read both first, then `ROADMAP.md` — the direction record (vision,
+phases, decisions log). The GitHub issue tracker **is** the work queue; each issue names its
+roadmap phase (see §1 and §8).
 
 ## 1. The operating loop
 
@@ -214,17 +215,17 @@ Never leave a broken build running — the served demo is the shared reference f
   nothing across builds.
 - **`model.proto` is the single source of truth** for the wire model. Never edit generated output;
   never let the Java and Dart sides drift by hand.
-- **Two front-ends, one protocol.** The Flutter app is the development focus, but the GWT client
-  must keep compiling and working against the same JSON until it is formally retired. A protocol
-  change lands with both consumers adjusted or with a recorded, issue-tracked cut.
+- **One client, one protocol.** The Flutter app is the only front end (ROADMAP Phase 0 retires
+  the GWT client). Until that removal has landed, the GWT client must still compile; afterwards a
+  protocol change lands with the Dart consumer adjusted in the same commit.
 - **Java 1.8 source/target** in the Maven modules (GWT 2.9). No `var`, no records, no newer APIs
   in code GWT compiles (`image-server-shared`, `image-server-client`, `util-gwt`).
 - **Refusals speak**: no route may decline silently; the UI shows the reason.
 - **Everything generic**: issues are exercises of general mechanisms — if a fix is shaped like the
   bug report, it isn't done.
-- **Decisions live in issues and commit messages.** With no design document, the commit message
-  is the as-built note and the issue comment is the rationale; deliberate cuts become issues,
-  never silence.
+- **Decisions live in ROADMAP.md, issues and commit messages.** Direction-level decisions go into
+  the roadmap's decisions log; the commit message is the as-built note and the issue comment is
+  the rationale; deliberate cuts become issues, never silence.
 
 ## 9. Working with this user
 
