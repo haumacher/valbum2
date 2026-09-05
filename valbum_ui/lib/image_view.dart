@@ -220,6 +220,10 @@ class ImageViewState extends State<ImageView> {
     var self = part;
     return Image.network(
       widget.client.originalUrl(dataUrl),
+      // The original is not cached (an album of originals would fill the
+      // device), but it must still identify itself: a server started with
+      // `--auth all` refuses an anonymous image.
+      headers: widget.client.authHeaders,
       width: self.width.toDouble(),
       height: self.height.toDouble(),
       fit: BoxFit.fill,
@@ -234,9 +238,8 @@ class ImageViewState extends State<ImageView> {
   /// keyboard shortcuts.
   Widget buildVideoViewer() {
     var self = part;
-    var aspectRatio = self.width > 0 && self.height > 0
-        ? self.width / self.height
-        : 16 / 9;
+    var aspectRatio =
+        self.width > 0 && self.height > 0 ? self.width / self.height : 16 / 9;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onScaleStart: (details) {},
@@ -252,6 +255,7 @@ class ImageViewState extends State<ImageView> {
             key: ValueKey(dataUrl),
             videoUrl: widget.client.originalUrl(dataUrl),
             posterUrl: widget.client.thumbnailUrl(dataUrl),
+            headers: widget.client.authHeaders,
           ),
         ),
       ),

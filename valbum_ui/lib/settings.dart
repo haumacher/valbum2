@@ -19,6 +19,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'client.dart';
+import 'offline.dart';
 import 'resource.dart';
 import 'urls.dart';
 
@@ -391,9 +392,8 @@ Future<ConnectionTestResult> _reachServer(VAlbumClient client) async {
 
 extension on ConnectionTestResult {
   /// The same result with [detail] appended, where there is one.
-  ConnectionTestResult withDetail(String detail) => detail.isEmpty
-      ? this
-      : ConnectionTestResult(ok, "$message ($detail)");
+  ConnectionTestResult withDetail(String detail) =>
+      detail.isEmpty ? this : ConnectionTestResult(ok, "$message ($detail)");
 }
 
 /// The title the root resource of an album server announces.
@@ -434,6 +434,9 @@ const Key deviceNameFieldKey = Key("settings.deviceName");
 
 /// The key of the pairing secret field, see [serverUrlFieldKey].
 const Key pairingSecretFieldKey = Key("settings.pairingSecret");
+
+/// The key of the "Clear cache" button, see [serverUrlFieldKey].
+const Key clearCacheButtonKey = Key("settings.clearCache");
 
 /// The screen editing the URL of the album server.
 class ServerSettingsScreen extends StatefulWidget {
@@ -488,6 +491,12 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
   /// The reason the entered URL cannot be saved, if any.
   String? error;
+
+  /// What clearing the cache did, shown until the screen is left.
+  String? cacheMessage;
+
+  /// Counts the times the cache changed, so that its size is read again.
+  int _cacheGeneration = 0;
 
   /// A pre-filled suggestion: the server the app talks to, or the demo server.
   ///
@@ -590,6 +599,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
               const SizedBox(height: 24),
               const Divider(),
               ..._pairingSection(settings),
+              ..._cacheSection(),
             ],
           ),
         ),
@@ -695,11 +705,106 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         if (!pairingRunning && pairing != null) _outcome(pairing!),
       ];
 
+  /// The section reporting and clearing the offline cache (issue #31).
+  ///
+  /// Empty where there is no cache to speak of — a view pumped on its own in a
+  /// test; the app always has one, see [VAlbumApp].
+  List<Widget> _cacheSection() {
+    var cache = OfflineScope.maybeOf(context)?.cache;
+    if (cache == null) {
+      return const [];
+    }
+    return [
+      const SizedBox(height: 24),
+      const Divider(),
+      const SizedBox(height: 8),
+      Text("Cache", style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      const Text(
+        "Albums and thumbnails already seen are kept on this device, so that "
+        "the library can be browsed while the server is away.",
+      ),
+      const SizedBox(height: 16),
+      FutureBuilder<int>(
+        // Re-read whenever the screen rebuilds, so that clearing shows.
+        key: ValueKey(_cacheGeneration),
+        future: cache.size(),
+        builder: (context, snapshot) => Text(
+          snapshot.hasData
+              ? "Currently cached: ${formatBytes(snapshot.data!)}"
+              : "Currently cached: ...",
+        ),
+      ),
+      const SizedBox(height: 16),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            key: clearCacheButtonKey,
+            onPressed: () => _clearCache(cache),
+            icon: const Icon(Icons.delete_sweep),
+            label: const Text("Clear cache"),
+          ),
+        ],
+      ),
+      if (cacheMessage != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: _outcome(ConnectionTestResult(true, cacheMessage!)),
+        ),
+    ];
+  }
+
+  /// Empties the cache, after asking; what happened is shown on the screen.
+  Future<void> _clearCache(OfflineCache cache) async {
+    var confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Clear the cache?"),
+        content: const Text(
+          "Everything kept for offline browsing is forgotten. It is fetched "
+          "again the next time the server is reached.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text("Clear"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+    var freed = await cache.size();
+    await cache.clear();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _cacheGeneration++;
+      cacheMessage = "Cache cleared, ${formatBytes(freed)} freed.";
+    });
+  }
+
   /// Exchanges the pairing secret for a device token at the *entered* server.
   ///
   /// The URL does not have to be saved for this: pairing tests the address the
   /// user is looking at, like the connection test does.
   Future<void> _pair() async {
+    if (OfflineScope.isOffline(context)) {
+      // Pairing is a change on the server; while it cannot be reached there is
+      // nothing to pair with. "Test connection" finds the server again and
+      // clears this state.
+      setState(
+          () => pairing = const ConnectionTestResult(false, offlineRefusal));
+      return;
+    }
     var entered = controller.text;
     var problem = serverUrlError(entered);
     if (problem != null) {

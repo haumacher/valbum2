@@ -8,7 +8,9 @@ import 'package:intl/intl.dart';
 import 'app.dart';
 import 'client.dart';
 import 'resource.dart';
+import 'offline.dart';
 import 'settings.dart';
+import 'thumbnails.dart';
 
 /// The edge length (in CSS pixels) of the square folder preview the retired
 /// GWT client rendered its index pictures into.
@@ -89,28 +91,39 @@ class ListingView extends StatelessWidget {
           ]),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          double imageBorder = 8;
-          var preferredImageWidth = 200;
-          var maxWidth = constraints.maxWidth;
-          double preferredImageSpace = preferredImageWidth + 2 * imageBorder;
-          double imagesPerRowFrag = maxWidth / preferredImageSpace;
-          var imagesPerRow = imagesPerRowFrag.round();
-          bool underflow = self.folders.length < imagesPerRow;
-          double difference =
-              underflow ? 0 : maxWidth - imagesPerRow * preferredImageSpace;
-          double imageSpace = preferredImageSpace + difference / imagesPerRow;
+      body: Column(
+        children: [
+          // Says plainly when the tiles below are the copy from the cache.
+          OfflineBanner(onRetry: albumState.reload),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                double imageBorder = 8;
+                var preferredImageWidth = 200;
+                var maxWidth = constraints.maxWidth;
+                double preferredImageSpace =
+                    preferredImageWidth + 2 * imageBorder;
+                double imagesPerRowFrag = maxWidth / preferredImageSpace;
+                var imagesPerRow = imagesPerRowFrag.round();
+                bool underflow = self.folders.length < imagesPerRow;
+                double difference = underflow
+                    ? 0
+                    : maxWidth - imagesPerRow * preferredImageSpace;
+                double imageSpace =
+                    preferredImageSpace + difference / imagesPerRow;
 
-          return SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            child: buildFolderList(
-              self,
-              imageSpace - 2 * imageBorder,
-              imageBorder,
+                return SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: buildFolderList(
+                    self,
+                    imageSpace - 2 * imageBorder,
+                    imageBorder,
+                  ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -181,9 +194,9 @@ class ListingView extends StatelessWidget {
         child: Transform(
           alignment: Alignment.center,
           transform: thumbnailTransform(indexPicture, width),
-          child: Image.network(
-            client
-                .thumbnailUrl("$baseUrl/${folder.name}/${indexPicture.image}"),
+          child: thumbnail(
+            client,
+            "$baseUrl/${folder.name}/${indexPicture.image}",
             width: width,
             height: width,
             fit: BoxFit.contain,
@@ -194,6 +207,9 @@ class ListingView extends StatelessWidget {
   }
 
   void createFolder(BuildContext context) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
     ListingInfo? folder = await showGeneralDialog(
       context: context,
       pageBuilder: (context, _, __) => const CreateFolderDialog(),
@@ -210,6 +226,9 @@ class ListingView extends StatelessWidget {
   }
 
   void createAlbum(BuildContext context) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
     AlbumInfo? album = await showGeneralDialog(
       context: context,
       pageBuilder: (context, _, __) => const CreateAlbumDialog(),

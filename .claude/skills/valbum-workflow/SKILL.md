@@ -153,6 +153,12 @@ delivery:
   them in the generator or ignore them, never by hand. The bar is **zero errors**, and no *new*
   warnings in hand-written files.
 
+- **Request paths in a `MockClient` handler are percent-encoded.** A fixture folder named
+  `2002-03-03 Schlosspark Karlsruhe` arrives as `.../2002-03-03%20Schlosspark%20Karlsruhe/`; a
+  handler matching on the name with spaces never hits and serves its fallback (usually the
+  listing) for the album path — the app then renders a listing where the probe expects an album,
+  and the route looks right while the screen looks wrong. Match on `Uri.decodeComponent(path)` or
+  on the date prefix.
 - **The Bash tool resets its working directory between calls.** A chain that relies on an earlier
   `cd` runs in the repo root (or its parent); use absolute paths or one `cd` per command, and
   never `git add -A` after a relative `cd ..`.

@@ -17,6 +17,8 @@ import 'client.dart';
 import 'group_view.dart';
 import 'image_view.dart';
 import 'listing_view.dart';
+import 'offline.dart';
+import 'platform.dart';
 import 'resource.dart';
 import 'routes.dart';
 import 'settings.dart';
@@ -45,11 +47,24 @@ class VAlbumApp extends StatefulWidget {
   /// Tests use it to pump the app deep-linked into an album or an image.
   final VAlbumRoute? initialRoute;
 
+  /// What the app has already seen, kept for the times the server is away
+  /// (issue #31).
+  ///
+  /// Defaults to a [FileOfflineCache] under the app's support directory, to a
+  /// [MemoryOfflineCache] on the web — and to one in a test, which is what an
+  /// injected [client] says this app is, as with the [settings].
+  final OfflineCache? cache;
+
+  /// Whether the app is currently showing what the [cache] holds.
+  final OfflineState? offlineState;
+
   const VAlbumApp({
     super.key,
     this.client,
     this.settings,
     this.initialRoute,
+    this.cache,
+    this.offlineState,
   });
 
   @override
@@ -66,6 +81,23 @@ class VAlbumApp extends StatefulWidget {
 class VAlbumAppState extends State<VAlbumApp> {
   /// The server the app talks to, see [VAlbumApp.settings].
   late final ServerSettings settings = widget.settings ?? _defaultSettings();
+
+  /// What this app has already seen, see [VAlbumApp.cache].
+  late final OfflineCache cache = widget.cache ?? _defaultCache();
+
+  /// Whether the app is showing a cached copy, see [OfflineState].
+  late final OfflineState offlineState = widget.offlineState ?? OfflineState();
+
+  /// Whether [offlineState] was created here and must be disposed.
+  bool get _ownsOfflineState => widget.offlineState == null;
+
+  /// The cache used when the app is not told otherwise.
+  ///
+  /// An injected client means a test or an embedder drives this app; nothing
+  /// of it may reach the device's file system then, exactly as with the
+  /// settings store, see [_defaultSettings].
+  OfflineCache _defaultCache() =>
+      widget.client != null ? MemoryOfflineCache() : defaultOfflineCache();
 
   /// The transport every client of this app sends its requests over.
   late final http.Client _transport = widget.client?.httpClient ?? _own();
@@ -137,6 +169,8 @@ class VAlbumAppState extends State<VAlbumApp> {
         dataUrl: dataUrl,
         token: settings.token,
         httpClient: _transport,
+        cache: cache,
+        offlineState: offlineState,
       );
 
   @override
@@ -160,6 +194,9 @@ class VAlbumAppState extends State<VAlbumApp> {
     }
     if (_ownsTransport) {
       _transport.close();
+    }
+    if (_ownsOfflineState) {
+      offlineState.dispose();
     }
     super.dispose();
   }
@@ -185,14 +222,18 @@ class VAlbumAppState extends State<VAlbumApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ServerSettingsScope(
-      settings: settings,
-      clientFor: clientFor,
-      child: !settings.loaded
-          ? _splash()
-          : client == null
-              ? _serverSetup()
-              : _albumApp(client!),
+    return OfflineScope(
+      state: offlineState,
+      cache: cache,
+      child: ServerSettingsScope(
+        settings: settings,
+        clientFor: clientFor,
+        child: !settings.loaded
+            ? _splash()
+            : client == null
+                ? _serverSetup()
+                : _albumApp(client!),
+      ),
     );
   }
 
@@ -711,6 +752,9 @@ class VAlbumState extends State<VAlbumView>
   }
 
   void uploadImages() async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
     ImagePicker picker = ImagePicker();
     List<XFile> files = await picker.pickMultiImage();
     if (kDebugMode) {
@@ -747,6 +791,9 @@ class VAlbumState extends State<VAlbumView>
   /// creates a second copy of a photo. What happened is said on the screen —
   /// both what was uploaded and what was already there.
   Future<void> uploadPicked(List<UploadFile> uploads) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
     var handle = UploadHandle();
     ProgressDialog pd = ProgressDialog(context: context);
     pd.show(

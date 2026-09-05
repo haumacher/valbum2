@@ -19,6 +19,7 @@ import 'album_view.dart';
 import 'client.dart';
 import 'image_view.dart';
 import 'resource.dart';
+import 'thumbnails.dart';
 
 /// The height a row of the group layout aims at, as in the album view.
 const double _maxRowHeight = 250;
@@ -96,8 +97,9 @@ class GroupView extends StatelessWidget {
     var self = layouter.ToImage.toImage(image);
     return GestureDetector(
       onTap: () => showDetail(context, self),
-      child: Image.network(
-        client.thumbnailUrl("$baseUrl/${self.name}"),
+      child: thumbnail(
+        client,
+        "$baseUrl/${self.name}",
         key: ValueKey("group-tile-${self.name}"),
         width: width,
         height: height,

@@ -11,7 +11,9 @@ import 'album_model.dart';
 import 'app.dart';
 import 'client.dart';
 import 'resource.dart';
+import 'offline.dart';
 import 'settings.dart';
+import 'thumbnails.dart';
 
 class AlbumContent extends StatefulWidget {
   final VAlbumState albumState;
@@ -69,13 +71,23 @@ class AlbumContentState extends State<AlbumContent> {
   Orientation layoutOrientation(ImagePart image) =>
       _layoutOrientation.putIfAbsent(image, () => image.orientation);
 
-  void setEditMode(AlbumPart selected) => setState(() {
-        editMode = true;
-        selection
-          ..clear()
-          ..add(selected);
-        lastClicked = selected;
-      });
+  /// Enters the edit mode with the given part selected.
+  ///
+  /// Refused while the app is offline: an edit that could never be saved is
+  /// worse than no edit at all, so the reason is said instead, see
+  /// [refuseWhileOffline].
+  void setEditMode(AlbumPart selected) {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    setState(() {
+      editMode = true;
+      selection
+        ..clear()
+        ..add(selected);
+      lastClicked = selected;
+    });
+  }
 
   bool isSelected(AlbumPart part) => selection.contains(part);
 
@@ -194,6 +206,9 @@ class AlbumContentState extends State<AlbumContent> {
   /// from the state the server now has. A failed write keeps the edit mode
   /// open and reports the HTTP status.
   Future<void> save() async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
     var messenger = ScaffoldMessenger.of(context);
 
     try {
@@ -289,7 +304,13 @@ class AlbumContentState extends State<AlbumContent> {
               ],
             ),
       backgroundColor: Colors.black,
-      body: self.parts.isEmpty ? null : contentView(self),
+      body: Column(
+        children: [
+          // Says plainly when the album below is the copy from the cache.
+          OfflineBanner(onRetry: widget.albumState.reload),
+          if (self.parts.isNotEmpty) Expanded(child: contentView(self)),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: widget.albumState.uploadImages,
         tooltip: 'Upload',
@@ -661,8 +682,9 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   }
 
   Widget orientedThumbnail(ImagePart image) {
-    Widget result = Image.network(
-      state.client.thumbnailUrl("${state.albumUrl}${image.thumbnailName}"),
+    Widget result = thumbnail(
+      state.client,
+      "${state.albumUrl}${image.thumbnailName}",
       width: width,
       height: height,
       fit: BoxFit.contain,

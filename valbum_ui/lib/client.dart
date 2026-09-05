@@ -8,6 +8,8 @@ import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:jsontool/jsontool.dart';
 
+import 'offline.dart';
+import 'platform.dart';
 import 'resource.dart';
 import 'urls.dart';
 
@@ -126,10 +128,33 @@ class VAlbumClient {
   /// refuses an anonymous write, see [pair].
   final String? token;
 
+  /// What this app has already seen, `null` if nothing is cached.
+  ///
+  /// Every answer of the server is written through into it, and only a
+  /// *transport* failure — the server cannot be reached at all — is answered
+  /// from it, see [loadResource] and issue #31.
+  final OfflineCache? cache;
+
+  /// Told whenever a load fell back to the [cache], or reached the server
+  /// again; the views show what it says.
+  final OfflineState? offlineState;
+
+  /// How long a request may take before the server counts as unreachable.
+  ///
+  /// Without it a phone with a captive portal or a half-open connection waits
+  /// forever instead of showing what it has.
+  final Duration timeout;
+
   final http.Client _http;
 
-  VAlbumClient({required this.dataUrl, this.token, http.Client? httpClient})
-      : _http = httpClient ?? http.Client();
+  VAlbumClient({
+    required this.dataUrl,
+    this.token,
+    http.Client? httpClient,
+    this.cache,
+    this.offlineState,
+    this.timeout = const Duration(seconds: 15),
+  }) : _http = httpClient ?? http.Client();
 
   /// The transport this client sends its requests over.
   ///
@@ -142,14 +167,26 @@ class VAlbumClient {
   /// Used when the user points the app at a different server, see
   /// `ServerSettings`: only the URL changes, the transport (a fake one, in a
   /// test) stays the same.
-  VAlbumClient withDataUrl(String dataUrl) =>
-      VAlbumClient(dataUrl: dataUrl, token: token, httpClient: _http);
+  VAlbumClient withDataUrl(String dataUrl) => VAlbumClient(
+        dataUrl: dataUrl,
+        token: token,
+        httpClient: _http,
+        cache: cache,
+        offlineState: offlineState,
+        timeout: timeout,
+      );
 
   /// The same client, identifying itself with the given token from now on.
   ///
   /// `null` drops the token: the client talks to the server anonymously again.
-  VAlbumClient withToken(String? token) =>
-      VAlbumClient(dataUrl: dataUrl, token: token, httpClient: _http);
+  VAlbumClient withToken(String? token) => VAlbumClient(
+        dataUrl: dataUrl,
+        token: token,
+        httpClient: _http,
+        cache: cache,
+        offlineState: offlineState,
+        timeout: timeout,
+      );
 
   /// The authorization header of every request, empty while unpaired.
   Map<String, String> get authHeaders {
@@ -161,11 +198,18 @@ class VAlbumClient {
 
   /// Client talking to the server this app was loaded from (on the web), or to
   /// the [defaultDataUrl] on all other platforms.
-  factory VAlbumClient.fromOrigin({String? token, http.Client? httpClient}) =>
+  factory VAlbumClient.fromOrigin({
+    String? token,
+    http.Client? httpClient,
+    OfflineCache? cache,
+    OfflineState? offlineState,
+  }) =>
       VAlbumClient(
         dataUrl: deriveDataUrl(Uri.base, isWeb: kIsWeb),
         token: token,
         httpClient: httpClient,
+        cache: cache,
+        offlineState: offlineState,
       );
 
   /// The URL of the resource at the given path (a list of folder names).
@@ -191,17 +235,107 @@ class VAlbumClient {
   String originalUrl(String imageUrl) => imageUrl;
 
   /// Loads the resource at the given path.
+  ///
+  /// Network first, cache second: the server is asked, its answer is written
+  /// through into the [cache], and only if the server cannot be *reached* does
+  /// what the cache holds answer instead — the app is then told it is offline,
+  /// see [OfflineState]. A server that answers with a status is the server
+  /// speaking: that refusal is reported, never masked by an older copy.
   Future<Resource?> loadResource(List<String> path) async {
     var uri = jsonUrl(path);
     if (kDebugMode) {
       print("Fetching: $uri");
     }
-    var response = await _http.get(Uri.parse(uri), headers: authHeaders);
+    http.Response response;
+    try {
+      response = await _http
+          .get(Uri.parse(uri), headers: authHeaders)
+          .timeout(timeout);
+    } catch (error) {
+      if (!isTransportFailure(error)) {
+        rethrow;
+      }
+      return _cachedResource(path, uri, error);
+    }
     if (response.statusCode != 200) {
       throw failure(response.statusCode, response.body, "loading '$uri'");
     }
+    offlineState?.online();
+    await cache?.putResource(dataUrl, path, response.body);
     return Resource.read(JsonReader.fromString(response.body));
   }
+
+  /// The last copy of [path] this app saw, after the server could not be
+  /// reached.
+  ///
+  /// Throws a [VAlbumException] saying so when there is none: an empty screen
+  /// would leave the user guessing whether the album is gone or the server is.
+  Future<Resource?> _cachedResource(
+    List<String> path,
+    String uri,
+    Object error,
+  ) async {
+    var entry = await cache?.getResource(dataUrl, path);
+    if (entry == null) {
+      offlineState?.goneOffline(null);
+      throw VAlbumException(
+        "The server cannot be reached (${transportMessage(error)}), and "
+        "nothing is cached for this view.",
+      );
+    }
+    offlineState?.goneOffline(entry.storedAt);
+    if (kDebugMode) {
+      print("Offline, showing the copy from ${entry.storedAt}: $uri");
+    }
+    return Resource.read(JsonReader.fromString(entry.text));
+  }
+
+  /// The bytes of the thumbnail at the given image URL.
+  ///
+  /// Thumbnails go through this client rather than through `Image.network`,
+  /// for two reasons: the request carries the device token (a server started
+  /// with `--auth all` refuses an anonymous image), and what was fetched is
+  /// kept in the [cache], so an album already visited still shows its tiles
+  /// while the server is away.
+  Future<Uint8List> thumbnailBytes(String imageUrl) async {
+    var url = thumbnailUrl(imageUrl);
+    http.Response response;
+    try {
+      response = await _http
+          .get(Uri.parse(url), headers: authHeaders)
+          .timeout(timeout);
+    } catch (error) {
+      if (!isTransportFailure(error)) {
+        rethrow;
+      }
+      var entry = await cache?.getThumbnail(url);
+      if (entry == null) {
+        rethrow;
+      }
+      return entry.bytes;
+    }
+    if (response.statusCode != 200) {
+      throw failure(response.statusCode, response.body, "loading '$url'");
+    }
+    await cache?.putThumbnail(url, response.bodyBytes);
+    return response.bodyBytes;
+  }
+
+  /// Whether the given error means the server could not be reached at all.
+  ///
+  /// This is the whole of "offline": a refusal, a missing album or a server
+  /// error are answers, and answers are shown as they are.
+  /// What a transport failure says, without the exception's own decoration.
+  static String transportMessage(Object error) => switch (error) {
+        http.ClientException(message: var message) => message,
+        TimeoutException() => "no answer in time",
+        _ => error.toString(),
+      };
+
+  static bool isTransportFailure(Object error) =>
+      error is http.ClientException ||
+      error is TimeoutException ||
+      isSocketError(error);
 
   /// Stores the given resource at the given URL.
   Future<void> putResource(String url, Resource resource) async {
@@ -363,7 +497,9 @@ class VAlbumClient {
     var hashed = <UploadFile>[];
     for (var file in files) {
       hashed.add(
-        file.sha256 != null ? file : file.withHash(await sha256Of(file.openRead())),
+        file.sha256 != null
+            ? file
+            : file.withHash(await sha256Of(file.openRead())),
       );
     }
 
@@ -379,7 +515,10 @@ class VAlbumClient {
       }
     }
 
-    var pending = [for (var file in hashed) if (!known.contains(file.sha256)) file];
+    var pending = [
+      for (var file in hashed)
+        if (!known.contains(file.sha256)) file
+    ];
     var skipped = hashed.length - pending.length;
     if (pending.isEmpty) {
       onProgress?.call(100);

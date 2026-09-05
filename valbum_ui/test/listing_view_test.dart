@@ -30,8 +30,8 @@ Matrix4 transformOf(WidgetTester tester, String image) {
   var picture = find.byWidgetPredicate(
     (widget) =>
         widget is Image &&
-        widget.image is NetworkImage &&
-        (widget.image as NetworkImage).url.contains(image),
+        widget.image is ThumbnailImage &&
+        (widget.image as ThumbnailImage).url.contains(image),
   );
   expect(picture, findsOneWidget);
   return tester
@@ -119,8 +119,8 @@ void main() {
         of: find.byWidgetPredicate(
           (widget) =>
               widget is Image &&
-              widget.image is NetworkImage &&
-              (widget.image as NetworkImage).url.contains("P3031379.JPG"),
+              widget.image is ThumbnailImage &&
+              (widget.image as ThumbnailImage).url.contains("P3031379.JPG"),
         ),
         matching: find.byType(ClipRect),
       );

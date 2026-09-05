@@ -8,11 +8,20 @@ import 'package:video_player/video_player.dart';
 ///
 /// Injected into [VideoView] so that tests can supply a controller that fails
 /// or never initialises.
-typedef VideoControllerFactory = VideoPlayerController Function(Uri url);
+typedef VideoControllerFactory = VideoPlayerController Function(
+  Uri url, {
+  Map<String, String> headers,
+});
 
 /// The [VideoControllerFactory] used in production: a plain network player.
-VideoPlayerController networkController(Uri url) =>
-    VideoPlayerController.networkUrl(url);
+///
+/// The headers carry the device token: a server started with `--auth all`
+/// refuses an anonymous request, and the player opens a connection of its own.
+VideoPlayerController networkController(
+  Uri url, {
+  Map<String, String> headers = const {},
+}) =>
+    VideoPlayerController.networkUrl(url, httpHeaders: headers);
 
 /// Plays a single video, showing its poster image until playback can start.
 ///
@@ -30,6 +39,9 @@ class VideoView extends StatefulWidget {
   /// The URL of the poster shown until the video is playable.
   final String posterUrl;
 
+  /// The headers every request of this view carries, see [networkController].
+  final Map<String, String> headers;
+
   /// Whether to start playing as soon as the video is initialised.
   final bool autoPlay;
 
@@ -40,6 +52,7 @@ class VideoView extends StatefulWidget {
     super.key,
     required this.videoUrl,
     required this.posterUrl,
+    this.headers = const {},
     this.autoPlay = true,
     this.createController = networkController,
   });
@@ -92,7 +105,10 @@ class VideoViewState extends State<VideoView> {
   Future<void> _open() async {
     VideoPlayerController controller;
     try {
-      controller = widget.createController(Uri.parse(widget.videoUrl));
+      controller = widget.createController(
+        Uri.parse(widget.videoUrl),
+        headers: widget.headers,
+      );
     } catch (problem) {
       _failed(problem);
       return;
@@ -154,6 +170,7 @@ class VideoViewState extends State<VideoView> {
       children: [
         Image.network(
           widget.posterUrl,
+          headers: widget.headers,
           fit: BoxFit.contain,
         ),
         if (controller != null && isPlayable)

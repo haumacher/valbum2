@@ -106,7 +106,9 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
   off|writes|all`, default `writes`; a device is paired with `POST <data>/?action=pair` against the
   `--pairing-secret`, the token hash is kept in `<basepath>/.valbum/devices.json`; a refusal is a
   401 with an `ErrorInfo` body the app shows.)*
-- Offline: the app caches listings and thumbnails so the library browses without the server. (#31)
+- ✅ Offline: the app caches listings and thumbnails so the library browses without the server. (#31)
+  *(Done: network first, cache only when the server cannot be reached; a bounded LRU file cache off
+  the web; an offline banner with the copy's stamp; one visible refusal for changes while offline.)*
 
 ## Phase 3 — The server grows up
 

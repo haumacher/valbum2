@@ -97,7 +97,10 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 }
 
 /// A [VideoControllerFactory] that cannot even create a controller.
-VideoPlayerController failingFactory(Uri url) =>
+VideoPlayerController failingFactory(
+  Uri url, {
+  Map<String, String> headers = const {},
+}) =>
     throw StateError("No player for $url.");
 
 ImagePart videoPart({
