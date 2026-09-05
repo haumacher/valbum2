@@ -25,6 +25,10 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
 - `lib/album_edit.dart` — widget-free editing logic: the orientation algebra
   (`PlaneTransform`, `OrientationOps`), the rating filter and the selection
   arithmetic behind the tile editor.
+- `lib/image_transform.dart` — the widget-free helpers of the viewer:
+  `ImageTransform` (fit, wheel zoom around a point, click to 1:1, the
+  re-centering on zoom-out) and the rating-filter-aware navigation
+  (`nextVisible`, `previousVisible`, `firstVisible`, `lastVisible`).
 - `lib/album_model.dart` — widget-free model helpers: `AlbumInitializer`
   (rebuilds the transient `previous`/`next` links) and `thumbnailName`.
 - `lib/client.dart` — `VAlbumClient`, the one place that builds URLs and talks HTTP; injected via
