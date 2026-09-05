@@ -148,14 +148,21 @@ class VAlbumState extends State<VAlbumView>
 
   @override
   Widget visitImagePart(ImagePart self, BuildContext arg) {
-    return ImageView(this, self);
+    return showImageView(self);
   }
 
   @override
   Widget visitImageGroup(ImageGroup self, BuildContext arg) {
-    // TODO: implement visitImageGroup
-    throw UnimplementedError();
+    return showImageView(self);
   }
+
+  /// The viewer of the given image (a group is shown by its representative).
+  Widget showImageView(AbstractImage self) => ImageView(
+        client: client,
+        baseUrl: baseUrl,
+        image: self,
+        onShowImage: showImage,
+      );
 
   @override
   Widget visitErrorInfo(ErrorInfo self, BuildContext arg) {

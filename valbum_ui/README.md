@@ -20,6 +20,10 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   and the `AlbumPropertiesDialog`.
 - `lib/image_view.dart` — `ImageView`, the full-screen single image viewer
   (zoom, pan, swipe and keyboard navigation).
+- `lib/image_transform.dart` — the widget-free helpers of the viewer:
+  `ImageTransform` (fit, wheel zoom around a point, click to 1:1, the
+  re-centering on zoom-out) and the rating-filter-aware navigation
+  (`nextVisible`, `previousVisible`, `firstVisible`, `lastVisible`).
 - `lib/album_model.dart` — widget-free model helpers: `AlbumInitializer`
   (rebuilds the transient `previous`/`next` links) and `thumbnailName`.
 - `lib/client.dart` — `VAlbumClient`, the one place that builds URLs and talks HTTP; injected via
