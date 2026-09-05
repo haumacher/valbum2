@@ -17,12 +17,11 @@ This also regenerates the msgbuf model classes from `image-server-shared/.../mod
 
 ## 2. Flutter app (`valbum_ui/`)
 
-The `flutter` CLI may not be installed; `dart` is. Use whichever is available:
-
 ```
 cd valbum_ui
-flutter analyze   # or: dart analyze
-flutter test      # or: dart test   (skip if there are no tests)
+flutter pub get
+flutter analyze
+flutter test
 ```
 
 ## 3. Report

@@ -24,7 +24,7 @@ This repo mixes **Maven** (Java/GWT, multi-module) and **Flutter/Dart** (`valbum
 
 ### Flutter (`valbum_ui/`)
 
-- The `dart` CLI is on PATH; the `flutter` CLI may not be. Prefer `dart analyze` / `dart test` / `dart format` when `flutter` is unavailable.
+- Use the `flutter` CLI: `flutter pub get`, `flutter analyze`, `flutter test`, `flutter run -d chrome`. The Flutter SDK lives in `~/flutter`, the Android SDK in `~/Android/Sdk` (both on PATH via `~/.bashrc`).
 - The backend URL is hardcoded in `valbum_ui/lib/main.dart` (defaults to `http://localhost:9090/valbum/data`).
 
 ## Gotchas
@@ -34,4 +34,4 @@ This repo mixes **Maven** (Java/GWT, multi-module) and **Flutter/Dart** (`valbum
 
 ## Conventions
 
-- Work on a feature branch and open a PR to `master`; don't commit directly to `master`.
+- Commit directly to `master` and push after every reviewed, gated change (see the `valbum-workflow` skill). Feature branches and PRs are for external contributors, not for the working session.
