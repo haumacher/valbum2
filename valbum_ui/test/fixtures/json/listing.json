@@ -1,0 +1,17 @@
+["ListingInfo", {
+  "path": "",
+  "title": "Test-album",
+  "folders": [
+    {
+      "name": "2002-03-03 Schlosspark Karlsruhe",
+      "title": "Schlosspark Karlsruhe",
+      "subTitle": "March 3, 2002",
+      "indexPicture": {"image": "P3031379.JPG", "scale": 1.333, "tx": 0.0, "ty": 0.0}
+    },
+    {
+      "name": "2003-06-21 Ausflug",
+      "title": "Ausflug",
+      "subTitle": "June 21, 2003"
+    }
+  ]
+}]

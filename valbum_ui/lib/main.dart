@@ -1,23 +1,14 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
-
 import 'package:date_field/date_field.dart';
-import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:jsontool/jsontool.dart';
 import 'package:sn_progress_dialog/options/cancel.dart';
 import 'package:sn_progress_dialog/progress_dialog.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
+import 'client.dart';
 import 'resource.dart';
-
-const String host = "http://localhost:9090/valbum/data";
 
 void main() {
   runApp(const VAlbumApp());
@@ -25,16 +16,32 @@ void main() {
 
 typedef void Action(BuildContext context);
 
-class VAlbumApp extends StatelessWidget {
-  const VAlbumApp({super.key});
+class VAlbumApp extends StatefulWidget {
+  /// The client to talk to the server with.
+  ///
+  /// Defaults to a client for the server this app was loaded from, see
+  /// [VAlbumClient.fromOrigin]. Tests inject a client with a fake transport.
+  final VAlbumClient? client;
+
+  const VAlbumApp({super.key, this.client});
+
+  @override
+  State<VAlbumApp> createState() => VAlbumAppState();
+}
+
+class VAlbumAppState extends State<VAlbumApp> {
+  late final VAlbumClient client = widget.client ?? VAlbumClient.fromOrigin();
 
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Virtual Photo Album',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: const VAlbumView(),
+    return VAlbumScope(
+      client: client,
+      child: MaterialApp(
+        title: 'Virtual Photo Album',
+        theme: ThemeData(primarySwatch: Colors.blue),
+        home: const VAlbumView(),
+      ),
     );
   }
 }
@@ -56,31 +63,29 @@ class VAlbumState extends State<VAlbumView>
     implements ResourceVisitor<Widget, BuildContext> {
   Future<Resource?>? _resourceFuture;
 
-  @override
-  void initState() {
-    super.initState();
+  /// The transport to the album server, provided by the [VAlbumScope].
+  late VAlbumClient client;
 
-    doLoad();
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    client = VAlbumScope.of(context);
+    if (_resourceFuture == null) {
+      doLoad();
+    }
   }
 
   void doLoad() {
-    _resourceFuture = widget.image == null
-        ? load(widget.path)
-        : Future.value(widget.image);
+    var image = widget.image;
+    _resourceFuture = image == null ? load() : Future.value(image);
   }
 
   List<String> get path => widget.path;
-  String get baseUrl => "$host${path.isEmpty ? "" : "/${path.join("/")}"}";
+  String get baseUrl => client.baseUrl(path);
 
-  static Future<Resource?> load(List<String> path) async {
-    var pathString = path.join("/");
-    var uri = "$host/${pathString.isEmpty ? "" : "$pathString/"}?type=json";
-    if (kDebugMode) {
-      print("Fetching: $uri");
-    }
-    var response = await http.get(Uri.parse(uri));
-    var reader = JsonReader.fromString(response.body);
-    var resource = Resource.read(reader);
+  Future<Resource?> load() async {
+    var resource = await client.loadResource(path);
     if (resource is AlbumInfo) {
       AlbumInitializer().init(resource);
     }
@@ -155,9 +160,8 @@ class VAlbumState extends State<VAlbumView>
           double imagesPerRowFrag = maxWidth / preferredImageSpace;
           var imagesPerRow = imagesPerRowFrag.round();
           bool underflow = self.folders.length < imagesPerRow;
-          double difference = underflow
-              ? 0
-              : maxWidth - imagesPerRow * preferredImageSpace;
+          double difference =
+              underflow ? 0 : maxWidth - imagesPerRow * preferredImageSpace;
           double imageSpace = preferredImageSpace + difference / imagesPerRow;
 
           return SingleChildScrollView(
@@ -224,7 +228,7 @@ class VAlbumState extends State<VAlbumView>
     }
 
     return Image.network(
-      "$baseUrl/${folder.name}/${indexPicture.image}?type=tn",
+      client.thumbnailUrl("$baseUrl/${folder.name}/${indexPicture.image}"),
       width: width,
       height: width,
       fit: BoxFit.cover,
@@ -241,12 +245,7 @@ class VAlbumState extends State<VAlbumView>
       return;
     }
 
-    await http.put(
-      Uri.parse("$baseUrl/${folder.path}"),
-      encoding: Encoding.getByName("utf-8"),
-      body: folder.toString(),
-      headers: {"Content-Type": "application/json"},
-    );
+    await client.putResource("$baseUrl/${folder.path}", folder);
 
     reload();
     showElement(folder.path);
@@ -262,12 +261,7 @@ class VAlbumState extends State<VAlbumView>
       return;
     }
 
-    await http.put(
-      Uri.parse("$baseUrl/${album.path}"),
-      encoding: Encoding.getByName("utf-8"),
-      body: album.toString(),
-      headers: {"Content-Type": "application/json"},
-    );
+    await client.putResource("$baseUrl/${album.path}", album);
 
     reload();
     showElement(album.path);
@@ -289,30 +283,23 @@ class VAlbumState extends State<VAlbumView>
       return;
     }
 
-    var uri = Uri.parse(baseUrl);
+    var uploads = [
+      for (var file in files)
+        UploadFile(
+          name: file.name,
+          length: await file.length(),
+          openRead: file.openRead,
+        ),
+    ];
 
-    var multipartRequest = http.MultipartRequest("PUT", uri);
-    for (var file in files) {
-      var multipart = http.MultipartFile.fromPath(
-        file.name,
-        file.path,
-        filename: file.name,
-      );
-      multipartRequest.files.add(await multipart);
-    }
-    var multipartStream = multipartRequest.finalize();
-    var contentLength = multipartRequest.contentLength;
-
-    var client = HttpClient();
-    var put = await client.putUrl(uri);
-
-    if (!context.mounted) {
+    if (!mounted) {
       if (kDebugMode) {
         print("Context was destroyed.");
       }
       return;
     }
 
+    var handle = UploadHandle();
     ProgressDialog pd = ProgressDialog(context: context);
     pd.show(
       msg: "Uploading files...",
@@ -323,28 +310,8 @@ class VAlbumState extends State<VAlbumView>
           if (kDebugMode) {
             print("Aborting upload.");
           }
-          put.abort();
+          handle.cancel();
         },
-      ),
-    );
-
-    put.contentLength = contentLength;
-    multipartRequest.headers.forEach(
-      (key, value) => put.headers.set(key, value),
-    );
-
-    var bytesTransferred = 0;
-    await put.addStream(
-      multipartStream.transform(
-        StreamTransformer.fromHandlers(
-          handleData: (data, sink) {
-            sink.add(data);
-
-            bytesTransferred += data.length;
-            pd.update(value: (100 * bytesTransferred / contentLength).round());
-            // Show progress.
-          },
-        ),
       ),
     );
 
@@ -352,22 +319,17 @@ class VAlbumState extends State<VAlbumView>
       print("Starting upload.");
     }
 
-    var response = await put.close();
-
-    if (kDebugMode) {
-      print("Upload complete.");
-    }
+    var status = await client.uploadFiles(
+      baseUrl,
+      uploads,
+      onProgress: (percent) => pd.update(value: percent),
+      handle: handle,
+    );
 
     pd.close(delay: 500);
 
-    if (response.statusCode == 200) {
-      if (kDebugMode) {
-        print("Upload complete.");
-      }
-    } else {
-      if (kDebugMode) {
-        print("Upload failed: ${response.statusCode}");
-      }
+    if (kDebugMode) {
+      print(status == 200 ? "Upload complete." : "Upload failed: $status");
     }
 
     reload();
@@ -378,11 +340,11 @@ class VAlbumState extends State<VAlbumView>
   }
 
   Future<void> pushPart(AbstractImage image, String name) => Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => VAlbumView(path: path, image: image),
-    ),
-  );
+        context,
+        MaterialPageRoute(
+          builder: (context) => VAlbumView(path: path, image: image),
+        ),
+      );
 
   @override
   Widget visitImagePart(ImagePart self, BuildContext arg) {
@@ -439,7 +401,9 @@ class VAlbumState extends State<VAlbumView>
 
       // TODO: Support video playback
       child: Image.network(
-        "$baseUrl/${self.name}${self.kind == ImageKind.video ? "?type=tn" : ""}",
+        self.kind == ImageKind.video
+            ? client.thumbnailUrl("$baseUrl/${self.name}")
+            : client.originalUrl("$baseUrl/${self.name}"),
         width: constraints.maxWidth,
         height: constraints.maxHeight,
         fit: BoxFit.contain,
@@ -542,9 +506,9 @@ class AlbumContentState extends State<AlbumContent> {
   AbstractImage? selectionRequest;
 
   void setEditMode(AbstractImage selected) => setState(() {
-    editMode = true;
-    selectionRequest = selected;
-  });
+        editMode = true;
+        selectionRequest = selected;
+      });
 
   void addToSelection(ThumbnailEditorState selected) {
     if (selection.contains(selected)) {
@@ -578,9 +542,7 @@ class AlbumContentState extends State<AlbumContent> {
   }
 
   void setSelection(ThumbnailEditorState selected) {
-    selection
-        .where((element) => element != selected)
-        .forEach(
+    selection.where((element) => element != selected).forEach(
           (element) => element.updateSelectionState(SelectionState.none),
         );
     selection.removeWhere((element) => element != selected);
@@ -603,6 +565,9 @@ class AlbumContentState extends State<AlbumContent> {
   }
 
   String get albumUrl => "${widget.baseUrl}/${widget.album.path}";
+
+  /// The transport to the album server.
+  VAlbumClient get client => widget.albumState.client;
 
   @override
   Widget build(BuildContext context) {
@@ -637,13 +602,6 @@ class AlbumContentState extends State<AlbumContent> {
   LayoutBuilder contentView(AlbumInfo self) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        var images = self.parts.whereType<AbstractImage>();
-
-        var layout = layouter.AlbumLayout(constraints.maxWidth, 250, images);
-        double pageWidth = layout.getPageWidth();
-
-        var builder = ContentWidgetBuilder(this, pageWidth);
-
         return SingleChildScrollView(
           scrollDirection: Axis.vertical,
           child: Column(
@@ -665,13 +623,50 @@ class AlbumContentState extends State<AlbumContent> {
                       style: const TextStyle(fontSize: 16, color: Colors.white),
                     ),
                   ),
-              ...layout.map((row) => row.visit(builder, 0.0)).toList(),
+              ...buildParts(self, constraints.maxWidth),
             ],
           ),
         );
       },
     );
   }
+
+  /// Renders the album parts: each run of images is laid out as a block of
+  /// rows, headings separate those blocks.
+  List<Widget> buildParts(AlbumInfo self, double maxWidth) {
+    var result = <Widget>[];
+    var images = <AbstractImage>[];
+
+    void flushImages() {
+      if (images.isEmpty) {
+        return;
+      }
+      var layout = layouter.AlbumLayout(maxWidth, 250, images);
+      var builder = ContentWidgetBuilder(this, layout.getPageWidth());
+      result.addAll(layout.map((row) => row.visit(builder, 0.0)));
+      images = <AbstractImage>[];
+    }
+
+    for (var part in self.parts) {
+      if (part is AbstractImage) {
+        images.add(part);
+      } else if (part is Heading) {
+        flushImages();
+        result.add(headingView(part));
+      }
+    }
+    flushImages();
+
+    return result;
+  }
+
+  Widget headingView(Heading heading) => Padding(
+        padding: const EdgeInsets.only(top: 24, bottom: 8),
+        child: Text(
+          heading.text,
+          style: const TextStyle(fontSize: 22, color: Colors.white),
+        ),
+      );
 }
 
 class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
@@ -699,9 +694,8 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
     double rowHeight = scale;
 
     return Row(
-      children: content
-          .map((content) => content.visit(this, rowHeight))
-          .toList(),
+      children:
+          content.map((content) => content.visit(this, rowHeight)).toList(),
     );
   }
 
@@ -760,7 +754,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
 
   Image imageThumbnail(AbstractImage image) {
     return Image.network(
-      "${state.albumUrl}${image.thumbnailName}?type=tn",
+      state.client.thumbnailUrl("${state.albumUrl}${image.thumbnailName}"),
       width: width,
       height: height,
       fit: BoxFit.contain,
@@ -921,8 +915,7 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DefaultTextStyle(
-                style:
-                    DialogTheme.of(context).titleTextStyle ??
+                style: DialogTheme.of(context).titleTextStyle ??
                     Theme.of(context).textTheme.titleLarge!,
                 child: Semantics(
                   // For iOS platform, the focus always lands on the title.
@@ -1028,8 +1021,7 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DefaultTextStyle(
-                style:
-                    DialogTheme.of(context).titleTextStyle ??
+                style: DialogTheme.of(context).titleTextStyle ??
                     Theme.of(context).textTheme.titleLarge!,
                 child: Semantics(
                   // For iOS platform, the focus always lands on the title.

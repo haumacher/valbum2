@@ -1,0 +1,25 @@
+["AlbumInfo", {
+  "path": "",
+  "title": "Schlosspark Karlsruhe",
+  "subTitle": "March 3, 2002",
+  "parts": [
+    ["Heading", {"text": "Am Morgen"}],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "landscape.jpg", "date": 1015113600000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "portrait.jpg", "date": 1015113610000,
+      "width": 1536, "height": 2048, "orientation": "IDENTITY", "rating": 0
+    }],
+    ["ImageGroup", {
+      "representative": 0,
+      "images": [
+        {"kind": "IMAGE", "name": "group-a.jpg", "date": 1015113620000,
+         "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0},
+        {"kind": "IMAGE", "name": "group-b.jpg", "date": 1015113630000,
+         "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0}
+      ]
+    }]
+  ]
+}]
