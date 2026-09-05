@@ -9,6 +9,7 @@ import 'album_layout.dart' show ToImage;
 import 'client.dart';
 import 'image_transform.dart';
 import 'resource.dart';
+import 'video_view.dart';
 
 /// The velocity (in pixels per second) a drag must reach to count as a swipe.
 const double _swipeVelocity = 400;
@@ -75,6 +76,12 @@ class ImageViewState extends State<ImageView> {
   /// The image displayed, the representative of a group.
   ImagePart get part => ToImage.toImage(widget.image);
 
+  /// Whether the displayed part is a video and not a still image.
+  bool get isVideo => part.kind != ImageKind.image;
+
+  /// The URL of the displayed part on the server, without any `type` parameter.
+  String get dataUrl => "${widget.baseUrl}/${part.name}";
+
   /// The rating filter of the album the image belongs to.
   int get minRating => widget.minRating ?? widget.image.owner?.minRating ?? 0;
 
@@ -135,7 +142,7 @@ class ImageViewState extends State<ImageView> {
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  buildViewer(page),
+                  isVideo ? buildVideoViewer() : buildViewer(page),
                   ...buildOverlay(context),
                 ],
               );
@@ -208,25 +215,46 @@ class ImageViewState extends State<ImageView> {
     );
   }
 
-  /// The image or (once implemented) the video player.
+  /// The image itself.
   Widget buildContent() {
     var self = part;
-    var url = "${widget.baseUrl}/${self.name}";
-    if (self.kind == ImageKind.image) {
-      return Image.network(
-        widget.client.originalUrl(url),
-        width: self.width.toDouble(),
-        height: self.height.toDouble(),
-        fit: BoxFit.fill,
-      );
-    }
-
-    // TODO(#22): Play the video inline instead of showing its thumbnail.
     return Image.network(
-      widget.client.thumbnailUrl(url),
+      widget.client.originalUrl(dataUrl),
       width: self.width.toDouble(),
       height: self.height.toDouble(),
       fit: BoxFit.fill,
+    );
+  }
+
+  /// The video player, filling the slot the image would occupy.
+  ///
+  /// Zoom and pan make no sense for a video (and would fight the player's own
+  /// controls), so the video is only fitted into the page; the swipe gestures
+  /// of the image viewer are kept, as are all the surrounding chrome and the
+  /// keyboard shortcuts.
+  Widget buildVideoViewer() {
+    var self = part;
+    var aspectRatio = self.width > 0 && self.height > 0
+        ? self.width / self.height
+        : 16 / 9;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onScaleStart: (details) {},
+      onScaleEnd: (details) {
+        if (details.pointerCount <= 1) {
+          onSwipe(details);
+        }
+      },
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: aspectRatio,
+          child: VideoView(
+            key: ValueKey(dataUrl),
+            videoUrl: widget.client.originalUrl(dataUrl),
+            posterUrl: widget.client.thumbnailUrl(dataUrl),
+          ),
+        ),
+      ),
     );
   }
 
@@ -240,6 +268,11 @@ class ImageViewState extends State<ImageView> {
     // The image was dragged around while fitted: snap it back.
     setState(tx.reset);
 
+    onSwipe(details);
+  }
+
+  /// Navigates if the finished gesture was a fast enough swipe.
+  void onSwipe(ScaleEndDetails details) {
     var velocity = details.velocity.pixelsPerSecond;
     if (velocity.distance < _swipeVelocity) {
       return;
