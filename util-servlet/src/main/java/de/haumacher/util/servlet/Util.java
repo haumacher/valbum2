@@ -11,6 +11,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 
 /**
  * Collection of static utilities.
@@ -34,6 +35,37 @@ public class Util {
 	public static void sendBytes(HttpServletResponse response, InputStream in) throws IOException {
 		OutputStream out = response.getOutputStream();
 		transfer(in, out);
+	}
+
+	/**
+	 * Sends the given slice of the given file to the client without loading the file into memory.
+	 *
+	 * @param response
+	 *        The response to write the bytes to.
+	 * @param file
+	 *        The file to read from.
+	 * @param start
+	 *        The index of the first byte to send.
+	 * @param length
+	 *        The number of bytes to send.
+	 */
+	public static void sendSlice(HttpServletResponse response, File file, long start, long length) throws IOException {
+		try (RandomAccessFile in = new RandomAccessFile(file, "r")) {
+			in.seek(start);
+			OutputStream out = response.getOutputStream();
+			byte[] buffer = new byte[64 * 1024];
+			long remaining = length;
+			while (remaining > 0) {
+				int chunk = (int) Math.min(buffer.length, remaining);
+				int direct = in.read(buffer, 0, chunk);
+				if (direct < 0) {
+					// The file shrank while it was being sent.
+					break;
+				}
+				out.write(buffer, 0, direct);
+				remaining -= direct;
+			}
+		}
 	}
 
 	/**

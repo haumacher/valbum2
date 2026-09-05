@@ -15,6 +15,7 @@ import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
 import de.haumacher.msgbuf.server.io.WriterAdapter;
+import de.haumacher.util.servlet.ByteRange;
 import de.haumacher.util.servlet.Util;
 import jakarta.activation.MimeType;
 import jakarta.activation.MimeTypeParseException;
@@ -23,14 +24,16 @@ import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -142,29 +145,30 @@ public class ImageServlet extends HttpServlet {
 		String pathInfo = request.getPathInfo();
 		Context context = new Context(request, response);
 
-		if (pathInfo == null) {
-			error(context, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
-			return;
-		}
-
 		PathInfo resourcePath;
 		{
-			String relativePath = pathInfo.substring(1);
+			// The data root is a folder like any other: "PUT /data" and "PUT /data/" address the
+			// base folder itself and must be able to store its "index.json".
+			String relativePath = pathInfo == null ? "" : pathInfo.substring(1);
 			if (relativePath.isEmpty()) {
-				error(context, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
-				return;
-			}
+				resourcePath = new PathInfo(_basePath);
+			} else {
+				Path path = Paths.get(relativePath).normalize();
+				if (path.startsWith("..") || path.startsWith("/")) {
+					error404(context);
+					return;
+				}
 
-			Path path = Paths.get(relativePath).normalize();
-			if (path.startsWith("..") || path.startsWith("/")) {
-				error404(context);
-				return;
+				resourcePath = new PathInfo(_basePath, path);
 			}
-
-			resourcePath = new PathInfo(_basePath, path);
 		}
 
 		String contentType = context.request().getContentType();
+		if (contentType == null) {
+			LOG.warning("Missing content type in PUT to '" + pathInfo + "'.");
+			error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+			return;
+		}
 		MimeType mimeType;
 		try {
 			mimeType = new MimeType(contentType);
@@ -180,14 +184,11 @@ public class ImageServlet extends HttpServlet {
 			File parent = file.getParentFile();
 			if (parent.exists() && parent.isDirectory()) {
 				if (baseType.equals("application/json")) {
-					Resource resource = Resource.readResource(new JsonReader(new ReaderAdapter(request.getReader())));
-					if (!(resource instanceof FolderResource)) {
-						LOG.warning("Invalid resource: " + resource);
-						error(context, HttpServletResponse.SC_BAD_REQUEST);
+					byte[] contents = readBody(request);
+					if (!checkFolderResource(context, contents)) {
 						return;
 					}
 
-					FolderResource album = (FolderResource) resource;
 					boolean ok = file.mkdirs();
 					if (!ok) {
 						LOG.warning("Cannot create path: " + file.getAbsolutePath());
@@ -196,9 +197,7 @@ public class ImageServlet extends HttpServlet {
 					}
 
 					try (FileOutputStream out = new FileOutputStream(new File(file, "index.json"))) {
-						try (OutputStreamWriter w = new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
-							album.writeTo(new JsonWriter(new WriterAdapter(w)));
-						}
+						out.write(contents);
 					}
 
 					LOG.info("Created album: " + file.getName());
@@ -287,22 +286,27 @@ public class ImageServlet extends HttpServlet {
 		return name.substring(index + 1).toLowerCase();
 	}
 
+	/**
+	 * Stores the request body as <code>index.json</code> of the given folder.
+	 *
+	 * <p>
+	 * The client's bytes are stored verbatim: the body is only parsed to make sure that it is a
+	 * {@link FolderResource}, it is never re-serialised. A pre-existing <code>index.json</code> is
+	 * kept as a timestamped backup.
+	 * </p>
+	 */
 	private void storeFolder(Context context, PathInfo resourcePath) throws IOException {
+		byte[] contents = readBody(context.request());
+		if (!checkFolderResource(context, contents)) {
+			return;
+		}
+
 		File directory = resourcePath.toFile();
 		File indexFile = new File(directory, "index.json");
 
 		File tmpFile = File.createTempFile("index", ".json", directory);
-
-		try (OutputStream stream = new FileOutputStream(tmpFile); Writer out = new OutputStreamWriter(stream, "utf-8")) {
-			BufferedReader reader = context.request().getReader();
-			char[] buffer = new char[4096];
-			while (true) {
-				int direct = reader.read(buffer);
-				if (direct < 0) {
-					break;
-				}
-				out.write(buffer, 0, direct);
-			}
+		try (OutputStream stream = new FileOutputStream(tmpFile)) {
+			stream.write(contents);
 		}
 
 		if (indexFile.exists()) {
@@ -310,6 +314,51 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		tmpFile.renameTo(indexFile);
+
+		LOG.info("Stored folder resource: " + indexFile.getAbsolutePath());
+	}
+
+	/**
+	 * Reads the complete request body into memory.
+	 *
+	 * <p>
+	 * A folder sidecar is small; keeping it in memory is what allows validating it before anything
+	 * is written to disk.
+	 * </p>
+	 */
+	private static byte[] readBody(HttpServletRequest request) throws IOException {
+		try (InputStream in = request.getInputStream()) {
+			ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+			Util.transfer(in, buffer);
+			return buffer.toByteArray();
+		}
+	}
+
+	/**
+	 * Checks that the given bytes parse as a {@link FolderResource}.
+	 *
+	 * <p>
+	 * If they do not, the response is completed with an error status and the reason is logged.
+	 * </p>
+	 *
+	 * @return Whether the contents may be stored.
+	 */
+	private static boolean checkFolderResource(Context context, byte[] contents) {
+		Resource resource;
+		try {
+			resource = Resource.readResource(
+				new JsonReader(new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable folder resource for '" + context.request().getPathInfo() + "': " + ex.getMessage());
+			error(context, HttpServletResponse.SC_BAD_REQUEST);
+			return false;
+		}
+		if (!(resource instanceof FolderResource)) {
+			LOG.warning("Rejecting non-folder resource for '" + context.request().getPathInfo() + "': " + resource);
+			error(context, HttpServletResponse.SC_BAD_REQUEST);
+			return false;
+		}
+		return true;
 	}
 
 	private void serveFolder(Context context, PathInfo pathInfo) throws IOException {
@@ -355,7 +404,7 @@ public class ImageServlet extends HttpServlet {
 			ImageKind kind = image.getKind();
 			switch (kind) {
 			case VIDEO:
-				return "video/mpeg";
+				return "video/mp4";
 			case QUICKTIME:
 				return "video/quicktime";
 			case IMAGE:
@@ -378,6 +427,17 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Delivers the contents of the given file, honouring a <code>Range</code> request header.
+	 *
+	 * <p>
+	 * Range support is generic: it applies to originals and thumbnails alike. A single byte range
+	 * is answered with <code>206 Partial Content</code>, an unsatisfiable one with
+	 * <code>416</code>. A multi-range request is answered with the complete file and status
+	 * <code>200</code> (an allowed response that spares building a
+	 * <code>multipart/byteranges</code> body); see {@link ByteRange}.
+	 * </p>
+	 */
 	private void serveData(Context context, File file, String mimeType) throws IOException {
 		LOG.log(Level.FINE, "Delivering image data: " + mimeType);
 		HttpServletResponse response = context.response();
@@ -385,10 +445,32 @@ public class ImageServlet extends HttpServlet {
 		response.setContentType(mimeType);
 		// Allow access from mobile app (is required even for images, since they are rendered using WebGL from Flutter).
 		response.setHeader("Access-Control-Allow-Origin", "*");
+		response.setHeader("Access-Control-Expose-Headers", "Accept-Ranges, Content-Range, Content-Length");
+
 		long length = file.length();
-		if (length <= Integer.MAX_VALUE) {
-			response.setContentLength((int) length);
+
+		// Announce range support on every response, so that a client knows it may seek.
+		response.setHeader("Accept-Ranges", "bytes");
+
+		ByteRange range = ByteRange.parse(context.request().getHeader("Range"), length);
+		if (range.isUnsatisfiable()) {
+			LOG.log(Level.WARNING, "Unsatisfiable range '" + context.request().getHeader("Range") + "' for file of size " + length + ": " + file.getAbsolutePath());
+			response.setHeader("Content-Range", "bytes */" + length);
+			response.setStatus(HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
+			return;
 		}
+
+		if (range.isPartial()) {
+			long start = range.getStart();
+			long end = range.getEnd();
+			response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+			response.setHeader("Content-Range", "bytes " + start + "-" + end + "/" + length);
+			response.setContentLengthLong(range.getLength());
+			Util.sendSlice(response, file, start, range.getLength());
+			return;
+		}
+
+		response.setContentLengthLong(length);
 		try (FileInputStream in = new FileInputStream(file)) {
 			Util.sendBytes(response, in);
 		}
@@ -402,7 +484,7 @@ public class ImageServlet extends HttpServlet {
 		error(context, HttpServletResponse.SC_NOT_FOUND);
 	}
 
-	private void error(Context context, int errorCode) {
+	private static void error(Context context, int errorCode) {
 		LOG.log(Level.WARNING, "Faild to access '" + context.request().getPathInfo() + "': " + errorCode);
 
 		HttpServletResponse response = context.response();
