@@ -9,6 +9,45 @@ import 'app.dart';
 import 'client.dart';
 import 'resource.dart';
 
+/// The edge length (in CSS pixels) of the square folder preview the retired
+/// GWT client rendered its index pictures into.
+///
+/// The [ThumbnailInfo.tx]/[ThumbnailInfo.ty] the server computes are pixel
+/// offsets within a preview of exactly this size (see `.va-preview` in the
+/// former `valbum.css`, and `ResourceCache.loadFolderInfo` deriving
+/// `ty = (h - w) / h * 150`, half of this box). They are therefore scaled to
+/// the actual tile size before use, see [thumbnailTransform].
+const double cssPreviewSize = 300.0;
+
+/// The transform cropping an index picture into a square tile of [tileSize].
+///
+/// This reproduces the CSS the GWT client emitted on the preview image:
+///
+/// ```css
+/// transform: scale(<scale>) translate(<tx>px, <ty>px);
+/// ```
+///
+/// CSS applies the functions of a transform list right to left about the
+/// element's centre (the default `transform-origin`), so the image is first
+/// translated by (tx, ty) and the result is then scaled about the centre --
+/// the offsets are given in *pre-scale* pixels. The matrix below is built in
+/// exactly that order (`scale * translate`), and the offsets are scaled by
+/// `tileSize / cssPreviewSize` so that the same [ThumbnailInfo] yields the
+/// same crop at any tile size.
+///
+/// A [ThumbnailInfo.scale] of zero (the field's default, i.e. an index picture
+/// without a scale) is read as "no zoom".
+Matrix4 thumbnailTransform(ThumbnailInfo info, double tileSize) {
+  var scale = info.scale > 0 ? info.scale : 1.0;
+  var factor = tileSize / cssPreviewSize;
+  return Matrix4.diagonal3Values(scale, scale, 1.0)
+      .multiplied(Matrix4.translationValues(
+    info.tx * factor,
+    info.ty * factor,
+    0,
+  ));
+}
+
 /// Displays a [ListingInfo] as a grid of folder tiles.
 class ListingView extends StatelessWidget {
   final VAlbumState albumState;
@@ -26,6 +65,17 @@ class ListingView extends StatelessWidget {
       appBar: AppBar(
         title: Text(self.title),
         actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Home',
+            onPressed: () => showRoot(context),
+          ),
+          if (albumState.path.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.arrow_upward),
+              tooltip: 'Up',
+              onPressed: () => showParent(context),
+            ),
           menu(context, [
             menuItem(Icons.create_new_folder, 'Create album', createAlbum),
             menuItem(
@@ -87,7 +137,12 @@ class ListingView extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
-                  Text(folder.subTitle, textAlign: TextAlign.center),
+                  if (folder.subTitle.isNotEmpty)
+                    Text(
+                      folder.subTitle,
+                      style: const TextStyle(fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
                 ],
               ),
             ),
@@ -113,11 +168,62 @@ class ListingView extends StatelessWidget {
       );
     }
 
-    return Image.network(
-      client.thumbnailUrl("$baseUrl/${folder.name}/${indexPicture.image}"),
+    // The square preview the GWT client had: the thumbnail is fitted into the
+    // box (CSS `max-width/max-height: 100%` on a centred image), cropped by the
+    // box (`overflow: hidden`) and zoomed/shifted by the index picture's
+    // transform.
+    return SizedBox(
       width: width,
       height: width,
-      fit: BoxFit.cover,
+      child: ClipRect(
+        child: Transform(
+          alignment: Alignment.center,
+          transform: thumbnailTransform(indexPicture, width),
+          child: Image.network(
+            client
+                .thumbnailUrl("$baseUrl/${folder.name}/${indexPicture.image}"),
+            width: width,
+            height: width,
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Shows the root listing, discarding the navigation stack.
+  ///
+  /// [VAlbumState] only offers "descend into a child" ([VAlbumState.showElement]),
+  /// so the jumps to the root and to the parent are done with the [Navigator]
+  /// here.
+  void showRoot(BuildContext context) {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const VAlbumView()),
+      (route) => false,
+    );
+  }
+
+  /// Shows the listing containing the displayed one.
+  ///
+  /// Returns to the parent already on the navigation stack where there is one
+  /// (the common case: the listing was reached by descending into it), and
+  /// loads the parent path otherwise (a listing opened directly, e.g. as the
+  /// app's start page).
+  void showParent(BuildContext context) {
+    var path = albumState.path;
+    if (path.isEmpty) {
+      return;
+    }
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+      return;
+    }
+    var parent = path.sublist(0, path.length - 1);
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => VAlbumView(path: parent)),
+      (route) => false,
     );
   }
 

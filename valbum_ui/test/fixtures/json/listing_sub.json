@@ -1,0 +1,22 @@
+["ListingInfo", {
+  "path": "sub",
+  "title": "Sub-listing",
+  "folders": [
+    {
+      "name": "portrait",
+      "title": "Portrait album",
+      "subTitle": "March 3, 2002",
+      "indexPicture": {"image": "P3031379.JPG", "scale": 1.3333333333333333, "tx": 0.0, "ty": 37.5}
+    },
+    {
+      "name": "empty-subtitle",
+      "title": "Empty subtitle",
+      "subTitle": "",
+      "indexPicture": {"image": "landscape.JPG", "scale": 1.0, "tx": 0.0, "ty": 0.0}
+    },
+    {
+      "name": "no-picture",
+      "title": "No picture"
+    }
+  ]
+}]
