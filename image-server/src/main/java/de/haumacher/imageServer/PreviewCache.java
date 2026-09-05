@@ -12,7 +12,6 @@ import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.png.PngDirectory;
 import de.haumacher.imageServer.shared.model.Orientation;
-import de.haumacher.imageServer.shared.ui.layout.Content;
 import de.haumacher.imageServer.shared.util.Orientations;
 import de.haumacher.util.servlet.Util;
 import java.awt.Graphics2D;
@@ -54,6 +53,16 @@ public class PreviewCache {
 	private static final int PREVIEW_HEIGHT = 600;
 
 	private static final int PREVIEW_HEIGHT_PORTRAIT = 2 * PREVIEW_HEIGHT;
+
+	/**
+	 * The maximum width of an image (relative to its height) to interpret it as a portrait image.
+	 *
+	 * <p>
+	 * Must be kept in sync with <code>Content.maxPortraitUnitWidth</code> of the Flutter app's
+	 * <code>album_layout.dart</code>, which is the canonical album layout implementation.
+	 * </p>
+	 */
+	private static final double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
 
 	private static final long LAST_UPDATE = lastUpdate();
 
@@ -125,7 +134,7 @@ public class PreviewCache {
 		int previewHeight;
 
 		double unitWidth = ((double) origWidth) / origHeight;
-		if (unitWidth <= Content.MAX_PORTRAIT_UNIT_WIDTH) {
+		if (unitWidth <= MAX_PORTRAIT_UNIT_WIDTH) {
 			previewHeight = PREVIEW_HEIGHT_PORTRAIT;
 		} else {
 			previewHeight = PREVIEW_HEIGHT;

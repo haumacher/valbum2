@@ -1,0 +1,132 @@
+
+{
+  "case": "panorama-middle",
+  "pageWidth": 320.0,
+  "maxRowHeight": 400.0,
+  "images": [
+    {
+      "name": "L1",
+      "width": 900,
+      "height": 600,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "P2",
+      "width": 600,
+      "height": 900,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "L3",
+      "width": 1200,
+      "height": 800,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "PANO4",
+      "width": 8000,
+      "height": 1000,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "L5",
+      "width": 900,
+      "height": 600,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "P6",
+      "width": 600,
+      "height": 900,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "L7",
+      "width": 1600,
+      "height": 900,
+      "orientation": "IDENTITY"
+    }
+  ],
+  "layout": {
+    "pageWidth": 320.0,
+    "rows": [
+      {
+        "type": "Row",
+        "unitWidth": 1.5,
+        "contents": [
+          {
+            "type": "Img",
+            "index": 0,
+            "unitWidth": 1.5
+          }
+        ]
+      },
+      {
+        "type": "Row",
+        "unitWidth": 0.6666666666666666,
+        "contents": [
+          {
+            "type": "Img",
+            "index": 1,
+            "unitWidth": 0.6666666666666666
+          }
+        ]
+      },
+      {
+        "type": "Row",
+        "unitWidth": 1.5,
+        "contents": [
+          {
+            "type": "Img",
+            "index": 2,
+            "unitWidth": 1.5
+          }
+        ]
+      },
+      {
+        "type": "Row",
+        "unitWidth": 8.0,
+        "contents": [
+          {
+            "type": "Img",
+            "index": 3,
+            "unitWidth": 8.0
+          }
+        ]
+      },
+      {
+        "type": "Row",
+        "unitWidth": 1.5,
+        "contents": [
+          {
+            "type": "Img",
+            "index": 4,
+            "unitWidth": 1.5
+          }
+        ]
+      },
+      {
+        "type": "Row",
+        "unitWidth": 0.6666666666666666,
+        "contents": [
+          {
+            "type": "Img",
+            "index": 5,
+            "unitWidth": 0.6666666666666666
+          }
+        ]
+      },
+      {
+        "type": "Row",
+        "unitWidth": 1.7777777777777777,
+        "contents": [
+          {
+            "type": "Img",
+            "index": 6,
+            "unitWidth": 1.7777777777777777
+          }
+        ]
+      }
+    ]
+  }
+}

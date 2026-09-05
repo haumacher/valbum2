@@ -29,9 +29,11 @@ device you own.** The server owns the files; the app owns the experience.
    contract; old albums must always load.
 4. **The album layout is the heart.** The row layout algorithm — landscape images in rows, portrait
    images paired with stacked "double landscape" rows, panoramas full-width, all scaled to fill the
-   page width — is what makes an album look like an album. It exists in Java (`AlbumLayout`) and in
-   a Dart port (`album_layout.dart`). The Dart implementation becomes canonical; the Java one is
-   retired only after golden fixtures generated from it prove the port equivalent.
+   page width — is what makes an album look like an album. `valbum_ui/lib/album_layout.dart` is now
+   the **canonical** implementation; the Java `AlbumLayout` has been retired. The golden fixtures in
+   `valbum_ui/test/fixtures/layout/`, generated from the Java implementation before it was deleted,
+   are the **contract**: `album_layout_golden_test.dart` replays them, and where an implementation
+   and a fixture disagree, the implementation is wrong.
 
 Consequences we accept:
 
@@ -58,7 +60,8 @@ served by that jar at `/`; the tree contains only what the product needs.
 - Raise the Java source/target to 21 and modernize what the compiler now allows.
 - Generate golden layout fixtures from the Java `AlbumLayout` (a set of image dimension lists at
   several page widths with the resulting row structure), check them in, make `album_layout.dart`
-  pass them, then remove the Java layout package.
+  pass them, then remove the Java layout package. *(Done: 88 fixtures in
+  `valbum_ui/test/fixtures/layout/`; the Java layout package is gone.)*
 - Rewrite `README.md` for the new shape (server + app), keep `CONTRIBUTING.md` honest, update
   `CLAUDE.md` and the `build-verify` skill, add a `.gitignore`, drop the Eclipse `.project`/`.settings`.
 - Add continuous integration (GitHub Actions) running both toolchains' gates.

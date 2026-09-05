@@ -1,0 +1,126 @@
+
+{
+  "case": "test-album-blumen",
+  "pageWidth": 768.0,
+  "maxRowHeight": 400.0,
+  "images": [
+    {
+      "name": "IMG_0415.JPG",
+      "width": 900,
+      "height": 600,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "IMG_0417.JPG",
+      "width": 800,
+      "height": 1200,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "IMG_0419.JPG",
+      "width": 900,
+      "height": 600,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "IMG_0422.JPG",
+      "width": 900,
+      "height": 600,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "IMG_0423.JPG",
+      "width": 900,
+      "height": 600,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "IMG_0431.JPG",
+      "width": 900,
+      "height": 600,
+      "orientation": "IDENTITY"
+    },
+    {
+      "name": "IMG_0442.JPG",
+      "width": 900,
+      "height": 600,
+      "orientation": "IDENTITY"
+    }
+  ],
+  "layout": {
+    "pageWidth": 768.0,
+    "rows": [
+      {
+        "type": "Row",
+        "unitWidth": 1.4166666666666665,
+        "contents": [
+          {
+            "type": "Img",
+            "index": 1,
+            "unitWidth": 0.6666666666666666
+          },
+          {
+            "type": "DoubleRow",
+            "unitWidth": 0.75,
+            "h1": 0.5,
+            "h2": 0.5,
+            "upper": {
+              "type": "Row",
+              "unitWidth": 1.5,
+              "contents": [
+                {
+                  "type": "Img",
+                  "index": 0,
+                  "unitWidth": 1.5
+                }
+              ]
+            },
+            "lower": {
+              "type": "Row",
+              "unitWidth": 1.5,
+              "contents": [
+                {
+                  "type": "Img",
+                  "index": 2,
+                  "unitWidth": 1.5
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Row",
+        "unitWidth": 3.0,
+        "contents": [
+          {
+            "type": "Img",
+            "index": 3,
+            "unitWidth": 1.5
+          },
+          {
+            "type": "Img",
+            "index": 4,
+            "unitWidth": 1.5
+          }
+        ]
+      },
+      {
+        "type": "Row",
+        "unitWidth": 3.0,
+        "contents": [
+          {
+            "type": "Img",
+            "index": 5,
+            "unitWidth": 1.5
+          },
+          {
+            "type": "Img",
+            "index": 6,
+            "unitWidth": 1.5
+          }
+        ]
+      }
+    ]
+  }
+}
