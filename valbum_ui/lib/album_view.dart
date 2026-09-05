@@ -625,6 +625,33 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   /// re-oriented image is scaled down into the tile box it already occupies,
   /// so that rotating does not reflow the album.
   Widget imageThumbnail(ImagePart image) {
+    var thumbnail = orientedThumbnail(image);
+    if (image.kind == ImageKind.image) {
+      return thumbnail;
+    }
+    // A video tile carries the play mark the old client showed.
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          thumbnail,
+          const Center(
+            child: Icon(
+              Icons.play_circle_outline,
+              key: Key("video-indicator"),
+              size: 48,
+              color: Colors.white70,
+              shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget orientedThumbnail(ImagePart image) {
     Widget result = Image.network(
       state.client.thumbnailUrl("${state.albumUrl}${image.thumbnailName}"),
       width: width,
