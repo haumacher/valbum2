@@ -45,6 +45,9 @@ Consequences we accept:
 
 ## Phase 0 — Cleanup: server becomes an API, the repository becomes one product
 
+*Issues #9 (GWT removal, gates the rest), #10 (static hosting), #11 (Java 21), #12 (layout goldens),
+#13 (docs), #14 (CI), #15 (Flutter tests).*
+
 Goal: `mvn install` builds a slim server jar with no GWT compile step; `flutter build web` output is
 served by that jar at `/`; the tree contains only what the product needs.
 
@@ -62,6 +65,10 @@ served by that jar at `/`; the tree contains only what the product needs.
 - Replace the Flutter starter template test with real widget tests using an injected HTTP client.
 
 ## Phase 1 — Feature parity: everything the GWT app can do, the Flutter app can do
+
+*Issues #16 (sidecar save), #17 (rating filter), #18 (tile editing), #19 (groups), #20 (headings),
+#21 (image view), #22 (video), #23 (listing tiles), #24 (deep links). Phases 2–4 are filed when
+Phase 1 is done.*
 
 The GWT client's capabilities, which define "done" for this phase:
 
