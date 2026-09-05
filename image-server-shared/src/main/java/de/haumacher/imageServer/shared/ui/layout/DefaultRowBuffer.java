@@ -17,7 +17,7 @@ public class DefaultRowBuffer implements RowBuffer {
 	public void addRow(Row newRow) {
 		_rows.add(newRow);
 	}
-	
+
 	/**
 	 * The created rows.
 	 */

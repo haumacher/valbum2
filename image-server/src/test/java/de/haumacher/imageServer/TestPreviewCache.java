@@ -10,7 +10,7 @@ import junit.framework.TestCase;
  */
 @SuppressWarnings("javadoc")
 public class TestPreviewCache extends TestCase {
-	
+
 	public void testUpdateDate() {
 		assertTrue(PreviewCache.lastUpdate() > 0);
 	}

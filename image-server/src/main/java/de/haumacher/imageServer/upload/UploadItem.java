@@ -12,7 +12,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
-
 import org.apache.commons.fileupload2.core.FileItem;
 import org.apache.commons.fileupload2.core.FileItemHeaders;
 
@@ -24,16 +23,16 @@ public class UploadItem implements FileItem<UploadItem> {
 	private final File _repository;
 	private final String _contentType;
 	private final String _fileName;
-	
+
 	private String _fieldName;
 	private boolean _isFormField;
 	private FileItemHeaders _headers;
 
 	private final File _upload;
-	
-	/** 
+
+	/**
 	 * Creates a {@link UploadItem}.
-	 * @param fileItemHeaders 
+	 * @param fileItemHeaders
 	 */
 	public UploadItem(File repository, String fieldName, String contentType, boolean isFormField, String fileName, FileItemHeaders fileItemHeaders) {
 		_repository = repository;
@@ -45,7 +44,7 @@ public class UploadItem implements FileItem<UploadItem> {
 
 		_upload = createTmpFile(fileName);
 	}
-	
+
 	/**
 	 * The uploaded file.
 	 */
@@ -63,14 +62,14 @@ public class UploadItem implements FileItem<UploadItem> {
 		if (stop < 0) {
 			stop = fileName.length();
 		}
-		
+
 		if (stop < start) {
 			stop = fileName.length();
 		}
-		
+
 		String prefix = start < stop ? fileName.substring(start, stop) : "upload";
 		String suffix = fileName.substring(stop);
-		
+
 		try {
 			return File.createTempFile(prefix, suffix, _repository);
 		} catch (IOException ex) {

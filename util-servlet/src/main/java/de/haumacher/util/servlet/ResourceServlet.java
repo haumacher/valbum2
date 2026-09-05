@@ -3,15 +3,14 @@
  */
 package de.haumacher.util.servlet;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
  * {@link HttpServlet} serving static resources from <code>/META-INF/resources</code>.
@@ -27,19 +26,19 @@ public class ResourceServlet extends HttpServlet {
 			response.setStatus(HttpServletResponse.SC_NOT_FOUND);
 			return;
 		}
-		
+
 		if (pathInfo.endsWith("/")) {
 			pathInfo = pathInfo + "index.html";
 		}
-		
+
 		Path path = Paths.get(pathInfo.substring(1)).normalize();
 		if (path.startsWith("..")) {
 			response.setStatus(HttpServletResponse.SC_NOT_FOUND);
 			return;
 		}
-		
+
 		Path fullPath = Paths.get("/META-INF/resources").resolve(path);
-		
+
 		InputStream in = getClass().getResourceAsStream(fullPath.toString().replace(path.getFileSystem().getSeparator(), "/"));
 		if (in == null) {
 			response.setStatus(HttpServletResponse.SC_NOT_FOUND);
@@ -51,5 +50,5 @@ public class ResourceServlet extends HttpServlet {
 			in.close();
 		}
 	}
-	
+
 }

@@ -3,12 +3,11 @@
  */
 package de.haumacher.imageServer.shared.ui;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.util.ToImage;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * TODO
@@ -19,22 +18,22 @@ public class ImageRow {
 
 	/** @see #getSpacing() */
 	private int _spacing = 2;
-	
+
 	private final int _width;
 	private final int _maxHeight;
-	
+
 	private final List<AbstractImage> _images = new ArrayList<>();
-	
+
 	private double _sumNormWidth = 0.0;
 
-	/** 
+	/**
 	 * Creates a {@link ImageRow}.
 	 */
 	public ImageRow(int width, int maxHeight) {
 		_width = width;
 		_maxHeight = maxHeight;
 	}
-	
+
 	public int getSize() {
 		return _images.size();
 	}
@@ -42,7 +41,7 @@ public class ImageRow {
 	public AbstractImage getImage(int n) {
 		return _images.get(n);
 	}
-	
+
 	/**
 	 * Number of pixels between two images in a row.
 	 */

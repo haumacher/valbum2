@@ -3,16 +3,9 @@
  */
 package de.haumacher.imageServer;
 
-import java.io.File;
-
-import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.ServerConnector;
-import org.eclipse.jetty.server.handler.HandlerCollection;
-import org.eclipse.jetty.servlet.ServletHolder;
-import org.eclipse.jetty.webapp.WebAppContext;
-
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.util.servlet.ResourceServlet;
+import java.io.File;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.helper.HelpScreenException;
 import net.sourceforge.argparse4j.impl.type.FileArgumentType;
@@ -21,6 +14,11 @@ import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.ArgumentType;
 import net.sourceforge.argparse4j.inf.Namespace;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.server.handler.HandlerCollection;
+import org.eclipse.jetty.servlet.ServletHolder;
+import org.eclipse.jetty.webapp.WebAppContext;
 
 /**
  * Starts the image server.
@@ -28,13 +26,13 @@ import net.sourceforge.argparse4j.inf.Namespace;
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class Main {
-	
+
 	/**
 	 * Prefix for resources served from <code>META-INF/resources</code>.
 	 */
 	public static final String STATIC_PREFIX = "";
 
-	/** 
+	/**
 	 * Image server main method.
 	 */
 	public static void main(String[] args) throws Exception {
@@ -51,7 +49,7 @@ public class Main {
 
 		try {
 			Namespace ns = parser.parseArgs(args);
-			
+
 			new Main(ns).start();
 		} catch (HelpScreenException ex) {
 			System.exit(-1);
@@ -59,12 +57,12 @@ public class Main {
 			System.exit(-1);
 		}
 	}
-	
+
 	private final int _port;
 	private final String _contextPath;
 	private final File _basePath;
 
-	/** 
+	/**
 	 * Creates a {@link Main}.
 	 */
 	public Main(Namespace ns) {
@@ -72,7 +70,7 @@ public class Main {
 		_basePath = ns.get("basepath");
 		_contextPath = normlizeContextPath(ns.get("contextpath"));
 	}
-	
+
 	private void start() throws Exception {
 		final Server server = new Server();
 
@@ -91,7 +89,7 @@ public class Main {
 		webapp.setClassLoader(Main.class.getClassLoader());
 
 		handlers.addHandler(webapp);
-		
+
 		if (!_contextPath.equals("")) {
 			WebAppContext redirect = new WebAppContext();
 			redirect.setContextPath("");
@@ -99,12 +97,12 @@ public class Main {
 			redirect.addServlet(new ServletHolder(new RedirectServlet(_contextPath + "/")), "/");
 			handlers.addHandler(redirect);
 		}
-		
+
 		server.setHandler(handlers);
 		server.start();
 
 		System.out.println("Image server started: http://localhost:" + _port + _contextPath + "/ serving folder: " + _basePath);
-		server.join();	
+		server.join();
 	}
 
 	private String normlizeContextPath(String contextPath) {

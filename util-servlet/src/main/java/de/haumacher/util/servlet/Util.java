@@ -3,6 +3,7 @@
  */
 package de.haumacher.util.servlet;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -10,8 +11,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-
-import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Collection of static utilities.
@@ -28,7 +27,7 @@ public class Util {
 		if (sepIndex < 0) {
 			return null;
 		}
-	
+
 		return fileName.substring(sepIndex + 1).toLowerCase();
 	}
 
@@ -37,7 +36,7 @@ public class Util {
 		transfer(in, out);
 	}
 
-	/** 
+	/**
 	 * TODO
 	 *
 	 * @param in
@@ -55,13 +54,13 @@ public class Util {
 		}
 	}
 
-	/** 
+	/**
 	 * TODO
 	 *
 	 * @param src
 	 * @param dst
-	 * @throws IOException 
-	 * @throws FileNotFoundException 
+	 * @throws IOException
+	 * @throws FileNotFoundException
 	 */
 	public static void copy(File src, File dst) throws IOException {
 		try (FileInputStream in = new FileInputStream(src)) {

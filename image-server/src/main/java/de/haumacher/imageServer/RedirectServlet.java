@@ -3,12 +3,11 @@
  */
 package de.haumacher.imageServer;
 
-import java.io.IOException;
-
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 
 /**
  * {@link HttpServlet} sending a static redirect.
@@ -19,7 +18,7 @@ public class RedirectServlet extends HttpServlet {
 
 	private String _target;
 
-	/** 
+	/**
 	 * Creates a {@link RedirectServlet}.
 	 */
 	public RedirectServlet(String target) {

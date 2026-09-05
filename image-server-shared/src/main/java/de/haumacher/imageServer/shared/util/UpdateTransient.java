@@ -3,9 +3,6 @@
  */
 package de.haumacher.imageServer.shared.util;
 
-import java.util.Collections;
-import java.util.List;
-
 import de.haumacher.imageServer.shared.model.AbstractImage;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
@@ -15,6 +12,8 @@ import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Indexing functionality to call after unmarshalling a {@link Resource}.
@@ -22,7 +21,7 @@ import de.haumacher.imageServer.shared.model.Resource;
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, RuntimeException> {
-	
+
 	/**
 	 * Singleton {@link UpdateTransient} instance.
 	 */
@@ -31,27 +30,27 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 	private UpdateTransient() {
 		// Singleton constructor.
 	}
-	
-	/** 
+
+	/**
 	 * Updates internal links of the given {@link Resource}.
 	 */
 	public static void updateTransient(Resource resource) {
 		resource.visit(INSTANCE, null);
 	}
-	
+
 	@Override
 	public Void visit(AlbumInfo self, AlbumInfo arg) throws RuntimeException {
 		self.setImageByName(Collections.emptyMap());
 		updateContents(self.getParts(), self);
 		return null;
 	}
-	
+
 	@Override
 	public Void visit(Heading self, AlbumInfo arg) throws RuntimeException {
 		initOwner(self, arg);
 		return null;
 	}
-	
+
 	@Override
 	public Void visit(ImagePart self, AlbumInfo arg) throws RuntimeException {
 		initOwner(self, arg);
@@ -59,7 +58,7 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 		assert clash == null : "Duplicate name '" + self.getName() + "'.";
 		return null;
 	}
-	
+
 	@Override
 	public Void visit(ImageGroup self, AlbumInfo arg) throws RuntimeException {
 		initOwner(self, arg);
@@ -74,36 +73,36 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 	public Void visit(ListingInfo self, AlbumInfo arg) throws RuntimeException {
 		return null;
 	}
-	
+
 	@Override
 	public Void visit(ErrorInfo self, AlbumInfo arg) throws RuntimeException {
 		return null;
 	}
-	
+
 	private void initOwner(AlbumPart self, AlbumInfo arg) {
 		self.setOwner(arg);
 	}
-	
-	/** 
+
+	/**
 	 * Updates internal links of the given {@link AlbumInfo}.
 	 */
 	private void updateContents(List<? extends AlbumPart> parts, AlbumInfo owner) {
 		AbstractImage firstImage = nextImage(parts, 0);
 		AbstractImage lastImage = prevImage(parts, parts.size() - 1);
-		
+
 		for (int n = 0, size = parts.size(); n < size; n++) {
 			int index = n;
-			
+
 			AlbumPart part = parts.get(index);
 			if (part instanceof AbstractImage) {
 				AbstractImage image = (AbstractImage) part;
-				
+
 				AbstractImage prevImage = prevImage(parts, index - 1);
 				AbstractImage nextImage = nextImage(parts, index + 1);
-				
+
 				image.setHome(firstImage);
 				image.setEnd(lastImage);
-				image.setPrevious(prevImage);	
+				image.setPrevious(prevImage);
 				image.setNext(nextImage);
 			}
 			part.visit(this, owner);
@@ -112,7 +111,7 @@ public class UpdateTransient implements Resource.Visitor<Void, AlbumInfo, Runtim
 
 	/**
 	 * Find {@link AbstractImage} preceding the given index.
-	 * 
+	 *
 	 * @param parts
 	 *        All parts of the album.
 	 * @param i

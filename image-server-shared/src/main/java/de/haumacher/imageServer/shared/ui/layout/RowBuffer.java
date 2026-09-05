@@ -8,7 +8,7 @@ package de.haumacher.imageServer.shared.ui.layout;
  */
 public interface RowBuffer {
 
-	/** 
+	/**
 	 * Adds the next completed row.
 	 */
 	void addRow(Row newRow);

@@ -12,7 +12,7 @@ public class ImageDimension {
 
 	private final int height;
 
-	/** 
+	/**
 	 * Creates a {@link de.haumacher.imageServer.ImageDimension}.
 	 */
 	public ImageDimension(int width, int height) {
@@ -40,5 +40,5 @@ public class ImageDimension {
 	public int getHeight() {
 		return height;
 	}
-	
+
 }

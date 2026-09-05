@@ -4,7 +4,6 @@
 package de.haumacher.imageServer.upload;
 
 import java.io.File;
-
 import org.apache.commons.fileupload2.core.FileItemFactory;
 
 /**
@@ -14,7 +13,7 @@ public class UploadFactory implements FileItemFactory<UploadItem> {
 
 	private File _repository;
 
-	/** 
+	/**
 	 * Creates a {@link UploadFactory}.
 	 */
 	public UploadFactory(File repository) {

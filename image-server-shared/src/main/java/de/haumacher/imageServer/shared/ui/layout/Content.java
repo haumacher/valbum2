@@ -7,7 +7,7 @@ package de.haumacher.imageServer.shared.ui.layout;
  * A part of a {@link Row}.
  */
 public interface Content {
-	
+
 	/**
 	 * The maximum width of an image (relative to its height) to interpret it as an portrait image (taking two lines in
 	 * an {@link AlbumLayout}).
@@ -18,8 +18,8 @@ public interface Content {
 	 * The width of the content, if it's height is scaled to <code>1.0</code>.
 	 */
 	double getUnitWidth();
-	
-	/** 
+
+	/**
 	 * The number of grid rows, this {@link Content} spans.
 	 */
 	int getUnitHeight();
@@ -30,7 +30,7 @@ public interface Content {
 	default boolean isPortrait() {
 		return getUnitWidth() <= MAX_PORTRAIT_UNIT_WIDTH;
 	}
-	
+
 	/**
 	 * Visits this {@link Content} with the given {@link ContentVisitor}
 	 */

@@ -14,7 +14,7 @@ import de.haumacher.imageServer.shared.model.ImagePart;
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class ToImage implements AbstractImage.Visitor<ImagePart, Void, RuntimeException> {
-	
+
 	/**
 	 * Singleton {@link ToImage} instance.
 	 */

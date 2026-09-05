@@ -5,7 +5,6 @@ package de.haumacher.imageServer.upload;
 
 import java.io.File;
 import java.io.IOException;
-
 import org.apache.commons.fileupload2.core.FileItemFactory.AbstractFileItemBuilder;
 
 /**
@@ -15,7 +14,7 @@ public class UploadBuilder extends AbstractFileItemBuilder<UploadItem, UploadBui
 
 	private File _repository;
 
-	/** 
+	/**
 	 * Creates a {@link UploadBuilder}.
 	 *
 	 * @param repository

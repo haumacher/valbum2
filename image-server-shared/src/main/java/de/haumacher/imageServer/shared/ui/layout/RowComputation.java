@@ -5,7 +5,7 @@ package de.haumacher.imageServer.shared.ui.layout;
 
 /**
  * Algorithm for placing images into rows.
- * 
+ *
  * @see {@link RowBuffer}
  */
 interface RowComputation {
@@ -22,5 +22,5 @@ interface RowComputation {
 	 * Flushes buffers and completes the computation.
 	 */
 	void end();
-	
+
 }

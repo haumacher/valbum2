@@ -22,13 +22,13 @@ public class TestUpdateTransient extends TestCase {
 				.addImage(ImagePart.create().setName("A3"))
 			)
 			.addPart(ImagePart.create().setName("B"));
-		
+
 		UpdateTransient.updateTransient(album);
-		
+
 		assertNotNull(album.getImageByName().get("A1"));
 		assertNotNull(album.getImageByName().get("A2"));
 		assertNotNull(album.getImageByName().get("A3"));
 		assertNotNull(album.getImageByName().get("B"));
 	}
-	
+
 }

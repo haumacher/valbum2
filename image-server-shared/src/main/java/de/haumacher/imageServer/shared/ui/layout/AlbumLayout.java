@@ -3,23 +3,22 @@
  */
 package de.haumacher.imageServer.shared.ui.layout;
 
+import de.haumacher.imageServer.shared.model.AbstractImage;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-
-import de.haumacher.imageServer.shared.model.AbstractImage;
-import de.haumacher.imageServer.shared.model.ImagePart;
 
 /**
  * Algorithm layouting a sequence of image so that a given page width is filled allocating appropriate space for all
  * images.
  */
 public class AlbumLayout implements Iterable<Row> {
-	
+
 	private final double _pageWidth;
 	private final List<Row> _rows;
-	
-	/** 
+
+	/**
 	 * Creates a {@link AlbumLayout}.
 	 *
 	 * @param pageWidth The width of the page on which the result should be rendered.
@@ -33,7 +32,7 @@ public class AlbumLayout implements Iterable<Row> {
 		RowComputation rowComputation = new SimpleRowComputation(buffer, minWidth);
 		for (AbstractImage image : images) {
 			Img content = new Img(image);
-			
+
 			if (content.getUnitWidth() >= minWidth) {
 				// Take care of panorama images. Do not combine them with other images, because they would get scaled
 				// down to a thumbnail.
@@ -45,16 +44,16 @@ public class AlbumLayout implements Iterable<Row> {
 			}
 		}
 		rowComputation.end();
-		
+
 		_rows = buffer.getRows();
 	}
 
-	/** 
+	/**
 	 * Extracts all {@link ImagePart}s in this layout.
 	 */
 	public List<AbstractImage> getAllImages() {
 		class Collector implements ContentVisitor<Void, Void, RuntimeException> {
-			
+
 			List<AbstractImage> _images = new ArrayList<>();
 
 			@Override
@@ -82,7 +81,7 @@ public class AlbumLayout implements Iterable<Row> {
 			public Void visitPadding(Padding content, Void arg) throws RuntimeException {
 				return null;
 			}
-			
+
 			/**
 			 * All collected images.
 			 */
@@ -90,49 +89,49 @@ public class AlbumLayout implements Iterable<Row> {
 				return _images;
 			}
 		}
-		
+
 		Collector collector = new Collector();
 		for (Row row : _rows) {
 			row.visit(collector, null);
 		}
 		return collector.getImages();
 	}
-	
+
 	/**
 	 * The width of the page, this layout is computed for.
 	 */
 	public double getPageWidth() {
 		return _pageWidth;
 	}
-	
+
 	@Override
 	public Iterator<Row> iterator() {
 		return _rows.iterator();
 	}
-	
+
 	/**
 	 * The {@link Row}s with content.
 	 */
 	public List<Row> getRows() {
 		return _rows;
 	}
-	
+
 	private static class SimpleRowComputation implements RowComputation {
-		
+
 		private final RowBuffer _out;
-		
+
 		private final double _minWidth;
-		
+
 		private Row currentRow = new Row();
 
-		/** 
+		/**
 		 * Creates a {@link AlbumLayout.SimpleRowComputation}.
 		 */
 		public SimpleRowComputation(RowBuffer out, double minWidth) {
 			_out = out;
 			_minWidth = minWidth;
 		}
-		
+
 		@Override
 		public RowComputation addImage(Content img) {
 			if (img.isPortrait()) {
@@ -150,7 +149,7 @@ public class AlbumLayout implements Iterable<Row> {
 				return this;
 			}
 		}
-		
+
 		@Override
 		public void end() {
 			if (!currentRow.isEmpty()) {
@@ -163,23 +162,23 @@ public class AlbumLayout implements Iterable<Row> {
 			return  currentWidth >= _minWidth;
 		}
 	}
-	
+
 	/**
 	 * {@link RowComputation} placing landscape images in two vertically aligned rows.
 	 */
 	private static class DoubleRowComputation implements RowComputation {
-		
+
 		private final RowBuffer _out;
-		
+
 		private final double _minWidth;
-		
+
 		private final double _halfMinWidth;
-		
+
 		private Row currentRow = new Row();
-		
+
 		private DoubleRowBuilder buffer = new DoubleRowBuilder();
 
-		/** 
+		/**
 		 * Creates a {@link AlbumLayout.DoubleRowComputation}.
 		 */
 		public DoubleRowComputation(RowBuffer out, double minWidth) {
@@ -204,7 +203,7 @@ public class AlbumLayout implements Iterable<Row> {
 				currentRow.addContent(img);
 				if (isAcceptableWidth(currentRow.getUnitWidth())) {
 					_out.addRow(currentRow);
-					
+
 					// Re-do layout of buffered images.
 					RowComputation result = new SimpleRowComputation(_out, _minWidth);
 					for (Content content : buffer) {
@@ -215,12 +214,12 @@ public class AlbumLayout implements Iterable<Row> {
 				}
 			} else {
 				buffer.addContent(img);
-				
+
 				if (buffer.acceptable()) {
 					if (isAcceptableWidth(currentRow.getUnitWidth() + buffer.getUnitWidth())) {
 						currentRow.addContent(buffer.build());
 						_out.addRow(currentRow);
-						
+
 						return new SimpleRowComputation(_out, _minWidth);
 					}
 				}
@@ -236,7 +235,7 @@ public class AlbumLayout implements Iterable<Row> {
 			currentRow.end(_halfMinWidth);
 			_out.addRow(currentRow);
 		}
-		
+
 		final boolean isAcceptableWidth(double currentWidth) {
 			return  currentWidth >= _halfMinWidth;
 		}

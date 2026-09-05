@@ -5,6 +5,25 @@ package de.haumacher.imageServer.cache;
 
 import static java.nio.file.StandardWatchEventKinds.*;
 
+import com.drew.imaging.ImageProcessingException;
+import com.drew.metadata.MetadataException;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import de.haumacher.imageServer.PathInfo;
+import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.ErrorInfo;
+import de.haumacher.imageServer.shared.model.FolderInfo;
+import de.haumacher.imageServer.shared.model.FolderResource;
+import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.ListingInfo;
+import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.model.ThumbnailInfo;
+import de.haumacher.imageServer.shared.util.AlbumUtil;
+import de.haumacher.imageServer.shared.util.UpdateTransient;
+import de.haumacher.msgbuf.json.JsonReader;
+import de.haumacher.msgbuf.server.io.ReaderAdapter;
+import de.haumacher.util.servlet.Util;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
@@ -30,36 +49,15 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.drew.imaging.ImageProcessingException;
-import com.drew.metadata.MetadataException;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-
-import de.haumacher.imageServer.PathInfo;
-import de.haumacher.imageServer.shared.model.AlbumInfo;
-import de.haumacher.imageServer.shared.model.ErrorInfo;
-import de.haumacher.imageServer.shared.model.FolderInfo;
-import de.haumacher.imageServer.shared.model.FolderResource;
-import de.haumacher.imageServer.shared.model.ImagePart;
-import de.haumacher.imageServer.shared.model.ListingInfo;
-import de.haumacher.imageServer.shared.model.Resource;
-import de.haumacher.imageServer.shared.model.ThumbnailInfo;
-import de.haumacher.imageServer.shared.util.AlbumUtil;
-import de.haumacher.imageServer.shared.util.UpdateTransient;
-import de.haumacher.msgbuf.json.JsonReader;
-import de.haumacher.msgbuf.server.io.ReaderAdapter;
-import de.haumacher.util.servlet.Util;
-
 /**
  * Cache of {@link Resource}s representing directories and files in a photo album.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class ResourceCache {
-	
+
 	private static Set<String> ACCEPTED = new HashSet<>(Arrays.asList("jpg", "jpeg", "png", "mp4"));
-	
+
 	static final FileFilter IMAGES = f -> {
 		return f.isFile() && ACCEPTED.contains(Util.suffix(f.getName()));
 	};
@@ -71,8 +69,8 @@ public class ResourceCache {
 	private Loader _loader;
 
 	private LoadingCache<PathInfo, Resource> _cache;
-	
-	/** 
+
+	/**
 	 * Creates a {@link ResourceCache}.
 	 */
 	public ResourceCache() throws IOException {
@@ -109,10 +107,10 @@ public class ResourceCache {
 		private static final Logger LOG = Logger.getLogger(ResourceCache.class.getName());
 
 		private final WatchService _watcher;
-		
+
 		private final Map<WatchKey, PathInfo> _watchedDirs = new HashMap<>();
-		
-		/** 
+
+		/**
 		 * Creates a {@link ResourceCache.Loader}.
 		 */
 		public Loader() throws IOException {
@@ -128,7 +126,7 @@ public class ResourceCache {
 				throw new UnsupportedOperationException("Not a directory: " + pathInfo);
 			}
 		}
-		
+
 		public void processEvents(LoadingCache<PathInfo, Resource> cache) {
 			while (true) {
 				WatchKey key = _watcher.poll();
@@ -138,7 +136,7 @@ public class ResourceCache {
 				if (!key.isValid()) {
 					continue;
 				}
-				
+
 				PathInfo path = _watchedDirs.remove(key);
 				if (path != null) {
 					cache.invalidate(path);
@@ -151,22 +149,22 @@ public class ResourceCache {
 			File dir = path.toFile();
 
 			FolderResource resource = loadDirIndex(dir);
-			
+
 			File[] images = dir.listFiles(IMAGES);
 			if (images == null) {
 				return ErrorInfo.create().setMessage("Cannot list folder.");
 			}
-			
+
 			try {
 				WatchKey key = dir.toPath().register(_watcher, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
 				_watchedDirs.put(key, path);
 			} catch (IOException ex) {
 				LOG.log(Level.WARNING, "Cannot register directory watcher on '" + dir + "'.", ex);
 			}
-		
+
 			if (resource instanceof AlbumInfo || images.length > 0) {
 				AlbumInfo album = resource == null ? createGenericAlbumInfo(path) : (AlbumInfo) resource;
-				
+
 				return loadAlbum(album, images);
 			} else {
 				ListingInfo listing = resource == null ? createGenericListingInfo(path) : (ListingInfo) resource;
@@ -190,17 +188,17 @@ public class ResourceCache {
 			}
 			return resource;
 		}
-		
+
 		private static Resource loadListing(PathInfo pathInfo, ListingInfo listing) {
 			File dir = pathInfo.toFile();
-			
+
 			File[] dirs = dir.listFiles(DIRECTORIES);
 			if (dirs == null) {
 				return ErrorInfo.create().setMessage("Cannot list files.");
 			}
-			
+
 			Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
-			
+
 			listing.getFolders().clear();
 			for (File folder : dirs) {
 				FolderInfo folderInfo = loadFolderInfo(folder);
@@ -214,7 +212,7 @@ public class ResourceCache {
 
 			FolderInfo folderInfo = FolderInfo.create();
 			folderInfo.setName(folderName);
-			
+
 			FolderResource folderResource = loadDirIndex(folder);
 			if (folderResource != null) {
 				if (folderResource instanceof AlbumInfo) {
@@ -230,21 +228,21 @@ public class ResourceCache {
 					return folderInfo;
 				}
 			}
-			
+
 			if (folderInfo.getIndexPicture() == null) {
 				File[] images = folder.listFiles(IMAGES);
 				File indexPicture;
 				ImageData imageData;
 				if (images != null && images.length > 0) {
 					indexPicture = images[0];
-					
+
 					double scale;
 					try {
 						imageData = ImageData.analyze(null, indexPicture);
-						
+
 						double width = imageData.getWidth();
 						double height = imageData.getHeight();
-						
+
 						scale = width / height;
 						double ty;
 						if (scale < 1.0) {
@@ -253,7 +251,7 @@ public class ResourceCache {
 						} else {
 							ty = 0.0;
 						}
-						
+
 						ThumbnailInfo thumbnail = ThumbnailInfo.create().setImage(indexPicture.getName()).setScale(scale);
 						thumbnail.setTy(ty);
 						folderInfo.setIndexPicture(thumbnail);
@@ -266,13 +264,13 @@ public class ResourceCache {
 					indexPicture = null;
 					imageData = null;
 				}
-				
+
 				Matcher matcher = DATE_PATTERN.matcher(folderName);
 				if (matcher.find()) {
 					int year = Integer.parseInt(matcher.group(1));
 					int month = Integer.parseInt(matcher.group(2));
 					int day = Integer.parseInt(matcher.group(3));
-					
+
 					folderInfo.setSubTitle(dateString(year, month, day));
 					folderName = removeMatch(folderName, matcher);
 				} else {
@@ -318,7 +316,7 @@ public class ResourceCache {
 			}
 			return name;
 		}
-		
+
 		private static String fromTechnicalName(String name) {
 			return uppercaseStart(name.replaceAll("_+|(?<=\\p{javaLowerCase})(?=\\p{javaUpperCase})", " "));
 		}
@@ -333,17 +331,17 @@ public class ResourceCache {
 		private static AlbumInfo loadAlbum(AlbumInfo album, File[] files) {
 			// Update early to be able to match new images against existing image.
 			UpdateTransient.updateTransient(album);
-			
+
 			List<ImageData> newImages = new ArrayList<>();
 			for (File file : files) {
 				String name = file.getName();
-				
+
 				ImagePart existing = album.getImageByName().get(name);
 				if (existing != null) {
 					// Already known.
 					continue;
 				}
-				
+
 				ImageData image;
 				try {
 					image = ImageData.analyze(album, file);
@@ -351,19 +349,19 @@ public class ResourceCache {
 					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
 					continue;
 				}
-				
+
 				newImages.add(image);
 			}
-			
+
 			AlbumUtil.insertSorted(album, newImages);
-			
+
 			return album;
 		}
 
 		private static AlbumInfo createGenericAlbumInfo(PathInfo pathInfo) {
 			AlbumInfo album = AlbumInfo.create();
 			String dirName = pathInfo.getName();
-			
+
 			Pattern prefixPattern = Pattern.compile("[-_\\.\\s0-9]*");
 			Matcher matcher = prefixPattern.matcher(dirName);
 			if (matcher.lookingAt()) {
@@ -383,7 +381,7 @@ public class ResourceCache {
 		interface LoaderFunction<T> {
 			T load(JsonReader json) throws IOException;
 		}
-		
+
 		private static <T> T loadJSON(File file, LoaderFunction<T> loader) throws IOException {
 			try (InputStream in = new FileInputStream(file)) {
 				JsonReader json = new JsonReader(new ReaderAdapter(new InputStreamReader(in, "utf-8")));

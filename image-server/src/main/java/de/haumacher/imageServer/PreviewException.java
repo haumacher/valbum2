@@ -10,14 +10,14 @@ package de.haumacher.imageServer;
  */
 public class PreviewException extends Exception {
 
-	/** 
+	/**
 	 * Creates a {@link PreviewException}.
 	 */
 	public PreviewException(String message, Throwable cause) {
 		super(message, cause);
 	}
 
-	/** 
+	/**
 	 * Creates a {@link PreviewException}.
 	 */
 	public PreviewException(String message) {

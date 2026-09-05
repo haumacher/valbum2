@@ -4,13 +4,13 @@
 package de.haumacher.imageServer.shared.ui.layout;
 
 /**
- * Empty space inserted to a layout to make it's constraints acceptable. 
+ * Empty space inserted to a layout to make it's constraints acceptable.
  */
 public class Padding implements Content {
 
 	private double _unitWidth;
 
-	/** 
+	/**
 	 * Creates a {@link Padding}.
 	 */
 	public Padding(double unitWidth) {
@@ -21,7 +21,7 @@ public class Padding implements Content {
 	public double getUnitWidth() {
 		return _unitWidth;
 	}
-	
+
 	@Override
 	public int getUnitHeight() {
 		return 1;
