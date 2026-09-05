@@ -153,6 +153,17 @@ delivery:
   them in the generator or ignore them, never by hand. The bar is **zero errors**, and no *new*
   warnings in hand-written files.
 
+- **The Bash tool resets its working directory between calls.** A chain that relies on an earlier
+  `cd` runs in the repo root (or its parent); use absolute paths or one `cd` per command, and
+  never `git add -A` after a relative `cd ..`.
+- **`pkill -f <pattern>` matches your own shell** when the pattern appears in the command line you
+  are running, and kills the rest of the chain (exit 144). Anchor it (`pkill -f "^java -jar"`).
+- **The Playwright MCP writes into the repository root** (`.playwright-mcp/`, `recording.json`),
+  not the scratchpad; both are in `.gitignore` now — never `git add -A` while a browser session is
+  open in another agent.
+- **A merge is not gated by the commits it merges.** Run both gates on the merged tree before
+  pushing, even when every branch was green on its own.
+
 When a probe legitimately fails: send it back (§2). When it exposes something deeper than the
 package (a protocol gap, a format hazard), fix small ones yourself with a regression test; spawn a
 package for large ones. Two classics to stay paranoid about: silent refusals (nothing may decline

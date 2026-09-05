@@ -117,6 +117,12 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
 
 ## Decisions log
 
+- **2026-09-05 (evening)** — Phase 0 and Phase 1 complete (issues #9–#24). The Flutter app does
+  everything the GWT client did, verified live on the bundled jar: deep links, keyboard navigation
+  and the row layout under a context path. Server follow-ups from the parity work: #25 (root album
+  save), #26 (video content type and range requests). Phase 2 is next; its issues are filed when
+  work on it starts.
+
 - **2026-09-05** — GWT and HTML front ends are retired; Flutter is the only client. The album
   layout algorithm is preserved in Dart with Java-generated golden fixtures. Java moves off 1.8.
   Cleanup (Phase 0) precedes parity (Phase 1) precedes any new feature.
