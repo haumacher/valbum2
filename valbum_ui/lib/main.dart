@@ -33,9 +33,7 @@ class VAlbumApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Virtual Photo Album',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
+      theme: ThemeData(primarySwatch: Colors.blue),
       home: const VAlbumView(),
     );
   }
@@ -44,7 +42,7 @@ class VAlbumApp extends StatelessWidget {
 class VAlbumView extends StatefulWidget {
   /// The image to display.
   final AbstractImage? image;
-  
+
   // The path of the resource to load (and then display).
   final List<String> path;
 
@@ -54,7 +52,8 @@ class VAlbumView extends StatefulWidget {
   State<VAlbumView> createState() => VAlbumState();
 }
 
-class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, BuildContext> {
+class VAlbumState extends State<VAlbumView>
+    implements ResourceVisitor<Widget, BuildContext> {
   Future<Resource?>? _resourceFuture;
 
   @override
@@ -65,7 +64,9 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
   }
 
   void doLoad() {
-    _resourceFuture = widget.image == null ? load(widget.path) : Future.value(widget.image);
+    _resourceFuture = widget.image == null
+        ? load(widget.path)
+        : Future.value(widget.image);
   }
 
   List<String> get path => widget.path;
@@ -108,27 +109,15 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
 
   Widget buildLoading() {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Virtual photo album"),
-      ),
-      body: Center(
-        child: Text(
-          'Loading...',
-        ),
-      ),
+      appBar: AppBar(title: const Text("Virtual photo album")),
+      body: Center(child: Text('Loading...')),
     );
   }
 
   Widget buildError(Object? error) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Virtual photo album"),
-      ),
-      body: Center(
-        child: Text(
-          'Loading failed: ${error?.toString()}',
-        ),
-      ),
+      appBar: AppBar(title: const Text("Virtual photo album")),
+      body: Center(child: Text('Loading failed: ${error?.toString()}')),
       floatingActionButton: FloatingActionButton(
         onPressed: doLoad,
         tooltip: 'Reload',
@@ -148,53 +137,70 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
         actions: <Widget>[
           menu(context, [
             menuItem(Icons.create_new_folder, 'Create album', createAlbum),
-            menuItem(Icons.create_new_folder_outlined, 'Create folder', createFolder),
+            menuItem(
+              Icons.create_new_folder_outlined,
+              'Create folder',
+              createFolder,
+            ),
             menuItem(Icons.update, "Reload", (_) => reload()),
           ]),
         ],
       ),
-      body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
-        double imageBorder = 8;
-        var preferredImageWidth = 200;
-        var maxWidth = constraints.maxWidth;
-        double preferredImageSpace = preferredImageWidth + 2 * imageBorder;
-        double imagesPerRowFrag = maxWidth / preferredImageSpace;
-        var imagesPerRow = imagesPerRowFrag.round();
-        bool underflow = self.folders.length < imagesPerRow;
-        double difference = underflow ? 0 : maxWidth - imagesPerRow * preferredImageSpace;
-        double imageSpace = preferredImageSpace + difference / imagesPerRow;
+      body: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          double imageBorder = 8;
+          var preferredImageWidth = 200;
+          var maxWidth = constraints.maxWidth;
+          double preferredImageSpace = preferredImageWidth + 2 * imageBorder;
+          double imagesPerRowFrag = maxWidth / preferredImageSpace;
+          var imagesPerRow = imagesPerRowFrag.round();
+          bool underflow = self.folders.length < imagesPerRow;
+          double difference = underflow
+              ? 0
+              : maxWidth - imagesPerRow * preferredImageSpace;
+          double imageSpace = preferredImageSpace + difference / imagesPerRow;
 
-        return SingleChildScrollView(
-          scrollDirection: Axis.vertical,
-          child: buildFolderList(self, imageSpace - 2 * imageBorder, imageBorder));
-      }),
+          return SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            child: buildFolderList(
+              self,
+              imageSpace - 2 * imageBorder,
+              imageBorder,
+            ),
+          );
+        },
+      ),
     );
   }
 
-  Wrap buildFolderList(ListingInfo self, double imageWidth, double imageBorder) {
+  Wrap buildFolderList(
+    ListingInfo self,
+    double imageWidth,
+    double imageBorder,
+  ) {
     return Wrap(
       children: self.folders.map((folder) {
-        return Padding(padding: EdgeInsets.all(imageBorder),
+        return Padding(
+          padding: EdgeInsets.all(imageBorder),
           child: GestureDetector(
-              onTap: () => showElement(folder.name),
-              child: SizedBox(width: imageWidth,
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: buildFolderWidget(folder, imageWidth),
-                    ),
-                    Text(folder.title,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                    ),
-                    Text(folder.subTitle,
-                      textAlign: TextAlign.center,
-                    )
-                  ],
-                ),
-              )
-
+            onTap: () => showElement(folder.name),
+            child: SizedBox(
+              width: imageWidth,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: buildFolderWidget(folder, imageWidth),
+                  ),
+                  Text(
+                    folder.title,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  Text(folder.subTitle, textAlign: TextAlign.center),
+                ],
+              ),
+            ),
           ),
         );
       }).toList(),
@@ -204,13 +210,21 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
   Widget buildFolderWidget(FolderInfo folder, double width) {
     var indexPicture = folder.indexPicture;
     if (indexPicture == null) {
-      return Container(width: width, height: width,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(5), border: Border.all(color: Colors.blue, width: 3)),
-        child: Center(child: Icon(Icons.folder, size: width / 2, color: Colors.blue,)),
+      return Container(
+        width: width,
+        height: width,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: Colors.blue, width: 3),
+        ),
+        child: Center(
+          child: Icon(Icons.folder, size: width / 2, color: Colors.blue),
+        ),
       );
     }
 
-    return Image.network("$baseUrl/${folder.name}/${indexPicture.image}?type=tn",
+    return Image.network(
+      "$baseUrl/${folder.name}/${indexPicture.image}?type=tn",
       width: width,
       height: width,
       fit: BoxFit.cover,
@@ -219,20 +233,19 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
 
   void createFolder(BuildContext context) async {
     ListingInfo? folder = await showGeneralDialog(
-        context: context,
-        pageBuilder: (context, _, __) => const CreateFolderDialog()
+      context: context,
+      pageBuilder: (context, _, __) => const CreateFolderDialog(),
     );
 
     if (folder == null) {
       return;
     }
 
-    await http.put(Uri.parse("$baseUrl/${folder.path}"),
-        encoding: Encoding.getByName("utf-8"),
-        body: folder.toString(),
-        headers: {
-          "Content-Type": "application/json",
-        }
+    await http.put(
+      Uri.parse("$baseUrl/${folder.path}"),
+      encoding: Encoding.getByName("utf-8"),
+      body: folder.toString(),
+      headers: {"Content-Type": "application/json"},
     );
 
     reload();
@@ -242,19 +255,18 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
   void createAlbum(BuildContext context) async {
     AlbumInfo? album = await showGeneralDialog(
       context: context,
-      pageBuilder: (context, _, __) => const CreateAlbumDialog()
+      pageBuilder: (context, _, __) => const CreateAlbumDialog(),
     );
 
     if (album == null) {
       return;
     }
 
-    await http.put(Uri.parse("$baseUrl/${album.path}"),
-        encoding: Encoding.getByName("utf-8"),
-        body: album.toString(),
-        headers: {
-          "Content-Type": "application/json",
-        }
+    await http.put(
+      Uri.parse("$baseUrl/${album.path}"),
+      encoding: Encoding.getByName("utf-8"),
+      body: album.toString(),
+      headers: {"Content-Type": "application/json"},
     );
 
     reload();
@@ -281,7 +293,11 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
 
     var multipartRequest = http.MultipartRequest("PUT", uri);
     for (var file in files) {
-      var multipart = http.MultipartFile.fromPath(file.name, file.path, filename: file.name);
+      var multipart = http.MultipartFile.fromPath(
+        file.name,
+        file.path,
+        filename: file.name,
+      );
       multipartRequest.files.add(await multipart);
     }
     var multipartStream = multipartRequest.finalize();
@@ -299,32 +315,38 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
 
     ProgressDialog pd = ProgressDialog(context: context);
     pd.show(
-        msg: "Uploading files...",
-        max: 100,
-        closeWithDelay: 500,
-        cancel: Cancel(
-          cancelClicked: () {
-            if (kDebugMode) {
-              print("Aborting upload.");
-            }
-            put.abort();
-          },
-        )
+      msg: "Uploading files...",
+      max: 100,
+      closeWithDelay: 500,
+      cancel: Cancel(
+        cancelClicked: () {
+          if (kDebugMode) {
+            print("Aborting upload.");
+          }
+          put.abort();
+        },
+      ),
     );
 
     put.contentLength = contentLength;
-    multipartRequest.headers.forEach((key, value) => put.headers.set(key, value));
+    multipartRequest.headers.forEach(
+      (key, value) => put.headers.set(key, value),
+    );
 
     var bytesTransferred = 0;
-    await put.addStream(multipartStream.transform(StreamTransformer.fromHandlers(
-      handleData: (data, sink) {
-        sink.add(data);
+    await put.addStream(
+      multipartStream.transform(
+        StreamTransformer.fromHandlers(
+          handleData: (data, sink) {
+            sink.add(data);
 
-        bytesTransferred += data.length;
-        pd.update(value: (100 * bytesTransferred / contentLength).round());
-        // Show progress.
-      },
-    )));
+            bytesTransferred += data.length;
+            pd.update(value: (100 * bytesTransferred / contentLength).round());
+            // Show progress.
+          },
+        ),
+      ),
+    );
 
     if (kDebugMode) {
       print("Starting upload.");
@@ -355,21 +377,25 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
     setState(doLoad);
   }
 
-  Future<void> pushPart(AbstractImage image, String name) =>
-    Navigator.push(context, MaterialPageRoute(
-      builder: (context) => VAlbumView(path: path, image: image)
-    )
+  Future<void> pushPart(AbstractImage image, String name) => Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => VAlbumView(path: path, image: image),
+    ),
   );
 
   @override
   Widget visitImagePart(ImagePart self, BuildContext arg) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
-        return CallbackShortcuts(
-            bindings: <ShortcutActivator, VoidCallback> {
-              const SingleActivator(LogicalKeyboardKey.arrowLeft): () => gotoPrevious(self),
-              const SingleActivator(LogicalKeyboardKey.arrowRight): () => gotoNext(self),
+      body: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          return CallbackShortcuts(
+            bindings: <ShortcutActivator, VoidCallback>{
+              const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+                  gotoPrevious(self),
+              const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+                  gotoNext(self),
               const SingleActivator(LogicalKeyboardKey.arrowUp): () {
                 Navigator.pop(context);
               },
@@ -377,9 +403,10 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
             child: Focus(
               autofocus: true,
               child: createViewer(self, constraints),
-            )
-        );
-      }),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -411,11 +438,12 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
       },
 
       // TODO: Support video playback
-      child: Image.network("$baseUrl/${self.name}${self.kind == ImageKind.video ? "?type=tn" : ""}",
+      child: Image.network(
+        "$baseUrl/${self.name}${self.kind == ImageKind.video ? "?type=tn" : ""}",
         width: constraints.maxWidth,
         height: constraints.maxHeight,
         fit: BoxFit.contain,
-      )
+      ),
     );
   }
 
@@ -444,14 +472,8 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
   @override
   Widget visitErrorInfo(ErrorInfo self, BuildContext arg) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Virtual photo album"),
-      ),
-      body: Center(
-        child: Text(
-          'Loading failed: ${self.message}',
-        ),
-      ),
+      appBar: AppBar(title: const Text("Virtual photo album")),
+      body: Center(child: Text('Loading failed: ${self.message}')),
       floatingActionButton: FloatingActionButton(
         onPressed: () {},
         tooltip: 'Reload',
@@ -466,7 +488,12 @@ class VAlbumState extends State<VAlbumView> implements ResourceVisitor<Widget, B
   }
 
   void showElement(String name) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => VAlbumView(path: [...path, name])));
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VAlbumView(path: [...path, name]),
+      ),
+    );
   }
 }
 
@@ -476,7 +503,13 @@ class AlbumContent extends StatefulWidget {
   final String baseUrl;
   final Future Function(AbstractImage image, String name) pushPart;
 
-  const AlbumContent(this.albumState, this.album, this.baseUrl, this.pushPart, {super.key});
+  const AlbumContent(
+    this.albumState,
+    this.album,
+    this.baseUrl,
+    this.pushPart, {
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() {
@@ -485,13 +518,18 @@ class AlbumContent extends StatefulWidget {
 }
 
 enum SelectionState {
-  none, single, multiple;
+  none,
+  single,
+  multiple;
 
   static SelectionState fromSize(int size) {
     switch (size) {
-      case 0: return SelectionState.none;
-      case 1: return SelectionState.single;
-      default: return SelectionState.multiple;
+      case 0:
+        return SelectionState.none;
+      case 1:
+        return SelectionState.single;
+      default:
+        return SelectionState.multiple;
     }
   }
 }
@@ -540,7 +578,11 @@ class AlbumContentState extends State<AlbumContent> {
   }
 
   void setSelection(ThumbnailEditorState selected) {
-    selection.where((element) => element != selected).forEach((element) => element.updateSelectionState(SelectionState.none));
+    selection
+        .where((element) => element != selected)
+        .forEach(
+          (element) => element.updateSelectionState(SelectionState.none),
+        );
     selection.removeWhere((element) => element != selected);
 
     addToSelection(selected);
@@ -565,22 +607,23 @@ class AlbumContentState extends State<AlbumContent> {
   @override
   Widget build(BuildContext context) {
     var self = widget.album;
-    
+
     return Scaffold(
-      appBar: !editMode && self.parts.isNotEmpty ? null : AppBar(
-        title: Column(
-          children: [
-            Text(self.title),
-            if (self.subTitle.isNotEmpty) Text(self.subTitle)
-          ],
-        ),
-        centerTitle: true,
-        actions: [
-          if (editMode) IconButton(
-            onPressed: save,
-            icon: const Icon(Icons.save))
-        ],
-      ),
+      appBar: !editMode && self.parts.isNotEmpty
+          ? null
+          : AppBar(
+              title: Column(
+                children: [
+                  Text(self.title),
+                  if (self.subTitle.isNotEmpty) Text(self.subTitle),
+                ],
+              ),
+              centerTitle: true,
+              actions: [
+                if (editMode)
+                  IconButton(onPressed: save, icon: const Icon(Icons.save)),
+              ],
+            ),
       backgroundColor: Colors.black,
       body: self.parts.isEmpty ? null : contentView(self),
       floatingActionButton: FloatingActionButton(
@@ -605,27 +648,30 @@ class AlbumContentState extends State<AlbumContent> {
           scrollDirection: Axis.vertical,
           child: Column(
             children: [
-              if (!editMode) Padding(
-                padding: const EdgeInsets.only(top: 20, bottom: 4),
-                child: Text(self.title,
-                  style: const TextStyle(fontSize: 28, color: Colors.white),
-                )
-              ),
-              if (!editMode) if (self.subTitle.isNotEmpty)
+              if (!editMode)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(self.subTitle,
-                      style: const TextStyle(fontSize: 16, color: Colors.white)
-                  )
+                  padding: const EdgeInsets.only(top: 20, bottom: 4),
+                  child: Text(
+                    self.title,
+                    style: const TextStyle(fontSize: 28, color: Colors.white),
+                  ),
                 ),
+              if (!editMode)
+                if (self.subTitle.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      self.subTitle,
+                      style: const TextStyle(fontSize: 16, color: Colors.white),
+                    ),
+                  ),
               ...layout.map((row) => row.visit(builder, 0.0)).toList(),
-            ]
+            ],
           ),
         );
-      }
+      },
     );
   }
-
 }
 
 class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
@@ -641,7 +687,10 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
     var width = content.getUnitWidth() * rowHeight;
     var height = rowHeight;
 
-    return image.visitAbstractImage(ImageWidgetBuilder(state, width, height), null);
+    return image.visitAbstractImage(
+      ImageWidgetBuilder(state, width, height),
+      null,
+    );
   }
 
   @override
@@ -650,7 +699,9 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
     double rowHeight = scale;
 
     return Row(
-      children: content.map((content) => content.visit(this, rowHeight)).toList(),
+      children: content
+          .map((content) => content.visit(this, rowHeight))
+          .toList(),
     );
   }
 
@@ -666,7 +717,7 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
     var lower = content.getLower();
     var lowerRow = lower.visit(contentBuilder, rowHeight * content.getH2());
 
-    return Column(children: [upperRow, lowerRow],);
+    return Column(children: [upperRow, lowerRow]);
   }
 
   @override
@@ -702,13 +753,14 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
       return GestureDetector(
         onTap: () => state.widget.pushPart(self, self.name),
         onLongPress: () => state.setEditMode(self),
-        child: imageThumbnail(self)
+        child: imageThumbnail(self),
       );
     }
   }
 
   Image imageThumbnail(AbstractImage image) {
-    return Image.network("${state.albumUrl}${image.thumbnailName}?type=tn",
+    return Image.network(
+      "${state.albumUrl}${image.thumbnailName}?type=tn",
       width: width,
       height: height,
       fit: BoxFit.contain,
@@ -747,7 +799,8 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
 
   bool get active => selected || _hovered;
 
-  void updateSelectionState(SelectionState value) => setState(() => _selected = value);
+  void updateSelectionState(SelectionState value) =>
+      setState(() => _selected = value);
 
   @override
   void initState() {
@@ -775,29 +828,32 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     if (active) {
       return Stack(
         children: [
-          selected ? widget.builder.imageThumbnail(widget.image) : onClickImage(),
-          if (multiSelected) SizedBox(
-            width: widget.builder.width,
-            height: widget.builder.height,
-            child: Center(
-              child: CircleAvatar(
-                radius: 20,
-                backgroundColor: Colors.blueAccent,
-                child: IconButton(
-                  color: Colors.white,
-                  icon: const Icon(Icons.join_left),
-                  onPressed: createGroup,
+          selected
+              ? widget.builder.imageThumbnail(widget.image)
+              : onClickImage(),
+          if (multiSelected)
+            SizedBox(
+              width: widget.builder.width,
+              height: widget.builder.height,
+              child: Center(
+                child: CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Colors.blueAccent,
+                  child: IconButton(
+                    color: Colors.white,
+                    icon: const Icon(Icons.join_left),
+                    onPressed: createGroup,
+                  ),
                 ),
               ),
             ),
-          ),
           Positioned(
             top: 4,
             left: 4,
             child: Checkbox(
               value: selected,
               onChanged: (value) => setSelected(value ?? false),
-            )
+            ),
           ),
         ],
       );
@@ -806,15 +862,13 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     }
   }
 
-  void createGroup() {
-
-  }
+  void createGroup() {}
 
   GestureDetector onClickImage() {
     return GestureDetector(
-        onTap: select,
-        onLongPress: addToSelection,
-        child: widget.builder.imageThumbnail(widget.image)
+      onTap: select,
+      onLongPress: addToSelection,
+      child: widget.builder.imageThumbnail(widget.image),
     );
   }
 
@@ -837,7 +891,6 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   void select() {
     widget.state.setSelection(this);
   }
-
 }
 
 class CreateAlbumDialog extends StatefulWidget {
@@ -868,7 +921,9 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DefaultTextStyle(
-                style: DialogTheme.of(context).titleTextStyle ?? Theme.of(context).textTheme.titleLarge!,
+                style:
+                    DialogTheme.of(context).titleTextStyle ??
+                    Theme.of(context).textTheme.titleLarge!,
                 child: Semantics(
                   // For iOS platform, the focus always lands on the title.
                   // Set nameRoute to false to avoid title being announced twice.
@@ -888,17 +943,17 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
                   return value == null ? "Muss angegeben werden." : null;
                 },
                 decoration: InputDecoration(
-                    label: Text("Datum"),
-                    suffixIcon: Icon(Icons.date_range)
+                  label: Text("Datum"),
+                  suffixIcon: Icon(Icons.date_range),
                 ),
               ),
               TextFormField(
-                decoration: InputDecoration(
-                  label: Text("Titel"),
-                ),
+                decoration: InputDecoration(label: Text("Titel")),
                 onSaved: (value) => albumTitle = value,
                 validator: (String? value) {
-                  return value == null || value.isEmpty ? "Darf nicht leer sein" : null;
+                  return value == null || value.isEmpty
+                      ? "Darf nicht leer sein"
+                      : null;
                 },
               ),
               TextFormField(
@@ -939,7 +994,8 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
     var info = AlbumInfo(
       title: title,
       subTitle: albumSubTitle ?? "",
-      path: (date != null ? DateFormat("yyyy-MM-dd ").format(date) : "") + title,
+      path:
+          (date != null ? DateFormat("yyyy-MM-dd ").format(date) : "") + title,
     );
 
     Navigator.of(context).pop(info);
@@ -972,7 +1028,9 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DefaultTextStyle(
-                style: DialogTheme.of(context).titleTextStyle ?? Theme.of(context).textTheme.titleLarge!,
+                style:
+                    DialogTheme.of(context).titleTextStyle ??
+                    Theme.of(context).textTheme.titleLarge!,
                 child: Semantics(
                   // For iOS platform, the focus always lands on the title.
                   // Set nameRoute to false to avoid title being announced twice.
@@ -982,12 +1040,12 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
                 ),
               ),
               TextFormField(
-                decoration: InputDecoration(
-                  label: Text("Name"),
-                ),
+                decoration: InputDecoration(label: Text("Name")),
                 onSaved: (value) => folderName = value,
                 validator: (String? value) {
-                  return value == null || value.isEmpty ? "Darf nicht leer sein" : null;
+                  return value == null || value.isEmpty
+                      ? "Darf nicht leer sein"
+                      : null;
                 },
               ),
               Padding(
@@ -1020,10 +1078,7 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
 
     var name = folderName!;
 
-    var info = ListingInfo(
-      title: name,
-      path: name,
-    );
+    var info = ListingInfo(title: name, path: name);
 
     Navigator.of(context).pop(info);
   }
@@ -1035,10 +1090,7 @@ extension AlmostIdentity on Matrix4 {
   }
 }
 
-
-enum Direction {
-  previous, next;
-}
+enum Direction { previous, next }
 
 /// Initializes [AbstractImage.next] and [AbstractImage.previous] fields.
 class AlbumInitializer implements AlbumPartVisitor<AbstractImage?, Direction> {
@@ -1079,22 +1131,24 @@ class AlbumInitializer implements AlbumPartVisitor<AbstractImage?, Direction> {
     }
     return self;
   }
-
 }
 
-Widget menu(BuildContext context, List<PopupMenuItem<Action>> entries) => PopupMenuButton<Action>(
-  itemBuilder: (context) => entries,
-  onSelected: (action) => action(context),
-);
+Widget menu(BuildContext context, List<PopupMenuItem<Action>> entries) =>
+    PopupMenuButton<Action>(
+      itemBuilder: (context) => entries,
+      onSelected: (action) => action(context),
+    );
 
-PopupMenuItem<Action> menuItem(IconData icon, String text, Action action) => PopupMenuItem<Action>(
-  value: action,
-  child: Row(
-    children: [
-      Padding(
-        padding: const EdgeInsets.only(right: 16),
-        child: Icon(icon, color: Colors.blueAccent)),
-      Text(text)
-    ]
-  )
-);
+PopupMenuItem<Action> menuItem(IconData icon, String text, Action action) =>
+    PopupMenuItem<Action>(
+      value: action,
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Icon(icon, color: Colors.blueAccent),
+          ),
+          Text(text),
+        ],
+      ),
+    );
