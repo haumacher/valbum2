@@ -98,7 +98,9 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
 - Server settings screen (URL, credentials) replacing the hardcoded host; connection test. (#27; credentials with #28)
 - Camera-roll sync: the app watches the device's photo library and uploads new items to a chosen
   inbox album, in the background where the platform allows, with progress and retry. Uploads are
-  idempotent (content hash), so a retried upload never duplicates. (#30, server side #29)
+  idempotent (content hash), so a retried upload never duplicates. (#30; server side #29 ✅: the
+  server hashes every upload, answers `present` for known content, caches hashes in a per-folder
+  `.hashes.json` sidecar, offers a pre-check, and never replaces an existing original)
 - ✅ Authentication: a per-device token issued by the server; the API refuses anonymous writes.
   Read access stays open for a home network and is switchable. (#28) *(Done: `--auth
   off|writes|all`, default `writes`; a device is paired with `POST <data>/?action=pair` against the

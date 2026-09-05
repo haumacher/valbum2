@@ -53,21 +53,19 @@ public class UploadItem implements FileItem<UploadItem> {
 	}
 
 	private File createTmpFile(String fileName) throws IOError {
-		int start = fileName.lastIndexOf('/');
-		if (start < 0) {
-			start = 0;
-		}
+		int start = fileName.lastIndexOf('/') + 1;
 
 		int stop = fileName.lastIndexOf('.');
-		if (stop < 0) {
-			stop = fileName.length();
-		}
-
 		if (stop < start) {
 			stop = fileName.length();
 		}
 
 		String prefix = start < stop ? fileName.substring(start, stop) : "upload";
+		// A temporary file needs a prefix of at least three characters, but a photo may well be
+		// called "a.jpg".
+		while (prefix.length() < 3) {
+			prefix = prefix + "-upload";
+		}
 		String suffix = fileName.substring(stop);
 
 		try {

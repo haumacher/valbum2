@@ -1295,3 +1295,381 @@ class AuthInfo extends _JsonObject {
 
 }
 
+///  Request asking a folder which of the given contents it already holds, sent to
+///  <code>&lt;folder&gt;/?action=check</code>.
+/// 
+///  <p>
+///  Asking is a read: it only reveals what the folder contains. A client sends it before an upload
+///  so that it can skip transferring what is already there.
+///  </p>
+class UploadCheck extends _JsonObject {
+	///  The contents the client intends to upload.
+	/// 
+	///  <p>
+	///  A list of messages, not a list of plain strings: the Dart backend of the model generator
+	///  mis-types a <code>repeated string</code> field.
+	///  </p>
+	List<ContentHash> hashes;
+
+	/// Creates a UploadCheck.
+	UploadCheck({
+			this.hashes = const [], 
+	});
+
+	/// Parses a UploadCheck from a string source.
+	static UploadCheck? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a UploadCheck instance from the given reader.
+	static UploadCheck read(JsonReader json) {
+		UploadCheck result = UploadCheck();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "UploadCheck";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "hashes": {
+				json.expectArray();
+				hashes = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ContentHash.read(json);
+						if (value != null) {
+							hashes.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("hashes");
+		json.startArray();
+		for (var _element in hashes) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  The hash of a single content, see {@link UploadCheck}.
+class ContentHash extends _JsonObject {
+	///  The SHA-256 hash (lower-case hex) of the content.
+	String hash;
+
+	/// Creates a ContentHash.
+	ContentHash({
+			this.hash = "", 
+	});
+
+	/// Parses a ContentHash from a string source.
+	static ContentHash? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContentHash instance from the given reader.
+	static ContentHash read(JsonReader json) {
+		ContentHash result = ContentHash();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContentHash";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "hash": {
+				hash = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("hash");
+		json.addString(hash);
+	}
+
+}
+
+///  Answer to an {@link UploadCheck} naming those of the asked hashes that the folder already holds.
+class UploadCheckResult extends _JsonObject {
+	///  The asked contents that are already present, in the order they were asked for.
+	List<PresentFile> present;
+
+	/// Creates a UploadCheckResult.
+	UploadCheckResult({
+			this.present = const [], 
+	});
+
+	/// Parses a UploadCheckResult from a string source.
+	static UploadCheckResult? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a UploadCheckResult instance from the given reader.
+	static UploadCheckResult read(JsonReader json) {
+		UploadCheckResult result = UploadCheckResult();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "UploadCheckResult";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "present": {
+				json.expectArray();
+				present = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = PresentFile.read(json);
+						if (value != null) {
+							present.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("present");
+		json.startArray();
+		for (var _element in present) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  A content of an {@link UploadCheckResult} that the folder already holds.
+class PresentFile extends _JsonObject {
+	///  The SHA-256 hash (lower-case hex) that was asked for.
+	String hash;
+
+	///  The name of the file in the folder that has this content.
+	String name;
+
+	/// Creates a PresentFile.
+	PresentFile({
+			this.hash = "", 
+			this.name = "", 
+	});
+
+	/// Parses a PresentFile from a string source.
+	static PresentFile? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PresentFile instance from the given reader.
+	static PresentFile read(JsonReader json) {
+		PresentFile result = PresentFile();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PresentFile";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "hash": {
+				hash = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("hash");
+		json.addString(hash);
+
+		json.addKey("name");
+		json.addString(name);
+	}
+
+}
+
+///  Answer to an upload, telling for every received file whether it was stored or was already
+///  present.
+/// 
+///  <p>
+///  An upload is idempotent: a retry after a lost connection reports the files as
+///  {@link UploadedFile#getStatus() present} instead of storing them a second time.
+///  </p>
+class UploadResult extends _JsonObject {
+	///  One entry per file of the upload request, in the order they were received.
+	List<UploadedFile> files;
+
+	/// Creates a UploadResult.
+	UploadResult({
+			this.files = const [], 
+	});
+
+	/// Parses a UploadResult from a string source.
+	static UploadResult? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a UploadResult instance from the given reader.
+	static UploadResult read(JsonReader json) {
+		UploadResult result = UploadResult();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "UploadResult";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "files": {
+				json.expectArray();
+				files = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = UploadedFile.read(json);
+						if (value != null) {
+							files.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("files");
+		json.startArray();
+		for (var _element in files) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  What happened to a single file of an upload, see {@link UploadResult}.
+class UploadedFile extends _JsonObject {
+	///  The file name as it was sent by the client.
+	String name;
+
+	///  The name of the file on the server: the (potentially de-duplicated) name the contents were
+	///  stored under, or the name of the existing file that already had these contents.
+	String storedAs;
+
+	///  The SHA-256 hash (lower-case hex) of the received contents, as computed by the server.
+	String hash;
+
+	///  <code>stored</code> if the contents were written to the album, <code>present</code> if the
+	///  folder already held them and nothing was written.
+	String status;
+
+	/// Creates a UploadedFile.
+	UploadedFile({
+			this.name = "", 
+			this.storedAs = "", 
+			this.hash = "", 
+			this.status = "", 
+	});
+
+	/// Parses a UploadedFile from a string source.
+	static UploadedFile? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a UploadedFile instance from the given reader.
+	static UploadedFile read(JsonReader json) {
+		UploadedFile result = UploadedFile();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "UploadedFile";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "storedAs": {
+				storedAs = json.expectString();
+				break;
+			}
+			case "hash": {
+				hash = json.expectString();
+				break;
+			}
+			case "status": {
+				status = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("storedAs");
+		json.addString(storedAs);
+
+		json.addKey("hash");
+		json.addString(hash);
+
+		json.addKey("status");
+		json.addString(status);
+	}
+
+}
+

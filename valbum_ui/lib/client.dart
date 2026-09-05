@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:convert/convert.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
@@ -30,11 +32,69 @@ class UploadFile {
   /// Opens the contents of the file.
   final Stream<List<int>> Function() openRead;
 
+  /// The SHA-256 hash of the contents, in lower-case hex, `null` while it has
+  /// not been computed yet.
+  ///
+  /// The hash is what makes an upload idempotent: the server compares it with
+  /// the contents the target album already holds and stores nothing that is
+  /// already there, see [VAlbumClient.uploadNew]. The server hashes what it
+  /// receives itself, so this value is an optimisation, never a promise.
+  final String? sha256;
+
   const UploadFile({
     required this.name,
     required this.length,
     required this.openRead,
+    this.sha256,
   });
+
+  /// The same file, with its contents' hash attached.
+  UploadFile withHash(String hash) => UploadFile(
+        name: name,
+        length: length,
+        openRead: openRead,
+        sha256: hash,
+      );
+}
+
+/// The [UploadedFile.status] of contents that the server has written.
+const String uploadStored = "stored";
+
+/// The [UploadedFile.status] of contents the album already held.
+const String uploadPresent = "present";
+
+/// The SHA-256 hash of the given contents, in lower-case hex.
+///
+/// The stream is consumed in chunks, so that hashing a video does not pull the
+/// whole file into memory.
+Future<String> sha256Of(Stream<List<int>> contents) async {
+  var digests = AccumulatorSink<Digest>();
+  var input = sha256.startChunkedConversion(digests);
+  await for (var chunk in contents) {
+    input.add(chunk);
+  }
+  input.close();
+  return digests.events.single.toString();
+}
+
+/// What an upload did, see [VAlbumClient.uploadNew].
+class UploadSummary {
+  /// The number of files the server stored.
+  final int stored;
+
+  /// The number of files the album already held, which were not stored again.
+  final int present;
+
+  const UploadSummary({required this.stored, required this.present});
+
+  /// The number of files the upload was asked to transfer.
+  int get total => stored + present;
+
+  /// What the user is told about the upload.
+  ///
+  /// Both counts are named: a sync that transfers nothing because everything
+  /// is already there must not look like a sync that did nothing.
+  String get message => "$stored hochgeladen, $present bereits vorhanden.";
 }
 
 /// Handle allowing to cancel a running upload.
@@ -169,9 +229,14 @@ class VAlbumClient {
   /// Reports the transfer progress in percent to [onProgress]. The upload stops
   /// early when [handle] is cancelled.
   ///
+  /// Answers what the server did with every file: contents the album already
+  /// holds are reported as [uploadPresent] and are not stored a second time,
+  /// see [uploadNew]. A server that answers with an empty body (before issue
+  /// #29) is taken to have stored everything it was sent.
+  ///
   /// Throws a [VAlbumException] naming the server's reason if the server
   /// refuses the upload — an unpaired device, for instance.
-  Future<void> uploadFiles(
+  Future<UploadResult> uploadFiles(
     String url,
     List<UploadFile> files, {
     void Function(int percent)? onProgress,
@@ -223,6 +288,116 @@ class VAlbumClient {
     if (response.statusCode >= 300) {
       throw failure(response.statusCode, body, "uploading to '$url'");
     }
+    return uploadResult(body, files);
+  }
+
+  /// The server's answer to an upload of the given files.
+  ///
+  /// A server that says nothing stored what it was sent: that is what the
+  /// upload meant before the answer existed, so an older server keeps working.
+  static UploadResult uploadResult(String body, List<UploadFile> files) {
+    if (body.trim().isNotEmpty) {
+      try {
+        return UploadResult.read(JsonReader.fromString(body));
+      } catch (_) {
+        // Not an answer this app understands; fall back to the assumption
+        // below rather than failing an upload that has already happened.
+      }
+    }
+    return UploadResult(
+      files: [
+        for (var file in files)
+          UploadedFile(
+            name: file.name,
+            storedAs: file.name,
+            hash: file.sha256 ?? "",
+            status: uploadStored,
+          ),
+      ],
+    );
+  }
+
+  /// Asks the album at [path] which of the given contents it already holds.
+  ///
+  /// Asking is a read: it works without a paired device wherever reading does.
+  Future<UploadCheckResult> checkUploads(
+    List<String> path,
+    List<String> hashes,
+  ) async {
+    var url = "${folderUrl(path)}?action=check";
+    var check = UploadCheck(
+      hashes: [for (var hash in hashes) ContentHash(hash: hash)],
+    );
+    var body = StringBuffer();
+    check.writeContent(jsonStringWriter(body));
+
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return UploadCheckResult.read(JsonReader.fromString(response.body));
+  }
+
+  /// Uploads to the album at [path] what it does not hold yet.
+  ///
+  /// Every file is hashed, the album is asked which of the contents it already
+  /// has, and only the rest is transferred — a sync that is interrupted and
+  /// retried therefore uploads only what is missing, and never duplicates a
+  /// photo. The upload itself is idempotent as well, so a server that cannot
+  /// answer the question is simply sent everything.
+  Future<UploadSummary> uploadNew(
+    List<String> path,
+    List<UploadFile> files, {
+    void Function(int percent)? onProgress,
+    UploadHandle? handle,
+  }) async {
+    if (files.isEmpty) {
+      return const UploadSummary(stored: 0, present: 0);
+    }
+
+    var hashed = <UploadFile>[];
+    for (var file in files) {
+      hashed.add(
+        file.sha256 != null ? file : file.withHash(await sha256Of(file.openRead())),
+      );
+    }
+
+    var known = <String>{};
+    try {
+      var check = await checkUploads(path, [for (var f in hashed) f.sha256!]);
+      known.addAll([for (var present in check.present) present.hash]);
+    } catch (error) {
+      // The question is an optimisation; a server that cannot answer it still
+      // refuses a duplicate when the contents arrive.
+      if (kDebugMode) {
+        print("Cannot check uploads: $error");
+      }
+    }
+
+    var pending = [for (var file in hashed) if (!known.contains(file.sha256)) file];
+    var skipped = hashed.length - pending.length;
+    if (pending.isEmpty) {
+      onProgress?.call(100);
+      return UploadSummary(stored: 0, present: skipped);
+    }
+
+    var result = await uploadFiles(
+      folderUrl(path),
+      pending,
+      onProgress: onProgress,
+      handle: handle,
+    );
+    var stored =
+        result.files.where((file) => file.status != uploadPresent).length;
+    return UploadSummary(
+      stored: stored,
+      present: skipped + (result.files.length - stored),
+    );
   }
 
   /// Pairs this device with the server, returning the token it issued.

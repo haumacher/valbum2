@@ -300,3 +300,81 @@ message AuthInfo {
 	/** Whether the caller may perform write requests. */
 	bool writeAllowed;
 }
+
+
+/**
+ * Request asking a folder which of the given contents it already holds, sent to
+ * <code>&lt;folder&gt;/?action=check</code>.
+ *
+ * <p>
+ * Asking is a read: it only reveals what the folder contains. A client sends it before an upload
+ * so that it can skip transferring what is already there.
+ * </p>
+ */
+message UploadCheck {
+	/**
+	 * The contents the client intends to upload.
+	 *
+	 * <p>
+	 * A list of messages, not a list of plain strings: the Dart backend of the model generator
+	 * mis-types a <code>repeated string</code> field.
+	 * </p>
+	 */
+	repeated ContentHash hashes;
+}
+
+/** The hash of a single content, see {@link UploadCheck}. */
+message ContentHash {
+	/** The SHA-256 hash (lower-case hex) of the content. */
+	string hash;
+}
+
+/** Answer to an {@link UploadCheck} naming those of the asked hashes that the folder already holds. */
+message UploadCheckResult {
+	/** The asked contents that are already present, in the order they were asked for. */
+	repeated PresentFile present;
+}
+
+/** A content of an {@link UploadCheckResult} that the folder already holds. */
+message PresentFile {
+	/** The SHA-256 hash (lower-case hex) that was asked for. */
+	string hash;
+	
+	/** The name of the file in the folder that has this content. */
+	string name;
+}
+
+/**
+ * Answer to an upload, telling for every received file whether it was stored or was already
+ * present.
+ *
+ * <p>
+ * An upload is idempotent: a retry after a lost connection reports the files as
+ * {@link UploadedFile#getStatus() present} instead of storing them a second time.
+ * </p>
+ */
+message UploadResult {
+	/** One entry per file of the upload request, in the order they were received. */
+	repeated UploadedFile files;
+}
+
+/** What happened to a single file of an upload, see {@link UploadResult}. */
+message UploadedFile {
+	/** The file name as it was sent by the client. */
+	string name;
+	
+	/**
+	 * The name of the file on the server: the (potentially de-duplicated) name the contents were
+	 * stored under, or the name of the existing file that already had these contents.
+	 */
+	string storedAs;
+	
+	/** The SHA-256 hash (lower-case hex) of the received contents, as computed by the server. */
+	string hash;
+	
+	/**
+	 * <code>stored</code> if the contents were written to the album, <code>present</code> if the
+	 * folder already held them and nothing was written.
+	 */
+	string status;
+}

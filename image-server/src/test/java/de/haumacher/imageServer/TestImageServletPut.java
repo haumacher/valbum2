@@ -178,6 +178,8 @@ public class TestImageServletPut extends TestCase {
 						return contentType;
 					case "getCharacterEncoding":
 						return "utf-8";
+					case "getContentLength":
+						return Integer.valueOf(body.length);
 					case "getContentLengthLong":
 						return Long.valueOf(body.length);
 					case "getInputStream":

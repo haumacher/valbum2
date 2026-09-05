@@ -737,6 +737,16 @@ class VAlbumState extends State<VAlbumView>
       return;
     }
 
+    await uploadPicked(uploads);
+  }
+
+  /// Uploads the given files into the album that is displayed.
+  ///
+  /// Only contents the album does not hold yet are transferred, see
+  /// [VAlbumClient.uploadNew]: an upload retried after a lost connection never
+  /// creates a second copy of a photo. What happened is said on the screen —
+  /// both what was uploaded and what was already there.
+  Future<void> uploadPicked(List<UploadFile> uploads) async {
     var handle = UploadHandle();
     ProgressDialog pd = ProgressDialog(context: context);
     pd.show(
@@ -758,9 +768,10 @@ class VAlbumState extends State<VAlbumView>
     }
 
     var messenger = ScaffoldMessenger.of(context);
+    UploadSummary summary;
     try {
-      await client.uploadFiles(
-        baseUrl,
+      summary = await client.uploadNew(
+        path,
         uploads,
         onProgress: (percent) => pd.update(value: percent),
         handle: handle,
@@ -781,8 +792,15 @@ class VAlbumState extends State<VAlbumView>
     pd.close(delay: 500);
 
     if (kDebugMode) {
-      print("Upload complete.");
+      print("Upload complete: ${summary.message}");
     }
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(summary.message),
+        duration: const Duration(seconds: 4),
+      ),
+    );
 
     reload();
   }

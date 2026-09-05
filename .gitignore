@@ -18,6 +18,7 @@ valbum_ui/.flutter-plugins-dependencies
 # Server runtime artefacts inside album folders
 .upload/
 .valbum/
+.hashes.json
 
 # Tool output that must never enter the tree
 .playwright-mcp/
