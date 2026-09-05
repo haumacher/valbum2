@@ -53,19 +53,19 @@ Consequences we accept:
 Goal: `mvn install` builds a slim server jar with no GWT compile step; `flutter build web` output is
 served by that jar at `/`; the tree contains only what the product needs.
 
-- Remove `image-server-client`, `util-gwt` and the GWT plugin configuration; remove `serveIndex`,
-  `Page.java`, the webjar dependencies and `util-xml` (if it is then unused).
-- Serve the Flutter web build from the server root; the API stays at `/data`. The Flutter app
-  derives the server URL from its own origin on the web and from a settings screen elsewhere.
-- Raise the Java source/target to 21 and modernize what the compiler now allows.
-- Generate golden layout fixtures from the Java `AlbumLayout` (a set of image dimension lists at
+- ✅ Remove `image-server-client`, `util-gwt` and the GWT plugin configuration; remove `serveIndex`,
+  `Page.java`, the webjar dependencies and `util-xml` (if it is then unused). (#9)
+- ✅ Serve the Flutter web build from the server root; the API stays at `/data`. The Flutter app
+  derives the server URL from its own origin on the web (settings screen elsewhere: Phase 2). (#10)
+- ✅ Raise the Java source/target to 21. (#11)
+- ✅ Generate golden layout fixtures from the Java `AlbumLayout` (a set of image dimension lists at
   several page widths with the resulting row structure), check them in, make `album_layout.dart`
   pass them, then remove the Java layout package. *(Done: 88 fixtures in
   `valbum_ui/test/fixtures/layout/`; the Java layout package is gone.)*
-- Rewrite `README.md` for the new shape (server + app), keep `CONTRIBUTING.md` honest, update
+- ✅ Rewrite `README.md` for the new shape (server + app), keep `CONTRIBUTING.md` honest, update
   `CLAUDE.md` and the `build-verify` skill, add a `.gitignore`, drop the Eclipse `.project`/`.settings`.
-- Add continuous integration (GitHub Actions) running both toolchains' gates.
-- Replace the Flutter starter template test with real widget tests using an injected HTTP client.
+- ✅ Add continuous integration (GitHub Actions) running both toolchains' gates. (#14)
+- ✅ Replace the Flutter starter template test with real widget tests using an injected HTTP client. (#15)
 
 ## Phase 1 — Feature parity: everything the GWT app can do, the Flutter app can do
 

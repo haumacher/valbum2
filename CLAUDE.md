@@ -24,7 +24,7 @@ This repo mixes **Maven** (Java backend, multi-module: `image-server`, `image-se
 ### Flutter (`valbum_ui/`)
 
 - Use the `flutter` CLI: `flutter pub get`, `flutter analyze`, `flutter test`, `flutter run -d chrome`. The Flutter SDK lives in `~/flutter`, the Android SDK in `~/Android/Sdk` (both on PATH via `~/.bashrc`).
-- The backend URL is hardcoded in `valbum_ui/lib/main.dart` (defaults to `http://localhost:9090/valbum/data`).
+- Server URL: on the web derived from the page origin (`lib/urls.dart`, `deriveDataUrl`); on other platforms the default `http://localhost:9090/valbum/data` until the settings screen (ROADMAP Phase 2). All HTTP goes through `lib/client.dart` (`VAlbumClient`), injected via `VAlbumScope` — tests pass a `MockClient`.
 
 ## Gotchas
 

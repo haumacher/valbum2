@@ -1,16 +1,29 @@
-# valbum_ui
+# valbum_ui — the VAlbum app
 
-Virtual Photo Album Viewer
+The Flutter client of [VAlbum2](../README.md): one code base for the web, Android, iOS, Linux,
+Windows and macOS. It talks to the Java server's JSON API under `/data/` and renders listings,
+albums (with the row layout in `lib/album_layout.dart`) and single images.
 
-## Getting Started
+## Layout
 
-This project is a starting point for a Flutter application.
+- `lib/main.dart` — the app: listing, album and image views, editing, upload.
+- `lib/client.dart` — `VAlbumClient`, the one place that builds URLs and talks HTTP; injected via
+  `VAlbumScope` so tests can pass a `MockClient`.
+- `lib/urls.dart` — derives the server URL from the page origin on the web.
+- `lib/album_layout.dart` — the album row layout algorithm. It is pinned by the golden fixtures in
+  `test/fixtures/layout/` (see the README there); where the two disagree, the implementation is wrong.
+- `lib/resource.dart` — **generated** from `image-server-shared/.../model/model.proto` by the Maven
+  build. Never edit or reformat it; change the `.proto` and rebuild.
 
-A few resources to get you started if this is your first Flutter project:
+## Commands
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```
+flutter pub get
+flutter analyze            # the bar is zero errors
+flutter test
+flutter run -d chrome      # against the demo server on http://localhost:9090/valbum/data
+flutter build web          # output is bundled into the server jar by `mvn install`
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Widget tests must not touch the network: pass a `MockClient` to `VAlbumApp(client: ...)` and wrap
+the pump in `withFakeImageHttp` (see `test/util/`) so image loads are answered locally.

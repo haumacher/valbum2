@@ -1,50 +1,110 @@
-# VAlbum2 - Virtual Photo Album
-The friendly home for all your digital memories
+# VAlbum2 — Virtual Photo Album
 
-Mit [VAlbum](https://github.com/haumacher/valbum2) verwaltest Du Deine digitalen Photos und Videos ohne Dich in Abhängigkeit eines Cloud-Dienstleisters wie 
-Google-Photos zu begeben. Trotzdem hast Du die Möglichkeit, auf Deine digitalen Erinnerungen über einen normalen 
-Web-Browser zuzugreifen. Wenn Du von überall Zugriff auf Dein Photoalbum haben möchtest, kannst Du VAlbum ganz leicht 
-auf einem [RasberryPI](https://www.raspberrypi.org/) Mini-Server installieren und über Deinen Internetanschluss freizugeben. Mit einer relativ 
-geringen Einmalinvestition hast Du damit deinen eigenen riesigen Cloud-Speicher für Deine Photos.
+*The friendly home for all your digital memories.*
 
-## Wie funktioniert VAlbum?
+VAlbum lets you keep your photos and videos on hardware you own and browse them from any device,
+without handing them to a cloud provider. A small Java server reads your album folders and serves
+them; one Flutter app shows them in the browser, on your phone, or on the desktop. Put the server on
+a [Raspberry Pi](https://www.raspberrypi.org/) behind your internet connection and you have your own
+photo cloud for a one-off investment.
 
-VAlbum besteht aus zwei Komponenten, einem [Java](https://adoptium.net/de/temurin/releases/?version=11)-Server und 
-einer [GWT](https://www.gwtproject.org/)-Anwendung, die in Deinem Browser läuft und die 
-Photos vom VAlbum-Server abruft. Deine Photos organisierst Du wie bisher auch: Ein Ordner, der alle Deine Alben enthält. 
-Jedes Album ist wiederum ein Ordner mit Photos und Videos. Du bist völlig frei bei der Gestaltung der Ordnerstruktur. 
-VAlbum liest diesen Ordner und generiert hübsche Übersichtsseiten für Deine Alben. In VAlbum kannst Du Photos
-beschriften, gruppieren und für die Präsentation auswählen. Dabei fasst VAlbum Deine Photos aber nie an und modifiziert 
-oder löscht nie eine Deiner Dateien. Alle "Änderungen", die Du an einem Album vornimmst werden in separaten Dateien
-neben Deinen Photos gespeichert.
+*Eine deutsche Zusammenfassung steht am Ende dieser Seite.*
 
-## Wie baut man VAlbum?
+## How it works
 
-Du benötigtst Git, eine [Java 11 Runtime](https://adoptium.net/de/temurin/releases/?version=11) 
-und [Apache Maven](https://maven.apache.org/). Nachdem Du das Repository geclont hast, baust Du mit dem 
-folgenden Befehl im Projekt-Hauptverzeichnis:
+- **Your folders are your albums.** One folder holds all albums; each album is a folder with photos
+  and videos; nest them any way you like. The server reads that tree and presents it as listings and
+  albums with titles and dates derived from folder names and image metadata.
+- **Originals are never touched.** Everything you change in VAlbum — titles, captions, ratings,
+  rotation, grouping near-duplicate shots, section headings — is stored in an `index.json` sidecar
+  file next to your photos. No file of yours is ever modified, moved or deleted.
+- **One server, one app.** The server (`image-server/`) is a JSON API plus static hosting for the web
+  build of the app; the app (`valbum_ui/`) is written in Flutter and runs on the web, Android, iOS,
+  Linux, Windows and macOS.
+- **Albums that look like albums.** The row layout stitches landscape shots into rows and pairs
+  portraits with stacked landscapes so every row fills the page width — the heart of VAlbum since
+  its first version.
+
+Where the project is heading is written down in [ROADMAP.md](ROADMAP.md).
+
+## Building
+
+You need Git, a JDK 21 ([Temurin](https://adoptium.net/temurin/releases/?version=21)),
+[Apache Maven](https://maven.apache.org/) 3.6 or newer, and — for the app —
+the [Flutter SDK](https://docs.flutter.dev/get-started/install) (stable channel).
+
+Build the app for the web first, so the server can bundle it:
+
+```
+cd valbum_ui
+flutter pub get
+flutter build web
+cd ..
+```
+
+Then build the server from the repository root. If `valbum_ui/build/web` exists it is packed into
+the jar; if not, you get an API-only server.
 
 ```
 mvn clean install
 ```
 
-Eine Demo-Version mit einem Test-Album kannst Du dann direkt starten und ausprobieren:
+The result is `image-server/target/image-server-jar-with-dependencies.jar`, which contains everything
+needed to run.
+
+## Running
+
+```
+java -jar image-server-jar-with-dependencies.jar --basepath /path/to/your/photos
+```
+
+Options:
+
+| Option | Meaning | Default |
+|---|---|---|
+| `--basepath <dir>` | The folder containing your albums | current directory |
+| `--port <n>` | HTTP port | `8080` |
+| `--contextpath <name>` | First path segment of the URL, e.g. `photos` → `http://host:8080/photos/` | none |
+| `--webroot <dir>` | Serve the web app from a directory instead of the bundled copy (development) | bundled |
+
+Open `http://localhost:8080/` (or your context path) in a browser. The JSON API is available under
+`/data/`, for example `http://localhost:8080/data/?type=json`.
+
+### Demo server
+
+After `mvn install`, a demo server with a small sample album starts with:
 
 ```
 mvn exec:java@test-server -pl :image-server
 ```
 
-Ist das geschafft, kannst Du die VAlbum-URL http://localhost:9090/valbum/ im Browser aufrufen. Wenn das funktioniert
-hat, erhälst du ungefähr so eine Ansicht:
+It listens on http://localhost:9090/valbum/ and serves the bundled web app if you built it.
 
-![image](https://user-images.githubusercontent.com/5607145/222809565-79870212-b774-4752-b499-92b89a3914cb.png)
-
-## Wie startet man VAlbum?
-
-Wenn Du VAlbum gebaut hast (siehe oben), dann entsteht in dem Ordner `image-server/target` eine Datei mit Namen `image-server-jar-with-dependencies.jar`. In dieser Datei ist der gesamte ausführbare Code von VAlbum enthalten. Du kannst diese Datei auf Deinen Album-Server kopieren, oder einfach lokal auf Deinem Rechner starten:
+### Running the app during development
 
 ```
-java -jar image-server-jar-with-dependencies.jar --basepath C:\path\to\your\photos
+cd valbum_ui
+flutter run -d chrome        # or -d linux, an Android device, ...
 ```
 
-Den Port, auf dem der Server läuft kann man z.B. mit der zusätzlichen Option `--port 8080` ändern. Der Erste Teil in der URL kann z.B. über `--contextpath photos` geändert werden.
+On the web the app talks to the server it was loaded from. Other platforms currently use
+`http://localhost:9090/valbum/data` (the demo server); a settings screen is planned.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and how changes are made.
+
+---
+
+## Zusammenfassung auf Deutsch
+
+Mit VAlbum verwaltest Du Deine digitalen Photos und Videos ohne Cloud-Dienstleister. Ein kleiner
+Java-Server liest Deine Album-Ordner und stellt sie bereit; eine Flutter-App zeigt sie im Browser,
+auf dem Handy oder auf dem Desktop. Deine Photos organisierst Du wie bisher: ein Ordner mit allen
+Alben, jedes Album ein Ordner mit Photos und Videos. VAlbum fasst Deine Dateien nie an — alle
+Änderungen (Titel, Beschriftungen, Bewertungen, Drehungen, Gruppierungen) landen in einer
+`index.json`-Datei neben Deinen Photos.
+
+Bauen: `flutter build web` in `valbum_ui/`, dann `mvn clean install` im Hauptverzeichnis (JDK 21 und
+Maven nötig). Starten: `java -jar image-server-jar-with-dependencies.jar --basepath /pfad/zu/den/photos`,
+danach http://localhost:8080/ im Browser öffnen. Optionen: `--port`, `--contextpath`, `--webroot`.
