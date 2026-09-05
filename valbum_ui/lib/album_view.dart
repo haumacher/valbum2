@@ -11,6 +11,7 @@ import 'album_model.dart';
 import 'app.dart';
 import 'client.dart';
 import 'resource.dart';
+import 'settings.dart';
 
 class AlbumContent extends StatefulWidget {
   final VAlbumState albumState;
@@ -265,6 +266,14 @@ class AlbumContentState extends State<AlbumContent> {
               ),
               centerTitle: true,
               actions: [
+                menu(context, [
+                  menuItem(
+                    Icons.update,
+                    "Reload",
+                    (_) => widget.albumState.reload(),
+                  ),
+                  menuItem(Icons.settings, "Server...", openServerSettings),
+                ]),
                 if (editMode)
                   IconButton(
                     onPressed: editProperties,

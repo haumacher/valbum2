@@ -92,13 +92,16 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
 
 ## Phase 2 — The mobile promise: photos flow into the library
 
-- Server settings screen (URL, credentials) replacing the hardcoded host; connection test.
+*Issues #27 (server settings screen, first), #28 (authentication), #29 (idempotent uploads),
+#30 (camera-roll sync, needs #27–#29), #31 (offline cache). Filed 2026-09-05 when Phase 2 started.*
+
+- Server settings screen (URL, credentials) replacing the hardcoded host; connection test. (#27; credentials with #28)
 - Camera-roll sync: the app watches the device's photo library and uploads new items to a chosen
   inbox album, in the background where the platform allows, with progress and retry. Uploads are
-  idempotent (content hash), so a retried upload never duplicates.
+  idempotent (content hash), so a retried upload never duplicates. (#30, server side #29)
 - Authentication: at minimum a per-device token issued by the server; the API refuses anonymous
-  writes. Read access can stay open for a home network but must be switchable.
-- Offline: the app caches listings and thumbnails so the library browses without the server.
+  writes. Read access can stay open for a home network but must be switchable. (#28)
+- Offline: the app caches listings and thumbnails so the library browses without the server. (#31)
 
 ## Phase 3 — The server grows up
 

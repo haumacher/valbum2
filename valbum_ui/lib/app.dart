@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:sn_progress_dialog/options/cancel.dart';
 import 'package:sn_progress_dialog/progress_dialog.dart';
@@ -18,6 +19,7 @@ import 'image_view.dart';
 import 'listing_view.dart';
 import 'resource.dart';
 import 'routes.dart';
+import 'settings.dart';
 import 'urls.dart';
 
 typedef Action = void Function(BuildContext context);
@@ -25,74 +27,203 @@ typedef Action = void Function(BuildContext context);
 class VAlbumApp extends StatefulWidget {
   /// The client to talk to the server with.
   ///
-  /// Defaults to a client for the server this app was loaded from, see
-  /// [VAlbumClient.fromOrigin]. Tests inject a client with a fake transport.
+  /// Defaults to a client for the server named by the [settings]. Tests inject
+  /// a client with a fake transport; that transport is kept when the user
+  /// points the app at another server, and the client's data URL becomes the
+  /// default while nothing is stored, see [ServerSettings.platformDefault].
   final VAlbumClient? client;
+
+  /// The server the app talks to, and its persistence.
+  ///
+  /// Defaults to the value stored on the device (`shared_preferences`) over
+  /// the platform default: the origin on the web, nothing anywhere else. Tests
+  /// inject settings with an [InMemorySettingsStore].
+  final ServerSettings? settings;
 
   /// The route to start at, instead of the location the app was opened with.
   ///
   /// Tests use it to pump the app deep-linked into an album or an image.
   final VAlbumRoute? initialRoute;
 
-  const VAlbumApp({super.key, this.client, this.initialRoute});
+  const VAlbumApp({
+    super.key,
+    this.client,
+    this.settings,
+    this.initialRoute,
+  });
 
   @override
   State<VAlbumApp> createState() => VAlbumAppState();
 }
 
+/// The application state: which server the app talks to, and the router.
+///
+/// The server URL is the one moving part: the [settings] notify this state,
+/// which then builds a new [VAlbumClient] over the same transport, hands it to
+/// the [router] (dropping everything loaded from the old server) and publishes
+/// it through the [VAlbumScope] the views take their client from. Nothing in
+/// the app holds a client across that swap.
 class VAlbumAppState extends State<VAlbumApp> {
-  /// The client the app talks to the server with.
+  /// The server the app talks to, see [VAlbumApp.settings].
+  late final ServerSettings settings = widget.settings ?? _defaultSettings();
+
+  /// The transport every client of this app sends its requests over.
+  late final http.Client _transport = widget.client?.httpClient ?? _own();
+
+  /// Whether [_transport] was created here and must be closed on [dispose].
+  bool _ownsTransport = false;
+
+  http.Client _own() {
+    _ownsTransport = true;
+    return http.Client();
+  }
+
+  /// The client the app talks to the server with, `null` if none is set up.
+  VAlbumClient? client;
+
+  VAlbumRouterDelegate? _router;
+
+  /// The router state: which view the app shows, see [VAlbumRoute].
+  ///
+  /// Created with the first client; the app shows the settings screen while
+  /// there is none.
+  VAlbumRouterDelegate get router => _router ??= VAlbumRouterDelegate(
+        client: client!,
+        initialRoute: widget.initialRoute ?? ListingOrAlbumRoute.root,
+      );
+
+  /// The settings used when the app is not told otherwise.
+  ///
+  /// With a client injected (tests, an embedder) that client names the default
+  /// server and nothing is stored. Otherwise the value stored on the device
+  /// wins over the platform default: on the web the origin the app was loaded
+  /// from, on every other platform nothing — there the settings screen opens
+  /// first instead of guessing a server.
+  ServerSettings _defaultSettings() {
+    var injected = widget.client;
+    if (injected != null) {
+      return ServerSettings(
+        store: InMemorySettingsStore(),
+        platformDefault: () => injected.dataUrl,
+        loaded: true,
+      );
+    }
+    return ServerSettings(
+      store: const PreferencesSettingsStore(),
+      platformDefault: () => kIsWeb ? _originDataUrl() : null,
+    );
+  }
+
+  /// The data URL derived from the origin the web app was loaded from.
   ///
   /// Unlike [VAlbumClient.fromOrigin], the data URL is derived from the app
   /// base rather than from the document location: with the path URL strategy
   /// the location is the *view*, not the directory the app was loaded from,
   /// see [appBasePath].
-  late final VAlbumClient client = widget.client ??
-      VAlbumClient(
-        dataUrl: deriveDataUrl(
-          Uri.base,
-          isWeb: kIsWeb,
-          basePath: kIsWeb
-              ? appBasePath(
-                  Uri.base.path,
-                  WidgetsBinding.instance.platformDispatcher.defaultRouteName,
-                )
-              : null,
+  static String _originDataUrl() => deriveDataUrl(
+        Uri.base,
+        isWeb: true,
+        basePath: appBasePath(
+          Uri.base.path,
+          WidgetsBinding.instance.platformDispatcher.defaultRouteName,
         ),
       );
 
-  /// The router state: which view the app shows, see [VAlbumRoute].
-  late final VAlbumRouterDelegate router = VAlbumRouterDelegate(
-    client: client,
-    initialRoute: widget.initialRoute ?? ListingOrAlbumRoute.root,
-  );
+  /// Builds a client for the given data URL over this app's transport.
+  VAlbumClient clientFor(String dataUrl) =>
+      VAlbumClient(dataUrl: dataUrl, httpClient: _transport);
+
+  @override
+  void initState() {
+    super.initState();
+    settings.addListener(_settingsChanged);
+    _syncClient();
+    if (!settings.loaded) {
+      // Before the first client is built: until this completes the app shows
+      // a splash, see [build].
+      settings.load();
+    }
+  }
 
   @override
   void dispose() {
-    router.dispose();
+    settings.removeListener(_settingsChanged);
+    _router?.dispose();
+    if (widget.settings == null) {
+      settings.dispose();
+    }
+    if (_ownsTransport) {
+      _transport.close();
+    }
     super.dispose();
   }
 
-  // This widget is the root of your application.
+  /// The server changed: swap the client and reload what is shown.
+  void _settingsChanged() => setState(_syncClient);
+
+  void _syncClient() {
+    var dataUrl = settings.dataUrl;
+    if (dataUrl == null) {
+      client = null;
+      return;
+    }
+    if (client?.dataUrl == dataUrl) {
+      return;
+    }
+    var next = clientFor(dataUrl);
+    client = next;
+    // Drops every resource and scroll offset of the previous server and
+    // re-runs the load of the current route.
+    _router?.client = next;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return VAlbumScope(
-      client: client,
-      child: MaterialApp.router(
-        title: 'Virtual Photo Album',
-        theme: ThemeData(primarySwatch: Colors.blue),
-        routerDelegate: router,
-        routeInformationParser: const VAlbumRouteInformationParser(),
-        routeInformationProvider: widget.initialRoute == null
-            ? null
-            : PlatformRouteInformationProvider(
-                initialRouteInformation: RouteInformation(
-                  uri: routeToUri(widget.initialRoute!),
-                ),
-              ),
-      ),
+    return ServerSettingsScope(
+      settings: settings,
+      clientFor: clientFor,
+      child: !settings.loaded
+          ? _splash()
+          : client == null
+              ? _serverSetup()
+              : _albumApp(client!),
     );
   }
+
+  /// Shown while the stored server URL is being read.
+  Widget _splash() => MaterialApp(
+        title: 'Virtual Photo Album',
+        theme: ThemeData(primarySwatch: Colors.blue),
+        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
+
+  /// Shown when no server is configured: there is nothing else to show.
+  Widget _serverSetup() => MaterialApp(
+        title: 'Virtual Photo Album',
+        theme: ThemeData(primarySwatch: Colors.blue),
+        home: ServerSettingsScreen(
+          settings: settings,
+          clientFor: clientFor,
+          closable: false,
+        ),
+      );
+
+  Widget _albumApp(VAlbumClient client) => VAlbumScope(
+        client: client,
+        child: MaterialApp.router(
+          title: 'Virtual Photo Album',
+          theme: ThemeData(primarySwatch: Colors.blue),
+          routerDelegate: router,
+          routeInformationParser: const VAlbumRouteInformationParser(),
+          routeInformationProvider: widget.initialRoute == null
+              ? null
+              : PlatformRouteInformationProvider(
+                  initialRouteInformation: RouteInformation(
+                    uri: routeToUri(widget.initialRoute!),
+                  ),
+                ),
+        ),
+      );
 }
 
 /// Translates between the browser location and the [VAlbumRoute] shown.
@@ -121,8 +252,7 @@ class VAlbumRouteInformationParser extends RouteInformationParser<VAlbumRoute> {
 /// and a bookmarked URL opens the same view again.
 class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     with ChangeNotifier {
-  /// The transport to the album server.
-  final VAlbumClient client;
+  VAlbumClient _client;
 
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -143,9 +273,29 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   int _version = 0;
 
   VAlbumRouterDelegate({
-    required this.client,
+    required VAlbumClient client,
     required VAlbumRoute initialRoute,
-  }) : _route = initialRoute;
+  })  : _client = client,
+        _route = initialRoute;
+
+  /// The transport to the album server.
+  VAlbumClient get client => _client;
+
+  /// Talks to another server from now on.
+  ///
+  /// Everything loaded from the previous server is forgotten — the resources
+  /// and the scroll offsets — and the view currently shown re-runs its load
+  /// against the new one.
+  set client(VAlbumClient value) {
+    if (identical(value, _client)) {
+      return;
+    }
+    _client = value;
+    _resources.clear();
+    _scrollOffsets.clear();
+    _version++;
+    notifyListeners();
+  }
 
   /// The view currently shown.
   VAlbumRoute get route => _route;

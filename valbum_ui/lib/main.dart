@@ -18,6 +18,7 @@ export 'group_view.dart';
 export 'image_view.dart';
 export 'listing_view.dart';
 export 'routes.dart';
+export 'settings.dart';
 
 void main() {
   // Real paths instead of `/#/...`: the view of the app is in the URL, see

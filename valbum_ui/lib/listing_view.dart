@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'app.dart';
 import 'client.dart';
 import 'resource.dart';
+import 'settings.dart';
 
 /// The edge length (in CSS pixels) of the square folder preview the retired
 /// GWT client rendered its index pictures into.
@@ -84,6 +85,7 @@ class ListingView extends StatelessWidget {
               createFolder,
             ),
             menuItem(Icons.update, "Reload", (_) => albumState.reload()),
+            menuItem(Icons.settings, "Server...", openServerSettings),
           ]),
         ],
       ),

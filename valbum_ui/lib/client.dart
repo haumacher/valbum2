@@ -62,6 +62,20 @@ class VAlbumClient {
   VAlbumClient({required this.dataUrl, http.Client? httpClient})
       : _http = httpClient ?? http.Client();
 
+  /// The transport this client sends its requests over.
+  ///
+  /// Exposed so that a client for another server can be built without
+  /// building another transport, see [withDataUrl].
+  http.Client get httpClient => _http;
+
+  /// A client talking to [dataUrl] over the transport of this one.
+  ///
+  /// Used when the user points the app at a different server, see
+  /// `ServerSettings`: only the URL changes, the transport (a fake one, in a
+  /// test) stays the same.
+  VAlbumClient withDataUrl(String dataUrl) =>
+      VAlbumClient(dataUrl: dataUrl, httpClient: _http);
+
   /// Client talking to the server this app was loaded from (on the web), or to
   /// the [defaultDataUrl] on all other platforms.
   factory VAlbumClient.fromOrigin({http.Client? httpClient}) => VAlbumClient(
