@@ -1,0 +1,19 @@
+# Maven
+target/
+
+# Flutter / Dart
+valbum_ui/build/
+valbum_ui/.dart_tool/
+valbum_ui/.flutter-plugins
+valbum_ui/.flutter-plugins-dependencies
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Server runtime artefacts inside album folders
+.upload/
