@@ -73,11 +73,17 @@ class VAlbumClient {
   String baseUrl(List<String> path) =>
       "$dataUrl${path.isEmpty ? "" : "/${path.join("/")}"}";
 
-  /// The URL delivering the JSON representation of the resource at [path].
-  String jsonUrl(List<String> path) {
+  /// The URL of the folder resource at [path], with a trailing slash.
+  ///
+  /// This is the URL an album is stored to, see [saveAlbum], and the URL its
+  /// JSON representation is loaded from, see [jsonUrl].
+  String folderUrl(List<String> path) {
     var pathString = path.join("/");
-    return "$dataUrl/${pathString.isEmpty ? "" : "$pathString/"}?type=json";
+    return "$dataUrl/${pathString.isEmpty ? "" : "$pathString/"}";
   }
+
+  /// The URL delivering the JSON representation of the resource at [path].
+  String jsonUrl(List<String> path) => "${folderUrl(path)}?type=json";
 
   /// The URL delivering a thumbnail of the image at the given URL.
   String thumbnailUrl(String imageUrl) => "$imageUrl?type=tn";
@@ -113,6 +119,14 @@ class VAlbumClient {
           "HTTP ${response.statusCode} while storing '$url'.");
     }
   }
+
+  /// Stores the given album as the `index.json` sidecar of its own folder.
+  ///
+  /// The album is written to its own URL (the folder at [path]); the server
+  /// keeps the previous sidecar as a backup. Throws a [VAlbumException] naming
+  /// the HTTP status if the server refuses the write.
+  Future<void> saveAlbum(List<String> path, AlbumInfo album) =>
+      putResource(folderUrl(path), album);
 
   /// Uploads the given files to the resource at the given URL.
   ///

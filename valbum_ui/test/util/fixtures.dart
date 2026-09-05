@@ -26,3 +26,20 @@ VAlbumClient clientReturning(
         );
       }),
     );
+
+/// A client answering every request through the given handler.
+///
+/// Use it where the answer depends on the request, e.g. to let the album load
+/// but the following PUT fail.
+VAlbumClient clientHandling(
+  http.Response Function(http.Request request) handler, {
+  String dataUrl = "http://server/valbum/data",
+  List<http.Request>? requests,
+}) =>
+    VAlbumClient(
+      dataUrl: dataUrl,
+      httpClient: MockClient((request) async {
+        requests?.add(request);
+        return handler(request);
+      }),
+    );
