@@ -40,6 +40,9 @@ class ImageView extends StatefulWidget {
   /// given and the image is part of an [ImageGroup].
   final void Function(ImageGroup group)? onShowGroup;
 
+  /// Leaves the viewer, back to the album (or to the alternatives view).
+  final VoidCallback? onUp;
+
   /// The minimum rating an image must have to be shown.
   ///
   /// Defaults to the [AlbumInfo.minRating] of the album owning the image.
@@ -52,6 +55,7 @@ class ImageView extends StatefulWidget {
     required this.image,
     required this.onShowImage,
     this.onShowGroup,
+    this.onUp,
     this.minRating,
   });
 
@@ -362,7 +366,7 @@ class ImageViewState extends State<ImageView> {
 
   /// Leaves the viewer, back to the album.
   void showParent() {
-    Navigator.maybePop(context);
+    widget.onUp?.call();
   }
 
   /// Opens the "alternatives" view of the group the image belongs to.

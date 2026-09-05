@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'app.dart';
 
@@ -16,7 +17,14 @@ export 'client.dart';
 export 'group_view.dart';
 export 'image_view.dart';
 export 'listing_view.dart';
+export 'routes.dart';
 
 void main() {
+  // Real paths instead of `/#/...`: the view of the app is in the URL, see
+  // `routes.dart`. On the web the strategy strips the `<base href>` the
+  // Flutter build writes into `index.html`, so the app works under the
+  // server's context path; on every other platform the call does nothing.
+  usePathUrlStrategy();
+
   runApp(const VAlbumApp());
 }

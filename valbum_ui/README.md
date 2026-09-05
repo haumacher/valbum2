@@ -8,10 +8,16 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
 
 - `lib/main.dart` — `main()` only; it re-exports the libraries below, so
   `package:valbum_ui/main.dart` remains the one import a test needs.
-- `lib/app.dart` — the application shell: `VAlbumApp` and the `VAlbumScope`
-  wiring, `VAlbumView`/`VAlbumState` (loads the resource at a path and
-  dispatches to the view for its type), image upload, and the `menu`/`menuItem`
+- `lib/app.dart` — the application shell: `VAlbumApp`, the `VAlbumScope`
+  wiring and the router (`VAlbumRouterDelegate`,
+  `VAlbumRouteInformationParser` and `VAlbumNavigator`, the navigation API
+  every view uses instead of the `Navigator`), `VAlbumView`/`VAlbumState`
+  (loads the listing or album a route lives in and shows the view the route
+  names), the per-album scroll memory, image upload, and the `menu`/`menuItem`
   helpers.
+- `lib/routes.dart` — the URL grammar: the `VAlbumRoute` kinds (listing or
+  album, image, alternatives, group member), `parseRoute`/`routeToUri` and the
+  app base (`appBasePath`). Pure, no widgets.
 - `lib/listing_view.dart` — `ListingView` (the folder tiles) plus the
   `CreateAlbumDialog` and `CreateFolderDialog`.
 - `lib/album_view.dart` — the album: `AlbumContent`/`AlbumContentState` (edit
@@ -40,7 +46,9 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   view navigates in) and `thumbnailName`.
 - `lib/client.dart` — `VAlbumClient`, the one place that builds URLs and talks HTTP; injected via
   `VAlbumScope` so tests can pass a `MockClient`.
-- `lib/urls.dart` — derives the server URL from the page origin on the web.
+- `lib/urls.dart` — derives the server URL from the page origin on the web
+  (from the app base, not from the location: the location is the view, see
+  `lib/routes.dart`).
 - `lib/album_layout.dart` — the album row layout algorithm. It is pinned by the golden fixtures in
   `test/fixtures/layout/` (see the README there); where the two disagree, the implementation is wrong.
 - `lib/resource.dart` — **generated** from `image-server-shared/.../model/model.proto` by the Maven
@@ -71,3 +79,15 @@ keeps the edit mode open and reports the HTTP status in a snack bar.
 
 Widget tests must not touch the network: pass a `MockClient` to `VAlbumApp(client: ...)` and wrap
 the pump in `withFakeImageHttp` (see `test/util/`) so image loads are answered locally.
+
+## The URL is the view
+
+The app uses real paths (no `#`): `/<album>/` is a listing or an album,
+`/<album>/<image>` the single image viewer, `/<album>/<image>/alternatives/`
+the group's alternatives view and `/<album>/<image>/alternatives/<member>` one
+of its images in detail mode — the URLs the retired GWT client kept in its
+hash. Every navigation is a route change, so the browser's back and forward
+buttons work and a view can be bookmarked; the scroll offset of an album is
+remembered while an image of it is being viewed. Route paths are relative to
+the `<base href>` the web build writes into `index.html`, which is the
+server's context path (`/valbum/` in the demo). See `lib/routes.dart`.

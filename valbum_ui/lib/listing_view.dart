@@ -68,13 +68,13 @@ class ListingView extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.home),
             tooltip: 'Home',
-            onPressed: () => showRoot(context),
+            onPressed: albumState.showRoot,
           ),
           if (albumState.path.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.arrow_upward),
               tooltip: 'Up',
-              onPressed: () => showParent(context),
+              onPressed: albumState.showParent,
             ),
           menu(context, [
             menuItem(Icons.create_new_folder, 'Create album', createAlbum),
@@ -188,42 +188,6 @@ class ListingView extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  /// Shows the root listing, discarding the navigation stack.
-  ///
-  /// [VAlbumState] only offers "descend into a child" ([VAlbumState.showElement]),
-  /// so the jumps to the root and to the parent are done with the [Navigator]
-  /// here.
-  void showRoot(BuildContext context) {
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const VAlbumView()),
-      (route) => false,
-    );
-  }
-
-  /// Shows the listing containing the displayed one.
-  ///
-  /// Returns to the parent already on the navigation stack where there is one
-  /// (the common case: the listing was reached by descending into it), and
-  /// loads the parent path otherwise (a listing opened directly, e.g. as the
-  /// app's start page).
-  void showParent(BuildContext context) {
-    var path = albumState.path;
-    if (path.isEmpty) {
-      return;
-    }
-    if (Navigator.canPop(context)) {
-      Navigator.pop(context);
-      return;
-    }
-    var parent = path.sublist(0, path.length - 1);
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => VAlbumView(path: parent)),
-      (route) => false,
     );
   }
 

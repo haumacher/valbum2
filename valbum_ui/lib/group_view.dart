@@ -34,11 +34,19 @@ class GroupView extends StatelessWidget {
   /// The group whose images are shown.
   final ImageGroup group;
 
+  /// Leaves the alternatives view, back to the image it was opened from.
+  final VoidCallback onUp;
+
+  /// Opens the given member of the group in the viewer ("detail mode").
+  final void Function(ImagePart image) onShowDetail;
+
   const GroupView({
     super.key,
     required this.client,
     required this.baseUrl,
     required this.group,
+    required this.onUp,
+    required this.onShowDetail,
   });
 
   /// The title of the album the group belongs to, as in the GWT client.
@@ -53,7 +61,7 @@ class GroupView extends StatelessWidget {
         leading: IconButton(
           icon: const Icon(Icons.arrow_upward),
           tooltip: "Zurück zum Album",
-          onPressed: () => Navigator.maybePop(context),
+          onPressed: onUp,
         ),
       ),
       backgroundColor: Colors.black,
@@ -99,47 +107,38 @@ class GroupView extends StatelessWidget {
   }
 
   /// Opens the given image of the group in the single image viewer.
-  void showDetail(BuildContext context, ImagePart image) {
-    Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (context) => GroupDetailView(
-          client: client,
-          baseUrl: baseUrl,
-          image: image,
-        ),
-      ),
-    );
-  }
+  void showDetail(BuildContext context, ImagePart image) => onShowDetail(image);
 }
 
 /// The single image viewer inside a group: previous/next stay in the group,
 /// no image is filtered out and "down" does nothing.
-class GroupDetailView extends StatefulWidget {
+class GroupDetailView extends StatelessWidget {
   final VAlbumClient client;
   final String baseUrl;
   final ImagePart image;
+
+  /// Shows another member of the same group.
+  final void Function(AbstractImage image) onShowImage;
+
+  /// Leaves the detail view, back to the alternatives.
+  final VoidCallback onUp;
 
   const GroupDetailView({
     super.key,
     required this.client,
     required this.baseUrl,
     required this.image,
+    required this.onShowImage,
+    required this.onUp,
   });
 
   @override
-  State<GroupDetailView> createState() => GroupDetailViewState();
-}
-
-class GroupDetailViewState extends State<GroupDetailView> {
-  late AbstractImage image = widget.image;
-
-  @override
   Widget build(BuildContext context) => ImageView(
-        client: widget.client,
-        baseUrl: widget.baseUrl,
+        client: client,
+        baseUrl: baseUrl,
         image: image,
-        onShowImage: (next) => setState(() => image = next),
+        onShowImage: onShowImage,
+        onUp: onUp,
         // No "down" out of the detail view, and no rating filter: the group
         // shows all of its alternatives.
         minRating: noMinRating,

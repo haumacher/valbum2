@@ -52,6 +52,9 @@ class ViewerHarnessState extends State<ViewerHarness> {
         image: image,
         onShowImage: (next) => setState(() => image = next),
         onShowGroup: widget.onShowGroup,
+        // The app leaves the viewer by a route change; here the harness is
+        // the second route of a test app, so "up" pops it.
+        onUp: () => Navigator.maybePop(context),
       );
 }
 

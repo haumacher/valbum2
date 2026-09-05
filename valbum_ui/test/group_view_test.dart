@@ -30,6 +30,50 @@ Future<void> tap(WidgetTester tester, Finder finder) async {
   });
 }
 
+/// Shows a [GroupView] on its own, following the navigation within the group.
+///
+/// The app wires these callbacks to routes (see `app.dart`); this harness
+/// keeps the view testable without pumping the whole app.
+class _GroupHarness extends StatefulWidget {
+  final VAlbumClient client;
+  final String baseUrl;
+  final ImageGroup group;
+
+  const _GroupHarness({
+    required this.client,
+    required this.baseUrl,
+    required this.group,
+  });
+
+  @override
+  State<_GroupHarness> createState() => _GroupHarnessState();
+}
+
+class _GroupHarnessState extends State<_GroupHarness> {
+  AbstractImage? detail;
+
+  @override
+  Widget build(BuildContext context) {
+    var shown = detail;
+    if (shown == null) {
+      return GroupView(
+        client: widget.client,
+        baseUrl: widget.baseUrl,
+        group: widget.group,
+        onUp: () {},
+        onShowDetail: (image) => setState(() => detail = image),
+      );
+    }
+    return GroupDetailView(
+      client: widget.client,
+      baseUrl: widget.baseUrl,
+      image: shown as ImagePart,
+      onShowImage: (next) => setState(() => detail = next),
+      onUp: () => setState(() => detail = null),
+    );
+  }
+}
+
 void main() {
   testWidgets('opens the alternatives of a group and navigates in it',
       (tester) async {
@@ -96,7 +140,7 @@ void main() {
     await withFakeImageHttp(() async {
       await tester.pumpWidget(
         MaterialApp(
-          home: GroupView(
+          home: _GroupHarness(
             client: clientReturning("{}"),
             baseUrl: "http://server/valbum/data/album",
             group: group,

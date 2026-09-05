@@ -19,10 +19,7 @@ Future<void> pumpListing(
 }) async {
   await withFakeImageHttp(() async {
     await tester.pumpWidget(
-      VAlbumScope(
-        client: client,
-        child: MaterialApp(home: VAlbumView(path: path)),
-      ),
+      VAlbumApp(client: client, initialRoute: ListingOrAlbumRoute(path)),
     );
     await tester.pumpAndSettle();
   });
