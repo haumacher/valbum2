@@ -77,12 +77,12 @@ The GWT client's capabilities, which define "done" for this phase:
 
 | Area | GWT capability | Flutter today |
 |---|---|---|
-| Listing | Folder tiles with index picture (scale/translate crop), title, subtitle; up/home navigation | Tiles without crop transform |
-| Album | Title/subtitle, layout rows, headings between rows, min-rating filter (`+`/`-`), resize re-layout | Layout and headings; no filter |
-| Editing | Edit mode with save to `index.json`; album title/subtitle editor | Edit mode is a stub; save does not persist |
-| Image tile | Rotate left/right, flip; rating -2..2; comment editor; create heading; select (click, ctrl, shift-range); group selected images with a representative | Selection only; group is a no-op |
-| Heading | Edit text; delete | None |
-| Image view | Fit to screen; wheel zoom, drag pan, click for 1:1; prev/next; keyboard (arrows, Home, End); swipe gestures; comment display; navigation honours the rating filter | InteractiveViewer zoom; tap to open |
+| Listing | Folder tiles with index picture (scale/translate crop), title, subtitle; up/home navigation | ✅ #23 |
+| Album | Title/subtitle, layout rows, headings between rows, min-rating filter (`+`/`-`), resize re-layout | ✅ #17 (filter), headings render |
+| Editing | Edit mode with save to `index.json`; album title/subtitle editor | ✅ #16 |
+| Image tile | Rotate left/right, flip; rating -2..2; comment editor; create heading; select (click, ctrl, shift-range); group selected images with a representative | ✅ #18; grouping pending (#19) |
+| Heading | Edit text; delete | Insert done (#18); edit/delete pending (#20) |
+| Image view | Fit to screen; wheel zoom, drag pan, click for 1:1; prev/next; keyboard (arrows, Home, End); swipe gestures; comment display; navigation honours the rating filter | ✅ #21 |
 | Groups | Group shown by its representative; "alternatives" detail view listing all members; navigation within a group | Representative shown; no detail view |
 | Video | Inline HTML5 playback (mp4, mov) | Thumbnail only |
 | URLs | Deep links per album/image/group via `#` paths; back/forward; scroll position memory | None on web |
