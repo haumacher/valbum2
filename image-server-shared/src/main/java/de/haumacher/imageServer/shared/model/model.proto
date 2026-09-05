@@ -270,3 +270,33 @@ message ErrorInfo extends Resource {
 	string `message`;
 }
 
+
+/** Request to issue a device token, sent to <code>&lt;data&gt;/?action=pair</code>. */
+message PairRequest {
+	/** The pairing secret the server was started with. */
+	string secret;
+	
+	/** The name the device announces itself with. */
+	string deviceName;
+}
+
+/** Answer to a successful {@link PairRequest}. */
+message PairResponse {
+	/** The token to send as <code>Authorization: Bearer &lt;token&gt;</code> from now on. */
+	string token;
+	
+	/** The name the token was stored under. */
+	string deviceName;
+}
+
+/** The authentication state of the caller, answered by <code>&lt;data&gt;/?type=auth</code>. */
+message AuthInfo {
+	/** The authentication mode of the server: <code>off</code>, <code>writes</code>, or <code>all</code>. */
+	string mode;
+	
+	/** The name of the device the caller is paired as, empty if the caller is anonymous. */
+	string deviceName;
+	
+	/** Whether the caller may perform write requests. */
+	bool writeAllowed;
+}

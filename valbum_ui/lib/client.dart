@@ -57,9 +57,18 @@ class VAlbumClient {
   /// e.g. `http://localhost:9090/valbum/data`.
   final String dataUrl;
 
+  /// The token this device is paired with the server as, `null` while the app
+  /// talks to the server anonymously.
+  ///
+  /// When set, every request of this client — reads, writes and the streamed
+  /// upload alike — carries it as `Authorization: Bearer <token>`, see
+  /// [authHeaders]. A server started with `--auth writes` (the default)
+  /// refuses an anonymous write, see [pair].
+  final String? token;
+
   final http.Client _http;
 
-  VAlbumClient({required this.dataUrl, http.Client? httpClient})
+  VAlbumClient({required this.dataUrl, this.token, http.Client? httpClient})
       : _http = httpClient ?? http.Client();
 
   /// The transport this client sends its requests over.
@@ -74,12 +83,28 @@ class VAlbumClient {
   /// `ServerSettings`: only the URL changes, the transport (a fake one, in a
   /// test) stays the same.
   VAlbumClient withDataUrl(String dataUrl) =>
-      VAlbumClient(dataUrl: dataUrl, httpClient: _http);
+      VAlbumClient(dataUrl: dataUrl, token: token, httpClient: _http);
+
+  /// The same client, identifying itself with the given token from now on.
+  ///
+  /// `null` drops the token: the client talks to the server anonymously again.
+  VAlbumClient withToken(String? token) =>
+      VAlbumClient(dataUrl: dataUrl, token: token, httpClient: _http);
+
+  /// The authorization header of every request, empty while unpaired.
+  Map<String, String> get authHeaders {
+    var value = token;
+    return value == null || value.isEmpty
+        ? const {}
+        : {"Authorization": "Bearer $value"};
+  }
 
   /// Client talking to the server this app was loaded from (on the web), or to
   /// the [defaultDataUrl] on all other platforms.
-  factory VAlbumClient.fromOrigin({http.Client? httpClient}) => VAlbumClient(
+  factory VAlbumClient.fromOrigin({String? token, http.Client? httpClient}) =>
+      VAlbumClient(
         dataUrl: deriveDataUrl(Uri.base, isWeb: kIsWeb),
+        token: token,
         httpClient: httpClient,
       );
 
@@ -111,11 +136,9 @@ class VAlbumClient {
     if (kDebugMode) {
       print("Fetching: $uri");
     }
-    var response = await _http.get(Uri.parse(uri));
+    var response = await _http.get(Uri.parse(uri), headers: authHeaders);
     if (response.statusCode != 200) {
-      throw VAlbumException(
-        "HTTP ${response.statusCode} while loading '$uri'.",
-      );
+      throw failure(response.statusCode, response.body, "loading '$uri'");
     }
     return Resource.read(JsonReader.fromString(response.body));
   }
@@ -126,11 +149,10 @@ class VAlbumClient {
       Uri.parse(url),
       encoding: Encoding.getByName("utf-8"),
       body: resource.toString(),
-      headers: {"Content-Type": "application/json"},
+      headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw VAlbumException(
-          "HTTP ${response.statusCode} while storing '$url'.");
+      throw failure(response.statusCode, response.body, "storing '$url'");
     }
   }
 
@@ -147,8 +169,9 @@ class VAlbumClient {
   /// Reports the transfer progress in percent to [onProgress]. The upload stops
   /// early when [handle] is cancelled.
   ///
-  /// Returns the HTTP status code of the response.
-  Future<int> uploadFiles(
+  /// Throws a [VAlbumException] naming the server's reason if the server
+  /// refuses the upload — an unpaired device, for instance.
+  Future<void> uploadFiles(
     String url,
     List<UploadFile> files, {
     void Function(int percent)? onProgress,
@@ -171,6 +194,7 @@ class VAlbumClient {
 
     var request = http.StreamedRequest("PUT", uri);
     request.headers.addAll(multipart.headers);
+    request.headers.addAll(authHeaders);
     request.contentLength = contentLength;
 
     // Feed the multipart body into the request while reporting progress.
@@ -195,8 +219,72 @@ class VAlbumClient {
     }());
 
     var response = await _http.send(request);
-    await response.stream.drain<void>();
-    return response.statusCode;
+    var body = await response.stream.bytesToString();
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, body, "uploading to '$url'");
+    }
+  }
+
+  /// Pairs this device with the server, returning the token it issued.
+  ///
+  /// The token is what makes the app a known caller; store it with the server
+  /// settings and hand it to [withToken]. Throws a [VAlbumException] carrying
+  /// the server's reason when the secret is wrong.
+  Future<PairResponse> pair(String secret, String deviceName) async {
+    var url = "${folderUrl(const [])}?action=pair";
+    var request = PairRequest(secret: secret, deviceName: deviceName);
+    var body = StringBuffer();
+    request.writeContent(jsonStringWriter(body));
+
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: const {"Content-Type": "application/json"},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "pairing with '$url'");
+    }
+    return PairResponse.read(JsonReader.fromString(response.body));
+  }
+
+  /// What this client is allowed to do on the server, and as which device.
+  ///
+  /// Answered by every server, paired or not: this is how the app learns that
+  /// it must pair before it can change anything.
+  Future<AuthInfo> authInfo() async {
+    var url = "${folderUrl(const [])}?type=auth";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return AuthInfo.read(JsonReader.fromString(response.body));
+  }
+
+  /// The exception for a refused request.
+  ///
+  /// A server that refuses says why: the body of a refusal is an [ErrorInfo]
+  /// whose message is meant for the user, so that is what the exception
+  /// carries. Only where there is no such body does the status have to do.
+  static VAlbumException failure(int status, String body, String what) {
+    var message = errorMessage(body);
+    if (message != null) {
+      return VAlbumException(message);
+    }
+    return VAlbumException("HTTP $status while $what.");
+  }
+
+  /// The message of an [ErrorInfo] body, `null` if the body is not one.
+  static String? errorMessage(String body) {
+    try {
+      var resource = Resource.read(JsonReader.fromString(body));
+      if (resource is ErrorInfo && resource.message.isNotEmpty) {
+        return resource.message;
+      }
+    } catch (_) {
+      // Not a resource at all; the status has to do.
+    }
+    return null;
   }
 
   /// Releases the underlying HTTP resources.

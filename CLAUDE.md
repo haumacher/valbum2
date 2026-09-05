@@ -16,7 +16,8 @@ This repo mixes **Maven** (Java backend, multi-module: `image-server`, `image-se
 
 - Build everything: `mvn clean install` (run from repo root)
 - Run the demo server: `mvn exec:java@test-server -pl :image-server` → http://localhost:9090/valbum/ (port 9090, non-standard)
-- Run the packaged jar: `java -jar image-server/target/image-server-jar-with-dependencies.jar --basepath /path/to/photos [--port 8080] [--contextpath valbum] [--webroot /path/to/flutter/build/web]`
+- Run the packaged jar: `java -jar image-server/target/image-server-jar-with-dependencies.jar --basepath /path/to/photos [--port 8080] [--contextpath valbum] [--webroot /path/to/flutter/build/web] [--auth off|writes|all] [--pairing-secret <secret>]`
+- Authentication (#28): `--auth` defaults to `writes` — anonymous reads are served, anonymous PUT/POST are refused with 401 and an `ErrorInfo` body. A device pairs with `POST <data>/?action=pair` against the pairing secret (printed at start-up, `demo` for the demo server) and then sends `Authorization: Bearer <token>`; `GET <data>/?type=auth` reports the caller's state. The token hashes live in `<basepath>/.valbum/devices.json`.
 - Static web content: the server serves `META-INF/resources` of the class path (favicons, plus the Flutter web build if `valbum_ui/build/web` existed at `package` time) at the context root; `--webroot <dir>` serves a directory from disk with precedence over the class path. Unknown paths without a file extension fall back to `index.html` (client-side deep links).
 - Test fixtures live at `image-server/src/test/fixtures/test-album`.
 - Java lint/format (Spotless, lightweight — tidies imports/whitespace, preserves tab indentation; **not** bound to a build phase): `mvn spotless:check` / `mvn spotless:apply`.

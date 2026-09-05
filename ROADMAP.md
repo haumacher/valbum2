@@ -99,8 +99,11 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
 - Camera-roll sync: the app watches the device's photo library and uploads new items to a chosen
   inbox album, in the background where the platform allows, with progress and retry. Uploads are
   idempotent (content hash), so a retried upload never duplicates. (#30, server side #29)
-- Authentication: at minimum a per-device token issued by the server; the API refuses anonymous
-  writes. Read access can stay open for a home network but must be switchable. (#28)
+- ✅ Authentication: a per-device token issued by the server; the API refuses anonymous writes.
+  Read access stays open for a home network and is switchable. (#28) *(Done: `--auth
+  off|writes|all`, default `writes`; a device is paired with `POST <data>/?action=pair` against the
+  `--pairing-secret`, the token hash is kept in `<basepath>/.valbum/devices.json`; a refusal is a
+  401 with an `ErrorInfo` body the app shows.)*
 - Offline: the app caches listings and thumbnails so the library browses without the server. (#31)
 
 ## Phase 3 — The server grows up

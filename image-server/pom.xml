@@ -213,6 +213,8 @@
 						<argument>valbum</argument>
 						<argument>--basepath</argument>
 						<argument>${project.basedir}/src/test/fixtures/test-album</argument>
+						<argument>--pairing-secret</argument>
+						<argument>demo</argument>
 					</arguments>
 				</configuration>
 			</plugin>

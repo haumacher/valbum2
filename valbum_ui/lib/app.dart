@@ -130,8 +130,14 @@ class VAlbumAppState extends State<VAlbumApp> {
       );
 
   /// Builds a client for the given data URL over this app's transport.
-  VAlbumClient clientFor(String dataUrl) =>
-      VAlbumClient(dataUrl: dataUrl, httpClient: _transport);
+  ///
+  /// The client carries the token this device is paired with the server as, so
+  /// that every request of the app identifies itself, see [ServerSettings].
+  VAlbumClient clientFor(String dataUrl) => VAlbumClient(
+        dataUrl: dataUrl,
+        token: settings.token,
+        httpClient: _transport,
+      );
 
   @override
   void initState() {
@@ -167,7 +173,7 @@ class VAlbumAppState extends State<VAlbumApp> {
       client = null;
       return;
     }
-    if (client?.dataUrl == dataUrl) {
+    if (client?.dataUrl == dataUrl && client?.token == settings.token) {
       return;
     }
     var next = clientFor(dataUrl);
@@ -511,10 +517,34 @@ class VAlbumState extends State<VAlbumView>
     );
   }
 
+  /// The view of a load that failed, naming the server's own reason.
+  ///
+  /// A server refusing an unpaired device answers with the reason it refuses;
+  /// that reason names a remedy the user reaches from here, so the view offers
+  /// the way to the server settings alongside the retry.
   Widget buildError(Object? error) {
     return Scaffold(
       appBar: AppBar(title: const Text("Virtual photo album")),
-      body: Center(child: Text('Loading failed: ${error?.toString()}')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Loading failed: ${error?.toString()}',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () => openServerSettings(context),
+                icon: const Icon(Icons.settings),
+                label: const Text("Server settings..."),
+              ),
+            ],
+          ),
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: reload,
         tooltip: 'Reload',
@@ -727,17 +757,31 @@ class VAlbumState extends State<VAlbumView>
       print("Starting upload.");
     }
 
-    var status = await client.uploadFiles(
-      baseUrl,
-      uploads,
-      onProgress: (percent) => pd.update(value: percent),
-      handle: handle,
-    );
+    var messenger = ScaffoldMessenger.of(context);
+    try {
+      await client.uploadFiles(
+        baseUrl,
+        uploads,
+        onProgress: (percent) => pd.update(value: percent),
+        handle: handle,
+      );
+    } catch (error) {
+      pd.close(delay: 500);
+      // The server said why it refused; that reason belongs on the screen.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text("Upload fehlgeschlagen: $error"),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+      return;
+    }
 
     pd.close(delay: 500);
 
     if (kDebugMode) {
-      print(status == 200 ? "Upload complete." : "Upload failed: $status");
+      print("Upload complete.");
     }
 
     reload();

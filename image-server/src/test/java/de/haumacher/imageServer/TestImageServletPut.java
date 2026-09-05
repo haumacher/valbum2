@@ -16,6 +16,7 @@ import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
@@ -153,7 +154,20 @@ public class TestImageServletPut extends TestCase {
 		return response;
 	}
 
-	private static HttpServletRequest request(String pathInfo, String contentType, byte[] body) {
+	static HttpServletRequest request(String pathInfo, String contentType, byte[] body) {
+		return request(pathInfo, contentType, body, Collections.emptyMap(), Collections.emptyMap());
+	}
+
+	/**
+	 * A fake request with the given headers and query parameters.
+	 *
+	 * <p>
+	 * Shared with {@link TestImageServletAuth}, which drives the same servlet with an
+	 * <code>Authorization</code> header and an <code>action</code> parameter.
+	 * </p>
+	 */
+	static HttpServletRequest request(String pathInfo, String contentType, byte[] body,
+			Map<String, String> headers, Map<String, String> parameters) {
 		InvocationHandler handler = new InvocationHandler() {
 			@Override
 			public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
@@ -169,7 +183,11 @@ public class TestImageServletPut extends TestCase {
 					case "getInputStream":
 						return new FakeInputStream(body);
 					case "getHeader":
-						return null;
+						return headers.get(args[0]);
+					case "getParameter":
+						return parameters.get(args[0]);
+					case "getMethod":
+						return "PUT";
 					case "toString":
 						return "FakeRequest[" + pathInfo + "]";
 					default:
@@ -222,6 +240,8 @@ public class TestImageServletPut extends TestCase {
 
 		private final Map<String, String> _headers = new HashMap<>();
 
+		private final java.io.ByteArrayOutputStream _body = new java.io.ByteArrayOutputStream();
+
 		private final HttpServletResponse _response = (HttpServletResponse) Proxy.newProxyInstance(
 			TestImageServletPut.class.getClassLoader(), new Class<?>[] { HttpServletResponse.class }, this);
 
@@ -235,6 +255,11 @@ public class TestImageServletPut extends TestCase {
 
 		String header(String name) {
 			return _headers.get(name);
+		}
+
+		/** What was written to the response stream, decoded as UTF-8. */
+		String body() {
+			return new String(_body.toByteArray(), StandardCharsets.UTF_8);
 		}
 
 		@Override
@@ -256,6 +281,23 @@ public class TestImageServletPut extends TestCase {
 				case "setContentLength":
 				case "setContentLengthLong":
 					return null;
+				case "getOutputStream":
+					return new jakarta.servlet.ServletOutputStream() {
+						@Override
+						public void write(int b) {
+							_body.write(b);
+						}
+
+						@Override
+						public boolean isReady() {
+							return true;
+						}
+
+						@Override
+						public void setWriteListener(jakarta.servlet.WriteListener listener) {
+							throw new UnsupportedOperationException();
+						}
+					};
 				case "toString":
 					return "FakeResponse[" + _status + "]";
 				default:

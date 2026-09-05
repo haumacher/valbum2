@@ -3,6 +3,8 @@
  */
 package de.haumacher.imageServer;
 
+import de.haumacher.imageServer.auth.AuthMode;
+import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.util.servlet.ResourceServlet;
 import java.io.File;
@@ -50,6 +52,12 @@ public class Main {
 		parser.addArgument("-w", "--webroot").type(new FileArgumentType()).help(
 			"A directory with the web application to serve (e.g. the output of 'flutter build web'), "
 				+ "taking precedence over the web application bundled into this JAR");
+		parser.addArgument("-a", "--auth").choices("off", "writes", "all").setDefault("writes").help(
+			"What requires a device paired with this server: 'off' serves every request, "
+				+ "'writes' refuses anonymous changes and uploads, 'all' refuses anonymous reads as well");
+		parser.addArgument("--pairing-secret").help(
+			"The secret a device must present to be paired with this server; "
+				+ "a random one is generated and printed at start-up if none is given");
 
 		try {
 			Namespace ns = parser.parseArgs(args);
@@ -68,6 +76,10 @@ public class Main {
 
 	private final File _webRoot;
 
+	private final AuthMode _authMode;
+
+	private final String _pairingSecret;
+
 	/**
 	 * Creates a {@link Main}.
 	 */
@@ -76,6 +88,14 @@ public class Main {
 		_basePath = ns.get("basepath");
 		_contextPath = normlizeContextPath(ns.get("contextpath"));
 		_webRoot = ns.get("webroot");
+		_authMode = AuthMode.parse(ns.getString("auth"));
+
+		String secret = ns.getString("pairing_secret");
+		if (_authMode != AuthMode.OFF && (secret == null || secret.isEmpty())) {
+			// Without a secret nobody could ever pair; a generated one is printed at start-up.
+			secret = AuthService.generateSecret();
+		}
+		_pairingSecret = secret;
 	}
 
 	private void start() throws Exception {
@@ -91,7 +111,8 @@ public class Main {
 		WebAppContext webapp = new WebAppContext();
 		webapp.setContextPath(_contextPath);
 		webapp.setResourceBase(_basePath.toString());
-		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath)), Settings.DATA_PREFIX + "/*");
+		AuthService auth = new AuthService(_authMode, _pairingSecret, _basePath.toPath());
+		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath, auth)), Settings.DATA_PREFIX + "/*");
 		Path webRoot = _webRoot == null ? null : _webRoot.toPath();
 		webapp.addServlet(new ServletHolder(new ResourceServlet(webRoot, Settings.DATA_PREFIX)), STATIC_PREFIX + "/*");
 		webapp.setClassLoader(Main.class.getClassLoader());
@@ -112,6 +133,10 @@ public class Main {
 		System.out.println("Image server started: http://localhost:" + _port + _contextPath + "/ serving folder: " + _basePath);
 		if (_webRoot != null) {
 			System.out.println("Serving the web application from: " + _webRoot);
+		}
+		System.out.println("Authentication: " + _authMode.protocolName());
+		if (_authMode != AuthMode.OFF) {
+			System.out.println("Pairing secret: " + _pairingSecret);
 		}
 		server.join();
 	}

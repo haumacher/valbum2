@@ -54,7 +54,7 @@ Future<void> pumpScreen(
 
 /// Enters [url] into the server URL field.
 Future<void> enter(WidgetTester tester, String url) async {
-  await tester.enterText(find.byType(TextField), url);
+  await tester.enterText(find.byKey(serverUrlFieldKey), url);
   await tester.pumpAndSettle();
 }
 
@@ -126,7 +126,7 @@ void main() {
       await openSettingsFromMenu(tester);
 
       expect(find.text("Album server"), findsOneWidget);
-      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byKey(serverUrlFieldKey), findsOneWidget);
     });
 
     testWidgets('pre-fills the server the app talks to', (tester) async {
@@ -137,7 +137,7 @@ void main() {
       );
 
       expect(
-        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        tester.widget<TextField>(find.byKey(serverUrlFieldKey)).controller!.text,
         "http://server/valbum/",
       );
     });
@@ -196,8 +196,12 @@ void main() {
       expect(find.text("Test-album"), findsOneWidget);
       // The entered server was asked, and nothing was saved.
       expect(
-        requests.single.url.toString(),
-        "http://probe.host:8080/valbum/data/?type=json",
+        requests.map((request) => request.url.toString()),
+        containsAll([
+          "http://probe.host:8080/valbum/data/?type=json",
+          // The test also reports whether this device is paired, see #28.
+          "http://probe.host:8080/valbum/data/?type=auth",
+        ]),
       );
       expect(store.value, isNull);
     });

@@ -4,10 +4,16 @@
 package de.haumacher.imageServer;
 
 
+import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.AuthService.Caller;
+import de.haumacher.imageServer.auth.AuthService.PairRefused;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.PairRequest;
+import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.upload.UploadFactory;
 import de.haumacher.imageServer.upload.UploadItem;
@@ -62,14 +68,27 @@ public class ImageServlet extends HttpServlet {
 
 	private JakartaServletFileUpload<UploadItem, UploadFactory> _fileUpload;
 
+	private final AuthService _auth;
+
 	/**
-	 * Creates a {@link ImageServlet}.
+	 * Creates a {@link ImageServlet} serving every request without authentication.
 	 *
 	 * @param basePath The root path of the photo album to serve.
 	 */
 	public ImageServlet(File basePath) throws IOException {
+		this(basePath, AuthService.disabled());
+	}
+
+	/**
+	 * Creates a {@link ImageServlet}.
+	 *
+	 * @param basePath The root path of the photo album to serve.
+	 * @param auth Decides who may read and who may write, see {@link AuthService}.
+	 */
+	public ImageServlet(File basePath, AuthService auth) throws IOException {
 		_basePath = basePath.toPath();
 		_cache = new ResourceCache();
+		_auth = auth;
 	}
 
 	@Override
@@ -88,6 +107,17 @@ public class ImageServlet extends HttpServlet {
 		Context context = new Context(request, response);
 
 		String type = context.getParameter("type");
+
+		Caller caller = _auth.caller(request);
+		if ("auth".equals(type)) {
+			// Always answerable: this is how an unpaired app learns that it must pair.
+			serveJsonObject(response, _auth.authInfo(caller));
+			return;
+		}
+		if (!_auth.readAllowed(caller)) {
+			unauthorized(context, caller, false);
+			return;
+		}
 
 		PathInfo resourcePath;
 		if (pathInfo == null) {
@@ -144,6 +174,12 @@ public class ImageServlet extends HttpServlet {
 	protected void doPut(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
 		Context context = new Context(request, response);
+
+		Caller caller = _auth.caller(request);
+		if (!_auth.writeAllowed(caller)) {
+			unauthorized(context, caller, true);
+			return;
+		}
 
 		PathInfo resourcePath;
 		{
@@ -268,6 +304,89 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		storeFolder(context, resourcePath);
+	}
+
+	/**
+	 * Handles the pairing request at <code>&lt;data&gt;/?action=pair</code>.
+	 *
+	 * <p>
+	 * Pairing is the only write-like request that is open to an unpaired caller: it is guarded by
+	 * the pairing secret the server was started with, not by a token. Every other POST is refused
+	 * like a PUT.
+	 * </p>
+	 */
+	@Override
+	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		Context context = new Context(request, response);
+
+		if (!"pair".equals(context.getParameter("action"))) {
+			Caller caller = _auth.caller(request);
+			if (!_auth.writeAllowed(caller)) {
+				unauthorized(context, caller, true);
+				return;
+			}
+			error(context, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+			return;
+		}
+
+		PairRequest pairRequest;
+		try {
+			byte[] contents = readBody(request);
+			pairRequest = PairRequest.readPairRequest(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable pairing request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, "The pairing request cannot be read.");
+			return;
+		}
+
+		PairResponse pairResponse;
+		try {
+			pairResponse = _auth.pair(pairRequest);
+		} catch (PairRefused ex) {
+			LOG.warning("Refusing to pair device '" + pairRequest.getDeviceName() + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+
+		LOG.info("Paired device: " + pairResponse.getDeviceName());
+		serveJsonObject(response, pairResponse);
+	}
+
+	/**
+	 * Answers a cross-origin preflight, so that a browser may send the
+	 * <code>Authorization</code> header of an authenticated request.
+	 */
+	@Override
+	protected void doOptions(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		allowCrossOrigin(response);
+		response.setHeader("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS");
+		response.setStatus(HttpServletResponse.SC_OK);
+	}
+
+	/**
+	 * Refuses the request with <code>401</code>, naming the reason in the response body.
+	 *
+	 * <p>
+	 * Nothing declines silently: the message is what the app shows the user, see
+	 * {@link AuthService#refusal(Caller, boolean)}.
+	 * </p>
+	 */
+	private void unauthorized(Context context, Caller caller, boolean write) throws IOException {
+		String message = _auth.refusal(caller, write);
+		LOG.warning("Refusing " + (write ? "write" : "read") + " access to '" + context.request().getPathInfo()
+			+ "': " + message);
+
+		context.response().setHeader("WWW-Authenticate", "Bearer");
+		errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, message);
+	}
+
+	/** Answers with the given status and an {@link ErrorInfo} body carrying the given message. */
+	private static void errorInfo(Context context, int status, String message) throws IOException {
+		HttpServletResponse response = context.response();
+		allowCrossOrigin(response);
+		response.setStatus(status);
+		serveJson(response, ErrorInfo.create().setMessage(message));
 	}
 
 	private static String baseName(String name) {
@@ -414,17 +533,50 @@ public class ImageServlet extends HttpServlet {
 		return "application/binary";
 	}
 
-	private void serveJson(HttpServletResponse response, Resource album) throws IOException {
+	private static void serveJson(HttpServletResponse response, Resource album) throws IOException {
 		LOG.log(Level.FINE, "Delivering JSON.");
 
 		response.setContentType("application/json");
 		response.setCharacterEncoding("utf-8");
 
 		// Allow access from mobile app.
-		response.setHeader("Access-Control-Allow-Origin", "*");
+		allowCrossOrigin(response);
 		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(response.getOutputStream(), "utf-8")))) {
 			album.writeTo(json);
 		}
+	}
+
+	/**
+	 * Delivers a plain data object (one that is not a {@link Resource}) as JSON.
+	 *
+	 * <p>
+	 * Unlike a {@link Resource}, such an object carries no type tag: the caller knows what it
+	 * asked for.
+	 * </p>
+	 */
+	private static void serveJsonObject(HttpServletResponse response, de.haumacher.msgbuf.data.DataObject object)
+			throws IOException {
+		response.setContentType("application/json");
+		response.setCharacterEncoding("utf-8");
+
+		allowCrossOrigin(response);
+		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(response.getOutputStream(), "utf-8")))) {
+			object.writeTo(json);
+		}
+	}
+
+	/**
+	 * Announces that the app may talk to this server from another origin.
+	 *
+	 * <p>
+	 * The <code>Authorization</code> header of an authenticated request makes a browser send a
+	 * preflight, so the header must be allowed explicitly, see
+	 * {@link #doOptions(HttpServletRequest, HttpServletResponse)}.
+	 * </p>
+	 */
+	private static void allowCrossOrigin(HttpServletResponse response) {
+		response.setHeader("Access-Control-Allow-Origin", "*");
+		response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
 	}
 
 	/**
@@ -488,7 +640,7 @@ public class ImageServlet extends HttpServlet {
 		LOG.log(Level.WARNING, "Faild to access '" + context.request().getPathInfo() + "': " + errorCode);
 
 		HttpServletResponse response = context.response();
-		response.setHeader("Access-Control-Allow-Origin", "*");
+		allowCrossOrigin(response);
 		response.setStatus(errorCode);
 	}
 

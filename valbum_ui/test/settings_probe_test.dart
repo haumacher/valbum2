@@ -87,7 +87,8 @@ void main() {
     // Point the app at the other server, whose root is an album.
     await tapAndSettle(tester, find.byIcon(Icons.more_vert));
     await tapAndSettle(tester, find.text("Server..."));
-    await tester.enterText(find.byType(TextField), "http://nas.local/valbum");
+    await tester.enterText(
+        find.byKey(serverUrlFieldKey), "http://nas.local/valbum");
     await tapAndSettle(tester, find.text("Save"));
 
     expect(store.value, "http://nas.local/valbum");
@@ -138,7 +139,7 @@ void main() {
       ),
     );
     await tester.enterText(
-      find.byType(TextField),
+      find.byKey(serverUrlFieldKey),
       "http://nas.local/valbum/data",
     );
     await tapAndSettle(tester, find.text("Test connection"));

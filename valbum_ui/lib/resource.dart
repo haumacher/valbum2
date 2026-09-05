@@ -1113,3 +1113,185 @@ class ErrorInfo extends Resource {
 
 }
 
+///  Request to issue a device token, sent to <code>&lt;data&gt;/?action=pair</code>.
+class PairRequest extends _JsonObject {
+	///  The pairing secret the server was started with.
+	String secret;
+
+	///  The name the device announces itself with.
+	String deviceName;
+
+	/// Creates a PairRequest.
+	PairRequest({
+			this.secret = "", 
+			this.deviceName = "", 
+	});
+
+	/// Parses a PairRequest from a string source.
+	static PairRequest? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PairRequest instance from the given reader.
+	static PairRequest read(JsonReader json) {
+		PairRequest result = PairRequest();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PairRequest";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "secret": {
+				secret = json.expectString();
+				break;
+			}
+			case "deviceName": {
+				deviceName = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("secret");
+		json.addString(secret);
+
+		json.addKey("deviceName");
+		json.addString(deviceName);
+	}
+
+}
+
+///  Answer to a successful {@link PairRequest}.
+class PairResponse extends _JsonObject {
+	///  The token to send as <code>Authorization: Bearer &lt;token&gt;</code> from now on.
+	String token;
+
+	///  The name the token was stored under.
+	String deviceName;
+
+	/// Creates a PairResponse.
+	PairResponse({
+			this.token = "", 
+			this.deviceName = "", 
+	});
+
+	/// Parses a PairResponse from a string source.
+	static PairResponse? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PairResponse instance from the given reader.
+	static PairResponse read(JsonReader json) {
+		PairResponse result = PairResponse();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PairResponse";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "token": {
+				token = json.expectString();
+				break;
+			}
+			case "deviceName": {
+				deviceName = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("token");
+		json.addString(token);
+
+		json.addKey("deviceName");
+		json.addString(deviceName);
+	}
+
+}
+
+///  The authentication state of the caller, answered by <code>&lt;data&gt;/?type=auth</code>.
+class AuthInfo extends _JsonObject {
+	///  The authentication mode of the server: <code>off</code>, <code>writes</code>, or <code>all</code>.
+	String mode;
+
+	///  The name of the device the caller is paired as, empty if the caller is anonymous.
+	String deviceName;
+
+	///  Whether the caller may perform write requests.
+	bool writeAllowed;
+
+	/// Creates a AuthInfo.
+	AuthInfo({
+			this.mode = "", 
+			this.deviceName = "", 
+			this.writeAllowed = false, 
+	});
+
+	/// Parses a AuthInfo from a string source.
+	static AuthInfo? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a AuthInfo instance from the given reader.
+	static AuthInfo read(JsonReader json) {
+		AuthInfo result = AuthInfo();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "AuthInfo";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "mode": {
+				mode = json.expectString();
+				break;
+			}
+			case "deviceName": {
+				deviceName = json.expectString();
+				break;
+			}
+			case "writeAllowed": {
+				writeAllowed = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("mode");
+		json.addString(mode);
+
+		json.addKey("deviceName");
+		json.addString(deviceName);
+
+		json.addKey("writeAllowed");
+		json.addBool(writeAllowed);
+	}
+
+}
+

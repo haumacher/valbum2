@@ -66,6 +66,21 @@ Options:
 | `--port <n>` | HTTP port | `8080` |
 | `--contextpath <name>` | First path segment of the URL, e.g. `photos` → `http://host:8080/photos/` | none |
 | `--webroot <dir>` | Serve the web app from a directory instead of the bundled copy (development) | bundled |
+| `--auth off\|writes\|all` | What requires a paired device: nothing, changes and uploads, or every request | `writes` |
+| `--pairing-secret <secret>` | The secret a device presents to be paired; a random one is printed at start-up if none is given | generated |
+
+### Pairing a device
+
+With `--auth writes` (the default) the server serves every read but refuses an anonymous change or
+upload with `401` and a message the app shows. To let a device change something, open the app's
+server settings, enter the pairing secret the server printed at start-up ("Pairing secret: ...")
+and press "Pair this device": the server issues a token, the app stores it beside the server URL
+and sends it on every request from then on. `--auth all` refuses anonymous reads as well; `--auth
+off` is the old behaviour, open to everyone who can reach the server.
+
+The devices paired with a server are kept in `<basepath>/.valbum/devices.json`, which holds a hash
+of every issued token, never the token itself. Nothing else is ever written outside the
+`index.json` sidecars.
 
 Open `http://localhost:8080/` (or your context path) in a browser. The JSON API is available under
 `/data/`, for example `http://localhost:8080/data/?type=json`.
@@ -107,4 +122,8 @@ Alben, jedes Album ein Ordner mit Photos und Videos. VAlbum fasst Deine Dateien 
 
 Bauen: `flutter build web` in `valbum_ui/`, dann `mvn clean install` im Hauptverzeichnis (JDK 21 und
 Maven nötig). Starten: `java -jar image-server-jar-with-dependencies.jar --basepath /pfad/zu/den/photos`,
-danach http://localhost:8080/ im Browser öffnen. Optionen: `--port`, `--contextpath`, `--webroot`.
+danach http://localhost:8080/ im Browser öffnen. Optionen: `--port`, `--contextpath`, `--webroot`, `--auth`, `--pairing-secret`.
+
+Standardmäßig lehnt der Server anonyme Änderungen ab (`--auth writes`). Beim Start gibt er ein
+Kopplungsgeheimnis aus; damit koppelst Du in den Server-Einstellungen der App dieses Gerät, das
+danach ein eigenes Token mitschickt.

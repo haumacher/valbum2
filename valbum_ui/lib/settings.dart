@@ -8,9 +8,12 @@
 /// — `http://nas.local:8080/valbum/` — and everything else follows from it,
 /// see [dataUrlOf].
 ///
-/// Credentials are not part of this screen (ROADMAP phase 2, issue #28).
+/// The device token this app is paired with the server as lives beside the URL
+/// (issue #28): it is issued by the server against a pairing secret, stored
+/// here and sent by [VAlbumClient] on every request.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,13 +37,34 @@ abstract class SettingsStore {
 
   /// Forgets the stored server URL, restoring the platform default.
   Future<void> clear();
+
+  /// The token this device is paired with the stored server as, or `null`.
+  ///
+  /// A store written before issue #28 holds no token; it loads as `null` and
+  /// the app talks to the server anonymously, as it always did.
+  Future<String?> loadToken();
+
+  /// The name the stored token was issued to, or `null`.
+  Future<String?> loadDeviceName();
+
+  /// Stores the token the server issued and the name it was issued to.
+  Future<void> saveToken(String token, String deviceName);
+
+  /// Forgets the stored token: the app is anonymous again.
+  Future<void> clearToken();
 }
 
 /// A [SettingsStore] keeping the value in memory only, used by tests.
 class InMemorySettingsStore extends SettingsStore {
   String? value;
 
-  InMemorySettingsStore([this.value]);
+  /// The stored device token, see [SettingsStore.loadToken].
+  String? token;
+
+  /// The stored device name, see [SettingsStore.loadDeviceName].
+  String? deviceName;
+
+  InMemorySettingsStore([this.value, this.token, this.deviceName]);
 
   @override
   Future<String?> load() async => value;
@@ -50,12 +74,36 @@ class InMemorySettingsStore extends SettingsStore {
 
   @override
   Future<void> clear() async => value = null;
+
+  @override
+  Future<String?> loadToken() async => token;
+
+  @override
+  Future<String?> loadDeviceName() async => deviceName;
+
+  @override
+  Future<void> saveToken(String token, String deviceName) async {
+    this.token = token;
+    this.deviceName = deviceName;
+  }
+
+  @override
+  Future<void> clearToken() async {
+    token = null;
+    deviceName = null;
+  }
 }
 
 /// The [SettingsStore] of the app, backed by `shared_preferences`.
 class PreferencesSettingsStore extends SettingsStore {
   /// The preferences key the server URL is stored under.
   static const String key = "serverUrl";
+
+  /// The preferences key the device token is stored under.
+  static const String tokenKey = "deviceToken";
+
+  /// The preferences key the device name is stored under.
+  static const String deviceNameKey = "deviceName";
 
   const PreferencesSettingsStore();
 
@@ -70,6 +118,28 @@ class PreferencesSettingsStore extends SettingsStore {
   @override
   Future<void> clear() async =>
       (await SharedPreferences.getInstance()).remove(key);
+
+  @override
+  Future<String?> loadToken() async =>
+      (await SharedPreferences.getInstance()).getString(tokenKey);
+
+  @override
+  Future<String?> loadDeviceName() async =>
+      (await SharedPreferences.getInstance()).getString(deviceNameKey);
+
+  @override
+  Future<void> saveToken(String token, String deviceName) async {
+    var preferences = await SharedPreferences.getInstance();
+    await preferences.setString(tokenKey, token);
+    await preferences.setString(deviceNameKey, deviceName);
+  }
+
+  @override
+  Future<void> clearToken() async {
+    var preferences = await SharedPreferences.getInstance();
+    await preferences.remove(tokenKey);
+    await preferences.remove(deviceNameKey);
+  }
 }
 
 /// The server URL the app uses, and the way it is changed.
@@ -91,15 +161,21 @@ class ServerSettings extends ChangeNotifier {
   final String? Function() platformDefault;
 
   String? _serverUrl;
+  String? _token;
+  String? _deviceName;
   bool _loaded = false;
 
   ServerSettings({
     required this.store,
     String? Function()? platformDefault,
     String? serverUrl,
+    String? token,
+    String? deviceName,
     bool loaded = false,
   })  : platformDefault = platformDefault ?? _none,
         _serverUrl = serverUrl,
+        _token = token,
+        _deviceName = deviceName,
         _loaded = loaded;
 
   static String? _none() => null;
@@ -131,26 +207,70 @@ class ServerSettings extends ChangeNotifier {
   /// Whether a server to talk to is known, see [dataUrl].
   bool get configured => dataUrl != null;
 
-  /// Reads the stored value; called once before the first client is built.
+  /// The token this device is paired with the server as, `null` if unpaired.
+  ///
+  /// Every request of the app carries it, see [VAlbumClient.token].
+  String? get token => _token;
+
+  /// The name the [token] was issued to, `null` if this device is unpaired.
+  String? get deviceName => _deviceName;
+
+  /// Whether this device is paired with the server it talks to.
+  bool get paired => (_token ?? "").isNotEmpty;
+
+  /// Reads the stored values; called once before the first client is built.
   Future<void> load() async {
     _serverUrl = await store.load();
+    _token = await store.loadToken();
+    _deviceName = await store.loadDeviceName();
     _loaded = true;
     notifyListeners();
   }
 
   /// Stores [serverUrl] and switches the app over to that server.
+  ///
+  /// A token belongs to the server that issued it: pointing the app at
+  /// *another* server forgets it, saving the same URL again keeps it.
   Future<void> save(String serverUrl) async {
     var value = serverUrl.trim();
     await store.save(value);
+    if (value != _serverUrl) {
+      await _forgetToken();
+    }
     _serverUrl = value;
     notifyListeners();
   }
 
   /// Forgets the stored value, returning to the [platformDefault].
+  ///
+  /// The token of the server given up is forgotten with it.
   Future<void> reset() async {
     await store.clear();
+    await _forgetToken();
     _serverUrl = null;
     notifyListeners();
+  }
+
+  /// Remembers the token the server issued for this device, see [pair].
+  Future<void> pairedAs(String token, String deviceName) async {
+    await store.saveToken(token, deviceName);
+    _token = token;
+    _deviceName = deviceName;
+    notifyListeners();
+  }
+
+  /// Forgets the token: the app talks to the server anonymously again.
+  ///
+  /// The server keeps its entry — only this device forgets how to prove it.
+  Future<void> unpair() async {
+    await _forgetToken();
+    notifyListeners();
+  }
+
+  Future<void> _forgetToken() async {
+    await store.clearToken();
+    _token = null;
+    _deviceName = null;
   }
 }
 
@@ -205,13 +325,43 @@ class ConnectionTestResult {
   /// What to show the user: the title of the root resource, or the reason.
   final String message;
 
-  const ConnectionTestResult(this.ok, this.message);
+  /// What the server says about this device's pairing, `null` if it says
+  /// nothing (a server from before issue #28).
+  final String? authStatus;
+
+  const ConnectionTestResult(this.ok, this.message, {this.authStatus});
+
+  /// The same result reporting the given pairing status.
+  ConnectionTestResult withAuthStatus(String? status) =>
+      ConnectionTestResult(ok, message, authStatus: status);
 }
 
 /// Fetches the root resource of the server [client] talks to.
 ///
 /// Every outcome is reported as a message; nothing fails silently.
-Future<ConnectionTestResult> testServerConnection(VAlbumClient client) async {
+Future<ConnectionTestResult> testServerConnection(VAlbumClient client) async =>
+    (await _reachServer(client)).withAuthStatus(await _authStatus(client));
+
+/// What the server says about this client's pairing, `null` if it says
+/// nothing at all — a server from before issue #28 does not know the endpoint.
+Future<String?> _authStatus(VAlbumClient client) async {
+  AuthInfo info;
+  try {
+    info = await client.authInfo();
+  } catch (_) {
+    return null;
+  }
+  if (info.deviceName.isNotEmpty) {
+    return "Paired as ${info.deviceName}";
+  }
+  return switch (info.mode) {
+    "off" => "Not paired - this server needs no pairing",
+    "all" => "Not paired - this server needs pairing to show anything",
+    _ => "Not paired - changes need pairing",
+  };
+}
+
+Future<ConnectionTestResult> _reachServer(VAlbumClient client) async {
   try {
     var resource = await client.loadResource([]);
     var title = _titleOf(resource);
@@ -258,6 +408,33 @@ String? _titleOf(Resource? resource) => switch (resource) {
       _ => null,
     };
 
+/// A device name to suggest when this device is paired the first time.
+///
+/// Only a suggestion in the field; the user names the device, and the server
+/// stores whatever it is given.
+String defaultDeviceName() {
+  if (kIsWeb) {
+    return "This browser";
+  }
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.android => "Android phone",
+    TargetPlatform.iOS => "iPhone",
+    TargetPlatform.macOS => "Mac",
+    TargetPlatform.windows => "Windows PC",
+    TargetPlatform.linux => "Linux PC",
+    TargetPlatform.fuchsia => "My device",
+  };
+}
+
+/// The key of the server URL field, so that a test can address it.
+const Key serverUrlFieldKey = Key("settings.serverUrl");
+
+/// The key of the device name field, see [serverUrlFieldKey].
+const Key deviceNameFieldKey = Key("settings.deviceName");
+
+/// The key of the pairing secret field, see [serverUrlFieldKey].
+const Key pairingSecretFieldKey = Key("settings.pairingSecret");
+
 /// The screen editing the URL of the album server.
 class ServerSettingsScreen extends StatefulWidget {
   final ServerSettings settings;
@@ -287,6 +464,22 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     text: widget.settings.serverUrl ?? _suggestion(),
   );
 
+  /// The name this device announces itself with when it is paired.
+  late final TextEditingController deviceController = TextEditingController(
+    text: widget.settings.deviceName ?? defaultDeviceName(),
+  );
+
+  /// The pairing secret the server was started with.
+  ///
+  /// Never stored: it is exchanged for the device token exactly once.
+  final TextEditingController secretController = TextEditingController();
+
+  /// The outcome of the last pairing attempt, if any.
+  ConnectionTestResult? pairing;
+
+  /// Whether a pairing request is running.
+  bool pairingRunning = false;
+
   /// The outcome of the last connection test, if any.
   ConnectionTestResult? result;
 
@@ -309,6 +502,8 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   @override
   void dispose() {
     controller.dispose();
+    deviceController.dispose();
+    secretController.dispose();
     super.dispose();
   }
 
@@ -332,6 +527,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
               ),
               const SizedBox(height: 16),
               TextField(
+                key: serverUrlFieldKey,
                 controller: controller,
                 autocorrect: false,
                 keyboardType: TextInputType.url,
@@ -385,23 +581,184 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
                     Text("Contacting the server..."),
                   ],
                 ),
-              if (!testing && result != null)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      result!.ok ? Icons.check_circle : Icons.error,
-                      color: result!.ok ? Colors.green : Colors.red,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(result!.message)),
-                  ],
+              if (!testing && result != null) _outcome(result!),
+              if (!testing && result?.authStatus != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, left: 32),
+                  child: Text(result!.authStatus!),
                 ),
+              const SizedBox(height: 24),
+              const Divider(),
+              ..._pairingSection(settings),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// The icon and message of a connection test or pairing attempt.
+  Widget _outcome(ConnectionTestResult outcome) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            outcome.ok ? Icons.check_circle : Icons.error,
+            color: outcome.ok ? Colors.green : Colors.red,
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(outcome.message)),
+        ],
+      );
+
+  /// The section pairing this device with the server.
+  ///
+  /// A server refusing anonymous changes issues a token against the pairing
+  /// secret it was started with; the token is stored with the server URL and
+  /// sent on every request from then on.
+  List<Widget> _pairingSection(ServerSettings settings) => [
+        const SizedBox(height: 8),
+        Text("Pairing", style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        const Text(
+          "A server that refuses anonymous changes issues a token for this "
+          "device. The pairing secret is printed by the server at start-up.",
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Icon(
+              settings.paired ? Icons.verified_user : Icons.no_encryption,
+              color: settings.paired ? Colors.green : Colors.grey,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                settings.paired
+                    ? "Paired as ${settings.deviceName ?? ""}"
+                    : "Not paired",
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          key: deviceNameFieldKey,
+          controller: deviceController,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: "Device name",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          key: pairingSecretFieldKey,
+          controller: secretController,
+          autocorrect: false,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: "Pairing secret",
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => _pair(),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: pairingRunning ? null : _pair,
+              icon: const Icon(Icons.link),
+              label: const Text("Pair this device"),
+            ),
+            TextButton.icon(
+              onPressed: settings.paired ? _unpair : null,
+              icon: const Icon(Icons.link_off),
+              label: const Text("Unpair"),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (pairingRunning)
+          const Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 8),
+              Text("Pairing..."),
+            ],
+          ),
+        if (!pairingRunning && pairing != null) _outcome(pairing!),
+      ];
+
+  /// Exchanges the pairing secret for a device token at the *entered* server.
+  ///
+  /// The URL does not have to be saved for this: pairing tests the address the
+  /// user is looking at, like the connection test does.
+  Future<void> _pair() async {
+    var entered = controller.text;
+    var problem = serverUrlError(entered);
+    if (problem != null) {
+      setState(() {
+        error = problem;
+        pairing = null;
+      });
+      return;
+    }
+
+    setState(() {
+      error = null;
+      pairing = null;
+      pairingRunning = true;
+    });
+
+    var client = widget.clientFor(dataUrlOf(entered)).withToken(null);
+    ConnectionTestResult outcome;
+    try {
+      var response = await client.pair(
+        secretController.text.trim(),
+        deviceController.text.trim().isEmpty
+            ? defaultDeviceName()
+            : deviceController.text.trim(),
+      );
+      await widget.settings.pairedAs(response.token, response.deviceName);
+      outcome = ConnectionTestResult(true, "Paired as ${response.deviceName}");
+    } on VAlbumException catch (failure) {
+      outcome = ConnectionTestResult(false, failure.message);
+    } on http.ClientException catch (failure) {
+      outcome = ConnectionTestResult(false, failure.message);
+    } catch (failure) {
+      outcome = ConnectionTestResult(false, failure.toString());
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      pairingRunning = false;
+      pairing = outcome;
+      if (outcome.ok) {
+        secretController.clear();
+      }
+    });
+  }
+
+  /// Forgets the token of this device; the server keeps its entry.
+  Future<void> _unpair() async {
+    await widget.settings.unpair();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      pairing = const ConnectionTestResult(
+        true,
+        "This device no longer identifies itself to the server.",
+      );
+    });
   }
 
   /// Fetches the root resource of the *entered* server, without saving it.
@@ -422,8 +779,9 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       testing = true;
     });
 
-    var outcome =
-        await testServerConnection(widget.clientFor(dataUrlOf(entered)));
+    var outcome = await testServerConnection(
+      widget.clientFor(dataUrlOf(entered)).withToken(widget.settings.token),
+    );
 
     if (!mounted) {
       return;
@@ -462,6 +820,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       controller.text = _suggestion();
       result = null;
       error = null;
+      pairing = null;
     });
     if (widget.closable &&
         widget.settings.configured &&
