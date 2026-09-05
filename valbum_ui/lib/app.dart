@@ -12,6 +12,7 @@ import 'package:sn_progress_dialog/progress_dialog.dart';
 import 'album_model.dart';
 import 'album_view.dart';
 import 'client.dart';
+import 'group_view.dart';
 import 'image_view.dart';
 import 'listing_view.dart';
 import 'resource.dart';
@@ -157,12 +158,27 @@ class VAlbumState extends State<VAlbumView>
   }
 
   /// The viewer of the given image (a group is shown by its representative).
+  ///
+  /// If the image is (or belongs to) an [ImageGroup], the viewer offers the
+  /// "down" chevron opening the group's alternatives view, see [showGroupView].
   Widget showImageView(AbstractImage self) => ImageView(
         client: client,
         baseUrl: baseUrl,
         image: self,
         onShowImage: showImage,
+        onShowGroup: showGroupView,
       );
+
+  /// Opens the "alternatives" view listing all images of the given group.
+  void showGroupView(ImageGroup group) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) =>
+            GroupView(client: client, baseUrl: baseUrl, group: group),
+      ),
+    );
+  }
 
   @override
   Widget visitErrorInfo(ErrorInfo self, BuildContext arg) {

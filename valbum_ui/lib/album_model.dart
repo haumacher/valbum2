@@ -6,47 +6,47 @@ library;
 
 import 'resource.dart';
 
-/// The direction in which [AlbumInitializer] walks the album parts.
-enum Direction { previous, next }
-
-/// Initializes [AbstractImage.next] and [AbstractImage.previous] fields.
-class AlbumInitializer implements AlbumPartVisitor<AbstractImage?, Direction> {
-  AbstractImage? previous;
-  AbstractImage? next;
-
+/// Rebuilds the transient fields of an album: the [AbstractImage.previous],
+/// [AbstractImage.next], [AbstractImage.home] and [AbstractImage.end] links,
+/// the [AlbumPart.owner] of every part and the [ImagePart.group] of every
+/// image inside an [ImageGroup].
+///
+/// This is the `UpdateTransient` of the retired GWT client. The album parts
+/// form one chain: an [ImageGroup] is a single link in it, no matter how many
+/// images it holds. The images *inside* a group form a chain of their own —
+/// that is the order the "alternatives" view of the group navigates in (see
+/// `group_view.dart`), so `previous`/`next`/`home`/`end` of a group member
+/// stay inside its group.
+class AlbumInitializer {
+  /// Initializes the transient fields of the given album.
   void init(AlbumInfo self) {
     for (var part in self.parts) {
-      AbstractImage? self = part.visitAlbumPart(this, Direction.previous);
-      if (self != null) previous = self;
+      part.owner = self;
+      if (part is ImageGroup) {
+        for (var image in part.images) {
+          image.owner = self;
+          image.group = part;
+        }
+        _link(part.images);
+      } else if (part is ImagePart) {
+        part.group = null;
+      }
     }
-    for (var part in self.parts.reversed) {
-      AbstractImage? self = part.visitAlbumPart(this, Direction.next);
-      if (self != null) next = self;
+    _link(self.parts.whereType<AbstractImage>().toList());
+  }
+
+  /// Links the given images into a chain of `previous`/`next`/`home`/`end`.
+  static void _link(List<AbstractImage> images) {
+    if (images.isEmpty) {
+      return;
     }
-  }
-
-  @override
-  AbstractImage? visitHeading(Heading self, Direction arg) {
-    return null;
-  }
-
-  @override
-  AbstractImage? visitImageGroup(ImageGroup self, Direction arg) {
-    return initImage(arg, self);
-  }
-
-  @override
-  AbstractImage? visitImagePart(ImagePart self, Direction arg) {
-    return initImage(arg, self);
-  }
-
-  AbstractImage initImage(Direction arg, AbstractImage self) {
-    if (arg == Direction.previous) {
-      self.previous = previous;
-    } else {
-      self.next = next;
+    for (var i = 0; i < images.length; i++) {
+      var image = images[i];
+      image.previous = i > 0 ? images[i - 1] : null;
+      image.next = i < images.length - 1 ? images[i + 1] : null;
+      image.home = images.first;
+      image.end = images.last;
     }
-    return self;
   }
 }
 

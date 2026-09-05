@@ -7,6 +7,7 @@
 library;
 
 import 'album_layout.dart' show ToImage;
+import 'album_model.dart';
 import 'resource.dart';
 
 /// A rigid transformation of the image plane — the dihedral group `D4`.
@@ -253,4 +254,98 @@ List<AbstractImage> imageRange(
     }
   }
   return result;
+}
+
+/// A rating filter letting every image through.
+///
+/// The "alternatives" view of an [ImageGroup] shows all of its images, no
+/// matter how they are rated — the retired GWT `GroupDisplay` inherited
+/// `getMinRating() == Integer.MIN_VALUE` for the same reason.
+const int noMinRating = -1 << 31;
+
+/// Groups the selected parts of the album into one [ImageGroup].
+///
+/// The new group takes the position of [representative] in [AlbumInfo.parts];
+/// every other selected part is removed. Its images are all images of the
+/// selected parts — a selected [ImageGroup] contributes its members, so
+/// grouping a group with an image flattens it, as the GWT client did — sorted
+/// by [ImagePart.date] ascending, and [ImageGroup.representative] is the index
+/// of the image representing [representative].
+///
+/// The transient links of the album are rebuilt afterwards, so the group is
+/// one link in the album's chain and its members form a chain of their own
+/// (see [AlbumInitializer]).
+///
+/// Returns the group created, or `null` if fewer than two parts were selected
+/// or [representative] is not among them.
+ImageGroup? groupSelection(
+  AlbumInfo album,
+  Set<AlbumPart> selection,
+  AbstractImage representative,
+) {
+  if (selection.length < 2 || !selection.contains(representative)) {
+    return null;
+  }
+
+  var images = <ImagePart>[];
+  for (var part in album.parts) {
+    if (!selection.contains(part)) {
+      continue;
+    }
+    if (part is ImageGroup) {
+      images.addAll(part.images);
+    } else if (part is ImagePart) {
+      images.add(part);
+    }
+  }
+  if (images.length < 2) {
+    return null;
+  }
+
+  // A stable sort by date: images taken in the same second keep the order
+  // they had in the album.
+  var order = {for (var i = 0; i < images.length; i++) images[i]: i};
+  images.sort((a, b) {
+    var byDate = a.date.compareTo(b.date);
+    return byDate != 0 ? byDate : order[a]!.compareTo(order[b]!);
+  });
+
+  var representingImage = ToImage.toImage(representative);
+  var group = ImageGroup(
+    images: images,
+    representative: images.indexOf(representingImage).clamp(0, images.length),
+  );
+
+  var parts = <AlbumPart>[];
+  for (var part in album.parts) {
+    if (identical(part, representative)) {
+      parts.add(group);
+    } else if (!selection.contains(part)) {
+      parts.add(part);
+    }
+  }
+  album.parts = parts;
+  AlbumInitializer().init(album);
+  return group;
+}
+
+/// Dissolves the given group: its images take its place in the album, in the
+/// order they are stored in.
+///
+/// Returns the images now standing in the album on their own, empty if [group]
+/// is not a part of [album].
+List<ImagePart> ungroup(AlbumInfo album, ImageGroup group) {
+  var index = album.parts.indexOf(group);
+  if (index < 0) {
+    return const [];
+  }
+
+  var members = group.images.toList();
+  album.parts = [
+    ...album.parts.sublist(0, index),
+    ...members,
+    ...album.parts.sublist(index + 1),
+  ];
+  AlbumInitializer().init(album);
+  return members;
 }

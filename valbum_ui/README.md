@@ -22,15 +22,22 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   comment, heading).
 - `lib/image_view.dart` — `ImageView`, the full-screen single image viewer
   (zoom, pan, swipe and keyboard navigation).
+- `lib/group_view.dart` — the "alternatives" view of an `ImageGroup`
+  (`GroupView`, reached by the "down" chevron of the image viewer) and
+  `GroupDetailView`, the viewer navigating within a group.
 - `lib/album_edit.dart` — widget-free editing logic: the orientation algebra
-  (`PlaneTransform`, `OrientationOps`), the rating filter and the selection
-  arithmetic behind the tile editor.
+  (`PlaneTransform`, `OrientationOps`), the rating filter, the selection
+  arithmetic behind the tile editor and the grouping operations
+  (`groupSelection`, `ungroup`).
 - `lib/image_transform.dart` — the widget-free helpers of the viewer:
   `ImageTransform` (fit, wheel zoom around a point, click to 1:1, the
   re-centering on zoom-out) and the rating-filter-aware navigation
   (`nextVisible`, `previousVisible`, `firstVisible`, `lastVisible`).
 - `lib/album_model.dart` — widget-free model helpers: `AlbumInitializer`
-  (rebuilds the transient `previous`/`next` links) and `thumbnailName`.
+  (rebuilds the transient `previous`/`next`/`home`/`end` links, the `owner` of
+  every part and the `group` of every image inside an `ImageGroup`; the images
+  of a group are linked among themselves, which is the order the alternatives
+  view navigates in) and `thumbnailName`.
 - `lib/client.dart` — `VAlbumClient`, the one place that builds URLs and talks HTTP; injected via
   `VAlbumScope` so tests can pass a `MockClient`.
 - `lib/urls.dart` — derives the server URL from the page origin on the web.

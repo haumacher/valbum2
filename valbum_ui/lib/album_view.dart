@@ -131,6 +131,52 @@ class AlbumContentState extends State<AlbumContent> {
   /// Applies [edit] to the model and redraws the album.
   void editImage(VoidCallback edit) => setState(edit);
 
+  /// Groups the selected parts, [representative] becoming the image shown for
+  /// the group in the album, see [groupSelection].
+  ///
+  /// Returns whether the group was created.
+  bool groupSelected(AbstractImage representative) {
+    var group = groupSelection(widget.album, selection, representative);
+    if (group == null) {
+      return false;
+    }
+    setState(clearSelection);
+    return true;
+  }
+
+  /// Dissolves the given group, its images stay selected, see [ungroup].
+  void ungroupSelected(ImageGroup group) => setState(() {
+        var members = ungroup(widget.album, group);
+        clearSelection();
+        selection.addAll(members);
+        lastClicked = members.isEmpty ? null : members.last;
+      });
+
+  /// Removes the given heading from the album.
+  void deleteHeading(Heading heading) => setState(() {
+        widget.album.parts =
+            widget.album.parts.where((p) => !identical(p, heading)).toList();
+        selection.remove(heading);
+      });
+
+  /// Opens the heading editor prefilled with the current text.
+  ///
+  /// An empty text is refused, as in the GWT client, which ignored the save.
+  Future<void> editHeading(Heading heading) async {
+    var text = await showDialog<String>(
+      context: context,
+      builder: (context) => TextInputDialog(
+        title: "Überschrift bearbeiten",
+        label: "Überschrift",
+        text: heading.text,
+      ),
+    );
+    if (text == null || text.trim().isEmpty || !mounted) {
+      return;
+    }
+    setState(() => heading.text = text);
+  }
+
   /// Shows one rating level more (the `+` key of the GWT client).
   void showMore() =>
       setState(() => widget.album.minRating = showMoreRating(minRating));
@@ -338,7 +384,7 @@ class AlbumContentState extends State<AlbumContent> {
         pending,
         () => layouter.AlbumLayout(maxWidth, 250, pending),
       );
-      var builder = ContentWidgetBuilder(this, layout.getPageWidth());
+      var builder = ContentWidgetBuilder(imageTile, layout.getPageWidth());
       result.addAll(layout.map((row) => row.visit(builder, 0.0)));
       images = <AbstractImage>[];
     }
@@ -355,6 +401,10 @@ class AlbumContentState extends State<AlbumContent> {
 
     return result;
   }
+
+  /// The tile of the given image, with the tile editor in the edit mode.
+  Widget imageTile(AbstractImage image, double width, double height) =>
+      image.visitAbstractImage(ImageWidgetBuilder(this, width, height), null);
 
   /// Runs [body] with the images set to the orientation they are laid out
   /// with, see [_layoutOrientation].
@@ -378,11 +428,38 @@ class AlbumContentState extends State<AlbumContent> {
     }
   }
 
+  /// The heading between two blocks of images.
+  ///
+  /// In the edit mode it carries the two inline tools of the GWT
+  /// `HeadingDisplay`: edit the text and delete the heading.
   Widget headingView(Heading heading) => Padding(
         padding: const EdgeInsets.only(top: 24, bottom: 8),
-        child: Text(
-          heading.text,
-          style: const TextStyle(fontSize: 22, color: Colors.white),
+        child: Row(
+          key: ValueKey(heading),
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              heading.text,
+              style: const TextStyle(fontSize: 22, color: Colors.white),
+            ),
+            if (editMode)
+              IconButton(
+                icon: const Icon(Icons.edit),
+                iconSize: 20,
+                color: Colors.white,
+                tooltip: "Überschrift bearbeiten",
+                onPressed: () => editHeading(heading),
+              ),
+            if (editMode)
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                iconSize: 20,
+                color: Colors.white,
+                tooltip: "Überschrift löschen",
+                onPressed: () => deleteHeading(heading),
+              ),
+          ],
         ),
       );
 }
@@ -439,11 +516,23 @@ class RatingFilterBar extends StatelessWidget {
   }
 }
 
+/// Builds the tile of one image, given the box the layout assigned to it.
+typedef TileBuilder = Widget Function(
+  AbstractImage image,
+  double width,
+  double height,
+);
+
+/// Turns the rows of an [layouter.AlbumLayout] into widgets.
+///
+/// The tiles themselves are built by the [TileBuilder] handed in: the album
+/// view builds an [ImageWidgetBuilder] tile (with the edit mode on top), the
+/// alternatives view of a group (`group_view.dart`) a plain thumbnail.
 class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
-  final AlbumContentState state;
+  final TileBuilder tile;
   final double pageWidth;
 
-  const ContentWidgetBuilder(this.state, this.pageWidth);
+  const ContentWidgetBuilder(this.tile, this.pageWidth);
 
   @override
   Widget visitImg(layouter.Img content, double rowHeight) {
@@ -452,10 +541,7 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
     var width = content.getUnitWidth() * rowHeight;
     var height = rowHeight;
 
-    return image.visitAbstractImage(
-      ImageWidgetBuilder(state, width, height),
-      null,
-    );
+    return tile(image, width, height);
   }
 
   @override
@@ -474,7 +560,7 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
     var width = content.getUnitWidth() * rowHeight;
 
     var upper = content.getUpper();
-    var contentBuilder = ContentWidgetBuilder(state, width);
+    var contentBuilder = ContentWidgetBuilder(tile, width);
     var upperRow = upper.visit(contentBuilder, rowHeight * content.getH1());
 
     var lower = content.getLower();
@@ -509,7 +595,11 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   }
 
   /// The tile for [image], the image representing the album part [part].
-  Widget thumbnailView(ImagePart image, AlbumPart part) {
+  ///
+  /// A tap opens the viewer on [part], not on [image]: for a group that is the
+  /// group itself, whose previous/next are the album's — the representative's
+  /// own links stay inside the group (see [AlbumInitializer]).
+  Widget thumbnailView(ImagePart image, AbstractImage part) {
     if (state.editMode) {
       return ThumbnailEditor(
         state,
@@ -520,7 +610,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
       );
     } else {
       return GestureDetector(
-        onTap: () => state.widget.pushPart(image, image.name),
+        onTap: () => state.widget.pushPart(part, image.name),
         onLongPress: () => state.setEditMode(part),
         child: imageThumbnail(image),
       );
@@ -666,11 +756,19 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     if (!selected) {
       return null;
     }
+    var self = part;
     return toolbar([
       if (multiSelected)
         toolButton(Icons.join_left, "Gruppieren", createGroup)
-      else
+      else ...[
         toolButton(Icons.title, "Überschrift einfügen", createHeading),
+        if (self is ImageGroup)
+          toolButton(
+            Icons.call_split,
+            "Gruppierung aufheben",
+            () => album.ungroupSelected(self),
+          ),
+      ],
       toolButton(Icons.notes, "Bildeigenschaften", editImageProperties),
     ]);
   }
@@ -737,14 +835,17 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         () => image.rating = toggleRating(image.rating, value),
       );
 
-  /// Grouping the selected images is issue #19; the button says so.
+  /// Groups the selected images, this tile's image representing the group.
   void createGroup() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Gruppieren kommt in #19"),
-        duration: Duration(seconds: 4),
-      ),
-    );
+    var self = part;
+    if (self is! AbstractImage || !album.groupSelected(self)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Zum Gruppieren mindestens zwei Bilder auswählen"),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   /// Inserts a heading before this tile's part.

@@ -263,7 +263,9 @@ void main() {
       });
     });
 
-    testWidgets('refuses to group until #19', (tester) async {
+    testWidgets(
+        'offers the heading tool alone, the group tool on a multi '
+        'selection', (tester) async {
       var client = clientReturning(fixture("album.json"));
 
       await withFakeImageHttp(() async {
@@ -277,11 +279,7 @@ void main() {
             tester, "portrait.jpg", LogicalKeyboardKey.controlLeft);
         expect(albumState(tester).selection, hasLength(2));
         expect(tool("landscape.jpg", Icons.title), findsNothing);
-
-        await tapTool(tester, "landscape.jpg", Icons.join_left);
-        expect(find.text("Gruppieren kommt in #19"), findsOneWidget);
-        // Nothing was changed.
-        expect(album(tester).parts, hasLength(4));
+        expect(tool("landscape.jpg", Icons.join_left), findsOneWidget);
       });
     });
 

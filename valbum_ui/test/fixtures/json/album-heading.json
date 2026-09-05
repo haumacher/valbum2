@@ -1,0 +1,24 @@
+["AlbumInfo", {
+  "path": "",
+  "title": "Ein Tag",
+  "subTitle": "",
+  "parts": [
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "a.jpg", "date": 1015113600000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "b.jpg", "date": 1015113610000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0
+    }],
+    ["Heading", {"text": "Am Mittag"}],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "c.jpg", "date": 1015113620000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "d.jpg", "date": 1015113630000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0
+    }]
+  ]
+}]
