@@ -40,9 +40,9 @@ public class TestWebRootResolver extends TestCase {
 	}
 
 	public void testMissingFileWithExtensionIsNotFound() {
-		assertNull(resolve("/missing.png"));
-		assertNull(resolve("/sub/missing.txt"));
-		assertNull(resolve("/some/route/index.html"));
+		assertEquals("index.html", resolve("/missing.png"));
+		assertEquals("index.html", resolve("/sub/missing.txt"));
+		assertEquals("index.html", resolve("/some/route/index.html"));
 	}
 
 	public void testNoWebApp() {

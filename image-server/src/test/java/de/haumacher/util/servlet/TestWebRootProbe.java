@@ -18,9 +18,11 @@ public class TestWebRootProbe extends TestCase {
 	public void testDotInDirectoryNameIsNotAnExtension() {
 		// The album folder has dots in its name; the request is a route (trailing slash).
 		assertEquals("2005.08.24 Album/index.html", WebRootResolver.resolve("/2005.08.24 Album/", EXISTS));
-		// A route whose last segment has a dot but is not a file: a client route like an image name is
-		// a file request by definition and must be 404, not the app.
-		assertNull(WebRootResolver.resolve("/2005.08.24 Album/IMG_0417.JPG", EXISTS));
+		// The app's image routes end in a file name; they are routes all the same (found live on the
+		// bundled jar: the first deep link to an image answered 404).
+		assertEquals("index.html", WebRootResolver.resolve("/2005.08.24 Album/IMG_0417.JPG", EXISTS));
+		assertEquals("index.html",
+			WebRootResolver.resolve("/2005-08-24 Blumen und Fliegen/IMG_0417.JPG/alternatives/IMG_0418.JPG", EXISTS));
 	}
 
 	public void testRouteFallbackKeepsAppEvenDeep() {
@@ -48,6 +50,7 @@ public class TestWebRootProbe extends TestCase {
 
 	public void testExistingFileWinsOverRouteFallback() {
 		assertEquals("assets/fonts/a.otf", WebRootResolver.resolve("/assets/fonts/a.otf", EXISTS));
-		assertNull(WebRootResolver.resolve("/assets/fonts/missing.otf", EXISTS));
+		// A missing asset falls back to the app too: the single-page fallback cannot tell them apart.
+		assertEquals("index.html", WebRootResolver.resolve("/assets/fonts/missing.otf", EXISTS));
 	}
 }

@@ -47,8 +47,10 @@ public class WebRootResolver {
 			return candidate;
 		}
 
-		if (isRoute(relative) && exists.test(INDEX)) {
-			// A client-side deep link, the application decides what to display.
+		if (exists.test(INDEX)) {
+			// Anything the web root does not hold is a client-side route: the application decides
+			// what to display. Image routes such as <code>/album/IMG_0417.JPG</code> carry a file
+			// extension, so the fallback must not depend on the shape of the last segment.
 			return INDEX;
 		}
 
