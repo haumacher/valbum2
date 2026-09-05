@@ -1,11 +1,11 @@
 ---
 name: build-verify
-description: Build and verify the whole VAlbum2 project — runs the Maven build for the Java/GWT modules and analyzes/tests the Flutter app. Use after making changes to confirm the project still builds and checks pass.
+description: Build and verify the whole VAlbum2 project — runs the Maven build for the Java backend modules and analyzes/tests the Flutter app. Use after making changes to confirm the project still builds and checks pass.
 ---
 
 Verify the full project across both toolchains. Run the steps in order and report results; if a step fails, surface the failing output and stop.
 
-## 1. Java / GWT modules (Maven)
+## 1. Java backend modules (Maven)
 
 From the repo root:
 

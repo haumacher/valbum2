@@ -3,10 +3,10 @@
 Thanks for your interest in contributing to VAlbum2! This guide explains how to
 build and test the project locally.
 
-VAlbum2 is a Maven multi-module project (a Java server plus a
-[GWT](https://www.gwtproject.org/) web client). The modules are:
-`image-server-shared`, `image-server-client`, `image-server`, `util-gwt`,
-`util-servlet`, and `util-xml`.
+VAlbum2 is a Maven multi-module Java server (`image-server`,
+`image-server-shared`, `util-servlet`) plus a Flutter app in `valbum_ui/`
+(web, mobile, desktop). This guide covers the server; see `valbum_ui/README.md`
+and `CLAUDE.md` for the Flutter toolchain.
 
 ## Prerequisites
 

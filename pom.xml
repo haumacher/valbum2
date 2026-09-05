@@ -9,11 +9,8 @@
 
 	<modules>
 		<module>image-server-shared</module>
-		<module>image-server-client</module>
 		<module>image-server</module>
-		<module>util-gwt</module>
 		<module>util-servlet</module>
-		<module>util-xml</module>
 	</modules>
 	
 	<properties>
@@ -32,31 +29,13 @@
 	
 			<dependency>
 				<groupId>de.haumacher</groupId>
-				<artifactId>image-server-client</artifactId>
-				<version>${project.version}</version>
-			</dependency>
-	
-			<dependency>
-				<groupId>de.haumacher</groupId>
 				<artifactId>image-server</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 	
 			<dependency>
 				<groupId>de.haumacher</groupId>
-				<artifactId>util-gwt</artifactId>
-				<version>${project.version}</version>
-			</dependency>
-	
-			<dependency>
-				<groupId>de.haumacher</groupId>
 				<artifactId>util-servlet</artifactId>
-				<version>${project.version}</version>
-			</dependency>
-	
-			<dependency>
-				<groupId>de.haumacher</groupId>
-				<artifactId>util-xml</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 	
@@ -195,11 +174,6 @@
 				<plugin>
 					<artifactId>maven-surefire-plugin</artifactId>
 					<version>3.0.0-M7</version>
-				</plugin>
-				<plugin>
-					<groupId>net.ltgt.gwt.maven</groupId>
-					<artifactId>gwt-maven-plugin</artifactId>
-					<version>1.0.1</version>
 				</plugin>
 			</plugins>
 		</pluginManagement>

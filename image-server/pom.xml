@@ -28,31 +28,9 @@
 		</dependency>
 
 		<dependency>
-			<groupId>de.haumacher</groupId>
-			<artifactId>util-xml</artifactId>
-		</dependency>
-
-		<dependency>
-			<groupId>de.haumacher</groupId>
-			<artifactId>image-server-client</artifactId>
-		</dependency>
-
-		<dependency>
 			<groupId>net.sourceforge.argparse4j</groupId>
 			<artifactId>argparse4j</artifactId>
 			<version>0.9.0</version>
-		</dependency>
-
-		<dependency>
-			<groupId>org.webjars</groupId>
-			<artifactId>font-awesome</artifactId>
-			<version>6.3.0</version>
-		</dependency>
-
-		<dependency>
-			<groupId>org.webjars.npm</groupId>
-			<artifactId>bulma</artifactId>
-			<version>0.9.4</version>
 		</dependency>
 
 		<dependency>

@@ -1,6 +1,6 @@
 ---
 name: valbum-workflow
-description: The working method for developing VAlbum2 — orchestrating sub-agents across the two toolchains (Maven backend/GWT and the Flutter app), adversarial probe reviews, the verification gate, the run loop against the demo server, GitHub-issue triage, the commit discipline, and the data/format doctrines. Load at the start of any session doing feature or bug work on this repository.
+description: The working method for developing VAlbum2 — orchestrating sub-agents across the two toolchains (Maven backend and the Flutter app), adversarial probe reviews, the verification gate, the run loop against the demo server, GitHub-issue triage, the commit discipline, and the data/format doctrines. Load at the start of any session doing feature or bug work on this repository.
 ---
 
 # The VAlbum2 working method
@@ -44,7 +44,7 @@ contains, in order:
 
 - **Grounding**: "Read CLAUDE.md and CONTRIBUTING.md. Study <the specific modules, the specific
   classes, and the specific tests that are the behavioral contract>." Name the module the work
-  lives in (`image-server`, `image-server-shared`, `image-server-client`, `util-*`, `valbum_ui`)
+  lives in (`image-server`, `image-server-shared`, `util-servlet`, `valbum_ui`)
   and whether `model.proto` is in scope.
 - **The task as design intent**, not implementation orders — with the load-bearing decisions
   made: what is stored in a sidecar file vs derived at request time, what the JSON protocol
@@ -62,10 +62,7 @@ contains, in order:
     needs `-am` or a prior `install` of it, and any `model.proto` change needs the shared module
     rebuilt **before** anything that consumes the generated classes or `resource.dart`. The full
     `mvn clean install` runs **twice per delivery**: once before the first edit (only when taking
-    over foreign or uncommitted work) and once at the end before the report. Remember the GWT
-    quirk: `mkdir -p image-server-client/target` after `clean` (CLAUDE.md). Skip the slow GWT
-    compile in the loop with `-pl '!image-server-client'` when the client is untouched — but never
-    at the end.
+    over foreign or uncommitted work) and once at the end before the report.
   - Flutter: the edit loop runs `flutter analyze` and the **targeted** test file
     (`flutter test test/<file>_test.dart`); the full `flutter analyze && flutter test` runs at the end.
   - A run whose inputs did not change is not repeated "to be sure". Batch independent lookups
@@ -73,7 +70,7 @@ contains, in order:
 - **The standing rules block**: ALL existing tests green in both toolchains; `mvn spotless:apply`
   on touched Java; Dart is formatted by the PostToolUse hook (never reformat `resource.dart`);
   **never hand-edit generated code** (`resource.dart`, the msgbuf Java model) — edit `model.proto`;
-  Java source/target stays 1.8 (GWT); **the server never modifies, moves or deletes an original
+  Java source/target follows the root pom (1.8 until issue #11); **the server never modifies, moves or deletes an original
   photo or video** — all state goes to sidecar files; do NOT commit; **nothing half-done — cut whole
   items only, refuse in-app with a visible reason, and report every cut**.
 - **Ask for a report**: mechanism chosen and why, alternatives rejected, cuts, test count
@@ -88,8 +85,7 @@ not the tests.
 output file's mtime (10-minute quiet threshold, until-loop, not tail -f). **The tasks-dir output
 path is a symlink — stat it with `-L`**, or the monitor reads the symlink's own never-changing
 mtime and cries wolf in exact 600 s increments. Verify before acting on any event: a quiet
-transcript with a busy `mvn` or `dart` process is a long build (a GWT compile alone takes minutes),
-not a stall. On silence: nudge-resume via SendMessage ("Resume exactly where you left off: <last
+transcript with a busy `mvn` or `dart` process is a long build, not a stall. On silence: nudge-resume via SendMessage ("Resume exactly where you left off: <last
 visible step>"). If the transcript stays frozen after a resume, the agent is dead — take the
 remainder over yourself; its uncommitted work is usually further along than the last message
 suggests (`git status`, then run its tests before redoing anything).
@@ -129,7 +125,7 @@ the crash are untriaged.
 After a delivery reports done and before committing: **write a test the agent never saw**,
 composing the new feature with pre-existing features — sidecar read/write round-trips, nested
 album folders, videos next to images, the layout algorithm at odd viewport widths, a folder with
-no index picture, the legacy GWT client still compiling against a changed model. Good probes ask
+  no index picture. Good probes ask
 "is the mechanism general?" not "does the happy path work?". Keep passing probes as permanent
 tests (named `Test<Feature>Probe` in Java, `<feature>_probe_test.dart` in Flutter).
 
@@ -156,8 +152,6 @@ delivery:
   `resource.dart` (underscored locals, unknown doc directives). Those are generator output; fix
   them in the generator or ignore them, never by hand. The bar is **zero errors**, and no *new*
   warnings in hand-written files.
-- **GWT compile time**: a "hung" build at `image-server-client` is usually just the GWT compiler;
-  check CPU before killing it.
 
 When a probe legitimately fails: send it back (§2). When it exposes something deeper than the
 package (a protocol gap, a format hazard), fix small ones yourself with a regression test; spawn a
@@ -170,8 +164,6 @@ file with a known name; never a rename, resize or delete of an original).
 ```bash
 mvn spotless:apply                                  # then check its output for errors
 mvn clean install                                   # both toolchains' generated code included
-# if it fails at the GWT compile with 'Working directory ... does not exist':
-mkdir -p image-server-client/target && mvn install
 cd valbum_ui && flutter analyze && flutter test
 ```
 
@@ -195,12 +187,13 @@ Never trust a green result from a tree with uncommitted foreign edits; check `gi
 Two things to run, always in this order:
 
 ```bash
-mvn exec:java@test-server -pl :image-server        # backend + legacy GWT UI on http://localhost:9090/valbum/
+mvn exec:java@test-server -pl :image-server        # backend API on http://localhost:9090/valbum/data/
 cd valbum_ui && flutter run -d chrome              # the Flutter app, against localhost:9090/valbum/data
 ```
 
-The demo server serves the fixture album and the compiled GWT client from the last `install`;
-after a backend or GWT change, rebuild and restart it (it does not hot-reload). The Flutter app
+The demo server serves the fixture album; after a backend change, rebuild and restart it (it does
+not hot-reload). It creates an empty `.upload` directory in the fixture album — remove it before
+committing. The Flutter app
 hot-reloads (`r` in the `flutter run` terminal). Tell the user the commit hash and what to try.
 Never leave a broken build running — the served demo is the shared reference for bug reports.
 
@@ -215,11 +208,9 @@ Never leave a broken build running — the served demo is the shared reference f
   nothing across builds.
 - **`model.proto` is the single source of truth** for the wire model. Never edit generated output;
   never let the Java and Dart sides drift by hand.
-- **One client, one protocol.** The Flutter app is the only front end (ROADMAP Phase 0 retires
-  the GWT client). Until that removal has landed, the GWT client must still compile; afterwards a
-  protocol change lands with the Dart consumer adjusted in the same commit.
-- **Java 1.8 source/target** in the Maven modules (GWT 2.9). No `var`, no records, no newer APIs
-  in code GWT compiles (`image-server-shared`, `image-server-client`, `util-gwt`).
+- **One client, one protocol.** The Flutter app is the only front end (the GWT client was removed
+  in ROADMAP Phase 0). A protocol change lands with the Dart consumer adjusted in the same commit.
+- **Java source/target** follows the root pom (1.8 until issue #11 raises it to 21).
 - **Refusals speak**: no route may decline silently; the UI shows the reason.
 - **Everything generic**: issues are exercises of general mechanisms — if a fix is shaped like the
   bug report, it isn't done.

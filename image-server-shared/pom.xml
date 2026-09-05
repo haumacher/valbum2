@@ -23,11 +23,6 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>de.haumacher</groupId>
-			<artifactId>util-xml</artifactId>
-		</dependency>
-
-		<dependency>
 			<groupId>de.haumacher.msgbuf</groupId>
 			<artifactId>msgbuf-api</artifactId>
 		</dependency>

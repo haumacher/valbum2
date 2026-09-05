@@ -1,7 +1,0 @@
-eclipse.preferences.version=1
-gwtMavenModuleName=de.haumacher.imageServer.client
-gwtMavenModuleShortName=image-server-client
-jarsExcludedFromWebInfLib=
-lastWarOutDir=/home/bhu/git/image-server/image-server-client/target/image-server-client-0.0.1-SNAPSHOT
-warSrcDir=src/main/webapp
-warSrcDirIsOutput=false
