@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'app.dart';
 
+export 'album_edit.dart';
 export 'album_model.dart';
 export 'album_view.dart';
 export 'app.dart';

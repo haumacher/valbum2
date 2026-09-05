@@ -1,0 +1,24 @@
+["AlbumInfo", {
+  "path": "",
+  "title": "Bewertungen",
+  "subTitle": "Ein Bild je Bewertungsstufe",
+  "parts": [
+    ["Heading", {"text": "Alle Bewertungen"}],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "star.jpg", "date": 1015113600000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 2
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "plain.jpg", "date": 1015113610000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "bad.jpg", "date": 1015113620000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": -1
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "trash.jpg", "date": 1015113630000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": -2
+    }]
+  ]
+}]

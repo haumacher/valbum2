@@ -1,10 +1,12 @@
-/// The album view: the row layout of the images, the edit mode and the album
-/// properties editor.
+/// The album view: the row layout of the images, the rating filter, the edit
+/// mode with the per-tile editor and the album properties editor.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/services.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 
+import 'album_edit.dart';
 import 'album_model.dart';
 import 'app.dart';
 import 'client.dart';
@@ -30,74 +32,112 @@ class AlbumContent extends StatefulWidget {
   }
 }
 
-enum SelectionState {
-  none,
-  single,
-  multiple;
-
-  static SelectionState fromSize(int size) {
-    switch (size) {
-      case 0:
-        return SelectionState.none;
-      case 1:
-        return SelectionState.single;
-      default:
-        return SelectionState.multiple;
-    }
-  }
-}
-
 class AlbumContentState extends State<AlbumContent> {
   bool editMode = false;
 
-  Set<ThumbnailEditorState> selection = {};
+  /// The selected album parts (an [ImageGroup] is selected as a whole).
+  final Set<AlbumPart> selection = {};
 
-  AbstractImage? selectionRequest;
+  /// The part clicked last, the anchor of a shift-click range selection.
+  AlbumPart? lastClicked;
 
-  void setEditMode(AbstractImage selected) => setState(() {
+  /// The orientation each image had when the album was laid out.
+  ///
+  /// The row layout is computed from these, not from the (possibly just
+  /// rotated) orientation of the model: rotating an image in the tile editor
+  /// must not reflow the album under the user's hands. The rotated image is
+  /// scaled into the tile box it already has; the layout follows on the next
+  /// load of the album. This is the `setDownScale` of the retired GWT client.
+  final Map<ImagePart, Orientation> _layoutOrientation = {};
+
+  /// The rating an image needs to be shown, see [AlbumInfo.minRating].
+  int get minRating => widget.album.minRating;
+
+  @override
+  void didUpdateWidget(AlbumContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.album, widget.album)) {
+      _layoutOrientation.clear();
+      selection.clear();
+      lastClicked = null;
+    }
+  }
+
+  /// The orientation the given image is laid out with, see
+  /// [_layoutOrientation].
+  Orientation layoutOrientation(ImagePart image) =>
+      _layoutOrientation.putIfAbsent(image, () => image.orientation);
+
+  void setEditMode(AlbumPart selected) => setState(() {
         editMode = true;
-        selectionRequest = selected;
+        selection
+          ..clear()
+          ..add(selected);
+        lastClicked = selected;
       });
 
-  void addToSelection(ThumbnailEditorState selected) {
-    if (selection.contains(selected)) {
-      return;
-    }
+  bool isSelected(AlbumPart part) => selection.contains(part);
 
-    var stateBefore = SelectionState.fromSize(selection.length);
-    selection.add(selected);
-    var stateAfter = SelectionState.fromSize(selection.length);
+  bool get hasMultiSelection => selection.length > 1;
 
-    if (stateAfter != stateBefore) {
-      for (var x in selection) {
-        x.updateSelectionState(stateAfter);
+  /// Handles a click on the tile of the given part.
+  ///
+  /// Plain: select exactly this part, clicking the only selected one clears
+  /// the selection. Ctrl/Meta: toggle. Shift: extend the selection to the
+  /// range between the part clicked last and this one, as the GWT client did.
+  void handleTap(AlbumPart part) {
+    var keyboard = HardwareKeyboard.instance;
+    setState(() {
+      if (keyboard.isShiftPressed) {
+        var anchor = lastClicked ?? widget.album.parts.first;
+        var select = selection.contains(anchor);
+        for (var image in imageRange(widget.album.parts, anchor, part)) {
+          if (select) {
+            selection.add(image);
+          } else {
+            selection.remove(image);
+          }
+        }
+      } else if (keyboard.isControlPressed || keyboard.isMetaPressed) {
+        _toggle(part);
+      } else {
+        var wasOnlySelection = selection.length == 1 && isSelected(part);
+        selection.clear();
+        if (!wasOnlySelection) {
+          selection.add(part);
+        }
       }
-    } else {
-      selected.updateSelectionState(stateAfter);
+      lastClicked = part;
+    });
+  }
+
+  /// Adds or removes the given part from the selection.
+  void toggleSelection(AlbumPart part) => setState(() {
+        _toggle(part);
+        lastClicked = part;
+      });
+
+  void _toggle(AlbumPart part) {
+    if (!selection.remove(part)) {
+      selection.add(part);
     }
   }
 
-  void removeFromSelection(ThumbnailEditorState selected) {
-    var stateBefore = SelectionState.fromSize(selection.length);
-    selection.remove(selected);
-    var stateAfter = SelectionState.fromSize(selection.length);
-
-    if (stateAfter != stateBefore) {
-      for (var x in selection) {
-        x.updateSelectionState(stateAfter);
-      }
-    }
-    selected.updateSelectionState(SelectionState.none);
+  void clearSelection() {
+    selection.clear();
+    lastClicked = null;
   }
 
-  void setSelection(ThumbnailEditorState selected) {
-    selection.where((element) => element != selected).forEach(
-          (element) => element.updateSelectionState(SelectionState.none),
-        );
-    selection.removeWhere((element) => element != selected);
+  /// Applies [edit] to the model and redraws the album.
+  void editImage(VoidCallback edit) => setState(edit);
 
-    addToSelection(selected);
-  }
+  /// Shows one rating level more (the `+` key of the GWT client).
+  void showMore() =>
+      setState(() => widget.album.minRating = showMoreRating(minRating));
+
+  /// Shows one rating level less (the `-` key of the GWT client).
+  void showLess() =>
+      setState(() => widget.album.minRating = showLessRating(minRating));
 
   /// Writes the album back to the server and leaves the edit mode.
   ///
@@ -130,6 +170,8 @@ class AlbumContentState extends State<AlbumContent> {
     setState(() {
       editMode = false;
       clearSelection();
+      // The album is laid out anew from what was saved.
+      _layoutOrientation.clear();
     });
 
     // Re-load the album, so that the transient part links are rebuilt.
@@ -154,13 +196,6 @@ class AlbumContentState extends State<AlbumContent> {
       album.title = result.title;
       album.subTitle = result.subTitle;
     });
-  }
-
-  void clearSelection() {
-    for (var x in selection) {
-      x.updateSelectionState(SelectionState.none);
-    }
-    selection.clear();
   }
 
   String get albumUrl => "${widget.baseUrl}/${widget.album.path}";
@@ -208,40 +243,88 @@ class AlbumContentState extends State<AlbumContent> {
     );
   }
 
-  LayoutBuilder contentView(AlbumInfo self) {
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        return SingleChildScrollView(
-          scrollDirection: Axis.vertical,
-          child: Column(
-            children: [
-              if (!editMode)
-                Padding(
-                  padding: const EdgeInsets.only(top: 20, bottom: 4),
-                  child: Text(
-                    self.title,
-                    style: const TextStyle(fontSize: 28, color: Colors.white),
-                  ),
+  Widget contentView(AlbumInfo self) {
+    return Focus(
+      autofocus: true,
+      onKeyEvent: onKey,
+      child: Stack(
+        children: [
+          LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              return SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                child: Column(
+                  children: [
+                    if (!editMode)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 20, bottom: 4),
+                        child: Text(
+                          self.title,
+                          style: const TextStyle(
+                            fontSize: 28,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    if (!editMode)
+                      if (self.subTitle.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            self.subTitle,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ...buildParts(self, constraints.maxWidth),
+                  ],
                 ),
-              if (!editMode)
-                if (self.subTitle.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      self.subTitle,
-                      style: const TextStyle(fontSize: 16, color: Colors.white),
-                    ),
-                  ),
-              ...buildParts(self, constraints.maxWidth),
-            ],
+              );
+            },
           ),
-        );
-      },
+          Positioned(
+            top: 8,
+            right: 8,
+            child: RatingFilterBar(
+              minRating: minRating,
+              onShowMore: showMore,
+              onShowLess: showLess,
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  /// The `+` and `-` keys of the GWT client, widening and narrowing the rating
+  /// filter.
+  KeyEventResult onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    var key = event.logicalKey;
+    if (event.character == "+" ||
+        key == LogicalKeyboardKey.add ||
+        key == LogicalKeyboardKey.numpadAdd) {
+      showMore();
+      return KeyEventResult.handled;
+    }
+    if (event.character == "-" ||
+        key == LogicalKeyboardKey.minus ||
+        key == LogicalKeyboardKey.numpadSubtract) {
+      showLess();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   /// Renders the album parts: each run of images is laid out as a block of
   /// rows, headings separate those blocks.
+  ///
+  /// Images whose rating is below [minRating] are left out, headings are
+  /// always shown.
   List<Widget> buildParts(AlbumInfo self, double maxWidth) {
     var result = <Widget>[];
     var images = <AbstractImage>[];
@@ -250,13 +333,17 @@ class AlbumContentState extends State<AlbumContent> {
       if (images.isEmpty) {
         return;
       }
-      var layout = layouter.AlbumLayout(maxWidth, 250, images);
+      var pending = images;
+      var layout = withLayoutOrientations(
+        pending,
+        () => layouter.AlbumLayout(maxWidth, 250, pending),
+      );
       var builder = ContentWidgetBuilder(this, layout.getPageWidth());
       result.addAll(layout.map((row) => row.visit(builder, 0.0)));
       images = <AbstractImage>[];
     }
 
-    for (var part in self.parts) {
+    for (var part in visibleParts(self)) {
       if (part is AbstractImage) {
         images.add(part);
       } else if (part is Heading) {
@@ -269,6 +356,28 @@ class AlbumContentState extends State<AlbumContent> {
     return result;
   }
 
+  /// Runs [body] with the images set to the orientation they are laid out
+  /// with, see [_layoutOrientation].
+  ///
+  /// The layout reads [ImagePart.orientation] from the model to decide whether
+  /// width and height are swapped. While an image is being rotated, the model
+  /// is already ahead of the layout, so the value is swapped in for the
+  /// duration of the layout computation.
+  T withLayoutOrientations<T>(List<AbstractImage> images, T Function() body) {
+    var representatives = images.map(layouter.ToImage.toImage).toList();
+    var current = [for (var image in representatives) image.orientation];
+    for (var image in representatives) {
+      image.orientation = layoutOrientation(image);
+    }
+    try {
+      return body();
+    } finally {
+      for (var i = 0; i < representatives.length; i++) {
+        representatives[i].orientation = current[i];
+      }
+    }
+  }
+
   Widget headingView(Heading heading) => Padding(
         padding: const EdgeInsets.only(top: 24, bottom: 8),
         child: Text(
@@ -276,6 +385,58 @@ class AlbumContentState extends State<AlbumContent> {
           style: const TextStyle(fontSize: 22, color: Colors.white),
         ),
       );
+}
+
+/// The album-level rating filter control, the touch equivalent of the `+` and
+/// `-` keys.
+class RatingFilterBar extends StatelessWidget {
+  final int minRating;
+  final VoidCallback onShowMore;
+  final VoidCallback onShowLess;
+
+  const RatingFilterBar({
+    super.key,
+    required this.minRating,
+    required this.onShowMore,
+    required this.onShowLess,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            iconSize: 20,
+            color: minRating < maxMinRating ? Colors.white : Colors.white24,
+            tooltip: "Weniger Bilder zeigen",
+            onPressed: minRating < maxMinRating ? onShowLess : null,
+          ),
+          Tooltip(
+            message: "Mindestbewertung",
+            child: Text(
+              "≥ $minRating",
+              key: const Key("minRating"),
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline),
+            iconSize: 20,
+            color: minRating > minMinRating ? Colors.white : Colors.white24,
+            tooltip: "Mehr Bilder zeigen",
+            onPressed: minRating > minMinRating ? onShowMore : null,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
@@ -339,148 +500,366 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
 
   @override
   Widget visitImageGroup(ImageGroup self, void arg) {
-    var image = self.images[self.representative];
-    return thumbnailView(image);
+    return thumbnailView(self.images[self.representative], self);
   }
 
   @override
   Widget visitImagePart(ImagePart self, void arg) {
-    return thumbnailView(self);
+    return thumbnailView(self, self);
   }
 
-  Widget thumbnailView(ImagePart self) {
+  /// The tile for [image], the image representing the album part [part].
+  Widget thumbnailView(ImagePart image, AlbumPart part) {
     if (state.editMode) {
-      return ThumbnailEditor(state, this, self);
+      return ThumbnailEditor(
+        state,
+        this,
+        image,
+        part,
+        key: ValueKey(image.name),
+      );
     } else {
       return GestureDetector(
-        onTap: () => state.widget.pushPart(self, self.name),
-        onLongPress: () => state.setEditMode(self),
-        child: imageThumbnail(self),
+        onTap: () => state.widget.pushPart(image, image.name),
+        onLongPress: () => state.setEditMode(part),
+        child: imageThumbnail(image),
       );
     }
   }
 
-  Image imageThumbnail(AbstractImage image) {
-    return Image.network(
+  /// The thumbnail of the given image, filling the tile box.
+  ///
+  /// The server bakes the orientation of the image file into the thumbnail it
+  /// serves. An orientation changed in the tile editor is therefore applied
+  /// here as the delta to the orientation the tile was laid out with, and the
+  /// re-oriented image is scaled down into the tile box it already occupies,
+  /// so that rotating does not reflow the album.
+  Widget imageThumbnail(ImagePart image) {
+    Widget result = Image.network(
       state.client.thumbnailUrl("${state.albumUrl}${image.thumbnailName}"),
       width: width,
       height: height,
       fit: BoxFit.contain,
     );
+
+    var delta = OrientationOps.delta(
+      state.layoutOrientation(image),
+      image.orientation,
+    );
+    if (delta == PlaneTransform.identity) {
+      return result;
+    }
+
+    if (delta.mirrored) {
+      result = Transform.scale(scaleX: -1, scaleY: 1, child: result);
+    }
+    // [PlaneTransform.quarterTurns] counts counter-clockwise, [RotatedBox]
+    // clockwise.
+    var clockwise = (4 - delta.quarterTurns % 4) % 4;
+    if (clockwise != 0) {
+      result = RotatedBox(quarterTurns: clockwise, child: result);
+    }
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: FittedBox(fit: BoxFit.contain, child: result),
+    );
   }
 }
 
+/// The tile of an image in the album edit mode: selection and the three
+/// overlay toolbars.
 class ThumbnailEditor extends StatefulWidget {
   final AlbumContentState state;
   final ImageWidgetBuilder builder;
-  final AbstractImage image;
 
-  const ThumbnailEditor(this.state, this.builder, this.image, {super.key});
+  /// The image shown, the representative if [part] is an [ImageGroup].
+  final ImagePart image;
+
+  /// The album part this tile stands for.
+  final AlbumPart part;
+
+  const ThumbnailEditor(
+    this.state,
+    this.builder,
+    this.image,
+    this.part, {
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => ThumbnailEditorState();
 }
 
 class ThumbnailEditorState extends State<ThumbnailEditor> {
-  SelectionState _selected = SelectionState.none;
   bool _hovered = false;
 
-  bool get selected => _selected != SelectionState.none;
-  bool get multiSelected => _selected == SelectionState.multiple;
+  AlbumContentState get album => widget.state;
+  ImagePart get image => widget.image;
+  AlbumPart get part => widget.part;
 
+  bool get selected => album.isSelected(part);
+  bool get multiSelected => selected && album.hasMultiSelection;
+
+  /// Whether the tile shows its toolbars.
   bool get active => selected || _hovered;
-
-  void updateSelectionState(SelectionState value) =>
-      setState(() => _selected = value);
-
-  @override
-  void initState() {
-    super.initState();
-
-    if (widget.state.selectionRequest == widget.image) {
-      _selected = SelectionState.single;
-      widget.state.selection.add(this);
-      widget.state.selectionRequest = null;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
+    var width = widget.builder.width;
+    var height = widget.builder.height;
+
     return MouseRegion(
       hitTestBehavior: HitTestBehavior.translucent,
       opaque: false,
       onEnter: (event) => setState(() => _hovered = true),
       onExit: (event) => setState(() => _hovered = false),
-      child: thumbnailView(),
-    );
-  }
-
-  Widget thumbnailView() {
-    if (active) {
-      return Stack(
-        children: [
-          selected
-              ? widget.builder.imageThumbnail(widget.image)
-              : onClickImage(),
-          if (multiSelected)
-            SizedBox(
-              width: widget.builder.width,
-              height: widget.builder.height,
-              child: Center(
-                child: CircleAvatar(
-                  radius: 20,
-                  backgroundColor: Colors.blueAccent,
-                  child: IconButton(
-                    color: Colors.white,
-                    icon: const Icon(Icons.join_left),
-                    onPressed: createGroup,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => album.handleTap(part),
+                onLongPress: () => album.toggleSelection(part),
+                child: widget.builder.imageThumbnail(image),
+              ),
+            ),
+            if (selected)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.blueAccent, width: 3),
+                    ),
                   ),
                 ),
               ),
-            ),
-          Positioned(
-            top: 4,
-            left: 4,
-            child: Checkbox(
-              value: selected,
-              onChanged: (value) => setSelected(value ?? false),
-            ),
-          ),
-        ],
-      );
-    } else {
-      return onClickImage();
-    }
-  }
-
-  void createGroup() {}
-
-  GestureDetector onClickImage() {
-    return GestureDetector(
-      onTap: select,
-      onLongPress: addToSelection,
-      child: widget.builder.imageThumbnail(widget.image),
+            if (active) Positioned(top: 0, left: 0, right: 0, child: topBar()),
+            if (active) Positioned.fill(child: Center(child: centerBar())),
+            if (active)
+              Positioned(bottom: 0, left: 0, right: 0, child: bottomBar()),
+          ],
+        ),
+      ),
     );
   }
 
-  void setSelected(bool value) {
-    if (value && !selected) {
-      addToSelection();
-    } else if (selected && !value) {
-      removeFromSelection();
+  /// The rotation tools, next to the selection mark.
+  Widget topBar() => toolbar([
+        toolButton(
+          selected ? Icons.check_box : Icons.check_box_outline_blank,
+          "Auswählen",
+          () => album.toggleSelection(part),
+          active: selected,
+        ),
+        toolButton(Icons.rotate_right, "Nach rechts drehen", rotateRight),
+        toolButton(Icons.swap_vert, "Vertikal spiegeln", flipVertically),
+        toolButton(Icons.rotate_left, "Nach links drehen", rotateLeft),
+      ]);
+
+  /// The tools acting on the selection.
+  Widget? centerBar() {
+    if (!selected) {
+      return null;
     }
+    return toolbar([
+      if (multiSelected)
+        toolButton(Icons.join_left, "Gruppieren", createGroup)
+      else
+        toolButton(Icons.title, "Überschrift einfügen", createHeading),
+      toolButton(Icons.notes, "Bildeigenschaften", editImageProperties),
+    ]);
   }
 
-  void addToSelection() {
-    widget.state.addToSelection(this);
+  /// The rating chooser.
+  Widget bottomBar() => toolbar([
+        ratingButton(Icons.star, "Sehr gut", 2),
+        ratingButton(Icons.add, "Gut", 1),
+        ratingButton(Icons.remove, "Schlecht", -1),
+        ratingButton(Icons.delete, "Papierkorb", -2),
+      ]);
+
+  Widget ratingButton(IconData icon, String tooltip, int value) => toolButton(
+        icon,
+        tooltip,
+        () => setRating(value),
+        active: isActiveRating(image.rating, value),
+      );
+
+  Widget toolbar(List<Widget> buttons) => FittedBox(
+        fit: BoxFit.scaleDown,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: buttons),
+        ),
+      );
+
+  Widget toolButton(
+    IconData icon,
+    String tooltip,
+    VoidCallback onPressed, {
+    bool active = false,
+  }) =>
+      IconButton(
+        icon: Icon(icon),
+        iconSize: 18,
+        color: active ? Colors.amberAccent : Colors.white,
+        tooltip: tooltip,
+        padding: const EdgeInsets.all(4),
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        onPressed: onPressed,
+      );
+
+  void rotateLeft() =>
+      album.editImage(() => image.orientation = OrientationOps.rotL(
+            image.orientation,
+          ));
+
+  void rotateRight() =>
+      album.editImage(() => image.orientation = OrientationOps.rotR(
+            image.orientation,
+          ));
+
+  void flipVertically() =>
+      album.editImage(() => image.orientation = OrientationOps.flipV(
+            image.orientation,
+          ));
+
+  void setRating(int value) => album.editImage(
+        () => image.rating = toggleRating(image.rating, value),
+      );
+
+  /// Grouping the selected images is issue #19; the button says so.
+  void createGroup() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Gruppieren kommt in #19"),
+        duration: Duration(seconds: 4),
+      ),
+    );
   }
 
-  void removeFromSelection() {
-    widget.state.removeFromSelection(this);
+  /// Inserts a heading before this tile's part.
+  Future<void> createHeading() async {
+    var text = await showDialog<String>(
+      context: context,
+      builder: (context) => const TextInputDialog(
+        title: "Überschrift einfügen",
+        label: "Überschrift",
+        text: "",
+      ),
+    );
+    if (text == null || !mounted) {
+      return;
+    }
+    album.editImage(() => insertHeadingBefore(album.widget.album, part, text));
   }
 
-  void select() {
-    widget.state.setSelection(this);
+  /// Edits the comment of the image shown by this tile.
+  Future<void> editImageProperties() async {
+    var text = await showDialog<String>(
+      context: context,
+      builder: (context) => TextInputDialog(
+        title: "Bildeigenschaften",
+        label: "Kommentar",
+        text: image.comment,
+        multiLine: true,
+      ),
+    );
+    if (text == null || !mounted) {
+      return;
+    }
+    album.editImage(() => image.comment = text);
+  }
+}
+
+/// A dialog editing a single text, used for headings and image comments.
+class TextInputDialog extends StatefulWidget {
+  final String title;
+  final String label;
+  final String text;
+  final bool multiLine;
+
+  const TextInputDialog({
+    super.key,
+    required this.title,
+    required this.label,
+    required this.text,
+    this.multiLine = false,
+  });
+
+  @override
+  State<StatefulWidget> createState() => TextInputDialogState();
+}
+
+class TextInputDialogState extends State<TextInputDialog> {
+  late final TextEditingController controller =
+      TextEditingController(text: widget.text);
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DefaultTextStyle(
+              style: DialogTheme.of(context).titleTextStyle ??
+                  Theme.of(context).textTheme.titleLarge!,
+              child: Semantics(
+                namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
+                container: true,
+                child: Text(widget.title),
+              ),
+            ),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              minLines: widget.multiLine ? 3 : 1,
+              maxLines: widget.multiLine ? 8 : 1,
+              decoration: InputDecoration(label: Text(widget.label)),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text("Abbrechen"),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.check),
+                      label: const Text("Übernehmen"),
+                      onPressed: () =>
+                          Navigator.of(context).pop(controller.text),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
