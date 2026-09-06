@@ -261,7 +261,12 @@ List<AbstractImage> imageRange(
 /// The "alternatives" view of an [ImageGroup] shows all of its images, no
 /// matter how they are rated — the retired GWT `GroupDisplay` inherited
 /// `getMinRating() == Integer.MIN_VALUE` for the same reason.
-const int noMinRating = -1 << 31;
+///
+/// Spelled out as a literal on purpose: `-1 << 31` is this value on the VM,
+/// but dart2js masks a shift to an unsigned 32-bit result, so in the browser
+/// it came out as `2147483648` — a threshold no image reaches, which took the
+/// previous/next images away from the detail view of a group.
+const int noMinRating = -2147483648;
 
 /// Groups the selected parts of the album into one [ImageGroup].
 ///

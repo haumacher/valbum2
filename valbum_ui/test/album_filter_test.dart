@@ -58,6 +58,14 @@ Future<void> showLess(WidgetTester tester) async {
 
 void main() {
   group('the rating filter helpers', () {
+    test('let every rating through the alternatives view', () {
+      // Once `-1 << 31`, which dart2js turns into a positive number.
+      expect(noMinRating, lessThan(0));
+      for (var rating = -2; rating <= 2; rating++) {
+        expect(isVisiblePart(ImagePart(rating: rating), noMinRating), isTrue);
+      }
+    });
+
     test('walk between the GWT bounds', () {
       // `+`: `if (minRating > -1) minRating--`, `-`: `if (minRating < 2)
       // minRating++` of the retired GWT AlbumDisplay.
