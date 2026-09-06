@@ -144,7 +144,7 @@ void main() {
     expect(up, findsOneWidget);
     await settle(tester, () => tester.tap(up));
     expect(find.text("Test-album"), findsOneWidget);
-    expect(find.byTooltip("Home"), findsOneWidget);
+    expect(find.byTooltip("Home"), findsNothing, reason: "this is the home");
   });
 
   testWidgets(

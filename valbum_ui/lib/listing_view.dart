@@ -100,16 +100,21 @@ class ListingView extends StatelessWidget {
   Widget build(BuildContext context) {
     var self = listing;
     return Scaffold(
+      // Black like the album pages, so that the way down does not flash from
+      // a light page to a dark one, see issue #40.
+      backgroundColor: Colors.black,
       appBar: AppBar(
         title: Text(self.title),
         actions: <Widget>[
           // Unobtrusive while a camera-roll sync runs, nothing otherwise.
           const CameraRollIndicator(),
-          IconButton(
-            icon: const Icon(Icons.home),
-            tooltip: 'Home',
-            onPressed: albumState.showRoot,
-          ),
+          // No home on the home screen, see issue #40.
+          if (albumState.path.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.home),
+              tooltip: 'Home',
+              onPressed: albumState.showRoot,
+            ),
           if (albumState.path.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.arrow_back),
@@ -186,13 +191,19 @@ class ListingView extends StatelessWidget {
                   ),
                   Text(
                     folder.title,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   if (folder.subTitle.isNotEmpty)
                     Text(
                       folder.subTitle,
-                      style: const TextStyle(fontSize: 12),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white70,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                 ],

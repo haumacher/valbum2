@@ -353,8 +353,8 @@ class AlbumContentState extends State<AlbumContent> {
   /// edit mode and of an empty album, and floating over the photos otherwise,
   /// see [contentView]. An album without them is a dead end — the browser
   /// back button aside, there was no way back to the index, see issue #35.
-  /// There is no home button: the index is one or more steps up, and the
-  /// listing offers the home from there.
+  /// There is no home button: the index is one or more steps up, and a
+  /// listing below the root offers the home from there.
   List<Widget> navigationActions(BuildContext context) => [
         ...wayUp(),
         ...albumMenu(context),

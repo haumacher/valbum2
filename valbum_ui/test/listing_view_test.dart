@@ -181,12 +181,26 @@ void main() {
       expect(title.style!.fontWeight, FontWeight.bold);
     });
 
-    testWidgets('offers home but no up action at the root', (tester) async {
+    testWidgets('offers neither home nor up at the root', (tester) async {
       var client = clientReturning(fixture("listing.json"));
       await pumpListing(tester, client);
 
-      expect(find.byIcon(Icons.home), findsOneWidget);
+      // The home screen needs no home button, see issue #40.
+      expect(find.byIcon(Icons.home), findsNothing);
       expect(find.byIcon(Icons.arrow_back), findsNothing);
+    });
+
+    testWidgets('is black with light captions, like the album pages',
+        (tester) async {
+      var client = clientReturning(fixture("listing.json"));
+      await pumpListing(tester, client);
+
+      var scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+      expect(scaffold.backgroundColor, Colors.black);
+      var title = tester.widget<Text>(find.text("Schlosspark Karlsruhe"));
+      expect(title.style?.color, Colors.white);
+      var subTitle = tester.widget<Text>(find.text("March 3, 2002"));
+      expect(subTitle.style?.color, Colors.white70);
     });
 
     testWidgets('offers home and up below the root', (tester) async {
