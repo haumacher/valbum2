@@ -116,22 +116,70 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
   *(Done: network first, cache only when the server cannot be reached; a bounded LRU file cache off
   the web; an offline banner with the copy's stamp; one visible refusal for changes while offline.)*
 
-## Phase 3 — The server grows up
+## Phase 3 — Users, groups and sharing: one library for a family
+
+*Issues #45 (users and sign-in, gates the rest), #46 (privacy levels), #47 (move images and albums),
+#48 (album date and placement rules), #49 (groups and grants), #50 (link entries), #51 (share
+links), #52 (invitations and guests), #53 (uploader attribution), #54 (per-user inbox), #55
+(management screens). Filed 2026-09-06.*
+
+Goal: a family shares one server. Each member takes their own photos, files them in private albums
+or adds them to the shared album of a joint event, and sees everything they may see in one tree
+arranged the way they like. Guests without albums of their own contribute photos to an event they
+were part of. A share link opens an album to anyone, within the limits the author sets.
+
+The model, decided 2026-09-06 (issue bodies carry the design notes):
+
+- **A user is the principal; devices belong to users.** Signing in on a device issues the device
+  token exactly as pairing does today. The first user is the admin; everyone else comes in through
+  an invitation. There is no open self-registration — a hosting platform with open sign-up is a
+  different product and stays one flag away.
+- **Exactly one space per user.** Every member owns exactly one top-level folder under the base
+  folder, and that folder is their root. Nothing else exists from their point of view. Turning an
+  existing single-user library into a space is one explicit, rename-only migration, never a
+  silent start-up step.
+- **Sharing is one mechanism: the grant.** A grant says who (a user, a named group, a share-link
+  token, or the anonymous caller) may do what (view, download, contribute, edit) on which subtree.
+  Rights are enforced on every endpoint; a path is not a permission.
+- **A shared album appears in the recipient's own tree** as a link entry pointing at the owner's
+  folder, placed where the recipient wants it. Access is checked against the grant on the target,
+  never against the link. While browsing, the URL is the viewer's path; share links use the
+  owner's path; the server resolves both.
+- **Albums get a date and folders get a placement rule.** The date comes from the sidecar, else
+  the folder name, else the earliest image. A folder rule ("by year") places whatever lands in it —
+  a created album, a shared album's link, a moved album — into the year folder, so nobody files a
+  shared album by hand. The rule places, it does not police.
+- **The privacy level becomes effective.** Public, members, private — enforced on listings and on
+  the image endpoints, editable on the tile, and the limit a share link is cut to.
+- **Moving is a rename.** Images and albums move between folders by renaming files; pixel content
+  is never touched. The inbox of the camera-roll sync is an album in the own space, emptied by
+  moving; guests have no space and no sync.
+
+## Phase 4 — The server grows up
 
 - Sync API: "changes since" per folder using modification stamps so the app refreshes cheaply.
 - Preview pipeline: multiple thumbnail sizes, WebP, video poster frames and a streamable preview
   rendition; previews generated ahead of time, never on the request path for large albums.
 - Metadata: EXIF date/GPS extraction into the protocol; a date timeline and a map view in the app.
-- Sharing: per-album share links with an expiry, respecting the image privacy level.
-- Multi-library and multi-user, once authentication exists.
+- Multi-library: several base folders served by one server.
 
-## Phase 4 — Distribution
+## Phase 5 — Distribution
 
 - Docker image and a Raspberry Pi install recipe for the server.
 - Store builds for Android and iOS; desktop bundles.
 - Release automation from tags.
 
 ## Decisions log
+
+- **2026-09-06 (evening)** — Phase 3 is redefined as *users, groups and sharing* (issues #45–#55);
+  the former Phase 3 (sync API, previews, metadata) becomes Phase 4 and distribution Phase 5. The
+  brainstorm settled three alternatives: one space per user with sharing to named groups beats
+  several spaces per user (a member wants one tree they arrange themselves, not spaces to
+  remember); shared albums are link entries in the recipient's tree placed by a date-based folder
+  rule, not links to the owner's year folders (those would leak private albums or never merge
+  with the recipient's own years); photos move between albums by file rename, not by albums that
+  reference images elsewhere (which would break "the folder tree is the truth"). Invitation-only,
+  no open registration.
 
 - **2026-09-06 (later still)** — A double-height row section reads **row-wise**: its upper row shows
   a prefix of the section's images in stored order, its lower row the remaining suffix, and the
