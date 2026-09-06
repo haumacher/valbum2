@@ -138,9 +138,9 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// current client.
   ///
   /// It uses the *current* client (a function, not a value): pointing the app
-  /// at another server or pairing this device swaps the client, and the next
-  /// run must go to the new one. Nothing runs until the stored configuration
-  /// says the user switched the sync on.
+  /// at another server or signing in on this device swaps the client, and
+  /// the next run must go to the new one. Nothing runs until the stored
+  /// configuration says the user switched the sync on.
   late final CameraRollSync cameraRoll = CameraRollSync(
     store: settings.store,
     library: photoLibrary,
@@ -258,7 +258,7 @@ class VAlbumAppState extends State<VAlbumApp> {
 
   /// Builds a client for the given data URL over this app's transport.
   ///
-  /// The client carries the token this device is paired with the server as, so
+  /// The client carries the token this device is signed in with, so
   /// that every request of the app identifies itself, see [ServerSettings].
   VAlbumClient clientFor(String dataUrl) => VAlbumClient(
         dataUrl: dataUrl,
@@ -333,7 +333,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     // re-runs the load of the current route.
     _router?.client = next;
     // A server or token that changed is a reason to sync again: what the
-    // previous server refused, the new one (or the pairing) may accept.
+    // previous server refused, the new one (or the sign-in) may accept.
     if (cameraRoll.loaded && cameraRoll.config.enabled) {
       cameraRoll.trigger();
     }
@@ -752,14 +752,14 @@ class VAlbumState extends State<VAlbumView>
 
   /// The view of a load that failed, naming the server's own reason.
   ///
-  /// A server refusing an unpaired device answers with the reason it refuses;
-  /// that reason names a remedy the user reaches from here, so the view offers
-  /// the way to the server settings alongside the retry. A refusal *because*
-  /// this device is not paired (401) is not an error of the app at all, so it
-  /// gets a page of its own, see [buildPairingRequired].
+  /// A server refusing a device that is not signed in answers with the reason
+  /// it refuses; that reason names a remedy the user reaches from here, so the
+  /// view offers the way to the server settings alongside the retry. A refusal
+  /// *because* nobody is signed in (401) is not an error of the app at all, so
+  /// it gets a page of its own, see [buildSignInRequired].
   Widget buildError(Object? error) {
     if (error is VAlbumException && error.status == 401) {
-      return buildPairingRequired(error);
+      return buildSignInRequired(error);
     }
     return Scaffold(
       appBar: AppBar(title: const Text("Virtual photo album")),
@@ -791,16 +791,19 @@ class VAlbumState extends State<VAlbumView>
     );
   }
 
-  /// The view of a server that refuses this device because it is not paired.
+  /// The view of a server that refuses this device because nobody is signed
+  /// in on it.
   ///
-  /// The server says so with a 401 and its own message; the remedy is one
-  /// button away — the pairing lives in the server settings, see
-  /// [ServerSettingsScreen]. Reaching this page is a normal first contact with
-  /// a server started with `--auth all`, not a failure of the app, so it says
-  /// what to do instead of quoting an error.
-  Widget buildPairingRequired(VAlbumException refusal) {
+  /// The server says so with a 401 and its own message — which names the way
+  /// in, be it the sign-in or a share link; the remedy is one button away, the
+  /// sign-in lives in the server settings, see [ServerSettingsScreen].
+  /// Reaching this page is a normal first contact with a server started with
+  /// `--auth all`, or with a library that has been migrated to its users (see
+  /// issue #45), not a failure of the app, so it says what to do instead of
+  /// quoting an error.
+  Widget buildSignInRequired(VAlbumException refusal) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Pairing required")),
+      appBar: AppBar(title: const Text("Sign-in required")),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
@@ -812,7 +815,7 @@ class VAlbumState extends State<VAlbumView>
                 const Icon(Icons.lock_outline, size: 48),
                 const SizedBox(height: 16),
                 Text(
-                  "Pairing required",
+                  "Sign-in required",
                   style: Theme.of(context).textTheme.headlineSmall,
                   textAlign: TextAlign.center,
                 ),
@@ -820,8 +823,9 @@ class VAlbumState extends State<VAlbumView>
                 Text(refusal.message, textAlign: TextAlign.center),
                 const SizedBox(height: 8),
                 const Text(
-                  "Pair this device with the server: enter the pairing secret "
-                  "the server printed at start-up in the server settings.",
+                  "Sign in on this device: the server settings ask for your "
+                  "user name and the pairing secret the server printed at "
+                  "start-up.",
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),

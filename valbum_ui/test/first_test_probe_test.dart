@@ -102,7 +102,7 @@ void main() {
 
     // The refusal is a pairing page, not a "Loading failed" with a stack of
     // HTML; the server's own words are on it.
-    expect(find.text("Pairing required"), findsWidgets);
+    expect(find.text("Sign-in required"), findsWidgets);
     expect(find.text("This server requires a paired device."), findsOneWidget);
     expect(find.textContaining("FormatException"), findsNothing);
     expect(find.textContaining("Loading failed"), findsNothing);
@@ -111,9 +111,9 @@ void main() {
     await settle(tester, () => tester.tap(find.text("Server settings...")));
     await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
     await settle(tester, () async {
-      await tester.ensureVisible(find.text("Pair this device"));
+      await tester.ensureVisible(find.widgetWithText(FilledButton, "Sign in"));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("Pair this device"));
+      await tester.tap(find.widgetWithText(FilledButton, "Sign in"));
     });
     expect(store.token, "tok-all");
 

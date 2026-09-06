@@ -70,14 +70,16 @@ Options:
 | `--pairing-secret <secret>` | The secret a device presents to be paired; a random one is printed at start-up if none is given | generated |
 | `--migrate-to-user <name>` | One-time: move the albums at the base folder into a folder `<name>` and make it the library owner's space (see below); the server does not start afterwards | none |
 
-### Pairing a device
+### Signing in a device
 
 With `--auth writes` (the default) the server serves every read but refuses an anonymous change or
 upload with `401` and a message the app shows. To let a device change something, open the app's
-server settings, enter the pairing secret the server printed at start-up ("Pairing secret: ...")
-and press "Pair this device": the server issues a token, the app stores it beside the server URL
-and sends it on every request from then on. `--auth all` refuses anonymous reads as well; `--auth
-off` is the old behaviour, open to everyone who can reach the server.
+server settings and sign in: enter a user name, the pairing secret the server printed at start-up
+("Pairing secret: ...") and a device name, then press "Sign in". The server issues a token for
+this device, the app stores it beside the server URL and sends it on every request from then on;
+the settings show who the device is signed in as (user, role, device, space). "Sign out" forgets
+the token. `--auth all` refuses anonymous reads as well; `--auth off` is the old behaviour, open to
+everyone who can reach the server.
 
 ### Users and spaces
 

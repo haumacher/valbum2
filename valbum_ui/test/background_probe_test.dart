@@ -167,7 +167,9 @@ void main() {
 
     await tester.dragUntilVisible(
       find.byKey(cameraRollBackgroundKey, skipOffstage: false),
-      find.byType(SingleChildScrollView).first,
+      // The screen's own list: the sections below the fold are not built
+      // until it is scrolled, so nothing further down can be dragged on.
+      find.byType(ListView).first,
       const Offset(0, -200),
     );
     await withFakeImageHttp(() => tester.pumpAndSettle());

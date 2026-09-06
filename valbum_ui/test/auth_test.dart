@@ -1,5 +1,5 @@
 /// Tests of the per-device token authentication (issue #28): the bearer header
-/// the client sends, the reason a refusal carries into the app, the pairing
+/// the client sends, the reason a refusal carries into the app, the sign-in
 /// section of the server settings and the way a refused save or a refused root
 /// load reaches the user.
 library;
@@ -49,7 +49,7 @@ Future<void> pumpSettings(
   ServerSettings settings,
   http.Client transport,
 ) async {
-  // The screen scrolls; a tall surface builds the pairing section as well.
+  // The screen scrolls; a tall surface builds the sign-in section as well.
   await tester.binding.setSurfaceSize(const Size(800, 2000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
@@ -63,6 +63,12 @@ Future<void> pumpSettings(
   );
   await tester.pumpAndSettle();
 }
+
+/// The "Sign in" button of the settings screen.
+///
+/// The section is titled "Sign in" as well, so the button is addressed by its
+/// widget, not by the text alone.
+final Finder signInButton = find.widgetWithText(FilledButton, "Sign in");
 
 /// Scrolls the widget into view and taps it.
 Future<void> tapVisible(WidgetTester tester, Finder finder) async {
@@ -186,12 +192,13 @@ void main() {
   });
 
   group('pair and authInfo', () {
-    test('pairing posts the secret and returns the token', () async {
+    test('signing in posts the secret and the user, and returns the token',
+        () async {
       var requests = <http.BaseRequest>[];
       var response = await recording(
         requests,
         (_) => http.Response('{"token":"abc","deviceName":"Phone"}', 200),
-      ).pair("s3cret", "Phone");
+      ).pair("s3cret", "Phone", userName: "haui");
 
       expect(response.token, "abc");
       expect(response.deviceName, "Phone");
@@ -201,7 +208,10 @@ void main() {
         "http://server/valbum/data/?action=pair",
       );
       expect(request.method, "POST");
-      expect(request.body, '{"secret":"s3cret","deviceName":"Phone","userName":""}');
+      expect(
+        request.body,
+        '{"secret":"s3cret","deviceName":"Phone","userName":"haui"}',
+      );
     });
 
     test('a wrong secret carries the server message', () {
@@ -243,9 +253,9 @@ void main() {
       var settings = ServerSettings(store: store);
       await settings.load();
 
-      expect(settings.paired, isFalse);
+      expect(settings.signedIn, isFalse);
 
-      await settings.pairedAs("tok", "Phone");
+      await settings.signedInAs("tok", "Phone");
       expect(store.token, "tok");
       expect(store.deviceName, "Phone");
 
@@ -253,7 +263,7 @@ void main() {
       await reloaded.load();
       expect(reloaded.token, "tok");
       expect(reloaded.deviceName, "Phone");
-      expect(reloaded.paired, isTrue);
+      expect(reloaded.signedIn, isTrue);
     });
 
     test('a URL stored before issue #28 loads without a token', () async {
@@ -264,14 +274,14 @@ void main() {
 
       expect(settings.serverUrl, "http://nas.local:8080/valbum/");
       expect(settings.token, isNull);
-      expect(settings.paired, isFalse);
+      expect(settings.signedIn, isFalse);
     });
 
     test('another server forgets the token, the same one keeps it', () async {
       var store = InMemorySettingsStore("http://a/valbum/");
       var settings = ServerSettings(store: store);
       await settings.load();
-      await settings.pairedAs("tok", "Phone");
+      await settings.signedInAs("tok", "Phone");
 
       await settings.save("http://a/valbum/");
       expect(settings.token, "tok", reason: "the same server keeps its token");
@@ -292,7 +302,7 @@ void main() {
         platformDefault: () => "http://a/valbum/data",
       );
       await settings.load();
-      await settings.pairedAs("tok", "Phone");
+      await settings.signedInAs("tok", "Phone");
 
       await settings.save("http://a/valbum/");
       expect(settings.token, "tok", reason: "the same server, first stored");
@@ -318,7 +328,7 @@ void main() {
         platformDefault: () => "http://a/valbum/data",
       );
       await settings.load();
-      await settings.pairedAs("tok", "Phone");
+      await settings.signedInAs("tok", "Phone");
 
       await settings.reset();
 
@@ -331,7 +341,7 @@ void main() {
       var store = InMemorySettingsStore("http://a/valbum/");
       var settings = ServerSettings(store: store);
       await settings.load();
-      await settings.pairedAs("tok", "Phone");
+      await settings.signedInAs("tok", "Phone");
 
       await settings.reset();
 
@@ -341,8 +351,8 @@ void main() {
     });
   });
 
-  group('the pairing section of the settings screen', () {
-    testWidgets('pairs the device and shows it', (tester) async {
+  group('the sign-in section of the settings screen', () {
+    testWidgets('signs the device in and shows it', (tester) async {
       var store = InMemorySettingsStore("http://server/valbum/");
       var settings = ServerSettings(store: store);
       await settings.load();
@@ -360,16 +370,17 @@ void main() {
         }),
       );
 
-      expect(find.text("Not paired"), findsOneWidget);
+      expect(find.text("Not signed in"), findsOneWidget);
 
       await tester.enterText(find.byKey(deviceNameFieldKey), "Kamera");
       await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
       await tester.pumpAndSettle();
-      await tapVisible(tester, find.text("Pair this device"));
+      await tapVisible(tester, signInButton);
 
       expect(store.token, "tok-42");
       expect(store.deviceName, "Kamera");
-      expect(find.text("Paired as Kamera"), findsWidgets);
+      expect(find.text("Signed in as the library owner"), findsOneWidget);
+      expect(find.text("Device: Kamera"), findsOneWidget);
       expect(
         (requests.single as http.Request).body,
         '{"secret":"demo","deviceName":"Kamera","userName":""}',
@@ -399,14 +410,14 @@ void main() {
 
       await tester.enterText(find.byKey(pairingSecretFieldKey), "guess");
       await tester.pumpAndSettle();
-      await tapVisible(tester, find.text("Pair this device"));
+      await tapVisible(tester, signInButton);
 
       expect(find.text("Wrong pairing secret."), findsOneWidget);
       expect(store.token, isNull);
-      expect(find.text("Not paired"), findsOneWidget);
+      expect(find.text("Not signed in"), findsOneWidget);
     });
 
-    testWidgets('unpair forgets the token', (tester) async {
+    testWidgets('signing out forgets the token', (tester) async {
       var store =
           InMemorySettingsStore("http://server/valbum/", "tok", "Phone");
       var settings = ServerSettings(store: store);
@@ -418,16 +429,16 @@ void main() {
         MockClient((_) async => http.Response("", 200)),
       );
 
-      expect(find.text("Paired as Phone"), findsOneWidget);
+      expect(find.text("Device: Phone"), findsOneWidget);
 
-      await tapVisible(tester, find.text("Unpair"));
+      await tapVisible(tester, find.text("Sign out"));
 
       expect(store.token, isNull);
-      expect(settings.paired, isFalse);
-      expect(find.text("Not paired"), findsOneWidget);
+      expect(settings.signedIn, isFalse);
+      expect(find.text("Not signed in"), findsOneWidget);
     });
 
-    testWidgets('the connection test reports the pairing status',
+    testWidgets('the connection test reports the sign-in status',
         (tester) async {
       var settings = ServerSettings(
         store: InMemorySettingsStore("http://server/valbum/", "tok", "Phone"),
@@ -452,10 +463,13 @@ void main() {
       await tapVisible(tester, find.text("Test connection"));
 
       expect(find.text("Test-album"), findsOneWidget);
-      expect(find.text("Paired as Phone"), findsWidgets);
+      expect(
+        find.text("Signed in as the library owner on Phone"),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('the connection test says when pairing is missing',
+    testWidgets('the connection test says when the sign-in is missing',
         (tester) async {
       var settings = ServerSettings(
         store: InMemorySettingsStore("http://server/valbum/"),
@@ -479,7 +493,7 @@ void main() {
       await tapVisible(tester, find.text("Test connection"));
 
       expect(
-        find.text("Not paired - changes need pairing"),
+        find.text("Not signed in - changes need a sign-in"),
         findsOneWidget,
       );
     });
@@ -536,7 +550,7 @@ void main() {
       expect(find.byKey(serverUrlFieldKey), findsOneWidget);
     });
 
-    testWidgets('a 401 on the root load is a pairing page, not an error',
+    testWidgets('a 401 on the root load is a sign-in page, not an error',
         (tester) async {
       var client = clientReturning(
         refusal("This server requires a paired device."),
@@ -550,7 +564,7 @@ void main() {
 
       // The page says what is missing and what to do, in the server's own
       // words, and never quotes a failure of the app, see issue #35.
-      expect(find.text("Pairing required"), findsWidgets);
+      expect(find.text("Sign-in required"), findsWidgets);
       expect(
         find.textContaining("This server requires a paired device."),
         findsOneWidget,

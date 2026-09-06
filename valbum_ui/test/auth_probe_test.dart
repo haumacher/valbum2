@@ -53,9 +53,9 @@ void main() {
     await settle(tester, () => tester.tap(find.text("Server...")));
     await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
     await settle(tester, () async {
-      await tester.ensureVisible(find.text("Pair this device"));
+      await tester.ensureVisible(find.widgetWithText(FilledButton, "Sign in"));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("Pair this device"));
+      await tester.tap(find.widgetWithText(FilledButton, "Sign in"));
     });
     expect(store.token, "tok-server");
 
@@ -82,9 +82,9 @@ void main() {
     await settle(tester, () => tester.tap(find.text("Server...")));
     await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
     await settle(tester, () async {
-      await tester.ensureVisible(find.text("Pair this device"));
+      await tester.ensureVisible(find.widgetWithText(FilledButton, "Sign in"));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("Pair this device"));
+      await tester.tap(find.widgetWithText(FilledButton, "Sign in"));
     });
     expect(store.token, "tok-other");
     await settle(tester, () async {

@@ -590,14 +590,29 @@ class VAlbumClient {
     );
   }
 
-  /// Pairs this device with the server, returning the token it issued.
+  /// Signs in on this device, returning the token the server issued.
   ///
   /// The token is what makes the app a known caller; store it with the server
   /// settings and hand it to [withToken]. Throws a [VAlbumException] carrying
-  /// the server's reason when the secret is wrong.
-  Future<PairResponse> pair(String secret, String deviceName) async {
+  /// the server's reason when the secret is wrong or the name is not the one
+  /// the server holds.
+  ///
+  /// [userName] names the user signing in and is empty for "the library
+  /// owner": the pairing secret signs the owner in, and the first sign-in that
+  /// carries a name gives the owner that name (issue #45). The wire action is
+  /// still the pairing request of issue #28, so an older server simply ignores
+  /// the name.
+  Future<PairResponse> pair(
+    String secret,
+    String deviceName, {
+    String userName = "",
+  }) async {
     var url = "${folderUrl(const [])}?action=pair";
-    var request = PairRequest(secret: secret, deviceName: deviceName);
+    var request = PairRequest(
+      secret: secret,
+      deviceName: deviceName,
+      userName: userName,
+    );
     var body = StringBuffer();
     request.writeContent(jsonStringWriter(body));
 
@@ -608,15 +623,16 @@ class VAlbumClient {
       headers: const {"Content-Type": "application/json"},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "pairing with '$url'");
+      throw failure(response.statusCode, response.body, "signing in at '$url'");
     }
     return PairResponse.read(JsonReader.fromString(response.body));
   }
 
-  /// What this client is allowed to do on the server, and as which device.
+  /// What this client is allowed to do on the server, and as whom.
   ///
-  /// Answered by every server, paired or not: this is how the app learns that
-  /// it must pair before it can change anything.
+  /// Answered by every server, signed in or not: this is how the app learns
+  /// that it must sign in before it can change anything, and who this device
+  /// is signed in as (issue #45).
   Future<AuthInfo> authInfo() async {
     var url = "${folderUrl(const [])}?type=auth";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);

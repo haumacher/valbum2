@@ -45,6 +45,7 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   of a group are linked among themselves, which is the order the alternatives
   view navigates in) and `thumbnailName`.
 - `lib/client.dart` — `VAlbumClient`, the one place that builds URLs and talks HTTP; injected via
+- `lib/settings.dart` — the server settings: URL, the sign-in (user name, pairing secret, device name) and who this device is signed in as (user, role, device, space); the settings store.
   `VAlbumScope` so tests can pass a `MockClient`.
 - `lib/urls.dart` — derives the server URL from the page origin on the web
   (from the app base, not from the location: the location is the view, see

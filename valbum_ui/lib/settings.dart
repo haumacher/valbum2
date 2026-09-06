@@ -8,9 +8,12 @@
 /// — `http://nas.local:8080/valbum/` — and everything else follows from it,
 /// see [dataUrlOf].
 ///
-/// The device token this app is paired with the server as lives beside the URL
-/// (issue #28): it is issued by the server against a pairing secret, stored
-/// here and sent by [VAlbumClient] on every request.
+/// The device token this app is signed in with lives beside the URL (issue
+/// #28): it is issued by the server against the pairing secret, stored here
+/// and sent by [VAlbumClient] on every request. Since issue #45 the token
+/// belongs to a *user* — the name that user signed in under is stored beside
+/// the token, so the settings can say who this device is even while the
+/// server cannot be reached.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -40,7 +43,7 @@ abstract class SettingsStore {
   /// Forgets the stored server URL, restoring the platform default.
   Future<void> clear();
 
-  /// The token this device is paired with the stored server as, or `null`.
+  /// The token this device is signed in at the stored server with, or `null`.
   ///
   /// A store written before issue #28 holds no token; it loads as `null` and
   /// the app talks to the server anonymously, as it always did.
@@ -49,8 +52,16 @@ abstract class SettingsStore {
   /// The name the stored token was issued to, or `null`.
   Future<String?> loadDeviceName();
 
-  /// Stores the token the server issued and the name it was issued to.
-  Future<void> saveToken(String token, String deviceName);
+  /// The user name the stored token was issued for, or `null`.
+  ///
+  /// A store written before issue #45 holds no user name — the token is still
+  /// good, the app simply does not know whom it belongs to until the server
+  /// says so, see [ServerSettingsScreen].
+  Future<String?> loadUserName();
+
+  /// Stores the token the server issued, the device it was issued to and the
+  /// user it was issued for (empty for "the library owner").
+  Future<void> saveToken(String token, String deviceName, String userName);
 
   /// Forgets the stored token: the app is anonymous again.
   Future<void> clearToken();
@@ -87,6 +98,9 @@ class InMemorySettingsStore extends SettingsStore {
   /// The stored device name, see [SettingsStore.loadDeviceName].
   String? deviceName;
 
+  /// The stored user name, see [SettingsStore.loadUserName].
+  String? userName;
+
   /// The stored camera-roll configuration, see
   /// [SettingsStore.loadCameraRoll].
   String? cameraRoll;
@@ -95,7 +109,12 @@ class InMemorySettingsStore extends SettingsStore {
   /// [SettingsStore.loadBackgroundRun].
   String? backgroundRun;
 
-  InMemorySettingsStore([this.value, this.token, this.deviceName]);
+  InMemorySettingsStore([
+    this.value,
+    this.token,
+    this.deviceName,
+    this.userName,
+  ]);
 
   @override
   Future<String?> load() async => value;
@@ -113,15 +132,21 @@ class InMemorySettingsStore extends SettingsStore {
   Future<String?> loadDeviceName() async => deviceName;
 
   @override
-  Future<void> saveToken(String token, String deviceName) async {
+  Future<String?> loadUserName() async => userName;
+
+  @override
+  Future<void> saveToken(
+      String token, String deviceName, String userName) async {
     this.token = token;
     this.deviceName = deviceName;
+    this.userName = userName;
   }
 
   @override
   Future<void> clearToken() async {
     token = null;
     deviceName = null;
+    userName = null;
   }
 
   @override
@@ -147,6 +172,12 @@ class PreferencesSettingsStore extends SettingsStore {
 
   /// The preferences key the device name is stored under.
   static const String deviceNameKey = "deviceName";
+
+  /// The preferences key the signed-in user name is stored under.
+  ///
+  /// A store written before issue #45 holds nothing there, see
+  /// [SettingsStore.loadUserName].
+  static const String userNameKey = "userName";
 
   /// The preferences key the camera-roll configuration is stored under.
   static const String cameraRollKey = "cameraRoll";
@@ -178,10 +209,16 @@ class PreferencesSettingsStore extends SettingsStore {
       (await SharedPreferences.getInstance()).getString(deviceNameKey);
 
   @override
-  Future<void> saveToken(String token, String deviceName) async {
+  Future<String?> loadUserName() async =>
+      (await SharedPreferences.getInstance()).getString(userNameKey);
+
+  @override
+  Future<void> saveToken(
+      String token, String deviceName, String userName) async {
     var preferences = await SharedPreferences.getInstance();
     await preferences.setString(tokenKey, token);
     await preferences.setString(deviceNameKey, deviceName);
+    await preferences.setString(userNameKey, userName);
   }
 
   @override
@@ -189,6 +226,7 @@ class PreferencesSettingsStore extends SettingsStore {
     var preferences = await SharedPreferences.getInstance();
     await preferences.remove(tokenKey);
     await preferences.remove(deviceNameKey);
+    await preferences.remove(userNameKey);
   }
 
   @override
@@ -229,6 +267,7 @@ class ServerSettings extends ChangeNotifier {
   String? _serverUrl;
   String? _token;
   String? _deviceName;
+  String? _userName;
   bool _loaded = false;
 
   ServerSettings({
@@ -237,11 +276,13 @@ class ServerSettings extends ChangeNotifier {
     String? serverUrl,
     String? token,
     String? deviceName,
+    String? userName,
     bool loaded = false,
   })  : platformDefault = platformDefault ?? _none,
         _serverUrl = serverUrl,
         _token = token,
         _deviceName = deviceName,
+        _userName = userName,
         _loaded = loaded;
 
   static String? _none() => null;
@@ -273,22 +314,31 @@ class ServerSettings extends ChangeNotifier {
   /// Whether a server to talk to is known, see [dataUrl].
   bool get configured => dataUrl != null;
 
-  /// The token this device is paired with the server as, `null` if unpaired.
+  /// The token this device is signed in with, `null` if it is not signed in.
   ///
   /// Every request of the app carries it, see [VAlbumClient.token].
   String? get token => _token;
 
-  /// The name the [token] was issued to, `null` if this device is unpaired.
+  /// The name the [token] was issued to, `null` if this device is signed out.
   String? get deviceName => _deviceName;
 
-  /// Whether this device is paired with the server it talks to.
-  bool get paired => (_token ?? "").isNotEmpty;
+  /// The user the [token] was issued for, `null` where the store does not say.
+  ///
+  /// Empty means "the library owner", the user the pairing secret signs in
+  /// while nobody has given that owner a name. `null` is a store written
+  /// before issue #45 — the token is good, only the name was never stored;
+  /// the server is asked who this device is, see [ServerSettingsScreen].
+  String? get userName => _userName;
+
+  /// Whether this device is signed in at the server it talks to.
+  bool get signedIn => (_token ?? "").isNotEmpty;
 
   /// Reads the stored values; called once before the first client is built.
   Future<void> load() async {
     _serverUrl = await store.load();
     _token = await store.loadToken();
     _deviceName = await store.loadDeviceName();
+    _userName = await store.loadUserName();
     _loaded = true;
     notifyListeners();
   }
@@ -296,13 +346,14 @@ class ServerSettings extends ChangeNotifier {
   /// Stores [serverUrl] and switches the app over to that server.
   ///
   /// A token belongs to the server that issued it: pointing the app at
-  /// *another* server forgets it, naming the same server again keeps it.
+  /// *another* server signs this device out there, naming the same server
+  /// again keeps it.
   ///
   /// What counts is the *server*, not the string: `http://h/valbum`,
   /// `http://h/valbum/` and `http://h/valbum/index.html` are the same server,
   /// and so is the platform default that applies while nothing is stored —
   /// on the web, saving the URL of the server the app was loaded from must not
-  /// throw away the token this device was just paired with, see issue #35.
+  /// throw away the token this device just signed in with, see issue #35.
   Future<void> save(String serverUrl) async {
     var value = serverUrl.trim();
     var before = dataUrl;
@@ -333,18 +384,27 @@ class ServerSettings extends ChangeNotifier {
     }
   }
 
-  /// Remembers the token the server issued for this device, see [pair].
-  Future<void> pairedAs(String token, String deviceName) async {
-    await store.saveToken(token, deviceName);
+  /// Remembers the token the server issued for this device, see
+  /// [VAlbumClient.pair].
+  ///
+  /// [userName] is what the server answered, empty for the library owner while
+  /// that owner has no name.
+  Future<void> signedInAs(
+    String token,
+    String deviceName, {
+    String userName = "",
+  }) async {
+    await store.saveToken(token, deviceName, userName);
     _token = token;
     _deviceName = deviceName;
+    _userName = userName;
     notifyListeners();
   }
 
   /// Forgets the token: the app talks to the server anonymously again.
   ///
   /// The server keeps its entry — only this device forgets how to prove it.
-  Future<void> unpair() async {
+  Future<void> signOut() async {
     await _forgetToken();
     notifyListeners();
   }
@@ -353,6 +413,7 @@ class ServerSettings extends ChangeNotifier {
     await store.clearToken();
     _token = null;
     _deviceName = null;
+    _userName = null;
   }
 }
 
@@ -407,13 +468,13 @@ class ConnectionTestResult {
   /// What to show the user: the title of the root resource, or the reason.
   final String message;
 
-  /// What the server says about this device's pairing, `null` if it says
+  /// What the server says about this device's sign-in, `null` if it says
   /// nothing (a server from before issue #28).
   final String? authStatus;
 
   const ConnectionTestResult(this.ok, this.message, {this.authStatus});
 
-  /// The same result reporting the given pairing status.
+  /// The same result reporting the given sign-in status.
   ConnectionTestResult withAuthStatus(String? status) =>
       ConnectionTestResult(ok, message, authStatus: status);
 }
@@ -424,7 +485,7 @@ class ConnectionTestResult {
 Future<ConnectionTestResult> testServerConnection(VAlbumClient client) async =>
     (await _reachServer(client)).withAuthStatus(await _authStatus(client));
 
-/// What the server says about this client's pairing, `null` if it says
+/// What the server says about this client's sign-in, `null` if it says
 /// nothing at all — a server from before issue #28 does not know the endpoint.
 Future<String?> _authStatus(VAlbumClient client) async {
   AuthInfo info;
@@ -434,13 +495,62 @@ Future<String?> _authStatus(VAlbumClient client) async {
     return null;
   }
   if (info.deviceName.isNotEmpty) {
-    return "Paired as ${info.deviceName}";
+    return "Signed in as ${userDisplayName(info.userName)} "
+        "on ${info.deviceName}";
   }
   return switch (info.mode) {
-    "off" => "Not paired - this server needs no pairing",
-    "all" => "Not paired - this server needs pairing to show anything",
-    _ => "Not paired - changes need pairing",
+    "off" => "Not signed in - this server needs no sign-in",
+    "all" => "Not signed in - this server shows nothing without a sign-in",
+    _ => "Not signed in - changes need a sign-in",
   };
+}
+
+/// How the user of the given name is named on the screen.
+///
+/// The server leaves the name empty for the owner of a library nobody has
+/// named yet: the pairing secret signs that owner in, and the first sign-in
+/// carrying a name gives them one (issue #45).
+String userDisplayName(String userName) =>
+    userName.isEmpty ? "the library owner" : userName;
+
+/// How the space of the given name is named on the screen.
+///
+/// A user's space is the folder under the server's base folder their requests
+/// are resolved against; the owner of an unmigrated library has none, which
+/// means the whole base folder.
+String spaceDisplayName(String space) =>
+    space.isEmpty ? "the whole library" : space;
+
+/// Who a device is signed in as, as far as the app knows.
+///
+/// [role] and [space] are `null` while only the store has spoken: they are not
+/// persisted, they come from `GET ?type=auth` (or from the answer to the
+/// sign-in itself), so a server that cannot be reached leaves them unknown
+/// rather than stale.
+@immutable
+class SignedInUser {
+  /// The name the user signed in under, empty for the library owner and
+  /// `null` where nobody has said yet — a token stored before issue #45
+  /// carries no name until the server answers, see
+  /// [SettingsStore.loadUserName].
+  final String? userName;
+
+  /// The name of this device at the server.
+  final String deviceName;
+
+  /// The role the server reports, `null` while the server has not said.
+  final String? role;
+
+  /// The space the server resolves this user's requests against, `null` while
+  /// the server has not said; empty means the whole library.
+  final String? space;
+
+  const SignedInUser({
+    this.userName,
+    required this.deviceName,
+    this.role,
+    this.space,
+  });
 }
 
 Future<ConnectionTestResult> _reachServer(VAlbumClient client) async {
@@ -516,6 +626,9 @@ const Key deviceNameFieldKey = Key("settings.deviceName");
 /// The key of the pairing secret field, see [serverUrlFieldKey].
 const Key pairingSecretFieldKey = Key("settings.pairingSecret");
 
+/// The key of the user name field, see [serverUrlFieldKey].
+const Key userNameFieldKey = Key("settings.userName");
+
 /// The key of the "Clear cache" button, see [serverUrlFieldKey].
 const Key clearCacheButtonKey = Key("settings.clearCache");
 
@@ -548,9 +661,14 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     text: widget.settings.serverUrl ?? _suggestion(),
   );
 
-  /// The name this device announces itself with when it is paired.
+  /// The name this device announces itself with when it signs in.
   late final TextEditingController deviceController = TextEditingController(
     text: widget.settings.deviceName ?? defaultDeviceName(),
+  );
+
+  /// The name the user signs in under, empty for "the library owner".
+  late final TextEditingController userController = TextEditingController(
+    text: widget.settings.userName ?? "",
   );
 
   /// The pairing secret the server was started with.
@@ -558,11 +676,21 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// Never stored: it is exchanged for the device token exactly once.
   final TextEditingController secretController = TextEditingController();
 
-  /// The outcome of the last pairing attempt, if any.
+  /// The outcome of the last sign-in attempt, if any.
   ConnectionTestResult? pairing;
 
-  /// Whether a pairing request is running.
+  /// Whether a sign-in request is running.
   bool pairingRunning = false;
+
+  /// Who this device is signed in as, `null` while it is signed out.
+  SignedInUser? identity;
+
+  /// Why the server could not be asked who this device is, if it could not.
+  ///
+  /// The store knows the user name and the device, never the role and the
+  /// space; where the server does not answer, the app says so instead of
+  /// leaving the section silent.
+  String? identityProblem;
 
   /// The outcome of the last connection test, if any.
   ConnectionTestResult? result;
@@ -590,11 +718,96 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    var settings = widget.settings;
+    // Whatever changes the settings — a save that switches the server and
+    // forgets the token with it, a sign-out — must show here at once.
+    settings.addListener(_settingsChanged);
+    if (settings.signedIn) {
+      identity = SignedInUser(
+        userName: settings.userName,
+        deviceName: settings.deviceName ?? "",
+      );
+      _askWhoThisDeviceIs();
+    }
+  }
+
+  /// Asks the *saved* server who this device is, filling [identity].
+  ///
+  /// The token belongs to the server that issued it, so this asks the server
+  /// the app talks to, not the URL currently in the field. The stored user
+  /// name is shown meanwhile; a store written before issue #45 has none, and
+  /// this is what fills it in.
+  Future<void> _askWhoThisDeviceIs() async {
+    var settings = widget.settings;
+    var dataUrl = settings.dataUrl;
+    var token = settings.token;
+    if (dataUrl == null || token == null) {
+      return;
+    }
+    AuthInfo info;
+    try {
+      info = await widget.clientFor(dataUrl).withToken(token).authInfo();
+    } on VAlbumException catch (failure) {
+      _identityUnknown(failure.message);
+      return;
+    } on http.ClientException catch (failure) {
+      _identityUnknown(failure.message);
+      return;
+    } catch (failure) {
+      _identityUnknown(failure.toString());
+      return;
+    }
+    if (!mounted || !widget.settings.signedIn) {
+      return;
+    }
+    if (info.deviceName.isEmpty) {
+      // A token the server does not know is answered as an anonymous caller:
+      // the device is still holding a token, but it proves nothing any more.
+      setState(() => identityProblem =
+          "This server does not know this device. Sign in again.");
+      return;
+    }
+    setState(() {
+      identityProblem = null;
+      identity = SignedInUser(
+        userName: info.userName,
+        deviceName: info.deviceName,
+        role: info.role,
+        space: info.space,
+      );
+    });
+  }
+
+  void _identityUnknown(String problem) {
+    if (!mounted) {
+      return;
+    }
+    setState(() => identityProblem =
+        "The server did not say who this device is: $problem");
+  }
+
+  @override
   void dispose() {
+    widget.settings.removeListener(_settingsChanged);
     controller.dispose();
     deviceController.dispose();
+    userController.dispose();
     secretController.dispose();
     super.dispose();
+  }
+
+  void _settingsChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      if (!widget.settings.signedIn) {
+        // The identity went with the token; nothing is known any more.
+        identityProblem = null;
+      }
+    });
   }
 
   @override
@@ -679,7 +892,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
                 ),
               const SizedBox(height: 24),
               const Divider(),
-              ..._pairingSection(settings),
+              ..._signInSection(settings),
               const CameraRollSection(),
               ..._cacheSection(),
             ],
@@ -702,43 +915,32 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         ],
       );
 
-  /// The section pairing this device with the server.
+  /// The section signing this device in at the server.
   ///
   /// A server refusing anonymous changes issues a token against the pairing
   /// secret it was started with; the token is stored with the server URL and
-  /// sent on every request from then on.
-  List<Widget> _pairingSection(ServerSettings settings) => [
+  /// sent on every request from then on. Since issue #45 the token belongs to
+  /// a user, so the section asks for that user's name as well and shows who
+  /// this device is signed in as.
+  List<Widget> _signInSection(ServerSettings settings) => [
         const SizedBox(height: 8),
-        Text("Pairing", style: Theme.of(context).textTheme.titleMedium),
+        Text("Sign in", style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         const Text(
-          "A server that refuses anonymous changes issues a token for this "
-          "device. The pairing secret is printed by the server at start-up.",
+          "The pairing secret, which the server prints at start-up, signs in "
+          "the library owner. The first sign-in that gives a name names the "
+          "owner; later sign-ins may repeat that name or leave it empty.",
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Icon(
-              settings.paired ? Icons.verified_user : Icons.no_encryption,
-              color: settings.paired ? Colors.green : Colors.grey,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                settings.paired
-                    ? "Paired as ${settings.deviceName ?? ""}"
-                    : "Not paired",
-              ),
-            ),
-          ],
-        ),
+        ..._identityDisplay(settings),
         const SizedBox(height: 16),
         TextField(
-          key: deviceNameFieldKey,
-          controller: deviceController,
+          key: userNameFieldKey,
+          controller: userController,
           autocorrect: false,
           decoration: const InputDecoration(
-            labelText: "Device name",
+            labelText: "User name",
+            helperText: "Leave empty to sign in as the library owner.",
             border: OutlineInputBorder(),
           ),
         ),
@@ -752,7 +954,17 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
             labelText: "Pairing secret",
             border: OutlineInputBorder(),
           ),
-          onSubmitted: (_) => _pair(),
+          onSubmitted: (_) => _signIn(),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          key: deviceNameFieldKey,
+          controller: deviceController,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: "Device name",
+            border: OutlineInputBorder(),
+          ),
         ),
         const SizedBox(height: 16),
         Wrap(
@@ -760,14 +972,14 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
           runSpacing: 8,
           children: [
             FilledButton.icon(
-              onPressed: pairingRunning ? null : _pair,
-              icon: const Icon(Icons.link),
-              label: const Text("Pair this device"),
+              onPressed: pairingRunning ? null : _signIn,
+              icon: const Icon(Icons.login),
+              label: const Text("Sign in"),
             ),
             TextButton.icon(
-              onPressed: settings.paired ? _unpair : null,
-              icon: const Icon(Icons.link_off),
-              label: const Text("Unpair"),
+              onPressed: settings.signedIn ? _signOut : null,
+              icon: const Icon(Icons.logout),
+              label: const Text("Sign out"),
             ),
           ],
         ),
@@ -781,11 +993,65 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               SizedBox(width: 8),
-              Text("Pairing..."),
+              Text("Signing in..."),
             ],
           ),
         if (!pairingRunning && pairing != null) _outcome(pairing!),
       ];
+
+  /// Who this device is signed in as, or that it is not.
+  ///
+  /// The name and the device come from the store, so they are there before the
+  /// server is asked and stay there while it cannot be reached; the role and
+  /// the space are only shown once the server has said them, see
+  /// [_askWhoThisDeviceIs].
+  List<Widget> _identityDisplay(ServerSettings settings) {
+    var user = settings.signedIn ? identity : null;
+    var lines = <String>[];
+    if (user != null) {
+      var userName = user.userName;
+      lines.add(userName == null
+          ? "Signed in on this device"
+          : "Signed in as ${userDisplayName(userName)}");
+      var role = user.role;
+      if (role != null && role.isNotEmpty) {
+        lines.add("Role: $role");
+      }
+      if (user.deviceName.isNotEmpty) {
+        lines.add("Device: ${user.deviceName}");
+      }
+      var space = user.space;
+      if (space != null) {
+        lines.add("Space: ${spaceDisplayName(space)}");
+      }
+    } else {
+      lines.add("Not signed in");
+    }
+    var problem = user == null ? null : identityProblem;
+    return [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            user != null ? Icons.verified_user : Icons.no_encryption,
+            color: user != null ? Colors.green : Colors.grey,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [for (var line in lines) Text(line)],
+            ),
+          ),
+        ],
+      ),
+      if (problem != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8, left: 32),
+          child: Text(problem),
+        ),
+    ];
+  }
 
   /// The section reporting and clearing the offline cache (issue #31).
   ///
@@ -876,13 +1142,13 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
   /// Exchanges the pairing secret for a device token at the *entered* server.
   ///
-  /// The URL does not have to be saved for this: pairing tests the address the
-  /// user is looking at, like the connection test does.
-  Future<void> _pair() async {
+  /// The URL does not have to be saved for this: the sign-in reaches the
+  /// address the user is looking at, like the connection test does.
+  Future<void> _signIn() async {
     if (OfflineScope.isOffline(context)) {
-      // Pairing is a change on the server; while it cannot be reached there is
-      // nothing to pair with. "Test connection" finds the server again and
-      // clears this state.
+      // A sign-in is a change on the server; while it cannot be reached there
+      // is nobody to sign in with. "Test connection" finds the server again
+      // and clears this state.
       setState(
           () => pairing = const ConnectionTestResult(false, offlineRefusal));
       return;
@@ -905,15 +1171,27 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
     var client = widget.clientFor(dataUrlOf(entered)).withToken(null);
     ConnectionTestResult outcome;
+    SignedInUser? signedIn;
     try {
       var response = await client.pair(
         secretController.text.trim(),
         deviceController.text.trim().isEmpty
             ? defaultDeviceName()
             : deviceController.text.trim(),
+        userName: userController.text.trim(),
       );
-      await widget.settings.pairedAs(response.token, response.deviceName);
-      outcome = ConnectionTestResult(true, "Paired as ${response.deviceName}");
+      await widget.settings.signedInAs(
+        response.token,
+        response.deviceName,
+        userName: response.userName,
+      );
+      signedIn = SignedInUser(
+        userName: response.userName,
+        deviceName: response.deviceName,
+        role: response.role,
+        space: response.space,
+      );
+      outcome = const ConnectionTestResult(true, "Sign-in succeeded.");
     } on VAlbumException catch (failure) {
       outcome = ConnectionTestResult(false, failure.message);
     } on http.ClientException catch (failure) {
@@ -930,17 +1208,22 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       pairing = outcome;
       if (outcome.ok) {
         secretController.clear();
+        identity = signedIn;
+        identityProblem = null;
+        userController.text = signedIn?.userName ?? "";
       }
     });
   }
 
   /// Forgets the token of this device; the server keeps its entry.
-  Future<void> _unpair() async {
-    await widget.settings.unpair();
+  Future<void> _signOut() async {
+    await widget.settings.signOut();
     if (!mounted) {
       return;
     }
     setState(() {
+      identity = null;
+      identityProblem = null;
       pairing = const ConnectionTestResult(
         true,
         "This device no longer identifies itself to the server.",

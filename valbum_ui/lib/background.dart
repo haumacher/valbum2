@@ -20,7 +20,7 @@
 ///    one run. A test calls it with fakes; the dispatcher only wraps it.
 ///
 /// A background run refuses for exactly the same reasons the foreground one
-/// does — switched off, no server, unpaired, no inbox — and it says so in the
+/// does — switched off, no server, signed out, no inbox — and it says so in the
 /// store instead of on a screen nobody is looking at: [BackgroundRunRecord] is
 /// what the settings section shows afterwards.
 library;
@@ -327,7 +327,7 @@ class BackgroundRunResult {
 /// URL, the device token, the inbox album and the watermark are read from
 /// [store] and a whole engine is built around them for the length of one run.
 /// The refusals are the ones of the foreground engine, because it is the same
-/// engine — switched off, no server configured, no inbox, unpaired, offline —
+/// engine — switched off, no server configured, no inbox, signed out, offline —
 /// and each of them is written back as a [BackgroundRunRecord] the settings
 /// screen shows the next time somebody opens it.
 ///
@@ -424,7 +424,7 @@ Future<BackgroundRunResult> runBackgroundSync({
 /// drop it.
 ///
 /// A refused run is *not* a failed task: "the server is away" or "this device
-/// is not paired" is not something the platform can retry better than the next
+/// is not signed in" is not something the platform can retry better than the next
 /// scheduled run does, and telling the platform that the task failed would
 /// only pile up back-off on top of our own. `false` is answered when the task
 /// itself threw — then something is wrong with this code, not with the sync.
