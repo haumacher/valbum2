@@ -77,8 +77,8 @@ class SimpleRowComputation implements RowComputation {
 
   /// Creates a [AlbumLayout.SimpleRowComputation].
   SimpleRowComputation(RowBuffer out, double minWidth)
-    : _out = out,
-      _minWidth = minWidth;
+      : _out = out,
+        _minWidth = minWidth;
 
   @override
   RowComputation addImage(Content img) {
@@ -125,9 +125,9 @@ class DoubleRowComputation implements RowComputation {
 
   /// Creates a [DoubleRowComputation].
   DoubleRowComputation(RowBuffer out, double minWidth)
-    : _out = out,
-      _minWidth = minWidth,
-      _halfMinWidth = minWidth / 2;
+      : _out = out,
+        _minWidth = minWidth,
+        _halfMinWidth = minWidth / 2;
 
   @override
   RowComputation addImage(Content img) {
@@ -263,35 +263,61 @@ class DefaultRowBuffer implements RowBuffer {
 }
 
 /// Builder for a [DoubleRow].
+///
+/// The contents are kept in the order they were added (the stored order of the
+/// album). The upper row of the resulting [DoubleRow] always shows a *prefix*
+/// of those contents and the lower row the remaining *suffix*, so that reading
+/// the double row row-wise (upper row first, see [Collector.visitDoubleRow])
+/// reproduces the stored order, see issue #44.
+///
+/// The split point is chosen so that the heights of the two rows are as equal
+/// as possible; a tie puts the additional content into the upper row.
 class DoubleRowBuilder with IterableMixin<Content> {
   static const double lowerLimit = 3.0 / 4.0;
   static const double upperLimit = 4.0 / 3.0;
 
-  Row _upper = Row();
-  Row _lower = Row();
+  /// The contents in the order they were added.
+  final List<Content> _contents = [];
 
-  List<RowState> _states = [];
+  /// Prefix sums of the unit widths of [_contents].
+  ///
+  /// `_widths[i]` is the total unit width of the first `i` contents, therefore
+  /// `_widths[0] == 0.0` and `_widths.length == _contents.length + 1`.
+  final List<double> _widths = [0.0];
+
+  /// The state after each added content.
+  ///
+  /// `_states[i]` describes the double row built from the first `i` contents,
+  /// `_states[0]` is the initial (empty) state.
+  final List<RowState> _states = [];
 
   DoubleRowBuilder.empty() {
-    addState(null);
+    _states.add(RowState.empty(null));
   }
 
-  /// Creates a [DoubleRowBuilder].
-  DoubleRowBuilder(List<RowState> states) {
-    addState(null);
-    for (RowState state in states) {
-      addContent(state.getLastAdded()!);
-    }
+  /// Creates a [DoubleRowBuilder] filled with the given contents.
+  factory DoubleRowBuilder(Iterable<Content> contents) {
+    var result = DoubleRowBuilder.empty();
+    result.addAll(contents);
+    return result;
   }
 
-  /// The upper [Row].
+  /// The upper [Row] of the double row built from the contents added so far.
   Row getUpper() {
-    return _upper;
+    return _buildRow(0, topState().getSplit());
   }
 
-  /// The lower [Row].
+  /// The lower [Row] of the double row built from the contents added so far.
   Row getLower() {
-    return _lower;
+    return _buildRow(topState().getSplit(), _contents.length);
+  }
+
+  Row _buildRow(int from, int to) {
+    Row result = Row();
+    for (int index = from; index < to; index++) {
+      result.addContent(_contents[index]);
+    }
+    return result;
   }
 
   /// Tries to split of the largest acceptable prefix.
@@ -302,11 +328,9 @@ class DoubleRowBuilder with IterableMixin<Content> {
   DoubleRowBuilder split() {
     for (int index = _states.length - 1; index > 0; index--) {
       if (_states[index].isAcceptable()) {
-        DoubleRowBuilder prefix = DoubleRowBuilder(
-          _states.sublist(1, index + 1),
-        );
+        DoubleRowBuilder prefix = DoubleRowBuilder(_contents.sublist(0, index));
         DoubleRowBuilder suffix = DoubleRowBuilder(
-          _states.sublist(index + 1, _states.length),
+          _contents.sublist(index, _contents.length),
         );
         resetTo(suffix);
         return prefix;
@@ -317,18 +341,20 @@ class DoubleRowBuilder with IterableMixin<Content> {
   }
 
   void resetTo(DoubleRowBuilder other) {
-    _upper = other._upper;
-    _lower = other._lower;
-    _states = other._states;
+    _contents
+      ..clear()
+      ..addAll(other._contents);
+    _widths
+      ..clear()
+      ..addAll(other._widths);
+    _states
+      ..clear()
+      ..addAll(other._states);
   }
 
   @override
   bool get isEmpty {
-    return _states.length == 1;
-  }
-
-  void addState(Content? content) {
-    _states.add(RowState(this, content));
+    return _contents.isEmpty;
   }
 
   @nonVirtual
@@ -347,59 +373,86 @@ class DoubleRowBuilder with IterableMixin<Content> {
 
   @nonVirtual
   void addContent(Content content) {
-    smaller.addContent(content);
-    addState(content);
+    _contents.add(content);
+    _widths.add(_widths[_widths.length - 1] + content.getUnitWidth());
+    _states.add(_computeState(content));
   }
 
-  Row get smaller {
-    return _upper.getUnitWidth() <= _lower.getUnitWidth() ? _upper : _lower;
+  /// Computes the state for all contents added so far.
+  ///
+  /// The best split is searched in a single pass over the prefix sums in
+  /// [_widths]: the split index `k` (leaving both rows non-empty) whose upper
+  /// width `_widths[k]` is closest to half of the total width balances the two
+  /// row heights best, because the height ratio of the two rows is the inverse
+  /// of their width ratio.
+  RowState _computeState(Content? lastAdded) {
+    int size = _contents.length;
+    double total = _widths[size];
+    if (size < 2) {
+      return RowState.empty(lastAdded, unitWidth: total, split: size);
+    }
+
+    int bestSplit = 1;
+    double bestDistance = double.infinity;
+    for (int split = 1; split < size; split++) {
+      double distance = (2 * _widths[split] - total).abs();
+      if (distance <= bestDistance) {
+        // On a tie, the later (larger) split wins: the upper row takes the
+        // additional content.
+        bestDistance = distance;
+        bestSplit = split;
+      }
+    }
+
+    return RowState(
+      _widths[bestSplit],
+      total - _widths[bestSplit],
+      bestSplit,
+      lastAdded,
+    );
   }
 
   @nonVirtual
   double upperWidth() {
-    return _upper.getUnitWidth();
+    return _widths[topState().getSplit()];
   }
 
   @nonVirtual
   double lowerWidth() {
-    return _lower.getUnitWidth();
+    return _widths[_contents.length] - upperWidth();
   }
 
   @nonVirtual
   DoubleRow build() {
-    if (!acceptable()) {
+    RowState top = topState();
+    Row upper = getUpper();
+    Row lower = getLower();
+
+    if (!top.isAcceptable()) {
+      // The two rows are too far apart in height (or there is only a single
+      // content, which leaves the lower row empty): pad the narrower row, so
+      // that both become equally wide. The padding is appended to the row it
+      // belongs to, which leaves the images in their stored order.
       double w1 = upperWidth();
       double w2 = lowerWidth();
-
-      addContent(Padding((w1 - w2).abs()));
-
-      if (w2 > w1) {
-        flip();
+      Padding padding = Padding((w1 - w2).abs());
+      if (w1 > w2) {
+        lower.addContent(padding);
+      } else {
+        upper.addContent(padding);
       }
 
-      assert(acceptable());
+      double width = max(w1, w2);
+      return DoubleRow(upper, lower, width / 2, 0.5, 0.5);
     }
 
-    RowState top = topState();
     return DoubleRow(
-      _upper,
-      _lower,
-      top.getUnitWidth(),
-      top.getH1(),
-      top.getH2(),
-    );
-  }
-
-  void flip() {
-    Row upper = _upper;
-    _upper = _lower;
-    _lower = upper;
+        upper, lower, top.getUnitWidth(), top.getH1(), top.getH2());
   }
 
   @override
   Iterator<Content> get iterator {
-    Iterator<RowState> inner = _states.sublist(1, _states.length).iterator;
-    return RowIterator(inner);
+    return _contents.iterator;
   }
 
   /// Adds all [Content] to this builder.
@@ -410,64 +463,50 @@ class DoubleRowBuilder with IterableMixin<Content> {
   }
 }
 
-class RowIterator implements Iterator<Content> {
-  Iterator<RowState> inner;
-
-  RowIterator(this.inner);
-
-  @override
-  bool moveNext() {
-    return inner.moveNext();
-  }
-
-  @override
-  get current => inner.current.getLastAdded()!;
-}
-
+/// The state of a [DoubleRowBuilder] after a [Content] was added.
 class RowState {
-  final DoubleRowBuilder builder;
   final double _unitWidth;
   final bool _acceptable;
   final Content? _lastAdded;
-  double _h1;
-  double _h2;
+  final int _split;
+  final double _h1;
+  final double _h2;
 
   RowState._init(
-    this.builder,
     this._unitWidth,
     this._lastAdded,
+    this._split,
     this._h1,
     this._h2,
     this._acceptable,
   );
 
-  factory RowState(DoubleRowBuilder builder, Content? lastAdded) {
-    double w1 = builder.upperWidth();
-    double w2 = builder.lowerWidth();
+  /// The state of a double row that cannot be built as it stands: no content at
+  /// all, or a single content that has no counterpart in the other row.
+  factory RowState.empty(
+    Content? lastAdded, {
+    double unitWidth = 0.0,
+    int split = 0,
+  }) {
+    return RowState._init(unitWidth, lastAdded, split, 0, 0, false);
+  }
 
-    double unitWidth, h1 = 0, h2 = 0;
-    bool acceptable;
-    if (w1 == 0.0) {
-      unitWidth = w2;
-      acceptable = false;
-    } else if (w2 == 0.0) {
-      unitWidth = w1;
-      acceptable = false;
-    } else {
-      double w1Inv = 1 / w1;
-      double w2Inv = 1 / w2;
-      double invSum = w1Inv + w2Inv;
+  /// The state of a double row whose upper row is [w1] and whose lower row is
+  /// [w2] unit widths wide, with the first [split] contents in the upper row.
+  factory RowState(double w1, double w2, int split, Content? lastAdded) {
+    double w1Inv = 1 / w1;
+    double w2Inv = 1 / w2;
+    double invSum = w1Inv + w2Inv;
 
-      unitWidth = 1 / invSum;
-      h1 = w1Inv / invSum;
-      h2 = w2Inv / invSum;
+    double unitWidth = 1 / invSum;
+    double h1 = w1Inv / invSum;
+    double h2 = w2Inv / invSum;
 
-      double hQuot = h1 / h2;
-      acceptable =
-          DoubleRowBuilder.lowerLimit <= hQuot &&
-          hQuot <= DoubleRowBuilder.upperLimit;
-    }
-    return RowState._init(builder, unitWidth, lastAdded, h1, h2, acceptable);
+    double hQuot = h1 / h2;
+    bool acceptable = DoubleRowBuilder.lowerLimit <= hQuot &&
+        hQuot <= DoubleRowBuilder.upperLimit;
+
+    return RowState._init(unitWidth, lastAdded, split, h1, h2, acceptable);
   }
 
   /// The relative height of the upper row.
@@ -478,6 +517,13 @@ class RowState {
   /// The relative height of the lower row.
   double getH2() {
     return _h2;
+  }
+
+  /// The number of contents shown in the upper row.
+  ///
+  /// The remaining contents are shown in the lower row.
+  int getSplit() {
+    return _split;
   }
 
   /// The content that was added just before the [RowState] computation was done.
@@ -512,11 +558,11 @@ class DoubleRow extends Content {
 
   /// Creates a [DoubleRow].
   DoubleRow(Row upper, Row lower, double unitWidth, double h1, double h2)
-    : _upper = upper,
-      _lower = lower,
-      _unitWidth = unitWidth,
-      _h1 = h1,
-      _h2 = h2;
+      : _upper = upper,
+        _lower = lower,
+        _unitWidth = unitWidth,
+        _h1 = h1,
+        _h2 = h2;
 
   /// The upper [Row].
   Row getUpper() {

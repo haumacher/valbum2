@@ -133,6 +133,19 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
 
 ## Decisions log
 
+- **2026-09-06 (later still)** — A double-height row section reads **row-wise**: its upper row shows
+  a prefix of the section's images in stored order, its lower row the remaining suffix, and the
+  split point is the one that balances the two row heights best (a tie gives the upper row the
+  extra image). Before, every image went to the currently narrower row, so the section zig-zagged
+  against the stored order and a drop right of an image landed *below* it (#44). This reverses the
+  "the Java-generated goldens are the contract" rule for the 16 fixtures that contain a `DoubleRow`
+  and disagreed: they were regenerated from Dart by `test/tool/regenerate_layout_goldens.dart` and
+  Dart is their reference from now on; every fixture without a `DoubleRow` is untouched, see
+  `valbum_ui/test/fixtures/layout/README.md`. What is *not* fixed by this: the row computation still
+  buffers a run of landscape images across a portrait image, so a portrait can change places with
+  the landscapes around it — inside a section the order is now exact, between a portrait and its
+  neighbours it is not, and the reorder keeps working off the displayed order for that reason.
+
 - **2026-09-06 (later)** — Background camera-roll sync (#32) rests on one seam: `runBackgroundSync`
   is a plain function that rebuilds settings → client → photo library → `CameraRollSync` from
   nothing but the persisted `SettingsStore`, and `CameraRollSync.runOnce` runs exactly one sync

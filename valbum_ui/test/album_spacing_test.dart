@@ -107,7 +107,8 @@ void main() {
       (tester) async {
     // This is the `portrait-landscapes-portrait` layout fixture: at a page
     // width of 1280 the first row is a portrait, a double row of four
-    // landscapes (upper: l2, l4; lower: l3, l5) and a portrait; the last
+    // landscapes (upper: l2, l3; lower: l4, l5 - a section reads row-wise
+    // since issue #44) and a portrait; the last
     // landscape and a padding form the second row.
     const pageWidth = 1280.0;
     await pumpAlbum(
@@ -125,8 +126,8 @@ void main() {
     );
 
     var upperLeft = tester.getRect(tile("l2.jpg"));
-    var upperRight = tester.getRect(tile("l4.jpg"));
-    var lowerLeft = tester.getRect(tile("l3.jpg"));
+    var upperRight = tester.getRect(tile("l3.jpg"));
+    var lowerLeft = tester.getRect(tile("l4.jpg"));
     var lowerRight = tester.getRect(tile("l5.jpg"));
     var before = tester.getRect(tile("p1.jpg"));
     var after = tester.getRect(tile("p7.jpg"));

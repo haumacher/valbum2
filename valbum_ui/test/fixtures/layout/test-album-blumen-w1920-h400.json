@@ -75,12 +75,12 @@
                 },
                 {
                   "type": "Img",
-                  "index": 3,
+                  "index": 2,
                   "unitWidth": 1.5
                 },
                 {
                   "type": "Img",
-                  "index": 5,
+                  "index": 3,
                   "unitWidth": 1.5
                 }
               ]
@@ -91,12 +91,12 @@
               "contents": [
                 {
                   "type": "Img",
-                  "index": 2,
+                  "index": 4,
                   "unitWidth": 1.5
                 },
                 {
                   "type": "Img",
-                  "index": 4,
+                  "index": 5,
                   "unitWidth": 1.5
                 },
                 {

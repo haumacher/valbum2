@@ -370,7 +370,7 @@
     "rows": [
       {
         "type": "Row",
-        "unitWidth": 2.989829039829655,
+        "unitWidth": 2.982714024514298,
         "contents": [
           {
             "type": "Img",
@@ -379,29 +379,18 @@
           },
           {
             "type": "DoubleRow",
-            "unitWidth": 2.243833616488694,
-            "h1": 0.4719219384715857,
-            "h2": 0.5280780615284143,
+            "unitWidth": 2.2367186011733367,
+            "h1": 0.46026830632774285,
+            "h2": 0.5397316936722572,
             "upper": {
               "type": "Row",
-              "unitWidth": 4.754671130051299,
+              "unitWidth": 4.859597261908011,
               "contents": [
                 {
                   "type": "Img",
                   "index": 0,
                   "unitWidth": 2.2726027397260276
                 },
-                {
-                  "type": "Img",
-                  "index": 4,
-                  "unitWidth": 2.482068390325271
-                }
-              ]
-            },
-            "lower": {
-              "type": "Row",
-              "unitWidth": 4.249056683010794,
-              "contents": [
                 {
                   "type": "Img",
                   "index": 2,
@@ -411,6 +400,17 @@
                   "type": "Img",
                   "index": 3,
                   "unitWidth": 1.7040448538245896
+                }
+              ]
+            },
+            "lower": {
+              "type": "Row",
+              "unitWidth": 4.144130551154082,
+              "contents": [
+                {
+                  "type": "Img",
+                  "index": 4,
+                  "unitWidth": 2.482068390325271
                 },
                 {
                   "type": "Img",
@@ -523,7 +523,7 @@
       },
       {
         "type": "Row",
-        "unitWidth": 3.5959759622545993,
+        "unitWidth": 3.5985665916354224,
         "contents": [
           {
             "type": "Img",
@@ -532,34 +532,18 @@
           },
           {
             "type": "DoubleRow",
-            "unitWidth": 3.046719456678391,
-            "h1": 0.48085214444438784,
-            "h2": 0.5191478555556122,
+            "unitWidth": 3.049310086059214,
+            "h1": 0.5124248466041657,
+            "h2": 0.4875751533958344,
             "upper": {
               "type": "Row",
-              "unitWidth": 6.336083746072914,
+              "unitWidth": 5.95074596063591,
               "contents": [
                 {
                   "type": "Img",
                   "index": 22,
                   "unitWidth": 2.3240302743614003
                 },
-                {
-                  "type": "Img",
-                  "index": 25,
-                  "unitWidth": 1.5879208979155532
-                },
-                {
-                  "type": "Img",
-                  "index": 27,
-                  "unitWidth": 2.4241325737959607
-                }
-              ]
-            },
-            "lower": {
-              "type": "Row",
-              "unitWidth": 5.868693136404605,
-              "contents": [
                 {
                   "type": "Img",
                   "index": 23,
@@ -569,11 +553,27 @@
                   "type": "Img",
                   "index": 24,
                   "unitWidth": 2.0208333333333335
+                }
+              ]
+            },
+            "lower": {
+              "type": "Row",
+              "unitWidth": 6.2540309218416095,
+              "contents": [
+                {
+                  "type": "Img",
+                  "index": 25,
+                  "unitWidth": 1.5879208979155532
                 },
                 {
                   "type": "Img",
                   "index": 26,
                   "unitWidth": 2.2419774501300953
+                },
+                {
+                  "type": "Img",
+                  "index": 27,
+                  "unitWidth": 2.4241325737959607
                 }
               ]
             }
@@ -634,7 +634,7 @@
       },
       {
         "type": "Row",
-        "unitWidth": 2.7826040267820833,
+        "unitWidth": 2.7720206053380236,
         "contents": [
           {
             "type": "Img",
@@ -648,12 +648,12 @@
           },
           {
             "type": "DoubleRow",
-            "unitWidth": 1.659766554646485,
-            "h1": 0.5206634329172021,
-            "h2": 0.479336567082798,
+            "unitWidth": 1.6491831332024254,
+            "h1": 0.5449262485647289,
+            "h2": 0.4550737514352712,
             "upper": {
               "type": "Row",
-              "unitWidth": 3.187791670613495,
+              "unitWidth": 3.026433645922137,
               "contents": [
                 {
                   "type": "Img",
@@ -662,24 +662,24 @@
                 },
                 {
                   "type": "Img",
-                  "index": 41,
-                  "unitWidth": 1.1302469135802469
+                  "index": 39,
+                  "unitWidth": 0.9688888888888889
                 }
               ]
             },
             "lower": {
               "type": "Row",
-              "unitWidth": 3.4626328734894662,
+              "unitWidth": 3.623990898180824,
               "contents": [
-                {
-                  "type": "Img",
-                  "index": 39,
-                  "unitWidth": 0.9688888888888889
-                },
                 {
                   "type": "Img",
                   "index": 40,
                   "unitWidth": 2.4937439846005773
+                },
+                {
+                  "type": "Img",
+                  "index": 41,
+                  "unitWidth": 1.1302469135802469
                 }
               ]
             }
@@ -773,7 +773,7 @@
           {
             "type": "DoubleRow",
             "unitWidth": 1.0609384603611045,
-            "h1": 0.4503296726597134,
+            "h1": 0.45032967265971346,
             "h2": 0.5496703273402865,
             "upper": {
               "type": "Row",
@@ -802,7 +802,7 @@
       },
       {
         "type": "Row",
-        "unitWidth": 2.8530575162762983,
+        "unitWidth": 2.56,
         "contents": [
           {
             "type": "Img",
@@ -811,12 +811,12 @@
           },
           {
             "type": "DoubleRow",
-            "unitWidth": 2.4459653176947382,
-            "h1": 0.5,
-            "h2": 0.5,
+            "unitWidth": 2.0403578892663354,
+            "h1": 0.4446524699438877,
+            "h2": 0.5553475300561124,
             "upper": {
               "type": "Row",
-              "unitWidth": 4.8919306353894765,
+              "unitWidth": 4.58865749587271,
               "contents": [
                 {
                   "type": "Img",
@@ -825,8 +825,24 @@
                 },
                 {
                   "type": "Img",
+                  "index": 55,
+                  "unitWidth": 1.9820143884892085
+                },
+                {
+                  "type": "Img",
                   "index": 57,
                   "unitWidth": 1.2368555385400715
+                }
+              ]
+            },
+            "lower": {
+              "type": "Row",
+              "unitWidth": 3.674019922372172,
+              "contents": [
+                {
+                  "type": "Img",
+                  "index": 58,
+                  "unitWidth": 1.388732394366197
                 },
                 {
                   "type": "Img",
@@ -834,27 +850,11 @@
                   "unitWidth": 2.285287528005975
                 }
               ]
-            },
-            "lower": {
-              "type": "Row",
-              "unitWidth": 4.8919306353894765,
-              "contents": [
-                {
-                  "type": "Img",
-                  "index": 55,
-                  "unitWidth": 1.9820143884892085
-                },
-                {
-                  "type": "Img",
-                  "index": 58,
-                  "unitWidth": 1.388732394366197
-                },
-                {
-                  "type": "Padding",
-                  "unitWidth": 1.5211838525340706
-                }
-              ]
             }
+          },
+          {
+            "type": "Padding",
+            "unitWidth": 0.11254991215210453
           }
         ]
       }

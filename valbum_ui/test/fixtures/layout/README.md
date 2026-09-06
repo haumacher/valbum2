@@ -18,9 +18,38 @@ The generator only wrote files when `-Dgoldens.generate=true` was given, so a no
 never touched them, and it was idempotent (same input, byte-identical output).
 
 The Java layout package and the generator were **deleted** in the same change that made Dart
-canonical (issue #12). These fixtures are the permanent record of the Java behaviour. To regenerate
-them, check out commit `ebd0b2d` and run the command above; do not "fix" a fixture to match Dart —
-where the two disagree, Dart is wrong.
+canonical (issue #12). To regenerate the Java behaviour, check out commit `ebd0b2d` and run the
+command above.
+
+### The regenerated fixtures (issue #44)
+
+The layout contract was deliberately changed for double-height row sections: within a section the
+upper row now holds a *prefix* of the section's images in stored order and the lower row the
+remaining *suffix*, so that a section reads row-wise — the first images in the upper row, the last
+ones in the lower row. Before, the images were handed to the currently narrower of the two rows,
+which made the displayed order zig-zag against the stored order and let a drag-and-drop reorder land
+an image below its drop position instead of beside it.
+
+The **16 fixtures** that disagreed with the new implementation were regenerated from Dart at that
+change:
+
+```
+GOLDENS_OUT=test/fixtures/layout \
+    flutter test test/tool/regenerate_layout_goldens.dart
+```
+
+They are `portrait-landscapes-portrait-*` (5 of 8), `random-60-*` (6 of 8) and `test-album-blumen-*`
+(5 of 8); every one of them contains a `DoubleRow`, and every fixture without one was left
+untouched. `test/tool/regenerate_layout_goldens.dart` writes the format below; run without
+`GOLDENS_OUT` it writes to a temporary directory and reports which fixtures it reproduces byte for
+byte, which is how the writer is kept honest (65 of the 88 came out byte-identical, 7 more differ
+only in the last digit of a double — Dart accumulates the widths in a different order than Java did,
+far below the `1e-9` tolerance of the golden test — and those 7 were *not* rewritten).
+
+For the regenerated set, Dart is the reference from now on; for every other fixture the old rule
+stands: do not "fix" a fixture to match Dart — where the two disagree, Dart is wrong. The invariant
+the regenerated set encodes is the row-wise section order: reading a `DoubleRow` upper row first
+yields the images in the order the album stores them.
 
 ## Cases
 
@@ -60,7 +89,7 @@ A `<content>` node is one of:
 
 ```jsonc
 { "type": "Row",       "unitWidth": <double>, "contents": [ <content>, ... ] }
-{ "type": "Img",       "unitWidth": <double>, "index": <int> }   // index into "images"
+{ "type": "Img",       "index": <int>, "unitWidth": <double> }   // index into "images"
 { "type": "DoubleRow", "unitWidth": <double>, "h1": <double>, "h2": <double>,
                        "upper": <Row>, "lower": <Row> }
 { "type": "Padding",   "unitWidth": <double> }
