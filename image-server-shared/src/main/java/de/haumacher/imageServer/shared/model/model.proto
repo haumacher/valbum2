@@ -278,6 +278,17 @@ message PairRequest {
 	
 	/** The name the device announces itself with. */
 	string deviceName;
+	
+	/**
+	 * The name of the user signing in, empty for "the library owner".
+	 *
+	 * <p>
+	 * A request carrying the pairing secret signs in the library owner (the <code>admin</code>): an
+	 * empty name means the owner, a non-empty one names the owner when it has no name yet and must
+	 * match the stored name afterwards. An app from before issue #45 sends no name at all.
+	 * </p>
+	 */
+	string userName;
 }
 
 /** Answer to a successful {@link PairRequest}. */
@@ -287,6 +298,15 @@ message PairResponse {
 	
 	/** The name the token was stored under. */
 	string deviceName;
+	
+	/** The name of the user this device now belongs to, empty while the owner is unnamed. */
+	string userName;
+	
+	/** The role of the signed-in user: <code>admin</code>, <code>member</code> or <code>guest</code>. */
+	string role;
+	
+	/** The folder below the server's base folder the user's library is rooted at, empty for the base folder itself. */
+	string space;
 }
 
 /** The authentication state of the caller, answered by <code>&lt;data&gt;/?type=auth</code>. */
@@ -299,6 +319,15 @@ message AuthInfo {
 	
 	/** Whether the caller may perform write requests. */
 	bool writeAllowed;
+	
+	/** The name of the signed-in user, empty for an anonymous caller or an owner without a name yet. */
+	string userName;
+	
+	/** The caller's role: <code>admin</code>, <code>member</code> or <code>guest</code>; empty for an anonymous caller. */
+	string role;
+	
+	/** The folder below the server's base folder the caller's requests are resolved against, empty for the base folder itself. */
+	string space;
 }
 
 

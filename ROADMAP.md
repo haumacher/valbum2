@@ -110,7 +110,7 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
 - ✅ Authentication: a per-device token issued by the server; the API refuses anonymous writes.
   Read access stays open for a home network and is switchable. (#28) *(Done: `--auth
   off|writes|all`, default `writes`; a device is paired with `POST <data>/?action=pair` against the
-  `--pairing-secret`, the token hash is kept in `<basepath>/.valbum/devices.json`; a refusal is a
+  `--pairing-secret`, the token hash is kept in `<basepath>/.valbum/devices.json` (since #45: `users.json`); a refusal is a
   401 with an `ErrorInfo` body the app shows.)*
 - ✅ Offline: the app caches listings and thumbnails so the library browses without the server. (#31)
   *(Done: network first, cache only when the server cannot be reached; a bounded LRU file cache off

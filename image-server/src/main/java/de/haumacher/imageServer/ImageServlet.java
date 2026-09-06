@@ -147,9 +147,10 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
+		Path root = _auth.spaceRoot(caller, _basePath);
 		PathInfo resourcePath;
 		if (pathInfo == null) {
-			resourcePath = new PathInfo(_basePath);
+			resourcePath = new PathInfo(root);
 		} else {
 			String relativePath = pathInfo.substring(1);
 			Path path;
@@ -162,7 +163,7 @@ public class ImageServlet extends HttpServlet {
 					return;
 				}
 			}
-			resourcePath = new PathInfo(_basePath, path);
+			resourcePath = new PathInfo(root, path);
 		}
 
 		File file = resourcePath.toFile();
@@ -209,7 +210,7 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		PathInfo resourcePath = resolve(context);
+		PathInfo resourcePath = resolve(context, caller);
 		if (resourcePath == null) {
 			return;
 		}
@@ -275,14 +276,21 @@ public class ImageServlet extends HttpServlet {
 	 * <code>index.json</code>.
 	 * </p>
 	 *
-	 * @return <code>null</code> if the path leaves the served tree; the response is completed with
-	 *         a <code>404</code> in that case.
+	 * <p>
+	 * Every path is resolved against the caller's space, see
+	 * {@link AuthService#spaceRoot(Caller, Path)}: a path that would leave it is a
+	 * <code>404</code>, exactly like a path leaving the base folder.
+	 * </p>
+	 *
+	 * @return <code>null</code> if the path leaves the caller's space; the response is completed
+	 *         with a <code>404</code> in that case.
 	 */
-	private PathInfo resolve(Context context) {
+	private PathInfo resolve(Context context, Caller caller) {
+		Path root = _auth.spaceRoot(caller, _basePath);
 		String pathInfo = context.request().getPathInfo();
 		String relativePath = pathInfo == null ? "" : pathInfo.substring(1);
 		if (relativePath.isEmpty()) {
-			return new PathInfo(_basePath);
+			return new PathInfo(root);
 		}
 
 		Path path = Paths.get(relativePath).normalize();
@@ -290,7 +298,7 @@ public class ImageServlet extends HttpServlet {
 			error404(context);
 			return null;
 		}
-		return new PathInfo(_basePath, path);
+		return new PathInfo(root, path);
 	}
 
 	/** Creates a new album folder with the request body as its <code>index.json</code>. */
@@ -438,7 +446,7 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		PathInfo resourcePath = resolve(context);
+		PathInfo resourcePath = resolve(context, caller);
 		if (resourcePath == null) {
 			return;
 		}

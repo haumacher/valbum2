@@ -6,7 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
-import de.haumacher.imageServer.auth.DeviceStore;
+import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.Resource;
@@ -81,15 +81,15 @@ public class TestAuthProbe extends TestCase {
 
 		assertEquals(HttpServletResponse.SC_OK, put(servlet, "/2020 Trip/", "Bearer " + first).status());
 		assertEquals(HttpServletResponse.SC_OK, put(servlet, "/2020 Trip/", "Bearer " + second).status());
-		assertEquals(2, new DeviceStore(_base).getDevices().size());
+		assertEquals(2, new UserStore(_base).getOwner().getDevices().size());
 	}
 
 	public void testDamagedStoreIsNotSilentlyDiscarded() throws Exception {
 		ImageServlet before = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SECRET, _base));
 		String token = pair(before, "Phone").getToken();
 
-		Path file = _base.resolve(DeviceStore.DIRECTORY_NAME).resolve(DeviceStore.FILE_NAME);
-		Files.write(file, "{\"version\":1,\"devices\":[{\"name\":\"Phone\",".getBytes(StandardCharsets.UTF_8));
+		Path file = _base.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME);
+		Files.write(file, "{\"version\":1,\"users\":[{\"name\":\"\",\"role\":\"admin\",".getBytes(StandardCharsets.UTF_8));
 
 		// A restart on the damaged store: the server comes up, the old token is refused with a reason.
 		ImageServlet after = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SECRET, _base));
@@ -103,7 +103,7 @@ public class TestAuthProbe extends TestCase {
 		String[] names = file.getParent().toFile().list();
 		assertNotNull(names);
 		assertTrue("Expected the damaged store to be kept, found: " + String.join(", ", names),
-			Stream.of(names).anyMatch(name -> name.startsWith(DeviceStore.FILE_NAME + ".")));
+			Stream.of(names).anyMatch(name -> name.startsWith(UserStore.FILE_NAME + ".")));
 	}
 
 	// --- Helpers. ---

@@ -5,10 +5,15 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.LibraryMigration;
+import de.haumacher.imageServer.auth.LibraryMigration.MigrationRefused;
+import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.util.servlet.ResourceServlet;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.helper.HelpScreenException;
 import net.sourceforge.argparse4j.impl.type.FileArgumentType;
@@ -58,15 +63,54 @@ public class Main {
 		parser.addArgument("--pairing-secret").help(
 			"The secret a device must present to be paired with this server; "
 				+ "a random one is generated and printed at start-up if none is given");
+		parser.addArgument("--migrate-to-user").help(
+			"Move the albums at the base folder into a folder of that name and make it the library "
+				+ "owner's space (issue #45). A one-time, explicit rename-only move; the server is "
+				+ "not started afterwards");
 
+		Namespace ns;
 		try {
-			Namespace ns = parser.parseArgs(args);
-
-			new Main(ns).start();
+			ns = parser.parseArgs(args);
 		} catch (HelpScreenException ex) {
 			System.exit(-1);
+			return;
 		} catch (ArgumentParserException ex) {
 			System.exit(-1);
+			return;
+		}
+
+		String migrateTo = ns.getString("migrate_to_user");
+		if (migrateTo != null) {
+			File basePath = ns.get("basepath");
+			System.exit(migrateLibrary(basePath.toPath(), migrateTo));
+			return;
+		}
+
+		new Main(ns).start();
+	}
+
+	/**
+	 * Runs the explicit library migration, see {@link LibraryMigration}.
+	 *
+	 * @return The process exit code: <code>0</code> if the library was moved, non-zero if the
+	 *         migration was refused (nothing was moved then).
+	 */
+	private static int migrateLibrary(Path basePath, String userName) {
+		try {
+			List<String> moved = LibraryMigration.migrate(basePath, userName);
+			System.out.println("Moved " + moved.size() + " entries of '" + basePath + "' into '"
+				+ basePath.resolve(userName) + "':");
+			for (String entry : moved) {
+				System.out.println("  " + entry);
+			}
+			System.out.println("The library owner is now '" + userName + "' with the space '" + userName + "'.");
+			return 0;
+		} catch (MigrationRefused ex) {
+			System.err.println("Cannot migrate the library: " + ex.getMessage());
+			return 1;
+		} catch (IOException ex) {
+			System.err.println("Cannot migrate the library: " + ex.getMessage());
+			return 1;
 		}
 	}
 
@@ -137,6 +181,13 @@ public class Main {
 		System.out.println("Authentication: " + _authMode.protocolName());
 		if (_authMode != AuthMode.OFF) {
 			System.out.println("Pairing secret: " + _pairingSecret);
+			UserStore.User owner = auth.getUsers().getOwner();
+			if (owner == null) {
+				System.out.println("Library owner: not signed in yet");
+			} else {
+				System.out.println("Library owner: '" + (owner.getName().isEmpty() ? "<unnamed>" : owner.getName())
+					+ "', space: " + (owner.getSpace().isEmpty() ? "<the base folder>" : owner.getSpace()));
+			}
 		}
 		server.join();
 	}

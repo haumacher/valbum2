@@ -1121,10 +1121,20 @@ class PairRequest extends _JsonObject {
 	///  The name the device announces itself with.
 	String deviceName;
 
+	///  The name of the user signing in, empty for "the library owner".
+	/// 
+	///  <p>
+	///  A request carrying the pairing secret signs in the library owner (the <code>admin</code>): an
+	///  empty name means the owner, a non-empty one names the owner when it has no name yet and must
+	///  match the stored name afterwards. An app from before issue #45 sends no name at all.
+	///  </p>
+	String userName;
+
 	/// Creates a PairRequest.
 	PairRequest({
 			this.secret = "", 
 			this.deviceName = "", 
+			this.userName = "", 
 	});
 
 	/// Parses a PairRequest from a string source.
@@ -1153,6 +1163,10 @@ class PairRequest extends _JsonObject {
 				deviceName = json.expectString();
 				break;
 			}
+			case "userName": {
+				userName = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1166,6 +1180,9 @@ class PairRequest extends _JsonObject {
 
 		json.addKey("deviceName");
 		json.addString(deviceName);
+
+		json.addKey("userName");
+		json.addString(userName);
 	}
 
 }
@@ -1178,10 +1195,22 @@ class PairResponse extends _JsonObject {
 	///  The name the token was stored under.
 	String deviceName;
 
+	///  The name of the user this device now belongs to, empty while the owner is unnamed.
+	String userName;
+
+	///  The role of the signed-in user: <code>admin</code>, <code>member</code> or <code>guest</code>.
+	String role;
+
+	///  The folder below the server's base folder the user's library is rooted at, empty for the base folder itself.
+	String space;
+
 	/// Creates a PairResponse.
 	PairResponse({
 			this.token = "", 
 			this.deviceName = "", 
+			this.userName = "", 
+			this.role = "", 
+			this.space = "", 
 	});
 
 	/// Parses a PairResponse from a string source.
@@ -1210,6 +1239,18 @@ class PairResponse extends _JsonObject {
 				deviceName = json.expectString();
 				break;
 			}
+			case "userName": {
+				userName = json.expectString();
+				break;
+			}
+			case "role": {
+				role = json.expectString();
+				break;
+			}
+			case "space": {
+				space = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1223,6 +1264,15 @@ class PairResponse extends _JsonObject {
 
 		json.addKey("deviceName");
 		json.addString(deviceName);
+
+		json.addKey("userName");
+		json.addString(userName);
+
+		json.addKey("role");
+		json.addString(role);
+
+		json.addKey("space");
+		json.addString(space);
 	}
 
 }
@@ -1238,11 +1288,23 @@ class AuthInfo extends _JsonObject {
 	///  Whether the caller may perform write requests.
 	bool writeAllowed;
 
+	///  The name of the signed-in user, empty for an anonymous caller or an owner without a name yet.
+	String userName;
+
+	///  The caller's role: <code>admin</code>, <code>member</code> or <code>guest</code>; empty for an anonymous caller.
+	String role;
+
+	///  The folder below the server's base folder the caller's requests are resolved against, empty for the base folder itself.
+	String space;
+
 	/// Creates a AuthInfo.
 	AuthInfo({
 			this.mode = "", 
 			this.deviceName = "", 
 			this.writeAllowed = false, 
+			this.userName = "", 
+			this.role = "", 
+			this.space = "", 
 	});
 
 	/// Parses a AuthInfo from a string source.
@@ -1275,6 +1337,18 @@ class AuthInfo extends _JsonObject {
 				writeAllowed = json.expectBool();
 				break;
 			}
+			case "userName": {
+				userName = json.expectString();
+				break;
+			}
+			case "role": {
+				role = json.expectString();
+				break;
+			}
+			case "space": {
+				space = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1291,6 +1365,15 @@ class AuthInfo extends _JsonObject {
 
 		json.addKey("writeAllowed");
 		json.addBool(writeAllowed);
+
+		json.addKey("userName");
+		json.addString(userName);
+
+		json.addKey("role");
+		json.addString(role);
+
+		json.addKey("space");
+		json.addString(space);
 	}
 
 }

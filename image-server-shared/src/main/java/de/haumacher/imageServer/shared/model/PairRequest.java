@@ -21,9 +21,14 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getDeviceName() */
 	private static final String DEVICE_NAME__PROP = "deviceName";
 
+	/** @see #getUserName() */
+	private static final String USER_NAME__PROP = "userName";
+
 	private String _secret = "";
 
 	private String _deviceName = "";
+
+	private String _userName = "";
 
 	/**
 	 * Creates a {@link PairRequest} instance.
@@ -74,6 +79,32 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_deviceName = value;
 	}
 
+	/**
+	 * The name of the user signing in, empty for "the library owner".
+	 *
+	 * <p>
+	 * A request carrying the pairing secret signs in the library owner (the <code>admin</code>): an
+	 * empty name means the owner, a non-empty one names the owner when it has no name yet and must
+	 * match the stored name afterwards. An app from before issue #45 sends no name at all.
+	 * </p>
+	 */
+	public final String getUserName() {
+		return _userName;
+	}
+
+	/**
+	 * @see #getUserName()
+	 */
+	public de.haumacher.imageServer.shared.model.PairRequest setUserName(String value) {
+		internalSetUserName(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getUserName()} without chain call utility. */
+	protected final void internalSetUserName(String value) {
+		_userName = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.PairRequest readPairRequest(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.PairRequest result = new de.haumacher.imageServer.shared.model.PairRequest();
@@ -93,6 +124,8 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getSecret());
 		out.name(DEVICE_NAME__PROP);
 		out.value(getDeviceName());
+		out.name(USER_NAME__PROP);
+		out.value(getUserName());
 	}
 
 	@Override
@@ -100,6 +133,7 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 		switch (field) {
 			case SECRET__PROP: setSecret(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case DEVICE_NAME__PROP: setDeviceName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case USER_NAME__PROP: setUserName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

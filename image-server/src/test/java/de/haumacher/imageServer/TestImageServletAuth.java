@@ -6,7 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
-import de.haumacher.imageServer.auth.DeviceStore;
+import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.PairResponse;
@@ -159,7 +159,7 @@ public class TestImageServletAuth extends TestCase {
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
 		assertEquals(AuthService.SECRET_REFUSED, errorMessage(response));
 		assertFalse("A refused pairing must not create the device store.",
-			_base.resolve(DeviceStore.DIRECTORY_NAME).resolve(DeviceStore.FILE_NAME).toFile().exists());
+			_base.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME).toFile().exists());
 	}
 
 	public void testStoreHoldsTheHashNeverTheToken() throws Exception {
@@ -167,26 +167,28 @@ public class TestImageServletAuth extends TestCase {
 
 		String token = pair(servlet, SECRET, "Phone").getToken();
 
-		String stored = read(_base.resolve(DeviceStore.DIRECTORY_NAME).resolve(DeviceStore.FILE_NAME).toFile());
+		String stored = read(_base.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME).toFile());
 		assertFalse("The token itself must never be stored: " + stored, stored.contains(token));
 		assertTrue("The store must hold the token's hash: " + stored,
-			stored.contains(DeviceStore.hash(token)));
+			stored.contains(UserStore.hash(token)));
 		assertTrue("The store must be versioned: " + stored, stored.contains("\"version\":1"));
 		assertTrue("The store must name the device: " + stored, stored.contains("\"Phone\""));
+		assertTrue("The store must record the role: " + stored, stored.contains("\"role\":\"admin\""));
 	}
 
 	public void testStoreWrittenByThisBuildLoadsBack() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.WRITES);
 		String token = pair(servlet, SECRET, "Phone").getToken();
 
-		DeviceStore reloaded = new DeviceStore(_base);
+		UserStore reloaded = new UserStore(_base);
 
-		assertEquals(1, reloaded.getDevices().size());
-		assertEquals("Phone", reloaded.getDevices().get(0).getName());
-		assertEquals("Phone", reloaded.deviceName(token));
-		assertNull(reloaded.deviceName("some other token"));
+		assertEquals(1, reloaded.getUsers().size());
+		assertEquals(1, reloaded.getOwner().getDevices().size());
+		assertEquals("Phone", reloaded.getOwner().getDevices().get(0).getName());
+		assertEquals("Phone", reloaded.lookup(token).getDevice().getName());
+		assertNull(reloaded.lookup("some other token"));
 		assertFalse("A device entry records when it was paired.",
-			reloaded.getDevices().get(0).getCreated().isEmpty());
+			reloaded.getOwner().getDevices().get(0).getCreated().isEmpty());
 	}
 
 	public void testTokenSurvivesARestart() throws Exception {
@@ -206,9 +208,9 @@ public class TestImageServletAuth extends TestCase {
 		pair(servlet, SECRET, "Phone");
 
 		assertEquals("Pairing must write nothing but its own directory.",
-			Collections.singletonList(DeviceStore.DIRECTORY_NAME), entries(_base));
-		assertEquals(Collections.singletonList(DeviceStore.FILE_NAME),
-			entries(_base.resolve(DeviceStore.DIRECTORY_NAME)));
+			Collections.singletonList(UserStore.DIRECTORY_NAME), entries(_base));
+		assertEquals(Collections.singletonList(UserStore.FILE_NAME),
+			entries(_base.resolve(UserStore.DIRECTORY_NAME)));
 	}
 
 	public void testUnparsablePairRequestRefused() throws Exception {

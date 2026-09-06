@@ -201,7 +201,7 @@ void main() {
         "http://server/valbum/data/?action=pair",
       );
       expect(request.method, "POST");
-      expect(request.body, '{"secret":"s3cret","deviceName":"Phone"}');
+      expect(request.body, '{"secret":"s3cret","deviceName":"Phone","userName":""}');
     });
 
     test('a wrong secret carries the server message', () {
@@ -372,7 +372,7 @@ void main() {
       expect(find.text("Paired as Kamera"), findsWidgets);
       expect(
         (requests.single as http.Request).body,
-        '{"secret":"demo","deviceName":"Kamera"}',
+        '{"secret":"demo","deviceName":"Kamera","userName":""}',
       );
       // The secret is never kept on the device.
       expect(

@@ -68,6 +68,7 @@ Options:
 | `--webroot <dir>` | Serve the web app from a directory instead of the bundled copy (development) | bundled |
 | `--auth off\|writes\|all` | What requires a paired device: nothing, changes and uploads, or every request | `writes` |
 | `--pairing-secret <secret>` | The secret a device presents to be paired; a random one is printed at start-up if none is given | generated |
+| `--migrate-to-user <name>` | One-time: move the albums at the base folder into a folder `<name>` and make it the library owner's space (see below); the server does not start afterwards | none |
 
 ### Pairing a device
 
@@ -78,9 +79,28 @@ and press "Pair this device": the server issues a token, the app stores it besid
 and sends it on every request from then on. `--auth all` refuses anonymous reads as well; `--auth
 off` is the old behaviour, open to everyone who can reach the server.
 
-The devices paired with a server are kept in `<basepath>/.valbum/devices.json`, which holds a hash
-of every issued token, never the token itself. Nothing else is ever written outside the
-`index.json` sidecars.
+### Users and spaces
+
+A paired device belongs to a user. The pairing secret signs in the **library owner** (the admin);
+the first sign-in that gives a user name names the owner, later sign-ins with the secret use that
+name or none. Users, their role and their devices are kept in `<basepath>/.valbum/users.json`,
+which holds a hash of every issued token, never the token itself; a `devices.json` written by an
+older server is taken over on first start and kept as `devices.json.migrated`. Nothing else is ever
+written outside the `index.json` sidecars.
+
+Every user owns one top-level folder under the base folder, their *space*, and sees the library
+rooted there. The owner's space is the base folder itself until you migrate the library once,
+explicitly, with the server stopped:
+
+```
+java -jar image-server/target/image-server-jar-with-dependencies.jar --basepath /path/to/photos --migrate-to-user <name>
+```
+
+This moves every entry of the base folder except `.valbum` and `.upload` into `/path/to/photos/<name>/`
+by a plain rename (sidecars and preview caches ride along), records the folder as the owner's space
+and exits. It is refused, with nothing moved, if the owner already has a space, the target folder
+is not empty, or the name is not a valid folder name. Once the library is migrated, anonymous
+callers are refused in every mode but `off`, because the base folder then holds only user spaces.
 
 Open `http://localhost:8080/` (or your context path) in a browser. The JSON API is available under
 `/data/`, for example `http://localhost:8080/data/?type=json`.
