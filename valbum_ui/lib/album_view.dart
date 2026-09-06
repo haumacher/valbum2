@@ -79,6 +79,16 @@ class AlbumContentState extends State<AlbumContent> {
   /// them, row by row and left to right.
   final List<AlbumPart> _displayOrder = [];
 
+  /// The parts a drag in progress carries, empty while no part is dragged.
+  ///
+  /// A drag that picks up a tile of the current selection carries the whole
+  /// selection (issue #41), so the tile under the pointer is not the only one
+  /// on its way: every carried tile is dimmed and none of them is a drop
+  /// target. A tile does not see the [Draggable] that started the drag, so
+  /// the set is kept here, filled when the drag starts and emptied when it
+  /// ends — whether it was dropped or cancelled.
+  final Set<AlbumPart> _carried = Set.identity();
+
   /// The rating an image needs to be shown, see [AlbumInfo.minRating].
   int get minRating => widget.album.minRating;
 
@@ -118,6 +128,41 @@ class AlbumContentState extends State<AlbumContent> {
   bool isSelected(AlbumPart part) => selection.contains(part);
 
   bool get hasMultiSelection => selection.length > 1;
+
+  /// Whether the given part is carried by a drag in progress, see [_carried].
+  bool isCarried(AlbumPart part) => _carried.contains(part);
+
+  /// What a drag started on the given part carries, see [DraggedParts].
+  ///
+  /// A tile of the current multi-selection carries the whole selection, in
+  /// the order the parts are stored in; any other tile carries itself alone
+  /// and leaves the selection alone.
+  DraggedParts dragOf(AlbumPart part) {
+    if (!hasMultiSelection || !isSelected(part)) {
+      return DraggedParts([part], part);
+    }
+    return DraggedParts(
+      [
+        for (var candidate in widget.album.parts)
+          if (isSelected(candidate)) candidate,
+      ],
+      part,
+    );
+  }
+
+  /// Remembers the parts a starting drag carries, see [_carried].
+  void startCarry(DraggedParts dragged) => setState(() {
+        _carried
+          ..clear()
+          ..addAll(dragged.parts);
+      });
+
+  /// Forgets the parts of a finished drag, dropped or cancelled.
+  void endCarry() {
+    if (_carried.isNotEmpty) {
+      setState(_carried.clear);
+    }
+  }
 
   /// Handles a click on the tile of the given part.
   ///
@@ -574,29 +619,43 @@ class AlbumContentState extends State<AlbumContent> {
   /// The parts in the order their tiles are shown, see [_displayOrder].
   List<AlbumPart> get displayOrder => List.unmodifiable(_displayOrder);
 
-  /// Drops [moved] at the insert cursor drawn on the given [side] of the tile
-  /// of [target], see [ReorderablePart].
+  /// Drops the parts of [dragged] at the insert cursor drawn on the given
+  /// [side] of the tile of [target], see [ReorderablePart].
   ///
   /// The cursor stands between two displayed tiles; the part shown directly
-  /// before it becomes the new predecessor of [moved] in the stored order,
-  /// see [movePart]. A cursor at the very beginning of the album has no such
-  /// part, and [moved] becomes the first part.
-  void dropPart(AlbumPart moved, AlbumPart target, InsertSide side) {
-    var index = _displayOrder.indexOf(target);
+  /// before it becomes the new predecessor of the dragged block in the stored
+  /// order, see [moveParts]. A cursor at the very beginning of the album has
+  /// no such part, and the block becomes the first parts of the album.
+  ///
+  /// Carried tiles are skipped when the predecessor is looked up: they are on
+  /// their way to the cursor themselves, so the part displayed before the
+  /// cursor is the nearest one that stays where it is. ([target] is never a
+  /// carried part, a carried tile refuses the drop.)
+  void dropPart(DraggedParts dragged, AlbumPart target, InsertSide side) {
+    var index = _displayOrder.indexWhere((part) => identical(part, target));
     if (index < 0) {
       return;
     }
-    var predecessor = side == InsertSide.after
-        ? target
-        : (index > 0 ? _displayOrder[index - 1] : null);
+    AlbumPart? predecessor;
+    if (side == InsertSide.after) {
+      predecessor = target;
+    } else {
+      for (var before = index - 1; before >= 0; before--) {
+        var candidate = _displayOrder[before];
+        if (!dragged.contains(candidate)) {
+          predecessor = candidate;
+          break;
+        }
+      }
+    }
 
     setState(() {
-      if (movePart(widget.album, moved, predecessor)) {
-        // The moved part is what the user is now looking for.
+      if (moveParts(widget.album, dragged.parts, predecessor)) {
+        // The moved parts are what the user is now looking for.
         selection
           ..clear()
-          ..add(moved);
-        lastClicked = moved;
+          ..addAll(dragged.parts);
+        lastClicked = dragged.primary;
       }
     });
   }
@@ -1195,6 +1254,28 @@ const double insertCursorWidth = 4;
 /// The factor the dragged tile is reduced by while it follows the pointer.
 const double dragFeedbackScale = 0.5;
 
+/// What a drag of the album's edit mode carries.
+///
+/// A drag picking up a tile that belongs to the current multi-selection
+/// carries the whole selection (issue #41), any other tile carries itself
+/// alone, see [AlbumContentState.dragOf].
+class DraggedParts {
+  /// The carried parts, in the order they are stored in.
+  final List<AlbumPart> parts;
+
+  /// The part whose tile was picked up, one of [parts].
+  final AlbumPart primary;
+
+  const DraggedParts(this.parts, this.primary);
+
+  /// Whether the given part is one of the carried ones.
+  bool contains(AlbumPart part) =>
+      parts.any((carried) => identical(carried, part));
+
+  /// Whether more than one part is carried.
+  bool get isBlock => parts.length > 1;
+}
+
 /// One album part as a drag source and a drop target of the reordering of the
 /// edit mode (issue #37).
 ///
@@ -1245,18 +1326,20 @@ class ReorderablePartState extends State<ReorderablePart> {
   /// over this one.
   InsertSide? _cursor;
 
+  /// Whether this part is on its way somewhere else, see
+  /// [AlbumContentState.isCarried].
+  bool get carried => widget.album.isCarried(widget.part);
+
   @override
   Widget build(BuildContext context) {
-    return DragTarget<AlbumPart>(
-      // A part is not dropped onto itself.
-      onWillAcceptWithDetails: (details) => !identical(
-        details.data,
-        widget.part,
-      ),
-      // A rejected target is told about the move all the same, so the part
+    var dragged = widget.album.dragOf(widget.part);
+    return DragTarget<DraggedParts>(
+      // A carried part is not dropped onto itself.
+      onWillAcceptWithDetails: (details) => !details.data.contains(widget.part),
+      // A rejected target is told about the move all the same, so a part
       // dragged over itself is filtered out here as well.
       onMove: (details) => showCursor(
-        identical(details.data, widget.part) ? null : sideOf(details.offset),
+        details.data.contains(widget.part) ? null : sideOf(details.offset),
       ),
       onLeave: (data) => showCursor(null),
       onAcceptWithDetails: (details) {
@@ -1266,8 +1349,13 @@ class ReorderablePartState extends State<ReorderablePart> {
       },
       builder: (context, candidate, rejected) => Stack(
         children: [
-          Draggable<AlbumPart>(
-            data: widget.part,
+          Draggable<DraggedParts>(
+            data: dragged,
+            onDragStarted: () => widget.album.startCarry(dragged),
+            // Whether the drop was taken or the drag was cancelled: the parts
+            // are no longer on their way, see [AlbumContentState.endCarry].
+            onDragEnd: (details) => widget.album.endCarry(),
+            onDraggableCanceled: (velocity, offset) => widget.album.endCarry(),
             // Only a sideways pull picks the part up, see [ReorderablePart].
             affinity: Axis.horizontal,
             // The tile itself: its [MouseRegion] is not opaque and reports the
@@ -1287,13 +1375,15 @@ class ReorderablePartState extends State<ReorderablePart> {
                   type: MaterialType.transparency,
                   child: Transform.scale(
                     scale: dragFeedbackScale,
-                    child: widget.feedback,
+                    child: feedbackOf(dragged),
                   ),
                 ),
               ),
             ),
             childWhenDragging: Opacity(opacity: 0.3, child: widget.child),
-            child: widget.child,
+            child: carried
+                ? Opacity(opacity: 0.3, child: widget.child)
+                : widget.child,
           ),
           if (_cursor != null)
             Positioned(
@@ -1318,6 +1408,42 @@ class ReorderablePartState extends State<ReorderablePart> {
             ),
         ],
       ),
+    );
+  }
+
+  /// What follows the pointer: the tile picked up, and how many parts are on
+  /// their way with it if it is a whole block, see [DraggedParts].
+  Widget feedbackOf(DraggedParts dragged) {
+    if (!dragged.isBlock) {
+      return widget.feedback;
+    }
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        widget.feedback,
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.blueAccent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Text(
+                "${dragged.parts.length} Teile",
+                key: const Key("drag-feedback-count"),
+                style: const TextStyle(
+                  fontSize: 28,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

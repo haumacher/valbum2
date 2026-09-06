@@ -359,32 +359,107 @@ bool movePart(
   AlbumInfo album,
   AlbumPart moved,
   AlbumPart? displayedPredecessor,
+) =>
+    moveParts(album, [moved], displayedPredecessor);
+
+/// Moves all of [moved] behind [displayedPredecessor] in [AlbumInfo.parts].
+///
+/// The many-parts form of [movePart] (issue #41): a drag that picks up a tile
+/// of the current selection carries the whole selection, and the selection is
+/// put down as one block. The rule for the place is the one of [movePart]:
+/// the block lands directly behind [displayedPredecessor], the part *shown*
+/// before the insert cursor, `null` for the very beginning of the album.
+///
+/// The parts of the block keep the order they are *stored* in, not the order
+/// they were selected or displayed in, and not the part the drag was started
+/// from first: a selection put down elsewhere reads as it read before.
+///
+/// If [displayedPredecessor] is itself one of [moved], the block cannot be
+/// inserted behind it without being dropped into itself. The insertion point
+/// is then the nearest part *stored* before it that is not moved along (the
+/// very beginning of the album if there is none): the cursor names the place
+/// after everything that stays in front of it, and that is the last part
+/// which does. So a cursor inside a block already standing together is a
+/// move to where the block already is, and nothing changes.
+///
+/// Nothing happens if one of [moved] or [displayedPredecessor] does not
+/// belong to the album, if [moved] is empty, or if the resulting order is the
+/// one the album already has. The transient links are rebuilt afterwards (see
+/// [AlbumInitializer]).
+///
+/// Returns whether the stored order changed.
+bool moveParts(
+  AlbumInfo album,
+  Iterable<AlbumPart> moved,
+  AlbumPart? displayedPredecessor,
 ) {
-  if (identical(moved, displayedPredecessor)) {
+  // The album parts are compared by identity: two headings of the same text
+  // are two parts, and an album may well hold them both.
+  var block = Set<AlbumPart>.identity()..addAll(moved);
+  if (block.isEmpty) {
     return false;
   }
 
-  var parts = album.parts.toList();
-  var from = parts.indexOf(moved);
-  if (from < 0) {
+  var parts = album.parts;
+  var belongs = Set<AlbumPart>.identity()..addAll(parts);
+  if (!block.every(belongs.contains)) {
     return false;
   }
-  if (displayedPredecessor != null && !parts.contains(displayedPredecessor)) {
+  if (displayedPredecessor != null && !belongs.contains(displayedPredecessor)) {
     return false;
   }
 
-  parts.removeAt(from);
-  var to = displayedPredecessor == null
+  var predecessor = displayedPredecessor;
+  if (predecessor != null && block.contains(predecessor)) {
+    // The cursor stands inside the block, see above: the nearest part before
+    // it that stays where it is takes its place.
+    predecessor = null;
+    for (var i = parts.indexWhere((p) => identical(p, displayedPredecessor)) - 1;
+        i >= 0;
+        i--) {
+      if (!block.contains(parts[i])) {
+        predecessor = parts[i];
+        break;
+      }
+    }
+  }
+
+  var carried = [
+    for (var part in parts)
+      if (block.contains(part)) part,
+  ];
+  var staying = [
+    for (var part in parts)
+      if (!block.contains(part)) part,
+  ];
+  var to = predecessor == null
       ? 0
-      : parts.indexOf(displayedPredecessor) + 1;
-  if (to == from) {
-    // Putting it back where it was taken from.
+      : staying.indexWhere((p) => identical(p, predecessor)) + 1;
+
+  var result = [
+    ...staying.sublist(0, to),
+    ...carried,
+    ...staying.sublist(to),
+  ];
+  if (_sameOrder(result, parts)) {
     return false;
   }
 
-  parts.insert(to, moved);
-  album.parts = parts;
+  album.parts = result;
   AlbumInitializer().init(album);
+  return true;
+}
+
+/// Whether both lists hold the same parts in the same order.
+bool _sameOrder(List<AlbumPart> left, List<AlbumPart> right) {
+  if (left.length != right.length) {
+    return false;
+  }
+  for (var i = 0; i < left.length; i++) {
+    if (!identical(left[i], right[i])) {
+      return false;
+    }
+  }
   return true;
 }
 
