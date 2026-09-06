@@ -124,6 +124,37 @@ public class TestImageServletPut extends TestCase {
 		assertEquals(ALBUM_JSON, read(new File(folder, "index.json")));
 	}
 
+	/**
+	 * The listing describes an album by its sidecar; storing the sidecar must refresh the listing
+	 * (the client chooses the album's index picture there, see the Flutter album edit mode).
+	 */
+	public void testStoringAlbumRefreshesListingAbove() throws Exception {
+		File folder = new File(_base.toFile(), "album");
+		assertTrue(folder.mkdir());
+		put("/album/", "application/json", "[\"AlbumInfo\",{\"title\":\"Before\",\"parts\":[]}]");
+
+		String listing = getJson("/");
+		assertTrue(listing, listing.contains("\"title\":\"Before\""));
+		assertFalse(listing, listing.contains("indexPicture"));
+
+		FakeResponse response = put("/album/", "application/json",
+			"[\"AlbumInfo\",{\"title\":\"After\",\"indexPicture\":{\"image\":\"pic.jpg\",\"scale\":1.5,\"tx\":0.0,\"ty\":0.0},\"parts\":[]}]");
+		assertEquals(HttpServletResponse.SC_OK, response.status());
+
+		listing = getJson("/");
+		assertTrue(listing, listing.contains("\"title\":\"After\""));
+		assertTrue(listing, listing.contains("\"image\":\"pic.jpg\""));
+	}
+
+	private String getJson(String pathInfo) throws Exception {
+		FakeResponse response = new FakeResponse();
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("type", "json");
+		_servlet.doGet(request(pathInfo, null, new byte[0], Collections.emptyMap(), parameters), response.response());
+		assertEquals(HttpServletResponse.SC_OK, response.status());
+		return response.body();
+	}
+
 	public void testPathEscapeRejected() throws Exception {
 		FakeResponse response = put("/../escape/", "application/json", ALBUM_JSON);
 

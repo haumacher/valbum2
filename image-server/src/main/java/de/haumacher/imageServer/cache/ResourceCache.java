@@ -91,6 +91,28 @@ public class ResourceCache {
 	 * @param pathInfo The file-system resource to analyze.
 	 * @return The {@link Resource} describing the system resource.
 	 */
+	/**
+	 * Forgets what is cached for the given folder and for the folder containing it.
+	 *
+	 * <p>
+	 * A listing describes each of its folders from that folder's own sidecar (title, subtitle,
+	 * index picture, see {@link Loader#loadFolderInfo(File)}), so a change inside a folder is a
+	 * change of the listing above it, too. Called when the servlet has written a sidecar: the
+	 * directory watcher reports the same change, but only some time after the write, and the
+	 * client's next request may come first.
+	 * </p>
+	 */
+	public void invalidate(PathInfo pathInfo) {
+		invalidate(_cache, pathInfo);
+	}
+
+	static void invalidate(LoadingCache<PathInfo, Resource> cache, PathInfo pathInfo) {
+		cache.invalidate(pathInfo);
+		if (!pathInfo.isRoot()) {
+			cache.invalidate(pathInfo.parent());
+		}
+	}
+
 	public Resource lookup(PathInfo pathInfo) {
 		_loader.processEvents(_cache);
 		if (pathInfo.toFile().isDirectory()) {
@@ -139,7 +161,9 @@ public class ResourceCache {
 
 				PathInfo path = _watchedDirs.remove(key);
 				if (path != null) {
-					cache.invalidate(path);
+					// The listing above describes this folder from its contents, see
+					// ResourceCache#invalidate(PathInfo).
+					invalidate(cache, path);
 				}
 				key.cancel();
 			}

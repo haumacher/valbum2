@@ -549,6 +549,10 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     notifyListeners();
   }
 
+  /// Forgets the resource loaded for the given path, so that the next view of
+  /// it asks the server again (the [reload] of a path not currently shown).
+  void forget(List<String> path) => _resources.remove(_pathKey(path));
+
   /// Changes whenever [reload] dropped a resource, see [VAlbumNavigator].
   int get version => _version;
 

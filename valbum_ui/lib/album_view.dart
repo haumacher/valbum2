@@ -249,7 +249,14 @@ class AlbumContentState extends State<AlbumContent> {
       _layoutOrientation.clear();
     });
 
-    // Re-load the album, so that the transient part links are rebuilt.
+    // Re-load the album, so that the transient part links are rebuilt. The
+    // listing above shows the album by its index picture, which may have
+    // just been chosen: it is fetched anew on the way up.
+    var path = widget.albumState.path;
+    if (path.isNotEmpty) {
+      widget.albumState.navigator.delegate
+          .forget(path.sublist(0, path.length - 1));
+    }
     widget.albumState.reload();
   }
 
@@ -893,6 +900,22 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
                 child: widget.builder.imageThumbnail(image),
               ),
             ),
+            if (isIndexPicture(album.widget.album, image))
+              const Positioned(
+                right: 4,
+                bottom: 4,
+                child: IgnorePointer(
+                  child: Tooltip(
+                    message: "Albumbild",
+                    child: Icon(
+                      Icons.photo_album,
+                      key: Key("album-index-picture"),
+                      color: Colors.amberAccent,
+                      shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                    ),
+                  ),
+                ),
+              ),
             if (selected)
               Positioned.fill(
                 child: IgnorePointer(
@@ -953,6 +976,14 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         ],
       ],
       toolButton(Icons.notes, "Bildeigenschaften", editImageProperties),
+      // The image standing for the album in the listing above, chosen where
+      // the images are compared: the representative of a group stands for it.
+      toolButton(
+        Icons.photo_album,
+        "Als Albumbild verwenden",
+        setIndexPicture,
+        active: isIndexPicture(album.widget.album, image),
+      ),
     ]);
   }
 
@@ -1016,6 +1047,11 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
 
   void setRating(int value) => album.editImage(
         () => image.rating = toggleRating(image.rating, value),
+      );
+
+  /// Makes this tile's image the album's index picture, see [indexPictureOf].
+  void setIndexPicture() => album.editImage(
+        () => album.widget.album.indexPicture = indexPictureOf(image),
       );
 
   /// Groups the selected images, this tile's image representing the group.

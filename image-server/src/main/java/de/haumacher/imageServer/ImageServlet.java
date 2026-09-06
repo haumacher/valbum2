@@ -658,6 +658,9 @@ public class ImageServlet extends HttpServlet {
 
 		tmpFile.renameTo(indexFile);
 
+		// The next read must see what was just written, in the folder and in the listing above.
+		_cache.invalidate(resourcePath);
+
 		LOG.info("Stored folder resource: " + indexFile.getAbsolutePath());
 	}
 

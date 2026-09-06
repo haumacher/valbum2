@@ -354,3 +354,34 @@ List<ImagePart> ungroup(AlbumInfo album, ImageGroup group) {
   AlbumInitializer().init(album);
   return members;
 }
+
+/// The width of the square listing tile the index picture's offsets refer to,
+/// in the pixels of the retired GWT client.
+const double indexPictureTile = 300;
+
+/// The index picture showing the given image in the parent listing, framed
+/// as the server frames its own fallback (the first image of a folder without
+/// a sidecar, see `ResourceCache.loadFolderInfo`).
+///
+/// The listing tile is square; the image is scaled up by its aspect ratio so
+/// that it fills the square, and a portrait image is shifted down so that its
+/// middle is what the square shows. The offsets are in the pixels of the
+/// 300px tile of the GWT client, see `thumbnailTransform`.
+ThumbnailInfo indexPictureOf(ImagePart image) {
+  double width = image.width.toDouble();
+  double height = image.height.toDouble();
+  if (width <= 0 || height <= 0) {
+    return ThumbnailInfo(image: image.name, scale: 1);
+  }
+  var scale = width / height;
+  var ty = 0.0;
+  if (scale < 1) {
+    scale = 1 / scale;
+    ty = (height - width) / height * (indexPictureTile / 2);
+  }
+  return ThumbnailInfo(image: image.name, scale: scale, ty: ty);
+}
+
+/// Whether the given image is the one representing its album in the listing.
+bool isIndexPicture(AlbumInfo album, ImagePart image) =>
+    album.indexPicture?.image == image.name;
