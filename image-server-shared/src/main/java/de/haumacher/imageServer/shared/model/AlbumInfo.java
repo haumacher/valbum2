@@ -21,6 +21,12 @@ public class AlbumInfo extends FolderResource {
 	/** @see #getSubTitle() */
 	private static final String SUB_TITLE__PROP = "subTitle";
 
+	/** @see #getDate() */
+	private static final String DATE__PROP = "date";
+
+	/** @see #getEffectiveDate() */
+	private static final String EFFECTIVE_DATE__PROP = "effectiveDate";
+
 	/** @see #getIndexPicture() */
 	private static final String INDEX_PICTURE__PROP = "indexPicture";
 
@@ -30,6 +36,10 @@ public class AlbumInfo extends FolderResource {
 	private String _title = "";
 
 	private String _subTitle = "";
+
+	private long _date = 0L;
+
+	private long _effectiveDate = 0L;
 
 	private de.haumacher.imageServer.shared.model.ThumbnailInfo _indexPicture = null;
 
@@ -91,6 +101,67 @@ public class AlbumInfo extends FolderResource {
 	/** Internal setter for {@link #getSubTitle()} without chain call utility. */
 	protected final void internalSetSubTitle(String value) {
 		_subTitle = value;
+	}
+
+	/**
+	 * The date this album is filed under, in milliseconds since the epoch, <code>0</code> when the
+	 * author has set none.
+	 *
+	 * <p>
+	 * The explicit date and only the explicit one: this is what <code>index.json</code> stores and
+	 * what the album's properties edit. What the album is actually sorted and placed by is
+	 * {@link #getEffectiveDate()}, see issue #48.
+	 * </p>
+	 */
+	public final long getDate() {
+		return _date;
+	}
+
+	/**
+	 * @see #getDate()
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo setDate(long value) {
+		internalSetDate(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getDate()} without chain call utility. */
+	protected final void internalSetDate(long value) {
+		_date = value;
+	}
+
+	/**
+	 * The date this album is sorted and placed by, in milliseconds since the epoch, <code>0</code>
+	 * when nothing says when it happened.
+	 *
+	 * <p>
+	 * Derived by the server on every read: the explicit {@link #getDate()}, else the leading date of the
+	 * album's folder name (<code>YYYY-MM-DD</code>, <code>YYYY-MM</code> or <code>YYYY</code>),
+	 * else the earliest {@link ImagePart#getDate()} of the images the album holds.
+	 * </p>
+	 *
+	 * <p>
+	 * Derived data is never stored: the server clears this field before a sidecar is written, so
+	 * that a round trip through a client cannot freeze a derived date into <code>index.json</code>.
+	 * A sidecar that carries one nevertheless is read without complaint and answered with the
+	 * derived value.
+	 * </p>
+	 */
+	public final long getEffectiveDate() {
+		return _effectiveDate;
+	}
+
+	/**
+	 * @see #getEffectiveDate()
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo setEffectiveDate(long value) {
+		internalSetEffectiveDate(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getEffectiveDate()} without chain call utility. */
+	protected final void internalSetEffectiveDate(long value) {
+		_effectiveDate = value;
 	}
 
 	/**
@@ -254,6 +325,10 @@ public class AlbumInfo extends FolderResource {
 		out.value(getTitle());
 		out.name(SUB_TITLE__PROP);
 		out.value(getSubTitle());
+		out.name(DATE__PROP);
+		out.value(getDate());
+		out.name(EFFECTIVE_DATE__PROP);
+		out.value(getEffectiveDate());
 		if (hasIndexPicture()) {
 			out.name(INDEX_PICTURE__PROP);
 			getIndexPicture().writeTo(out);
@@ -271,6 +346,8 @@ public class AlbumInfo extends FolderResource {
 		switch (field) {
 			case TITLE__PROP: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SUB_TITLE__PROP: setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case DATE__PROP: setDate(in.nextLong()); break;
+			case EFFECTIVE_DATE__PROP: setEffectiveDate(in.nextLong()); break;
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			case PARTS__PROP: {
 				in.beginArray();

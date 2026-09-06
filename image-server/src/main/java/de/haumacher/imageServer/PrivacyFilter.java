@@ -92,7 +92,10 @@ public class PrivacyFilter {
 	AlbumInfo filterAlbum(AlbumInfo album, int clearance) {
 		AlbumInfo result = AlbumInfo.create()
 			.setTitle(album.getTitle())
-			.setSubTitle(album.getSubTitle());
+			.setSubTitle(album.getSubTitle())
+			// Hiding an image does not change when the album happened.
+			.setDate(album.getDate())
+			.setEffectiveDate(album.getEffectiveDate());
 
 		Set<String> visibleNames = new HashSet<>();
 		boolean hidden = false;
@@ -286,7 +289,12 @@ public class PrivacyFilter {
 		if (filtered == null) {
 			return listing;
 		}
-		return ListingInfo.create().setTitle(listing.getTitle()).setFolders(filtered);
+		return ListingInfo.create()
+			.setTitle(listing.getTitle())
+			// The folder's placement rule is not a secret, and a copy that lost it would tell the
+			// app that this folder files nothing, see issue #48.
+			.setPlacement(listing.getPlacement())
+			.setFolders(filtered);
 	}
 
 	/**
@@ -322,7 +330,9 @@ public class PrivacyFilter {
 		FolderInfo result = FolderInfo.create()
 			.setName(folder.getName())
 			.setTitle(folder.getTitle())
-			.setSubTitle(folder.getSubTitle());
+			.setSubTitle(folder.getSubTitle())
+			// The listing keeps its order whoever is looking at it.
+			.setEffectiveDate(folder.getEffectiveDate());
 		Resource album = _cache.lookup(childPath);
 		if (album instanceof AlbumInfo) {
 			ThumbnailInfo cover = filterAlbum((AlbumInfo) album, clearance).getIndexPicture();

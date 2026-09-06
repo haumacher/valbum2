@@ -14,12 +14,12 @@ photo cloud for a one-off investment.
 
 - **Your folders are your albums.** One folder holds all albums; each album is a folder with photos
   and videos; nest them any way you like. The server reads that tree and presents it as listings and
-  albums with titles and dates derived from folder names and image metadata.
+  albums with titles and dates derived from folder names and image metadata, newest first.
 - **Originals are never touched.** Everything you change in VAlbum — titles, captions, ratings,
   privacy levels, rotation, grouping near-duplicate shots, section headings — is stored in an `index.json` sidecar
   file next to your photos. No file of yours is ever modified or deleted; the only thing the server
-  does to a photo is rename it when you move it to another album (or migrate the library into your
-  space), and a photo that a move finds already present at its target is set aside in
+  does to a photo is rename it when you move it to another album, when a placement rule files an album
+  into its year folder, or when you migrate the library into your space; and a photo that a move finds already present at its target is set aside in
   `.valbum/duplicates/`, never removed.
 - **One server, one app.** The server (`image-server/`) is a JSON API plus static hosting for the web
   build of the app; the app (`valbum_ui/`) is written in Flutter and runs on the web, Android, iOS,
@@ -117,8 +117,21 @@ rating, privacy level, comment and orientation move with it into the target albu
 as does its entry in `.hashes.json`, so the upload de-duplication keeps working. Moving a group's
 representative moves the whole group. A name already taken at the target is resolved as an upload
 would (the moved file gets a free name); a photo the target already holds with identical content is
-set aside in `.valbum/duplicates/`, never deleted. Every name gets an outcome: its new name, or the
-reason it was not moved. Nothing is ever overwritten.
+set aside in `.valbum/duplicates/`, never deleted. Every name gets an outcome: its new name (a path
+below the target when the target files by year, see below), or the reason it was not moved. Nothing
+is ever overwritten.
+
+### Album dates and placement rules
+
+An album has a date: the one its author sets in the album properties (stored in `index.json`), else
+the leading date of its folder name (`2026-09-06 Name`, `2026-09 Name`, `2026 Name`), else the
+earliest photo date. The server reports this *effective date* on every album and listing tile and
+never stores a derived one; listings are ordered newest first, undated folders after them by name.
+A folder can carry a placement rule — by year or by year and month — set in its properties. The rule
+places whatever lands in the folder: an album created there is filed into `YYYY/` (or
+`YYYY/YYYY-MM/`), an album moved there likewise, and `POST <folder>/?action=place` files what is
+already there, once, explicitly. Year folders are ordinary folders. The rule places, it does not
+police: what you drag elsewhere by hand stays there.
 
 ### Privacy levels
 

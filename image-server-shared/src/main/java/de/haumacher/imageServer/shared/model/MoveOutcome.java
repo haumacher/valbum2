@@ -67,6 +67,11 @@ public class MoveOutcome extends de.haumacher.msgbuf.data.AbstractDataObject {
 	 * contents: the moved file is renamed exactly as a colliding upload is. When the target
 	 * already held the very same contents, this is the name of the file that has them there.
 	 * </p>
+	 *
+	 * <p>
+	 * A folder that the target's {@link ListingInfo#getPlacement()} rule filed away reports the path it
+	 * has below the target folder (<code>2020/2020 Trip</code>), not just its name, see issue #48.
+	 * </p>
 	 */
 	public final String getNewName() {
 		return _newName;

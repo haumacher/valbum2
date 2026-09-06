@@ -11,6 +11,7 @@ import de.haumacher.imageServer.auth.AuthService.PairRefused;
 import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.ContentHash;
+import de.haumacher.imageServer.shared.model.CreateResult;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageKind;
@@ -307,7 +308,7 @@ public class ImageServlet extends HttpServlet {
 					error(context, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
 					return;
 				}
-				createAlbum(context, file);
+				createAlbum(context, resourcePath);
 				return;
 			}
 
@@ -363,25 +364,78 @@ public class ImageServlet extends HttpServlet {
 		return new PathInfo(root, path);
 	}
 
-	/** Creates a new album folder with the request body as its <code>index.json</code>. */
-	private void createAlbum(Context context, File folder) throws IOException {
+	/**
+	 * Creates a new album folder with the request body as its <code>index.json</code>.
+	 *
+	 * <p>
+	 * The folder the client asks for is not necessarily the folder the album ends up in: when the
+	 * folder above carries a placement rule, the album is filed into its year (or month) folder,
+	 * see issue #48. The answer is a {@link CreateResult} naming the path the album really has, so
+	 * that the client can go there instead of looking where it is not.
+	 * </p>
+	 */
+	private void createAlbum(Context context, PathInfo resourcePath) throws IOException {
 		byte[] contents = readBody(context.request());
-		if (!checkFolderResource(context, contents)) {
+		FolderResource resource = checkFolderResource(context, contents);
+		if (resource == null) {
 			return;
 		}
 
-		boolean ok = folder.mkdirs();
-		if (!ok) {
+		File asked = resourcePath.toFile();
+		File parent = asked.getParentFile();
+		String name = asked.getName();
+
+		// The album is filed by what is written on it: the date the request carries, else the date
+		// in the folder name it asks for.
+		PlacementRule rule = PlacementRule.of(parent);
+		File placement;
+		try {
+			placement = PlacementRule.isPlacementFolder(name) ? null
+				: rule.create(parent, AlbumDate.ofFolder(resource, name));
+		} catch (IOException ex) {
+			LOG.log(Level.WARNING, "Cannot file the new album '" + name + "': " + ex.getMessage(), ex);
+			errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, ex.getMessage());
+			return;
+		}
+
+		PathInfo createdPath = resourcePath;
+		String message = "";
+		if (placement != null) {
+			PathInfo folderPath = resourcePath.parent();
+			for (Path segment : parent.toPath().relativize(placement.toPath())) {
+				folderPath = folderPath.child(segment.toString());
+			}
+			createdPath = folderPath.child(name);
+			message = PlacementRule.filedIn(relative(parent, placement));
+		}
+
+		File folder = createdPath.toFile();
+		if (folder.exists()) {
+			LOG.warning("Refusing to create the album '" + folder.getAbsolutePath() + "': the name is taken.");
+			errorInfo(context, HttpServletResponse.SC_CONFLICT, MoveService.nameTaken(name));
+			return;
+		}
+		if (!folder.mkdirs()) {
 			LOG.warning("Cannot create path: " + folder.getAbsolutePath());
 			error(context, HttpServletResponse.SC_BAD_REQUEST);
 			return;
 		}
 
 		try (FileOutputStream out = new FileOutputStream(new File(folder, "index.json"))) {
-			out.write(contents);
+			out.write(stored(contents, resource));
 		}
 
-		LOG.info("Created album: " + folder.getName());
+		// The listing above shows the new album, and it may show a new year folder, too.
+		_cache.invalidateTree(resourcePath.parent());
+
+		LOG.info("Created album: " + folder.getAbsolutePath());
+		serveJsonObject(context.response(),
+			CreateResult.create().setPath(createdPath.toPath().substring(1)).setMessage(message));
+	}
+
+	/** The path of the given folder below the given one, with <code>/</code> as separator. */
+	private static String relative(File folder, File descendant) {
+		return folder.toPath().relativize(descendant.toPath()).toString().replace(File.separatorChar, '/');
 	}
 
 	/**
@@ -569,6 +623,45 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Files what is already in the addressed folder by that folder's placement rule, see issue #48.
+	 *
+	 * <p>
+	 * The "apply once" of a rule, and never anything else: nothing here happens implicitly, on a
+	 * read or at start-up. It is a write on the folder itself — every child is renamed — so it is
+	 * refused exactly as a move out of that folder is, and it answers with the outcomes a move
+	 * answers with, see {@link MoveService#place(PathInfo)}.
+	 * </p>
+	 */
+	private void placeEntries(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (!_auth.writeAllowed(caller)) {
+			unauthorized(context, caller, true);
+			return;
+		}
+
+		PathInfo folder = resolve(context, caller);
+		if (folder == null) {
+			return;
+		}
+		if (!_auth.mayEdit(caller, folder)) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, MoveService.EDIT_REFUSED);
+			return;
+		}
+
+		MoveResult result;
+		try {
+			result = new MoveService(_basePath, _cache).place(folder);
+		} catch (MoveRefused ex) {
+			LOG.warning("Refusing to apply the placement rule of '" + context.request().getPathInfo() + "': "
+				+ ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
 	 * Answers which of the asked contents the addressed folder already holds.
 	 *
 	 * <p>
@@ -695,6 +788,10 @@ public class ImageServlet extends HttpServlet {
 			moveEntries(context);
 			return;
 		}
+		if ("place".equals(action)) {
+			placeEntries(context);
+			return;
+		}
 
 		if (!"pair".equals(action)) {
 			Caller caller = _auth.caller(request);
@@ -787,17 +884,19 @@ public class ImageServlet extends HttpServlet {
 	 *
 	 * <p>
 	 * The client's bytes are stored verbatim: the body is only parsed to make sure that it is a
-	 * {@link FolderResource}, it is never re-serialised. A pre-existing <code>index.json</code> is
-	 * kept as a timestamped backup.
+	 * {@link FolderResource}, and it is re-serialised only when it carries something the server
+	 * derived and must not keep, see {@link #stored(byte[], FolderResource)}. A pre-existing
+	 * <code>index.json</code> is kept as a timestamped backup.
 	 * </p>
 	 */
 	private void storeFolder(Context context, PathInfo resourcePath) throws IOException {
 		byte[] contents = readBody(context.request());
-		if (!checkFolderResource(context, contents)) {
+		FolderResource resource = checkFolderResource(context, contents);
+		if (resource == null) {
 			return;
 		}
 
-		storeSidecar(resourcePath.toFile(), contents);
+		storeSidecar(resourcePath.toFile(), stored(contents, resource));
 
 		// The next read must see what was just written, in the folder and in the listing above.
 		_cache.invalidate(resourcePath);
@@ -852,9 +951,9 @@ public class ImageServlet extends HttpServlet {
 	 * If they do not, the response is completed with an error status and the reason is logged.
 	 * </p>
 	 *
-	 * @return Whether the contents may be stored.
+	 * @return The parsed resource, <code>null</code> if the contents may not be stored.
 	 */
-	private static boolean checkFolderResource(Context context, byte[] contents) {
+	private static FolderResource checkFolderResource(Context context, byte[] contents) {
 		Resource resource;
 		try {
 			resource = Resource.readResource(
@@ -862,14 +961,37 @@ public class ImageServlet extends HttpServlet {
 		} catch (IOException | RuntimeException ex) {
 			LOG.warning("Rejecting unparsable folder resource for '" + context.request().getPathInfo() + "': " + ex.getMessage());
 			error(context, HttpServletResponse.SC_BAD_REQUEST);
-			return false;
+			return null;
 		}
 		if (!(resource instanceof FolderResource)) {
 			LOG.warning("Rejecting non-folder resource for '" + context.request().getPathInfo() + "': " + resource);
 			error(context, HttpServletResponse.SC_BAD_REQUEST);
-			return false;
+			return null;
 		}
-		return true;
+		return (FolderResource) resource;
+	}
+
+	/**
+	 * The bytes to store for a received sidecar.
+	 *
+	 * <p>
+	 * A client's body is stored exactly as it was sent — that is what keeps one sidecar format —
+	 * unless it carries a date the server derived rather than the author stated. Such a field would
+	 * freeze today's guess into the file and outlive whatever it was derived from, so it is cleared
+	 * and only then is the body re-serialised, see {@link AlbumDate#clearDerived(FolderResource)}.
+	 * </p>
+	 */
+	private static byte[] stored(byte[] contents, FolderResource resource) throws IOException {
+		if (!AlbumDate.clearDerived(resource)) {
+			return contents;
+		}
+		LOG.info("Dropping the derived date of a stored sidecar: it is answered, never kept.");
+		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(buffer,
+			StandardCharsets.UTF_8)))) {
+			resource.writeTo(json);
+		}
+		return buffer.toByteArray();
 	}
 
 	/**

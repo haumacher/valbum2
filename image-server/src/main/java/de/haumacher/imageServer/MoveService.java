@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -146,6 +147,16 @@ public class MoveService {
 		return "'" + name + "' is named more than once in this request; it moves only once.";
 	}
 
+	/** The message a folder is reported with that files nothing, see {@link #place(PathInfo)}. */
+	public static final String NO_RULE = "This folder files nothing by itself: it has no placement rule.";
+
+	/** The message an entry is reported with that nothing says a date about. */
+	public static final String KEPT_NO_DATE =
+		"Kept: nothing says when this happened, so there is no folder to file it in.";
+
+	/** The message a folder that cannot be listed is refused with. */
+	public static final String FOLDER_UNREADABLE = "The folder cannot be listed.";
+
 	/** The message an entry is reported with whose rename failed. */
 	public static String failed(String reason) {
 		return "The move failed: " + reason;
@@ -203,6 +214,19 @@ public class MoveService {
 		/** The directory to rename, <code>null</code> unless this is a folder entry. */
 		File _folder;
 
+		/**
+		 * The folder this entry is renamed into: the target folder, or the year (or month) folder
+		 * of the target's placement rule, see {@link MoveService#destination(PlacementRule, File,
+		 * File)}.
+		 */
+		File _destination;
+
+		/**
+		 * The name to report the entry as: its own name, or its path below the target folder
+		 * (<code>2020/2020 Trip</code>) when a placement rule filed it away.
+		 */
+		String _newName;
+
 		/** The single image to move, <code>null</code> unless this is an image entry. */
 		ImagePart _image;
 
@@ -259,9 +283,14 @@ public class MoveService {
 		AlbumInfo targetAlbum = albumOf(target);
 		// A folder that describes itself as a folder of folders has no place for an image; its
 		// sidecar is the owner's statement and this server does not overrule it.
-		boolean targetTakesImages = !(ResourceCache.sidecar(targetFolder) instanceof ListingInfo);
+		FolderResource targetSidecar = ResourceCache.sidecar(targetFolder);
+		boolean targetTakesImages = !(targetSidecar instanceof ListingInfo);
 
-		List<Entry> entries = classify(sourceFolder, targetFolder, sourceAlbum, targetTakesImages, names);
+		// What lands in a folder is filed by the folder's rule, see issue #48. Only folders are:
+		// an image lands in an album, never in a folder of folders, and is refused above.
+		PlacementRule rule = PlacementRule.of(targetSidecar);
+
+		List<Entry> entries = classify(sourceFolder, targetFolder, sourceAlbum, targetTakesImages, rule, names);
 
 		MoveResult result = MoveResult.create();
 		HashCache sourceHashes = new HashCache(sourceFolder);
@@ -286,7 +315,7 @@ public class MoveService {
 
 				try {
 					if (entry._folder != null) {
-						result.addOutcome(moveFolder(entry, targetFolder));
+						result.addOutcome(moveFolder(entry));
 					} else if (entry._group != null) {
 						result.addOutcome(moveGroup(entry, entries, sourceAlbum, targetAlbum, sourceFolder,
 							targetFolder, targetHashes, sourceHashes));
@@ -340,7 +369,7 @@ public class MoveService {
 	 * </p>
 	 */
 	private static List<Entry> classify(File sourceFolder, File targetFolder, AlbumInfo sourceAlbum,
-			boolean targetTakesImages, List<String> names) {
+			boolean targetTakesImages, PlacementRule rule, List<String> names) {
 		List<Entry> result = new ArrayList<>(names.size());
 		Set<String> seen = new HashSet<>();
 		for (String name : names) {
@@ -364,7 +393,10 @@ public class MoveService {
 
 			if (file.isDirectory()) {
 				entry._folder = file;
-				if (new File(targetFolder, name).exists()) {
+				Entry destination = destination(rule, targetFolder, file);
+				entry._destination = destination._destination;
+				entry._newName = destination._newName;
+				if (new File(entry._destination, name).exists()) {
 					entry._refusal = nameTaken(name);
 				} else if (isBelow(targetFolder, file)) {
 					entry._refusal = intoItself(name);
@@ -401,29 +433,150 @@ public class MoveService {
 		return result;
 	}
 
-	/** Renames a directory into the target folder; everything inside rides along by nature. */
-	private MoveOutcome moveFolder(Entry entry, File targetFolder) throws IOException {
-		File moved = new File(targetFolder, entry._name);
+	/**
+	 * Renames a directory into the folder it belongs in; everything inside rides along by nature.
+	 *
+	 * <p>
+	 * That folder is the target folder, unless the target files what lands in it by year or month:
+	 * then it is the year (or month) folder, which is created here and nowhere else, see
+	 * {@link PlacementRule}.
+	 * </p>
+	 */
+	private MoveOutcome moveFolder(Entry entry) throws IOException {
+		File destination = entry._destination;
+		if (!destination.isDirectory() && !destination.mkdirs()) {
+			throw new IOException("Cannot create the folder '" + destination.getAbsolutePath() + "'.");
+		}
+		File moved = new File(destination, entry._name);
 		Files.move(entry._folder.toPath(), moved.toPath());
 		LOG.info("Moved folder '" + entry._folder + "' to '" + moved + "'.");
-		return outcome(entry._name, entry._name, "");
+		return outcome(entry._name, entry._newName, "");
+	}
+
+	/**
+	 * Where a folder of the given name lands below the given target, and how that is reported.
+	 *
+	 * <p>
+	 * The date a rule files by is the cheap one, read from the moved folder's own sidecar and its
+	 * name; no image is opened, see {@link AlbumDate#ofFolder(FolderResource, String)}. A folder
+	 * that is itself a year or month folder is not filed again, and neither is one nothing says a
+	 * date about: it lands where it was sent.
+	 * </p>
+	 *
+	 * @return An {@link Entry} used for nothing but its {@link Entry#_destination} and its
+	 *         {@link Entry#_newName}.
+	 */
+	private static Entry destination(PlacementRule rule, File targetFolder, File folder) {
+		String name = folder.getName();
+		Entry result = new Entry(name);
+		result._destination = targetFolder;
+		result._newName = name;
+
+		if (!rule.isActive() || PlacementRule.isPlacementFolder(name)) {
+			return result;
+		}
+		AlbumDate date = AlbumDate.ofFolder(ResourceCache.sidecar(folder), name);
+		Path placement = rule.placementFor(targetFolder.toPath(), date);
+		if (placement == null) {
+			return result;
+		}
+		result._destination = placement.toFile();
+		result._newName = targetFolder.toPath().relativize(placement).toString().replace(File.separatorChar, '/')
+			+ "/" + name;
+		return result;
+	}
+
+	/**
+	 * Files everything that is already in the given folder by the folder's own placement rule, see
+	 * issue #48.
+	 *
+	 * <p>
+	 * This is the "apply once" of the rule and the only place it reaches backwards: nothing here
+	 * ever happens implicitly, at start-up or on a read. Every direct sub-folder is moved into its
+	 * year (or month) folder by the very rename a move uses, with the same refusals — a name the
+	 * year folder already holds is refused and nothing is overwritten. A folder that is itself a
+	 * year or month folder is passed over silently, since it is where it belongs; a folder nothing
+	 * says a date about is reported as kept, since a silent no-op is no answer.
+	 * </p>
+	 *
+	 * @param folder
+	 *        The folder carrying the rule.
+	 * @return One {@link MoveOutcome} per child that was looked at, in the order of their names.
+	 * @throws MoveRefused
+	 *         If the folder does not exist or cannot be listed.
+	 */
+	public MoveResult place(PathInfo folder) throws MoveRefused, IOException {
+		File dir = folder.toFile();
+		if (!dir.isDirectory()) {
+			throw new MoveRefused(HttpServletResponse.SC_NOT_FOUND, SOURCE_MISSING);
+		}
+		File[] children = dir.listFiles(f -> f.isDirectory() && !f.getName().startsWith("."));
+		if (children == null) {
+			throw new MoveRefused(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, FOLDER_UNREADABLE);
+		}
+		Arrays.sort(children, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
+
+		PlacementRule rule = PlacementRule.of(dir);
+		MoveResult result = MoveResult.create();
+		boolean stopped = false;
+		try {
+			for (File child : children) {
+				String name = child.getName();
+				if (!rule.isActive()) {
+					// Not a silent no-op: every child is named, and so is the reason.
+					result.addOutcome(outcome(name, "", NO_RULE));
+					continue;
+				}
+				if (PlacementRule.isPlacementFolder(name)) {
+					// A year or month folder is where it belongs; it is no failure.
+					continue;
+				}
+				if (stopped) {
+					result.addOutcome(outcome(name, "", ABANDONED));
+					continue;
+				}
+
+				Entry entry = destination(rule, dir, child);
+				entry._folder = child;
+				if (dir.equals(entry._destination)) {
+					result.addOutcome(outcome(name, "", KEPT_NO_DATE));
+					continue;
+				}
+				if (new File(entry._destination, name).exists()) {
+					result.addOutcome(outcome(name, "", nameTaken(name)));
+					continue;
+				}
+
+				try {
+					result.addOutcome(moveFolder(entry));
+				} catch (IOException ex) {
+					LOG.log(Level.WARNING, "Cannot file '" + name + "' in '" + dir + "': " + ex.getMessage(), ex);
+					result.addOutcome(outcome(name, "", failed(ex.getMessage())));
+					stopped = true;
+				}
+			}
+		} finally {
+			// Whatever moved changed this folder and the year folders below it.
+			_cache.invalidateTree(folder);
+		}
+		return result;
 	}
 
 	/** Moves a single image out of the source album and appends it to the target album. */
 	private MoveOutcome moveImage(Entry entry, AlbumInfo sourceAlbum, AlbumInfo targetAlbum, File sourceFolder,
 			File targetFolder, HashCache targetHashes, HashCache sourceHashes) throws IOException {
 		ImagePart image = entry._image;
-		Placement placement = place(image.getName(), sourceFolder, targetFolder, targetHashes, sourceHashes);
+		Landing landing = landFile(image.getName(), sourceFolder, targetFolder, targetHashes, sourceHashes);
 
 		detach(sourceAlbum, image);
-		if (placement._existing != null) {
-			return outcome(entry._name, placement._existing, duplicate(placement._existing));
+		if (landing._existing != null) {
+			return outcome(entry._name, landing._existing, duplicate(landing._existing));
 		}
 
-		image.setName(placement._newName);
+		image.setName(landing._newName);
 		image.setGroup(null);
 		targetAlbum.addPart(image);
-		return outcome(entry._name, placement._newName, "");
+		return outcome(entry._name, landing._newName, "");
 	}
 
 	/**
@@ -442,25 +595,25 @@ public class MoveService {
 		int setAside = 0;
 		for (ImagePart member : members) {
 			String asked = member.getName();
-			Placement placement = place(asked, sourceFolder, targetFolder, targetHashes, sourceHashes);
-			if (placement._existing != null) {
+			Landing landing = landFile(asked, sourceFolder, targetFolder, targetHashes, sourceHashes);
+			if (landing._existing != null) {
 				setAside++;
 				group.removeImage(member);
 				if (member == head) {
-					headName = placement._existing;
+					headName = landing._existing;
 				}
 			} else {
-				member.setName(placement._newName);
+				member.setName(landing._newName);
 				moved.add(member);
 				if (member == head) {
-					headName = placement._newName;
+					headName = landing._newName;
 				}
 			}
 			// A name of this request that is a member of this group has been dealt with here.
 			for (Entry other : entries) {
 				if (other != entry && other._refusal == null && other._movedWithGroup == null
 					&& asked.equals(other._name)) {
-					other._movedWithGroup = placement._existing != null ? placement._existing : placement._newName;
+					other._movedWithGroup = landing._existing != null ? landing._existing : landing._newName;
 					other._image = null;
 					other._group = null;
 				}
@@ -488,8 +641,8 @@ public class MoveService {
 		return outcome(entry._name, headName == null ? "" : headName, message);
 	}
 
-	/** Where a single file ended up, see {@link MoveService#place(String, File, File, HashCache, HashCache)}. */
-	private static final class Placement {
+	/** Where a single file ended up, see {@link MoveService#landFile(String, File, File, HashCache, HashCache)}. */
+	private static final class Landing {
 
 		/** The name the file has in the target folder now, <code>null</code> if it was set aside. */
 		final String _newName;
@@ -497,7 +650,7 @@ public class MoveService {
 		/** The name of the file at the target that already held these contents, else <code>null</code>. */
 		final String _existing;
 
-		Placement(String newName, String existing) {
+		Landing(String newName, String existing) {
 			_newName = newName;
 			_existing = existing;
 		}
@@ -513,7 +666,7 @@ public class MoveService {
 	 * by the very method the upload uses, see {@link ImageServlet#freeName(File, String)}.
 	 * </p>
 	 */
-	private Placement place(String name, File sourceFolder, File targetFolder, HashCache targetHashes,
+	private Landing landFile(String name, File sourceFolder, File targetFolder, HashCache targetHashes,
 			HashCache sourceHashes) throws IOException {
 		File file = new File(sourceFolder, name);
 		String hash = sourceHashes.hashByName().get(name);
@@ -527,14 +680,14 @@ public class MoveService {
 			File aside = setAside(hash, name);
 			Files.move(file.toPath(), aside.toPath());
 			LOG.info("The target already holds '" + name + "' as '" + existing + "'; set aside as '" + aside + "'.");
-			return new Placement(null, existing);
+			return new Landing(null, existing);
 		}
 
 		File moved = ImageServlet.freeName(targetFolder, name);
 		Files.move(file.toPath(), moved.toPath());
 		targetHashes.put(moved, hash);
 		LOG.info("Moved image '" + file + "' to '" + moved + "'.");
-		return new Placement(moved.getName(), null);
+		return new Landing(moved.getName(), null);
 	}
 
 	/** The file a duplicate is set aside as; nothing there is ever overwritten either. */
@@ -648,8 +801,17 @@ public class MoveService {
 		return MoveOutcome.create().setName(name).setNewName(newName).setMessage(message);
 	}
 
-	/** The given folder resource as the bytes of its sidecar. */
+	/**
+	 * The given folder resource as the bytes of its sidecar.
+	 *
+	 * <p>
+	 * What the server derived on the way out is dropped on the way in: an album carries an
+	 * effective date only in an answer, never in a file, see
+	 * {@link AlbumDate#clearDerived(FolderResource)}.
+	 * </p>
+	 */
 	private static byte[] json(FolderResource resource) throws IOException {
+		AlbumDate.clearDerived(resource);
 		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(buffer,
 			StandardCharsets.UTF_8)))) {

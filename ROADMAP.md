@@ -171,6 +171,15 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-06 (night)** — Phase 3 sharing, first four issues: users and spaces (#45), privacy
+  enforced on the server (#46), moving by rename with duplicates set aside in `.valbum/duplicates/`
+  rather than removed (#47, overriding the issue's "removes the source" to keep "the server never
+  deletes an original"), and album dates with placement rules (#48, server side). Two dates travel on
+  the wire — the explicit `date` that is stored and the derived `effectiveDate` that never is — so a
+  round trip can never freeze a derived date into a sidecar. Year folders are `YYYY`, month folders
+  `YYYY/YYYY-MM`. Listings are ordered newest first from now on. The app half of #48 (date picker,
+  folder rule editor, listing sort) is open.
+
 - **2026-09-06 (evening)** — Phase 3 is redefined as *users, groups and sharing* (issues #45–#55);
   the former Phase 3 (sync API, previews, metadata) becomes Phase 4 and distribution Phase 5. The
   brainstorm settled three alternatives: one space per user with sharing to named groups beats

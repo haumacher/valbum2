@@ -176,6 +176,33 @@ class AlbumInfo extends FolderResource {
 	///  The subtitle of this album.
 	String subTitle;
 
+	///  The date this album is filed under, in milliseconds since the epoch, <code>0</code> when the
+	///  author has set none.
+	/// 
+	///  <p>
+	///  The explicit date and only the explicit one: this is what <code>index.json</code> stores and
+	///  what the album's properties edit. What the album is actually sorted and placed by is
+	///  {@link #effectiveDate}, see issue #48.
+	///  </p>
+	int date;
+
+	///  The date this album is sorted and placed by, in milliseconds since the epoch, <code>0</code>
+	///  when nothing says when it happened.
+	/// 
+	///  <p>
+	///  Derived by the server on every read: the explicit {@link #date}, else the leading date of the
+	///  album's folder name (<code>YYYY-MM-DD</code>, <code>YYYY-MM</code> or <code>YYYY</code>),
+	///  else the earliest {@link ImagePart#date} of the images the album holds.
+	///  </p>
+	/// 
+	///  <p>
+	///  Derived data is never stored: the server clears this field before a sidecar is written, so
+	///  that a round trip through a client cannot freeze a derived date into <code>index.json</code>.
+	///  A sidecar that carries one nevertheless is read without complaint and answered with the
+	///  derived value.
+	///  </p>
+	int effectiveDate;
+
 	///  Description of the image used to display this whole album in a listing.
 	ThumbnailInfo? indexPicture;
 
@@ -195,6 +222,8 @@ class AlbumInfo extends FolderResource {
 			super.path, 
 			this.title = "", 
 			this.subTitle = "", 
+			this.date = 0, 
+			this.effectiveDate = 0, 
 			this.indexPicture, 
 			this.parts = const [], 
 			this.imageByName = const {}, 
@@ -227,6 +256,14 @@ class AlbumInfo extends FolderResource {
 				subTitle = json.expectString();
 				break;
 			}
+			case "date": {
+				date = json.expectInt();
+				break;
+			}
+			case "effectiveDate": {
+				effectiveDate = json.expectInt();
+				break;
+			}
 			case "indexPicture": {
 				indexPicture = json.tryNull() ? null : ThumbnailInfo.read(json);
 				break;
@@ -257,6 +294,12 @@ class AlbumInfo extends FolderResource {
 
 		json.addKey("subTitle");
 		json.addString(subTitle);
+
+		json.addKey("date");
+		json.addNumber(date);
+
+		json.addKey("effectiveDate");
+		json.addNumber(effectiveDate);
 
 		var _indexPicture = indexPicture;
 		if (_indexPicture != null) {
@@ -829,10 +872,62 @@ Orientation readOrientation(JsonReader json) {
 	}
 }
 
+///  How a {@link ListingInfo} files the albums that land in it, see {@link ListingInfo#placement}.
+/// 
+///  <p>
+///  A folder named after a year or a month is an ordinary folder: it is created on demand and carries
+///  no rule of its own.
+///  </p>
+enum Placement {
+	///  Nothing is filed: an album stays where it was created or moved to.
+	none,
+	///  An album with a date lands in a folder named after its year (<code>2020</code>).
+	byYear,
+	///  An album with a date lands in a folder named after its month, inside its year folder
+	///  (<code>2020/2020-05</code>).
+	/// 
+	///  <p>
+	///  The month folder names its year too, so that it reads on its own and sorts anywhere. An album
+	///  whose date is only known to the year (its folder is named <code>2020 Trip</code>) lands in the
+	///  year folder itself: the server does not invent a month it was not told.
+	///  </p>
+	byYearMonth,
+}
+
+/// Writes a value of Placement to a JSON stream.
+void writePlacement(JsonSink json, Placement value) {
+	switch (value) {
+		case Placement.none: json.addString("NONE"); break;
+		case Placement.byYear: json.addString("BY_YEAR"); break;
+		case Placement.byYearMonth: json.addString("BY_YEAR_MONTH"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of Placement from a JSON stream.
+Placement readPlacement(JsonReader json) {
+	switch (json.expectString()) {
+		case "NONE": return Placement.none;
+		case "BY_YEAR": return Placement.byYear;
+		case "BY_YEAR_MONTH": return Placement.byYearMonth;
+		default: return Placement.none;
+	}
+}
+
 ///  {@link Resource} describing collection {@link FolderInfo}s found in a directory.
 class ListingInfo extends FolderResource {
 	///  The title to display for this {@link ListingInfo}.
 	String title;
+
+	///  How this folder files what lands in it, see issue #48.
+	/// 
+	///  <p>
+	///  Stored in this folder's own <code>index.json</code>. The rule places, it does not police: it
+	///  is applied to an album created in this folder and to an entry moved into it, and to what is
+	///  already here only when the owner asks for it (<code>&lt;folder&gt;/?action=place</code>).
+	///  Whatever is filed by hand afterwards stays where it was put.
+	///  </p>
+	Placement placement;
 
 	///  Description of the folders within this {@link ListingInfo}.
 	List<FolderInfo> folders;
@@ -841,6 +936,7 @@ class ListingInfo extends FolderResource {
 	ListingInfo({
 			super.path, 
 			this.title = "", 
+			this.placement = Placement.none, 
 			this.folders = const [], 
 	});
 
@@ -864,6 +960,10 @@ class ListingInfo extends FolderResource {
 		switch (key) {
 			case "title": {
 				title = json.expectString();
+				break;
+			}
+			case "placement": {
+				placement = readPlacement(json);
 				break;
 			}
 			case "folders": {
@@ -890,6 +990,9 @@ class ListingInfo extends FolderResource {
 		json.addKey("title");
 		json.addString(title);
 
+		json.addKey("placement");
+		writePlacement(json, placement);
+
 		json.addKey("folders");
 		json.startArray();
 		for (var _element in folders) {
@@ -914,6 +1017,18 @@ class FolderInfo extends _JsonObject {
 	///  The subtitle of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
 	String subTitle;
 
+	///  The date this folder is sorted by in its {@link ListingInfo}, in milliseconds since the epoch,
+	///  <code>0</code> when nothing cheap says when it happened.
+	/// 
+	///  <p>
+	///  Read from the folder's own sidecar (an explicit {@link AlbumInfo#date}) and from the folder
+	///  name, and from nothing else: building a listing never opens the images of the albums it shows.
+	///  An album with neither therefore carries <code>0</code> here although the album itself answers
+	///  with an {@link AlbumInfo#effectiveDate} derived from its images; that is what a listing of a
+	///  thousand albums costs, see issue #48.
+	///  </p>
+	int effectiveDate;
+
 	///  The index picture of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
 	ThumbnailInfo? indexPicture;
 
@@ -922,6 +1037,7 @@ class FolderInfo extends _JsonObject {
 			this.name = "", 
 			this.title = "", 
 			this.subTitle = "", 
+			this.effectiveDate = 0, 
 			this.indexPicture, 
 	});
 
@@ -955,6 +1071,10 @@ class FolderInfo extends _JsonObject {
 				subTitle = json.expectString();
 				break;
 			}
+			case "effectiveDate": {
+				effectiveDate = json.expectInt();
+				break;
+			}
 			case "indexPicture": {
 				indexPicture = json.tryNull() ? null : ThumbnailInfo.read(json);
 				break;
@@ -975,6 +1095,9 @@ class FolderInfo extends _JsonObject {
 
 		json.addKey("subTitle");
 		json.addString(subTitle);
+
+		json.addKey("effectiveDate");
+		json.addNumber(effectiveDate);
 
 		var _indexPicture = indexPicture;
 		if (_indexPicture != null) {
@@ -1972,6 +2095,11 @@ class MoveOutcome extends _JsonObject {
 	///  contents: the moved file is renamed exactly as a colliding upload is. When the target
 	///  already held the very same contents, this is the name of the file that has them there.
 	///  </p>
+	/// 
+	///  <p>
+	///  A folder that the target's {@link ListingInfo#placement} rule filed away reports the path it
+	///  has below the target folder (<code>2020/2020 Trip</code>), not just its name, see issue #48.
+	///  </p>
 	String newName;
 
 	///  Why the entry was not moved, or what happened to it besides being moved; empty when it moved
@@ -2032,6 +2160,78 @@ class MoveOutcome extends _JsonObject {
 
 		json.addKey("newName");
 		json.addString(newName);
+
+		json.addKey("message");
+		json.addString(message);
+	}
+
+}
+
+///  Answer to a <code>PUT</code> that created a new album folder, telling where the album landed, see
+///  issue #48.
+/// 
+///  <p>
+///  The folder a client asks for is not necessarily the folder the album ends up in: when the folder
+///  above it carries a {@link ListingInfo#placement} rule, the album is filed into its year (or
+///  month) folder. A client that ignores this answer would look for its new album where it is not.
+///  </p>
+class CreateResult extends _JsonObject {
+	///  The path of the created folder, relative to the caller's space; never empty.
+	/// 
+	///  <p>
+	///  The same coordinates a {@link MoveRequest#target} is given in.
+	///  </p>
+	String path;
+
+	///  Why the album is not where it was asked for; empty when it was created exactly there.
+	/// 
+	///  <p>
+	///  Nothing happens silently: an album that was filed away by a rule says so here.
+	///  </p>
+	String message;
+
+	/// Creates a CreateResult.
+	CreateResult({
+			this.path = "", 
+			this.message = "", 
+	});
+
+	/// Parses a CreateResult from a string source.
+	static CreateResult? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a CreateResult instance from the given reader.
+	static CreateResult read(JsonReader json) {
+		CreateResult result = CreateResult();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "CreateResult";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "path": {
+				path = json.expectString();
+				break;
+			}
+			case "message": {
+				message = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("path");
+		json.addString(path);
 
 		json.addKey("message");
 		json.addString(message);

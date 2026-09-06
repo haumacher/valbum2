@@ -10,6 +10,7 @@ import com.drew.metadata.MetadataException;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import de.haumacher.imageServer.AlbumDate;
 import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -37,6 +38,7 @@ import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
@@ -255,7 +257,11 @@ public class ResourceCache {
 			if (resource instanceof AlbumInfo || images.length > 0) {
 				AlbumInfo album = resource == null ? createGenericAlbumInfo(path) : (AlbumInfo) resource;
 
-				return loadAlbum(album, images);
+				loadAlbum(album, images);
+
+				// Derived on every read and never stored, see AlbumDate#clearDerived(FolderResource).
+				album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
+				return album;
 			} else {
 				ListingInfo listing = resource == null ? createGenericListingInfo(path) : (ListingInfo) resource;
 
@@ -287,15 +293,30 @@ public class ResourceCache {
 				return ErrorInfo.create().setMessage("Cannot list files.");
 			}
 
-			Arrays.sort(dirs, (f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()));
-
-			listing.getFolders().clear();
+			List<FolderInfo> folders = new ArrayList<>(dirs.length);
 			for (File folder : dirs) {
-				FolderInfo folderInfo = loadFolderInfo(folder);
-				listing.addFolder(folderInfo);
+				folders.add(loadFolderInfo(folder));
 			}
+			folders.sort(BY_DATE);
+
+			listing.setFolders(folders);
 			return listing;
 		}
+
+		/**
+		 * The order a listing shows its folders in: the newest first, the undated behind them by
+		 * name.
+		 *
+		 * <p>
+		 * A folder without a date sorts by name exactly as every folder did before issue #48. The
+		 * date is the cheap one — a sidecar date or a date in the folder name — so this order costs
+		 * a listing nothing but the sidecars it reads anyway, see
+		 * {@link FolderInfo#getEffectiveDate()}.
+		 * </p>
+		 */
+		private static final Comparator<FolderInfo> BY_DATE =
+			Comparator.comparingLong(FolderInfo::getEffectiveDate).reversed()
+				.thenComparing(FolderInfo::getName, String.CASE_INSENSITIVE_ORDER);
 
 		private static FolderInfo loadFolderInfo(File folder) {
 			String folderName = folder.getName();
@@ -304,6 +325,11 @@ public class ResourceCache {
 			folderInfo.setName(folderName);
 
 			FolderResource folderResource = loadDirIndex(folder);
+
+			// The sidecar and the name, and nothing else: a listing never opens the images of the
+			// albums it shows, see FolderInfo#getEffectiveDate().
+			folderInfo.setEffectiveDate(AlbumDate.ofFolder(folderResource, folderName).millis());
+
 			if (folderResource != null) {
 				if (folderResource instanceof AlbumInfo) {
 					AlbumInfo albumInfo = (AlbumInfo) folderResource;

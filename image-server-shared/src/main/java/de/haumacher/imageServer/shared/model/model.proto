@@ -28,6 +28,37 @@ message AlbumInfo extends FolderResource {
 	/** The subtitle of this album. */
 	string subTitle;
 	
+	/**
+	 * The date this album is filed under, in milliseconds since the epoch, <code>0</code> when the
+	 * author has set none.
+	 *
+	 * <p>
+	 * The explicit date and only the explicit one: this is what <code>index.json</code> stores and
+	 * what the album's properties edit. What the album is actually sorted and placed by is
+	 * {@link #effectiveDate}, see issue #48.
+	 * </p>
+	 */
+	long date;
+	
+	/**
+	 * The date this album is sorted and placed by, in milliseconds since the epoch, <code>0</code>
+	 * when nothing says when it happened.
+	 *
+	 * <p>
+	 * Derived by the server on every read: the explicit {@link #date}, else the leading date of the
+	 * album's folder name (<code>YYYY-MM-DD</code>, <code>YYYY-MM</code> or <code>YYYY</code>),
+	 * else the earliest {@link ImagePart#date} of the images the album holds.
+	 * </p>
+	 *
+	 * <p>
+	 * Derived data is never stored: the server clears this field before a sidecar is written, so
+	 * that a round trip through a client cannot freeze a derived date into <code>index.json</code>.
+	 * A sidecar that carries one nevertheless is read without complaint and answered with the
+	 * derived value.
+	 * </p>
+	 */
+	long effectiveDate;
+	
 	/** Description of the image used to display this whole album in a listing. */
 	ThumbnailInfo indexPicture;
 
@@ -225,10 +256,50 @@ enum Orientation {
 	ROT_R;
 }
 
+/**
+ * How a {@link ListingInfo} files the albums that land in it, see {@link ListingInfo#placement}.
+ *
+ * <p>
+ * A folder named after a year or a month is an ordinary folder: it is created on demand and carries
+ * no rule of its own.
+ * </p>
+ */
+enum Placement {
+	/** Nothing is filed: an album stays where it was created or moved to. */
+	NONE;
+	
+	/** An album with a date lands in a folder named after its year (<code>2020</code>). */
+	BY_YEAR;
+	
+	/**
+	 * An album with a date lands in a folder named after its month, inside its year folder
+	 * (<code>2020/2020-05</code>).
+	 *
+	 * <p>
+	 * The month folder names its year too, so that it reads on its own and sorts anywhere. An album
+	 * whose date is only known to the year (its folder is named <code>2020 Trip</code>) lands in the
+	 * year folder itself: the server does not invent a month it was not told.
+	 * </p>
+	 */
+	BY_YEAR_MONTH;
+}
+
 /** {@link Resource} describing collection {@link FolderInfo}s found in a directory. */
 message ListingInfo extends FolderResource {
 	/** The title to display for this {@link ListingInfo}. */
 	string title;
+	
+	/**
+	 * How this folder files what lands in it, see issue #48.
+	 *
+	 * <p>
+	 * Stored in this folder's own <code>index.json</code>. The rule places, it does not police: it
+	 * is applied to an album created in this folder and to an entry moved into it, and to what is
+	 * already here only when the owner asks for it (<code>&lt;folder&gt;/?action=place</code>).
+	 * Whatever is filed by hand afterwards stays where it was put.
+	 * </p>
+	 */
+	Placement placement;
 	
 	/** Description of the folders within this {@link ListingInfo}. */
 	repeated FolderInfo folders;
@@ -244,6 +315,20 @@ message FolderInfo {
 	
 	/** The subtitle of the {@link AlbumInfo} referenced by this {@link FolderInfo}. */
 	string subTitle;
+	
+	/**
+	 * The date this folder is sorted by in its {@link ListingInfo}, in milliseconds since the epoch,
+	 * <code>0</code> when nothing cheap says when it happened.
+	 *
+	 * <p>
+	 * Read from the folder's own sidecar (an explicit {@link AlbumInfo#date}) and from the folder
+	 * name, and from nothing else: building a listing never opens the images of the albums it shows.
+	 * An album with neither therefore carries <code>0</code> here although the album itself answers
+	 * with an {@link AlbumInfo#effectiveDate} derived from its images; that is what a listing of a
+	 * thousand albums costs, see issue #48.
+	 * </p>
+	 */
+	long effectiveDate;
 	
 	/** The index picture of the {@link AlbumInfo} referenced by this {@link FolderInfo}. */
 	ThumbnailInfo indexPicture;
@@ -479,6 +564,11 @@ message MoveOutcome {
 	 * contents: the moved file is renamed exactly as a colliding upload is. When the target
 	 * already held the very same contents, this is the name of the file that has them there.
 	 * </p>
+	 *
+	 * <p>
+	 * A folder that the target's {@link ListingInfo#placement} rule filed away reports the path it
+	 * has below the target folder (<code>2020/2020 Trip</code>), not just its name, see issue #48.
+	 * </p>
 	 */
 	string newName;
 	
@@ -488,6 +578,36 @@ message MoveOutcome {
 	 *
 	 * <p>
 	 * Nothing declines silently: an entry that did not move always says why here.
+	 * </p>
+	 */
+	string `message`;
+}
+
+/**
+ * Answer to a <code>PUT</code> that created a new album folder, telling where the album landed, see
+ * issue #48.
+ *
+ * <p>
+ * The folder a client asks for is not necessarily the folder the album ends up in: when the folder
+ * above it carries a {@link ListingInfo#placement} rule, the album is filed into its year (or
+ * month) folder. A client that ignores this answer would look for its new album where it is not.
+ * </p>
+ */
+message CreateResult {
+	/**
+	 * The path of the created folder, relative to the caller's space; never empty.
+	 *
+	 * <p>
+	 * The same coordinates a {@link MoveRequest#target} is given in.
+	 * </p>
+	 */
+	string path;
+	
+	/**
+	 * Why the album is not where it was asked for; empty when it was created exactly there.
+	 *
+	 * <p>
+	 * Nothing happens silently: an album that was filed away by a rule says so here.
 	 * </p>
 	 */
 	string `message`;

@@ -18,10 +18,15 @@ public class ListingInfo extends FolderResource {
 	/** @see #getTitle() */
 	private static final String TITLE__PROP = "title";
 
+	/** @see #getPlacement() */
+	private static final String PLACEMENT__PROP = "placement";
+
 	/** @see #getFolders() */
 	private static final String FOLDERS__PROP = "folders";
 
 	private String _title = "";
+
+	private de.haumacher.imageServer.shared.model.Placement _placement = de.haumacher.imageServer.shared.model.Placement.NONE;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.FolderInfo> _folders = new java.util.ArrayList<>();
 
@@ -57,6 +62,34 @@ public class ListingInfo extends FolderResource {
 	/** Internal setter for {@link #getTitle()} without chain call utility. */
 	protected final void internalSetTitle(String value) {
 		_title = value;
+	}
+
+	/**
+	 * How this folder files what lands in it, see issue #48.
+	 *
+	 * <p>
+	 * Stored in this folder's own <code>index.json</code>. The rule places, it does not police: it
+	 * is applied to an album created in this folder and to an entry moved into it, and to what is
+	 * already here only when the owner asks for it (<code>&lt;folder&gt;/?action=place</code>).
+	 * Whatever is filed by hand afterwards stays where it was put.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.Placement getPlacement() {
+		return _placement;
+	}
+
+	/**
+	 * @see #getPlacement()
+	 */
+	public de.haumacher.imageServer.shared.model.ListingInfo setPlacement(de.haumacher.imageServer.shared.model.Placement value) {
+		internalSetPlacement(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPlacement()} without chain call utility. */
+	protected final void internalSetPlacement(de.haumacher.imageServer.shared.model.Placement value) {
+		if (value == null) throw new IllegalArgumentException("Property 'placement' cannot be null.");
+		_placement = value;
 	}
 
 	/**
@@ -124,6 +157,8 @@ public class ListingInfo extends FolderResource {
 		super.writeFields(out);
 		out.name(TITLE__PROP);
 		out.value(getTitle());
+		out.name(PLACEMENT__PROP);
+		getPlacement().writeTo(out);
 		out.name(FOLDERS__PROP);
 		out.beginArray();
 		for (de.haumacher.imageServer.shared.model.FolderInfo x : getFolders()) {
@@ -136,6 +171,7 @@ public class ListingInfo extends FolderResource {
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
 			case TITLE__PROP: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case PLACEMENT__PROP: setPlacement(de.haumacher.imageServer.shared.model.Placement.readPlacement(in)); break;
 			case FOLDERS__PROP: {
 				in.beginArray();
 				while (in.hasNext()) {
