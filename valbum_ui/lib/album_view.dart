@@ -4,6 +4,7 @@ library;
 
 import 'dart:math';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/services.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
@@ -13,6 +14,7 @@ import 'album_model.dart';
 import 'app.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'listing_view.dart';
 import 'resource.dart';
 import 'offline.dart';
 import 'settings.dart';
@@ -266,7 +268,14 @@ class AlbumContentState extends State<AlbumContent> {
     var result = await showDialog<AlbumProperties>(
       context: context,
       builder: (context) => AlbumPropertiesDialog(
-        AlbumProperties(title: album.title, subTitle: album.subTitle),
+        AlbumProperties(
+          title: album.title,
+          subTitle: album.subTitle,
+          indexPicture: album.indexPicture,
+        ),
+        client: client,
+        baseUrl: widget.baseUrl,
+        indexImage: indexImageOf(album),
       ),
     );
 
@@ -277,6 +286,7 @@ class AlbumContentState extends State<AlbumContent> {
     setState(() {
       album.title = result.title;
       album.subTitle = result.subTitle;
+      album.indexPicture = result.indexPicture;
     });
   }
 
@@ -1188,14 +1198,50 @@ class AlbumProperties {
   final String title;
   final String subTitle;
 
-  const AlbumProperties({required this.title, required this.subTitle});
+  /// The picture standing for the album in the listing above, with its crop.
+  final ThumbnailInfo? indexPicture;
+
+  const AlbumProperties({
+    required this.title,
+    required this.subTitle,
+    this.indexPicture,
+  });
 }
 
-/// Edits the title and the subtitle of an album.
+/// The size of the crop editor's preview of the index picture.
+const double indexPictureEditorSize = 200;
+
+/// The factor one zoom step of the crop editor scales by.
+const double indexPictureZoomStep = 1.25;
+
+/// Edits the title, the subtitle and the crop of the index picture of an
+/// album.
+///
+/// The picture itself is chosen on a tile of the album (see
+/// [ThumbnailEditorState.setIndexPicture]); here it is framed: dragged to
+/// pan, pinched, wheeled or stepped to zoom within the square the listing
+/// shows it in, see [indexPictureTile]. Nothing is applied before
+/// "Übernehmen".
 class AlbumPropertiesDialog extends StatefulWidget {
   final AlbumProperties properties;
 
-  const AlbumPropertiesDialog(this.properties, {super.key});
+  /// The transport for the preview of the index picture.
+  final VAlbumClient? client;
+
+  /// The URL of the album, the preview is loaded below it.
+  final String baseUrl;
+
+  /// The image the index picture names, for the default framing of the
+  /// "reset" tool; `null` if there is none.
+  final ImagePart? indexImage;
+
+  const AlbumPropertiesDialog(
+    this.properties, {
+    super.key,
+    this.client,
+    this.baseUrl = "",
+    this.indexImage,
+  });
 
   @override
   State<StatefulWidget> createState() => AlbumPropertiesDialogState();
@@ -1206,6 +1252,22 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
       TextEditingController(text: widget.properties.title);
   late final TextEditingController subTitleController =
       TextEditingController(text: widget.properties.subTitle);
+
+  /// The crop being edited, a copy: the album's own is replaced on apply.
+  late ThumbnailInfo? indexPicture = copyOf(widget.properties.indexPicture);
+
+  /// The crop when the current gesture started, see [onScaleUpdate].
+  ThumbnailInfo? _gestureStart;
+  Offset _gestureFocus = Offset.zero;
+
+  static ThumbnailInfo? copyOf(ThumbnailInfo? info) => info == null
+      ? null
+      : ThumbnailInfo(
+          image: info.image,
+          scale: info.scale,
+          tx: info.tx,
+          ty: info.ty,
+        );
 
   @override
   void dispose() {
@@ -1244,6 +1306,14 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
             ),
             Padding(
               padding: const EdgeInsets.only(top: 16),
+              child: Text(
+                "Albumbild",
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            buildIndexPictureEditor(context),
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -1268,11 +1338,128 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
     );
   }
 
+  /// The square preview of the index picture with the pan and zoom gestures,
+  /// and the zoom tools below it; a hint if no picture is chosen.
+  Widget buildIndexPictureEditor(BuildContext context) {
+    var info = indexPicture;
+    var client = widget.client;
+    if (info == null || client == null) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 4),
+        child: Text(
+          "Kein Albumbild gewählt – im Bearbeitungsmodus auf einer Kachel "
+          "als Albumbild wählen.",
+          key: Key("index-picture-hint"),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Listener(
+            onPointerSignal: onPointerSignal,
+            child: GestureDetector(
+              onScaleStart: onScaleStart,
+              onScaleUpdate: onScaleUpdate,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                ),
+                child: indexPictureTile(
+                  client,
+                  "${widget.baseUrl}/${info.image}",
+                  info,
+                  indexPictureEditorSize,
+                  key: const Key("index-picture-editor"),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.zoom_in),
+              tooltip: "Vergrößern",
+              onPressed: info.scale < maxIndexPictureScale
+                  ? () => zoom(indexPictureZoomStep)
+                  : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.zoom_out),
+              tooltip: "Verkleinern",
+              onPressed: info.scale > minIndexPictureScale
+                  ? () => zoom(1 / indexPictureZoomStep)
+                  : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.crop_free),
+              tooltip: "Ausschnitt zurücksetzen",
+              onPressed: widget.indexImage == null ? null : resetCrop,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void onScaleStart(ScaleStartDetails details) {
+    _gestureStart = indexPicture;
+    _gestureFocus = details.localFocalPoint;
+  }
+
+  /// A drag pans, a pinch zooms; both relative to the state at the start of
+  /// the gesture, so the crop follows the fingers instead of accumulating
+  /// rounding.
+  void onScaleUpdate(ScaleUpdateDetails details) {
+    var start = _gestureStart;
+    if (start == null) {
+      return;
+    }
+    var shift = details.localFocalPoint - _gestureFocus;
+    var zoomed = details.scale == 1 ? start : zoomIndexPicture(start, details.scale);
+    setState(() {
+      indexPicture = panIndexPicture(
+        zoomed,
+        shift.dx,
+        shift.dy,
+        indexPictureEditorSize,
+      );
+    });
+  }
+
+  /// The mouse wheel zooms, one step per notch.
+  void onPointerSignal(PointerSignalEvent event) {
+    if (event is PointerScrollEvent) {
+      zoom(event.scrollDelta.dy < 0
+          ? indexPictureZoomStep
+          : 1 / indexPictureZoomStep);
+    }
+  }
+
+  void zoom(double factor) {
+    var info = indexPicture;
+    if (info != null) {
+      setState(() => indexPicture = zoomIndexPicture(info, factor));
+    }
+  }
+
+  /// Back to the framing the server gives an image, see [indexPictureOf].
+  void resetCrop() {
+    var image = widget.indexImage;
+    if (image != null) {
+      setState(() => indexPicture = indexPictureOf(image));
+    }
+  }
+
   void applyPressed() {
     Navigator.of(context).pop(
       AlbumProperties(
         title: titleController.text,
         subTitle: subTitleController.text,
+        indexPicture: indexPicture,
       ),
     );
   }

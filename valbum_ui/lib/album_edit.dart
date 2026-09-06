@@ -357,7 +357,7 @@ List<ImagePart> ungroup(AlbumInfo album, ImageGroup group) {
 
 /// The width of the square listing tile the index picture's offsets refer to,
 /// in the pixels of the retired GWT client.
-const double indexPictureTile = 300;
+const double indexPictureTileSize = 300;
 
 /// The index picture showing the given image in the parent listing, framed
 /// as the server frames its own fallback (the first image of a folder without
@@ -377,7 +377,7 @@ ThumbnailInfo indexPictureOf(ImagePart image) {
   var ty = 0.0;
   if (scale < 1) {
     scale = 1 / scale;
-    ty = (height - width) / height * (indexPictureTile / 2);
+    ty = (height - width) / height * (indexPictureTileSize / 2);
   }
   return ThumbnailInfo(image: image.name, scale: scale, ty: ty);
 }
@@ -385,3 +385,70 @@ ThumbnailInfo indexPictureOf(ImagePart image) {
 /// Whether the given image is the one representing its album in the listing.
 bool isIndexPicture(AlbumInfo album, ImagePart image) =>
     album.indexPicture?.image == image.name;
+
+/// The least an index picture is scaled by: the whole image inside the square.
+const double minIndexPictureScale = 1;
+
+/// The most an index picture is scaled by.
+const double maxIndexPictureScale = 8;
+
+/// The index picture panned by ([dx], [dy]) pixels of a square tile of
+/// [tileSize], the way the crop editor drags it.
+///
+/// The listing tile shows the image translated by the offsets (in the pixels
+/// of the [indexPictureTileSize]) and then scaled about the centre, see
+/// `thumbnailTransform`: a displayed shift of `d` pixels is a shift of
+/// `d / (scale * tileSize / indexPictureTileSize)` in the stored offsets.
+ThumbnailInfo panIndexPicture(
+  ThumbnailInfo info,
+  double dx,
+  double dy,
+  double tileSize,
+) {
+  var scale = info.scale > 0 ? info.scale : 1.0;
+  var factor = scale * tileSize / indexPictureTileSize;
+  return ThumbnailInfo(
+    image: info.image,
+    scale: info.scale,
+    tx: info.tx + dx / factor,
+    ty: info.ty + dy / factor,
+  );
+}
+
+/// The index picture zoomed by [factor] about the centre of the tile, within
+/// [minIndexPictureScale] and [maxIndexPictureScale].
+///
+/// The offsets are applied before the scale, so the point of the image at the
+/// centre of the tile does not depend on the scale: keeping the offsets keeps
+/// the centre where it is.
+ThumbnailInfo zoomIndexPicture(ThumbnailInfo info, double factor) {
+  var scale = info.scale > 0 ? info.scale : 1.0;
+  return ThumbnailInfo(
+    image: info.image,
+    scale: (scale * factor).clamp(minIndexPictureScale, maxIndexPictureScale),
+    tx: info.tx,
+    ty: info.ty,
+  );
+}
+
+/// The image of the album named by its index picture, `null` if there is no
+/// index picture or no image of that name (a group member counts).
+ImagePart? indexImageOf(AlbumInfo album) {
+  var name = album.indexPicture?.image;
+  if (name == null) {
+    return null;
+  }
+  for (var part in album.parts) {
+    if (part is ImagePart && part.name == name) {
+      return part;
+    }
+    if (part is ImageGroup) {
+      for (var image in part.images) {
+        if (image.name == name) {
+          return image;
+        }
+      }
+    }
+  }
+  return null;
+}

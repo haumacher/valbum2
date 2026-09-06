@@ -52,6 +52,40 @@ Matrix4 thumbnailTransform(ThumbnailInfo info, double tileSize) {
   ));
 }
 
+/// The square tile showing an index picture, in the listing and in the crop
+/// editor of the album properties alike, so that what is edited is what is
+/// shown.
+///
+/// This is the square preview the GWT client had: the thumbnail is fitted into
+/// the box (CSS `max-width/max-height: 100%` on a centred image), cropped by
+/// the box (`overflow: hidden`) and zoomed/shifted by the index picture's
+/// transform.
+Widget indexPictureTile(
+  VAlbumClient client,
+  String imageUrl,
+  ThumbnailInfo info,
+  double size, {
+  Key? key,
+}) =>
+    SizedBox(
+      key: key,
+      width: size,
+      height: size,
+      child: ClipRect(
+        child: Transform(
+          alignment: Alignment.center,
+          transform: thumbnailTransform(info, size),
+          child: thumbnail(
+            client,
+            imageUrl,
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
+    );
+
 /// Displays a [ListingInfo] as a grid of folder tiles.
 class ListingView extends StatelessWidget {
   final VAlbumState albumState;
@@ -186,26 +220,11 @@ class ListingView extends StatelessWidget {
       );
     }
 
-    // The square preview the GWT client had: the thumbnail is fitted into the
-    // box (CSS `max-width/max-height: 100%` on a centred image), cropped by the
-    // box (`overflow: hidden`) and zoomed/shifted by the index picture's
-    // transform.
-    return SizedBox(
-      width: width,
-      height: width,
-      child: ClipRect(
-        child: Transform(
-          alignment: Alignment.center,
-          transform: thumbnailTransform(indexPicture, width),
-          child: thumbnail(
-            client,
-            "$baseUrl/${folder.name}/${indexPicture.image}",
-            width: width,
-            height: width,
-            fit: BoxFit.contain,
-          ),
-        ),
-      ),
+    return indexPictureTile(
+      client,
+      "$baseUrl/${folder.name}/${indexPicture.image}",
+      indexPicture,
+      width,
     );
   }
 
