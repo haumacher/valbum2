@@ -26,6 +26,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import 'background.dart';
 import 'client.dart';
 import 'photo_library.dart';
 import 'settings.dart';
@@ -327,6 +328,14 @@ class CameraRollSync extends ChangeNotifier {
   /// How often the library is scanned while the app runs.
   final Duration interval;
 
+  /// The platform's periodic background execution (issue #32).
+  ///
+  /// Switching the sync on registers the task, switching it off removes it,
+  /// and every app start with a switched-on configuration registers it again
+  /// — an app that was updated must not lose it. A platform that has none
+  /// says so, see [BackgroundScheduler.available].
+  final BackgroundScheduler scheduler;
+
   /// The current time, injected so that tests are instant.
   final DateTime Function() clock;
 
@@ -336,6 +345,15 @@ class CameraRollSync extends ChangeNotifier {
   CameraRollConfig _config = CameraRollConfig.disabled;
   CameraRollStatus _status = const CameraRollStatus();
   bool _loaded = false;
+  BackgroundRunRecord? _lastBackgroundRun;
+  String? _backgroundProblem;
+
+  /// Whether a failed run may arm a retry timer.
+  ///
+  /// A background run must not: the isolate it runs in is torn down when it
+  /// returns, so a timer there would either die unfired or hold the isolate
+  /// open. The platform runs the task again anyway, see [runOnce].
+  bool _armRetries = true;
 
   bool _running = false;
   bool _pending = false;
@@ -352,11 +370,13 @@ class CameraRollSync extends ChangeNotifier {
     required this.library,
     required this.clientOf,
     bool Function()? isOffline,
+    BackgroundScheduler? scheduler,
     this.batchSize = 10,
     this.interval = const Duration(minutes: 15),
     DateTime Function()? clock,
     TimerFactory? timerFactory,
   })  : isOffline = isOffline ?? _never,
+        scheduler = scheduler ?? const UnavailableBackgroundScheduler(),
         clock = clock ?? DateTime.now,
         timerFactory = timerFactory ?? _realTimer;
 
@@ -377,9 +397,23 @@ class CameraRollSync extends ChangeNotifier {
   /// Reads the stored configuration; called once when the app starts.
   Future<void> load() async {
     _config = await store.loadCameraRollConfig();
+    _lastBackgroundRun = await store.loadBackgroundRunRecord();
     _loaded = true;
     _publish(_restingStatus());
   }
+
+  /// What the last background run did, `null` if none ever ran (issue #32).
+  ///
+  /// Read once by [load]; the run itself happens in another isolate while this
+  /// app is closed, so there is nothing to listen to — the next start reads
+  /// what it left behind.
+  BackgroundRunRecord? get lastBackgroundRun => _lastBackgroundRun;
+
+  /// Why the background task could not be registered or removed, `null` while
+  /// the platform did what it was asked.
+  ///
+  /// A plugin that throws is not swallowed: the settings section shows this.
+  String? get backgroundProblem => _backgroundProblem;
 
   /// Arms the triggers: the library's change stream and the periodic scan.
   ///
@@ -395,6 +429,9 @@ class CameraRollSync extends ChangeNotifier {
     }
     _watch ??= library.changes.listen((_) => trigger());
     _armScan();
+    // Idempotent, so every start may ask: an app that was updated registers
+    // the periodic task again this way (issue #32).
+    unawaited(_arrangeBackground(true));
     trigger();
   }
 
@@ -447,6 +484,34 @@ class CameraRollSync extends ChangeNotifier {
     await _run();
   }
 
+  /// Runs exactly one sync and answers what it did, arming nothing.
+  ///
+  /// This is the entry a background run uses (issue #32): no change stream, no
+  /// periodic scan, and no retry timer — the isolate ends when this future
+  /// completes, and the platform schedules the next run itself. The state
+  /// machine, the watermark and every refusal are the ones of a foreground
+  /// run, because it is the same run.
+  Future<CameraRollStatus> runOnce() async {
+    if (_disposed || _running) {
+      return _status;
+    }
+    if (!_config.enabled) {
+      _publish(_restingStatus());
+      return _status;
+    }
+    _running = true;
+    _stopRequested = false;
+    _armRetries = false;
+    try {
+      await _runOnce();
+    } finally {
+      _armRetries = true;
+      _running = false;
+      _pending = false;
+    }
+    return _status;
+  }
+
   /// Asks the running sync to stop after the batch it is transferring.
   void stop() {
     _stopRequested = true;
@@ -471,9 +536,36 @@ class CameraRollSync extends ChangeNotifier {
     } else {
       stop();
       _disarm();
+      await _arrangeBackground(false);
       _publish(_restingStatus());
     }
     return null;
+  }
+
+  /// Registers or removes the platform's periodic background task.
+  ///
+  /// Never throws: a plugin that refuses is a reason to show, not a reason to
+  /// keep the user from switching the sync on — the foreground sync works
+  /// either way, see [backgroundProblem].
+  Future<void> _arrangeBackground(bool enabled) async {
+    if (!scheduler.available) {
+      return;
+    }
+    try {
+      if (enabled) {
+        await scheduler.schedule();
+      } else {
+        await scheduler.cancel();
+      }
+      _backgroundProblem = null;
+    } catch (error) {
+      _backgroundProblem = enabled
+          ? "Background sync could not be scheduled: $error"
+          : "Background sync could not be switched off: $error";
+    }
+    if (!_disposed) {
+      notifyListeners();
+    }
   }
 
   /// Chooses the album new photos are uploaded into.
@@ -681,7 +773,7 @@ class CameraRollSync extends ChangeNotifier {
 
   /// Ends the run with a reason, and schedules the next attempt.
   void _fail(String message, {bool retry = true}) {
-    if (!retry) {
+    if (!retry || !_armRetries) {
       _publish(_status.copyWith(
         phase: CameraRollPhase.failed,
         message: message,

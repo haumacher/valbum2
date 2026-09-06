@@ -13,6 +13,7 @@ import 'package:sn_progress_dialog/progress_dialog.dart';
 
 import 'album_model.dart';
 import 'album_view.dart';
+import 'background.dart';
 import 'camera_roll.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
@@ -68,6 +69,15 @@ class VAlbumApp extends StatefulWidget {
   /// inject a [FakePhotoLibrary].
   final PhotoLibrary? photoLibrary;
 
+  /// The platform's periodic background execution (issue #32).
+  ///
+  /// Defaults to the scheduler of the platform the app runs on — `workmanager`
+  /// on Android and iOS, an [UnavailableBackgroundScheduler] everywhere else.
+  /// Tests inject a [FakeBackgroundScheduler]; an injected [client] means a
+  /// test or an embedder drives this app, so nothing then registers a task
+  /// with the device either.
+  final BackgroundScheduler? backgroundScheduler;
+
   const VAlbumApp({
     super.key,
     this.client,
@@ -76,6 +86,7 @@ class VAlbumApp extends StatefulWidget {
     this.cache,
     this.offlineState,
     this.photoLibrary,
+    this.backgroundScheduler,
   });
 
   @override
@@ -106,6 +117,22 @@ class VAlbumAppState extends State<VAlbumApp> {
   late final PhotoLibrary photoLibrary =
       widget.photoLibrary ?? defaultPhotoLibrary();
 
+  /// The platform's periodic background execution, see
+  /// [VAlbumApp.backgroundScheduler].
+  late final BackgroundScheduler backgroundScheduler =
+      widget.backgroundScheduler ?? _defaultScheduler();
+
+  /// The scheduler used when the app is not told otherwise.
+  ///
+  /// An injected client means a test or an embedder drives this app; nothing
+  /// of it may reach the device then, exactly as with the settings store and
+  /// the cache, see [_defaultCache].
+  BackgroundScheduler _defaultScheduler() => widget.client != null
+      ? const UnavailableBackgroundScheduler(
+          "Background sync is not available in this app.",
+        )
+      : defaultBackgroundScheduler();
+
   /// The camera-roll sync (issue #30), driven by the photo library and the
   /// current client.
   ///
@@ -118,6 +145,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     library: photoLibrary,
     clientOf: () => client,
     isOffline: () => offlineState.offline,
+    scheduler: backgroundScheduler,
   );
 
   /// The cache used when the app is not told otherwise.

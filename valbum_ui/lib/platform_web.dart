@@ -1,6 +1,7 @@
 /// The platform pieces of the offline support on the web.
 library;
 
+import 'background.dart';
 import 'offline.dart';
 import 'photo_library.dart';
 
@@ -25,3 +26,18 @@ PhotoLibrary defaultPhotoLibrary() => const UnavailablePhotoLibrary(
       "No photo library in a browser - camera-roll sync runs on Android and "
       "iOS.",
     );
+
+/// The background execution of a browser tab: there is none, see
+/// [BackgroundScheduler].
+///
+/// A tab that is closed is gone, so the camera-roll sync of the web build runs
+/// while the app is open and says as much (issue #32). The `workmanager`
+/// plugin is never imported here — the web build must not see its Dart code.
+BackgroundScheduler defaultBackgroundScheduler() =>
+    const UnavailableBackgroundScheduler(
+      "Background sync is not available in a browser; the camera roll syncs "
+      "while the app is open.",
+    );
+
+/// Runs [task] as the platform's background task: never, in a browser.
+void executeBackgroundTask(Future<bool> Function() task) {}

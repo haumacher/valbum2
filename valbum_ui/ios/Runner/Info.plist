@@ -51,5 +51,17 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Camera-roll sync while the app is closed (issue #32). The identifier
+	     is the unique name the periodic task is registered under, see
+	     `backgroundSyncTaskName` in `lib/background.dart`; the `workmanager`
+	     plugin registers the BGTaskScheduler launch handler itself. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>de.haumacher.valbum.cameraRollSync</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
 </dict>
 </plist>

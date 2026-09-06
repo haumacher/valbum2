@@ -159,6 +159,12 @@ delivery:
   listing) for the album path — the app then renders a listing where the probe expects an album,
   and the route looks right while the screen looks wrong. Match on `Uri.decodeComponent(path)` or
   on the date prefix.
+- **The harness kills tracked long commands under memory pressure** ("stopped because the system
+  is running low on memory"), and an Android build (Gradle + Kotlin daemons) trips it even with
+  headroom. Run `flutter build apk` detached — `nohup bash -c '... > $S/apk.log 2>&1; echo $? >
+  $S/apk.done' &` — and wait on the marker with a Monitor `until` loop; stop the demo server first
+  and `pkill -f "GradleDaemo[n]"` afterwards. The wrapper's `org.gradle.jvmargs` is 2 GB for the
+  same reason; do not copy the template's 8 GB back in.
 - **The Bash tool resets its working directory between calls.** A chain that relies on an earlier
   `cd` runs in the repo root (or its parent); use absolute paths or one `cd` per command, and
   never `git add -A` after a relative `cd ..`.

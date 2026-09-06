@@ -3,6 +3,10 @@ library;
 
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
+import 'background.dart';
+import 'background_workmanager.dart';
 import 'offline.dart';
 import 'offline_file.dart';
 import 'photo_library.dart';
@@ -30,3 +34,28 @@ PhotoLibrary defaultPhotoLibrary() => Platform.isAndroid || Platform.isIOS
         "No photo library on this platform - camera-roll sync runs on "
         "Android and iOS.",
       );
+
+/// The platform's periodic background execution, see [BackgroundScheduler].
+///
+/// Only Android and iOS run background work this app can use; a desktop says
+/// so instead of promising a sync that never happens (issue #32).
+///
+/// `defaultTargetPlatform` rather than `Platform.isAndroid`: this is the same
+/// question `photo_manager` is asked, and the Flutter constant is the one a
+/// test can override.
+BackgroundScheduler defaultBackgroundScheduler() =>
+    defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS
+        ? WorkmanagerScheduler()
+        : const UnavailableBackgroundScheduler(
+            "Background sync is not available on this platform; the camera "
+            "roll syncs while the app is open.",
+          );
+
+/// Runs [task] as the platform's background task, see
+/// [backgroundSyncDispatcher].
+///
+/// Named here rather than imported from `workmanager` directly, so that the
+/// web build never sees the plugin's Dart code.
+void executeBackgroundTask(Future<bool> Function() task) =>
+    runWorkmanagerTask(task);

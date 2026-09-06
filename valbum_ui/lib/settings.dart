@@ -63,6 +63,18 @@ abstract class SettingsStore {
 
   /// Stores the camera-roll configuration.
   Future<void> saveCameraRoll(String json);
+
+  /// What the last background sync run did, as stored JSON, or `null`.
+  ///
+  /// A second blob beside the camera-roll configuration (issue #32): it is
+  /// written by the background isolate, which must not race the foreground
+  /// over the watermark blob, and it is nothing but a report — a store that
+  /// holds none simply has not run in the background yet, see
+  /// [BackgroundRunStorage].
+  Future<String?> loadBackgroundRun();
+
+  /// Stores what a background sync run did.
+  Future<void> saveBackgroundRun(String json);
 }
 
 /// A [SettingsStore] keeping the value in memory only, used by tests.
@@ -78,6 +90,10 @@ class InMemorySettingsStore extends SettingsStore {
   /// The stored camera-roll configuration, see
   /// [SettingsStore.loadCameraRoll].
   String? cameraRoll;
+
+  /// The stored report of the last background run, see
+  /// [SettingsStore.loadBackgroundRun].
+  String? backgroundRun;
 
   InMemorySettingsStore([this.value, this.token, this.deviceName]);
 
@@ -113,6 +129,12 @@ class InMemorySettingsStore extends SettingsStore {
 
   @override
   Future<void> saveCameraRoll(String json) async => cameraRoll = json;
+
+  @override
+  Future<String?> loadBackgroundRun() async => backgroundRun;
+
+  @override
+  Future<void> saveBackgroundRun(String json) async => backgroundRun = json;
 }
 
 /// The [SettingsStore] of the app, backed by `shared_preferences`.
@@ -128,6 +150,10 @@ class PreferencesSettingsStore extends SettingsStore {
 
   /// The preferences key the camera-roll configuration is stored under.
   static const String cameraRollKey = "cameraRoll";
+
+  /// The preferences key the report of the last background run is stored
+  /// under, see [SettingsStore.loadBackgroundRun].
+  static const String backgroundRunKey = "cameraRollBackground";
 
   const PreferencesSettingsStore();
 
@@ -172,6 +198,14 @@ class PreferencesSettingsStore extends SettingsStore {
   @override
   Future<void> saveCameraRoll(String json) async =>
       (await SharedPreferences.getInstance()).setString(cameraRollKey, json);
+
+  @override
+  Future<String?> loadBackgroundRun() async =>
+      (await SharedPreferences.getInstance()).getString(backgroundRunKey);
+
+  @override
+  Future<void> saveBackgroundRun(String json) async =>
+      (await SharedPreferences.getInstance()).setString(backgroundRunKey, json);
 }
 
 /// The server URL the app uses, and the way it is changed.

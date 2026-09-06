@@ -13,6 +13,7 @@ export 'album_edit.dart';
 export 'album_model.dart';
 export 'album_view.dart';
 export 'app.dart';
+export 'background.dart';
 export 'camera_roll.dart';
 export 'camera_roll_view.dart';
 export 'client.dart';

@@ -26,6 +26,10 @@ const Key cameraRollSyncNowKey = Key("cameraRoll.syncNow");
 /// The key of the "Stop" button shown while a run transfers.
 const Key cameraRollStopKey = Key("cameraRoll.stop");
 
+/// The key of the line saying what the last background run did, or why there
+/// is no background sync on this platform.
+const Key cameraRollBackgroundKey = Key("cameraRoll.background");
+
 /// The key of the app-bar indicator shown while a sync runs.
 const Key cameraRollIndicatorKey = Key("cameraRoll.indicator");
 
@@ -114,6 +118,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
         ),
         const SizedBox(height: 16),
         Text(status.line),
+        _backgroundLine(sync),
         if (status.running)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -153,6 +158,45 @@ class _CameraRollSectionState extends State<CameraRollSection> {
             ),
           ),
       ],
+    );
+  }
+
+  /// What the sync does while the app is closed (issue #32): the report of the
+  /// last background run, or the reason this platform has none.
+  Widget _backgroundLine(CameraRollSync sync) {
+    var scheduler = sync.scheduler;
+    var problem = sync.backgroundProblem;
+    var record = sync.lastBackgroundRun;
+    String? text;
+    if (!scheduler.available) {
+      text = scheduler.unavailableReason;
+    } else if (record != null) {
+      text = record.line;
+    }
+    if (text == null && problem == null) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (text != null)
+            Text(
+              text,
+              key: cameraRollBackgroundKey,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          if (problem != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                problem,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

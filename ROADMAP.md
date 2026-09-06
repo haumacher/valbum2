@@ -103,7 +103,10 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
   `.hashes.json` sidecar, offers a pre-check, and never replaces an existing original) *(Done in
   the foreground: the sync runs at app start, on every library change, every 15 minutes while the
   app is open and on demand, with back-off retries and a status section in the settings. Background
-  execution while the app is closed is a follow-up, #32, blocked on the Android toolchain, #33.)*
+  execution while the app is closed landed with #32: a `workmanager` periodic task, Android's
+  fifteen-minute minimum with the constraints "network connected" and "battery not low", iOS via
+  `BGAppRefresh`; the background isolate rebuilds settings, client and engine from the persisted
+  store, runs one sync with the same refusals and records what it did for the settings section.)*
 - ✅ Authentication: a per-device token issued by the server; the API refuses anonymous writes.
   Read access stays open for a home network and is switchable. (#28) *(Done: `--auth
   off|writes|all`, default `writes`; a device is paired with `POST <data>/?action=pair` against the
@@ -130,11 +133,21 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
 
 ## Decisions log
 
+- **2026-09-06 (later)** — Background camera-roll sync (#32) rests on one seam: `runBackgroundSync`
+  is a plain function that rebuilds settings → client → photo library → `CameraRollSync` from
+  nothing but the persisted `SettingsStore`, and `CameraRollSync.runOnce` runs exactly one sync
+  without arming a change stream, a periodic scan or a retry timer — a background isolate is torn
+  down when its run returns, so nothing may outlive it. The platform side is a `BackgroundScheduler`
+  interface chosen by the same conditional import that picks the photo library, so the web and the
+  desktops answer "not available on this platform" instead of promising a sync nothing keeps. A
+  refused background run is not a failed task: the platform re-runs the periodic work anyway, and
+  the reason is written into a second store blob the settings section shows.
+
 - **2026-09-06** — Phase 2 complete (issues #27–#31): a device names its server, pairs with it,
   browses from a cached copy when it is away, and its camera roll flows into an inbox album with
-  the server de-duplicating by content hash. One deliberate cut: background execution of the sync
-  while the app is closed (#32) waits for a working Android build (#33, a Gradle/JDK mismatch in
-  the checked-in wrapper); the foreground sync is complete. Phase 3 is next; its issues are filed
+  the server de-duplicating by content hash. The Android build was repaired the same day (#33, the
+  checked-in Gradle wrapper could not run on JDK 21) and the background execution of the sync
+  followed (#32), so nothing of Phase 2 is left open. Phase 3 is next; its issues are filed
   when work on it starts.
 
 - **2026-09-05 (evening)** — Phase 0 and Phase 1 complete (issues #9–#24). The Flutter app does
