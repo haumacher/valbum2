@@ -273,7 +273,7 @@ class AlbumContentState extends State<AlbumContent> {
     var self = widget.album;
 
     // The album shows its photos, not its chrome: with something to show and
-    // nothing being edited there is no app bar, only the floating toolbar over
+    // nothing being edited there is no app bar, only the floating controls over
     // the photos, see [contentView].
     var immersive = !editMode && self.parts.isNotEmpty;
 
@@ -320,48 +320,71 @@ class AlbumContentState extends State<AlbumContent> {
     );
   }
 
-  /// The way out of the album, and the album's menu.
+  /// The controls of the album: the way up and the album's menu.
   ///
   /// The same controls wherever the album shows them: in the app bar of the
-  /// edit mode and of an empty album, and in the floating toolbar over the
-  /// photos, see [toolbar]. An album without them is a dead end — the browser
+  /// edit mode and of an empty album, and floating over the photos otherwise,
+  /// see [contentView]. An album without them is a dead end — the browser
   /// back button aside, there was no way back to the index, see issue #35.
+  /// There is no home button: the index is one or more steps up, and the
+  /// listing offers the home from there.
   List<Widget> navigationActions(BuildContext context) => [
-        // Unobtrusive while a camera-roll sync runs, nothing otherwise.
-        const CameraRollIndicator(),
-        IconButton(
-          icon: const Icon(Icons.home),
-          tooltip: "Home",
-          onPressed: widget.albumState.showRoot,
-        ),
+        ...wayUp(),
+        ...albumMenu(context),
+      ];
+
+  /// The way out of the album, nothing at the root.
+  List<Widget> wayUp() => [
         if (widget.albumState.path.isNotEmpty)
           IconButton(
             icon: const Icon(Icons.arrow_upward),
             tooltip: "Up",
             onPressed: widget.albumState.showParent,
           ),
+      ];
+
+  /// The album's menu, with the rating filter in it.
+  ///
+  /// The `+` and `-` keys stay the shortcut of the filter, see [onKey]; the
+  /// menu is the touch equivalent, telling the current threshold and offering
+  /// the two steps, each disabled at its GWT bound.
+  List<Widget> albumMenu(BuildContext context) => [
+        // Unobtrusive while a camera-roll sync runs, nothing otherwise.
+        const CameraRollIndicator(),
         menu(context, [
+          menuLabel(
+            "Mindestbewertung",
+            "≥ $minRating",
+            valueKey: const Key("minRating"),
+          ),
+          menuItem(
+            Icons.add_circle_outline,
+            "Mehr Bilder zeigen",
+            (_) => showMore(),
+            enabled: minRating > minMinRating,
+          ),
+          menuItem(
+            Icons.remove_circle_outline,
+            "Weniger Bilder zeigen",
+            (_) => showLess(),
+            enabled: minRating < maxMinRating,
+          ),
+          const PopupMenuDivider(),
           menuItem(Icons.update, "Reload", (_) => widget.albumState.reload()),
           menuItem(Icons.settings, "Server...", openServerSettings),
         ]),
       ];
 
-  /// The floating toolbar of the album, over the photos at the top left.
-  ///
-  /// Dark and translucent like the [RatingFilterBar] at the other end of the
-  /// row, so that the album stays what it is about while never losing its way
-  /// back, see [navigationActions].
-  Widget toolbar(BuildContext context) => DecoratedBox(
+  /// A floating control over the photos: dark and translucent, so that the
+  /// album stays what it is about while never losing its way back.
+  Widget floating(List<Widget> children) => DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.black54,
           borderRadius: BorderRadius.circular(16),
         ),
         child: IconTheme.merge(
           data: const IconThemeData(color: Colors.white, size: 20),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: navigationActions(context),
-          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: children),
         ),
       );
 
@@ -389,10 +412,11 @@ class AlbumContentState extends State<AlbumContent> {
                     children: [
                       if (!editMode)
                         Padding(
-                          // Below the floating toolbar and the filter bar,
-                          // never beside them: at a narrow width a long title
-                          // would otherwise run underneath them.
-                          padding: const EdgeInsets.fromLTRB(16, 64, 16, 4),
+                          // Between the floating up button and the menu,
+                          // in the row they float in: the side padding keeps
+                          // a long title from running underneath them, the
+                          // top padding centres a single line on them.
+                          padding: const EdgeInsets.fromLTRB(64, 12, 64, 4),
                           child: Text(
                             self.title,
                             textAlign: TextAlign.center,
@@ -437,16 +461,10 @@ class AlbumContentState extends State<AlbumContent> {
               );
             },
           ),
-          if (!editMode) Positioned(top: 8, left: 8, child: toolbar(context)),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: RatingFilterBar(
-              minRating: minRating,
-              onShowMore: showMore,
-              onShowLess: showLess,
-            ),
-          ),
+          if (!editMode && widget.albumState.path.isNotEmpty)
+            Positioned(top: 8, left: 8, child: floating(wayUp())),
+          if (!editMode)
+            Positioned(top: 8, right: 8, child: floating(albumMenu(context))),
         ],
       ),
     );
@@ -570,58 +588,6 @@ class AlbumContentState extends State<AlbumContent> {
           ],
         ),
       );
-}
-
-/// The album-level rating filter control, the touch equivalent of the `+` and
-/// `-` keys.
-class RatingFilterBar extends StatelessWidget {
-  final int minRating;
-  final VoidCallback onShowMore;
-  final VoidCallback onShowLess;
-
-  const RatingFilterBar({
-    super.key,
-    required this.minRating,
-    required this.onShowMore,
-    required this.onShowLess,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.remove_circle_outline),
-            iconSize: 20,
-            color: minRating < maxMinRating ? Colors.white : Colors.white24,
-            tooltip: "Weniger Bilder zeigen",
-            onPressed: minRating < maxMinRating ? onShowLess : null,
-          ),
-          Tooltip(
-            message: "Mindestbewertung",
-            child: Text(
-              "≥ $minRating",
-              key: const Key("minRating"),
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            iconSize: 20,
-            color: minRating > minMinRating ? Colors.white : Colors.white24,
-            tooltip: "Mehr Bilder zeigen",
-            onPressed: minRating > minMinRating ? onShowMore : null,
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Builds the tile of one image, given the box the layout assigned to it.

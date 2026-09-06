@@ -1150,22 +1150,43 @@ class _ScrollMemoryState extends State<_ScrollMemory> {
       );
 }
 
-Widget menu(BuildContext context, List<PopupMenuItem<Action>> entries) =>
+Widget menu(BuildContext context, List<PopupMenuEntry<Action>> entries) =>
     PopupMenuButton<Action>(
       itemBuilder: (context) => entries,
       onSelected: (action) => action(context),
     );
 
-PopupMenuItem<Action> menuItem(IconData icon, String text, Action action) =>
+/// A menu entry that only tells: a label and, at the other end of the row,
+/// the current state the entries below it change.
+PopupMenuEntry<Action> menuLabel(String text, String value, {Key? valueKey}) =>
+    PopupMenuItem<Action>(
+      enabled: false,
+      child: Row(
+        children: [
+          Flexible(child: Text(text)),
+          const SizedBox(width: 16),
+          Text(value, key: valueKey),
+        ],
+      ),
+    );
+
+PopupMenuItem<Action> menuItem(
+  IconData icon,
+  String text,
+  Action action, {
+  bool enabled = true,
+}) =>
     PopupMenuItem<Action>(
       value: action,
+      enabled: enabled,
       child: Row(
         children: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Icon(icon, color: Colors.blueAccent),
+            child: Icon(icon, color: enabled ? Colors.blueAccent : Colors.grey),
           ),
-          Text(text),
+          // Wraps instead of overflowing the menu at a long text.
+          Flexible(child: Text(text)),
         ],
       ),
     );

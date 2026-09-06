@@ -330,10 +330,10 @@ void main() {
       expect(narrow, greaterThan(wide));
     });
 
-    testWidgets('an album offers the way up and the way home', (tester) async {
+    testWidgets('an album offers the way up, and no home', (tester) async {
       // A full album shows no app bar (the photos come first), so its way back
-      // is the floating toolbar over them; without it the album was a dead
-      // end, see issue #35.
+      // is the floating up button over them; without it the album was a dead
+      // end, see issue #35. The home is one more step up, on the listing.
       await pumpApp(
         tester,
         clientReturning(fixture("album.json")),
@@ -342,22 +342,23 @@ void main() {
 
       expect(find.byType(AppBar), findsNothing, reason: "the album is bare");
       expect(find.byTooltip("Up"), findsOneWidget);
-      expect(find.byTooltip("Home"), findsOneWidget);
+      expect(find.byTooltip("Home"), findsNothing);
 
       await tap(tester, find.byTooltip("Up"));
       expect(routeOf(tester), ListingOrAlbumRoute.root);
     });
 
-    testWidgets('the home button of an album loads the root', (tester) async {
+    testWidgets('the up button of a nested album loads its parent',
+        (tester) async {
       await pumpApp(
         tester,
         clientReturning(fixture("album.json")),
         at: const ListingOrAlbumRoute([albumFolder, "sub"]),
       );
 
-      await tap(tester, find.byTooltip("Home"));
+      await tap(tester, find.byTooltip("Up"));
 
-      expect(routeOf(tester), ListingOrAlbumRoute.root);
+      expect(routeOf(tester), const ListingOrAlbumRoute(albumPath));
     });
 
     testWidgets('the deep link survives the wait for the stored settings',

@@ -29,6 +29,8 @@ void main() {
       await tester.pumpWidget(VAlbumApp(client: client));
       await tester.pumpAndSettle();
       var before = find.byType(Image).evaluate().length;
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.remove_circle_outline));
       await tester.pumpAndSettle();
       expect(find.byType(Image).evaluate().length, lessThan(before));

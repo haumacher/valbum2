@@ -163,6 +163,8 @@ void main() {
         expect(tile("landscape.jpg"), findsNothing);
 
         // Widening the filter brings it back.
+        await tester.tap(find.byIcon(Icons.more_vert));
+        await tester.pumpAndSettle();
         await tester.tap(find.byIcon(Icons.add_circle_outline));
         await tester.pumpAndSettle();
         expect(tile("landscape.jpg"), findsOneWidget);

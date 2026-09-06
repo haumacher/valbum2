@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Action;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:valbum_ui/app.dart';
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/resource.dart';
 
@@ -10,24 +11,47 @@ import 'util/fixtures.dart';
 /// The number of image tiles currently shown.
 int tileCount() => find.byType(Image).evaluate().length;
 
-/// The threshold the filter control displays.
-String threshold(WidgetTester tester) =>
-    tester.widget<Text>(find.byKey(const Key("minRating"))).data!;
+/// Opens the album menu, the home of the rating filter.
+Future<void> openMenu(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.more_vert));
+  await tester.pumpAndSettle();
+}
 
-/// The [IconButton] carrying the given icon.
-IconButton buttonFor(WidgetTester tester, IconData icon) => tester.widget(
-      find.ancestor(
-        of: find.byIcon(icon),
-        matching: find.byType(IconButton),
-      ),
-    );
+/// Closes the album menu by tapping beside it.
+Future<void> closeMenu(WidgetTester tester) async {
+  await tester.tapAt(const Offset(1, 1));
+  await tester.pumpAndSettle();
+}
+
+/// The threshold the album menu tells.
+Future<String> threshold(WidgetTester tester) async {
+  await openMenu(tester);
+  var text = tester.widget<Text>(find.byKey(const Key("minRating"))).data!;
+  await closeMenu(tester);
+  return text;
+}
+
+/// Whether the menu entry carrying the given icon can be chosen.
+Future<bool> enabled(WidgetTester tester, IconData icon) async {
+  await openMenu(tester);
+  var item = tester.widget<PopupMenuItem>(
+    find.ancestor(
+      of: find.byIcon(icon),
+      matching: find.byType(PopupMenuItem<Action>),
+    ),
+  );
+  await closeMenu(tester);
+  return item.enabled;
+}
 
 Future<void> showMore(WidgetTester tester) async {
+  await openMenu(tester);
   await tester.tap(find.byIcon(Icons.add_circle_outline));
   await tester.pumpAndSettle();
 }
 
 Future<void> showLess(WidgetTester tester) async {
+  await openMenu(tester);
   await tester.tap(find.byIcon(Icons.remove_circle_outline));
   await tester.pumpAndSettle();
 }
@@ -72,36 +96,33 @@ void main() {
 
         // The default threshold of a loaded album is 0: the images rated -1
         // and -2 are hidden.
-        expect(threshold(tester), "≥ 0");
+        expect(await threshold(tester), "≥ 0");
         expect(tileCount(), 2);
         expect(find.text("Alle Bewertungen"), findsOneWidget);
 
         // `+` shows one level more.
         await showMore(tester);
-        expect(threshold(tester), "≥ -1");
+        expect(await threshold(tester), "≥ -1");
         expect(tileCount(), 3);
 
         // -1 is the floor of the GWT client: the trash stays hidden and the
         // button that would show it is disabled.
-        expect(buttonFor(tester, Icons.add_circle_outline).onPressed, isNull);
+        expect(await enabled(tester, Icons.add_circle_outline), isFalse);
         expect(tileCount(), 3);
 
         // `-` narrows the filter down to the starred image.
         await showLess(tester);
-        expect(threshold(tester), "≥ 0");
+        expect(await threshold(tester), "≥ 0");
         expect(tileCount(), 2);
         await showLess(tester);
-        expect(threshold(tester), "≥ 1");
+        expect(await threshold(tester), "≥ 1");
         expect(tileCount(), 1);
         await showLess(tester);
-        expect(threshold(tester), "≥ 2");
+        expect(await threshold(tester), "≥ 2");
         expect(tileCount(), 1);
 
         // 2 is the ceiling.
-        expect(
-          buttonFor(tester, Icons.remove_circle_outline).onPressed,
-          isNull,
-        );
+        expect(await enabled(tester, Icons.remove_circle_outline), isFalse);
 
         // The heading stayed visible all the way.
         expect(find.text("Alle Bewertungen"), findsOneWidget);
@@ -117,17 +138,17 @@ void main() {
 
         await tester.sendKeyEvent(LogicalKeyboardKey.minus);
         await tester.pumpAndSettle();
-        expect(threshold(tester), "≥ 1");
+        expect(await threshold(tester), "≥ 1");
         expect(tileCount(), 1);
 
         await tester.sendKeyEvent(LogicalKeyboardKey.numpadAdd);
         await tester.pumpAndSettle();
-        expect(threshold(tester), "≥ 0");
+        expect(await threshold(tester), "≥ 0");
         expect(tileCount(), 2);
 
         await tester.sendKeyEvent(LogicalKeyboardKey.numpadAdd);
         await tester.pumpAndSettle();
-        expect(threshold(tester), "≥ -1");
+        expect(await threshold(tester), "≥ -1");
         expect(tileCount(), 3);
       });
     });
@@ -175,7 +196,7 @@ void main() {
       // Every image of the fixture is rated 0, so one step is enough.
       await showLess(tester);
 
-      expect(threshold(tester), "≥ 1");
+      expect(await threshold(tester), "≥ 1");
       expect(tileCount(), 0);
       expect(
         find.textContaining("No image is rated 1 or better"),
@@ -191,13 +212,15 @@ void main() {
         reason: "the title stays centred without any image",
       );
 
-      var filter = tester.getRect(find.byType(RatingFilterBar));
-      expect(title.overlaps(filter), isFalse);
+      var menuButton = tester.getRect(find.byIcon(Icons.more_vert));
+      expect(title.overlaps(menuButton), isFalse, reason: "the menu is beside");
       expect(
-        title.overlaps(tester.getRect(find.byTooltip("Home"))),
-        isFalse,
-        reason: "nor does the toolbar cover it",
+        title.top,
+        lessThan(menuButton.bottom),
+        reason: "the title shares the row of the floating controls, "
+            "there is no gap above it",
       );
+      expect(find.byTooltip("Home"), findsNothing);
     });
   });
 }
