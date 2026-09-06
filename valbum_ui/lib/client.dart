@@ -17,7 +17,11 @@ import 'urls.dart';
 class VAlbumException implements Exception {
   final String message;
 
-  const VAlbumException(this.message);
+  /// The HTTP status the server answered with, `null` if the server did not
+  /// answer at all (a transport failure) or the failure is not a status.
+  final int? status;
+
+  const VAlbumException(this.message, {this.status});
 
   @override
   String toString() => message;
@@ -507,9 +511,19 @@ class VAlbumClient {
     try {
       var check = await checkUploads(path, [for (var f in hashed) f.sha256!]);
       known.addAll([for (var present in check.present) present.hash]);
+    } on VAlbumException catch (error) {
+      // An older server does not know the question (404/405): it still refuses
+      // a duplicate when the contents arrive, so the upload goes ahead. Any
+      // other answer is the server speaking — a refusal must not be followed
+      // by sending the contents anyway.
+      if (error.status != 404 && error.status != 405) {
+        rethrow;
+      }
+      if (kDebugMode) {
+        print("The server cannot check uploads: $error");
+      }
     } catch (error) {
-      // The question is an optimisation; a server that cannot answer it still
-      // refuses a duplicate when the contents arrive.
+      // A transport failure: the upload attempt reports it in its own right.
       if (kDebugMode) {
         print("Cannot check uploads: $error");
       }
@@ -583,9 +597,9 @@ class VAlbumClient {
   static VAlbumException failure(int status, String body, String what) {
     var message = errorMessage(body);
     if (message != null) {
-      return VAlbumException(message);
+      return VAlbumException(message, status: status);
     }
-    return VAlbumException("HTTP $status while $what.");
+    return VAlbumException("HTTP $status while $what.", status: status);
   }
 
   /// The message of an [ErrorInfo] body, `null` if the body is not one.

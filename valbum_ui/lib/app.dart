@@ -13,11 +13,14 @@ import 'package:sn_progress_dialog/progress_dialog.dart';
 
 import 'album_model.dart';
 import 'album_view.dart';
+import 'camera_roll.dart';
+import 'camera_roll_view.dart';
 import 'client.dart';
 import 'group_view.dart';
 import 'image_view.dart';
 import 'listing_view.dart';
 import 'offline.dart';
+import 'photo_library.dart';
 import 'platform.dart';
 import 'resource.dart';
 import 'routes.dart';
@@ -58,6 +61,13 @@ class VAlbumApp extends StatefulWidget {
   /// Whether the app is currently showing what the [cache] holds.
   final OfflineState? offlineState;
 
+  /// The device's photo library, watched by the camera-roll sync (issue #30).
+  ///
+  /// Defaults to the library of the platform the app runs on — a real one on
+  /// Android and iOS, an [UnavailablePhotoLibrary] everywhere else. Tests
+  /// inject a [FakePhotoLibrary].
+  final PhotoLibrary? photoLibrary;
+
   const VAlbumApp({
     super.key,
     this.client,
@@ -65,6 +75,7 @@ class VAlbumApp extends StatefulWidget {
     this.initialRoute,
     this.cache,
     this.offlineState,
+    this.photoLibrary,
   });
 
   @override
@@ -90,6 +101,24 @@ class VAlbumAppState extends State<VAlbumApp> {
 
   /// Whether [offlineState] was created here and must be disposed.
   bool get _ownsOfflineState => widget.offlineState == null;
+
+  /// The device's photo library, see [VAlbumApp.photoLibrary].
+  late final PhotoLibrary photoLibrary =
+      widget.photoLibrary ?? defaultPhotoLibrary();
+
+  /// The camera-roll sync (issue #30), driven by the photo library and the
+  /// current client.
+  ///
+  /// It uses the *current* client (a function, not a value): pointing the app
+  /// at another server or pairing this device swaps the client, and the next
+  /// run must go to the new one. Nothing runs until the stored configuration
+  /// says the user switched the sync on.
+  late final CameraRollSync cameraRoll = CameraRollSync(
+    store: settings.store,
+    library: photoLibrary,
+    clientOf: () => client,
+    isOffline: () => offlineState.offline,
+  );
 
   /// The cache used when the app is not told otherwise.
   ///
@@ -178,16 +207,28 @@ class VAlbumAppState extends State<VAlbumApp> {
     super.initState();
     settings.addListener(_settingsChanged);
     _syncClient();
-    if (!settings.loaded) {
-      // Before the first client is built: until this completes the app shows
-      // a splash, see [build].
-      settings.load();
-    }
+    // Before the first client is built: until this completes the app shows a
+    // splash, see [build].
+    var settingsLoaded =
+        settings.loaded ? Future<void>.value() : settings.load();
+    // App start-up is one of the sync's triggers; `start` does nothing at all
+    // while the stored configuration says the sync is off. The sync starts
+    // only once the server URL is known: otherwise its first run fails with
+    // "no server configured" although one is stored on the device.
+    settingsLoaded.then((_) => cameraRoll.load()).then((_) {
+      if (mounted) {
+        cameraRoll.start();
+      }
+    });
   }
 
   @override
   void dispose() {
     settings.removeListener(_settingsChanged);
+    cameraRoll.dispose();
+    if (widget.photoLibrary == null) {
+      photoLibrary.dispose();
+    }
     _router?.dispose();
     if (widget.settings == null) {
       settings.dispose();
@@ -218,6 +259,11 @@ class VAlbumAppState extends State<VAlbumApp> {
     // Drops every resource and scroll offset of the previous server and
     // re-runs the load of the current route.
     _router?.client = next;
+    // A server or token that changed is a reason to sync again: what the
+    // previous server refused, the new one (or the pairing) may accept.
+    if (cameraRoll.loaded && cameraRoll.config.enabled) {
+      cameraRoll.trigger();
+    }
   }
 
   @override
@@ -225,14 +271,17 @@ class VAlbumAppState extends State<VAlbumApp> {
     return OfflineScope(
       state: offlineState,
       cache: cache,
-      child: ServerSettingsScope(
-        settings: settings,
-        clientFor: clientFor,
-        child: !settings.loaded
-            ? _splash()
-            : client == null
-                ? _serverSetup()
-                : _albumApp(client!),
+      child: CameraRollScope(
+        sync: cameraRoll,
+        child: ServerSettingsScope(
+          settings: settings,
+          clientFor: clientFor,
+          child: !settings.loaded
+              ? _splash()
+              : client == null
+                  ? _serverSetup()
+                  : _albumApp(client!),
+        ),
       ),
     );
   }

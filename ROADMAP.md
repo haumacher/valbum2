@@ -95,12 +95,15 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
 *Issues #27 (server settings screen, first), #28 (authentication), #29 (idempotent uploads),
 #30 (camera-roll sync, needs #27–#29), #31 (offline cache). Filed 2026-09-05 when Phase 2 started.*
 
-- Server settings screen (URL, credentials) replacing the hardcoded host; connection test. (#27; credentials with #28)
-- Camera-roll sync: the app watches the device's photo library and uploads new items to a chosen
+- ✅ Server settings screen (URL, credentials) replacing the hardcoded host; connection test. (#27; credentials with #28)
+- ✅ Camera-roll sync: the app watches the device's photo library and uploads new items to a chosen
   inbox album, in the background where the platform allows, with progress and retry. Uploads are
-  idempotent (content hash), so a retried upload never duplicates. (#30; server side #29 ✅: the
+  idempotent (content hash), so a retried upload never duplicates. (#30; server side #29: the
   server hashes every upload, answers `present` for known content, caches hashes in a per-folder
-  `.hashes.json` sidecar, offers a pre-check, and never replaces an existing original)
+  `.hashes.json` sidecar, offers a pre-check, and never replaces an existing original) *(Done in
+  the foreground: the sync runs at app start, on every library change, every 15 minutes while the
+  app is open and on demand, with back-off retries and a status section in the settings. Background
+  execution while the app is closed is a follow-up, #32, blocked on the Android toolchain, #33.)*
 - ✅ Authentication: a per-device token issued by the server; the API refuses anonymous writes.
   Read access stays open for a home network and is switchable. (#28) *(Done: `--auth
   off|writes|all`, default `writes`; a device is paired with `POST <data>/?action=pair` against the
@@ -126,6 +129,13 @@ group model and the sidecar round-trip are shared mechanisms, so they land first
 - Release automation from tags.
 
 ## Decisions log
+
+- **2026-09-06** — Phase 2 complete (issues #27–#31): a device names its server, pairs with it,
+  browses from a cached copy when it is away, and its camera roll flows into an inbox album with
+  the server de-duplicating by content hash. One deliberate cut: background execution of the sync
+  while the app is closed (#32) waits for a working Android build (#33, a Gradle/JDK mismatch in
+  the checked-in wrapper); the foreground sync is complete. Phase 3 is next; its issues are filed
+  when work on it starts.
 
 - **2026-09-05 (evening)** — Phase 0 and Phase 1 complete (issues #9–#24). The Flutter app does
   everything the GWT client did, verified live on the bundled jar: deep links, keyboard navigation

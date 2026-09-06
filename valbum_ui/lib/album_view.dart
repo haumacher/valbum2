@@ -9,6 +9,7 @@ import 'package:valbum_ui/album_layout.dart' as layouter;
 import 'album_edit.dart';
 import 'album_model.dart';
 import 'app.dart';
+import 'camera_roll_view.dart';
 import 'client.dart';
 import 'resource.dart';
 import 'offline.dart';
@@ -281,6 +282,8 @@ class AlbumContentState extends State<AlbumContent> {
               ),
               centerTitle: true,
               actions: [
+                // Unobtrusive while a camera-roll sync runs, nothing otherwise.
+                const CameraRollIndicator(),
                 menu(context, [
                   menuItem(
                     Icons.update,

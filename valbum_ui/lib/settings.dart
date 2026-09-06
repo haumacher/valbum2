@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'camera_roll_view.dart';
 import 'client.dart';
 import 'offline.dart';
 import 'resource.dart';
@@ -53,6 +54,15 @@ abstract class SettingsStore {
 
   /// Forgets the stored token: the app is anonymous again.
   Future<void> clearToken();
+
+  /// The camera-roll configuration of this device as stored JSON, or `null`.
+  ///
+  /// One blob under one key: a store written before issue #30 holds nothing
+  /// there and loads as a disabled sync, see [CameraRollStorage].
+  Future<String?> loadCameraRoll();
+
+  /// Stores the camera-roll configuration.
+  Future<void> saveCameraRoll(String json);
 }
 
 /// A [SettingsStore] keeping the value in memory only, used by tests.
@@ -64,6 +74,10 @@ class InMemorySettingsStore extends SettingsStore {
 
   /// The stored device name, see [SettingsStore.loadDeviceName].
   String? deviceName;
+
+  /// The stored camera-roll configuration, see
+  /// [SettingsStore.loadCameraRoll].
+  String? cameraRoll;
 
   InMemorySettingsStore([this.value, this.token, this.deviceName]);
 
@@ -93,6 +107,12 @@ class InMemorySettingsStore extends SettingsStore {
     token = null;
     deviceName = null;
   }
+
+  @override
+  Future<String?> loadCameraRoll() async => cameraRoll;
+
+  @override
+  Future<void> saveCameraRoll(String json) async => cameraRoll = json;
 }
 
 /// The [SettingsStore] of the app, backed by `shared_preferences`.
@@ -105,6 +125,9 @@ class PreferencesSettingsStore extends SettingsStore {
 
   /// The preferences key the device name is stored under.
   static const String deviceNameKey = "deviceName";
+
+  /// The preferences key the camera-roll configuration is stored under.
+  static const String cameraRollKey = "cameraRoll";
 
   const PreferencesSettingsStore();
 
@@ -141,6 +164,14 @@ class PreferencesSettingsStore extends SettingsStore {
     await preferences.remove(tokenKey);
     await preferences.remove(deviceNameKey);
   }
+
+  @override
+  Future<String?> loadCameraRoll() async =>
+      (await SharedPreferences.getInstance()).getString(cameraRollKey);
+
+  @override
+  Future<void> saveCameraRoll(String json) async =>
+      (await SharedPreferences.getInstance()).setString(cameraRollKey, json);
 }
 
 /// The server URL the app uses, and the way it is changed.
@@ -599,6 +630,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
               const SizedBox(height: 24),
               const Divider(),
               ..._pairingSection(settings),
+              const CameraRollSection(),
               ..._cacheSection(),
             ],
           ),

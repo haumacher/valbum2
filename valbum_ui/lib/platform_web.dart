@@ -2,6 +2,7 @@
 library;
 
 import 'offline.dart';
+import 'photo_library.dart';
 
 /// The cache the web app uses: memory only.
 ///
@@ -15,3 +16,12 @@ OfflineCache defaultOfflineCache() => MemoryOfflineCache();
 /// There is no `SocketException` in a browser; everything the transport can
 /// fail with arrives as a `ClientException`, which the caller checks itself.
 bool isSocketError(Object error) => false;
+
+/// The photo library of a browser: there is none, see [PhotoLibrary].
+///
+/// A page cannot watch the machine's photos, so camera-roll sync says so
+/// instead of pretending (issue #30).
+PhotoLibrary defaultPhotoLibrary() => const UnavailablePhotoLibrary(
+      "No photo library in a browser - camera-roll sync runs on Android and "
+      "iOS.",
+    );

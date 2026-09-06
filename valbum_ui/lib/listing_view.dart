@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'app.dart';
+import 'camera_roll_view.dart';
 import 'client.dart';
 import 'resource.dart';
 import 'offline.dart';
@@ -68,6 +69,8 @@ class ListingView extends StatelessWidget {
       appBar: AppBar(
         title: Text(self.title),
         actions: <Widget>[
+          // Unobtrusive while a camera-roll sync runs, nothing otherwise.
+          const CameraRollIndicator(),
           IconButton(
             icon: const Icon(Icons.home),
             tooltip: 'Home',

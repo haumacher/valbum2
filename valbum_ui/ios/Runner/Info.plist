@@ -12,6 +12,10 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>VAlbum uploads new photos from this device into your own album server.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>VAlbum uploads new photos from this device into your own album server.</string>
 	<key>CFBundleName</key>
 	<string>valbum_ui</string>
 	<key>CFBundlePackageType</key>
