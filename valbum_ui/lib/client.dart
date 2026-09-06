@@ -264,10 +264,40 @@ class VAlbumClient {
     if (response.statusCode != 200) {
       throw failure(response.statusCode, response.body, "loading '$uri'");
     }
+    // Parsed before it is cached: an answer that is not album data must not
+    // become the cached copy of this album.
+    var resource = parseResource(response.body, uri);
     offlineState?.online();
     await cache?.putResource(dataUrl, path, response.body);
-    return Resource.read(JsonReader.fromString(response.body));
+    return resource;
   }
+
+  /// The resource in an answer of the server, never a raw parse failure.
+  ///
+  /// A status of 200 does not mean an album server answered: pointed at the
+  /// wrong URL the app is served the web server's `index.html` (the album
+  /// server answers every unknown extension-less path with it, so that deep
+  /// links work), and the user then saw a `FormatException` quoting HTML. What
+  /// this says instead names the address that answered and the remedy, see
+  /// issue #35.
+  static Resource parseResource(String body, String url) {
+    Resource? resource;
+    try {
+      resource = Resource.read(JsonReader.fromString(body));
+    } catch (_) {
+      // Not album data at all; the message below says so.
+    }
+    if (resource == null) {
+      throw notAlbumData(url);
+    }
+    return resource;
+  }
+
+  /// The failure of an answer that is not album data, see [parseResource].
+  static VAlbumException notAlbumData(String url) => VAlbumException(
+        "The server at '$url' did not answer with album data - not a VAlbum "
+        "server, or is the server URL in the settings wrong?",
+      );
 
   /// The last copy of [path] this app saw, after the server could not be
   /// reached.
@@ -395,6 +425,13 @@ class VAlbumClient {
     }
     var contentLength = multipart.contentLength;
 
+    // Finalized *before* the headers are copied: `MultipartRequest` writes its
+    // `content-type` (with the boundary of the body it is about to produce)
+    // only in `finalize()`. Copying the headers first sent a multipart body
+    // without a content type, which the server refused with 415, see issue
+    // #35.
+    var multipartBody = multipart.finalize();
+
     var request = http.StreamedRequest("PUT", uri);
     request.headers.addAll(multipart.headers);
     request.headers.addAll(authHeaders);
@@ -404,7 +441,7 @@ class VAlbumClient {
     unawaited(() async {
       var transferred = 0;
       try {
-        await for (var chunk in multipart.finalize()) {
+        await for (var chunk in multipartBody) {
           if (handle != null && handle.cancelled) {
             break;
           }
@@ -586,7 +623,13 @@ class VAlbumClient {
     if (response.statusCode >= 300) {
       throw failure(response.statusCode, response.body, "asking '$url'");
     }
-    return AuthInfo.read(JsonReader.fromString(response.body));
+    // The answer an unknown path is served with is HTML, not auth data, see
+    // [parseResource]: that is the wrong server URL speaking, not a bug.
+    try {
+      return AuthInfo.read(JsonReader.fromString(response.body));
+    } catch (_) {
+      throw notAlbumData(url);
+    }
   }
 
   /// The exception for a refused request.

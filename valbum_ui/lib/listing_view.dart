@@ -213,9 +213,12 @@ class ListingView extends StatelessWidget {
     if (refuseWhileOffline(context)) {
       return;
     }
-    ListingInfo? folder = await showGeneralDialog(
+    // `showDialog`, not `showGeneralDialog`: it brings the barrier that closes
+    // the dialog on a tap beside it and on Escape. Together with the cancel
+    // button of the dialog itself, the action has a way back, see issue #35.
+    ListingInfo? folder = await showDialog<ListingInfo>(
       context: context,
-      pageBuilder: (context, _, __) => const CreateFolderDialog(),
+      builder: (context) => const CreateFolderDialog(),
     );
 
     if (folder == null) {
@@ -232,9 +235,9 @@ class ListingView extends StatelessWidget {
     if (refuseWhileOffline(context)) {
       return;
     }
-    AlbumInfo? album = await showGeneralDialog(
+    AlbumInfo? album = await showDialog<AlbumInfo>(
       context: context,
-      pageBuilder: (context, _, __) => const CreateAlbumDialog(),
+      builder: (context) => const CreateAlbumDialog(),
     );
 
     if (album == null) {
@@ -319,6 +322,11 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    TextButton(
+                      onPressed: cancelPressed,
+                      child: const Text("Abbrechen"),
+                    ),
+                    const SizedBox(width: 8),
                     ElevatedButton.icon(
                       icon: const Icon(Icons.check),
                       label: const Text("Anlegen"),
@@ -333,6 +341,9 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
       ),
     );
   }
+
+  /// Leaves the dialog without creating anything.
+  void cancelPressed() => Navigator.of(context).pop();
 
   void createPressed() {
     var formState = formKey.currentState;
@@ -404,6 +415,11 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    TextButton(
+                      onPressed: cancelPressed,
+                      child: const Text("Abbrechen"),
+                    ),
+                    const SizedBox(width: 8),
                     ElevatedButton.icon(
                       icon: const Icon(Icons.check),
                       label: const Text("Anlegen"),
@@ -418,6 +434,9 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
       ),
     );
   }
+
+  /// Leaves the dialog without creating anything.
+  void cancelPressed() => Navigator.of(context).pop();
 
   void createPressed() {
     var formState = formKey.currentState;

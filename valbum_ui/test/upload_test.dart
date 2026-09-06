@@ -104,6 +104,36 @@ void main() {
       expect(result.files.first.hash, "h1");
     });
 
+    test('sends the multipart content type and the device token', () async {
+      // `MultipartRequest` writes its content type (with the boundary) only in
+      // `finalize()`; copying the headers before that sent a body without one,
+      // and the server refused the PUT with 415, see issue #35.
+      var requests = <http.Request>[];
+      var client = clientReturning(
+        "",
+        requests: requests,
+      ).withToken("tok-upload");
+
+      await client.uploadFiles(
+        "http://server/valbum/data/album/",
+        [
+          fileNamed("a.jpg", [1, 2, 3]),
+        ],
+      );
+
+      var sent = requests.single;
+      expect(sent.method, "PUT");
+      expect(
+        sent.headers["content-type"],
+        startsWith("multipart/form-data; boundary="),
+      );
+      expect(sent.headers["Authorization"], "Bearer tok-upload");
+      // The body the boundary announces is the body that was sent.
+      var boundary = sent.headers["content-type"]!.split("boundary=").last;
+      expect(sent.body, contains("--$boundary"));
+      expect(sent.body, contains('filename="a.jpg"'));
+    });
+
     test('takes a body it cannot read for "everything stored"', () async {
       var result = await clientReturning("<html>gateway</html>").uploadFiles(
         "http://server/valbum/data/album/",
@@ -167,7 +197,9 @@ void main() {
         requests: requests,
       );
 
-      var summary = await client.uploadNew(["album"], [
+      var summary = await client.uploadNew([
+        "album"
+      ], [
         fileNamed("a.jpg", "a".codeUnits),
         fileNamed("b.jpg", "b".codeUnits),
       ]);

@@ -18,8 +18,7 @@ import 'util/fixtures.dart';
 String refusal(String message) => '["ErrorInfo",{"message":"$message"}]';
 
 /// The message the server refuses an anonymous write with.
-const String writeRefused =
-    "This server requires a paired device for changes. "
+const String writeRefused = "This server requires a paired device for changes. "
     "Pair this device in the server settings.";
 
 /// A client over a transport recording every request it is given.
@@ -282,6 +281,52 @@ void main() {
       expect(store.token, isNull);
     });
 
+    test('the same server in another spelling keeps its token', () async {
+      // "Pair, then Save" on the web: the field holds the URL of the server
+      // the app was loaded from, which is not stored yet, so the *string*
+      // differs from the stored one although the server is the same. The
+      // token must survive that, see issue #35.
+      var store = InMemorySettingsStore();
+      var settings = ServerSettings(
+        store: store,
+        platformDefault: () => "http://a/valbum/data",
+      );
+      await settings.load();
+      await settings.pairedAs("tok", "Phone");
+
+      await settings.save("http://a/valbum/");
+      expect(settings.token, "tok", reason: "the same server, first stored");
+
+      await settings.save("http://a/valbum");
+      expect(settings.token, "tok", reason: "without the trailing slash");
+
+      await settings.save("http://a/valbum/index.html");
+      expect(settings.token, "tok", reason: "the index page of the same app");
+
+      await settings.save(" http://a/valbum/ ");
+      expect(settings.token, "tok", reason: "surrounding whitespace");
+
+      await settings.save("http://b/valbum/");
+      expect(settings.token, isNull, reason: "another host");
+      expect(store.token, isNull);
+    });
+
+    test('a reset back to the same server keeps the token', () async {
+      var store = InMemorySettingsStore("http://a/valbum/");
+      var settings = ServerSettings(
+        store: store,
+        platformDefault: () => "http://a/valbum/data",
+      );
+      await settings.load();
+      await settings.pairedAs("tok", "Phone");
+
+      await settings.reset();
+
+      expect(settings.serverUrl, isNull);
+      expect(settings.dataUrl, "http://a/valbum/data");
+      expect(settings.token, "tok");
+    });
+
     test('a reset of the server forgets its token', () async {
       var store = InMemorySettingsStore("http://a/valbum/");
       var settings = ServerSettings(store: store);
@@ -362,7 +407,8 @@ void main() {
     });
 
     testWidgets('unpair forgets the token', (tester) async {
-      var store = InMemorySettingsStore("http://server/valbum/", "tok", "Phone");
+      var store =
+          InMemorySettingsStore("http://server/valbum/", "tok", "Phone");
       var settings = ServerSettings(store: store);
       await settings.load();
 
@@ -487,6 +533,58 @@ void main() {
       });
 
       expect(find.text("Album server"), findsOneWidget);
+      expect(find.byKey(serverUrlFieldKey), findsOneWidget);
+    });
+
+    testWidgets('a 401 on the root load is a pairing page, not an error',
+        (tester) async {
+      var client = clientReturning(
+        refusal("This server requires a paired device."),
+        status: 401,
+      );
+
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(VAlbumApp(client: client));
+        await tester.pumpAndSettle();
+      });
+
+      // The page says what is missing and what to do, in the server's own
+      // words, and never quotes a failure of the app, see issue #35.
+      expect(find.text("Pairing required"), findsWidgets);
+      expect(
+        find.textContaining("This server requires a paired device."),
+        findsOneWidget,
+      );
+      expect(find.textContaining("Loading failed"), findsNothing);
+      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+      expect(find.text("Server settings..."), findsOneWidget);
+    });
+
+    testWidgets(
+        'an answer that is no album data names the server and the '
+        'settings', (tester) async {
+      // The wrong data URL: the album server serves the app's `index.html` for
+      // an unknown extension-less path, with a 200. The user saw
+      // "FormatException: not an array <!DOCTYPE html>", see issue #35.
+      var client = clientReturning("<!DOCTYPE html><html>app</html>");
+
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(VAlbumApp(client: client));
+        await tester.pumpAndSettle();
+      });
+
+      expect(
+        find.textContaining("did not answer with album data"),
+        findsOneWidget,
+      );
+      expect(find.textContaining("FormatException"), findsNothing);
+      expect(find.textContaining("<!DOCTYPE"), findsNothing);
+
+      await withFakeImageHttp(() async {
+        await tester.tap(find.text("Server settings..."));
+        await tester.pumpAndSettle();
+      });
+
       expect(find.byKey(serverUrlFieldKey), findsOneWidget);
     });
   });

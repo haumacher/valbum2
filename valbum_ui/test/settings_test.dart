@@ -137,7 +137,10 @@ void main() {
       );
 
       expect(
-        tester.widget<TextField>(find.byKey(serverUrlFieldKey)).controller!.text,
+        tester
+            .widget<TextField>(find.byKey(serverUrlFieldKey))
+            .controller!
+            .text,
         "http://server/valbum/",
       );
     });
@@ -235,8 +238,7 @@ void main() {
       expect(find.textContaining("Connection refused"), findsOneWidget);
     });
 
-    testWidgets('reports a server that is not a VAlbum server',
-        (tester) async {
+    testWidgets('reports a server that is not a VAlbum server', (tester) async {
       await runTest(
         tester,
         (_) async => http.Response("<html>Hello</html>", 200),
@@ -301,6 +303,28 @@ void main() {
       expect(find.text("Album server"), findsOneWidget);
       // Nothing to go back to: the screen is the app.
       expect(find.byType(BackButton), findsNothing);
+    });
+
+    testWidgets('goes from the setup screen to the album app', (tester) async {
+      // The app swaps its whole router here: the screens before the router
+      // exist run on a delegate of their own, see issue #35.
+      await pumpApp(
+        tester,
+        client: clientReturning(fixture("listing.json")),
+        settings: settingsWith(
+          InMemorySettingsStore(),
+          platformDefault: null,
+        ),
+      );
+      expect(find.text("Album server"), findsOneWidget);
+
+      await enter(tester, "http://server/valbum/");
+      await withFakeImageHttp(() async {
+        await tapButton(tester, "Save");
+      });
+
+      expect(find.text("Album server"), findsNothing);
+      expect(find.text("Test-album"), findsOneWidget);
     });
 
     testWidgets('loads the root listing from the stored server',

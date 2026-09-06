@@ -197,9 +197,15 @@ class VAlbumAppState extends State<VAlbumApp> {
         loaded: true,
       );
     }
+    // Derived once, here in `initState`: `Uri.base` is the document location,
+    // and the location changes while the app runs (every navigation writes the
+    // route into it). Read again later, the "origin" would be whatever album
+    // the user is looking at, and the app would ask a data URL that does not
+    // exist, see issue #35.
+    var origin = kIsWeb ? _originDataUrl() : null;
     return ServerSettings(
       store: const PreferencesSettingsStore(),
-      platformDefault: () => kIsWeb ? _originDataUrl() : null,
+      platformDefault: () => origin,
     );
   }
 
@@ -218,6 +224,27 @@ class VAlbumAppState extends State<VAlbumApp> {
         ),
       );
 
+  /// The location the app was opened with, read once at start-up.
+  ///
+  /// The router app is built only once the stored settings have been read; by
+  /// then the deep link the app was opened with must still be the one it
+  /// starts at, so it is captured before anything is shown, see
+  /// [_routeInformationProvider].
+  late final RouteInformation _initialRouteInformation = RouteInformation(
+    uri: widget.initialRoute != null
+        ? routeToUri(widget.initialRoute!)
+        : Uri.parse(
+            WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+          ),
+  );
+
+  /// Hands the router the location the app was opened with, and the locations
+  /// the browser's back and forward buttons produce afterwards.
+  late final PlatformRouteInformationProvider _routeInformationProvider =
+      PlatformRouteInformationProvider(
+    initialRouteInformation: _initialRouteInformation,
+  );
+
   /// Builds a client for the given data URL over this app's transport.
   ///
   /// The client carries the token this device is paired with the server as, so
@@ -233,7 +260,11 @@ class VAlbumAppState extends State<VAlbumApp> {
   @override
   void initState() {
     super.initState();
+    // Both are read from the platform and must be read *now*, before anything
+    // rewrites the location: the server the app was loaded from and the view
+    // it was opened at, see [_defaultSettings] and [_initialRouteInformation].
     settings.addListener(_settingsChanged);
+    _initialRouteInformation;
     _syncClient();
     // Before the first client is built: until this completes the app shows a
     // splash, see [build].
@@ -267,6 +298,8 @@ class VAlbumAppState extends State<VAlbumApp> {
     if (_ownsOfflineState) {
       offlineState.dispose();
     }
+    _routeInformationProvider.dispose();
+    _preRouter?.dispose();
     super.dispose();
   }
 
@@ -304,33 +337,46 @@ class VAlbumAppState extends State<VAlbumApp> {
         child: ServerSettingsScope(
           settings: settings,
           clientFor: clientFor,
-          child: !settings.loaded
-              ? _splash()
-              : client == null
-                  ? _serverSetup()
-                  : _albumApp(client!),
+          child: settings.loaded && client != null
+              ? _albumApp(client!)
+              : _beforeTheRouter(),
         ),
       ),
     );
   }
 
-  /// Shown while the stored server URL is being read.
-  Widget _splash() => MaterialApp(
+  /// The app before its router exists: the splash, or the server setup.
+  ///
+  /// A [MaterialApp.router] with a delegate that has no configuration at all,
+  /// and that is the point: the root [Navigator] of a plain [MaterialApp]
+  /// reports its route to the engine, which on the web rewrites the browser
+  /// location to the app base. The deep link the app was opened with would be
+  /// gone before the router ever saw it, see issue #35. A delegate whose
+  /// `currentConfiguration` is `null` reports nothing, and the screen still
+  /// gets a [Navigator] of its own for its dialogs.
+  ///
+  /// One delegate for both screens, kept across rebuilds: it holds the
+  /// [Navigator] the settings screen lives in, and re-creating that would
+  /// throw away what the user has typed.
+  Widget _beforeTheRouter() => MaterialApp.router(
         title: 'Virtual Photo Album',
         theme: ThemeData(primarySwatch: Colors.blue),
-        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
+        routerDelegate: _preRouter ??= SilentRouterDelegate(_startupScreen),
       );
 
-  /// Shown when no server is configured: there is nothing else to show.
-  Widget _serverSetup() => MaterialApp(
-        title: 'Virtual Photo Album',
-        theme: ThemeData(primarySwatch: Colors.blue),
-        home: ServerSettingsScreen(
+  /// The delegate of the screens shown before the router, see
+  /// [_beforeTheRouter].
+  SilentRouterDelegate? _preRouter;
+
+  /// The splash while the stored server URL is being read, the server setup
+  /// once it turns out that no server is configured.
+  Widget _startupScreen(BuildContext context) => !settings.loaded
+      ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+      : ServerSettingsScreen(
           settings: settings,
           clientFor: clientFor,
           closable: false,
-        ),
-      );
+        );
 
   Widget _albumApp(VAlbumClient client) => VAlbumScope(
         client: client,
@@ -339,14 +385,52 @@ class VAlbumAppState extends State<VAlbumApp> {
           theme: ThemeData(primarySwatch: Colors.blue),
           routerDelegate: router,
           routeInformationParser: const VAlbumRouteInformationParser(),
-          routeInformationProvider: widget.initialRoute == null
-              ? null
-              : PlatformRouteInformationProvider(
-                  initialRouteInformation: RouteInformation(
-                    uri: routeToUri(widget.initialRoute!),
-                  ),
-                ),
+          // Always this app's own provider: it carries the location the app
+          // was opened with, captured before the splash could rewrite it.
+          routeInformationProvider: _routeInformationProvider,
         ),
+      );
+}
+
+/// A router delegate showing one screen and telling the engine nothing.
+///
+/// Used for the screens the app shows before its own router exists (the
+/// splash, the server setup): they must not touch the browser location, see
+/// [VAlbumAppState._beforeTheRouter]. The screen is built through a builder,
+/// so that the same delegate — and with it the [Navigator] the screen's
+/// dialogs are pushed into — survives every rebuild of the app.
+class SilentRouterDelegate extends RouterDelegate<Object> with ChangeNotifier {
+  /// Builds the screen shown.
+  final WidgetBuilder screen;
+
+  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+  SilentRouterDelegate(this.screen);
+
+  /// Nothing: this is what keeps the location untouched.
+  @override
+  Object? get currentConfiguration => null;
+
+  @override
+  Future<void> setNewRoutePath(Object configuration) => SynchronousFuture(null);
+
+  /// The system back button closes a dialog, and does nothing else here.
+  @override
+  Future<bool> popRoute() async {
+    var navigator = navigatorKey.currentState;
+    return navigator != null && await navigator.maybePop();
+  }
+
+  @override
+  Widget build(BuildContext context) => Navigator(
+        key: navigatorKey,
+        pages: [
+          MaterialPage<void>(
+            key: const ValueKey("valbum:startup"),
+            child: Builder(builder: screen),
+          ),
+        ],
+        onDidRemovePage: (page) {},
       );
 }
 
@@ -639,8 +723,13 @@ class VAlbumState extends State<VAlbumView>
   ///
   /// A server refusing an unpaired device answers with the reason it refuses;
   /// that reason names a remedy the user reaches from here, so the view offers
-  /// the way to the server settings alongside the retry.
+  /// the way to the server settings alongside the retry. A refusal *because*
+  /// this device is not paired (401) is not an error of the app at all, so it
+  /// gets a page of its own, see [buildPairingRequired].
   Widget buildError(Object? error) {
+    if (error is VAlbumException && error.status == 401) {
+      return buildPairingRequired(error);
+    }
     return Scaffold(
       appBar: AppBar(title: const Text("Virtual photo album")),
       body: Center(
@@ -668,6 +757,58 @@ class VAlbumState extends State<VAlbumView>
         tooltip: 'Reload',
         child: const Icon(Icons.update),
       ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+
+  /// The view of a server that refuses this device because it is not paired.
+  ///
+  /// The server says so with a 401 and its own message; the remedy is one
+  /// button away — the pairing lives in the server settings, see
+  /// [ServerSettingsScreen]. Reaching this page is a normal first contact with
+  /// a server started with `--auth all`, not a failure of the app, so it says
+  /// what to do instead of quoting an error.
+  Widget buildPairingRequired(VAlbumException refusal) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Pairing required")),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_outline, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  "Pairing required",
+                  style: Theme.of(context).textTheme.headlineSmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(refusal.message, textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                const Text(
+                  "Pair this device with the server: enter the pairing secret "
+                  "the server printed at start-up in the server settings.",
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () => openServerSettings(context),
+                  icon: const Icon(Icons.settings),
+                  label: const Text("Server settings..."),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: reload,
+        tooltip: 'Reload',
+        child: const Icon(Icons.update),
+      ),
     );
   }
 

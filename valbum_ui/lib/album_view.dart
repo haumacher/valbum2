@@ -270,8 +270,13 @@ class AlbumContentState extends State<AlbumContent> {
   Widget build(BuildContext context) {
     var self = widget.album;
 
+    // The album shows its photos, not its chrome: with something to show and
+    // nothing being edited there is no app bar, only the floating toolbar over
+    // the photos, see [contentView].
+    var immersive = !editMode && self.parts.isNotEmpty;
+
     return Scaffold(
-      appBar: !editMode && self.parts.isNotEmpty
+      appBar: immersive
           ? null
           : AppBar(
               title: Column(
@@ -282,16 +287,7 @@ class AlbumContentState extends State<AlbumContent> {
               ),
               centerTitle: true,
               actions: [
-                // Unobtrusive while a camera-roll sync runs, nothing otherwise.
-                const CameraRollIndicator(),
-                menu(context, [
-                  menuItem(
-                    Icons.update,
-                    "Reload",
-                    (_) => widget.albumState.reload(),
-                  ),
-                  menuItem(Icons.settings, "Server...", openServerSettings),
-                ]),
+                ...navigationActions(context),
                 if (editMode)
                   IconButton(
                     onPressed: editProperties,
@@ -322,7 +318,56 @@ class AlbumContentState extends State<AlbumContent> {
     );
   }
 
+  /// The way out of the album, and the album's menu.
+  ///
+  /// The same controls wherever the album shows them: in the app bar of the
+  /// edit mode and of an empty album, and in the floating toolbar over the
+  /// photos, see [toolbar]. An album without them is a dead end — the browser
+  /// back button aside, there was no way back to the index, see issue #35.
+  List<Widget> navigationActions(BuildContext context) => [
+        // Unobtrusive while a camera-roll sync runs, nothing otherwise.
+        const CameraRollIndicator(),
+        IconButton(
+          icon: const Icon(Icons.home),
+          tooltip: "Home",
+          onPressed: widget.albumState.showRoot,
+        ),
+        if (widget.albumState.path.isNotEmpty)
+          IconButton(
+            icon: const Icon(Icons.arrow_upward),
+            tooltip: "Up",
+            onPressed: widget.albumState.showParent,
+          ),
+        menu(context, [
+          menuItem(Icons.update, "Reload", (_) => widget.albumState.reload()),
+          menuItem(Icons.settings, "Server...", openServerSettings),
+        ]),
+      ];
+
+  /// The floating toolbar of the album, over the photos at the top left.
+  ///
+  /// Dark and translucent like the [RatingFilterBar] at the other end of the
+  /// row, so that the album stays what it is about while never losing its way
+  /// back, see [navigationActions].
+  Widget toolbar(BuildContext context) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: IconTheme.merge(
+          data: const IconThemeData(color: Colors.white, size: 20),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: navigationActions(context),
+          ),
+        ),
+      );
+
   Widget contentView(AlbumInfo self) {
+    var shown = visibleParts(self);
+    var hidesEverything =
+        self.parts.isNotEmpty && !shown.any((part) => part is AbstractImage);
+
     return Focus(
       autofocus: true,
       onKeyEvent: onKey,
@@ -332,37 +377,65 @@ class AlbumContentState extends State<AlbumContent> {
             builder: (BuildContext context, BoxConstraints constraints) {
               return SingleChildScrollView(
                 scrollDirection: Axis.vertical,
-                child: Column(
-                  children: [
-                    if (!editMode)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 20, bottom: 4),
-                        child: Text(
-                          self.title,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    if (!editMode)
-                      if (self.subTitle.isNotEmpty)
+                // The full width, whatever the content: a `Column` shrinks to
+                // its widest child, so an album whose images the rating filter
+                // all hides used to collapse its title into the top left
+                // corner, under the filter bar, see issue #35.
+                child: SizedBox(
+                  width: constraints.maxWidth,
+                  child: Column(
+                    children: [
+                      if (!editMode)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
+                          // Below the floating toolbar and the filter bar,
+                          // never beside them: at a narrow width a long title
+                          // would otherwise run underneath them.
+                          padding: const EdgeInsets.fromLTRB(16, 64, 16, 4),
                           child: Text(
-                            self.subTitle,
+                            self.title,
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
-                              fontSize: 16,
+                              fontSize: 28,
                               color: Colors.white,
                             ),
                           ),
                         ),
-                    ...buildParts(self, constraints.maxWidth),
-                  ],
+                      if (!editMode)
+                        if (self.subTitle.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                            child: Text(
+                              self.subTitle,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      // A filter that hides everything says so: an empty black
+                      // page would look like an empty album.
+                      if (hidesEverything)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+                          child: Text(
+                            "No image is rated $minRating or better - "
+                            "press + (or the + button) to show more.",
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ),
+                      ...buildParts(self, constraints.maxWidth),
+                    ],
+                  ),
                 ),
               );
             },
           ),
+          if (!editMode) Positioned(top: 8, left: 8, child: toolbar(context)),
           Positioned(
             top: 8,
             right: 8,

@@ -177,6 +177,46 @@ void main() {
     test('falls back to the directory of a location that does not fit', () {
       expect(appBasePath("/valbum/x/", "/other/"), "/valbum/x/");
     });
+
+    test('compares the decoded location with the decoded route', () {
+      // The browser hands the location over percent-encoded, the engine hands
+      // the route name over decoded: a comparison of the raw strings fails on
+      // every folder name that is not plain ASCII, see issue #35.
+      expect(
+        appBasePath("/valbum/Haui's%20inbox/", "/Haui's inbox/"),
+        "/valbum/",
+      );
+      expect(
+        appBasePath("/valbum/Gr%C3%BC%C3%9Fe/", "/Grüße/"),
+        "/valbum/",
+      );
+      expect(
+        appBasePath("/valbum/a%20b/c%20d.jpg", "/a b/c d.jpg"),
+        "/valbum/",
+      );
+    });
+
+    test('is robust to an apostrophe encoded on one side only', () {
+      // `Uri` leaves `'` alone, a browser may not.
+      expect(
+        appBasePath("/valbum/Haui%27s%20inbox/", "/Haui's inbox/"),
+        "/valbum/",
+      );
+      expect(
+        appBasePath("/valbum/Haui's inbox/", "/Haui%27s%20inbox/"),
+        "/valbum/",
+      );
+    });
+
+    test('is the decoded base of an app served from an encoded path', () {
+      expect(appBasePath("/mein%20album/a%20b/", "/a b/"), "/mein album/");
+    });
+
+    test('is the root for the plain root location', () {
+      expect(appBasePath("/", "/"), "/");
+      expect(appBasePath("", "/"), "/");
+      expect(appBasePath("/index.html", "/"), "/");
+    });
   });
 
   group('up', () {

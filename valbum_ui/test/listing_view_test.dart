@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:valbum_ui/main.dart';
@@ -259,6 +260,71 @@ void main() {
 
       expect(
           requests.last.url.toString(), "http://server/valbum/data/?type=json");
+    });
+  });
+
+  group('the create dialogs', () {
+    /// Opens the given entry of the listing menu.
+    Future<void> openMenu(WidgetTester tester, String entry) async {
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byIcon(Icons.more_vert));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(entry));
+        await tester.pumpAndSettle();
+      });
+    }
+
+    testWidgets('the new album is left by its cancel button', (tester) async {
+      var requests = <http.Request>[];
+      var client = clientReturning(fixture("listing.json"), requests: requests);
+      await pumpListing(tester, client);
+
+      await openMenu(tester, "Create album");
+      expect(find.text("Neues Album"), findsOneWidget);
+
+      await withFakeImageHttp(() async {
+        await tester.tap(find.text("Abbrechen"));
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.text("Neues Album"), findsNothing);
+      expect(
+        requests.where((request) => request.method != "GET"),
+        isEmpty,
+        reason: "a cancelled dialog creates nothing",
+      );
+    });
+
+    testWidgets('the new folder is left by its cancel button', (tester) async {
+      var requests = <http.Request>[];
+      var client = clientReturning(fixture("listing.json"), requests: requests);
+      await pumpListing(tester, client);
+
+      await openMenu(tester, "Create folder");
+      expect(find.text("Neuer Ordner"), findsOneWidget);
+
+      await withFakeImageHttp(() async {
+        await tester.tap(find.text("Abbrechen"));
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.text("Neuer Ordner"), findsNothing);
+      expect(requests.where((request) => request.method != "GET"), isEmpty);
+    });
+
+    testWidgets('the escape key closes the new folder dialog', (tester) async {
+      var client = clientReturning(fixture("listing.json"));
+      await pumpListing(tester, client);
+
+      await openMenu(tester, "Create folder");
+      expect(find.text("Neuer Ordner"), findsOneWidget);
+
+      await withFakeImageHttp(() async {
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.text("Neuer Ordner"), findsNothing);
     });
   });
 }

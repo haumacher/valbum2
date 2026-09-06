@@ -296,25 +296,41 @@ class ServerSettings extends ChangeNotifier {
   /// Stores [serverUrl] and switches the app over to that server.
   ///
   /// A token belongs to the server that issued it: pointing the app at
-  /// *another* server forgets it, saving the same URL again keeps it.
+  /// *another* server forgets it, naming the same server again keeps it.
+  ///
+  /// What counts is the *server*, not the string: `http://h/valbum`,
+  /// `http://h/valbum/` and `http://h/valbum/index.html` are the same server,
+  /// and so is the platform default that applies while nothing is stored —
+  /// on the web, saving the URL of the server the app was loaded from must not
+  /// throw away the token this device was just paired with, see issue #35.
   Future<void> save(String serverUrl) async {
     var value = serverUrl.trim();
+    var before = dataUrl;
     await store.save(value);
-    if (value != _serverUrl) {
-      await _forgetToken();
-    }
     _serverUrl = value;
+    await _forgetTokenIfServerChanged(before);
     notifyListeners();
   }
 
   /// Forgets the stored value, returning to the [platformDefault].
   ///
-  /// The token of the server given up is forgotten with it.
+  /// The token is kept where the default names the same server the stored URL
+  /// did (the web app pointed back at its own origin), and forgotten wherever
+  /// the app ends up at another server, see [save].
   Future<void> reset() async {
+    var before = dataUrl;
     await store.clear();
-    await _forgetToken();
     _serverUrl = null;
+    await _forgetTokenIfServerChanged(before);
     notifyListeners();
+  }
+
+  /// Forgets the token unless the app still talks to the same server it talked
+  /// to at [before].
+  Future<void> _forgetTokenIfServerChanged(String? before) async {
+    if (dataUrl != before) {
+      await _forgetToken();
+    }
   }
 
   /// Remembers the token the server issued for this device, see [pair].

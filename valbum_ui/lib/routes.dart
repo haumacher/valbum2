@@ -271,14 +271,74 @@ List<String> _baseSegments(String basePath) =>
 /// stripped ([routeName], normally
 /// `PlatformDispatcher.defaultRouteName`), so the base is what remains of the
 /// location when that route is cut off its end. Where the two do not fit
-/// together (an unusual location, a route carrying a query), the directory of
-/// the location is used, which is right for the app's start page.
+/// together (an unusual location, a route naming another folder), the
+/// directory of the location is used, which is right for the app's start page.
+///
+/// The two are compared **decoded and segment by segment**: the browser hands
+/// over the location percent-encoded (`/valbum/Haui's%20inbox/`) while the
+/// engine hands over the route name decoded (`/Haui's inbox/`), and an
+/// apostrophe may be encoded on one side and not on the other. A comparison of
+/// the raw strings therefore fails exactly where the folder name is not plain
+/// ASCII — and the app then asks a data URL that does not exist, see issue
+/// #35. The result is the decoded base (`/valbum/`), which is what
+/// [parseRoute] and `deriveDataUrl` want.
 String appBasePath(String location, String routeName) {
-  if (routeName.length > 1 &&
-      routeName.startsWith("/") &&
-      location.endsWith(routeName)) {
-    return "${location.substring(0, location.length - routeName.length)}/";
+  var locationSegments = _decodedSegments(location);
+  var routeSegments = _decodedSegments(routeName);
+
+  if (routeSegments.isNotEmpty && _endsWith(locationSegments, routeSegments)) {
+    return _folderPath(
+      locationSegments.sublist(
+        0,
+        locationSegments.length - routeSegments.length,
+      ),
+    );
   }
-  var slash = location.lastIndexOf("/");
-  return slash < 0 ? "/" : location.substring(0, slash + 1);
+
+  // The directory of the location: its last segment is the file name (or the
+  // empty segment of a trailing slash).
+  return _folderPath(
+    locationSegments.isEmpty
+        ? locationSegments
+        : locationSegments.sublist(0, locationSegments.length - 1),
+  );
+}
+
+/// The decoded path segments of a location or a route name.
+///
+/// A trailing slash yields a trailing empty segment, as [Uri] does; a query or
+/// fragment is dropped. A value [Uri] cannot read at all yields the segments
+/// of its raw string, so that nothing throws on an exotic location.
+List<String> _decodedSegments(String value) {
+  var uri = Uri.tryParse(value);
+  if (uri != null) {
+    return uri.pathSegments;
+  }
+  var path = value.split("#").first.split("?").first;
+  var segments = path.split("/");
+  if (segments.isNotEmpty && segments.first.isEmpty) {
+    segments.removeAt(0);
+  }
+  return segments;
+}
+
+/// Whether [segments] ends with [tail].
+bool _endsWith(List<String> segments, List<String> tail) {
+  if (tail.length > segments.length) {
+    return false;
+  }
+  var offset = segments.length - tail.length;
+  for (var index = 0; index < tail.length; index++) {
+    if (segments[offset + index] != tail[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// The path of the folder made of the given decoded segments, e.g.
+/// `/valbum/` for `[valbum]` and `/` for the empty list.
+String _folderPath(List<String> segments) {
+  var named = segments.where((segment) => segment.isNotEmpty);
+  return named.isEmpty ? "/" : "/${named.join("/")}/";
 }

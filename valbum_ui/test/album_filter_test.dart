@@ -155,4 +155,49 @@ void main() {
       });
     });
   });
+
+  group('a filter that hides everything', () {
+    testWidgets('says so and keeps the title centred', (tester) async {
+      // With no image left the content column used to shrink to the width of
+      // the title, which then sat in the top left corner under the filter bar,
+      // see issue #35.
+      var client = clientReturning(fixture("album.json"));
+
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(VAlbumApp(
+          client: client,
+          initialRoute: const ListingOrAlbumRoute(["album"]),
+        ));
+        await tester.pumpAndSettle();
+      });
+      expect(tileCount(), greaterThan(0));
+
+      // Every image of the fixture is rated 0, so one step is enough.
+      await showLess(tester);
+
+      expect(threshold(tester), "≥ 1");
+      expect(tileCount(), 0);
+      expect(
+        find.textContaining("No image is rated 1 or better"),
+        findsOneWidget,
+        reason: "an empty page would look like an empty album",
+      );
+
+      var title = tester.getRect(find.text("Schlosspark Karlsruhe"));
+      var available = tester.getRect(find.byType(Scaffold)).width;
+      expect(
+        title.center.dx,
+        closeTo(available / 2, 1),
+        reason: "the title stays centred without any image",
+      );
+
+      var filter = tester.getRect(find.byType(RatingFilterBar));
+      expect(title.overlaps(filter), isFalse);
+      expect(
+        title.overlaps(tester.getRect(find.byTooltip("Home"))),
+        isFalse,
+        reason: "nor does the toolbar cover it",
+      );
+    });
+  });
 }

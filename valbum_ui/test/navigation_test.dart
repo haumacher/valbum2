@@ -330,6 +330,67 @@ void main() {
       expect(narrow, greaterThan(wide));
     });
 
+    testWidgets('an album offers the way up and the way home', (tester) async {
+      // A full album shows no app bar (the photos come first), so its way back
+      // is the floating toolbar over them; without it the album was a dead
+      // end, see issue #35.
+      await pumpApp(
+        tester,
+        clientReturning(fixture("album.json")),
+        at: const ListingOrAlbumRoute(albumPath),
+      );
+
+      expect(find.byType(AppBar), findsNothing, reason: "the album is bare");
+      expect(find.byTooltip("Up"), findsOneWidget);
+      expect(find.byTooltip("Home"), findsOneWidget);
+
+      await tap(tester, find.byTooltip("Up"));
+      expect(routeOf(tester), ListingOrAlbumRoute.root);
+    });
+
+    testWidgets('the home button of an album loads the root', (tester) async {
+      await pumpApp(
+        tester,
+        clientReturning(fixture("album.json")),
+        at: const ListingOrAlbumRoute([albumFolder, "sub"]),
+      );
+
+      await tap(tester, find.byTooltip("Home"));
+
+      expect(routeOf(tester), ListingOrAlbumRoute.root);
+    });
+
+    testWidgets('the deep link survives the wait for the stored settings',
+        (tester) async {
+      // The app shows a splash while the stored server URL is read. That
+      // screen must not touch the browser location, and the route the app was
+      // opened with must still be the one the router starts at, see issue #35.
+      var client = clientReturning(fixture("album.json"));
+      var settings = ServerSettings(
+        store: InMemorySettingsStore(),
+        platformDefault: () => client.dataUrl,
+      );
+
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(
+          VAlbumApp(
+            client: client,
+            settings: settings,
+            initialRoute: const ListingOrAlbumRoute(albumPath),
+          ),
+        );
+        expect(
+          find.byType(CircularProgressIndicator),
+          findsOneWidget,
+          reason: "the splash while the settings are read",
+        );
+        await tester.pumpAndSettle();
+      });
+
+      expect(routeOf(tester), const ListingOrAlbumRoute(albumPath));
+      expect(find.text("Schlosspark Karlsruhe"), findsOneWidget);
+    });
+
     testWidgets('the scroll offset is restored on the way back',
         (tester) async {
       tester.view.physicalSize = const Size(400, 400);
