@@ -78,7 +78,7 @@ class ListingView extends StatelessWidget {
           ),
           if (albumState.path.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.arrow_upward),
+              icon: const Icon(Icons.arrow_back),
               tooltip: 'Up',
               onPressed: albumState.showParent,
             ),

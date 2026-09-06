@@ -270,7 +270,7 @@ void main() {
       await press(tester, LogicalKeyboardKey.arrowUp);
       expect(
           routeOf(tester), const AlternativesRoute(albumPath, "group-a.jpg"));
-      await tap(tester, find.byIcon(Icons.arrow_upward));
+      await tap(tester, find.byIcon(Icons.arrow_back));
       expect(routeOf(tester), const ImageRoute(albumPath, "group-a.jpg"));
     });
 

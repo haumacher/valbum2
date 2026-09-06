@@ -347,7 +347,7 @@ class AlbumContentState extends State<AlbumContent> {
   List<Widget> wayUp() => [
         if (widget.albumState.path.isNotEmpty)
           IconButton(
-            icon: const Icon(Icons.arrow_upward),
+            icon: const Icon(Icons.arrow_back),
             tooltip: "Up",
             onPressed: widget.albumState.showParent,
           ),

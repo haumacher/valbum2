@@ -833,7 +833,7 @@ class VAlbumState extends State<VAlbumView>
       appBar: AppBar(
         title: const Text("Virtual photo album"),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_upward),
+          icon: const Icon(Icons.arrow_back),
           tooltip: "Up",
           onPressed: navigator.up,
         ),

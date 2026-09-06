@@ -60,7 +60,7 @@ class GroupView extends StatelessWidget {
         title: Text(title),
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_upward),
+          icon: const Icon(Icons.arrow_back),
           tooltip: "Zurück zum Album",
           onPressed: onUp,
         ),

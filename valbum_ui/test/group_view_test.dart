@@ -118,7 +118,7 @@ void main() {
     // Up returns to the alternatives view, up again to the album.
     await press(tester, LogicalKeyboardKey.arrowUp);
     expect(find.byType(GroupView), findsOneWidget);
-    await tap(tester, find.byIcon(Icons.arrow_upward));
+    await tap(tester, find.byIcon(Icons.arrow_back));
     expect(find.byType(GroupView), findsNothing);
     expect(shownUrl(tester), endsWith("/group-a.jpg"));
   });

@@ -186,7 +186,7 @@ void main() {
       await pumpListing(tester, client);
 
       expect(find.byIcon(Icons.home), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_upward), findsNothing);
+      expect(find.byIcon(Icons.arrow_back), findsNothing);
     });
 
     testWidgets('offers home and up below the root', (tester) async {
@@ -198,7 +198,7 @@ void main() {
       await pumpListing(tester, client, path: const ["sub"]);
 
       expect(find.byIcon(Icons.home), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
       expect(requests.single.url.toString(),
           "http://server/valbum/data/sub/?type=json");
     });
@@ -212,7 +212,7 @@ void main() {
       await pumpListing(tester, client, path: const ["a", "b"]);
 
       await withFakeImageHttp(() async {
-        await tester.tap(find.byIcon(Icons.arrow_upward));
+        await tester.tap(find.byIcon(Icons.arrow_back));
         await tester.pumpAndSettle();
       });
 
@@ -239,7 +239,7 @@ void main() {
           "http://server/valbum/data/portrait/?type=json");
 
       await withFakeImageHttp(() async {
-        await tester.tap(find.byIcon(Icons.arrow_upward));
+        await tester.tap(find.byIcon(Icons.arrow_back));
         await tester.pumpAndSettle();
       });
       expect(requests, hasLength(2));
