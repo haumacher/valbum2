@@ -68,6 +68,17 @@ class AlbumContentState extends State<AlbumContent> {
   /// load of the album. This is the `setDownScale` of the retired GWT client.
   final Map<ImagePart, Orientation> _layoutOrientation = {};
 
+  /// The album parts in the order their tiles are laid out on the page.
+  ///
+  /// The row layout is free to show a portrait image *before* the landscape
+  /// image it follows in [AlbumInfo.parts] (see `album_layout.dart`), so the
+  /// drop gesture of the reordering (issue #37) cannot read the part before
+  /// the insert cursor off the stored order. It reads it off this list, which
+  /// [buildParts] fills while it turns the layout into rows: the headings in
+  /// their place and, between them, the images in the order the rows show
+  /// them, row by row and left to right.
+  final List<AlbumPart> _displayOrder = [];
+
   /// The rating an image needs to be shown, see [AlbumInfo.minRating].
   int get minRating => widget.album.minRating;
 
@@ -527,6 +538,7 @@ class AlbumContentState extends State<AlbumContent> {
   List<Widget> buildParts(AlbumInfo self, double maxWidth) {
     var result = <Widget>[];
     var images = <AbstractImage>[];
+    _displayOrder.clear();
 
     void flushImages() {
       if (images.isEmpty) {
@@ -537,6 +549,9 @@ class AlbumContentState extends State<AlbumContent> {
         pending,
         () => layouter.AlbumLayout(maxWidth, 250, pending),
       );
+      // The images in the order the rows show them, which is not necessarily
+      // the order they were handed to the layout in, see [_displayOrder].
+      _displayOrder.addAll(layout.getAllImages());
       var builder = ContentWidgetBuilder(imageTile, layout.getPageWidth());
       result.addAll(builder.buildRows(layout));
       images = <AbstractImage>[];
@@ -547,12 +562,43 @@ class AlbumContentState extends State<AlbumContent> {
         images.add(part);
       } else if (part is Heading) {
         flushImages();
+        _displayOrder.add(part);
         result.add(headingView(part));
       }
     }
     flushImages();
 
     return result;
+  }
+
+  /// The parts in the order their tiles are shown, see [_displayOrder].
+  List<AlbumPart> get displayOrder => List.unmodifiable(_displayOrder);
+
+  /// Drops [moved] at the insert cursor drawn on the given [side] of the tile
+  /// of [target], see [ReorderablePart].
+  ///
+  /// The cursor stands between two displayed tiles; the part shown directly
+  /// before it becomes the new predecessor of [moved] in the stored order,
+  /// see [movePart]. A cursor at the very beginning of the album has no such
+  /// part, and [moved] becomes the first part.
+  void dropPart(AlbumPart moved, AlbumPart target, InsertSide side) {
+    var index = _displayOrder.indexOf(target);
+    if (index < 0) {
+      return;
+    }
+    var predecessor = side == InsertSide.after
+        ? target
+        : (index > 0 ? _displayOrder[index - 1] : null);
+
+    setState(() {
+      if (movePart(widget.album, moved, predecessor)) {
+        // The moved part is what the user is now looking for.
+        selection
+          ..clear()
+          ..add(moved);
+        lastClicked = moved;
+      }
+    });
   }
 
   /// The tile of the given image, with the tile editor in the edit mode.
@@ -585,7 +631,25 @@ class AlbumContentState extends State<AlbumContent> {
   ///
   /// In the edit mode it carries the two inline tools of the GWT
   /// `HeadingDisplay`: edit the text and delete the heading.
-  Widget headingView(Heading heading) => Padding(
+  Widget headingView(Heading heading) {
+    var view = headingRow(heading);
+    if (!editMode) {
+      return view;
+    }
+    // A heading is an album part like any other: it can be dragged, and an
+    // image can be dropped directly behind it, see [ReorderablePart].
+    return ReorderablePart(
+      album: this,
+      part: heading,
+      feedback: Text(
+        heading.text,
+        style: const TextStyle(fontSize: 22, color: Colors.white),
+      ),
+      child: view,
+    );
+  }
+
+  Widget headingRow(Heading heading) => Padding(
         padding: const EdgeInsets.only(top: 24, bottom: 8),
         child: Row(
           key: ValueKey(heading),
@@ -892,55 +956,65 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     var width = widget.builder.width;
     var height = widget.builder.height;
 
-    return MouseRegion(
-      hitTestBehavior: HitTestBehavior.translucent,
-      opaque: false,
-      onEnter: (event) => setState(() => _hovered = true),
-      onExit: (event) => setState(() => _hovered = false),
-      child: SizedBox(
+    return ReorderablePart(
+      album: album,
+      part: part,
+      feedback: SizedBox(
         width: width,
         height: height,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => album.handleTap(part),
-                onLongPress: () => album.toggleSelection(part),
-                child: widget.builder.imageThumbnail(image),
-              ),
-            ),
-            if (isIndexPicture(album.widget.album, image))
-              const Positioned(
-                right: 4,
-                bottom: 4,
-                child: IgnorePointer(
-                  child: Tooltip(
-                    message: "Albumbild",
-                    child: Icon(
-                      Icons.photo_album,
-                      key: Key("album-index-picture"),
-                      color: Colors.amberAccent,
-                      shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-                    ),
-                  ),
-                ),
-              ),
-            if (selected)
+        child: widget.builder.imageThumbnail(image),
+      ),
+      child: MouseRegion(
+        hitTestBehavior: HitTestBehavior.translucent,
+        opaque: false,
+        onEnter: (event) => setState(() => _hovered = true),
+        onExit: (event) => setState(() => _hovered = false),
+        child: SizedBox(
+          width: width,
+          height: height,
+          child: Stack(
+            children: [
               Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.blueAccent, width: 3),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => album.handleTap(part),
+                  onLongPress: () => album.toggleSelection(part),
+                  child: widget.builder.imageThumbnail(image),
+                ),
+              ),
+              if (isIndexPicture(album.widget.album, image))
+                const Positioned(
+                  right: 4,
+                  bottom: 4,
+                  child: IgnorePointer(
+                    child: Tooltip(
+                      message: "Albumbild",
+                      child: Icon(
+                        Icons.photo_album,
+                        key: Key("album-index-picture"),
+                        color: Colors.amberAccent,
+                        shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            if (active) Positioned(top: 0, left: 0, right: 0, child: topBar()),
-            if (active) Positioned.fill(child: Center(child: centerBar())),
-            if (active)
-              Positioned(bottom: 0, left: 0, right: 0, child: bottomBar()),
-          ],
+              if (selected)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.blueAccent, width: 3),
+                      ),
+                    ),
+                  ),
+                ),
+              if (active)
+                Positioned(top: 0, left: 0, right: 0, child: topBar()),
+              if (active) Positioned.fill(child: Center(child: centerBar())),
+              if (active)
+                Positioned(bottom: 0, left: 0, right: 0, child: bottomBar()),
+            ],
+          ),
         ),
       ),
     );
@@ -1108,6 +1182,159 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
       return;
     }
     album.editImage(() => image.comment = text);
+  }
+}
+
+/// The side of a tile the insert cursor of a drag is drawn on: the dragged
+/// part lands before or behind the part shown by that tile.
+enum InsertSide { before, after }
+
+/// The width of the insert cursor, in logical pixels.
+const double insertCursorWidth = 4;
+
+/// The factor the dragged tile is reduced by while it follows the pointer.
+const double dragFeedbackScale = 0.5;
+
+/// One album part as a drag source and a drop target of the reordering of the
+/// edit mode (issue #37).
+///
+/// The gesture is a *horizontal* drag on the part itself, not a long press
+/// and not a handle: the long press already toggles the selection (and enters
+/// the edit mode outside of it), the tap opens the tile, and the album scrolls
+/// vertically — so the horizontal axis is the only one still free, and
+/// [Draggable.affinity] hands it to the drag while every vertical drag stays
+/// with the scroll view. A tile is picked up by pulling it sideways, and can
+/// then be carried anywhere.
+///
+/// While a part is carried over this one, an insert cursor is drawn on the
+/// half the pointer is in: dropping puts the dragged part before or behind
+/// the part *displayed* here, see [AlbumContentState.dropPart]. A part is not
+/// a drop target of itself.
+///
+/// Nothing is moved while a part is carried around: the tile it was picked up
+/// from keeps its box (only dimmed), so the album cannot reflow under the
+/// pointer. The rows are laid out anew from the new order after the drop, and
+/// the reordering is written to the server by the Save action of the edit
+/// mode, with every other edit.
+class ReorderablePart extends StatefulWidget {
+  final AlbumContentState album;
+
+  /// The part shown by [child], the one dragged and the one dropped onto.
+  final AlbumPart part;
+
+  /// What follows the pointer while this part is dragged, reduced to
+  /// [dragFeedbackScale] and centred on the pointer.
+  final Widget feedback;
+
+  final Widget child;
+
+  const ReorderablePart({
+    super.key,
+    required this.album,
+    required this.part,
+    required this.feedback,
+    required this.child,
+  });
+
+  @override
+  State<StatefulWidget> createState() => ReorderablePartState();
+}
+
+class ReorderablePartState extends State<ReorderablePart> {
+  /// The side the insert cursor is drawn on, `null` while no part is carried
+  /// over this one.
+  InsertSide? _cursor;
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<AlbumPart>(
+      // A part is not dropped onto itself.
+      onWillAcceptWithDetails: (details) => !identical(
+        details.data,
+        widget.part,
+      ),
+      // A rejected target is told about the move all the same, so the part
+      // dragged over itself is filtered out here as well.
+      onMove: (details) => showCursor(
+        identical(details.data, widget.part) ? null : sideOf(details.offset),
+      ),
+      onLeave: (data) => showCursor(null),
+      onAcceptWithDetails: (details) {
+        var side = sideOf(details.offset);
+        showCursor(null);
+        widget.album.dropPart(details.data, widget.part, side);
+      },
+      builder: (context, candidate, rejected) => Stack(
+        children: [
+          Draggable<AlbumPart>(
+            data: widget.part,
+            // Only a sideways pull picks the part up, see [ReorderablePart].
+            affinity: Axis.horizontal,
+            // The tile itself: its [MouseRegion] is not opaque and reports the
+            // hit as a miss (`RenderMouseRegion.hitTest`), which would keep
+            // the pointer of the drag from ever reaching this [Draggable].
+            hitTestBehavior: HitTestBehavior.opaque,
+            // The pointer itself is the anchor, so that the offset reported to
+            // the drop targets is the position of the pointer and not the
+            // corner of the feedback, see [sideOf].
+            dragAnchorStrategy: pointerDragAnchorStrategy,
+            feedback: FractionalTranslation(
+              key: const Key("drag-feedback"),
+              translation: const Offset(-0.5, -0.5),
+              child: Opacity(
+                opacity: 0.75,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Transform.scale(
+                    scale: dragFeedbackScale,
+                    child: widget.feedback,
+                  ),
+                ),
+              ),
+            ),
+            childWhenDragging: Opacity(opacity: 0.3, child: widget.child),
+            child: widget.child,
+          ),
+          if (_cursor != null)
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: _cursor == InsertSide.before ? 0 : null,
+              right: _cursor == InsertSide.after ? 0 : null,
+              child: const IgnorePointer(
+                child: SizedBox(
+                  key: Key("insert-cursor"),
+                  width: insertCursorWidth,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.amberAccent,
+                      boxShadow: [
+                        BoxShadow(color: Colors.black, blurRadius: 4),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void showCursor(InsertSide? side) {
+    if (_cursor != side && mounted) {
+      setState(() => _cursor = side);
+    }
+  }
+
+  /// The half of this part the given global pointer position is in.
+  InsertSide sideOf(Offset pointer) {
+    var box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      return InsertSide.after;
+    }
+    var local = box.globalToLocal(pointer);
+    return local.dx < box.size.width / 2 ? InsertSide.before : InsertSide.after;
   }
 }
 
@@ -1419,7 +1646,8 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
       return;
     }
     var shift = details.localFocalPoint - _gestureFocus;
-    var zoomed = details.scale == 1 ? start : zoomIndexPicture(start, details.scale);
+    var zoomed =
+        details.scale == 1 ? start : zoomIndexPicture(start, details.scale);
     setState(() {
       indexPicture = panIndexPicture(
         zoomed,

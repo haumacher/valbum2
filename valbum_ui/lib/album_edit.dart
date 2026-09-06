@@ -334,6 +334,60 @@ ImageGroup? groupSelection(
   return group;
 }
 
+/// Moves [moved] behind [displayedPredecessor] in [AlbumInfo.parts].
+///
+/// This is the model side of the drag and drop reordering of issue #37. The
+/// album view lays its images out in rows, and the row layout may show a
+/// portrait image *before* the landscape image it follows in the stored order
+/// (see `album_layout.dart`). The insert cursor of the drop gesture therefore
+/// names the part it is displayed behind, not a stored index: the caller —
+/// the only one knowing the layout — resolves the cursor to the part shown
+/// directly before it and hands it in as [displayedPredecessor], `null` for
+/// the very beginning of the album.
+///
+/// The stored order follows: [moved] is taken out and put back directly
+/// behind [displayedPredecessor], wherever that part sits in
+/// [AlbumInfo.parts]. Nothing happens if [moved] is [displayedPredecessor]
+/// itself, if either part does not belong to the album, or if [moved] already
+/// sits at that very position.
+///
+/// The transient links are rebuilt afterwards, so the moved part is in its new
+/// place of the album's chain (see [AlbumInitializer]).
+///
+/// Returns whether the stored order changed.
+bool movePart(
+  AlbumInfo album,
+  AlbumPart moved,
+  AlbumPart? displayedPredecessor,
+) {
+  if (identical(moved, displayedPredecessor)) {
+    return false;
+  }
+
+  var parts = album.parts.toList();
+  var from = parts.indexOf(moved);
+  if (from < 0) {
+    return false;
+  }
+  if (displayedPredecessor != null && !parts.contains(displayedPredecessor)) {
+    return false;
+  }
+
+  parts.removeAt(from);
+  var to = displayedPredecessor == null
+      ? 0
+      : parts.indexOf(displayedPredecessor) + 1;
+  if (to == from) {
+    // Putting it back where it was taken from.
+    return false;
+  }
+
+  parts.insert(to, moved);
+  album.parts = parts;
+  AlbumInitializer().init(album);
+  return true;
+}
+
 /// Dissolves the given group: its images take its place in the album, in the
 /// order they are stored in.
 ///
