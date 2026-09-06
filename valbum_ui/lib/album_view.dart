@@ -6,6 +6,7 @@ import 'dart:math';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 
@@ -40,7 +41,8 @@ class AlbumContent extends StatefulWidget {
   }
 }
 
-class AlbumContentState extends State<AlbumContent> {
+class AlbumContentState extends State<AlbumContent>
+    with SingleTickerProviderStateMixin {
   /// The edit in progress: the mode, the selection and the click anchor.
   ///
   /// It lives with the router, not with this widget, so that a trip into an
@@ -89,8 +91,24 @@ class AlbumContentState extends State<AlbumContent> {
   /// ends — whether it was dropped or cancelled.
   final Set<AlbumPart> _carried = Set.identity();
 
+  /// Scrolls the album while a carried tile rests near the top or the bottom
+  /// edge of the view, see [DragEdgeScroller] (issue #42).
+  late final DragEdgeScroller _dragScroller;
+
+  /// The pointer of the gesture that is currently down on the album, and where
+  /// it was seen last, see [_trackPointer].
+  int? _pointerId;
+  PointerDeviceKind _pointerKind = PointerDeviceKind.touch;
+  Offset? _pointerPosition;
+
   /// The rating an image needs to be shown, see [AlbumInfo.minRating].
   int get minRating => widget.album.minRating;
+
+  @override
+  void initState() {
+    super.initState();
+    _dragScroller = DragEdgeScroller(this, onScrolled: _followScrolledContent);
+  }
 
   @override
   void didUpdateWidget(AlbumContent oldWidget) {
@@ -151,17 +169,104 @@ class AlbumContentState extends State<AlbumContent> {
   }
 
   /// Remembers the parts a starting drag carries, see [_carried].
-  void startCarry(DraggedParts dragged) => setState(() {
-        _carried
-          ..clear()
-          ..addAll(dragged.parts);
-      });
+  void startCarry(DraggedParts dragged) {
+    // The album scrolls while the carried tile rests near an edge, issue #42.
+    _dragScroller.begin(albumScrollPosition, _pointerPosition);
+    setState(() {
+      _carried
+        ..clear()
+        ..addAll(dragged.parts);
+    });
+  }
 
   /// Forgets the parts of a finished drag, dropped or cancelled.
   void endCarry() {
+    _dragScroller.end();
     if (_carried.isNotEmpty) {
       setState(_carried.clear);
     }
+  }
+
+  /// Whether the album is scrolling under a carried tile right now.
+  ///
+  /// Only the tests look at this: it is the proof that the scroller stops
+  /// when the pointer leaves the edge zone and when the drag ends.
+  bool get dragScrolling => _dragScroller.scrolling;
+
+  /// The scroll position of the album's own scroll view, `null` if there is
+  /// none (no ambient [PrimaryScrollController], or more than one scroll view
+  /// attached to it — then it cannot be told which one is the album's).
+  ScrollPosition? get albumScrollPosition {
+    var controller = PrimaryScrollController.maybeOf(context);
+    if (controller == null || controller.positions.length != 1) {
+      return null;
+    }
+    return controller.positions.first;
+  }
+
+  /// Remembers the pointer that is down on the album and where it is.
+  ///
+  /// The drag machinery reports the pointer to the drop targets, but neither
+  /// to the dragged tile's neighbours nor to the album: [Draggable.onDragUpdate]
+  /// would give the position but not the pointer's identity, which the nudge
+  /// of [_followScrolledContent] needs. A [Listener] over the whole album sees
+  /// both — the moves of a drag in progress travel the hit test path of the
+  /// pointer down that started it, and this listener is on it.
+  void _trackPointer(PointerEvent event) {
+    if (event is PointerDownEvent && _carried.isEmpty) {
+      // The gesture that may become a drag. A second finger put down while a
+      // tile is already on its way is none, and is left alone.
+      _pointerId = event.pointer;
+    }
+    if (event.pointer != _pointerId) {
+      return;
+    }
+    _pointerKind = event.kind;
+    _pointerPosition = event.position;
+    if (_carried.isNotEmpty) {
+      _dragScroller.update(event.position);
+    }
+  }
+
+  /// Lets the insert cursor follow the album scrolling under a resting pointer.
+  ///
+  /// [Draggable] hit tests for its drop targets only when the pointer moves
+  /// (`_DragAvatar.updateDrag`), so a tile scrolling under a pointer that
+  /// rests would neither take the cursor over nor take the drop: the target
+  /// found last would keep both. A pointer move with a zero delta, routed to
+  /// the drag's gesture recognizer, makes the drag look at what is under the
+  /// pointer again, which is exactly what is needed and nothing more.
+  ///
+  /// It has to wait for the end of the frame: the scroll offset is set from a
+  /// ticker callback, so the viewport has not been laid out at its new offset
+  /// yet, and a hit test before that would still find the old tile.
+  void _followScrolledContent() {
+    var pointer = _pointerId;
+    var position = _pointerPosition;
+    if (pointer == null || position == null) {
+      return;
+    }
+    var kind = _pointerKind;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _carried.isEmpty) {
+        return;
+      }
+      GestureBinding.instance.pointerRouter.route(
+        PointerMoveEvent(
+          pointer: pointer,
+          kind: kind,
+          position: position,
+          delta: Offset.zero,
+          synthesized: true,
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _dragScroller.dispose();
+    super.dispose();
   }
 
   /// Handles a click on the tile of the given part.
@@ -479,76 +584,86 @@ class AlbumContentState extends State<AlbumContent> {
     return Focus(
       autofocus: true,
       onKeyEvent: onKey,
-      child: Stack(
-        children: [
-          LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              return SingleChildScrollView(
-                scrollDirection: Axis.vertical,
-                // The full width, whatever the content: a `Column` shrinks to
-                // its widest child, so an album whose images the rating filter
-                // all hides used to collapse its title into the top left
-                // corner, under the filter bar, see issue #35.
-                child: SizedBox(
-                  width: constraints.maxWidth,
-                  child: Column(
-                    children: [
-                      if (!editMode)
-                        Padding(
-                          // Between the floating up button and the menu,
-                          // in the row they float in: the side padding keeps
-                          // a long title from running underneath them, the
-                          // top padding centres a single line on them.
-                          padding: const EdgeInsets.fromLTRB(64, 12, 64, 4),
-                          child: Text(
-                            self.title,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 28,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      if (!editMode)
-                        if (self.subTitle.isNotEmpty)
+      // Where the pointer of a drag is, and which one it is, see
+      // [_trackPointer]: what the edge scrolling of issue #42 runs on.
+      child: Listener(
+        onPointerDown: _trackPointer,
+        onPointerMove: _trackPointer,
+        child: Stack(
+          children: [
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                return SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  // The full width, whatever the content: a `Column` shrinks to
+                  // its widest child, so an album whose images the rating filter
+                  // all hides used to collapse its title into the top left
+                  // corner, under the filter bar, see issue #35.
+                  child: SizedBox(
+                    width: constraints.maxWidth,
+                    child: Column(
+                      children: [
+                        if (!editMode)
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                            // Between the floating up button and the menu,
+                            // in the row they float in: the side padding keeps
+                            // a long title from running underneath them, the
+                            // top padding centres a single line on them.
+                            padding: const EdgeInsets.fromLTRB(64, 12, 64, 4),
                             child: Text(
-                              self.subTitle,
+                              self.title,
                               textAlign: TextAlign.center,
                               style: const TextStyle(
-                                fontSize: 16,
+                                fontSize: 28,
                                 color: Colors.white,
                               ),
                             ),
                           ),
-                      // A filter that hides everything says so: an empty black
-                      // page would look like an empty album.
-                      if (hidesEverything)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-                          child: Text(
-                            "No image is rated $minRating or better - "
-                            "press + (or the + button) to show more.",
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.white70,
+                        if (!editMode)
+                          if (self.subTitle.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                              child: Text(
+                                self.subTitle,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        // A filter that hides everything says so: an empty black
+                        // page would look like an empty album.
+                        if (hidesEverything)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+                            child: Text(
+                              "No image is rated $minRating or better - "
+                              "press + (or the + button) to show more.",
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Colors.white70,
+                              ),
                             ),
                           ),
-                        ),
-                      ...buildParts(self, constraints.maxWidth),
-                    ],
+                        ...buildParts(self, constraints.maxWidth),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-          if (!editMode && widget.albumState.path.isNotEmpty)
-            Positioned(top: 8, left: 8, child: floating(wayUp())),
-          if (!editMode)
-            Positioned(top: 8, right: 8, child: floating(albumMenu(context))),
-        ],
+                );
+              },
+            ),
+            if (!editMode && widget.albumState.path.isNotEmpty)
+              Positioned(top: 8, left: 8, child: floating(wayUp())),
+            if (!editMode)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: floating(albumMenu(context)),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1274,6 +1389,172 @@ class DraggedParts {
 
   /// Whether more than one part is carried.
   bool get isBlock => parts.length > 1;
+}
+
+/// The band along the top and the bottom edge of the album's viewport in which
+/// a carried tile makes the album scroll, in logical pixels (issue #42).
+const double dragScrollZone = 64;
+
+/// The share of the viewport the edge band may take at most.
+///
+/// A phone in landscape, or a small window, is not much higher than two
+/// [dragScrollZone] bands; without this the two would meet in the middle and
+/// there would be no place left to hold a tile still.
+const double dragScrollZoneFraction = 0.25;
+
+/// How fast the album scrolls while a tile is carried at the very edge of the
+/// viewport, in logical pixels per second.
+const double dragScrollMaxSpeed = 800;
+
+/// Scrolls the album while a tile is carried near the top or the bottom edge
+/// of its viewport (issue #42).
+///
+/// A drop target outside the viewport used to be out of reach: the album
+/// stands still while a tile is carried, so it had to be scrolled to the right
+/// place first, or the tile had to be dropped and picked up again. Resting the
+/// pointer in a band of [dragScrollZone] along an edge now scrolls the album
+/// that way, the faster the closer the pointer is to the edge — the behaviour
+/// of the usual reorderable list.
+///
+/// It is driven by a [Ticker] rather than by the pointer moves, so that a
+/// pointer that *rests* in the band keeps scrolling; the ticker runs only
+/// while there is something to scroll and is stopped when the pointer leaves
+/// the band, when the drag ends and when the album is disposed.
+///
+/// Flutter's own [EdgeDraggingAutoScroller] was the model but not the means:
+/// it scrolls by how far a dragged *rectangle* sticks out of the viewport,
+/// capped at 20 pixels of overdrag, which turns the speed curve flat over most
+/// of a band and would have had to be faked with a rectangle around the
+/// pointer.
+class DragEdgeScroller {
+  /// Called after every scroll step, see
+  /// [AlbumContentState._followScrolledContent].
+  final VoidCallback? onScrolled;
+
+  late final Ticker _ticker;
+
+  /// The position scrolled while a tile is carried, `null` while none is.
+  ScrollPosition? _position;
+
+  /// Where the pointer of the drag was seen last, in global coordinates.
+  Offset? _pointer;
+
+  /// The tick the last step was computed for, to measure a step's duration.
+  Duration _lastTick = Duration.zero;
+
+  /// A scroll step smaller than this is no step at all: the end of the range.
+  static const double _scrollEpsilon = 0.001;
+
+  DragEdgeScroller(TickerProvider vsync, {this.onScrolled}) {
+    _ticker = vsync.createTicker(_tick);
+  }
+
+  /// Whether the album is scrolling under the pointer right now.
+  bool get scrolling => _ticker.isActive;
+
+  /// Starts to watch the pointer of a drag that has just begun.
+  ///
+  /// [position] is the album's own scroll position, `null` if it has none —
+  /// then nothing scrolls.
+  void begin(ScrollPosition? position, Offset? pointer) {
+    _position = position;
+    _pointer = pointer;
+    _startIfNeeded();
+  }
+
+  /// Follows the pointer of the drag in progress.
+  void update(Offset pointer) {
+    _pointer = pointer;
+    _startIfNeeded();
+  }
+
+  /// Ends the scrolling of a drag that was dropped or cancelled.
+  void end() {
+    _stop();
+    _position = null;
+    _pointer = null;
+  }
+
+  void dispose() {
+    _ticker.dispose();
+  }
+
+  void _startIfNeeded() {
+    if (!_ticker.isActive && _speed() != 0) {
+      _lastTick = Duration.zero;
+      _ticker.start();
+    }
+  }
+
+  void _stop() {
+    if (_ticker.isActive) {
+      _ticker.stop();
+    }
+  }
+
+  void _tick(Duration elapsed) {
+    var seconds =
+        (elapsed - _lastTick).inMicroseconds / Duration.microsecondsPerSecond;
+    _lastTick = elapsed;
+    if (seconds <= 0) {
+      // The first tick of a ticker starting within a frame.
+      return;
+    }
+    var speed = _speed();
+    if (speed == 0) {
+      // The pointer has left the band, or there is nothing to scroll.
+      _stop();
+      return;
+    }
+    var position = _position!;
+    var target = min(
+      max(position.pixels + speed * seconds, position.minScrollExtent),
+      position.maxScrollExtent,
+    );
+    if ((target - position.pixels).abs() < _scrollEpsilon) {
+      // The end of the range: there is nothing more to scroll that way.
+      _stop();
+      return;
+    }
+    position.jumpTo(target);
+    onScrolled?.call();
+  }
+
+  /// How fast and which way the album should scroll for the pointer's place,
+  /// in logical pixels per second; zero while it rests outside both bands.
+  ///
+  /// The speed grows linearly with the proximity to the edge, from nothing at
+  /// the inner boundary of the band to [dragScrollMaxSpeed] at the edge itself
+  /// (and no faster beyond it, where a pointer dragged out of the album ends
+  /// up).
+  double _speed() {
+    var position = _position;
+    var pointer = _pointer;
+    if (position == null || pointer == null || !position.hasContentDimensions) {
+      return 0;
+    }
+    if (position.maxScrollExtent <= position.minScrollExtent) {
+      // The album fits its viewport: there is nothing to scroll.
+      return 0;
+    }
+    var box = position.context.storageContext.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) {
+      return 0;
+    }
+    var height = box.size.height;
+    var zone = min(dragScrollZone, height * dragScrollZoneFraction);
+    if (zone <= 0) {
+      return 0;
+    }
+    var depth = box.globalToLocal(pointer).dy;
+    if (depth < zone) {
+      return -dragScrollMaxSpeed * min((zone - depth) / zone, 1);
+    }
+    if (depth > height - zone) {
+      return dragScrollMaxSpeed * min((depth - (height - zone)) / zone, 1);
+    }
+    return 0;
+  }
 }
 
 /// One album part as a drag source and a drop target of the reordering of the
