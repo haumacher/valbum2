@@ -19,7 +19,11 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   album, image, alternatives, group member), `parseRoute`/`routeToUri` and the
   app base (`appBasePath`). Pure, no widgets.
 - `lib/listing_view.dart` — `ListingView` (the folder tiles) plus the
-  `CreateAlbumDialog` and `CreateFolderDialog`.
+  `CreateAlbumDialog` and `CreateFolderDialog`; a long press on a tile opens its menu with "Move to…".
+- `lib/move_view.dart` — the move of issue #47: `FolderPicker` (browses the caller's own tree
+  from the root through the injected client, chooses a folder or an album as the target, creates
+  nothing) and `moveWithPicker`, which posts the move, reloads and reports every outcome — a
+  snack bar when all moved, a dialog naming each refusal in the server's words.
 - `lib/album_view.dart` — the album: `AlbumContent`/`AlbumContentState` (edit
   mode and the save round-trip), `ContentWidgetBuilder` and
   `ImageWidgetBuilder` (turning the layout into widgets), `ThumbnailEditor`
@@ -27,6 +31,7 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   `+`/`-` keys) and the per-tile overlay toolbars (rotate, flip, rating,
   privacy level, comment, heading), the privacy marker on restricted tiles and the "view as"
   preview switch of the edit mode (a read-only look at the album as members or the public see it).
+  "Move to…" in the edit app bar moves the selection to another album (`lib/move_view.dart`).
 - `lib/image_view.dart` — `ImageView`, the full-screen single image viewer
   (zoom, pan, swipe and keyboard navigation).
 - `lib/group_view.dart` — the "alternatives" view of an `ImageGroup`
@@ -47,7 +52,8 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   view navigates in) and `thumbnailName`.
 - `lib/client.dart` — `VAlbumClient`, the one place that builds URLs and talks HTTP; injected via
   `VAlbumScope` so tests can pass a `MockClient`. `loadPreview` is the one load that bypasses the
-  offline cache: a "view as" preview is never the copy the app browses offline.
+  offline cache: a "view as" preview is never the copy the app browses offline. `move` posts the
+  `?action=move` write and returns the server's outcomes.
 - `lib/settings.dart` — the server settings: URL, the sign-in (user name, pairing secret, device
   name) and who this device is signed in as (user, role, device, space); the settings store.
 - `lib/urls.dart` — derives the server URL from the page origin on the web

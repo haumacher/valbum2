@@ -565,6 +565,44 @@ class VAlbumClient {
     return UploadCheckResult.read(JsonReader.fromString(response.body));
   }
 
+  /// Moves the named entries of the folder at [path] into [target].
+  ///
+  /// [target] is a folder path relative to the root of the caller's space,
+  /// the empty string being the root itself; [names] are entries of the
+  /// folder at [path] — image files, or the names of sub-folders (albums and
+  /// folders of folders). Naming the representative of a group moves the
+  /// whole group, see issue #47.
+  ///
+  /// The answer carries one [MoveOutcome] per name: the name the entry has at
+  /// the target now, or the reason it stayed where it was. A refusal of the
+  /// whole request — an unpaired device, a target outside the space — is the
+  /// server speaking and is thrown as a [VAlbumException] carrying its
+  /// message, like every other refused write.
+  Future<MoveResult> move(
+    List<String> path,
+    String target,
+    List<String> names,
+  ) async {
+    var url = "${folderUrl(path)}?action=move";
+    var request = MoveRequest(
+      target: target,
+      names: [for (var name in names) MoveName(name: name)],
+    );
+    var body = StringBuffer();
+    request.writeContent(jsonStringWriter(body));
+
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "moving to '$target'");
+    }
+    return MoveResult.read(JsonReader.fromString(response.body));
+  }
+
   /// Uploads to the album at [path] what it does not hold yet.
   ///
   /// Every file is hashed, the album is asked which of the contents it already

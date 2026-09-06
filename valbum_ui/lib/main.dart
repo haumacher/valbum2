@@ -21,6 +21,7 @@ export 'connectivity.dart';
 export 'group_view.dart';
 export 'image_view.dart';
 export 'listing_view.dart';
+export 'move_view.dart';
 export 'offline.dart';
 export 'photo_library.dart';
 export 'routes.dart';

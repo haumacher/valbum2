@@ -16,6 +16,7 @@ import 'app.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
 import 'listing_view.dart';
+import 'move_view.dart';
 import 'resource.dart';
 import 'offline.dart';
 import 'settings.dart';
@@ -500,6 +501,56 @@ class AlbumContentState extends State<AlbumContent>
     widget.albumState.reload();
   }
 
+  /// Moves the selected parts into another folder, see issue #47.
+  ///
+  /// The names sent are the file names of the selected images; a selected
+  /// group is named by its representative, which is how the server is told to
+  /// move the whole group. A [Heading] is not a file and cannot be moved, so a
+  /// selection of nothing else says so instead of sending an empty request.
+  ///
+  /// Refused on an album with unsaved changes: the album is fetched again
+  /// after the move, and that would throw the edits away — the same rule the
+  /// "view as" preview follows, see [setViewAs].
+  Future<void> moveSelection() async {
+    if (dirty) {
+      showMessage("Save or discard your changes first");
+      return;
+    }
+    var names = [
+      for (var part in widget.album.parts)
+        if (isSelected(part) && part is AbstractImage) part.thumbnailName,
+    ];
+    if (names.isEmpty) {
+      showMessage("A heading cannot be moved.");
+      return;
+    }
+
+    await moveWithPicker(
+      context: context,
+      client: client,
+      source: widget.albumState.path,
+      names: names,
+      subject: ImageSubject(names.length),
+      onMoved: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          clearSelection();
+          _layoutOrientation.clear();
+        });
+        // The listing above shows this album by an index picture that may
+        // just have moved away, and the album itself is asked for anew.
+        var path = widget.albumState.path;
+        if (path.isNotEmpty) {
+          widget.albumState.navigator.delegate
+              .forget(path.sublist(0, path.length - 1));
+        }
+        widget.albumState.reload();
+      },
+    );
+  }
+
   /// Opens the album properties editor and applies its result to the album.
   Future<void> editProperties() async {
     var album = widget.album;
@@ -560,6 +611,13 @@ class AlbumContentState extends State<AlbumContent>
                 // In the edit session, whether the owner's view or a preview
                 // is on the screen: it is the way back out of a preview.
                 if (session.editMode) viewAsMenu(context),
+                if (editMode && selection.isNotEmpty)
+                  IconButton(
+                    key: const Key("move-to"),
+                    onPressed: moveSelection,
+                    tooltip: "Move to…",
+                    icon: const Icon(Icons.drive_file_move),
+                  ),
                 if (editMode)
                   IconButton(
                     onPressed: editProperties,

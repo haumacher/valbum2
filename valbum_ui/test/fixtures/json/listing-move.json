@@ -1,0 +1,9 @@
+["ListingInfo", {
+  "path": "",
+  "title": "Test-album",
+  "folders": [
+    {"name": "2020 Trip", "title": "2020 Trip"},
+    {"name": "2021", "title": "2021"},
+    {"name": "Inbox", "title": "Inbox"}
+  ]
+}]

@@ -1,0 +1,24 @@
+["AlbumInfo", {
+  "path": "Inbox",
+  "title": "Inbox",
+  "subTitle": "",
+  "parts": [
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "a.jpg", "date": 1015113600000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "b.jpg", "date": 1015113610000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0
+    }],
+    ["ImageGroup", {
+      "representative": 0,
+      "images": [
+        {"kind": "IMAGE", "name": "g1.jpg", "date": 1015113620000,
+         "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0},
+        {"kind": "IMAGE", "name": "g2.jpg", "date": 1015113630000,
+         "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0}
+      ]
+    }]
+  ]
+}]

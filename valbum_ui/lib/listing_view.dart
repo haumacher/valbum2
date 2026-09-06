@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'app.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'move_view.dart';
 import 'resource.dart';
 import 'offline.dart';
 import 'settings.dart';
@@ -157,6 +158,7 @@ class ListingView extends StatelessWidget {
                 return SingleChildScrollView(
                   scrollDirection: Axis.vertical,
                   child: buildFolderList(
+                    context,
                     self,
                     imageSpace - 2 * imageBorder,
                     imageBorder,
@@ -171,6 +173,7 @@ class ListingView extends StatelessWidget {
   }
 
   Wrap buildFolderList(
+    BuildContext context,
     ListingInfo self,
     double imageWidth,
     double imageBorder,
@@ -181,6 +184,11 @@ class ListingView extends StatelessWidget {
           padding: EdgeInsets.all(imageBorder),
           child: GestureDetector(
             onTap: () => albumState.showElement(folder.name),
+            // A listing tile had no menu of its own; the long press is the
+            // touch idiom the album already uses to reach a tile's tools, and
+            // this menu holds only what a tile can do, see issue #47.
+            onLongPressStart: (details) =>
+                showTileMenu(context, folder, details.globalPosition),
             child: SizedBox(
               width: imageWidth,
               child: Column(
@@ -236,6 +244,44 @@ class ListingView extends StatelessWidget {
       "$baseUrl/${folder.name}/${indexPicture.image}",
       indexPicture,
       width,
+    );
+  }
+
+  /// The menu of one folder tile, at the point it was pressed.
+  Future<void> showTileMenu(
+    BuildContext context,
+    FolderInfo folder,
+    Offset position,
+  ) async {
+    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    var chosen = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        overlay.size.width - position.dx,
+        overlay.size.height - position.dy,
+      ),
+      items: [
+        const PopupMenuItem<String>(
+          value: "move",
+          child: ListTile(
+            leading: Icon(Icons.drive_file_move),
+            title: Text("Move to…"),
+          ),
+        ),
+      ],
+    );
+    if (chosen != "move" || !context.mounted) {
+      return;
+    }
+    await moveWithPicker(
+      context: context,
+      client: client,
+      source: albumState.path,
+      names: [folder.name],
+      subject: EntrySubject(folder.name),
+      onMoved: albumState.reload,
     );
   }
 
