@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="de.haumacher.valbum_ui">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
    <!-- Camera-roll sync (issue #30) reads the device's photo library. -->
    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
