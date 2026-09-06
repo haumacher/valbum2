@@ -33,6 +33,7 @@ import 'package:http/http.dart' as http;
 
 import 'camera_roll.dart';
 import 'client.dart';
+import 'connectivity.dart';
 import 'photo_library.dart';
 import 'platform.dart';
 import 'settings.dart';
@@ -302,11 +303,13 @@ class BackgroundRunResult {
 ///
 /// Every moving part can be replaced, so that a test never touches the device:
 /// [library] instead of the platform's photo library, [transport] instead of a
-/// real HTTP client, [clock] instead of the wall clock.
+/// real HTTP client, [connectivity] instead of the device's network,
+/// [clock] instead of the wall clock.
 Future<BackgroundRunResult> runBackgroundSync({
   SettingsStore store = const PreferencesSettingsStore(),
   PhotoLibrary? library,
   http.Client? transport,
+  ConnectivitySource? connectivity,
   DateTime Function()? clock,
 }) async {
   var now = clock ?? DateTime.now;
@@ -346,10 +349,17 @@ Future<BackgroundRunResult> runBackgroundSync({
   var ownLibrary = library == null ? defaultPhotoLibrary() : null;
   var photos = library ?? ownLibrary!;
 
+  // The Wi-Fi-only setting holds for a background run exactly as it does for
+  // a foreground one (issue #36): the platform's "a network is connected"
+  // constraint says nothing about *which* network, so the run asks.
+  var ownNetwork = connectivity == null ? defaultConnectivity() : null;
+  var network = connectivity ?? ownNetwork!;
+
   var sync = CameraRollSync(
     store: store,
     library: photos,
     clientOf: () => client,
+    connectivity: network,
     clock: now,
   );
   try {
@@ -372,6 +382,7 @@ Future<BackgroundRunResult> runBackgroundSync({
   } finally {
     sync.dispose();
     ownLibrary?.dispose();
+    ownNetwork?.dispose();
     ownTransport?.close();
   }
 }

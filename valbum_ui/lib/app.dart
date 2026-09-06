@@ -17,6 +17,7 @@ import 'background.dart';
 import 'camera_roll.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'connectivity.dart';
 import 'group_view.dart';
 import 'image_view.dart';
 import 'listing_view.dart';
@@ -146,7 +147,17 @@ class VAlbumAppState extends State<VAlbumApp> {
     clientOf: () => client,
     isOffline: () => offlineState.offline,
     scheduler: backgroundScheduler,
+    connectivity: connectivity,
   );
+
+  /// The network the device is on, see [ConnectivitySource] (issue #36).
+  ///
+  /// An injected client means a test or an embedder drives this app; nothing
+  /// of it may reach the device then, exactly as with the scheduler, see
+  /// [_defaultScheduler].
+  late final ConnectivitySource connectivity = widget.client != null
+      ? const UnknownConnectivity()
+      : defaultConnectivity();
 
   /// The cache used when the app is not told otherwise.
   ///
@@ -285,6 +296,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   void dispose() {
     settings.removeListener(_settingsChanged);
     cameraRoll.dispose();
+    connectivity.dispose();
     if (widget.photoLibrary == null) {
       photoLibrary.dispose();
     }

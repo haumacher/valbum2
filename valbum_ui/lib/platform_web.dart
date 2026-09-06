@@ -2,6 +2,7 @@
 library;
 
 import 'background.dart';
+import 'connectivity.dart';
 import 'offline.dart';
 import 'photo_library.dart';
 
@@ -26,6 +27,14 @@ PhotoLibrary defaultPhotoLibrary() => const UnavailablePhotoLibrary(
       "No photo library in a browser - camera-roll sync runs on Android and "
       "iOS.",
     );
+
+/// The network a browser is on: it does not say, see [ConnectivitySource].
+///
+/// A page cannot ask what carries it, and there is no camera roll in a browser
+/// to sync anyway; the Wi-Fi-only setting therefore never refuses anything
+/// here (issue #36). The `connectivity_plus` plugin is never imported in the
+/// web build.
+ConnectivitySource defaultConnectivity() => const UnknownConnectivity();
 
 /// The background execution of a browser tab: there is none, see
 /// [BackgroundScheduler].

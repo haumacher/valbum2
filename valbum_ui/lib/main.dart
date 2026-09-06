@@ -17,6 +17,7 @@ export 'background.dart';
 export 'camera_roll.dart';
 export 'camera_roll_view.dart';
 export 'client.dart';
+export 'connectivity.dart';
 export 'group_view.dart';
 export 'image_view.dart';
 export 'listing_view.dart';

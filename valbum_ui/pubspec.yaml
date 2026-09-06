@@ -55,6 +55,9 @@ dependencies:
   path_provider: ^2.1.6
   photo_manager: ^3.12.0
   workmanager: ^0.10.9
+  # Which network the device is on, so that the camera-roll sync can be limited
+  # to Wi-Fi (issue #36); reached only through `lib/connectivity_plugin.dart`.
+  connectivity_plus: ^6.1.0
 
 dev_dependencies:
   flutter_test:

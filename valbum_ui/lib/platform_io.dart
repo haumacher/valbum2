@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 
 import 'background.dart';
 import 'background_workmanager.dart';
+import 'connectivity.dart';
+import 'connectivity_plugin.dart';
 import 'offline.dart';
 import 'offline_file.dart';
 import 'photo_library.dart';
@@ -34,6 +36,21 @@ PhotoLibrary defaultPhotoLibrary() => Platform.isAndroid || Platform.isIOS
         "No photo library on this platform - camera-roll sync runs on "
         "Android and iOS.",
       );
+
+/// The network the device is on, see [ConnectivitySource].
+///
+/// Only Android and iOS have a phone plan the Wi-Fi-only sync protects, and
+/// only there is the plugin asked; a desktop cannot be metered in a way this
+/// app knows about and answers [NetworkKind.unknown], which allows the sync
+/// (issue #36).
+///
+/// `Platform.isAndroid` rather than `defaultTargetPlatform`, exactly as
+/// [defaultPhotoLibrary]: this asks which *machine* the code runs on, and a
+/// widget test runs on a desktop while it says it is a phone — a background
+/// run in a test must reach no plugin channel.
+ConnectivitySource defaultConnectivity() => Platform.isAndroid || Platform.isIOS
+    ? PluginConnectivity()
+    : const UnknownConnectivity();
 
 /// The platform's periodic background execution, see [BackgroundScheduler].
 ///

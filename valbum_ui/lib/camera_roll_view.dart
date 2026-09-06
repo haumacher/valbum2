@@ -17,6 +17,9 @@ import 'settings.dart';
 /// The key of the switch enabling the sync, so that a test can address it.
 const Key cameraRollSwitchKey = Key("cameraRoll.enabled");
 
+/// The key of the switch limiting the sync to Wi-Fi (issue #36).
+const Key cameraRollWifiOnlyKey = Key("cameraRoll.wifiOnly");
+
 /// The key of the "Choose..." button opening the inbox picker.
 const Key cameraRollChooseKey = Key("cameraRoll.choose");
 
@@ -100,6 +103,17 @@ class _CameraRollSectionState extends State<CameraRollSection> {
                   "No photo library on this platform"),
           value: config.enabled,
           onChanged: available ? _toggle : null,
+        ),
+        SwitchListTile(
+          key: cameraRollWifiOnlyKey,
+          contentPadding: EdgeInsets.zero,
+          title: const Text("Only over Wi-Fi"),
+          subtitle: const Text(
+            "New photos wait for a Wi-Fi or a wired connection, so that the "
+            "upload does not eat into a mobile data plan.",
+          ),
+          value: config.wifiOnly,
+          onChanged: available ? (value) => _toggleWifiOnly(sync, value) : null,
         ),
         const SizedBox(height: 8),
         Row(
@@ -210,6 +224,14 @@ class _CameraRollSectionState extends State<CameraRollSection> {
       return;
     }
     setState(() => refusal = problem);
+  }
+
+  Future<void> _toggleWifiOnly(CameraRollSync sync, bool value) async {
+    await sync.setWifiOnly(value);
+    if (!mounted) {
+      return;
+    }
+    setState(() => refusal = null);
   }
 
   Future<void> _syncNow(CameraRollSync sync) async {

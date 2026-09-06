@@ -28,6 +28,7 @@ import 'package:flutter/foundation.dart';
 
 import 'background.dart';
 import 'client.dart';
+import 'connectivity.dart';
 import 'photo_library.dart';
 import 'settings.dart';
 
@@ -41,6 +42,13 @@ import 'settings.dart';
 class CameraRollConfig {
   /// Whether the app watches the photo library.
   final bool enabled;
+
+  /// Whether the sync only runs on an unmetered network (issue #36).
+  ///
+  /// On by default, also for a store written before issue #36 that holds no
+  /// value for it: uploading a camera roll over a mobile connection can cost
+  /// real money, so the safe answer is the one an app that was updated gets.
+  final bool wifiOnly;
 
   /// The album on the server new photos are uploaded into, empty while the
   /// user has not chosen one.
@@ -66,6 +74,7 @@ class CameraRollConfig {
 
   const CameraRollConfig({
     this.enabled = false,
+    this.wifiOnly = true,
     this.inbox = const [],
     this.since,
     this.done = const [],
@@ -83,12 +92,14 @@ class CameraRollConfig {
   /// The same configuration with the given values replaced.
   CameraRollConfig copyWith({
     bool? enabled,
+    bool? wifiOnly,
     List<String>? inbox,
     DateTime? since,
     List<String>? done,
   }) =>
       CameraRollConfig(
         enabled: enabled ?? this.enabled,
+        wifiOnly: wifiOnly ?? this.wifiOnly,
         inbox: inbox ?? this.inbox,
         since: since ?? this.since,
         done: done ?? this.done,
@@ -97,6 +108,7 @@ class CameraRollConfig {
   /// This configuration as the JSON blob the store keeps.
   String toJson() => jsonEncode({
         "enabled": enabled,
+        "wifiOnly": wifiOnly,
         "inbox": inbox,
         if (since != null) "since": since!.toUtc().toIso8601String(),
         "done": done,
@@ -119,6 +131,9 @@ class CameraRollConfig {
       var since = json["since"];
       return CameraRollConfig(
         enabled: json["enabled"] == true,
+        // Absent means on: a store from before issue #36 must not start
+        // uploading over a mobile connection because it was silent.
+        wifiOnly: json["wifiOnly"] != false,
         inbox: [for (var name in (json["inbox"] as List? ?? [])) "$name"],
         since: since is String ? DateTime.tryParse(since) : null,
         done: [for (var id in (json["done"] as List? ?? [])) "$id"],
@@ -132,12 +147,14 @@ class CameraRollConfig {
   bool operator ==(Object other) =>
       other is CameraRollConfig &&
       other.enabled == enabled &&
+      other.wifiOnly == wifiOnly &&
       listEquals(other.inbox, inbox) &&
       other.since == since &&
       listEquals(other.done, done);
 
   @override
-  int get hashCode => Object.hash(enabled, inbox.length, since, done.length);
+  int get hashCode =>
+      Object.hash(enabled, wifiOnly, inbox.length, since, done.length);
 
   @override
   String toString() => toJson();
@@ -322,6 +339,13 @@ class CameraRollSync extends ChangeNotifier {
   /// refused with that reason instead, see the "refusals speak" rule.
   final bool Function() isOffline;
 
+  /// The network the device is on (issue #36).
+  ///
+  /// Asked before every run while [CameraRollConfig.wifiOnly] is on; a run on
+  /// a metered network is refused with that reason instead of quietly costing
+  /// the user money, see the "refusals speak" rule.
+  final ConnectivitySource connectivity;
+
   /// The number of items handed to the server in one request.
   final int batchSize;
 
@@ -363,6 +387,7 @@ class CameraRollSync extends ChangeNotifier {
   Timer? _retryTimer;
   Timer? _scanTimer;
   StreamSubscription<void>? _watch;
+  StreamSubscription<NetworkKind>? _network;
   bool _disposed = false;
 
   CameraRollSync({
@@ -371,12 +396,14 @@ class CameraRollSync extends ChangeNotifier {
     required this.clientOf,
     bool Function()? isOffline,
     BackgroundScheduler? scheduler,
+    ConnectivitySource? connectivity,
     this.batchSize = 10,
     this.interval = const Duration(minutes: 15),
     DateTime Function()? clock,
     TimerFactory? timerFactory,
   })  : isOffline = isOffline ?? _never,
         scheduler = scheduler ?? const UnavailableBackgroundScheduler(),
+        connectivity = connectivity ?? const UnknownConnectivity(),
         clock = clock ?? DateTime.now,
         timerFactory = timerFactory ?? _realTimer;
 
@@ -428,6 +455,13 @@ class CameraRollSync extends ChangeNotifier {
       return;
     }
     _watch ??= library.changes.listen((_) => trigger());
+    // A run refused for the lack of Wi-Fi must start again when Wi-Fi is
+    // back, without the user waiting for the next periodic scan (issue #36).
+    _network ??= connectivity.changes.listen((kind) {
+      if (kind.unmetered) {
+        trigger();
+      }
+    });
     _armScan();
     // Idempotent, so every start may ask: an app that was updated registers
     // the periodic task again this way (issue #32).
@@ -449,6 +483,8 @@ class CameraRollSync extends ChangeNotifier {
   void _disarm() {
     _watch?.cancel();
     _watch = null;
+    _network?.cancel();
+    _network = null;
     _scanTimer?.cancel();
     _scanTimer = null;
     _retryTimer?.cancel();
@@ -568,6 +604,23 @@ class CameraRollSync extends ChangeNotifier {
     }
   }
 
+  /// Limits the sync to an unmetered network, or lifts that limit (issue #36).
+  ///
+  /// Lifting it starts a run right away where one was refused for it: the user
+  /// just said that a mobile connection is fine, and waiting a quarter of an
+  /// hour for the periodic scan would look like nothing happened.
+  Future<void> setWifiOnly(bool value) async {
+    if (value == _config.wifiOnly) {
+      return;
+    }
+    await _store(_config.copyWith(wifiOnly: value));
+    if (!value && _config.enabled) {
+      trigger();
+    } else {
+      _publish(_status);
+    }
+  }
+
   /// Chooses the album new photos are uploaded into.
   ///
   /// Changing the inbox does not re-upload anything: the watermark stays, and
@@ -583,6 +636,7 @@ class CameraRollSync extends ChangeNotifier {
   Future<void> forgetProgress() async {
     await _store(CameraRollConfig(
       enabled: _config.enabled,
+      wifiOnly: _config.wifiOnly,
       inbox: _config.inbox,
     ));
     _publish(_restingStatus());
@@ -641,6 +695,16 @@ class CameraRollSync extends ChangeNotifier {
     if (isOffline()) {
       _fail("Offline: the album server cannot be reached.");
       return;
+    }
+    if (_config.wifiOnly) {
+      var kind = await connectivity.current();
+      if (!kind.unmetered) {
+        // Retried, not abandoned: the device moves back onto a Wi-Fi sooner
+        // or later, and the change stream starts a run right then, see
+        // [start].
+        _fail(kind.refusal);
+        return;
+      }
     }
     var client = clientOf();
     if (client == null) {
