@@ -2,6 +2,8 @@
 /// mode with the per-tile editor and the album properties editor.
 library;
 
+import 'dart:math';
+
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/services.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
@@ -491,7 +493,7 @@ class AlbumContentState extends State<AlbumContent> {
         () => layouter.AlbumLayout(maxWidth, 250, pending),
       );
       var builder = ContentWidgetBuilder(imageTile, layout.getPageWidth());
-      result.addAll(layout.map((row) => row.visit(builder, 0.0)));
+      result.addAll(builder.buildRows(layout));
       images = <AbstractImage>[];
     }
 
@@ -629,56 +631,119 @@ typedef TileBuilder = Widget Function(
   double height,
 );
 
+/// The gap between two neighbouring tiles of the album, in logical pixels.
+///
+/// The retired GWT client separated the images by 2px, which is what makes a
+/// row of photos read as separate pictures instead of one collage, see issue
+/// #34. The gap is applied when the layout is turned into widgets, not in the
+/// layout algorithm itself: the algorithm decides which images share a row,
+/// and that decision must not depend on the decoration.
+const double tileSpacing = 2.0;
+
+/// The box a [layouter.Row] hands to each of its contents.
+///
+/// A content is as wide as its unit width times [scale] and as high as
+/// [height]. The two are the same number for a row filling the page, but not
+/// inside a [layouter.DoubleRow], whose two halves have to give up
+/// [tileSpacing] of their height to the gap between them while still filling
+/// the width of the double row.
+class RowBox {
+  /// The factor a content's unit width is multiplied by to get its width.
+  final double scale;
+
+  /// The height of the row.
+  final double height;
+
+  const RowBox(this.scale, this.height);
+
+  /// The box of a top-level row, whose geometry follows from the page width.
+  static const RowBox page = RowBox(0, 0);
+}
+
 /// Turns the rows of an [layouter.AlbumLayout] into widgets.
 ///
 /// The tiles themselves are built by the [TileBuilder] handed in: the album
 /// view builds an [ImageWidgetBuilder] tile (with the edit mode on top), the
 /// alternatives view of a group (`group_view.dart`) a plain thumbnail.
-class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, double> {
+class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, RowBox> {
   final TileBuilder tile;
   final double pageWidth;
 
   const ContentWidgetBuilder(this.tile, this.pageWidth);
 
+  /// The rows of [layout] as widgets, separated by [tileSpacing].
+  List<Widget> buildRows(layouter.AlbumLayout layout) => [
+        for (var (index, row) in layout.getRows().indexed) ...[
+          if (index > 0) const SizedBox(height: tileSpacing),
+          row.visit(this, RowBox.page),
+        ],
+      ];
+
   @override
-  Widget visitImg(layouter.Img content, double rowHeight) {
+  Widget visitImg(layouter.Img content, RowBox box) {
     var image = content.getImage();
 
-    var width = content.getUnitWidth() * rowHeight;
-    var height = rowHeight;
+    var width = content.getUnitWidth() * box.scale;
+    var height = box.height;
 
     return tile(image, width, height);
   }
 
   @override
-  Widget visitRow(layouter.Row content, double rowHeight) {
-    double scale = pageWidth / content.getUnitWidth();
-    double rowHeight = scale;
+  Widget visitRow(layouter.Row content, RowBox box) {
+    // The gaps are taken out of the page first, so that the tiles still fill
+    // the width exactly and keep their aspect ratio.
+    var gaps = (content.size() - 1) * tileSpacing;
+    var scale = max(0.0, pageWidth - gaps) / content.getUnitWidth();
+    // A row of a double row is told its height, see [visitDoubleRow]; a
+    // top-level row derives it from the page width.
+    var contentBox = RowBox(scale, box.height > 0 ? box.height : scale);
 
     return Row(
-      children:
-          content.map((content) => content.visit(this, rowHeight)).toList(),
+      children: [
+        for (var (index, child) in content.indexed) ...[
+          if (index > 0) const SizedBox(width: tileSpacing),
+          child.visit(this, contentBox),
+        ],
+      ],
     );
   }
 
   @override
-  Widget visitDoubleRow(layouter.DoubleRow content, double rowHeight) {
-    var width = content.getUnitWidth() * rowHeight;
+  Widget visitDoubleRow(layouter.DoubleRow content, RowBox box) {
+    var width = content.getUnitWidth() * box.scale;
+    var height = box.height;
 
-    var upper = content.getUpper();
+    // The double row keeps the height of the row it sits in: the gap between
+    // its halves comes out of their heights, which keep their ratio.
+    var inner = max(0.0, height - tileSpacing);
     var contentBuilder = ContentWidgetBuilder(tile, width);
-    var upperRow = upper.visit(contentBuilder, rowHeight * content.getH1());
+    var upperRow = content.getUpper().visit(
+          contentBuilder,
+          RowBox(0, inner * content.getH1()),
+        );
+    var lowerRow = content.getLower().visit(
+          contentBuilder,
+          RowBox(0, inner * content.getH2()),
+        );
 
-    var lower = content.getLower();
-    var lowerRow = lower.visit(contentBuilder, rowHeight * content.getH2());
-
-    return Column(children: [upperRow, lowerRow]);
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Column(
+        children: [
+          upperRow,
+          const SizedBox(height: tileSpacing),
+          lowerRow,
+        ],
+      ),
+    );
   }
 
   @override
-  Widget visitPadding(layouter.Padding content, double rowHeight) {
-    var width = content.getUnitWidth() * rowHeight;
-    var height = rowHeight;
+  Widget visitPadding(layouter.Padding content, RowBox box) {
+    var width = content.getUnitWidth() * box.scale;
+    var height = box.height;
 
     return SizedBox(width: width, height: height);
   }

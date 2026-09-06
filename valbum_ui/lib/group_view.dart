@@ -78,9 +78,7 @@ class GroupView extends StatelessWidget {
             layout.getPageWidth(),
           );
           return SingleChildScrollView(
-            child: Column(
-              children: layout.map((row) => row.visit(builder, 0.0)).toList(),
-            ),
+            child: Column(children: builder.buildRows(layout)),
           );
         },
       ),
