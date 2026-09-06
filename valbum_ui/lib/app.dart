@@ -1147,6 +1147,14 @@ class AlbumEditSession {
 
   /// The part clicked last, the anchor of a shift-click range selection.
   AlbumPart? lastClicked;
+
+  /// Whether the album carries edits that have not been written back yet.
+  ///
+  /// Set by every edit of the album view, cleared by a successful save. It is
+  /// what the "view as" preview of issue #46 asks: the preview reloads the
+  /// album from the server, which would throw unsaved edits away, so a dirty
+  /// album refuses the switch instead of losing them silently.
+  bool dirty = false;
 }
 
 /// Restores the scroll offset the listing or album at [path] was left with.

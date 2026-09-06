@@ -21,6 +21,42 @@ import 'offline.dart';
 import 'settings.dart';
 import 'thumbnails.dart';
 
+/// The clearance an album is shown with in the edit mode, see issue #46.
+///
+/// [owner] is the album as this device is entitled to see it — the normal edit
+/// view. The other two ask the server to answer as it would for a caller of
+/// that clearance (`?viewAs=members`, `?viewAs=public`), so that the author
+/// can see what the family, or a share link, will be shown.
+enum ViewAs {
+  owner("Owner", Icons.edit),
+  members("Members", Icons.group),
+  public("Public", Icons.public);
+
+  /// What the app calls this view.
+  final String label;
+
+  /// The icon the app shows this view by.
+  final IconData icon;
+
+  const ViewAs(this.label, this.icon);
+
+  /// The value of the `viewAs` request parameter, `null` for the [owner],
+  /// whose request carries none.
+  String? get parameter => this == ViewAs.owner ? null : name;
+}
+
+/// The icon the app shows the given privacy level by, `null` for
+/// [privacyPublic] — an image everybody may see is not marked at all.
+IconData? privacyIcon(int level) => switch (level) {
+      privacyPublic => null,
+      privacyMembers => Icons.group,
+      _ => Icons.lock,
+    };
+
+/// The icon of the privacy control, which shows every level, [privacyPublic]
+/// included.
+IconData privacyControlIcon(int level) => privacyIcon(level) ?? Icons.public;
+
 class AlbumContent extends StatefulWidget {
   final VAlbumState albumState;
   final AlbumInfo album;
@@ -51,8 +87,33 @@ class AlbumContentState extends State<AlbumContent>
   AlbumEditSession get session =>
       widget.albumState.navigator.delegate.editSession(widget.albumState.path);
 
-  bool get editMode => session.editMode;
+  /// Whether the album is being edited *and* shown as its owner.
+  ///
+  /// A "view as" preview is read-only: the tile editor, the reordering and the
+  /// tile toolbars are all off while it is shown, see [previewing]. The edit
+  /// session itself stays on, so the switch back to the owner's view is still
+  /// there and the album is still the one being edited.
+  bool get editMode => session.editMode && !previewing;
   set editMode(bool value) => session.editMode = value;
+
+  /// Whether the album carries edits that have not been written back yet.
+  bool get dirty => session.dirty;
+
+  /// The clearance the album is shown with, see [setViewAs] (issue #46).
+  ViewAs _viewAs = ViewAs.owner;
+
+  ViewAs get viewAs => _viewAs;
+
+  /// The album the server answered for [_viewAs], `null` while the album is
+  /// shown as its owner.
+  AlbumInfo? _preview;
+
+  /// Whether a "view as" preview is shown instead of the album itself.
+  bool get previewing => _preview != null;
+
+  /// The album on the screen: the preview while one is shown, the album being
+  /// edited otherwise.
+  AlbumInfo get shownAlbum => _preview ?? widget.album;
 
   /// The selected album parts (an [ImageGroup] is selected as a whole).
   Set<AlbumPart> get selection => session.selection;
@@ -102,7 +163,7 @@ class AlbumContentState extends State<AlbumContent>
   Offset? _pointerPosition;
 
   /// The rating an image needs to be shown, see [AlbumInfo.minRating].
-  int get minRating => widget.album.minRating;
+  int get minRating => shownAlbum.minRating;
 
   @override
   void initState() {
@@ -318,7 +379,16 @@ class AlbumContentState extends State<AlbumContent>
   }
 
   /// Applies [edit] to the model and redraws the album.
-  void editImage(VoidCallback edit) => setState(edit);
+  ///
+  /// Every edit made here is one the album has to be saved for, so it marks
+  /// the album dirty, see [AlbumEditSession.dirty].
+  void editImage(VoidCallback edit) => setState(() {
+        edit();
+        markDirty();
+      });
+
+  /// Remembers that the album differs from what the server holds.
+  void markDirty() => session.dirty = true;
 
   /// Groups the selected parts, [representative] becoming the image shown for
   /// the group in the album, see [groupSelection].
@@ -329,12 +399,14 @@ class AlbumContentState extends State<AlbumContent>
     if (group == null) {
       return false;
     }
+    markDirty();
     setState(clearSelection);
     return true;
   }
 
   /// Dissolves the given group, its images stay selected, see [ungroup].
   void ungroupSelected(ImageGroup group) => setState(() {
+        markDirty();
         var members = ungroup(widget.album, group);
         clearSelection();
         selection.addAll(members);
@@ -343,6 +415,7 @@ class AlbumContentState extends State<AlbumContent>
 
   /// Removes the given heading from the album.
   void deleteHeading(Heading heading) => setState(() {
+        markDirty();
         widget.album.parts =
             widget.album.parts.where((p) => !identical(p, heading)).toList();
         selection.remove(heading);
@@ -363,16 +436,19 @@ class AlbumContentState extends State<AlbumContent>
     if (text == null || text.trim().isEmpty || !mounted) {
       return;
     }
-    setState(() => heading.text = text);
+    setState(() {
+      heading.text = text;
+      markDirty();
+    });
   }
 
   /// Shows one rating level more (the `+` key of the GWT client).
   void showMore() =>
-      setState(() => widget.album.minRating = showMoreRating(minRating));
+      setState(() => shownAlbum.minRating = showMoreRating(minRating));
 
   /// Shows one rating level less (the `-` key of the GWT client).
   void showLess() =>
-      setState(() => widget.album.minRating = showLessRating(minRating));
+      setState(() => shownAlbum.minRating = showLessRating(minRating));
 
   /// Writes the album back to the server and leaves the edit mode.
   ///
@@ -407,6 +483,7 @@ class AlbumContentState extends State<AlbumContent>
 
     setState(() {
       editMode = false;
+      session.dirty = false;
       clearSelection();
       // The album is laid out anew from what was saved.
       _layoutOrientation.clear();
@@ -448,6 +525,7 @@ class AlbumContentState extends State<AlbumContent>
       album.title = result.title;
       album.subTitle = result.subTitle;
       album.indexPicture = result.indexPicture;
+      markDirty();
     });
   }
 
@@ -458,12 +536,13 @@ class AlbumContentState extends State<AlbumContent>
 
   @override
   Widget build(BuildContext context) {
-    var self = widget.album;
+    var self = shownAlbum;
 
     // The album shows its photos, not its chrome: with something to show and
     // nothing being edited there is no app bar, only the floating controls over
-    // the photos, see [contentView].
-    var immersive = !editMode && self.parts.isNotEmpty;
+    // the photos, see [contentView]. A "view as" preview keeps the app bar:
+    // the switch back to the owner's view lives in it.
+    var immersive = !session.editMode && self.parts.isNotEmpty;
 
     return Scaffold(
       appBar: immersive
@@ -478,6 +557,9 @@ class AlbumContentState extends State<AlbumContent>
               centerTitle: true,
               actions: [
                 ...navigationActions(context),
+                // In the edit session, whether the owner's view or a preview
+                // is on the screen: it is the way back out of a preview.
+                if (session.editMode) viewAsMenu(context),
                 if (editMode)
                   IconButton(
                     onPressed: editProperties,
@@ -497,14 +579,20 @@ class AlbumContentState extends State<AlbumContent>
         children: [
           // Says plainly when the album below is the copy from the cache.
           OfflineBanner(onRetry: widget.albumState.reload),
+          // Says plainly when the album below is what somebody else sees.
+          if (previewing) previewBanner(),
           if (self.parts.isNotEmpty) Expanded(child: contentView(self)),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: widget.albumState.uploadImages,
-        tooltip: 'Upload',
-        child: const Icon(Icons.cloud_upload),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      // Nothing is added to an album while somebody else's view of it is on
+      // the screen: a preview is read-only, see [setViewAs].
+      floatingActionButton: previewing
+          ? null
+          : FloatingActionButton(
+              onPressed: widget.albumState.uploadImages,
+              tooltip: 'Upload',
+              child: const Icon(Icons.cloud_upload),
+            ),
     );
   }
 
@@ -558,10 +646,142 @@ class AlbumContentState extends State<AlbumContent>
             enabled: minRating < maxMinRating,
           ),
           const PopupMenuDivider(),
-          menuItem(Icons.update, "Reload", (_) => widget.albumState.reload()),
+          menuItem(Icons.update, "Reload", (_) => reloadShown()),
           menuItem(Icons.settings, "Server...", openServerSettings),
         ]),
       ];
+
+  /// The "view as" switch of the edit mode, see [setViewAs] (issue #46).
+  ///
+  /// A popup, not a segmented control: the app bar of the edit mode already
+  /// carries the way up, the album menu, the properties and the save action,
+  /// and three labelled segments do not fit beside them on a phone. The album
+  /// says what it currently shows in the same popup idiom the rating filter
+  /// uses — a label naming the state, the choices below it.
+  Widget viewAsMenu(BuildContext context) => PopupMenuButton<ViewAs>(
+        icon: Icon(viewAs.icon),
+        tooltip: "View as",
+        initialValue: viewAs,
+        onSelected: setViewAs,
+        itemBuilder: (context) => [
+          for (var value in ViewAs.values)
+            PopupMenuItem<ViewAs>(
+              value: value,
+              child: Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Icon(value.icon, color: Colors.blueAccent),
+                  ),
+                  Text(value.label),
+                ],
+              ),
+            ),
+        ],
+      );
+
+  /// Says which view is on the screen while a preview is shown.
+  Widget previewBanner() => Material(
+        color: Colors.amber.shade800,
+        child: SizedBox(
+          width: double.infinity,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              previewMessage(_viewAs),
+              key: const Key("view-as-banner"),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ),
+      );
+
+  /// What the banner over a preview says.
+  static String previewMessage(ViewAs view) => switch (view) {
+        ViewAs.members => "Viewing as members - this is what members see",
+        ViewAs.public => "Viewing as public - this is what the public sees",
+        ViewAs.owner => "",
+      };
+
+  /// Shows the album as a caller of the given clearance would receive it.
+  ///
+  /// [ViewAs.owner] is the album itself: the preview is dropped and the album
+  /// is fetched from the server again, without a `viewAs` parameter. The other
+  /// two fetch the album with `?viewAs=members` or `?viewAs=public` and show
+  /// *that* answer, read-only — it is a smaller album than this device is
+  /// entitled to, and it is never written to the offline cache, see
+  /// [VAlbumClient.loadPreview].
+  ///
+  /// Both directions reload, so unsaved edits would be lost: a dirty album
+  /// refuses the switch and says why instead.
+  Future<void> setViewAs(ViewAs target) async {
+    if (target == _viewAs) {
+      return;
+    }
+    if (dirty) {
+      showMessage("Save or discard your changes first");
+      return;
+    }
+    if (target == ViewAs.owner) {
+      setState(() {
+        _preview = null;
+        _viewAs = ViewAs.owner;
+      });
+      // Asks the server again, this time without the parameter.
+      widget.albumState.navigator.delegate.forget(widget.albumState.path);
+      widget.albumState.reload();
+      return;
+    }
+    await _showPreview(target);
+  }
+
+  /// Fetches the album as [target] would receive it and shows that answer.
+  Future<void> _showPreview(ViewAs target) async {
+    Resource? answer;
+    try {
+      answer = await client.loadPreview(
+        widget.albumState.path,
+        target.parameter!,
+      );
+    } catch (error) {
+      if (mounted) {
+        // The server's own reason, as any other loading failure shows it.
+        showMessage(error is VAlbumException ? error.message : "$error");
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    if (answer is! AlbumInfo) {
+      showMessage("The server did not answer with an album.");
+      return;
+    }
+    AlbumInitializer().init(answer);
+    setState(() {
+      _preview = answer as AlbumInfo;
+      _viewAs = target;
+      clearSelection();
+      _layoutOrientation.clear();
+    });
+  }
+
+  /// Asks the server for the shown view again: the preview while one is shown,
+  /// the album itself otherwise.
+  void reloadShown() {
+    if (previewing) {
+      _showPreview(_viewAs);
+    } else {
+      widget.albumState.reload();
+    }
+  }
+
+  /// Says something to the user that no view of its own says.
+  void showMessage(String message) =>
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
+      );
 
   /// A floating control over the photos: dark and translucent, so that the
   /// album stays what it is about while never losing its way back.
@@ -766,6 +986,7 @@ class AlbumContentState extends State<AlbumContent>
 
     setState(() {
       if (moveParts(widget.album, dragged.parts, predecessor)) {
+        markDirty();
         // The moved parts are what the user is now looking for.
         selection
           ..clear()
@@ -1010,8 +1231,18 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
         part,
         key: ValueKey(image.name),
       );
+    } else if (state.previewing) {
+      // A "view as" preview is what somebody else sees, nothing to act on:
+      // no viewer, no way into the edit mode, see [AlbumContentState.setViewAs].
+      return SizedBox(
+        key: ValueKey(image.name),
+        width: width,
+        height: height,
+        child: imageThumbnail(image),
+      );
     } else {
       return GestureDetector(
+        key: ValueKey(image.name),
         onTap: () => state.widget.pushPart(part, image.name),
         onLongPress: () => state.setEditMode(part),
         child: imageThumbnail(image),
@@ -1028,10 +1259,10 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   /// so that rotating does not reflow the album.
   Widget imageThumbnail(ImagePart image) {
     var thumbnail = orientedThumbnail(image);
-    if (image.kind == ImageKind.image) {
+    var marker = privacyMarker(image);
+    if (image.kind == ImageKind.image && marker == null) {
       return thumbnail;
     }
-    // A video tile carries the play mark the old client showed.
     return SizedBox(
       width: width,
       height: height,
@@ -1039,16 +1270,45 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
         fit: StackFit.expand,
         children: [
           thumbnail,
-          const Center(
-            child: Icon(
-              Icons.play_circle_outline,
-              key: Key("video-indicator"),
-              size: 48,
-              color: Colors.white70,
-              shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
+          // A video tile carries the play mark the old client showed.
+          if (image.kind != ImageKind.image)
+            const Center(
+              child: Icon(
+                Icons.play_circle_outline,
+                key: Key("video-indicator"),
+                size: 48,
+                color: Colors.white70,
+                shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
+              ),
             ),
-          ),
+          if (marker != null) Positioned(top: 4, left: 4, child: marker),
         ],
+      ),
+    );
+  }
+
+  /// The mark of an image the album does not show to everyone, `null` for a
+  /// public one (issue #46).
+  ///
+  /// It is on the tile in the view mode as well as in the edit mode: the
+  /// author sees at a glance what the family, or a share link, will not be
+  /// shown.
+  Widget? privacyMarker(ImagePart image) {
+    var level = image.privacy;
+    var icon = privacyIcon(level);
+    if (icon == null) {
+      return null;
+    }
+    return IgnorePointer(
+      child: Tooltip(
+        message: privacyName(level),
+        child: Icon(
+          icon,
+          key: const Key("privacy-marker"),
+          size: 18,
+          color: Colors.white,
+          shadows: const [Shadow(color: Colors.black, blurRadius: 4)],
+        ),
       ),
     );
   }
@@ -1245,13 +1505,35 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     ]);
   }
 
-  /// The rating chooser.
+  /// The rating chooser and, beside it, the privacy level.
   Widget bottomBar() => toolbar([
         ratingButton(Icons.star, "Sehr gut", 2),
         ratingButton(Icons.add, "Gut", 1),
         ratingButton(Icons.remove, "Schlecht", -1),
         ratingButton(Icons.delete, "Papierkorb", -2),
+        privacyButton(),
       ]);
+
+  /// The privacy level of this tile, one tap per step (issue #46).
+  ///
+  /// One cycling button, not one button per level: the rating already spends
+  /// four buttons of this bar, and three more would shrink the whole toolbar
+  /// (it scales down to fit the tile) to the point of being unreadable. It
+  /// keeps the idiom of the rating buttons where it matters — one tap, no
+  /// dialog, and the current value is visible on the tile: the icon *is* the
+  /// level, and a restricted level is highlighted the way an active rating is.
+  Widget privacyButton() {
+    var level = privacyOf(part);
+    var next = nextPrivacy(level);
+    return toolButton(
+      privacyControlIcon(level),
+      "Privacy: ${privacyName(level)} "
+      "(tap for ${privacyName(next)})",
+      () => setPrivacy(next),
+      active: level != privacyPublic,
+      key: const Key("privacy-control"),
+    );
+  }
 
   Widget ratingButton(IconData icon, String tooltip, int value) => toolButton(
         icon,
@@ -1276,8 +1558,10 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     String tooltip,
     VoidCallback onPressed, {
     bool active = false,
+    Key? key,
   }) =>
       IconButton(
+        key: key,
         icon: Icon(icon),
         iconSize: 18,
         color: active ? Colors.amberAccent : Colors.white,
@@ -1306,6 +1590,13 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   void setRating(int value) => album.editImage(
         () => image.rating = toggleRating(image.rating, value),
       );
+
+  /// Sets the privacy level of this tile's album part.
+  ///
+  /// A group is set as a whole — it is one thing to a viewer, see
+  /// [setPrivacyOf].
+  void setPrivacy(int level) =>
+      album.editImage(() => setPrivacyOf(part, level));
 
   /// Makes this tile's image the album's index picture, see [indexPictureOf].
   void setIndexPicture() => album.editImage(

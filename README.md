@@ -16,7 +16,7 @@ photo cloud for a one-off investment.
   and videos; nest them any way you like. The server reads that tree and presents it as listings and
   albums with titles and dates derived from folder names and image metadata.
 - **Originals are never touched.** Everything you change in VAlbum — titles, captions, ratings,
-  rotation, grouping near-duplicate shots, section headings — is stored in an `index.json` sidecar
+  privacy levels, rotation, grouping near-duplicate shots, section headings — is stored in an `index.json` sidecar
   file next to your photos. No file of yours is ever modified, moved or deleted.
 - **One server, one app.** The server (`image-server/`) is a JSON API plus static hosting for the web
   build of the app; the app (`valbum_ui/`) is written in Flutter and runs on the web, Android, iOS,

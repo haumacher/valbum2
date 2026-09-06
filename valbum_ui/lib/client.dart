@@ -272,6 +272,53 @@ class VAlbumClient {
     return resource;
   }
 
+  /// The URL delivering the JSON representation of [path] as a caller of the
+  /// given clearance would receive it, see [loadPreview].
+  ///
+  /// `viewAs` can only *lower* the caller's own clearance, so it is safe for
+  /// anyone to send; the server decides what it answers with.
+  String previewUrl(List<String> path, String viewAs) =>
+      "${jsonUrl(path)}&viewAs=$viewAs";
+
+  /// Loads the resource at [path] as a caller of the clearance [viewAs]
+  /// (`"members"` or `"public"`) would receive it, see issue #46.
+  ///
+  /// This is the album author's preview of what the family or a share link
+  /// sees, and it deliberately does **not** touch the [cache]: the answer is a
+  /// *smaller* album than the one this device is entitled to, and writing it
+  /// through would make the next offline view of the album show the preview
+  /// instead of the album. For the same reason nothing is served from the
+  /// cache here — a preview that cannot be fetched is no preview, and the
+  /// reason is reported instead.
+  ///
+  /// A server refusing the request (an unknown value, a caller it does not
+  /// know) answers with its own reason, which is thrown as a
+  /// [VAlbumException] like any other refusal.
+  Future<Resource?> loadPreview(List<String> path, String viewAs) async {
+    var uri = previewUrl(path, viewAs);
+    if (kDebugMode) {
+      print("Fetching preview: $uri");
+    }
+    http.Response response;
+    try {
+      response = await _http
+          .get(Uri.parse(uri), headers: authHeaders)
+          .timeout(timeout);
+    } catch (error) {
+      if (!isTransportFailure(error)) {
+        rethrow;
+      }
+      throw VAlbumException(
+        "The server cannot be reached (${transportMessage(error)}), so there "
+        "is nothing to preview.",
+      );
+    }
+    if (response.statusCode != 200) {
+      throw failure(response.statusCode, response.body, "loading '$uri'");
+    }
+    return parseResource(response.body, uri);
+  }
+
   /// The resource in an answer of the server, never a raw parse failure.
   ///
   /// A status of 200 does not mean an album server answered: pointed at the

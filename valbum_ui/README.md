@@ -25,14 +25,15 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   `ImageWidgetBuilder` (turning the layout into widgets), `ThumbnailEditor`
   and the `AlbumPropertiesDialog`; the rating filter (`RatingFilterBar`, the
   `+`/`-` keys) and the per-tile overlay toolbars (rotate, flip, rating,
-  comment, heading).
+  privacy level, comment, heading), the privacy marker on restricted tiles and the "view as"
+  preview switch of the edit mode (a read-only look at the album as members or the public see it).
 - `lib/image_view.dart` — `ImageView`, the full-screen single image viewer
   (zoom, pan, swipe and keyboard navigation).
 - `lib/group_view.dart` — the "alternatives" view of an `ImageGroup`
   (`GroupView`, reached by the "down" chevron of the image viewer) and
   `GroupDetailView`, the viewer navigating within a group.
 - `lib/album_edit.dart` — widget-free editing logic: the orientation algebra
-  (`PlaneTransform`, `OrientationOps`), the rating filter, the selection
+  (`PlaneTransform`, `OrientationOps`), the rating filter, the privacy levels, the selection
   arithmetic behind the tile editor and the grouping operations
   (`groupSelection`, `ungroup`).
 - `lib/image_transform.dart` — the widget-free helpers of the viewer:
@@ -45,8 +46,10 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   of a group are linked among themselves, which is the order the alternatives
   view navigates in) and `thumbnailName`.
 - `lib/client.dart` — `VAlbumClient`, the one place that builds URLs and talks HTTP; injected via
-- `lib/settings.dart` — the server settings: URL, the sign-in (user name, pairing secret, device name) and who this device is signed in as (user, role, device, space); the settings store.
-  `VAlbumScope` so tests can pass a `MockClient`.
+  `VAlbumScope` so tests can pass a `MockClient`. `loadPreview` is the one load that bypasses the
+  offline cache: a "view as" preview is never the copy the app browses offline.
+- `lib/settings.dart` — the server settings: URL, the sign-in (user name, pairing secret, device
+  name) and who this device is signed in as (user, role, device, space); the settings store.
 - `lib/urls.dart` — derives the server URL from the page origin on the web
   (from the app base, not from the location: the location is the view, see
   `lib/routes.dart`).

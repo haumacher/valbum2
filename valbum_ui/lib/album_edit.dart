@@ -201,6 +201,63 @@ bool isVisiblePart(AlbumPart part, int minRating) =>
 List<AlbumPart> visibleParts(AlbumInfo album) =>
     album.parts.where((part) => isVisiblePart(part, album.minRating)).toList();
 
+/// The privacy level of an image that everyone may see, share links included.
+///
+/// The levels of issue #46: `0` public, `1` members, `2` private. The server
+/// filters what it sends by the caller's clearance; the app never filters by
+/// privacy itself, it only shows and edits the level.
+const int privacyPublic = 0;
+
+/// The privacy level of an image only signed-in members of the album may see.
+const int privacyMembers = 1;
+
+/// The privacy level of an image only the owner of the space may see.
+const int privacyPrivate = 2;
+
+/// The three [privacyPublic], [privacyMembers] and [privacyPrivate] levels,
+/// in the order the tile control cycles through them.
+const List<int> privacyLevels = [privacyPublic, privacyMembers, privacyPrivate];
+
+/// The name every view of the app calls the given privacy level by.
+///
+/// An unknown level (a server newer than this app) reads as [privacyPrivate]:
+/// a level the app does not know is never claimed to be public.
+String privacyName(int level) => switch (level) {
+      privacyPublic => "Public",
+      privacyMembers => "Members",
+      _ => "Private",
+    };
+
+/// The privacy level of the image representing the given album part.
+///
+/// For an [ImageGroup] this is the level of its representative — a group is
+/// one thing to a viewer, and [setPrivacyOf] keeps its members in step.
+int privacyOf(AlbumPart part) =>
+    part is AbstractImage ? ToImage.toImage(part).privacy : privacyPublic;
+
+/// The level the tile control shows after one tap on the level [level].
+///
+/// Public, members, private and around again, see [privacyLevels].
+int nextPrivacy(int level) {
+  var index = privacyLevels.indexOf(level);
+  return privacyLevels[index < 0 ? 0 : (index + 1) % privacyLevels.length];
+}
+
+/// Sets the privacy level of the given album part.
+///
+/// Every image of an [ImageGroup] is set: a group is one thing to a viewer, so
+/// a member left behind at a lower level would leak the group the moment the
+/// representative is hidden. A [Heading] has no level and is left alone.
+void setPrivacyOf(AlbumPart part, int level) {
+  if (part is ImageGroup) {
+    for (var image in part.images) {
+      image.privacy = level;
+    }
+  } else if (part is ImagePart) {
+    part.privacy = level;
+  }
+}
+
 /// The rating a tile has after its rating button for [value] was pressed.
 ///
 /// Pressing the active button resets the rating, as in the GWT client's
@@ -414,7 +471,8 @@ bool moveParts(
     // The cursor stands inside the block, see above: the nearest part before
     // it that stays where it is takes its place.
     predecessor = null;
-    for (var i = parts.indexWhere((p) => identical(p, displayedPredecessor)) - 1;
+    for (var i =
+            parts.indexWhere((p) => identical(p, displayedPredecessor)) - 1;
         i >= 0;
         i--) {
       if (!block.contains(parts[i])) {
