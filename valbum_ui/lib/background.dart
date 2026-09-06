@@ -52,6 +52,23 @@ const String backgroundSyncTaskName = "de.haumacher.valbum.cameraRollSync";
 /// silently raised to it. iOS ignores the value and decides for itself.
 const Duration backgroundSyncInterval = Duration(minutes: 15);
 
+/// What network the platform must see before it starts a background run.
+///
+/// The Wi-Fi-only switch of the sync ([CameraRollConfig.wifiOnly]) is not only
+/// a rule the run itself obeys — it is a constraint the platform can hold the
+/// wake-up back for, which saves starting the app just to refuse (issue #43).
+enum BackgroundNetwork {
+  /// Any network will do; a metered one included.
+  connected,
+
+  /// Only an unmetered network — what the Wi-Fi-only switch asks for.
+  unmetered;
+
+  /// The requirement of a sync configured with [wifiOnly].
+  static BackgroundNetwork of(bool wifiOnly) =>
+      wifiOnly ? unmetered : connected;
+}
+
 /// The platform's periodic background execution, behind an interface.
 ///
 /// Nothing here runs a sync — this only arranges *that* one is run while the
@@ -69,12 +86,18 @@ abstract class BackgroundScheduler {
   /// `false`; empty where there is nothing to explain.
   String get unavailableReason;
 
-  /// Registers the periodic task, doing nothing if it is already registered.
+  /// Registers the periodic task, updating the one that is there.
   ///
-  /// Called whenever the sync is switched on and once at every app start with
-  /// a switched-on configuration, so that an updated app registers the task
-  /// again — it must therefore be idempotent.
-  Future<void> schedule();
+  /// Called whenever the sync is switched on, whenever the Wi-Fi-only switch
+  /// is toggled while it is on, and once at every app start with a
+  /// switched-on configuration, so that an updated app registers the task
+  /// again — it must therefore be idempotent, and re-registering with another
+  /// [network] must replace the constraint instead of adding a second task.
+  ///
+  /// [network] is what the caller wants of the platform, not what it reads
+  /// from a configuration: the scheduler knows nothing about the sync, and a
+  /// test can therefore state the requirement it expects.
+  Future<void> schedule(BackgroundNetwork network);
 
   /// Removes the periodic task; the app stops syncing while it is closed.
   Future<void> cancel();
@@ -98,7 +121,7 @@ class UnavailableBackgroundScheduler extends BackgroundScheduler {
   bool get available => false;
 
   @override
-  Future<void> schedule() async {}
+  Future<void> schedule(BackgroundNetwork network) async {}
 
   @override
   Future<void> cancel() async {}
@@ -115,8 +138,15 @@ class FakeBackgroundScheduler extends BackgroundScheduler {
   @override
   final String unavailableReason;
 
+  /// The network requirement of every [schedule] call, in order.
+  final List<BackgroundNetwork> requests = [];
+
   /// The number of times [schedule] was called.
-  int scheduled = 0;
+  int get scheduled => requests.length;
+
+  /// What the last [schedule] call asked for, `null` before the first one.
+  BackgroundNetwork? get lastNetwork =>
+      requests.isEmpty ? null : requests.last;
 
   /// The number of times [cancel] was called.
   int cancelled = 0;
@@ -131,8 +161,8 @@ class FakeBackgroundScheduler extends BackgroundScheduler {
   });
 
   @override
-  Future<void> schedule() async {
-    scheduled++;
+  Future<void> schedule(BackgroundNetwork network) async {
+    requests.add(network);
     var failure = problem;
     if (failure != null) {
       throw failure;

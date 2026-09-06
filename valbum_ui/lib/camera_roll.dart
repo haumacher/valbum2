@@ -589,7 +589,7 @@ class CameraRollSync extends ChangeNotifier {
     }
     try {
       if (enabled) {
-        await scheduler.schedule();
+        await scheduler.schedule(BackgroundNetwork.of(_config.wifiOnly));
       } else {
         await scheduler.cancel();
       }
@@ -609,11 +609,21 @@ class CameraRollSync extends ChangeNotifier {
   /// Lifting it starts a run right away where one was refused for it: the user
   /// just said that a mobile connection is fine, and waiting a quarter of an
   /// hour for the periodic scan would look like nothing happened.
+  ///
+  /// The platform's periodic task carries the same limit as a constraint, so
+  /// a toggle re-registers it while the sync is on — otherwise the platform
+  /// would keep waking the app on a mobile connection only for the run to
+  /// refuse (issue #43). A switched-off sync has no task to re-register, and
+  /// registering one here would switch the background sync on behind the
+  /// user's back.
   Future<void> setWifiOnly(bool value) async {
     if (value == _config.wifiOnly) {
       return;
     }
     await _store(_config.copyWith(wifiOnly: value));
+    if (_config.enabled) {
+      await _arrangeBackground(true);
+    }
     if (!value && _config.enabled) {
       trigger();
     } else {
