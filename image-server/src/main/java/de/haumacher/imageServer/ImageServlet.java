@@ -4,6 +4,7 @@
 package de.haumacher.imageServer;
 
 
+import de.haumacher.imageServer.MoveService.MoveRefused;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.AuthService.Caller;
 import de.haumacher.imageServer.auth.AuthService.PairRefused;
@@ -14,6 +15,10 @@ import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.MoveName;
+import de.haumacher.imageServer.shared.model.MoveOutcome;
+import de.haumacher.imageServer.shared.model.MoveRequest;
+import de.haumacher.imageServer.shared.model.MoveResult;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.PresentFile;
@@ -487,6 +492,83 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Moves entries of the addressed folder into another folder, see issue #47.
+	 *
+	 * <p>
+	 * A move is a write: it is refused exactly as a PUT is when the caller may not write, and the
+	 * source and the target must both lie in the caller's space. Beyond that, the source folder
+	 * must grant the edit right and the target the contribute right; inside the own space both
+	 * always hold, and issue #49 will make them mean more, see
+	 * {@link AuthService#mayEdit(Caller, PathInfo)}.
+	 * </p>
+	 *
+	 * <p>
+	 * A refusal that concerns the request as a whole is an {@link ErrorInfo}; a refusal that
+	 * concerns one named entry is a {@link MoveOutcome#getMessage() message} in an otherwise
+	 * successful answer, because the other entries did move.
+	 * </p>
+	 */
+	private void moveEntries(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (!_auth.writeAllowed(caller)) {
+			unauthorized(context, caller, true);
+			return;
+		}
+
+		PathInfo source = resolve(context, caller);
+		if (source == null) {
+			return;
+		}
+
+		MoveRequest moveRequest;
+		try {
+			byte[] contents = readBody(context.request());
+			moveRequest = MoveRequest.readMoveRequest(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable move request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, MoveService.MOVE_UNREADABLE);
+			return;
+		}
+
+		Path root = _auth.spaceRoot(caller, _basePath);
+		PathInfo target;
+		String targetPath = moveRequest.getTarget();
+		if (targetPath == null || targetPath.isEmpty()) {
+			target = new PathInfo(root);
+		} else {
+			Path path = Paths.get(targetPath).normalize();
+			if (path.startsWith("..") || path.isAbsolute()) {
+				LOG.warning("Refusing the move target '" + targetPath + "': it leaves the caller's space.");
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, MoveService.TARGET_ESCAPED);
+				return;
+			}
+			target = path.toString().isEmpty() ? new PathInfo(root) : new PathInfo(root, path);
+		}
+
+		if (!_auth.mayEdit(caller, source)) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, MoveService.EDIT_REFUSED);
+			return;
+		}
+		if (!_auth.mayContribute(caller, target)) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, MoveService.CONTRIBUTE_REFUSED);
+			return;
+		}
+
+		List<String> names = moveRequest.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
+		MoveResult result;
+		try {
+			result = new MoveService(_basePath, _cache).move(source, target, names);
+		} catch (MoveRefused ex) {
+			LOG.warning("Refusing to move from '" + context.request().getPathInfo() + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
 	 * Answers which of the asked contents the addressed folder already holds.
 	 *
 	 * <p>
@@ -555,10 +637,12 @@ public class ImageServlet extends HttpServlet {
 	 * A file with the given name in the given folder that does not exist yet.
 	 *
 	 * <p>
-	 * A name clash is resolved by appending a number: nothing is ever overwritten.
+	 * A name clash is resolved by appending a number: nothing is ever overwritten. This is the one
+	 * naming rule of this server: a move that collides at its target renames exactly like an
+	 * upload does, see {@link MoveService}.
 	 * </p>
 	 */
-	private static File freeName(File folder, String fileName) {
+	static File freeName(File folder, String fileName) {
 		File targetFile = new File(folder, fileName);
 		if (!targetFile.exists()) {
 			return targetFile;
@@ -605,6 +689,10 @@ public class ImageServlet extends HttpServlet {
 		String action = context.getParameter("action");
 		if ("check".equals(action)) {
 			checkUploads(context);
+			return;
+		}
+		if ("move".equals(action)) {
+			moveEntries(context);
 			return;
 		}
 
@@ -709,7 +797,22 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		File directory = resourcePath.toFile();
+		storeSidecar(resourcePath.toFile(), contents);
+
+		// The next read must see what was just written, in the folder and in the listing above.
+		_cache.invalidate(resourcePath);
+	}
+
+	/**
+	 * Writes the given bytes as the <code>index.json</code> of the given folder.
+	 *
+	 * <p>
+	 * The one way a sidecar reaches the disk: a client's PUT and the album a move rewrites take
+	 * the same path, so there is only ever one sidecar format. A pre-existing sidecar is kept as a
+	 * timestamped backup and the new one appears by a rename, so a reader never sees half a file.
+	 * </p>
+	 */
+	static void storeSidecar(File directory, byte[] contents) throws IOException {
 		File indexFile = new File(directory, "index.json");
 
 		File tmpFile = File.createTempFile("index", ".json", directory);
@@ -722,9 +825,6 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		tmpFile.renameTo(indexFile);
-
-		// The next read must see what was just written, in the folder and in the listing above.
-		_cache.invalidate(resourcePath);
 
 		LOG.info("Stored folder resource: " + indexFile.getAbsolutePath());
 	}

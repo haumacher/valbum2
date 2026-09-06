@@ -1756,3 +1756,286 @@ class UploadedFile extends _JsonObject {
 
 }
 
+///  Request to move entries of one folder into another one, sent to
+///  <code>&lt;source folder&gt;/?action=move</code>.
+/// 
+///  <p>
+///  Moving is a rename: the pixels of an original are never touched, and everything the album knows
+///  about a moved image (rating, privacy level, comment, orientation) travels with it, see issue
+///  #47.
+///  </p>
+class MoveRequest extends _JsonObject {
+	///  The folder the named entries are moved into, as a path relative to the caller's space.
+	/// 
+	///  <p>
+	///  The empty string is the space root itself. A path leaving the caller's space is refused, as
+	///  it is on every other endpoint.
+	///  </p>
+	String target;
+
+	///  The entries of the addressed folder to move.
+	/// 
+	///  <p>
+	///  Either the {@link ImagePart#name} of an image or video file, or the name of a sub-folder (an
+	///  album or a folder of folders). Naming the representative of an {@link ImageGroup} moves the
+	///  whole group; naming another member of it takes only that member out of the group.
+	///  </p>
+	/// 
+	///  <p>
+	///  A list of messages, not a list of plain strings: the Dart backend of the model generator
+	///  mis-types a <code>repeated string</code> field, see {@link UploadCheck#hashes}.
+	///  </p>
+	List<MoveName> names;
+
+	/// Creates a MoveRequest.
+	MoveRequest({
+			this.target = "", 
+			this.names = const [], 
+	});
+
+	/// Parses a MoveRequest from a string source.
+	static MoveRequest? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a MoveRequest instance from the given reader.
+	static MoveRequest read(JsonReader json) {
+		MoveRequest result = MoveRequest();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "MoveRequest";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "target": {
+				target = json.expectString();
+				break;
+			}
+			case "names": {
+				json.expectArray();
+				names = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = MoveName.read(json);
+						if (value != null) {
+							names.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("target");
+		json.addString(target);
+
+		json.addKey("names");
+		json.startArray();
+		for (var _element in names) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  The name of a single entry to move, see {@link MoveRequest#names}.
+class MoveName extends _JsonObject {
+	///  The name of the entry in the source folder.
+	String name;
+
+	/// Creates a MoveName.
+	MoveName({
+			this.name = "", 
+	});
+
+	/// Parses a MoveName from a string source.
+	static MoveName? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a MoveName instance from the given reader.
+	static MoveName read(JsonReader json) {
+		MoveName result = MoveName();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "MoveName";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+	}
+
+}
+
+///  Answer to a {@link MoveRequest}: what happened to every name it asked for.
+/// 
+///  <p>
+///  A refusal that concerns a single entry is reported here, not as an error: the other entries did
+///  move. Only a request that could not be carried out at all (an unreadable body, a folder that
+///  does not exist, a caller that may not write) is answered with an {@link ErrorInfo}.
+///  </p>
+class MoveResult extends _JsonObject {
+	///  One entry per {@link MoveRequest#names}, in the order they were asked for.
+	List<MoveOutcome> outcomes;
+
+	/// Creates a MoveResult.
+	MoveResult({
+			this.outcomes = const [], 
+	});
+
+	/// Parses a MoveResult from a string source.
+	static MoveResult? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a MoveResult instance from the given reader.
+	static MoveResult read(JsonReader json) {
+		MoveResult result = MoveResult();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "MoveResult";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "outcomes": {
+				json.expectArray();
+				outcomes = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = MoveOutcome.read(json);
+						if (value != null) {
+							outcomes.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("outcomes");
+		json.startArray();
+		for (var _element in outcomes) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  What happened to a single entry of a {@link MoveRequest}.
+class MoveOutcome extends _JsonObject {
+	///  The name as it was asked for in {@link MoveRequest#names}.
+	String name;
+
+	///  The name the entry has in the target folder now, empty if it was not moved.
+	/// 
+	///  <p>
+	///  It differs from {@link #name} when the target folder already held that name with different
+	///  contents: the moved file is renamed exactly as a colliding upload is. When the target
+	///  already held the very same contents, this is the name of the file that has them there.
+	///  </p>
+	String newName;
+
+	///  Why the entry was not moved, or what happened to it besides being moved; empty when it moved
+	///  plainly.
+	/// 
+	///  <p>
+	///  Nothing declines silently: an entry that did not move always says why here.
+	///  </p>
+	String message;
+
+	/// Creates a MoveOutcome.
+	MoveOutcome({
+			this.name = "", 
+			this.newName = "", 
+			this.message = "", 
+	});
+
+	/// Parses a MoveOutcome from a string source.
+	static MoveOutcome? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a MoveOutcome instance from the given reader.
+	static MoveOutcome read(JsonReader json) {
+		MoveOutcome result = MoveOutcome();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "MoveOutcome";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "newName": {
+				newName = json.expectString();
+				break;
+			}
+			case "message": {
+				message = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("newName");
+		json.addString(newName);
+
+		json.addKey("message");
+		json.addString(message);
+	}
+
+}
+

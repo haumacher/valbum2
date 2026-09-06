@@ -140,6 +140,40 @@ public class ResourceCache {
 		return Loader.loadDirIndex(dir);
 	}
 
+	/**
+	 * Forgets what is cached for the given folder, for everything below it and for the folder
+	 * above it.
+	 *
+	 * <p>
+	 * What a folder move leaves behind: the moved folder is cached under its old path, and so is
+	 * every album inside it. Only the keys the cache actually holds are visited, so this costs
+	 * nothing on disk however deep the moved tree is, see
+	 * {@link de.haumacher.imageServer.MoveService}.
+	 * </p>
+	 */
+	public void invalidateTree(PathInfo pathInfo) {
+		String prefix = pathInfo.toFile().getAbsolutePath() + File.separator;
+		for (PathInfo key : new ArrayList<>(_cache.asMap().keySet())) {
+			if (key.toFile().getAbsolutePath().startsWith(prefix)) {
+				_cache.invalidate(key);
+			}
+		}
+		invalidate(pathInfo);
+	}
+
+	/**
+	 * The {@link AlbumInfo} a folder without a sidecar is described by.
+	 *
+	 * <p>
+	 * A move that carries the first images into a folder that had none must write that folder's
+	 * sidecar, and it must be the same one the loader would have made up, see
+	 * {@link de.haumacher.imageServer.MoveService}.
+	 * </p>
+	 */
+	public static AlbumInfo genericAlbum(PathInfo path) {
+		return Loader.createGenericAlbumInfo(path);
+	}
+
 	public Resource lookup(PathInfo pathInfo) {
 		_loader.processEvents(_cache);
 		if (pathInfo.toFile().isDirectory()) {
@@ -414,7 +448,7 @@ public class ResourceCache {
 			return album;
 		}
 
-		private static AlbumInfo createGenericAlbumInfo(PathInfo pathInfo) {
+		static AlbumInfo createGenericAlbumInfo(PathInfo pathInfo) {
 			AlbumInfo album = AlbumInfo.create();
 			String dirName = pathInfo.getName();
 

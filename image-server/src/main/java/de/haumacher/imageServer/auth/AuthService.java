@@ -281,6 +281,44 @@ public class AuthService {
 		return caller.isPaired();
 	}
 
+	/**
+	 * Whether the given caller may change what is in the folder at the given path, see issue #47.
+	 *
+	 * <p>
+	 * Every path is resolved against the caller's own space (see
+	 * {@link #spaceRoot(Caller, Path)}), so a caller that may write at all may edit everything it
+	 * can reach: this is the own space and nothing else. The method exists so that issue #49 has
+	 * one place to put the grant that opens somebody else's album — the servlet asks here and
+	 * never decides for itself.
+	 * </p>
+	 *
+	 * @param caller
+	 *        Who sent the request, see {@link #caller(HttpServletRequest)}.
+	 * @param path
+	 *        The folder being changed, already resolved against the caller's space.
+	 */
+	public boolean mayEdit(Caller caller, PathInfo path) {
+		return writeAllowed(caller);
+	}
+
+	/**
+	 * Whether the given caller may add entries to the folder at the given path, see issue #47.
+	 *
+	 * <p>
+	 * Contributing is the weaker of the two rights: with issue #49 a member may add photos to a
+	 * shared event album without being allowed to rearrange it. Inside the own space the two
+	 * coincide, so this is {@link #mayEdit(Caller, PathInfo)} until that issue separates them.
+	 * </p>
+	 *
+	 * @param caller
+	 *        Who sent the request, see {@link #caller(HttpServletRequest)}.
+	 * @param path
+	 *        The folder being added to, already resolved against the caller's space.
+	 */
+	public boolean mayContribute(Caller caller, PathInfo path) {
+		return mayEdit(caller, path);
+	}
+
 	/** Why the given caller is refused, ready to be shown to the user. */
 	public String refusal(Caller caller, boolean write) {
 		String own = caller.getRefusal();

@@ -218,7 +218,7 @@ public class PrivacyFilter {
 	}
 
 	/** The image shown first in the given album, <code>null</code> if it shows none. */
-	private static ImagePart firstImage(AlbumInfo album) {
+	static ImagePart firstImage(AlbumInfo album) {
 		for (AlbumPart part : album.getParts()) {
 			if (part instanceof ImagePart) {
 				return (ImagePart) part;
@@ -241,7 +241,7 @@ public class PrivacyFilter {
 	 * for a folder without a sidecar (see <code>ResourceCache.Loader#loadFolderInfo</code>): the
 	 * image is scaled to fill the square tile and a portrait image is shifted to its top.
 	 */
-	private static ThumbnailInfo thumbnail(ImagePart image) {
+	static ThumbnailInfo thumbnail(ImagePart image) {
 		double width = image.getWidth();
 		double height = image.getHeight();
 		double scale;

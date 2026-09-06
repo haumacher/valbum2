@@ -17,7 +17,10 @@ photo cloud for a one-off investment.
   albums with titles and dates derived from folder names and image metadata.
 - **Originals are never touched.** Everything you change in VAlbum — titles, captions, ratings,
   privacy levels, rotation, grouping near-duplicate shots, section headings — is stored in an `index.json` sidecar
-  file next to your photos. No file of yours is ever modified, moved or deleted.
+  file next to your photos. No file of yours is ever modified or deleted; the only thing the server
+  does to a photo is rename it when you move it to another album (or migrate the library into your
+  space), and a photo that a move finds already present at its target is set aside in
+  `.valbum/duplicates/`, never removed.
 - **One server, one app.** The server (`image-server/`) is a JSON API plus static hosting for the web
   build of the app; the app (`valbum_ui/`) is written in Flutter and runs on the web, Android, iOS,
   Linux, Windows and macOS.
@@ -87,8 +90,9 @@ A paired device belongs to a user. The pairing secret signs in the **library own
 the first sign-in that gives a user name names the owner, later sign-ins with the secret use that
 name or none. Users, their role and their devices are kept in `<basepath>/.valbum/users.json`,
 which holds a hash of every issued token, never the token itself; a `devices.json` written by an
-older server is taken over on first start and kept as `devices.json.migrated`. Nothing else is ever
-written outside the `index.json` sidecars.
+older server is taken over on first start and kept as `devices.json.migrated`. Besides the
+`index.json` sidecars and the per-folder `.hashes.json` of the upload, `.valbum/` is the only place
+the server writes.
 
 Every user owns one top-level folder under the base folder, their *space*, and sees the library
 rooted there. The owner's space is the base folder itself until you migrate the library once,
@@ -103,6 +107,18 @@ by a plain rename (sidecars and preview caches ride along), records the folder a
 and exits. It is refused, with nothing moved, if the owner already has a space, the target folder
 is not empty, or the name is not a valid folder name. Once the library is migrated, anonymous
 callers are refused in every mode but `off`, because the base folder then holds only user spaces.
+
+### Moving images and albums
+
+In edit mode, a selection of images can be moved to another album, and an album or folder to
+another folder: `POST <data>/<source folder>/?action=move` with the target folder and the names to
+move. A move is a rename on the same file system — the pixels are never touched — and the image's
+rating, privacy level, comment and orientation move with it into the target album's `index.json`,
+as does its entry in `.hashes.json`, so the upload de-duplication keeps working. Moving a group's
+representative moves the whole group. A name already taken at the target is resolved as an upload
+would (the moved file gets a free name); a photo the target already holds with identical content is
+set aside in `.valbum/duplicates/`, never deleted. Every name gets an outcome: its new name, or the
+reason it was not moved. Nothing is ever overwritten.
 
 ### Privacy levels
 
