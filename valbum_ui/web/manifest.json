@@ -1,11 +1,11 @@
 {
-    "name": "valbum_ui",
-    "short_name": "valbum_ui",
+    "name": "Virtual Photo Album",
+    "short_name": "VAlbum",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Virtual Photo Album Viewer",
+    "description": "Virtual Photo Album",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
