@@ -79,6 +79,19 @@ public class ResourceCache {
 	}
 
 	/**
+	 * Releases the directory watcher this cache holds.
+	 *
+	 * <p>
+	 * A watcher is an operating-system resource (an <code>inotify</code> instance on Linux) and
+	 * the system grants only a limited number of them, so a cache that is dropped must give its
+	 * own back, see {@link de.haumacher.imageServer.ImageServlet#destroy()}.
+	 * </p>
+	 */
+	public void close() throws IOException {
+		_loader.close();
+	}
+
+	/**
 	 * Whether the given {@link File} is a supported image or video file.
 	 */
 	public static boolean isImage(File file) {
@@ -111,6 +124,20 @@ public class ResourceCache {
 		if (!pathInfo.isRoot()) {
 			cache.invalidate(pathInfo.parent());
 		}
+	}
+
+	/**
+	 * The <code>index.json</code> of the given folder, <code>null</code> if it has none or it
+	 * cannot be read.
+	 *
+	 * <p>
+	 * This is the cheap look into a folder: it reads the sidecar and nothing else, no image file
+	 * is opened and nothing is cached. The privacy filter of issue #46 uses it to learn whether a
+	 * folder's index picture is one the caller may see, without loading every album of a listing.
+	 * </p>
+	 */
+	public static FolderResource sidecar(File dir) {
+		return Loader.loadDirIndex(dir);
 	}
 
 	public Resource lookup(PathInfo pathInfo) {
@@ -147,6 +174,11 @@ public class ResourceCache {
 			} else {
 				throw new UnsupportedOperationException("Not a directory: " + pathInfo);
 			}
+		}
+
+		/** Releases the directory watcher, see {@link ResourceCache#close()}. */
+		void close() throws IOException {
+			_watcher.close();
 		}
 
 		public void processEvents(LoadingCache<PathInfo, Resource> cache) {

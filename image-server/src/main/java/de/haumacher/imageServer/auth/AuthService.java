@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.auth;
 
+import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.auth.UserStore.Login;
 import de.haumacher.imageServer.auth.UserStore.User;
 import de.haumacher.imageServer.shared.model.AuthInfo;
@@ -315,6 +316,45 @@ public class AuthService {
 			}
 		}
 		return root;
+	}
+
+	/**
+	 * How much of the images at the given path the given caller may see, see {@link Privacy}.
+	 *
+	 * <p>
+	 * The clearance is computed from who the caller is and where the path lies, nothing else. It
+	 * is the single place that decides visibility; the servlet only compares it with the
+	 * {@link de.haumacher.imageServer.shared.model.ImagePart#getPrivacy() privacy} of an image.
+	 * </p>
+	 *
+	 * <ul>
+	 * <li>An anonymous caller has {@link Privacy#PUBLIC} clearance, so the single-user library of
+	 * mode {@link AuthMode#WRITES} keeps working on the home network, minus its restricted
+	 * images.</li>
+	 * <li>The owner of the space the path lies in has {@link Privacy#PRIVATE} clearance. Since
+	 * issue #45 resolves every path against the caller's own space (see
+	 * {@link #spaceRoot(Caller, Path)}), a signed-in caller only ever reaches paths in the space
+	 * they own, so being signed in is what makes the owner here.</li>
+	 * <li>Issue #49 adds the third case: a signed-in caller reaching a path through a grant on
+	 * somebody else's album has {@link Privacy#MEMBERS} clearance. That is a case of this method
+	 * — the path says whose space it is — and needs no change in the servlet.</li>
+	 * <li>Mode {@link AuthMode#OFF} knows no users at all: everything is visible, as before issue
+	 * #46.</li>
+	 * </ul>
+	 *
+	 * @param caller
+	 *        Who sent the request, see {@link #caller(HttpServletRequest)}.
+	 * @param path
+	 *        The resource being read, already resolved against the caller's space.
+	 */
+	public int clearance(Caller caller, PathInfo path) {
+		if (_mode == AuthMode.OFF) {
+			return Privacy.PRIVATE;
+		}
+		if (!caller.isPaired()) {
+			return Privacy.PUBLIC;
+		}
+		return Privacy.PRIVATE;
 	}
 
 	/** What the given caller is allowed to do, see {@link AuthInfo}. */

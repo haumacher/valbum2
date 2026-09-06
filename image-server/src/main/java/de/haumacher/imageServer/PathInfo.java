@@ -6,6 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.shared.model.Resource;
 import java.io.File;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
  * A path of a {@link Resource} being accessed.
@@ -62,6 +63,18 @@ public class PathInfo {
 	 */
 	public PathInfo parent() {
 		return new PathInfo(_basePath, _path.getParent());
+	}
+
+	/**
+	 * The path of the entry with the given name in this folder.
+	 *
+	 * <p>
+	 * The child keeps this path's base folder, so that it is the same {@link PathInfo} the servlet
+	 * would build for a request addressing it, cache key and parent relation included.
+	 * </p>
+	 */
+	public PathInfo child(String name) {
+		return new PathInfo(_basePath, _path == null ? Paths.get(name) : _path.resolve(name));
 	}
 
 	/**

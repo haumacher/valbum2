@@ -7,6 +7,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.AuthService.Caller;
 import de.haumacher.imageServer.auth.AuthService.PairRefused;
+import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -87,12 +88,31 @@ public class ImageServlet extends HttpServlet {
 	/** The message an unreadable upload check is refused with. */
 	public static final String CHECK_UNREADABLE = "The upload check cannot be read.";
 
+	/**
+	 * The message a request for an image above the caller's clearance is refused with, see issue
+	 * #46.
+	 *
+	 * <p>
+	 * The refusal names no privacy level: that the image exists is already visible from the path,
+	 * but how far it is restricted is not the caller's business. It is a refusal, never a
+	 * <code>404</code>: nothing here lies about what is there.
+	 * </p>
+	 */
+	public static final String IMAGE_REFUSED =
+		"This image is not available to you. Signing in may give access to it.";
+
+	/** The message a request with an unknown <code>viewAs</code> value is refused with. */
+	public static final String VIEW_AS_REFUSED =
+		"Unknown 'viewAs' value; use 'public' or 'members'.";
+
 	static {
 		LOG.info("Loading: " + ExifReaderPatch.class);
 	}
 
 	private Path _basePath;
 	private ResourceCache _cache;
+
+	private PrivacyFilter _privacy;
 
 	private JakartaServletFileUpload<UploadItem, UploadFactory> _fileUpload;
 
@@ -116,6 +136,7 @@ public class ImageServlet extends HttpServlet {
 	public ImageServlet(File basePath, AuthService auth) throws IOException {
 		_basePath = basePath.toPath();
 		_cache = new ResourceCache();
+		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
 	}
 
@@ -127,6 +148,24 @@ public class ImageServlet extends HttpServlet {
 		repository.mkdirs();
 
 		_fileUpload = new JakartaServletFileUpload<UploadItem, UploadFactory>(new UploadFactory(repository));
+	}
+
+	/**
+	 * Gives the directory watcher of the {@link ResourceCache} back to the operating system.
+	 *
+	 * <p>
+	 * A server holds one servlet and one cache, but a test builds many; without this, every one of
+	 * them would keep an <code>inotify</code> instance until the process ends.
+	 * </p>
+	 */
+	@Override
+	public void destroy() {
+		try {
+			_cache.close();
+		} catch (IOException ex) {
+			LOG.log(Level.WARNING, "Cannot close the resource cache: " + ex.getMessage(), ex);
+		}
+		super.destroy();
 	}
 
 	@Override
@@ -144,6 +183,15 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (!_auth.readAllowed(caller)) {
 			unauthorized(context, caller, false);
+			return;
+		}
+
+		int viewAs;
+		try {
+			viewAs = Privacy.viewAs(context.getParameter(Privacy.VIEW_AS_PARAMETER));
+		} catch (IllegalArgumentException ex) {
+			LOG.warning("Rejecting the unknown 'viewAs' value '" + ex.getMessage() + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, VIEW_AS_REFUSED);
 			return;
 		}
 
@@ -172,24 +220,33 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
+		// "View as" only ever lowers: it is safe for anybody to send, see Privacy#viewAs(String).
+		int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
+
 		if (file.isDirectory()) {
+			// The "view as" of the request survives the redirect, or the preview would jump back.
+			String query = "/?type=" + type + viewAsQuery(context);
 			if (pathInfo == null) {
-				String location = request.getContextPath() + request.getServletPath() + "/?type=" + type;
-				sendRedirect(response, location);
+				sendRedirect(response, request.getContextPath() + request.getServletPath() + query);
 				return;
 			}
 			if (!pathInfo.endsWith("/")) {
-				String location = request.getContextPath() + request.getServletPath() + pathInfo + "/?type=" + type;
-				sendRedirect(response, location);
+				sendRedirect(response, request.getContextPath() + request.getServletPath() + pathInfo + query);
 				return;
 			}
 
-			serveFolder(context, resourcePath);
+			serveFolder(context, resourcePath, clearance);
 		} else if (ResourceCache.isImage(file)) {
-			serveImage(context, resourcePath);
+			serveImage(context, resourcePath, caller, clearance);
 		} else {
 			error404(context);
 		}
+	}
+
+	/** The <code>viewAs</code> parameter of the current request, ready to be appended to a URL. */
+	private static String viewAsQuery(Context context) {
+		String value = context.getParameter(Privacy.VIEW_AS_PARAMETER);
+		return value == null ? "" : "&" + Privacy.VIEW_AS_PARAMETER + "=" + value;
 	}
 
 	private void sendRedirect(HttpServletResponse response, String location) throws IOException {
@@ -715,16 +772,37 @@ public class ImageServlet extends HttpServlet {
 		return true;
 	}
 
-	private void serveFolder(Context context, PathInfo pathInfo) throws IOException {
+	/**
+	 * Delivers the description of a folder, filtered to what the request may see.
+	 *
+	 * <p>
+	 * The cache keeps the folder as it is on disk; only the answer is filtered, see
+	 * {@link PrivacyFilter}.
+	 * </p>
+	 */
+	private void serveFolder(Context context, PathInfo pathInfo, int clearance) throws IOException {
 		Resource resource = _cache.lookup(pathInfo);
 		if (jsonRequested(context)) {
-			serveJson(context.response(), resource);
+			serveJson(context.response(), _privacy.filter(resource, pathInfo, clearance));
 		} else {
 			error404(context);
 		}
 	}
 
-	private void serveImage(Context context, PathInfo pathInfo) throws IOException {
+	/**
+	 * Delivers an image: its description, its thumbnail or the original.
+	 *
+	 * <p>
+	 * A path is not a permission: an image above the request's clearance is refused here, whichever
+	 * of the three is asked for, see {@link #imageRefused(Context, Caller)}.
+	 * </p>
+	 */
+	private void serveImage(Context context, PathInfo pathInfo, Caller caller, int clearance) throws IOException {
+		if (!visible(pathInfo, clearance)) {
+			imageRefused(context, caller);
+			return;
+		}
+
 		if (jsonRequested(context)) {
 			Resource resource = _cache.lookup(pathInfo);
 			serveJson(context.response(), resource);
@@ -749,6 +827,41 @@ public class ImageServlet extends HttpServlet {
 
 				serveData(context, pathInfo.toFile(), mimeType);
 			}
+		}
+	}
+
+	/**
+	 * Whether the image at the given path may be shown to a request with the given clearance.
+	 *
+	 * <p>
+	 * An image file the album model does not describe (its analysis failed, say) carries no
+	 * privacy level and is {@link Privacy#PUBLIC}, exactly as one that was never edited.
+	 * </p>
+	 */
+	private boolean visible(PathInfo pathInfo, int clearance) {
+		Resource resource = _cache.lookup(pathInfo);
+		if (!(resource instanceof ImagePart)) {
+			return true;
+		}
+		return Privacy.visible(((ImagePart) resource).getPrivacy(), clearance);
+	}
+
+	/**
+	 * Refuses a request for an image the caller may not see, see {@link #IMAGE_REFUSED}.
+	 *
+	 * <p>
+	 * An anonymous caller is answered with <code>401</code> and the challenge that says how to get
+	 * further; a signed-in caller with <code>403</code>, because signing in again would not help
+	 * (that is also what the "view as" preview of the owner's own album produces).
+	 * </p>
+	 */
+	private static void imageRefused(Context context, Caller caller) throws IOException {
+		LOG.warning("Refusing the image '" + context.request().getPathInfo() + "': above the caller's clearance.");
+		if (caller.isPaired()) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, IMAGE_REFUSED);
+		} else {
+			context.response().setHeader("WWW-Authenticate", "Bearer");
+			errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, IMAGE_REFUSED);
 		}
 	}
 

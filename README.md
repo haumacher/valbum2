@@ -104,6 +104,19 @@ and exits. It is refused, with nothing moved, if the owner already has a space, 
 is not empty, or the name is not a valid folder name. Once the library is migrated, anonymous
 callers are refused in every mode but `off`, because the base folder then holds only user spaces.
 
+### Privacy levels
+
+Every image has a privacy level, set on its tile in the app: **public** (0), **members** (1) or
+**private** (2). The server enforces it on the way out: a listing omits what the caller may not
+see, and the image, thumbnail and preview endpoints refuse such an image with a message (401 for an
+anonymous caller, 403 for a signed-in one). The owner of a space sees everything in it; an
+anonymous caller in `--auth writes` mode sees only public images, so a single-user library on a home
+network keeps working minus its restricted photos; `--auth off` shows everything to everyone. A
+group whose representative is hidden is shown by its best visible member, and an album whose cover
+is hidden gets its first visible image as cover. `?viewAs=public` or `?viewAs=members` on a request
+lowers the caller's own clearance for that request (it can never raise it) — the app's "view as"
+switch uses it. Nothing is written: the sidecars keep every image at its level.
+
 Open `http://localhost:8080/` (or your context path) in a browser. The JSON API is available under
 `/data/`, for example `http://localhost:8080/data/?type=json`.
 
