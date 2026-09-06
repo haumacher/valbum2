@@ -39,13 +39,23 @@ class AlbumContent extends StatefulWidget {
 }
 
 class AlbumContentState extends State<AlbumContent> {
-  bool editMode = false;
+  /// The edit in progress: the mode, the selection and the click anchor.
+  ///
+  /// It lives with the router, not with this widget, so that a trip into an
+  /// image or into the alternatives of a group and back finds the album still
+  /// being edited, see [AlbumEditSession].
+  AlbumEditSession get session =>
+      widget.albumState.navigator.delegate.editSession(widget.albumState.path);
+
+  bool get editMode => session.editMode;
+  set editMode(bool value) => session.editMode = value;
 
   /// The selected album parts (an [ImageGroup] is selected as a whole).
-  final Set<AlbumPart> selection = {};
+  Set<AlbumPart> get selection => session.selection;
 
   /// The part clicked last, the anchor of a shift-click range selection.
-  AlbumPart? lastClicked;
+  AlbumPart? get lastClicked => session.lastClicked;
+  set lastClicked(AlbumPart? value) => session.lastClicked = value;
 
   /// The orientation each image had when the album was laid out.
   ///
@@ -927,12 +937,20 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         toolButton(Icons.join_left, "Gruppieren", createGroup)
       else ...[
         toolButton(Icons.title, "Überschrift einfügen", createHeading),
-        if (self is ImageGroup)
+        if (self is ImageGroup) ...[
           toolButton(
             Icons.call_split,
             "Gruppierung aufheben",
             () => album.ungroupSelected(self),
           ),
+          // Into the alternatives to pick the representative: the edit mode
+          // stays on for the way back, see [AlbumEditSession].
+          toolButton(
+            Icons.collections,
+            "Gruppenbild wählen",
+            () => album.widget.albumState.showGroupView(self),
+          ),
+        ],
       ],
       toolButton(Icons.notes, "Bildeigenschaften", editImageProperties),
     ]);

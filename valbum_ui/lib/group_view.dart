@@ -95,13 +95,33 @@ class GroupView extends StatelessWidget {
     var self = layouter.ToImage.toImage(image);
     return GestureDetector(
       onTap: () => showDetail(context, self),
-      child: thumbnail(
-        client,
-        "$baseUrl/${self.name}",
-        key: ValueKey("group-tile-${self.name}"),
-        width: width,
-        height: height,
-        fit: BoxFit.contain,
+      child: Stack(
+        children: [
+          thumbnail(
+            client,
+            "$baseUrl/${self.name}",
+            key: ValueKey("group-tile-${self.name}"),
+            width: width,
+            height: height,
+            fit: BoxFit.contain,
+          ),
+          // The representative stands out, so that the choice can be checked
+          // here, where all alternatives are seen side by side.
+          if (identical(group.images[group.representative], self))
+            const Positioned(
+              right: 8,
+              top: 8,
+              child: Tooltip(
+                message: "Gruppenbild",
+                child: Icon(
+                  Icons.check_circle,
+                  key: Key("group-representative"),
+                  color: Colors.amberAccent,
+                  shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -123,6 +143,17 @@ class GroupDetailView extends StatelessWidget {
   /// Leaves the detail view, back to the alternatives.
   final VoidCallback onUp;
 
+  /// Whether [image] is the one representing its group in the album.
+  final bool isRepresentative;
+
+  /// Makes [image] the representative of its group; `null` outside the edit
+  /// mode of the album, where the choice is not offered.
+  ///
+  /// Deciding which of several shots of one scene is the best is what the
+  /// detail view is for: the shots are compared full-screen, one after the
+  /// other, and the winner is picked where it is seen.
+  final VoidCallback? onSetRepresentative;
+
   const GroupDetailView({
     super.key,
     required this.client,
@@ -130,17 +161,33 @@ class GroupDetailView extends StatelessWidget {
     required this.image,
     required this.onShowImage,
     required this.onUp,
+    this.isRepresentative = false,
+    this.onSetRepresentative,
   });
 
   @override
-  Widget build(BuildContext context) => ImageView(
-        client: client,
-        baseUrl: baseUrl,
-        image: image,
-        onShowImage: onShowImage,
-        onUp: onUp,
-        // No "down" out of the detail view, and no rating filter: the group
-        // shows all of its alternatives.
-        minRating: noMinRating,
-      );
+  Widget build(BuildContext context) {
+    var onSetRepresentative = this.onSetRepresentative;
+    return ImageView(
+      client: client,
+      baseUrl: baseUrl,
+      image: image,
+      onShowImage: onShowImage,
+      onUp: onUp,
+      // No "down" out of the detail view, and no rating filter: the group
+      // shows all of its alternatives.
+      minRating: noMinRating,
+      actions: [
+        if (onSetRepresentative != null)
+          imageOverlayButton(
+            isRepresentative ? Icons.check_circle : Icons.check_circle_outline,
+            isRepresentative
+                ? "Dieses Bild ist das Gruppenbild"
+                : "Als Gruppenbild verwenden",
+            onSetRepresentative,
+            color: isRepresentative ? Colors.amberAccent : Colors.white,
+          ),
+      ],
+    );
+  }
 }

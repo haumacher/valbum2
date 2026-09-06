@@ -475,6 +475,9 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// The scroll offset of every album path visited, see [scrollOffset].
   final Map<String, double> _scrollOffsets = {};
 
+  /// The edit session of every album being edited, see [editSession].
+  final Map<String, AlbumEditSession> _editSessions = {};
+
   VAlbumRoute _route;
 
   /// Incremented by [reload], so that the view re-runs its load.
@@ -501,6 +504,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     _client = value;
     _resources.clear();
     _scrollOffsets.clear();
+    _editSessions.clear();
     _version++;
     notifyListeners();
   }
@@ -567,6 +571,17 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// returning to it shows the same part of the page again.
   void rememberScrollOffset(List<String> path, double offset) =>
       _scrollOffsets[_pathKey(path)] = offset;
+
+  /// The edit session of the album at [path].
+  ///
+  /// The album view enters and leaves the edit mode here, not in a widget of
+  /// its own: descending from the album into one of its images (or into the
+  /// alternatives of a group, to pick the group's representative) disposes
+  /// the album view, and the edit — the mode, the selection, the unsaved
+  /// changes to the cached model — must survive the trip and be there when
+  /// the way up leads back to the album.
+  AlbumEditSession editSession(List<String> path) =>
+      _editSessions.putIfAbsent(_pathKey(path), AlbumEditSession.new);
 
   static String _pathKey(List<String> path) => path.join("/");
 
@@ -879,6 +894,7 @@ class VAlbumState extends State<VAlbumView>
       return buildMessage("No such image: $memberName");
     }
     var member = members.first;
+    var editing = navigator.delegate.editSession(path).editMode;
     return GroupDetailView(
       client: client,
       baseUrl: baseUrl,
@@ -887,6 +903,14 @@ class VAlbumState extends State<VAlbumView>
       onShowImage: (next) => navigator.go(
         MemberRoute(path, name, next.thumbnailName),
       ),
+      isRepresentative: identical(group.images[group.representative], member),
+      // Picking the representative is an edit of the album, saved with the
+      // other edits from the album view the edit mode was entered in.
+      onSetRepresentative: editing
+          ? () => setState(() {
+                group.representative = group.images.indexOf(member);
+              })
+          : null,
     );
   }
 
@@ -1090,6 +1114,19 @@ class VAlbumState extends State<VAlbumView>
 
   /// Shows the listing containing the displayed one.
   void showParent() => navigator.up();
+}
+
+/// The state of editing one album, kept by the [VAlbumRouterDelegate] across
+/// the views of the album, see [VAlbumRouterDelegate.editSession].
+class AlbumEditSession {
+  /// Whether the album is in the edit mode.
+  bool editMode = false;
+
+  /// The selected album parts (an [ImageGroup] is selected as a whole).
+  final Set<AlbumPart> selection = {};
+
+  /// The part clicked last, the anchor of a shift-click range selection.
+  AlbumPart? lastClicked;
 }
 
 /// Restores the scroll offset the listing or album at [path] was left with.

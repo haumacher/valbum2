@@ -49,6 +49,10 @@ class ImageView extends StatefulWidget {
   /// Defaults to the [AlbumInfo.minRating] of the album owning the image.
   final int? minRating;
 
+  /// Further controls floating over the image at the top right, such as the
+  /// [GroupDetailView]'s choice of the group's representative.
+  final List<Widget> actions;
+
   const ImageView({
     super.key,
     required this.client,
@@ -58,6 +62,7 @@ class ImageView extends StatefulWidget {
     this.onShowGroup,
     this.onUp,
     this.minRating,
+    this.actions = const [],
   });
 
   @override
@@ -332,6 +337,12 @@ class ImageViewState extends State<ImageView> {
             ),
           ),
         ),
+      if (widget.actions.isNotEmpty)
+        Positioned(
+          right: 8,
+          top: 8,
+          child: Row(mainAxisSize: MainAxisSize.min, children: widget.actions),
+        ),
       if (group != null && widget.onShowGroup != null)
         Positioned(
           left: 0,
@@ -356,14 +367,7 @@ class ImageViewState extends State<ImageView> {
   }
 
   Widget overlayButton(IconData icon, String tooltip, VoidCallback onPressed) =>
-      IconButton(
-        icon: Icon(icon),
-        iconSize: 32,
-        color: Colors.white,
-        tooltip: tooltip,
-        style: IconButton.styleFrom(backgroundColor: Colors.black38),
-        onPressed: onPressed,
-      );
+      imageOverlayButton(icon, tooltip, onPressed);
 
   /// The comment of the image, one [Text] per paragraph.
   Widget buildComment(String comment) => Container(
@@ -415,3 +419,19 @@ class ImageViewState extends State<ImageView> {
     }
   }
 }
+
+/// A button floating over the image of an [ImageView].
+Widget imageOverlayButton(
+  IconData icon,
+  String tooltip,
+  VoidCallback onPressed, {
+  Color color = Colors.white,
+}) =>
+    IconButton(
+      icon: Icon(icon),
+      iconSize: 32,
+      color: color,
+      tooltip: tooltip,
+      style: IconButton.styleFrom(backgroundColor: Colors.black38),
+      onPressed: onPressed,
+    );
