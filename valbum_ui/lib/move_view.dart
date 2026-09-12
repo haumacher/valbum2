@@ -104,13 +104,7 @@ Future<void> moveWithPicker({
     result = await client.move(source, targetPath(target), names);
   } catch (error) {
     // The server's own reason, as every other refused write shows it.
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(error is VAlbumException ? error.message : "$error"),
-        backgroundColor: Colors.red.shade700,
-        duration: const Duration(seconds: 8),
-      ),
-    );
+    showRefusal(messenger, error);
     return;
   }
 
@@ -119,17 +113,56 @@ Future<void> moveWithPicker({
   // the server now holds.
   onMoved();
 
-  var refused = [
-    for (var outcome in result.outcomes)
-      if (outcome.message.isNotEmpty) outcome,
-  ];
-  var movedCount = result.outcomes.length - refused.length;
+  var movedCount = result.outcomes.length - refusedOutcomes(result).length;
   var summary = movedCount == 0
       ? "Nothing moved to ${targetLabel(target)}."
       : "Moved ${subject.moved(movedCount)} to ${targetLabel(target)}.";
 
-  if (refused.isEmpty) {
+  if (!context.mounted) {
+    // The view the move was started from is gone: the summary still reaches
+    // the messenger, the dialog listing the refusals has nowhere to open.
     messenger.showSnackBar(
+      SnackBar(content: Text(summary), duration: const Duration(seconds: 6)),
+    );
+    return;
+  }
+  await reportOutcomes(
+    context: context,
+    messenger: messenger,
+    title: "Move",
+    summary: summary,
+    result: result,
+  );
+}
+
+/// The entries the server did not move: a [MoveOutcome] carrying a message is
+/// one that stayed where it was, and says why.
+List<MoveOutcome> refusedOutcomes(MoveResult result) => [
+      for (var outcome in result.outcomes)
+        if (outcome.message.isNotEmpty) outcome,
+    ];
+
+/// Reads out what the server did with the entries of a [MoveResult].
+///
+/// A snack bar with [summary] when everything went through, a dialog listing
+/// the server's own reason for every entry that stayed otherwise — a refusal
+/// is never missed, and never paraphrased. Shared by the move of issue #47 and
+/// the "Apply rule" of issue #48, which differ only in their wording.
+///
+/// [messenger] is the messenger of the view that started the action, taken
+/// before it was left; it defaults to the one of [context].
+Future<void> reportOutcomes({
+  required BuildContext context,
+  required String title,
+  required String summary,
+  required MoveResult result,
+  ScaffoldMessengerState? messenger,
+}) async {
+  var target = messenger ?? ScaffoldMessenger.of(context);
+  var refused = refusedOutcomes(result);
+
+  if (refused.isEmpty) {
+    target.showSnackBar(
       SnackBar(content: Text(summary), duration: const Duration(seconds: 6)),
     );
     return;
@@ -142,7 +175,7 @@ Future<void> moveWithPicker({
     context: context,
     builder: (context) => AlertDialog(
       key: const Key("move-outcome"),
-      title: const Text("Move"),
+      title: Text(title),
       content: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -168,6 +201,17 @@ Future<void> moveWithPicker({
     ),
   );
 }
+
+/// Shows the server's own reason for a refused write, as every refused write
+/// is shown.
+void showRefusal(ScaffoldMessengerState messenger, Object error) =>
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(error is VAlbumException ? error.message : "$error"),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 8),
+      ),
+    );
 
 void _say(BuildContext context, String message) =>
     ScaffoldMessenger.of(context).showSnackBar(

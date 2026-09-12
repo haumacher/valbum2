@@ -1129,6 +1129,13 @@ class VAlbumState extends State<VAlbumView>
   void showElement(String name) =>
       navigator.go(ListingOrAlbumRoute([...path, name]));
 
+  /// Shows the listing or album at the given path.
+  ///
+  /// The path is relative to the root of the caller's space, not to the view
+  /// currently shown: an album created in a folder with a placement rule is
+  /// filed somewhere else entirely, and the server says where, see issue #48.
+  void showPath(List<String> path) => navigator.go(ListingOrAlbumRoute(path));
+
   /// Shows the root listing.
   void showRoot() => navigator.home();
 

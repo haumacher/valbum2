@@ -5,6 +5,7 @@ import 'package:date_field/date_field.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'album_date.dart';
 import 'app.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
@@ -129,6 +130,11 @@ class ListingView extends StatelessWidget {
               'Create folder',
               createFolder,
             ),
+            menuItem(Icons.tune, 'Folder properties', editFolder),
+            // Only where there is a rule to apply: a folder without one has
+            // nothing to file, see issue #48.
+            if (self.placement != Placement.none)
+              menuItem(Icons.auto_awesome_motion, 'Apply rule', applyRule),
             menuItem(Icons.update, "Reload", (_) => albumState.reload()),
             menuItem(Icons.settings, "Server...", openServerSettings),
           ]),
@@ -179,7 +185,10 @@ class ListingView extends StatelessWidget {
     double imageBorder,
   ) {
     return Wrap(
-      children: self.folders.map((folder) {
+      // The newest first, the undated behind them by name -- the order the
+      // server sends a listing in since issue #48, applied here as well, so
+      // that an older server and the offline cache read the same way.
+      children: sortedFolders(self.folders).map((folder) {
         return Padding(
           padding: EdgeInsets.all(imageBorder),
           child: GestureDetector(
@@ -289,6 +298,7 @@ class ListingView extends StatelessWidget {
     if (refuseWhileOffline(context)) {
       return;
     }
+    var messenger = ScaffoldMessenger.of(context);
     // `showDialog`, not `showGeneralDialog`: it brings the barrier that closes
     // the dialog on a tap beside it and on Escape. Together with the cancel
     // button of the dialog itself, the action has a way back, see issue #35.
@@ -301,7 +311,12 @@ class ListingView extends StatelessWidget {
       return;
     }
 
-    await client.putResource("$baseUrl/${folder.path}", folder);
+    try {
+      await client.putResource("$baseUrl/${folder.path}", folder);
+    } catch (error) {
+      showRefusal(messenger, error);
+      return;
+    }
 
     albumState.reload();
     albumState.showElement(folder.path);
@@ -311,6 +326,7 @@ class ListingView extends StatelessWidget {
     if (refuseWhileOffline(context)) {
       return;
     }
+    var messenger = ScaffoldMessenger.of(context);
     AlbumInfo? album = await showDialog<AlbumInfo>(
       context: context,
       builder: (context) => const CreateAlbumDialog(),
@@ -320,11 +336,235 @@ class ListingView extends StatelessWidget {
       return;
     }
 
-    await client.putResource("$baseUrl/${album.path}", album);
+    CreateResult result;
+    try {
+      result = await client.createAlbum(albumState.path, album);
+    } catch (error) {
+      showRefusal(messenger, error);
+      return;
+    }
 
     albumState.reload();
-    albumState.showElement(album.path);
+    // Where the album landed, not where it was asked for: a placement rule on
+    // this folder files it into its year folder, see issue #48. The path the
+    // server answers is relative to the root of the caller's space.
+    albumState.showPath(splitPath(result.path));
+
+    if (result.message.isNotEmpty) {
+      // Nothing happens silently: an album that was filed away says so.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
   }
+
+  /// Edits the title and the placement rule of the folder being shown.
+  ///
+  /// The rule is typically set on the root of a space, which is a folder like
+  /// any other, so this is offered there as well.
+  void editFolder(BuildContext context) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+    var edited = await showDialog<FolderProperties>(
+      context: context,
+      builder: (context) => FolderPropertiesDialog(
+        FolderProperties(title: listing.title, placement: listing.placement),
+      ),
+    );
+
+    if (edited == null) {
+      return;
+    }
+
+    // What was loaded, with what was edited changed: the server drops the
+    // derived dates of the children before it writes, see issue #48.
+    var stored = ListingInfo(
+      path: listing.path,
+      title: edited.title,
+      placement: edited.placement,
+      folders: listing.folders,
+    );
+
+    try {
+      await client.saveListing(albumState.path, stored);
+    } catch (error) {
+      showRefusal(messenger, error);
+      return;
+    }
+
+    albumState.reload();
+  }
+
+  /// Applies the placement rule of this folder to what is already in it.
+  void applyRule(BuildContext context) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+
+    MoveResult result;
+    try {
+      result = await client.place(albumState.path);
+    } catch (error) {
+      showRefusal(messenger, error);
+      return;
+    }
+
+    // What was filed is no longer where it was: the listing on the screen has
+    // to be fetched again before the outcome is read out.
+    albumState.reload();
+
+    var filed = result.outcomes.length - refusedOutcomes(result).length;
+    if (!context.mounted) {
+      return;
+    }
+    await reportOutcomes(
+      context: context,
+      messenger: messenger,
+      title: "Apply rule",
+      summary: filed == 0
+          ? "Nothing to file."
+          : "Filed $filed album${filed == 1 ? "" : "s"}.",
+      result: result,
+    );
+  }
+}
+
+/// The segments of a space-relative resource path, the empty path none.
+List<String> splitPath(String path) =>
+    [for (var segment in path.split("/")) if (segment.isNotEmpty) segment];
+
+/// The values edited by the [FolderPropertiesDialog].
+class FolderProperties {
+  final String title;
+  final Placement placement;
+
+  const FolderProperties({required this.title, required this.placement});
+}
+
+/// Edits the title of a folder and the rule by which it files what lands in
+/// it, see issue #48.
+class FolderPropertiesDialog extends StatefulWidget {
+  final FolderProperties properties;
+
+  const FolderPropertiesDialog(this.properties, {super.key});
+
+  @override
+  State<StatefulWidget> createState() => FolderPropertiesDialogState();
+}
+
+class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
+  late final TextEditingController titleController =
+      TextEditingController(text: widget.properties.title);
+
+  late Placement placement = widget.properties.placement;
+
+  /// How the three rules are named, in the order they are offered.
+  static const Map<Placement, String> placementLabels = {
+    Placement.none: "keine Regel",
+    Placement.byYear: "nach Jahr",
+    Placement.byYearMonth: "nach Jahr und Monat",
+  };
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DefaultTextStyle(
+                  style: DialogTheme.of(context).titleTextStyle ??
+                      Theme.of(context).textTheme.titleLarge!,
+                  child: Semantics(
+                    namesRoute:
+                        Theme.of(context).platform != TargetPlatform.iOS,
+                    container: true,
+                    child: const Text("Ordnereigenschaften"),
+                  ),
+                ),
+                TextField(
+                  controller: titleController,
+                  autofocus: true,
+                  decoration: const InputDecoration(label: Text("Titel")),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Text(
+                    "Ablageregel",
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ),
+                // What the rule does, plainly: it places what arrives, it
+                // does not tidy up behind itself.
+                const Padding(
+                  padding: EdgeInsets.only(top: 4, bottom: 4),
+                  child: Text(
+                    "Was hier ankommt, wird in seinen Jahresordner abgelegt. "
+                    "Was schon hier liegt, bleibt liegen, bis „Apply rule“ "
+                    "aufgerufen wird.",
+                    key: Key("placement-explanation"),
+                  ),
+                ),
+                RadioGroup<Placement>(
+                  groupValue: placement,
+                  onChanged: (value) => setState(
+                    () => placement = value ?? Placement.none,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var entry in placementLabels.entries)
+                        RadioListTile<Placement>(
+                          key: Key("placement-${entry.key.name}"),
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(entry.value),
+                          value: entry.key,
+                        ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text("Abbrechen"),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.check),
+                        label: const Text("Übernehmen"),
+                        onPressed: () => Navigator.of(context).pop(
+                          FolderProperties(
+                            title: titleController.text,
+                            placement: placement,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 class CreateAlbumDialog extends StatefulWidget {
@@ -435,6 +675,11 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
     var info = AlbumInfo(
       title: title,
       subTitle: albumSubTitle ?? "",
+      // The explicit date, at local midnight of the day that was picked: the
+      // server files the new album by it, see issue #48.
+      date: date == null
+          ? 0
+          : DateTime(date.year, date.month, date.day).millisecondsSinceEpoch,
       path:
           (date != null ? DateFormat("yyyy-MM-dd ").format(date) : "") + title,
     );

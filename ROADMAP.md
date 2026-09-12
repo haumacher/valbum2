@@ -177,8 +177,10 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
   deletes an original"), and album dates with placement rules (#48, server side). Two dates travel on
   the wire — the explicit `date` that is stored and the derived `effectiveDate` that never is — so a
   round trip can never freeze a derived date into a sidecar. Year folders are `YYYY`, month folders
-  `YYYY/YYYY-MM`. Listings are ordered newest first from now on. The app half of #48 (date picker,
-  folder rule editor, listing sort) is open.
+  `YYYY/YYYY-MM`. Listings are ordered newest first from now on. The app half of #48 landed
+  2026-09-12: the album properties carry the date (saying when it is derived from the folder name or
+  the photos), the folder properties set the rule, "Apply rule" files what is already there, and
+  "Create album" follows the `CreateResult` to where the album landed.
 
 - **2026-09-06 (evening)** — Phase 3 is redefined as *users, groups and sharing* (issues #45–#55);
   the former Phase 3 (sync API, previews, metadata) becomes Phase 4 and distribution Phase 5. The

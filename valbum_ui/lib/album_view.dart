@@ -8,8 +8,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 
+import 'album_date.dart';
 import 'album_edit.dart';
 import 'album_model.dart';
 import 'app.dart';
@@ -560,11 +562,16 @@ class AlbumContentState extends State<AlbumContent>
         AlbumProperties(
           title: album.title,
           subTitle: album.subTitle,
+          date: album.date,
           indexPicture: album.indexPicture,
         ),
         client: client,
         baseUrl: widget.baseUrl,
         indexImage: indexImageOf(album),
+        effectiveDate: album.effectiveDate,
+        // The server does not fill the path of a loaded album; the folder the
+        // album lives in is the one the view is showing, see issue #48.
+        dateSource: describeDateSource(album, folderName: albumFolderName),
       ),
     );
 
@@ -575,12 +582,21 @@ class AlbumContentState extends State<AlbumContent>
     setState(() {
       album.title = result.title;
       album.subTitle = result.subTitle;
+      // The explicit date, and only that one: the effective date is derived
+      // by the server on every read and is never written by the app.
+      album.date = result.date;
       album.indexPicture = result.indexPicture;
       markDirty();
     });
   }
 
   String get albumUrl => "${widget.baseUrl}/${widget.album.path}";
+
+  /// The name of the folder this album lives in, empty at the root.
+  String get albumFolderName {
+    var path = widget.albumState.path;
+    return path.isEmpty ? "" : path.last;
+  }
 
   /// The transport to the album server.
   VAlbumClient get client => widget.albumState.client;
@@ -2181,12 +2197,21 @@ class AlbumProperties {
   final String title;
   final String subTitle;
 
+  /// The explicit date of the album in milliseconds since the epoch, `0` when
+  /// the author has set none, see [AlbumInfo.date].
+  ///
+  /// The explicit date and only that one: what the album is actually sorted
+  /// and filed by ([AlbumInfo.effectiveDate]) is derived by the server and is
+  /// never edited here, see issue #48.
+  final int date;
+
   /// The picture standing for the album in the listing above, with its crop.
   final ThumbnailInfo? indexPicture;
 
   const AlbumProperties({
     required this.title,
     required this.subTitle,
+    this.date = 0,
     this.indexPicture,
   });
 }
@@ -2218,12 +2243,23 @@ class AlbumPropertiesDialog extends StatefulWidget {
   /// "reset" tool; `null` if there is none.
   final ImagePart? indexImage;
 
+  /// The date the album is sorted and filed by, see [AlbumInfo.effectiveDate].
+  ///
+  /// Shown while no explicit date is set, so that the dialog never shows a
+  /// date out of nowhere; read only, never edited.
+  final int effectiveDate;
+
+  /// Where [effectiveDate] comes from, so the dialog can say it.
+  final DateSource dateSource;
+
   const AlbumPropertiesDialog(
     this.properties, {
     super.key,
     this.client,
     this.baseUrl = "",
     this.indexImage,
+    this.effectiveDate = 0,
+    this.dateSource = DateSource.none,
   });
 
   @override
@@ -2235,6 +2271,9 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
       TextEditingController(text: widget.properties.title);
   late final TextEditingController subTitleController =
       TextEditingController(text: widget.properties.subTitle);
+
+  /// The explicit date being edited, `0` while none is set.
+  late int date = widget.properties.date;
 
   /// The crop being edited, a copy: the album's own is replaced on apply.
   late ThumbnailInfo? indexPicture = copyOf(widget.properties.indexPicture);
@@ -2263,7 +2302,9 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        // Tight, so that the whole dialog still fits a short screen: the
+        // album date moved in with issue #48.
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.start,
@@ -2287,8 +2328,9 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
               controller: subTitleController,
               decoration: const InputDecoration(label: Text("Subtitel")),
             ),
+            buildDateRow(context),
             Padding(
-              padding: const EdgeInsets.only(top: 16),
+              padding: const EdgeInsets.only(top: 8),
               child: Text(
                 "Albumbild",
                 style: Theme.of(context).textTheme.labelLarge,
@@ -2296,7 +2338,7 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
             ),
             buildIndexPictureEditor(context),
             Padding(
-              padding: const EdgeInsets.only(top: 16),
+              padding: const EdgeInsets.only(top: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -2319,6 +2361,92 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
         ),
       ),
     );
+  }
+
+  /// The date of the album: the explicit one when it is set, else the date
+  /// the server derived and where it derived it from.
+  ///
+  /// Nothing is shown out of nowhere: an album whose date comes from its
+  /// folder name or from its photos says so, so that the empty field is not
+  /// read as "this album has no date", see issue #48.
+  Widget buildDateRow(BuildContext context) {
+    var shown = date != 0 ? date : derivedDate;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                shown == 0 ? "Datum: keines" : "Datum: ${formatDate(shown)}",
+                key: const Key("album-date"),
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.date_range),
+              tooltip: "Datum wählen",
+              onPressed: pickDate,
+            ),
+            IconButton(
+              key: const Key("album-date-clear"),
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.clear),
+              tooltip: "Datum entfernen",
+              // Back to "no explicit date": what the server derives then
+              // takes over again.
+              onPressed: date == 0 ? null : () => setState(() => date = 0),
+            ),
+          ],
+        ),
+        if (date == 0 && dateSourceText != null)
+          Text(
+            dateSourceText!,
+            key: const Key("album-date-source"),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+      ],
+    );
+  }
+
+  /// The date the server derived for this album, `0` when what it sent was
+  /// the explicit date this dialog has just cleared.
+  ///
+  /// What the server will derive for an album whose explicit date is taken
+  /// away is not known here — so nothing is claimed: the field reads "keines"
+  /// until the album has been saved and loaded again.
+  int get derivedDate => widget.properties.date == 0 ? widget.effectiveDate : 0;
+
+  /// Where the date shown comes from while none is set here, `null` when
+  /// there is no date at all.
+  String? get dateSourceText => switch (widget.dateSource) {
+        DateSource.folderName => "Aus dem Ordnernamen übernommen.",
+        DateSource.photos => "Aus den Fotos übernommen.",
+        _ => null,
+      };
+
+  static String formatDate(int millis) => DateFormat("yyyy-MM-dd")
+      .format(DateTime.fromMillisecondsSinceEpoch(millis));
+
+  /// Asks for the day the album happened on, starting at the date it is
+  /// shown with.
+  Future<void> pickDate() async {
+    var shown = date != 0 ? date : derivedDate;
+    var initial = shown == 0
+        ? DateTime.now()
+        : DateTime.fromMillisecondsSinceEpoch(shown);
+    var picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null || !mounted) {
+      return;
+    }
+    // Local midnight of the day that was picked: a date, not an instant.
+    setState(() => date =
+        DateTime(picked.year, picked.month, picked.day).millisecondsSinceEpoch);
   }
 
   /// The square preview of the index picture with the pan and zoom gestures,
@@ -2443,6 +2571,7 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
       AlbumProperties(
         title: titleController.text,
         subTitle: subTitleController.text,
+        date: date,
         indexPicture: indexPicture,
       ),
     );

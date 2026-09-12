@@ -439,6 +439,59 @@ class VAlbumClient {
   Future<void> saveAlbum(List<String> path, AlbumInfo album) =>
       putResource(folderUrl(path), album);
 
+  /// Stores the given listing as the `index.json` sidecar of its own folder.
+  ///
+  /// The counterpart of [saveAlbum] for a folder of folders: its title and its
+  /// placement rule, see issue #48. The derived [FolderInfo.effectiveDate] of
+  /// the children travels along with what was loaded; the server drops it
+  /// before it writes, so nothing derived is ever frozen into a sidecar.
+  Future<void> saveListing(List<String> path, ListingInfo listing) =>
+      putResource(folderUrl(path), listing);
+
+  /// Creates the album [album] as a new folder named [AlbumInfo.path] below
+  /// the folder at [folderPath].
+  ///
+  /// The folder that is asked for is not necessarily the folder the album ends
+  /// up in: a placement rule on the folder above files the album into its year
+  /// (or month) folder, see issue #48. The answer therefore says where the
+  /// album landed — the [CreateResult.path] is relative to the root of the
+  /// caller's space, and [CreateResult.message] says why it is not where it
+  /// was asked for.
+  ///
+  /// A server that answers with an empty body (or with something that is no
+  /// [CreateResult]) is one from before issue #48: it created the album
+  /// exactly where it was asked to, so that is what is answered.
+  Future<CreateResult> createAlbum(
+    List<String> folderPath,
+    AlbumInfo album,
+  ) async {
+    var path = [...folderPath, album.path];
+    var asked = path.join("/");
+    var url = folderUrl(path);
+
+    var response = await _http.put(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: album.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "creating '$asked'");
+    }
+
+    if (response.body.trim().isEmpty) {
+      return CreateResult(path: asked);
+    }
+    CreateResult result;
+    try {
+      result = CreateResult.read(JsonReader.fromString(response.body));
+    } catch (_) {
+      // Not a CreateResult: an older server answering something else.
+      return CreateResult(path: asked);
+    }
+    return result.path.isEmpty ? CreateResult(path: asked) : result;
+  }
+
   /// Uploads the given files to the resource at the given URL.
   ///
   /// Reports the transfer progress in percent to [onProgress]. The upload stops
@@ -599,6 +652,31 @@ class VAlbumClient {
     );
     if (response.statusCode >= 300) {
       throw failure(response.statusCode, response.body, "moving to '$target'");
+    }
+    return MoveResult.read(JsonReader.fromString(response.body));
+  }
+
+  /// Applies the placement rule of the folder at [path] to what is already in
+  /// it, see issue #48.
+  ///
+  /// The rule places, it does not police: an album that was filed by hand
+  /// stays where it was put until this is asked for. The answer carries one
+  /// [MoveOutcome] per direct child album — the path it was filed to, or the
+  /// reason it stayed. A refusal of the whole request is the server speaking
+  /// and is thrown as a [VAlbumException], like every other refused write.
+  Future<MoveResult> place(List<String> path) async {
+    var url = "${folderUrl(path)}?action=place";
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        "filing in '${path.join("/")}'",
+      );
     }
     return MoveResult.read(JsonReader.fromString(response.body));
   }
