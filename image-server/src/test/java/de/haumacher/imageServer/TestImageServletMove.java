@@ -557,14 +557,22 @@ public class TestImageServletMove extends TestCase {
 
 		move("/A/", "B", "a.jpg");
 
-		assertEquals("What the GET answers is what the sidecar says.", read(_base.resolve("A/index.json")),
-			getJson("/A/"));
-		assertEquals(read(_base.resolve("B/index.json")), getJson("/B/"));
+		// The rights the answer carries are derived on every read and are no part of the sidecar,
+		// see issue #49; everything else must be the same bytes.
+		assertEquals("What the GET answers is what the sidecar says.",
+			withoutRights(read(_base.resolve("A/index.json"))), withoutRights(getJson("/A/")));
+		assertEquals(withoutRights(read(_base.resolve("B/index.json"))), withoutRights(getJson("/B/")));
+		assertFalse("A sidecar never names a right.", read(_base.resolve("A/index.json")).contains("\"name\":\"edit\""));
 
 		MoveResult again = move("/A/", "B", "a.jpg");
 		assertEquals(MoveService.notFound("a.jpg"), again.getOutcomes().get(0).getMessage());
 		assertEquals("", again.getOutcomes().get(0).getNewName());
 		assertEquals("Nothing may have moved a second time.", Collections.singletonList("a.jpg"), imageParts(album("B")));
+	}
+
+	/** The given folder JSON without the rights the server derives on every read (issue #49). */
+	private static String withoutRights(String json) {
+		return json.replaceAll("\"rights\":\\[[^\\]]*\\],", "");
 	}
 
 	// --- An album written before the privacy level existed. ---

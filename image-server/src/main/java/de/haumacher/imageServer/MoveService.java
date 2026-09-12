@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer;
 
+import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -290,7 +291,8 @@ public class MoveService {
 		// an image lands in an album, never in a folder of folders, and is refused above.
 		PlacementRule rule = PlacementRule.of(targetSidecar);
 
-		List<Entry> entries = classify(sourceFolder, targetFolder, sourceAlbum, targetTakesImages, rule, names);
+		List<Entry> entries =
+			classify(sourceFolder, targetFolder, sourceAlbum, targetTakesImages, rule, target.isRoot(), names);
 
 		MoveResult result = MoveResult.create();
 		HashCache sourceHashes = new HashCache(sourceFolder);
@@ -369,7 +371,7 @@ public class MoveService {
 	 * </p>
 	 */
 	private static List<Entry> classify(File sourceFolder, File targetFolder, AlbumInfo sourceAlbum,
-			boolean targetTakesImages, PlacementRule rule, List<String> names) {
+			boolean targetTakesImages, PlacementRule rule, boolean targetIsSpaceRoot, List<String> names) {
 		List<Entry> result = new ArrayList<>(names.size());
 		Set<String> seen = new HashSet<>();
 		for (String name : names) {
@@ -382,6 +384,12 @@ public class MoveService {
 			}
 			if (!isPlainName(name)) {
 				entry._refusal = notAnEntry(name);
+				continue;
+			}
+			if (targetIsSpaceRoot && name.startsWith(AuthService.HOME_PREFIX)) {
+				// The canonical form "~<user>" shadows such a name at the top of a space; an entry
+				// moved there could never be addressed again, see issue #49.
+				entry._refusal = AuthService.homeNameRefused(name);
 				continue;
 			}
 

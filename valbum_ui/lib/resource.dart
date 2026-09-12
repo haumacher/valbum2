@@ -110,9 +110,34 @@ abstract class FolderResource extends Resource {
 	///  The path where the {@link Resource} is located on the server relative to it's base directory
 	String path;
 
+	///  What the caller may do with this folder, see issue #49.
+	/// 
+	///  <p>
+	///  The {@link RightName#name names} of the rights the caller holds here: <code>view</code>,
+	///  <code>download</code>, <code>contribute</code>, <code>edit</code>. The stronger rights imply
+	///  the weaker ones, so an editor is answered with all four and a reader with
+	///  <code>view</code> alone. It travels with every folder answer, so that the app can show what
+	///  the caller may do without asking a second time.
+	///  </p>
+	/// 
+	///  <p>
+	///  Derived by the server on every read from the grants on this folder and its ancestors, exactly
+	///  like {@link AlbumInfo#effectiveDate}, and never stored: the server clears this field before a
+	///  sidecar is written, so that a round trip through a client cannot freeze somebody's rights into
+	///  <code>index.json</code>. A sidecar that carries it nevertheless is read without complaint and
+	///  answered with the derived value.
+	///  </p>
+	/// 
+	///  <p>
+	///  A list of messages, not a list of plain strings: the Dart backend of the model generator
+	///  mis-types a <code>repeated string</code> field, see {@link UploadCheck#hashes}.
+	///  </p>
+	List<RightName> rights;
+
 	/// Creates a FolderResource.
 	FolderResource({
 			this.path = "", 
+			this.rights = const [], 
 	});
 
 	/// Parses a FolderResource from a string source.
@@ -152,6 +177,19 @@ abstract class FolderResource extends Resource {
 	@override
 	void _readProperty(String key, JsonReader json) {
 		switch (key) {
+			case "rights": {
+				json.expectArray();
+				rights = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = RightName.read(json);
+						if (value != null) {
+							rights.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -159,12 +197,65 @@ abstract class FolderResource extends Resource {
 	@override
 	void _writeProperties(JsonSink json) {
 		super._writeProperties(json);
+
+		json.addKey("rights");
+		json.startArray();
+		for (var _element in rights) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 	R visitFolderResource<R, A>(FolderResourceVisitor<R, A> v, A arg);
 
 	@override
 	R visitResource<R, A>(ResourceVisitor<R, A> v, A arg) => visitFolderResource(v, arg);
+
+}
+
+///  The name of a single right, see {@link FolderResource#rights}.
+class RightName extends _JsonObject {
+	///  One of <code>view</code>, <code>download</code>, <code>contribute</code>, <code>edit</code>.
+	String name;
+
+	/// Creates a RightName.
+	RightName({
+			this.name = "", 
+	});
+
+	/// Parses a RightName from a string source.
+	static RightName? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a RightName instance from the given reader.
+	static RightName read(JsonReader json) {
+		RightName result = RightName();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "RightName";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+	}
 
 }
 
@@ -220,6 +311,7 @@ class AlbumInfo extends FolderResource {
 	/// Creates a AlbumInfo.
 	AlbumInfo({
 			super.path, 
+			super.rights, 
 			this.title = "", 
 			this.subTitle = "", 
 			this.date = 0, 
@@ -935,6 +1027,7 @@ class ListingInfo extends FolderResource {
 	/// Creates a ListingInfo.
 	ListingInfo({
 			super.path, 
+			super.rights, 
 			this.title = "", 
 			this.placement = Placement.none, 
 			this.folders = const [], 
@@ -2235,6 +2328,527 @@ class CreateResult extends _JsonObject {
 
 		json.addKey("message");
 		json.addString(message);
+	}
+
+}
+
+///  A sharing grant: who may do what on which subtree, see issue #49.
+/// 
+///  <p>
+///  The one sharing mechanism of this server. A grant is identified by its {@link #owner}, its
+///  {@link #path} and its {@link #subject}; granting again replaces the {@link #rights}, revoking
+///  removes it. Grants are inherited downwards: a grant on a folder covers everything below it.
+///  </p>
+/// 
+///  <p>
+///  Sent to <code>&lt;folder&gt;/?action=grant</code> and <code>&lt;folder&gt;/?action=revoke</code>,
+///  where the {@link #owner} and the {@link #path} are taken from the URL and whatever the body says
+///  about them is ignored.
+///  </p>
+class Grant extends _JsonObject {
+	///  The name of the user in whose space the granted subtree lies.
+	String owner;
+
+	///  The granted folder, as a path relative to the owner's space; the empty string is the whole
+	///  space.
+	String path;
+
+	///  Who is granted: <code>user:&lt;name&gt;</code>, <code>group:&lt;name&gt;</code>,
+	///  <code>anonymous</code> (everybody, signed in or not), or <code>token:&lt;id&gt;</code> (a
+	///  share link, issue #51).
+	String subject;
+
+	///  What is granted: <code>view</code>, <code>download</code>, <code>contribute</code>,
+	///  <code>edit</code>.
+	/// 
+	///  <p>
+	///  A list of messages, not a list of plain strings, see {@link FolderResource#rights}.
+	///  </p>
+	List<RightName> rights;
+
+	///  When the grant was made, an ISO-8601 instant; answered by the server, ignored in a request.
+	String created;
+
+	/// Creates a Grant.
+	Grant({
+			this.owner = "", 
+			this.path = "", 
+			this.subject = "", 
+			this.rights = const [], 
+			this.created = "", 
+	});
+
+	/// Parses a Grant from a string source.
+	static Grant? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a Grant instance from the given reader.
+	static Grant read(JsonReader json) {
+		Grant result = Grant();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "Grant";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "owner": {
+				owner = json.expectString();
+				break;
+			}
+			case "path": {
+				path = json.expectString();
+				break;
+			}
+			case "subject": {
+				subject = json.expectString();
+				break;
+			}
+			case "rights": {
+				json.expectArray();
+				rights = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = RightName.read(json);
+						if (value != null) {
+							rights.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "created": {
+				created = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("owner");
+		json.addString(owner);
+
+		json.addKey("path");
+		json.addString(path);
+
+		json.addKey("subject");
+		json.addString(subject);
+
+		json.addKey("rights");
+		json.startArray();
+		for (var _element in rights) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("created");
+		json.addString(created);
+	}
+
+}
+
+///  The grants on a folder and its ancestors, answered by
+///  <code>&lt;folder&gt;/?type=grants</code>.
+/// 
+///  <p>
+///  Only the owner of the space and the admin may ask: a grant says who else is let in, which is
+///  nobody else's business.
+///  </p>
+class GrantList extends _JsonObject {
+	///  The grants covering the addressed folder, the nearest one first.
+	List<Grant> grants;
+
+	/// Creates a GrantList.
+	GrantList({
+			this.grants = const [], 
+	});
+
+	/// Parses a GrantList from a string source.
+	static GrantList? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a GrantList instance from the given reader.
+	static GrantList read(JsonReader json) {
+		GrantList result = GrantList();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "GrantList";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "grants": {
+				json.expectArray();
+				grants = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = Grant.read(json);
+						if (value != null) {
+							grants.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("grants");
+		json.startArray();
+		for (var _element in grants) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  A named list of users, usable wherever a single user can be named, see issue #49.
+/// 
+///  <p>
+///  Created by any member and owned by its creator; sent to <code>&lt;data&gt;/?action=group</code>
+///  to create it or to replace its members, and to <code>&lt;data&gt;/?action=ungroup</code> to
+///  remove it.
+///  </p>
+class Group extends _JsonObject {
+	///  The name of the group, following the rules a user name follows.
+	String name;
+
+	///  The name of the user who owns the group; answered by the server, ignored in a request.
+	String owner;
+
+	///  The names of the users in the group.
+	/// 
+	///  <p>
+	///  A list of messages, not a list of plain strings, see {@link FolderResource#rights}.
+	///  </p>
+	List<MemberName> members;
+
+	///  When the group was created, an ISO-8601 instant; answered by the server, ignored in a request.
+	String created;
+
+	/// Creates a Group.
+	Group({
+			this.name = "", 
+			this.owner = "", 
+			this.members = const [], 
+			this.created = "", 
+	});
+
+	/// Parses a Group from a string source.
+	static Group? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a Group instance from the given reader.
+	static Group read(JsonReader json) {
+		Group result = Group();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "Group";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "owner": {
+				owner = json.expectString();
+				break;
+			}
+			case "members": {
+				json.expectArray();
+				members = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = MemberName.read(json);
+						if (value != null) {
+							members.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "created": {
+				created = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("owner");
+		json.addString(owner);
+
+		json.addKey("members");
+		json.startArray();
+		for (var _element in members) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("created");
+		json.addString(created);
+	}
+
+}
+
+///  The name of a single group member, see {@link Group#members}.
+class MemberName extends _JsonObject {
+	///  The name of the user.
+	String name;
+
+	/// Creates a MemberName.
+	MemberName({
+			this.name = "", 
+	});
+
+	/// Parses a MemberName from a string source.
+	static MemberName? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a MemberName instance from the given reader.
+	static MemberName read(JsonReader json) {
+		MemberName result = MemberName();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "MemberName";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+	}
+
+}
+
+///  The groups the caller owns and the groups they are in, answered by
+///  <code>&lt;data&gt;/?type=groups</code>.
+class GroupList extends _JsonObject {
+	///  The groups, those the caller owns first.
+	List<Group> groups;
+
+	/// Creates a GroupList.
+	GroupList({
+			this.groups = const [], 
+	});
+
+	/// Parses a GroupList from a string source.
+	static GroupList? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a GroupList instance from the given reader.
+	static GroupList read(JsonReader json) {
+		GroupList result = GroupList();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "GroupList";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "groups": {
+				json.expectArray();
+				groups = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = Group.read(json);
+						if (value != null) {
+							groups.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("groups");
+		json.startArray();
+		for (var _element in groups) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  A user of this server as another user may see them, see {@link UserList}.
+/// 
+///  <p>
+///  The name and the role, and nothing else: devices, tokens and spaces are not shared.
+///  </p>
+class UserEntry extends _JsonObject {
+	///  The user's name, which is what a <code>user:&lt;name&gt;</code> subject names.
+	String name;
+
+	///  The user's role: <code>admin</code>, <code>member</code> or <code>guest</code>.
+	String role;
+
+	/// Creates a UserEntry.
+	UserEntry({
+			this.name = "", 
+			this.role = "", 
+	});
+
+	/// Parses a UserEntry from a string source.
+	static UserEntry? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a UserEntry instance from the given reader.
+	static UserEntry read(JsonReader json) {
+		UserEntry result = UserEntry();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "UserEntry";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "role": {
+				role = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("role");
+		json.addString(role);
+	}
+
+}
+
+///  The users of this server, answered by <code>&lt;data&gt;/?type=users</code>.
+/// 
+///  <p>
+///  Needed to share: a member picks whom to grant something to. Members and the admin may ask,
+///  guests and anonymous callers may not.
+///  </p>
+class UserList extends _JsonObject {
+	///  The users, in the order they were created.
+	List<UserEntry> users;
+
+	/// Creates a UserList.
+	UserList({
+			this.users = const [], 
+	});
+
+	/// Parses a UserList from a string source.
+	static UserList? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a UserList instance from the given reader.
+	static UserList read(JsonReader json) {
+		UserList result = UserList();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "UserList";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "users": {
+				json.expectArray();
+				users = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = UserEntry.read(json);
+						if (value != null) {
+							users.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("users");
+		json.startArray();
+		for (var _element in users) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 }

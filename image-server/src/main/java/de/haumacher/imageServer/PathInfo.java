@@ -45,6 +45,34 @@ public class PathInfo {
 	}
 
 	/**
+	 * The folder this path is resolved against.
+	 *
+	 * <p>
+	 * The space of the user the path was built for, see
+	 * {@link de.haumacher.imageServer.auth.AuthService#spaceRoot(de.haumacher.imageServer.auth.AuthService.Caller, Path)}:
+	 * the base folder of the server for a library that was never migrated, a folder below it for
+	 * every user with a space of their own. Whose space it is, is what decides which grants apply
+	 * to this path, see
+	 * {@link de.haumacher.imageServer.auth.AuthService#rights(de.haumacher.imageServer.auth.AuthService.Caller, PathInfo)}.
+	 * </p>
+	 */
+	public Path getBasePath() {
+		return _basePath;
+	}
+
+	/**
+	 * This path relative to its {@link #getBasePath() space}, with <code>/</code> as separator.
+	 *
+	 * <p>
+	 * The empty string is the space itself. These are the coordinates a
+	 * {@link de.haumacher.imageServer.auth.GrantStore.Grant#getPath() grant} is given in.
+	 * </p>
+	 */
+	public String relativePath() {
+		return _path == null ? "" : _path.toString().replace(File.separatorChar, '/');
+	}
+
+	/**
 	 * The client-side view of this path.
 	 */
 	public String toPath() {

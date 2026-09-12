@@ -4,6 +4,8 @@
 package de.haumacher.imageServer.auth;
 
 import de.haumacher.imageServer.PathInfo;
+import de.haumacher.imageServer.auth.GrantStore.Grant;
+import de.haumacher.imageServer.auth.GroupStore.Group;
 import de.haumacher.imageServer.auth.UserStore.Login;
 import de.haumacher.imageServer.auth.UserStore.User;
 import de.haumacher.imageServer.shared.model.AuthInfo;
@@ -18,6 +20,8 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -73,6 +77,96 @@ public class AuthService {
 	public static final String ROLE_REFUSED =
 		"This user has a role this server does not know; the user store needs repair. Known roles: "
 			+ "admin, member, guest.";
+
+	/**
+	 * The first character of a path segment addressing another user's library, see
+	 * {@link #resolve(Caller, Path, String)}.
+	 *
+	 * <p>
+	 * The <code>~</code> of home directories: <code>&lt;data&gt;/~alice/2024/</code> is the folder
+	 * <code>2024</code> in alice's space, whoever is asking. It is the only way out of one's own
+	 * space, and it is what a share link and a copied URL use.
+	 * </p>
+	 */
+	public static final String HOME_PREFIX = "~";
+
+	/** The message a caller is refused with that may not look at a folder. */
+	public static final String VIEW_REFUSED = "You may not look at this album.";
+
+	/** The message a caller is refused with that may look but not download originals. */
+	public static final String DOWNLOAD_REFUSED =
+		"You may look at this album but not download its original files.";
+
+	/** The message a caller is refused with that may look but not add to a folder. */
+	public static final String CONTRIBUTE_REFUSED = "You may look at this album but not add to it.";
+
+	/** The message a caller is refused with that may look but not change a folder. */
+	public static final String EDIT_REFUSED = "You may look at this album but not change it.";
+
+	/** The message a caller is refused the grants of a space with. */
+	public static final String GRANTS_REFUSED =
+		"Only the owner of this library and the administrator may see and change who it is shared with.";
+
+	/** The message a caller is refused the list of users with. */
+	public static final String USERS_REFUSED =
+		"Only the members of this server may see who else uses it.";
+
+	/** The message a caller is refused a group of somebody else with. */
+	public static final String GROUP_REFUSED = "Only the owner of a group may change or remove it.";
+
+	/** The message a guest is refused the creation of a group with. */
+	public static final String GROUP_CREATE_REFUSED =
+		"A guest has no groups of their own; ask a member to put you in one.";
+
+	/** The message a request for a group that does not exist is refused with. */
+	public static final String GROUP_UNKNOWN = "There is no group of that name.";
+
+	/** The message a path leaving the space it is resolved against is refused with. */
+	public static final String PATH_ESCAPED = "This path is outside the library it addresses.";
+
+	/**
+	 * The message a path naming a user this server does not know is refused with.
+	 *
+	 * <p>
+	 * It is also what a folder named <code>~something</code> at the top of a space would be
+	 * answered with, which is why such a folder is refused on creation, on upload and on a move:
+	 * the canonical form shadows it and it could never be reached again.
+	 * </p>
+	 */
+	public static String unknownSpace(String name) {
+		return "There is no user '" + name + "' on this server. A path starting with '" + HOME_PREFIX
+			+ "' addresses another user's library; a folder of your own cannot be named that way.";
+	}
+
+	/** The message an entry whose name starts with {@link #HOME_PREFIX} is refused with. */
+	public static String homeNameRefused(String name) {
+		return "'" + name + "' cannot lie at the top of a library: a name starting with '" + HOME_PREFIX
+			+ "' addresses another user's library.";
+	}
+
+	/** The message a grant to somebody this server does not know is refused with. */
+	public static String unknownSubject(String subject) {
+		return "'" + subject + "' is nobody this server knows. " + Subjects.SUBJECT_REFUSED;
+	}
+
+	/** The message a grant of a right this server does not know is refused with. */
+	public static String unknownRight(String right) {
+		return "'" + right + "' is no right this server knows. Known rights: " + Rights.names() + ".";
+	}
+
+	/** The message the missing right is named with, see {@link Rights}. */
+	public static String rightRefused(String right) {
+		switch (right) {
+			case Rights.DOWNLOAD:
+				return DOWNLOAD_REFUSED;
+			case Rights.CONTRIBUTE:
+				return CONTRIBUTE_REFUSED;
+			case Rights.EDIT:
+				return EDIT_REFUSED;
+			default:
+				return VIEW_REFUSED;
+		}
+	}
 
 	private static final String BEARER_PREFIX = "Bearer ";
 
@@ -162,6 +256,10 @@ public class AuthService {
 
 	private final UserStore _users;
 
+	private final GrantStore _grants;
+
+	private final GroupStore _groups;
+
 	/**
 	 * Creates an {@link AuthService}.
 	 *
@@ -179,6 +277,8 @@ public class AuthService {
 		_pairingSecret = pairingSecret;
 		_basePath = basePath;
 		_users = mode == AuthMode.OFF ? null : new UserStore(basePath);
+		_grants = mode == AuthMode.OFF ? null : new GrantStore(basePath);
+		_groups = mode == AuthMode.OFF ? null : new GroupStore(basePath);
 	}
 
 	/** An {@link AuthService} serving every request, as before issue #28. */
@@ -194,6 +294,16 @@ public class AuthService {
 	/** The users of this server, <code>null</code> while {@link AuthMode#OFF}. */
 	public UserStore getUsers() {
 		return _users;
+	}
+
+	/** The sharing grants of this server, <code>null</code> while {@link AuthMode#OFF}. */
+	public GrantStore getGrants() {
+		return _grants;
+	}
+
+	/** The user groups of this server, <code>null</code> while {@link AuthMode#OFF}. */
+	public GroupStore getGroups() {
+		return _groups;
 	}
 
 	/** Generates a pairing secret for a server that was not given one. */
@@ -282,41 +392,470 @@ public class AuthService {
 	}
 
 	/**
-	 * Whether the given caller may change what is in the folder at the given path, see issue #47.
+	 * What the given caller may do with the resource at the given path, see issue #49.
 	 *
 	 * <p>
-	 * Every path is resolved against the caller's own space (see
-	 * {@link #spaceRoot(Caller, Path)}), so a caller that may write at all may edit everything it
-	 * can reach: this is the own space and nothing else. The method exists so that issue #49 has
-	 * one place to put the grant that opens somebody else's album — the servlet asks here and
-	 * never decides for itself.
+	 * The one method that decides. Every endpoint asks it (through {@link #mayView},
+	 * {@link #mayDownload}, {@link #mayContribute} and {@link #mayEdit}) and none of them decides
+	 * for itself: a path is not a permission, and the rights of a request are computed from who
+	 * the caller is and where the path lies, on every request.
+	 * </p>
+	 *
+	 * <p>
+	 * The rules, in the order they apply:
+	 * </p>
+	 * <ul>
+	 * <li>Mode {@link AuthMode#OFF} knows no users and no grants: everybody holds everything, as
+	 * before issue #28.</li>
+	 * <li>The owner of the space the path lies in holds every right in it.</li>
+	 * <li>Everybody else holds the union of the rights of every {@link Grant} whose target is the
+	 * path or a folder above it <em>in the same space</em> and whose subject names them: their
+	 * user, a {@link Group} they are in, or {@link Subjects#ANONYMOUS}, which names everybody,
+	 * signed in or not. The implications are then applied, see
+	 * {@link Rights#closure(java.util.Collection)}.</li>
+	 * <li>An anonymous caller of a library that was never migrated holds {@link Rights#READ_ONLY}
+	 * on the base folder while the mode is {@link AuthMode#WRITES}: the single-user library on the
+	 * home network looks exactly as it did before issue #45.</li>
+	 * </ul>
+	 *
+	 * <p>
+	 * "The space the path lies in" is the <em>deepest</em> space folder containing it, see
+	 * {@link #spaceOf(PathInfo)}, and it is not the same question as "whose library did this
+	 * request reach". In a library that was never migrated the owner's space <em>is</em> the base
+	 * folder and the spaces of the members lie inside it; the owner keeps reaching them as she
+	 * always did (they are in her own tree, and issue #45 changed nothing about that until the
+	 * library is migrated), but a grant of hers stops at the boundary of a member's space: one
+	 * user can never share what is not theirs. Migrating the library (<code>--migrate-to-user</code>)
+	 * is what closes the first half of that, and it is a deliberate act, not a silent one.
+	 * </p>
+	 *
+	 * <p>
+	 * The administrator is <em>not</em> a special case here. They manage users, groups and grants,
+	 * and they browse what is theirs and what they were granted, nothing else: a role that could
+	 * read every album of every member would make the privacy levels of issue #46 a decoration.
+	 * </p>
+	 *
+	 * <p>
+	 * A <code>token:</code> subject (issue #51) never names anybody in this build: such a grant is
+	 * read and written faithfully and grants nothing.
 	 * </p>
 	 *
 	 * @param caller
 	 *        Who sent the request, see {@link #caller(HttpServletRequest)}.
 	 * @param path
-	 *        The folder being changed, already resolved against the caller's space.
+	 *        The resource being reached, already resolved against a space, see
+	 *        {@link #resolve(Caller, Path, String)}.
+	 * @return The rights held, with the implications applied; never <code>null</code>.
+	 */
+	public Set<String> rights(Caller caller, PathInfo path) {
+		if (_mode == AuthMode.OFF) {
+			return Rights.ALL;
+		}
+		if (caller.hasInvalidToken()) {
+			return Rights.NONE;
+		}
+
+		Set<String> held = new LinkedHashSet<>(spaceRights(caller, path));
+		Space space = spaceOf(path);
+		if (space != null && !held.containsAll(Rights.ALL)) {
+			Set<String> subjects = subjects(caller);
+			for (Grant grant : _grants.covering(space.getOwner(), space.getPath())) {
+				if (subjects.contains(grant.getSubject())) {
+					held.addAll(grant.getRights());
+				}
+			}
+		}
+		return Rights.closure(held);
+	}
+
+	/**
+	 * The rights the given caller holds at the given path without any grant.
+	 *
+	 * <p>
+	 * That is the own space under the rules of the {@link AuthMode}, and it is what the server did
+	 * before issue #49: the owner of a space holds everything in it, and the anonymous caller of a
+	 * library that was never migrated may look at the base folder while the mode is
+	 * {@link AuthMode#WRITES}.
+	 * </p>
+	 */
+	public Set<String> spaceRights(Caller caller, PathInfo path) {
+		if (_mode == AuthMode.OFF) {
+			return Rights.ALL;
+		}
+		if (caller.hasInvalidToken()) {
+			return Rights.NONE;
+		}
+		if (caller.isPaired()) {
+			return isOwnSpace(caller, path) ? Rights.ALL : Rights.NONE;
+		}
+		if (!isLibraryMigrated() && _mode == AuthMode.WRITES && isBaseSpace(path)) {
+			return Rights.READ_ONLY;
+		}
+		return Rights.NONE;
+	}
+
+	/** Whether the given caller may look at the listing, the thumbnails and the previews here. */
+	public boolean mayView(Caller caller, PathInfo path) {
+		return rights(caller, path).contains(Rights.VIEW);
+	}
+
+	/** Whether the given caller may fetch the original files here. */
+	public boolean mayDownload(Caller caller, PathInfo path) {
+		return rights(caller, path).contains(Rights.DOWNLOAD);
+	}
+
+	/**
+	 * Whether the given caller may change what is in the folder at the given path, see issue #47.
+	 *
+	 * <p>
+	 * Editing is storing the folder's sidecar, moving entries out of it and applying its placement
+	 * rule. The owner of the space holds it everywhere in it; anybody else holds it where a grant
+	 * says so, see {@link #rights(Caller, PathInfo)}.
+	 * </p>
+	 *
+	 * @param caller
+	 *        Who sent the request, see {@link #caller(HttpServletRequest)}.
+	 * @param path
+	 *        The folder being changed, already resolved against a space.
 	 */
 	public boolean mayEdit(Caller caller, PathInfo path) {
-		return writeAllowed(caller);
+		return rights(caller, path).contains(Rights.EDIT);
 	}
 
 	/**
 	 * Whether the given caller may add entries to the folder at the given path, see issue #47.
 	 *
 	 * <p>
-	 * Contributing is the weaker of the two rights: with issue #49 a member may add photos to a
-	 * shared event album without being allowed to rearrange it. Inside the own space the two
-	 * coincide, so this is {@link #mayEdit(Caller, PathInfo)} until that issue separates them.
+	 * Contributing is the weaker of the two rights: a member may add photos to a shared event
+	 * album without being allowed to rearrange it. It is implied by {@link #mayEdit}.
 	 * </p>
 	 *
 	 * @param caller
 	 *        Who sent the request, see {@link #caller(HttpServletRequest)}.
 	 * @param path
-	 *        The folder being added to, already resolved against the caller's space.
+	 *        The folder being added to, already resolved against a space.
 	 */
 	public boolean mayContribute(Caller caller, PathInfo path) {
-		return mayEdit(caller, path);
+		return rights(caller, path).contains(Rights.CONTRIBUTE);
+	}
+
+	/**
+	 * Whether the given caller manages the grants on the space the given path lies in.
+	 *
+	 * <p>
+	 * The owner of the space, and the administrator, who keeps the server in order without being
+	 * able to look into every album, see {@link #rights(Caller, PathInfo)}.
+	 * </p>
+	 */
+	public boolean mayManageGrants(Caller caller, PathInfo path) {
+		if (!caller.isPaired()) {
+			return false;
+		}
+		if (Roles.ADMIN.equals(caller.getRole())) {
+			return true;
+		}
+		Space space = spaceOf(path);
+		return space != null && space.getOwner().equals(caller.getUserName());
+	}
+
+	/** Whether the given caller may see who else uses this server: members and the admin. */
+	public boolean maySeeUsers(Caller caller) {
+		if (_mode == AuthMode.OFF) {
+			return true;
+		}
+		return caller.isPaired() && !Roles.GUEST.equals(caller.getRole());
+	}
+
+	/** Whether the given caller may have groups of their own: members and the admin. */
+	public boolean mayOwnGroups(Caller caller) {
+		return caller.isPaired() && !Roles.GUEST.equals(caller.getRole());
+	}
+
+	/** The subjects a grant may name the given caller by, see {@link Subjects}. */
+	private Set<String> subjects(Caller caller) {
+		Set<String> result = new LinkedHashSet<>();
+		// "anonymous" names everybody: a grant to it is what opens an album to the world.
+		result.add(Subjects.ANONYMOUS);
+		String name = caller.getUserName();
+		if (caller.isPaired() && !name.isEmpty()) {
+			result.add(Subjects.user(name));
+			for (String group : _groups.groupsOf(name)) {
+				result.add(Subjects.group(group));
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Which user's space the given path lies in, and where in it.
+	 *
+	 * <p>
+	 * The <em>deepest</em> space folder containing the path, never the folder the path happened to
+	 * be resolved against: in a library that was never migrated the base folder is the owner's
+	 * space and the spaces of the other users lie <em>inside</em> it, so
+	 * <code>&lt;base&gt;/bob/Secret</code> is bob's, whichever way it was reached. That is what
+	 * stops a {@link Grant} of the owner's at the boundary of somebody else's space — one user can
+	 * never share what is not theirs, see {@link #rights(Caller, PathInfo)}.
+	 * </p>
+	 *
+	 * @return <code>null</code> if the path lies in no space at all: that is the base folder of a
+	 *         migrated library, which holds nothing but the spaces of the users, and anything
+	 *         outside the served tree.
+	 */
+	public Space spaceOf(PathInfo path) {
+		if (_users == null || _basePath == null || path.getBasePath() == null) {
+			return null;
+		}
+		Path base = normalize(_basePath);
+		Path resolved = normalize(path.toFile().toPath());
+		if (!resolved.startsWith(base)) {
+			return null;
+		}
+		String relative = base.relativize(resolved).toString().replace(java.io.File.separatorChar, '/');
+
+		User deepest = null;
+		for (User user : _users.getUsers()) {
+			String space = user.getSpace();
+			if (space.isEmpty() || !GrantStore.isBelow(relative, space)) {
+				continue;
+			}
+			if (deepest == null || space.length() > deepest.getSpace().length()) {
+				deepest = user;
+			}
+		}
+		if (deepest != null) {
+			String space = deepest.getSpace();
+			return new Space(deepest.getName(),
+				relative.equals(space) ? "" : relative.substring(space.length() + 1));
+		}
+
+		User owner = _users.getOwner();
+		if (owner != null && owner.getSpace().isEmpty()) {
+			// The library was never migrated: the base folder is the owner's own library.
+			return new Space(owner.getName(), relative);
+		}
+		return null;
+	}
+
+	/**
+	 * The name of the user whose space the given path lies in.
+	 *
+	 * @return The empty string if the path lies in no space at all, see {@link #spaceOf(PathInfo)}.
+	 */
+	public String ownerOf(PathInfo path) {
+		Space space = spaceOf(path);
+		return space == null ? null : space.getOwner();
+	}
+
+	/** Which space a path lies in and where in it, see {@link AuthService#spaceOf(PathInfo)}. */
+	public static final class Space {
+
+		private final String _owner;
+
+		private final String _path;
+
+		Space(String owner, String path) {
+			_owner = owner;
+			_path = path;
+		}
+
+		/** The name of the user who owns the space. */
+		public String getOwner() {
+			return _owner;
+		}
+
+		/**
+		 * The path relative to the owner's space folder, <code>/</code> as separator.
+		 *
+		 * <p>
+		 * The coordinates a {@link GrantStore.Grant#getPath() grant} is given in; the empty string
+		 * is the space itself.
+		 * </p>
+		 */
+		public String getPath() {
+			return _path;
+		}
+	}
+
+	/**
+	 * Whether the given path is resolved against the folder the given caller's own paths resolve
+	 * against.
+	 *
+	 * <p>
+	 * That is the caller's own library, and it is what the server granted them before issue #49:
+	 * the owner of a library that was never migrated keeps seeing everything below the base folder
+	 * exactly as they did, the spaces of the members inside it included, see
+	 * {@link #spaceRights(Caller, PathInfo)}. What she may <em>share</em> of it is a different
+	 * question, decided by {@link #spaceOf(PathInfo)}.
+	 * </p>
+	 */
+	private boolean isOwnSpace(Caller caller, PathInfo path) {
+		if (_basePath == null || path.getBasePath() == null) {
+			return false;
+		}
+		String space = caller.getSpace();
+		if (space.isEmpty() && !isUnmigratedOwner(caller)) {
+			// A guest has no library of their own, and the base folder of a migrated library
+			// belongs to nobody: neither may have everything in it.
+			return false;
+		}
+		Path root = space.isEmpty() ? _basePath : _basePath.resolve(space);
+		return normalize(path.getBasePath()).equals(normalize(root));
+	}
+
+	/** Whether the given caller is the owner of a library that was never migrated. */
+	private boolean isUnmigratedOwner(Caller caller) {
+		User owner = _users == null ? null : _users.getOwner();
+		return owner != null && owner.getSpace().isEmpty() && owner.getName().equals(caller.getUserName());
+	}
+
+	/** Whether the given path is resolved against the server's base folder itself. */
+	private boolean isBaseSpace(PathInfo path) {
+		Path root = path.getBasePath();
+		return root != null && _basePath != null && normalize(root).equals(normalize(_basePath));
+	}
+
+	private static Path normalize(Path path) {
+		return path.toAbsolutePath().normalize();
+	}
+
+	/** Where a request path was resolved to, see {@link AuthService#resolve(Caller, Path, String)}. */
+	public static final class Location {
+
+		private final String _prefix;
+
+		private final Space _space;
+
+		private final PathInfo _path;
+
+		Location(String prefix, Space space, PathInfo path) {
+			_prefix = prefix;
+			_space = space;
+			_path = path;
+		}
+
+		/**
+		 * How the request spelled the library it reached: <code>~alice/</code> for the canonical
+		 * form, the empty string for the caller's own space.
+		 */
+		public String getPrefix() {
+			return _prefix;
+		}
+
+		/** The name of the user whose space the path lies in, empty if it lies in none. */
+		public String getOwner() {
+			return _space == null ? "" : _space.getOwner();
+		}
+
+		/**
+		 * The path relative to the owner's space folder: the coordinates a
+		 * {@link GrantStore.Grant} is given in, see {@link Space#getPath()}.
+		 */
+		public String getOwnerPath() {
+			return _space == null ? "" : _space.getPath();
+		}
+
+		/** The resolved path. */
+		public PathInfo getPath() {
+			return _path;
+		}
+
+		/**
+		 * The given path of this location's library, spelled the way the request that reached it
+		 * spells paths.
+		 *
+		 * <p>
+		 * The one place a resolved path is written back into an answer: every path the server
+		 * answers is in the coordinates of the request that asked for it, or a client would
+		 * navigate to it in its own library, see
+		 * {@link de.haumacher.imageServer.shared.model.CreateResult#getPath()}.
+		 * </p>
+		 *
+		 * @param path
+		 *        A path relative to the folder this location was resolved against, see
+		 *        {@link PathInfo#relativePath()}.
+		 */
+		public String spell(String path) {
+			return _prefix + path;
+		}
+
+		/** The path of this location itself, spelled as the request spells it. */
+		public String spell() {
+			return spell(_path.relativePath());
+		}
+	}
+
+	/** Thrown when a request path cannot be resolved, see {@link AuthService#resolve(Caller, Path, String)}. */
+	public static class PathRefused extends Exception {
+
+		private final int _status;
+
+		/** Creates a {@link PathRefused}. */
+		public PathRefused(int status, String message) {
+			super(message);
+			_status = status;
+		}
+
+		/** The HTTP status to answer with. */
+		public int getStatus() {
+			return _status;
+		}
+	}
+
+	/**
+	 * Resolves a request path against a space, the one place every method does it.
+	 *
+	 * <p>
+	 * A path whose first segment starts with {@link #HOME_PREFIX} is the canonical form: it names
+	 * the space of that user and the rest is the path in it. Everything else is resolved against
+	 * the caller's own space, as it was before issue #49. Which space the path ends up in is what
+	 * decides whose grants are asked, see {@link #rights(Caller, PathInfo)}; reaching a space is
+	 * never by itself a permission to look into it.
+	 * </p>
+	 *
+	 * @param caller
+	 *        Who sent the request.
+	 * @param basePath
+	 *        The root of the served album tree.
+	 * @param relativePath
+	 *        The request path without its leading <code>/</code>; empty for the space root.
+	 * @throws PathRefused
+	 *         If the path leaves the space it is resolved against, or names a user this server
+	 *         does not know.
+	 */
+	public Location resolve(Caller caller, Path basePath, String relativePath) throws PathRefused {
+		String rest = relativePath == null ? "" : relativePath;
+		String prefix;
+		Path root;
+		if (rest.startsWith(HOME_PREFIX)) {
+			int slash = rest.indexOf('/');
+			String name = slash < 0 ? rest.substring(HOME_PREFIX.length())
+				: rest.substring(HOME_PREFIX.length(), slash);
+			rest = slash < 0 ? "" : rest.substring(slash + 1);
+			User user = _users == null ? null : _users.getUser(name);
+			if (user == null || name.isEmpty()) {
+				throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, unknownSpace(name));
+			}
+			prefix = HOME_PREFIX + name + "/";
+			root = spaceRoot(user.getSpace(), user.getName(), basePath);
+		} else {
+			root = spaceRoot(caller, basePath);
+			prefix = "";
+		}
+
+		PathInfo path;
+		if (rest.isEmpty()) {
+			path = new PathInfo(root);
+		} else {
+			Path relative = java.nio.file.Paths.get(rest).normalize();
+			if (relative.isAbsolute() || relative.startsWith("..") || relative.toString().isEmpty()) {
+				throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, PATH_ESCAPED);
+			}
+			path = new PathInfo(root, relative);
+		}
+		// Which library the path lies in is decided by where it lies, never by how it was reached:
+		// "~alice/bob/Secret" is bob's, not alice's, see spaceOf(PathInfo).
+		return new Location(prefix, spaceOf(path), path);
 	}
 
 	/** Why the given caller is refused, ready to be shown to the user. */
@@ -332,6 +871,22 @@ public class AuthService {
 	}
 
 	/**
+	 * Why the given caller is refused the given right, ready to be shown to the user.
+	 *
+	 * <p>
+	 * A caller that is nobody yet is told how to become somebody — that is the message of issue
+	 * #28 and #45, and it stays what it was, the migrated library included. A signed-in caller is
+	 * told which right they are missing instead: signing in again would not help them.
+	 * </p>
+	 */
+	public String refusal(Caller caller, String right, boolean write) {
+		if (caller.isPaired()) {
+			return rightRefused(right);
+		}
+		return refusal(caller, write);
+	}
+
+	/**
 	 * The folder every path of the given caller is resolved against.
 	 *
 	 * <p>
@@ -340,7 +895,19 @@ public class AuthService {
 	 * </p>
 	 */
 	public Path spaceRoot(Caller caller, Path basePath) {
-		String space = caller.getSpace();
+		return spaceRoot(caller.getSpace(), caller.getUserName(), basePath);
+	}
+
+	/**
+	 * The folder the paths of the user with the given space are resolved against.
+	 *
+	 * <p>
+	 * The same folder {@link #spaceRoot(Caller, Path)} answers, reached by the canonical form
+	 * <code>~&lt;user&gt;</code> instead of by the caller's own membership, see
+	 * {@link #resolve(Caller, Path, String)}.
+	 * </p>
+	 */
+	public Path spaceRoot(String space, String userName, Path basePath) {
 		if (space.isEmpty()) {
 			return basePath;
 		}
@@ -348,7 +915,7 @@ public class AuthService {
 		if (!Files.isDirectory(root)) {
 			try {
 				Files.createDirectories(root);
-				LOG.info("Created the space of '" + caller.getUserName() + "': " + root);
+				LOG.info("Created the space of '" + userName + "': " + root);
 			} catch (IOException ex) {
 				LOG.log(Level.WARNING, "Cannot create the space '" + root + "': " + ex.getMessage());
 			}
@@ -369,13 +936,11 @@ public class AuthService {
 	 * <li>An anonymous caller has {@link Privacy#PUBLIC} clearance, so the single-user library of
 	 * mode {@link AuthMode#WRITES} keeps working on the home network, minus its restricted
 	 * images.</li>
-	 * <li>The owner of the space the path lies in has {@link Privacy#PRIVATE} clearance. Since
-	 * issue #45 resolves every path against the caller's own space (see
-	 * {@link #spaceRoot(Caller, Path)}), a signed-in caller only ever reaches paths in the space
-	 * they own, so being signed in is what makes the owner here.</li>
-	 * <li>Issue #49 adds the third case: a signed-in caller reaching a path through a grant on
-	 * somebody else's album has {@link Privacy#MEMBERS} clearance. That is a case of this method
-	 * — the path says whose space it is — and needs no change in the servlet.</li>
+	 * <li>The owner of the space the path lies in has {@link Privacy#PRIVATE} clearance, see
+	 * {@link #ownerOf(PathInfo)}.</li>
+	 * <li>A signed-in caller reaching a path through a {@link Grant} on somebody else's album has
+	 * {@link Privacy#MEMBERS} clearance (issue #49): they are a member of that album, not its
+	 * owner, so its private images stay hidden from them.</li>
 	 * <li>Mode {@link AuthMode#OFF} knows no users at all: everything is visible, as before issue
 	 * #46.</li>
 	 * </ul>
@@ -392,7 +957,12 @@ public class AuthService {
 		if (!caller.isPaired()) {
 			return Privacy.PUBLIC;
 		}
-		return Privacy.PRIVATE;
+		if (spaceRights(caller, path).containsAll(Rights.ALL)) {
+			// The owner of the library the path lies in, see AuthService#spaceRights.
+			return Privacy.PRIVATE;
+		}
+		// A signed-in caller reaching somebody else's album through a grant is a member of it.
+		return mayView(caller, path) ? Privacy.MEMBERS : Privacy.PUBLIC;
 	}
 
 	/** What the given caller is allowed to do, see {@link AuthInfo}. */

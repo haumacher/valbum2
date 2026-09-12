@@ -18,6 +18,38 @@ abstract message FolderResource extends Resource {
 	/** The path where the {@link Resource} is located on the server relative to it's base directory */
 	transient string path;
 
+	/**
+	 * What the caller may do with this folder, see issue #49.
+	 *
+	 * <p>
+	 * The {@link RightName#name names} of the rights the caller holds here: <code>view</code>,
+	 * <code>download</code>, <code>contribute</code>, <code>edit</code>. The stronger rights imply
+	 * the weaker ones, so an editor is answered with all four and a reader with
+	 * <code>view</code> alone. It travels with every folder answer, so that the app can show what
+	 * the caller may do without asking a second time.
+	 * </p>
+	 *
+	 * <p>
+	 * Derived by the server on every read from the grants on this folder and its ancestors, exactly
+	 * like {@link AlbumInfo#effectiveDate}, and never stored: the server clears this field before a
+	 * sidecar is written, so that a round trip through a client cannot freeze somebody's rights into
+	 * <code>index.json</code>. A sidecar that carries it nevertheless is read without complaint and
+	 * answered with the derived value.
+	 * </p>
+	 *
+	 * <p>
+	 * A list of messages, not a list of plain strings: the Dart backend of the model generator
+	 * mis-types a <code>repeated string</code> field, see {@link UploadCheck#hashes}.
+	 * </p>
+	 */
+	repeated RightName rights;
+
+}
+
+/** The name of a single right, see {@link FolderResource#rights}. */
+message RightName {
+	/** One of <code>view</code>, <code>download</code>, <code>contribute</code>, <code>edit</code>. */
+	string name;
 }
 
 /** {@link Resource} describing a collection of {@link AlbumPart}s. */
@@ -611,4 +643,137 @@ message CreateResult {
 	 * </p>
 	 */
 	string `message`;
+}
+
+
+/**
+ * A sharing grant: who may do what on which subtree, see issue #49.
+ *
+ * <p>
+ * The one sharing mechanism of this server. A grant is identified by its {@link #owner}, its
+ * {@link #path} and its {@link #subject}; granting again replaces the {@link #rights}, revoking
+ * removes it. Grants are inherited downwards: a grant on a folder covers everything below it.
+ * </p>
+ *
+ * <p>
+ * Sent to <code>&lt;folder&gt;/?action=grant</code> and <code>&lt;folder&gt;/?action=revoke</code>,
+ * where the {@link #owner} and the {@link #path} are taken from the URL and whatever the body says
+ * about them is ignored.
+ * </p>
+ */
+message Grant {
+	/** The name of the user in whose space the granted subtree lies. */
+	string owner;
+	
+	/**
+	 * The granted folder, as a path relative to the owner's space; the empty string is the whole
+	 * space.
+	 */
+	string path;
+	
+	/**
+	 * Who is granted: <code>user:&lt;name&gt;</code>, <code>group:&lt;name&gt;</code>,
+	 * <code>anonymous</code> (everybody, signed in or not), or <code>token:&lt;id&gt;</code> (a
+	 * share link, issue #51).
+	 */
+	string subject;
+	
+	/**
+	 * What is granted: <code>view</code>, <code>download</code>, <code>contribute</code>,
+	 * <code>edit</code>.
+	 *
+	 * <p>
+	 * A list of messages, not a list of plain strings, see {@link FolderResource#rights}.
+	 * </p>
+	 */
+	repeated RightName rights;
+	
+	/** When the grant was made, an ISO-8601 instant; answered by the server, ignored in a request. */
+	string created;
+}
+
+/**
+ * The grants on a folder and its ancestors, answered by
+ * <code>&lt;folder&gt;/?type=grants</code>.
+ *
+ * <p>
+ * Only the owner of the space and the admin may ask: a grant says who else is let in, which is
+ * nobody else's business.
+ * </p>
+ */
+message GrantList {
+	/** The grants covering the addressed folder, the nearest one first. */
+	repeated Grant grants;
+}
+
+/**
+ * A named list of users, usable wherever a single user can be named, see issue #49.
+ *
+ * <p>
+ * Created by any member and owned by its creator; sent to <code>&lt;data&gt;/?action=group</code>
+ * to create it or to replace its members, and to <code>&lt;data&gt;/?action=ungroup</code> to
+ * remove it.
+ * </p>
+ */
+message Group {
+	/** The name of the group, following the rules a user name follows. */
+	string name;
+	
+	/** The name of the user who owns the group; answered by the server, ignored in a request. */
+	string owner;
+	
+	/**
+	 * The names of the users in the group.
+	 *
+	 * <p>
+	 * A list of messages, not a list of plain strings, see {@link FolderResource#rights}.
+	 * </p>
+	 */
+	repeated MemberName members;
+	
+	/** When the group was created, an ISO-8601 instant; answered by the server, ignored in a request. */
+	string created;
+}
+
+/** The name of a single group member, see {@link Group#members}. */
+message MemberName {
+	/** The name of the user. */
+	string name;
+}
+
+/**
+ * The groups the caller owns and the groups they are in, answered by
+ * <code>&lt;data&gt;/?type=groups</code>.
+ */
+message GroupList {
+	/** The groups, those the caller owns first. */
+	repeated Group groups;
+}
+
+/**
+ * A user of this server as another user may see them, see {@link UserList}.
+ *
+ * <p>
+ * The name and the role, and nothing else: devices, tokens and spaces are not shared.
+ * </p>
+ */
+message UserEntry {
+	/** The user's name, which is what a <code>user:&lt;name&gt;</code> subject names. */
+	string name;
+	
+	/** The user's role: <code>admin</code>, <code>member</code> or <code>guest</code>. */
+	string role;
+}
+
+/**
+ * The users of this server, answered by <code>&lt;data&gt;/?type=users</code>.
+ *
+ * <p>
+ * Needed to share: a member picks whom to grant something to. Members and the admin may ask,
+ * guests and anonymous callers may not.
+ * </p>
+ */
+message UserList {
+	/** The users, in the order they were created. */
+	repeated UserEntry users;
 }

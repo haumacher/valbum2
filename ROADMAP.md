@@ -171,6 +171,20 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-12** — Groups and grants (#49), server side. Sharing is one mechanism, the grant
+  `{owner, path, subject, rights}` in `.valbum/grants.json`, with named groups in `.valbum/groups.json`;
+  `AuthService.rights(caller, path)` is the one method every endpoint asks. Three decisions beyond the
+  issue: (1) the admin manages users and grants but holds no rights in anybody else's space — a role
+  that could read every album would make the privacy levels of #46 a decoration; (2) whose space a path
+  lies in is the deepest space folder containing it, so in a library that was never migrated the
+  owner's grant on her base folder never covers the member spaces inside it, while her own direct access
+  to them stays as it was until `--migrate-to-user` closes it; (3) every path the server answers is
+  spelled in the coordinates of the request — a request through the canonical form `~<owner>/…` is
+  answered with `~<owner>/…` — so a recipient's app never navigates into its own space by mistake.
+  `download` gates the original bytes; since the app's viewer opens the original, a `view`-only grant
+  shows thumbnails only until a preview rendition exists (Phase 4). The app half (share dialog, cache
+  keyed by user) is open.
+
 - **2026-09-06 (night)** — Phase 3 sharing, first four issues: users and spaces (#45), privacy
   enforced on the server (#46), moving by rename with duplicates set aside in `.valbum/duplicates/`
   rather than removed (#47, overriding the issue's "removes the source" to keep "the server never

@@ -307,6 +307,18 @@ public class AlbumInfo extends FolderResource {
 	}
 
 	@Override
+	public de.haumacher.imageServer.shared.model.AlbumInfo setRights(java.util.List<? extends de.haumacher.imageServer.shared.model.RightName> value) {
+		internalSetRights(value);
+		return this;
+	}
+
+	@Override
+	public de.haumacher.imageServer.shared.model.AlbumInfo addRight(de.haumacher.imageServer.shared.model.RightName value) {
+		internalAddRight(value);
+		return this;
+	}
+
+	@Override
 	public String jsonType() {
 		return ALBUM_INFO__TYPE;
 	}

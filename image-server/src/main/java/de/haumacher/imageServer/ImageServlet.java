@@ -7,15 +7,29 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.MoveService.MoveRefused;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.AuthService.Caller;
+import de.haumacher.imageServer.auth.AuthService.Location;
 import de.haumacher.imageServer.auth.AuthService.PairRefused;
+import de.haumacher.imageServer.auth.AuthService.PathRefused;
+import de.haumacher.imageServer.auth.GrantStore;
+import de.haumacher.imageServer.auth.GroupStore;
 import de.haumacher.imageServer.auth.Privacy;
+import de.haumacher.imageServer.auth.Rights;
+import de.haumacher.imageServer.auth.Subjects;
+import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
+import de.haumacher.imageServer.shared.model.Grant;
+import de.haumacher.imageServer.shared.model.GrantList;
+import de.haumacher.imageServer.shared.model.Group;
+import de.haumacher.imageServer.shared.model.GroupList;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.ListingInfo;
+import de.haumacher.imageServer.shared.model.MemberName;
 import de.haumacher.imageServer.shared.model.MoveName;
 import de.haumacher.imageServer.shared.model.MoveOutcome;
 import de.haumacher.imageServer.shared.model.MoveRequest;
@@ -28,6 +42,8 @@ import de.haumacher.imageServer.shared.model.UploadCheck;
 import de.haumacher.imageServer.shared.model.UploadCheckResult;
 import de.haumacher.imageServer.shared.model.UploadResult;
 import de.haumacher.imageServer.shared.model.UploadedFile;
+import de.haumacher.imageServer.shared.model.UserEntry;
+import de.haumacher.imageServer.shared.model.UserList;
 import de.haumacher.imageServer.upload.HashCache;
 import de.haumacher.imageServer.upload.UploadFactory;
 import de.haumacher.imageServer.upload.UploadItem;
@@ -57,9 +73,11 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -93,6 +111,12 @@ public class ImageServlet extends HttpServlet {
 
 	/** The message an unreadable upload check is refused with. */
 	public static final String CHECK_UNREADABLE = "The upload check cannot be read.";
+
+	/** The message an unreadable grant is refused with. */
+	public static final String GRANT_UNREADABLE = "The grant cannot be read.";
+
+	/** The message an unreadable group is refused with. */
+	public static final String GROUP_UNREADABLE = "The group cannot be read.";
 
 	/**
 	 * The message a request for an image above the caller's clearance is refused with, see issue
@@ -187,8 +211,12 @@ public class ImageServlet extends HttpServlet {
 			serveJsonObject(response, _auth.authInfo(caller));
 			return;
 		}
-		if (!_auth.readAllowed(caller)) {
-			unauthorized(context, caller, false);
+		if ("users".equals(type)) {
+			serveUsers(context, caller);
+			return;
+		}
+		if ("groups".equals(type)) {
+			serveGroups(context, caller);
 			return;
 		}
 
@@ -201,23 +229,22 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		Path root = _auth.spaceRoot(caller, _basePath);
-		PathInfo resourcePath;
-		if (pathInfo == null) {
-			resourcePath = new PathInfo(root);
-		} else {
-			String relativePath = pathInfo.substring(1);
-			Path path;
-			if (relativePath.isEmpty()) {
-				path = null;
-			} else {
-				path = Paths.get(relativePath).normalize();
-				if (path.startsWith("..") || path.startsWith("/")) {
-					error404(context);
-					return;
-				}
-			}
-			resourcePath = new PathInfo(root, path);
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo resourcePath = location.getPath();
+
+		if ("grants".equals(type)) {
+			serveGrants(context, caller, location);
+			return;
+		}
+
+		// A caller the mode shuts out and no grant lets in is told so before the disk is touched:
+		// what lies at the path is not their business, not even whether anything does.
+		if (!_auth.readAllowed(caller) && _auth.rights(caller, resourcePath).isEmpty()) {
+			unauthorized(context, caller, false);
+			return;
 		}
 
 		File file = resourcePath.toFile();
@@ -225,9 +252,6 @@ public class ImageServlet extends HttpServlet {
 			error404(context);
 			return;
 		}
-
-		// "View as" only ever lowers: it is safe for anybody to send, see Privacy#viewAs(String).
-		int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
 
 		if (file.isDirectory()) {
 			// The "view as" of the request survives the redirect, or the preview would jump back.
@@ -241,8 +265,21 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 
-			serveFolder(context, resourcePath, clearance);
+			if (!_auth.mayView(caller, resourcePath)) {
+				refuse(context, caller, resourcePath, Rights.VIEW, false);
+				return;
+			}
+			// "View as" only ever lowers: it is safe for anybody to send, see Privacy#viewAs(String).
+			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
+			serveFolder(context, resourcePath, clearance, caller);
 		} else if (ResourceCache.isImage(file)) {
+			// The description and the thumbnail are looking; the original file is taking a copy.
+			String right = jsonRequested(context) || "tn".equals(type) ? Rights.VIEW : Rights.DOWNLOAD;
+			if (!_auth.rights(caller, resourcePath).contains(right)) {
+				refuse(context, caller, resourcePath, right, false);
+				return;
+			}
+			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
 			serveImage(context, resourcePath, caller, clearance);
 		} else {
 			error404(context);
@@ -268,13 +305,16 @@ public class ImageServlet extends HttpServlet {
 		Context context = new Context(request, response);
 
 		Caller caller = _auth.caller(request);
-		if (!_auth.writeAllowed(caller)) {
-			unauthorized(context, caller, true);
+		Location location = resolve(context, caller);
+		if (location == null) {
 			return;
 		}
+		PathInfo resourcePath = location.getPath();
 
-		PathInfo resourcePath = resolve(context, caller);
-		if (resourcePath == null) {
+		// Whether this caller may change anything here at all; which right in particular is asked
+		// for below, where it is known what the request wants to do.
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, resourcePath)) {
+			unauthorized(context, caller, true);
 			return;
 		}
 
@@ -301,6 +341,7 @@ public class ImageServlet extends HttpServlet {
 				error404(context);
 				return;
 			}
+			PathInfo folder = resourcePath.parent();
 
 			if (baseType.equals("application/json")) {
 				if (file.exists()) {
@@ -308,16 +349,34 @@ public class ImageServlet extends HttpServlet {
 					error(context, HttpServletResponse.SC_METHOD_NOT_ALLOWED);
 					return;
 				}
-				createAlbum(context, resourcePath);
+				// Creating an album changes the folder it lands in.
+				if (!_auth.mayEdit(caller, folder)) {
+					refuse(context, caller, folder, Rights.EDIT, true);
+					return;
+				}
+				createAlbum(context, location, resourcePath);
 				return;
 			}
 
+			if (!_auth.mayContribute(caller, folder)) {
+				refuse(context, caller, folder, Rights.CONTRIBUTE, true);
+				return;
+			}
+			if (reservedName(folder, resourcePath.getName())) {
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST,
+					AuthService.homeNameRefused(resourcePath.getName()));
+				return;
+			}
 			storeSingleImage(context, file);
 			return;
 		}
 
 		if (baseType.equals("multipart/form-data")) {
-			storeUploads(context, file);
+			if (!_auth.mayContribute(caller, resourcePath)) {
+				refuse(context, caller, resourcePath, Rights.CONTRIBUTE, true);
+				return;
+			}
+			storeUploads(context, resourcePath);
 			return;
 		}
 
@@ -327,41 +386,78 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
+		if (!_auth.mayEdit(caller, resourcePath)) {
+			refuse(context, caller, resourcePath, Rights.EDIT, true);
+			return;
+		}
 		storeFolder(context, resourcePath);
 	}
 
 	/**
-	 * Resolves the path of the current request against the served album tree.
+	 * Resolves the path of the current request against a user's space, the one place it happens.
 	 *
 	 * <p>
 	 * The data root is a folder like any other: an empty path (<code>PUT /data</code> and
-	 * <code>PUT /data/</code>) addresses the base folder itself and must be able to store its
+	 * <code>PUT /data/</code>) addresses the space root itself and must be able to store its
 	 * <code>index.json</code>.
 	 * </p>
 	 *
 	 * <p>
-	 * Every path is resolved against the caller's space, see
-	 * {@link AuthService#spaceRoot(Caller, Path)}: a path that would leave it is a
-	 * <code>404</code>, exactly like a path leaving the base folder.
+	 * A path whose first segment starts with <code>~</code> addresses another user's space, every
+	 * other path the caller's own, see {@link AuthService#resolve(Caller, Path, String)}. Reaching
+	 * a path is never a permission to do anything with it: the rights are asked for separately, on
+	 * every endpoint.
 	 * </p>
 	 *
-	 * @return <code>null</code> if the path leaves the caller's space; the response is completed
-	 *         with a <code>404</code> in that case.
+	 * @return <code>null</code> if the path cannot be resolved; the response is completed with a
+	 *         speaking refusal in that case.
 	 */
-	private PathInfo resolve(Context context, Caller caller) {
-		Path root = _auth.spaceRoot(caller, _basePath);
+	private Location resolve(Context context, Caller caller) throws IOException {
 		String pathInfo = context.request().getPathInfo();
-		String relativePath = pathInfo == null ? "" : pathInfo.substring(1);
-		if (relativePath.isEmpty()) {
-			return new PathInfo(root);
-		}
-
-		Path path = Paths.get(relativePath).normalize();
-		if (path.startsWith("..") || path.startsWith("/")) {
-			error404(context);
+		String relativePath = pathInfo == null || pathInfo.isEmpty() ? "" : pathInfo.substring(1);
+		try {
+			return _auth.resolve(caller, _basePath, relativePath);
+		} catch (PathRefused ex) {
+			LOG.warning("Refusing the path '" + pathInfo + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
 			return null;
 		}
-		return new PathInfo(root, path);
+	}
+
+	/**
+	 * Refuses the request for want of a right, naming the right that is missing.
+	 *
+	 * <p>
+	 * An anonymous caller is answered with <code>401</code> and the challenge that says how to get
+	 * further; a signed-in caller with <code>403</code> and the right they do not hold, because
+	 * signing in again would not help them. Nothing declines silently, see
+	 * {@link AuthService#refusal(Caller, String, boolean)}.
+	 * </p>
+	 */
+	private void refuse(Context context, Caller caller, PathInfo path, String right, boolean write)
+			throws IOException {
+		String message = _auth.refusal(caller, right, write);
+		LOG.warning("Refusing '" + right + "' on '" + context.request().getPathInfo() + "': " + message);
+		if (caller.isPaired()) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, message);
+		} else {
+			context.response().setHeader("WWW-Authenticate", "Bearer");
+			errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, message);
+		}
+	}
+
+	/**
+	 * Whether the given path would lie at the top of a space under a name starting with
+	 * <code>~</code>.
+	 *
+	 * <p>
+	 * Such a name is shadowed by the canonical form <code>~&lt;user&gt;</code> and could never be
+	 * reached again, so it is refused wherever an entry is named: on creation, on upload and on a
+	 * move, see {@link AuthService#homeNameRefused(String)}.
+	 * </p>
+	 */
+	static boolean reservedName(PathInfo folder, String name) {
+		return folder.isRoot() && name.startsWith(AuthService.HOME_PREFIX);
 	}
 
 	/**
@@ -371,10 +467,12 @@ public class ImageServlet extends HttpServlet {
 	 * The folder the client asks for is not necessarily the folder the album ends up in: when the
 	 * folder above carries a placement rule, the album is filed into its year (or month) folder,
 	 * see issue #48. The answer is a {@link CreateResult} naming the path the album really has, so
-	 * that the client can go there instead of looking where it is not.
+	 * that the client can go there instead of looking where it is not — spelled in the coordinates
+	 * of the request that asked, the canonical form of another user's library included, see
+	 * {@link Location#spell(String)}.
 	 * </p>
 	 */
-	private void createAlbum(Context context, PathInfo resourcePath) throws IOException {
+	private void createAlbum(Context context, Location location, PathInfo resourcePath) throws IOException {
 		byte[] contents = readBody(context.request());
 		FolderResource resource = checkFolderResource(context, contents);
 		if (resource == null) {
@@ -430,7 +528,7 @@ public class ImageServlet extends HttpServlet {
 
 		LOG.info("Created album: " + folder.getAbsolutePath());
 		serveJsonObject(context.response(),
-			CreateResult.create().setPath(createdPath.toPath().substring(1)).setMessage(message));
+			CreateResult.create().setPath(location.spell(createdPath.relativePath())).setMessage(message));
 	}
 
 	/** The path of the given folder below the given one, with <code>/</code> as separator. */
@@ -504,7 +602,8 @@ public class ImageServlet extends HttpServlet {
 	 * de-duplicated name; an existing file is never overwritten.
 	 * </p>
 	 */
-	private void storeUploads(Context context, File folder) throws IOException {
+	private void storeUploads(Context context, PathInfo folderPath) throws IOException {
+		File folder = folderPath.toFile();
 		List<UploadItem> uploads = _fileUpload.parseRequest(context.request());
 		for (UploadItem upload : uploads) {
 			String name = baseName(upload.getName());
@@ -513,6 +612,12 @@ public class ImageServlet extends HttpServlet {
 				// Nothing is stored: an upload is accepted as a whole or not at all.
 				discard(uploads);
 				error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+				return;
+			}
+			if (reservedName(folderPath, name)) {
+				LOG.warning("Refusing the reserved upload name: " + name);
+				discard(uploads);
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.homeNameRefused(name));
 				return;
 			}
 		}
@@ -564,13 +669,13 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private void moveEntries(Context context) throws IOException {
 		Caller caller = _auth.caller(context.request());
-		if (!_auth.writeAllowed(caller)) {
-			unauthorized(context, caller, true);
+		Location sourceLocation = resolve(context, caller);
+		if (sourceLocation == null) {
 			return;
 		}
-
-		PathInfo source = resolve(context, caller);
-		if (source == null) {
+		PathInfo source = sourceLocation.getPath();
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, source)) {
+			unauthorized(context, caller, true);
 			return;
 		}
 
@@ -585,27 +690,25 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		Path root = _auth.spaceRoot(caller, _basePath);
+		// The target is given in the same coordinates as any other path, the canonical form of
+		// another user's space included: there is one way to name a folder.
 		PathInfo target;
-		String targetPath = moveRequest.getTarget();
-		if (targetPath == null || targetPath.isEmpty()) {
-			target = new PathInfo(root);
-		} else {
-			Path path = Paths.get(targetPath).normalize();
-			if (path.startsWith("..") || path.isAbsolute()) {
-				LOG.warning("Refusing the move target '" + targetPath + "': it leaves the caller's space.");
-				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, MoveService.TARGET_ESCAPED);
-				return;
-			}
-			target = path.toString().isEmpty() ? new PathInfo(root) : new PathInfo(root, path);
+		try {
+			target = _auth.resolve(caller, _basePath, moveRequest.getTarget() == null ? "" : moveRequest.getTarget())
+				.getPath();
+		} catch (PathRefused ex) {
+			LOG.warning("Refusing the move target '" + moveRequest.getTarget() + "': " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND,
+				AuthService.PATH_ESCAPED.equals(ex.getMessage()) ? MoveService.TARGET_ESCAPED : ex.getMessage());
+			return;
 		}
 
 		if (!_auth.mayEdit(caller, source)) {
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, MoveService.EDIT_REFUSED);
+			refuseMove(context, caller, MoveService.EDIT_REFUSED, true);
 			return;
 		}
 		if (!_auth.mayContribute(caller, target)) {
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, MoveService.CONTRIBUTE_REFUSED);
+			refuseMove(context, caller, MoveService.CONTRIBUTE_REFUSED, true);
 			return;
 		}
 
@@ -623,6 +726,23 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Refuses a move, with the message that names the folder the caller may not touch.
+	 *
+	 * <p>
+	 * A caller that is nobody yet is told how to become somebody instead, exactly as every other
+	 * refusal does, see {@link AuthService#refusal(Caller, boolean)}.
+	 * </p>
+	 */
+	private void refuseMove(Context context, Caller caller, String message, boolean write) throws IOException {
+		if (caller.isPaired()) {
+			LOG.warning("Refusing the move at '" + context.request().getPathInfo() + "': " + message);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, message);
+		} else {
+			unauthorized(context, caller, write);
+		}
+	}
+
+	/**
 	 * Files what is already in the addressed folder by that folder's placement rule, see issue #48.
 	 *
 	 * <p>
@@ -634,17 +754,17 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private void placeEntries(Context context) throws IOException {
 		Caller caller = _auth.caller(context.request());
-		if (!_auth.writeAllowed(caller)) {
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo folder = location.getPath();
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folder)) {
 			unauthorized(context, caller, true);
 			return;
 		}
-
-		PathInfo folder = resolve(context, caller);
-		if (folder == null) {
-			return;
-		}
 		if (!_auth.mayEdit(caller, folder)) {
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, MoveService.EDIT_REFUSED);
+			refuseMove(context, caller, MoveService.EDIT_REFUSED, true);
 			return;
 		}
 
@@ -665,21 +785,25 @@ public class ImageServlet extends HttpServlet {
 	 * Answers which of the asked contents the addressed folder already holds.
 	 *
 	 * <p>
-	 * Asking is a read: it only reveals what the folder contains, so it obeys
-	 * {@link AuthService#readAllowed(Caller)}. A client uses it to skip transferring what is
-	 * already there; the upload itself is idempotent in any case, see
-	 * {@link #storeUploads(Context, File)}.
+	 * A client uses it to skip transferring what is already there, so it asks for what an upload
+	 * asks for: the contribute right, see {@link AuthService#mayContribute(Caller, PathInfo)}. The
+	 * upload itself is idempotent in any case, see {@link #storeUploads(Context, PathInfo)}.
 	 * </p>
 	 */
 	private void checkUploads(Context context) throws IOException {
 		Caller caller = _auth.caller(context.request());
-		if (!_auth.readAllowed(caller)) {
-			unauthorized(context, caller, false);
+		Location location = resolve(context, caller);
+		if (location == null) {
 			return;
 		}
+		PathInfo resourcePath = location.getPath();
 
-		PathInfo resourcePath = resolve(context, caller);
-		if (resourcePath == null) {
+		// Contributing is what the answer is for. In the caller's own space, and in the
+		// single-user library mode WRITES keeps open, it stays the plain read it has been since
+		// issue #29 — that library has no grants and never had this endpoint closed.
+		if (!_auth.mayContribute(caller, resourcePath)
+			&& !_auth.spaceRights(caller, resourcePath).contains(Rights.VIEW)) {
+			refuse(context, caller, resourcePath, Rights.CONTRIBUTE, false);
 			return;
 		}
 
@@ -767,6 +891,276 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Answers the users of this server at <code>&lt;data&gt;/?type=users</code>, see issue #49.
+	 *
+	 * <p>
+	 * Their names and roles, and nothing else: a member needs the names to share something, and
+	 * nobody needs more. A guest is not shown the family's names, and an anonymous caller is not
+	 * shown anything, see {@link AuthService#maySeeUsers(Caller)}.
+	 * </p>
+	 */
+	private void serveUsers(Context context, Caller caller) throws IOException {
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		if (!_auth.maySeeUsers(caller)) {
+			LOG.warning("Refusing the user list to '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.USERS_REFUSED);
+			return;
+		}
+
+		UserList result = UserList.create();
+		UserStore users = _auth.getUsers();
+		if (users != null) {
+			for (UserStore.User user : users.getUsers()) {
+				if (user.getName().isEmpty()) {
+					// The owner of a library that was never named; there is nothing to share with.
+					continue;
+				}
+				result.addUser(UserEntry.create().setName(user.getName()).setRole(user.getRole()));
+			}
+		}
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Answers the caller's groups at <code>&lt;data&gt;/?type=groups</code>, see issue #49.
+	 *
+	 * <p>
+	 * The groups the caller owns and the groups they are in; a guest sees the groups they were put
+	 * into, which is how they learn what they are part of.
+	 * </p>
+	 */
+	private void serveGroups(Context context, Caller caller) throws IOException {
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		GroupList result = GroupList.create();
+		GroupStore groups = _auth.getGroups();
+		if (groups != null) {
+			for (GroupStore.Group group : groups.visibleTo(caller.getUserName())) {
+				result.addGroup(onTheWire(group));
+			}
+		}
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Answers the grants covering the addressed folder at
+	 * <code>&lt;folder&gt;/?type=grants</code>, see issue #49.
+	 *
+	 * <p>
+	 * The grants on the folder and on every folder above it within the space, the nearest one
+	 * first: that is what actually decides who may do what here. Only the owner of the space and
+	 * the administrator may ask — who else was let in is nobody else's business.
+	 * </p>
+	 */
+	private void serveGrants(Context context, Caller caller, Location location) throws IOException {
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		if (!_auth.mayManageGrants(caller, location.getPath())) {
+			LOG.warning("Refusing the grants of '" + location.getOwner() + "' to '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GRANTS_REFUSED);
+			return;
+		}
+
+		GrantList result = GrantList.create();
+		GrantStore grants = _auth.getGrants();
+		if (grants != null) {
+			for (GrantStore.Grant grant : grants.covering(location.getOwner(), location.getOwnerPath())) {
+				result.addGrant(onTheWire(grant));
+			}
+		}
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Records or removes a grant on the addressed folder, see issue #49.
+	 *
+	 * <p>
+	 * The owner and the path come from the URL, never from the body: a grant is made where it is
+	 * made. Granting again replaces the rights of an earlier grant to the same subject; revoking
+	 * removes it. A grant to somebody this server does not know is refused rather than recorded,
+	 * so that the list of grants never promises anything to nobody.
+	 * </p>
+	 */
+	private void changeGrant(Context context, boolean revoke) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (!_auth.mayManageGrants(caller, location.getPath())) {
+			LOG.warning("Refusing to change the grants of '" + location.getOwner() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GRANTS_REFUSED);
+			return;
+		}
+		if (location.getOwner().isEmpty()) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.PATH_ESCAPED);
+			return;
+		}
+
+		Grant request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = Grant.readGrant(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable grant: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, GRANT_UNREADABLE);
+			return;
+		}
+
+		String subject = request.getSubject() == null ? "" : request.getSubject().trim();
+		if (!Subjects.isKnown(subject) || !subjectExists(subject)) {
+			LOG.warning("Refusing a grant to the unknown subject '" + subject + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.unknownSubject(subject));
+			return;
+		}
+
+		GrantStore grants = _auth.getGrants();
+		String path = location.getOwnerPath();
+		if (revoke) {
+			grants.revoke(location.getOwner(), path, subject);
+			serveJsonObject(context.response(), GrantList.create());
+			return;
+		}
+
+		Set<String> rights = new LinkedHashSet<>();
+		for (de.haumacher.imageServer.shared.model.RightName right : request.getRights()) {
+			String name = right.getName();
+			if (!Rights.isKnown(name)) {
+				LOG.warning("Refusing a grant of the unknown right '" + name + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.unknownRight(name));
+				return;
+			}
+			rights.add(name);
+		}
+
+		GrantStore.Grant stored = grants.grant(location.getOwner(), path, subject, rights);
+		LOG.info("Granted " + stored + ".");
+		serveJsonObject(context.response(), GrantList.create().addGrant(onTheWire(stored)));
+	}
+
+	/** Whether the given subject names somebody this server knows. */
+	private boolean subjectExists(String subject) {
+		String user = Subjects.nameOf(subject, Subjects.USER_PREFIX);
+		if (user != null) {
+			return _auth.getUsers() != null && _auth.getUsers().getUser(user) != null;
+		}
+		String group = Subjects.nameOf(subject, Subjects.GROUP_PREFIX);
+		if (group != null) {
+			return _auth.getGroups() != null && _auth.getGroups().getGroup(group) != null;
+		}
+		return Subjects.ANONYMOUS.equals(subject);
+	}
+
+	/**
+	 * Creates a group, replaces its members, or removes it, see issue #49.
+	 *
+	 * <p>
+	 * A group belongs to whoever created it; nobody else changes or removes it. A member name the
+	 * server does not know is refused rather than stored, so that a group never lists somebody who
+	 * is not there.
+	 * </p>
+	 */
+	private void changeGroup(Context context, boolean remove) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+
+		Group request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = Group.readGroup(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable group: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, GROUP_UNREADABLE);
+			return;
+		}
+
+		String name;
+		try {
+			name = UserStore.checkUserName(request.getName());
+		} catch (IllegalArgumentException ex) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
+			return;
+		}
+
+		GroupStore groups = _auth.getGroups();
+		GroupStore.Group existing = groups.getGroup(name);
+		if (existing != null && !existing.getOwner().equals(caller.getUserName())) {
+			LOG.warning("Refusing to change the group '" + name + "' of '" + existing.getOwner() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GROUP_REFUSED);
+			return;
+		}
+
+		if (remove) {
+			if (existing == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.GROUP_UNKNOWN);
+				return;
+			}
+			groups.remove(name);
+			LOG.info("Removed the group '" + name + "'.");
+			serveJsonObject(context.response(), GroupList.create());
+			return;
+		}
+
+		if (existing == null && !_auth.mayOwnGroups(caller)) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GROUP_CREATE_REFUSED);
+			return;
+		}
+
+		List<String> members = new ArrayList<>();
+		for (MemberName member : request.getMembers()) {
+			if (_auth.getUsers() == null || _auth.getUsers().getUser(member.getName()) == null) {
+				LOG.warning("Refusing the unknown group member '" + member.getName() + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST,
+					AuthService.unknownSubject(Subjects.user(member.getName())));
+				return;
+			}
+			members.add(member.getName());
+		}
+
+		GroupStore.Group stored = groups.put(name, caller.getUserName(), members);
+		LOG.info("Stored the group " + stored + ".");
+		serveJsonObject(context.response(), GroupList.create().addGroup(onTheWire(stored)));
+	}
+
+	/** The given grant as the protocol carries it. */
+	private static Grant onTheWire(GrantStore.Grant grant) {
+		return Grant.create()
+			.setOwner(grant.getOwner())
+			.setPath(grant.getPath())
+			.setSubject(grant.getSubject())
+			.setRights(Rights.onTheWire(grant.getRights()))
+			.setCreated(grant.getCreated());
+	}
+
+	/** The given group as the protocol carries it. */
+	private static Group onTheWire(GroupStore.Group group) {
+		Group result = Group.create()
+			.setName(group.getName())
+			.setOwner(group.getOwner())
+			.setCreated(group.getCreated());
+		for (String member : group.getMembers()) {
+			result.addMember(MemberName.create().setName(member));
+		}
+		return result;
+	}
+
+	/**
 	 * Handles the pairing request at <code>&lt;data&gt;/?action=pair</code>.
 	 *
 	 * <p>
@@ -790,6 +1184,14 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("place".equals(action)) {
 			placeEntries(context);
+			return;
+		}
+		if ("grant".equals(action) || "revoke".equals(action)) {
+			changeGrant(context, "revoke".equals(action));
+			return;
+		}
+		if ("group".equals(action) || "ungroup".equals(action)) {
+			changeGroup(context, "ungroup".equals(action));
 			return;
 		}
 
@@ -1002,13 +1404,54 @@ public class ImageServlet extends HttpServlet {
 	 * {@link PrivacyFilter}.
 	 * </p>
 	 */
-	private void serveFolder(Context context, PathInfo pathInfo, int clearance) throws IOException {
+	private void serveFolder(Context context, PathInfo pathInfo, int clearance, Caller caller) throws IOException {
 		Resource resource = _cache.lookup(pathInfo);
 		if (jsonRequested(context)) {
-			serveJson(context.response(), _privacy.filter(resource, pathInfo, clearance));
+			Resource answer = _privacy.filter(resource, pathInfo, clearance);
+			serveJson(context.response(), withRights(answer, _auth.rights(caller, pathInfo)));
 		} else {
 			error404(context);
 		}
+	}
+
+	/**
+	 * The given folder answer carrying the caller's rights on it, see {@link FolderResource#getRights()}.
+	 *
+	 * <p>
+	 * Always on a copy: what the {@link ResourceCache} holds is one object shared by every request
+	 * and by the sidecar a move rewrites, and one caller's rights are not another's. The copy
+	 * shares the parts of the cached album, exactly as the copy of the {@link PrivacyFilter} does
+	 * — it is only ever serialised into the response.
+	 * </p>
+	 */
+	private static Resource withRights(Resource resource, Set<String> rights) {
+		if (!(resource instanceof FolderResource)) {
+			return resource;
+		}
+		FolderResource copy;
+		if (resource instanceof AlbumInfo) {
+			AlbumInfo album = (AlbumInfo) resource;
+			AlbumInfo result = AlbumInfo.create()
+				.setTitle(album.getTitle())
+				.setSubTitle(album.getSubTitle())
+				.setDate(album.getDate())
+				.setEffectiveDate(album.getEffectiveDate())
+				.setParts(album.getParts());
+			if (album.getIndexPicture() != null) {
+				result.setIndexPicture(album.getIndexPicture());
+			}
+			copy = result;
+		} else if (resource instanceof ListingInfo) {
+			ListingInfo listing = (ListingInfo) resource;
+			copy = ListingInfo.create()
+				.setTitle(listing.getTitle())
+				.setPlacement(listing.getPlacement())
+				.setFolders(listing.getFolders());
+		} else {
+			return resource;
+		}
+		copy.setRights(Rights.onTheWire(rights));
+		return copy;
 	}
 
 	/**

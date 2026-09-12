@@ -141,6 +141,18 @@ public class ListingInfo extends FolderResource {
 	}
 
 	@Override
+	public de.haumacher.imageServer.shared.model.ListingInfo setRights(java.util.List<? extends de.haumacher.imageServer.shared.model.RightName> value) {
+		internalSetRights(value);
+		return this;
+	}
+
+	@Override
+	public de.haumacher.imageServer.shared.model.ListingInfo addRight(de.haumacher.imageServer.shared.model.RightName value) {
+		internalAddRight(value);
+		return this;
+	}
+
+	@Override
 	public String jsonType() {
 		return LISTING_INFO__TYPE;
 	}

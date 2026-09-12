@@ -219,8 +219,26 @@ public class TestImageServletPut extends TestCase {
 						return headers.get(args[0]);
 					case "getParameter":
 						return parameters.get(args[0]);
+					case "getContextPath":
+						return "/valbum";
+					case "getServletPath":
+						return "/data";
 					case "getMethod":
 						return "PUT";
+					case "getServletContext":
+						// Only ever asked for the MIME type of an original that is served.
+						return Proxy.newProxyInstance(TestImageServletPut.class.getClassLoader(),
+							new Class<?>[] { jakarta.servlet.ServletContext.class },
+							(ctx, ctxMethod, ctxArgs) -> {
+								if ("getMimeType".equals(ctxMethod.getName())) {
+									return "image/jpeg";
+								}
+								if ("toString".equals(ctxMethod.getName())) {
+									return "FakeServletContext";
+								}
+								throw new UnsupportedOperationException(
+									"Unexpected servlet context method in test: " + ctxMethod.getName());
+							});
 					case "toString":
 						return "FakeRequest[" + pathInfo + "]";
 					default:
@@ -303,6 +321,10 @@ public class TestImageServletPut extends TestCase {
 					return null;
 				case "sendError":
 					_status = ((Integer) args[0]).intValue();
+					return null;
+				case "sendRedirect":
+					_status = HttpServletResponse.SC_FOUND;
+					_headers.put("Location", (String) args[0]);
 					return null;
 				case "getStatus":
 					return Integer.valueOf(_status);
