@@ -171,6 +171,18 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-12 (later)** — Link entries (#50), server side. A shared album appears in the recipient's own
+  tree as a link: a record in the folder's `.links.json` sidecar naming the target in the owner's
+  coordinates. The resolver walks a request path segment by segment and follows a link to its target, so
+  the URL is the viewer's path while every rights, clearance and privacy question is asked about the
+  target — access is checked against the grant on the target, never against the link. Links are
+  materialised when a member lists their own root, filed by the root's placement rule, and remembered in
+  the space's `.valbum/share-registry.json` (named so because #51 claims `shares.json`); a removed link
+  is recorded as declined and does not come back until a management screen (#55) clears it. A real
+  folder always wins a name back from a link; the disk is asked first. The owner's library is
+  byte-identical before and after anyone links, browses, moves or unlinks. The app half (link badge,
+  "Remove from my albums", opening a canonical URL at the viewer's own link) is open.
+
 - **2026-09-12** — Groups and grants (#49), server side. Sharing is one mechanism, the grant
   `{owner, path, subject, rights}` in `.valbum/grants.json`, with named groups in `.valbum/groups.json`;
   `AuthService.rights(caller, path)` is the one method every endpoint asks. Three decisions beyond the

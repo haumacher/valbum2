@@ -30,6 +30,9 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getIndexPicture() */
 	private static final String INDEX_PICTURE__PROP = "indexPicture";
 
+	/** @see #getLink() */
+	private static final String LINK__PROP = "link";
+
 	private String _name = "";
 
 	private String _title = "";
@@ -39,6 +42,8 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private long _effectiveDate = 0L;
 
 	private de.haumacher.imageServer.shared.model.ThumbnailInfo _indexPicture = null;
+
+	private String _link = "";
 
 	/**
 	 * Creates a {@link FolderInfo} instance.
@@ -165,6 +170,47 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		return _indexPicture != null;
 	}
 
+	/**
+	 * The album this entry is a link to, in its owner's coordinates, see issue #50.
+	 *
+	 * <p>
+	 * Empty for an ordinary folder on disk, and <code>~&lt;owner&gt;/&lt;path&gt;</code> for a link:
+	 * a shared album somebody granted the caller a right on, showing in the caller's own tree under
+	 * the {@link #getName()} the caller gave it. Everything else this tile carries (its {@link #getTitle()},
+		 * its {@link #getSubTitle()}, its {@link #getIndexPicture()} and its {@link #getEffectiveDate()}) is read from
+	 * the target, so a link looks like what it points at.
+	 * </p>
+	 *
+	 * <p>
+	 * The link is what the app marks the tile as shared with and what it names the owner from; it
+	 * is never a path the app has to follow. Navigating into a link is ordinary navigation:
+	 * <code>&lt;listing&gt;/&lt;name&gt;/</code> resolves through the link on the server, so the URL
+	 * the app shows stays the viewer's own path. This is the canonical form a share link and a
+	 * copied URL use, see issue #49.
+	 * </p>
+	 *
+	 * <p>
+	 * Derived on every read like {@link FolderResource#getRights()}, and never stored in a sidecar: a
+	 * link lives in the folder's <code>.links.json</code>, not in its <code>index.json</code>.
+	 * </p>
+	 */
+	public final String getLink() {
+		return _link;
+	}
+
+	/**
+	 * @see #getLink()
+	 */
+	public de.haumacher.imageServer.shared.model.FolderInfo setLink(String value) {
+		internalSetLink(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getLink()} without chain call utility. */
+	protected final void internalSetLink(String value) {
+		_link = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.FolderInfo readFolderInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.FolderInfo result = new de.haumacher.imageServer.shared.model.FolderInfo();
@@ -192,6 +238,8 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			out.name(INDEX_PICTURE__PROP);
 			getIndexPicture().writeTo(out);
 		}
+		out.name(LINK__PROP);
+		out.value(getLink());
 	}
 
 	@Override
@@ -202,6 +250,7 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case SUB_TITLE__PROP: setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case EFFECTIVE_DATE__PROP: setEffectiveDate(in.nextLong()); break;
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
+			case LINK__PROP: setLink(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

@@ -308,11 +308,33 @@ public class PrivacyFilter {
 	 * </p>
 	 */
 	private FolderInfo filterFolder(FolderInfo folder, PathInfo path, int clearance) {
+		return filterEntry(folder, path.child(folder.getName()), clearance);
+	}
+
+	/**
+	 * The given tile with a cover the given clearance may see, whatever folder it stands for.
+	 *
+	 * <p>
+	 * The folder a tile describes is usually the child of the listing it stands in, and then this
+	 * is {@link #filterFolder(FolderInfo, PathInfo, int)}. A link entry of issue #50 is the
+	 * exception: its tile stands in the recipient's listing and describes a folder of the owner's,
+	 * so the path and the clearance are the <em>target's</em> — a link shows what its holder may
+	 * see of the album it points at, never more.
+	 * </p>
+	 *
+	 * @param folder
+	 *        The tile as it was built from the folder it describes.
+	 * @param childPath
+	 *        Where that folder really lies.
+	 * @param clearance
+	 *        What the caller may see <em>there</em>, see
+	 *        {@link de.haumacher.imageServer.auth.AuthService#clearance(de.haumacher.imageServer.auth.AuthService.Caller, PathInfo)}.
+	 */
+	public FolderInfo filterEntry(FolderInfo folder, PathInfo childPath, int clearance) {
 		ThumbnailInfo indexPicture = folder.getIndexPicture();
 		if (indexPicture == null) {
 			return folder;
 		}
-		PathInfo childPath = path.child(folder.getName());
 		File child = childPath.toFile();
 		if (!child.isDirectory()) {
 			return folder;
@@ -331,6 +353,8 @@ public class PrivacyFilter {
 			.setName(folder.getName())
 			.setTitle(folder.getTitle())
 			.setSubTitle(folder.getSubTitle())
+			// A shared tile stays a shared tile when its cover is hidden, see issue #50.
+			.setLink(folder.getLink())
 			// The listing keeps its order whoever is looking at it.
 			.setEffectiveDate(folder.getEffectiveDate());
 		Resource album = _cache.lookup(childPath);

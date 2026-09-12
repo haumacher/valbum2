@@ -1125,6 +1125,30 @@ class FolderInfo extends _JsonObject {
 	///  The index picture of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
 	ThumbnailInfo? indexPicture;
 
+	///  The album this entry is a link to, in its owner's coordinates, see issue #50.
+	/// 
+	///  <p>
+	///  Empty for an ordinary folder on disk, and <code>~&lt;owner&gt;/&lt;path&gt;</code> for a link:
+	///  a shared album somebody granted the caller a right on, showing in the caller's own tree under
+	///  the {@link #name} the caller gave it. Everything else this tile carries (its {@link #title},
+		///  its {@link #subTitle}, its {@link #indexPicture} and its {@link #effectiveDate}) is read from
+	///  the target, so a link looks like what it points at.
+	///  </p>
+	/// 
+	///  <p>
+	///  The link is what the app marks the tile as shared with and what it names the owner from; it
+	///  is never a path the app has to follow. Navigating into a link is ordinary navigation:
+	///  <code>&lt;listing&gt;/&lt;name&gt;/</code> resolves through the link on the server, so the URL
+	///  the app shows stays the viewer's own path. This is the canonical form a share link and a
+	///  copied URL use, see issue #49.
+	///  </p>
+	/// 
+	///  <p>
+	///  Derived on every read like {@link FolderResource#rights}, and never stored in a sidecar: a
+	///  link lives in the folder's <code>.links.json</code>, not in its <code>index.json</code>.
+	///  </p>
+	String link;
+
 	/// Creates a FolderInfo.
 	FolderInfo({
 			this.name = "", 
@@ -1132,6 +1156,7 @@ class FolderInfo extends _JsonObject {
 			this.subTitle = "", 
 			this.effectiveDate = 0, 
 			this.indexPicture, 
+			this.link = "", 
 	});
 
 	/// Parses a FolderInfo from a string source.
@@ -1172,6 +1197,10 @@ class FolderInfo extends _JsonObject {
 				indexPicture = json.tryNull() ? null : ThumbnailInfo.read(json);
 				break;
 			}
+			case "link": {
+				link = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1197,6 +1226,9 @@ class FolderInfo extends _JsonObject {
 			json.addKey("indexPicture");
 			_indexPicture.writeContent(json);
 		}
+
+		json.addKey("link");
+		json.addString(link);
 	}
 
 }

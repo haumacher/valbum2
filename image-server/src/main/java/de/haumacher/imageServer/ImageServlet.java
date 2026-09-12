@@ -17,6 +17,7 @@ import de.haumacher.imageServer.auth.Rights;
 import de.haumacher.imageServer.auth.Subjects;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.links.LinkService;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
@@ -112,6 +113,9 @@ public class ImageServlet extends HttpServlet {
 	/** The message an unreadable upload check is refused with. */
 	public static final String CHECK_UNREADABLE = "The upload check cannot be read.";
 
+	/** The message an unreadable request to remove a link is refused with. */
+	public static final String UNLINK_UNREADABLE = "The request to remove a shared album cannot be read.";
+
 	/** The message an unreadable grant is refused with. */
 	public static final String GRANT_UNREADABLE = "The grant cannot be read.";
 
@@ -144,6 +148,8 @@ public class ImageServlet extends HttpServlet {
 
 	private PrivacyFilter _privacy;
 
+	private LinkService _links;
+
 	private JakartaServletFileUpload<UploadItem, UploadFactory> _fileUpload;
 
 	private final AuthService _auth;
@@ -168,6 +174,7 @@ public class ImageServlet extends HttpServlet {
 		_cache = new ResourceCache();
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
+		_links = new LinkService(_basePath, auth, _privacy);
 	}
 
 	@Override
@@ -269,9 +276,10 @@ public class ImageServlet extends HttpServlet {
 				refuse(context, caller, resourcePath, Rights.VIEW, false);
 				return;
 			}
+			materialiseLinks(caller, location);
 			// "View as" only ever lowers: it is safe for anybody to send, see Privacy#viewAs(String).
 			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
-			serveFolder(context, resourcePath, clearance, caller);
+			serveFolder(context, resourcePath, clearance, viewAs, caller);
 		} else if (ResourceCache.isImage(file)) {
 			// The description and the thumbnail are looking; the original file is taking a copy.
 			String right = jsonRequested(context) || "tn".equals(type) ? Rights.VIEW : Rights.DOWNLOAD;
@@ -715,7 +723,7 @@ public class ImageServlet extends HttpServlet {
 		List<String> names = moveRequest.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
 		MoveResult result;
 		try {
-			result = new MoveService(_basePath, _cache).move(source, target, names);
+			result = new MoveService(_basePath, _cache, _auth).move(source, target, names);
 		} catch (MoveRefused ex) {
 			LOG.warning("Refusing to move from '" + context.request().getPathInfo() + "': " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());
@@ -770,7 +778,7 @@ public class ImageServlet extends HttpServlet {
 
 		MoveResult result;
 		try {
-			result = new MoveService(_basePath, _cache).place(folder);
+			result = new MoveService(_basePath, _cache, _auth).place(folder);
 		} catch (MoveRefused ex) {
 			LOG.warning("Refusing to apply the placement rule of '" + context.request().getPathInfo() + "': "
 				+ ex.getMessage());
@@ -1186,6 +1194,10 @@ public class ImageServlet extends HttpServlet {
 			placeEntries(context);
 			return;
 		}
+		if ("unlink".equals(action)) {
+			unlinkEntries(context);
+			return;
+		}
 		if ("grant".equals(action) || "revoke".equals(action)) {
 			changeGrant(context, "revoke".equals(action));
 			return;
@@ -1404,14 +1416,90 @@ public class ImageServlet extends HttpServlet {
 	 * {@link PrivacyFilter}.
 	 * </p>
 	 */
-	private void serveFolder(Context context, PathInfo pathInfo, int clearance, Caller caller) throws IOException {
+	private void serveFolder(Context context, PathInfo pathInfo, int clearance, int viewAs, Caller caller)
+			throws IOException {
 		Resource resource = _cache.lookup(pathInfo);
 		if (jsonRequested(context)) {
 			Resource answer = _privacy.filter(resource, pathInfo, clearance);
+			if (answer instanceof ListingInfo) {
+				// The shared albums of this folder, shown as what they point at, see issue #50.
+				// After the privacy filter: a link is filtered by the clearance on its own target,
+				// which is not the one this listing was filtered with.
+				answer = _links.augment((ListingInfo) answer, pathInfo, caller, viewAs);
+			}
 			serveJson(context.response(), withRights(answer, _auth.rights(caller, pathInfo)));
 		} else {
 			error404(context);
 		}
+	}
+
+	/**
+	 * Creates the links for what was shared with the caller, when the caller lists their own space
+	 * root, see issue #50.
+	 *
+	 * <p>
+	 * A read that writes, and the only one: a share becomes an entry in the recipient's tree the
+	 * first time they look at it, which is what spares the server a fan-out write whenever a group
+	 * gains a member. It happens in the caller's own space and nowhere else — not in a folder
+	 * reached through the canonical form, not through a link, and never for a caller without a
+	 * space of their own (a guest, an anonymous caller, mode {@link de.haumacher.imageServer.auth.AuthMode#OFF}).
+	 * </p>
+	 */
+	private void materialiseLinks(Caller caller, Location location) {
+		PathInfo path = location.getPath();
+		if (!caller.isPaired() || !path.isRoot() || location.isLinked() || !location.getPrefix().isEmpty()) {
+			return;
+		}
+		if (!_auth.spaceRights(caller, path).containsAll(Rights.ALL)) {
+			// Not the owner of this space: a guest looking at the base folder, say.
+			return;
+		}
+		if (_links.materialise(caller, path)) {
+			// A placement rule may have created a year folder for a new link.
+			_cache.invalidateTree(path);
+		}
+	}
+
+	/**
+	 * Removes link entries of the addressed folder at <code>&lt;folder&gt;/?action=unlink</code>,
+	 * see issue #50.
+	 *
+	 * <p>
+	 * The folder is the caller's own and the request changes it, so it asks for exactly what a move
+	 * out of it asks for: the edit right. Nothing of the owner's is touched and no grant changes —
+	 * this is the recipient saying that they do not want the shared album in their tree, and it is
+	 * remembered, see {@link LinkService#unlink(Caller, PathInfo, java.util.List)}.
+	 * </p>
+	 */
+	private void unlinkEntries(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo folder = location.getPath();
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folder)) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (!_auth.mayEdit(caller, folder)) {
+			refuse(context, caller, folder, Rights.EDIT, true);
+			return;
+		}
+
+		MoveRequest request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = MoveRequest.readMoveRequest(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable unlink request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, UNLINK_UNREADABLE);
+			return;
+		}
+
+		List<String> names = request.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
+		serveJsonObject(context.response(), _links.unlink(caller, folder, names));
 	}
 
 	/**

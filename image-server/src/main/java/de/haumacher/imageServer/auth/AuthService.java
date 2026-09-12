@@ -8,6 +8,7 @@ import de.haumacher.imageServer.auth.GrantStore.Grant;
 import de.haumacher.imageServer.auth.GroupStore.Group;
 import de.haumacher.imageServer.auth.UserStore.Login;
 import de.haumacher.imageServer.auth.UserStore.User;
+import de.haumacher.imageServer.links.LinkStore;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
@@ -20,6 +21,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.logging.Level;
@@ -89,6 +91,22 @@ public class AuthService {
 	 * </p>
 	 */
 	public static final String HOME_PREFIX = "~";
+
+	/**
+	 * The message a chain of link entries is refused with that is too long or closed into a ring.
+	 *
+	 * <p>
+	 * A link may point at a folder holding links of its own, and following them is what makes a
+	 * shared folder of shared folders work, see issue #50. A chain that never ends is a mistake
+	 * somebody made and is answered as a path that is not there — spoken, never silently.
+	 * </p>
+	 */
+	public static final String LINK_LOOP =
+		"This shared album cannot be opened: the links leading to it point in a circle.";
+
+	/** The message a link record naming a target outside any library is refused with. */
+	public static final String LINK_ESCAPED =
+		"This shared album cannot be opened: it points outside the library it names.";
 
 	/** The message a caller is refused with that may not look at a folder. */
 	public static final String VIEW_REFUSED = "You may not look at this album.";
@@ -571,8 +589,16 @@ public class AuthService {
 		return caller.isPaired() && !Roles.GUEST.equals(caller.getRole());
 	}
 
-	/** The subjects a grant may name the given caller by, see {@link Subjects}. */
-	private Set<String> subjects(Caller caller) {
+	/**
+	 * The subjects a grant may name the given caller by, see {@link Subjects}.
+	 *
+	 * <p>
+	 * What {@link #rights(Caller, PathInfo)} asks the {@link GrantStore} with, and what the link
+	 * entries of issue #50 are materialised from: the grants naming one of these are the albums
+	 * shared with this caller.
+	 * </p>
+	 */
+	public Set<String> subjects(Caller caller) {
 		Set<String> result = new LinkedHashSet<>();
 		// "anonymous" names everybody: a grant to it is what opens an album to the world.
 		result.add(Subjects.ANONYMOUS);
@@ -728,10 +754,51 @@ public class AuthService {
 
 		private final PathInfo _path;
 
+		private final String _linkOwner;
+
+		private final String _linkTarget;
+
+		private final String _linkPath;
+
 		Location(String prefix, Space space, PathInfo path) {
+			this(prefix, space, path, "", "", "");
+		}
+
+		Location(String prefix, Space space, PathInfo path, String linkOwner, String linkTarget, String linkPath) {
 			_prefix = prefix;
 			_space = space;
 			_path = path;
+			_linkOwner = linkOwner;
+			_linkTarget = linkTarget;
+			_linkPath = linkPath;
+		}
+
+		/**
+		 * Whether the request reached this path through a link entry, see issue #50.
+		 *
+		 * <p>
+		 * What lies here belongs to somebody else, and the rights and the clearance of this request
+		 * are the ones on the target, exactly as they are for a canonical <code>~owner/…</code>
+		 * request: access is checked against the grant on the target, never against the link.
+		 * </p>
+		 */
+		public boolean isLinked() {
+			return !_linkPath.isEmpty();
+		}
+
+		/** The name of the user the link led into, empty if no link was followed. */
+		public String getLinkOwner() {
+			return _linkOwner;
+		}
+
+		/** The link's target in the owner's coordinates, see {@link LinkStore.Link#getPath()}. */
+		public String getLinkTarget() {
+			return _linkTarget;
+		}
+
+		/** Where the link lies in the request's own coordinates: the viewer's path to it. */
+		public String getLinkPath() {
+			return _linkPath;
 		}
 
 		/**
@@ -776,7 +843,24 @@ public class AuthService {
 		 *        {@link PathInfo#relativePath()}.
 		 */
 		public String spell(String path) {
-			return _prefix + path;
+			if (!isLinked()) {
+				return _prefix + path;
+			}
+			// The request came through a link, so the resolved path is spelled in the target
+			// owner's coordinates while the request speaks the viewer's: the linked subtree is
+			// mapped back onto the viewer's path to the link, see issue #50.
+			if (_linkTarget.isEmpty()) {
+				return _prefix + _linkPath + (path.isEmpty() ? "" : "/" + path);
+			}
+			if (path.equals(_linkTarget)) {
+				return _prefix + _linkPath;
+			}
+			if (path.startsWith(_linkTarget + "/")) {
+				return _prefix + _linkPath + path.substring(_linkTarget.length());
+			}
+			// Outside the linked subtree there is no viewer's path at all; the canonical form of
+			// the owner's library is the one spelling that is always right.
+			return HOME_PREFIX + getOwner() + (path.isEmpty() ? "" : "/" + path);
 		}
 
 		/** The path of this location itself, spelled as the request spells it. */
@@ -843,19 +927,116 @@ public class AuthService {
 			prefix = "";
 		}
 
-		PathInfo path;
 		if (rest.isEmpty()) {
-			path = new PathInfo(root);
-		} else {
-			Path relative = java.nio.file.Paths.get(rest).normalize();
-			if (relative.isAbsolute() || relative.startsWith("..") || relative.toString().isEmpty()) {
-				throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, PATH_ESCAPED);
-			}
-			path = new PathInfo(root, relative);
+			PathInfo path = new PathInfo(root);
+			return new Location(prefix, spaceOf(path), path);
 		}
+		Path relative = java.nio.file.Paths.get(rest).normalize();
+		if (relative.isAbsolute() || relative.startsWith("..") || relative.toString().isEmpty()) {
+			throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, PATH_ESCAPED);
+		}
+		return walk(prefix, root, relative, basePath);
+	}
+
+	/**
+	 * How many link entries one request may follow, see {@link #walk(String, Path, Path, Path)}.
+	 *
+	 * <p>
+	 * A shared folder may hold links of the owner's, which is why a chain exists at all; a chain
+	 * this long is a mistake rather than a library, and the request is refused rather than followed
+	 * until the stack ends.
+	 * </p>
+	 */
+	private static final int MAX_LINK_DEPTH = 8;
+
+	/**
+	 * Walks a request path segment by segment, following the link entries of issue #50.
+	 *
+	 * <p>
+	 * A segment that exists on disk is an ordinary step. A segment that does not, but names a
+	 * {@link LinkStore.Link} of the folder reached so far, re-roots the rest of the path at the
+	 * link's target: the remaining segments are resolved in the target owner's space, and the
+	 * {@link Location} carries the owner and the target path, so that {@link #rights(Caller,
+	 * PathInfo)} and {@link #clearance(Caller, PathInfo)} ask about the target — access is checked
+	 * against the grant on the target, never against the link. What the answer is <em>spelled</em>
+	 * in stays the request's own coordinates, see {@link Location#spell(String)}.
+	 * </p>
+	 *
+	 * <p>
+	 * The disk is asked first and the link store only for a segment that is not there, so a library
+	 * without a single share pays nothing for this beyond the {@link Files#exists(Path,
+	 * java.nio.file.LinkOption...)} it does anyway.
+	 * </p>
+	 */
+	private Location walk(String prefix, Path root, Path relative, Path basePath) throws PathRefused {
+		Path currentRoot = root;
+		Path consumed = null;
+		String spelled = "";
+		String linkOwner = "";
+		String linkTarget = "";
+		String linkPath = "";
+		Set<String> visited = new HashSet<>();
+		int hops = 0;
+
+		for (Path segment : relative) {
+			String name = segment.toString();
+			Path folder = consumed == null ? currentRoot : currentRoot.resolve(consumed);
+			Path candidate = folder.resolve(name);
+
+			if (_users != null && !Files.exists(candidate) && Files.isDirectory(folder)
+				&& LinkStore.exists(folder.toFile())) {
+				LinkStore.Link link = new LinkStore(folder.toFile()).get(name);
+				if (link != null) {
+					User owner = _users.getUser(link.getOwner());
+					if (owner == null) {
+						// The user the link names is gone; the link leads nowhere, and it says so.
+						throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, unknownSpace(link.getOwner()));
+					}
+					String target = linkTarget(link);
+					if (++hops > MAX_LINK_DEPTH || !visited.add(link.getOwner() + "/" + target)) {
+						LOG.warning("Refusing the link chain at '" + link + "': too long or circular.");
+						throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, LINK_LOOP);
+					}
+					currentRoot = spaceRoot(owner.getSpace(), owner.getName(), basePath);
+					consumed = target.isEmpty() ? null : java.nio.file.Paths.get(target);
+					linkOwner = link.getOwner();
+					linkTarget = target;
+					linkPath = spelled + name;
+					spelled = linkPath + "/";
+					continue;
+				}
+			}
+
+			consumed = consumed == null ? java.nio.file.Paths.get(name) : consumed.resolve(name);
+			spelled = spelled + name + "/";
+		}
+
+		PathInfo path = consumed == null ? new PathInfo(currentRoot) : new PathInfo(currentRoot, consumed);
 		// Which library the path lies in is decided by where it lies, never by how it was reached:
 		// "~alice/bob/Secret" is bob's, not alice's, see spaceOf(PathInfo).
-		return new Location(prefix, spaceOf(path), path);
+		return new Location(prefix, spaceOf(path), path, linkOwner, linkTarget, linkPath);
+	}
+
+	/**
+	 * The target of the given link as a path relative to its owner's space.
+	 *
+	 * <p>
+	 * A link may only ever point into a user's library: a record that names something else is a
+	 * damaged sidecar, and following it would be the one way out of the folder tree this server
+	 * serves.
+	 * </p>
+	 */
+	private static String linkTarget(LinkStore.Link link) throws PathRefused {
+		String path = link.getPath();
+		if (path.isEmpty()) {
+			return "";
+		}
+		Path relative = java.nio.file.Paths.get(path).normalize();
+		if (relative.isAbsolute() || relative.startsWith("..") || relative.toString().isEmpty()) {
+			LOG.warning("Refusing the link '" + link + "': its target leaves the library.");
+			throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, LINK_ESCAPED);
+		}
+		return relative.toString().replace(java.io.File.separatorChar, '/');
 	}
 
 	/** Why the given caller is refused, ready to be shown to the user. */

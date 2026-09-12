@@ -176,6 +176,38 @@ public class ResourceCache {
 		return Loader.createGenericAlbumInfo(path);
 	}
 
+	/**
+	 * The tile a listing shows the given folder with: its title, subtitle, cover and date.
+	 *
+	 * <p>
+	 * The very method a listing builds its own entries with, offered to the link entries of issue
+	 * #50: a link is shown as what it points at, so its tile must be built exactly as the target's
+	 * own would be. Nothing is written and nothing is cached; the target's sidecar is read, and an
+	 * image is opened only for a folder that has no sidecar, exactly as in a listing.
+	 * </p>
+	 */
+	public static FolderInfo folderInfo(File folder) {
+		return Loader.loadFolderInfo(folder);
+	}
+
+	/**
+	 * The order a listing shows its entries in: the newest first, the undated behind them by name.
+	 *
+	 * <p>
+	 * Public, because a listing carrying link entries (issue #50) is ordered by the same rule: a
+	 * shared album takes its place among one's own by its date, not behind them.
+	 * </p>
+	 *
+	 * <p>
+	 * A folder without a date sorts by name exactly as every folder did before issue #48. The date
+	 * is the cheap one — a sidecar date or a date in the folder name — so this order costs a
+	 * listing nothing but the sidecars it reads anyway, see {@link FolderInfo#getEffectiveDate()}.
+	 * </p>
+	 */
+	public static final Comparator<FolderInfo> BY_DATE =
+		Comparator.comparingLong(FolderInfo::getEffectiveDate).reversed()
+			.thenComparing(FolderInfo::getName, String.CASE_INSENSITIVE_ORDER);
+
 	public Resource lookup(PathInfo pathInfo) {
 		_loader.processEvents(_cache);
 		if (pathInfo.toFile().isDirectory()) {
@@ -297,26 +329,11 @@ public class ResourceCache {
 			for (File folder : dirs) {
 				folders.add(loadFolderInfo(folder));
 			}
-			folders.sort(BY_DATE);
+			folders.sort(ResourceCache.BY_DATE);
 
 			listing.setFolders(folders);
 			return listing;
 		}
-
-		/**
-		 * The order a listing shows its folders in: the newest first, the undated behind them by
-		 * name.
-		 *
-		 * <p>
-		 * A folder without a date sorts by name exactly as every folder did before issue #48. The
-		 * date is the cheap one — a sidecar date or a date in the folder name — so this order costs
-		 * a listing nothing but the sidecars it reads anyway, see
-		 * {@link FolderInfo#getEffectiveDate()}.
-		 * </p>
-		 */
-		private static final Comparator<FolderInfo> BY_DATE =
-			Comparator.comparingLong(FolderInfo::getEffectiveDate).reversed()
-				.thenComparing(FolderInfo::getName, String.CASE_INSENSITIVE_ORDER);
 
 		private static FolderInfo loadFolderInfo(File folder) {
 			String folderName = folder.getName();
