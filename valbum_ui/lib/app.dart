@@ -20,11 +20,13 @@ import 'client.dart';
 import 'connectivity.dart';
 import 'group_view.dart';
 import 'image_view.dart';
+import 'links.dart';
 import 'listing_view.dart';
 import 'offline.dart';
 import 'photo_library.dart';
 import 'platform.dart';
 import 'resource.dart';
+import 'rights.dart';
 import 'routes.dart';
 import 'settings.dart';
 import 'urls.dart';
@@ -502,11 +504,25 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// Incremented by [reload], so that the view re-runs its load.
   int _version = 0;
 
+  /// The canonical routes already looked up in the viewer's own tree, so that
+  /// a route is never looked up twice — and a lookup that led nowhere is not
+  /// retried, see [_resolveLink].
+  final Set<String> _linksChecked = {};
+
+  /// Whether a canonical route is currently being matched against the
+  /// viewer's own links.
+  ///
+  /// The view is held back while it is: the canonical path would otherwise be
+  /// fetched only to be left again the moment the link is found.
+  bool _resolvingLink = false;
+
   VAlbumRouterDelegate({
     required VAlbumClient client,
     required VAlbumRoute initialRoute,
   })  : _client = client,
-        _route = initialRoute;
+        _route = initialRoute {
+    _considerLink(initialRoute);
+  }
 
   /// The transport to the album server.
   VAlbumClient get client => _client;
@@ -525,7 +541,12 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     _scrollOffsets.clear();
     _editSessions.clear();
     _grantAccess.clear();
+    // Another server — and, after a sign-in, another caller: whether this
+    // caller holds a link to the canonical route on the screen is an open
+    // question again, see [_considerLink].
+    _linksChecked.clear();
     _version++;
+    _considerLink(_route);
     notifyListeners();
   }
 
@@ -538,7 +559,71 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   @override
   Future<void> setNewRoutePath(VAlbumRoute configuration) {
     _route = configuration;
+    _considerLink(configuration);
     return SynchronousFuture(null);
+  }
+
+  /// Opens a canonical `~owner/…` route at the viewer's own link to it, where
+  /// there is one, see issue #50.
+  ///
+  /// A canonical URL — a share link, a path copied out of somebody else's
+  /// app — works for everybody holding a grant on the target. A member who
+  /// was *given* a link, though, has the album in their own tree, and there
+  /// the URL, the way up and the scroll memory are their own; so the route is
+  /// re-spelled before anything is fetched.
+  ///
+  /// Asked once per canonical route, and only of a caller who is signed in: an
+  /// anonymous caller has no space, therefore no links, and the question would
+  /// be a request for nothing.
+  void _considerLink(VAlbumRoute route) {
+    if (client.token == null || spaceOwnerOf(route.albumPath) == null) {
+      return;
+    }
+    if (!_linksChecked.add(_pathKey(route.albumPath))) {
+      return;
+    }
+    _resolvingLink = true;
+    _resolveLink(route);
+  }
+
+  /// Looks the canonical [route] up in the viewer's root listing and goes to
+  /// the link found, see [_considerLink] and [viewerPathFor].
+  ///
+  /// The link is *verified* before the app goes there — the resource is loaded
+  /// (and thereby memoised for the view that follows), so a link the server no
+  /// longer follows does not replace a canonical path that still works. It is
+  /// never tried twice: whatever happens here, the route ends up either at the
+  /// viewer's own path or at the canonical one.
+  Future<void> _resolveLink(VAlbumRoute route) async {
+    try {
+      var root = await resourceAt(const []);
+      if (root is! ListingInfo) {
+        return;
+      }
+      var viewerPath = viewerPathFor(route.albumPath, root);
+      if (viewerPath == null) {
+        return;
+      }
+      try {
+        await resourceAt(viewerPath);
+      } catch (_) {
+        // The link led nowhere: the canonical path is opened instead, and the
+        // failed load is forgotten so that it does not answer for the path
+        // later on.
+        forget(viewerPath);
+        return;
+      }
+      if (_route != route) {
+        // The user navigated on while the root listing was being fetched.
+        return;
+      }
+      _route = route.withAlbumPath(viewerPath);
+    } catch (_) {
+      // No root listing, no lookup: the canonical path is opened as it is.
+    } finally {
+      _resolvingLink = false;
+      notifyListeners();
+    }
   }
 
   /// Shows the given view, adding a history entry.
@@ -643,6 +728,13 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
 
   @override
   Widget build(BuildContext context) {
+    if (_resolvingLink) {
+      // Nothing is fetched for the canonical route while it may yet be
+      // re-spelled in the viewer's own coordinates, see [_considerLink].
+      return const Scaffold(
+        body: Center(child: Text("Loading...", key: Key("link-lookup"))),
+      );
+    }
     return VAlbumNavigator(
       route: _route,
       version: _version,

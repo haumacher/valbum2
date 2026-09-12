@@ -167,6 +167,15 @@ String ownerPathOf(List<String> path) {
 /// Shown wherever the caller is not the owner: either the path names somebody
 /// else's space, or the rights are less than all four. An owner browsing their
 /// own library sees nothing of this.
+///
+/// An album reached **through a link** (issue #50) is a case of the second
+/// kind: the path is the viewer's own, so the notice says "Shared with you —
+/// you may …" and does not name the owner. That is the truth of what the app
+/// knows here — the answer carries the rights but no owner, and the link that
+/// does name one lives on the tile of the parent listing, where the "from
+/// <owner>" line says it. Naming the owner in the album as well would mean
+/// carrying the tile along the route, and a route that is opened again from a
+/// bookmark or a reload has no tile to carry.
 String? sharingNotice(List<String> path, Rights rights) {
   var owner = spaceOwnerOf(path);
   if (owner == null && rights.complete) {

@@ -9,6 +9,7 @@ import 'album_date.dart';
 import 'app.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'links.dart';
 import 'move_view.dart';
 import 'resource.dart';
 import 'offline.dart';
@@ -273,6 +274,19 @@ class ListingView extends StatelessWidget {
                       ),
                       textAlign: TextAlign.center,
                     ),
+                  // Whose album this tile shows: a link carries the name of
+                  // the owner who shared it, see issue #50.
+                  if (linkOwnerOf(folder) != null)
+                    Text(
+                      "from ${linkOwnerOf(folder)}",
+                      key: Key("link-owner-${folder.name}"),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                        color: Colors.white70,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                 ],
               ),
             ),
@@ -282,7 +296,41 @@ class ListingView extends StatelessWidget {
     );
   }
 
+  /// The picture of one tile, with the link badge on it where the tile is a
+  /// link to somebody else's album, see issue #50.
   Widget buildFolderWidget(FolderInfo folder, double width) {
+    var picture = buildFolderPicture(folder, width);
+    var owner = linkOwnerOf(folder);
+    if (owner == null) {
+      return picture;
+    }
+    return Stack(
+      children: [
+        picture,
+        Positioned(
+          top: 4,
+          left: 4,
+          child: Tooltip(
+            message: "Shared by $owner",
+            child: Semantics(
+              label: "Shared by $owner",
+              child: Container(
+                key: Key("link-badge-${folder.name}"),
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(Icons.link, size: 16, color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildFolderPicture(FolderInfo folder, double width) {
     var indexPicture = folder.indexPicture;
     if (indexPicture == null) {
       return Container(
@@ -319,8 +367,11 @@ class ListingView extends StatelessWidget {
     // separately. The answer is remembered per folder, so a second long press
     // asks nothing again.
     var mayMove = rights.mayEdit;
+    // A link is an entry of *this* folder, so removing it is an edit of this
+    // folder; the album it points at is not touched, see issue #50.
+    var mayUnlink = rights.mayEdit && folder.link.isNotEmpty;
     var mayShareChild = await mayShare(childPath);
-    if (!context.mounted || (!mayMove && !mayShareChild)) {
+    if (!context.mounted || (!mayMove && !mayShareChild && !mayUnlink)) {
       // Nothing this caller may do here: no menu rather than an empty one.
       return;
     }
@@ -349,6 +400,14 @@ class ListingView extends StatelessWidget {
               title: Text("Share with…"),
             ),
           ),
+        if (mayUnlink)
+          const PopupMenuItem<String>(
+            value: "unlink",
+            child: ListTile(
+              leading: Icon(Icons.link_off),
+              title: Text("Remove from my albums"),
+            ),
+          ),
       ],
     );
     if (chosen == null || !context.mounted) {
@@ -358,6 +417,10 @@ class ListingView extends StatelessWidget {
       await shareFolder(context, childPath, folder.title);
       return;
     }
+    if (chosen == "unlink") {
+      await removeLink(context, folder);
+      return;
+    }
     await moveWithPicker(
       context: context,
       client: client,
@@ -365,6 +428,76 @@ class ListingView extends StatelessWidget {
       names: [folder.name],
       subject: EntrySubject(folder.name),
       onMoved: albumState.reload,
+    );
+  }
+
+  /// Removes the link [folder] from this folder, see issue #50.
+  ///
+  /// Only the entry goes: the album stays with its owner, and it is the
+  /// owner's to share again. That is what the confirmation says — a tile that
+  /// looks exactly like an album of one's own must not vanish on a menu entry
+  /// without a word about what is being thrown away.
+  Future<void> removeLink(BuildContext context, FolderInfo folder) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var owner = linkOwnerOf(folder) ?? "its owner";
+    var messenger = ScaffoldMessenger.of(context);
+    var confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key("unlink-confirm"),
+        title: const Text("Remove from my albums"),
+        content: Text(
+          "The album stays with $owner; only your entry is removed. "
+          "It does not come back on its own.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton.icon(
+            key: const Key("unlink-confirmed"),
+            icon: const Icon(Icons.link_off),
+            label: const Text("Remove"),
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    MoveResult result;
+    try {
+      result = await client.unlink(albumState.path, [folder.name]);
+    } catch (error) {
+      // The server's own reason, as every refused write shows it.
+      showRefusal(messenger, error);
+      return;
+    }
+
+    // The tile is gone from the folder: the listing on the screen has to be
+    // fetched again before the outcome is read out.
+    albumState.reload();
+
+    var removed = result.outcomes.length - refusedOutcomes(result).length;
+    var summary =
+        removed == 0 ? "Nothing removed." : "Removed from my albums.";
+    if (!context.mounted) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(summary), duration: const Duration(seconds: 6)),
+      );
+      return;
+    }
+    await reportOutcomes(
+      context: context,
+      messenger: messenger,
+      title: "Remove",
+      summary: summary,
+      result: result,
     );
   }
 

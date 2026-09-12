@@ -69,6 +69,14 @@ sealed class VAlbumRoute {
   /// A trailing empty segment marks the trailing slash of a folder location.
   List<String> get segments;
 
+  /// The same view of the listing or album at [path].
+  ///
+  /// What is shown *within* the album — the image, the group, the member — is
+  /// kept; only the path of the album itself is exchanged. This is how a
+  /// canonical `~owner/…` route is re-spelled in the viewer's own coordinates
+  /// when a link leads to the same album, see issue #50.
+  VAlbumRoute withAlbumPath(List<String> path);
+
   /// The location of this route below the app base, e.g. `/a/b.jpg`.
   String get path => "/${Uri(pathSegments: segments).path}";
 }
@@ -90,6 +98,9 @@ class ListingOrAlbumRoute extends VAlbumRoute {
 
   @override
   List<String> get segments => [...albumPath, ""];
+
+  @override
+  VAlbumRoute withAlbumPath(List<String> path) => ListingOrAlbumRoute(path);
 
   @override
   bool operator ==(Object other) =>
@@ -122,6 +133,9 @@ class ImageRoute extends VAlbumRoute {
   List<String> get segments => [...albumPath, name];
 
   @override
+  VAlbumRoute withAlbumPath(List<String> path) => ImageRoute(path, name);
+
+  @override
   bool operator ==(Object other) =>
       other is ImageRoute &&
       name == other.name &&
@@ -149,6 +163,9 @@ class AlternativesRoute extends VAlbumRoute {
 
   @override
   List<String> get segments => [...albumPath, name, alternativesSegment, ""];
+
+  @override
+  VAlbumRoute withAlbumPath(List<String> path) => AlternativesRoute(path, name);
 
   @override
   bool operator ==(Object other) =>
@@ -182,6 +199,9 @@ class MemberRoute extends VAlbumRoute {
   @override
   List<String> get segments =>
       [...albumPath, name, alternativesSegment, member];
+
+  @override
+  VAlbumRoute withAlbumPath(List<String> path) => MemberRoute(path, name, member);
 
   @override
   bool operator ==(Object other) =>

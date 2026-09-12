@@ -180,8 +180,12 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
   the space's `.valbum/share-registry.json` (named so because #51 claims `shares.json`); a removed link
   is recorded as declined and does not come back until a management screen (#55) clears it. A real
   folder always wins a name back from a link; the disk is asked first. The owner's library is
-  byte-identical before and after anyone links, browses, moves or unlinks. The app half (link badge,
-  "Remove from my albums", opening a canonical URL at the viewer's own link) is open.
+  byte-identical before and after anyone links, browses, moves or unlinks. The app half landed the same
+  day: a link tile carries a badge and "from <owner>", "Remove from my albums" declines a share after a
+  confirmation, and a canonical `~owner/…` URL opened by a signed-in member is rewritten to the member's
+  own link when the root listing knows one, so a copied URL lands in the viewer's tree. The album menu
+  through a link says "Shared with you" without the owner's name: the owner is named on the tile, since a
+  reloaded or bookmarked route has no parent tile to ask.
 
 - **2026-09-12** — Groups and grants (#49), server side. Sharing is one mechanism, the grant
   `{owner, path, subject, rights}` in `.valbum/grants.json`, with named groups in `.valbum/groups.json`;

@@ -682,6 +682,43 @@ class VAlbumClient {
     return MoveResult.read(JsonReader.fromString(response.body));
   }
 
+  /// Removes the named link entries from the folder at [path], see issue #50.
+  ///
+  /// The same body as a [move] with no target: a link is an entry of a folder
+  /// like any other, and the answer carries one [MoveOutcome] per name — an
+  /// empty message for the entry that is gone, the server's own reason for the
+  /// one that stayed. Only the entry is removed; the album it points at stays
+  /// with its owner, and the server remembers the refusal so that the link is
+  /// not materialised again.
+  ///
+  /// A refusal of the whole request — a caller without `edit` on the folder,
+  /// a name that is no link — is the server speaking and is thrown as a
+  /// [VAlbumException], like every other refused write.
+  Future<MoveResult> unlink(List<String> path, List<String> names) async {
+    var url = "${folderUrl(path)}?action=unlink";
+    var request = MoveRequest(
+      target: "",
+      names: [for (var name in names) MoveName(name: name)],
+    );
+    var body = StringBuffer();
+    request.writeContent(jsonStringWriter(body));
+
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        "removing from '${path.join("/")}'",
+      );
+    }
+    return MoveResult.read(JsonReader.fromString(response.body));
+  }
+
   /// Applies the placement rule of the folder at [path] to what is already in
   /// it, see issue #48.
   ///
