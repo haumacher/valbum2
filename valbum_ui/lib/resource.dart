@@ -1545,6 +1545,15 @@ class AuthInfo extends _JsonObject {
 	///  The folder below the server's base folder the caller's requests are resolved against, empty for the base folder itself.
 	String space;
 
+	///  The share link this caller opened, <code>null</code> for everybody else (issue #51).
+	/// 
+	///  <p>
+	///  Its presence is what tells the app that it is a session inside one shared subtree: the
+	///  link's target is the root of the tree, there is no edit mode and no settings prompt, and
+	///  {@link #writeAllowed} says whether the link allows contributions.
+	///  </p>
+	ShareInfo? share;
+
 	/// Creates a AuthInfo.
 	AuthInfo({
 			this.mode = "", 
@@ -1553,6 +1562,7 @@ class AuthInfo extends _JsonObject {
 			this.userName = "", 
 			this.role = "", 
 			this.space = "", 
+			this.share, 
 	});
 
 	/// Parses a AuthInfo from a string source.
@@ -1597,6 +1607,10 @@ class AuthInfo extends _JsonObject {
 				space = json.expectString();
 				break;
 			}
+			case "share": {
+				share = json.tryNull() ? null : ShareInfo.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1622,6 +1636,110 @@ class AuthInfo extends _JsonObject {
 
 		json.addKey("space");
 		json.addString(space);
+
+		var _share = share;
+		if (_share != null) {
+			json.addKey("share");
+			_share.writeContent(json);
+		}
+	}
+
+}
+
+///  The share link the caller opened, see {@link AuthInfo#share} and issue #51.
+/// 
+///  <p>
+///  What the app needs to confine itself and to name what it shows; the token itself is never
+///  answered, and neither are the link's privacy and rating limits — those are applied on the
+///  server, on the way out.
+///  </p>
+class ShareInfo extends _JsonObject {
+	///  The label the link was created with, empty if it was created without one.
+	String label;
+
+	///  When the link expires, an ISO-8601 instant; empty if it never does.
+	String expires;
+
+	///  What the link allows: <code>view</code>, <code>download</code>, <code>contribute</code>.
+	List<RightName> rights;
+
+	///  The canonical <code>~&lt;owner&gt;/&lt;path&gt;</code> of the link's target, so the app can name it.
+	String path;
+
+	/// Creates a ShareInfo.
+	ShareInfo({
+			this.label = "", 
+			this.expires = "", 
+			this.rights = const [], 
+			this.path = "", 
+	});
+
+	/// Parses a ShareInfo from a string source.
+	static ShareInfo? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ShareInfo instance from the given reader.
+	static ShareInfo read(JsonReader json) {
+		ShareInfo result = ShareInfo();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ShareInfo";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "label": {
+				label = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			case "rights": {
+				json.expectArray();
+				rights = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = RightName.read(json);
+						if (value != null) {
+							rights.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "path": {
+				path = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("label");
+		json.addString(label);
+
+		json.addKey("expires");
+		json.addString(expires);
+
+		json.addKey("rights");
+		json.startArray();
+		for (var _element in rights) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("path");
+		json.addString(path);
 	}
 
 }
@@ -2881,6 +2999,309 @@ class UserList extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+	}
+
+}
+
+///  A share link: a scoped token opening one subtree to whoever holds it, see issue #51.
+/// 
+///  <p>
+///  Sent to <code>&lt;folder&gt;/?action=share</code> to create one, where the target is taken from
+///  the URL and whatever the body says about {@link #path} is ignored; answered by
+///  <code>&lt;folder&gt;/?type=shares</code> and by <code>&lt;folder&gt;/?action=unshare</code>,
+///  which names the link to withdraw by its {@link #id}.
+///  </p>
+/// 
+///  <p>
+///  The token is never part of this message: it is answered exactly once, in a
+///  {@link ShareLinkCreated}, and the server stores nothing but its hash.
+///  </p>
+class ShareLink extends _JsonObject {
+	///  The short id of the link; answered by the server, and what names it in a request.
+	String id;
+
+	///  The label the link was created with, shown wherever the link is listed.
+	String label;
+
+	///  When the link expires, an ISO-8601 instant; empty if it never does.
+	String expires;
+
+	///  The highest {@link ImagePart#privacy} the link shows: <code>0</code>..<code>2</code>.
+	int maxPrivacy;
+
+	///  The lowest {@link ImagePart#rating} the link shows: <code>-2</code>..<code>2</code>.
+	int minRating;
+
+	///  What the link allows: <code>view</code>, <code>download</code>, <code>contribute</code>.
+	/// 
+	///  <p>
+	///  Never <code>edit</code>: a link is not an account. An empty list means <code>view</code>.
+	///  </p>
+	List<RightName> rights;
+
+	///  The canonical <code>~&lt;owner&gt;/&lt;path&gt;</code> of the link's target; answered by the server.
+	String path;
+
+	///  When the link was created, an ISO-8601 instant; answered by the server.
+	String created;
+
+	///  When the link was withdrawn, an ISO-8601 instant; empty while the link is live.
+	String revoked;
+
+	/// Creates a ShareLink.
+	ShareLink({
+			this.id = "", 
+			this.label = "", 
+			this.expires = "", 
+			this.maxPrivacy = 0, 
+			this.minRating = 0, 
+			this.rights = const [], 
+			this.path = "", 
+			this.created = "", 
+			this.revoked = "", 
+	});
+
+	/// Parses a ShareLink from a string source.
+	static ShareLink? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ShareLink instance from the given reader.
+	static ShareLink read(JsonReader json) {
+		ShareLink result = ShareLink();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ShareLink";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "label": {
+				label = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			case "maxPrivacy": {
+				maxPrivacy = json.expectInt();
+				break;
+			}
+			case "minRating": {
+				minRating = json.expectInt();
+				break;
+			}
+			case "rights": {
+				json.expectArray();
+				rights = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = RightName.read(json);
+						if (value != null) {
+							rights.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "path": {
+				path = json.expectString();
+				break;
+			}
+			case "created": {
+				created = json.expectString();
+				break;
+			}
+			case "revoked": {
+				revoked = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("label");
+		json.addString(label);
+
+		json.addKey("expires");
+		json.addString(expires);
+
+		json.addKey("maxPrivacy");
+		json.addNumber(maxPrivacy);
+
+		json.addKey("minRating");
+		json.addNumber(minRating);
+
+		json.addKey("rights");
+		json.startArray();
+		for (var _element in rights) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("path");
+		json.addString(path);
+
+		json.addKey("created");
+		json.addString(created);
+
+		json.addKey("revoked");
+		json.addString(revoked);
+	}
+
+}
+
+///  The share links on a folder and its ancestors, answered by
+///  <code>&lt;folder&gt;/?type=shares</code>.
+/// 
+///  <p>
+///  Only the owner of the space and the admin may ask, and no answer ever carries a token.
+///  </p>
+class ShareLinkList extends _JsonObject {
+	///  The links covering the addressed folder, the nearest one first.
+	List<ShareLink> links;
+
+	/// Creates a ShareLinkList.
+	ShareLinkList({
+			this.links = const [], 
+	});
+
+	/// Parses a ShareLinkList from a string source.
+	static ShareLinkList? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ShareLinkList instance from the given reader.
+	static ShareLinkList read(JsonReader json) {
+		ShareLinkList result = ShareLinkList();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ShareLinkList";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "links": {
+				json.expectArray();
+				links = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ShareLink.read(json);
+						if (value != null) {
+							links.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("links");
+		json.startArray();
+		for (var _element in links) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  The answer to <code>&lt;folder&gt;/?action=share</code>: the new link, with its token.
+/// 
+///  <p>
+///  The one and only time the {@link #token} is answered; the server keeps its hash and can never
+///  show it again. A lost link is withdrawn and created anew.
+///  </p>
+class ShareLinkCreated extends _JsonObject {
+	///  The link that was created, as {@link ShareLinkList} lists it.
+	ShareLink? link;
+
+	///  The token to open the link with, answered exactly once and never stored.
+	String token;
+
+	///  The link's path on this server: <code>&lt;context&gt;/s/&lt;token&gt;/</code>.
+	String url;
+
+	/// Creates a ShareLinkCreated.
+	ShareLinkCreated({
+			this.link, 
+			this.token = "", 
+			this.url = "", 
+	});
+
+	/// Parses a ShareLinkCreated from a string source.
+	static ShareLinkCreated? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ShareLinkCreated instance from the given reader.
+	static ShareLinkCreated read(JsonReader json) {
+		ShareLinkCreated result = ShareLinkCreated();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ShareLinkCreated";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "link": {
+				link = json.tryNull() ? null : ShareLink.read(json);
+				break;
+			}
+			case "token": {
+				token = json.expectString();
+				break;
+			}
+			case "url": {
+				url = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		var _link = link;
+		if (_link != null) {
+			json.addKey("link");
+			_link.writeContent(json);
+		}
+
+		json.addKey("token");
+		json.addString(token);
+
+		json.addKey("url");
+		json.addString(url);
 	}
 
 }

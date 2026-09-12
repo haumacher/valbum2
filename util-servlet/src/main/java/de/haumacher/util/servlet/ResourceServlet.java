@@ -43,6 +43,8 @@ public class ResourceServlet extends HttpServlet {
 
 	private final String _dataPath;
 
+	private final String _virtualPrefix;
+
 	/**
 	 * Creates a {@link ResourceServlet} serving the class path only.
 	 *
@@ -51,7 +53,7 @@ public class ResourceServlet extends HttpServlet {
 	 *        application is deployed at all.
 	 */
 	public ResourceServlet(String dataPath) {
-		this(null, dataPath);
+		this(null, dataPath, null);
 	}
 
 	/**
@@ -64,6 +66,27 @@ public class ResourceServlet extends HttpServlet {
 	 *        See {@link #ResourceServlet(String)}.
 	 */
 	public ResourceServlet(Path webRoot, String dataPath) {
+		this(webRoot, dataPath, null);
+	}
+
+	/**
+	 * Creates a {@link ResourceServlet} that also serves the application below a virtual base.
+	 *
+	 * @param webRoot
+	 *        See {@link #ResourceServlet(Path, String)}.
+	 * @param dataPath
+	 *        See {@link #ResourceServlet(String)}.
+	 * @param virtualPrefix
+	 *        The first segment of a virtual base (<code>s</code> for the share links of issue
+	 *        #51), <code>null</code> for serving the context root only. A request below
+	 *        <code>/&lt;prefix&gt;/&lt;segment&gt;/</code> is served the same files with the
+	 *        <code>&lt;base href&gt;</code> of the index page rewritten to that base, see
+	 *        {@link WebRootResolver#virtualBase(String, String)}. Nothing here looks at the
+	 *        segment: whether it opens anything is the JSON API's business, and an application
+	 *        served under a dead one asks and says so.
+	 */
+	public ResourceServlet(Path webRoot, String dataPath, String virtualPrefix) {
+		_virtualPrefix = virtualPrefix;
 		if (webRoot != null) {
 			_sources.add(new ContentSource.Directory(webRoot));
 		}
@@ -75,9 +98,16 @@ public class ResourceServlet extends HttpServlet {
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
 
-		String resource = WebRootResolver.resolve(pathInfo, this::exists);
+		String virtualBase = WebRootResolver.virtualBase(pathInfo, _virtualPrefix);
+		String relative = virtualBase == null ? pathInfo : pathInfo.substring(virtualBase.length());
+		if (virtualBase != null && relative.isEmpty()) {
+			// "/s/<token>" without a trailing slash is the application's entry point, too.
+			relative = "/";
+		}
+
+		String resource = WebRootResolver.resolve(relative, this::exists);
 		if (resource == null) {
-			sendNotFound(request, response, pathInfo);
+			sendNotFound(request, response, relative);
 			return;
 		}
 
@@ -91,7 +121,9 @@ public class ResourceServlet extends HttpServlet {
 				if (isIndex(resource)) {
 					// The Flutter web build hard-codes <base href="/">; the application is mounted at the
 					// context path, so the base must follow it or every asset request misses the app.
-					byte[] html = rebaseIndex(in.readAllBytes(), request.getContextPath());
+					String base = (request.getContextPath() == null ? "" : request.getContextPath())
+						+ (virtualBase == null ? "" : virtualBase);
+					byte[] html = rebaseIndex(in.readAllBytes(), base);
 					response.setContentLength(html.length);
 					response.getOutputStream().write(html);
 				} else {
@@ -108,7 +140,7 @@ public class ResourceServlet extends HttpServlet {
 		}
 
 		// Vanished between the existence check and the delivery.
-		sendNotFound(request, response, pathInfo);
+		sendNotFound(request, response, relative);
 	}
 
 	static boolean isIndex(String resource) {
@@ -116,17 +148,22 @@ public class ResourceServlet extends HttpServlet {
 	}
 
 	/**
-	 * Rewrites a root-absolute {@code <base href="/">} in an index page to the given context path.
+	 * Rewrites a root-absolute {@code <base href="/">} in an index page to the given base.
 	 *
 	 * <p>Only a base of exactly {@code /} is touched: an application built with an explicit
 	 * {@code --base-href} states its own deployment location and is left alone.</p>
+	 *
+	 * @param base
+	 *        Where the application is mounted, without a trailing slash: the context path, and
+	 *        below a virtual base the context path followed by it, see
+	 *        {@link #ResourceServlet(Path, String, String)}.
 	 */
-	static byte[] rebaseIndex(byte[] html, String contextPath) {
-		if (contextPath == null || contextPath.isEmpty() || contextPath.equals("/")) {
+	static byte[] rebaseIndex(byte[] html, String base) {
+		if (base == null || base.isEmpty() || base.equals("/")) {
 			return html;
 		}
 		String page = new String(html, StandardCharsets.UTF_8);
-		String rebased = page.replaceFirst("<base href=\"/\">", "<base href=\"" + contextPath + "/\">");
+		String rebased = page.replaceFirst("<base href=\"/\">", "<base href=\"" + base + "/\">");
 		return rebased.getBytes(StandardCharsets.UTF_8);
 	}
 

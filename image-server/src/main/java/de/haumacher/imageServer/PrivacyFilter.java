@@ -4,6 +4,7 @@
 package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.auth.Privacy;
+import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
@@ -21,7 +22,14 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Hides what a request must not see, see issue #46.
+ * Hides what a request must not see, see issue #46 and issue #51.
+ *
+ * <p>
+ * Two limits, one filter: the {@link Privacy privacy} clearance of the request and the lowest
+ * {@link Ratings rating} it is served. The second exists for the share links of issue #51 — an
+ * author hands out an album cut to its good photos — and it is {@link Ratings#MIN} for every other
+ * caller, which hides nothing.
+ * </p>
  *
  * <p>
  * The filter is the only place that removes an {@link ImagePart} from an answer, and it works on
@@ -67,14 +75,25 @@ public class PrivacyFilter {
 	 * @return The resource itself if nothing has to be hidden, a filtered copy otherwise.
 	 */
 	public Resource filter(Resource resource, PathInfo path, int clearance) {
-		if (clearance >= Privacy.PRIVATE) {
+		return filter(resource, path, clearance, Ratings.MIN);
+	}
+
+	/**
+	 * The given resource as the request may see it, see {@link #filter(Resource, PathInfo, int)}.
+	 *
+	 * @param minRating
+	 *        The lowest rating the request is served, see
+	 *        {@link de.haumacher.imageServer.auth.AuthService#minRating(de.haumacher.imageServer.auth.AuthService.Caller)}.
+	 */
+	public Resource filter(Resource resource, PathInfo path, int clearance, int minRating) {
+		if (clearance >= Privacy.PRIVATE && Ratings.unlimited(minRating)) {
 			return resource;
 		}
 		if (resource instanceof AlbumInfo) {
-			return filterAlbum((AlbumInfo) resource, clearance);
+			return filterAlbum((AlbumInfo) resource, clearance, minRating);
 		}
 		if (resource instanceof ListingInfo) {
-			return filterListing((ListingInfo) resource, path, clearance);
+			return filterListing((ListingInfo) resource, path, clearance, minRating);
 		}
 		return resource;
 	}
@@ -89,7 +108,7 @@ public class PrivacyFilter {
 	 * image takes its place, see {@link #cover(AlbumInfo, ThumbnailInfo, Set)}.
 	 * </p>
 	 */
-	AlbumInfo filterAlbum(AlbumInfo album, int clearance) {
+	AlbumInfo filterAlbum(AlbumInfo album, int clearance, int minRating) {
 		AlbumInfo result = AlbumInfo.create()
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
@@ -100,7 +119,7 @@ public class PrivacyFilter {
 		Set<String> visibleNames = new HashSet<>();
 		boolean hidden = false;
 		for (AlbumPart part : album.getParts()) {
-			AlbumPart visible = filterPart(part, clearance);
+			AlbumPart visible = filterPart(part, clearance, minRating);
 			if (visible == null) {
 				hidden = true;
 				continue;
@@ -150,12 +169,12 @@ public class PrivacyFilter {
 	 * @return The part itself while it is untouched, a filtered copy of a group that lost members,
 	 *         <code>null</code> if the caller must not see it at all.
 	 */
-	private static AlbumPart filterPart(AlbumPart part, int clearance) {
+	private static AlbumPart filterPart(AlbumPart part, int clearance, int minRating) {
 		if (part instanceof ImagePart) {
-			return visible((ImagePart) part, clearance) ? part : null;
+			return visible((ImagePart) part, clearance, minRating) ? part : null;
 		}
 		if (part instanceof ImageGroup) {
-			return filterGroup((ImageGroup) part, clearance);
+			return filterGroup((ImageGroup) part, clearance, minRating);
 		}
 		return part;
 	}
@@ -170,11 +189,11 @@ public class PrivacyFilter {
 	 * something is there.
 	 * </p>
 	 */
-	private static ImageGroup filterGroup(ImageGroup group, int clearance) {
+	private static ImageGroup filterGroup(ImageGroup group, int clearance, int minRating) {
 		List<ImagePart> images = group.getImages();
 		List<ImagePart> visible = new ArrayList<>(images.size());
 		for (ImagePart image : images) {
-			if (visible(image, clearance)) {
+			if (visible(image, clearance, minRating)) {
 				visible.add(image);
 			}
 		}
@@ -204,9 +223,9 @@ public class PrivacyFilter {
 		return result;
 	}
 
-	/** Whether an image with this privacy level may be shown to a request with the given clearance. */
-	private static boolean visible(ImagePart image, int clearance) {
-		return Privacy.visible(image.getPrivacy(), clearance);
+	/** Whether the given image may be shown to a request with the given clearance and rating limit. */
+	private static boolean visible(ImagePart image, int clearance, int minRating) {
+		return Privacy.visible(image.getPrivacy(), clearance) && Ratings.visible(image.getRating(), minRating);
 	}
 
 	/** Adds the names of the images the given part shows to the given set. */
@@ -273,12 +292,12 @@ public class PrivacyFilter {
 	 * folder vanishing would say more than a folder without a cover does.
 	 * </p>
 	 */
-	private ListingInfo filterListing(ListingInfo listing, PathInfo path, int clearance) {
+	private ListingInfo filterListing(ListingInfo listing, PathInfo path, int clearance, int minRating) {
 		List<FolderInfo> folders = listing.getFolders();
 		List<FolderInfo> filtered = null;
 		for (int n = 0, size = folders.size(); n < size; n++) {
 			FolderInfo folder = folders.get(n);
-			FolderInfo visible = filterFolder(folder, path, clearance);
+			FolderInfo visible = filterEntry(folder, path.child(folder.getName()), clearance, minRating);
 			if (visible != folder && filtered == null) {
 				filtered = new ArrayList<>(folders.subList(0, n));
 			}
@@ -295,20 +314,6 @@ public class PrivacyFilter {
 			// app that this folder files nothing, see issue #48.
 			.setPlacement(listing.getPlacement())
 			.setFolders(filtered);
-	}
-
-	/**
-	 * The given folder of a listing with a cover the caller must not see replaced.
-	 *
-	 * <p>
-	 * Whether the cover is hidden is decided from the folder's own sidecar alone — a small JSON
-	 * file, no image is opened. Only when it turns out to be hidden is the folder's album loaded to
-	 * find the image that takes its place, so a listing of untouched albums costs what it always
-	 * did.
-	 * </p>
-	 */
-	private FolderInfo filterFolder(FolderInfo folder, PathInfo path, int clearance) {
-		return filterEntry(folder, path.child(folder.getName()), clearance);
 	}
 
 	/**
@@ -331,6 +336,24 @@ public class PrivacyFilter {
 	 *        {@link de.haumacher.imageServer.auth.AuthService#clearance(de.haumacher.imageServer.auth.AuthService.Caller, PathInfo)}.
 	 */
 	public FolderInfo filterEntry(FolderInfo folder, PathInfo childPath, int clearance) {
+		return filterEntry(folder, childPath, clearance, Ratings.MIN);
+	}
+
+	/**
+	 * The given tile with a cover the request may see, see
+	 * {@link #filterEntry(FolderInfo, PathInfo, int)}.
+	 *
+	 * <p>
+	 * Whether the cover is hidden is decided from the folder's own sidecar alone — a small JSON
+	 * file, no image is opened. Only when it turns out to be hidden is the folder's album loaded to
+	 * find the image that takes its place, so a listing of untouched albums costs what it always
+	 * did.
+	 * </p>
+	 *
+	 * @param minRating
+	 *        The lowest rating the request is served, see {@link #filter(Resource, PathInfo, int, int)}.
+	 */
+	public FolderInfo filterEntry(FolderInfo folder, PathInfo childPath, int clearance, int minRating) {
 		ThumbnailInfo indexPicture = folder.getIndexPicture();
 		if (indexPicture == null) {
 			return folder;
@@ -345,7 +368,7 @@ public class PrivacyFilter {
 			// No sidecar, no privacy: a folder the server described by itself holds public images.
 			return folder;
 		}
-		if (Privacy.visible(privacyOf((AlbumInfo) sidecar, indexPicture.getImage()), clearance)) {
+		if (shown((AlbumInfo) sidecar, indexPicture.getImage(), clearance, minRating)) {
 			return folder;
 		}
 
@@ -359,7 +382,7 @@ public class PrivacyFilter {
 			.setEffectiveDate(folder.getEffectiveDate());
 		Resource album = _cache.lookup(childPath);
 		if (album instanceof AlbumInfo) {
-			ThumbnailInfo cover = filterAlbum((AlbumInfo) album, clearance).getIndexPicture();
+			ThumbnailInfo cover = filterAlbum((AlbumInfo) album, clearance, minRating).getIndexPicture();
 			if (cover != null) {
 				result.setIndexPicture(cover);
 			}
@@ -368,28 +391,28 @@ public class PrivacyFilter {
 	}
 
 	/**
-	 * The privacy level the given album records for the image of the given name.
+	 * Whether the given album shows the image of the given name to such a request.
 	 *
 	 * <p>
-	 * An image the sidecar does not mention is {@link Privacy#PUBLIC}: it was never edited, so
-	 * nobody ever restricted it.
+	 * An image the sidecar does not mention is {@link Privacy#PUBLIC} and unrated: it was never
+	 * edited, so nobody ever restricted or rejected it.
 	 * </p>
 	 */
-	private static int privacyOf(AlbumInfo album, String name) {
+	private static boolean shown(AlbumInfo album, String name, int clearance, int minRating) {
 		for (AlbumPart part : album.getParts()) {
 			if (part instanceof ImagePart) {
 				ImagePart image = (ImagePart) part;
 				if (image.getName().equals(name)) {
-					return image.getPrivacy();
+					return visible(image, clearance, minRating);
 				}
 			} else if (part instanceof ImageGroup) {
 				for (ImagePart image : ((ImageGroup) part).getImages()) {
 					if (image.getName().equals(name)) {
-						return image.getPrivacy();
+						return visible(image, clearance, minRating);
 					}
 				}
 			}
 		}
-		return Privacy.PUBLIC;
+		return Privacy.visible(Privacy.PUBLIC, clearance) && Ratings.visible(0, minRating);
 	}
 }

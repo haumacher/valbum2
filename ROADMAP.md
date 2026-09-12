@@ -171,6 +171,18 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-12 (night)** — Share links (#51), server side. A share link is a grant whose subject is a
+  token: `?action=share` records the link in `<basepath>/.valbum/shares.json` (hash only, with label,
+  expiry, privacy and rating limits) and its grant in one step, so the one rights method answers for links
+  too, and the grant API refuses `token:` subjects outright — a link comes and goes only through
+  `?action=share` / `?action=unshare`, so the two stores can never disagree. A link caller's `/` is the
+  shared folder itself and nothing outside it exists (404), it reads even in a migrated library, writes
+  only what `contribute` allows, sees `min(members, maxPrivacy)` and nothing rated below `minRating`
+  (the rating joined the privacy filter), and is answered 410 with a spoken reason on every endpoint once
+  the link expired or was withdrawn. The web app is served under `<context>/s/<token>/` by the same
+  static handler, which never looks at the token. The app half (opening a link as a session, the plain
+  expired page, "Share link…" in the share dialog) is open.
+
 - **2026-09-12 (later)** — Link entries (#50), server side. A shared album appears in the recipient's own
   tree as a link: a record in the folder's `.links.json` sidecar naming the target in the owner's
   coordinates. The resolver walks a request path segment by segment and follows a link to its target, so

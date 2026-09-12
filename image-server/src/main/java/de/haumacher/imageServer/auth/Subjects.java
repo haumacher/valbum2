@@ -13,10 +13,11 @@ package de.haumacher.imageServer.auth;
  * </p>
  *
  * <p>
- * A <code>token:</code> subject is parsed and stored like any other, and it names nobody: this
- * build issues no tokens and lets no caller present one, so such a grant grants nothing. That is
- * the seam issue #51 fills in, and it is deliberately a seam and not a gap — a store written by a
- * later build is read by this one without a word of complaint.
+ * A <code>token:</code> subject names a share link of issue #51, see {@link ShareStore}. It is the
+ * one subject a client never writes: it is recorded and removed together with the link's record, so
+ * that the two stores can never disagree about what a link opens. {@link #isKnown(String)} therefore
+ * does not accept it — a grant made out by hand to a token nobody issued would promise something to
+ * nobody.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -47,6 +48,19 @@ public class Subjects {
 	/** The subject naming the group of the given name. */
 	public static String group(String name) {
 		return GROUP_PREFIX + name;
+	}
+
+	/**
+	 * The subject naming the share link of the given id, see {@link ShareStore}.
+	 *
+	 * <p>
+	 * Such a subject is <em>not</em> {@link #isKnown(String) known}: nobody makes a grant out to a
+	 * token by hand. It is created and removed together with the link record, which is what keeps
+	 * the two stores from ever disagreeing.
+	 * </p>
+	 */
+	public static String token(String id) {
+		return TOKEN_PREFIX + id;
 	}
 
 	/** Whether the given subject is one this build can grant anything to. */

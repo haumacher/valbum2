@@ -169,7 +169,10 @@ delivery:
   `cd` runs in the repo root (or its parent); use absolute paths or one `cd` per command, and
   never `git add -A` after a relative `cd ..`.
 - **`pkill -f <pattern>` matches your own shell** when the pattern appears in the command line you
-  are running, and kills the rest of the chain (exit 144). Anchor it (`pkill -f "^java -jar"`).
+  are running, and kills the rest of the chain (exit 144). Anchor it (`pkill -f "^java -jar"`) — and
+  note that a bracket trick (`test-serve[r]`) does not save you when a *later* command in the same
+  chain spells the pattern out (`nohup mvn exec:java@test-server …`). Stop the demo server by port
+  instead: `kill $(ss -ltnp | grep ':9090' | sed -E 's/.*pid=([0-9]+).*/\1/')`, in its own call.
 - **The Playwright MCP writes into the repository root** (`.playwright-mcp/`, `recording.json`),
   not the scratchpad; both are in `.gitignore` now — never `git add -A` while a browser session is
   open in another agent.

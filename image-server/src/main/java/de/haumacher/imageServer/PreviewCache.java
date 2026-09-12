@@ -40,6 +40,10 @@ import org.bytedeco.javacv.Java2DFrameConverter;
  */
 public class PreviewCache {
 
+	/** The directory a folder's generated previews are kept in, beside the originals. */
+	public static final String CACHE_DIRECTORY_NAME = ".vacache";
+
+
 	private static final String MP4 = "mp4";
 
 	private static final String PNG = "png";
@@ -86,7 +90,7 @@ public class PreviewCache {
 		String suffix = Util.suffix(fileName);
 		String imageType = imageType(suffix);
 
-		File cacheDir = new File(file.getParentFile(), ".vacache");
+		File cacheDir = new File(file.getParentFile(), CACHE_DIRECTORY_NAME);
 		File previewCache = new File(cacheDir, "preview-" + fileName + (suffix.equals(imageType) ? "" : "." + imageType));
 		if (!previewCache.exists() || file.lastModified() > previewCache.lastModified() || previewCache.lastModified() < LAST_UPDATE) {
 			if (!cacheDir.exists()) {

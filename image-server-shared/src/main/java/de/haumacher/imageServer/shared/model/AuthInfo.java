@@ -33,6 +33,9 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getSpace() */
 	private static final String SPACE__PROP = "space";
 
+	/** @see #getShare() */
+	private static final String SHARE__PROP = "share";
+
 	private String _mode = "";
 
 	private String _deviceName = "";
@@ -44,6 +47,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _role = "";
 
 	private String _space = "";
+
+	private de.haumacher.imageServer.shared.model.ShareInfo _share = null;
 
 	/**
 	 * Creates a {@link AuthInfo} instance.
@@ -174,6 +179,39 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_space = value;
 	}
 
+	/**
+	 * The share link this caller opened, <code>null</code> for everybody else (issue #51).
+	 *
+	 * <p>
+	 * Its presence is what tells the app that it is a session inside one shared subtree: the
+	 * link's target is the root of the tree, there is no edit mode and no settings prompt, and
+	 * {@link #isWriteAllowed()} says whether the link allows contributions.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.ShareInfo getShare() {
+		return _share;
+	}
+
+	/**
+	 * @see #getShare()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setShare(de.haumacher.imageServer.shared.model.ShareInfo value) {
+		internalSetShare(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getShare()} without chain call utility. */
+	protected final void internalSetShare(de.haumacher.imageServer.shared.model.ShareInfo value) {
+		_share = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getShare()} has a value.
+	 */
+	public final boolean hasShare() {
+		return _share != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.AuthInfo readAuthInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.AuthInfo result = new de.haumacher.imageServer.shared.model.AuthInfo();
@@ -201,6 +239,10 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getRole());
 		out.name(SPACE__PROP);
 		out.value(getSpace());
+		if (hasShare()) {
+			out.name(SHARE__PROP);
+			getShare().writeTo(out);
+		}
 	}
 
 	@Override
@@ -212,6 +254,7 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case USER_NAME__PROP: setUserName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case ROLE__PROP: setRole(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SPACE__PROP: setSpace(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case SHARE__PROP: setShare(de.haumacher.imageServer.shared.model.ShareInfo.readShareInfo(in)); break;
 			default: super.readField(in, field);
 		}
 	}

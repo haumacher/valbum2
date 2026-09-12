@@ -12,6 +12,7 @@ import de.haumacher.imageServer.links.LinkStore;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
+import de.haumacher.imageServer.shared.model.ShareInfo;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -125,6 +126,48 @@ public class AuthService {
 	public static final String GRANTS_REFUSED =
 		"Only the owner of this library and the administrator may see and change who it is shared with.";
 
+	/** The message a caller of an expired share link is refused with, see issue #51. */
+	public static final String LINK_EXPIRED = "This link has expired.";
+
+	/** The message a caller of a withdrawn share link is refused with. */
+	public static final String LINK_REVOKED = "This link was withdrawn.";
+
+	/** The message a share link is refused a read outside what it opens with. */
+	public static final String SHARE_READ_REFUSED = "This link does not open this album.";
+
+	/** The message a share link is refused a change with. */
+	public static final String SHARE_WRITE_REFUSED = "This link does not allow changes here.";
+
+	/**
+	 * The message a share link is refused a path outside its subtree with.
+	 *
+	 * <p>
+	 * A <code>404</code>, never a refusal: from inside a link there is nothing else, and saying
+	 * "you may not" about a folder would say that the folder is there.
+	 * </p>
+	 */
+	public static final String SHARE_CONFINED =
+		"This link opens one album; there is nothing else to see from here.";
+
+	/** The message a share link carrying the {@link Rights#EDIT} right is refused creation with. */
+	public static final String SHARE_EDIT_REFUSED =
+		"A share link never allows editing; give 'view', 'download' or 'contribute'.";
+
+	/** The message a share link with a privacy limit outside the scale is refused creation with. */
+	public static final String SHARE_PRIVACY_REFUSED =
+		"The privacy limit of a share link is 0 (public), 1 (members) or 2 (private).";
+
+	/** The message a share link with a rating limit outside the scale is refused creation with. */
+	public static final String SHARE_RATING_REFUSED = "The rating limit of a share link is -2 to 2.";
+
+	/** The message a share link with an unreadable expiry is refused creation with. */
+	public static final String SHARE_EXPIRY_REFUSED =
+		"The expiry of a share link is an ISO-8601 instant such as '2026-12-24T00:00:00Z', "
+			+ "or empty for a link that never expires.";
+
+	/** The message a request naming a share link this server does not have is refused with. */
+	public static final String SHARE_UNKNOWN = "There is no share link of that id on this album.";
+
 	/** The message a caller is refused the list of users with. */
 	public static final String USERS_REFUSED =
 		"Only the members of this server may see who else uses it.";
@@ -192,10 +235,10 @@ public class AuthService {
 	public static final class Caller {
 
 		/** A caller that sent no token at all. */
-		public static final Caller ANONYMOUS = new Caller(null, null, false, null);
+		public static final Caller ANONYMOUS = new Caller(null, null, false, null, null, null);
 
 		/** A caller that sent a token this server does not know. */
-		public static final Caller INVALID = new Caller(null, null, true, TOKEN_REFUSED);
+		public static final Caller INVALID = new Caller(null, null, true, TOKEN_REFUSED, null, null);
 
 		private final User _user;
 
@@ -205,21 +248,97 @@ public class AuthService {
 
 		private final String _refusal;
 
-		private Caller(User user, String deviceName, boolean tokenPresented, String refusal) {
+		private final ShareStore.Link _share;
+
+		private final String _gone;
+
+		private Caller(User user, String deviceName, boolean tokenPresented, String refusal, ShareStore.Link share,
+				String gone) {
 			_user = user;
 			_deviceName = deviceName;
 			_tokenPresented = tokenPresented;
 			_refusal = refusal;
+			_share = share;
+			_gone = gone;
 		}
 
 		/** A caller whose token is known but who is refused for the given reason. */
 		static Caller rejected(String refusal) {
-			return new Caller(null, null, true, refusal);
+			return new Caller(null, null, true, refusal, null, null);
 		}
 
 		/** A signed-in caller. */
 		static Caller signedIn(User user, String deviceName) {
-			return new Caller(user, deviceName, true, null);
+			return new Caller(user, deviceName, true, null, null, null);
+		}
+
+		/**
+		 * A caller holding a live share link, see issue #51.
+		 *
+		 * <p>
+		 * Nobody's user: it has no space, it cannot pair, and everything it may do comes from the
+		 * grant made out to {@link ShareStore.Link#getSubject() its subject}. Its paths are resolved
+		 * relative to the link's target, which is the root of everything it can reach, see
+		 * {@link AuthService#resolve(Caller, Path, String)}.
+		 * </p>
+		 */
+		static Caller shareLink(ShareStore.Link share) {
+			return new Caller(null, null, true, null, share, null);
+		}
+
+		/**
+		 * A caller holding a share link that expired or was withdrawn.
+		 *
+		 * <p>
+		 * Answered with <code>410 Gone</code> on every endpoint, <code>?type=auth</code> included,
+		 * so that the app shows a plain page saying what happened instead of an error dump.
+		 * </p>
+		 */
+		static Caller shareGone(ShareStore.Link share, String message) {
+			return new Caller(null, null, true, message, share, message);
+		}
+
+		/** The share link this caller holds, <code>null</code> for everybody else. */
+		public ShareStore.Link getShare() {
+			return _share;
+		}
+
+		/** Whether this caller opened a share link, live or not. */
+		public boolean isShareLink() {
+			return _share != null;
+		}
+
+		/** Why this caller's share link opens nothing any more, <code>null</code> while it does. */
+		public String getGone() {
+			return _gone;
+		}
+
+		/** Whether this caller's share link expired or was withdrawn. */
+		public boolean isShareGone() {
+			return _gone != null;
+		}
+
+		/**
+		 * How a {@link GrantStore.Grant} would name this caller, see {@link Subjects}.
+		 *
+		 * <p>
+		 * The seam of issue #53: whoever contributes something is named by exactly one string, and
+		 * a share link's contribution is named by its link, not by a person.
+		 * </p>
+		 */
+		public String subject() {
+			if (_share != null) {
+				return _share.getSubject();
+			}
+			if (_user != null && !_user.getName().isEmpty()) {
+				return Subjects.user(_user.getName());
+			}
+			return Subjects.ANONYMOUS;
+		}
+
+		/** The label of the share link this caller holds, the empty string for everybody else. */
+		public String getShareLabel() {
+			return _share == null ? "" : _share.getLabel();
 		}
 
 		/** The name of the paired device, or the empty string for an unidentified caller. */
@@ -232,9 +351,16 @@ public class AuthService {
 			return _user != null;
 		}
 
-		/** Whether this caller presented a token that this server does not know or accept. */
+		/**
+		 * Whether this caller presented a token that this server does not know or accept.
+		 *
+		 * <p>
+		 * A share link is not such a caller: it presented a token this server issued, and what it
+		 * may do is decided by its grant like everybody else's, see issue #51.
+		 * </p>
+		 */
 		public boolean hasInvalidToken() {
-			return _tokenPresented && _user == null;
+			return _tokenPresented && _user == null && _share == null;
 		}
 
 		/** The name of the signed-in user, the empty string for an anonymous caller. */
@@ -278,6 +404,8 @@ public class AuthService {
 
 	private final GroupStore _groups;
 
+	private final ShareStore _shares;
+
 	/**
 	 * Creates an {@link AuthService}.
 	 *
@@ -297,6 +425,7 @@ public class AuthService {
 		_users = mode == AuthMode.OFF ? null : new UserStore(basePath);
 		_grants = mode == AuthMode.OFF ? null : new GrantStore(basePath);
 		_groups = mode == AuthMode.OFF ? null : new GroupStore(basePath);
+		_shares = mode == AuthMode.OFF ? null : new ShareStore(basePath);
 	}
 
 	/** An {@link AuthService} serving every request, as before issue #28. */
@@ -324,6 +453,11 @@ public class AuthService {
 		return _groups;
 	}
 
+	/** The share links of this server, <code>null</code> while {@link AuthMode#OFF}. */
+	public ShareStore getShares() {
+		return _shares;
+	}
+
 	/** Generates a pairing secret for a server that was not given one. */
 	public static String generateSecret() {
 		byte[] bytes = new byte[12];
@@ -342,7 +476,18 @@ public class AuthService {
 		}
 		Login login = _users.lookup(token);
 		if (login == null) {
-			return Caller.INVALID;
+			// Not a device token; it may still be a share link of issue #51.
+			ShareStore.Link share = _shares.lookup(token);
+			if (share == null) {
+				return Caller.INVALID;
+			}
+			if (share.isRevoked()) {
+				return Caller.shareGone(share, LINK_REVOKED);
+			}
+			if (share.isExpired(java.time.Instant.now())) {
+				return Caller.shareGone(share, LINK_EXPIRED);
+			}
+			return Caller.shareLink(share);
 		}
 		if (!Roles.isKnown(login.getUser().getRole())) {
 			LOG.warning("Refusing the user '" + login.getUser().getName() + "' with the unknown role '"
@@ -389,6 +534,12 @@ public class AuthService {
 		if (caller.hasInvalidToken()) {
 			return false;
 		}
+		if (caller.isShareLink()) {
+			// A live link reads, in a migrated library too: LIBRARY_REFUSED tells people to open a
+			// share link they were given, and this is them doing it, see issue #51. What the link
+			// may do where it points at is still the grant's business, see #rights(Caller, PathInfo).
+			return !caller.isShareGone();
+		}
 		if (!caller.isPaired() && isLibraryMigrated()) {
 			return false;
 		}
@@ -402,6 +553,11 @@ public class AuthService {
 		}
 		if (_mode == AuthMode.OFF) {
 			return true;
+		}
+		if (caller.isShareLink()) {
+			// A link is no paired device: what it may change is exactly what its grant says, asked
+			// for at the path the request names, see #mayContribute(Caller, PathInfo).
+			return false;
 		}
 		if (!caller.isPaired() && isLibraryMigrated()) {
 			return false;
@@ -469,7 +625,7 @@ public class AuthService {
 		if (_mode == AuthMode.OFF) {
 			return Rights.ALL;
 		}
-		if (caller.hasInvalidToken()) {
+		if (caller.hasInvalidToken() || caller.isShareGone()) {
 			return Rights.NONE;
 		}
 
@@ -500,7 +656,9 @@ public class AuthService {
 		if (_mode == AuthMode.OFF) {
 			return Rights.ALL;
 		}
-		if (caller.hasInvalidToken()) {
+		if (caller.hasInvalidToken() || caller.isShareLink()) {
+			// A share link owns no space and is nobody's anonymous visitor: it holds what its grant
+			// gives it and not one right more, see issue #51.
 			return Rights.NONE;
 		}
 		if (caller.isPaired()) {
@@ -602,6 +760,11 @@ public class AuthService {
 		Set<String> result = new LinkedHashSet<>();
 		// "anonymous" names everybody: a grant to it is what opens an album to the world.
 		result.add(Subjects.ANONYMOUS);
+		if (caller.isShareLink()) {
+			// The one line issue #49 left open: a share link is named by its own subject, see #51.
+			result.add(caller.getShare().getSubject());
+			return result;
+		}
 		String name = caller.getUserName();
 		if (caller.isPaired() && !name.isEmpty()) {
 			result.add(Subjects.user(name));
@@ -909,6 +1072,9 @@ public class AuthService {
 	 */
 	public Location resolve(Caller caller, Path basePath, String relativePath) throws PathRefused {
 		String rest = relativePath == null ? "" : relativePath;
+		if (caller.isShareLink()) {
+			return resolveShared(caller, basePath, rest);
+		}
 		String prefix;
 		Path root;
 		if (rest.startsWith(HOME_PREFIX)) {
@@ -936,6 +1102,86 @@ public class AuthService {
 			throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, PATH_ESCAPED);
 		}
 		return walk(prefix, root, relative, basePath);
+	}
+
+	/**
+	 * Resolves a request path of a share-link caller, confined to what the link opens (issue #51).
+	 *
+	 * <p>
+	 * The link's target is the caller's root: <code>/</code> is the shared folder, so the app's tree
+	 * has the shared album or folder at its top and every deep link below it keeps working. Nothing
+	 * else exists from here — the canonical form <code>~&lt;user&gt;/…</code>, a <code>..</code>, and
+	 * a link entry of issue #50 that leads out of the shared subtree are all answered as a path that
+	 * is not there, because from inside a link there really is nothing there.
+	 * </p>
+	 *
+	 * <p>
+	 * A #50 link <em>inside</em> the shared subtree is followed exactly as it is for anybody else,
+	 * as long as what it reaches stays inside the subtree: the confinement is a question about where
+	 * a path ends up, never about how it was spelled.
+	 * </p>
+	 */
+	private Location resolveShared(Caller caller, Path basePath, String relativePath) throws PathRefused {
+		ShareStore.Link share = caller.getShare();
+		User owner = _users == null ? null : _users.getUser(share.getOwner());
+		if (owner == null) {
+			// The user whose album was shared is gone; the link leads nowhere, and it says so.
+			throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, unknownSpace(share.getOwner()));
+		}
+		Path space = spaceRoot(owner.getSpace(), owner.getName(), basePath);
+		Path root = share.getPath().isEmpty() ? space : space.resolve(share.getPath());
+
+		if (relativePath.startsWith(HOME_PREFIX)) {
+			// The canonical form is the one way out of a space, and a link has none to go to.
+			throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, SHARE_CONFINED);
+		}
+
+		Location location;
+		if (relativePath.isEmpty()) {
+			PathInfo path = new PathInfo(root);
+			location = new Location("", spaceOf(path), path);
+		} else {
+			Path relative = java.nio.file.Paths.get(relativePath).normalize();
+			if (relative.isAbsolute() || relative.startsWith("..") || relative.toString().isEmpty()) {
+				throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, SHARE_CONFINED);
+			}
+			location = walk("", root, relative, basePath);
+		}
+
+		if (!isBelow(location.getPath(), root)) {
+			LOG.warning("Refusing the path '" + relativePath + "' of the share link " + share
+				+ ": it leaves what the link opens.");
+			throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, SHARE_CONFINED);
+		}
+		return location;
+	}
+
+	/**
+	 * Whether the given caller can reach the given path at all, see issue #51.
+	 *
+	 * <p>
+	 * Everybody but a share-link caller can reach everything the server serves — whether they may
+	 * <em>look</em> at it is {@link #rights(Caller, PathInfo)}, and a different question. A link
+	 * caller reaches what lies inside the link's target and nothing else, so a tile pointing out of
+	 * it is not shown: it could not be opened, see {@link #resolveShared(Caller, Path, String)}.
+	 * </p>
+	 */
+	public boolean reachable(Caller caller, Path basePath, PathInfo path) {
+		if (!caller.isShareLink()) {
+			return true;
+		}
+		ShareStore.Link share = caller.getShare();
+		User owner = _users == null ? null : _users.getUser(share.getOwner());
+		if (owner == null) {
+			return false;
+		}
+		Path space = spaceRoot(owner.getSpace(), owner.getName(), basePath);
+		return isBelow(path, share.getPath().isEmpty() ? space : space.resolve(share.getPath()));
+	}
+
+	/** Whether the given path lies at or below the given folder. */
+	private static boolean isBelow(PathInfo path, Path folder) {
+		return normalize(path.toFile().toPath()).startsWith(normalize(folder));
 	}
 
 	/**
@@ -1045,6 +1291,11 @@ public class AuthService {
 		if (own != null) {
 			return own;
 		}
+		if (caller.isShareLink()) {
+			// Never LIBRARY_REFUSED: telling somebody who opened a share link to open a share link
+			// would be nonsense, and there is nothing they could sign in as, see issue #51.
+			return write ? SHARE_WRITE_REFUSED : SHARE_READ_REFUSED;
+		}
 		if (!caller.isPaired() && isLibraryMigrated()) {
 			return LIBRARY_REFUSED;
 		}
@@ -1061,7 +1312,7 @@ public class AuthService {
 	 * </p>
 	 */
 	public String refusal(Caller caller, String right, boolean write) {
-		if (caller.isPaired()) {
+		if (caller.isPaired() || caller.isShareLink()) {
 			return rightRefused(right);
 		}
 		return refusal(caller, write);
@@ -1135,6 +1386,11 @@ public class AuthService {
 		if (_mode == AuthMode.OFF) {
 			return Privacy.PRIVATE;
 		}
+		if (caller.isShareLink()) {
+			// A link holder is a member of the album it opens, never its owner, and the author's
+			// own limit cuts that down further, see issue #51.
+			return Math.min(Privacy.MEMBERS, caller.getShare().getMaxPrivacy());
+		}
 		if (!caller.isPaired()) {
 			return Privacy.PUBLIC;
 		}
@@ -1146,15 +1402,76 @@ public class AuthService {
 		return mayView(caller, path) ? Privacy.MEMBERS : Privacy.PUBLIC;
 	}
 
-	/** What the given caller is allowed to do, see {@link AuthInfo}. */
-	public AuthInfo authInfo(Caller caller) {
-		return AuthInfo.create()
+	/**
+	 * The lowest {@link de.haumacher.imageServer.shared.model.ImagePart#getRating() rating} the
+	 * given caller is served, see issue #51.
+	 *
+	 * <p>
+	 * {@link Ratings#MIN} for everybody but a share link, which is to say: no filtering at all. The
+	 * rating is what the viewer filters an album by; only a share link turns it into a limit the
+	 * server enforces on the way out, see {@link de.haumacher.imageServer.PrivacyFilter}.
+	 * </p>
+	 */
+	public int minRating(Caller caller) {
+		return caller.isShareLink() ? caller.getShare().getMinRating() : Ratings.MIN;
+	}
+
+	/**
+	 * What the given caller is allowed to do, see {@link AuthInfo}.
+	 *
+	 * <p>
+	 * A share-link caller is answered with the link it opened ({@link AuthInfo#getShare()}), which
+	 * is how the app learns that this is a session inside one subtree; its
+	 * {@link AuthInfo#isWriteAllowed() writeAllowed} says whether the link allows contributions,
+	 * asked at the link's own target. Everybody else is answered exactly as before, with no
+	 * {@link AuthInfo#getShare() share} at all.
+	 * </p>
+	 *
+	 * @param basePath
+	 *        The root of the served album tree, needed to ask a link's target what it allows;
+	 *        <code>null</code> is answered without that question.
+	 */
+	public AuthInfo authInfo(Caller caller, Path basePath) {
+		AuthInfo result = AuthInfo.create()
 			.setMode(_mode.protocolName())
 			.setDeviceName(caller.getDeviceName())
 			.setWriteAllowed(writeAllowed(caller))
 			.setUserName(caller.getUserName())
 			.setRole(caller.getRole())
 			.setSpace(caller.getSpace());
+		if (!caller.isShareLink() || caller.isShareGone() || basePath == null) {
+			return result;
+		}
+
+		ShareStore.Link share = caller.getShare();
+		Set<String> rights;
+		try {
+			rights = rights(caller, resolve(caller, basePath, "").getPath());
+		} catch (PathRefused ex) {
+			// The shared folder is gone; the link opens nothing, and it says so by allowing nothing.
+			LOG.warning("Cannot ask the target of " + share + ": " + ex.getMessage());
+			rights = Rights.NONE;
+		}
+		return result
+			.setWriteAllowed(rights.contains(Rights.CONTRIBUTE))
+			.setShare(ShareInfo.create()
+				.setLabel(share.getLabel())
+				.setExpires(share.getExpires())
+				.setRights(Rights.onTheWire(rights))
+				.setPath(canonical(share)));
+	}
+
+	/**
+	 * The canonical <code>~&lt;owner&gt;/&lt;path&gt;</code> of the target of the given share link.
+	 *
+	 * <p>
+	 * The one spelling of a folder that is right whoever is asking, see {@link #HOME_PREFIX}. The
+	 * app shows it to name what the link opens; it is never a path the link caller may request —
+	 * from inside a link the target is <code>/</code>, see {@link #resolveShared(Caller, Path, String)}.
+	 * </p>
+	 */
+	public static String canonical(ShareStore.Link share) {
+		return HOME_PREFIX + share.getOwner() + (share.getPath().isEmpty() ? "" : "/" + share.getPath());
 	}
 
 	/** Thrown by {@link AuthService#pair(PairRequest)} when the request is not honoured. */

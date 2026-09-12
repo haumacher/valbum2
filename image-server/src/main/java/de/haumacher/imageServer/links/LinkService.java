@@ -131,6 +131,11 @@ public class LinkService {
 		for (Link link : links.getLinks()) {
 			PathInfo target = target(link);
 			if (target == null || !target.toFile().isDirectory()) {
+				if (caller.isShareLink()) {
+					// A link holder is a visitor in somebody else's library and writes nothing in
+					// it, not even a tidy-up: the owner's folders are what they were, see #51.
+					continue;
+				}
 				// The album this link pointed at is gone. Nothing here is a user's file: the
 				// record goes, so that the tile does not come back on every listing.
 				try {
@@ -141,8 +146,9 @@ public class LinkService {
 				}
 				continue;
 			}
-			if (!_auth.mayView(caller, target)) {
-				// The grant was revoked: the tile disappears, the record stays.
+			if (!_auth.mayView(caller, target) || !_auth.reachable(caller, _basePath, target)) {
+				// The grant was revoked: the tile disappears, the record stays. A share link is
+				// shown no tile leading out of what it opens, either — it could not be opened.
 				continue;
 			}
 			tiles.add(tile(link, target, caller, viewAs));
@@ -166,7 +172,7 @@ public class LinkService {
 		tile.setName(link.getName());
 		tile.setLink(link.canonical());
 		int clearance = Math.min(_auth.clearance(caller, target), viewAs);
-		return _privacy.filterEntry(tile, target, clearance);
+		return _privacy.filterEntry(tile, target, clearance, _auth.minRating(caller));
 	}
 
 	/**

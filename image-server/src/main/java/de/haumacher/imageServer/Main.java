@@ -7,6 +7,7 @@ import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.LibraryMigration;
 import de.haumacher.imageServer.auth.LibraryMigration.MigrationRefused;
+import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.util.servlet.ResourceServlet;
@@ -158,7 +159,10 @@ public class Main {
 		AuthService auth = new AuthService(_authMode, _pairingSecret, _basePath.toPath());
 		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath, auth)), Settings.DATA_PREFIX + "/*");
 		Path webRoot = _webRoot == null ? null : _webRoot.toPath();
-		webapp.addServlet(new ServletHolder(new ResourceServlet(webRoot, Settings.DATA_PREFIX)), STATIC_PREFIX + "/*");
+		// The same application is served below "/s/<token>/", so that a share link opens it with
+		// its own base href; the static handler never looks at the token, see issue #51.
+		webapp.addServlet(new ServletHolder(new ResourceServlet(webRoot, Settings.DATA_PREFIX, ShareStore.URL_SEGMENT)),
+			STATIC_PREFIX + "/*");
 		webapp.setClassLoader(Main.class.getClassLoader());
 
 		handlers.addHandler(webapp);

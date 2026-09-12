@@ -58,6 +58,41 @@ public class WebRootResolver {
 	}
 
 	/**
+	 * The virtual base a request path carries, see issue #51.
+	 *
+	 * <p>
+	 * The application is served not only at the context root but also below
+	 * <code>/&lt;prefix&gt;/&lt;anything&gt;/</code>, where the second segment is an opaque token
+	 * the static handler never looks at: a share link opens the very same application, with its
+	 * base href rewritten so that every asset below it resolves, and everything deeper is a
+	 * client-side route of that application.
+	 * </p>
+	 *
+	 * @param pathInfo
+	 *        The path info of the request, may be <code>null</code>.
+	 * @param prefix
+	 *        The first segment of a virtual base (<code>s</code>), <code>null</code> or empty if
+	 *        this handler serves no virtual base at all.
+	 * @return The virtual base including its leading slash and without a trailing one
+	 *         (<code>/s/abc</code>), <code>null</code> if the path carries none.
+	 */
+	public static String virtualBase(String pathInfo, String prefix) {
+		if (pathInfo == null || prefix == null || prefix.isEmpty()) {
+			return null;
+		}
+		String head = "/" + prefix + "/";
+		if (!pathInfo.startsWith(head) || pathInfo.length() == head.length()) {
+			return null;
+		}
+		int end = pathInfo.indexOf('/', head.length());
+		String segment = end < 0 ? pathInfo.substring(head.length()) : pathInfo.substring(head.length(), end);
+		if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
+			return null;
+		}
+		return head + segment;
+	}
+
+	/**
 	 * Whether the given path looks like a client-side route (as opposed to a request for a file).
 	 *
 	 * <p>

@@ -13,7 +13,9 @@ import de.haumacher.imageServer.auth.AuthService.PathRefused;
 import de.haumacher.imageServer.auth.GrantStore;
 import de.haumacher.imageServer.auth.GroupStore;
 import de.haumacher.imageServer.auth.Privacy;
+import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.Rights;
+import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.Subjects;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
@@ -39,6 +41,9 @@ import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.PresentFile;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.model.ShareLink;
+import de.haumacher.imageServer.shared.model.ShareLinkCreated;
+import de.haumacher.imageServer.shared.model.ShareLinkList;
 import de.haumacher.imageServer.shared.model.UploadCheck;
 import de.haumacher.imageServer.shared.model.UploadCheckResult;
 import de.haumacher.imageServer.shared.model.UploadResult;
@@ -115,6 +120,25 @@ public class ImageServlet extends HttpServlet {
 
 	/** The message an unreadable request to remove a link is refused with. */
 	public static final String UNLINK_UNREADABLE = "The request to remove a shared album cannot be read.";
+
+	/** The message an unreadable share link is refused with. */
+	public static final String SHARE_UNREADABLE = "The share link cannot be read.";
+
+	/**
+	 * The message a request for an image below the caller's rating limit is refused with, see
+	 * issue #51.
+	 *
+	 * <p>
+	 * Only a share link has such a limit, and it is the author's choice of what the link shows —
+	 * so the refusal says that, rather than pretending the file is not there.
+	 * </p>
+	 */
+	public static final String RATING_REFUSED = "This image is not part of what this link shows.";
+
+	/** The message a grant or revoke naming a share-link token is refused with, see issue #51. */
+	public static final String SHARE_GRANT_REFUSED =
+		"The grant of a share link belongs to the link: create one with ?action=share and withdraw it with "
+			+ "?action=unshare.";
 
 	/** The message an unreadable grant is refused with. */
 	public static final String GRANT_UNREADABLE = "The grant cannot be read.";
@@ -213,9 +237,12 @@ public class ImageServlet extends HttpServlet {
 		String type = context.getParameter("type");
 
 		Caller caller = _auth.caller(request);
+		if (gone(context, caller)) {
+			return;
+		}
 		if ("auth".equals(type)) {
 			// Always answerable: this is how an unpaired app learns that it must pair.
-			serveJsonObject(response, _auth.authInfo(caller));
+			serveJsonObject(response, _auth.authInfo(caller, _basePath));
 			return;
 		}
 		if ("users".equals(type)) {
@@ -244,6 +271,10 @@ public class ImageServlet extends HttpServlet {
 
 		if ("grants".equals(type)) {
 			serveGrants(context, caller, location);
+			return;
+		}
+		if ("shares".equals(type)) {
+			serveShares(context, caller, location);
 			return;
 		}
 
@@ -288,7 +319,7 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
-			serveImage(context, resourcePath, caller, clearance);
+			serveImage(context, resourcePath, caller, clearance, _auth.minRating(caller));
 		} else {
 			error404(context);
 		}
@@ -313,6 +344,9 @@ public class ImageServlet extends HttpServlet {
 		Context context = new Context(request, response);
 
 		Caller caller = _auth.caller(request);
+		if (gone(context, caller)) {
+			return;
+		}
 		Location location = resolve(context, caller);
 		if (location == null) {
 			return;
@@ -446,7 +480,7 @@ public class ImageServlet extends HttpServlet {
 			throws IOException {
 		String message = _auth.refusal(caller, right, write);
 		LOG.warning("Refusing '" + right + "' on '" + context.request().getPathInfo() + "': " + message);
-		if (caller.isPaired()) {
+		if (identified(caller)) {
 			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, message);
 		} else {
 			context.response().setHeader("WWW-Authenticate", "Bearer");
@@ -987,6 +1021,239 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Answers the share links covering the addressed folder at
+	 * <code>&lt;folder&gt;/?type=shares</code>, see issue #51.
+	 *
+	 * <p>
+	 * The links on the folder and on every folder above it within the space, the nearest one first,
+	 * withdrawn ones included and marked as such. Only the owner of the space and the administrator
+	 * may ask, exactly as for the grants — and no answer ever carries a token: the token is shown
+	 * once, when the link is made, and never again.
+	 * </p>
+	 */
+	private void serveShares(Context context, Caller caller, Location location) throws IOException {
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		if (!_auth.mayManageGrants(caller, location.getPath())) {
+			LOG.warning("Refusing the share links of '" + location.getOwner() + "' to '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GRANTS_REFUSED);
+			return;
+		}
+
+		ShareLinkList result = ShareLinkList.create();
+		ShareStore shares = _auth.getShares();
+		if (shares != null) {
+			for (ShareStore.Link link : shares.covering(location.getOwner(), location.getOwnerPath())) {
+				result.addLink(onTheWire(link));
+			}
+		}
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Creates a share link on the addressed folder at <code>&lt;folder&gt;/?action=share</code>,
+	 * see issue #51.
+	 *
+	 * <p>
+	 * Two records in one step: the {@link ShareStore.Link} that says what the link shows and how
+	 * long it lives, and the {@link GrantStore.Grant} to its <code>token:&lt;id&gt;</code> subject
+	 * that says what it may do. The grant is the one mechanism every other sharing uses, so a link
+	 * needs no second answer to "may this caller do that here".
+	 * </p>
+	 *
+	 * <p>
+	 * The token travels back exactly once, in the {@link ShareLinkCreated}: this server keeps its
+	 * hash and can never show it again. A lost link is withdrawn and made anew.
+	 * </p>
+	 */
+	private void createShare(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (!_auth.mayManageGrants(caller, location.getPath())) {
+			LOG.warning("Refusing to share the library of '" + location.getOwner() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GRANTS_REFUSED);
+			return;
+		}
+		if (location.getOwner().isEmpty()) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.PATH_ESCAPED);
+			return;
+		}
+
+		ShareLink request = readShareLink(context);
+		if (request == null) {
+			return;
+		}
+
+		Set<String> rights = new LinkedHashSet<>();
+		for (de.haumacher.imageServer.shared.model.RightName right : request.getRights()) {
+			String name = right.getName();
+			if (Rights.EDIT.equals(name)) {
+				LOG.warning("Refusing a share link that would allow editing.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_EDIT_REFUSED);
+				return;
+			}
+			if (!Rights.isKnown(name)) {
+				LOG.warning("Refusing a share link with the unknown right '" + name + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.unknownRight(name));
+				return;
+			}
+			rights.add(name);
+		}
+		if (rights.isEmpty()) {
+			// A link that allows nothing would be a link to nothing; looking is the least it does.
+			rights.add(Rights.VIEW);
+		}
+
+		int maxPrivacy = request.getMaxPrivacy();
+		if (maxPrivacy < Privacy.PUBLIC || maxPrivacy > Privacy.PRIVATE) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_PRIVACY_REFUSED);
+			return;
+		}
+		int minRating = request.getMinRating();
+		if (!Ratings.isKnown(minRating)) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_RATING_REFUSED);
+			return;
+		}
+		String expires = request.getExpires() == null ? "" : request.getExpires().trim();
+		if (!expires.isEmpty()) {
+			try {
+				expires = java.time.Instant.parse(expires).toString();
+			} catch (java.time.DateTimeException ex) {
+				LOG.warning("Refusing the share link expiry '" + expires + "': " + ex.getMessage());
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_EXPIRY_REFUSED);
+				return;
+			}
+		}
+		String label = request.getLabel() == null ? "" : request.getLabel().trim();
+
+		ShareStore.Issued issued = _auth.getShares().create(location.getOwner(), location.getOwnerPath(), label,
+			expires, maxPrivacy, minRating);
+		ShareStore.Link link = issued.getLink();
+		_auth.getGrants().grant(link.getOwner(), link.getPath(), link.getSubject(), rights);
+
+		LOG.info("Created the share link " + link + " with " + rights + ".");
+		serveJsonObject(context.response(), ShareLinkCreated.create()
+			.setLink(onTheWire(link))
+			.setToken(issued.getToken())
+			.setUrl(shareUrl(context, issued.getToken())));
+	}
+
+	/**
+	 * Withdraws a share link of the addressed folder at
+	 * <code>&lt;folder&gt;/?action=unshare</code>, see issue #51.
+	 *
+	 * <p>
+	 * The record is marked withdrawn and kept — a management screen shows what became of a link
+	 * somebody handed out, see issue #55 — and the grant is removed, which is what actually closes
+	 * the door: the next request with that token is answered <code>410 Gone</code>.
+	 * </p>
+	 */
+	private void removeShare(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (!_auth.mayManageGrants(caller, location.getPath())) {
+			LOG.warning("Refusing to withdraw a share link of '" + location.getOwner() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GRANTS_REFUSED);
+			return;
+		}
+
+		ShareLink request = readShareLink(context);
+		if (request == null) {
+			return;
+		}
+		String id = request.getId() == null ? "" : request.getId().trim();
+		ShareStore shares = _auth.getShares();
+		ShareStore.Link link = id.isEmpty() ? null : shares.get(id);
+		if (link == null || !link.covers(location.getOwner(), location.getOwnerPath())) {
+			// A link of somebody else's, or of no folder above this one, is a link this request
+			// never saw: it is told that there is none, not whose it is.
+			LOG.warning("Refusing to withdraw the unknown share link '" + id + "'.");
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.SHARE_UNKNOWN);
+			return;
+		}
+
+		shares.revoke(link.getId());
+		_auth.getGrants().revoke(link.getOwner(), link.getPath(), link.getSubject());
+		LOG.info("Withdrew the share link " + link + ".");
+		serveJsonObject(context.response(), ShareLinkList.create().addLink(onTheWire(link)));
+	}
+
+	/** The body of a share request, <code>null</code> if it cannot be read (the response is complete). */
+	private static ShareLink readShareLink(Context context) throws IOException {
+		try {
+			byte[] contents = readBody(context.request());
+			return ShareLink.readShareLink(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable share link: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, SHARE_UNREADABLE);
+			return null;
+		}
+	}
+
+	/**
+	 * The path the given token opens this server's web application at.
+	 *
+	 * <p>
+	 * Relative to the server: the origin is the client's business (it knows which name it reached
+	 * this server under), the context path is the servlet's. The static handler serves the
+	 * application below this path without ever looking at the token, see
+	 * {@link ShareStore#URL_SEGMENT}.
+	 * </p>
+	 */
+	private static String shareUrl(Context context, String token) {
+		String contextPath = context.getContextPath() == null ? "" : context.getContextPath();
+		return contextPath + "/" + ShareStore.URL_SEGMENT + "/" + token + "/";
+	}
+
+	/**
+	 * The given share link as the protocol carries it, with the rights its grant gives it.
+	 *
+	 * <p>
+	 * Never the token and never its hash: what a listing shows is what the author needs to tell one
+	 * link from another, see issue #51.
+	 * </p>
+	 */
+	private ShareLink onTheWire(ShareStore.Link link) {
+		Set<String> rights = Rights.NONE;
+		GrantStore grants = _auth.getGrants();
+		if (grants != null) {
+			for (GrantStore.Grant grant : grants.covering(link.getOwner(), link.getPath())) {
+				if (grant.getSubject().equals(link.getSubject())) {
+					rights = Rights.closure(grant.getRights());
+					break;
+				}
+			}
+		}
+		return ShareLink.create()
+			.setId(link.getId())
+			.setLabel(link.getLabel())
+			.setExpires(link.getExpires())
+			.setMaxPrivacy(link.getMaxPrivacy())
+			.setMinRating(link.getMinRating())
+			.setRights(Rights.onTheWire(rights))
+			.setPath(AuthService.canonical(link))
+			.setCreated(link.getCreated())
+			.setRevoked(link.getRevoked());
+	}
+
+	/**
 	 * Records or removes a grant on the addressed folder, see issue #49.
 	 *
 	 * <p>
@@ -1028,6 +1295,12 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		String subject = request.getSubject() == null ? "" : request.getSubject().trim();
+		if (subject.startsWith(Subjects.TOKEN_PREFIX)) {
+			// The grant of a share link is the link's: it comes and goes with the link, see issue #51.
+			LOG.warning("Refusing to " + (revoke ? "revoke" : "grant") + " the share-link subject '" + subject + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, SHARE_GRANT_REFUSED);
+			return;
+		}
 		if (!Subjects.isKnown(subject) || !subjectExists(subject)) {
 			LOG.warning("Refusing a grant to the unknown subject '" + subject + "'.");
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.unknownSubject(subject));
@@ -1181,6 +1454,10 @@ public class ImageServlet extends HttpServlet {
 	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		Context context = new Context(request, response);
 
+		if (gone(context, _auth.caller(request))) {
+			return;
+		}
+
 		String action = context.getParameter("action");
 		if ("check".equals(action)) {
 			checkUploads(context);
@@ -1204,6 +1481,14 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("group".equals(action) || "ungroup".equals(action)) {
 			changeGroup(context, "ungroup".equals(action));
+			return;
+		}
+		if ("share".equals(action)) {
+			createShare(context);
+			return;
+		}
+		if ("unshare".equals(action)) {
+			removeShare(context);
 			return;
 		}
 
@@ -1265,8 +1550,44 @@ public class ImageServlet extends HttpServlet {
 		LOG.warning("Refusing " + (write ? "write" : "read") + " access to '" + context.request().getPathInfo()
 			+ "': " + message);
 
+		if (identified(caller)) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, message);
+			return;
+		}
 		context.response().setHeader("WWW-Authenticate", "Bearer");
 		errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, message);
+	}
+
+	/**
+	 * Whether the given caller already said who it is, so that a challenge would not help it.
+	 *
+	 * <p>
+	 * A paired device, and a share link of issue #51: both presented a token this server issued, so
+	 * a refusal names what they may not do (<code>403</code>) instead of asking them to sign in.
+	 * A link holder has nothing to sign in as, and telling them to pair a device would be nonsense.
+	 * </p>
+	 */
+	private static boolean identified(Caller caller) {
+		return caller.isPaired() || caller.isShareLink();
+	}
+
+	/**
+	 * Answers a caller whose share link expired or was withdrawn with <code>410 Gone</code>.
+	 *
+	 * <p>
+	 * On every endpoint, <code>?type=auth</code> included: the app asks who it is, is told that the
+	 * link is gone and why, and shows a plain page instead of an error dump, see issue #51.
+	 * </p>
+	 *
+	 * @return Whether the request was answered here.
+	 */
+	private static boolean gone(Context context, Caller caller) throws IOException {
+		if (!caller.isShareGone()) {
+			return false;
+		}
+		LOG.warning("Refusing '" + context.request().getPathInfo() + "': " + caller.getGone());
+		errorInfo(context, HttpServletResponse.SC_GONE, caller.getGone());
+		return true;
 	}
 
 	/** Answers with the given status and an {@link ErrorInfo} body carrying the given message. */
@@ -1420,7 +1741,7 @@ public class ImageServlet extends HttpServlet {
 			throws IOException {
 		Resource resource = _cache.lookup(pathInfo);
 		if (jsonRequested(context)) {
-			Resource answer = _privacy.filter(resource, pathInfo, clearance);
+			Resource answer = _privacy.filter(resource, pathInfo, clearance, _auth.minRating(caller));
 			if (answer instanceof ListingInfo) {
 				// The shared albums of this folder, shown as what they point at, see issue #50.
 				// After the privacy filter: a link is filtered by the clearance on its own target,
@@ -1546,13 +1867,16 @@ public class ImageServlet extends HttpServlet {
 	 * Delivers an image: its description, its thumbnail or the original.
 	 *
 	 * <p>
-	 * A path is not a permission: an image above the request's clearance is refused here, whichever
-	 * of the three is asked for, see {@link #imageRefused(Context, Caller)}.
+	 * A path is not a permission: an image above the request's clearance or below its rating limit
+	 * is refused here, whichever of the three is asked for, see
+	 * {@link #imageRefused(Context, Caller, String)}.
 	 * </p>
 	 */
-	private void serveImage(Context context, PathInfo pathInfo, Caller caller, int clearance) throws IOException {
-		if (!visible(pathInfo, clearance)) {
-			imageRefused(context, caller);
+	private void serveImage(Context context, PathInfo pathInfo, Caller caller, int clearance, int minRating)
+			throws IOException {
+		String refusal = hidden(pathInfo, clearance, minRating);
+		if (refusal != null) {
+			imageRefused(context, caller, refusal);
 			return;
 		}
 
@@ -1584,19 +1908,28 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * Whether the image at the given path may be shown to a request with the given clearance.
+	 * Why the image at the given path may not be shown to such a request.
 	 *
 	 * <p>
 	 * An image file the album model does not describe (its analysis failed, say) carries no
 	 * privacy level and is {@link Privacy#PUBLIC}, exactly as one that was never edited.
 	 * </p>
+	 *
+	 * @return The message the request is refused with, <code>null</code> if the image may be shown.
 	 */
-	private boolean visible(PathInfo pathInfo, int clearance) {
+	private String hidden(PathInfo pathInfo, int clearance, int minRating) {
 		Resource resource = _cache.lookup(pathInfo);
 		if (!(resource instanceof ImagePart)) {
-			return true;
+			return null;
 		}
-		return Privacy.visible(((ImagePart) resource).getPrivacy(), clearance);
+		ImagePart image = (ImagePart) resource;
+		if (!Privacy.visible(image.getPrivacy(), clearance)) {
+			return IMAGE_REFUSED;
+		}
+		if (!Ratings.visible(image.getRating(), minRating)) {
+			return RATING_REFUSED;
+		}
+		return null;
 	}
 
 	/**
@@ -1608,13 +1941,13 @@ public class ImageServlet extends HttpServlet {
 	 * (that is also what the "view as" preview of the owner's own album produces).
 	 * </p>
 	 */
-	private static void imageRefused(Context context, Caller caller) throws IOException {
-		LOG.warning("Refusing the image '" + context.request().getPathInfo() + "': above the caller's clearance.");
-		if (caller.isPaired()) {
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, IMAGE_REFUSED);
+	private static void imageRefused(Context context, Caller caller, String message) throws IOException {
+		LOG.warning("Refusing the image '" + context.request().getPathInfo() + "': " + message);
+		if (identified(caller)) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, message);
 		} else {
 			context.response().setHeader("WWW-Authenticate", "Bearer");
-			errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, IMAGE_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, message);
 		}
 	}
 

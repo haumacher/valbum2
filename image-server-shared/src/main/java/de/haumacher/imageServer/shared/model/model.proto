@@ -471,6 +471,40 @@ message AuthInfo {
 	
 	/** The folder below the server's base folder the caller's requests are resolved against, empty for the base folder itself. */
 	string space;
+
+	/**
+	 * The share link this caller opened, <code>null</code> for everybody else (issue #51).
+	 *
+	 * <p>
+	 * Its presence is what tells the app that it is a session inside one shared subtree: the
+	 * link's target is the root of the tree, there is no edit mode and no settings prompt, and
+	 * {@link #writeAllowed} says whether the link allows contributions.
+	 * </p>
+	 */
+	ShareInfo share;
+}
+
+/**
+ * The share link the caller opened, see {@link AuthInfo#share} and issue #51.
+ *
+ * <p>
+ * What the app needs to confine itself and to name what it shows; the token itself is never
+ * answered, and neither are the link's privacy and rating limits — those are applied on the
+ * server, on the way out.
+ * </p>
+ */
+message ShareInfo {
+	/** The label the link was created with, empty if it was created without one. */
+	string label;
+
+	/** When the link expires, an ISO-8601 instant; empty if it never does. */
+	string expires;
+
+	/** What the link allows: <code>view</code>, <code>download</code>, <code>contribute</code>. */
+	repeated RightName rights;
+
+	/** The canonical <code>~&lt;owner&gt;/&lt;path&gt;</code> of the link's target, so the app can name it. */
+	string path;
 }
 
 
@@ -802,4 +836,86 @@ message UserEntry {
 message UserList {
 	/** The users, in the order they were created. */
 	repeated UserEntry users;
+}
+
+/**
+ * A share link: a scoped token opening one subtree to whoever holds it, see issue #51.
+ *
+ * <p>
+ * Sent to <code>&lt;folder&gt;/?action=share</code> to create one, where the target is taken from
+ * the URL and whatever the body says about {@link #path} is ignored; answered by
+ * <code>&lt;folder&gt;/?type=shares</code> and by <code>&lt;folder&gt;/?action=unshare</code>,
+ * which names the link to withdraw by its {@link #id}.
+ * </p>
+ *
+ * <p>
+ * The token is never part of this message: it is answered exactly once, in a
+ * {@link ShareLinkCreated}, and the server stores nothing but its hash.
+ * </p>
+ */
+message ShareLink {
+	/** The short id of the link; answered by the server, and what names it in a request. */
+	string id;
+
+	/** The label the link was created with, shown wherever the link is listed. */
+	string label;
+
+	/** When the link expires, an ISO-8601 instant; empty if it never does. */
+	string expires;
+
+	/** The highest {@link ImagePart#privacy} the link shows: <code>0</code>..<code>2</code>. */
+	int maxPrivacy;
+
+	/** The lowest {@link ImagePart#rating} the link shows: <code>-2</code>..<code>2</code>. */
+	int minRating;
+
+	/**
+	 * What the link allows: <code>view</code>, <code>download</code>, <code>contribute</code>.
+	 *
+	 * <p>
+	 * Never <code>edit</code>: a link is not an account. An empty list means <code>view</code>.
+	 * </p>
+	 */
+	repeated RightName rights;
+
+	/** The canonical <code>~&lt;owner&gt;/&lt;path&gt;</code> of the link's target; answered by the server. */
+	string path;
+
+	/** When the link was created, an ISO-8601 instant; answered by the server. */
+	string created;
+
+	/** When the link was withdrawn, an ISO-8601 instant; empty while the link is live. */
+	string revoked;
+}
+
+/**
+ * The share links on a folder and its ancestors, answered by
+ * <code>&lt;folder&gt;/?type=shares</code>.
+ *
+ * <p>
+ * Only the owner of the space and the admin may ask, and no answer ever carries a token.
+ * </p>
+ */
+message ShareLinkList {
+	/** The links covering the addressed folder, the nearest one first. */
+	repeated ShareLink links;
+}
+
+/**
+ * The answer to <code>&lt;folder&gt;/?action=share</code>: the new link, with its token.
+ *
+ * <p>
+ * The one and only time the {@link #token} is answered; the server keeps its hash and can never
+ * show it again. A lost link is withdrawn and created anew.
+ * </p>
+ */
+message ShareLinkCreated {
+	/** The link that was created, as {@link ShareLinkList} lists it. */
+	ShareLink link;
+
+	/** The token to open the link with, answered exactly once and never stored. */
+	string token;
+
+	/** The link's path on this server: <code>&lt;context&gt;/s/&lt;token&gt;/</code>. */
+	string url;
 }
