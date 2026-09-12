@@ -24,8 +24,10 @@ export 'listing_view.dart';
 export 'move_view.dart';
 export 'offline.dart';
 export 'photo_library.dart';
+export 'rights.dart';
 export 'routes.dart';
 export 'settings.dart';
+export 'share_view.dart';
 export 'thumbnails.dart';
 
 void main() {

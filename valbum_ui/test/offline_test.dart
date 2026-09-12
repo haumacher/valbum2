@@ -286,8 +286,13 @@ void main() {
       expect(
           requests.single.url.toString(), "$serverDataUrl/album/x.jpg?type=tn");
       expect(requests.single.headers["Authorization"], "Bearer secret-token");
+      // Keyed by the signed-in user since issue #49: this client carries a
+      // token and no user name, which is the library owner, `"@"`.
       expect(
-        await cache.getThumbnail("$serverDataUrl/album/x.jpg?type=tn"),
+        await cache.getThumbnail(
+          "$serverDataUrl/album/x.jpg?type=tn",
+          user: "@",
+        ),
         isNotNull,
       );
     });

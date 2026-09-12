@@ -182,8 +182,12 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
   spelled in the coordinates of the request — a request through the canonical form `~<owner>/…` is
   answered with `~<owner>/…` — so a recipient's app never navigates into its own space by mistake.
   `download` gates the original bytes; since the app's viewer opens the original, a `view`-only grant
-  shows thumbnails only until a preview rendition exists (Phase 4). The app half (share dialog, cache
-  keyed by user) is open.
+  shows thumbnails only until a preview rendition exists (Phase 4). The app half landed the same day:
+  the app offers only what the answered rights allow (no edit mode, upload or folder actions without
+  the right, a "Shared by <owner> — you may …" line instead), "Share with…" on albums and folders with
+  the users, groups and "everybody" of the server and inline group creation, the server's reason in
+  place of a refused original, and the offline cache keyed by the signed-in user. The admin shares
+  other users' spaces through the management screens of #55, not from the tile.
 
 - **2026-09-06 (night)** — Phase 3 sharing, first four issues: users and spaces (#45), privacy
   enforced on the server (#46), moving by rename with duplicates set aside in `.valbum/duplicates/`

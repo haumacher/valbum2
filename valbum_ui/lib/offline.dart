@@ -59,17 +59,28 @@ abstract class OfflineCache {
   /// The number of bytes this cache may hold, see [size].
   int get sizeLimit;
 
-  /// The cached JSON of the resource at [path] on the server at [dataUrl].
-  Future<CacheEntry?> getResource(String dataUrl, List<String> path);
+  /// The cached JSON of the resource at [path] on the server at [dataUrl], as
+  /// [user] saw it.
+  Future<CacheEntry?> getResource(
+    String dataUrl,
+    List<String> path, {
+    String user = "",
+  });
 
-  /// Remembers the JSON the server answered for [path].
-  Future<void> putResource(String dataUrl, List<String> path, String json);
+  /// Remembers the JSON the server answered [user] for [path].
+  Future<void> putResource(
+    String dataUrl,
+    List<String> path,
+    String json, {
+    String user = "",
+  });
 
-  /// The cached bytes of the thumbnail at [url].
-  Future<CacheEntry?> getThumbnail(String url);
+  /// The cached bytes of the thumbnail at [url], as [user] saw it.
+  Future<CacheEntry?> getThumbnail(String url, {String user = ""});
 
-  /// Remembers the bytes the server answered for the thumbnail at [url].
-  Future<void> putThumbnail(String url, Uint8List bytes);
+  /// Remembers the bytes the server answered [user] for the thumbnail at
+  /// [url].
+  Future<void> putThumbnail(String url, Uint8List bytes, {String user = ""});
 
   /// The number of bytes currently held.
   Future<int> size();
@@ -80,14 +91,32 @@ abstract class OfflineCache {
   /// The cache key of a resource, see [getResource].
   ///
   /// The server is part of the key: two servers may well hold a folder of the
-  /// same name, and they are different albums.
-  static String resourceKey(String dataUrl, List<String> path) =>
-      "resource:$dataUrl|${path.join("/")}";
+  /// same name, and they are different albums. Since issue #49 the signed-in
+  /// [user] is part of it as well: what one user of a device is shown is not
+  /// what another one is shown — the grants decide, and the privacy levels cut
+  /// the listing to the caller's clearance — so two users on one device must
+  /// never be answered from each other's copy.
+  ///
+  /// The value is [VAlbumClient.cacheUser]: the empty string for an anonymous
+  /// caller, `"@<name>"` for a signed-in one (`"@"` for the library owner, who
+  /// has no name of their own). The token's presence is what tells the two
+  /// apart, so the owner and an anonymous caller never share a key although
+  /// the server calls them both `""`.
+  ///
+  /// Entries written before issue #49 carry the key without the user and are
+  /// therefore simply never found again; they age out of the bounded cache on
+  /// their own. There is no migration: a cached listing is a copy of something
+  /// the server will answer again.
+  static String resourceKey(String dataUrl, List<String> path,
+          {String user = ""}) =>
+      "resource:$user|$dataUrl|${path.join("/")}";
 
   /// The cache key of a thumbnail, see [getThumbnail].
   ///
-  /// A thumbnail URL is absolute and therefore already names its server.
-  static String thumbnailKey(String url) => "thumbnail:$url";
+  /// A thumbnail URL is absolute and therefore already names its server; the
+  /// signed-in [user] is part of the key for the reason [resourceKey] gives.
+  static String thumbnailKey(String url, {String user = ""}) =>
+      "thumbnail:$user|$url";
 }
 
 /// The bookkeeping every [OfflineCache] does: the keys, the stamps and the
@@ -142,23 +171,32 @@ abstract class BoundedOfflineCache extends OfflineCache {
   Future<void> ensureLoaded() async {}
 
   @override
-  Future<CacheEntry?> getResource(String dataUrl, List<String> path) =>
-      _get(OfflineCache.resourceKey(dataUrl, path));
+  Future<CacheEntry?> getResource(
+    String dataUrl,
+    List<String> path, {
+    String user = "",
+  }) =>
+      _get(OfflineCache.resourceKey(dataUrl, path, user: user));
 
   @override
-  Future<void> putResource(String dataUrl, List<String> path, String json) =>
+  Future<void> putResource(
+    String dataUrl,
+    List<String> path,
+    String json, {
+    String user = "",
+  }) =>
       _put(
-        OfflineCache.resourceKey(dataUrl, path),
+        OfflineCache.resourceKey(dataUrl, path, user: user),
         Uint8List.fromList(utf8.encode(json)),
       );
 
   @override
-  Future<CacheEntry?> getThumbnail(String url) =>
-      _get(OfflineCache.thumbnailKey(url));
+  Future<CacheEntry?> getThumbnail(String url, {String user = ""}) =>
+      _get(OfflineCache.thumbnailKey(url, user: user));
 
   @override
-  Future<void> putThumbnail(String url, Uint8List bytes) =>
-      _put(OfflineCache.thumbnailKey(url), bytes);
+  Future<void> putThumbnail(String url, Uint8List bytes, {String user = ""}) =>
+      _put(OfflineCache.thumbnailKey(url, user: user), bytes);
 
   Future<CacheEntry?> _get(String key) async {
     await ensureLoaded();

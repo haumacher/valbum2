@@ -12,7 +12,9 @@ import 'client.dart';
 import 'move_view.dart';
 import 'resource.dart';
 import 'offline.dart';
+import 'rights.dart';
 import 'settings.dart';
+import 'share_view.dart';
 import 'thumbnails.dart';
 
 /// The edge length (in CSS pixels) of the square folder preview the retired
@@ -98,6 +100,29 @@ class ListingView extends StatelessWidget {
   VAlbumClient get client => albumState.client;
   String get baseUrl => albumState.baseUrl;
 
+  /// What the caller may do with this folder, as the server answered it with
+  /// the listing itself, see issue #49.
+  Rights get rights => Rights.of(listing);
+
+  /// The line saying that this folder belongs to somebody else, `null` while
+  /// the caller is its owner.
+  String? get sharedLine => sharingNotice(albumState.path, rights);
+
+  /// Whether the caller manages the grants of the folder at [path], asked once
+  /// and remembered by the router.
+  ///
+  /// Asked only where the answer can be "yes" at all, see
+  /// [couldManageGrants]: the rights the listing already carries decide
+  /// whether the server is troubled with the question.
+  Future<bool> mayShare(List<String> path) =>
+      couldManageGrants(client, albumState.path, rights)
+          ? albumState.navigator.delegate.mayManageGrants(path)
+          : _no;
+
+  /// The answer of a question that was not asked; one instance, so that the
+  /// [FutureBuilder] of the menu is handed the same future on every rebuild.
+  static final Future<bool> _no = Future.value(false);
+
   @override
   Widget build(BuildContext context) {
     var self = listing;
@@ -123,21 +148,46 @@ class ListingView extends StatelessWidget {
               tooltip: 'Up',
               onPressed: albumState.showParent,
             ),
-          menu(context, [
-            menuItem(Icons.create_new_folder, 'Create album', createAlbum),
-            menuItem(
-              Icons.create_new_folder_outlined,
-              'Create folder',
-              createFolder,
-            ),
-            menuItem(Icons.tune, 'Folder properties', editFolder),
-            // Only where there is a rule to apply: a folder without one has
-            // nothing to file, see issue #48.
-            if (self.placement != Placement.none)
-              menuItem(Icons.auto_awesome_motion, 'Apply rule', applyRule),
-            menuItem(Icons.update, "Reload", (_) => albumState.reload()),
-            menuItem(Icons.settings, "Server...", openServerSettings),
-          ]),
+          // The share entry appears once the server has answered whether this
+          // caller manages the grants here; everything else is there at once.
+          FutureBuilder<bool>(
+            future: mayShare(albumState.path),
+            builder: (context, snapshot) => menu(context, [
+              // Whose folder this is and what may be done with it, where that
+              // is not simply "mine", see issue #49.
+              if (sharedLine != null) ...[
+                PopupMenuItem<void Function(BuildContext)>(
+                  enabled: false,
+                  child: Text(sharedLine!, key: const Key("shared-line")),
+                ),
+                const PopupMenuDivider(),
+              ],
+              // Only with `edit`: what the caller may not do is not offered,
+              // never offered and then refused, see issue #49.
+              if (rights.mayEdit)
+                menuItem(Icons.create_new_folder, 'Create album', createAlbum),
+              if (rights.mayEdit)
+                menuItem(
+                  Icons.create_new_folder_outlined,
+                  'Create folder',
+                  createFolder,
+                ),
+              if (rights.mayEdit)
+                menuItem(Icons.tune, 'Folder properties', editFolder),
+              // Only where there is a rule to apply: a folder without one has
+              // nothing to file, see issue #48.
+              if (rights.mayEdit && self.placement != Placement.none)
+                menuItem(Icons.auto_awesome_motion, 'Apply rule', applyRule),
+              if (snapshot.data ?? false)
+                menuItem(
+                  Icons.share,
+                  'Share with…',
+                  (context) => shareFolder(context, albumState.path, self.title),
+                ),
+              menuItem(Icons.update, "Reload", (_) => albumState.reload()),
+              menuItem(Icons.settings, "Server...", openServerSettings),
+            ]),
+          ),
         ],
       ),
       body: Column(
@@ -263,6 +313,17 @@ class ListingView extends StatelessWidget {
     Offset position,
   ) async {
     var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    var childPath = [...albumState.path, folder.name];
+    // Moving an entry out of this folder is an edit *of this folder*; sharing
+    // the entry is a question about the entry itself, so the two are asked
+    // separately. The answer is remembered per folder, so a second long press
+    // asks nothing again.
+    var mayMove = rights.mayEdit;
+    var mayShareChild = await mayShare(childPath);
+    if (!context.mounted || (!mayMove && !mayShareChild)) {
+      // Nothing this caller may do here: no menu rather than an empty one.
+      return;
+    }
     var chosen = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(
@@ -272,16 +333,29 @@ class ListingView extends StatelessWidget {
         overlay.size.height - position.dy,
       ),
       items: [
-        const PopupMenuItem<String>(
-          value: "move",
-          child: ListTile(
-            leading: Icon(Icons.drive_file_move),
-            title: Text("Move to…"),
+        if (mayMove)
+          const PopupMenuItem<String>(
+            value: "move",
+            child: ListTile(
+              leading: Icon(Icons.drive_file_move),
+              title: Text("Move to…"),
+            ),
           ),
-        ),
+        if (mayShareChild)
+          const PopupMenuItem<String>(
+            value: "share",
+            child: ListTile(
+              leading: Icon(Icons.share),
+              title: Text("Share with…"),
+            ),
+          ),
       ],
     );
-    if (chosen != "move" || !context.mounted) {
+    if (chosen == null || !context.mounted) {
+      return;
+    }
+    if (chosen == "share") {
+      await shareFolder(context, childPath, folder.title);
       return;
     }
     await moveWithPicker(
@@ -293,6 +367,19 @@ class ListingView extends StatelessWidget {
       onMoved: albumState.reload,
     );
   }
+
+  /// Opens the share dialog on the folder at [path], see issue #49.
+  Future<void> shareFolder(
+    BuildContext context,
+    List<String> path,
+    String title,
+  ) =>
+      shareWith(
+        context: context,
+        client: client,
+        path: path,
+        label: title.isEmpty ? null : "'$title'",
+      );
 
   void createFolder(BuildContext context) async {
     if (refuseWhileOffline(context)) {

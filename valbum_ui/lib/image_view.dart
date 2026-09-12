@@ -9,6 +9,7 @@ import 'album_layout.dart' show ToImage;
 import 'client.dart';
 import 'image_transform.dart';
 import 'resource.dart';
+import 'thumbnails.dart';
 import 'video_view.dart';
 
 /// The velocity (in pixels per second) a drag must reach to count as a swipe.
@@ -102,13 +103,42 @@ class ImageViewState extends State<ImageView> {
     return self is ImageGroup ? self : part.group;
   }
 
+  /// The server's reason for not showing the original, `null` while the
+  /// picture is fine or the reason has not been asked for yet (issue #49).
+  ///
+  /// A `view`-only grant lets the album and its thumbnails through and refuses
+  /// the original with a 403 and a message meant for the user. The viewer
+  /// opens the original — until a preview rendition exists (Phase 4) that is
+  /// all there is — so it says what the server said, over the thumbnail, and
+  /// never shows a broken picture.
+  String? _refusal;
+
+  /// Whether the reason has already been asked for, so that a picture that
+  /// keeps failing asks once.
+  bool _refusalAsked = false;
+
   @override
   void didUpdateWidget(ImageView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.image != widget.image) {
       // Start over with the fitted view.
       _transform = null;
+      _refusal = null;
+      _refusalAsked = false;
     }
+  }
+
+  /// Asks the server why the original did not load, once per image.
+  void _askRefusal() {
+    if (_refusalAsked) {
+      return;
+    }
+    _refusalAsked = true;
+    widget.client.originalRefusal(dataUrl).then((message) {
+      if (mounted && message != null) {
+        setState(() => _refusal = message);
+      }
+    });
   }
 
   /// The transform of the image in a viewport of the given size.
@@ -232,6 +262,46 @@ class ImageViewState extends State<ImageView> {
       width: self.width.toDouble(),
       height: self.height.toDouble(),
       fit: BoxFit.fill,
+      // `Image.network` opens a connection of its own and can only say *that*
+      // the picture failed; the reason is asked for through the client, see
+      // [_askRefusal]. Until it arrives the thumbnail stands in, so the screen
+      // is never a broken image.
+      errorBuilder: (context, error, stackTrace) {
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _askRefusal());
+        return buildRefused(self);
+      },
+    );
+  }
+
+  /// What is shown in place of an original the server did not hand over: the
+  /// thumbnail, with the server's own reason over it.
+  Widget buildRefused(ImagePart self) {
+    var message = _refusal;
+    return SizedBox(
+      width: self.width.toDouble(),
+      height: self.height.toDouble(),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Whatever the album already showed: a thumbnail the caller may see
+          // (and the cache may still hold) is better than a grey box.
+          thumbnail(widget.client, dataUrl, fit: BoxFit.contain),
+          if (message != null)
+            Center(
+              child: Container(
+                color: Colors.black54,
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  message,
+                  key: const Key("image-refusal"),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

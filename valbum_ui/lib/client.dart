@@ -132,6 +132,14 @@ class VAlbumClient {
   /// refuses an anonymous write, see [pair].
   final String? token;
 
+  /// The name of the user this device is signed in as, empty for "the library
+  /// owner" (who has no name of their own) and while nobody is signed in.
+  ///
+  /// It is not sent anywhere — the [token] identifies the caller — but it
+  /// names the cached copies of this device, see [cacheUser], and it is who
+  /// the share dialog leaves out of the list of people to share with.
+  final String userName;
+
   /// What this app has already seen, `null` if nothing is cached.
   ///
   /// Every answer of the server is written through into it, and only a
@@ -154,6 +162,7 @@ class VAlbumClient {
   VAlbumClient({
     required this.dataUrl,
     this.token,
+    this.userName = "",
     http.Client? httpClient,
     this.cache,
     this.offlineState,
@@ -174,6 +183,7 @@ class VAlbumClient {
   VAlbumClient withDataUrl(String dataUrl) => VAlbumClient(
         dataUrl: dataUrl,
         token: token,
+        userName: userName,
         httpClient: _http,
         cache: cache,
         offlineState: offlineState,
@@ -183,9 +193,10 @@ class VAlbumClient {
   /// The same client, identifying itself with the given token from now on.
   ///
   /// `null` drops the token: the client talks to the server anonymously again.
-  VAlbumClient withToken(String? token) => VAlbumClient(
+  VAlbumClient withToken(String? token, {String? userName}) => VAlbumClient(
         dataUrl: dataUrl,
         token: token,
+        userName: userName ?? this.userName,
         httpClient: _http,
         cache: cache,
         offlineState: offlineState,
@@ -200,10 +211,24 @@ class VAlbumClient {
         : {"Authorization": "Bearer $value"};
   }
 
+  /// Who the cached copies of this device belong to, see
+  /// [OfflineCache.resourceKey] (issue #49).
+  ///
+  /// The empty string while nobody is signed in, `"@<name>"` otherwise —
+  /// `"@"` for the library owner, whose name the server leaves empty. The
+  /// token's presence is what tells the two apart: the server calls the
+  /// unnamed owner and an anonymous caller both `""`, but they are shown
+  /// different libraries, so their copies must not share a key.
+  String get cacheUser {
+    var value = token;
+    return value == null || value.isEmpty ? "" : "@$userName";
+  }
+
   /// Client talking to the server this app was loaded from (on the web), or to
   /// the [defaultDataUrl] on all other platforms.
   factory VAlbumClient.fromOrigin({
     String? token,
+    String userName = "",
     http.Client? httpClient,
     OfflineCache? cache,
     OfflineState? offlineState,
@@ -211,6 +236,7 @@ class VAlbumClient {
       VAlbumClient(
         dataUrl: deriveDataUrl(Uri.base, isWeb: kIsWeb),
         token: token,
+        userName: userName,
         httpClient: httpClient,
         cache: cache,
         offlineState: offlineState,
@@ -268,7 +294,7 @@ class VAlbumClient {
     // become the cached copy of this album.
     var resource = parseResource(response.body, uri);
     offlineState?.online();
-    await cache?.putResource(dataUrl, path, response.body);
+    await cache?.putResource(dataUrl, path, response.body, user: cacheUser);
     return resource;
   }
 
@@ -356,7 +382,7 @@ class VAlbumClient {
     String uri,
     Object error,
   ) async {
-    var entry = await cache?.getResource(dataUrl, path);
+    var entry = await cache?.getResource(dataUrl, path, user: cacheUser);
     if (entry == null) {
       offlineState?.goneOffline(null);
       throw VAlbumException(
@@ -389,7 +415,7 @@ class VAlbumClient {
       if (!isTransportFailure(error)) {
         rethrow;
       }
-      var entry = await cache?.getThumbnail(url);
+      var entry = await cache?.getThumbnail(url, user: cacheUser);
       if (entry == null) {
         rethrow;
       }
@@ -398,7 +424,7 @@ class VAlbumClient {
     if (response.statusCode != 200) {
       throw failure(response.statusCode, response.body, "loading '$url'");
     }
-    await cache?.putThumbnail(url, response.bodyBytes);
+    await cache?.putThumbnail(url, response.bodyBytes, user: cacheUser);
     return response.bodyBytes;
   }
 
@@ -751,6 +777,132 @@ class VAlbumClient {
       stored: stored,
       present: skipped + (result.files.length - stored),
     );
+  }
+
+  /// The server's reason for refusing the original at [imageUrl], `null` if
+  /// there is none.
+  ///
+  /// The viewer displays the original through `Image.network`, which opens a
+  /// connection of its own and can only report *that* the picture did not
+  /// load, never why. When it fails, the viewer asks this, which fetches the
+  /// same URL through this client and reads the [ErrorInfo] of a refusal — a
+  /// `view`-only grant answers 403 with a message meant for the user, see
+  /// issue #49, and that message belongs on the screen in place of the
+  /// picture.
+  ///
+  /// Answers `null` where the server did not refuse at all (the picture failed
+  /// for another reason) and where it cannot be reached: neither is a refusal
+  /// to quote.
+  Future<String?> originalRefusal(String imageUrl) async {
+    try {
+      var response = await _http
+          .get(Uri.parse(originalUrl(imageUrl)), headers: authHeaders)
+          .timeout(timeout);
+      if (response.statusCode < 300) {
+        return null;
+      }
+      return failure(response.statusCode, response.body, "loading the image")
+          .message;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The grants covering the folder at [path], the nearest one first
+  /// (issue #49).
+  ///
+  /// Answerable only for the owner of the space the folder lies in (and for
+  /// the administrator): who else was let in is nobody else's business. Every
+  /// other caller is refused with a 403, which is how the app decides not to
+  /// offer "Share with…" at all, see `share_view.dart`.
+  Future<GrantList> grants(List<String> path) async {
+    var url = "${folderUrl(path)}?type=grants";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return GrantList.read(JsonReader.fromString(response.body));
+  }
+
+  /// Grants [grant] on the folder at [path], replacing an earlier grant to the
+  /// same subject.
+  ///
+  /// The owner and the path of the grant come from the URL; only its
+  /// [Grant.subject] and [Grant.rights] are read from the body.
+  Future<GrantList> grant(List<String> path, Grant grant) =>
+      _postGrant(path, "grant", grant);
+
+  /// Removes the grant to [subject] on the folder at [path].
+  Future<GrantList> revoke(List<String> path, String subject) =>
+      _postGrant(path, "revoke", Grant(subject: subject));
+
+  Future<GrantList> _postGrant(
+    List<String> path,
+    String action,
+    Grant grant,
+  ) async {
+    var url = "${folderUrl(path)}?action=$action";
+    var body = StringBuffer();
+    grant.writeContent(jsonStringWriter(body));
+
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return GrantList.read(JsonReader.fromString(response.body));
+  }
+
+  /// The groups this caller owns and the groups they are in (issue #49).
+  Future<GroupList> groups() async {
+    var url = "${folderUrl(const [])}?type=groups";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return GroupList.read(JsonReader.fromString(response.body));
+  }
+
+  /// Creates [group], or replaces the members of one the caller owns.
+  Future<GroupList> saveGroup(Group group) => _postGroup("group", group);
+
+  /// Removes the group of the given name, which the caller must own.
+  Future<GroupList> removeGroup(String name) =>
+      _postGroup("ungroup", Group(name: name));
+
+  Future<GroupList> _postGroup(String action, Group group) async {
+    var url = "${folderUrl(const [])}?action=$action";
+    var body = StringBuffer();
+    group.writeContent(jsonStringWriter(body));
+
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return GroupList.read(JsonReader.fromString(response.body));
+  }
+
+  /// The names and roles of the users of this server (issue #49).
+  ///
+  /// Needed to share: a member picks whom to grant something to. A guest and
+  /// an anonymous caller are refused, and the share dialog then offers the
+  /// groups and "everybody" alone.
+  Future<UserList> users() async {
+    var url = "${folderUrl(const [])}?type=users";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return UserList.read(JsonReader.fromString(response.body));
   }
 
   /// Signs in on this device, returning the token the server issued.

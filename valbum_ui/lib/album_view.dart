@@ -21,7 +21,9 @@ import 'listing_view.dart';
 import 'move_view.dart';
 import 'resource.dart';
 import 'offline.dart';
+import 'rights.dart';
 import 'settings.dart';
+import 'share_view.dart';
 import 'thumbnails.dart';
 
 /// The clearance an album is shown with in the edit mode, see issue #46.
@@ -96,8 +98,28 @@ class AlbumContentState extends State<AlbumContent>
   /// tile toolbars are all off while it is shown, see [previewing]. The edit
   /// session itself stays on, so the switch back to the owner's view is still
   /// there and the album is still the one being edited.
-  bool get editMode => session.editMode && !previewing;
+  bool get editMode => session.editMode && !previewing && rights.mayEdit;
   set editMode(bool value) => session.editMode = value;
+
+  /// What the caller may do with this album, as the server answered it with
+  /// the album itself, see issue #49.
+  ///
+  /// Read from the album that was loaded, never from a "view as" preview: the
+  /// preview is a smaller album, and what the caller may do does not change
+  /// because they are looking at somebody else's view of it.
+  Rights get rights => Rights.of(widget.album);
+
+  /// The line saying that this album belongs to somebody else, `null` while
+  /// the caller is its owner.
+  String? get sharedLine => sharingNotice(widget.albumState.path, rights);
+
+  /// Whether the caller may see and change who this album is shared with.
+  ///
+  /// Asked once per album — `?type=grants` answers the owner of the space and
+  /// refuses everybody else — and remembered by the router, see
+  /// [VAlbumRouterDelegate.mayManageGrants]. Until the answer is there the
+  /// entry is simply not offered.
+  bool _mayShare = false;
 
   /// Whether the album carries edits that have not been written back yet.
   bool get dirty => session.dirty;
@@ -172,6 +194,23 @@ class AlbumContentState extends State<AlbumContent>
   void initState() {
     super.initState();
     _dragScroller = DragEdgeScroller(this, onScrolled: _followScrolledContent);
+    _askMayShare();
+  }
+
+  /// Asks the router whether this caller manages the grants of this album.
+  ///
+  /// Only where the answer can be "yes" at all, see [couldManageGrants]: an
+  /// anonymous caller and a guest are not made to pay for a request whose
+  /// answer is known.
+  Future<void> _askMayShare() async {
+    if (!couldManageGrants(client, widget.albumState.path, rights)) {
+      return;
+    }
+    var may = await widget.albumState.navigator.delegate
+        .mayManageGrants(widget.albumState.path);
+    if (mounted && may != _mayShare) {
+      setState(() => _mayShare = may);
+    }
   }
 
   @override
@@ -195,6 +234,11 @@ class AlbumContentState extends State<AlbumContent>
   /// worse than no edit at all, so the reason is said instead, see
   /// [refuseWhileOffline].
   void setEditMode(AlbumPart selected) {
+    // Nothing is greyed out: a caller without `edit` is simply not offered the
+    // way in, and the album stays the album, see issue #49.
+    if (!rights.mayEdit) {
+      return;
+    }
     if (refuseWhileOffline(context)) {
       return;
     }
@@ -640,6 +684,13 @@ class AlbumContentState extends State<AlbumContent>
                     tooltip: "Album properties",
                     icon: const Icon(Icons.tune),
                   ),
+                if (editMode && _mayShare)
+                  IconButton(
+                    key: const Key("share-with"),
+                    onPressed: shareAlbum,
+                    tooltip: "Share with…",
+                    icon: const Icon(Icons.share),
+                  ),
                 if (editMode)
                   IconButton(
                     onPressed: save,
@@ -660,7 +711,9 @@ class AlbumContentState extends State<AlbumContent>
       ),
       // Nothing is added to an album while somebody else's view of it is on
       // the screen: a preview is read-only, see [setViewAs].
-      floatingActionButton: previewing
+      // Nothing is added to an album the caller may not contribute to either:
+      // the button is not offered rather than refused, see issue #49.
+      floatingActionButton: previewing || !rights.mayContribute
           ? null
           : FloatingActionButton(
               onPressed: widget.albumState.uploadImages,
@@ -702,6 +755,17 @@ class AlbumContentState extends State<AlbumContent>
         // Unobtrusive while a camera-roll sync runs, nothing otherwise.
         const CameraRollIndicator(),
         menu(context, [
+          // Whose album this is and what may be done with it, where that is
+          // not simply "mine", see issue #49.
+          if (sharedLine != null) ...[
+            PopupMenuItem<void Function(BuildContext)>(
+              enabled: false,
+              child: Text(sharedLine!, key: const Key("shared-line")),
+            ),
+            const PopupMenuDivider(),
+          ],
+          if (_mayShare)
+            menuItem(Icons.share, "Share with…", (_) => shareAlbum()),
           menuLabel(
             "Mindestbewertung",
             "≥ $minRating",
@@ -850,6 +914,14 @@ class AlbumContentState extends State<AlbumContent>
       widget.albumState.reload();
     }
   }
+
+  /// Opens the share dialog on this album, see issue #49.
+  void shareAlbum() => shareWith(
+        context: context,
+        client: client,
+        path: widget.albumState.path,
+        label: "'${widget.album.title}'",
+      );
 
   /// Says something to the user that no view of its own says.
   void showMessage(String message) =>
