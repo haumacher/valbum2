@@ -188,7 +188,9 @@ public class TestImageServletGrants extends TestCase {
 			move("/~alice/" + SharingFixture.ZOO + "/", "", SharingFixture.CAROL, "public.jpg");
 
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
-		assertEquals(MoveService.EDIT_REFUSED, errorMessage(response));
+		// Since issue #53 a contributor may take their own contribution back, so the refusal
+		// names what is actually missing: alice's photo is not carol's to move.
+		assertEquals(MoveService.CONTRIBUTION_REFUSED, errorMessage(response));
 		assertTrue("The photo stayed where it was.",
 			_base.resolve("alice/" + SharingFixture.ZOO + "/public.jpg").toFile().exists());
 	}

@@ -11,6 +11,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import de.haumacher.imageServer.AlbumDate;
+import de.haumacher.imageServer.Contributors;
 import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -293,6 +294,9 @@ public class ResourceCache {
 
 				// Derived on every read and never stored, see AlbumDate#clearDerived(FolderResource).
 				album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
+
+				// Who uploaded which photo, from the hash sidecar beside them, see issue #53.
+				Contributors.derive(album, dir);
 				return album;
 			} else {
 				ListingInfo listing = resource == null ? createGenericListingInfo(path) : (ListingInfo) resource;

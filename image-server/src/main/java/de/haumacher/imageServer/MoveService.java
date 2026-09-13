@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -51,8 +52,9 @@ import java.util.logging.Logger;
  * <p>
  * Everything the album knows about a moved image travels with it: its {@link ImagePart} leaves the
  * source <code>index.json</code> with rating, privacy level, comment, orientation and dimensions
- * intact and is appended to the target's, and its entry in the {@link HashCache} moves from the
- * one folder's sidecar to the other's. Previews are derived data: whatever {@link PreviewCache}
+ * intact and is appended to the target's, and its entry in the {@link HashCache} — the content
+ * hash and who contributed the photo, see issue #53 — moves from the one folder's sidecar to the
+ * other's. A whole folder moves by one rename, so its sidecars ride along by nature. Previews are derived data: whatever {@link PreviewCache}
  * holds for the old path is abandoned, never moved.
  * </p>
  *
@@ -107,6 +109,19 @@ public class MoveService {
 
 	/** The message a caller is refused with that may not add to the target folder. */
 	public static final String CONTRIBUTE_REFUSED = "You may not add to the folder you are moving to.";
+
+	/**
+	 * The message a caller is refused with that moves what somebody else contributed, see issue
+	 * #53.
+	 *
+	 * <p>
+	 * A contributor may take their own contribution back out of an album without holding the edit
+	 * right on it, and nobody else's: the rule is all or nothing over the whole request, so a
+	 * selection that mixes one's own photos with the owner's moves nothing at all.
+	 * </p>
+	 */
+	public static final String CONTRIBUTION_REFUSED =
+		"You may only move photos out of this album that you contributed yourself.";
 
 	/** The message an entry the source folder does not hold is refused with. */
 	public static String notFound(String name) {
@@ -844,6 +859,9 @@ public class MoveService {
 			// The source folder was never uploaded to; the file is hashed now.
 			hash = HashCache.sha256(file);
 		}
+		// Attribution travels with the photo: it is the source folder's record, carried into the
+		// target's, see issue #53.
+		HashCache.Attribution attribution = sourceHashes.attributionOf(name);
 
 		String existing = targetHashes.nameOf(hash);
 		if (existing != null) {
@@ -855,7 +873,7 @@ public class MoveService {
 
 		File moved = ImageServlet.freeName(targetFolder, name);
 		Files.move(file.toPath(), moved.toPath());
-		targetHashes.put(moved, hash);
+		targetHashes.put(moved, hash, attribution);
 		LOG.info("Moved image '" + file + "' to '" + moved + "'.");
 		return new Landing(moved.getName(), null);
 	}
@@ -948,6 +966,78 @@ public class MoveService {
 			return (AlbumInfo) resource;
 		}
 		return ResourceCache.genericAlbum(path);
+	}
+
+	/**
+	 * Whether every named entry of the source folder was contributed by the given subject, see
+	 * issue #53.
+	 *
+	 * <p>
+	 * This is what lets a contributor take their own contribution back out of an album they may
+	 * add to but not edit. It is deliberately narrow:
+	 * </p>
+	 * <ul>
+	 * <li>Only image files count. A folder, a link entry or a name the album does not know is
+	 * nobody's contribution, so a request naming one is not a taking-back at all.</li>
+	 * <li>A named image that heads a group carries the whole group along, so every member of that
+	 * group must be the caller's too — a move must never carry somebody else's photo out on the
+	 * back of one's own.</li>
+	 * <li>All or nothing: one foreign name refuses the whole request, and nothing moves. A
+	 * half-executed move would leave the album in a state nobody asked for.</li>
+	 * </ul>
+	 *
+	 * <p>
+	 * Nothing is written and nothing is hashed here: the source folder's hash sidecar is read as
+	 * it stands, see {@link HashCache#recorded(File)}.
+	 * </p>
+	 *
+	 * @param source
+	 *        The folder the entries would be taken out of.
+	 * @param names
+	 *        The names the request asks to move.
+	 * @param subject
+	 *        Who is asking, see
+	 *        {@link de.haumacher.imageServer.auth.AuthService.Caller#subject()}.
+	 */
+	public boolean contributedBy(PathInfo source, List<String> names, String subject) {
+		if (subject == null || subject.isEmpty() || names.isEmpty()) {
+			return false;
+		}
+		File sourceFolder = source.toFile();
+		if (!sourceFolder.isDirectory()) {
+			return false;
+		}
+		Map<String, HashCache.Attribution> recorded = HashCache.recorded(sourceFolder);
+		AlbumInfo album = albumOf(source);
+		for (String name : names) {
+			if (!isPlainName(name)) {
+				return false;
+			}
+			File file = new File(sourceFolder, name);
+			if (!file.isFile() || !ResourceCache.isImage(file)) {
+				return false;
+			}
+			ImagePart image = album == null ? null : album.getImageByName().get(name);
+			if (image == null) {
+				return false;
+			}
+			ImageGroup group = image.getGroup();
+			if (group != null && representative(group) == image) {
+				for (ImagePart member : group.getImages()) {
+					if (!contributed(recorded, member.getName(), subject)) {
+						return false;
+					}
+				}
+			} else if (!contributed(recorded, name, subject)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static boolean contributed(Map<String, HashCache.Attribution> recorded, String name, String subject) {
+		HashCache.Attribution attribution = recorded.get(name);
+		return attribution != null && subject.equals(attribution.getContributor());
 	}
 
 	/** Whether the given file is the given folder itself or lies below it. */

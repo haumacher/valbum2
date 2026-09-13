@@ -64,6 +64,9 @@ public abstract class LinkTestCase extends TestCase {
 	/** Who may invite on the server under test, see issue #52; the server's own default. */
 	protected InviteMode _inviteMode = InviteMode.MEMBERS;
 
+	/** The authentication mode of the server under test; the server's own default. */
+	protected AuthMode _authMode = AuthMode.WRITES;
+
 	private final List<ImageServlet> _servlets = new ArrayList<>();
 
 	private ImageServlet _servlet;
@@ -140,7 +143,7 @@ public abstract class LinkTestCase extends TestCase {
 	protected ImageServlet servlet() throws Exception {
 		if (_servlet == null) {
 			_servlet = new ImageServlet(_base.toFile(),
-				new AuthService(AuthMode.WRITES, SharingFixture.SECRET, _base, _inviteMode));
+				new AuthService(_authMode, SharingFixture.SECRET, _base, _inviteMode));
 			_servlet.init();
 			_servlets.add(_servlet);
 		}
@@ -182,8 +185,22 @@ public abstract class LinkTestCase extends TestCase {
 	}
 
 	protected FakeResponse upload(String pathInfo, String token, String fileName) throws Exception {
+		return upload(pathInfo, token, fileName, ("pixels of " + fileName).getBytes(StandardCharsets.UTF_8));
+	}
+
+	/**
+	 * Uploads one file of the given contents.
+	 *
+	 * <p>
+	 * The overload for a test that reads the album afterwards: what the server puts into an
+	 * {@link de.haumacher.imageServer.shared.model.AlbumInfo} is an image it could analyse, so a
+	 * test about what an album says about an uploaded photo must upload a real one.
+	 * </p>
+	 */
+	protected FakeResponse upload(String pathInfo, String token, String fileName, byte[] contents)
+			throws Exception {
 		LinkedHashMap<String, byte[]> files = new LinkedHashMap<>();
-		files.put(fileName, ("pixels of " + fileName).getBytes(StandardCharsets.UTF_8));
+		files.put(fileName, contents);
 		Map<String, String> headers = new HashMap<>();
 		headers.put("Content-Type", "multipart/form-data; boundary=" + BOUNDARY);
 		if (token != null) {

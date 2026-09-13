@@ -29,7 +29,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * The content hashes of the image and video files of a single album folder.
+ * The content hashes of the image and video files of a single album folder, and who contributed
+ * them.
  *
  * <p>
  * An upload is idempotent: the server hashes what it received and stores it only if the target
@@ -52,8 +53,18 @@ import java.util.logging.Logger;
  * </p>
  *
  * <pre>
- * {"version":1,"files":{"IMG_1.jpg":{"size":1234,"modified":1757000000000,"sha256":"&lt;64 hex chars&gt;"}}}
+ * {"version":1,"files":{"IMG_1.jpg":{"size":1234,"modified":1757000000000,"sha256":"&lt;64 hex chars&gt;",
+ *   "contributor":"user:bob","contributorLabel":"bob"}}}
  * </pre>
+ *
+ * <p>
+ * The two attribution fields of issue #53 were added without a version bump, because they are
+ * additive in both directions: a file written before them reads with empty attribution, and a
+ * build without them skips what it does not know (see {@link #readEntry(JsonReader)}). Attribution
+ * is the one thing in this file that is <em>not</em> a cache — it is recorded once, when the
+ * upload stores the file, and cannot be recomputed from the folder — so a {@link #refresh()} that
+ * re-hashes a changed file keeps it: who put the photo here is not a question the contents answer.
+ * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
@@ -77,6 +88,10 @@ public class HashCache {
 
 	private static final String SHA256__PROP = "sha256";
 
+	private static final String CONTRIBUTOR__PROP = "contributor";
+
+	private static final String CONTRIBUTOR_LABEL__PROP = "contributorLabel";
+
 	private static final int BUFFER_SIZE = 64 * 1024;
 
 	/** What was recorded for one file of the folder. */
@@ -88,15 +103,69 @@ public class HashCache {
 
 		final String _sha256;
 
-		Entry(long size, long modified, String sha256) {
+		final Attribution _attribution;
+
+		Entry(long size, long modified, String sha256, Attribution attribution) {
 			_size = size;
 			_modified = modified;
 			_sha256 = sha256;
+			_attribution = attribution;
 		}
 
 		/** Whether this entry still describes the given file. */
 		boolean matches(File file) {
 			return file.length() == _size && file.lastModified() == _modified;
+		}
+
+		/** The same entry for freshly measured contents, keeping who contributed the file. */
+		Entry rehashed(long size, long modified, String sha256) {
+			return new Entry(size, modified, sha256, _attribution);
+		}
+	}
+
+	/**
+	 * Who contributed one file, and how to show them, see issue #53.
+	 *
+	 * <p>
+	 * The {@link de.haumacher.imageServer.auth.AuthService.Caller#subject() subject} of the caller
+	 * that uploaded the file, and the label to show for it — the user's name, or the label the
+	 * share link carried at that moment. The label is copied rather than looked up, so a link that
+	 * was renamed or withdrawn still says who contributed.
+	 * </p>
+	 */
+	public static final class Attribution {
+
+		/** What is recorded for a file nobody uploaded through this server. */
+		public static final Attribution NONE = new Attribution("", "");
+
+		private final String _contributor;
+
+		private final String _label;
+
+		/** Creates an {@link Attribution}; <code>null</code> is the empty string. */
+		public Attribution(String contributor, String label) {
+			_contributor = contributor == null ? "" : contributor;
+			_label = label == null ? "" : label;
+		}
+
+		/** The subject of the uploader, the empty string if none was recorded. */
+		public String getContributor() {
+			return _contributor;
+		}
+
+		/** What to show as the contributor, the empty string if nothing was recorded. */
+		public String getLabel() {
+			return _label;
+		}
+
+		/** Whether anything at all was recorded. */
+		public boolean isSet() {
+			return !_contributor.isEmpty();
+		}
+
+		@Override
+		public String toString() {
+			return isSet() ? _contributor + " (" + _label + ")" : "<nobody>";
 		}
 	}
 
@@ -148,15 +217,71 @@ public class HashCache {
 	}
 
 	/**
-	 * Records the hash of a file that was just stored in this folder.
+	 * Records the hash of a file that was just stored in this folder, without an uploader.
 	 *
 	 * <p>
 	 * Saves the freshly stored file from being hashed again by the next {@link #refresh()}.
 	 * </p>
 	 */
 	public void put(File file, String sha256) {
-		_entries.put(file.getName(), new Entry(file.length(), file.lastModified(), sha256));
+		put(file, sha256, Attribution.NONE);
+	}
+
+	/**
+	 * Records the hash of a file that was just stored in this folder and who put it there, see
+	 * issue #53.
+	 *
+	 * <p>
+	 * This is where attribution enters the server, and the only place: an upload stores the file
+	 * and says who sent it, a move carries the record of the source folder into the target's.
+	 * Nothing else ever writes it, and an upload of contents the folder already holds writes
+	 * nothing at all, so the first contributor is the one that stays.
+	 * </p>
+	 */
+	public void put(File file, String sha256, Attribution attribution) {
+		_entries.put(file.getName(),
+			new Entry(file.length(), file.lastModified(), sha256, attribution == null ? Attribution.NONE
+				: attribution));
 		_dirty = true;
+	}
+
+	/**
+	 * Who contributed the file of the given name, {@link Attribution#NONE} if nothing is recorded.
+	 *
+	 * <p>
+	 * Answered from the sidecar as it stands: nothing is hashed, nothing is written. A file the
+	 * sidecar does not mention has no attribution — it was never uploaded through this server.
+	 * </p>
+	 */
+	public Attribution attributionOf(String name) {
+		Entry entry = _entries.get(name);
+		return entry == null ? Attribution.NONE : entry._attribution;
+	}
+
+	/**
+	 * Who contributed each file of the given folder, see {@link #attributionOf(String)}.
+	 *
+	 * <p>
+	 * The read path of issue #53, and deliberately the cheap one: the sidecar is read and nothing
+	 * else happens — no file is opened, no hash is computed and nothing is written back, so
+	 * answering a listing or an album costs one small JSON file per folder. Only files with an
+	 * attribution are in the result.
+	 * </p>
+	 */
+	public static Map<String, Attribution> recorded(File folder) {
+		Map<String, Attribution> result = new LinkedHashMap<>();
+		File file = new File(folder, FILE_NAME);
+		if (!file.exists()) {
+			return result;
+		}
+		HashCache cache = new HashCache(folder);
+		for (Map.Entry<String, Entry> entry : cache._entries.entrySet()) {
+			Attribution attribution = entry.getValue()._attribution;
+			if (attribution.isSet()) {
+				result.put(entry.getKey(), attribution);
+			}
+		}
+		return result;
 	}
 
 	/**
@@ -173,8 +298,12 @@ public class HashCache {
 		for (File file : files) {
 			String name = file.getName();
 			Entry entry = _entries.get(name);
-			if (entry == null || !entry.matches(file)) {
-				entry = new Entry(file.length(), file.lastModified(), sha256(file));
+			if (entry == null) {
+				entry = new Entry(file.length(), file.lastModified(), sha256(file), Attribution.NONE);
+				_dirty = true;
+			} else if (!entry.matches(file)) {
+				// The contents changed behind the server's back; who put the file here did not.
+				entry = entry.rehashed(file.length(), file.lastModified(), sha256(file));
 				_dirty = true;
 			}
 			update.put(name, entry);
@@ -281,6 +410,8 @@ public class HashCache {
 		long size = -1;
 		long modified = -1;
 		String sha256 = "";
+		String contributor = "";
+		String contributorLabel = "";
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -294,6 +425,12 @@ public class HashCache {
 				case SHA256__PROP:
 					sha256 = in.nextString();
 					break;
+				case CONTRIBUTOR__PROP:
+					contributor = in.nextString();
+					break;
+				case CONTRIBUTOR_LABEL__PROP:
+					contributorLabel = in.nextString();
+					break;
 				default:
 					// An entry written by a future version may carry more; it stays readable.
 					in.skipValue();
@@ -301,7 +438,7 @@ public class HashCache {
 			}
 		}
 		in.endObject();
-		return new Entry(size, modified, sha256);
+		return new Entry(size, modified, sha256, new Attribution(contributor, contributorLabel));
 	}
 
 	private void store() throws IOException {
@@ -323,6 +460,15 @@ public class HashCache {
 					out.value(entry.getValue()._modified);
 					out.name(SHA256__PROP);
 					out.value(entry.getValue()._sha256);
+					Attribution attribution = entry.getValue()._attribution;
+					if (attribution.isSet()) {
+						// Only what somebody actually contributed: a library that was never
+						// uploaded to keeps the file it had before issue #53.
+						out.name(CONTRIBUTOR__PROP);
+						out.value(attribution.getContributor());
+						out.name(CONTRIBUTOR_LABEL__PROP);
+						out.value(attribution.getLabel());
+					}
 					out.endObject();
 				}
 				out.endObject();

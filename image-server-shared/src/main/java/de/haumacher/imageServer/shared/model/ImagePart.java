@@ -42,6 +42,12 @@ public class ImagePart extends AbstractImage {
 	/** @see #getComment() */
 	private static final String COMMENT__PROP = "comment";
 
+	/** @see #getContributor() */
+	private static final String CONTRIBUTOR__PROP = "contributor";
+
+	/** @see #getContributorLabel() */
+	private static final String CONTRIBUTOR_LABEL__PROP = "contributorLabel";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -61,6 +67,10 @@ public class ImagePart extends AbstractImage {
 	private String _comment = "";
 
 	private transient de.haumacher.imageServer.shared.model.ImageGroup _group = null;
+
+	private String _contributor = "";
+
+	private String _contributorLabel = "";
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -285,6 +295,77 @@ public class ImagePart extends AbstractImage {
 		return _group != null;
 	}
 
+	/**
+	 * Who uploaded this image, see issue #53.
+	 *
+	 * <p>
+	 * The subject of the caller that stored the file: <code>user:&lt;name&gt;</code>,
+	 * <code>token:&lt;id&gt;</code> for a contribution made through a share link, or
+	 * <code>anonymous</code> on a server running without authentication. The empty string for a
+	 * photo that never came through an upload — one that was in the folder before this build, or
+	 * that was copied in with a file manager.
+	 * </p>
+	 *
+	 * <p>
+	 * Recorded once, at the upload, in the hash sidecar beside the photos, and carried along when
+	 * the photo is moved to another folder. An upload of contents the folder already holds keeps
+	 * the first contributor: whoever brought the photo here is who brought it here.
+	 * </p>
+	 *
+	 * <p>
+	 * Derived by the server on every read, exactly like {@link AlbumInfo#getEffectiveDate()}, and never
+	 * stored: the server clears this field before an <code>index.json</code> is written, so that a
+	 * round trip through a client can neither freeze an attribution into the album nor lose one.
+	 * </p>
+	 */
+	public final String getContributor() {
+		return _contributor;
+	}
+
+	/**
+	 * @see #getContributor()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setContributor(String value) {
+		internalSetContributor(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getContributor()} without chain call utility. */
+	protected final void internalSetContributor(String value) {
+		_contributor = value;
+	}
+
+	/**
+	 * What to show as the contributor of this image, see issue #53 and {@link #getContributor()}.
+	 *
+	 * <p>
+	 * The name of the user, or the label of the share link a guest contributed through, as it
+	 * stood at the moment of the upload; the empty string when nothing is known. The label is
+	 * copied rather than looked up, so a link that was renamed or withdrawn still says who
+	 * contributed.
+	 * </p>
+	 *
+	 * <p>
+	 * Derived on every read and never stored, exactly like {@link #getContributor()}.
+	 * </p>
+	 */
+	public final String getContributorLabel() {
+		return _contributorLabel;
+	}
+
+	/**
+	 * @see #getContributorLabel()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setContributorLabel(String value) {
+		internalSetContributorLabel(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getContributorLabel()} without chain call utility. */
+	protected final void internalSetContributorLabel(String value) {
+		_contributorLabel = value;
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -348,6 +429,10 @@ public class ImagePart extends AbstractImage {
 		out.value(getPrivacy());
 		out.name(COMMENT__PROP);
 		out.value(getComment());
+		out.name(CONTRIBUTOR__PROP);
+		out.value(getContributor());
+		out.name(CONTRIBUTOR_LABEL__PROP);
+		out.value(getContributorLabel());
 	}
 
 	@Override
@@ -362,6 +447,8 @@ public class ImagePart extends AbstractImage {
 			case RATING__PROP: setRating(in.nextInt()); break;
 			case PRIVACY__PROP: setPrivacy(in.nextInt()); break;
 			case COMMENT__PROP: setComment(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case CONTRIBUTOR__PROP: setContributor(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case CONTRIBUTOR_LABEL__PROP: setContributorLabel(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

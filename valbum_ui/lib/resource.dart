@@ -755,6 +755,43 @@ class ImagePart extends AbstractImage {
 	///  The {@link ImageGroup}, this {@link ImagePart} is part of, or <code>null</code>, if this {@link ImagePart} is not part of a group.
 	ImageGroup? group;
 
+	///  Who uploaded this image, see issue #53.
+	/// 
+	///  <p>
+	///  The subject of the caller that stored the file: <code>user:&lt;name&gt;</code>,
+	///  <code>token:&lt;id&gt;</code> for a contribution made through a share link, or
+	///  <code>anonymous</code> on a server running without authentication. The empty string for a
+	///  photo that never came through an upload — one that was in the folder before this build, or
+	///  that was copied in with a file manager.
+	///  </p>
+	/// 
+	///  <p>
+	///  Recorded once, at the upload, in the hash sidecar beside the photos, and carried along when
+	///  the photo is moved to another folder. An upload of contents the folder already holds keeps
+	///  the first contributor: whoever brought the photo here is who brought it here.
+	///  </p>
+	/// 
+	///  <p>
+	///  Derived by the server on every read, exactly like {@link AlbumInfo#effectiveDate}, and never
+	///  stored: the server clears this field before an <code>index.json</code> is written, so that a
+	///  round trip through a client can neither freeze an attribution into the album nor lose one.
+	///  </p>
+	String contributor;
+
+	///  What to show as the contributor of this image, see issue #53 and {@link #contributor}.
+	/// 
+	///  <p>
+	///  The name of the user, or the label of the share link a guest contributed through, as it
+	///  stood at the moment of the upload; the empty string when nothing is known. The label is
+	///  copied rather than looked up, so a link that was renamed or withdrawn still says who
+	///  contributed.
+	///  </p>
+	/// 
+	///  <p>
+	///  Derived on every read and never stored, exactly like {@link #contributor}.
+	///  </p>
+	String contributorLabel;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -772,6 +809,8 @@ class ImagePart extends AbstractImage {
 			this.privacy = 0, 
 			this.comment = "", 
 			this.group, 
+			this.contributor = "", 
+			this.contributorLabel = "", 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -828,6 +867,14 @@ class ImagePart extends AbstractImage {
 				comment = json.expectString();
 				break;
 			}
+			case "contributor": {
+				contributor = json.expectString();
+				break;
+			}
+			case "contributorLabel": {
+				contributorLabel = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -862,6 +909,12 @@ class ImagePart extends AbstractImage {
 
 		json.addKey("comment");
 		json.addString(comment);
+
+		json.addKey("contributor");
+		json.addString(contributor);
+
+		json.addKey("contributorLabel");
+		json.addString(contributorLabel);
 	}
 
 	@override

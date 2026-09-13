@@ -437,7 +437,7 @@ public class ImageServlet extends HttpServlet {
 			if (guestSpaceRefused(context, folder)) {
 				return;
 			}
-			storeSingleImage(context, file);
+			storeSingleImage(context, caller, folder, file);
 			return;
 		}
 
@@ -449,7 +449,7 @@ public class ImageServlet extends HttpServlet {
 			if (guestSpaceRefused(context, resourcePath)) {
 				return;
 			}
-			storeUploads(context, resourcePath);
+			storeUploads(context, caller, resourcePath);
 			return;
 		}
 
@@ -642,7 +642,8 @@ public class ImageServlet extends HttpServlet {
 	 * with a <code>409</code>, see {@link #REPLACE_REFUSED}.
 	 * </p>
 	 */
-	private void storeSingleImage(Context context, File target) throws IOException {
+	private void storeSingleImage(Context context, Caller caller, PathInfo folderPath, File target)
+			throws IOException {
 		String name = target.getName();
 		if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(name))) {
 			LOG.warning("Unsupported upload extension: " + name);
@@ -677,7 +678,7 @@ public class ImageServlet extends HttpServlet {
 				return;
 			} else {
 				store(upload, target);
-				hashes.put(target, hash);
+				hashes.put(target, hash, attribution(caller));
 				LOG.info("Storing image: " + target);
 				result = UploadResult.create().addFile(uploaded(name, name, hash, STORED));
 			}
@@ -685,8 +686,29 @@ public class ImageServlet extends HttpServlet {
 			hashes.flush();
 		}
 
+		// The next read must see the new photo, and with it who contributed it.
+		_cache.invalidate(folderPath);
+
 		serveJsonObject(context.response(), result);
 	}
+
+	/**
+	 * Who to record as the contributor of what the given caller uploads, see issue #53.
+	 *
+	 * <p>
+	 * The caller's {@link Caller#subject() subject} — the very string a grant is made out to — and
+	 * the label to show for it. Both are copied into the hash sidecar at the upload and never
+	 * looked up again: a share link that is renamed or withdrawn afterwards still says who
+	 * contributed, and a user who is renamed keeps what they brought.
+	 * </p>
+	 */
+	private static HashCache.Attribution attribution(Caller caller) {
+		if (caller == null) {
+			return HashCache.Attribution.NONE;
+		}
+		return new HashCache.Attribution(caller.subject(), caller.contributorLabel());
+	}
+
 
 	/**
 	 * Stores the files of a multipart upload in the given folder.
@@ -697,8 +719,16 @@ public class ImageServlet extends HttpServlet {
 	 * lost connection never creates a second copy. Contents that are new are stored under a
 	 * de-duplicated name; an existing file is never overwritten.
 	 * </p>
+	 *
+	 * <p>
+	 * This is where the attribution of issue #53 is recorded: every file that is actually stored
+	 * gets the uploader's {@link Caller#subject() subject} and label in the hash sidecar beside
+	 * it. A file reported as {@link #PRESENT} writes nothing, so it keeps the <em>first</em>
+	 * contributor — whoever brought the photo here is who brought it here, however often it is
+	 * sent again.
+	 * </p>
 	 */
-	private void storeUploads(Context context, PathInfo folderPath) throws IOException {
+	private void storeUploads(Context context, Caller caller, PathInfo folderPath) throws IOException {
 		File folder = folderPath.toFile();
 		List<UploadItem> uploads = _fileUpload.parseRequest(context.request());
 		for (UploadItem upload : uploads) {
@@ -735,13 +765,16 @@ public class ImageServlet extends HttpServlet {
 
 				File targetFile = freeName(folder, name);
 				store(upload, targetFile);
-				hashes.put(targetFile, hash);
+				hashes.put(targetFile, hash, attribution(caller));
 				LOG.info("Storing image: " + targetFile);
 				result.addFile(uploaded(name, targetFile.getName(), hash, STORED));
 			}
 		} finally {
 			hashes.flush();
 		}
+
+		// The next read must see the new photos, and with them who contributed them.
+		_cache.invalidate(folderPath);
 
 		serveJsonObject(context.response(), result);
 	}
@@ -751,10 +784,12 @@ public class ImageServlet extends HttpServlet {
 	 *
 	 * <p>
 	 * A move is a write: it is refused exactly as a PUT is when the caller may not write, and the
-	 * source and the target must both lie in the caller's space. Beyond that, the source folder
-	 * must grant the edit right and the target the contribute right; inside the own space both
-	 * always hold, and issue #49 will make them mean more, see
-	 * {@link AuthService#mayEdit(Caller, PathInfo)}.
+	 * source and the target must both lie in the caller's space. Beyond that, the target folder
+	 * must grant the contribute right, and the source folder the edit right — <em>or</em> the
+	 * caller must be the contributor of every entry the request names, see issue #53 and
+	 * {@link MoveService#contributedBy(PathInfo, List, String)}: whoever added a photo to somebody
+	 * else's album may take it back out again, and nobody's else. Taking back is never a delete:
+	 * the photo is renamed into a folder of the contributor's, exactly as any other move.
 	 * </p>
 	 *
 	 * <p>
@@ -799,9 +834,24 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
+		List<String> names = moveRequest.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
+		MoveService moveService = new MoveService(_basePath, _cache, _auth);
+
+		// The source rule of issue #53: the edit right, or one's own contribution and nothing
+		// else. A share link never gets that far — it has no album to take anything back into.
 		if (!_auth.mayEdit(caller, source)) {
-			refuseMove(context, caller, MoveService.EDIT_REFUSED, true);
-			return;
+			if (caller.isShareLink()) {
+				// Not the generic "this link does not allow changes here": the link may well
+				// allow adding photos. What it has not got is anywhere to move one to.
+				LOG.warning("Refusing the move through a share link at '" + context.request().getPathInfo()
+					+ "': " + AuthService.SHARE_MOVE_REFUSED);
+				errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.SHARE_MOVE_REFUSED);
+				return;
+			}
+			if (!moveService.contributedBy(source, names, caller.subject())) {
+				refuseMove(context, caller, MoveService.CONTRIBUTION_REFUSED, true);
+				return;
+			}
 		}
 		if (!_auth.mayContribute(caller, target)) {
 			refuseMove(context, caller, MoveService.CONTRIBUTE_REFUSED, true);
@@ -811,10 +861,9 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		List<String> names = moveRequest.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
 		MoveResult result;
 		try {
-			result = new MoveService(_basePath, _cache, _auth).move(source, target, names);
+			result = moveService.move(source, target, names);
 		} catch (MoveRefused ex) {
 			LOG.warning("Refusing to move from '" + context.request().getPathInfo() + "': " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());

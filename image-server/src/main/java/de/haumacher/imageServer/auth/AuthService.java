@@ -476,6 +476,23 @@ public class AuthService {
 			return Subjects.ANONYMOUS;
 		}
 
+		/**
+		 * What to show as the contributor of what this caller uploads, see issue #53.
+		 *
+		 * <p>
+		 * The name of the user, or the label of the share link a contribution came through; the
+		 * empty string for an anonymous caller and for a link without a label. It is copied into
+		 * the hash sidecar at the upload rather than looked up later, so a link that is renamed or
+		 * withdrawn still says who contributed.
+		 * </p>
+		 */
+		public String contributorLabel() {
+			if (_share != null) {
+				return getShareLabel();
+			}
+			return getUserName();
+		}
+
 		/** The label of the share link this caller holds, the empty string for everybody else. */
 		public String getShareLabel() {
 			return _share == null ? "" : _share.getLabel();
@@ -879,6 +896,18 @@ public class AuthService {
 		}
 		return Rights.NONE;
 	}
+
+	/**
+	 * The message a share link's move is refused with, see issue #53.
+	 *
+	 * <p>
+	 * A link is a window on somebody else's album and has no library of its own; there is nowhere
+	 * for it to move a photo to. Taking a contribution back is therefore the one thing a link
+	 * cannot do, and it is said rather than shown as a puzzling "not found".
+	 * </p>
+	 */
+	public static final String SHARE_MOVE_REFUSED =
+		"A share link can add photos, but not move them: it has no albums of its own.";
 
 	/** Whether the given caller may look at the listing, the thumbnails and the previews here. */
 	public boolean mayView(Caller caller, PathInfo path) {

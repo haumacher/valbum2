@@ -209,18 +209,20 @@ public final class AlbumDate {
 	 * Clears everything the server derives from a folder resource before it is written to disk.
 	 *
 	 * <p>
-	 * The sidecar doctrine: what is stored means what it says, and neither
-	 * {@link AlbumInfo#getEffectiveDate()} ("this is what the album is sorted by today") nor
-	 * {@link FolderResource#getRights()} ("this is what you may do here today") is a statement
-	 * anybody made. Every path that writes an <code>index.json</code> goes through here, so
-	 * derived data can never be frozen into a sidecar by a round trip, see
+	 * The sidecar doctrine: what is stored means what it says, and none of
+	 * {@link AlbumInfo#getEffectiveDate()} ("this is what the album is sorted by today"),
+	 * {@link FolderResource#getRights()} ("this is what you may do here today") and
+	 * {@link ImagePart#getContributor()} ("this is who uploaded that photo") is a statement
+	 * anybody made in this file. Every path that writes an <code>index.json</code> goes through
+	 * here, so derived data can never be frozen into a sidecar by a round trip, see
 	 * {@link ImageServlet#storeSidecar(java.io.File, byte[])}.
 	 * </p>
 	 *
 	 * @return Whether anything had to be cleared.
 	 */
 	public static boolean clearDerived(FolderResource resource) {
-		boolean changed = false;
+		// Who contributed a photo is answered from the hash sidecar on every read, see issue #53.
+		boolean changed = Contributors.clear(resource);
 		if (!resource.getRights().isEmpty()) {
 			// What the caller may do here is answered on every read and is nobody's statement
 			// about the album; a stored copy would outlive the grant it came from, see issue #49.

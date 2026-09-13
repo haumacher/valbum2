@@ -171,6 +171,20 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-13 (night)** — Uploader attribution (#53), server side. Attribution is recorded once, at the
+  upload, in the sidecar the upload already writes — `.hashes.json`, not `index.json`, which is built from
+  disk and written by the app: each hash entry gains the uploader's subject (`user:<name>`, `token:<id>`,
+  `anonymous`) and a label copied at that moment (the user's name, the link's label), so a withdrawn link
+  still names who contributed, and an upload already present keeps its first contributor. On the wire
+  `ImagePart.contributor`/`contributorLabel` are derived on read like the effective date and cleared before
+  any sidecar write, so the app's PUT can neither persist nor lose them; a move carries the hash entry and
+  with it the attribution, folder moves rename the sidecar along. A file changed on disk is rehashed but
+  keeps its contributor. The rights seam of #49 became precise: a move out of an album needs `edit` on the
+  source *or* the caller must be the contributor of every named image — taking one's own contribution back
+  is a move into one's own space, never a delete; a share link (no space) and a guest (photo-free root) are
+  told why they cannot. Uploads now invalidate the resource cache. The app half (showing "Added by …",
+  offering "take back" where the caller is the contributor) is open.
+
 - **2026-09-13 (evening)** — Invitations and guests (#52), app side. Share links and invitations are one
   session mechanism with two kinds: the app base `<context>/s/<token>/` or `<context>/i/<token>/` names
   the kind, the token goes to `?type=auth` once, and the answer decides — a share opens the album, an
