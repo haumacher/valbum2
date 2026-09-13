@@ -176,6 +176,13 @@ delivery:
 - **The Playwright MCP writes into the repository root** (`.playwright-mcp/`, `recording.json`),
   not the scratchpad; both are in `.gitignore` now — never `git add -A` while a browser session is
   open in another agent.
+- **Widget tests cannot see a bootstrap hang.** A test that hands `VAlbumApp` a
+  `ServerSettings(..., loaded: true)` or an injected client skips the very wait a real device goes
+  through; the #51 link session passed 23 widget tests and hung on the splash in Chrome. Any change
+  to the app's start-up, session or client bootstrap gets a real-browser check **before** the
+  commit: `flutter build web`, run the jar with `--webroot valbum_ui/build/web`, open the page in
+  the Playwright browser, screenshot and read the network log (`?type=auth` reached? bearer sent?).
+  Playwright can only write inside the repo root — delete its screenshots before `git add`.
 - **A merge is not gated by the commits it merges.** Run both gates on the merged tree before
   pushing, even when every branch was green on its own.
 
