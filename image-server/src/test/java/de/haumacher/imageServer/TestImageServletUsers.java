@@ -16,6 +16,8 @@ import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.UploadCheckResult;
+import de.haumacher.imageServer.shared.model.UserEntry;
+import de.haumacher.imageServer.shared.model.UserList;
 import de.haumacher.imageServer.upload.HashCache;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
@@ -371,6 +373,66 @@ public class TestImageServletUsers extends TestCase {
 		assertEquals("An anonymous caller has no role.", "", info.getRole());
 		assertEquals("", info.getSpace());
 		assertFalse(info.isWriteAllowed());
+	}
+
+	// --- What the user list says about everybody, see issue #55. ---
+
+	public void testTheUserListSaysSpaceCreatedAndHowManyDevices() throws Exception {
+		member();
+		ImageServlet servlet = servlet(AuthMode.WRITES);
+		PairResponse owner = signIn(servlet, "haui", "Phone");
+
+		UserList listed = UserList.readUserList(reader(body(get(servlet, "/", "users", owner.getToken()))));
+
+		UserStore store = new UserStore(_base);
+		assertEquals(store.getUsers().size(), listed.getUsers().size());
+		for (UserEntry entry : listed.getUsers()) {
+			User user = store.getUser(entry.getName());
+			assertNotNull(entry.getName(), user);
+			assertEquals(user.getRole(), entry.getRole());
+			assertEquals(user.getSpace(), entry.getSpace());
+			assertEquals(user.getCreated(), entry.getCreated());
+			assertEquals(user.getDevices().size(), entry.getDevices());
+		}
+		assertEquals("The owner's own library is his space.", "haui", entry(listed, "haui").getSpace());
+		assertEquals(1, entry(listed, "haui").getDevices());
+		assertEquals("alice", entry(listed, "alice").getSpace());
+	}
+
+	public void testTheDeviceCountFollowsTheDevices() throws Exception {
+		member();
+		ImageServlet servlet = servlet(AuthMode.WRITES);
+		PairResponse owner = signIn(servlet, "haui", "Phone");
+		signIn(servlet, "haui", "Tablet");
+
+		UserList listed = UserList.readUserList(reader(body(get(servlet, "/", "users", owner.getToken()))));
+
+		assertEquals(2, entry(listed, "haui").getDevices());
+		assertEquals("Nobody else grew a device.", 1, entry(listed, "alice").getDevices());
+	}
+
+	public void testAMemberSeesTheSameShapeAndNoTokens() throws Exception {
+		member();
+		ImageServlet servlet = servlet(AuthMode.WRITES);
+		signIn(servlet, "haui", "Phone");
+
+		String listed = body(get(servlet, "/", "users", ALICE_TOKEN));
+
+		assertTrue(listed, listed.contains("\"space\":\"haui\""));
+		assertTrue(listed, listed.contains("\"devices\":1"));
+		assertFalse("A user list never carries a token or its hash.", listed.contains("tokenHash"));
+		assertFalse(listed, listed.contains(UserStore.hash(ALICE_TOKEN)));
+	}
+
+	/** The listed user of the given name. */
+	private static UserEntry entry(UserList users, String name) {
+		for (UserEntry user : users.getUsers()) {
+			if (user.getName().equals(name)) {
+				return user;
+			}
+		}
+		fail("No user '" + name + "' in the listing.");
+		return null;
 	}
 
 	// --- Helpers. ---

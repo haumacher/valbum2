@@ -171,6 +171,18 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-14** — Management (#55), server side. Three gaps the screens could not do without. A device has
+  an identity: a short opaque id assigned at pairing, given to the devices of an older `users.json` on the
+  first load (written back once, the `devices.json` takeover pattern), so that two devices called "probe"
+  can be told apart; `?type=devices` lists the caller's own with the asking one marked, `?action=unpair`
+  removes one of them — the asking one included, which is "sign out here" done properly — and an id of
+  anybody else's device is the same 404 as an unknown one. The admin manages users, not other people's
+  devices. The admin's user list carries space, creation instant and device count. A group is renamed in
+  one step with every grant naming it, groups first, grants second: a crash in between leaves a grant to a
+  name nobody carries, which matches nobody (fail-closed), and renaming back restores the prior state
+  exactly. Found by the review probe: a group could be *created* under a user's name though a user may not
+  take a group's (#52) and a rename refused it — both directions now refuse with one sentence.
+
 - **2026-09-13 (late, later)** — Camera-roll inbox (#54). The inbox is an album in the own space, and
   choosing one is optional: the first run without a chosen inbox creates `Inbox` at the space root and
   stores the path the server answers — the root's placement rule may have filed it into a year — so the

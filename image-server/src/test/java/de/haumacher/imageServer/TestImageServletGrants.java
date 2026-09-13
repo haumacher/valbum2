@@ -487,6 +487,28 @@ public class TestImageServletGrants extends TestCase {
 		assertEquals(Arrays.asList("alice:admin", "bob:member", "carol:member", "dave:member", "eve:guest"), names);
 	}
 
+	public void testTheListSaysWhereEverybodyLivesAndWithHowManyDevices() throws Exception {
+		UserList users = UserList.readUserList(reader(body(get("/", "users", SharingFixture.ALICE))));
+
+		List<String> shown = new ArrayList<>();
+		for (UserEntry user : users.getUsers()) {
+			shown.add(user.getName() + ":" + user.getSpace() + ":" + user.getDevices());
+			assertFalse("Everybody has a creation date: " + user.getName(), user.getCreated().isEmpty());
+		}
+		assertEquals("A guest has no library of their own, so no space.",
+			Arrays.asList("alice:alice:1", "bob:bob:1", "carol:carol:1", "dave:dave:1", "eve::1"), shown);
+
+		assertEquals("A member is answered the same shape.", shown, spaces(get("/", "users", SharingFixture.BOB)));
+	}
+
+	private static List<String> spaces(FakeResponse response) throws IOException {
+		List<String> result = new ArrayList<>();
+		for (UserEntry user : UserList.readUserList(reader(body(response))).getUsers()) {
+			result.add(user.getName() + ":" + user.getSpace() + ":" + user.getDevices());
+		}
+		return result;
+	}
+
 	public void testAGuestAndAnAnonymousCallerSeeNoNames() throws Exception {
 		FakeResponse guest = get("/", "users", SharingFixture.EVE);
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, guest.status());

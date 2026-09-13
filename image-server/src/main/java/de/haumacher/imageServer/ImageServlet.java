@@ -25,12 +25,15 @@ import de.haumacher.imageServer.links.LinkService;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
+import de.haumacher.imageServer.shared.model.DeviceEntry;
+import de.haumacher.imageServer.shared.model.DeviceList;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.Grant;
 import de.haumacher.imageServer.shared.model.GrantList;
 import de.haumacher.imageServer.shared.model.Group;
 import de.haumacher.imageServer.shared.model.GroupList;
+import de.haumacher.imageServer.shared.model.GroupRename;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Invitation;
@@ -157,6 +160,12 @@ public class ImageServlet extends HttpServlet {
 	/** The message an unreadable group is refused with. */
 	public static final String GROUP_UNREADABLE = "The group cannot be read.";
 
+	/** The message an unreadable group rename is refused with, see issue #55. */
+	public static final String RENAME_UNREADABLE = "The request naming the group to rename cannot be read.";
+
+	/** The message an unreadable unpair request is refused with, see issue #55. */
+	public static final String DEVICE_UNREADABLE = "The request naming the device to sign out cannot be read.";
+
 	/**
 	 * The message a request for an image above the caller's clearance is refused with, see issue
 	 * #46.
@@ -273,6 +282,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("groups".equals(type)) {
 			serveGroups(context, caller);
+			return;
+		}
+		if ("devices".equals(type)) {
+			serveDevices(context, caller);
 			return;
 		}
 
@@ -1042,9 +1055,11 @@ public class ImageServlet extends HttpServlet {
 	 * Answers the users of this server at <code>&lt;data&gt;/?type=users</code>, see issue #49.
 	 *
 	 * <p>
-	 * Their names and roles, and nothing else: a member needs the names to share something, and
-	 * nobody needs more. A guest is not shown the family's names, and an anonymous caller is not
-	 * shown anything, see {@link AuthService#maySeeUsers(Caller)}.
+	 * Their names and roles, and since issue #55 their space, the day they arrived and how many
+	 * devices they use: a member needs the names to share something, and the rest is what a
+	 * management screen shows about people who all see each other anyway — there is nothing secret
+	 * in a count. A guest is not shown the family's names, and an anonymous caller is not shown
+	 * anything, see {@link AuthService#maySeeUsers(Caller)}.
 	 * </p>
 	 */
 	private void serveUsers(Context context, Caller caller) throws IOException {
@@ -1066,7 +1081,7 @@ public class ImageServlet extends HttpServlet {
 					// The owner of a library that was never named; there is nothing to share with.
 					continue;
 				}
-				result.addUser(UserEntry.create().setName(user.getName()).setRole(user.getRole()));
+				result.addUser(onTheWire(user));
 			}
 		}
 		serveJsonObject(context.response(), result);
@@ -1093,6 +1108,139 @@ public class ImageServlet extends HttpServlet {
 			}
 		}
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Answers the caller's own devices at <code>&lt;data&gt;/?type=devices</code>, see issue #55.
+	 *
+	 * <p>
+	 * Every device the caller is signed in on, with the one that asked marked as the current one,
+	 * and never a token or the hash of one: a device is named by its id, which is a name and not a
+	 * secret. Only one's own — the administrator manages the users of this server, not other
+	 * people's phones, and there is deliberately no endpoint that shows them.
+	 * </p>
+	 *
+	 * <p>
+	 * A share link and an invitation are refused: they are tokens, not sign-ins, and have no
+	 * devices. The share link is told so (<code>403</code>); an invitation is anonymous on every
+	 * endpoint but <code>?type=auth</code> and is answered <code>401</code> like anybody else who
+	 * has not signed in, which is also the right answer — pairing is exactly what it should do.
+	 * </p>
+	 */
+	private void serveDevices(Context context, Caller caller) throws IOException {
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing the device list to the share link '" + caller.getShareLabel() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.DEVICES_REFUSED);
+			return;
+		}
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		serveJsonObject(context.response(), devices(caller));
+	}
+
+	/**
+	 * Signs a device of the caller out at <code>&lt;data&gt;/?action=unpair</code>, see issue #55.
+	 *
+	 * <p>
+	 * The body names the device by its {@link DeviceEntry#getId() id} and nothing else. Only the
+	 * caller's own devices can be named: an id of somebody else's is refused exactly like an id
+	 * nobody has, so that the endpoint says nothing about who holds what. Signing out the asking
+	 * device is allowed and is the point of it — the answer still arrives, and the next request
+	 * carrying that token is refused.
+	 * </p>
+	 *
+	 * <p>
+	 * The answer is what is left: the caller's remaining devices, as <code>?type=devices</code>
+	 * answers them.
+	 * </p>
+	 */
+	private void unpairDevice(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (caller.isShareLink()) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.DEVICES_REFUSED);
+			return;
+		}
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+
+		DeviceEntry request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = DeviceEntry.readDeviceEntry(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unparsable unpair request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, DEVICE_UNREADABLE);
+			return;
+		}
+
+		UserStore.Device device;
+		try {
+			device = _auth.unpair(caller, request.getId());
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing to sign out the device '" + request.getId() + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+		LOG.info("Signed the device '" + device.getName() + "' of '" + caller.getUserName() + "' out.");
+		serveJsonObject(context.response(), devices(caller));
+	}
+
+	/** The caller's own devices as the protocol carries them, the asking one marked. */
+	private DeviceList devices(Caller caller) {
+		DeviceList result = DeviceList.create();
+		for (UserStore.Device device : _auth.devices(caller)) {
+			result.addDevice(DeviceEntry.create()
+				.setId(device.getId())
+				.setName(device.getName())
+				.setCreated(device.getCreated())
+				.setCurrent(device.getId().equals(caller.getDeviceId())));
+		}
+		return result;
+	}
+
+	/**
+	 * Renames a group at <code>&lt;data&gt;/?action=regroup</code>, see issue #55.
+	 *
+	 * <p>
+	 * The group's owner, or the administrator, who has to keep the names of this server in order;
+	 * a rename gives nobody a right they did not have. Every grant made out to the group is
+	 * rewritten in the same step, see
+	 * {@link AuthService#renameGroup(Caller, String, String)}, and the answer is the renamed group
+	 * exactly as <code>?action=group</code> answers it.
+	 * </p>
+	 */
+	private void renameGroup(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+
+		GroupRename request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = GroupRename.readGroupRename(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unparsable group rename: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, RENAME_UNREADABLE);
+			return;
+		}
+
+		GroupStore.Group renamed;
+		try {
+			renamed = _auth.renameGroup(caller, request.getName(), request.getNewName());
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing to rename the group '" + request.getName() + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+		serveJsonObject(context.response(), GroupList.create().addGroup(onTheWire(renamed)));
 	}
 
 	/**
@@ -1559,8 +1707,7 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, ex.getStatus(), ex.getMessage());
 			return;
 		}
-		serveJsonObject(context.response(),
-			UserEntry.create().setName(promoted.getName()).setRole(promoted.getRole()));
+		serveJsonObject(context.response(), onTheWire(promoted));
 	}
 
 	/** The body of an invitation request, <code>null</code> if it cannot be read (the response is complete). */
@@ -1752,6 +1899,13 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GROUP_CREATE_REFUSED);
 			return;
 		}
+		if (existing == null && _auth.isUserName(name)) {
+			// Found by the review probe of #55: a user may not be named like a group, so a group may
+			// not be named like a user either — the rename already refused it, the creation did not.
+			LOG.warning("Refusing the group name '" + name + "': it is a user's.");
+			errorInfo(context, HttpServletResponse.SC_CONFLICT, AuthService.groupNameIsUser(name));
+			return;
+		}
 
 		List<String> members = new ArrayList<>();
 		for (MemberName member : request.getMembers()) {
@@ -1777,6 +1931,23 @@ public class ImageServlet extends HttpServlet {
 			.setSubject(grant.getSubject())
 			.setRights(Rights.onTheWire(grant.getRights()))
 			.setCreated(grant.getCreated());
+	}
+
+	/**
+	 * The given user as the protocol carries them, see issue #55.
+	 *
+	 * <p>
+	 * Never a device of theirs and never a token: how many devices somebody uses is a number, and
+	 * what those devices are called is answered to their owner alone, see {@link DeviceList}.
+	 * </p>
+	 */
+	private static UserEntry onTheWire(UserStore.User user) {
+		return UserEntry.create()
+			.setName(user.getName())
+			.setRole(user.getRole())
+			.setSpace(user.getSpace())
+			.setCreated(user.getCreated())
+			.setDevices(user.getDevices().size());
 	}
 
 	/** The given group as the protocol carries it. */
@@ -1831,6 +2002,14 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("group".equals(action) || "ungroup".equals(action)) {
 			changeGroup(context, "ungroup".equals(action));
+			return;
+		}
+		if ("regroup".equals(action)) {
+			renameGroup(context);
+			return;
+		}
+		if ("unpair".equals(action)) {
+			unpairDevice(context);
 			return;
 		}
 		if ("share".equals(action)) {

@@ -23,8 +23,10 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -273,6 +275,50 @@ public class AuthService {
 	/** The message a caller is refused a group of somebody else with. */
 	public static final String GROUP_REFUSED = "Only the owner of a group may change or remove it.";
 
+	/** The message a rename into a name somebody already uses is refused with, see issue #55. */
+	public static String groupNameTaken(String name) {
+		return "There is already a group called '" + name + "'. Pick another name.";
+	}
+
+	/**
+	 * The message a group is refused a name with that a user of this server carries.
+	 *
+	 * <p>
+	 * A user may not take a group's name (see {@link #isNameFree(String)}), so a group may not take a
+	 * user's either: the two are spelled apart on the wire (<code>user:</code>, <code>group:</code>),
+	 * but nowhere a person reads them.
+	 * </p>
+	 */
+	public static String groupNameIsUser(String name) {
+		return "'" + name + "' is a user of this server; a group cannot take a user's name.";
+	}
+
+	/** Whether a user of the given name exists, see {@link #groupNameIsUser(String)}. */
+	public boolean isUserName(String name) {
+		return _users != null && _users.getUser(name) != null;
+	}
+
+	/**
+	 * The message a caller who is no device is refused the device list with, see issue #55.
+	 *
+	 * <p>
+	 * A share link and an invitation are tokens, not sign-ins: there is no list of their devices
+	 * because they are not devices.
+	 * </p>
+	 */
+	public static final String DEVICES_REFUSED =
+		"A share link is not a device: it has no devices to show and none to sign out.";
+
+	/**
+	 * The message a request naming a device this caller does not have is refused with, issue #55.
+	 *
+	 * <p>
+	 * The same sentence for an id nobody has and for an id somebody else has: whose device it is
+	 * would be the one thing worth learning from probing, so it is not said.
+	 * </p>
+	 */
+	public static final String DEVICE_UNKNOWN = "There is no device of that id.";
+
 	/** The message a guest is refused the creation of a group with. */
 	public static final String GROUP_CREATE_REFUSED =
 		"A guest has no groups of their own; ask a member to put you in one.";
@@ -340,7 +386,7 @@ public class AuthService {
 
 		private final User _user;
 
-		private final String _deviceName;
+		private final UserStore.Device _device;
 
 		private final boolean _tokenPresented;
 
@@ -354,10 +400,10 @@ public class AuthService {
 
 		private String _invitationGone;
 
-		private Caller(User user, String deviceName, boolean tokenPresented, String refusal, ShareStore.Link share,
-				String gone) {
+		private Caller(User user, UserStore.Device device, boolean tokenPresented, String refusal,
+				ShareStore.Link share, String gone) {
 			_user = user;
-			_deviceName = deviceName;
+			_device = device;
 			_tokenPresented = tokenPresented;
 			_refusal = refusal;
 			_share = share;
@@ -370,8 +416,8 @@ public class AuthService {
 		}
 
 		/** A signed-in caller. */
-		static Caller signedIn(User user, String deviceName) {
-			return new Caller(user, deviceName, true, null, null, null);
+		static Caller signedIn(User user, UserStore.Device device) {
+			return new Caller(user, device, true, null, null, null);
 		}
 
 		/**
@@ -500,7 +546,18 @@ public class AuthService {
 
 		/** The name of the paired device, or the empty string for an unidentified caller. */
 		public String getDeviceName() {
-			return _deviceName == null ? "" : _deviceName;
+			return _device == null ? "" : _device.getName();
+		}
+
+		/**
+		 * The id of the paired device, or the empty string for an unidentified caller, issue #55.
+		 *
+		 * <p>
+		 * What marks the asking device as the current one in its own listing, see issue #55.
+		 * </p>
+		 */
+		public String getDeviceId() {
+			return _device == null ? "" : _device.getId();
 		}
 
 		/** Whether this caller is a device paired with this server. */
@@ -721,7 +778,7 @@ public class AuthService {
 				+ login.getUser().getRole() + "'.");
 			return Caller.rejected(ROLE_REFUSED);
 		}
-		return Caller.signedIn(login.getUser(), login.getDevice().getName());
+		return Caller.signedIn(login.getUser(), login.getDevice());
 	}
 
 	/** The bearer token of the given request, <code>null</code> if it carries none. */
@@ -1829,9 +1886,10 @@ public class AuthService {
 		}
 
 		String token = _users.addDevice(owner, request.getDeviceName());
-		String deviceName = owner.getDevices().get(owner.getDevices().size() - 1).getName();
+		UserStore.Device device = owner.getDevices().get(owner.getDevices().size() - 1);
+		String deviceName = device.getName();
 		if (!owner.getSpace().isEmpty() && _basePath != null) {
-			spaceRoot(Caller.signedIn(owner, deviceName), _basePath);
+			spaceRoot(Caller.signedIn(owner, device), _basePath);
 		}
 		return PairResponse.create()
 			.setToken(token)
@@ -1968,6 +2026,105 @@ public class AuthService {
 		/** The HTTP status to answer with. */
 		public int getStatus() {
 			return _status;
+		}
+	}
+
+	/**
+	 * The devices of the given caller, in the order they were paired, see issue #55.
+	 *
+	 * <p>
+	 * A caller's own devices and nobody else's — the administrator manages the users of this server,
+	 * not other people's phones, and there is deliberately no endpoint that shows them.
+	 * </p>
+	 *
+	 * @return The empty list for a caller that is not a paired device.
+	 */
+	public List<UserStore.Device> devices(Caller caller) {
+		if (!caller.isPaired()) {
+			return Collections.emptyList();
+		}
+		return caller._user.getDevices();
+	}
+
+	/**
+	 * Signs the given caller's device of the given id out, see issue #55.
+	 *
+	 * <p>
+	 * Only among the caller's own devices: an id of somebody else's device is refused exactly like
+	 * an id nobody has, so that the endpoint cannot be used to find out who holds what. Signing out
+	 * the asking device is allowed and is the point — that is "sign out on this device" done
+	 * properly, and the next request carrying its token is refused.
+	 * </p>
+	 *
+	 * @return The device that was removed.
+	 */
+	public UserStore.Device unpair(Caller caller, String id) throws Refused, IOException {
+		if (_users == null) {
+			throw new Refused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
+		}
+		synchronized (_users) {
+			UserStore.Device device = caller._user == null ? null : caller._user.getDevice(id == null ? "" : id.trim());
+			if (device == null) {
+				throw new Refused(HttpServletResponse.SC_NOT_FOUND, DEVICE_UNKNOWN);
+			}
+			_users.removeDevice(caller._user, device);
+			return device;
+		}
+	}
+
+	/**
+	 * Renames a group and every grant made out to it, see issue #55.
+	 *
+	 * <p>
+	 * A group is named in two places — its own record and the {@link Subjects#GROUP_PREFIX} subject
+	 * of every grant made out to it — so renaming it is one operation over both stores, or the
+	 * albums shared with the group would stop being shared because somebody fixed a typo.
+	 * </p>
+	 *
+	 * <p>
+	 * The group is written first, the grants second. A crash between the two writes leaves the
+	 * group under its new name while the grants still name the old one; nothing is lost and nothing
+	 * leaks, because a grant to a group nobody is in matches nobody — the shared albums simply stop
+	 * being visible to the group's members until it is repaired. The repair is the same request
+	 * backwards: renaming the group back to its old name makes the two agree again exactly as they
+	 * did before (the rewrite of the grants finds nothing to do), and the rename can then be
+	 * retried. The reverse order would not have that property, which is why it is this one.
+	 * </p>
+	 *
+	 * @return The renamed group.
+	 */
+	public GroupStore.Group renameGroup(Caller caller, String name, String newName) throws Refused, IOException {
+		if (_groups == null || _grants == null) {
+			throw new Refused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
+		}
+		String from = name == null ? "" : name.trim();
+		String to;
+		try {
+			to = UserStore.checkUserName(newName);
+		} catch (IllegalArgumentException ex) {
+			throw new Refused(HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
+		}
+		synchronized (_groups) {
+			GroupStore.Group group = from.isEmpty() ? null : _groups.getGroup(from);
+			if (group == null) {
+				throw new Refused(HttpServletResponse.SC_NOT_FOUND, GROUP_UNKNOWN);
+			}
+			// The administrator may rename anybody's group: they are the one who has to keep the
+			// names of this server in order, and a rename gives nobody a right they did not have.
+			if (!group.getOwner().equals(caller.getUserName()) && !Roles.ADMIN.equals(caller.getRole())) {
+				throw new Refused(HttpServletResponse.SC_FORBIDDEN, GROUP_REFUSED);
+			}
+			if (!to.equals(from) && _groups.getGroup(to) != null) {
+				throw new Refused(HttpServletResponse.SC_CONFLICT, groupNameTaken(to));
+			}
+			if (!to.equals(from) && isUserName(to)) {
+				throw new Refused(HttpServletResponse.SC_CONFLICT, groupNameIsUser(to));
+			}
+
+			_groups.rename(group, to);
+			int rewritten = _grants.renameSubject(Subjects.group(from), Subjects.group(to));
+			LOG.info("Renamed the group '" + from + "' to '" + to + "' and " + rewritten + " grant(s) with it.");
+			return group;
 		}
 	}
 

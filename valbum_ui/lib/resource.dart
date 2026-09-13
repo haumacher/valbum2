@@ -2978,7 +2978,10 @@ class GroupList extends _JsonObject {
 ///  A user of this server as another user may see them, see {@link UserList}.
 /// 
 ///  <p>
-///  The name and the role, and nothing else: devices, tokens and spaces are not shared.
+///  The name and the role, and since issue #55 the three things a management screen shows beside
+///  them: where the user's library lies, since when they are here, and how many devices they signed
+///  in on. Never a token and never a device of theirs — what a device is called and when it was
+///  paired is answered to its own owner only, see {@link DeviceList}.
 ///  </p>
 class UserEntry extends _JsonObject {
 	///  The user's name, which is what a <code>user:&lt;name&gt;</code> subject names.
@@ -2987,10 +2990,27 @@ class UserEntry extends _JsonObject {
 	///  The user's role: <code>admin</code>, <code>member</code> or <code>guest</code>.
 	String role;
 
+	///  The folder below the server's base folder this user's requests are resolved against (issue #55).
+	/// 
+	///  <p>
+	///  Empty for a guest, who has no library of their own, and for the owner of a library that was
+	///  never migrated, whose space is the base folder itself.
+	///  </p>
+	String space;
+
+	///  When the user was created, an ISO-8601 instant; empty if the server never recorded one (issue #55).
+	String created;
+
+	///  How many devices the user is signed in on, answered by the server (issue #55).
+	int devices;
+
 	/// Creates a UserEntry.
 	UserEntry({
 			this.name = "", 
 			this.role = "", 
+			this.space = "", 
+			this.created = "", 
+			this.devices = 0, 
 	});
 
 	/// Parses a UserEntry from a string source.
@@ -3019,6 +3039,18 @@ class UserEntry extends _JsonObject {
 				role = json.expectString();
 				break;
 			}
+			case "space": {
+				space = json.expectString();
+				break;
+			}
+			case "created": {
+				created = json.expectString();
+				break;
+			}
+			case "devices": {
+				devices = json.expectInt();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3032,6 +3064,15 @@ class UserEntry extends _JsonObject {
 
 		json.addKey("role");
 		json.addString(role);
+
+		json.addKey("space");
+		json.addString(space);
+
+		json.addKey("created");
+		json.addString(created);
+
+		json.addKey("devices");
+		json.addNumber(devices);
 	}
 
 }
@@ -3096,6 +3137,226 @@ class UserList extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+	}
+
+}
+
+///  A device somebody paired with this server, see issue #55.
+/// 
+///  <p>
+///  Answered by <code>&lt;data&gt;/?type=devices</code> and sent to
+///  <code>&lt;data&gt;/?action=unpair</code>, which names the device to sign out by its {@link #id}.
+///  A caller only ever sees and unpairs devices of their own: the administrator manages the users of
+///  this server, not other people's phones.
+///  </p>
+/// 
+///  <p>
+///  The token is never part of this message, and neither is its hash: a device is named by its id,
+///  which is a name and not a secret.
+///  </p>
+class DeviceEntry extends _JsonObject {
+	///  The short id of the device, assigned when it was paired; what names it in a request.
+	String id;
+
+	///  The name the device announced itself with when it was paired.
+	String name;
+
+	///  When the device was paired, an ISO-8601 instant; answered by the server, ignored in a request.
+	String created;
+
+	///  Whether this is the device the request came from; answered by the server, ignored in a request.
+	/// 
+	///  <p>
+	///  True on exactly one entry of a listing, so that the app can say "this device" and warn before
+	///  signing it out — which is allowed, and is how a device signs itself out for good.
+	///  </p>
+	bool current;
+
+	/// Creates a DeviceEntry.
+	DeviceEntry({
+			this.id = "", 
+			this.name = "", 
+			this.created = "", 
+			this.current = false, 
+	});
+
+	/// Parses a DeviceEntry from a string source.
+	static DeviceEntry? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a DeviceEntry instance from the given reader.
+	static DeviceEntry read(JsonReader json) {
+		DeviceEntry result = DeviceEntry();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "DeviceEntry";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "created": {
+				created = json.expectString();
+				break;
+			}
+			case "current": {
+				current = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("created");
+		json.addString(created);
+
+		json.addKey("current");
+		json.addBool(current);
+	}
+
+}
+
+///  The caller's own devices, answered by <code>&lt;data&gt;/?type=devices</code> and by
+///  <code>&lt;data&gt;/?action=unpair</code>, see issue #55.
+class DeviceList extends _JsonObject {
+	///  The devices, in the order they were paired.
+	List<DeviceEntry> devices;
+
+	/// Creates a DeviceList.
+	DeviceList({
+			this.devices = const [], 
+	});
+
+	/// Parses a DeviceList from a string source.
+	static DeviceList? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a DeviceList instance from the given reader.
+	static DeviceList read(JsonReader json) {
+		DeviceList result = DeviceList();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "DeviceList";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "devices": {
+				json.expectArray();
+				devices = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = DeviceEntry.read(json);
+						if (value != null) {
+							devices.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("devices");
+		json.startArray();
+		for (var _element in devices) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  The renaming of a {@link Group}, sent to <code>&lt;data&gt;/?action=regroup</code>, see issue #55.
+/// 
+///  <p>
+///  A rename is its own request because it is more than a change of the group's name: every grant
+///  made out to the group is rewritten in the same step, so that nothing that was shared with the
+///  group stops working because it was given a better name. The answer is the renamed group, as
+///  <code>?action=group</code> answers it.
+///  </p>
+class GroupRename extends _JsonObject {
+	///  The name of the group to rename.
+	String name;
+
+	///  The name it should have, following the rules a user name follows.
+	String newName;
+
+	/// Creates a GroupRename.
+	GroupRename({
+			this.name = "", 
+			this.newName = "", 
+	});
+
+	/// Parses a GroupRename from a string source.
+	static GroupRename? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a GroupRename instance from the given reader.
+	static GroupRename read(JsonReader json) {
+		GroupRename result = GroupRename();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "GroupRename";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "newName": {
+				newName = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("newName");
+		json.addString(newName);
 	}
 
 }

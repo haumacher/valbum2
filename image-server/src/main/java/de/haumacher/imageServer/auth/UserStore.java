@@ -43,8 +43,18 @@ import java.util.logging.Logger;
  *
  * <pre>
  * {"version":1,"users":[{"name":"haui","role":"admin","space":"haui","created":"2026-09-06T10:11:12Z",
- *   "devices":[{"name":"Phone","tokenHash":"&lt;64 hex chars&gt;","created":"2026-09-06T10:11:12Z"}]}]}
+ *   "devices":[{"id":"&lt;8 chars&gt;","name":"Phone","tokenHash":"&lt;64 hex chars&gt;",
+ *   "created":"2026-09-06T10:11:12Z"}]}]}
  * </pre>
+ *
+ * <p>
+ * The device {@link Device#getId() id} arrived with issue #55, and it did so without a version
+ * step: a device of a store written before it simply has none, and gets a free one on the first
+ * {@link #load()}, which writes the store back once (the same move the {@link #LEGACY_FILE_NAME}
+ * takeover makes). The file stays readable by the build before, which skips the unknown
+ * <code>id</code> like every other entry it does not know — so a library can be moved back to it
+ * and every token still works.
+ * </p>
  *
  * <p>
  * It replaces the device-only store of issue #28 ({@link #LEGACY_FILE_NAME}). A store from before
@@ -130,8 +140,15 @@ public class UserStore {
 
 	private static final String CREATED__PROP = "created";
 
+	private static final String ID__PROP = "id";
+
+	/** The number of random bytes a device id is built from; it is a name, not a secret. */
+	private static final int ID_BYTES = 6;
+
 	/** A device a user signed in on. */
 	public static final class Device {
+
+		private String _id;
 
 		private final String _name;
 
@@ -139,11 +156,44 @@ public class UserStore {
 
 		private final String _created;
 
-		/** Creates a {@link Device}. */
+		/**
+		 * Creates a {@link Device} without an id yet, see {@link #getId()}.
+		 *
+		 * <p>
+		 * The store gives it a free id before it writes it, so that a device built here and added
+		 * to a user is named like every other one.
+		 * </p>
+		 */
 		public Device(String name, String tokenHash, String created) {
+			this("", name, tokenHash, created);
+		}
+
+		/** Creates a {@link Device} with the given id. */
+		public Device(String id, String name, String tokenHash, String created) {
+			_id = id;
 			_name = name;
 			_tokenHash = tokenHash;
 			_created = created;
+		}
+
+		/**
+		 * The short opaque id naming this device, see issue #55.
+		 *
+		 * <p>
+		 * Device names repeat — two phones called "Phone" are two devices — so a device that can be
+		 * listed and signed out needs a name of its own that nothing else carries. It is assigned
+		 * when the device is paired, it is a name and not a secret, and it is the empty string only
+		 * for a device that was read from a store written before issue #55 and not yet written back,
+		 * see {@link UserStore#ensureIds()}.
+		 * </p>
+		 */
+		public String getId() {
+			return _id;
+		}
+
+		/** See {@link #getId()}. */
+		void setId(String id) {
+			_id = id;
 		}
 
 		/** The name the device announced itself with. */
@@ -248,6 +298,36 @@ public class UserStore {
 		/** Adds a device to this user. */
 		public void addDevice(Device device) {
 			_devices.add(device);
+		}
+
+		/**
+		 * The device of the given id among this user's own, see issue #55.
+		 *
+		 * @return <code>null</code> if this user has no device of that id; whether somebody else
+		 *         has one is deliberately not something this answers.
+		 */
+		public Device getDevice(String id) {
+			if (id == null || id.isEmpty()) {
+				return null;
+			}
+			for (Device device : _devices) {
+				if (id.equals(device.getId())) {
+					return device;
+				}
+			}
+			return null;
+		}
+
+		/**
+		 * Removes the given device from this user.
+		 *
+		 * <p>
+		 * The caller stores; the token the device holds is refused from the next request on, this
+		 * being the only place it was ever known.
+		 * </p>
+		 */
+		public boolean removeDevice(Device device) {
+			return _devices.remove(device);
 		}
 	}
 
@@ -444,9 +524,67 @@ public class UserStore {
 		String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 
 		String name = deviceName == null || deviceName.trim().isEmpty() ? "Unnamed device" : deviceName.trim();
-		user.addDevice(new Device(name, hash(token), Instant.now().toString()));
+		user.addDevice(new Device(freeId(), name, hash(token), Instant.now().toString()));
 		store();
 		return token;
+	}
+
+	/**
+	 * Signs the given device of the given user out, see issue #55.
+	 *
+	 * <p>
+	 * The record is removed, not marked: a device is a token, and the way to stop honouring a token
+	 * is to forget its hash. The store is written before this returns, so the very next request
+	 * carrying that token is refused.
+	 * </p>
+	 *
+	 * @return Whether the user had that device; the store is written only if they had.
+	 */
+	public synchronized boolean removeDevice(User user, Device device) throws IOException {
+		if (!user.removeDevice(device)) {
+			return false;
+		}
+		store();
+		return true;
+	}
+
+	/**
+	 * Gives every device that has no {@link Device#getId() id} yet a free one.
+	 *
+	 * @return Whether anything was assigned, and the store therefore has to be written.
+	 */
+	private boolean ensureIds() {
+		boolean changed = false;
+		for (User user : _users) {
+			for (Device device : user._devices) {
+				if (device.getId().isEmpty()) {
+					device.setId(freeId());
+					changed = true;
+				}
+			}
+		}
+		return changed;
+	}
+
+	/** An id no device of this store carries. */
+	private String freeId() {
+		while (true) {
+			byte[] bytes = new byte[ID_BYTES];
+			_random.nextBytes(bytes);
+			String id = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+			if (!taken(id)) {
+				return id;
+			}
+		}
+	}
+
+	private boolean taken(String id) {
+		for (User user : _users) {
+			if (user.getDevice(id) != null) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -501,6 +639,17 @@ public class UserStore {
 				LOG.log(Level.WARNING, "Cannot read the user store '" + _file + "': " + ex.getMessage());
 				_users = new ArrayList<>();
 				_damaged = true;
+			}
+			if (ensureIds()) {
+				// A store written before issue #55; its devices are named once and kept that way.
+				try {
+					store();
+					LOG.info("Gave the devices in '" + _file + "' an id of their own.");
+				} catch (IOException ex) {
+					// Not fatal: the ids are in memory and every token keeps working. The next
+					// write of the store persists them.
+					LOG.log(Level.WARNING, "Cannot write the user store '" + _file + "': " + ex.getMessage());
+				}
 			}
 			return;
 		}
@@ -636,6 +785,7 @@ public class UserStore {
 	}
 
 	private static Device readDevice(JsonReader in) throws IOException {
+		String id = "";
 		String name = "";
 		String tokenHash = "";
 		String created = "";
@@ -643,6 +793,9 @@ public class UserStore {
 		while (in.hasNext()) {
 			String key = in.nextName();
 			switch (key) {
+				case ID__PROP:
+					id = in.nextString();
+					break;
 				case NAME__PROP:
 					name = in.nextString();
 					break;
@@ -658,11 +811,14 @@ public class UserStore {
 			}
 		}
 		in.endObject();
-		return new Device(name, tokenHash, created);
+		return new Device(id, name, tokenHash, created);
 	}
 
 	/** Writes this store to disk, atomically: a crash never leaves a half-written store. */
 	public synchronized void store() throws IOException {
+		// A device built by a caller carries no id yet; nothing is ever written without one.
+		ensureIds();
+
 		Path directory = _file.getParent();
 		Files.createDirectories(directory);
 
@@ -706,6 +862,8 @@ public class UserStore {
 		out.beginArray();
 		for (Device device : user.getDevices()) {
 			out.beginObject();
+			out.name(ID__PROP);
+			out.value(device.getId());
 			out.name(NAME__PROP);
 			out.value(device.getName());
 			out.name(TOKEN_HASH__PROP);

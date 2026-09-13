@@ -74,7 +74,7 @@ public class GroupStore {
 	/** A named list of users, see {@link GroupStore}. */
 	public static final class Group {
 
-		private final String _name;
+		private String _name;
 
 		private final String _owner;
 
@@ -93,6 +93,19 @@ public class GroupStore {
 		/** The name of the group, which is what a <code>group:</code> subject names. */
 		public String getName() {
 			return _name;
+		}
+
+		/**
+		 * See {@link #getName()}.
+		 *
+		 * <p>
+		 * A group is renamed through {@link GroupStore#rename(Group, String)} only: the name is
+		 * also what every grant made out to the group says, and the two are changed together, see
+		 * issue #55.
+		 * </p>
+		 */
+		void setName(String name) {
+			_name = name;
 		}
 
 		/** The name of the user who created the group and may change it. */
@@ -210,6 +223,25 @@ public class GroupStore {
 		}
 		store();
 		return result;
+	}
+
+	/**
+	 * Renames the given group, see issue #55.
+	 *
+	 * <p>
+	 * Owner, members and creation date are kept: it is the same group under another name. The
+	 * grants made out to it are <em>not</em> rewritten here — that is the second half of the
+	 * operation and it lives in {@link AuthService#renameGroup(AuthService.Caller, String, String)},
+	 * which is the only caller. The store is written before this returns.
+	 * </p>
+	 */
+	public synchronized Group rename(Group group, String newName) throws IOException {
+		if (group.getName().equals(newName)) {
+			return group;
+		}
+		group.setName(newName);
+		store();
+		return group;
 	}
 
 	/**

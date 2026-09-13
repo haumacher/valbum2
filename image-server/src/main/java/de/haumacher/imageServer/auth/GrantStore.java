@@ -81,7 +81,7 @@ public class GrantStore {
 
 		private final String _path;
 
-		private final String _subject;
+		private String _subject;
 
 		private Set<String> _rights;
 
@@ -115,6 +115,18 @@ public class GrantStore {
 		/** Who is granted, see {@link Subjects}. */
 		public String getSubject() {
 			return _subject;
+		}
+
+		/**
+		 * See {@link #getSubject()}.
+		 *
+		 * <p>
+		 * A subject changes in exactly one case: the group it names was renamed, see
+		 * {@link GrantStore#renameSubject(String, String)}.
+		 * </p>
+		 */
+		void setSubject(String subject) {
+			_subject = subject;
 		}
 
 		/** What is granted, see {@link Rights}; as stored, without the implications applied. */
@@ -245,6 +257,52 @@ public class GrantStore {
 		}
 		store();
 		return result;
+	}
+
+	/**
+	 * Rewrites every grant made out to the given subject to the new one, see issue #55.
+	 *
+	 * <p>
+	 * What a group rename needs: a grant names a group by its name, so renaming the group without
+	 * this would silently unshare everything that was shared with it. Nothing else about a grant
+	 * changes — owner, path, rights and creation date stay as they were.
+	 * </p>
+	 *
+	 * <p>
+	 * Should both subjects already hold a grant on the same folder — the group <code>old</code> and
+	 * the group <code>new</code> were both granted something there, and <code>old</code> is renamed
+	 * to <code>new</code> — the two would become one grant twice over. They are merged instead: the
+	 * rights of the renamed grant are added to those of the one that was already there, and the
+	 * duplicate is dropped, so that the store keeps its rule of one grant per owner, path and
+	 * subject and nobody loses a right they held.
+	 * </p>
+	 *
+	 * @return How many grants were rewritten; the store is written only if any were.
+	 */
+	public synchronized int renameSubject(String subject, String newSubject) throws IOException {
+		if (subject.equals(newSubject)) {
+			return 0;
+		}
+		int count = 0;
+		for (Grant grant : new ArrayList<>(_grants)) {
+			if (!grant.getSubject().equals(subject)) {
+				continue;
+			}
+			Grant existing = find(grant.getOwner(), grant.getPath(), newSubject);
+			if (existing == null) {
+				grant.setSubject(newSubject);
+			} else {
+				Set<String> merged = new LinkedHashSet<>(existing.getRights());
+				merged.addAll(grant.getRights());
+				existing.setRights(merged);
+				_grants.remove(grant);
+			}
+			count++;
+		}
+		if (count > 0) {
+			store();
+		}
+		return count;
 	}
 
 	/**
