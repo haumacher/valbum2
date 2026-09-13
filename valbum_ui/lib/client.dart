@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:jsontool/jsontool.dart';
 
+import 'diagnostics.dart';
 import 'offline.dart';
 import 'platform.dart';
 import 'resource.dart';
@@ -149,7 +150,15 @@ class VAlbumClient {
 
   /// Told whenever a load fell back to the [cache], or reached the server
   /// again; the views show what it says.
+  ///
+  /// *Reached* is decided in one place for every request this client makes,
+  /// see [_ObservedTransport]: an answer — any answer, a `401` included — is
+  /// the server speaking, and only a transport failure is being offline.
   final OfflineState? offlineState;
+
+  /// Where every request of this client is written down, `null` in a test
+  /// that does not care (issue #58).
+  final DiagnosticsLog? log;
 
   /// How long a request may take before the server counts as unreachable.
   ///
@@ -157,7 +166,17 @@ class VAlbumClient {
   /// forever instead of showing what it has.
   final Duration timeout;
 
-  final http.Client _http;
+  /// The transport as it was handed in: the one the app shares between its
+  /// clients, undecorated, see [httpClient].
+  final http.Client _transport;
+
+  /// The transport every request actually goes through, see
+  /// [_ObservedTransport].
+  late final http.Client _http = _ObservedTransport(
+    _transport,
+    offlineState: offlineState,
+    log: log,
+  );
 
   VAlbumClient({
     required this.dataUrl,
@@ -166,14 +185,15 @@ class VAlbumClient {
     http.Client? httpClient,
     this.cache,
     this.offlineState,
+    this.log,
     this.timeout = const Duration(seconds: 15),
-  }) : _http = httpClient ?? http.Client();
+  }) : _transport = httpClient ?? http.Client();
 
   /// The transport this client sends its requests over.
   ///
-  /// Exposed so that a client for another server can be built without
-  /// building another transport, see [withDataUrl].
-  http.Client get httpClient => _http;
+  /// The *undecorated* one: a client for another server is built over the same
+  /// transport and puts its own observer around it, see [withDataUrl].
+  http.Client get httpClient => _transport;
 
   /// A client talking to [dataUrl] over the transport of this one.
   ///
@@ -184,9 +204,10 @@ class VAlbumClient {
         dataUrl: dataUrl,
         token: token,
         userName: userName,
-        httpClient: _http,
+        httpClient: _transport,
         cache: cache,
         offlineState: offlineState,
+        log: log,
         timeout: timeout,
       );
 
@@ -197,9 +218,10 @@ class VAlbumClient {
         dataUrl: dataUrl,
         token: token,
         userName: userName ?? this.userName,
-        httpClient: _http,
+        httpClient: _transport,
         cache: cache,
         offlineState: offlineState,
+        log: log,
         timeout: timeout,
       );
 
@@ -232,6 +254,7 @@ class VAlbumClient {
     http.Client? httpClient,
     OfflineCache? cache,
     OfflineState? offlineState,
+    DiagnosticsLog? log,
   }) =>
       VAlbumClient(
         dataUrl: deriveDataUrl(Uri.base, isWeb: kIsWeb),
@@ -240,6 +263,7 @@ class VAlbumClient {
         httpClient: httpClient,
         cache: cache,
         offlineState: offlineState,
+        log: log,
       );
 
   /// The URL of the resource at the given path (a list of folder names).
@@ -270,7 +294,9 @@ class VAlbumClient {
   /// through into the [cache], and only if the server cannot be *reached* does
   /// what the cache holds answer instead — the app is then told it is offline,
   /// see [OfflineState]. A server that answers with a status is the server
-  /// speaking: that refusal is reported, never masked by an older copy.
+  /// speaking: that refusal is reported, never masked by an older copy — and
+  /// it clears the offline state, because the server *answered*; that happens
+  /// for every request alike, see [_ObservedTransport] and issue #57.
   Future<Resource?> loadResource(List<String> path) async {
     var uri = jsonUrl(path);
     if (kDebugMode) {
@@ -293,7 +319,6 @@ class VAlbumClient {
     // Parsed before it is cached: an answer that is not album data must not
     // become the cached copy of this album.
     var resource = parseResource(response.body, uri);
-    offlineState?.online();
     await cache?.putResource(dataUrl, path, response.body, user: cacheUser);
     return resource;
   }
@@ -1208,7 +1233,57 @@ class VAlbumClient {
   }
 
   /// Releases the underlying HTTP resources.
-  void close() => _http.close();
+  void close() => _transport.close();
+}
+
+/// The one place every request of a [VAlbumClient] passes through.
+///
+/// `http.Client.get`, `post`, `put` and the streamed upload all end in
+/// [http.BaseClient.send], so a decorator around the transport sees every
+/// request the app makes — which is what two rules of issue #57 and issue #58
+/// need to hold *generally*:
+///
+///  * an answer, whatever its status, means the server was reached, so the
+///    offline state is cleared; only a transport failure leaves it alone (and
+///    the load that fell back on a cached copy sets it, see
+///    [VAlbumClient._cachedResource]);
+///  * every request is written into the [DiagnosticsLog] with its method, its
+///    URL and either the status or the *complete* text of the failure.
+///
+/// The alternative — touching both rules into each of the twenty-odd request
+/// methods — is what let the lock-out of issue #57 exist in the first place:
+/// [VAlbumClient.loadResource] was the only method that reported having
+/// reached the server, and it reported it only for a `200`.
+///
+/// Nothing secret passes: no body is ever logged, and of the `Authorization`
+/// header only whether there was one.
+class _ObservedTransport extends http.BaseClient {
+  final http.Client _inner;
+  final OfflineState? offlineState;
+  final DiagnosticsLog? log;
+
+  _ObservedTransport(this._inner, {this.offlineState, this.log});
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    var bearer = request.headers.containsKey("Authorization");
+    var method = request.method;
+    var url = request.url.toString();
+    http.StreamedResponse response;
+    try {
+      response = await _inner.send(request);
+    } catch (error) {
+      log?.failed(method, url, error: error, bearer: bearer);
+      rethrow;
+    }
+    // The server spoke; whether it liked the request is the caller's business.
+    offlineState?.online();
+    log?.answered(method, url, status: response.statusCode, bearer: bearer);
+    return response;
+  }
+
+  @override
+  void close() => _inner.close();
 }
 
 /// Makes the [VAlbumClient] available to the widget tree.

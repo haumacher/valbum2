@@ -6,6 +6,7 @@ import 'dart:js_interop';
 
 import 'background.dart';
 import 'connectivity.dart';
+import 'diagnostics.dart';
 import 'offline.dart';
 import 'photo_library.dart';
 
@@ -69,3 +70,23 @@ void leaveForUrl(String url) => _replaceLocation(url);
 
 @JS('window.location.replace')
 external void _replaceLocation(String url);
+
+/// What this machine says about itself, for the header of a diagnostics log.
+///
+/// A browser is asked through the page, not through `dart:io`; the user agent
+/// is in the bug report anyway, so the header says only that this is the web
+/// build.
+String platformDescription() => "web";
+
+/// Resolves [host] explicitly: not possible in a browser (issue #58).
+///
+/// A page cannot ask the resolver anything — the browser resolves names for
+/// it and says nothing about how. That is written into the log rather than
+/// left out, so that a pasted log from the web is not read as "both lookups
+/// succeeded".
+Future<void> logHostResolution(DiagnosticsLog log, String host) async {
+  log.add(
+    "lookup $host: name resolution cannot be asked in a browser; the page "
+    "sees only whether the request went through.",
+  );
+}

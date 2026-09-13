@@ -9,6 +9,7 @@ import 'background.dart';
 import 'background_workmanager.dart';
 import 'connectivity.dart';
 import 'connectivity_plugin.dart';
+import 'diagnostics.dart';
 import 'offline.dart';
 import 'offline_file.dart';
 import 'photo_library.dart';
@@ -83,3 +84,33 @@ void executeBackgroundTask(Future<bool> Function() task) =>
 /// is opened in a browser there, or pasted into the server field, and the app
 /// simply carries on with the token it was given, see `invitation.dart`.
 void leaveForUrl(String url) {}
+
+/// What this machine says about itself, for the header of a diagnostics log.
+String platformDescription() =>
+    "${Platform.operatingSystem} ${Platform.operatingSystemVersion}";
+
+/// Resolves [host] explicitly and writes what each address family answered
+/// into [log] (issue #58).
+///
+/// Dart asks IPv4 and IPv6 separately (see `staggeredLookup` in the SDK), and
+/// a name that is a CNAME to an AAAA-only address fails in a way that the
+/// headline of the exception does not explain: one of the two queries answers
+/// and the other does not, or the OS refuses both. Each query is therefore
+/// made here in its own right, and its addresses — or its error, with the
+/// errno the OS gave — are logged as a line of their own.
+Future<void> logHostResolution(DiagnosticsLog log, String host) async {
+  for (var family in const [
+    ("IPv4", InternetAddressType.IPv4),
+    ("IPv6", InternetAddressType.IPv6),
+  ]) {
+    try {
+      var addresses = await InternetAddress.lookup(host, type: family.$2);
+      log.add(
+        "lookup ${family.$1} $host -> "
+        "${addresses.isEmpty ? "no address" : addresses.map((a) => a.address).join(", ")}",
+      );
+    } catch (error) {
+      log.add("lookup ${family.$1} $host !! $error");
+    }
+  }
+}

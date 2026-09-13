@@ -19,6 +19,7 @@ import 'camera_roll.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
 import 'connectivity.dart';
+import 'diagnostics.dart';
 import 'group_view.dart';
 import 'image_view.dart';
 import 'invitation.dart';
@@ -68,6 +69,12 @@ class VAlbumApp extends StatefulWidget {
   /// Whether the app is currently showing what the [cache] holds.
   final OfflineState? offlineState;
 
+  /// What the app did on the network, see [DiagnosticsLog] (issue #58).
+  ///
+  /// Defaults to a log of this app's own; a test injects one to read what the
+  /// app logged.
+  final DiagnosticsLog? diagnostics;
+
   /// The device's photo library, watched by the camera-roll sync (issue #30).
   ///
   /// Defaults to the library of the platform the app runs on — a real one on
@@ -100,6 +107,7 @@ class VAlbumApp extends StatefulWidget {
     this.initialRoute,
     this.cache,
     this.offlineState,
+    this.diagnostics,
     this.photoLibrary,
     this.backgroundScheduler,
     this.session,
@@ -125,6 +133,13 @@ class VAlbumAppState extends State<VAlbumApp> {
 
   /// Whether the app is showing a cached copy, see [OfflineState].
   late final OfflineState offlineState = widget.offlineState ?? OfflineState();
+
+  /// What this app did on the network, see [DiagnosticsLog].
+  ///
+  /// One per app, handed to every client it builds — a session client
+  /// included — so that the diagnostics section of the settings shows all of
+  /// it, whichever server a request went to.
+  late final DiagnosticsLog diagnostics = widget.diagnostics ?? DiagnosticsLog();
 
   /// Whether [offlineState] was created here and must be disposed.
   bool get _ownsOfflineState => widget.offlineState == null;
@@ -372,6 +387,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   VAlbumClient clientFor(String dataUrl) => VAlbumClient(
         dataUrl: dataUrl,
         token: settings.token,
+        log: diagnostics,
         // Names the cached copies of this device and is who the share dialog
         // leaves out of the people to share with, see issue #49.
         userName: settings.userName ?? "",
@@ -552,6 +568,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         token: link.token,
         httpClient: _transport,
         offlineState: offlineState,
+        log: diagnostics,
       );
       client = sessionClient;
       _router?.client = sessionClient;
@@ -625,6 +642,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         child: ServerSettingsScope(
           settings: settings,
           clientFor: clientFor,
+          diagnostics: diagnostics,
           // Published around the whole app: every view asks whether it is
           // inside a link, see [ShareSession.of], and who is calling, see
           // [CallerInfo.maybeOf].
@@ -706,6 +724,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     return ServerSettingsScreen(
       settings: settings,
       clientFor: clientFor,
+      diagnostics: diagnostics,
       closable: false,
     );
   }

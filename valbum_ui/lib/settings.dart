@@ -18,16 +18,19 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'diagnostics.dart';
 import 'groups_view.dart';
 import 'invitation.dart';
 import 'manage_view.dart';
 import 'offline.dart';
+import 'platform.dart';
 import 'resource.dart';
 import 'urls.dart';
 
@@ -429,10 +432,15 @@ class ServerSettingsScope extends InheritedNotifier<ServerSettings> {
   /// Builds the client the connection test talks to the entered server with.
   final ClientFactory clientFor;
 
+  /// What the app did on the network, shown by the diagnostics section of the
+  /// settings screen (issue #58).
+  final DiagnosticsLog? diagnostics;
+
   const ServerSettingsScope({
     super.key,
     required ServerSettings settings,
     required this.clientFor,
+    this.diagnostics,
     required super.child,
   }) : super(notifier: settings);
 
@@ -457,6 +465,7 @@ void openServerSettings(BuildContext context) {
       builder: (_) => ServerSettingsScreen(
         settings: scope.settings,
         clientFor: scope.clientFor,
+        diagnostics: scope.diagnostics,
         closable: true,
       ),
     ),
@@ -485,9 +494,47 @@ class ConnectionTestResult {
 
 /// Fetches the root resource of the server [client] talks to.
 ///
-/// Every outcome is reported as a message; nothing fails silently.
-Future<ConnectionTestResult> testServerConnection(VAlbumClient client) async =>
-    (await _reachServer(client)).withAuthStatus(await _authStatus(client));
+/// Every outcome is reported as a message; nothing fails silently. Every step
+/// is written into the client's [DiagnosticsLog] as well (issue #58) — the
+/// URL the entered address was turned into, what the name resolves to on each
+/// address family, what the root listing answered and what `?type=auth` said —
+/// because a connection that fails on one network and works on another is
+/// settled by data, not by the headline of an exception.
+Future<ConnectionTestResult> testServerConnection(VAlbumClient client) async {
+  var log = client.log;
+  log?.add("connection test: data URL ${maskUrl(client.dataUrl)}");
+  if (log != null) {
+    await _logResolution(log, client.dataUrl);
+  }
+  var reached = await _reachServer(client);
+  log?.add(
+    "connection test: root ${reached.ok ? "reached" : "failed"} - "
+    "${reached.message}",
+  );
+  var status = await _authStatus(client);
+  log?.add("connection test: auth ${status ?? "no answer"}");
+  return reached.withAuthStatus(status);
+}
+
+/// Resolves the host of [dataUrl] explicitly, see `logHostResolution`.
+///
+/// A step of its own, with lines of its own: a pasted log has to answer "did
+/// the IPv4 query fail, did the IPv6 query fail, what did the OS say", which
+/// the failure of the request alone never says.
+Future<void> _logResolution(DiagnosticsLog log, String dataUrl) async {
+  String host;
+  try {
+    host = Uri.parse(dataUrl).host;
+  } catch (error) {
+    log.add("connection test: no host in '$dataUrl' ($error)");
+    return;
+  }
+  if (host.isEmpty) {
+    log.add("connection test: no host in '$dataUrl'");
+    return;
+  }
+  await logHostResolution(log, host);
+}
 
 /// What the server says about this client's sign-in, `null` if it says
 /// nothing at all — a server from before issue #28 does not know the endpoint.
@@ -530,13 +577,7 @@ String spaceDisplayName(String space) =>
 /// An invitation in the server field is a secret somebody was sent; it is
 /// shown so that a person sees *which* one they pasted, never so that it can
 /// be read off the screen, see issue #52.
-String maskedToken(String token) {
-  if (token.length <= 4) {
-    return "•" * token.length;
-  }
-  return "${token.substring(0, 2)}${"•" * (token.length - 4)}"
-      "${token.substring(token.length - 2)}";
-}
+String maskedToken(String token) => maskToken(token);
 
 /// Who a device is signed in as, as far as the app knows.
 ///
@@ -585,6 +626,20 @@ Future<ConnectionTestResult> _reachServer(VAlbumClient client) async {
       title.isEmpty ? "Album server reached" : title,
     );
   } on VAlbumException catch (error) {
+    // A refusal is a server: it answered, it just will not show this caller
+    // anything. Reporting it as a failure is what left the app believing it
+    // was offline in front of a server started with `--auth all`, see issue
+    // #57 — and the sign-in below is exactly the remedy it asks for.
+    if (error.status == 401 || error.status == 403) {
+      return ConnectionTestResult(
+        true,
+        error.status == 401
+            ? "Album server reached - it needs a sign-in before it shows "
+                "anything"
+            : "Album server reached - it refuses what this device is signed "
+                "in as",
+      ).withDetail(error.message);
+    }
     return ConnectionTestResult(false, error.message);
   } on http.ClientException catch (error) {
     return ConnectionTestResult(false, error.message);
@@ -649,6 +704,15 @@ const Key userNameFieldKey = Key("settings.userName");
 /// The key of the "Clear cache" button, see [serverUrlFieldKey].
 const Key clearCacheButtonKey = Key("settings.clearCache");
 
+/// The diagnostics section, collapsed until somebody needs it (issue #58).
+const Key diagnosticsSectionKey = Key("settings.diagnostics");
+
+/// The button putting the whole log, header and all, on the clipboard.
+const Key diagnosticsCopyKey = Key("settings.diagnostics.copy");
+
+/// The button forgetting what was logged.
+const Key diagnosticsClearKey = Key("settings.diagnostics.clear");
+
 /// The key of the invitation the entered URL carries, see [serverUrlFieldKey].
 ///
 /// Present exactly while the sign-in section signs in with an invitation
@@ -678,10 +742,16 @@ class ServerSettingsScreen extends StatefulWidget {
   /// configured yet: there is nothing to go back to.
   final bool closable;
 
+  /// What the app did on the network, shown by the diagnostics section
+  /// (issue #58); a screen without one keeps a log of its own, which is empty
+  /// until something uses it.
+  final DiagnosticsLog? diagnostics;
+
   const ServerSettingsScreen({
     super.key,
     required this.settings,
     required this.clientFor,
+    this.diagnostics,
     this.closable = true,
   });
 
@@ -737,6 +807,13 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
   /// Why the entered invitation cannot be used, if it cannot.
   String? invitationProblem;
+
+  /// What the app did on the network, see [DiagnosticsLog].
+  ///
+  /// The app's own log where there is one; a screen pumped without one (a
+  /// test, an embedder) keeps an empty one of its own rather than hiding the
+  /// section, so that what the section is stays visible.
+  late final DiagnosticsLog log = widget.diagnostics ?? DiagnosticsLog();
 
   /// The outcome of the last connection test, if any.
   ConnectionTestResult? result;
@@ -1034,6 +1111,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
               ..._signInSection(settings),
               const CameraRollSection(),
               ..._cacheSection(),
+              ..._diagnosticsSection(settings),
             ],
           ),
         ),
@@ -1489,6 +1567,106 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     });
   }
 
+  /// The diagnostics section: what this app did on the network (issue #58).
+  ///
+  /// Collapsed by default — the settings screen keeps its shape for everyone
+  /// who never needs it — and monospaced, newest last, because what is pasted
+  /// into a bug report is read line by line.
+  List<Widget> _diagnosticsSection(ServerSettings settings) => [
+        const SizedBox(height: 8),
+        const Divider(),
+        ExpansionTile(
+          key: diagnosticsSectionKey,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 16),
+          title: Text(
+            "Diagnostics",
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          subtitle: const Text(
+            "What this app did on the network - copy it into a bug report.",
+          ),
+          children: [
+            AnimatedBuilder(
+              animation: log,
+              builder: (context, _) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxHeight: 240),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Theme.of(context).dividerColor),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: SingleChildScrollView(
+                      // Anchored at the end: the newest line is the one the
+                      // person came here to read.
+                      reverse: true,
+                      child: SelectableText(
+                        _logText(),
+                        style: const TextStyle(
+                          fontFamily: "monospace",
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        key: diagnosticsCopyKey,
+                        onPressed: () => _copyDiagnostics(settings),
+                        icon: const Icon(Icons.copy_all),
+                        label: const Text("Copy"),
+                      ),
+                      TextButton.icon(
+                        key: diagnosticsClearKey,
+                        onPressed: log.isEmpty ? null : log.clear,
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text("Clear"),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ];
+
+  /// The log as the box shows it, oldest first.
+  String _logText() {
+    var entries = log.entries;
+    if (entries.isEmpty) {
+      return "Nothing logged yet. Test the connection, or browse the album, "
+          "and what the app asked the server appears here.";
+    }
+    return entries.join("\n");
+  }
+
+  /// Puts the whole log, header and all, on the clipboard and says so.
+  Future<void> _copyDiagnostics(ServerSettings settings) async {
+    var text = log.copyText(
+      serverUrl: settings.serverUrl ?? settings.dataUrl,
+      platform: platformDescription(),
+    );
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("The diagnostics log is on the clipboard."),
+        duration: Duration(seconds: 4),
+      ),
+    );
+  }
+
   /// Exchanges the pairing secret — or the invitation — for a device token at
   /// the *entered* server.
   ///
@@ -1499,14 +1677,10 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// so the plain server URL is stored with the sign-in, never the `/i/…`
   /// form, see issue #52.
   Future<void> _signIn() async {
-    if (OfflineScope.isOffline(context)) {
-      // A sign-in is a change on the server; while it cannot be reached there
-      // is nobody to sign in with. "Test connection" finds the server again
-      // and clears this state.
-      setState(
-          () => pairing = const ConnectionTestResult(false, offlineRefusal));
-      return;
-    }
+    // No offline guard here (issue #57): that flag describes the server the
+    // app last *loaded* from, and a sign-in talks to the server in the field,
+    // which may be a different one entirely. A pairing request that cannot be
+    // delivered reports itself below, which is the only refusal that is true.
     var entered = controller.text;
     var problem = serverUrlError(entered);
     if (problem != null) {
