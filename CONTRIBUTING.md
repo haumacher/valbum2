@@ -81,91 +81,10 @@ installed (`flutter doctor` tells you what is missing). CI builds the debug APK 
 
 ## Releasing
 
-A release is cut by pushing a tag:
-
-```
-git tag valbum-1.1.0
-git push origin valbum-1.1.0
-```
-
-The tag must read `valbum-<major>.<minor>.<patch>`; anything else fails the workflow
-right away. `.github/workflows/release.yml` then
-
-1. builds the Flutter web app once and hands it to the packaging jobs (it is bundled
-   into the server jar),
-2. builds the Debian packages for `arm64`, `amd64` and `armhf` (the tests run on the
-   `amd64` leg; every push is tested by the CI workflow anyway),
-3. builds a signed Android APK,
-4. publishes the GitHub Release for the tag with the three `.deb` files, `SHA256SUMS`
-   and `valbum-<version>.apk` attached (re-running replaces the assets), and
-5. rebuilds the APT repository on GitHub Pages, <https://haumacher.github.io/valbum2/>.
-
-The project version is set from the tag at build time (`mvn versions:set`) and is
-**not** committed by the workflow. After a release the maintainer bumps the version in
-`pom.xml` by hand, `1.1.0-SNAPSHOT` → `1.2.0-SNAPSHOT`.
-
-The Android `versionCode` is derived from the version as
-`major * 10000 + minor * 100 + patch`, so it grows with every release without any
-state being kept between runs.
-
-### The GitHub Pages site
-
-The Release assets are the source of truth; the site is a derived view that is rebuilt
-from scratch on every run and keeps the **newest 2 releases** (a Pages site is limited
-to about 1 GB and one release is some 270 MB across the three architectures; older
-packages stay downloadable from their GitHub Release). Because
-nothing is carried over between runs, the site can be republished at any time: run the
-*Release* workflow via **Run workflow** (`workflow_dispatch`) and leave the tag input
-empty — only the Pages job runs, nothing is rebuilt. Giving a tag there rebuilds and
-republishes that release as well.
-
-The repository is built by `.github/scripts/build-apt-repo.sh`, which can be run
-locally without GitHub:
-
-```
-GNUPGHOME=... GPG_PASSPHRASE=... .github/scripts/build-apt-repo.sh <dir-of-debs> <out-dir> <key-id>
-```
-
-### Secrets the workflow needs
-
-Add these under *Settings → Secrets and variables → Actions*. A missing secret fails
-the corresponding job with a message saying what to add; nothing is ever published
-unsigned.
-
-| Secret | What it is |
-|---|---|
-| `APT_SIGNING_KEY` | ASCII-armored private GPG key that signs the APT `Release` file |
-| `APT_SIGNING_PASSPHRASE` | Only if that key has a passphrase |
-| `ANDROID_KEYSTORE_BASE64` | The Android upload keystore, base64-encoded |
-| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
-| `ANDROID_KEY_ALIAS` | Key alias, e.g. `upload` |
-| `ANDROID_KEY_PASSWORD` | Key password |
-
-Generate the APT signing key once:
-
-```
-gpg --quick-generate-key "VAlbum APT <you@example.com>" ed25519 sign never
-gpg --armor --export-secret-keys <key-id>      # the value of APT_SIGNING_KEY
-```
-
-Generate the Android keystore once and **keep it safe** — an APK signed with a
-different key cannot update an installed copy:
-
-```
-keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 \
-    -validity 10000 -alias upload
-base64 -w0 upload-keystore.jks                 # the value of ANDROID_KEYSTORE_BASE64
-```
-
-Locally, release builds are signed the same way whenever `valbum_ui/android/key.properties`
-exists (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; the store path is
-relative to `valbum_ui/android/app/`). Without that file release builds fall back to the
-debug key, so `flutter run --release` keeps working. Both the file and `*.jks` are
-gitignored and must never be committed.
-
-The repository's Pages source is set to *GitHub Actions*; the workflow needs the
-permissions `contents: write` (the release), `pages: write` and `id-token: write`
-(the deployment), which are declared per job.
+A release is cut by pushing a tag `valbum-<major>.<minor>.<patch>`; the *Release* workflow
+builds the Debian packages and a signed Android APK, publishes the GitHub Release and rebuilds
+the APT repository on GitHub Pages. The procedure, the one-time setup of the signing secrets
+and the repository settings, and what to do when a run fails are in [RELEASE.md](RELEASE.md).
 
 ## Submitting changes
 
