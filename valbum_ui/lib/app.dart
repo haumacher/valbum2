@@ -29,6 +29,7 @@ import 'resource.dart';
 import 'rights.dart';
 import 'routes.dart';
 import 'settings.dart';
+import 'share_session.dart';
 import 'urls.dart';
 
 typedef Action = void Function(BuildContext context);
@@ -81,6 +82,14 @@ class VAlbumApp extends StatefulWidget {
   /// with the device either.
   final BackgroundScheduler? backgroundScheduler;
 
+  /// The share link the app was opened at, see issue #51.
+  ///
+  /// Defaults to what the app base says on the web (a base ending in
+  /// `/s/<token>/`, see [shareSessionUrl]) and to `null` everywhere else: off
+  /// the web a link URL is opened in a browser, since a session that may not
+  /// store its token has nothing to pair. Tests inject it.
+  final ShareSessionUrl? shareLink;
+
   const VAlbumApp({
     super.key,
     this.client,
@@ -90,6 +99,7 @@ class VAlbumApp extends StatefulWidget {
     this.offlineState,
     this.photoLibrary,
     this.backgroundScheduler,
+    this.shareLink,
   });
 
   @override
@@ -182,6 +192,67 @@ class VAlbumAppState extends State<VAlbumApp> {
 
   /// The client the app talks to the server with, `null` if none is set up.
   VAlbumClient? client;
+
+  /// The share link the app was opened at, see [VAlbumApp.shareLink].
+  late final ShareSessionUrl? _shareLink = widget.shareLink ?? _detectShareLink();
+
+  /// The link the app was loaded at, read off the app base on the web.
+  ///
+  /// Read once, here, for the same reason the origin is (see
+  /// [_defaultSettings]): the location changes while the app runs, and only
+  /// the app base still says which link this is.
+  static ShareSessionUrl? _detectShareLink() => kIsWeb
+      ? shareSessionUrl(
+          Uri.base,
+          basePath: appBasePath(
+            Uri.base.path,
+            WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+          ),
+        )
+      : null;
+
+  /// Whether the server said that the token of [_shareLink] is not a link
+  /// after all, see [_confirmShareLink].
+  bool _linkAbandoned = false;
+
+  /// The link this session runs in while it runs in one, see [shareLink].
+  ShareSessionUrl? get shareLink => _linkAbandoned ? null : _shareLink;
+
+  /// What the server said the link is, `null` until `?type=auth` answered.
+  ShareSession? shareSession;
+
+  /// Why the link session cannot start, `null` while all is well.
+  ///
+  /// A `410` (expired, withdrawn) is the reason this exists; every other
+  /// failure of the start-up probe lands here too, so that a link session
+  /// never falls back to a page offering the server settings.
+  VAlbumException? _shareRefusal;
+
+  /// Whether the router may be built: what the app is waiting for is there.
+  ///
+  /// Two starts, and they wait for different things — which is the point:
+  ///
+  ///  * an ordinary start waits for the **device**: the stored server URL and
+  ///    the stored token must be read before the first client is built, so it
+  ///    waits for [ServerSettings.loaded];
+  ///  * a link session waits for the **server**: the link names its own
+  ///    server and carries its own token, so nothing of the device takes part
+  ///    in it and `settings.loaded` is not asked at all — on a real device it
+  ///    would never become true, because a link session never calls
+  ///    [ServerSettings.load]. What it waits for is the `?type=auth` answer
+  ///    that confirms the link, see [_confirmShareLink].
+  ///
+  /// A refused link session waits for nothing: it shows the plain page of
+  /// [_startupScreen] instead of the app.
+  bool get _readyForTheRouter {
+    if (_shareRefusal != null) {
+      return false;
+    }
+    if (shareLink != null) {
+      return shareSession != null;
+    }
+    return settings.loaded;
+  }
 
   VAlbumRouterDelegate? _router;
 
@@ -282,6 +353,17 @@ class VAlbumAppState extends State<VAlbumApp> {
     settings.addListener(_settingsChanged);
     _initialRouteInformation;
     _syncClient();
+    if (shareLink != null) {
+      // A link session asks one question before it shows anything: is this
+      // token a link, and what does it open? Nothing of the device takes part
+      // in it — the settings are never *loaded* (no stored server URL, no
+      // stored token), the camera roll never starts, and the router therefore
+      // never waits for any of them, see [_readyForTheRouter]. Only a link
+      // the server does not know falls back to the ordinary start, which
+      // reads the device then, see [_confirmShareLink].
+      _confirmShareLink();
+      return;
+    }
     // Before the first client is built: until this completes the app shows a
     // splash, see [build].
     var settingsLoaded =
@@ -294,6 +376,63 @@ class VAlbumAppState extends State<VAlbumApp> {
       if (mounted) {
         cameraRoll.start();
       }
+    });
+  }
+
+  /// Asks the server once whether this session really is a share link.
+  ///
+  /// `?type=auth` answers an [AuthInfo.share] for a link caller and nothing
+  /// for anybody else, so the answer decides between three starts:
+  ///
+  ///  * a [ShareInfo] — the session is confirmed and the app runs inside the
+  ///    link, see [ShareSessionScope];
+  ///  * no [ShareInfo] — the token in the URL is not a link (a hand-made
+  ///    path, a link of another server), so the link is abandoned and the app
+  ///    starts as it always does, from the settings of this device;
+  ///  * a refusal — a `410` for a link that expired or was withdrawn, and
+  ///    every other failure, which becomes the plain page of [_startupScreen].
+  Future<void> _confirmShareLink() async {
+    var link = shareLink!;
+    var probe = client!;
+    AuthInfo answer;
+    try {
+      answer = await probe.authInfo();
+    } on VAlbumException catch (refusal) {
+      if (mounted) {
+        setState(() => _shareRefusal = refusal);
+      }
+      return;
+    } catch (error) {
+      if (mounted) {
+        setState(() => _shareRefusal = VAlbumException("$error"));
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    var share = answer.share;
+    if (share == null) {
+      setState(() {
+        _linkAbandoned = true;
+        _syncClient();
+      });
+      // The ordinary start, now that this is an ordinary session.
+      var settingsLoaded =
+          settings.loaded ? Future<void>.value() : settings.load();
+      settingsLoaded.then((_) {
+        if (mounted) {
+          setState(_syncClient);
+        }
+      });
+      return;
+    }
+    setState(() {
+      shareSession = ShareSession(
+        url: link,
+        info: share,
+        writeAllowed: answer.writeAllowed,
+      );
     });
   }
 
@@ -321,9 +460,32 @@ class VAlbumAppState extends State<VAlbumApp> {
   }
 
   /// The server changed: swap the client and reload what is shown.
+  ///
+  /// Inside a link session [_syncClient] ignores the settings entirely, so a
+  /// store that answers late (or a screen that was left open in another tab)
+  /// can never take the session's client away from it.
   void _settingsChanged() => setState(_syncClient);
 
   void _syncClient() {
+    var link = shareLink;
+    if (link != null) {
+      // A link names its own server: neither the stored server URL nor the
+      // stored device token is consulted, and the session's token is never
+      // written to the store. Nothing is cached either — a visitor's session
+      // leaves nothing on the device it was opened on.
+      if (client?.dataUrl == link.dataUrl && client?.token == link.token) {
+        return;
+      }
+      var session = VAlbumClient(
+        dataUrl: link.dataUrl,
+        token: link.token,
+        httpClient: _transport,
+        offlineState: offlineState,
+      );
+      client = session;
+      _router?.client = session;
+      return;
+    }
     var dataUrl = settings.dataUrl;
     if (dataUrl == null) {
       client = null;
@@ -354,9 +516,14 @@ class VAlbumAppState extends State<VAlbumApp> {
         child: ServerSettingsScope(
           settings: settings,
           clientFor: clientFor,
-          child: settings.loaded && client != null
-              ? _albumApp(client!)
-              : _beforeTheRouter(),
+          // Published around the whole app: every view asks whether it is
+          // inside a link, see [ShareSession.of].
+          child: ShareSessionScope(
+            session: shareSession,
+            child: _readyForTheRouter && client != null
+                ? _albumApp(client!)
+                : _beforeTheRouter(),
+          ),
         ),
       ),
     );
@@ -387,13 +554,27 @@ class VAlbumAppState extends State<VAlbumApp> {
 
   /// The splash while the stored server URL is being read, the server setup
   /// once it turns out that no server is configured.
-  Widget _startupScreen(BuildContext context) => !settings.loaded
-      ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-      : ServerSettingsScreen(
-          settings: settings,
-          clientFor: clientFor,
-          closable: false,
-        );
+  Widget _startupScreen(BuildContext context) {
+    var refusal = _shareRefusal;
+    if (refusal != null) {
+      // A link that is gone says so and offers nothing else: there is no
+      // server to configure and no device to sign in, see issue #51.
+      return ShareGoneScreen(message: refusal.message);
+    }
+    if (shareLink != null) {
+      // The link is being confirmed; the device has nothing to say here, so
+      // the settings screen is not a possible outcome, see [_readyForTheRouter].
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (!settings.loaded) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    return ServerSettingsScreen(
+      settings: settings,
+      clientFor: clientFor,
+      closable: false,
+    );
+  }
 
   Widget _albumApp(VAlbumClient client) => VAlbumScope(
         client: client,
@@ -878,6 +1059,10 @@ class VAlbumState extends State<VAlbumView>
   /// *because* nobody is signed in (401) is not an error of the app at all, so
   /// it gets a page of its own, see [buildSignInRequired].
   Widget buildError(Object? error) {
+    var share = ShareSession.of(context);
+    if (share != null) {
+      return buildShareError(error);
+    }
     if (error is VAlbumException && error.status == 401) {
       return buildSignInRequired(error);
     }
@@ -908,6 +1093,41 @@ class VAlbumState extends State<VAlbumView>
         tooltip: 'Reload',
         child: const Icon(Icons.update),
       ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+
+  /// The view of a failed load inside a link session, see issue #51.
+  ///
+  /// Plain pages, all three of them: a visitor of a link has no settings to
+  /// open and no device to sign in, so nothing here offers either — and the
+  /// sentence on the screen is the server's own, since it is the server that
+  /// knows whether the link expired, was withdrawn, or simply does not cover
+  /// the path that was asked for.
+  ///
+  ///  * `410` — the link is gone, and nothing the visitor does brings it
+  ///    back, see [ShareGoneScreen];
+  ///  * `404` — from inside a link there is nothing outside it, so the only
+  ///    way on is the link's own root, see [ShareConfinedScreen];
+  ///  * anything else — the server could not be asked; the one button tries
+  ///    again.
+  Widget buildShareError(Object? error) {
+    var refusal = error is VAlbumException ? error : null;
+    var message = refusal?.message ?? "${error ?? "No data loaded"}";
+    if (refusal?.status == 410) {
+      return ShareGoneScreen(message: message);
+    }
+    if (refusal?.status == 404) {
+      return ShareConfinedScreen(message: message, onHome: navigator.home);
+    }
+    return SharePlainPage(
+      icon: Icons.cloud_off,
+      message: message,
+      action: FilledButton.icon(
+        key: const Key("share-retry"),
+        onPressed: reload,
+        icon: const Icon(Icons.refresh),
+        label: const Text("Try again"),
+      ),
     );
   }
 

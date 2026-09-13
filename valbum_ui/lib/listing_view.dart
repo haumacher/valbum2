@@ -15,6 +15,7 @@ import 'resource.dart';
 import 'offline.dart';
 import 'rights.dart';
 import 'settings.dart';
+import 'share_session.dart';
 import 'share_view.dart';
 import 'thumbnails.dart';
 
@@ -115,8 +116,12 @@ class ListingView extends StatelessWidget {
   /// Asked only where the answer can be "yes" at all, see
   /// [couldManageGrants]: the rights the listing already carries decide
   /// whether the server is troubled with the question.
-  Future<bool> mayShare(List<String> path) =>
-      couldManageGrants(client, albumState.path, rights)
+  ///
+  /// Never inside a share link: a link caller carries a token and may hold
+  /// every right the link gives, but manages nothing, see issue #51.
+  Future<bool> mayShare(BuildContext context, List<String> path) =>
+      ShareSession.of(context) == null &&
+              couldManageGrants(client, albumState.path, rights)
           ? albumState.navigator.delegate.mayManageGrants(path)
           : _no;
 
@@ -127,12 +132,24 @@ class ListingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var self = listing;
+    // Inside a share link the folder is named by the link: a visitor arriving
+    // at a bare URL is told what they were given, see issue #51. Nothing that
+    // changes anything is offered, and neither is the way to the settings.
+    var link = ShareSession.of(context);
+    var mayChange = rights.mayEdit && link == null;
     return Scaffold(
       // Black like the album pages, so that the way down does not flash from
       // a light page to a dark one, see issue #40.
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text(self.title),
+        title: link == null
+            ? Text(self.title)
+            : Column(
+                children: [
+                  Text(link.label, key: const Key("share-label")),
+                  if (self.title.isNotEmpty) Text(self.title),
+                ],
+              ),
         actions: <Widget>[
           // Unobtrusive while a camera-roll sync runs, nothing otherwise.
           const CameraRollIndicator(),
@@ -152,7 +169,7 @@ class ListingView extends StatelessWidget {
           // The share entry appears once the server has answered whether this
           // caller manages the grants here; everything else is there at once.
           FutureBuilder<bool>(
-            future: mayShare(albumState.path),
+            future: mayShare(context, albumState.path),
             builder: (context, snapshot) => menu(context, [
               // Whose folder this is and what may be done with it, where that
               // is not simply "mine", see issue #49.
@@ -165,19 +182,19 @@ class ListingView extends StatelessWidget {
               ],
               // Only with `edit`: what the caller may not do is not offered,
               // never offered and then refused, see issue #49.
-              if (rights.mayEdit)
+              if (mayChange)
                 menuItem(Icons.create_new_folder, 'Create album', createAlbum),
-              if (rights.mayEdit)
+              if (mayChange)
                 menuItem(
                   Icons.create_new_folder_outlined,
                   'Create folder',
                   createFolder,
                 ),
-              if (rights.mayEdit)
+              if (mayChange)
                 menuItem(Icons.tune, 'Folder properties', editFolder),
               // Only where there is a rule to apply: a folder without one has
               // nothing to file, see issue #48.
-              if (rights.mayEdit && self.placement != Placement.none)
+              if (mayChange && self.placement != Placement.none)
                 menuItem(Icons.auto_awesome_motion, 'Apply rule', applyRule),
               if (snapshot.data ?? false)
                 menuItem(
@@ -185,8 +202,17 @@ class ListingView extends StatelessWidget {
                   'Share with…',
                   (context) => shareFolder(context, albumState.path, self.title),
                 ),
+              if (snapshot.data ?? false)
+                menuItem(
+                  Icons.link,
+                  'Share link…',
+                  (context) =>
+                      shareFolderLink(context, albumState.path, self.title),
+                ),
               menuItem(Icons.update, "Reload", (_) => albumState.reload()),
-              menuItem(Icons.settings, "Server...", openServerSettings),
+              // A visitor of a link has no server of their own to configure.
+              if (link == null)
+                menuItem(Icons.settings, "Server...", openServerSettings),
             ]),
           ),
         ],
@@ -366,11 +392,12 @@ class ListingView extends StatelessWidget {
     // the entry is a question about the entry itself, so the two are asked
     // separately. The answer is remembered per folder, so a second long press
     // asks nothing again.
-    var mayMove = rights.mayEdit;
+    var link = ShareSession.of(context);
+    var mayMove = rights.mayEdit && link == null;
     // A link is an entry of *this* folder, so removing it is an edit of this
     // folder; the album it points at is not touched, see issue #50.
-    var mayUnlink = rights.mayEdit && folder.link.isNotEmpty;
-    var mayShareChild = await mayShare(childPath);
+    var mayUnlink = rights.mayEdit && link == null && folder.link.isNotEmpty;
+    var mayShareChild = await mayShare(context, childPath);
     if (!context.mounted || (!mayMove && !mayShareChild && !mayUnlink)) {
       // Nothing this caller may do here: no menu rather than an empty one.
       return;
@@ -400,6 +427,14 @@ class ListingView extends StatelessWidget {
               title: Text("Share with…"),
             ),
           ),
+        if (mayShareChild)
+          const PopupMenuItem<String>(
+            value: "share-link",
+            child: ListTile(
+              leading: Icon(Icons.link),
+              title: Text("Share link…"),
+            ),
+          ),
         if (mayUnlink)
           const PopupMenuItem<String>(
             value: "unlink",
@@ -415,6 +450,10 @@ class ListingView extends StatelessWidget {
     }
     if (chosen == "share") {
       await shareFolder(context, childPath, folder.title);
+      return;
+    }
+    if (chosen == "share-link") {
+      await shareFolderLink(context, childPath, folder.title);
       return;
     }
     if (chosen == "unlink") {
@@ -508,6 +547,19 @@ class ListingView extends StatelessWidget {
     String title,
   ) =>
       shareWith(
+        context: context,
+        client: client,
+        path: path,
+        label: title.isEmpty ? null : "'$title'",
+      );
+
+  /// Opens the share-link dialog on the folder at [path], see issue #51.
+  Future<void> shareFolderLink(
+    BuildContext context,
+    List<String> path,
+    String title,
+  ) =>
+      shareLinksOf(
         context: context,
         client: client,
         path: path,

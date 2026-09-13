@@ -171,6 +171,21 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-13** — Share links (#51), app side. A link is a session, not a pairing: the web app recognises
+  `<context>/s/<token>/` in its own app base (never in the document location, which is the album being
+  looked at after the first navigation), talks to `<context>/data` with the token as bearer, and consults
+  the device's stored server and token not at all — neither read nor written. The two starts therefore wait
+  for different things: an ordinary start waits for the device (its stored settings), a link session waits
+  for the server (the `?type=auth` answer confirming the link); a token the server does not know as a link
+  falls back to the ordinary start without comment. Inside a link there is no edit mode, no settings screen
+  and nothing that grants, moves or unlinks; the upload button follows `writeAllowed`. A 410 shows the
+  server's own sentence and nothing else; a 404 inside a link is always "outside the link", with one way
+  back to its root. "Share link…" is a dialog beside "Share with…", offered under the same rights rule,
+  listing links with inherited ones marked, creating with label, expiry, privacy ceiling, rating floor and
+  rights, showing the URL exactly once. Found in the browser check, not in the tests: the router gate had
+  waited for the settings in every session, so a real link never left the splash — the tests had handed the
+  app already-loaded settings. Nothing is cached on disk in a link session.
+
 - **2026-09-12 (night)** — Share links (#51), server side. A share link is a grant whose subject is a
   token: `?action=share` records the link in `<basepath>/.valbum/shares.json` (hash only, with label,
   expiry, privacy and rating limits) and its grant in one step, so the one rights method answers for links
@@ -180,8 +195,7 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
   only what `contribute` allows, sees `min(members, maxPrivacy)` and nothing rated below `minRating`
   (the rating joined the privacy filter), and is answered 410 with a spoken reason on every endpoint once
   the link expired or was withdrawn. The web app is served under `<context>/s/<token>/` by the same
-  static handler, which never looks at the token. The app half (opening a link as a session, the plain
-  expired page, "Share link…" in the share dialog) is open.
+  static handler, which never looks at the token. The app half landed the next day (see above).
 
 - **2026-09-12 (later)** — Link entries (#50), server side. A shared album appears in the recipient's own
   tree as a link: a record in the folder's `.links.json` sidecar naming the target in the owner's

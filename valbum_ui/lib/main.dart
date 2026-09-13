@@ -28,8 +28,10 @@ export 'photo_library.dart';
 export 'rights.dart';
 export 'routes.dart';
 export 'settings.dart';
+export 'share_session.dart';
 export 'share_view.dart';
 export 'thumbnails.dart';
+export 'urls.dart';
 
 void main() {
   // Real paths instead of `/#/...`: the view of the app is in the URL, see

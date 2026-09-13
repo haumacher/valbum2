@@ -229,4 +229,33 @@ void main() {
       expect(route.up?.up?.up?.up?.up, isNull);
     });
   });
+
+  group('a share-link base path', () {
+    test('parses a deep link inside the session', () {
+      expect(
+        parseRoute(
+          Uri.parse("/valbum/s/abc/2005-08-24%20Blumen/"),
+          basePath: "/valbum/s/abc/",
+        ),
+        const ListingOrAlbumRoute(["2005-08-24 Blumen"]),
+      );
+    });
+
+    test('writes the route back below the session base', () {
+      expect(
+        routeToUri(
+          const ListingOrAlbumRoute(["2005-08-24 Blumen"]),
+          basePath: "/valbum/s/abc/",
+        ).toString(),
+        "/valbum/s/abc/2005-08-24%20Blumen/",
+      );
+    });
+
+    test('the root of the session is the shared folder', () {
+      expect(
+        parseRoute(Uri.parse("/valbum/s/abc/"), basePath: "/valbum/s/abc/"),
+        ListingOrAlbumRoute.root,
+      );
+    });
+  });
 }

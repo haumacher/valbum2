@@ -114,4 +114,86 @@ void main() {
       expect(serverUrlError("nas.local"), isNotNull);
     });
   });
+
+  group('shareSessionUrl', () {
+    test('a link below a context path', () {
+      var link = shareSessionUrl(
+        Uri.parse("http://h:8080/valbum/s/abc123/"),
+        basePath: "/valbum/s/abc123/",
+      );
+      expect(link, isNotNull);
+      expect(link!.token, "abc123");
+      expect(link.dataUrl, "http://h:8080/valbum/data");
+      expect(link.basePath, "/valbum/s/abc123/");
+    });
+
+    test('a link on a server serving the app at its root', () {
+      var link = shareSessionUrl(
+        Uri.parse("http://h:8080/s/abc/"),
+        basePath: "/s/abc/",
+      );
+      expect(link!.token, "abc");
+      expect(link.dataUrl, "http://h:8080/data");
+      expect(link.basePath, "/s/abc/");
+    });
+
+    test('an ordinary app base is no session', () {
+      expect(
+        shareSessionUrl(
+          Uri.parse("http://h:8080/valbum/"),
+          basePath: "/valbum/",
+        ),
+        isNull,
+      );
+      // And the data URL of such a start is the one it always was.
+      expect(
+        deriveDataUrl(
+          Uri.parse("http://h:8080/valbum/"),
+          isWeb: true,
+          basePath: "/valbum/",
+        ),
+        "http://h:8080/valbum/data",
+      );
+    });
+
+    test('an empty segment is not a token', () {
+      expect(
+        shareSessionUrl(
+          Uri.parse("http://h:8080/valbum/s/"),
+          basePath: "/valbum/s/",
+        ),
+        isNull,
+      );
+    });
+
+    test('the base path decides, not the document location', () {
+      // Inside a session the location is the album being looked at; only the
+      // app base still says which link this is.
+      var link = shareSessionUrl(
+        Uri.parse("http://h:8080/valbum/s/abc/2005/"),
+        basePath: "/valbum/s/abc/",
+      );
+      expect(link!.token, "abc");
+      expect(link.dataUrl, "http://h:8080/valbum/data");
+    });
+
+    test('without a base path the directory of the location is used', () {
+      var link = shareSessionUrl(Uri.parse("http://h:8080/valbum/s/abc/"));
+      expect(link!.token, "abc");
+      expect(link.dataUrl, "http://h:8080/valbum/data");
+    });
+  });
+
+  group('absoluteServerUrl', () {
+    test('makes the server-relative share URL absolute', () {
+      expect(
+        absoluteServerUrl("http://h/valbum/data", "/valbum/s/tok/"),
+        "http://h/valbum/s/tok/",
+      );
+      expect(
+        absoluteServerUrl("http://h:8080/valbum/data", "/s/tok/"),
+        "http://h:8080/s/tok/",
+      );
+    });
+  });
 }

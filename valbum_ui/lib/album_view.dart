@@ -23,6 +23,7 @@ import 'resource.dart';
 import 'offline.dart';
 import 'rights.dart';
 import 'settings.dart';
+import 'share_session.dart';
 import 'share_view.dart';
 import 'thumbnails.dart';
 
@@ -98,7 +99,10 @@ class AlbumContentState extends State<AlbumContent>
   /// tile toolbars are all off while it is shown, see [previewing]. The edit
   /// session itself stays on, so the switch back to the owner's view is still
   /// there and the album is still the one being edited.
-  bool get editMode => session.editMode && !previewing && rights.mayEdit;
+  /// Never inside a share link: a link is not an account, and the app offers
+  /// nothing it would have to refuse, see issue #51.
+  bool get editMode =>
+      session.editMode && !previewing && rights.mayEdit && share == null;
   set editMode(bool value) => session.editMode = value;
 
   /// What the caller may do with this album, as the server answered it with
@@ -112,6 +116,13 @@ class AlbumContentState extends State<AlbumContent>
   /// The line saying that this album belongs to somebody else, `null` while
   /// the caller is its owner.
   String? get sharedLine => sharingNotice(widget.albumState.path, rights);
+
+  /// The share link this album is being looked at through, `null` in an
+  /// ordinary session, see issue #51.
+  ///
+  /// Read in [didChangeDependencies], not on every access: the state is asked
+  /// for it while it is being disposed as well.
+  ShareSession? share;
 
   /// Whether the caller may see and change who this album is shared with.
   ///
@@ -203,6 +214,11 @@ class AlbumContentState extends State<AlbumContent>
   /// anonymous caller and a guest are not made to pay for a request whose
   /// answer is known.
   Future<void> _askMayShare() async {
+    // A link caller carries a token and may hold every right the link gives,
+    // but manages nothing: the question is not asked inside a link session.
+    if (ShareSession.peek(context) != null) {
+      return;
+    }
     if (!couldManageGrants(client, widget.albumState.path, rights)) {
       return;
     }
@@ -211,6 +227,12 @@ class AlbumContentState extends State<AlbumContent>
     if (mounted && may != _mayShare) {
       setState(() => _mayShare = may);
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    share = ShareSession.of(context);
   }
 
   @override
@@ -236,7 +258,7 @@ class AlbumContentState extends State<AlbumContent>
   void setEditMode(AlbumPart selected) {
     // Nothing is greyed out: a caller without `edit` is simply not offered the
     // way in, and the album stays the album, see issue #49.
-    if (!rights.mayEdit) {
+    if (!rights.mayEdit || share != null) {
       return;
     }
     if (refuseWhileOffline(context)) {
@@ -653,7 +675,12 @@ class AlbumContentState extends State<AlbumContent>
     // nothing being edited there is no app bar, only the floating controls over
     // the photos, see [contentView]. A "view as" preview keeps the app bar:
     // the switch back to the owner's view lives in it.
-    var immersive = !session.editMode && self.parts.isNotEmpty;
+    // Inside a share link the app bar always stays: it is what names the link
+    // — a visitor arriving at a bare URL is told what they were given and by
+    // whom, see issue #51.
+    var link = share;
+    var immersive =
+        !session.editMode && self.parts.isNotEmpty && link == null;
 
     return Scaffold(
       appBar: immersive
@@ -661,8 +688,13 @@ class AlbumContentState extends State<AlbumContent>
           : AppBar(
               title: Column(
                 children: [
-                  Text(self.title),
-                  if (self.subTitle.isNotEmpty) Text(self.subTitle),
+                  Text(
+                    link == null ? self.title : link.label,
+                    key: link == null ? null : const Key("share-label"),
+                  ),
+                  if (link != null && self.title.isNotEmpty) Text(self.title),
+                  if (link == null && self.subTitle.isNotEmpty)
+                    Text(self.subTitle),
                 ],
               ),
               centerTitle: true,
@@ -713,7 +745,11 @@ class AlbumContentState extends State<AlbumContent>
       // the screen: a preview is read-only, see [setViewAs].
       // Nothing is added to an album the caller may not contribute to either:
       // the button is not offered rather than refused, see issue #49.
-      floatingActionButton: previewing || !rights.mayContribute
+      // Inside a link the upload is offered exactly when the link allows a
+      // contribution, which is what the server answered, see issue #51.
+      floatingActionButton: previewing ||
+              !rights.mayContribute ||
+              (link != null && !link.writeAllowed)
           ? null
           : FloatingActionButton(
               onPressed: widget.albumState.uploadImages,
@@ -766,6 +802,8 @@ class AlbumContentState extends State<AlbumContent>
           ],
           if (_mayShare)
             menuItem(Icons.share, "Share with…", (_) => shareAlbum()),
+          if (_mayShare)
+            menuItem(Icons.link, "Share link…", (_) => shareAlbumLink()),
           menuLabel(
             "Mindestbewertung",
             "≥ $minRating",
@@ -785,7 +823,9 @@ class AlbumContentState extends State<AlbumContent>
           ),
           const PopupMenuDivider(),
           menuItem(Icons.update, "Reload", (_) => reloadShown()),
-          menuItem(Icons.settings, "Server...", openServerSettings),
+          // A visitor of a link has no server of their own to configure.
+          if (share == null)
+            menuItem(Icons.settings, "Server...", openServerSettings),
         ]),
       ];
 
@@ -917,6 +957,14 @@ class AlbumContentState extends State<AlbumContent>
 
   /// Opens the share dialog on this album, see issue #49.
   void shareAlbum() => shareWith(
+        context: context,
+        client: client,
+        path: widget.albumState.path,
+        label: "'${widget.album.title}'",
+      );
+
+  /// Opens the share-link dialog on this album, see issue #51.
+  void shareAlbumLink() => shareLinksOf(
         context: context,
         client: client,
         path: widget.albumState.path,

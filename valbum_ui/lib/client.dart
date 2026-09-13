@@ -894,6 +894,61 @@ class VAlbumClient {
     return GrantList.read(JsonReader.fromString(response.body));
   }
 
+  /// The share links covering the folder at [path], the nearest one first
+  /// (issue #51).
+  ///
+  /// Answerable only for the owner of the space the folder lies in (and for
+  /// the administrator), exactly as for the grants — and no answer ever
+  /// carries a token: the token is shown once, when the link is made.
+  Future<ShareLinkList> shares(List<String> path) async {
+    var url = "${folderUrl(path)}?type=shares";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return ShareLinkList.read(JsonReader.fromString(response.body));
+  }
+
+  /// Creates a share link on the folder at [path], answering it **with** its
+  /// token (issue #51).
+  ///
+  /// The owner and the path of the link come from the URL; the body carries
+  /// the label, the expiry, the privacy ceiling, the rating floor and the
+  /// rights. The token travels back exactly once — the server keeps its hash
+  /// and can never show it again, so what this answers is shown to the user
+  /// there and then and stored nowhere.
+  Future<ShareLinkCreated> share(List<String> path, ShareLink link) async {
+    var url = "${folderUrl(path)}?action=share";
+    var response = await _postJson(url, link);
+    return ShareLinkCreated.read(JsonReader.fromString(response));
+  }
+
+  /// Withdraws the share link of the given id from the folder at [path].
+  ///
+  /// Only the id travels: the server knows the rest, and refuses an id that
+  /// is not a link covering this folder with a 404.
+  Future<ShareLinkList> unshare(List<String> path, String id) async {
+    var url = "${folderUrl(path)}?action=unshare";
+    var response = await _postJson(url, ShareLink(id: id));
+    return ShareLinkList.read(JsonReader.fromString(response));
+  }
+
+  /// Posts the given model object as JSON, answering the body of the answer.
+  Future<String> _postJson(String url, ShareLink value) async {
+    var body = StringBuffer();
+    value.writeContent(jsonStringWriter(body));
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return response.body;
+  }
+
   /// The groups this caller owns and the groups they are in (issue #49).
   Future<GroupList> groups() async {
     var url = "${folderUrl(const [])}?type=groups";
