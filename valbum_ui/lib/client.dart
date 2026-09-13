@@ -92,16 +92,136 @@ class UploadSummary {
   /// The number of files the album already held, which were not stored again.
   final int present;
 
-  const UploadSummary({required this.stored, required this.present});
+  /// The number of files that never reached the server, see issue #63.
+  ///
+  /// An upload goes out in batches ([UploadBatching]), and a batch that fails
+  /// leaves the batches before it on the server. What is left over is counted
+  /// here, so that the user is told both halves of the truth: what arrived,
+  /// and what has to be sent again.
+  final int remaining;
+
+  const UploadSummary({
+    required this.stored,
+    required this.present,
+    this.remaining = 0,
+  });
 
   /// The number of files the upload was asked to transfer.
-  int get total => stored + present;
+  int get total => stored + present + remaining;
+
+  /// The number of files that are on the server now.
+  int get onServer => stored + present;
+
+  /// Whether everything that was asked for arrived.
+  bool get complete => remaining == 0;
 
   /// What the user is told about the upload.
   ///
   /// Both counts are named: a sync that transfers nothing because everything
   /// is already there must not look like a sync that did nothing.
   String get message => "$stored hochgeladen, $present bereits vorhanden.";
+}
+
+/// The greatest number of files one request carries, see [UploadBatching].
+const int uploadBatchFiles = 25;
+
+/// The greatest number of bytes one request carries, see [UploadBatching].
+const int uploadBatchBytes = 100 * 1024 * 1024;
+
+/// How many files, and how many bytes, go into one request (issue #63).
+///
+/// A hundred photos in a single streamed multipart body is one socket that has
+/// to stay open for many minutes; Android's Doze closes it as soon as the
+/// screen locks, and the whole transfer is lost. Bounded batches make the loss
+/// bounded too: what a batch delivered stays delivered, and only the rest is
+/// sent again.
+///
+/// The same bound is what the camera-roll sync files its batches by, see
+/// [split]: one mechanism, used by the explicit upload and by the sync.
+class UploadBatching {
+  /// The greatest number of items one batch holds.
+  final int maxFiles;
+
+  /// The greatest number of bytes one batch holds, unless a single item is
+  /// bigger than that — an item is never split.
+  final int maxBytes;
+
+  const UploadBatching({
+    this.maxFiles = uploadBatchFiles,
+    this.maxBytes = uploadBatchBytes,
+  });
+
+  /// The bound the app uploads with.
+  static const UploadBatching standard = UploadBatching();
+
+  /// Splits [items] into batches, in order, by both bounds.
+  ///
+  /// Whichever bound is reached first ends the batch. An item larger than
+  /// [maxBytes] forms a batch of its own rather than being dropped or split.
+  List<List<T>> split<T>(List<T> items, int Function(T item) lengthOf) {
+    var batches = <List<T>>[];
+    var batch = <T>[];
+    var bytes = 0;
+    for (var item in items) {
+      var length = lengthOf(item);
+      if (batch.isNotEmpty &&
+          (batch.length >= maxFiles || bytes + length > maxBytes)) {
+        batches.add(batch);
+        batch = <T>[];
+        bytes = 0;
+      }
+      batch.add(item);
+      bytes += length;
+    }
+    if (batch.isNotEmpty) {
+      batches.add(batch);
+    }
+    return batches;
+  }
+}
+
+/// What a lost connection is called on the screen, see
+/// [interruptedUploadMessage].
+const String uploadConnectionLost = "Verbindung verloren";
+
+/// What the dialog says while batch [batch] of [batches] is on its way.
+String uploadBatchMessage(int batch, int batches) =>
+    "Paket $batch von $batches wird übertragen...";
+
+/// What the user is told about an upload that stopped halfway (issue #63).
+///
+/// Plain words, and the raw exception is not among them: a `ClientException`
+/// naming a broken pipe says nothing to the person holding the phone. What
+/// they need to know is how much arrived, how much did not, and that sending
+/// the rest again costs nothing — the server stores no photo twice, see
+/// [VAlbumClient.uploadNew]. The exception itself is in the diagnostics log,
+/// where it belongs, see [DiagnosticsLog].
+String interruptedUploadMessage({
+  required String cause,
+  required int onServer,
+  required int total,
+  required int remaining,
+}) =>
+    "$cause: $onServer von $total Fotos sind auf dem Server, die übrigen "
+    "$remaining können erneut gesendet werden.";
+
+/// An upload that stopped after some of its batches had arrived, see
+/// [VAlbumClient.uploadNew] and issue #63.
+///
+/// Carries what arrived: the view shows [message] and reloads the album, so
+/// that the photos that did make it are on the screen.
+class UploadInterrupted extends VAlbumException {
+  /// What the upload achieved before it stopped.
+  final UploadSummary summary;
+
+  /// What stopped it, for the log, never for the screen.
+  final Object cause;
+
+  UploadInterrupted({
+    required this.summary,
+    required this.cause,
+    required String message,
+  }) : super(message);
 }
 
 /// What a cancelled upload is refused with, see [VAlbumClient.uploadFiles].
@@ -812,8 +932,14 @@ class VAlbumClient {
   /// photo. The upload itself is idempotent as well, so a server that cannot
   /// answer the question is simply sent everything.
   ///
-  /// [onProgress] reports the percentage of the transfer, [onStatus] the phase
-  /// in words. Hashing a hundred photos on a phone takes long enough that a
+  /// The transfer itself goes out in batches of at most [UploadBatching.maxFiles]
+  /// files and [UploadBatching.maxBytes] bytes (issue #63): one long socket for
+  /// a hundred photos is what a locked screen kills, and a batch that arrived
+  /// stays arrived. A batch that fails after others succeeded throws an
+  /// [UploadInterrupted] saying how much is on the server and how much is not.
+  ///
+  /// [onProgress] reports the percentage of the transfer over all batches,
+  /// [onStatus] the phase in words. Hashing a hundred photos on a phone takes long enough that a
   /// dialog showing nothing at all looks hung, so the hashing counts itself out
   /// (issue #59); a caller that does not care simply leaves [onStatus] out.
   Future<UploadSummary> uploadNew(
@@ -822,6 +948,7 @@ class VAlbumClient {
     void Function(int percent)? onProgress,
     void Function(String message)? onStatus,
     UploadHandle? handle,
+    UploadBatching batching = UploadBatching.standard,
   }) async {
     if (files.isEmpty) {
       return const UploadSummary(stored: 0, present: 0);
@@ -871,19 +998,117 @@ class VAlbumClient {
       return UploadSummary(stored: 0, present: skipped);
     }
 
-    onStatus?.call(uploadTransferMessage);
-    var result = await uploadFiles(
-      folderUrl(path),
-      pending,
-      onProgress: onProgress,
-      handle: handle,
-    );
-    var stored =
-        result.files.where((file) => file.status != uploadPresent).length;
-    return UploadSummary(
-      stored: stored,
-      present: skipped + (result.files.length - stored),
-    );
+    var batches = batching.split(pending, (file) => file.length);
+    var totalBytes = 0;
+    for (var file in pending) {
+      totalBytes += file.length;
+    }
+
+    var stored = 0;
+    var present = skipped;
+    var sentFiles = 0;
+    var sentBytes = 0;
+    var reported = -1;
+    // The percentage never runs backwards and reaches 100 exactly once, at the
+    // end: the dialog closes itself on 100, and it must not do so between two
+    // batches, see `AlbumState.uploadPicked`.
+    void report(int percent) {
+      if (percent > reported) {
+        reported = percent;
+        onProgress?.call(percent);
+      }
+    }
+
+    for (var index = 0; index < batches.length; index++) {
+      var batch = batches[index];
+      var batchBytes = 0;
+      for (var file in batch) {
+        batchBytes += file.length;
+      }
+      onStatus?.call(
+        batches.length == 1
+            ? uploadTransferMessage
+            : uploadBatchMessage(index + 1, batches.length),
+      );
+
+      var done = sentBytes;
+      // Only the last batch may reach 100: the caller shows the waiting phase
+      // there (and a progress dialog closes itself on its maximum), and that
+      // must not happen while three more batches are still to go.
+      var last = index == batches.length - 1;
+      UploadResult result;
+      try {
+        result = await uploadFiles(
+          folderUrl(path),
+          batch,
+          onProgress: (percent) {
+            if (totalBytes <= 0) {
+              return;
+            }
+            var overall =
+                (100 * (done + batchBytes * percent / 100) / totalBytes)
+                    .round();
+            report(!last && overall > 99 ? 99 : overall);
+          },
+          handle: handle,
+        );
+      } catch (error) {
+        if (handle != null && handle.cancelled) {
+          // A cancellation speaks for itself, and it says so in the words of
+          // the button that was pressed.
+          rethrow;
+        }
+        if (sentFiles == 0) {
+          // Nothing arrived, so nothing is partial: a refusal is the server
+          // speaking and a transport failure is the caller's own story to
+          // tell, exactly as before the batches existed.
+          rethrow;
+        }
+        var summary = UploadSummary(
+          stored: stored,
+          present: present,
+          remaining: pending.length - sentFiles,
+        );
+        throw UploadInterrupted(
+          summary: summary,
+          cause: error,
+          message: interruptedUploadMessage(
+            cause: _uploadFailureCause(error),
+            onServer: summary.onServer,
+            total: summary.total,
+            remaining: summary.remaining,
+          ),
+        );
+      }
+
+      var batchStored =
+          result.files.where((file) => file.status != uploadPresent).length;
+      stored += batchStored;
+      present += result.files.length - batchStored;
+      sentFiles += batch.length;
+      sentBytes += batchBytes;
+    }
+    report(100);
+    return UploadSummary(stored: stored, present: present);
+  }
+
+  /// What an upload failure is called in [interruptedUploadMessage].
+  ///
+  /// A transport failure is a lost connection, whatever the socket layer calls
+  /// it; a refusal is the server speaking, and the server's own sentence is
+  /// what the user reads — without its full stop, because the message
+  /// continues.
+  static String _uploadFailureCause(Object error) {
+    if (isTransportFailure(error)) {
+      return uploadConnectionLost;
+    }
+    var message =
+        error is VAlbumException ? error.message : error.toString().trim();
+    message = message.trim();
+    while (message.endsWith(".") || message.endsWith("!")) {
+      message = message.substring(0, message.length - 1).trimRight();
+    }
+    return message.isEmpty ? uploadConnectionLost : message;
   }
 
   /// The server's reason for refusing the original at [imageUrl], `null` if

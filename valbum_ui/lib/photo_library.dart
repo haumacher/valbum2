@@ -12,6 +12,9 @@
 library;
 
 import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:flutter/widgets.dart';
 
 import 'client.dart';
 
@@ -55,6 +58,34 @@ class PhotoItem {
       UploadFile(name: name, length: length, openRead: openRead);
 }
 
+/// One album of the device's photo library, see [PhotoLibrary.albums].
+///
+/// What the phone's gallery calls an album: the camera roll, a folder of
+/// downloads, an album the user made. The in-app picker of issue #64 lists
+/// these and shows the items of the one that was tapped.
+@immutable
+class PhotoAlbum {
+  /// The identity of the album on the device.
+  final String id;
+
+  /// What the album is called, as the device calls it.
+  final String name;
+
+  /// The number of items in it.
+  final int count;
+
+  const PhotoAlbum({required this.id, required this.name, this.count = 0});
+
+  @override
+  bool operator ==(Object other) => other is PhotoAlbum && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
+  String toString() => "PhotoAlbum($id, $name, $count)";
+}
+
 /// The photo library of the device the app runs on.
 abstract class PhotoLibrary {
   const PhotoLibrary();
@@ -92,6 +123,29 @@ abstract class PhotoLibrary {
   /// and scans again after the watermark advanced.
   int get scanLimit => 0;
 
+  /// The albums of the device, the fullest one first (issue #64).
+  ///
+  /// Empty where the platform has none, so that the picker says "nothing to
+  /// choose from" rather than failing: a library that cannot be read is a
+  /// refusal, and it speaks through [accessProblem].
+  Future<List<PhotoAlbum>> albums() async => const [];
+
+  /// The items of one album, newest first (issue #64).
+  Future<List<PhotoItem>> itemsOf(PhotoAlbum album) async => const [];
+
+  /// A small preview of [item], `null` where the platform has none.
+  ///
+  /// The default reads the whole item, which is what a test's fake library
+  /// holds anyway; a real library answers a thumbnail the platform has
+  /// already made, see `photo_library_manager.dart`.
+  Future<Uint8List?> thumbnail(PhotoItem item, {int size = 256}) async {
+    var bytes = <int>[];
+    await for (var chunk in item.openRead()) {
+      bytes.addAll(chunk);
+    }
+    return Uint8List.fromList(bytes);
+  }
+
   /// Fires whenever the library changed.
   ///
   /// May never fire — a platform without change notifications simply relies on
@@ -125,6 +179,9 @@ class UnavailablePhotoLibrary extends PhotoLibrary {
   Future<List<PhotoItem>> itemsSince(DateTime? since) async => const [];
 
   @override
+  Future<Uint8List?> thumbnail(PhotoItem item, {int size = 256}) async => null;
+
+  @override
   Stream<void> get changes => const Stream<void>.empty();
 }
 
@@ -144,6 +201,9 @@ class FakePhotoLibrary extends PhotoLibrary {
 
   /// The number of times [itemsSince] was asked, and with which bound.
   final List<DateTime?> scans = [];
+
+  /// The albums this library holds, with their items, in order.
+  final Map<PhotoAlbum, List<PhotoItem>> albumItems = {};
 
   final StreamController<void> _changes = StreamController<void>.broadcast();
 
@@ -169,6 +229,25 @@ class FakePhotoLibrary extends PhotoLibrary {
 
   @override
   Stream<void> get changes => _changes.stream;
+
+  @override
+  Future<List<PhotoAlbum>> albums() async => albumItems.keys.toList();
+
+  @override
+  Future<List<PhotoItem>> itemsOf(PhotoAlbum album) async =>
+      [...?albumItems[album]];
+
+  /// Adds an album holding the given items, and the items themselves.
+  PhotoAlbum addAlbum(String name, List<PhotoItem> contents, {String? id}) {
+    var album = PhotoAlbum(
+      id: id ?? name,
+      name: name,
+      count: contents.length,
+    );
+    albumItems[album] = [...contents];
+    items.addAll(contents);
+    return album;
+  }
 
   /// Adds an item and announces the change, as the device would.
   void add(PhotoItem item) {
@@ -201,3 +280,28 @@ PhotoItem fakePhoto(
       length: contents.length,
       openRead: () => Stream.value(contents),
     );
+
+/// Makes the device's [PhotoLibrary] available to the widget tree.
+///
+/// The camera-roll sync reaches it through its engine; the in-app picker of
+/// issue #64 is a screen and reaches it here, so that a test can pump the app
+/// with a [FakePhotoLibrary] and drive the picker.
+class PhotoLibraryScope extends InheritedWidget {
+  /// The library of the device the app runs on.
+  final PhotoLibrary library;
+
+  const PhotoLibraryScope({
+    super.key,
+    required this.library,
+    required super.child,
+  });
+
+  /// The library of the enclosing app, `null` outside one (a view pumped on
+  /// its own in a test).
+  static PhotoLibrary? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<PhotoLibraryScope>()?.library;
+
+  @override
+  bool updateShouldNotify(PhotoLibraryScope oldWidget) =>
+      library != oldWidget.library;
+}

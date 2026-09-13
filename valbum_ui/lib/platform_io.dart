@@ -14,6 +14,8 @@ import 'offline.dart';
 import 'offline_file.dart';
 import 'photo_library.dart';
 import 'photo_library_manager.dart';
+import 'wakelock.dart';
+import 'wakelock_plugin.dart';
 
 /// The cache the app uses when it is not told otherwise: a directory on the
 /// device, so that what was seen survives the app being closed.
@@ -37,6 +39,15 @@ PhotoLibrary defaultPhotoLibrary() => Platform.isAndroid || Platform.isIOS
         "No photo library on this platform - camera-roll sync runs on "
         "Android and iOS.",
       );
+
+/// What keeps the screen awake while an upload runs, see [Wakelock].
+///
+/// Only a phone locks its screen out from under a running transfer and only
+/// there is the plugin asked (issue #63); a desktop keeps its network while
+/// the display sleeps.
+Wakelock defaultWakelock() => Platform.isAndroid || Platform.isIOS
+    ? const PluginWakelock()
+    : const NoWakelock();
 
 /// The network the device is on, see [ConnectivitySource].
 ///

@@ -7,7 +7,6 @@
 library;
 
 import 'dart:async';
-
 import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 
@@ -28,6 +27,9 @@ const int _pageSize = 100;
 class PhotoManagerLibrary extends PhotoLibrary {
   @override
   String? accessProblem;
+
+  /// The album paths the last [albums] answered, by their id.
+  final Map<String, AssetPathEntity> _paths = {};
 
   final StreamController<void> _changes = StreamController<void>.broadcast();
   bool _watching = false;
@@ -89,6 +91,75 @@ class PhotoManagerLibrary extends PhotoLibrary {
       }
     }
     return result;
+  }
+
+  @override
+  Future<List<PhotoAlbum>> albums() async {
+    List<AssetPathEntity> paths;
+    try {
+      paths = await PhotoManager.getAssetPathList(
+        type: RequestType.common,
+        filterOption: FilterOptionGroup(
+          orders: const [
+            OrderOption(type: OrderOptionType.createDate, asc: false),
+          ],
+        ),
+      );
+    } catch (error) {
+      accessProblem = "The photo library cannot be read: $error";
+      return const [];
+    }
+    var albums = <PhotoAlbum>[];
+    for (var path in paths) {
+      var count = await path.assetCountAsync;
+      if (count == 0) {
+        continue;
+      }
+      albums.add(PhotoAlbum(id: path.id, name: path.name, count: count));
+      _paths[path.id] = path;
+    }
+    albums.sort((a, b) => b.count.compareTo(a.count));
+    return albums;
+  }
+
+  @override
+  Future<List<PhotoItem>> itemsOf(PhotoAlbum album) async {
+    var path = _paths[album.id];
+    if (path == null) {
+      // The albums were never listed (or the library changed under the
+      // picker): ask again rather than answering an empty album.
+      await albums();
+      path = _paths[album.id];
+      if (path == null) {
+        return const [];
+      }
+    }
+    var result = <PhotoItem>[];
+    var total = await path.assetCountAsync;
+    for (var start = 0; start < total; start += _pageSize) {
+      var end = start + _pageSize > total ? total : start + _pageSize;
+      var assets = await path.getAssetListRange(start: start, end: end);
+      for (var asset in assets) {
+        result.add(await _item(asset));
+      }
+      if (assets.isEmpty) {
+        break;
+      }
+    }
+    result.sort((a, b) => b.takenAt.compareTo(a.takenAt));
+    return result;
+  }
+
+  @override
+  Future<Uint8List?> thumbnail(PhotoItem item, {int size = 256}) async {
+    try {
+      var asset = await AssetEntity.fromId(item.id);
+      return await asset?.thumbnailDataWithSize(ThumbnailSize.square(size));
+    } catch (_) {
+      // A tile without a picture is a tile the user can still select; the
+      // picker draws a placeholder for it.
+      return null;
+    }
   }
 
   /// The upload description of one asset.

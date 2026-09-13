@@ -823,17 +823,18 @@ class CameraRollSync extends ChangeNotifier {
         total: total,
       ));
 
-      for (var start = 0; start < pending.length; start += batchSize) {
+      // The same splitter the explicit upload transfers by, see
+      // [UploadBatching] and issue #63: a batch is what the watermark may
+      // advance by, and it is bounded by the number of items *and* by their
+      // size, so a handful of videos never becomes one endless request.
+      for (var batch in UploadBatching(
+        maxFiles: batchSize,
+        maxBytes: uploadBatchBytes,
+      ).split(pending, (item) => item.length)) {
         if (_stopRequested) {
           _publish(_restingStatus());
           return;
         }
-        var batch = pending.sublist(
-          start,
-          start + batchSize > pending.length
-              ? pending.length
-              : start + batchSize,
-        );
         UploadSummary summary;
         try {
           summary = await client.uploadNew(

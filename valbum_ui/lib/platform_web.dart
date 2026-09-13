@@ -9,6 +9,7 @@ import 'connectivity.dart';
 import 'diagnostics.dart';
 import 'offline.dart';
 import 'photo_library.dart';
+import 'wakelock.dart';
 
 /// The cache the web app uses: memory only.
 ///
@@ -31,6 +32,13 @@ PhotoLibrary defaultPhotoLibrary() => const UnavailablePhotoLibrary(
       "No photo library in a browser - camera-roll sync runs on Android and "
       "iOS.",
     );
+
+/// What keeps the screen awake in a browser: nothing, see [Wakelock].
+///
+/// A tab does not lock the machine's screen, and a page that goes to sleep with
+/// the machine takes its upload with it either way (issue #63). The
+/// `wakelock_plus` plugin is never imported in the web build.
+Wakelock defaultWakelock() => const NoWakelock();
 
 /// The network a browser is on: it does not say, see [ConnectivitySource].
 ///

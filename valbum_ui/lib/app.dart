@@ -27,6 +27,7 @@ import 'links.dart';
 import 'listing_view.dart';
 import 'offline.dart';
 import 'photo_library.dart';
+import 'photo_picker_view.dart';
 import 'platform.dart';
 import 'resource.dart';
 import 'rights.dart';
@@ -34,6 +35,7 @@ import 'routes.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'urls.dart';
+import 'wakelock.dart';
 
 typedef Action = void Function(BuildContext context);
 
@@ -91,6 +93,14 @@ class VAlbumApp extends StatefulWidget {
   /// with the device either.
   final BackgroundScheduler? backgroundScheduler;
 
+  /// What keeps the screen awake while an upload runs (issue #63).
+  ///
+  /// Defaults to the wakelock of the platform — the plugin on a phone, nothing
+  /// anywhere else — and to nothing at all where a client is injected, exactly
+  /// as with the background scheduler: a widget test must reach no plugin
+  /// channel. Tests inject a [RecordingWakelock].
+  final Wakelock? wakelock;
+
   /// The token session the app was opened at: a share link (issue #51) or an
   /// invitation (issue #52).
   ///
@@ -110,6 +120,7 @@ class VAlbumApp extends StatefulWidget {
     this.diagnostics,
     this.photoLibrary,
     this.backgroundScheduler,
+    this.wakelock,
     this.session,
   });
 
@@ -139,7 +150,8 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// One per app, handed to every client it builds — a session client
   /// included — so that the diagnostics section of the settings shows all of
   /// it, whichever server a request went to.
-  late final DiagnosticsLog diagnostics = widget.diagnostics ?? DiagnosticsLog();
+  late final DiagnosticsLog diagnostics =
+      widget.diagnostics ?? DiagnosticsLog();
 
   /// Whether [offlineState] was created here and must be disposed.
   bool get _ownsOfflineState => widget.offlineState == null;
@@ -147,6 +159,10 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// The device's photo library, see [VAlbumApp.photoLibrary].
   late final PhotoLibrary photoLibrary =
       widget.photoLibrary ?? defaultPhotoLibrary();
+
+  /// What keeps the screen awake while an upload runs, see [VAlbumApp.wakelock].
+  late final Wakelock wakelock = widget.wakelock ??
+      (widget.client != null ? const NoWakelock() : defaultWakelock());
 
   /// The platform's periodic background execution, see
   /// [VAlbumApp.backgroundScheduler].
@@ -639,20 +655,26 @@ class VAlbumAppState extends State<VAlbumApp> {
       cache: cache,
       child: CameraRollScope(
         sync: cameraRoll,
-        child: ServerSettingsScope(
-          settings: settings,
-          clientFor: clientFor,
-          diagnostics: diagnostics,
-          // Published around the whole app: every view asks whether it is
-          // inside a link, see [ShareSession.of], and who is calling, see
-          // [CallerInfo.maybeOf].
-          child: ShareSessionScope(
-            session: shareSession,
-            child: CallerScope(
-              caller: caller,
-              child: _readyForTheRouter && client != null
-                  ? _albumApp(client!)
-                  : _beforeTheRouter(),
+        child: PhotoLibraryScope(
+          library: photoLibrary,
+          child: WakelockScope(
+            wakelock: wakelock,
+            child: ServerSettingsScope(
+              settings: settings,
+              clientFor: clientFor,
+              diagnostics: diagnostics,
+              // Published around the whole app: every view asks whether it is
+              // inside a link, see [ShareSession.of], and who is calling, see
+              // [CallerInfo.maybeOf].
+              child: ShareSessionScope(
+                session: shareSession,
+                child: CallerScope(
+                  caller: caller,
+                  child: _readyForTheRouter && client != null
+                      ? _albumApp(client!)
+                      : _beforeTheRouter(),
+                ),
+              ),
             ),
           ),
         ),
@@ -1527,10 +1549,59 @@ class VAlbumState extends State<VAlbumView>
     throw UnimplementedError();
   }
 
+  /// Adds photos to the album, asking first where they come from (issue #64).
+  ///
+  /// Two ways in, and the device decides which of them are offered: the
+  /// in-app picker over the phone's own photo library — the way past the
+  /// hundred-item cap of the system picker — and the system picker itself.
+  /// A platform without a photo library ([PhotoLibrary.available]) is not
+  /// asked at all: there is one way to pick a file in a browser, and a menu
+  /// with a single entry is worse than no menu.
   void uploadImages() async {
     if (refuseWhileOffline(context)) {
       return;
     }
+    var library = PhotoLibraryScope.maybeOf(context);
+    if (library == null || !library.available) {
+      await uploadFromFiles();
+      return;
+    }
+    var source = await askUploadSource(context);
+    if (source == null) {
+      // The sheet was dismissed; nothing was asked for, nothing is said.
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    if (source == UploadSource.library) {
+      await uploadFromLibrary(library);
+    } else {
+      await uploadFromFiles();
+    }
+  }
+
+  /// Uploads what the user picks in the in-app picker (issue #64).
+  ///
+  /// The picked items become [UploadFile]s exactly as the camera-roll sync
+  /// makes them, see [PhotoItem.upload]: the contents are opened when they are
+  /// transferred, never pulled into memory as a whole.
+  Future<void> uploadFromLibrary(PhotoLibrary library) async {
+    var picked = await pickFromLibrary(context, library);
+    if (picked.isEmpty) {
+      return;
+    }
+    if (!mounted) {
+      if (kDebugMode) {
+        print("Context was destroyed.");
+      }
+      return;
+    }
+    await uploadPicked([for (var item in picked) item.upload]);
+  }
+
+  /// Uploads what the user picks in the system's file picker.
+  Future<void> uploadFromFiles() async {
     ImagePicker picker = ImagePicker();
     List<XFile> files = await picker.pickMultiImage();
     if (kDebugMode) {
@@ -1578,6 +1649,25 @@ class VAlbumState extends State<VAlbumView>
     if (refuseWhileOffline(context)) {
       return;
     }
+    // The screen stays on for as long as the upload runs (issue #63): a locked
+    // screen is a backgrounded app, and Android's Doze suspends its network
+    // and closes the socket under a transfer that takes minutes. Released in
+    // the `finally`, on every way out — success, failure and cancellation
+    // alike.
+    var wakelock = WakelockScope.of(context);
+    await wakelock.keepAwake(true);
+    try {
+      if (!mounted) {
+        return;
+      }
+      await _uploadPicked(uploads);
+    } finally {
+      await wakelock.keepAwake(false);
+    }
+  }
+
+  /// The upload itself, see [uploadPicked].
+  Future<void> _uploadPicked(List<UploadFile> uploads) async {
     var handle = UploadHandle();
     ProgressDialog pd = ProgressDialog(context: context);
     pd.show(
@@ -1600,6 +1690,7 @@ class VAlbumState extends State<VAlbumView>
 
     var messenger = ScaffoldMessenger.of(context);
     UploadSummary summary;
+    var phase = uploadTransferMessage;
     try {
       summary = await client.uploadNew(
         path,
@@ -1607,22 +1698,49 @@ class VAlbumState extends State<VAlbumView>
         onProgress: (percent) => pd.update(
           // Never `max`: see the note above.
           value: percent >= 100 ? 99 : percent,
-          msg: percent >= 100 ? uploadWaitingMessage : uploadTransferMessage,
+          msg: percent >= 100 ? uploadWaitingMessage : phase,
         ),
-        onStatus: (message) => pd.update(msg: message),
+        // The phase the transfer is in, kept: the progress of a batch must not
+        // overwrite the line saying which batch it is, see issue #63.
+        onStatus: (message) {
+          phase = message;
+          pd.update(msg: message);
+        },
         handle: handle,
       );
     } catch (error) {
       pd.close(delay: 500);
-      // The server said why it refused; that reason belongs on the screen.
+      // The server said why it refused, or the transfer was lost after some
+      // of the photos had arrived (issue #63) — either way it is a plain
+      // sentence, never the raw exception, which is in the diagnostics log.
+      var partial = error is UploadInterrupted ? error : null;
+      // A lost connection is told in the same plain words, even where not a
+      // single photo made it: a `ClientException` about a broken pipe says
+      // nothing to the person holding the phone, and the raw text is in the
+      // diagnostics log where a bug report can fetch it.
+      var lost = partial == null && VAlbumClient.isTransportFailure(error)
+          ? interruptedUploadMessage(
+              cause: uploadConnectionLost,
+              onServer: 0,
+              total: uploads.length,
+              remaining: uploads.length,
+            )
+          : null;
       _tell(
         messenger,
         SnackBar(
-          content: Text("Upload fehlgeschlagen: $error"),
+          content: Text(
+            partial?.message ?? lost ?? "Upload fehlgeschlagen: $error",
+          ),
           backgroundColor: Colors.red.shade700,
           duration: const Duration(seconds: 8),
         ),
       );
+      // What did arrive belongs on the screen: the album is fetched again
+      // after a partial failure exactly as after a complete upload.
+      if (mounted && (partial?.summary.onServer ?? 0) > 0) {
+        reload();
+      }
       return;
     }
 
