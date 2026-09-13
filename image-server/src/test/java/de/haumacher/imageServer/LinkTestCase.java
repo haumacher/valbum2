@@ -6,6 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.InviteMode;
 import de.haumacher.imageServer.links.LinkStore;
 import de.haumacher.imageServer.links.ShareRegistry;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -59,6 +60,9 @@ public abstract class LinkTestCase extends TestCase {
 	protected static final String TRIPS = "Trips";
 
 	protected Path _base;
+
+	/** Who may invite on the server under test, see issue #52; the server's own default. */
+	protected InviteMode _inviteMode = InviteMode.MEMBERS;
 
 	private final List<ImageServlet> _servlets = new ArrayList<>();
 
@@ -135,7 +139,8 @@ public abstract class LinkTestCase extends TestCase {
 
 	protected ImageServlet servlet() throws Exception {
 		if (_servlet == null) {
-			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SharingFixture.SECRET, _base));
+			_servlet = new ImageServlet(_base.toFile(),
+				new AuthService(AuthMode.WRITES, SharingFixture.SECRET, _base, _inviteMode));
 			_servlet.init();
 			_servlets.add(_servlet);
 		}

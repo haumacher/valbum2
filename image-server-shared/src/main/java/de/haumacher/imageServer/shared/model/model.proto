@@ -430,8 +430,25 @@ message PairRequest {
 	 * empty name means the owner, a non-empty one names the owner when it has no name yet and must
 	 * match the stored name afterwards. An app from before issue #45 sends no name at all.
 	 * </p>
+	 *
+	 * <p>
+	 * With an {@link #invitation} it is the name of the user to create, which must be free and must
+	 * pass the server's name rule; it is not optional there.
+	 * </p>
 	 */
 	string userName;
+
+	/**
+	 * The token of an {@link Invitation}, the alternative to the {@link #secret} (issue #52).
+	 *
+	 * <p>
+	 * Accepting an invitation is pairing: a live, unused invitation together with a free
+	 * {@link #userName} creates the user with the invitation's role, issues this device's token and
+	 * marks the invitation used. Empty in every other request; a request carrying both is read as
+	 * an invitation.
+	 * </p>
+	 */
+	string invitation;
 }
 
 /** Answer to a successful {@link PairRequest}. */
@@ -482,6 +499,18 @@ message AuthInfo {
 	 * </p>
 	 */
 	ShareInfo share;
+
+	/**
+	 * The invitation this caller presented, <code>null</code> for everybody else (issue #52).
+	 *
+	 * <p>
+	 * An invitation token is no login: the caller is anonymous on every other endpoint, and this
+	 * is the one place the server says what the invitation offers, so that the app can name the
+	 * inviter and the role before it asks for a user name. An invitation that expired, was used or
+	 * was withdrawn is answered <code>410 Gone</code> here instead.
+	 * </p>
+	 */
+	InvitationInfo invitation;
 }
 
 /**
@@ -918,4 +947,117 @@ message ShareLinkCreated {
 
 	/** The link's path on this server: <code>&lt;context&gt;/s/&lt;token&gt;/</code>. */
 	string url;
+}
+
+/**
+ * An invitation: a single-use token that creates a user, see issue #52.
+ *
+ * <p>
+ * Sent to <code>&lt;data&gt;/?action=invite</code> to create one, where only {@link #role},
+ * {@link #expires} and {@link #note} are read and everything else is answered by the server;
+ * answered by <code>&lt;data&gt;/?type=invitations</code> and used to name the invitation to
+ * withdraw at <code>&lt;data&gt;/?action=uninvite</code>, which reads nothing but the {@link #id}.
+ * </p>
+ *
+ * <p>
+ * The token is never part of this message: it is answered exactly once, in an
+ * {@link InvitationCreated}, and the server stores nothing but its hash.
+ * </p>
+ */
+message Invitation {
+	/** The short id of the invitation; answered by the server, and what names it in a request. */
+	string id;
+
+	/**
+	 * The role the accepting user is created with: <code>member</code> or <code>guest</code>.
+	 *
+	 * <p>
+	 * Never <code>admin</code>: the library has exactly one owner and nobody is invited into that
+	 * seat. An empty role is read as <code>member</code>.
+	 * </p>
+	 */
+	string role;
+
+	/** A note the inviter wrote for themselves, shown wherever the invitation is listed; may be empty. */
+	string note;
+
+	/**
+	 * When the invitation expires, an ISO-8601 instant.
+	 *
+	 * <p>
+	 * Empty in a request means "in seven days"; the answer always carries the instant the server
+	 * settled on, so an invitation never lives forever.
+	 * </p>
+	 */
+	string expires;
+
+	/** The name of the user who issued the invitation; answered by the server. */
+	string invitedBy;
+
+	/** When the invitation was issued, an ISO-8601 instant; answered by the server. */
+	string created;
+
+	/** When the invitation was accepted, an ISO-8601 instant; empty while it is unused. */
+	string used;
+
+	/** The name of the user the invitation created, empty while it is unused. */
+	string usedBy;
+
+	/** When the invitation was withdrawn, an ISO-8601 instant; empty while it stands. */
+	string revoked;
+}
+
+/**
+ * The answer to <code>&lt;data&gt;/?action=invite</code>: the new invitation, with its token.
+ *
+ * <p>
+ * The one and only time the {@link #token} is answered; the server keeps its hash and can never
+ * show it again. A lost invitation is withdrawn and issued anew.
+ * </p>
+ */
+message InvitationCreated {
+	/** The invitation that was issued, as {@link InvitationList} lists it. */
+	Invitation invitation;
+
+	/** The token to accept the invitation with, answered exactly once and never stored. */
+	string token;
+
+	/** The invitation's path on this server: <code>&lt;context&gt;/i/&lt;token&gt;/</code>. */
+	string url;
+}
+
+/**
+ * The invitations of this server, answered by <code>&lt;data&gt;/?type=invitations</code>.
+ *
+ * <p>
+ * The admin is answered every invitation, a member the ones they issued themselves; a guest and an
+ * anonymous caller are answered none at all. No answer ever carries a token.
+ * </p>
+ */
+message InvitationList {
+	/** The invitations, newest last, in the order they were issued. */
+	repeated Invitation invitations;
+}
+
+/**
+ * The invitation the caller presented, see {@link AuthInfo#invitation} and issue #52.
+ *
+ * <p>
+ * What the app needs to say "you were invited by alice as a member" before it asks for a name. An
+ * invitation token is no login: it says what would be created if it were accepted, and nothing
+ * more.
+ * </p>
+ */
+message InvitationInfo {
+	/** The role the accepting user would be created with: <code>member</code> or <code>guest</code>. */
+	string role;
+
+	/** The name of the user who issued the invitation. */
+	string invitedBy;
+
+	/** The note the inviter wrote, empty if they wrote none. */
+	string note;
+
+	/** When the invitation expires, an ISO-8601 instant. */
+	string expires;
 }

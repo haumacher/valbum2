@@ -24,11 +24,16 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getUserName() */
 	private static final String USER_NAME__PROP = "userName";
 
+	/** @see #getInvitation() */
+	private static final String INVITATION__PROP = "invitation";
+
 	private String _secret = "";
 
 	private String _deviceName = "";
 
 	private String _userName = "";
+
+	private String _invitation = "";
 
 	/**
 	 * Creates a {@link PairRequest} instance.
@@ -87,6 +92,11 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	 * empty name means the owner, a non-empty one names the owner when it has no name yet and must
 	 * match the stored name afterwards. An app from before issue #45 sends no name at all.
 	 * </p>
+	 *
+	 * <p>
+	 * With an {@link #getInvitation()} it is the name of the user to create, which must be free and must
+	 * pass the server's name rule; it is not optional there.
+	 * </p>
 	 */
 	public final String getUserName() {
 		return _userName;
@@ -103,6 +113,33 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** Internal setter for {@link #getUserName()} without chain call utility. */
 	protected final void internalSetUserName(String value) {
 		_userName = value;
+	}
+
+	/**
+	 * The token of an {@link Invitation}, the alternative to the {@link #getSecret()} (issue #52).
+	 *
+	 * <p>
+	 * Accepting an invitation is pairing: a live, unused invitation together with a free
+	 * {@link #getUserName()} creates the user with the invitation's role, issues this device's token and
+	 * marks the invitation used. Empty in every other request; a request carrying both is read as
+	 * an invitation.
+	 * </p>
+	 */
+	public final String getInvitation() {
+		return _invitation;
+	}
+
+	/**
+	 * @see #getInvitation()
+	 */
+	public de.haumacher.imageServer.shared.model.PairRequest setInvitation(String value) {
+		internalSetInvitation(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getInvitation()} without chain call utility. */
+	protected final void internalSetInvitation(String value) {
+		_invitation = value;
 	}
 
 	/** Reads a new instance from the given reader. */
@@ -126,6 +163,8 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getDeviceName());
 		out.name(USER_NAME__PROP);
 		out.value(getUserName());
+		out.name(INVITATION__PROP);
+		out.value(getInvitation());
 	}
 
 	@Override
@@ -134,6 +173,7 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case SECRET__PROP: setSecret(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case DEVICE_NAME__PROP: setDeviceName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case USER_NAME__PROP: setUserName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case INVITATION__PROP: setInvitation(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

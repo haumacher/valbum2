@@ -171,6 +171,24 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-13 (later)** — Invitations and guests (#52), server side. An invitation is a single-use token
+  that creates a user: `?action=invite` (a member, or the admin alone under `--invite admin`) records it
+  hash-only in `<basepath>/.valbum/invitations.json` with role, inviter, note and an expiry that is never
+  empty (seven days by default), and answers the token once with `<context>/i/<token>/`. Accepting *is*
+  pairing: `?action=pair` with the invitation instead of the secret, a free name, and the device token
+  comes out exactly as one earned by the secret; the invitation is used up inside the same lock, so a token
+  that races itself creates one user. An invitation bearer is anonymous everywhere but `?type=auth`, which
+  names inviter and role so the app can say who asked. A guest's root is
+  `<basepath>/.valbum/guests/<name>/`, shaped exactly like a member's space root (links sidecar, own share
+  registry), which is why materialisation, tiles, moves and declining work for a guest without a line of
+  new code; the one thing that folder is not for — a photo — is refused by role on creation, upload and
+  move-target, and no grant can target it. Promotion is therefore one rename of that folder to
+  `<basepath>/<name>/` — it becomes the space, links and registry already in place; demotion is not
+  offered. Names: a free name is neither a user, a group, nor a top-level folder, and — found by the review
+  probe — may not start with `~`, the canonical form of another user's space. Token lookup order is
+  devices, shares, invitations; a token in none of them is unknown. The app half (inviting from the
+  settings, accepting at `/i/<token>/`, the guest's view of their library) is open.
+
 - **2026-09-13** — Share links (#51), app side. A link is a session, not a pairing: the web app recognises
   `<context>/s/<token>/` in its own app base (never in the document location, which is the album being
   looked at after the first navigation), talks to `<context>/data` with the token as bearer, and consults

@@ -43,7 +43,7 @@ public class ResourceServlet extends HttpServlet {
 
 	private final String _dataPath;
 
-	private final String _virtualPrefix;
+	private final String[] _virtualPrefixes;
 
 	/**
 	 * Creates a {@link ResourceServlet} serving the class path only.
@@ -53,7 +53,7 @@ public class ResourceServlet extends HttpServlet {
 	 *        application is deployed at all.
 	 */
 	public ResourceServlet(String dataPath) {
-		this(null, dataPath, null);
+		this(null, dataPath, new String[0]);
 	}
 
 	/**
@@ -66,7 +66,7 @@ public class ResourceServlet extends HttpServlet {
 	 *        See {@link #ResourceServlet(String)}.
 	 */
 	public ResourceServlet(Path webRoot, String dataPath) {
-		this(webRoot, dataPath, null);
+		this(webRoot, dataPath, new String[0]);
 	}
 
 	/**
@@ -76,17 +76,18 @@ public class ResourceServlet extends HttpServlet {
 	 *        See {@link #ResourceServlet(Path, String)}.
 	 * @param dataPath
 	 *        See {@link #ResourceServlet(String)}.
-	 * @param virtualPrefix
-	 *        The first segment of a virtual base (<code>s</code> for the share links of issue
-	 *        #51), <code>null</code> for serving the context root only. A request below
+	 * @param virtualPrefixes
+	 *        The first segments a virtual base may have (<code>s</code> for the share links of
+	 *        issue #51, <code>i</code> for the invitations of issue #52); none for serving the
+	 *        context root only. A request below
 	 *        <code>/&lt;prefix&gt;/&lt;segment&gt;/</code> is served the same files with the
 	 *        <code>&lt;base href&gt;</code> of the index page rewritten to that base, see
-	 *        {@link WebRootResolver#virtualBase(String, String)}. Nothing here looks at the
+	 *        {@link WebRootResolver#virtualBase(String, String...)}. Nothing here looks at the
 	 *        segment: whether it opens anything is the JSON API's business, and an application
 	 *        served under a dead one asks and says so.
 	 */
-	public ResourceServlet(Path webRoot, String dataPath, String virtualPrefix) {
-		_virtualPrefix = virtualPrefix;
+	public ResourceServlet(Path webRoot, String dataPath, String... virtualPrefixes) {
+		_virtualPrefixes = virtualPrefixes == null ? new String[0] : virtualPrefixes;
 		if (webRoot != null) {
 			_sources.add(new ContentSource.Directory(webRoot));
 		}
@@ -98,10 +99,10 @@ public class ResourceServlet extends HttpServlet {
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
 
-		String virtualBase = WebRootResolver.virtualBase(pathInfo, _virtualPrefix);
+		String virtualBase = WebRootResolver.virtualBase(pathInfo, _virtualPrefixes);
 		String relative = virtualBase == null ? pathInfo : pathInfo.substring(virtualBase.length());
 		if (virtualBase != null && relative.isEmpty()) {
-			// "/s/<token>" without a trailing slash is the application's entry point, too.
+			// "/s/<token>" (and "/i/<token>") without a trailing slash is the entry point, too.
 			relative = "/";
 		}
 
@@ -156,7 +157,7 @@ public class ResourceServlet extends HttpServlet {
 	 * @param base
 	 *        Where the application is mounted, without a trailing slash: the context path, and
 	 *        below a virtual base the context path followed by it, see
-	 *        {@link #ResourceServlet(Path, String, String)}.
+	 *        {@link #ResourceServlet(Path, String, String...)}.
 	 */
 	static byte[] rebaseIndex(byte[] html, String base) {
 		if (base == null || base.isEmpty() || base.equals("/")) {

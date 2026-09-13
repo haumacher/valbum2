@@ -6,7 +6,7 @@ package de.haumacher.util.servlet;
 import junit.framework.TestCase;
 
 /**
- * Test case for {@link WebRootResolver#virtualBase(String, String)}, see issue #51.
+ * Test case for {@link WebRootResolver#virtualBase(String, String...)}, see issues #51 and #52.
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
@@ -37,6 +37,19 @@ public class TestWebRootResolver extends TestCase {
 		assertNull("A handler without a prefix serves no virtual base at all.",
 			WebRootResolver.virtualBase("/s/abc/", null));
 		assertNull(WebRootResolver.virtualBase("/s/abc/", ""));
+	}
+
+	public void testAHandlerSeveralPrefixes() {
+		// The invitations of issue #52 are served the same way, under their own segment.
+		assertEquals("/i/abc", WebRootResolver.virtualBase("/i/abc/", "s", "i"));
+		assertEquals("/i/abc", WebRootResolver.virtualBase("/i/abc/deep/route", "s", "i"));
+		assertEquals("/s/abc", WebRootResolver.virtualBase("/s/abc/", "s", "i"));
+		assertNull("A segment no prefix names carries no virtual base.",
+			WebRootResolver.virtualBase("/x/abc/", "s", "i"));
+		assertNull(WebRootResolver.virtualBase("/i/", "s", "i"));
+		assertNull(WebRootResolver.virtualBase("/i", "s", "i"));
+		assertNull("A handler without any prefix serves no virtual base at all.",
+			WebRootResolver.virtualBase("/i/abc/"));
 	}
 
 	public void testADotSegmentIsNoToken() {

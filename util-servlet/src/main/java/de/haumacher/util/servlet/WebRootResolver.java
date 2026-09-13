@@ -70,14 +70,28 @@ public class WebRootResolver {
 	 *
 	 * @param pathInfo
 	 *        The path info of the request, may be <code>null</code>.
-	 * @param prefix
-	 *        The first segment of a virtual base (<code>s</code>), <code>null</code> or empty if
-	 *        this handler serves no virtual base at all.
+	 * @param prefixes
+	 *        The first segments a virtual base may have (<code>s</code> for the share links of
+	 *        issue #51, <code>i</code> for the invitations of issue #52); none, or a
+	 *        <code>null</code> or empty one, if this handler serves no virtual base at all.
 	 * @return The virtual base including its leading slash and without a trailing one
 	 *         (<code>/s/abc</code>), <code>null</code> if the path carries none.
 	 */
-	public static String virtualBase(String pathInfo, String prefix) {
-		if (pathInfo == null || prefix == null || prefix.isEmpty()) {
+	public static String virtualBase(String pathInfo, String... prefixes) {
+		if (pathInfo == null || prefixes == null) {
+			return null;
+		}
+		for (String prefix : prefixes) {
+			String base = virtualBase(pathInfo, prefix);
+			if (base != null) {
+				return base;
+			}
+		}
+		return null;
+	}
+
+	private static String virtualBase(String pathInfo, String prefix) {
+		if (prefix == null || prefix.isEmpty()) {
 			return null;
 		}
 		String head = "/" + prefix + "/";

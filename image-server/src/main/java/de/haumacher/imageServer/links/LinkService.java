@@ -384,7 +384,9 @@ public class LinkService {
 	}
 
 	private static Path spaceFolder(Path basePath, User owner) {
-		return owner.getSpace().isEmpty() ? basePath : basePath.resolve(owner.getSpace());
+		// A guest's root is not a folder of the album tree, see issue #52; AuthService knows where
+		// it is, and this is the one place a link needs to be told.
+		return AuthService.spaceFolder(basePath, owner);
 	}
 
 	/**

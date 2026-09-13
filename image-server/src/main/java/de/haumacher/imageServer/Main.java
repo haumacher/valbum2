@@ -5,6 +5,8 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.InvitationStore;
+import de.haumacher.imageServer.auth.InviteMode;
 import de.haumacher.imageServer.auth.LibraryMigration;
 import de.haumacher.imageServer.auth.LibraryMigration.MigrationRefused;
 import de.haumacher.imageServer.auth.ShareStore;
@@ -61,6 +63,9 @@ public class Main {
 		parser.addArgument("-a", "--auth").choices("off", "writes", "all").setDefault("writes").help(
 			"What requires a device paired with this server: 'off' serves every request, "
 				+ "'writes' refuses anonymous changes and uploads, 'all' refuses anonymous reads as well");
+		parser.addArgument("--invite").choices("members", "admin").setDefault("members").help(
+			"Who may invite somebody onto this server (issue #52): 'members' lets every member hand "
+				+ "out an invitation, 'admin' reserves that for the library owner");
 		parser.addArgument("--pairing-secret").help(
 			"The secret a device must present to be paired with this server; "
 				+ "a random one is generated and printed at start-up if none is given");
@@ -123,6 +128,8 @@ public class Main {
 
 	private final AuthMode _authMode;
 
+	private final InviteMode _inviteMode;
+
 	private final String _pairingSecret;
 
 	/**
@@ -134,6 +141,7 @@ public class Main {
 		_contextPath = normlizeContextPath(ns.get("contextpath"));
 		_webRoot = ns.get("webroot");
 		_authMode = AuthMode.parse(ns.getString("auth"));
+		_inviteMode = InviteMode.parse(ns.getString("invite"));
 
 		String secret = ns.getString("pairing_secret");
 		if (_authMode != AuthMode.OFF && (secret == null || secret.isEmpty())) {
@@ -156,13 +164,14 @@ public class Main {
 		WebAppContext webapp = new WebAppContext();
 		webapp.setContextPath(_contextPath);
 		webapp.setResourceBase(_basePath.toString());
-		AuthService auth = new AuthService(_authMode, _pairingSecret, _basePath.toPath());
+		AuthService auth = new AuthService(_authMode, _pairingSecret, _basePath.toPath(), _inviteMode);
 		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath, auth)), Settings.DATA_PREFIX + "/*");
 		Path webRoot = _webRoot == null ? null : _webRoot.toPath();
-		// The same application is served below "/s/<token>/", so that a share link opens it with
-		// its own base href; the static handler never looks at the token, see issue #51.
-		webapp.addServlet(new ServletHolder(new ResourceServlet(webRoot, Settings.DATA_PREFIX, ShareStore.URL_SEGMENT)),
-			STATIC_PREFIX + "/*");
+		// The same application is served below "/s/<token>/" (a share link, issue #51) and
+		// "/i/<token>/" (an invitation, issue #52), so that either opens it with its own base href;
+		// the static handler never looks at the token.
+		webapp.addServlet(new ServletHolder(new ResourceServlet(webRoot, Settings.DATA_PREFIX,
+			ShareStore.URL_SEGMENT, InvitationStore.URL_SEGMENT)), STATIC_PREFIX + "/*");
 		webapp.setClassLoader(Main.class.getClassLoader());
 
 		handlers.addHandler(webapp);
@@ -184,6 +193,7 @@ public class Main {
 		}
 		System.out.println("Authentication: " + _authMode.protocolName());
 		if (_authMode != AuthMode.OFF) {
+			System.out.println("Invitations: " + _inviteMode.protocolName());
 			System.out.println("Pairing secret: " + _pairingSecret);
 			UserStore.User owner = auth.getUsers().getOwner();
 			if (owner == null) {

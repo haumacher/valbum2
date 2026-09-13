@@ -36,6 +36,9 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getShare() */
 	private static final String SHARE__PROP = "share";
 
+	/** @see #getInvitation() */
+	private static final String INVITATION__PROP = "invitation";
+
 	private String _mode = "";
 
 	private String _deviceName = "";
@@ -49,6 +52,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _space = "";
 
 	private de.haumacher.imageServer.shared.model.ShareInfo _share = null;
+
+	private de.haumacher.imageServer.shared.model.InvitationInfo _invitation = null;
 
 	/**
 	 * Creates a {@link AuthInfo} instance.
@@ -212,6 +217,40 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		return _share != null;
 	}
 
+	/**
+	 * The invitation this caller presented, <code>null</code> for everybody else (issue #52).
+	 *
+	 * <p>
+	 * An invitation token is no login: the caller is anonymous on every other endpoint, and this
+	 * is the one place the server says what the invitation offers, so that the app can name the
+	 * inviter and the role before it asks for a user name. An invitation that expired, was used or
+	 * was withdrawn is answered <code>410 Gone</code> here instead.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.InvitationInfo getInvitation() {
+		return _invitation;
+	}
+
+	/**
+	 * @see #getInvitation()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setInvitation(de.haumacher.imageServer.shared.model.InvitationInfo value) {
+		internalSetInvitation(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getInvitation()} without chain call utility. */
+	protected final void internalSetInvitation(de.haumacher.imageServer.shared.model.InvitationInfo value) {
+		_invitation = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getInvitation()} has a value.
+	 */
+	public final boolean hasInvitation() {
+		return _invitation != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.AuthInfo readAuthInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.AuthInfo result = new de.haumacher.imageServer.shared.model.AuthInfo();
@@ -243,6 +282,10 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			out.name(SHARE__PROP);
 			getShare().writeTo(out);
 		}
+		if (hasInvitation()) {
+			out.name(INVITATION__PROP);
+			getInvitation().writeTo(out);
+		}
 	}
 
 	@Override
@@ -255,6 +298,7 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case ROLE__PROP: setRole(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SPACE__PROP: setSpace(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SHARE__PROP: setShare(de.haumacher.imageServer.shared.model.ShareInfo.readShareInfo(in)); break;
+			case INVITATION__PROP: setInvitation(de.haumacher.imageServer.shared.model.InvitationInfo.readInvitationInfo(in)); break;
 			default: super.readField(in, field);
 		}
 	}

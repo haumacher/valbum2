@@ -12,9 +12,11 @@ import de.haumacher.imageServer.auth.AuthService.PairRefused;
 import de.haumacher.imageServer.auth.AuthService.PathRefused;
 import de.haumacher.imageServer.auth.GrantStore;
 import de.haumacher.imageServer.auth.GroupStore;
+import de.haumacher.imageServer.auth.InvitationStore;
 import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.Rights;
+import de.haumacher.imageServer.auth.Roles;
 import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.Subjects;
 import de.haumacher.imageServer.auth.UserStore;
@@ -31,6 +33,9 @@ import de.haumacher.imageServer.shared.model.Group;
 import de.haumacher.imageServer.shared.model.GroupList;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.Invitation;
+import de.haumacher.imageServer.shared.model.InvitationCreated;
+import de.haumacher.imageServer.shared.model.InvitationList;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.MemberName;
 import de.haumacher.imageServer.shared.model.MoveName;
@@ -123,6 +128,12 @@ public class ImageServlet extends HttpServlet {
 
 	/** The message an unreadable share link is refused with. */
 	public static final String SHARE_UNREADABLE = "The share link cannot be read.";
+
+	/** The message an unreadable invitation is refused with, see issue #52. */
+	public static final String INVITATION_UNREADABLE = "The invitation cannot be read.";
+
+	/** The message an unreadable promotion request is refused with. */
+	public static final String PROMOTION_UNREADABLE = "The request naming the user to promote cannot be read.";
 
 	/**
 	 * The message a request for an image below the caller's rating limit is refused with, see
@@ -241,8 +252,19 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		if ("auth".equals(type)) {
+			if (caller.getInvitationGone() != null) {
+				// The one endpoint an invitation token reaches, and the one place it is told what
+				// became of the invitation instead of simply being nobody, see issue #52.
+				LOG.warning("Refusing the invitation at '" + pathInfo + "': " + caller.getInvitationGone());
+				errorInfo(context, HttpServletResponse.SC_GONE, caller.getInvitationGone());
+				return;
+			}
 			// Always answerable: this is how an unpaired app learns that it must pair.
 			serveJsonObject(response, _auth.authInfo(caller, _basePath));
+			return;
+		}
+		if ("invitations".equals(type)) {
+			serveInvitations(context, caller);
 			return;
 		}
 		if ("users".equals(type)) {
@@ -396,6 +418,9 @@ public class ImageServlet extends HttpServlet {
 					refuse(context, caller, folder, Rights.EDIT, true);
 					return;
 				}
+				if (guestSpaceRefused(context, folder)) {
+					return;
+				}
 				createAlbum(context, location, resourcePath);
 				return;
 			}
@@ -409,6 +434,9 @@ public class ImageServlet extends HttpServlet {
 					AuthService.homeNameRefused(resourcePath.getName()));
 				return;
 			}
+			if (guestSpaceRefused(context, folder)) {
+				return;
+			}
 			storeSingleImage(context, file);
 			return;
 		}
@@ -416,6 +444,9 @@ public class ImageServlet extends HttpServlet {
 		if (baseType.equals("multipart/form-data")) {
 			if (!_auth.mayContribute(caller, resourcePath)) {
 				refuse(context, caller, resourcePath, Rights.CONTRIBUTE, true);
+				return;
+			}
+			if (guestSpaceRefused(context, resourcePath)) {
 				return;
 			}
 			storeUploads(context, resourcePath);
@@ -486,6 +517,29 @@ public class ImageServlet extends HttpServlet {
 			context.response().setHeader("WWW-Authenticate", "Bearer");
 			errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, message);
 		}
+	}
+
+	/**
+	 * Refuses a request that would put something into a guest's root, see issue #52.
+	 *
+	 * <p>
+	 * A guest's root is not a library: it holds the albums that were shared with them and nothing
+	 * else — no album of their own, no upload, no move into it. It is a refusal by <em>role</em>,
+	 * layered on top of the rights: the guest does hold every right in their own root (they
+	 * rearrange and decline their links there, see issue #50), and what is refused is only the one
+	 * thing that folder is not for. What a guest may add to somebody else's album is a grant's
+	 * business and untouched by this.
+	 * </p>
+	 *
+	 * @return Whether the request was answered here.
+	 */
+	private boolean guestSpaceRefused(Context context, PathInfo folder) throws IOException {
+		if (!_auth.isGuestSpace(folder)) {
+			return false;
+		}
+		LOG.warning("Refusing to store anything in the guest root '" + folder.toFile() + "'.");
+		errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GUEST_SPACE_REFUSED);
+		return true;
 	}
 
 	/**
@@ -751,6 +805,9 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (!_auth.mayContribute(caller, target)) {
 			refuseMove(context, caller, MoveService.CONTRIBUTE_REFUSED, true);
+			return;
+		}
+		if (guestSpaceRefused(context, target)) {
 			return;
 		}
 
@@ -1218,8 +1275,20 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 */
 	private static String shareUrl(Context context, String token) {
+		return appUrl(context, ShareStore.URL_SEGMENT, token);
+	}
+
+	/**
+	 * The path a token opens this server's web application at, below the given segment.
+	 *
+	 * <p>
+	 * <code>/s/</code> for a share link (issue #51) and <code>/i/</code> for an invitation (issue
+	 * #52): two tokens of different kinds, one static handler, and the same rule for both.
+	 * </p>
+	 */
+	private static String appUrl(Context context, String segment, String token) {
 		String contextPath = context.getContextPath() == null ? "" : context.getContextPath();
-		return contextPath + "/" + ShareStore.URL_SEGMENT + "/" + token + "/";
+		return contextPath + "/" + segment + "/" + token + "/";
 	}
 
 	/**
@@ -1254,6 +1323,232 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Issues an invitation at <code>&lt;data&gt;/?action=invite</code>, see issue #52.
+	 *
+	 * <p>
+	 * An invitation is a single-use token that <em>creates a user</em>, so it names no path and
+	 * touches no album: it is answered at the data root and the request body says only what the
+	 * accepting user becomes. The token travels back exactly once, in the
+	 * {@link InvitationCreated}, together with the URL the app is served under for it.
+	 * </p>
+	 *
+	 * <p>
+	 * Who may: a member and the admin, unless the server was started with
+	 * <code>--invite admin</code>, and then only the admin. Never a guest, and never an anonymous
+	 * caller, who is refused like every other write. Whom to: a member or a guest, never an admin —
+	 * the library has one owner and nobody is invited into that seat.
+	 * </p>
+	 */
+	private void createInvitation(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (Roles.GUEST.equals(caller.getRole())) {
+			LOG.warning("Refusing an invitation to the guest '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.INVITE_GUEST_REFUSED);
+			return;
+		}
+		if (!_auth.mayInvite(caller)) {
+			LOG.warning("Refusing an invitation to '" + caller.getUserName() + "': "
+				+ _auth.getInviteMode().protocolName() + " invites here.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.INVITE_ADMIN_ONLY);
+			return;
+		}
+
+		Invitation request = readInvitation(context);
+		if (request == null) {
+			return;
+		}
+		String role = request.getRole() == null || request.getRole().trim().isEmpty() ? Roles.MEMBER
+			: request.getRole().trim();
+		if (Roles.ADMIN.equals(role)) {
+			LOG.warning("Refusing an invitation into the administrator's seat.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.INVITATION_ADMIN_REFUSED);
+			return;
+		}
+		if (!Roles.MEMBER.equals(role) && !Roles.GUEST.equals(role)) {
+			LOG.warning("Refusing an invitation with the unknown role '" + role + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.invitationRoleRefused(role));
+			return;
+		}
+		String expires = request.getExpires() == null ? "" : request.getExpires().trim();
+		if (!expires.isEmpty()) {
+			try {
+				expires = java.time.Instant.parse(expires).toString();
+			} catch (java.time.DateTimeException ex) {
+				LOG.warning("Refusing the invitation expiry '" + expires + "': " + ex.getMessage());
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.INVITATION_EXPIRY_REFUSED);
+				return;
+			}
+		}
+		String note = request.getNote() == null ? "" : request.getNote().trim();
+
+		InvitationStore.Issued issued =
+			_auth.getInvitations().create(role, caller.getUserName(), note, expires);
+		LOG.info("Issued " + issued.getInvitation() + ".");
+		serveJsonObject(context.response(), InvitationCreated.create()
+			.setInvitation(onTheWire(issued.getInvitation()))
+			.setToken(issued.getToken())
+			.setUrl(appUrl(context, InvitationStore.URL_SEGMENT, issued.getToken())));
+	}
+
+	/**
+	 * Answers the invitations at <code>&lt;data&gt;/?type=invitations</code>, see issue #52.
+	 *
+	 * <p>
+	 * The admin sees every invitation of the server, a member the ones they issued themselves:
+	 * whom somebody else invited is nobody else's business, and the admin is the one who keeps the
+	 * server in order. A guest and an anonymous caller see none at all, and no answer ever carries
+	 * a token.
+	 * </p>
+	 */
+	private void serveInvitations(Context context, Caller caller) throws IOException {
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		if (Roles.GUEST.equals(caller.getRole())) {
+			LOG.warning("Refusing the invitations to the guest '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.INVITATIONS_REFUSED);
+			return;
+		}
+
+		InvitationList result = InvitationList.create();
+		InvitationStore invitations = _auth.getInvitations();
+		if (invitations != null) {
+			boolean admin = Roles.ADMIN.equals(caller.getRole());
+			for (InvitationStore.Link invitation : invitations.getInvitations()) {
+				if (admin || invitation.getInvitedBy().equals(caller.getUserName())) {
+					result.addInvitation(onTheWire(invitation));
+				}
+			}
+		}
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Withdraws an invitation at <code>&lt;data&gt;/?action=uninvite</code>, see issue #52.
+	 *
+	 * <p>
+	 * The record is marked withdrawn and kept — a management screen shows what became of an
+	 * invitation somebody handed out, see issue #55 — and the token is refused from then on. A user
+	 * the invitation already created is untouched: withdrawing an invitation is not removing
+	 * somebody. Only the issuer and the admin may withdraw; anybody else is told that there is no
+	 * such invitation, not whose it is.
+	 * </p>
+	 */
+	private void removeInvitation(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (Roles.GUEST.equals(caller.getRole())) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.INVITATIONS_REFUSED);
+			return;
+		}
+
+		Invitation request = readInvitation(context);
+		if (request == null) {
+			return;
+		}
+		String id = request.getId() == null ? "" : request.getId().trim();
+		InvitationStore invitations = _auth.getInvitations();
+		InvitationStore.Link invitation = id.isEmpty() || invitations == null ? null : invitations.get(id);
+		boolean mine = invitation != null && (Roles.ADMIN.equals(caller.getRole())
+			|| invitation.getInvitedBy().equals(caller.getUserName()));
+		if (!mine) {
+			LOG.warning("Refusing to withdraw the unknown invitation '" + id + "'.");
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.INVITATION_UNKNOWN);
+			return;
+		}
+
+		invitations.revoke(invitation.getId());
+		LOG.info("Withdrew " + invitation + ".");
+		serveJsonObject(context.response(), InvitationList.create().addInvitation(onTheWire(invitation)));
+	}
+
+	/**
+	 * Turns a guest into a member at <code>&lt;data&gt;/?action=promote</code>, see issue #52.
+	 *
+	 * <p>
+	 * Only the admin, who is the one who hands out space on this server. The body names the user
+	 * and nothing else: a {@link MemberName} is the smallest message that carries a name, and the
+	 * role is not read — there is exactly one direction, guest to member, and no demotion.
+	 * </p>
+	 */
+	private void promoteUser(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (!Roles.ADMIN.equals(caller.getRole())) {
+			LOG.warning("Refusing a promotion to '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.PROMOTE_REFUSED);
+			return;
+		}
+
+		MemberName request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = MemberName.readMemberName(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unparsable promotion: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PROMOTION_UNREADABLE);
+			return;
+		}
+
+		UserStore.User promoted;
+		try {
+			promoted = _auth.promote(request.getName());
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing to promote '" + request.getName() + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+		serveJsonObject(context.response(),
+			UserEntry.create().setName(promoted.getName()).setRole(promoted.getRole()));
+	}
+
+	/** The body of an invitation request, <code>null</code> if it cannot be read (the response is complete). */
+	private static Invitation readInvitation(Context context) throws IOException {
+		try {
+			byte[] contents = readBody(context.request());
+			return Invitation.readInvitation(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unparsable invitation: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, INVITATION_UNREADABLE);
+			return null;
+		}
+	}
+
+	/**
+	 * The given invitation as the protocol carries it.
+	 *
+	 * <p>
+	 * Never the token and never its hash: what a listing shows is what the inviter needs to tell
+	 * one invitation from another and to see what became of it, see issue #52.
+	 * </p>
+	 */
+	private static Invitation onTheWire(InvitationStore.Link invitation) {
+		return Invitation.create()
+			.setId(invitation.getId())
+			.setRole(invitation.getRole())
+			.setNote(invitation.getNote())
+			.setExpires(invitation.getExpires())
+			.setInvitedBy(invitation.getInvitedBy())
+			.setCreated(invitation.getCreated())
+			.setUsed(invitation.getUsed())
+			.setUsedBy(invitation.getUsedBy())
+			.setRevoked(invitation.getRevoked());
+	}
+
+	/**
 	 * Records or removes a grant on the addressed folder, see issue #49.
 	 *
 	 * <p>
@@ -1280,6 +1575,12 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (location.getOwner().isEmpty()) {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.PATH_ESCAPED);
+			return;
+		}
+		if (_auth.isGuestSpace(location.getPath())) {
+			// A guest owns no album; what lies in their root are other people's, see issue #52.
+			LOG.warning("Refusing a grant on the guest root of '" + location.getOwner() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GUEST_GRANT_REFUSED);
 			return;
 		}
 
@@ -1489,6 +1790,18 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("unshare".equals(action)) {
 			removeShare(context);
+			return;
+		}
+		if ("invite".equals(action)) {
+			createInvitation(context);
+			return;
+		}
+		if ("uninvite".equals(action)) {
+			removeInvitation(context);
+			return;
+		}
+		if ("promote".equals(action)) {
+			promoteUser(context);
 			return;
 		}
 

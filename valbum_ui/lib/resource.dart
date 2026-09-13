@@ -1376,13 +1376,29 @@ class PairRequest extends _JsonObject {
 	///  empty name means the owner, a non-empty one names the owner when it has no name yet and must
 	///  match the stored name afterwards. An app from before issue #45 sends no name at all.
 	///  </p>
+	/// 
+	///  <p>
+	///  With an {@link #invitation} it is the name of the user to create, which must be free and must
+	///  pass the server's name rule; it is not optional there.
+	///  </p>
 	String userName;
+
+	///  The token of an {@link Invitation}, the alternative to the {@link #secret} (issue #52).
+	/// 
+	///  <p>
+	///  Accepting an invitation is pairing: a live, unused invitation together with a free
+	///  {@link #userName} creates the user with the invitation's role, issues this device's token and
+	///  marks the invitation used. Empty in every other request; a request carrying both is read as
+	///  an invitation.
+	///  </p>
+	String invitation;
 
 	/// Creates a PairRequest.
 	PairRequest({
 			this.secret = "", 
 			this.deviceName = "", 
 			this.userName = "", 
+			this.invitation = "", 
 	});
 
 	/// Parses a PairRequest from a string source.
@@ -1415,6 +1431,10 @@ class PairRequest extends _JsonObject {
 				userName = json.expectString();
 				break;
 			}
+			case "invitation": {
+				invitation = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1431,6 +1451,9 @@ class PairRequest extends _JsonObject {
 
 		json.addKey("userName");
 		json.addString(userName);
+
+		json.addKey("invitation");
+		json.addString(invitation);
 	}
 
 }
@@ -1554,6 +1577,16 @@ class AuthInfo extends _JsonObject {
 	///  </p>
 	ShareInfo? share;
 
+	///  The invitation this caller presented, <code>null</code> for everybody else (issue #52).
+	/// 
+	///  <p>
+	///  An invitation token is no login: the caller is anonymous on every other endpoint, and this
+	///  is the one place the server says what the invitation offers, so that the app can name the
+	///  inviter and the role before it asks for a user name. An invitation that expired, was used or
+	///  was withdrawn is answered <code>410 Gone</code> here instead.
+	///  </p>
+	InvitationInfo? invitation;
+
 	/// Creates a AuthInfo.
 	AuthInfo({
 			this.mode = "", 
@@ -1563,6 +1596,7 @@ class AuthInfo extends _JsonObject {
 			this.role = "", 
 			this.space = "", 
 			this.share, 
+			this.invitation, 
 	});
 
 	/// Parses a AuthInfo from a string source.
@@ -1611,6 +1645,10 @@ class AuthInfo extends _JsonObject {
 				share = json.tryNull() ? null : ShareInfo.read(json);
 				break;
 			}
+			case "invitation": {
+				invitation = json.tryNull() ? null : InvitationInfo.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1641,6 +1679,12 @@ class AuthInfo extends _JsonObject {
 		if (_share != null) {
 			json.addKey("share");
 			_share.writeContent(json);
+		}
+
+		var _invitation = invitation;
+		if (_invitation != null) {
+			json.addKey("invitation");
+			_invitation.writeContent(json);
 		}
 	}
 
@@ -3302,6 +3346,387 @@ class ShareLinkCreated extends _JsonObject {
 
 		json.addKey("url");
 		json.addString(url);
+	}
+
+}
+
+///  An invitation: a single-use token that creates a user, see issue #52.
+/// 
+///  <p>
+///  Sent to <code>&lt;data&gt;/?action=invite</code> to create one, where only {@link #role},
+///  {@link #expires} and {@link #note} are read and everything else is answered by the server;
+///  answered by <code>&lt;data&gt;/?type=invitations</code> and used to name the invitation to
+///  withdraw at <code>&lt;data&gt;/?action=uninvite</code>, which reads nothing but the {@link #id}.
+///  </p>
+/// 
+///  <p>
+///  The token is never part of this message: it is answered exactly once, in an
+///  {@link InvitationCreated}, and the server stores nothing but its hash.
+///  </p>
+class Invitation extends _JsonObject {
+	///  The short id of the invitation; answered by the server, and what names it in a request.
+	String id;
+
+	///  The role the accepting user is created with: <code>member</code> or <code>guest</code>.
+	/// 
+	///  <p>
+	///  Never <code>admin</code>: the library has exactly one owner and nobody is invited into that
+	///  seat. An empty role is read as <code>member</code>.
+	///  </p>
+	String role;
+
+	///  A note the inviter wrote for themselves, shown wherever the invitation is listed; may be empty.
+	String note;
+
+	///  When the invitation expires, an ISO-8601 instant.
+	/// 
+	///  <p>
+	///  Empty in a request means "in seven days"; the answer always carries the instant the server
+	///  settled on, so an invitation never lives forever.
+	///  </p>
+	String expires;
+
+	///  The name of the user who issued the invitation; answered by the server.
+	String invitedBy;
+
+	///  When the invitation was issued, an ISO-8601 instant; answered by the server.
+	String created;
+
+	///  When the invitation was accepted, an ISO-8601 instant; empty while it is unused.
+	String used;
+
+	///  The name of the user the invitation created, empty while it is unused.
+	String usedBy;
+
+	///  When the invitation was withdrawn, an ISO-8601 instant; empty while it stands.
+	String revoked;
+
+	/// Creates a Invitation.
+	Invitation({
+			this.id = "", 
+			this.role = "", 
+			this.note = "", 
+			this.expires = "", 
+			this.invitedBy = "", 
+			this.created = "", 
+			this.used = "", 
+			this.usedBy = "", 
+			this.revoked = "", 
+	});
+
+	/// Parses a Invitation from a string source.
+	static Invitation? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a Invitation instance from the given reader.
+	static Invitation read(JsonReader json) {
+		Invitation result = Invitation();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "Invitation";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "role": {
+				role = json.expectString();
+				break;
+			}
+			case "note": {
+				note = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			case "invitedBy": {
+				invitedBy = json.expectString();
+				break;
+			}
+			case "created": {
+				created = json.expectString();
+				break;
+			}
+			case "used": {
+				used = json.expectString();
+				break;
+			}
+			case "usedBy": {
+				usedBy = json.expectString();
+				break;
+			}
+			case "revoked": {
+				revoked = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("role");
+		json.addString(role);
+
+		json.addKey("note");
+		json.addString(note);
+
+		json.addKey("expires");
+		json.addString(expires);
+
+		json.addKey("invitedBy");
+		json.addString(invitedBy);
+
+		json.addKey("created");
+		json.addString(created);
+
+		json.addKey("used");
+		json.addString(used);
+
+		json.addKey("usedBy");
+		json.addString(usedBy);
+
+		json.addKey("revoked");
+		json.addString(revoked);
+	}
+
+}
+
+///  The answer to <code>&lt;data&gt;/?action=invite</code>: the new invitation, with its token.
+/// 
+///  <p>
+///  The one and only time the {@link #token} is answered; the server keeps its hash and can never
+///  show it again. A lost invitation is withdrawn and issued anew.
+///  </p>
+class InvitationCreated extends _JsonObject {
+	///  The invitation that was issued, as {@link InvitationList} lists it.
+	Invitation? invitation;
+
+	///  The token to accept the invitation with, answered exactly once and never stored.
+	String token;
+
+	///  The invitation's path on this server: <code>&lt;context&gt;/i/&lt;token&gt;/</code>.
+	String url;
+
+	/// Creates a InvitationCreated.
+	InvitationCreated({
+			this.invitation, 
+			this.token = "", 
+			this.url = "", 
+	});
+
+	/// Parses a InvitationCreated from a string source.
+	static InvitationCreated? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a InvitationCreated instance from the given reader.
+	static InvitationCreated read(JsonReader json) {
+		InvitationCreated result = InvitationCreated();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "InvitationCreated";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "invitation": {
+				invitation = json.tryNull() ? null : Invitation.read(json);
+				break;
+			}
+			case "token": {
+				token = json.expectString();
+				break;
+			}
+			case "url": {
+				url = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		var _invitation = invitation;
+		if (_invitation != null) {
+			json.addKey("invitation");
+			_invitation.writeContent(json);
+		}
+
+		json.addKey("token");
+		json.addString(token);
+
+		json.addKey("url");
+		json.addString(url);
+	}
+
+}
+
+///  The invitations of this server, answered by <code>&lt;data&gt;/?type=invitations</code>.
+/// 
+///  <p>
+///  The admin is answered every invitation, a member the ones they issued themselves; a guest and an
+///  anonymous caller are answered none at all. No answer ever carries a token.
+///  </p>
+class InvitationList extends _JsonObject {
+	///  The invitations, newest last, in the order they were issued.
+	List<Invitation> invitations;
+
+	/// Creates a InvitationList.
+	InvitationList({
+			this.invitations = const [], 
+	});
+
+	/// Parses a InvitationList from a string source.
+	static InvitationList? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a InvitationList instance from the given reader.
+	static InvitationList read(JsonReader json) {
+		InvitationList result = InvitationList();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "InvitationList";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "invitations": {
+				json.expectArray();
+				invitations = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = Invitation.read(json);
+						if (value != null) {
+							invitations.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("invitations");
+		json.startArray();
+		for (var _element in invitations) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  The invitation the caller presented, see {@link AuthInfo#invitation} and issue #52.
+/// 
+///  <p>
+///  What the app needs to say "you were invited by alice as a member" before it asks for a name. An
+///  invitation token is no login: it says what would be created if it were accepted, and nothing
+///  more.
+///  </p>
+class InvitationInfo extends _JsonObject {
+	///  The role the accepting user would be created with: <code>member</code> or <code>guest</code>.
+	String role;
+
+	///  The name of the user who issued the invitation.
+	String invitedBy;
+
+	///  The note the inviter wrote, empty if they wrote none.
+	String note;
+
+	///  When the invitation expires, an ISO-8601 instant.
+	String expires;
+
+	/// Creates a InvitationInfo.
+	InvitationInfo({
+			this.role = "", 
+			this.invitedBy = "", 
+			this.note = "", 
+			this.expires = "", 
+	});
+
+	/// Parses a InvitationInfo from a string source.
+	static InvitationInfo? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a InvitationInfo instance from the given reader.
+	static InvitationInfo read(JsonReader json) {
+		InvitationInfo result = InvitationInfo();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "InvitationInfo";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "role": {
+				role = json.expectString();
+				break;
+			}
+			case "invitedBy": {
+				invitedBy = json.expectString();
+				break;
+			}
+			case "note": {
+				note = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("role");
+		json.addString(role);
+
+		json.addKey("invitedBy");
+		json.addString(invitedBy);
+
+		json.addKey("note");
+		json.addString(note);
+
+		json.addKey("expires");
+		json.addString(expires);
 	}
 
 }

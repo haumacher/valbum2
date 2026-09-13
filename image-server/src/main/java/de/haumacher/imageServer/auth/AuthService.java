@@ -10,6 +10,7 @@ import de.haumacher.imageServer.auth.UserStore.Login;
 import de.haumacher.imageServer.auth.UserStore.User;
 import de.haumacher.imageServer.links.LinkStore;
 import de.haumacher.imageServer.shared.model.AuthInfo;
+import de.haumacher.imageServer.shared.model.InvitationInfo;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.ShareInfo;
@@ -132,6 +133,103 @@ public class AuthService {
 	/** The message a caller of a withdrawn share link is refused with. */
 	public static final String LINK_REVOKED = "This link was withdrawn.";
 
+	/** The message a caller of an expired invitation is refused with, see issue #52. */
+	public static final String INVITATION_EXPIRED = "This invitation has expired.";
+
+	/** The message a caller of a withdrawn invitation is refused with. */
+	public static final String INVITATION_REVOKED = "This invitation was withdrawn.";
+
+	/** The message a caller of an invitation somebody already accepted is refused with. */
+	public static final String INVITATION_USED = "This invitation was already used.";
+
+	/** The message a token that is no invitation of this server is refused acceptance with. */
+	public static final String INVITATION_UNKNOWN_TOKEN =
+		"This invitation is not one this server knows. Ask for a new one.";
+
+	/** The message a request naming an invitation this server does not have is refused with. */
+	public static final String INVITATION_UNKNOWN = "There is no invitation of that id.";
+
+	/** The message an invitation with an unreadable expiry is refused creation with. */
+	public static final String INVITATION_EXPIRY_REFUSED =
+		"The expiry of an invitation is an ISO-8601 instant such as '2026-12-24T00:00:00Z', "
+			+ "or empty for seven days from now.";
+
+	/** The message an invitation into the administrator's seat is refused with. */
+	public static final String INVITATION_ADMIN_REFUSED =
+		"A library has exactly one owner and nobody is invited into that seat. Invite a 'member' or a 'guest'.";
+
+	/** The message an invitation naming a role this server does not know is refused with. */
+	public static String invitationRoleRefused(String role) {
+		return "'" + role + "' is no role this server invites anybody as. Invite a 'member' or a 'guest'.";
+	}
+
+	/** The message a guest is refused the issuing of an invitation with. */
+	public static final String INVITE_GUEST_REFUSED =
+		"A guest invites nobody; ask the member who invited you.";
+
+	/** The message a member is refused the issuing of an invitation with under {@link InviteMode#ADMIN}. */
+	public static final String INVITE_ADMIN_ONLY =
+		"The administrator invites people on this server. Ask them for an invitation.";
+
+	/** The message a caller is refused the list of invitations with. */
+	public static final String INVITATIONS_REFUSED =
+		"Only the members of this server may see the invitations they issued.";
+
+	/** The message an invitation is refused a name that is already taken with. */
+	public static String nameTaken(String name) {
+		return "The name '" + name + "' is already taken on this server. Choose another one.";
+	}
+
+	/**
+	 * The message a member cannot be created with while the library was never migrated.
+	 *
+	 * <p>
+	 * A member owns a folder below the base folder, and while the library was never migrated the
+	 * base folder <em>is</em> the owner's library: a new folder there would land among her albums.
+	 * Migrating is explicit and deliberate (<code>--migrate-to-user</code>), so this is said rather
+	 * than done, see issue #45.
+	 * </p>
+	 */
+	public static final String SPACE_REFUSED =
+		"This library still lies directly in the server's folder, so there is no room for a member's "
+			+ "own albums beside it. The owner moves it into a folder of their own with "
+			+ "'--migrate-to-user <name>' first; guests can be invited either way.";
+
+	/** The message a caller is refused the promotion of somebody with. */
+	public static final String PROMOTE_REFUSED =
+		"Only the administrator of this server turns a guest into a member.";
+
+	/** The message the promotion of somebody who is no guest is refused with. */
+	public static String notAGuest(String name) {
+		return "'" + name + "' is not a guest; only a guest becomes a member.";
+	}
+
+	/** The message a request naming a user this server does not know is refused with. */
+	public static String unknownUser(String name) {
+		return "There is no user '" + name + "' on this server.";
+	}
+
+	/** The message a promotion is refused with that would overwrite something. */
+	public static String promotionBlocked(String name) {
+		return "The folder '" + name + "' already exists and is not empty; nothing was moved.";
+	}
+
+	/**
+	 * The message a write into a guest's root is refused with, see issue #52.
+	 *
+	 * <p>
+	 * A guest's root is not a library: it holds the albums that were shared with them and nothing
+	 * else. What they may add to somebody else's album is a grant's business, see issue #49.
+	 * </p>
+	 */
+	public static final String GUEST_SPACE_REFUSED =
+		"A guest has no albums of their own: this is where the albums shared with you appear, and "
+			+ "nothing can be put here. Ask a member to make you one.";
+
+	/** The message a grant on a guest's root is refused with. */
+	public static final String GUEST_GRANT_REFUSED =
+		"A guest's albums are the ones shared with them; there is nothing here to share with anybody.";
+
 	/** The message a share link is refused a read outside what it opens with. */
 	public static final String SHARE_READ_REFUSED = "This link does not open this album.";
 
@@ -252,6 +350,10 @@ public class AuthService {
 
 		private final String _gone;
 
+		private InvitationStore.Link _invitation;
+
+		private String _invitationGone;
+
 		private Caller(User user, String deviceName, boolean tokenPresented, String refusal, ShareStore.Link share,
 				String gone) {
 			_user = user;
@@ -270,6 +372,44 @@ public class AuthService {
 		/** A signed-in caller. */
 		static Caller signedIn(User user, String deviceName) {
 			return new Caller(user, deviceName, true, null, null, null);
+		}
+
+		/**
+		 * A caller presenting an invitation token, see issue #52.
+		 *
+		 * <p>
+		 * Anonymous everywhere but at <code>?type=auth</code>: an invitation is no login, it opens
+		 * nothing and it may do nothing. It is carried on the {@link Caller} only so that the app
+		 * can be told who invited it and as what, before it asks the user for a name. In a migrated
+		 * library such a caller is therefore answered {@link AuthService#LIBRARY_REFUSED} like
+		 * anybody else who has not signed in — which is exactly right: they have not.
+		 * </p>
+		 *
+		 * @param gone
+		 *        Why the invitation cannot be accepted any more, <code>null</code> while it can.
+		 */
+		static Caller invitation(InvitationStore.Link invitation, String gone) {
+			Caller result = new Caller(null, null, false, null, null, null);
+			result._invitation = invitation;
+			result._invitationGone = gone;
+			return result;
+		}
+
+		/** The invitation this caller presented, <code>null</code> for everybody else. */
+		public InvitationStore.Link getInvitation() {
+			return _invitation;
+		}
+
+		/**
+		 * Why this caller's invitation cannot be accepted any more, <code>null</code> while it can.
+		 *
+		 * <p>
+		 * Only <code>?type=auth</code> ever asks: on every other endpoint an invitation token is a
+		 * token the caller has no business sending, and the caller is simply anonymous there.
+		 * </p>
+		 */
+		public String getInvitationGone() {
+			return _invitationGone;
 		}
 
 		/**
@@ -406,6 +546,17 @@ public class AuthService {
 
 	private final ShareStore _shares;
 
+	private final InvitationStore _invitations;
+
+	private final InviteMode _inviteMode;
+
+	/**
+	 * Creates an {@link AuthService} whose members may invite, see {@link InviteMode#MEMBERS}.
+	 */
+	public AuthService(AuthMode mode, String pairingSecret, Path basePath) {
+		this(mode, pairingSecret, basePath, InviteMode.MEMBERS);
+	}
+
 	/**
 	 * Creates an {@link AuthService}.
 	 *
@@ -417,15 +568,19 @@ public class AuthService {
 	 * @param basePath
 	 *        The root of the served album tree; the user store lives below it and the user spaces
 	 *        are folders in it.
+	 * @param inviteMode
+	 *        Who may hand out an invitation, see issue #52.
 	 */
-	public AuthService(AuthMode mode, String pairingSecret, Path basePath) {
+	public AuthService(AuthMode mode, String pairingSecret, Path basePath, InviteMode inviteMode) {
 		_mode = mode;
 		_pairingSecret = pairingSecret;
 		_basePath = basePath;
+		_inviteMode = inviteMode;
 		_users = mode == AuthMode.OFF ? null : new UserStore(basePath);
 		_grants = mode == AuthMode.OFF ? null : new GrantStore(basePath);
 		_groups = mode == AuthMode.OFF ? null : new GroupStore(basePath);
 		_shares = mode == AuthMode.OFF ? null : new ShareStore(basePath);
+		_invitations = mode == AuthMode.OFF ? null : new InvitationStore(basePath);
 	}
 
 	/** An {@link AuthService} serving every request, as before issue #28. */
@@ -458,6 +613,53 @@ public class AuthService {
 		return _shares;
 	}
 
+	/** The invitations of this server, <code>null</code> while {@link AuthMode#OFF}. */
+	public InvitationStore getInvitations() {
+		return _invitations;
+	}
+
+	/** Who may hand out an invitation on this server, see issue #52. */
+	public InviteMode getInviteMode() {
+		return _inviteMode;
+	}
+
+	/**
+	 * Whether the given caller may hand out an invitation, see issue #52.
+	 *
+	 * <p>
+	 * A member may, unless the server was started with {@link InviteMode#ADMIN}; the admin always
+	 * may; a guest never does, and an anonymous caller is refused before this is asked.
+	 * </p>
+	 */
+	public boolean mayInvite(Caller caller) {
+		if (!caller.isPaired() || Roles.GUEST.equals(caller.getRole())) {
+			return false;
+		}
+		return _inviteMode != InviteMode.ADMIN || Roles.ADMIN.equals(caller.getRole());
+	}
+
+	/** The root of the given guest, see {@link UserStore#GUESTS_DIRECTORY_NAME}. */
+	public static Path guestRoot(Path basePath, String name) {
+		return basePath.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.GUESTS_DIRECTORY_NAME).resolve(name);
+	}
+
+	/**
+	 * The folder the given user's paths are resolved against, without creating anything.
+	 *
+	 * <p>
+	 * A member's space folder, the base folder for the owner of a library that was never migrated,
+	 * and the little root of issue #52 for a guest. The creating counterpart is
+	 * {@link #spaceRoot(User, Path)}; reading must never create a folder, see
+	 * {@link de.haumacher.imageServer.links.LinkService}.
+	 * </p>
+	 */
+	public static Path spaceFolder(Path basePath, User user) {
+		if (Roles.GUEST.equals(user.getRole())) {
+			return guestRoot(basePath, user.getName());
+		}
+		return user.getSpace().isEmpty() ? basePath : basePath.resolve(user.getSpace());
+	}
+
 	/** Generates a pairing secret for a server that was not given one. */
 	public static String generateSecret() {
 		byte[] bytes = new byte[12];
@@ -479,7 +681,15 @@ public class AuthService {
 			// Not a device token; it may still be a share link of issue #51.
 			ShareStore.Link share = _shares.lookup(token);
 			if (share == null) {
-				return Caller.INVALID;
+				// Nor a share link; it may still be an invitation of issue #52. The share store is
+				// asked first because a share token is a session that reaches every endpoint, while
+				// an invitation is anonymous everywhere but at "?type=auth" — and a token can never
+				// be in both stores, both being 32 random bytes.
+				InvitationStore.Link invitation = _invitations.lookup(token);
+				if (invitation == null) {
+					return Caller.INVALID;
+				}
+				return Caller.invitation(invitation, invitationGone(invitation));
 			}
 			if (share.isRevoked()) {
 				return Caller.shareGone(share, LINK_REVOKED);
@@ -802,6 +1012,11 @@ public class AuthService {
 		}
 		String relative = base.relativize(resolved).toString().replace(java.io.File.separatorChar, '/');
 
+		Space guest = guestSpaceOf(relative);
+		if (guest != null) {
+			return guest;
+		}
+
 		User deepest = null;
 		for (User user : _users.getUsers()) {
 			String space = user.getSpace();
@@ -824,6 +1039,42 @@ public class AuthService {
 			return new Space(owner.getName(), relative);
 		}
 		return null;
+	}
+
+	/**
+	 * The space of a guest the given base-relative path lies in, see issue #52.
+	 *
+	 * <p>
+	 * A guest's root lies below {@link UserStore#DIRECTORY_NAME}, so it is never a folder of
+	 * anybody's album tree and never shadowed by one: it is asked for before the member spaces,
+	 * and no member space can ever contain it, a user name being unable to start with a dot.
+	 * </p>
+	 *
+	 * @return <code>null</code> if the path lies in no guest's root.
+	 */
+	private Space guestSpaceOf(String relative) {
+		String head = UserStore.DIRECTORY_NAME + "/" + UserStore.GUESTS_DIRECTORY_NAME + "/";
+		if (!relative.startsWith(head)) {
+			return null;
+		}
+		String rest = relative.substring(head.length());
+		int slash = rest.indexOf('/');
+		String name = slash < 0 ? rest : rest.substring(0, slash);
+		User user = name.isEmpty() ? null : _users.getUser(name);
+		if (user == null || !Roles.GUEST.equals(user.getRole())) {
+			return null;
+		}
+		return new Space(name, slash < 0 ? "" : rest.substring(slash + 1));
+	}
+
+	/** Whether the given path lies in the root of a guest, see issue #52. */
+	public boolean isGuestSpace(PathInfo path) {
+		Space space = spaceOf(path);
+		if (space == null || _users == null) {
+			return false;
+		}
+		User user = _users.getUser(space.getOwner());
+		return user != null && Roles.GUEST.equals(user.getRole());
 	}
 
 	/**
@@ -882,13 +1133,20 @@ public class AuthService {
 		if (_basePath == null || path.getBasePath() == null) {
 			return false;
 		}
-		String space = caller.getSpace();
-		if (space.isEmpty() && !isUnmigratedOwner(caller)) {
-			// A guest has no library of their own, and the base folder of a migrated library
-			// belongs to nobody: neither may have everything in it.
-			return false;
+		Path root;
+		if (Roles.GUEST.equals(caller.getRole())) {
+			// A guest has no library, but they do own their own little root: the links that were
+			// made for them are theirs to look at, to rearrange and to decline, see issue #52.
+			// What must not land in it is a photo, and that is refused by role, never by rights.
+			root = guestRoot(_basePath, caller.getUserName());
+		} else {
+			String space = caller.getSpace();
+			if (space.isEmpty() && !isUnmigratedOwner(caller)) {
+				// The base folder of a migrated library belongs to nobody.
+				return false;
+			}
+			root = space.isEmpty() ? _basePath : _basePath.resolve(space);
 		}
-		Path root = space.isEmpty() ? _basePath : _basePath.resolve(space);
 		return normalize(path.getBasePath()).equals(normalize(root));
 	}
 
@@ -1087,7 +1345,7 @@ public class AuthService {
 				throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, unknownSpace(name));
 			}
 			prefix = HOME_PREFIX + name + "/";
-			root = spaceRoot(user.getSpace(), user.getName(), basePath);
+			root = spaceRoot(user, basePath);
 		} else {
 			root = spaceRoot(caller, basePath);
 			prefix = "";
@@ -1128,7 +1386,7 @@ public class AuthService {
 			// The user whose album was shared is gone; the link leads nowhere, and it says so.
 			throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, unknownSpace(share.getOwner()));
 		}
-		Path space = spaceRoot(owner.getSpace(), owner.getName(), basePath);
+		Path space = spaceRoot(owner, basePath);
 		Path root = share.getPath().isEmpty() ? space : space.resolve(share.getPath());
 
 		if (relativePath.startsWith(HOME_PREFIX)) {
@@ -1175,7 +1433,7 @@ public class AuthService {
 		if (owner == null) {
 			return false;
 		}
-		Path space = spaceRoot(owner.getSpace(), owner.getName(), basePath);
+		Path space = spaceRoot(owner, basePath);
 		return isBelow(path, share.getPath().isEmpty() ? space : space.resolve(share.getPath()));
 	}
 
@@ -1243,7 +1501,7 @@ public class AuthService {
 						LOG.warning("Refusing the link chain at '" + link + "': too long or circular.");
 						throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, LINK_LOOP);
 					}
-					currentRoot = spaceRoot(owner.getSpace(), owner.getName(), basePath);
+					currentRoot = spaceRoot(owner, basePath);
 					consumed = target.isEmpty() ? null : java.nio.file.Paths.get(target);
 					linkOwner = link.getOwner();
 					linkTarget = target;
@@ -1327,11 +1585,11 @@ public class AuthService {
 	 * </p>
 	 */
 	public Path spaceRoot(Caller caller, Path basePath) {
-		return spaceRoot(caller.getSpace(), caller.getUserName(), basePath);
+		return spaceRoot(caller.getSpace(), caller.getUserName(), caller.getRole(), basePath);
 	}
 
 	/**
-	 * The folder the paths of the user with the given space are resolved against.
+	 * The folder the paths of the given user are resolved against.
 	 *
 	 * <p>
 	 * The same folder {@link #spaceRoot(Caller, Path)} answers, reached by the canonical form
@@ -1339,11 +1597,17 @@ public class AuthService {
 	 * {@link #resolve(Caller, Path, String)}.
 	 * </p>
 	 */
-	public Path spaceRoot(String space, String userName, Path basePath) {
-		if (space.isEmpty()) {
+	public Path spaceRoot(User user, Path basePath) {
+		return spaceRoot(user.getSpace(), user.getName(), user.getRole(), basePath);
+	}
+
+	/** See {@link #spaceRoot(User, Path)}. */
+	private Path spaceRoot(String space, String userName, String role, Path basePath) {
+		boolean guest = Roles.GUEST.equals(role);
+		if (space.isEmpty() && !guest) {
 			return basePath;
 		}
-		Path root = basePath.resolve(space);
+		Path root = guest ? guestRoot(basePath, userName) : basePath.resolve(space);
 		if (!Files.isDirectory(root)) {
 			try {
 				Files.createDirectories(root);
@@ -1439,6 +1703,16 @@ public class AuthService {
 			.setUserName(caller.getUserName())
 			.setRole(caller.getRole())
 			.setSpace(caller.getSpace());
+		if (caller.getInvitation() != null) {
+			// An invitation is no login: the caller is anonymous above and stays anonymous. This is
+			// the one thing the server says about the token it was handed, see issue #52.
+			InvitationStore.Link invitation = caller.getInvitation();
+			return result.setInvitation(InvitationInfo.create()
+				.setRole(invitation.getRole())
+				.setInvitedBy(invitation.getInvitedBy())
+				.setNote(invitation.getNote())
+				.setExpires(invitation.getExpires()));
+		}
 		if (!caller.isShareLink() || caller.isShareGone() || basePath == null) {
 			return result;
 		}
@@ -1508,6 +1782,10 @@ public class AuthService {
 		if (_mode == AuthMode.OFF) {
 			throw new PairRefused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
 		}
+		String invitation = request.getInvitation() == null ? "" : request.getInvitation().trim();
+		if (!invitation.isEmpty()) {
+			return accept(request, invitation);
+		}
 		if (_pairingSecret == null || _pairingSecret.isEmpty() || !matches(request.getSecret(), _pairingSecret)) {
 			throw new PairRefused(HttpServletResponse.SC_FORBIDDEN, SECRET_REFUSED);
 		}
@@ -1532,6 +1810,195 @@ public class AuthService {
 			.setUserName(owner.getName())
 			.setRole(owner.getRole())
 			.setSpace(owner.getSpace());
+	}
+
+	/**
+	 * Why the given invitation can no longer be accepted, <code>null</code> while it can.
+	 *
+	 * <p>
+	 * Three different endings, and each of them says which: expired, already used, withdrawn. A
+	 * person who was handed a link deserves to be told what happened to it, see issue #51 where the
+	 * same rule was set for a share link.
+	 * </p>
+	 */
+	public static String invitationGone(InvitationStore.Link invitation) {
+		if (invitation.isRevoked()) {
+			return INVITATION_REVOKED;
+		}
+		if (invitation.isUsed()) {
+			return INVITATION_USED;
+		}
+		if (invitation.isExpired(java.time.Instant.now())) {
+			return INVITATION_EXPIRED;
+		}
+		return null;
+	}
+
+	/**
+	 * Accepts an invitation: creates the user it offers and signs this device in as them (#52).
+	 *
+	 * <p>
+	 * Accepting <em>is</em> pairing, which is why it lives here and answers a
+	 * {@link PairResponse}: the app that ends up holding the device token cannot tell how the token
+	 * was earned, and nothing else in the server can either. The invitation is used up before the
+	 * answer is written, so a token that raced itself creates exactly one user.
+	 * </p>
+	 *
+	 * <p>
+	 * A member needs a folder of their own, which a library that was never migrated has no room
+	 * for: that is refused, spoken, and nothing is created. A guest needs no folder at all and is
+	 * accepted either way, see {@link UserStore#GUESTS_DIRECTORY_NAME}.
+	 * </p>
+	 */
+	private PairResponse accept(PairRequest request, String token) throws PairRefused, IOException {
+		InvitationStore.Link invitation = _invitations.lookup(token);
+		if (invitation == null) {
+			throw new PairRefused(HttpServletResponse.SC_GONE, INVITATION_UNKNOWN_TOKEN);
+		}
+		String gone = invitationGone(invitation);
+		if (gone != null) {
+			throw new PairRefused(HttpServletResponse.SC_GONE, gone);
+		}
+		String role = Roles.MEMBER.equals(invitation.getRole()) || Roles.GUEST.equals(invitation.getRole())
+			? invitation.getRole() : null;
+		if (role == null) {
+			// A record from a store this build does not understand; it creates nobody.
+			LOG.warning("Refusing " + invitation + ": its role is none this build creates anybody with.");
+			throw new PairRefused(HttpServletResponse.SC_GONE, invitationRoleRefused(invitation.getRole()));
+		}
+
+		String name;
+		try {
+			name = UserStore.checkUserName(request.getUserName());
+		} catch (IllegalArgumentException ex) {
+			throw new PairRefused(HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
+		}
+
+		User user;
+		String deviceName;
+		synchronized (_users) {
+			if (!isNameFree(name)) {
+				throw new PairRefused(HttpServletResponse.SC_CONFLICT, nameTaken(name));
+			}
+			boolean member = Roles.MEMBER.equals(role);
+			if (member && !isLibraryMigrated()) {
+				throw new PairRefused(HttpServletResponse.SC_CONFLICT, SPACE_REFUSED);
+			}
+			user = _users.addUser(new User(name, role, member ? name : "", java.time.Instant.now().toString()));
+			// The device token and the user are written in one store, by this call.
+			String issued = _users.addDevice(user, request.getDeviceName());
+			deviceName = user.getDevices().get(user.getDevices().size() - 1).getName();
+			// Used up before the answer: a single-use token must not survive its own success.
+			_invitations.markUsed(invitation.getId(), name);
+			if (_basePath != null && member) {
+				// The member's own folder, made now rather than at their first upload, so that
+				// their very first listing is of something that exists.
+				spaceRoot(user, _basePath);
+			}
+			LOG.info("Accepted " + invitation + ": created the " + role + " '" + name + "'.");
+			return PairResponse.create()
+				.setToken(issued)
+				.setDeviceName(deviceName)
+				.setUserName(name)
+				.setRole(role)
+				.setSpace(user.getSpace());
+		}
+	}
+
+	/**
+	 * Whether nothing on this server answers to the given name yet.
+	 *
+	 * <p>
+	 * A user name is three things at once: the subject of a grant, the name of a space folder, and
+	 * what tells a <code>user:</code> subject from a <code>group:</code> one. So all three are
+	 * asked — a user, a group, and an entry that already lies at the top of the base folder — and a
+	 * name that is any of them is refused rather than quietly made unique.
+	 * </p>
+	 */
+	public boolean isNameFree(String name) {
+		if (_users != null && _users.getUser(name) != null) {
+			return false;
+		}
+		if (_groups != null && _groups.getGroup(name) != null) {
+			return false;
+		}
+		return _basePath == null || !Files.exists(_basePath.resolve(name));
+	}
+
+	/** Thrown when a management request is not carried out; nothing was changed in that case. */
+	public static class Refused extends Exception {
+
+		private final int _status;
+
+		/** Creates a {@link Refused}. */
+		public Refused(int status, String message) {
+			super(message);
+			_status = status;
+		}
+
+		/** The HTTP status to answer with. */
+		public int getStatus() {
+			return _status;
+		}
+	}
+
+	/**
+	 * Turns the guest of the given name into a member with a space of their own, see issue #52.
+	 *
+	 * <p>
+	 * One rename does the whole move: a guest's root is already shaped like a space root (link
+	 * sidecars beside a {@value UserStore#DIRECTORY_NAME} holding the share registry), so renaming
+	 * <code>{@value UserStore#DIRECTORY_NAME}/{@value UserStore#GUESTS_DIRECTORY_NAME}/&lt;name&gt;</code>
+	 * to <code>&lt;name&gt;</code> makes it the new space and carries the links and the registry
+	 * into exactly the places a member keeps them. It is a rename within one file system, like the
+	 * library migration of issue #45 — nothing is copied and no photo is touched, there being none.
+	 * </p>
+	 *
+	 * <p>
+	 * There is no way back: demotion is not offered, see {@link User#setRole(String)}. Everything
+	 * is checked before anything is moved.
+	 * </p>
+	 *
+	 * @return The promoted user.
+	 * @throws Refused
+	 *         If the promotion is not carried out; nothing was moved in that case.
+	 */
+	public User promote(String userName) throws Refused, IOException {
+		if (_users == null || _basePath == null) {
+			throw new Refused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
+		}
+		synchronized (_users) {
+			String name = userName == null ? "" : userName.trim();
+			User user = name.isEmpty() ? null : _users.getUser(name);
+			if (user == null) {
+				throw new Refused(HttpServletResponse.SC_NOT_FOUND, unknownUser(name));
+			}
+			if (!Roles.GUEST.equals(user.getRole())) {
+				throw new Refused(HttpServletResponse.SC_BAD_REQUEST, notAGuest(name));
+			}
+			if (!isLibraryMigrated()) {
+				throw new Refused(HttpServletResponse.SC_CONFLICT, SPACE_REFUSED);
+			}
+
+			Path target = _basePath.resolve(name);
+			Path source = guestRoot(_basePath, name);
+			if (Files.exists(target)) {
+				// Somebody's folder is already there; a promotion never merges two folders.
+				throw new Refused(HttpServletResponse.SC_CONFLICT, promotionBlocked(name));
+			}
+			if (Files.isDirectory(source)) {
+				Files.move(source, target);
+			} else {
+				// A guest nothing was ever shared with has no root yet; the member's is made empty.
+				Files.createDirectories(target);
+			}
+
+			user.setRole(Roles.MEMBER);
+			user.setSpace(name);
+			_users.store();
+			LOG.info("Promoted the guest '" + name + "' to a member with the space '" + name + "'.");
+			return user;
+		}
 	}
 
 	private static boolean matches(String presented, String expected) {

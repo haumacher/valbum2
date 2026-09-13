@@ -74,14 +74,42 @@ public class UserStore {
 	/** The staging directory of uploads; it belongs to the server, not to a user's space. */
 	public static final String UPLOAD_DIRECTORY_NAME = ".upload";
 
+	/**
+	 * The directory within {@link #DIRECTORY_NAME} holding the roots of the guests, see issue #52.
+	 *
+	 * <p>
+	 * A guest has no library of their own, so their root is not a folder of the album tree: it is
+	 * <code>{@value #DIRECTORY_NAME}/{@value #GUESTS_DIRECTORY_NAME}/&lt;name&gt;</code>, a little
+	 * space root that holds nothing but the link entries of issue #50 and the share registry below
+	 * its own <code>{@value #DIRECTORY_NAME}</code>. It never holds a photo — album creation,
+	 * upload and a move into it are refused by role — and it lies below a dotted folder, so no
+	 * listing of anybody's ever shows it.
+	 * </p>
+	 *
+	 * <p>
+	 * It is shaped exactly like a member's space root, which is what makes the promotion of issue
+	 * #52 a single rename: the folder <em>becomes</em> the new member's space.
+	 * </p>
+	 */
+	public static final String GUESTS_DIRECTORY_NAME = "guests";
+
+	/**
+	 * The root of the given guest, relative to the base folder, <code>/</code> as separator.
+	 *
+	 * @see #GUESTS_DIRECTORY_NAME
+	 */
+	public static String guestSpace(String name) {
+		return DIRECTORY_NAME + "/" + GUESTS_DIRECTORY_NAME + "/" + name;
+	}
+
 	/** The version this build writes, see {@link UserStore}. */
 	public static final int VERSION = 1;
 
 	/** Why a name is not usable as the name of a user, see {@link #checkUserName(String)}. */
 	public static final String NAME_REFUSED =
 		"A user name is also the name of the user's folder: it must not be empty, must not contain "
-			+ "'/' or '\\', must not be '.' or '..', must not start with a dot and must not contain "
-			+ "control characters.";
+			+ "'/' or '\\', must not be '.' or '..', must not start with a dot or a '~' and must not "
+			+ "contain control characters.";
 
 	/** The number of random bytes a token is built from. */
 	private static final int TOKEN_BYTES = 32;
@@ -139,7 +167,7 @@ public class UserStore {
 
 		private String _name;
 
-		private final String _role;
+		private String _role;
 
 		private String _space;
 
@@ -175,6 +203,19 @@ public class UserStore {
 		/** One of {@link Roles}. */
 		public String getRole() {
 			return _role;
+		}
+
+		/**
+		 * See {@link #getRole()}.
+		 *
+		 * <p>
+		 * A role changes exactly once and in one direction: a guest is promoted to a member by the
+		 * admin, see issue #52. There is no demotion — taking a space away from somebody who has
+		 * filled it with photos is not a thing a server does behind a button.
+		 * </p>
+		 */
+		public void setRole(String role) {
+			_role = role;
 		}
 
 		/**
@@ -422,8 +463,10 @@ public class UserStore {
 	 */
 	public static String checkUserName(String name) {
 		String trimmed = name == null ? "" : name.trim();
+		// A leading '~' is the canonical form of another user's space (~owner/...), see issue #49;
+		// a user of that name would make the two indistinguishable on the wire.
 		if (trimmed.isEmpty() || trimmed.equals(".") || trimmed.equals("..") || trimmed.startsWith(".")
-			|| trimmed.indexOf('/') >= 0 || trimmed.indexOf('\\') >= 0) {
+			|| trimmed.startsWith("~") || trimmed.indexOf('/') >= 0 || trimmed.indexOf('\\') >= 0) {
 			throw new IllegalArgumentException(NAME_REFUSED);
 		}
 		for (int n = 0, cnt = trimmed.length(); n < cnt; n++) {

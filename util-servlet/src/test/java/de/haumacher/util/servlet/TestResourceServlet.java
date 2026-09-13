@@ -22,8 +22,8 @@ import java.util.stream.Stream;
 import junit.framework.TestCase;
 
 /**
- * Test case for {@link ResourceServlet}, especially the virtual base of the share links (issue
- * #51).
+ * Test case for {@link ResourceServlet}, especially the virtual bases of the share links (issue
+ * #51) and of the invitations (issue #52).
  *
  * <p>
  * The servlet is driven directly on a temporary web root with hand-rolled request and response
@@ -96,7 +96,7 @@ public class TestResourceServlet extends TestCase {
 	public void testWithoutAPrefixAVirtualBaseIsAPlainRoute() throws Exception {
 		// No virtual prefix configured: "/s/abc/main.dart.js" is a route of the application at the
 		// context root, and the index page keeps the context path as its base.
-		FakeResponse response = get("/s/abc/main.dart.js", null);
+		FakeResponse response = get("/s/abc/main.dart.js", new String[0]);
 		assertEquals(HttpServletResponse.SC_OK, response.status());
 		assertTrue(response.body(), response.body().contains("<base href=\"" + CONTEXT + "/\">"));
 	}
@@ -107,11 +107,30 @@ public class TestResourceServlet extends TestCase {
 		assertEquals(HttpServletResponse.SC_OK, get("/s/abc/album/IMG_0417.JPG").status());
 	}
 
-	private FakeResponse get(String pathInfo) throws Exception {
-		return get(pathInfo, "s");
+	public void testAnInvitationIsServedTheApplicationToo() throws Exception {
+		FakeResponse response = get("/i/abc/");
+		assertEquals(HttpServletResponse.SC_OK, response.status());
+		assertTrue(response.body(), response.body().contains("<base href=\"" + CONTEXT + "/i/abc/\">"));
 	}
 
-	private FakeResponse get(String pathInfo, String virtualPrefix) throws Exception {
+	public void testADeepRouteBelowAnInvitationFallsBackToTheApplication() throws Exception {
+		FakeResponse response = get("/i/abc/deep/route");
+		assertEquals(HttpServletResponse.SC_OK, response.status());
+		assertTrue(response.body(), response.body().contains("<base href=\"" + CONTEXT + "/i/abc/\">"));
+	}
+
+	public void testAnIncompleteOrUnknownVirtualBaseIsAPlainRoute() throws Exception {
+		// "/i/" names no token and "/x/abc/" no prefix this handler serves: both are routes of the
+		// application at the context root, which keeps the context path as its base.
+		assertTrue(get("/i/").body().contains("<base href=\"" + CONTEXT + "/\">"));
+		assertTrue(get("/x/abc/").body().contains("<base href=\"" + CONTEXT + "/\">"));
+	}
+
+	private FakeResponse get(String pathInfo) throws Exception {
+		return get(pathInfo, "s", "i");
+	}
+
+	private FakeResponse get(String pathInfo, String... virtualPrefix) throws Exception {
 		ResourceServlet servlet = new ResourceServlet(_webRoot, "/data", virtualPrefix);
 		servlet.init(config());
 		FakeResponse response = new FakeResponse();
