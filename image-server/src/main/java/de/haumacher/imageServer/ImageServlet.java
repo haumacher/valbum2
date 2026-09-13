@@ -2313,17 +2313,28 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * Announces that the app may talk to this server from another origin.
+	 * Announces that the app may talk to this server from another origin, and that nothing of
+	 * what it is told may be kept.
 	 *
 	 * <p>
 	 * The <code>Authorization</code> header of an authenticated request makes a browser send a
 	 * preflight, so the header must be allowed explicitly, see
 	 * {@link #doOptions(HttpServletRequest, HttpServletResponse)}.
 	 * </p>
+	 *
+	 * <p>
+	 * Every JSON answer depends on the bearer that asked, and some — <code>410 Gone</code>
+	 * among them — a browser caches by default: a withdrawn share link answered once at
+	 * <code>?type=auth</code> would then be replayed for every later token at the same origin,
+	 * and an invitation opened next would be told it was withdrawn. So no JSON answer may be
+	 * stored, and a cache that stores anyway must key it on the bearer.
+	 * </p>
 	 */
 	private static void allowCrossOrigin(HttpServletResponse response) {
 		response.setHeader("Access-Control-Allow-Origin", "*");
 		response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+		response.setHeader("Cache-Control", "no-store");
+		response.setHeader("Vary", "Authorization");
 	}
 
 	/**

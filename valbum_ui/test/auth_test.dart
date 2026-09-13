@@ -198,7 +198,7 @@ void main() {
       var response = await recording(
         requests,
         (_) => http.Response('{"token":"abc","deviceName":"Phone"}', 200),
-      ).pair("s3cret", "Phone", userName: "haui");
+      ).pair(secret: "s3cret", deviceName: "Phone", userName: "haui");
 
       expect(response.token, "abc");
       expect(response.deviceName, "Phone");
@@ -217,7 +217,7 @@ void main() {
     test('a wrong secret carries the server message', () {
       expect(
         () => clientReturning(refusal("Wrong pairing secret."), status: 403)
-            .pair("nope", "Phone"),
+            .pair(secret: "nope", deviceName: "Phone"),
         throwsA(
           isA<VAlbumException>()
               .having((e) => e.message, 'message', "Wrong pairing secret."),

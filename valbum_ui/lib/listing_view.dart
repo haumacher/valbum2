@@ -2,11 +2,13 @@
 library;
 
 import 'package:date_field/date_field.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'album_date.dart';
 import 'app.dart';
+import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
 import 'links.dart';
@@ -110,6 +112,24 @@ class ListingView extends StatelessWidget {
   /// the caller is its owner.
   String? get sharedLine => sharingNotice(albumState.path, rights);
 
+  /// Whether this folder is a guest's own root, where nothing may be created.
+  ///
+  /// A guest's library is what others share with them: the server hands them
+  /// every right there — they rearrange and decline their links — and refuses
+  /// by *role* the one thing that folder is not for, an album, a photo or a
+  /// folder of their own (`AuthService.GUEST_SPACE_REFUSED`, issue #52). What
+  /// is refused is not offered, so the creating entries go.
+  ///
+  /// "Their own" is the very question [sharingNotice] already answers: a path
+  /// that names nobody else's space and rights that are complete. A guest who
+  /// was granted `edit` on somebody's folder *through a link* reads the same
+  /// way and loses the creating entries there too — the answer carries the
+  /// rights but not whose space they are in, and a guest who edits another
+  /// member's folder is rare enough to pay that price rather than offer
+  /// something the server refuses at the root, which is the common case.
+  bool guestRoot(BuildContext context) =>
+      CallerInfo.isGuestCaller(context) && sharedLine == null;
+
   /// Whether the caller manages the grants of the folder at [path], asked once
   /// and remembered by the router.
   ///
@@ -119,15 +139,28 @@ class ListingView extends StatelessWidget {
   ///
   /// Never inside a share link: a link caller carries a token and may hold
   /// every right the link gives, but manages nothing, see issue #51.
+  /// Never in a guest's own root either: there the answer is known without
+  /// asking, see [guestRoot] and [couldManageGrants].
   Future<bool> mayShare(BuildContext context, List<String> path) =>
       ShareSession.of(context) == null &&
-              couldManageGrants(client, albumState.path, rights)
+              couldManageGrants(
+                client,
+                albumState.path,
+                rights,
+                isGuest: CallerInfo.isGuestCaller(context),
+              )
           ? albumState.navigator.delegate.mayManageGrants(path)
           : _no;
 
   /// The answer of a question that was not asked; one instance, so that the
   /// [FutureBuilder] of the menu is handed the same future on every rebuild.
-  static final Future<bool> _no = Future.value(false);
+  ///
+  /// A [SynchronousFuture], not a `Future.value`: this one instance outlives
+  /// every view that reads it, and a plain future hands its callbacks to the
+  /// [Zone] it was *created* in — which in a test is the zone of whichever
+  /// test happened to build the first listing, so a later `await` of it would
+  /// never complete. A synchronous future calls back in the zone that asks.
+  static final Future<bool> _no = SynchronousFuture(false);
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +169,7 @@ class ListingView extends StatelessWidget {
     // at a bare URL is told what they were given, see issue #51. Nothing that
     // changes anything is offered, and neither is the way to the settings.
     var link = ShareSession.of(context);
-    var mayChange = rights.mayEdit && link == null;
+    var mayChange = rights.mayEdit && link == null && !guestRoot(context);
     return Scaffold(
       // Black like the album pages, so that the way down does not flash from
       // a light page to a dark one, see issue #40.
@@ -393,7 +426,9 @@ class ListingView extends StatelessWidget {
     // separately. The answer is remembered per folder, so a second long press
     // asks nothing again.
     var link = ShareSession.of(context);
-    var mayMove = rights.mayEdit && link == null;
+    // Moving inside a guest's own root is refused as well: every target the
+    // picker offers lies in that root, see [guestRoot].
+    var mayMove = rights.mayEdit && link == null && !guestRoot(context);
     // A link is an entry of *this* folder, so removing it is an edit of this
     // folder; the album it points at is not touched, see issue #50.
     var mayUnlink = rights.mayEdit && link == null && folder.link.isNotEmpty;

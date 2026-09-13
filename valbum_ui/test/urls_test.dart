@@ -115,9 +115,9 @@ void main() {
     });
   });
 
-  group('shareSessionUrl', () {
+  group('sessionUrl', () {
     test('a link below a context path', () {
-      var link = shareSessionUrl(
+      var link = sessionUrl(
         Uri.parse("http://h:8080/valbum/s/abc123/"),
         basePath: "/valbum/s/abc123/",
       );
@@ -128,7 +128,7 @@ void main() {
     });
 
     test('a link on a server serving the app at its root', () {
-      var link = shareSessionUrl(
+      var link = sessionUrl(
         Uri.parse("http://h:8080/s/abc/"),
         basePath: "/s/abc/",
       );
@@ -139,7 +139,7 @@ void main() {
 
     test('an ordinary app base is no session', () {
       expect(
-        shareSessionUrl(
+        sessionUrl(
           Uri.parse("http://h:8080/valbum/"),
           basePath: "/valbum/",
         ),
@@ -158,7 +158,7 @@ void main() {
 
     test('an empty segment is not a token', () {
       expect(
-        shareSessionUrl(
+        sessionUrl(
           Uri.parse("http://h:8080/valbum/s/"),
           basePath: "/valbum/s/",
         ),
@@ -169,7 +169,7 @@ void main() {
     test('the base path decides, not the document location', () {
       // Inside a session the location is the album being looked at; only the
       // app base still says which link this is.
-      var link = shareSessionUrl(
+      var link = sessionUrl(
         Uri.parse("http://h:8080/valbum/s/abc/2005/"),
         basePath: "/valbum/s/abc/",
       );
@@ -178,9 +178,82 @@ void main() {
     });
 
     test('without a base path the directory of the location is used', () {
-      var link = shareSessionUrl(Uri.parse("http://h:8080/valbum/s/abc/"));
+      var link = sessionUrl(Uri.parse("http://h:8080/valbum/s/abc/"));
       expect(link!.token, "abc");
       expect(link.dataUrl, "http://h:8080/valbum/data");
+    });
+  });
+
+  group('invitation sessions', () {
+    test('an invitation below a context path', () {
+      var session = sessionUrl(
+        Uri.parse("http://h:8080/valbum/i/abc/"),
+        basePath: "/valbum/i/abc/",
+      );
+      expect(session, isNotNull);
+      expect(session!.kind, SessionKind.invitation);
+      expect(session.isInvitation, isTrue);
+      expect(session.token, "abc");
+      expect(session.dataUrl, "http://h:8080/valbum/data");
+      expect(session.basePath, "/valbum/i/abc/");
+      expect(session.appBase, "http://h:8080/valbum/");
+    });
+
+    test('a share link is still a share session', () {
+      var session = sessionUrl(
+        Uri.parse("http://h:8080/valbum/s/abc/"),
+        basePath: "/valbum/s/abc/",
+      );
+      expect(session!.kind, SessionKind.share);
+      expect(session.isShare, isTrue);
+      expect(session.isInvitation, isFalse);
+    });
+
+    test('an empty invitation segment is no session', () {
+      expect(
+        sessionUrl(
+          Uri.parse("http://h:8080/valbum/i/"),
+          basePath: "/valbum/i/",
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('serverLocationOf', () {
+    test('reads an invitation URL as a server and a token', () {
+      var location = serverLocationOf("http://h/valbum/i/tok-1/");
+      expect(location.serverUrl, "http://h/valbum/");
+      expect(location.dataUrl, "http://h/valbum/data");
+      expect(location.invitation, "tok-1");
+      expect(location.isInvitation, isTrue);
+      expect(location.isShare, isFalse);
+    });
+
+    test('a share link names no server to sign in at', () {
+      var location = serverLocationOf("http://h/valbum/s/tok/");
+      expect(location.share, "tok");
+      expect(location.isShare, isTrue);
+      expect(serverUrlError("http://h/valbum/s/tok/"), shareLinkRefusal);
+    });
+
+    test('a plain URL is read exactly as it always was', () {
+      var location = serverLocationOf("http://h/valbum/");
+      expect(location.serverUrl, "http://h/valbum/");
+      expect(location.dataUrl, dataUrlOf("http://h/valbum/"));
+      expect(location.invitation, "");
+      expect(location.share, "");
+      expect(serverUrlError("http://h/valbum/"), isNull);
+      // And a URL without a trailing slash, and an index page.
+      expect(serverLocationOf("http://h/valbum").dataUrl, "http://h/valbum/data");
+      expect(
+        serverLocationOf("http://h/valbum/index.html").serverUrl,
+        "http://h/valbum/",
+      );
+    });
+
+    test('refuses what is no absolute URL', () {
+      expect(() => serverLocationOf("nas.local"), throwsFormatException);
     });
   });
 

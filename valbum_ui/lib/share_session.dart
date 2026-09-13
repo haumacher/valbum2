@@ -19,7 +19,7 @@
 ///
 /// On the web alone. On the other platforms a link URL is opened in a browser:
 /// the app there talks to the server a device is paired with, and a session
-/// that may not store its token has nothing to pair. [shareSessionUrl] returns
+/// that may not store its token has nothing to pair. [sessionUrl] returns
 /// `null` off the web for that reason.
 library;
 
@@ -33,8 +33,8 @@ import 'urls.dart';
 /// the server said the link is.
 @immutable
 class ShareSession {
-  /// Where the app was loaded from, see [ShareSessionUrl].
-  final ShareSessionUrl url;
+  /// Where the app was loaded from, see [SessionUrl].
+  final SessionUrl url;
 
   /// What the server said about the link, see [AuthInfo.share].
   final ShareInfo info;

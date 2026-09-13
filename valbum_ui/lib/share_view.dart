@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import 'album_edit.dart' show privacyMembers, privacyPublic;
+import 'caller.dart';
 import 'client.dart';
 import 'move_view.dart' show showRefusal;
 import 'offline.dart';
@@ -62,20 +63,31 @@ const String anonymousNote =
 ///
 /// Grants are managed by the owner of the space a folder lies in (and by the
 /// administrator, who holds no rights in anybody else's space and therefore
-/// never reaches one). Three things must hold before the question is even
-/// asked, and all three are already on the screen: somebody is signed in, the
-/// caller holds every right here, and the path does not name another user's
-/// space. Without them the answer can only be "no", and asking would put a
-/// `?type=grants` request behind every folder the app shows — including every
-/// folder an anonymous caller browses.
+/// never reaches one). Four things must hold before the question is even
+/// asked, and all four are already on the screen: somebody is signed in, the
+/// caller holds every right here, the path does not name another user's space,
+/// and that caller is not a guest. Without them the answer can only be "no",
+/// and asking would put a `?type=grants` request behind every folder the app
+/// shows — including every folder an anonymous caller browses.
+///
+/// [isGuest] is the fourth (issue #52). A guest's own root reads exactly like
+/// an owner's folder — every right, no other space named — and `?type=grants`
+/// there answers a perfectly ordinary empty list, because there is nothing to
+/// list; it is the *grant* that the server refuses, with
+/// `AuthService.GUEST_GRANT_REFUSED`. A guest's library is what others share
+/// with them and there is nothing in it that is theirs to share on, so the
+/// entry is not offered and the question is not asked, see
+/// [CallerInfo.isGuest].
 bool couldManageGrants(
   VAlbumClient client,
   List<String> path,
-  Rights rights,
-) =>
+  Rights rights, {
+  bool isGuest = false,
+}) =>
     (client.token ?? "").isNotEmpty &&
     rights.complete &&
-    spaceOwnerOf(path) == null;
+    spaceOwnerOf(path) == null &&
+    !isGuest;
 
 /// Opens the share dialog on the folder at [path].
 ///

@@ -16,6 +16,7 @@ import 'album_edit.dart';
 import 'album_model.dart';
 import 'app.dart';
 import 'camera_roll_view.dart';
+import 'caller.dart';
 import 'client.dart';
 import 'listing_view.dart';
 import 'move_view.dart';
@@ -219,7 +220,12 @@ class AlbumContentState extends State<AlbumContent>
     if (ShareSession.peek(context) != null) {
       return;
     }
-    if (!couldManageGrants(client, widget.albumState.path, rights)) {
+    if (!couldManageGrants(
+      client,
+      widget.albumState.path,
+      rights,
+      isGuest: CallerInfo.isGuestPeek(context),
+    )) {
       return;
     }
     var may = await widget.albumState.navigator.delegate
@@ -233,6 +239,12 @@ class AlbumContentState extends State<AlbumContent>
   void didChangeDependencies() {
     super.didChangeDependencies();
     share = ShareSession.of(context);
+    // The server answers who is calling after the first build, so the guest
+    // may only be known now — and a guest shares nothing of their own, see
+    // [couldManageGrants].
+    if (_mayShare && CallerInfo.isGuestCaller(context)) {
+      _mayShare = false;
+    }
   }
 
   @override

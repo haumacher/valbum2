@@ -15,7 +15,8 @@ import 'util/fixtures.dart';
 
 const String dataUrl = "http://server/valbum/data";
 
-const ShareSessionUrl link = ShareSessionUrl(
+const SessionUrl link = SessionUrl(
+  kind: SessionKind.share,
   token: "tok-42",
   dataUrl: dataUrl,
   basePath: "/valbum/s/tok-42/",
@@ -83,7 +84,7 @@ Future<List<http.Request>> pumpSession(
       serverUrl: "http://other/valbum/",
       loaded: true,
     ),
-    shareLink: link,
+    session: link,
   ));
   await tester.pumpAndSettle();
   return requests;
@@ -128,7 +129,7 @@ void main() {
       // Exactly the state of a real device: nothing loaded yet. A link
       // session must not wait for that, nor trigger it.
       settings: ServerSettings(store: store, platformDefault: () => null),
-      shareLink: link,
+      session: link,
     ));
     await tester.pumpAndSettle();
 
@@ -293,7 +294,7 @@ void main() {
 
   group('the session URL', () {
     test('a two-segment context path keeps its whole context', () {
-      var session = shareSessionUrl(
+      var session = sessionUrl(
         Uri.parse("http://h:8080/photos/valbum/s/abc/"),
       )!;
       expect(session.token, "abc");
@@ -307,7 +308,7 @@ void main() {
       // browsed in an ordinary session never reaches this function; the
       // only base carrying `/s/` is the one the server rebased.
       expect(
-        shareSessionUrl(
+        sessionUrl(
           Uri.parse("http://h/valbum/s/2005/"),
           basePath: "/valbum/",
         ),

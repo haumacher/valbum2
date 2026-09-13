@@ -1,5 +1,8 @@
-/// The platform pieces of the offline support on the web.
+/// The platform pieces of the offline support on the web, and the one
+/// navigation that leaves the Flutter app behind, see [leaveForUrl].
 library;
+
+import 'dart:js_interop';
 
 import 'background.dart';
 import 'connectivity.dart';
@@ -50,3 +53,19 @@ BackgroundScheduler defaultBackgroundScheduler() =>
 
 /// Runs [task] as the platform's background task: never, in a browser.
 void executeBackgroundTask(Future<bool> Function() task) {}
+
+/// Replaces the page the app runs in by [url], forgetting the page it leaves.
+///
+/// The one thing the Flutter router cannot do: an accepted invitation has to
+/// leave its *app base* — the app was served under `<context>/i/<token>/`, and
+/// once the device is signed in it belongs at `<context>/`, with the token
+/// gone from the URL and gone from the history, see `invitation.dart`. A route
+/// change would keep the base and keep the token; only a full navigation
+/// changes what the browser asks the server for next.
+///
+/// `replace`, not `assign`: the invitation is used up, so the back button must
+/// not lead to a page that would probe it again.
+void leaveForUrl(String url) => _replaceLocation(url);
+
+@JS('window.location.replace')
+external void _replaceLocation(String url);

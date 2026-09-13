@@ -76,3 +76,10 @@ BackgroundScheduler defaultBackgroundScheduler() =>
 /// web build never sees the plugin's Dart code.
 void executeBackgroundTask(Future<bool> Function() task) =>
     runWorkmanagerTask(task);
+
+/// Replaces the page the app runs in by [url]: nothing, off the web.
+///
+/// There is no app base to leave on a phone or a desktop — an invitation URL
+/// is opened in a browser there, or pasted into the server field, and the app
+/// simply carries on with the token it was given, see `invitation.dart`.
+void leaveForUrl(String url) {}

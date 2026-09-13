@@ -15,7 +15,8 @@ import 'util/fixtures.dart';
 const String dataUrl = "http://server/valbum/data";
 
 /// The link the session tests are opened at.
-const ShareSessionUrl link = ShareSessionUrl(
+const SessionUrl link = SessionUrl(
+  kind: SessionKind.share,
   token: "tok-42",
   dataUrl: dataUrl,
   basePath: "/valbum/s/tok-42/",
@@ -128,7 +129,7 @@ Future<
     })> pumpLinkSession(
   WidgetTester tester,
   http.Response Function(http.Request request) handler, {
-  ShareSessionUrl session = link,
+  SessionUrl session = link,
   bool settingsLoaded = false,
 }) async {
   var requests = <http.Request>[];
@@ -143,7 +144,7 @@ Future<
   await tester.pumpWidget(VAlbumApp(
     client: client,
     settings: device.settings,
-    shareLink: session,
+    session: session,
   ));
   await tester.pumpAndSettle();
   return (requests: requests, store: device.store);

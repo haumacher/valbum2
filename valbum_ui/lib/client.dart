@@ -933,14 +933,27 @@ class VAlbumClient {
     return ShareLinkList.read(JsonReader.fromString(response));
   }
 
-  /// Posts the given model object as JSON, answering the body of the answer.
-  Future<String> _postJson(String url, ShareLink value) async {
+  /// Posts the given share link as JSON, answering the body of the answer.
+  Future<String> _postJson(String url, ShareLink value) =>
+      _postBody(url, _jsonOf(value.writeContent));
+
+  /// Posts the given invitation as JSON, answering the body of the answer.
+  Future<String> _postInvitation(String url, Invitation value) =>
+      _postBody(url, _jsonOf(value.writeContent));
+
+  /// The JSON a model object writes, as a string.
+  static String _jsonOf(void Function(JsonSink) write) {
     var body = StringBuffer();
-    value.writeContent(jsonStringWriter(body));
+    write(jsonStringWriter(body));
+    return body.toString();
+  }
+
+  /// Posts [body] as JSON, answering the body of the answer.
+  Future<String> _postBody(String url, String body) async {
     var response = await _http.post(
       Uri.parse(url),
       encoding: Encoding.getByName("utf-8"),
-      body: body.toString(),
+      body: body,
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
@@ -997,6 +1010,63 @@ class VAlbumClient {
     return UserList.read(JsonReader.fromString(response.body));
   }
 
+  /// Issues an invitation, answering its token exactly once (issue #52).
+  ///
+  /// An invitation creates a *user*, so it names no path and is asked of the
+  /// data root: the body says only what the accepting person becomes — the
+  /// [Invitation.role] (`member` or `guest`), an [Invitation.note] for the
+  /// inviter's own list and the [Invitation.expires] instant. The answer
+  /// carries the token and the URL the app is served under for it; the server
+  /// keeps only a hash and can never show either again.
+  ///
+  /// Refused with the server's own reason for a guest, and for a member on a
+  /// server started with `--invite admin`.
+  Future<InvitationCreated> invite(Invitation invitation) async {
+    var url = "${folderUrl(const [])}?action=invite";
+    var response = await _postInvitation(url, invitation);
+    return InvitationCreated.read(JsonReader.fromString(response));
+  }
+
+  /// The invitations this caller issued, the admin's being all of them.
+  ///
+  /// Listing them has no screen of its own in this app yet: the management
+  /// screens of issue #55 show what became of an invitation. The call is here
+  /// because the endpoint is, and because [uninvite] answers the same list.
+  Future<InvitationList> invitations() async {
+    var url = "${folderUrl(const [])}?type=invitations";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return InvitationList.read(JsonReader.fromString(response.body));
+  }
+
+  /// Withdraws the invitation of the given id.
+  ///
+  /// The record is kept and marked withdrawn — a user it already created is
+  /// untouched — and the token is refused from then on. Only the issuer and
+  /// the admin may; anybody else is told that there is no such invitation.
+  /// Offered by the management screens of issue #55, not by this app yet.
+  Future<InvitationList> uninvite(String id) async {
+    var url = "${folderUrl(const [])}?action=uninvite";
+    var response = await _postInvitation(url, Invitation(id: id));
+    return InvitationList.read(JsonReader.fromString(response));
+  }
+
+  /// Turns the guest of the given name into a member (issue #52).
+  ///
+  /// One rename on the server: the guest's root becomes their space, the links
+  /// in it already in place. Only the admin may, and only a guest becomes a
+  /// member — there is no way back. Offered by the management screens of issue
+  /// #55, not by this app yet.
+  Future<UserEntry> promote(String name) async {
+    var url = "${folderUrl(const [])}?action=promote";
+    var body = StringBuffer();
+    MemberName(name: name).writeContent(jsonStringWriter(body));
+    var response = await _postBody(url, body.toString());
+    return UserEntry.read(JsonReader.fromString(response));
+  }
+
   /// Signs in on this device, returning the token the server issued.
   ///
   /// The token is what makes the app a known caller; store it with the server
@@ -1009,16 +1079,27 @@ class VAlbumClient {
   /// carries a name gives the owner that name (issue #45). The wire action is
   /// still the pairing request of issue #28, so an older server simply ignores
   /// the name.
-  Future<PairResponse> pair(
-    String secret,
-    String deviceName, {
+  ///
+  /// [invitation] is the other way in (issue #52): accepting an invitation
+  /// *is* pairing, so a live invitation token takes the place of the [secret]
+  /// and the [userName] is then the name of the user to create — required, and
+  /// refused where it is taken. The request carries one or the other; a
+  /// request carrying both is read by the server as an invitation.
+  ///
+  /// Never carries the device's own token: a sign-in is how a device *gets*
+  /// one, and an invitation token is a bearer for nothing but `?type=auth`.
+  Future<PairResponse> pair({
+    String secret = "",
+    required String deviceName,
     String userName = "",
+    String invitation = "",
   }) async {
     var url = "${folderUrl(const [])}?action=pair";
     var request = PairRequest(
       secret: secret,
       deviceName: deviceName,
       userName: userName,
+      invitation: invitation,
     );
     var body = StringBuffer();
     request.writeContent(jsonStringWriter(body));

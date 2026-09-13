@@ -21,8 +21,10 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'invitation.dart';
 import 'offline.dart';
 import 'resource.dart';
 import 'urls.dart';
@@ -521,6 +523,19 @@ String userDisplayName(String userName) =>
 String spaceDisplayName(String space) =>
     space.isEmpty ? "the whole library" : space;
 
+/// A token as the screen shows it: enough to recognise it, not enough to use.
+///
+/// An invitation in the server field is a secret somebody was sent; it is
+/// shown so that a person sees *which* one they pasted, never so that it can
+/// be read off the screen, see issue #52.
+String maskedToken(String token) {
+  if (token.length <= 4) {
+    return "•" * token.length;
+  }
+  return "${token.substring(0, 2)}${"•" * (token.length - 4)}"
+      "${token.substring(token.length - 2)}";
+}
+
 /// Who a device is signed in as, as far as the app knows.
 ///
 /// [role] and [space] are `null` while only the store has spoken: they are not
@@ -632,6 +647,22 @@ const Key userNameFieldKey = Key("settings.userName");
 /// The key of the "Clear cache" button, see [serverUrlFieldKey].
 const Key clearCacheButtonKey = Key("settings.clearCache");
 
+/// The key of the invitation the entered URL carries, see [serverUrlFieldKey].
+///
+/// Present exactly while the sign-in section signs in with an invitation
+/// instead of the pairing secret (issue #52).
+const Key invitationSectionKey = Key("settings.invitation");
+
+/// The key of the action dropping the invitation of the entered URL.
+const Key invitationDropKey = Key("settings.invitation.drop");
+
+/// The key of the sentence a share link pasted into the server field is
+/// refused with, see [shareLinkRefusal].
+const Key shareLinkRefusalKey = Key("settings.shareLink");
+
+/// The key of the "Invite…" button, see [invitationSectionKey].
+const Key inviteButtonKey = Key("settings.invite");
+
 /// The screen editing the URL of the album server.
 class ServerSettingsScreen extends StatefulWidget {
   final ServerSettings settings;
@@ -692,6 +723,19 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// leaving the section silent.
   String? identityProblem;
 
+  /// The invitation the entered URL carries, empty while it carries none.
+  ///
+  /// Never stored: it is exchanged for a device token exactly once, exactly
+  /// like the pairing secret, see issue #52.
+  String invitationToken = "";
+
+  /// What the server said the entered invitation offers, `null` while it has
+  /// not answered (or answered that the token is no invitation of its).
+  InvitationInfo? invitationOffer;
+
+  /// Why the entered invitation cannot be used, if it cannot.
+  String? invitationProblem;
+
   /// The outcome of the last connection test, if any.
   ConnectionTestResult? result;
 
@@ -731,6 +775,94 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       );
       _askWhoThisDeviceIs();
     }
+    // A screen opened with an invitation already in the field (the app was
+    // pointed here by one) asks about it at once, exactly as a paste does.
+    _enteredChanged();
+  }
+
+  /// What the URL in the field names, `null` while it names nothing usable.
+  ServerLocation? get entered {
+    try {
+      return serverLocationOf(controller.text);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  /// The entered URL changed: pick up an invitation it carries, drop the one
+  /// it no longer carries.
+  ///
+  /// A person on a phone gets the invitation by message and pastes it where
+  /// the app asks for a server; the field therefore reads a `/i/<token>/` URL
+  /// as "this server, and this invitation", see [serverLocationOf].
+  void _enteredChanged() {
+    var location = entered;
+    var token = location?.invitation ?? "";
+    if (token == invitationToken) {
+      return;
+    }
+    invitationToken = token;
+    invitationOffer = null;
+    invitationProblem = null;
+    if (token.isEmpty) {
+      return;
+    }
+    _askAboutInvitation(token, location!.dataUrl);
+  }
+
+  /// Asks the invited server who invited, and as what.
+  ///
+  /// The invitation token is the bearer of this one request and of the sign-in
+  /// below, and of nothing else: on every other endpoint it is anonymous, see
+  /// issue #52.
+  Future<void> _askAboutInvitation(String token, String dataUrl) async {
+    AuthInfo info;
+    try {
+      info = await widget.clientFor(dataUrl).withToken(token).authInfo();
+    } on VAlbumException catch (failure) {
+      _invitationUnusable(token, failure.message);
+      return;
+    } on http.ClientException catch (failure) {
+      _invitationUnusable(token, failure.message);
+      return;
+    } catch (failure) {
+      _invitationUnusable(token, failure.toString());
+      return;
+    }
+    if (!mounted || invitationToken != token) {
+      return;
+    }
+    var offered = info.invitation;
+    if (offered == null) {
+      _invitationUnusable(
+        token,
+        "This server does not know this invitation. Ask for a new one.",
+      );
+      return;
+    }
+    setState(() {
+      invitationOffer = offered;
+      invitationProblem = null;
+    });
+  }
+
+  void _invitationUnusable(String token, String problem) {
+    if (!mounted || invitationToken != token) {
+      return;
+    }
+    setState(() {
+      invitationOffer = null;
+      invitationProblem = problem;
+    });
+  }
+
+  /// Forgets the invitation of the entered URL: the plain server stays.
+  void _dropInvitation() {
+    var location = entered;
+    if (location != null) {
+      controller.text = location.serverUrl;
+    }
+    setState(_enteredChanged);
   }
 
   /// Asks the *saved* server who this device is, filling [identity].
@@ -842,6 +974,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
                 onChanged: (_) => setState(() {
                   error = null;
                   result = null;
+                  _enteredChanged();
                 }),
                 onSubmitted: (_) => _save(),
               ),
@@ -922,41 +1055,58 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// sent on every request from then on. Since issue #45 the token belongs to
   /// a user, so the section asks for that user's name as well and shows who
   /// this device is signed in as.
-  List<Widget> _signInSection(ServerSettings settings) => [
+  List<Widget> _signInSection(ServerSettings settings) {
+    // A share link is no sign-in and names no server: it is said, not stored,
+    // see [shareLinkRefusal].
+    if (entered?.isShare ?? false) {
+      return [
         const SizedBox(height: 8),
         Text("Sign in", style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
-        const Text(
-          "The pairing secret, which the server prints at start-up, signs in "
-          "the library owner. The first sign-in that gives a name names the "
-          "owner; later sign-ins may repeat that name or leave it empty.",
-        ),
+        const Text(shareLinkRefusal, key: shareLinkRefusalKey),
+      ];
+    }
+    var inviting = invitationToken.isNotEmpty;
+    return [
+        const SizedBox(height: 8),
+        Text("Sign in", style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        if (!inviting)
+          const Text(
+            "The pairing secret, which the server prints at start-up, signs in "
+            "the library owner. The first sign-in that gives a name names the "
+            "owner; later sign-ins may repeat that name or leave it empty.",
+          ),
         const SizedBox(height: 16),
         ..._identityDisplay(settings),
         const SizedBox(height: 16),
+        if (inviting) ..._invitationDisplay(),
         TextField(
           key: userNameFieldKey,
           controller: userController,
           autocorrect: false,
-          decoration: const InputDecoration(
-            labelText: "User name",
-            helperText: "Leave empty to sign in as the library owner.",
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: inviting ? "Your name" : "User name",
+            helperText: inviting
+                ? "How the others on this server see you."
+                : "Leave empty to sign in as the library owner.",
+            border: const OutlineInputBorder(),
           ),
         ),
         const SizedBox(height: 16),
-        TextField(
-          key: pairingSecretFieldKey,
-          controller: secretController,
-          autocorrect: false,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: "Pairing secret",
-            border: OutlineInputBorder(),
+        if (!inviting)
+          TextField(
+            key: pairingSecretFieldKey,
+            controller: secretController,
+            autocorrect: false,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: "Pairing secret",
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _signIn(),
           ),
-          onSubmitted: (_) => _signIn(),
-        ),
-        const SizedBox(height: 16),
+        if (!inviting) const SizedBox(height: 16),
         TextField(
           key: deviceNameFieldKey,
           controller: deviceController,
@@ -997,7 +1147,122 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
             ],
           ),
         if (!pairingRunning && pairing != null) _outcome(pairing!),
+        ..._inviteSection(),
       ];
+  }
+
+  /// The invitation the entered URL carries: who invited, as what, and the way
+  /// out of it.
+  ///
+  /// The token itself is shown masked and cannot be edited — it is not a thing
+  /// to type, it is a thing that was pasted — and dropping it leaves the plain
+  /// server URL behind, so the field stays usable for an ordinary sign-in.
+  List<Widget> _invitationDisplay() {
+    var offer = invitationOffer;
+    var problem = invitationProblem;
+    return [
+      Card(
+        key: invitationSectionKey,
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.mail_outline),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text("Invitation ${maskedToken(invitationToken)}"),
+                  ),
+                  TextButton(
+                    key: invitationDropKey,
+                    onPressed: _dropInvitation,
+                    child: const Text("Not this one"),
+                  ),
+                ],
+              ),
+              if (offer != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  "${userDisplayName(offer.invitedBy)} invited you to this "
+                  "album server as a ${invitationRoleName(offer.role)}.",
+                  key: const Key("settings.invitation.offer"),
+                ),
+                if (offer.note.trim().isNotEmpty)
+                  Text(offer.note.trim(),
+                      key: const Key("settings.invitation.note")),
+                if (offer.role == roleGuest)
+                  const Text(guestRoleExplanation),
+              ],
+              if (problem != null) ...[
+                const SizedBox(height: 8),
+                Text(problem, key: const Key("settings.invitation.problem")),
+              ],
+              if (offer == null && problem == null) ...[
+                const SizedBox(height: 8),
+                const Text("Asking the server about this invitation..."),
+              ],
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+    ];
+  }
+
+  /// The way to invite somebody, for a caller who may (issue #52).
+  ///
+  /// Offered to a member and to the admin, never to a guest — a guest invites
+  /// nobody. Whether a *member* may is the server's word under
+  /// `--invite admin`, and it is said in the dialog where it is asked, not
+  /// guessed here.
+  ///
+  /// Only issuing an invitation is offered. Listing the invitations one handed
+  /// out, withdrawing them and turning a guest into a member are the
+  /// management screens of issue #55; the calls they need are in
+  /// [VAlbumClient] already.
+  List<Widget> _inviteSection() {
+    var role = identity?.role ?? "";
+    if (!CallerInfo(role: role).mayInvite) {
+      return const [];
+    }
+    return [
+      const SizedBox(height: 24),
+      const Divider(),
+      const SizedBox(height: 8),
+      Text("People", style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      const Text(
+        "An invitation is a single-use link that creates one account on this "
+        "server. Send it to the person it is for, and to nobody else.",
+      ),
+      const SizedBox(height: 16),
+      OutlinedButton.icon(
+        key: inviteButtonKey,
+        onPressed: _invite,
+        icon: const Icon(Icons.person_add),
+        label: const Text("Invite…"),
+      ),
+    ];
+  }
+
+  /// Opens the dialog issuing an invitation at the *saved* server.
+  ///
+  /// The saved server and its token: an invitation is issued by a signed-in
+  /// caller, and the token belongs to the server that issued it — exactly the
+  /// client [_askWhoThisDeviceIs] asks with.
+  Future<void> _invite() async {
+    var dataUrl = widget.settings.dataUrl;
+    if (dataUrl == null) {
+      return;
+    }
+    await openInviteDialog(
+      context,
+      widget.clientFor(dataUrl).withToken(widget.settings.token),
+    );
+  }
 
   /// Who this device is signed in as, or that it is not.
   ///
@@ -1021,8 +1286,13 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         lines.add("Device: ${user.deviceName}");
       }
       var space = user.space;
-      if (space != null) {
+      if (space != null && !(role == roleGuest)) {
         lines.add("Space: ${spaceDisplayName(space)}");
+      }
+      // A guest's space is not a library of their own, so it is said in words
+      // rather than shown as a folder, see issue #52.
+      if (role == roleGuest) {
+        lines.add(guestLibraryNotice);
       }
     } else {
       lines.add("Not signed in");
@@ -1140,10 +1410,15 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     });
   }
 
-  /// Exchanges the pairing secret for a device token at the *entered* server.
+  /// Exchanges the pairing secret — or the invitation — for a device token at
+  /// the *entered* server.
   ///
   /// The URL does not have to be saved for this: the sign-in reaches the
-  /// address the user is looking at, like the connection test does.
+  /// address the user is looking at, like the connection test does. An
+  /// invitation URL is the exception: what it names is a server *and* a token,
+  /// and a device that just became somebody's on that server belongs at it —
+  /// so the plain server URL is stored with the sign-in, never the `/i/…`
+  /// form, see issue #52.
   Future<void> _signIn() async {
     if (OfflineScope.isOffline(context)) {
       // A sign-in is a change on the server; while it cannot be reached there
@@ -1169,17 +1444,24 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       pairingRunning = true;
     });
 
-    var client = widget.clientFor(dataUrlOf(entered)).withToken(null);
+    var location = serverLocationOf(entered);
+    var client = widget.clientFor(location.dataUrl).withToken(null);
     ConnectionTestResult outcome;
     SignedInUser? signedIn;
     try {
       var response = await client.pair(
-        secretController.text.trim(),
-        deviceController.text.trim().isEmpty
+        secret: location.isInvitation ? "" : secretController.text.trim(),
+        invitation: location.invitation,
+        deviceName: deviceController.text.trim().isEmpty
             ? defaultDeviceName()
             : deviceController.text.trim(),
         userName: userController.text.trim(),
       );
+      if (location.isInvitation) {
+        // Before the token is stored: saving a server forgets the token of
+        // the one it replaces, see [ServerSettings.save].
+        await widget.settings.save(location.serverUrl);
+      }
       await widget.settings.signedInAs(
         response.token,
         response.deviceName,
@@ -1211,6 +1493,12 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         identity = signedIn;
         identityProblem = null;
         userController.text = signedIn?.userName ?? "";
+        if (invitationToken.isNotEmpty) {
+          // Used up: the field shows the server it named, and the section is
+          // the ordinary sign-in again.
+          controller.text = serverLocationOf(entered).serverUrl;
+          _enteredChanged();
+        }
       }
     });
   }
@@ -1250,7 +1538,9 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     });
 
     var outcome = await testServerConnection(
-      widget.clientFor(dataUrlOf(entered)).withToken(widget.settings.token),
+      widget
+          .clientFor(serverLocationOf(entered).dataUrl)
+          .withToken(widget.settings.token),
     );
 
     if (!mounted) {
@@ -1270,7 +1560,12 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       return;
     }
 
-    await widget.settings.save(entered);
+    // An invitation URL names a server and a token; what a device stores is
+    // the server, see [serverLocationOf]. Anything else is stored as typed.
+    var location = serverLocationOf(entered);
+    await widget.settings.save(
+      location.isInvitation ? location.serverUrl : entered,
+    );
 
     if (!mounted) {
       return;

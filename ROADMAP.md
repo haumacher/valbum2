@@ -171,6 +171,20 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-13 (evening)** — Invitations and guests (#52), app side. Share links and invitations are one
+  session mechanism with two kinds: the app base `<context>/s/<token>/` or `<context>/i/<token>/` names
+  the kind, the token goes to `?type=auth` once, and the answer decides — a share opens the album, an
+  invitation opens a welcome that ends in a sign-in, and a token the server knows as neither falls back to
+  the ordinary start without a word. Joining is the pairing with the invitation instead of the secret; the
+  device token that comes out is stored like any sign-in together with the plain server URL, the invitation
+  token is stored nowhere, and "Open your albums" replaces the browser location so the used-up token leaves
+  the URL and the history. On the phone the same link is pasted into the server field, which recognises it
+  (server plus invitation) and switches the sign-in to it; a pasted share link is told to open in a browser.
+  "Invite…" lives in the server settings for admins and members, the URL shown once. The app learns the
+  caller's role from one `?type=auth` per client and hides at a guest's own root what the server would
+  refuse by role — creating, moving, placement, and (found by the review probe) sharing — while a guest
+  contributing through a link keeps what the target's grant gives.
+
 - **2026-09-13 (later)** — Invitations and guests (#52), server side. An invitation is a single-use token
   that creates a user: `?action=invite` (a member, or the admin alone under `--invite admin`) records it
   hash-only in `<basepath>/.valbum/invitations.json` with role, inviter, note and an expiry that is never
@@ -186,8 +200,8 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
   `<basepath>/<name>/` — it becomes the space, links and registry already in place; demotion is not
   offered. Names: a free name is neither a user, a group, nor a top-level folder, and — found by the review
   probe — may not start with `~`, the canonical form of another user's space. Token lookup order is
-  devices, shares, invitations; a token in none of them is unknown. The app half (inviting from the
-  settings, accepting at `/i/<token>/`, the guest's view of their library) is open.
+  devices, shares, invitations; a token in none of them is unknown. The app half landed the same evening
+  (see above).
 
 - **2026-09-13** — Share links (#51), app side. A link is a session, not a pairing: the web app recognises
   `<context>/s/<token>/` in its own app base (never in the document location, which is the album being

@@ -14,12 +14,14 @@ import 'package:sn_progress_dialog/progress_dialog.dart';
 import 'album_model.dart';
 import 'album_view.dart';
 import 'background.dart';
+import 'caller.dart';
 import 'camera_roll.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
 import 'connectivity.dart';
 import 'group_view.dart';
 import 'image_view.dart';
+import 'invitation.dart';
 import 'links.dart';
 import 'listing_view.dart';
 import 'offline.dart';
@@ -82,13 +84,14 @@ class VAlbumApp extends StatefulWidget {
   /// with the device either.
   final BackgroundScheduler? backgroundScheduler;
 
-  /// The share link the app was opened at, see issue #51.
+  /// The token session the app was opened at: a share link (issue #51) or an
+  /// invitation (issue #52).
   ///
   /// Defaults to what the app base says on the web (a base ending in
-  /// `/s/<token>/`, see [shareSessionUrl]) and to `null` everywhere else: off
-  /// the web a link URL is opened in a browser, since a session that may not
-  /// store its token has nothing to pair. Tests inject it.
-  final ShareSessionUrl? shareLink;
+  /// `/s/<token>/` or `/i/<token>/`, see [sessionUrl]) and to `null` everywhere
+  /// else: off the web such a URL is opened in a browser, or pasted into the
+  /// server field, see `invitation.dart`. Tests inject it.
+  final SessionUrl? session;
 
   const VAlbumApp({
     super.key,
@@ -99,7 +102,7 @@ class VAlbumApp extends StatefulWidget {
     this.offlineState,
     this.photoLibrary,
     this.backgroundScheduler,
-    this.shareLink,
+    this.session,
   });
 
   @override
@@ -193,16 +196,16 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// The client the app talks to the server with, `null` if none is set up.
   VAlbumClient? client;
 
-  /// The share link the app was opened at, see [VAlbumApp.shareLink].
-  late final ShareSessionUrl? _shareLink = widget.shareLink ?? _detectShareLink();
+  /// The token session the app was opened at, see [VAlbumApp.session].
+  late final SessionUrl? _session = widget.session ?? _detectSession();
 
-  /// The link the app was loaded at, read off the app base on the web.
+  /// The session the app was loaded at, read off the app base on the web.
   ///
   /// Read once, here, for the same reason the origin is (see
   /// [_defaultSettings]): the location changes while the app runs, and only
-  /// the app base still says which link this is.
-  static ShareSessionUrl? _detectShareLink() => kIsWeb
-      ? shareSessionUrl(
+  /// the app base still says which token this is.
+  static SessionUrl? _detectSession() => kIsWeb
+      ? sessionUrl(
           Uri.base,
           basePath: appBasePath(
             Uri.base.path,
@@ -211,20 +214,44 @@ class VAlbumAppState extends State<VAlbumApp> {
         )
       : null;
 
-  /// Whether the server said that the token of [_shareLink] is not a link
-  /// after all, see [_confirmShareLink].
-  bool _linkAbandoned = false;
+  /// Whether the server said that the token of [_session] is neither a link
+  /// nor an invitation after all, see [_confirmSession].
+  bool _sessionAbandoned = false;
 
-  /// The link this session runs in while it runs in one, see [shareLink].
-  ShareSessionUrl? get shareLink => _linkAbandoned ? null : _shareLink;
+  /// The session this app runs in while it runs in one.
+  SessionUrl? get session => _sessionAbandoned ? null : _session;
+
+  /// The share link this session runs in, `null` in every other start.
+  SessionUrl? get shareLink {
+    var current = session;
+    return current != null && current.isShare ? current : null;
+  }
+
+  /// The invitation this session runs in, `null` in every other start.
+  SessionUrl? get invitation {
+    var current = session;
+    return current != null && current.isInvitation ? current : null;
+  }
 
   /// What the server said the link is, `null` until `?type=auth` answered.
   ShareSession? shareSession;
 
-  /// Why the link session cannot start, `null` while all is well.
+  /// What the server said the invitation offers, `null` until `?type=auth`
+  /// answered, see [_confirmSession].
+  InvitationInfo? invitationInfo;
+
+  /// Who the app talks to the server as, `null` while nobody said, see
+  /// [CallerInfo].
+  CallerInfo? caller;
+
+  /// The server and token [caller] was asked about, so that the question is
+  /// asked once per client and not once per rebuild.
+  String? _callerAsked;
+
+  /// Why the session cannot start, `null` while all is well.
   ///
-  /// A `410` (expired, withdrawn) is the reason this exists; every other
-  /// failure of the start-up probe lands here too, so that a link session
+  /// A `410` (expired, withdrawn, used up) is the reason this exists; every
+  /// other failure of the start-up probe lands here too, so that a session
   /// never falls back to a page offering the server settings.
   VAlbumException? _shareRefusal;
 
@@ -246,6 +273,11 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// [_startupScreen] instead of the app.
   bool get _readyForTheRouter {
     if (_shareRefusal != null) {
+      return false;
+    }
+    if (invitation != null) {
+      // An invitation opens no album: it ends in a sign-in and then leaves
+      // this app base for the ordinary one, see [InvitationWelcomeScreen].
       return false;
     }
     if (shareLink != null) {
@@ -353,7 +385,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     settings.addListener(_settingsChanged);
     _initialRouteInformation;
     _syncClient();
-    if (shareLink != null) {
+    if (session != null) {
       // A link session asks one question before it shows anything: is this
       // token a link, and what does it open? Nothing of the device takes part
       // in it — the settings are never *loaded* (no stored server URL, no
@@ -361,7 +393,7 @@ class VAlbumAppState extends State<VAlbumApp> {
       // never waits for any of them, see [_readyForTheRouter]. Only a link
       // the server does not know falls back to the ordinary start, which
       // reads the device then, see [_confirmShareLink].
-      _confirmShareLink();
+      _confirmSession();
       return;
     }
     // Before the first client is built: until this completes the app shows a
@@ -379,20 +411,23 @@ class VAlbumAppState extends State<VAlbumApp> {
     });
   }
 
-  /// Asks the server once whether this session really is a share link.
+  /// Asks the server once what the token in the app base really is.
   ///
-  /// `?type=auth` answers an [AuthInfo.share] for a link caller and nothing
-  /// for anybody else, so the answer decides between three starts:
+  /// `?type=auth` answers an [AuthInfo.share] for a link caller, an
+  /// [AuthInfo.invitation] for somebody holding an invitation and nothing for
+  /// anybody else, so the one answer decides between three starts:
   ///
-  ///  * a [ShareInfo] — the session is confirmed and the app runs inside the
-  ///    link, see [ShareSessionScope];
-  ///  * no [ShareInfo] — the token in the URL is not a link (a hand-made
-  ///    path, a link of another server), so the link is abandoned and the app
-  ///    starts as it always does, from the settings of this device;
-  ///  * a refusal — a `410` for a link that expired or was withdrawn, and
-  ///    every other failure, which becomes the plain page of [_startupScreen].
-  Future<void> _confirmShareLink() async {
-    var link = shareLink!;
+  ///  * what the URL said it is — the session is confirmed and the app runs
+  ///    inside the link ([ShareSessionScope]) or shows the welcome screen of
+  ///    the invitation ([InvitationWelcomeScreen]);
+  ///  * neither — the token in the URL is not a session of this server (a
+  ///    hand-made path, a link of another server), so it is abandoned and the
+  ///    app starts as it always does, from the settings of this device;
+  ///  * a refusal — a `410` for a link or an invitation that expired, was
+  ///    withdrawn or was used up, and every other failure, which becomes the
+  ///    plain page of [_startupScreen].
+  Future<void> _confirmSession() async {
+    var link = session!;
     var probe = client!;
     AuthInfo answer;
     try {
@@ -411,20 +446,18 @@ class VAlbumAppState extends State<VAlbumApp> {
     if (!mounted) {
       return;
     }
+    if (link.isInvitation) {
+      var offered = answer.invitation;
+      if (offered == null) {
+        _abandonSession();
+        return;
+      }
+      setState(() => invitationInfo = offered);
+      return;
+    }
     var share = answer.share;
     if (share == null) {
-      setState(() {
-        _linkAbandoned = true;
-        _syncClient();
-      });
-      // The ordinary start, now that this is an ordinary session.
-      var settingsLoaded =
-          settings.loaded ? Future<void>.value() : settings.load();
-      settingsLoaded.then((_) {
-        if (mounted) {
-          setState(_syncClient);
-        }
-      });
+      _abandonSession();
       return;
     }
     setState(() {
@@ -434,6 +467,40 @@ class VAlbumAppState extends State<VAlbumApp> {
         writeAllowed: answer.writeAllowed,
       );
     });
+  }
+
+  /// The token in the app base is no session of this server: start as usual.
+  ///
+  /// Without a word — a URL that is not a link and not an invitation is a URL
+  /// like any other, and the device's own library is what lies behind it.
+  void _abandonSession() {
+    setState(() {
+      _sessionAbandoned = true;
+      _syncClient();
+    });
+    // The ordinary start, now that this is an ordinary session.
+    var settingsLoaded =
+        settings.loaded ? Future<void>.value() : settings.load();
+    settingsLoaded.then((_) {
+      if (mounted) {
+        setState(_syncClient);
+      }
+    });
+  }
+
+  /// Stores what the accepted invitation answered: this server, and the token
+  /// this device is signed in with from now on, see issue #52.
+  ///
+  /// Exactly what a sign-in with the pairing secret stores, and stored through
+  /// the same [ServerSettings]: what came out of an invitation is an ordinary
+  /// device token. The invitation token itself is written nowhere.
+  Future<void> _invitationAccepted(PairResponse answer) async {
+    await settings.save(invitation!.appBase);
+    await settings.signedInAs(
+      answer.token,
+      answer.deviceName,
+      userName: answer.userName,
+    );
   }
 
   @override
@@ -467,7 +534,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   void _settingsChanged() => setState(_syncClient);
 
   void _syncClient() {
-    var link = shareLink;
+    var link = session;
     if (link != null) {
       // A link names its own server: neither the stored server URL nor the
       // stored device token is consulted, and the session's token is never
@@ -476,19 +543,23 @@ class VAlbumAppState extends State<VAlbumApp> {
       if (client?.dataUrl == link.dataUrl && client?.token == link.token) {
         return;
       }
-      var session = VAlbumClient(
+      var sessionClient = VAlbumClient(
         dataUrl: link.dataUrl,
         token: link.token,
         httpClient: _transport,
         offlineState: offlineState,
       );
-      client = session;
-      _router?.client = session;
+      client = sessionClient;
+      _router?.client = sessionClient;
+      // Nothing of the device takes part in a session, the caller question
+      // included: a link caller is nobody and an invitation holder is not a
+      // user yet, see [_syncCaller].
       return;
     }
     var dataUrl = settings.dataUrl;
     if (dataUrl == null) {
       client = null;
+      _syncCaller();
       return;
     }
     if (client?.dataUrl == dataUrl && client?.token == settings.token) {
@@ -496,6 +567,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     }
     var next = clientFor(dataUrl);
     client = next;
+    _syncCaller();
     // Drops every resource and scroll offset of the previous server and
     // re-runs the load of the current route.
     _router?.client = next;
@@ -504,6 +576,39 @@ class VAlbumAppState extends State<VAlbumApp> {
     if (cameraRoll.loaded && cameraRoll.config.enabled) {
       cameraRoll.trigger();
     }
+  }
+
+  /// Asks the server who this device is signed in as, once per client.
+  ///
+  /// The rights the server sends with every folder say what may be done
+  /// *there*; the role says what this caller is, which is the one thing a
+  /// folder answer does not carry — a guest holds every right in their own
+  /// root and may still put no photo into it, see [CallerInfo]. One question
+  /// per client, never one per folder.
+  ///
+  /// Only for a signed-in device: an anonymous caller has no role, so nothing
+  /// is asked and nothing is published. A server that does not answer leaves
+  /// the caller unknown, and the app behaves exactly as it did before the
+  /// question existed.
+  void _syncCaller() {
+    var current = client;
+    var token = current?.token ?? "";
+    var asked = current == null ? null : "${current.dataUrl}|$token";
+    if (asked == _callerAsked) {
+      return;
+    }
+    _callerAsked = asked;
+    caller = null;
+    if (current == null || token.isEmpty) {
+      return;
+    }
+    current.authInfo().then((info) {
+      if (mounted && _callerAsked == asked) {
+        setState(() => caller = CallerInfo.of(info));
+      }
+    }).catchError((Object _) {
+      // The server did not say; the caller stays unknown, see [CallerInfo].
+    });
   }
 
   @override
@@ -517,12 +622,16 @@ class VAlbumAppState extends State<VAlbumApp> {
           settings: settings,
           clientFor: clientFor,
           // Published around the whole app: every view asks whether it is
-          // inside a link, see [ShareSession.of].
+          // inside a link, see [ShareSession.of], and who is calling, see
+          // [CallerInfo.maybeOf].
           child: ShareSessionScope(
             session: shareSession,
-            child: _readyForTheRouter && client != null
-                ? _albumApp(client!)
-                : _beforeTheRouter(),
+            child: CallerScope(
+              caller: caller,
+              child: _readyForTheRouter && client != null
+                  ? _albumApp(client!)
+                  : _beforeTheRouter(),
+            ),
           ),
         ),
       ),
@@ -560,6 +669,27 @@ class VAlbumAppState extends State<VAlbumApp> {
       // A link that is gone says so and offers nothing else: there is no
       // server to configure and no device to sign in, see issue #51.
       return ShareGoneScreen(message: refusal.message);
+    }
+    var invite = invitation;
+    if (invite != null) {
+      var offered = invitationInfo;
+      if (offered == null) {
+        // The invitation is being read; nothing of the device belongs on the
+        // screen until the server has said who invited, see [_confirmSession].
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      return InvitationWelcomeScreen(
+        client: client!,
+        info: offered,
+        token: invite.token,
+        appBase: invite.appBase,
+        onJoined: _invitationAccepted,
+        // An invitation that died between the welcome and the "Join" is gone
+        // exactly as one that was dead on arrival, and says the same thing.
+        onGone: (message) => setState(
+          () => _shareRefusal = VAlbumException(message, status: 410),
+        ),
+      );
     }
     if (shareLink != null) {
       // The link is being confirmed; the device has nothing to say here, so

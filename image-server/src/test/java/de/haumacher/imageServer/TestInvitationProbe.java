@@ -107,6 +107,29 @@ public class TestInvitationProbe extends InviteTestCase {
 		assertEquals("Only the readable one was recorded.", 1, store().getInvitations().size());
 	}
 
+	// --- What a browser may keep. ---
+
+	public void testNoAnswerAboutACallerIsCachedByTheBrowser() throws Exception {
+		String token = issue(Roles.GUEST, "alice", tomorrow());
+		FakeResponse live = authOf(token);
+		assertEquals(HttpServletResponse.SC_OK, live.status());
+		assertEquals("A 200 depends on the bearer that asked.", "no-store", live.header("Cache-Control"));
+		assertEquals("Authorization", live.header("Vary"));
+
+		String id = store().lookup(token).getId();
+		store().revoke(id);
+		restartServer();
+		FakeResponse gone = authOf(token);
+		assertEquals(HttpServletResponse.SC_GONE, gone.status());
+		// Found in the browser check of #52: Chrome caches a 410 by default, and replayed the
+		// withdrawn share link's answer to the invitation opened afterwards at the same origin.
+		assertEquals("A 410 is cacheable by default; this one must not be.", "no-store",
+			gone.header("Cache-Control"));
+
+		FakeResponse listing = get("/", "json", SharingFixture.ALICE);
+		assertEquals("no-store", listing.header("Cache-Control"));
+	}
+
 	// --- Names and canonical paths. ---
 
 	public void testANameSpelledLikeACanonicalPathIsRefused() throws Exception {
