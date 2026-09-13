@@ -186,6 +186,20 @@
 					<artifactId>maven-surefire-plugin</artifactId>
 					<version>3.0.0-M7</version>
 				</plugin>
+				<plugin>
+					<groupId>org.codehaus.mojo</groupId>
+					<artifactId>build-helper-maven-plugin</artifactId>
+					<version>3.6.0</version>
+				</plugin>
+				<!--
+					Builds the Debian package of the server (image-server/src/deb). Pure Java,
+					so a CI runner needs no dpkg tooling to produce a .deb.
+				-->
+				<plugin>
+					<groupId>org.vafer</groupId>
+					<artifactId>jdeb</artifactId>
+					<version>1.13</version>
+				</plugin>
 			</plugins>
 		</pluginManagement>
 	</build>

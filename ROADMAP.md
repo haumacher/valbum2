@@ -165,11 +165,31 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Phase 5 — Distribution
 
-- Docker image and a Raspberry Pi install recipe for the server.
+- ~~Raspberry Pi install recipe for the server~~ — done: a Debian package (`valbum`, arm64/amd64/armhf)
+  from an APT repository on GitHub Pages, systemd unit, `/etc/default/valbum`.
+- ~~Release automation from tags~~ — done: `valbum-<x.y.z>` builds the packages and a signed Android APK,
+  publishes the GitHub Release and rebuilds the APT site.
+- Docker image for the server (from the same platform jar).
 - Store builds for Android and iOS; desktop bundles.
-- Release automation from tags.
 
 ## Decisions log
+
+- **2026-09-13 (night)** — Distribution (Phase 5). The server installs on a Raspberry Pi like any other
+  package: `apt install valbum` from an APT repository at <https://haumacher.github.io/valbum2/>, and
+  `apt upgrade` is the update path. The package is built inside the Maven build with `jdeb` (pure Java,
+  no dpkg tooling on the runner), only when the build is restricted to one JavaCPP platform — the
+  unrestricted jar carries 2.3 GB of natives for every platform, the arm64 subset makes an 85 MB package.
+  It installs a wrapper, a systemd unit running as the system user `valbum`, and `/etc/default/valbum` as
+  the one place to configure (the library folder, port, context path, auth mode); a variable set in the
+  environment wins over the file, a missing library folder — a USB disk not yet mounted — is refused and
+  retried by systemd rather than served empty. The default library `/var/lib/valbum` is never removed,
+  not even on purge: the package obeys the same doctrine as the server, it does not delete photos. The
+  release workflow runs on a `valbum-<x.y.z>` tag, sets the pom version from the tag without committing
+  it, and treats the GitHub Release assets as the truth: the Pages site is a derived view rebuilt from the
+  newest two releases on every run (a Pages site is capped near 1 GB), so nothing is carried between runs
+  and `workflow_dispatch` republishes it any time. An APT repository or an APK is never published
+  unsigned or debug-signed; a missing secret fails the job with the command that creates the key. The
+  Android APK rides the same release, `versionCode` derived from the version so no counter is kept.
 
 - **2026-09-13 (evening)** — Management (#55), app side, and the empty root (#56). The screens are sections
   of the server settings, not screens of their own: my devices, open invitations and (for the admin) the

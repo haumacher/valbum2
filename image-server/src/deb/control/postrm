@@ -1,0 +1,48 @@
+#!/bin/sh
+set -e
+
+VALBUM_USER=valbum
+VALBUM_GROUP=valbum
+VALBUM_HOME=/var/lib/valbum
+
+case "$1" in
+	remove)
+		if [ -d /run/systemd/system ]; then
+			systemctl --system daemon-reload >/dev/null 2>&1 || true
+		fi
+		if command -v deb-systemd-helper >/dev/null 2>&1; then
+			deb-systemd-helper mask valbum.service >/dev/null 2>&1 || true
+		fi
+		;;
+	purge)
+		if command -v deb-systemd-helper >/dev/null 2>&1; then
+			deb-systemd-helper purge valbum.service >/dev/null 2>&1 || true
+			deb-systemd-helper unmask valbum.service >/dev/null 2>&1 || true
+		fi
+		if [ -d /run/systemd/system ]; then
+			systemctl --system daemon-reload >/dev/null 2>&1 || true
+		fi
+
+		if getent passwd "$VALBUM_USER" >/dev/null; then
+			deluser --system "$VALBUM_USER" >/dev/null 2>&1 || true
+		fi
+		if getent group "$VALBUM_GROUP" >/dev/null; then
+			delgroup --system "$VALBUM_GROUP" >/dev/null 2>&1 || true
+		fi
+
+		# The album folder is never removed. VAlbum does not delete photos, and
+		# a purge that wiped a family album would be the worst bug this package
+		# could have. Remove it by hand if you really mean to.
+		if [ -d "$VALBUM_HOME" ]; then
+			echo "valbum: the album folder $VALBUM_HOME was left in place; remove it by hand if you no longer want it."
+		fi
+		;;
+	upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+		;;
+	*)
+		echo "postrm called with unknown argument '$1'" >&2
+		exit 1
+		;;
+esac
+
+exit 0

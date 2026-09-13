@@ -1,0 +1,57 @@
+#!/bin/sh
+set -e
+
+VALBUM_USER=valbum
+VALBUM_GROUP=valbum
+VALBUM_HOME=/var/lib/valbum
+
+case "$1" in
+	configure)
+		if ! getent group "$VALBUM_GROUP" >/dev/null; then
+			addgroup --system "$VALBUM_GROUP"
+		fi
+		if ! getent passwd "$VALBUM_USER" >/dev/null; then
+			adduser --system --ingroup "$VALBUM_GROUP" --home "$VALBUM_HOME" \
+				--no-create-home --disabled-login --shell /usr/sbin/nologin \
+				--gecos "VAlbum album server" "$VALBUM_USER"
+		fi
+
+		# Hand the default library folder to the server user. Only the folder
+		# itself, and only while it is still root-owned: a library the user
+		# pointed somewhere else, or one already owned, is never touched.
+		# Photos are the user's; the package does not walk through them.
+		if [ -d "$VALBUM_HOME" ]; then
+			owner=$(stat -c %U "$VALBUM_HOME" 2>/dev/null || echo "")
+			if [ "$owner" = "root" ]; then
+				chown "$VALBUM_USER:$VALBUM_GROUP" "$VALBUM_HOME"
+			fi
+			chmod 0750 "$VALBUM_HOME"
+		fi
+		;;
+	abort-upgrade|abort-remove|abort-deconfigure)
+		;;
+	*)
+		echo "postinst called with unknown argument '$1'" >&2
+		exit 1
+		;;
+esac
+
+# Systemd may be absent (a container during a package test); then there is
+# nothing to enable and nothing to start.
+if [ -d /run/systemd/system ]; then
+	if command -v deb-systemd-helper >/dev/null 2>&1; then
+		deb-systemd-helper unmask valbum.service >/dev/null 2>&1 || true
+		deb-systemd-helper enable valbum.service >/dev/null 2>&1 || true
+	fi
+	systemctl --system daemon-reload >/dev/null 2>&1 || true
+	if ! command -v deb-systemd-helper >/dev/null 2>&1; then
+		systemctl enable valbum.service >/dev/null 2>&1 || true
+	fi
+	if command -v deb-systemd-invoke >/dev/null 2>&1; then
+		deb-systemd-invoke restart valbum.service >/dev/null 2>&1 || true
+	else
+		systemctl restart valbum.service >/dev/null 2>&1 || true
+	fi
+fi
+
+exit 0

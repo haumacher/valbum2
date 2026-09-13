@@ -23,6 +23,9 @@
 
 		<!-- The Flutter web build to bundle into the server JAR, if it exists. -->
 		<webapp.dir>${project.basedir}/../valbum_ui/build/web</webapp.dir>
+
+		<!-- Where the filtered Debian control files are assembled, see the 'platform-jar' profile. -->
+		<deb.controlDir>${project.build.directory}/deb/control</deb.controlDir>
 	</properties>
 
 	<profiles>
@@ -40,6 +43,232 @@
 			</activation>
 			<properties>
 				<assembly.finalName>${project.artifactId}-${javacpp.platform}</assembly.finalName>
+			</properties>
+
+			<build>
+				<plugins>
+					<!--
+						An unknown JavaCPP platform must fail the build rather than produce a .deb
+						labelled with the wrong architecture. Each supported platform has a profile
+						below setting 'deb.arch'; if none matched, the property is unset here.
+					-->
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-enforcer-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>enforce-deb-arch</id>
+								<phase>validate</phase>
+								<goals>
+									<goal>enforce</goal>
+								</goals>
+								<configuration>
+									<rules>
+										<requireProperty>
+											<property>deb.arch</property>
+											<regex>^(amd64|arm64|armhf)$</regex>
+											<message>Cannot build the Debian package: the JavaCPP platform '${javacpp.platform}' has no Debian architecture. Supported are -Djavacpp.platform=linux-x86_64 (amd64), linux-arm64 (arm64) and linux-armhf (armhf).</message>
+											<regexMessage>Cannot build the Debian package: the JavaCPP platform '${javacpp.platform}' has no Debian architecture. Supported are -Djavacpp.platform=linux-x86_64 (amd64), linux-arm64 (arm64) and linux-armhf (armhf).</regexMessage>
+										</requireProperty>
+									</rules>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+
+					<!--
+						The Debian version of the Maven version: '1.1.0-SNAPSHOT' becomes
+						'1.1.0~SNAPSHOT', because dpkg sorts '~' before the release it precedes.
+						A release build (mvn versions:set from the tag) has a plain semver and is
+						left alone.
+					-->
+					<plugin>
+						<groupId>org.codehaus.mojo</groupId>
+						<artifactId>build-helper-maven-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>deb-version</id>
+								<phase>validate</phase>
+								<goals>
+									<goal>regex-property</goal>
+								</goals>
+								<configuration>
+									<name>deb.version</name>
+									<value>${project.version}</value>
+									<regex>-SNAPSHOT$</regex>
+									<replacement>~SNAPSHOT</replacement>
+									<failIfNoMatch>false</failIfNoMatch>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+
+					<!-- The control file carries the version and the architecture. -->
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-resources-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>deb-control</id>
+								<phase>prepare-package</phase>
+								<goals>
+									<goal>copy-resources</goal>
+								</goals>
+								<configuration>
+									<outputDirectory>${deb.controlDir}</outputDirectory>
+									<resources>
+										<resource>
+											<directory>${project.basedir}/src/deb/control</directory>
+											<includes>
+												<include>control</include>
+											</includes>
+											<filtering>true</filtering>
+										</resource>
+										<resource>
+											<directory>${project.basedir}/src/deb/control</directory>
+											<excludes>
+												<exclude>control</exclude>
+											</excludes>
+											<filtering>false</filtering>
+										</resource>
+									</resources>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+
+					<!--
+						Builds target/valbum_<version>_<arch>.deb from the platform JAR and the
+						sources in src/deb. Only in this profile: an unrestricted build carries
+						every platform's native libraries (about 2.3 GB) and has no architecture
+						to label a package with.
+					-->
+					<plugin>
+						<groupId>org.vafer</groupId>
+						<artifactId>jdeb</artifactId>
+						<executions>
+							<execution>
+								<id>deb</id>
+								<phase>package</phase>
+								<goals>
+									<goal>jdeb</goal>
+								</goals>
+								<configuration>
+									<deb>${project.build.directory}/valbum_${deb.version}_${deb.arch}.deb</deb>
+									<controlDir>${deb.controlDir}</controlDir>
+									<snapshotExpand>false</snapshotExpand>
+									<skipPOMs>false</skipPOMs>
+									<verbose>false</verbose>
+									<dataSet>
+										<data>
+											<src>${project.build.directory}/${assembly.finalName}-jar-with-dependencies.jar</src>
+											<type>file</type>
+											<dst>/usr/share/valbum/valbum.jar</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>644</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
+											<src>${project.basedir}/src/deb/valbum-server</src>
+											<type>file</type>
+											<dst>/usr/bin/valbum-server</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>755</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
+											<src>${project.basedir}/src/deb/valbum.default</src>
+											<type>file</type>
+											<dst>/etc/default/valbum</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>644</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
+											<src>${project.basedir}/src/deb/valbum.service</src>
+											<type>file</type>
+											<dst>/lib/systemd/system/valbum.service</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>644</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<!--
+											The default library folder. Shipped root-owned, because the
+											'valbum' user is created by postinst, which hands the folder
+											over afterwards. It is never removed, not even on purge.
+										-->
+										<data>
+											<type>template</type>
+											<paths>
+												<path>/var/lib/valbum</path>
+											</paths>
+											<mapper>
+												<type>perm</type>
+												<dirmode>750</dirmode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+									</dataSet>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+
+		<!--
+			The Debian architecture of the JavaCPP platform the build is restricted to. A
+			platform without a profile here leaves 'deb.arch' unset, which the enforcer rule
+			above turns into a build failure naming the supported platforms.
+		-->
+		<profile>
+			<id>deb-amd64</id>
+			<activation>
+				<property>
+					<name>javacpp.platform</name>
+					<value>linux-x86_64</value>
+				</property>
+			</activation>
+			<properties>
+				<deb.arch>amd64</deb.arch>
+			</properties>
+		</profile>
+		<profile>
+			<id>deb-arm64</id>
+			<activation>
+				<property>
+					<name>javacpp.platform</name>
+					<value>linux-arm64</value>
+				</property>
+			</activation>
+			<properties>
+				<deb.arch>arm64</deb.arch>
+			</properties>
+		</profile>
+		<profile>
+			<id>deb-armhf</id>
+			<activation>
+				<property>
+					<name>javacpp.platform</name>
+					<value>linux-armhf</value>
+				</property>
+			</activation>
+			<properties>
+				<deb.arch>armhf</deb.arch>
 			</properties>
 		</profile>
 	</profiles>

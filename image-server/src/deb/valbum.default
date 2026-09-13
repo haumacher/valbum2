@@ -1,0 +1,71 @@
+# Configuration of the VAlbum server (/etc/default/valbum).
+#
+# Sourced by /usr/bin/valbum-server and handed to the systemd unit
+# valbum.service as its environment. After a change:
+#
+#     sudo systemctl restart valbum
+#
+# A variable set in the environment of valbum-server wins over this file, so
+# 'VALBUM_PORT=9090 valbum-server' runs a second instance on another port with
+# everything else configured here. A library folder that does not exist (a disk
+# not yet mounted) is refused; under systemd the service retries until it does.
+
+# The folder holding the albums. Everything below it is served; sidecar files
+# with titles, captions, ordering and the user database are written beside the
+# photos. The originals are never modified, moved or deleted.
+#
+# Point this at an external disk if that is where the photos live, for example
+# VALBUM_BASEPATH=/media/photos - the package does not restrict where the
+# library may be, but the "valbum" user must be able to read and write there.
+VALBUM_BASEPATH=/var/lib/valbum
+
+# The TCP port the server listens on.
+VALBUM_PORT=8080
+
+# The context path the album is served under. Empty means the server root, so
+# the album is at http://<host>:<port>/ . Set it to e.g. "valbum" to serve at
+# http://<host>:<port>/valbum/ - useful behind a reverse proxy.
+VALBUM_CONTEXTPATH=
+
+# What requires a device paired with this server:
+#   off    - every request is served, nobody has to sign in
+#   writes - anonymous reads are served, anonymous changes and uploads refused
+#   all    - anonymous requests are refused altogether
+VALBUM_AUTH=writes
+
+# Who may invite somebody onto this server:
+#   members - every member may hand out an invitation
+#   admin   - only the library owner may
+VALBUM_INVITE=members
+
+# Further server arguments, appended to the ones above. The most useful one is
+# a fixed pairing secret; without it the server generates one at every start and
+# prints it to the journal (journalctl -u valbum):
+#
+#   VALBUM_OPTS="--pairing-secret my-secret"
+#
+# A web application built separately can be served from disk with
+# --webroot /path/to/build/web (the one bundled into the package is used
+# otherwise).
+VALBUM_OPTS=
+
+# Flags for the Java virtual machine. On a Raspberry Pi a heap limit keeps the
+# server well inside the available memory, for example:
+#
+#   JAVA_OPTS="-Xmx512m"
+JAVA_OPTS=
+
+# The Java runtime to use. Leave empty to take "java" from the PATH, or the
+# newest runtime below /usr/lib/jvm if there is none. VAlbum needs Java 21 or
+# newer and refuses to start with anything older, naming what it found.
+#
+#   JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
+JAVA_HOME=
+
+# One-time jobs are run with the same wrapper, so they use the configuration
+# above. Moving the library into a space of its own owner (issue #45), for
+# instance, is:
+#
+#   sudo systemctl stop valbum
+#   sudo -u valbum valbum-server --migrate-to-user alice
+#   sudo systemctl start valbum

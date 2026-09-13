@@ -1,0 +1,130 @@
+#!/bin/sh
+#
+# Starts the VAlbum image server with the configuration from /etc/default/valbum.
+#
+# This is what the systemd unit valbum.service runs, and it is equally usable by
+# hand, for example:
+#
+#     valbum-server --help
+#     sudo -u valbum valbum-server --migrate-to-user alice
+#
+# Arguments given on the command line are passed to the server after the
+# configured ones, so they override what /etc/default/valbum says.
+#
+set -e
+
+CONFIG=${VALBUM_CONFIG:-/etc/default/valbum}
+if [ -r "$CONFIG" ]; then
+	# The systemd unit passes these as environment variables already; sourcing the
+	# file makes the script work the same way from an interactive shell. A variable
+	# set in the caller's environment wins over the file, so that
+	# 'VALBUM_PORT=9090 valbum-server' does what it says: the values present before
+	# sourcing are remembered and put back afterwards.
+	for var in VALBUM_BASEPATH VALBUM_PORT VALBUM_CONTEXTPATH VALBUM_AUTH VALBUM_INVITE VALBUM_OPTS JAVA_OPTS JAVA_HOME; do
+		if eval "[ -n \"\${$var+set}\" ]"; then
+			eval "env_$var=\$$var"
+			eval "env_${var}_set=1"
+		fi
+	done
+	# shellcheck source=/dev/null
+	. "$CONFIG"
+	for var in VALBUM_BASEPATH VALBUM_PORT VALBUM_CONTEXTPATH VALBUM_AUTH VALBUM_INVITE VALBUM_OPTS JAVA_OPTS JAVA_HOME; do
+		if eval "[ -n \"\${env_${var}_set:-}\" ]"; then
+			eval "$var=\$env_$var"
+		fi
+	done
+fi
+
+VALBUM_JAR=${VALBUM_JAR:-/usr/share/valbum/valbum.jar}
+VALBUM_BASEPATH=${VALBUM_BASEPATH:-/var/lib/valbum}
+VALBUM_PORT=${VALBUM_PORT:-8080}
+VALBUM_AUTH=${VALBUM_AUTH:-writes}
+VALBUM_INVITE=${VALBUM_INVITE:-members}
+
+REQUIRED_MAJOR=21
+
+# Prints the major version of the Java executable named by $1, or nothing if it
+# cannot be determined.
+java_major() {
+	"$1" -version 2>&1 \
+		| sed -n 's/^[^"]*"\([0-9][0-9]*\)\([._].*\)\{0,1\}".*$/\1/p' \
+		| head -n 1
+}
+
+# Prints the first Java executable to try, in the order documented in
+# /etc/default/valbum: $JAVA_HOME, the PATH, the newest JVM below /usr/lib/jvm.
+find_java() {
+	if [ -n "$JAVA_HOME" ]; then
+		echo "$JAVA_HOME/bin/java"
+		return
+	fi
+	if command -v java >/dev/null 2>&1; then
+		command -v java
+		return
+	fi
+
+	best=
+	best_major=-1
+	for candidate in /usr/lib/jvm/*/bin/java; do
+		[ -x "$candidate" ] || continue
+		major=$(java_major "$candidate" 2>/dev/null || true)
+		[ -n "$major" ] || continue
+		if [ "$major" -gt "$best_major" ]; then
+			best_major=$major
+			best=$candidate
+		fi
+	done
+	echo "$best"
+}
+
+JAVA=$(find_java)
+
+if [ -z "$JAVA" ] || [ ! -x "$JAVA" ]; then
+	if [ -n "$JAVA_HOME" ]; then
+		echo "valbum-server: no Java runtime at '$JAVA_HOME/bin/java' (JAVA_HOME is set to '$JAVA_HOME')." >&2
+	else
+		echo "valbum-server: found no Java runtime - not on the PATH and none below /usr/lib/jvm." >&2
+	fi
+	echo "valbum-server: VAlbum needs a Java $REQUIRED_MAJOR runtime or newer, for example 'apt install openjdk-$REQUIRED_MAJOR-jre-headless'." >&2
+	echo "valbum-server: set JAVA_HOME in $CONFIG to point at one explicitly." >&2
+	exit 1
+fi
+
+MAJOR=$(java_major "$JAVA" || true)
+if [ -z "$MAJOR" ]; then
+	echo "valbum-server: cannot tell the version of the Java runtime at '$JAVA'." >&2
+	echo "valbum-server: VAlbum needs a Java $REQUIRED_MAJOR runtime or newer." >&2
+	exit 1
+fi
+if [ "$MAJOR" -lt "$REQUIRED_MAJOR" ]; then
+	echo "valbum-server: the Java runtime at '$JAVA' is version $MAJOR, but VAlbum needs $REQUIRED_MAJOR or newer." >&2
+	echo "valbum-server: install one ('apt install openjdk-$REQUIRED_MAJOR-jre-headless') and name it with JAVA_HOME in $CONFIG." >&2
+	exit 1
+fi
+
+if [ ! -r "$VALBUM_JAR" ]; then
+	echo "valbum-server: cannot read the server JAR at '$VALBUM_JAR'." >&2
+	exit 1
+fi
+
+# A library folder that is not there yet - typically a USB disk that is not
+# mounted - is refused instead of served empty: the server would otherwise start
+# writing its sidecar files next to nothing. Under systemd (Restart=on-failure)
+# the service simply tries again a few seconds later, until the disk is mounted.
+if [ ! -d "$VALBUM_BASEPATH" ]; then
+	echo "valbum-server: the library folder '$VALBUM_BASEPATH' does not exist or is not a directory (VALBUM_BASEPATH in $CONFIG)." >&2
+	exit 1
+fi
+
+# The caller's own arguments come last, so they override the configured ones.
+# VALBUM_OPTS and JAVA_OPTS are deliberately left unquoted: they carry several
+# arguments.
+# shellcheck disable=SC2086
+set -- $VALBUM_OPTS "$@"
+if [ -n "$VALBUM_CONTEXTPATH" ]; then
+	set -- --contextpath "$VALBUM_CONTEXTPATH" "$@"
+fi
+set -- --basepath "$VALBUM_BASEPATH" --port "$VALBUM_PORT" --auth "$VALBUM_AUTH" --invite "$VALBUM_INVITE" "$@"
+
+# shellcheck disable=SC2086
+exec "$JAVA" $JAVA_OPTS -jar "$VALBUM_JAR" "$@"

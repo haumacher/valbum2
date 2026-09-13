@@ -1,0 +1,25 @@
+[Unit]
+Description=VAlbum photo and video album server
+Documentation=https://github.com/haumacher/valbum2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=valbum
+Group=valbum
+WorkingDirectory=/var/lib/valbum
+EnvironmentFile=-/etc/default/valbum
+ExecStart=/usr/bin/valbum-server
+Restart=on-failure
+RestartSec=5
+
+# Hardening. Deliberately no ProtectHome and no ReadWritePaths=: the library is
+# wherever VALBUM_BASEPATH says, which may well be a disk below /media or /mnt.
+# ProtectSystem=full leaves everything but /usr, /boot and /etc writable.
+ProtectSystem=full
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

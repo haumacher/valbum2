@@ -166,8 +166,86 @@ cd valbum_ui
 flutter run -d chrome        # or -d linux, an Android device, ...
 ```
 
-On the web the app talks to the server it was loaded from. Other platforms currently use
-`http://localhost:9090/valbum/data` (the demo server); a settings screen is planned.
+On the web the app talks to the server it was loaded from. Other platforms take the server
+from the app's settings screen (the default is the demo server, `http://localhost:9090/valbum/data`).
+
+## Install on a Raspberry Pi or another Debian/Ubuntu machine
+
+Released versions are published as Debian packages from an APT repository, so the
+server installs and updates like any other package:
+
+```
+sudo install -d /usr/share/keyrings
+curl -fsSL https://haumacher.github.io/valbum2/valbum.gpg | sudo tee /usr/share/keyrings/valbum.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/valbum.gpg] https://haumacher.github.io/valbum2 stable main" | sudo tee /etc/apt/sources.list.d/valbum.list
+sudo apt update && sudo apt install valbum
+```
+
+Packages are published for `arm64`, `amd64` and `armhf`; APT picks the right one.
+The server needs a **Java 21 runtime**, which Debian 13 (trixie), Raspberry Pi OS
+trixie and Ubuntu 24.04 have; Debian 12 (bookworm) ships only Java 17 and is not
+enough.
+
+The package installs the jar as `/usr/share/valbum/valbum.jar` with the wrapper
+`/usr/bin/valbum-server`, and enables and starts the systemd service `valbum`.
+
+### Configuration
+
+Everything is set in `/etc/default/valbum`:
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `VALBUM_BASEPATH` | The folder containing your albums | `/var/lib/valbum` |
+| `VALBUM_PORT` | HTTP port | `8080` |
+| `VALBUM_CONTEXTPATH` | First path segment of the URL | none |
+| `VALBUM_AUTH` | `off`, `writes` or `all` | `writes` |
+| `VALBUM_INVITE` | Who may invite: `admin` or `members` | `members` |
+| `VALBUM_OPTS` | Further server options | none |
+| `JAVA_OPTS` / `JAVA_HOME` | JVM options and the JVM to use | system default |
+
+Point it at the disk holding your photos and restart:
+
+```
+sudo nano /etc/default/valbum       # VALBUM_BASEPATH=/mnt/photos
+sudo systemctl restart valbum
+```
+
+The library folder is never deleted by the package, not even when it is purged.
+
+### Signing in the first device
+
+At its first start the server prints a pairing secret to the journal:
+
+```
+journalctl -u valbum | grep -i pairing
+```
+
+Then open `http://<your-pi>:8080/` in a browser — or point the app's server setting
+at that address — and sign in with that secret; the first sign-in chooses the name
+of the library owner.
+
+To give the owner a space of their own (see *Users and spaces* above), stop the
+service and migrate once:
+
+```
+sudo systemctl stop valbum
+sudo -u valbum valbum-server --migrate-to-user <name>
+sudo systemctl start valbum
+```
+
+### Updating
+
+```
+sudo apt update && sudo apt upgrade
+```
+
+### The Android app
+
+Every release also carries a signed APK, `valbum-<version>.apk`, on the
+[Releases page](https://github.com/haumacher/valbum2/releases). It is not in Google
+Play, so Android asks you to allow installing apps from the browser or file manager
+you download it with. Point it at your server in its settings and sign in with the
+pairing secret.
 
 ## Contributing
 
@@ -191,3 +269,21 @@ danach http://localhost:8080/ im Browser öffnen. Optionen: `--port`, `--context
 Standardmäßig lehnt der Server anonyme Änderungen ab (`--auth writes`). Beim Start gibt er ein
 Kopplungsgeheimnis aus; damit koppelst Du in den Server-Einstellungen der App dieses Gerät, das
 danach ein eigenes Token mitschickt.
+
+Auf einem Raspberry Pi (oder einem anderen Debian/Ubuntu-Rechner) installierst Du den
+Server als Paket aus dem APT-Repository:
+
+```
+sudo install -d /usr/share/keyrings
+curl -fsSL https://haumacher.github.io/valbum2/valbum.gpg | sudo tee /usr/share/keyrings/valbum.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/valbum.gpg] https://haumacher.github.io/valbum2 stable main" | sudo tee /etc/apt/sources.list.d/valbum.list
+sudo apt update && sudo apt install valbum
+```
+
+Es gibt Pakete für `arm64`, `amd64` und `armhf`; eine Java-21-Laufzeitumgebung wird
+benötigt (Debian 13 bzw. Raspberry Pi OS trixie, Ubuntu 24.04 — Debian 12 reicht nicht).
+Eingestellt wird alles in `/etc/default/valbum` (vor allem `VALBUM_BASEPATH`, danach
+`sudo systemctl restart valbum`); das Kopplungsgeheimnis steht beim ersten Start im
+Journal (`journalctl -u valbum`). Aktualisiert wird mit `sudo apt upgrade`. Die
+Android-App liegt als signierte APK-Datei bei jedem Release auf der
+[Releases-Seite](https://github.com/haumacher/valbum2/releases).

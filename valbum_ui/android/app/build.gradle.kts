@@ -1,8 +1,23 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Release builds are signed from `android/key.properties`, which is never checked in
+// (see `android/.gitignore`). CI writes it from the repository secrets before
+// `flutter build apk --release`; a developer without a keystore simply has no such
+// file, and release builds fall back to the debug key so `flutter run --release`
+// keeps working. A debug-signed APK is never published.
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+val hasReleaseKey = keystorePropertiesFile.exists()
 
 android {
     namespace = "de.haumacher.valbum_ui"
@@ -29,11 +44,27 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // With `android/key.properties` present (CI, or a developer who created a
+            // keystore) the release build is signed with that key; without it, the debug
+            // key is used so `flutter run --release` still works locally.
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

@@ -1,0 +1,22 @@
+Package: valbum
+Version: ${deb.version}
+Section: web
+Priority: optional
+Architecture: ${deb.arch}
+Maintainer: Bernhard Haumacher <haui@haumacher.de>
+Homepage: https://github.com/haumacher/valbum2
+Depends: default-jre-headless (>= 2:1.21) | java21-runtime-headless | java22-runtime-headless | java23-runtime-headless | java24-runtime-headless | java25-runtime-headless | java-runtime-headless (>= 21), adduser
+Suggests: openjdk-21-jre-headless
+Description: Self-hosted photo and video album server
+ VAlbum serves a folder tree of photos and videos as a private album: a JSON
+ API plus the VAlbum web application, browsable from a phone, a tablet or a
+ desktop, with users, groups, share links and invitations.
+ .
+ The originals are never modified, moved or deleted. Everything VAlbum stores
+ about an album - titles, captions, ordering, ratings, privacy levels - lives
+ in sidecar files beside the photos, so the folder tree stays the truth and can
+ be copied away at any time.
+ .
+ The server runs as the system user "valbum" under systemd. Its configuration
+ lives in /etc/default/valbum, its default library folder is /var/lib/valbum.
+ That folder is never removed by the package, not even on purge.
