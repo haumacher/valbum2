@@ -28,10 +28,10 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
 
 import 'caller.dart';
 import 'client.dart';
+import 'manage_view.dart';
 import 'platform.dart';
 import 'resource.dart';
 import 'settings.dart';
@@ -574,13 +574,7 @@ class InviteDialogState extends State<InviteDialog> {
   }
 
   /// The day of an ISO-8601 instant, in the inviter's own time zone.
-  String _day(String instant) {
-    try {
-      return DateFormat.yMMMd().format(DateTime.parse(instant).toLocal());
-    } catch (_) {
-      return instant;
-    }
-  }
+  String _day(String instant) => dayOf(instant);
 
   Future<void> _copy(String url) async {
     var messenger = ScaffoldMessenger.of(context);

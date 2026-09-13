@@ -171,6 +171,19 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-13 (evening)** — Management (#55), app side, and the empty root (#56). The screens are sections
+  of the server settings, not screens of their own: my devices, open invitations and (for the admin) the
+  users are all about *this device and this person*, which is what the settings screen is. Removing the
+  asking device from its own list *is* the sign-out — the server takes the entry, the device forgets its
+  token through the same code the sign-out button runs — so there is one way to sign out, not two that
+  drift apart. Groups are the exception and got a screen reached from the settings, because a group is
+  about other people and outlives the device; the group dialog moved out of the share dialog so both
+  reach it. Every section asks only what its caller's role would not have refused (a guest is asked
+  nothing about users, invitations or groups) and shows the server's own sentence when it refuses. An
+  empty listing says what it is instead of showing a black page: the guest's own root says nothing has
+  been shared yet, a library root says it has no albums (and how to make one where the caller may), any
+  other folder that it is empty; inside a share link the shared folder reads as a folder.
+
 - **2026-09-14** — Management (#55), server side. Three gaps the screens could not do without. A device has
   an identity: a short opaque id assigned at pairing, given to the devices of an older `users.json` on the
   first load (written back once, the `devices.json` takeover pattern), so that two devices called "probe"

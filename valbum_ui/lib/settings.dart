@@ -24,7 +24,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'groups_view.dart';
 import 'invitation.dart';
+import 'manage_view.dart';
 import 'offline.dart';
 import 'resource.dart';
 import 'urls.dart';
@@ -751,6 +753,10 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// Counts the times the cache changed, so that its size is read again.
   int _cacheGeneration = 0;
 
+  /// Counts the invitations issued here, so that the list of the open ones
+  /// reads itself again, see [InvitationsSection.generation].
+  int _invitationGeneration = 0;
+
   /// A pre-filled suggestion: the server the app talks to, or the demo server.
   ///
   /// This is only a suggestion in the field; it is never used silently.
@@ -1147,6 +1153,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
             ],
           ),
         if (!pairingRunning && pairing != null) _outcome(pairing!),
+        ..._devicesSection(),
         ..._inviteSection(),
       ];
   }
@@ -1228,6 +1235,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     if (!CallerInfo(role: role).mayInvite) {
       return const [];
     }
+    var client = _managementClient();
     return [
       const SizedBox(height: 24),
       const Divider(),
@@ -1239,14 +1247,80 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         "server. Send it to the person it is for, and to nobody else.",
       ),
       const SizedBox(height: 16),
-      OutlinedButton.icon(
-        key: inviteButtonKey,
-        onPressed: _invite,
-        icon: const Icon(Icons.person_add),
-        label: const Text("Invite…"),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            key: inviteButtonKey,
+            onPressed: _invite,
+            icon: const Icon(Icons.person_add),
+            label: const Text("Invite…"),
+          ),
+          OutlinedButton.icon(
+            key: groupsButtonKey,
+            onPressed: client == null ? null : () => _openGroups(client),
+            icon: const Icon(Icons.group),
+            label: const Text("Groups…"),
+          ),
+        ],
+      ),
+      // What became of the invitations one handed out: the administrator is
+      // answered all of them, a member their own, see issue #55.
+      if (client != null)
+        InvitationsSection(
+          client: client,
+          generation: _invitationGeneration,
+        ),
+      // Who is on this server at all is the administrator's business alone.
+      if (client != null && role == roleAdmin) UsersSection(client: client),
+    ];
+  }
+
+  /// The client the management sections talk to: the *saved* server, with the
+  /// token of this device.
+  ///
+  /// `null` while no server is configured — the sections have nobody to ask
+  /// then, and are not shown.
+  VAlbumClient? _managementClient() {
+    var settings = widget.settings;
+    var dataUrl = settings.dataUrl;
+    if (dataUrl == null) {
+      return null;
+    }
+    return widget.clientFor(dataUrl).withToken(
+          settings.token,
+          userName: identity?.userName ?? settings.userName ?? "",
+        );
+  }
+
+  /// The devices this person is signed in on, see issue #55.
+  ///
+  /// Shown only where there is something to list: a device token is stored
+  /// *and* the server has said who this device is. A server that does not know
+  /// this device, and a caller the server never named, have no device list to
+  /// show — what they are told is said by the sign-in section above.
+  List<Widget> _devicesSection() {
+    var settings = widget.settings;
+    var client = _managementClient();
+    if (!settings.signedIn ||
+        client == null ||
+        (identity?.role ?? "").isEmpty) {
+      return const [];
+    }
+    return [
+      DevicesSection(
+        client: client,
+        // The same sign-out the button above performs: the server has already
+        // taken this device's entry away, and the device forgets its token.
+        onSignedOutHere: _signOut,
       ),
     ];
   }
+
+  /// Opens the screen managing the caller's groups, see issue #55.
+  Future<void> _openGroups(VAlbumClient client) =>
+      openGroupsScreen(context, client);
 
   /// Opens the dialog issuing an invitation at the *saved* server.
   ///
@@ -1262,6 +1336,11 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       context,
       widget.clientFor(dataUrl).withToken(widget.settings.token),
     );
+    if (!mounted) {
+      return;
+    }
+    // Whatever was issued belongs in the list below at once.
+    setState(() => _invitationGeneration++);
   }
 
   /// Who this device is signed in as, or that it is not.

@@ -94,6 +94,25 @@ Widget indexPictureTile(
       ),
     );
 
+/// What a guest's own, empty root says (issue #56).
+///
+/// A guest has no albums of their own — their library is what others share
+/// with them — so an empty root is not a mistake, and the screen says so
+/// rather than showing a black page with a name on it.
+const String guestRootEmptyNotice =
+    "Nothing has been shared with you yet. Albums others share with you "
+    "appear here.";
+
+/// What an empty library says, see [guestRootEmptyNotice].
+const String libraryEmptyNotice = "There are no albums here yet.";
+
+/// How an empty library is filled, said where the caller may fill it.
+const String libraryEmptyHint =
+    "Create the first one from the menu at the top right.";
+
+/// What an empty folder below the root says.
+const String folderEmptyNotice = "This folder has no albums yet.";
+
 /// Displays a [ListingInfo] as a grid of folder tiles.
 class ListingView extends StatelessWidget {
   final VAlbumState albumState;
@@ -254,36 +273,78 @@ class ListingView extends StatelessWidget {
         children: [
           // Says plainly when the tiles below are the copy from the cache.
           OfflineBanner(onRetry: albumState.reload),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (BuildContext context, BoxConstraints constraints) {
-                double imageBorder = 8;
-                var preferredImageWidth = 200;
-                var maxWidth = constraints.maxWidth;
-                double preferredImageSpace =
-                    preferredImageWidth + 2 * imageBorder;
-                double imagesPerRowFrag = maxWidth / preferredImageSpace;
-                var imagesPerRow = imagesPerRowFrag.round();
-                bool underflow = self.folders.length < imagesPerRow;
-                double difference = underflow
-                    ? 0
-                    : maxWidth - imagesPerRow * preferredImageSpace;
-                double imageSpace =
-                    preferredImageSpace + difference / imagesPerRow;
+          // An empty folder says what it is, rather than showing a black
+          // page with nothing but the app bar on it, see issue #56.
+          if (self.folders.isEmpty)
+            Expanded(child: emptyNotice(context, link != null, mayChange))
+          else
+            Expanded(
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  double imageBorder = 8;
+                  var preferredImageWidth = 200;
+                  var maxWidth = constraints.maxWidth;
+                  double preferredImageSpace =
+                      preferredImageWidth + 2 * imageBorder;
+                  double imagesPerRowFrag = maxWidth / preferredImageSpace;
+                  var imagesPerRow = imagesPerRowFrag.round();
+                  bool underflow = self.folders.length < imagesPerRow;
+                  double difference = underflow
+                      ? 0
+                      : maxWidth - imagesPerRow * preferredImageSpace;
+                  double imageSpace =
+                      preferredImageSpace + difference / imagesPerRow;
 
-                return SingleChildScrollView(
-                  scrollDirection: Axis.vertical,
-                  child: buildFolderList(
-                    context,
-                    self,
-                    imageSpace - 2 * imageBorder,
-                    imageBorder,
-                  ),
-                );
-              },
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.vertical,
+                    child: buildFolderList(
+                      context,
+                      self,
+                      imageSpace - 2 * imageBorder,
+                      imageBorder,
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
         ],
+      ),
+    );
+  }
+
+  /// What an empty folder says instead of showing nothing (issue #56).
+  ///
+  /// A listing with no tiles used to be a black page with an app bar on it,
+  /// which says neither that the folder is empty nor that anything went wrong
+  /// — and the person it hits hardest is a guest who has just joined, whose
+  /// library is *correctly* empty until somebody shares an album with them.
+  ///
+  /// Three sentences, because there are three empty folders: the guest's own
+  /// root (nothing has been shared yet), the root of a library (no albums
+  /// yet, and how to make one where the caller may), and any other folder.
+  /// Inside a share link the shared folder is the root, but it is somebody
+  /// else's folder, so it reads as a folder.
+  Widget emptyNotice(BuildContext context, bool inLink, bool mayChange) {
+    var atRoot = albumState.path.isEmpty && !inLink;
+    String sentence;
+    if (atRoot && CallerInfo.isGuestCaller(context)) {
+      sentence = guestRootEmptyNotice;
+    } else if (atRoot) {
+      sentence = mayChange
+          ? "$libraryEmptyNotice $libraryEmptyHint"
+          : libraryEmptyNotice;
+    } else {
+      sentence = folderEmptyNotice;
+    }
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Text(
+          sentence,
+          key: const Key("listing-empty"),
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white70, fontSize: 16),
+        ),
       ),
     );
   }

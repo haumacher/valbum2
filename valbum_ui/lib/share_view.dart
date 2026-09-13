@@ -16,6 +16,8 @@ import 'package:intl/intl.dart';
 import 'album_edit.dart' show privacyMembers, privacyPublic;
 import 'caller.dart';
 import 'client.dart';
+import 'groups_view.dart';
+import 'manage_view.dart' show dayOf;
 import 'move_view.dart' show showRefusal;
 import 'offline.dart';
 import 'resource.dart';
@@ -571,119 +573,6 @@ class ShareDialogState extends State<ShareDialog> {
   }
 }
 
-/// Names a group and ticks its members, for creating one and for replacing
-/// the members of one's own.
-class GroupDialog extends StatefulWidget {
-  /// The users that can be members.
-  final List<UserEntry> users;
-
-  /// The group being edited, `null` while a new one is being named.
-  final Group? group;
-
-  const GroupDialog({super.key, required this.users, this.group});
-
-  @override
-  State<GroupDialog> createState() => GroupDialogState();
-}
-
-class GroupDialogState extends State<GroupDialog> {
-  late final TextEditingController _name =
-      TextEditingController(text: widget.group?.name ?? "");
-
-  late Set<String> _members = {
-    for (var member in widget.group?.members ?? const <MemberName>[])
-      member.name,
-  };
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-        key: const Key("group-dialog"),
-        title: Text(widget.group == null ? "New group" : "Edit members"),
-        content: SizedBox(
-          width: 400,
-          height: 320,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  key: const Key("group-name"),
-                  controller: _name,
-                  // The name of a group cannot change: a grant names it, and
-                  // renaming it would silently drop what was shared with it.
-                  enabled: widget.group == null,
-                  autofocus: widget.group == null,
-                  decoration: const InputDecoration(label: Text("Name")),
-                ),
-                const SizedBox(height: 8),
-                Text("Members", style: Theme.of(context).textTheme.titleSmall),
-                if (widget.users.isEmpty)
-                  const Text(
-                    "This server does not tell you who else is here.",
-                    key: Key("group-no-users"),
-                  ),
-                for (var user in widget.users)
-                  CheckboxListTile(
-                    key: Key("member-${user.name}"),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    value: _members.contains(user.name),
-                    onChanged: (value) => setState(() {
-                      if (value ?? false) {
-                        _members = {..._members, user.name};
-                      } else {
-                        _members = {
-                          for (var member in _members)
-                            if (member != user.name) member,
-                        };
-                      }
-                    }),
-                    title: Text(user.name),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            key: const Key("group-save"),
-            onPressed: _save,
-            child: const Text("Save"),
-          ),
-        ],
-      );
-
-  void _save() {
-    var name = _name.text.trim();
-    if (name.isEmpty) {
-      return;
-    }
-    Navigator.of(context).pop(
-      Group(
-        name: name,
-        members: [
-          // In the order the users are listed, so that the body of a request
-          // does not depend on the order the boxes were ticked in.
-          for (var user in widget.users)
-            if (_members.contains(user.name)) MemberName(name: user.name),
-        ],
-      ),
-    );
-  }
-}
-
 /// How long a new share link lives, as the dialog offers it.
 enum LinkExpiry {
   never("Never"),
@@ -956,13 +845,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   ///
   /// The instant itself is the server's business; what the author of a link
   /// wants to read is the day it runs out.
-  String _day(String instant) {
-    try {
-      return DateFormat.yMMMd().format(DateTime.parse(instant).toLocal());
-    } catch (_) {
-      return instant;
-    }
-  }
+  String _day(String instant) => dayOf(instant);
 
   /// The entry opening the form of a new link.
   List<Widget> _newLinkTile() => [

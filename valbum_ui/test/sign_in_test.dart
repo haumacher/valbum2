@@ -76,9 +76,14 @@ void main() {
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
-      expect(requests.single.url.query, "action=pair");
+      // The management sections of issue #55 ask their own questions once the
+      // sign-in named a role; the pairing request is picked out by name.
+      var pair = requests
+          .where((request) => request.url.query == "action=pair")
+          .single;
+      expect(pair.url.query, "action=pair");
       expect(
-        requests.single.body,
+        pair.body,
         '{"secret":"demo","deviceName":"Kamera","userName":"haui","invitation":""}',
       );
       expect(store.token, "tok-1");
@@ -206,8 +211,10 @@ void main() {
 
       // Nothing was entered and no button was pressed: opening the settings is
       // enough to see who this device is.
-      expect(requests.single.url.query, "type=auth");
-      expect(requests.single.headers["Authorization"], "Bearer tok");
+      // The first question is who this device is; the management sections of
+      // issue #55 ask theirs after it.
+      expect(requests.first.url.query, "type=auth");
+      expect(requests.first.headers["Authorization"], "Bearer tok");
       expect(find.text("Signed in as alice"), findsOneWidget);
       expect(find.text("Role: member"), findsOneWidget);
       expect(find.text("Device: Pad"), findsOneWidget);

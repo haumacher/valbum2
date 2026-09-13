@@ -972,6 +972,22 @@ class VAlbumClient {
     return GroupList.read(JsonReader.fromString(response.body));
   }
 
+  /// Renames the group [name] to [newName] (issue #55).
+  ///
+  /// A rename is its own request because it is more than a new name: the
+  /// server rewrites every grant made out to the group in the same step, so
+  /// that nothing that was shared with it stops working. Only its owner and
+  /// the administrator may, and a name that is a user's name is refused with
+  /// the server's own sentence.
+  Future<GroupList> renameGroup(String name, String newName) async {
+    var url = "${folderUrl(const [])}?action=regroup";
+    var response = await _postBody(
+      url,
+      _jsonOf(GroupRename(name: name, newName: newName).writeContent),
+    );
+    return GroupList.read(JsonReader.fromString(response));
+  }
+
   /// Creates [group], or replaces the members of one the caller owns.
   Future<GroupList> saveGroup(Group group) => _postGroup("group", group);
 
@@ -994,6 +1010,37 @@ class VAlbumClient {
       throw failure(response.statusCode, response.body, "asking '$url'");
     }
     return GroupList.read(JsonReader.fromString(response.body));
+  }
+
+  /// The devices this caller is signed in on (issue #55).
+  ///
+  /// Always the caller's *own* devices: the administrator manages the users of
+  /// this server, not other people's phones. A share link is refused with a
+  /// 403, an anonymous caller and an invitation bearer with a 401 — each
+  /// carrying the server's own sentence.
+  Future<DeviceList> devices() async {
+    var url = "${folderUrl(const [])}?type=devices";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "asking '$url'");
+    }
+    return DeviceList.read(JsonReader.fromString(response.body));
+  }
+
+  /// Signs the device of the given id out, answering the ones that remain.
+  ///
+  /// Only the id travels: the server knows the rest, and answers a device that
+  /// is not one of the caller's own with a 404. Naming the *asking* device is
+  /// allowed and is how a device signs itself out for good — the token this
+  /// client holds proves nothing from then on, so the caller drops it, see
+  /// `ServerSettings.signOut`.
+  Future<DeviceList> unpair(String id) async {
+    var url = "${folderUrl(const [])}?action=unpair";
+    var response = await _postBody(
+      url,
+      _jsonOf(DeviceEntry(id: id).writeContent),
+    );
+    return DeviceList.read(JsonReader.fromString(response));
   }
 
   /// The names and roles of the users of this server (issue #49).
@@ -1029,9 +1076,8 @@ class VAlbumClient {
 
   /// The invitations this caller issued, the admin's being all of them.
   ///
-  /// Listing them has no screen of its own in this app yet: the management
-  /// screens of issue #55 show what became of an invitation. The call is here
-  /// because the endpoint is, and because [uninvite] answers the same list.
+  /// What the open-invitations section of the settings shows, see issue #55;
+  /// [uninvite] answers the same list.
   Future<InvitationList> invitations() async {
     var url = "${folderUrl(const [])}?type=invitations";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
@@ -1046,7 +1092,6 @@ class VAlbumClient {
   /// The record is kept and marked withdrawn — a user it already created is
   /// untouched — and the token is refused from then on. Only the issuer and
   /// the admin may; anybody else is told that there is no such invitation.
-  /// Offered by the management screens of issue #55, not by this app yet.
   Future<InvitationList> uninvite(String id) async {
     var url = "${folderUrl(const [])}?action=uninvite";
     var response = await _postInvitation(url, Invitation(id: id));
@@ -1057,8 +1102,8 @@ class VAlbumClient {
   ///
   /// One rename on the server: the guest's root becomes their space, the links
   /// in it already in place. Only the admin may, and only a guest becomes a
-  /// member — there is no way back. Offered by the management screens of issue
-  /// #55, not by this app yet.
+  /// member — there is no way back, and the users section of the settings asks
+  /// before it does it, see issue #55.
   Future<UserEntry> promote(String name) async {
     var url = "${folderUrl(const [])}?action=promote";
     var body = StringBuffer();

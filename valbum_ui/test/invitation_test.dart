@@ -426,7 +426,11 @@ void main() {
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
-      var pair = requests.last;
+      // The management sections of issue #55 ask their own questions once the
+      // sign-in named a role, so the pairing request is picked out by name.
+      var pair = requests
+          .where((request) => request.url.queryParameters["action"] == "pair")
+          .single;
       expect(pair.url.queryParameters["action"], "pair");
       expect(pair.body, contains('"invitation":"inv-1"'));
       expect(pair.body, contains('"userName":"carol"'));
@@ -528,8 +532,17 @@ void main() {
         tester,
         settings,
         MockClient((request) async {
-          if (request.url.queryParameters["type"] == "auth") {
+          var query = request.url.queryParameters;
+          if (query["type"] == "auth") {
             return json(authOfUser("member", name: "bob"));
+          }
+          // The management sections of issue #55 ask their own questions; the
+          // refusal under test is the one of the invite dialog alone.
+          if (query["type"] == "devices") {
+            return json('{"devices": []}');
+          }
+          if (query["type"] == "invitations") {
+            return json('{"invitations": []}');
           }
           return refusal(
             403,
