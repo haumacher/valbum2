@@ -104,6 +104,28 @@ class UploadSummary {
   String get message => "$stored hochgeladen, $present bereits vorhanden.";
 }
 
+/// What a cancelled upload is refused with, see [VAlbumClient.uploadFiles].
+///
+/// A cancellation is a refusal like any other, and refusals speak: the user
+/// pressed the button, and the screen says what came of it rather than falling
+/// silent or — worse — claiming success for a body that was cut in half.
+const String uploadCancelledMessage = "Der Upload wurde abgebrochen.";
+
+/// What the dialog says while the server is asked what it already holds.
+const String uploadAskingMessage = "Der Server wird gefragt...";
+
+/// What the dialog says while the contents are on their way.
+const String uploadTransferMessage = "Dateien werden übertragen...";
+
+/// What the dialog says once the body is handed over and the server's answer
+/// is still outstanding, see issue #59.
+///
+/// This is the whole of the bug that was reported: the dialog counted the read
+/// from local storage, reached 100 % and closed itself while the bytes were
+/// still in flight, so the upload looked like it had happened and the album
+/// looked like it had refused it.
+const String uploadWaitingMessage = "Warte auf den Server...";
+
 /// Handle allowing to cancel a running upload.
 class UploadHandle {
   bool _cancelled = false;
@@ -545,8 +567,17 @@ class VAlbumClient {
 
   /// Uploads the given files to the resource at the given URL.
   ///
-  /// Reports the transfer progress in percent to [onProgress]. The upload stops
-  /// early when [handle] is cancelled.
+  /// Reports the progress of the *transfer* in percent to [onProgress]: the
+  /// body is handed to the transport as a stream the transport itself pulls,
+  /// and a byte is counted when it is pulled, not when it was read from the
+  /// phone's storage, see [_CountingRequest] and issue #59. On a link slower
+  /// than the disk the two are worlds apart, and the number the user was shown
+  /// used to be the faster of them.
+  ///
+  /// The upload stops as soon as [handle] is cancelled: the body stream fails,
+  /// the request fails with it, and this throws — a cancelled upload never
+  /// answers an [UploadResult], whatever the transport made of the truncated
+  /// body.
   ///
   /// Answers what the server did with every file: contents the album already
   /// holds are reported as [uploadPresent] and are not stored a second time,
@@ -583,34 +614,38 @@ class VAlbumClient {
     // #35.
     var multipartBody = multipart.finalize();
 
-    var request = http.StreamedRequest("PUT", uri);
+    var request = _CountingRequest(
+      "PUT",
+      uri,
+      multipartBody,
+      handle: handle,
+      onTransferred: (transferred) => onProgress?.call(
+        contentLength <= 0 ? 100 : (100 * transferred / contentLength).round(),
+      ),
+    );
     request.headers.addAll(multipart.headers);
     request.headers.addAll(authHeaders);
     request.contentLength = contentLength;
 
-    // Feed the multipart body into the request while reporting progress.
-    unawaited(() async {
-      var transferred = 0;
-      try {
-        await for (var chunk in multipartBody) {
-          if (handle != null && handle.cancelled) {
-            break;
-          }
-          request.sink.add(chunk);
-          transferred += chunk.length;
-          onProgress?.call(
-            contentLength == 0
-                ? 100
-                : (100 * transferred / contentLength).round(),
-          );
-        }
-      } finally {
-        request.sink.close();
+    http.StreamedResponse response;
+    String body;
+    try {
+      response = await _http.send(request);
+      body = await response.stream.bytesToString();
+    } catch (error) {
+      // A cancelled upload fails the body stream; whatever the transport made
+      // of that is not worth quoting, the user knows what they did.
+      if (handle != null && handle.cancelled) {
+        throw const VAlbumException(uploadCancelledMessage);
       }
-    }());
-
-    var response = await _http.send(request);
-    var body = await response.stream.bytesToString();
+      rethrow;
+    }
+    // Checked again: a transport that buffers the whole body (a test double,
+    // a proxy) can answer a request that was cancelled halfway, and a
+    // cancelled upload must never be reported as a success.
+    if (handle != null && handle.cancelled) {
+      throw const VAlbumException(uploadCancelledMessage);
+    }
     if (response.statusCode >= 300) {
       throw failure(response.statusCode, body, "uploading to '$url'");
     }
@@ -776,10 +811,16 @@ class VAlbumClient {
   /// retried therefore uploads only what is missing, and never duplicates a
   /// photo. The upload itself is idempotent as well, so a server that cannot
   /// answer the question is simply sent everything.
+  ///
+  /// [onProgress] reports the percentage of the transfer, [onStatus] the phase
+  /// in words. Hashing a hundred photos on a phone takes long enough that a
+  /// dialog showing nothing at all looks hung, so the hashing counts itself out
+  /// (issue #59); a caller that does not care simply leaves [onStatus] out.
   Future<UploadSummary> uploadNew(
     List<String> path,
     List<UploadFile> files, {
     void Function(int percent)? onProgress,
+    void Function(String message)? onStatus,
     UploadHandle? handle,
   }) async {
     if (files.isEmpty) {
@@ -788,12 +829,15 @@ class VAlbumClient {
 
     var hashed = <UploadFile>[];
     for (var file in files) {
+      onStatus?.call("Wird vorbereitet: ${hashed.length + 1} von "
+          "${files.length}...");
       hashed.add(
         file.sha256 != null
             ? file
             : file.withHash(await sha256Of(file.openRead())),
       );
     }
+    onStatus?.call(uploadAskingMessage);
 
     var known = <String>{};
     try {
@@ -827,6 +871,7 @@ class VAlbumClient {
       return UploadSummary(stored: 0, present: skipped);
     }
 
+    onStatus?.call(uploadTransferMessage);
     var result = await uploadFiles(
       folderUrl(path),
       pending,
@@ -1234,6 +1279,69 @@ class VAlbumClient {
 
   /// Releases the underlying HTTP resources.
   void close() => _transport.close();
+}
+
+/// A request whose body is counted as the *transport* pulls it.
+///
+/// The point of issue #59: `http.StreamedRequest` hands the body to an
+/// unbounded `StreamController`, so pumping the multipart body into its sink
+/// measures how fast the phone reads its own storage, not how fast the bytes
+/// leave the device. `IOClient` drains the request body with
+/// `addStream(request.finalize())`, so a request that *is* its own body stream
+/// is pulled at the pace of the socket: every chunk handed out has been asked
+/// for by the transport, and the socket's own buffer is the only slack left.
+///
+/// Cancellation lives here too: the mapped stream fails as soon as the
+/// [UploadHandle] is cancelled, which fails the request rather than quietly
+/// truncating a body whose `content-length` promised more.
+class _CountingRequest extends http.BaseRequest {
+  /// The body, not yet pulled.
+  final http.ByteStream _body;
+
+  /// Told the running number of bytes the transport has pulled.
+  final void Function(int transferred) _onTransferred;
+
+  /// Watched before every chunk, `null` for an upload that cannot be
+  /// cancelled.
+  final UploadHandle? _handle;
+
+  _CountingRequest(
+    super.method,
+    super.url,
+    this._body, {
+    required void Function(int transferred) onTransferred,
+    UploadHandle? handle,
+  })  : _onTransferred = onTransferred,
+        _handle = handle;
+
+  @override
+  http.ByteStream finalize() {
+    super.finalize();
+    var transferred = 0;
+    return http.ByteStream(
+      _body.map((chunk) {
+        var handle = _handle;
+        if (handle != null && handle.cancelled) {
+          throw const _UploadCancelled();
+        }
+        transferred += chunk.length;
+        _onTransferred(transferred);
+        return chunk;
+      }),
+    );
+  }
+}
+
+/// Thrown into the body stream of a cancelled upload, see [_CountingRequest].
+///
+/// It never reaches a caller: the transport turns it into a failure of the
+/// request, and [VAlbumClient.uploadFiles] answers the cancellation with
+/// [uploadCancelledMessage].
+class _UploadCancelled implements Exception {
+  const _UploadCancelled();
+
+  @override
+  String toString() => uploadCancelledMessage;
 }
 
 /// The one place every request of a [VAlbumClient] passes through.

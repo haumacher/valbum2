@@ -1566,6 +1566,14 @@ class VAlbumState extends State<VAlbumView>
   /// [VAlbumClient.uploadNew]: an upload retried after a lost connection never
   /// creates a second copy of a photo. What happened is said on the screen —
   /// both what was uploaded and what was already there.
+  ///
+  /// The dialog stays up until the server has answered (issue #59). It is
+  /// never told that it is at 100 %, because `sn_progress_dialog` closes
+  /// itself the moment its value reaches its maximum — which used to happen
+  /// while most of the photos were still in flight on a slow link, leaving the
+  /// user with an album that showed nothing and no dialog to explain it. The
+  /// last percent is therefore kept back and replaced by a message saying what
+  /// is being waited for; [ProgressDialog.close] below is what ends it.
   Future<void> uploadPicked(List<UploadFile> uploads) async {
     if (refuseWhileOffline(context)) {
       return;
@@ -1573,7 +1581,7 @@ class VAlbumState extends State<VAlbumView>
     var handle = UploadHandle();
     ProgressDialog pd = ProgressDialog(context: context);
     pd.show(
-      msg: "Uploading files...",
+      msg: uploadTransferMessage,
       max: 100,
       closeWithDelay: 500,
       cancel: Cancel(
@@ -1596,13 +1604,19 @@ class VAlbumState extends State<VAlbumView>
       summary = await client.uploadNew(
         path,
         uploads,
-        onProgress: (percent) => pd.update(value: percent),
+        onProgress: (percent) => pd.update(
+          // Never `max`: see the note above.
+          value: percent >= 100 ? 99 : percent,
+          msg: percent >= 100 ? uploadWaitingMessage : uploadTransferMessage,
+        ),
+        onStatus: (message) => pd.update(msg: message),
         handle: handle,
       );
     } catch (error) {
       pd.close(delay: 500);
       // The server said why it refused; that reason belongs on the screen.
-      messenger.showSnackBar(
+      _tell(
+        messenger,
         SnackBar(
           content: Text("Upload fehlgeschlagen: $error"),
           backgroundColor: Colors.red.shade700,
@@ -1618,14 +1632,36 @@ class VAlbumState extends State<VAlbumView>
       print("Upload complete: ${summary.message}");
     }
 
-    messenger.showSnackBar(
+    _tell(
+      messenger,
       SnackBar(
         content: Text(summary.message),
         duration: const Duration(seconds: 4),
       ),
     );
 
+    // The upload outlives the view it was started from: on a slow link the
+    // user is long gone by the time the server answers. Refreshing a view that
+    // is no longer there is not worth any machinery — the next visit fetches
+    // the album from the server anyway — but it must not throw either.
+    if (!mounted) {
+      if (kDebugMode) {
+        print("The album view is gone; not reloading after the upload.");
+      }
+      return;
+    }
     reload();
+  }
+
+  /// Shows [bar], unless the messenger is gone with the screen.
+  void _tell(ScaffoldMessengerState messenger, SnackBar bar) {
+    if (!messenger.mounted) {
+      if (kDebugMode) {
+        print("Nobody left to tell: ${bar.content}");
+      }
+      return;
+    }
+    messenger.showSnackBar(bar);
   }
 
   /// Re-fetches the displayed resource from the server.
