@@ -80,8 +80,10 @@ keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 \
     -validity 10000 -alias upload
 ```
 
-`keytool` asks for the keystore password, the key password (answer with the same one unless
-you want two) and the certificate's name fields; fill them in as you like. Then:
+`keytool` asks for the keystore password and the certificate's name fields; fill them in as
+you like. It does **not** ask for a separate key password: since Java 9 it creates a PKCS12
+keystore, in which the key is protected with the keystore password, so `ANDROID_KEY_PASSWORD`
+below is the same value as `ANDROID_KEYSTORE_PASSWORD`. Then:
 
 ```
 gh secret set ANDROID_KEYSTORE_BASE64 --body "$(base64 -w0 upload-keystore.jks)"
@@ -95,7 +97,7 @@ gh secret set ANDROID_KEY_PASSWORD                      # type the key password 
 | `ANDROID_KEYSTORE_BASE64` | The keystore file, base64-encoded on **one line** (`base64 -w0`; on macOS `base64 -i upload-keystore.jks \| tr -d '\n'`) |
 | `ANDROID_KEYSTORE_PASSWORD` | The keystore password |
 | `ANDROID_KEY_ALIAS` | The alias given to `keytool`, `upload` above |
-| `ANDROID_KEY_PASSWORD` | The key password |
+| `ANDROID_KEY_PASSWORD` | The key password; for a PKCS12 keystore made by `keytool` the same as the keystore password |
 
 Move `upload-keystore.jks` out of the working copy into your backup. `*.jks` and
 `android/key.properties` are gitignored so an accident does not commit them, but do not rely
