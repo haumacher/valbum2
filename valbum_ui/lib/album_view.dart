@@ -15,6 +15,7 @@ import 'album_date.dart';
 import 'album_edit.dart';
 import 'album_model.dart';
 import 'app.dart';
+import 'attribution.dart';
 import 'camera_roll_view.dart';
 import 'caller.dart';
 import 'client.dart';
@@ -1847,6 +1848,9 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         label: "Kommentar",
         text: image.comment,
         multiLine: true,
+        // Who added this photo, the editor's own contributions included: the
+        // screen saying what an image is says where it came from, see #53.
+        note: attributionShown(image),
       ),
     );
     if (text == null || !mounted) {
@@ -2249,12 +2253,20 @@ class TextInputDialog extends StatefulWidget {
   final String text;
   final bool multiLine;
 
+  /// A read-only line under the field, `null` where there is nothing to say.
+  ///
+  /// What the dialog shows besides what it edits: the attribution of issue
+  /// #53, which is derived by the server and can therefore not be edited here
+  /// — the field is what the album stores, the note is what the server knows.
+  final String? note;
+
   const TextInputDialog({
     super.key,
     required this.title,
     required this.label,
     required this.text,
     this.multiLine = false,
+    this.note,
   });
 
   @override
@@ -2296,6 +2308,15 @@ class TextInputDialogState extends State<TextInputDialog> {
               maxLines: widget.multiLine ? 8 : 1,
               decoration: InputDecoration(label: Text(widget.label)),
             ),
+            if (widget.note != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  widget.note!,
+                  key: const Key("properties-contributor"),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.only(top: 16),
               child: Row(

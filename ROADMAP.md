@@ -171,6 +171,16 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-13 (late)** — Uploader attribution (#53), app side. One caption per image: "Added by <label>"
+  above the comment wherever the image is looked at, shown to everybody but the contributor themself — a
+  share-link caller is a `token:` subject whose id the app never learns, so a link always sees the line, as
+  does an anonymous caller. The tile properties name the contributor to the editor too. "Take back…" in the
+  image view is the move of #47 with the picker confined to the caller's own space, offered exactly where
+  the server would allow it: the caller is the contributor, holds `contribute` but not `edit`, is no share
+  link and no guest; the viewer leaves the photo with it. No bulk take-back — selection lives in the edit
+  mode a contributor does not have — and none from inside a group's alternatives, since a group moves whole
+  by its representative.
+
 - **2026-09-13 (night)** — Uploader attribution (#53), server side. Attribution is recorded once, at the
   upload, in the sidecar the upload already writes — `.hashes.json`, not `index.json`, which is built from
   disk and written by the app: each hash entry gains the uploader's subject (`user:<name>`, `token:<id>`,
@@ -182,8 +192,8 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
   keeps its contributor. The rights seam of #49 became precise: a move out of an album needs `edit` on the
   source *or* the caller must be the contributor of every named image — taking one's own contribution back
   is a move into one's own space, never a delete; a share link (no space) and a guest (photo-free root) are
-  told why they cannot. Uploads now invalidate the resource cache. The app half (showing "Added by …",
-  offering "take back" where the caller is the contributor) is open.
+  told why they cannot. Uploads now invalidate the resource cache. The app half landed the same night (see
+  above).
 
 - **2026-09-13 (evening)** — Invitations and guests (#52), app side. Share links and invitations are one
   session mechanism with two kinds: the app base `<context>/s/<token>/` or `<context>/i/<token>/` names

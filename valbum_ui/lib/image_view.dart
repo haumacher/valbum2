@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'album_layout.dart' show ToImage;
+import 'attribution.dart';
 import 'client.dart';
 import 'image_transform.dart';
+import 'move_view.dart';
 import 'resource.dart';
 import 'thumbnails.dart';
 import 'video_view.dart';
@@ -54,6 +56,21 @@ class ImageView extends StatefulWidget {
   /// [GroupDetailView]'s choice of the group's representative.
   final List<Widget> actions;
 
+  /// The path of the album the image lives in, `null` where the view does not
+  /// know it (see issue #53).
+  ///
+  /// A take-back is a move posted to the album's own folder, so without the
+  /// path there is nothing to post to and the button is not offered. The
+  /// alternatives view of a group is such a place on purpose: a group moves as
+  /// a whole, named by its representative, and the member shown there is not
+  /// what the server would move — the take-back of a grouped photo belongs to
+  /// the viewer of the album, which shows exactly that representative.
+  final List<String>? albumPath;
+
+  /// Called after a photo was taken back, so the view it left can be fetched
+  /// again; the viewer falls back to [onUp] where this is not given.
+  final VoidCallback? onTakenBack;
+
   const ImageView({
     super.key,
     required this.client,
@@ -64,6 +81,8 @@ class ImageView extends StatefulWidget {
     this.onUp,
     this.minRating,
     this.actions = const [],
+    this.albumPath,
+    this.onTakenBack,
   });
 
   @override
@@ -372,9 +391,20 @@ class ImageViewState extends State<ImageView> {
     }
   }
 
-  /// The navigation chevrons and the comment shown on top of the image.
+  /// The navigation chevrons and the caption shown on top of the image.
   List<Widget> buildOverlay(BuildContext context) {
     var self = part;
+    var attribution = attributionOf(context, self);
+    var actions = [
+      ...widget.actions,
+      if (widget.albumPath != null && mayTakeBack(context, self))
+        overlayButton(
+          Icons.undo,
+          "Take back…",
+          takeBack,
+          key: const Key("image-take-back"),
+        ),
+    ];
     return [
       Positioned(
         left: 8,
@@ -407,11 +437,11 @@ class ImageViewState extends State<ImageView> {
             ),
           ),
         ),
-      if (widget.actions.isNotEmpty)
+      if (actions.isNotEmpty)
         Positioned(
           right: 8,
           top: 8,
-          child: Row(mainAxisSize: MainAxisSize.min, children: widget.actions),
+          child: Row(mainAxisSize: MainAxisSize.min, children: actions),
         ),
       if (group != null && widget.onShowGroup != null)
         Positioned(
@@ -426,40 +456,110 @@ class ImageViewState extends State<ImageView> {
             ),
           ),
         ),
-      if (self.comment.isNotEmpty)
+      if (self.comment.isNotEmpty || attribution != null)
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          child: buildComment(self.comment),
+          child: buildCaption(self.comment, attribution),
         ),
     ];
   }
 
-  Widget overlayButton(IconData icon, String tooltip, VoidCallback onPressed) =>
-      imageOverlayButton(icon, tooltip, onPressed);
+  Widget overlayButton(
+    IconData icon,
+    String tooltip,
+    VoidCallback onPressed, {
+    Key? key,
+  }) =>
+      imageOverlayButton(icon, tooltip, onPressed, key: key);
 
-  /// The comment of the image, one [Text] per paragraph.
-  Widget buildComment(String comment) => Container(
-        key: const Key("image-comment"),
+  /// What is written under the image: who added it, and what was said about
+  /// it.
+  ///
+  /// One block, not two: the attribution and the comment read as one caption,
+  /// in one style, with the attribution first — it says where the picture
+  /// comes from, the comment says what it shows. An image with neither carries
+  /// no caption at all, exactly as before issue #53.
+  Widget buildCaption(String comment, String? attribution) => Container(
+        key: const Key("image-caption"),
         color: Colors.black54,
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var paragraph in commentParagraphs(comment))
+            if (attribution != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text(
-                  paragraph,
+                  attribution,
+                  key: const Key("image-contributor"),
                   style: const TextStyle(color: Colors.white),
                   textAlign: TextAlign.center,
                 ),
               ),
+            if (comment.isNotEmpty) buildComment(comment),
           ],
         ),
       );
+
+  /// The comment of the image, one [Text] per paragraph.
+  Widget buildComment(String comment) => Column(
+        key: const Key("image-comment"),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var paragraph in commentParagraphs(comment))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                paragraph,
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+            ),
+        ],
+      );
+
+  /// Takes the displayed photo back out of this album, see issue #53.
+  ///
+  /// A take-back is a move and nothing else: the same folder picker the album
+  /// offers under "Move to…", the same `?action=move`, the same reading-out of
+  /// what the server answered. The app never deletes a photo, and the server
+  /// refuses what this caller may not take (`CONTRIBUTION_REFUSED`), which is
+  /// then shown in the server's own words.
+  ///
+  /// A group is named by its representative — the image this viewer shows —
+  /// so a grouped photo is taken back with its alternatives, which is how a
+  /// group moves everywhere else.
+  ///
+  /// Deliberately one photo at a time: taking several back would need a
+  /// selection, and a selection lives in the edit mode, which is exactly what
+  /// a contributor does not have.
+  Future<void> takeBack() async {
+    var path = widget.albumPath;
+    if (path == null) {
+      return;
+    }
+    await moveWithPicker(
+      context: context,
+      client: widget.client,
+      source: path,
+      names: [part.name],
+      subject: const ImageSubject(1),
+      onMoved: () {
+        // The photo is no longer in this album, so the viewer showing it has
+        // nothing left to show: back to the album, which is fetched again.
+        var onTakenBack = widget.onTakenBack;
+        if (onTakenBack != null) {
+          onTakenBack();
+        } else {
+          showParent();
+        }
+      },
+    );
+  }
 
   void showPrevious() => show(previous);
 
@@ -496,8 +596,10 @@ Widget imageOverlayButton(
   String tooltip,
   VoidCallback onPressed, {
   Color color = Colors.white,
+  Key? key,
 }) =>
     IconButton(
+      key: key,
       icon: Icon(icon),
       iconSize: 32,
       color: color,

@@ -1459,7 +1459,28 @@ class VAlbumState extends State<VAlbumView>
         onShowImage: showImage,
         onShowGroup: showGroupView,
         onUp: navigator.up,
+        // Where a photo of one's own can be taken back out of somebody else's
+        // album, see issue #53: the album this route names is the folder the
+        // move is posted to.
+        albumPath: path,
+        onTakenBack: takenBack,
       );
+
+  /// Leaves a photo that was taken back out of this album, see issue #53.
+  ///
+  /// The photo is gone from where the viewer stands, so the viewer leaves; the
+  /// album and the listing showing it by an index picture are both forgotten,
+  /// because either may have changed by the move.
+  void takenBack() {
+    var self = path;
+    if (self.isNotEmpty) {
+      navigator.delegate.forget(self.sublist(0, self.length - 1));
+    }
+    navigator.up();
+    // After the way up: the album is the route now, and this is what fetches
+    // it again, exactly as a move out of the album's edit mode does.
+    navigator.reload();
+  }
 
   /// Opens the "alternatives" view listing all images of the given group.
   void showGroupView(ImageGroup group) =>
