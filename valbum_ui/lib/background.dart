@@ -20,7 +20,9 @@
 ///    one run. A test calls it with fakes; the dispatcher only wraps it.
 ///
 /// A background run refuses for exactly the same reasons the foreground one
-/// does — switched off, no server, signed out, no inbox — and it says so in the
+/// does — switched off, no server, signed out, a guest with no space of their
+/// own (issue #54) — and it creates the inbox album the same way a foreground
+/// run does, because it is the same run. It says so in the
 /// store instead of on a screen nobody is looking at: [BackgroundRunRecord] is
 /// what the settings section shows afterwards.
 library;
@@ -31,6 +33,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'caller.dart';
 import 'camera_roll.dart';
 import 'client.dart';
 import 'connectivity.dart';
@@ -145,8 +148,7 @@ class FakeBackgroundScheduler extends BackgroundScheduler {
   int get scheduled => requests.length;
 
   /// What the last [schedule] call asked for, `null` before the first one.
-  BackgroundNetwork? get lastNetwork =>
-      requests.isEmpty ? null : requests.last;
+  BackgroundNetwork? get lastNetwork => requests.isEmpty ? null : requests.last;
 
   /// The number of times [cancel] was called.
   int cancelled = 0;
@@ -389,6 +391,19 @@ Future<BackgroundRunResult> runBackgroundSync({
     store: store,
     library: photos,
     clientOf: () => client,
+    // The app asks who it is once per client and hands the answer to the
+    // sync; a background isolate has no app around it, so the run asks the
+    // server itself — one small question before a transfer of photos, and the
+    // only way a demoted device learns that it has no space any more, see
+    // [CameraRollSync.callerOf] (issue #54). A server that does not answer
+    // leaves the caller unknown, exactly as in the app.
+    callerOf: () async {
+      try {
+        return CallerInfo.of(await client.authInfo());
+      } catch (_) {
+        return null;
+      }
+    },
     connectivity: network,
     clock: now,
   );

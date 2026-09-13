@@ -67,6 +67,17 @@ class FakeServer {
   http.Response Function(http.Request request) upload =
       (_) => http.Response("", 200);
 
+  /// The URLs the run asked to create an album at, in order (issue #54).
+  final List<String> created = [];
+
+  /// The answer to an album creation; the default creates it where it was
+  /// asked for.
+  http.Response Function(http.Request request) create =
+      (_) => http.Response('{"path":"Inbox"}', 200);
+
+  /// The URLs of the uploads, in order.
+  final List<String> uploadUrls = [];
+
   /// The transport to hand to the code under test.
   http.Client get transport => MockClient((request) async {
         requests.add(request);
@@ -74,7 +85,15 @@ class FakeServer {
           return check(request);
         }
         if (request.method == "PUT") {
+          // An album creation carries a JSON sidecar, an upload the photos
+          // themselves; both are a PUT, see [VAlbumClient.createAlbum].
+          if (request.headers["content-type"]?.startsWith("application/json") ??
+              false) {
+            created.add(request.url.toString());
+            return create(request);
+          }
           uploads.add(request.body);
+          uploadUrls.add(request.url.toString());
           return upload(request);
         }
         return http.Response("", 404);
@@ -166,7 +185,14 @@ void main() {
       expect(server.requests, isNotEmpty);
       for (var request in server.requests) {
         expect(request.headers["authorization"], "Bearer $deviceToken");
-        expect(request.url.toString(), startsWith(inboxUrl));
+        // Everything but the caller question goes into the inbox; that one
+        // asks the root of the space who this device is (issue #54).
+        expect(
+          request.url.toString(),
+          request.url.query == "type=auth"
+              ? startsWith(serverUrl)
+              : startsWith(inboxUrl),
+        );
       }
     });
 
@@ -254,11 +280,20 @@ void main() {
       expect(server.requests, isEmpty);
     });
 
-    test('records that no inbox album was chosen', () async {
+    test(
+        'creates the inbox album where none was chosen, as a foreground run '
+        'does', () async {
+      // The background run is the foreground run (issue #54): the very same
+      // engine creates the album and stores where the server put it, and this
+      // test is here so that it stays that way.
       var store = enabledStore(
         config: const CameraRollConfig(enabled: true),
       );
-      var server = FakeServer();
+      var server = FakeServer()
+        ..create = (_) => http.Response(
+              '{"path":"2026/Inbox"}',
+              200,
+            );
       var library = FakePhotoLibrary(items: [photo("a.jpg", 1)]);
       addTearDown(library.dispose);
 
@@ -269,9 +304,10 @@ void main() {
         clock: () => now,
       );
 
-      expect(result.ok, isFalse);
-      expect(result.record?.message, contains("inbox album"));
-      expect(server.requests, isEmpty);
+      expect(result.ok, isTrue);
+      expect(server.created, ["http://server/valbum/data/Inbox/"]);
+      expect((await store.loadCameraRollConfig()).inbox, ["2026", "Inbox"]);
+      expect(server.uploadUrls, ["http://server/valbum/data/2026/Inbox/"]);
     });
 
     test('arms no retry timer of its own', () async {

@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'caller.dart';
 import 'camera_roll.dart';
 import 'client.dart';
 import 'resource.dart';
@@ -33,6 +34,10 @@ const Key cameraRollStopKey = Key("cameraRoll.stop");
 /// is no background sync on this platform.
 const Key cameraRollBackgroundKey = Key("cameraRoll.background");
 
+/// The key of the line telling a guest why there is no camera-roll sync for
+/// them (issue #54).
+const Key cameraRollNoSpaceKey = Key("cameraRoll.noSpace");
+
 /// The key of the app-bar indicator shown while a sync runs.
 const Key cameraRollIndicatorKey = Key("cameraRoll.indicator");
 
@@ -50,9 +55,14 @@ class CameraRollScope extends InheritedNotifier<CameraRollSync> {
       context.dependOnInheritedWidgetOfExactType<CameraRollScope>()?.notifier;
 }
 
-/// The breadcrumb of an inbox path, or a plain word where there is none.
-String inboxLabel(List<String> path) =>
-    path.isEmpty ? "No album chosen yet" : path.join(" > ");
+/// The breadcrumb of an inbox path, or what happens while there is none.
+///
+/// No album chosen is no longer a dead end (issue #54): the first run creates
+/// [defaultInboxName] in the user's own space, and the label says so rather
+/// than asking for a decision that is not needed.
+String inboxLabel(List<String> path) => path.isEmpty
+    ? "No album chosen - new photos go into '$defaultInboxName'"
+    : path.join(" > ");
 
 /// The "Camera roll" section of the server settings.
 ///
@@ -78,7 +88,13 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     }
     var config = sync.config;
     var status = sync.status;
-    var available = sync.library.available;
+    // A guest has no space of their own, so there is nothing to sync into and
+    // nothing to choose: the switch and the picker are disabled and the one
+    // sentence that says what would change it stands below them (issue #54).
+    // A caller nobody named is not a guest, see [CallerInfo].
+    var guest = CallerInfo.isGuestCaller(context);
+    var hasLibrary = sync.library.available;
+    var available = hasLibrary && !guest;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -97,13 +113,24 @@ class _CameraRollSectionState extends State<CameraRollSection> {
           key: cameraRollSwitchKey,
           contentPadding: EdgeInsets.zero,
           title: const Text("Upload new photos"),
-          subtitle: available
+          // The library's own reason, never the guest's: a guest is told
+          // about their space below, not about a camera they do have.
+          subtitle: hasLibrary
               ? null
               : Text(sync.library.accessProblem ??
                   "No photo library on this platform"),
           value: config.enabled,
           onChanged: available ? _toggle : null,
         ),
+        if (guest)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              guestNoSpaceNotice,
+              key: cameraRollNoSpaceKey,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
         SwitchListTile(
           key: cameraRollWifiOnlyKey,
           contentPadding: EdgeInsets.zero,
@@ -124,7 +151,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
             const SizedBox(width: 8),
             OutlinedButton.icon(
               key: cameraRollChooseKey,
-              onPressed: () => _chooseInbox(sync),
+              onPressed: guest ? null : () => _chooseInbox(sync),
               icon: const Icon(Icons.folder_open),
               label: const Text("Choose..."),
             ),
@@ -262,12 +289,22 @@ class _CameraRollSectionState extends State<CameraRollSection> {
   }
 }
 
-/// Browses the server's folders and answers the album that was chosen.
+/// Browses the folders of the user's own space and answers the album that was
+/// chosen.
 ///
 /// Pops the album path (a list of folder names), or `null` when the user
 /// leaves without choosing. A folder that does not exist yet is created
 /// through the same call the "Create album" of the listing view uses, so an
 /// inbox is one dialog away even on a fresh library.
+///
+/// The **own space** is the whole of what this picker offers (issue #54): the
+/// paths it builds are relative to the root of the caller's space — it never
+/// spells a canonical `~owner/...` — and a tile that links into somebody
+/// else's space ([FolderInfo.link], issue #50) is left out of the listing, so
+/// it can neither be chosen nor descended into. A camera roll dropped into a
+/// shared album would upload every photo of this device into an album that
+/// belongs to somebody else, and nothing on the tile would have warned about
+/// it.
 class InboxPickerDialog extends StatefulWidget {
   final VAlbumClient client;
 
@@ -375,9 +412,9 @@ class _InboxPickerDialogState extends State<InboxPickerDialog> {
       );
 
   Widget _contents(Resource? resource) => switch (resource) {
-        ListingInfo(folders: var folders) when folders.isNotEmpty => ListView(
+        ListingInfo(folders: var all) when _own(all).isNotEmpty => ListView(
             children: [
-              for (var folder in folders)
+              for (var folder in _own(all))
                 ListTile(
                   leading: const Icon(Icons.folder),
                   title: Text(
@@ -400,6 +437,13 @@ class _InboxPickerDialogState extends State<InboxPickerDialog> {
         ErrorInfo(message: var message) => Center(child: Text(message)),
         _ => const Center(child: Text("Nothing to show here.")),
       };
+
+  /// The tiles of the caller's own space, the links into another one dropped,
+  /// see the class comment.
+  static List<FolderInfo> _own(List<FolderInfo> folders) => [
+        for (var folder in folders)
+          if (folder.link.isEmpty) folder
+      ];
 
   /// Creates an album below the folder shown and descends into it.
   ///

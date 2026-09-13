@@ -171,6 +171,18 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Decisions log
 
+- **2026-09-13 (late, later)** — Camera-roll inbox (#54). The inbox is an album in the own space, and
+  choosing one is optional: the first run without a chosen inbox creates `Inbox` at the space root and
+  stores the path the server answers — the root's placement rule may have filed it into a year — so the
+  server, not the request, says where new photos go. A name already taken is resolved by handling the
+  server's conflict, not by asking the listing first (two devices can create the inbox in the same
+  moment): an album standing there is adopted, anything else is the server's sentence. The picker offers
+  no link tiles — a camera roll dropped into a shared album would pour the device into somebody else's
+  library. A guest has no space: the switch and the picker are disabled with the issue's sentence, and a
+  run refuses with it too, since a device's config may still say "enabled" from another life; the
+  background run asks the server the same question and refuses the same way. Nobody said who is calling
+  reads as "not a guest", so anonymous and older servers behave as before.
+
 - **2026-09-13 (late)** — Uploader attribution (#53), app side. One caption per image: "Added by <label>"
   above the comment wherever the image is looked at, shown to everybody but the contributor themself — a
   share-link caller is a `token:` subject whose id the app never learns, so a link always sees the line, as

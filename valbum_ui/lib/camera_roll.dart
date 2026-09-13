@@ -27,10 +27,28 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'background.dart';
+import 'caller.dart';
 import 'client.dart';
 import 'connectivity.dart';
 import 'photo_library.dart';
+import 'resource.dart';
 import 'settings.dart';
+
+/// The name of the album the sync creates when the user chose no inbox.
+///
+/// Created at the root of the caller's *own* space (issue #54); where the root
+/// carries a placement rule the server files it away and says where it landed,
+/// see [VAlbumClient.createAlbum].
+const String defaultInboxName = "Inbox";
+
+/// What a guest is told instead of a camera-roll sync, see issue #54.
+///
+/// A guest's root is not a library of their own — it is what others shared
+/// with them — so there is no space to create an inbox in and no album a photo
+/// of theirs could land in. The server refuses it by role
+/// (`AuthService.GUEST_SPACE_REFUSED`); this app says so before it asks, and
+/// says the one thing that changes it.
+const String guestNoSpaceNotice = "Ask the admin to give you an album space.";
 
 /// What the sync does, and what it is configured with.
 ///
@@ -50,11 +68,13 @@ class CameraRollConfig {
   /// real money, so the safe answer is the one an app that was updated gets.
   final bool wifiOnly;
 
-  /// The album on the server new photos are uploaded into, empty while the
-  /// user has not chosen one.
+  /// The album on the server new photos are uploaded into, empty while none
+  /// was chosen and none was created yet.
   ///
-  /// A path of folder names, as everywhere else in this app, see
-  /// [VAlbumClient.folderUrl].
+  /// A path of folder names relative to the root of the caller's own space, as
+  /// everywhere else in this app, see [VAlbumClient.folderUrl]. Empty is not a
+  /// reason to refuse a run since issue #54: the first run creates
+  /// [defaultInboxName] in the space and stores where the server put it.
   final List<String> inbox;
 
   /// The taken-at stamp of the newest item that was handled, `null` before the
@@ -83,10 +103,13 @@ class CameraRollConfig {
   /// The configuration of an app that was never told to sync anything.
   static const CameraRollConfig disabled = CameraRollConfig();
 
-  /// Whether an inbox album was chosen, without which nothing can be uploaded.
+  /// Whether an inbox album is known, chosen by the user or created by the
+  /// first run.
   ///
   /// The root of the library is deliberately not an inbox: a camera roll
-  /// dropped into the root would fill the listing with loose files.
+  /// dropped into the root would fill the listing with loose files — and in a
+  /// guest's root the server refuses a photo outright, see
+  /// [guestNoSpaceNotice].
   bool get hasInbox => inbox.isNotEmpty;
 
   /// The same configuration with the given values replaced.
@@ -333,6 +356,20 @@ class CameraRollSync extends ChangeNotifier {
   /// URL or the device token changes, and the sync must use the current one.
   final VAlbumClient? Function() clientOf;
 
+  /// Who the app talks to the server as, `null` while nobody said (issue #54).
+  ///
+  /// Asked, not stored: the role of a device can change between two runs — a
+  /// member is demoted to a guest, a guest is promoted — and a run that syncs
+  /// because the *configuration* was written when the device was a member
+  /// would upload into a space that is no longer there. A caller nobody named
+  /// (an anonymous device, a server that did not answer) leaves the run
+  /// exactly as it was before this existed, see [CallerInfo].
+  ///
+  /// A future, because the answer is not always at hand: the app has it from
+  /// its own `?type=auth` question, a background isolate has to ask, see
+  /// [runBackgroundSync].
+  final Future<CallerInfo?> Function() callerOf;
+
   /// Whether the app currently cannot reach the server.
   ///
   /// A sync while the server is away would only produce failures; it is
@@ -394,6 +431,7 @@ class CameraRollSync extends ChangeNotifier {
     required this.store,
     required this.library,
     required this.clientOf,
+    Future<CallerInfo?> Function()? callerOf,
     bool Function()? isOffline,
     BackgroundScheduler? scheduler,
     ConnectivitySource? connectivity,
@@ -401,13 +439,16 @@ class CameraRollSync extends ChangeNotifier {
     this.interval = const Duration(minutes: 15),
     DateTime Function()? clock,
     TimerFactory? timerFactory,
-  })  : isOffline = isOffline ?? _never,
+  })  : callerOf = callerOf ?? _nobody,
+        isOffline = isOffline ?? _never,
         scheduler = scheduler ?? const UnavailableBackgroundScheduler(),
         connectivity = connectivity ?? const UnknownConnectivity(),
         clock = clock ?? DateTime.now,
         timerFactory = timerFactory ?? _realTimer;
 
   static bool _never() => false;
+
+  static Future<CallerInfo?> _nobody() async => null;
 
   static Timer _realTimer(Duration delay, void Function() callback) =>
       Timer(delay, callback);
@@ -556,13 +597,13 @@ class CameraRollSync extends ChangeNotifier {
 
   /// Switches the sync on or off.
   ///
-  /// Returns the reason it refused, `null` when it did what it was asked:
-  /// there is nothing to sync into before an inbox album was chosen, and a
+  /// Returns the reason it refused, `null` when it did what it was asked; a
   /// switch that flips back on its own would leave the user guessing.
+  ///
+  /// A missing inbox album is no longer such a reason (issue #54): the first
+  /// run creates [defaultInboxName] in the caller's own space. Choosing one
+  /// beforehand stays possible, it is not a condition any more.
   Future<String?> setEnabled(bool value) async {
-    if (value && !_config.hasInbox) {
-      return "Choose an inbox album first - that is where new photos go.";
-    }
     if (value && !await library.requestAccess()) {
       return library.accessProblem ?? "The photo library cannot be read.";
     }
@@ -697,11 +738,6 @@ class CameraRollSync extends ChangeNotifier {
   }
 
   Future<void> _runOnce() async {
-    if (!_config.hasInbox) {
-      _fail("Choose an inbox album first - that is where new photos go.",
-          retry: false);
-      return;
-    }
     if (isOffline()) {
       _fail("Offline: the album server cannot be reached.");
       return;
@@ -726,6 +762,29 @@ class CameraRollSync extends ChangeNotifier {
         phase: CameraRollPhase.unavailable,
         message: library.accessProblem ?? "The photo library cannot be read.",
       ));
+      return;
+    }
+    // Everything the device can answer on its own is answered; now the one
+    // question for the server: a guest has no space of their own, and no
+    // retry ever changes that — only the admin does, see [guestNoSpaceNotice]
+    // (issue #54). Asked here, so that a run which cannot read a photo anyway
+    // asks the server nothing at all.
+    CallerInfo? caller;
+    try {
+      caller = await callerOf();
+    } catch (_) {
+      // The server did not say who this is; the run goes on as it did before
+      // the question existed, and the server refuses what it must refuse.
+      caller = null;
+    }
+    if (caller?.isGuest ?? false) {
+      _fail(guestNoSpaceNotice, retry: false);
+      return;
+    }
+    // Only now, with the library readable and the caller in their own space:
+    // an app that may not look at any photo must not leave an empty album
+    // behind on the server.
+    if (!await _ensureInbox(client)) {
       return;
     }
 
@@ -810,6 +869,87 @@ class CameraRollSync extends ChangeNotifier {
     }
     _succeed(stored, present);
   }
+
+  /// Makes sure there is an inbox album, creating it where there is none.
+  ///
+  /// The inbox is an album inside the caller's *own* space (issue #54): the
+  /// user may choose one in the settings, and where they did not, the first
+  /// run creates [defaultInboxName] at the root of the space. What is stored
+  /// is not the path that was asked for but the [CreateResult.path] the server
+  /// answers — a placement rule on the root files the album into its year
+  /// folder, and the sync uploads where the album really is, see issue #48.
+  ///
+  /// An album of that name that is already there is *not* a failure of the
+  /// sync: it is the inbox of an earlier installation, and the run adopts it.
+  /// Asking the listing before creating would not save that branch — two
+  /// devices can create the inbox at the same moment — so the conflict is the
+  /// one mechanism, and the album the server refused to overwrite is read to
+  /// make sure it is an album and not something else of that name.
+  ///
+  /// Answers whether the run may go on; a run that may not has already said
+  /// why, see [_fail].
+  Future<bool> _ensureInbox(VAlbumClient client) async {
+    if (_config.hasInbox) {
+      return true;
+    }
+    CreateResult created;
+    try {
+      created = await client.createAlbum(
+        const [],
+        AlbumInfo(title: defaultInboxName, path: defaultInboxName),
+      );
+    } on VAlbumException catch (error) {
+      var existing = await _existingInbox(client, error);
+      if (existing == null) {
+        // The server's own sentence, not a guess about what it meant.
+        _fail(error.message);
+        return false;
+      }
+      await _store(_config.copyWith(inbox: existing));
+      return true;
+    } catch (error) {
+      _fail(
+        VAlbumClient.isTransportFailure(error)
+            ? "The server cannot be reached "
+                "(${VAlbumClient.transportMessage(error)})."
+            : error.toString(),
+      );
+      return false;
+    }
+    await _store(_config.copyWith(inbox: _pathSegments(created.path)));
+    return true;
+  }
+
+  /// The inbox album that made the creation fail with [error], `null` when the
+  /// refusal was not about a name that is taken.
+  ///
+  /// Only a conflict (HTTP 409, "the name is taken") is a candidate, and only
+  /// an *album* of that name is adopted: a listing folder named `Inbox` would
+  /// take single files instead of photos of an album, and anything else of
+  /// that name is the server's refusal, told as the server told it.
+  Future<List<String>?> _existingInbox(
+    VAlbumClient client,
+    VAlbumException error,
+  ) async {
+    if (error.status != 409) {
+      return null;
+    }
+    try {
+      var resource = await client.loadResource(const [defaultInboxName]);
+      return resource is AlbumInfo ? const [defaultInboxName] : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The segments of a `/`-separated server path, the empty ones dropped.
+  ///
+  /// The [CreateResult.path] is spelled the way every path in this app is:
+  /// relative to the root of the caller's own space.
+  static List<String> _pathSegments(String path) => [
+        for (var segment in path.split("/"))
+          if (segment.isNotEmpty) segment
+      ];
 
   /// Records that [batch] was accepted by the server.
   ///

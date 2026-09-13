@@ -160,6 +160,10 @@ class VAlbumAppState extends State<VAlbumApp> {
     store: settings.store,
     library: photoLibrary,
     clientOf: () => client,
+    // The answer of the one `?type=auth` question this app asks, see
+    // [_syncCaller]: a guest has no space of their own to sync into, and the
+    // run says so instead of uploading (issue #54).
+    callerOf: () async => caller,
     isOffline: () => offlineState.offline,
     scheduler: backgroundScheduler,
     connectivity: connectivity,

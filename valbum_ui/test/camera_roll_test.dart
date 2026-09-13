@@ -74,6 +74,21 @@ class Harness {
   Future<http.Response> Function(http.Request request) upload =
       (_) async => http.Response("", 200);
 
+  /// The URLs the run asked to create an album at (issue #54).
+  final List<String> created = [];
+
+  /// The URLs of the uploads, in order.
+  final List<String> uploadUrls = [];
+
+  /// Answers an album creation; the default creates it where it was asked
+  /// for, see [VAlbumClient.createAlbum].
+  Future<http.Response> Function(http.Request request) create =
+      (_) async => http.Response('{"path":"Inbox"}', 200);
+
+  /// What a listing request answers; the default is the fixture tree.
+  Future<http.Response> Function(http.Request request) listing =
+      (_) async => http.Response(fixture("listing.json"), 200);
+
   late final CameraRollSync sync;
 
   Harness({
@@ -95,10 +110,19 @@ class Harness {
               return http.Response(check(request), 200);
             }
             if (request.method == "PUT") {
+              // An album creation carries a JSON sidecar, an upload the
+              // photos themselves; both are a PUT.
+              if (request.headers["content-type"]
+                      ?.startsWith("application/json") ??
+                  false) {
+                created.add(request.url.toString());
+                return create(request);
+              }
               uploads.add(request.body);
+              uploadUrls.add(request.url.toString());
               return upload(request);
             }
-            return http.Response(fixture("listing.json"), 200);
+            return listing(request);
           })
         : null;
     sync = CameraRollSync(
@@ -419,7 +443,9 @@ void main() {
       expect(harness.sync.status.message, contains("Offline"));
     });
 
-    test('refuses to run without an inbox album', () async {
+    test('does not refuse a run without an inbox album any more', () async {
+      // Since issue #54 the run creates one; what it creates and where it
+      // puts it is pinned in `camera_roll_inbox_test.dart`.
       var harness = Harness(
         items: [photo("a.jpg", 1)],
         config: const CameraRollConfig(enabled: true),
@@ -429,11 +455,9 @@ void main() {
 
       await harness.sync.syncNow();
 
-      expect(harness.uploads, isEmpty);
-      expect(harness.sync.status.phase, CameraRollPhase.failed);
-      expect(harness.sync.status.message, contains("inbox album"));
-      expect(harness.timers.pending, isEmpty,
-          reason: "Retrying cannot fix a missing inbox.");
+      expect(harness.sync.status.phase, CameraRollPhase.idle);
+      expect(harness.sync.config.inbox, ["Inbox"]);
+      expect(harness.uploads, hasLength(1));
     });
 
     test('refuses to run without a server', () async {
@@ -574,15 +598,18 @@ void main() {
   });
 
   group('switching the sync on', () {
-    test('is refused while no inbox album is chosen', () async {
+    test('is allowed while no inbox album is chosen', () async {
+      // The first run creates the inbox, so choosing one is no condition any
+      // more (issue #54).
       var harness = Harness(config: CameraRollConfig.disabled);
       addTearDown(harness.dispose);
       await harness.sync.load();
 
       var problem = await harness.sync.setEnabled(true);
 
-      expect(problem, contains("inbox album"));
-      expect(harness.sync.config.enabled, isFalse);
+      expect(problem, isNull);
+      expect(harness.sync.config.enabled, isTrue);
+      expect((await harness.store.loadCameraRollConfig()).enabled, isTrue);
     });
 
     test('is refused when the platform has no photo library', () async {
@@ -677,7 +704,7 @@ void main() {
   });
 
   group('the settings section', () {
-    testWidgets('refuses to switch on without an inbox album',
+    testWidgets('switches on without an inbox album',
         (WidgetTester tester) async {
       var harness = Harness(config: CameraRollConfig.disabled);
       addTearDown(harness.dispose);
@@ -687,9 +714,8 @@ void main() {
       await tester.tap(find.byKey(cameraRollSwitchKey));
       await tester.pumpAndSettle();
 
-      expect(
-          find.textContaining("Choose an inbox album first"), findsOneWidget);
-      expect(harness.sync.config.enabled, isFalse);
+      expect(harness.sync.config.enabled, isTrue);
+      expect(find.byIcon(Icons.error), findsNothing);
     });
 
     testWidgets('says that a platform has no photo library',
@@ -724,7 +750,7 @@ void main() {
       await harness.sync.load();
       await pumpSection(tester, harness.sync);
 
-      expect(find.text("No album chosen yet"), findsOneWidget);
+      expect(find.textContaining("No album chosen"), findsOneWidget);
 
       await tester.tap(find.byKey(cameraRollChooseKey));
       await tester.pumpAndSettle();
@@ -836,7 +862,7 @@ void main() {
 
       expect(find.text("Camera roll"), findsOneWidget);
       expect(find.byKey(cameraRollSwitchKey), findsOneWidget);
-      expect(find.text("No album chosen yet"), findsOneWidget);
+      expect(find.textContaining("No album chosen"), findsOneWidget);
     });
   });
 
