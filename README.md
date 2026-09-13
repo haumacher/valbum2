@@ -233,6 +233,42 @@ sudo -u valbum valbum-server --migrate-to-user <name>
 sudo systemctl start valbum
 ```
 
+### Behind a reverse proxy
+
+To reach the server from the internet under a name of your own with HTTPS, put a reverse proxy
+in front of it and forward `https://home.example.org/valbum/` to `http://<pi>:8080/valbum/`
+(the context path has to be the same on both sides, see `VALBUM_CONTEXTPATH`). The server never
+spells an absolute URL to itself: its redirects carry only the path, so no rewriting of
+`Location` headers is needed, and when the proxy sends the `X-Forwarded-Proto` and
+`X-Forwarded-Host` headers (or `Forwarded`), requests report the public surface. Two things the
+proxy must allow: request bodies large enough for an upload of many photos at once, and enough
+time for it.
+
+nginx:
+
+```
+location /valbum/ {
+    proxy_pass         http://192.168.178.20:8080/valbum/;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_set_header   X-Forwarded-Host  $host;
+    proxy_set_header   X-Forwarded-For   $remote_addr;
+    client_max_body_size 0;          # uploads: no limit (or e.g. 2g)
+    proxy_read_timeout   600s;
+    proxy_request_buffering off;     # stream the upload through instead of spooling it
+}
+```
+
+Apache httpd (`mod_proxy_http`):
+
+```
+ProxyPreserveHost On
+ProxyPass        /valbum/ http://192.168.178.20:8080/valbum/
+RequestHeader set X-Forwarded-Proto "https"
+LimitRequestBody 0
+ProxyTimeout     600
+```
+
 ### Updating
 
 ```

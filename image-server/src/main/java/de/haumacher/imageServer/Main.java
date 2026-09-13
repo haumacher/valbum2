@@ -25,6 +25,9 @@ import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.ArgumentType;
 import net.sourceforge.argparse4j.inf.Namespace;
+import org.eclipse.jetty.server.ForwardedRequestCustomizer;
+import org.eclipse.jetty.server.HttpConfiguration;
+import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.HandlerCollection;
@@ -152,39 +155,8 @@ public class Main {
 	}
 
 	private void start() throws Exception {
-		final Server server = new Server();
-
-		ServerConnector connector = new ServerConnector(server);
-		connector.setPort(_port);
-		connector.open();
-		server.addConnector(connector);
-
-		HandlerCollection handlers = new HandlerCollection();
-
-		WebAppContext webapp = new WebAppContext();
-		webapp.setContextPath(_contextPath);
-		webapp.setResourceBase(_basePath.toString());
 		AuthService auth = new AuthService(_authMode, _pairingSecret, _basePath.toPath(), _inviteMode);
-		webapp.addServlet(new ServletHolder(new ImageServlet(_basePath, auth)), Settings.DATA_PREFIX + "/*");
-		Path webRoot = _webRoot == null ? null : _webRoot.toPath();
-		// The same application is served below "/s/<token>/" (a share link, issue #51) and
-		// "/i/<token>/" (an invitation, issue #52), so that either opens it with its own base href;
-		// the static handler never looks at the token.
-		webapp.addServlet(new ServletHolder(new ResourceServlet(webRoot, Settings.DATA_PREFIX,
-			ShareStore.URL_SEGMENT, InvitationStore.URL_SEGMENT)), STATIC_PREFIX + "/*");
-		webapp.setClassLoader(Main.class.getClassLoader());
-
-		handlers.addHandler(webapp);
-
-		if (!_contextPath.equals("")) {
-			WebAppContext redirect = new WebAppContext();
-			redirect.setContextPath("");
-			redirect.setResourceBase(_basePath.toString());
-			redirect.addServlet(new ServletHolder(new RedirectServlet(_contextPath + "/")), "/");
-			handlers.addHandler(redirect);
-		}
-
-		server.setHandler(handlers);
+		final Server server = createServer(_port, _contextPath, _basePath, _webRoot, auth);
 		server.start();
 
 		System.out.println("Image server started: http://localhost:" + _port + _contextPath + "/ serving folder: " + _basePath);
@@ -204,6 +176,61 @@ public class Main {
 			}
 		}
 		server.join();
+	}
+
+	/**
+	 * Builds the server, not yet started.
+	 *
+	 * <p>
+	 * The server has no way of knowing its public surface: behind a reverse proxy it is reached as
+	 * <code>https://home.example.org/valbum/</code> and sees <code>http://localhost:8082/</code>.
+	 * So it never spells an absolute URL to itself (issue #62): a redirect is sent with the path it
+	 * was given (<code>Location: /valbum/data/.../?type=json</code>), which the client resolves
+	 * against the URL it actually used, and when a proxy does say where the request came from
+	 * (<code>X-Forwarded-Proto</code>, <code>X-Forwarded-Host</code>, <code>Forwarded</code>), the
+	 * request reports that surface as its scheme, host and port.
+	 * </p>
+	 *
+	 * @param port
+	 *        The port to listen on, <code>0</code> for any free one (a test).
+	 */
+	static Server createServer(int port, String contextPath, File basePath, File webRoot, AuthService auth)
+			throws IOException {
+		final Server server = new Server();
+
+		HttpConfiguration config = new HttpConfiguration();
+		config.setRelativeRedirectAllowed(true);
+		config.addCustomizer(new ForwardedRequestCustomizer());
+		ServerConnector connector = new ServerConnector(server, new HttpConnectionFactory(config));
+		connector.setPort(port);
+		server.addConnector(connector);
+
+		HandlerCollection handlers = new HandlerCollection();
+
+		WebAppContext webapp = new WebAppContext();
+		webapp.setContextPath(contextPath);
+		webapp.setResourceBase(basePath.toString());
+		webapp.addServlet(new ServletHolder(new ImageServlet(basePath, auth)), Settings.DATA_PREFIX + "/*");
+		Path webRootPath = webRoot == null ? null : webRoot.toPath();
+		// The same application is served below "/s/<token>/" (a share link, issue #51) and
+		// "/i/<token>/" (an invitation, issue #52), so that either opens it with its own base href;
+		// the static handler never looks at the token.
+		webapp.addServlet(new ServletHolder(new ResourceServlet(webRootPath, Settings.DATA_PREFIX,
+			ShareStore.URL_SEGMENT, InvitationStore.URL_SEGMENT)), STATIC_PREFIX + "/*");
+		webapp.setClassLoader(Main.class.getClassLoader());
+
+		handlers.addHandler(webapp);
+
+		if (!contextPath.equals("")) {
+			WebAppContext redirect = new WebAppContext();
+			redirect.setContextPath("");
+			redirect.setResourceBase(basePath.toString());
+			redirect.addServlet(new ServletHolder(new RedirectServlet(contextPath + "/")), "/");
+			handlers.addHandler(redirect);
+		}
+
+		server.setHandler(handlers);
+		return server;
 	}
 
 	private String normlizeContextPath(String contextPath) {
