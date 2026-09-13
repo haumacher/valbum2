@@ -1,6 +1,10 @@
 /// The single image viewer: zoom, pan, swipe and keyboard navigation.
 library;
 
+import 'dart:async';
+
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,6 +20,67 @@ import 'video_view.dart';
 
 /// The velocity (in pixels per second) a drag must reach to count as a swipe.
 const double _swipeVelocity = 400;
+
+/// How far a finger must move before the drag axis is decided (issue #61).
+const double _axisThreshold = 8;
+
+/// The part of the page width a slow drag must cross to navigate (issue #61).
+const double _swipeDistanceFraction = 1 / 3;
+
+/// The part of the page width a drag against the album's end may cover.
+///
+/// At the first (last) image there is nothing to page to, so the drag is only
+/// answered by a rubber band that approaches this much and never passes it.
+const double _rubberBandFraction = 1 / 5;
+
+/// How long a drag that did not navigate takes to slide back (issue #61).
+const Duration _snapBackDuration = Duration(milliseconds: 150);
+
+/// The axis a drag of the fitted image was locked to, see issue #61.
+///
+/// A drag of the fitted image follows the finger along one axis only: the
+/// picture must not drift diagonally away from a horizontal paging swipe.
+/// The axis is decided from the first few pixels of the movement; a zoomed
+/// image and a pinch are [free] and pan as they always did.
+enum _DragAxis { undecided, horizontal, vertical, free }
+
+/// How many image viewers are on screen, see [_enterImmersive].
+int _immersiveViewers = 0;
+
+/// Whether this platform has system bars the viewer should hide (issue #60).
+///
+/// Only Android and iOS have them; on the web and on the desktop the calls
+/// are not available (and would be meaningless), so they are skipped.
+bool get _hasSystemBars =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS);
+
+/// Hides the system bars while an image viewer is on screen (issue #60).
+///
+/// The navigation bar overlaps the picture and, in landscape, sits exactly
+/// where the viewer's chevrons are, so the viewer runs immersive. Stepping
+/// from image to image creates the next viewer before the previous one is
+/// disposed; the counter keeps the bars from flickering in between, and the
+/// restore is deferred by a microtask so that the order of the two does not
+/// matter.
+void _enterImmersive() {
+  if (_immersiveViewers++ == 0) {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+}
+
+/// Gives the system bars back when the last viewer left, see [_enterImmersive].
+void _leaveImmersive() {
+  if (_immersiveViewers > 0) {
+    _immersiveViewers--;
+  }
+  scheduleMicrotask(() {
+    if (_immersiveViewers == 0) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+  });
+}
 
 /// Displays a single [AbstractImage] full-screen.
 ///
@@ -89,7 +154,8 @@ class ImageView extends StatefulWidget {
   State<ImageView> createState() => ImageViewState();
 }
 
-class ImageViewState extends State<ImageView> {
+class ImageViewState extends State<ImageView>
+    with SingleTickerProviderStateMixin {
   ImageTransform? _transform;
 
   /// The state the transform had when the current gesture started.
@@ -97,6 +163,48 @@ class ImageViewState extends State<ImageView> {
   double _gestureTx = 0;
   double _gestureTy = 0;
   Offset _gestureFocus = Offset.zero;
+
+  /// The axis the running drag of the fitted image is locked to (issue #61).
+  _DragAxis _axis = _DragAxis.free;
+
+  /// How far the finger moved along the locked axis, before the rubber band.
+  double _dragDx = 0;
+
+  /// Whether more than one finger took part in the running gesture.
+  bool _multiTouch = false;
+
+  /// Slides a drag that did not navigate back to the fitted position.
+  late final AnimationController _snapBack = AnimationController(
+    vsync: this,
+    duration: _snapBackDuration,
+  )..addListener(_onSnapBack);
+
+  /// The transform the running snap-back animates, `null` while none runs.
+  ImageTransform? _snapping;
+
+  /// The translation the snap-back starts from.
+  double _snapFrom = 0;
+
+  /// Whether this viewer hid the system bars, see [_enterImmersive].
+  bool _immersive = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _immersive = _hasSystemBars;
+    if (_immersive) {
+      _enterImmersive();
+    }
+  }
+
+  @override
+  void dispose() {
+    _snapBack.dispose();
+    if (_immersive) {
+      _leaveImmersive();
+    }
+    super.dispose();
+  }
 
   /// The image displayed, the representative of a group.
   ImagePart get part => ToImage.toImage(widget.image);
@@ -141,6 +249,7 @@ class ImageViewState extends State<ImageView> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.image != widget.image) {
       // Start over with the fitted view.
+      _stopSnapBack();
       _transform = null;
       _refusal = null;
       _refusalAsked = false;
@@ -228,25 +337,43 @@ class ImageViewState extends State<ImageView> {
           tx.toggle(details.localPosition.dx, details.localPosition.dy);
         }),
         onScaleStart: (details) {
+          _stopSnapBack();
           _gestureScale = tx.scale;
           _gestureTx = tx.tx;
           _gestureTy = tx.ty;
           _gestureFocus = details.localFocalPoint;
+          _multiTouch = details.pointerCount > 1;
+          _dragDx = 0;
+          // A fitted image pages; a zoomed one pans, as it always did.
+          _axis = _multiTouch || tx.scale > tx.fitScale
+              ? _DragAxis.free
+              : _DragAxis.undecided;
         },
-        onScaleUpdate: (details) => setState(() {
-          var newScale = _gestureScale * details.scale;
+        onScaleUpdate: (details) {
+          if (details.pointerCount > 1) {
+            // A second finger turns the drag into a pinch: free pan and zoom.
+            _multiTouch = true;
+            _axis = _DragAxis.free;
+          }
+          if (_axis != _DragAxis.free) {
+            dragFitted(tx, details.localFocalPoint);
+            return;
+          }
+          setState(() {
+            var newScale = _gestureScale * details.scale;
 
-          // The point of the image that was grabbed, in image pixels.
-          var imgX = (_gestureFocus.dx - _gestureTx) / _gestureScale;
-          var imgY = (_gestureFocus.dy - _gestureTy) / _gestureScale;
+            // The point of the image that was grabbed, in image pixels.
+            var imgX = (_gestureFocus.dx - _gestureTx) / _gestureScale;
+            var imgY = (_gestureFocus.dy - _gestureTy) / _gestureScale;
 
-          var focus = details.localFocalPoint;
-          tx.setCustom(
-            focus.dx - imgX * newScale,
-            focus.dy - imgY * newScale,
-            newScale,
-          );
-        }),
+            var focus = details.localFocalPoint;
+            tx.setCustom(
+              focus.dx - imgX * newScale,
+              focus.dy - imgY * newScale,
+              newScale,
+            );
+          });
+        },
         onScaleEnd: (details) => onDragEnd(tx, details),
         child: ClipRect(
           child: Stack(
@@ -356,20 +483,132 @@ class ImageViewState extends State<ImageView> {
     );
   }
 
-  /// Finishes a drag: a fast drag of the un-zoomed image is a swipe.
+  /// Moves the fitted image with the finger, along one axis only (issue #61).
+  ///
+  /// The axis is decided from the first [_axisThreshold] pixels of the
+  /// movement: a horizontal drag pages to the neighbouring image and the
+  /// picture follows it, a vertical one is the way back to the album (or up to
+  /// the group's alternatives) and leaves the picture where it is — there is
+  /// no album sliding in behind it that the movement could point at, and an
+  /// image that only ever moves where paging can take it says plainly what the
+  /// gesture does.
+  void dragFitted(ImageTransform tx, Offset focus) {
+    var delta = focus - _gestureFocus;
+    if (_axis == _DragAxis.undecided) {
+      if (delta.distance < _axisThreshold) {
+        return;
+      }
+      _axis = delta.dx.abs() >= delta.dy.abs()
+          ? _DragAxis.horizontal
+          : _DragAxis.vertical;
+    }
+    if (_axis != _DragAxis.horizontal) {
+      return;
+    }
+
+    _dragDx = delta.dx;
+    var moved = boundedDrag(tx, delta.dx);
+    setState(() => tx.setCustom(_gestureTx + moved, _gestureTy, _gestureScale));
+  }
+
+  /// How far the image really moves for a drag of [dx], see [dragFitted].
+  ///
+  /// A drag towards an image that is there follows the finger; one at the
+  /// start (or the end) of the album has nothing to page to and is answered by
+  /// a rubber band that approaches [_rubberBandFraction] of the page and never
+  /// passes it.
+  double boundedDrag(ImageTransform tx, double dx) {
+    var blocked = dx > 0 ? previous == null : next == null;
+    if (!blocked) {
+      return dx;
+    }
+    var limit = tx.pageWidth * _rubberBandFraction;
+    return limit <= 0 ? 0 : dx / (1 + dx.abs() / limit);
+  }
+
+  /// Finishes a drag: a fast or a long drag of the un-zoomed image is a swipe.
   void onDragEnd(ImageTransform tx, ScaleEndDetails details) {
-    if (details.pointerCount > 1 || tx.scale > tx.fitScale) {
+    var axis = _axis;
+    var dragDx = _dragDx;
+    _axis = _DragAxis.free;
+    _dragDx = 0;
+
+    if (details.pointerCount > 1 ||
+        _multiTouch ||
+        axis == _DragAxis.free ||
+        tx.scale > tx.fitScale) {
       // A pinch, or the image is zoomed in: the drag was a pan.
       return;
     }
 
-    // The image was dragged around while fitted: snap it back.
-    setState(tx.reset);
+    if (axis == _DragAxis.horizontal) {
+      if (!swipeHorizontally(tx, dragDx, details.velocity)) {
+        // Not far and not fast enough: the image slides back.
+        snapBack(tx);
+      }
+      return;
+    }
 
-    onSwipe(details);
+    // The vertical gestures never moved the image, see [dragFitted].
+    setState(tx.reset);
+    if (axis == _DragAxis.vertical) {
+      swipeVertically(details.velocity);
+    } else {
+      onSwipe(details);
+    }
+  }
+
+  /// Pages to the neighbouring image if the horizontal drag asked for it.
+  ///
+  /// A flick navigates as it always did; a slow drag navigates once it crossed
+  /// [_swipeDistanceFraction] of the page width. Neither passes the ends of
+  /// the album: where there is no neighbour, the drag snaps back.
+  bool swipeHorizontally(ImageTransform tx, double dragDx, Velocity velocity) {
+    var speed = velocity.pixelsPerSecond;
+    var flick =
+        speed.distance >= _swipeVelocity && speed.dx.abs() > speed.dy.abs();
+    var far = dragDx.abs() >= tx.pageWidth * _swipeDistanceFraction;
+    if (!flick && !far) {
+      return false;
+    }
+
+    // Dragging (or flicking) to the left uncovers the next image. A flick
+    // against a drag that had already gone far is the finger saying "no":
+    // the image goes back to where it was, it does not page the other way.
+    var flickForwards = speed.dx < 0;
+    var dragForwards = dragDx < 0;
+    if (flick && far && flickForwards != dragForwards) {
+      return false;
+    }
+    var forwards = flick ? flickForwards : dragForwards;
+    var target = forwards ? next : previous;
+    if (target == null) {
+      return false;
+    }
+
+    setState(tx.reset);
+    show(target);
+    return true;
+  }
+
+  /// Answers a vertical flick: down leaves the viewer, up opens the group.
+  void swipeVertically(Velocity velocity) {
+    var speed = velocity.pixelsPerSecond;
+    if (speed.distance < _swipeVelocity) {
+      return;
+    }
+    if (speed.dy > 0) {
+      showParent();
+    } else {
+      showGroup();
+    }
   }
 
   /// Navigates if the finished gesture was a fast enough swipe.
+  ///
+  /// Used where the image itself is not dragged (the video, and a gesture too
+  /// short to decide an axis). Both ends of the album are respected by [show],
+  /// which does nothing where there is no image to go to.
   void onSwipe(ScaleEndDetails details) {
     var velocity = details.velocity.pixelsPerSecond;
     if (velocity.distance < _swipeVelocity) {
@@ -383,18 +622,59 @@ class ImageViewState extends State<ImageView> {
         showNext();
       }
     } else {
-      if (velocity.dy > 0) {
-        showParent();
-      } else {
-        showGroup();
-      }
+      swipeVertically(details.velocity);
     }
+  }
+
+  /// Slides the dragged image back to its fitted position, see [onDragEnd].
+  void snapBack(ImageTransform tx) {
+    _snapFrom = tx.tx;
+    if ((_snapFrom - tx.fitTx).abs() < 0.5) {
+      setState(tx.reset);
+      return;
+    }
+    _snapping = tx;
+    _snapBack
+      ..reset()
+      ..forward();
+  }
+
+  /// Stops a running snap-back, leaving the image where it stands.
+  void _stopSnapBack() {
+    _snapping = null;
+    _snapBack.stop();
+  }
+
+  /// One step of the snap-back animation, see [snapBack].
+  void _onSnapBack() {
+    var tx = _snapping;
+    if (tx == null) {
+      return;
+    }
+    setState(() {
+      if (_snapBack.value >= 1) {
+        _snapping = null;
+        tx.reset();
+      } else {
+        var moved = Curves.easeOut.transform(_snapBack.value);
+        tx.setCustom(
+          _snapFrom + (tx.fitTx - _snapFrom) * moved,
+          tx.fitTy,
+          tx.fitScale,
+        );
+      }
+    });
   }
 
   /// The navigation chevrons and the caption shown on top of the image.
   List<Widget> buildOverlay(BuildContext context) {
     var self = part;
     var attribution = attributionOf(context, self);
+    // The controls stay clear of the system bars (issue #60): the viewer runs
+    // immersive, but a bar shown by a swipe from the edge must never sit on a
+    // button — in landscape the navigation bar is exactly where the chevrons
+    // are.
+    var insets = MediaQuery.paddingOf(context);
     var actions = [
       ...widget.actions,
       if (widget.albumPath != null && mayTakeBack(context, self))
@@ -407,15 +687,15 @@ class ImageViewState extends State<ImageView> {
     ];
     return [
       Positioned(
-        left: 8,
-        top: 8,
+        left: insets.left + 8,
+        top: insets.top + 8,
         child: overlayButton(Icons.arrow_back, "Back to the album", showParent),
       ),
       if (previous != null)
         Positioned(
-          left: 8,
-          top: 0,
-          bottom: 0,
+          left: insets.left + 8,
+          top: insets.top,
+          bottom: insets.bottom,
           child: Center(
             child: overlayButton(
               Icons.chevron_left,
@@ -426,9 +706,9 @@ class ImageViewState extends State<ImageView> {
         ),
       if (next != null)
         Positioned(
-          right: 8,
-          top: 0,
-          bottom: 0,
+          right: insets.right + 8,
+          top: insets.top,
+          bottom: insets.bottom,
           child: Center(
             child: overlayButton(
               Icons.chevron_right,
@@ -439,15 +719,15 @@ class ImageViewState extends State<ImageView> {
         ),
       if (actions.isNotEmpty)
         Positioned(
-          right: 8,
-          top: 8,
+          right: insets.right + 8,
+          top: insets.top + 8,
           child: Row(mainAxisSize: MainAxisSize.min, children: actions),
         ),
       if (group != null && widget.onShowGroup != null)
         Positioned(
-          left: 0,
-          right: 0,
-          top: 8,
+          left: insets.left,
+          right: insets.right,
+          top: insets.top + 8,
           child: Center(
             child: overlayButton(
               Icons.expand_more,
@@ -461,7 +741,7 @@ class ImageViewState extends State<ImageView> {
           left: 0,
           right: 0,
           bottom: 0,
-          child: buildCaption(self.comment, attribution),
+          child: buildCaption(self.comment, attribution, insets),
         ),
     ];
   }
@@ -481,10 +761,21 @@ class ImageViewState extends State<ImageView> {
   /// in one style, with the attribution first — it says where the picture
   /// comes from, the comment says what it shows. An image with neither carries
   /// no caption at all, exactly as before issue #53.
-  Widget buildCaption(String comment, String? attribution) => Container(
+  Widget buildCaption(
+    String comment,
+    String? attribution,
+    EdgeInsets insets,
+  ) =>
+      Container(
         key: const Key("image-caption"),
         color: Colors.black54,
-        padding: const EdgeInsets.all(16),
+        // The block may run under the bars, its text may not (issue #60).
+        padding: EdgeInsets.fromLTRB(
+          insets.left + 16,
+          16,
+          insets.right + 16,
+          insets.bottom + 16,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

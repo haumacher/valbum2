@@ -297,6 +297,11 @@ class ListingView extends StatelessWidget {
 
                   return SingleChildScrollView(
                     scrollDirection: Axis.vertical,
+                    // The last row of tiles ends above the system navigation
+                    // bar instead of running under it, see issue #60.
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.paddingOf(context).bottom,
+                    ),
                     child: buildFolderList(
                       context,
                       self,

@@ -1022,6 +1022,11 @@ class AlbumContentState extends State<AlbumContent>
               builder: (BuildContext context, BoxConstraints constraints) {
                 return SingleChildScrollView(
                   scrollDirection: Axis.vertical,
+                  // The last row of tiles ends above the system navigation
+                  // bar instead of running under it, see issue #60.
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.paddingOf(context).bottom,
+                  ),
                   // The full width, whatever the content: a `Column` shrinks to
                   // its widest child, so an album whose images the rating filter
                   // all hides used to collapse its title into the top left
