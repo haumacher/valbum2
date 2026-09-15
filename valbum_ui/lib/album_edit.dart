@@ -595,6 +595,137 @@ bool moveParts(
   return true;
 }
 
+/// The date the given album part is sorted by, `0` if it has none.
+///
+/// An [ImagePart] — a photo or a video — is sorted by its own
+/// [ImagePart.date], the date the sidecar holds for it (never the EXIF data
+/// of the original, which the app does not touch). An [ImageGroup] is sorted
+/// by the *earliest* date of its images, skipping the undated ones: a group
+/// is one thing in the album, and it belongs where its first photo belongs.
+/// A [Heading] has no date and answers `0` — [sortSectionsByDate] never asks
+/// it, headings stay where they are.
+int dateOf(AlbumPart part) {
+  if (part is ImagePart) {
+    return part.date;
+  }
+  if (part is ImageGroup) {
+    var earliest = 0;
+    for (var image in part.images) {
+      var date = image.date;
+      if (date != 0 && (earliest == 0 || date < earliest)) {
+        earliest = date;
+      }
+    }
+    return earliest;
+  }
+  return 0;
+}
+
+/// The given parts ordered by [dateOf], ascending.
+///
+/// The order is stable in both senses the album needs (issue #76): parts of
+/// the same date keep the order they were in, and a part without a date
+/// (`0` — an image the server could not read a date from) keeps its relative
+/// position at the *end*, where an undated part is the least in the way.
+/// Dart's [List.sort] is not stable, so the original position is the
+/// tie-breaker.
+List<T> sortedByDate<T extends AlbumPart>(List<T> parts) {
+  var position = Map<T, int>.identity();
+  var dated = <T>[];
+  var undated = <T>[];
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i];
+    position[part] = i;
+    (dateOf(part) == 0 ? undated : dated).add(part);
+  }
+  dated.sort((left, right) {
+    var byDate = dateOf(left).compareTo(dateOf(right));
+    return byDate != 0 ? byDate : position[left]!.compareTo(position[right]!);
+  });
+  return [...dated, ...undated];
+}
+
+/// Sorts the images of the given group by date, see [sortedByDate].
+///
+/// [ImageGroup.representative] is an index into [ImageGroup.images] and is
+/// carried along, so the group keeps showing the image it showed.
+///
+/// Returns whether the order of the images changed.
+bool sortGroupByDate(ImageGroup group) {
+  var images = group.images;
+  var sorted = sortedByDate(images);
+  if (_sameOrder(sorted, images)) {
+    return false;
+  }
+
+  var index = group.representative;
+  var representing = index >= 0 && index < images.length ? images[index] : null;
+  group.images = sorted;
+  if (representing != null) {
+    group.representative =
+        sorted.indexWhere((image) => identical(image, representing));
+  }
+  return true;
+}
+
+/// Sorts the parts of the album by date, section by section (issue #76).
+///
+/// An album grows by uploads from several devices and by moves, and every
+/// part is inserted by date when it arrives — but a stored order is never
+/// resorted behind the author's back (issue #72). This is the one action that
+/// says: order this album by date now.
+///
+/// The headings partition the album into sections, and each section is sorted
+/// on its own while every [Heading] stays exactly where it is: an album that
+/// was given chapters keeps them, and an album without headings is sorted as
+/// a whole. A group sorts by the earliest date of its images and its images
+/// are sorted inside it (see [sortGroupByDate]); an undated part keeps its
+/// relative position at the end of its section, and equal dates keep their
+/// order (see [sortedByDate]).
+///
+/// The transient links are rebuilt afterwards, so the parts are chained in
+/// their new order (see [AlbumInitializer]).
+///
+/// Returns whether anything changed — the caller marks the album dirty only
+/// then, so an album that is already in order is never written back.
+bool sortSectionsByDate(AlbumInfo album) {
+  var changed = false;
+  var result = <AlbumPart>[];
+  var section = <AlbumPart>[];
+
+  void flushSection() {
+    if (section.isEmpty) {
+      return;
+    }
+    var sorted = sortedByDate(section);
+    if (!_sameOrder(sorted, section)) {
+      changed = true;
+    }
+    result.addAll(sorted);
+    section = [];
+  }
+
+  for (var part in album.parts) {
+    if (part is Heading) {
+      flushSection();
+      result.add(part);
+      continue;
+    }
+    if (part is ImageGroup && sortGroupByDate(part)) {
+      changed = true;
+    }
+    section.add(part);
+  }
+  flushSection();
+
+  if (!changed) {
+    return false;
+  }
+  album.parts = result;
+  AlbumInitializer().init(album);
+  return true;
+}
+
 /// Whether both lists hold the same parts in the same order.
 bool _sameOrder(List<AlbumPart> left, List<AlbumPart> right) {
   if (left.length != right.length) {
