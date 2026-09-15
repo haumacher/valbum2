@@ -544,6 +544,53 @@ class AlbumContentState extends State<AlbumContent>
     setState(markDirty);
   }
 
+  /// Corrects the recording time of the selected images (issue #77).
+  ///
+  /// The tile the action was invoked on names the reference image — the one
+  /// whose correct time is entered; the offset to what it carries now is
+  /// added to every selected image, and each of them is then filed where its
+  /// new date belongs, see [adjustRecordingTime]. Only the sidecar is edited;
+  /// the EXIF data of the originals is never touched.
+  ///
+  /// Like every other edit this marks the album dirty and is written back by
+  /// the save action. An offset of zero changes nothing and says so.
+  Future<void> adjustRecordingTimeOf(AlbumPart invokedOn) async {
+    var images = selectedImages(widget.album, selection);
+    var reference = referenceImage(widget.album, selection, invokedOn);
+    if (reference == null) {
+      showMessage("Nothing to adjust");
+      return;
+    }
+
+    var corrected = await showDialog<DateTime>(
+      context: context,
+      builder: (context) => AdjustRecordingTimeDialog(
+        reference: reference,
+        count: images.length,
+      ),
+    );
+    if (corrected == null || !mounted) {
+      return;
+    }
+
+    var offset = offsetFor(reference, corrected);
+    if (offset == null ||
+        !adjustRecordingTime(widget.album, selection, offset)) {
+      showMessage("Nothing to adjust");
+      return;
+    }
+    setState(() {
+      markDirty();
+      // What was adjusted is what the user is now looking for — and a group
+      // that was dissolved on the way is gone from the album, so it must not
+      // stay in the selection either.
+      selection
+        ..clear()
+        ..addAll(images);
+      lastClicked = images.isEmpty ? null : images.last;
+    });
+  }
+
   /// Shows one rating level more (the `+` key of the GWT client).
   void showMore() =>
       setState(() => shownAlbum.minRating = showMoreRating(minRating));
@@ -1741,6 +1788,13 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
           ),
         ],
       ],
+      // A camera whose clock is off files its photos in the wrong place; the
+      // correction acts on the whole selection, see issue #77.
+      toolButton(
+        Icons.more_time,
+        "Adjust recording time…",
+        () => album.adjustRecordingTimeOf(part),
+      ),
       toolButton(Icons.notes, "Bildeigenschaften", editImageProperties),
       // The image standing for the album in the listing above, chosen where
       // the images are compared: the representative of a group stands for it.
@@ -2383,6 +2437,209 @@ class TextInputDialogState extends State<TextInputDialog> {
                       label: const Text("Übernehmen"),
                       onPressed: () =>
                           Navigator.of(context).pop(controller.text),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Asks for the correct recording time of one image of the selection and
+/// says what that does to the others, see issue #77.
+///
+/// The dialog answers the corrected time of the reference image, `null` when
+/// it was cancelled; the offset it applies is the difference to the time the
+/// reference carries now (see [offsetFor]).
+///
+/// The time is edited as text, `yyyy-MM-dd HH:mm:ss`, with the pickers behind
+/// the button beside it: a camera that is off by two hours and thirteen
+/// minutes is corrected by typing, not by spinning a clock face, and the text
+/// is what says precisely which second was meant.
+class AdjustRecordingTimeDialog extends StatefulWidget {
+  /// The image whose correct time is entered — the offset is its difference.
+  final ImagePart reference;
+
+  /// How many images the offset is applied to, the reference included.
+  final int count;
+
+  const AdjustRecordingTimeDialog({
+    super.key,
+    required this.reference,
+    required this.count,
+  });
+
+  @override
+  State<StatefulWidget> createState() => AdjustRecordingTimeDialogState();
+}
+
+class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
+  /// How a recording time is written in this dialog, read and shown.
+  static final DateFormat timeFormat = DateFormat("yyyy-MM-dd HH:mm:ss");
+
+  late final TextEditingController controller;
+
+  /// The time entered, `null` while the text is not a time.
+  DateTime? corrected;
+
+  /// The time the reference image carries now.
+  DateTime get current =>
+      DateTime.fromMillisecondsSinceEpoch(widget.reference.date);
+
+  @override
+  void initState() {
+    super.initState();
+    corrected = current;
+    controller = TextEditingController(text: timeFormat.format(current))
+      ..addListener(readTime);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  /// Reads the time out of the field, `null` while it is not one.
+  void readTime() {
+    DateTime? value;
+    try {
+      value = timeFormat.parseStrict(controller.text.trim());
+    } catch (_) {
+      value = null;
+    }
+    if (value != corrected) {
+      setState(() => corrected = value);
+    }
+  }
+
+  /// The offset the dialog is about to apply, `null` while there is no time.
+  Duration? get offset => offsetFor(widget.reference, corrected);
+
+  /// What the offset line says.
+  String get offsetText {
+    var value = offset;
+    if (value == null) {
+      return "Not a time (yyyy-MM-dd HH:mm:ss)";
+    }
+    return value == Duration.zero ? "Nothing to adjust" : offsetInWords(value);
+  }
+
+  /// What the count line says.
+  String get countText => widget.count == 1
+      ? "Applies to 1 image"
+      : "Applies to ${widget.count} images";
+
+  /// Fills the field from the date and time pickers.
+  Future<void> pickTime() async {
+    var start = corrected ?? current;
+    var day = await showDatePicker(
+      context: context,
+      initialDate: start,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
+    );
+    if (day == null || !mounted) {
+      return;
+    }
+    var time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(start),
+    );
+    if (!mounted) {
+      return;
+    }
+    var picked = DateTime(
+      day.year,
+      day.month,
+      day.day,
+      time?.hour ?? start.hour,
+      time?.minute ?? start.minute,
+    );
+    controller.text = timeFormat.format(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var small = Theme.of(context).textTheme.bodySmall;
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DefaultTextStyle(
+              style: DialogTheme.of(context).titleTextStyle ??
+                  Theme.of(context).textTheme.titleLarge!,
+              child: Semantics(
+                namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
+                container: true,
+                child: const Text("Adjust recording time"),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                "${widget.reference.name}: ${timeFormat.format(current)}",
+                key: const Key("adjust-reference"),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const Key("adjust-time"),
+                    controller: controller,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      label: Text("Correct time"),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  key: const Key("adjust-pick"),
+                  tooltip: "Pick date and time",
+                  icon: const Icon(Icons.edit_calendar),
+                  onPressed: pickTime,
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(offsetText, key: const Key("adjust-offset")),
+            ),
+            Text(countText, key: const Key("adjust-count")),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                "The original recording time stays in the photo; the album "
+                "keeps its own.",
+                key: const Key("adjust-help"),
+                style: small,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text("Abbrechen"),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.check),
+                      label: const Text("Übernehmen"),
+                      onPressed: corrected == null
+                          ? null
+                          : () => Navigator.of(context).pop(corrected),
                     ),
                   ),
                 ],
