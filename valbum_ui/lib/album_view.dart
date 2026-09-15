@@ -525,6 +525,25 @@ class AlbumContentState extends State<AlbumContent>
     });
   }
 
+  /// Orders the parts of the album by date, section by section (issue #76).
+  ///
+  /// The album an upload from several devices grew into is ordered on demand,
+  /// never behind the author's back: the headings stay where they are and
+  /// each section is sorted on its own, see [sortSectionsByDate]. The new
+  /// order is an edit like every other one — it marks the album dirty and is
+  /// written back by the save action, so it can be looked at and discarded.
+  ///
+  /// An album that is already in order says so and changes nothing: silence
+  /// would read as a menu entry that does not work, and marking a dirty album
+  /// for a write that changes nothing is worse still.
+  void sortByDate() {
+    if (!sortSectionsByDate(widget.album)) {
+      showMessage("Already in order");
+      return;
+    }
+    setState(markDirty);
+  }
+
   /// Shows one rating level more (the `+` key of the GWT client).
   void showMore() =>
       setState(() => shownAlbum.minRating = showMoreRating(minRating));
@@ -693,8 +712,7 @@ class AlbumContentState extends State<AlbumContent>
     // — a visitor arriving at a bare URL is told what they were given and by
     // whom, see issue #51.
     var link = share;
-    var immersive =
-        !session.editMode && self.parts.isNotEmpty && link == null;
+    var immersive = !session.editMode && self.parts.isNotEmpty && link == null;
 
     return Scaffold(
       appBar: immersive
@@ -818,6 +836,11 @@ class AlbumContentState extends State<AlbumContent>
             menuItem(Icons.share, "Share with…", (_) => shareAlbum()),
           if (_mayShare)
             menuItem(Icons.link, "Share link…", (_) => shareAlbumLink()),
+          // An edit like every other one: offered inside the edit session, so
+          // that the new order is reviewed and saved (or discarded) the way a
+          // move or a heading is, see issue #76.
+          if (editMode)
+            menuItem(Icons.sort, "Sort by date", (_) => sortByDate()),
           menuLabel(
             "Mindestbewertung",
             "≥ $minRating",
