@@ -79,19 +79,22 @@ void main() {
     await tap(tester, find.byTooltip("Als Gruppenbild verwenden"));
     expect(find.byTooltip("Dieses Bild ist das Gruppenbild"), findsOneWidget);
 
-    // Up: the alternatives view shows the new choice.
+    // Up: out of the group and straight back to the album, in one step — the
+    // alternatives view is reached from the tile, not on the way out
+    // (issue #79). The album is still being edited.
     await press(tester, LogicalKeyboardKey.arrowUp);
-    expect(representativeMark("group-b.jpg"), findsOneWidget);
-    expect(representativeMark("group-a.jpg"), findsNothing);
-
-    // Up: the group is shown by its new representative.
-    await tap(tester, find.byTooltip("Zurück zum Album"));
-    expect(shownUrl(tester), endsWith("/group-b.jpg"));
-
-    // Up: the album is still being edited, and saving stores the choice.
-    await press(tester, LogicalKeyboardKey.arrowUp);
+    expect(find.byType(AlbumContent), findsOneWidget);
     expect(find.byIcon(Icons.save), findsOneWidget,
         reason: "the edit mode survives the trip into the group");
+
+    // And the alternatives view, entered again from the tile, shows the new
+    // choice.
+    await tap(tester, find.byTooltip("Gruppenbild wählen"));
+    expect(representativeMark("group-b.jpg"), findsOneWidget);
+    expect(representativeMark("group-a.jpg"), findsNothing);
+    await tap(tester, find.byIcon(Icons.arrow_back));
+
+    // Saving stores the choice.
     await tap(tester, find.byIcon(Icons.save));
 
     var puts = requests.where((r) => r.method == "PUT").toList();

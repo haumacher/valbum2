@@ -266,12 +266,23 @@ void main() {
         const MemberRoute(albumPath, "group-a.jpg", "group-b.jpg"),
       );
 
-      // ... and up leads back the same way.
+      // ... and up leads out of the group in one step, straight to the
+      // album: the alternatives view is reached from the album's tile, it is
+      // no longer a stop on the way out (issue #79).
       await press(tester, LogicalKeyboardKey.arrowUp);
-      expect(
-          routeOf(tester), const AlternativesRoute(albumPath, "group-a.jpg"));
+      expect(routeOf(tester), const ListingOrAlbumRoute(albumPath));
+    });
+
+    testWidgets('up from the alternatives view lands on the album',
+        (tester) async {
+      await pumpApp(
+        tester,
+        clientReturning(fixture("album.json")),
+        at: const AlternativesRoute(albumPath, "group-a.jpg"),
+      );
+
       await tap(tester, find.byIcon(Icons.arrow_back));
-      expect(routeOf(tester), const ImageRoute(albumPath, "group-a.jpg"));
+      expect(routeOf(tester), const ListingOrAlbumRoute(albumPath));
     });
 
     testWidgets('the system back button goes up', (tester) async {
@@ -283,7 +294,8 @@ void main() {
 
       var router = routerOf(tester);
       expect(await router.popRoute(), isTrue);
-      expect(router.route, const AlternativesRoute(albumPath, "group-a.jpg"));
+      // Out of the group and into the album, in one step, see issue #79.
+      expect(router.route, const ListingOrAlbumRoute(albumPath));
 
       // At the root there is nothing left to pop, the app may close.
       await router.setNewRoutePath(ListingOrAlbumRoute.root);

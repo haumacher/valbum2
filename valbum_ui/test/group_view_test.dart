@@ -115,12 +115,32 @@ void main() {
     await press(tester, LogicalKeyboardKey.home);
     expect(shownUrl(tester), endsWith("/group-a.jpg"));
 
-    // Up returns to the alternatives view, up again to the album.
+    // Up leaves the group altogether and lands on the album: a group is one
+    // thing in the album, and the alternatives view is reached from its tile,
+    // not on the way out (issue #79).
     await press(tester, LogicalKeyboardKey.arrowUp);
-    expect(find.byType(GroupView), findsOneWidget);
-    await tap(tester, find.byIcon(Icons.arrow_back));
     expect(find.byType(GroupView), findsNothing);
-    expect(shownUrl(tester), endsWith("/group-a.jpg"));
+    expect(find.byType(AlbumContent), findsOneWidget);
+  });
+
+  testWidgets('up from the alternatives view lands on the album as well',
+      (tester) async {
+    var client = clientReturning(fixture("album.json"));
+
+    await withFakeImageHttp(() async {
+      await tester.pumpWidget(VAlbumApp(client: client));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Image).at(2));
+      await tester.pumpAndSettle();
+    });
+    await tap(tester, find.byIcon(Icons.expand_more));
+    expect(find.byType(GroupView), findsOneWidget);
+
+    await tap(tester, find.byIcon(Icons.arrow_back));
+
+    expect(find.byType(GroupView), findsNothing);
+    expect(find.byType(AlbumContent), findsOneWidget);
   });
 
   testWidgets('shows the alternatives regardless of their rating',

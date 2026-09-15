@@ -59,9 +59,12 @@ sealed class VAlbumRoute {
 
   /// The route reached by the "up" action, `null` at the root.
   ///
-  /// The image returns to its album, the alternatives view to the image it was
-  /// opened from, a group member to the alternatives view, and a listing or
-  /// album to its parent folder.
+  /// The image returns to its album, and so does everything a group is looked
+  /// at through: the alternatives view and a group member both go straight
+  /// back to the album (issue #79). A group is one thing in the album, and
+  /// climbing out of it through the alternatives and then through the
+  /// representative made three steps out of one. A listing or album returns to
+  /// its parent folder.
   VAlbumRoute? get up;
 
   /// The path segments of this route below the app base.
@@ -158,8 +161,12 @@ class AlternativesRoute extends VAlbumRoute {
 
   const AlternativesRoute(this.albumPath, this.name);
 
+  /// The album, not the image the group is shown for (issue #79).
+  ///
+  /// The group overview is still reached from the album's tile; it is only no
+  /// longer on the way *out*, where it used to add a stop nobody asked for.
   @override
-  VAlbumRoute? get up => ImageRoute(albumPath, name);
+  VAlbumRoute? get up => ListingOrAlbumRoute(albumPath);
 
   @override
   List<String> get segments => [...albumPath, name, alternativesSegment, ""];
@@ -193,8 +200,13 @@ class MemberRoute extends VAlbumRoute {
 
   const MemberRoute(this.albumPath, this.name, this.member);
 
+  /// The album, in one step (issue #79).
+  ///
+  /// Looking at one shot of a scene and leaving it means leaving the group:
+  /// the way out used to lead through the alternatives view and the
+  /// representative's own viewer before the album appeared.
   @override
-  VAlbumRoute? get up => AlternativesRoute(albumPath, name);
+  VAlbumRoute? get up => ListingOrAlbumRoute(albumPath);
 
   @override
   List<String> get segments =>

@@ -220,13 +220,28 @@ void main() {
   });
 
   group('up', () {
-    test('leads from the member to the album', () {
+    // Issue #79: a group is one thing in the album, and leaving it leaves it.
+    // Until then the way out of a member led through the alternatives view and
+    // the representative's own viewer — three steps for one movement.
+    test('leads from the member to the album in one step', () {
       VAlbumRoute? route = const MemberRoute(["a"], "b.jpg", "c.jpg");
-      expect(route.up, const AlternativesRoute(["a"], "b.jpg"));
-      expect(route.up?.up, const ImageRoute(["a"], "b.jpg"));
-      expect(route.up?.up?.up, const ListingOrAlbumRoute(["a"]));
-      expect(route.up?.up?.up?.up, ListingOrAlbumRoute.root);
-      expect(route.up?.up?.up?.up?.up, isNull);
+      expect(route.up, const ListingOrAlbumRoute(["a"]));
+      expect(route.up?.up, ListingOrAlbumRoute.root);
+      expect(route.up?.up?.up, isNull);
+    });
+
+    test('leads from the alternatives view to the album, not to the image',
+        () {
+      VAlbumRoute? route = const AlternativesRoute(["a"], "b.jpg");
+      expect(route.up, const ListingOrAlbumRoute(["a"]));
+      expect(route.up?.up, ListingOrAlbumRoute.root);
+    });
+
+    test('leads from an image to its album, as it always did', () {
+      expect(
+        const ImageRoute(["a"], "b.jpg").up,
+        const ListingOrAlbumRoute(["a"]),
+      );
     });
   });
 
