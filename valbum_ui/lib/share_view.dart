@@ -8,8 +8,8 @@
 /// model, where a person is given a permission in a space instead, see
 /// issue #85.
 ///
-/// Who may hand out a link is still the question issue #49 answered, and the
-/// same probe answers it, see [couldManageGrants].
+/// Who may hand out a link is one field of the sign-in answer since issue #83,
+/// see [mayShareFolder].
 library;
 
 import 'package:flutter/material.dart';
@@ -26,22 +26,19 @@ import 'rights.dart';
 import 'share_session.dart' show ratingFloorLabel;
 import 'urls.dart';
 
-/// Whether it is worth asking the server whether this caller manages the
-/// grants of the folder at [path], see
-/// [VAlbumRouterDelegate.mayManageGrants].
+/// Whether this caller may hand out a link to the folder at [path]
+/// (issues #83/#85).
 ///
-/// Links are handed out by the owner of the space a folder lies in (and by the
-/// administrator, who holds no rights in anybody else's space and therefore
-/// never reaches one). Four things must hold before the question is even
-/// asked, and all four are already on the screen: somebody is signed in, the
+/// Four things, all of them already on the screen: somebody is signed in, the
 /// caller holds every right here, the path does not name another user's space,
-/// and that caller may share at all. Without them the answer can only be "no",
-/// and asking would put a `?type=grants` request behind every folder the app
-/// shows — including every folder an anonymous caller browses.
+/// and the caller's own permission allows links at all — that last one is what
+/// the server answers with `?type=auth`, see [CallerPermission.mayShare].
 ///
-/// The fourth is what the caller's own permission says about links, see
-/// [CallerPermission.mayShare] and issue #85.
-bool couldManageGrants(
+/// No request of its own any more. Until issue #83 the question had no
+/// endpoint and was asked by *trying* `?type=grants`, which is retired with
+/// the grants themselves: a permission belongs to a user now, and whether that
+/// user may share is one field of the sign-in answer.
+bool mayShareFolder(
   VAlbumClient client,
   List<String> path,
   Rights rights, {
@@ -50,9 +47,6 @@ bool couldManageGrants(
     (client.token ?? "").isNotEmpty &&
     rights.complete &&
     spaceOwnerOf(path) == null &&
-    // What the server says about *this caller* on a Phase 6 server: somebody
-    // who may hand out no links is offered none, see issue #85. Defaults to
-    // `true`, so that a server that says nothing is answered as before.
     mayShare;
 
 /// How long a new share link lives, as the dialog offers it.
@@ -105,8 +99,8 @@ Future<void> shareLinksOf({
 /// Lists, withdraws and creates the share links covering one folder.
 ///
 /// A dialog of its own: a new link asks five questions (label, expiry,
-/// privacy ceiling, rating floor, rights), and who is offered it at all is the
-/// answer of the `?type=grants` probe, see [couldManageGrants].
+/// privacy ceiling, rating floor, rights), and who is offered it at all is
+/// what the caller's own permission says, see [mayShareFolder].
 class ShareLinkDialog extends StatefulWidget {
   final VAlbumClient client;
 

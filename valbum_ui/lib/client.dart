@@ -1100,43 +1100,6 @@ class VAlbumClient {
     return MoveResult.read(JsonReader.fromString(response.body));
   }
 
-  /// Removes the named link entries from the folder at [path], see issue #50.
-  ///
-  /// The same body as a [move] with no target: a link is an entry of a folder
-  /// like any other, and the answer carries one [MoveOutcome] per name — an
-  /// empty message for the entry that is gone, the server's own reason for the
-  /// one that stayed. Only the entry is removed; the album it points at stays
-  /// with its owner, and the server remembers the refusal so that the link is
-  /// not materialised again.
-  ///
-  /// A refusal of the whole request — a caller without `edit` on the folder,
-  /// a name that is no link — is the server speaking and is thrown as a
-  /// [VAlbumException], like every other refused write.
-  Future<MoveResult> unlink(List<String> path, List<String> names) async {
-    var url = "${folderUrl(path)}?action=unlink";
-    var request = MoveRequest(
-      target: "",
-      names: [for (var name in names) MoveName(name: name)],
-    );
-    var body = StringBuffer();
-    request.writeContent(jsonStringWriter(body));
-
-    var response = await _http.post(
-      Uri.parse(url),
-      encoding: Encoding.getByName("utf-8"),
-      body: body.toString(),
-      headers: {"Content-Type": "application/json", ...authHeaders},
-    );
-    if (response.statusCode >= 300) {
-      throw failure(
-        response.statusCode,
-        response.body,
-        "removing from '${path.join("/")}'",
-      );
-    }
-    return MoveResult.read(JsonReader.fromString(response.body));
-  }
-
   /// Applies the placement rule of the folder at [path] to what is already in
   /// it, see issue #48.
   ///
@@ -1402,55 +1365,6 @@ class VAlbumClient {
     }
   }
 
-  /// The grants covering the folder at [path], the nearest one first
-  /// (issue #49).
-  ///
-  /// Answerable only for the owner of the space the folder lies in (and for
-  /// the administrator): who else was let in is nobody else's business. Every
-  /// other caller is refused with a 403, which is how the app decides not to
-  /// offer "Share with…" at all, see `share_view.dart`.
-  Future<GrantList> grants(List<String> path) async {
-    var url = "${folderUrl(path)}?type=grants";
-    var response = await _http.get(Uri.parse(url), headers: authHeaders);
-    if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
-    }
-    return GrantList.read(JsonReader.fromString(response.body));
-  }
-
-  /// Grants [grant] on the folder at [path], replacing an earlier grant to the
-  /// same subject.
-  ///
-  /// The owner and the path of the grant come from the URL; only its
-  /// [Grant.subject] and [Grant.rights] are read from the body.
-  Future<GrantList> grant(List<String> path, Grant grant) =>
-      _postGrant(path, "grant", grant);
-
-  /// Removes the grant to [subject] on the folder at [path].
-  Future<GrantList> revoke(List<String> path, String subject) =>
-      _postGrant(path, "revoke", Grant(subject: subject));
-
-  Future<GrantList> _postGrant(
-    List<String> path,
-    String action,
-    Grant grant,
-  ) async {
-    var url = "${folderUrl(path)}?action=$action";
-    var body = StringBuffer();
-    grant.writeContent(jsonStringWriter(body));
-
-    var response = await _http.post(
-      Uri.parse(url),
-      encoding: Encoding.getByName("utf-8"),
-      body: body.toString(),
-      headers: {"Content-Type": "application/json", ...authHeaders},
-    );
-    if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
-    }
-    return GrantList.read(JsonReader.fromString(response.body));
-  }
-
   /// The share links covering the folder at [path], the nearest one first
   /// (issue #51).
   ///
@@ -1519,56 +1433,6 @@ class VAlbumClient {
     return response.body;
   }
 
-  /// The groups this caller owns and the groups they are in (issue #49).
-  Future<GroupList> groups() async {
-    var url = "${folderUrl(const [])}?type=groups";
-    var response = await _http.get(Uri.parse(url), headers: authHeaders);
-    if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
-    }
-    return GroupList.read(JsonReader.fromString(response.body));
-  }
-
-  /// Renames the group [name] to [newName] (issue #55).
-  ///
-  /// A rename is its own request because it is more than a new name: the
-  /// server rewrites every grant made out to the group in the same step, so
-  /// that nothing that was shared with it stops working. Only its owner and
-  /// the administrator may, and a name that is a user's name is refused with
-  /// the server's own sentence.
-  Future<GroupList> renameGroup(String name, String newName) async {
-    var url = "${folderUrl(const [])}?action=regroup";
-    var response = await _postBody(
-      url,
-      _jsonOf(GroupRename(name: name, newName: newName).writeContent),
-    );
-    return GroupList.read(JsonReader.fromString(response));
-  }
-
-  /// Creates [group], or replaces the members of one the caller owns.
-  Future<GroupList> saveGroup(Group group) => _postGroup("group", group);
-
-  /// Removes the group of the given name, which the caller must own.
-  Future<GroupList> removeGroup(String name) =>
-      _postGroup("ungroup", Group(name: name));
-
-  Future<GroupList> _postGroup(String action, Group group) async {
-    var url = "${folderUrl(const [])}?action=$action";
-    var body = StringBuffer();
-    group.writeContent(jsonStringWriter(body));
-
-    var response = await _http.post(
-      Uri.parse(url),
-      encoding: Encoding.getByName("utf-8"),
-      body: body.toString(),
-      headers: {"Content-Type": "application/json", ...authHeaders},
-    );
-    if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
-    }
-    return GroupList.read(JsonReader.fromString(response.body));
-  }
-
   /// The devices this caller is signed in on (issue #55).
   ///
   /// Always the caller's *own* devices: the administrator manages the users of
@@ -1617,11 +1481,11 @@ class VAlbumClient {
     return DeviceCodeCreated.read(JsonReader.fromString(response));
   }
 
-  /// The names and roles of the users of this server (issue #49).
+  /// Who is in this space, and what each of them may do (issues #83/#85).
   ///
-  /// Needed to share: a member picks whom to grant something to. A guest and
-  /// an anonymous caller are refused, and the share dialog then offers the
-  /// groups and "everybody" alone.
+  /// The administrator's question: a user's permission is the same in every
+  /// album of the space, so this list *is* the sharing of the space. Everybody
+  /// else is refused with the server's own sentence.
   Future<UserList> users() async {
     var url = "${folderUrl(const [])}?type=users";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
@@ -1629,6 +1493,38 @@ class VAlbumClient {
       throw failure(response.statusCode, response.body, "asking '$url'");
     }
     return UserList.read(JsonReader.fromString(response.body));
+  }
+
+  /// Sets what one user of this space may do and see, answering the whole
+  /// list (issue #83).
+  ///
+  /// The administrator's decision, and the only way a permission changes.
+  /// A refusal is the server speaking — the last administrator may not be
+  /// demoted, and it says so — and is thrown as a [VAlbumException] carrying
+  /// that sentence.
+  Future<UserList> setPermission(UserPermission permission) async {
+    var url = "${folderUrl(const [])}?action=set-permission";
+    var response = await _postBody(
+      url,
+      _jsonOf(permission.writeContent),
+    );
+    return UserList.read(JsonReader.fromString(response));
+  }
+
+  /// Removes the user of the given name with their devices, answering the
+  /// remaining users (issue #83).
+  ///
+  /// Their tokens stop working at once. Nothing of theirs leaves the album
+  /// tree: what they uploaded belongs to the space, and their name stays in
+  /// its attribution — which is what the confirmation says before this is
+  /// sent, see the users section of the settings.
+  Future<UserList> removeUser(String name) async {
+    var url = "${folderUrl(const [])}?action=remove-user";
+    var response = await _postBody(
+      url,
+      _jsonOf(MemberName(name: name).writeContent),
+    );
+    return UserList.read(JsonReader.fromString(response));
   }
 
   /// Issues an invitation, answering its token exactly once (issue #52).
@@ -1670,20 +1566,6 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?action=uninvite";
     var response = await _postInvitation(url, Invitation(id: id));
     return InvitationList.read(JsonReader.fromString(response));
-  }
-
-  /// Turns the guest of the given name into a member (issue #52).
-  ///
-  /// One rename on the server: the guest's root becomes their space, the links
-  /// in it already in place. Only the admin may, and only a guest becomes a
-  /// member — there is no way back, and the users section of the settings asks
-  /// before it does it, see issue #55.
-  Future<UserEntry> promote(String name) async {
-    var url = "${folderUrl(const [])}?action=promote";
-    var body = StringBuffer();
-    MemberName(name: name).writeContent(jsonStringWriter(body));
-    var response = await _postBody(url, body.toString());
-    return UserEntry.read(JsonReader.fromString(response));
   }
 
   /// Signs in on this device, returning the token the server issued.

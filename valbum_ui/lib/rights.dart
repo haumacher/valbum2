@@ -196,9 +196,9 @@ String? spaceOwnerOf(List<String> path) {
 /// The path relative to the root of the owner's space: the request path
 /// without a leading `~owner` segment.
 ///
-/// This is the coordinate system the grants of `?type=grants` are spelled in
-/// ([Grant.path]), so it is what says whether a grant was made *here* or is
-/// inherited from above.
+/// This is the coordinate system a path inside somebody's space is spelled in,
+/// so it is what says whether a folder is the caller's own or reached through
+/// the `~owner` form.
 String ownerPathOf(List<String> path) {
   var segments = spaceOwnerOf(path) == null ? path : path.sublist(1);
   return segments.join("/");

@@ -2,7 +2,6 @@
 library;
 
 import 'package:date_field/date_field.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -129,38 +128,24 @@ class ListingView extends StatelessWidget {
   String? sharedLineIn(BuildContext context) =>
       sharingNotice(albumState.path, rightsIn(context));
 
-  /// Whether the caller manages the grants of the folder at [path], asked once
-  /// and remembered by the router.
+  /// Whether the caller may hand out a link to the folder at [path].
   ///
-  /// Asked only where the answer can be "yes" at all, see
-  /// [couldManageGrants]: the rights the listing already carries decide
-  /// whether the server is troubled with the question.
+  /// No request of its own since issue #83: the rights this listing already
+  /// carries and the caller's own permission answer it, see [mayShareFolder].
   ///
   /// Never inside a share link: a link caller carries a token and may hold
   /// every right the link gives, but manages nothing, see issue #51.
-  Future<bool> mayShare(BuildContext context, List<String> path) =>
+  bool mayShare(BuildContext context, List<String> path) =>
       ShareSession.of(context) == null &&
-              couldManageGrants(
-                client,
-                albumState.path,
-                rightsIn(context),
-                // A caller who may hand out no links is offered none, and the
-                // server is not asked about them, see issue #85.
-                mayShare: CallerInfo.permissionOf(context).mayShare ||
-                    !CallerInfo.permissionOf(context).named,
-              )
-          ? albumState.navigator.delegate.mayManageGrants(path)
-          : _no;
-
-  /// The answer of a question that was not asked; one instance, so that the
-  /// [FutureBuilder] of the menu is handed the same future on every rebuild.
-  ///
-  /// A [SynchronousFuture], not a `Future.value`: this one instance outlives
-  /// every view that reads it, and a plain future hands its callbacks to the
-  /// [Zone] it was *created* in — which in a test is the zone of whichever
-  /// test happened to build the first listing, so a later `await` of it would
-  /// never complete. A synchronous future calls back in the zone that asks.
-  static final Future<bool> _no = SynchronousFuture(false);
+      mayShareFolder(
+        client,
+        path,
+        rightsIn(context),
+        // A caller who may hand out no links is offered none; a caller nobody
+        // named is offered them as before, see issue #85.
+        mayShare: CallerInfo.permissionOf(context).mayShare ||
+            !CallerInfo.permissionOf(context).named,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -200,11 +185,7 @@ class ListingView extends StatelessWidget {
               tooltip: 'Up',
               onPressed: albumState.showParent,
             ),
-          // The share entry appears once the server has answered whether this
-          // caller manages the grants here; everything else is there at once.
-          FutureBuilder<bool>(
-            future: mayShare(context, albumState.path),
-            builder: (context, snapshot) => menu(context, [
+          menu(context, [
               // Whose folder this is and what may be done with it, where that
               // is not simply "mine", see issue #49.
               if (sharedLine != null) ...[
@@ -230,7 +211,7 @@ class ListingView extends StatelessWidget {
               // nothing to file, see issue #48.
               if (mayChange && self.placement != Placement.none)
                 menuItem(Icons.auto_awesome_motion, 'Apply rule', applyRule),
-              if (snapshot.data ?? false)
+              if (mayShare(context, albumState.path))
                 menuItem(
                   Icons.link,
                   'Share link…',
@@ -241,8 +222,7 @@ class ListingView extends StatelessWidget {
               // A visitor of a link has no server of their own to configure.
               if (link == null)
                 menuItem(Icons.settings, "Server...", openServerSettings),
-            ]),
-          ),
+          ]),
         ],
       ),
       body: Column(
@@ -424,11 +404,9 @@ class ListingView extends StatelessWidget {
     var childPath = [...albumState.path, folder.name];
     // Moving an entry out of this folder is an edit *of this folder*; sharing
     // the entry is a question about the entry itself, so the two are asked
-    // separately. The answer is remembered per folder, so a second long press
-    // asks nothing again.
     var link = ShareSession.of(context);
     var mayMove = rightsIn(context).mayEdit && link == null;
-    var mayShareChild = await mayShare(context, childPath);
+    var mayShareChild = mayShare(context, childPath);
     if (!context.mounted || (!mayMove && !mayShareChild)) {
       // Nothing this caller may do here: no menu rather than an empty one.
       return;

@@ -93,7 +93,9 @@ void main() {
       expect(find.text("Signed in as haui"), findsOneWidget);
       expect(find.text("Role: admin"), findsOneWidget);
       expect(find.text("Device: Kamera"), findsOneWidget);
-      expect(find.text("Space: the whole library"), findsOneWidget);
+      // A server with one library names no space, and the block says
+      // nothing about one (issue #85).
+      expect(find.textContaining("Space:"), findsNothing);
     });
 
     testWidgets('an owner without a name is the library owner', (tester) async {
@@ -249,7 +251,9 @@ void main() {
       expect(find.text("Signed in as haui"), findsOneWidget);
       expect(find.text("Role: admin"), findsOneWidget);
       expect(find.text("Device: Phone"), findsOneWidget);
-      expect(find.text("Space: the whole library"), findsOneWidget);
+      // A server with one library names no space, and the block says
+      // nothing about one (issue #85).
+      expect(find.textContaining("Space:"), findsNothing);
     });
   });
 

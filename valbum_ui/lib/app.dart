@@ -870,10 +870,6 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// The edit session of every album being edited, see [editSession].
   final Map<String, AlbumEditSession> _editSessions = {};
 
-  /// Whether the caller may manage the grants of a folder, by path, see
-  /// [mayManageGrants].
-  final Map<String, Future<bool>> _grantAccess = {};
-
   VAlbumRoute _route;
 
   /// Incremented by [reload], so that the view re-runs its load.
@@ -901,7 +897,6 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     _resources.clear();
     _scrollOffsets.clear();
     _editSessions.clear();
-    _grantAccess.clear();
     _version++;
     notifyListeners();
   }
@@ -983,26 +978,6 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// the way up leads back to the album.
   AlbumEditSession editSession(List<String> path) =>
       _editSessions.putIfAbsent(_pathKey(path), AlbumEditSession.new);
-
-  /// Whether this caller may see and change the grants of the folder at
-  /// [path], see issue #49.
-  ///
-  /// There is no endpoint asking the question, so it is asked by trying:
-  /// `?type=grants` answers the owner of the space (and the administrator)
-  /// and refuses everybody else with a 403. The answer is remembered per
-  /// folder, so a view that offers "Share with…" asks once, not once per
-  /// rebuild; the memo is dropped with everything else when the client is
-  /// swapped. A server that cannot be reached, or one from before issue #49
-  /// (404/405), answers "no": an entry that would fail is better not offered.
-  Future<bool> mayManageGrants(List<String> path) =>
-      _grantAccess.putIfAbsent(_pathKey(path), () async {
-        try {
-          await client.grants(path);
-          return true;
-        } catch (_) {
-          return false;
-        }
-      });
 
   static String _pathKey(List<String> path) => path.join("/");
 

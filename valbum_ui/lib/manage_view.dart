@@ -670,6 +670,249 @@ class DeviceCodeQr extends StatelessWidget {
       );
 }
 
+/// The three choices of a permission: what may be done, what is seen, and
+/// whether links may be handed out (issue #85).
+///
+/// One widget for the two places that ask: the invite dialog, where the
+/// permission is given, and the users section, where the administrator changes
+/// it. The same words in both, because it is the same thing — and the words
+/// are the ones the person themselves reads in their settings, see
+/// [CallerPermission].
+class PermissionChoices extends StatelessWidget {
+  /// The prefix of the keys of the choices, e.g. `invite` or `permission`.
+  final String keyPrefix;
+
+  /// What is chosen now.
+  final String role;
+  final String clearance;
+  final bool mayShare;
+
+  /// Called with what was chosen instead.
+  final void Function(String role) onRole;
+  final void Function(String clearance) onClearance;
+  final void Function(bool mayShare) onMayShare;
+
+  /// Whether the choices answer at all; `false` while a request runs.
+  final bool enabled;
+
+  const PermissionChoices({
+    super.key,
+    required this.keyPrefix,
+    required this.role,
+    required this.clearance,
+    required this.mayShare,
+    required this.onRole,
+    required this.onClearance,
+    required this.onMayShare,
+    this.enabled = true,
+  });
+
+  /// The roles a permission may be given, strongest first.
+  static const List<String> roles = [roleEdit, roleContribute, roleView];
+
+  /// The clearances a permission may be given, widest first.
+  static const List<String> clearances = [
+    clearanceAll,
+    clearanceNonPrivate,
+    clearancePublic,
+  ];
+
+  /// What each role means, in one line.
+  static const Map<String, String> roleExplanations = {
+    roleEdit: "May create albums, change them and add photos.",
+    roleContribute: "May add photos to the albums, but change nothing.",
+    roleView: "May look at the albums, and nothing more.",
+  };
+
+  /// What each clearance means, in one line.
+  static const Map<String, String> clearanceExplanations = {
+    clearanceAll: "Sees every image, the private ones included.",
+    clearanceNonPrivate: "Sees every image that is not marked private.",
+    clearancePublic: "Sees only the images marked public.",
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    var titles = Theme.of(context).textTheme.titleSmall;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text("May", style: titles),
+        for (var choice in roles)
+          _tile(
+            key: "$keyPrefix-role-$choice",
+            chosen: role == choice,
+            title: CallerPermission.roleWord(choice),
+            subtitle: roleExplanations[choice],
+            onTap: () => onRole(choice),
+          ),
+        const SizedBox(height: 8),
+        Text("Sees", style: titles),
+        for (var choice in clearances)
+          _tile(
+            key: "$keyPrefix-clearance-$choice",
+            chosen: clearance == choice,
+            title: CallerPermission.clearanceWord(choice),
+            subtitle: clearanceExplanations[choice],
+            onTap: () => onClearance(choice),
+          ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          key: Key("$keyPrefix-may-share"),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          value: mayShare,
+          title: const Text("May share links"),
+          subtitle: const Text(
+            "May hand out links that open an album for whoever holds them.",
+          ),
+          onChanged: enabled ? onMayShare : null,
+        ),
+      ],
+    );
+  }
+
+  /// One choice of a group, ticked when it is the current one.
+  Widget _tile({
+    required String key,
+    required bool chosen,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+  }) =>
+      ListTile(
+        key: Key(key),
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        selected: chosen,
+        leading: Icon(
+          chosen ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+        ),
+        title: Text(title),
+        subtitle: subtitle == null ? null : Text(subtitle),
+        onTap: enabled ? onTap : null,
+      );
+}
+
+/// Changes what one user of this space may do and see (issues #83/#85).
+///
+/// Prefilled with what they have now, saved with one request, and the server's
+/// own sentence where it refuses — the last administrator may not be demoted,
+/// and that is said here rather than guessed before.
+class PermissionDialog extends StatefulWidget {
+  final VAlbumClient client;
+
+  /// The user whose permission is being changed.
+  final UserEntry user;
+
+  const PermissionDialog({
+    super.key,
+    required this.client,
+    required this.user,
+  });
+
+  @override
+  State<PermissionDialog> createState() => PermissionDialogState();
+}
+
+class PermissionDialogState extends State<PermissionDialog> {
+  late String _role = CallerPermission.normalizeRole(widget.user.role);
+  late String _clearance = CallerPermission.normalizeClearance(
+    widget.user.clearance,
+    CallerPermission.normalizeRole(widget.user.role),
+  );
+  late bool _mayShare = widget.user.mayShare;
+
+  /// Whether the request is running.
+  bool _busy = false;
+
+  /// The server's reason for refusing, `null` while all is well.
+  String? _refusal;
+
+  @override
+  Widget build(BuildContext context) {
+    var refusal = _refusal;
+    return AlertDialog(
+      key: const Key("permission-dialog"),
+      title: Text("What ${userDisplayName(widget.user.name)} may do"),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // The administrator's own role is not offered here: an admin is
+              // made by the server, and demoting the last one is what the
+              // server refuses, see [_save].
+              PermissionChoices(
+                keyPrefix: "permission",
+                role: _role,
+                clearance: _clearance,
+                mayShare: _mayShare,
+                enabled: !_busy,
+                onRole: (value) => setState(() => _role = value),
+                onClearance: (value) => setState(() => _clearance = value),
+                onMayShare: (value) => setState(() => _mayShare = value),
+              ),
+              if (refusal != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    refusal,
+                    key: const Key("permission-refusal"),
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: const Text("Cancel"),
+        ),
+        FilledButton(
+          key: const Key("permission-save"),
+          onPressed: _busy ? null : _save,
+          child: const Text("Save"),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _busy = true;
+      _refusal = null;
+    });
+    UserList answer;
+    try {
+      answer = await widget.client.setPermission(UserPermission(
+        name: widget.user.name,
+        role: _role,
+        clearance: _clearance,
+        mayShare: _mayShare,
+      ));
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _refusal = refusalMessage(error);
+        });
+      }
+      return;
+    }
+    if (mounted) {
+      // The whole list comes back: the section shows what the server holds
+      // now, not what was asked for.
+      Navigator.of(context).pop(answer);
+    }
+  }
+}
+
 /// The users of this server, for the administrator alone (issue #55).
 ///
 /// Who is here, what they are, where their library lies and on how many
@@ -690,6 +933,9 @@ class UsersSectionState extends State<UsersSection> {
 
   /// The server's reason for the last refusal, `null` while all is well.
   String? _problem;
+
+  /// Whether a request of this section is running.
+  bool _busy = false;
 
   @override
   void initState() {
@@ -747,17 +993,92 @@ class UsersSectionState extends State<UsersSection> {
               _describe(user),
               key: Key("user-permission-${user.name}"),
             ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  key: Key("user-edit-${user.name}"),
+                  icon: const Icon(Icons.tune),
+                  tooltip: "Change what they may do",
+                  onPressed: _busy ? null : () => _edit(user),
+                ),
+                IconButton(
+                  key: Key("user-remove-${user.name}"),
+                  icon: const Icon(Icons.person_remove_outlined),
+                  tooltip: "Remove",
+                  onPressed: _busy ? null : () => _remove(user),
+                ),
+              ],
+            ),
           ),
       ],
     );
+  }
+
+  /// Opens the dialog changing what [user] may do and see (issue #83).
+  Future<void> _edit(UserEntry user) async {
+    var answer = await showDialog<UserList>(
+      context: context,
+      builder: (context) => PermissionDialog(client: widget.client, user: user),
+    );
+    if (answer == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _users = answer.users;
+      _problem = null;
+    });
+  }
+
+  /// Removes [user] from this space, after asking (issue #83).
+  ///
+  /// What it does is said before it is done: their devices are signed out,
+  /// and what they put into the space stays there with their name on it.
+  Future<void> _remove(UserEntry user) async {
+    var confirmed = await confirmHere(
+      context: context,
+      dialogKey: "remove-user-confirm",
+      title: "Remove ${userDisplayName(user.name)}?",
+      message: "Their devices are signed out; their photos and their name on "
+          "them stay.",
+      confirmLabel: "Remove",
+      confirmKey: "remove-user-confirmed",
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _problem = null;
+    });
+    UserList answer;
+    try {
+      answer = await widget.client.removeUser(user.name);
+    } catch (error) {
+      if (mounted) {
+        // The server's own sentence: the last administrator stays, and it
+        // says so.
+        setState(() {
+          _busy = false;
+          _problem = refusalMessage(error);
+        });
+      }
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        _users = answer.users;
+      });
+    }
   }
 
   /// The line under a user's name: what they may do and see, where their
   /// library is, and since when (issue #85).
   ///
   /// Words, not field names: the three answers of the permission model read as
-  /// a sentence about that person, see [CallerPermission.phrase]. Editing them
-  /// is the admin's business and waits for the server's `?action=set-permission`.
+  /// a sentence about that person, see [CallerPermission.phrase]. Changing
+  /// them is the administrator's own business, see [PermissionDialog].
   String _describe(UserEntry user) {
     var permission = CallerPermission.ofFields(
       role: user.role,
