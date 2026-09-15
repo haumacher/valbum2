@@ -85,11 +85,16 @@ bool couldManageGrants(
   List<String> path,
   Rights rights, {
   bool isGuest = false,
+  bool mayShare = true,
 }) =>
     (client.token ?? "").isNotEmpty &&
     rights.complete &&
     spaceOwnerOf(path) == null &&
-    !isGuest;
+    !isGuest &&
+    // What the server says about *this caller* on a Phase 6 server: somebody
+    // who may hand out no links is offered none, see issue #85. Defaults to
+    // `true`, so that a server that says nothing is answered as before.
+    mayShare;
 
 /// Opens the share dialog on the folder at [path].
 ///

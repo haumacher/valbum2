@@ -125,11 +125,19 @@ class ListingView extends StatelessWidget {
 
   /// What the caller may do with this folder, as the server answered it with
   /// the listing itself, see issue #49.
-  Rights get rights => Rights.of(listing);
+  ///
+  /// Where the server answered no rights at all, the caller's *role* decides
+  /// what is offered instead, and that is why this takes a context: the role
+  /// is published to the tree, see [offeredRights] and issue #85.
+  Rights rightsIn(BuildContext context) => offeredRights(
+        Rights.of(listing),
+        CallerInfo.permissionOf(context),
+      );
 
   /// The line saying that this folder belongs to somebody else, `null` while
   /// the caller is its owner.
-  String? get sharedLine => sharingNotice(albumState.path, rights);
+  String? sharedLineIn(BuildContext context) =>
+      sharingNotice(albumState.path, rightsIn(context));
 
   /// Whether this folder is a guest's own root, where nothing may be created.
   ///
@@ -147,7 +155,7 @@ class ListingView extends StatelessWidget {
   /// member's folder is rare enough to pay that price rather than offer
   /// something the server refuses at the root, which is the common case.
   bool guestRoot(BuildContext context) =>
-      CallerInfo.isGuestCaller(context) && sharedLine == null;
+      CallerInfo.isGuestCaller(context) && sharedLineIn(context) == null;
 
   /// Whether the caller manages the grants of the folder at [path], asked once
   /// and remembered by the router.
@@ -165,8 +173,12 @@ class ListingView extends StatelessWidget {
               couldManageGrants(
                 client,
                 albumState.path,
-                rights,
+                rightsIn(context),
                 isGuest: CallerInfo.isGuestCaller(context),
+                // A caller who may hand out no links is offered none, and the
+                // server is not asked about them, see issue #85.
+                mayShare: CallerInfo.permissionOf(context).mayShare ||
+                    !CallerInfo.permissionOf(context).named,
               )
           ? albumState.navigator.delegate.mayManageGrants(path)
           : _no;
@@ -188,7 +200,9 @@ class ListingView extends StatelessWidget {
     // at a bare URL is told what they were given, see issue #51. Nothing that
     // changes anything is offered, and neither is the way to the settings.
     var link = ShareSession.of(context);
-    var mayChange = rights.mayEdit && link == null && !guestRoot(context);
+    var sharedLine = sharedLineIn(context);
+    var mayChange =
+        rightsIn(context).mayEdit && link == null && !guestRoot(context);
     return Scaffold(
       // Black like the album pages, so that the way down does not flash from
       // a light page to a dark one, see issue #40.
@@ -228,7 +242,7 @@ class ListingView extends StatelessWidget {
               if (sharedLine != null) ...[
                 PopupMenuItem<void Function(BuildContext)>(
                   enabled: false,
-                  child: Text(sharedLine!, key: const Key("shared-line")),
+                  child: Text(sharedLine, key: const Key("shared-line")),
                 ),
                 const PopupMenuDivider(),
               ],
@@ -494,10 +508,12 @@ class ListingView extends StatelessWidget {
     var link = ShareSession.of(context);
     // Moving inside a guest's own root is refused as well: every target the
     // picker offers lies in that root, see [guestRoot].
-    var mayMove = rights.mayEdit && link == null && !guestRoot(context);
+    var mayMove =
+        rightsIn(context).mayEdit && link == null && !guestRoot(context);
     // A link is an entry of *this* folder, so removing it is an edit of this
     // folder; the album it points at is not touched, see issue #50.
-    var mayUnlink = rights.mayEdit && link == null && folder.link.isNotEmpty;
+    var mayUnlink =
+        rightsIn(context).mayEdit && link == null && folder.link.isNotEmpty;
     var mayShareChild = await mayShare(context, childPath);
     if (!context.mounted || (!mayMove && !mayShareChild && !mayUnlink)) {
       // Nothing this caller may do here: no menu rather than an empty one.

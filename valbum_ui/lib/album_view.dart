@@ -115,7 +115,21 @@ class AlbumContentState extends State<AlbumContent>
   /// Read from the album that was loaded, never from a "view as" preview: the
   /// preview is a smaller album, and what the caller may do does not change
   /// because they are looking at somebody else's view of it.
-  Rights get rights => Rights.of(widget.album);
+  ///
+  /// Where the server answered no rights at all, the caller's role decides
+  /// what is offered instead, see [offeredRights] and issue #85. `peek`, not
+  /// a dependency: this is read from [initState] as well, and the view is a
+  /// dependent of the caller scope through [didChangeDependencies] anyway, so
+  /// the answer arriving rebuilds it.
+  Rights get rights => offeredRights(Rights.of(widget.album), _permission);
+
+  /// What the caller may do and see, as the server said it (issue #85).
+  ///
+  /// `peek`, not a dependency: this is read from [initState] as well, and the
+  /// view is a dependent of the caller scope through [didChangeDependencies]
+  /// anyway, so the answer arriving rebuilds it.
+  CallerPermission get _permission =>
+      CallerInfo.peek(context)?.permission ?? CallerPermission.unknown;
 
   /// The line saying that this album belongs to somebody else, `null` while
   /// the caller is its owner.
@@ -228,6 +242,9 @@ class AlbumContentState extends State<AlbumContent>
       widget.albumState.path,
       rights,
       isGuest: CallerInfo.isGuestPeek(context),
+      // A caller the server says may hand out no links is not asked about
+      // them either; a caller nobody named is asked as before, see issue #85.
+      mayShare: _permission.mayShare || !_permission.named,
     )) {
       return;
     }

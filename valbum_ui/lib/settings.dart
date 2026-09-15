@@ -605,12 +605,29 @@ class SignedInUser {
   /// the server has not said; empty means the whole library.
   final String? space;
 
+  /// Which privacy levels this user sees, as the server spelled it; empty
+  /// where it said nothing, see [CallerPermission] and issue #85.
+  final String clearance;
+
+  /// Whether this user may create share links, as the server said it.
+  final bool mayShare;
+
   const SignedInUser({
     this.userName,
     required this.deviceName,
     this.role,
     this.space,
+    this.clearance = "",
+    this.mayShare = false,
   });
+
+  /// What this user may do and see, in the normalised form every view reads,
+  /// see [CallerPermission.of].
+  CallerPermission get permission => CallerPermission.ofFields(
+        role: role ?? "",
+        clearance: clearance,
+        mayShare: mayShare,
+      );
 }
 
 Future<ConnectionTestResult> _reachServer(VAlbumClient client) async {
@@ -716,6 +733,9 @@ const Key deviceCodeFieldKey = Key("settings.deviceCode");
 /// open: on the web and on a desktop the field is typed into, and no button
 /// promises a scanner that does not exist, see [DeviceCodeScanner.available].
 const Key deviceCodeScanKey = Key("settings.deviceCode.scan");
+
+/// The key of the line saying what the caller may do and see (issue #85).
+const Key permissionLineKey = Key("settings.permission");
 
 /// The key of the sign-in section's own refusal, see [bothCredentialsRefusal].
 const Key signInErrorKey = Key("settings.signIn.error");
@@ -1047,6 +1067,8 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         deviceName: info.deviceName,
         role: info.role,
         space: info.space,
+        clearance: info.clearance,
+        mayShare: info.mayShare,
       );
     });
   }
@@ -1599,6 +1621,11 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       lines.add("Not signed in");
     }
     var problem = user == null ? null : identityProblem;
+    // What this caller may do and see, in plain words (issue #85): the role,
+    // the clearance and whether links may be handed out are three answers of
+    // the server, and somebody checking whether it thinks of them what they
+    // think it does should not have to read three field names to find out.
+    var permission = user?.permission;
     return [
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1611,7 +1638,17 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [for (var line in lines) Text(line)],
+              children: [
+                for (var line in lines) Text(line),
+                if (permission != null && permission.named)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      permission.sentence,
+                      key: permissionLineKey,
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
