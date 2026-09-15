@@ -64,6 +64,12 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   `NoDeviceCodeScanner`, `FakeDeviceCodeScanner`, `DeviceCodeScannerScope`), with the
   `mobile_scanner`-backed implementation in `lib/device_code_scanner_plugin.dart`, reached only
   through the conditional import of `lib/platform.dart` — the web build never links it.
+- `lib/video_view.dart` — inline video playback: `VideoView` plays the server's playback rendition
+  (`?type=video`, issues #74/#75), waits out a pending one with "The video is being prepared…" and
+  a "Play the original" button, falls back to the original where there will be none, and says a
+  failure in one plain sentence with the raw text in the diagnostics log (#73); `VideoTeaser` plays
+  the three-second teaser (`?type=teaser`) while the pointer rests on a video tile, on pointer
+  platforms only. The controller is injected (`VideoControllerFactory`), so tests reach no plugin.
 - `lib/upload_progress.dart` — the dialog an upload runs behind (issue #70): one measurement,
   images (`12 von 48 Bildern`, wrapping, never truncated), the percentage in a determinate wheel,
   and a Cancel that asks the upload to stop. It never closes itself — the code that opened it

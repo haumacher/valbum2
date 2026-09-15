@@ -474,7 +474,11 @@ class ImageViewState extends State<ImageView>
           aspectRatio: aspectRatio,
           child: VideoView(
             key: ValueKey(dataUrl),
+            // The original is the fallback and the download; what is played
+            // is the rendition, where the server has one (issue #75).
             videoUrl: widget.client.originalUrl(dataUrl),
+            renditionUrl: widget.client.playbackUrl(dataUrl),
+            probeRendition: widget.client.renditionState,
             posterUrl: widget.client.thumbnailUrl(dataUrl),
             headers: widget.client.authHeaders,
             // A failure of the platform player goes into the same log every
