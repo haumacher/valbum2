@@ -10,13 +10,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'album_layout.dart' show ToImage;
+import 'album_view.dart' show TextInputDialog;
 import 'attribution.dart';
 import 'client.dart';
 import 'image_transform.dart';
 import 'move_view.dart';
+import 'offline.dart';
 import 'resource.dart';
+import 'rights.dart';
+import 'share_session.dart';
 import 'thumbnails.dart';
 import 'video_view.dart';
+
+/// What a caller who may not change this album is told (issue #80).
+///
+/// Refusals speak: a long press that does nothing at all would look like a
+/// broken gesture. English, like the rest of this view.
+const String notEditableMessage = "You may not edit this album.";
+
+/// The heading of the description dialog, as the tile editor of the album
+/// spells it.
+///
+/// Deliberately the album's own wording and not this view's English: it is the
+/// same dialog editing the same field of the same album, and one thing must
+/// not have two names depending on where it was opened from.
+const String descriptionDialogTitle = "Bildeigenschaften";
+
+/// The label of the field, likewise the album's, see [descriptionDialogTitle].
+const String descriptionDialogLabel = "Kommentar";
 
 /// The velocity (in pixels per second) a drag must reach to count as a swipe.
 const double _swipeVelocity = 400;
@@ -136,6 +157,30 @@ class ImageView extends StatefulWidget {
   /// again; the viewer falls back to [onUp] where this is not given.
   final VoidCallback? onTakenBack;
 
+  /// The path of the album whose sidecar a description is written to
+  /// (issue #80), `null` where the view does not know it.
+  ///
+  /// Not [albumPath], although it names the same album: that one says where a
+  /// *take-back* may be posted, and the alternatives view of a group has none
+  /// on purpose — a group moves as a whole. Writing a description is a
+  /// different thing, and a group member's description is written to the same
+  /// album as any other.
+  final List<String>? editPath;
+
+  /// Whether the album this image belongs to is being edited (issue #80).
+  ///
+  /// Two plain values rather than the album's `AlbumEditSession` itself: that
+  /// class lives in `app.dart`, which builds this view, and the view needs no
+  /// more of it than this. Inside the edit mode a description edited here goes
+  /// into the editing buffer like a tile edit — [onEdited] marks the album
+  /// dirty and the album view saves it with everything else, so that nothing
+  /// is written twice and the album's discard still covers it. Outside it, the
+  /// change is written at once, see [editDescription].
+  final bool editing;
+
+  /// Called when a description was changed into the album's editing buffer.
+  final VoidCallback? onEdited;
+
   const ImageView({
     super.key,
     required this.client,
@@ -148,6 +193,9 @@ class ImageView extends StatefulWidget {
     this.actions = const [],
     this.albumPath,
     this.onTakenBack,
+    this.editPath,
+    this.editing = false,
+    this.onEdited,
   });
 
   @override
@@ -224,6 +272,129 @@ class ImageViewState extends State<ImageView>
   /// The next image passing the rating filter, `null` at the album end.
   AbstractImage? get next => nextVisible(widget.image, minRating);
 
+  /// The album the displayed image belongs to, `null` where the transient
+  /// owner link was never built.
+  ///
+  /// The whole album, because that is what is written back: the sidecar is one
+  /// document, and a changed description is saved the way every other album
+  /// edit is saved, see [editDescription] and [VAlbumClient.saveAlbum].
+  AlbumInfo? get album => widget.image.owner;
+
+  /// What the caller may do with that album, as the server answered it with
+  /// the album itself (issue #49).
+  Rights get rights => Rights.of(album);
+
+  /// Whether a description may be edited here at all.
+  ///
+  /// The `edit` right, an album to write into, and never inside a share link:
+  /// a link is not an account, see issue #51.
+  bool get mayEditDescription =>
+      album != null &&
+      rights.mayEdit &&
+      ShareSession.of(context) == null &&
+      (widget.editPath != null || inEditSession);
+
+  /// Whether the album this image belongs to is being edited (issue #80).
+  ///
+  /// The session lives with the router, keyed by the album's path, so a trip
+  /// into an image and back finds the album still being edited; what the album
+  /// view reads off it, this view is handed, see `app.dart`.
+  bool get inEditSession => widget.editing;
+
+  /// Opens the description dialog on the displayed image (issue #80).
+  ///
+  /// The dialog the tile editor of the album opens, on the image that is being
+  /// looked at — which is where a description is written in practice, and for
+  /// a group member in detail mode it is that member's own description. A
+  /// caller who may not change the album is told so rather than being left
+  /// with a gesture that does nothing, see [notEditableMessage].
+  Future<void> editDescription() async {
+    var self = album;
+    if (self == null) {
+      // No album behind this image: nothing to write into, and nothing this
+      // view could say that would help.
+      return;
+    }
+    if (!mayEditDescription) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(notEditableMessage, key: Key("image-not-editable")),
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+    await _askForDescription(self, part, part.comment);
+  }
+
+  /// Asks for the description of [image], starting from [initial], and applies
+  /// what comes back.
+  ///
+  /// A refused write comes back here with the text that was typed: the server
+  /// said why, and what was written must not be lost to a failed request.
+  Future<void> _askForDescription(
+    AlbumInfo owner,
+    ImagePart image,
+    String initial,
+  ) async {
+    var text = await showDialog<String>(
+      context: context,
+      builder: (context) => TextInputDialog(
+        title: descriptionDialogTitle,
+        label: descriptionDialogLabel,
+        text: initial,
+        multiLine: true,
+        // Who added this photo: the screen saying what an image is says where
+        // it came from, exactly as the tile editor does, see issue #53.
+        note: attributionShown(image),
+      ),
+    );
+    if (text == null || !mounted || text == image.comment) {
+      return;
+    }
+    var before = image.comment;
+    setState(() => image.comment = text);
+    if (inEditSession) {
+      // The album is being edited: this belongs in the same buffer as every
+      // other edit, and is written when the album is saved.
+      widget.onEdited?.call();
+      return;
+    }
+    var path = widget.editPath;
+    if (path == null) {
+      // Guarded by [mayEditDescription]; here for the reader.
+      return;
+    }
+    if (refuseWhileOffline(context)) {
+      setState(() => image.comment = before);
+      return;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.client.saveAlbum(path, owner);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      // Nothing was stored, so nothing has changed: the caption says what the
+      // server holds, not what was attempted.
+      setState(() => image.comment = before);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            error is VAlbumException ? error.message : "$error",
+            key: const Key("image-description-failed"),
+          ),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+      // The text is not thrown away with the request: the dialog comes back
+      // holding it, so that a retry costs no typing.
+      await _askForDescription(owner, image, text);
+    }
+  }
+
   /// The group the displayed image belongs to, `null` if it is a single image.
   ImageGroup? get group {
     var self = widget.image;
@@ -296,6 +467,9 @@ class ImageViewState extends State<ImageView>
           const SingleActivator(LogicalKeyboardKey.end): showLast,
           const SingleActivator(LogicalKeyboardKey.arrowUp): showParent,
           const SingleActivator(LogicalKeyboardKey.arrowDown): showGroup,
+          // Not a touch-only feature: a long press is what a phone has, `e`
+          // is what a keyboard has (issue #80).
+          const SingleActivator(LogicalKeyboardKey.keyE): editDescription,
         },
         child: Focus(
           autofocus: true,
@@ -336,6 +510,9 @@ class ImageViewState extends State<ImageView>
         onTapUp: (details) => setState(() {
           tx.toggle(details.localPosition.dx, details.localPosition.dy);
         }),
+        // The description of the image, where the image is looked at
+        // (issue #80).
+        onLongPress: editDescription,
         onScaleStart: (details) {
           _stopSnapBack();
           _gestureScale = tx.scale;
@@ -463,6 +640,9 @@ class ImageViewState extends State<ImageView>
         self.width > 0 && self.height > 0 ? self.width / self.height : 16 / 9;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
+      // A video has a description like every other part of the album
+      // (issue #80).
+      onLongPress: editDescription,
       onScaleStart: (details) {},
       onScaleEnd: (details) {
         if (details.pointerCount <= 1) {

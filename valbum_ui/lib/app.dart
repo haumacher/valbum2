@@ -1456,6 +1456,11 @@ class VAlbumState extends State<VAlbumView>
       baseUrl: baseUrl,
       image: member,
       onUp: navigator.up,
+      // A member's description is written to the same album as any other
+      // image of it, see issue #80.
+      editPath: path,
+      editing: editing,
+      onEdited: () => navigator.delegate.editSession(path).dirty = true,
       onShowImage: (next) => navigator.go(
         MemberRoute(path, name, next.thumbnailName),
       ),
@@ -1530,6 +1535,11 @@ class VAlbumState extends State<VAlbumView>
         // move is posted to.
         albumPath: path,
         onTakenBack: takenBack,
+        // Where a description edited in the viewer is written (issue #80),
+        // and whether it goes into the album's editing buffer instead.
+        editPath: path,
+        editing: navigator.delegate.editSession(path).editMode,
+        onEdited: () => navigator.delegate.editSession(path).dirty = true,
       );
 
   /// Leaves a photo that was taken back out of this album, see issue #53.
