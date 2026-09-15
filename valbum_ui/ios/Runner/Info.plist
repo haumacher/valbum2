@@ -16,6 +16,8 @@
 	<string>VAlbum uploads new photos from this device into your own album server.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>VAlbum uploads new photos from this device into your own album server.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>VAlbum reads the device code shown on a device you are already signed in on, so that you do not have to type it.</string>
 	<key>CFBundleName</key>
 	<string>valbum_ui</string>
 	<key>CFBundlePackageType</key>

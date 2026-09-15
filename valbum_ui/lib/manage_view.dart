@@ -18,12 +18,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import 'caller.dart';
 import 'client.dart';
+import 'device_code_payload.dart';
 import 'groups_view.dart';
 import 'resource.dart';
 import 'settings.dart';
+import 'urls.dart';
 
 /// The day of an ISO-8601 instant, in the reader's own time zone.
 ///
@@ -69,6 +72,18 @@ const Key deviceCodeErrorKey = Key("settings.deviceCode.error");
 
 /// The key of the button asking for a fresh code once one has run out.
 const Key deviceCodeRenewKey = Key("settings.deviceCode.renew");
+
+/// The key of the QR code carrying the same credential as the code above it
+/// (issue #66).
+const Key deviceCodeQrKey = Key("settings.deviceCode.qr");
+
+/// How large the QR code is drawn: enough for a phone camera to read it off a
+/// phone screen, small enough for a dialog on that phone.
+const double deviceCodeQrSize = 200;
+
+/// What the QR code is for, said beside it.
+const String deviceCodeQrAdvice =
+    "Or scan this on the other device, at Sign in.";
 
 /// What a device code is, said where it is shown (issue #65).
 ///
@@ -467,6 +482,14 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
     }
   }
 
+  /// The server this code belongs to, as the other device's server field
+  /// takes it (issue #66).
+  ///
+  /// The app base of the server this dialog's client talks to — never the data
+  /// URL, which is what the *client* uses: what is scanned is stored, and what
+  /// is stored is the app base, see [appBaseOf].
+  String get serverUrl => appBaseOf(widget.client.dataUrl);
+
   /// How long the code still works, `null` while there is none.
   Duration? get remaining {
     var code = _code;
@@ -522,6 +545,23 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
                     : "Expires in ${minutesAndSeconds(left ?? Duration.zero)}",
                 key: deviceCodeRemainingKey,
               ),
+              // The same credential in a form a camera reads, so that
+              // nothing has to be typed on a phone (issue #66). It carries
+              // the server and the code in a scheme of this app's own and is
+              // deliberately not a URL anything offers to open, see
+              // [encodeDeviceCodePayload]. It goes with the code: an expired
+              // or used-up code is nothing to scan either.
+              if (!expired && _joined == null) ...[
+                const SizedBox(height: 16),
+                Center(
+                  child: DeviceCodeQr(
+                    key: deviceCodeQrKey,
+                    payload: encodeDeviceCodePayload(serverUrl, code.code),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(deviceCodeQrAdvice),
+              ],
               const SizedBox(height: 12),
               const Text(deviceCodeAdvice),
             ],
@@ -550,6 +590,52 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
       ],
     );
   }
+}
+
+/// The QR code of a device code (issue #66).
+///
+/// A widget of its own rather than a bare [QrImageView], because what it
+/// draws is the thing worth asserting: [payload] is the whole content, and
+/// `QrImageView` keeps its own data private. It is also where the quiet zone
+/// lives — white around the code whatever the theme, since a QR code drawn
+/// dark on dark is not readable.
+class DeviceCodeQr extends StatelessWidget {
+  /// What the QR code contains, see [encodeDeviceCodePayload].
+  final String payload;
+
+  /// How large the code is drawn, see [deviceCodeQrSize].
+  final double size;
+
+  const DeviceCodeQr({
+    super.key,
+    required this.payload,
+    this.size = deviceCodeQrSize,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+        color: Colors.white,
+        padding: const EdgeInsets.all(12),
+        // A box of a fixed size around it, because `QrImageView` measures
+        // itself with a `LayoutBuilder` and the dialog asks its content for
+        // intrinsic dimensions, which such a builder refuses to answer.
+        child: SizedBox.square(
+          dimension: size,
+          child: QrImageView(
+            data: payload,
+            size: size,
+            backgroundColor: Colors.white,
+            // The quiet zone is the white [Container] around this box; a
+            // second margin inside would only make the modules smaller.
+            padding: EdgeInsets.zero,
+            // One screen read by one camera a hand's width away: the middle
+            // level tolerates a reflection without making the modules small.
+            errorCorrectionLevel: QrErrorCorrectLevel.M,
+            version: QrVersions.auto,
+            semanticsLabel: "Device code as a QR code",
+          ),
+        ),
+      );
 }
 
 /// The users of this server, for the administrator alone (issue #55).

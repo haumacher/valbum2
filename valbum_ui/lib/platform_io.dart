@@ -9,6 +9,8 @@ import 'background.dart';
 import 'background_workmanager.dart';
 import 'connectivity.dart';
 import 'connectivity_plugin.dart';
+import 'device_code_scanner.dart';
+import 'device_code_scanner_plugin.dart';
 import 'diagnostics.dart';
 import 'offline.dart';
 import 'offline_file.dart';
@@ -48,6 +50,21 @@ PhotoLibrary defaultPhotoLibrary() => Platform.isAndroid || Platform.isIOS
 Wakelock defaultWakelock() => Platform.isAndroid || Platform.isIOS
     ? const PluginWakelock()
     : const NoWakelock();
+
+/// What reads a device code off the camera, see [DeviceCodeScanner].
+///
+/// Only Android and iOS: a phone is where the typing hurts and where there is
+/// a camera in the right place (issue #66). A desktop keeps the typed field —
+/// its webcam points at the person, not at the other screen — and the
+/// `mobile_scanner` plugin is never asked there.
+///
+/// `Platform.isAndroid` rather than `defaultTargetPlatform`, exactly as
+/// [defaultWakelock]: this asks which *machine* the code runs on, and a widget
+/// test runs on a desktop while it says it is a phone.
+DeviceCodeScanner defaultDeviceCodeScanner() =>
+    Platform.isAndroid || Platform.isIOS
+        ? const PluginDeviceCodeScanner()
+        : const NoDeviceCodeScanner();
 
 /// The network the device is on, see [ConnectivitySource].
 ///

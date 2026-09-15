@@ -19,6 +19,7 @@ import 'camera_roll.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
 import 'connectivity.dart';
+import 'device_code_scanner.dart';
 import 'diagnostics.dart';
 import 'group_view.dart';
 import 'image_view.dart';
@@ -101,6 +102,14 @@ class VAlbumApp extends StatefulWidget {
   /// channel. Tests inject a [RecordingWakelock].
   final Wakelock? wakelock;
 
+  /// What reads a device code off the camera (issue #66).
+  ///
+  /// Defaults to the scanner of the platform — the plugin on a phone, nothing
+  /// anywhere else — and to nothing at all where a client is injected, for the
+  /// same reason as [wakelock]: a widget test must reach no camera. Tests
+  /// inject a [FakeDeviceCodeScanner].
+  final DeviceCodeScanner? deviceCodeScanner;
+
   /// The token session the app was opened at: a share link (issue #51) or an
   /// invitation (issue #52).
   ///
@@ -121,6 +130,7 @@ class VAlbumApp extends StatefulWidget {
     this.photoLibrary,
     this.backgroundScheduler,
     this.wakelock,
+    this.deviceCodeScanner,
     this.session,
   });
 
@@ -163,6 +173,13 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// What keeps the screen awake while an upload runs, see [VAlbumApp.wakelock].
   late final Wakelock wakelock = widget.wakelock ??
       (widget.client != null ? const NoWakelock() : defaultWakelock());
+
+  /// What reads a device code off the camera, see
+  /// [VAlbumApp.deviceCodeScanner].
+  late final DeviceCodeScanner deviceCodeScanner = widget.deviceCodeScanner ??
+      (widget.client != null
+          ? const NoDeviceCodeScanner()
+          : defaultDeviceCodeScanner());
 
   /// The platform's periodic background execution, see
   /// [VAlbumApp.backgroundScheduler].
@@ -659,20 +676,23 @@ class VAlbumAppState extends State<VAlbumApp> {
           library: photoLibrary,
           child: WakelockScope(
             wakelock: wakelock,
-            child: ServerSettingsScope(
-              settings: settings,
-              clientFor: clientFor,
-              diagnostics: diagnostics,
-              // Published around the whole app: every view asks whether it is
-              // inside a link, see [ShareSession.of], and who is calling, see
-              // [CallerInfo.maybeOf].
-              child: ShareSessionScope(
-                session: shareSession,
-                child: CallerScope(
-                  caller: caller,
-                  child: _readyForTheRouter && client != null
-                      ? _albumApp(client!)
-                      : _beforeTheRouter(),
+            child: DeviceCodeScannerScope(
+              scanner: deviceCodeScanner,
+              child: ServerSettingsScope(
+                settings: settings,
+                clientFor: clientFor,
+                diagnostics: diagnostics,
+                // Published around the whole app: every view asks whether it is
+                // inside a link, see [ShareSession.of], and who is calling, see
+                // [CallerInfo.maybeOf].
+                child: ShareSessionScope(
+                  session: shareSession,
+                  child: CallerScope(
+                    caller: caller,
+                    child: _readyForTheRouter && client != null
+                        ? _albumApp(client!)
+                        : _beforeTheRouter(),
+                  ),
                 ),
               ),
             ),
