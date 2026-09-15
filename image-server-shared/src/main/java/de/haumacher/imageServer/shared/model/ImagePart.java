@@ -42,6 +42,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getComment() */
 	private static final String COMMENT__PROP = "comment";
 
+	/** @see #getCamera() */
+	private static final String CAMERA__PROP = "camera";
+
 	/** @see #getContributor() */
 	private static final String CONTRIBUTOR__PROP = "contributor";
 
@@ -65,6 +68,8 @@ public class ImagePart extends AbstractImage {
 	private int _privacy = 0;
 
 	private String _comment = "";
+
+	private String _camera = "";
 
 	private transient de.haumacher.imageServer.shared.model.ImageGroup _group = null;
 
@@ -269,6 +274,46 @@ public class ImagePart extends AbstractImage {
 	}
 
 	/**
+	 * The camera that took this image, see issue #78.
+	 *
+	 * <p>
+	 * A short label built from the EXIF <code>Make</code> and <code>Model</code> of the original:
+	 * both trimmed, joined with a single blank, and the make left out when the model already
+	 * starts with it (<code>Canon</code> and <code>Canon EOS 5D</code> make
+	 * <code>Canon EOS 5D</code>, not <code>Canon Canon EOS 5D</code>). Phones say the same way
+	 * what they are (<code>SAMSUNG SM-G991B</code>). The empty string when the file says neither,
+	 * which is the case for every video whose container carries no make and model.
+	 * </p>
+	 *
+	 * <p>
+	 * A label, not an identifier: it is only ever compared for equality, to select every image of
+	 * one camera, and an empty label never matches another empty one.
+	 * </p>
+	 *
+	 * <p>
+	 * Read when the image is analysed and <em>stored</em> in the sidecar, exactly like
+	 * {@link #getDate()}: a part a sidecar already lists is never analysed again, so an album written
+	 * before this field existed keeps its parts without one until they are analysed afresh.
+	 * </p>
+	 */
+	public final String getCamera() {
+		return _camera;
+	}
+
+	/**
+	 * @see #getCamera()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setCamera(String value) {
+		internalSetCamera(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getCamera()} without chain call utility. */
+	protected final void internalSetCamera(String value) {
+		_camera = value;
+	}
+
+	/**
 	 * The {@link ImageGroup}, this {@link ImagePart} is part of, or <code>null</code>, if this {@link ImagePart} is not part of a group.
 	 */
 	public final de.haumacher.imageServer.shared.model.ImageGroup getGroup() {
@@ -429,6 +474,8 @@ public class ImagePart extends AbstractImage {
 		out.value(getPrivacy());
 		out.name(COMMENT__PROP);
 		out.value(getComment());
+		out.name(CAMERA__PROP);
+		out.value(getCamera());
 		out.name(CONTRIBUTOR__PROP);
 		out.value(getContributor());
 		out.name(CONTRIBUTOR_LABEL__PROP);
@@ -447,6 +494,7 @@ public class ImagePart extends AbstractImage {
 			case RATING__PROP: setRating(in.nextInt()); break;
 			case PRIVACY__PROP: setPrivacy(in.nextInt()); break;
 			case COMMENT__PROP: setComment(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case CAMERA__PROP: setCamera(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CONTRIBUTOR__PROP: setContributor(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CONTRIBUTOR_LABEL__PROP: setContributorLabel(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);

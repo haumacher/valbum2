@@ -13,6 +13,7 @@ import com.drew.metadata.jpeg.JpegCommentDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mov.QuickTimeDirectory;
 import com.drew.metadata.mov.media.QuickTimeVideoDirectory;
+import com.drew.metadata.mov.metadata.QuickTimeMetadataDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 import com.drew.metadata.png.PngDirectory;
@@ -66,6 +67,7 @@ public class ImageData extends ImagePart {
 
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
 		result.setDate(date(metadata, file).getTime());
+		result.setCamera(camera(metadata));
 
 		JpegDirectory jpegDirectory = metadata.getFirstDirectoryOfType(JpegDirectory.class);
 		if (jpegDirectory != null) {
@@ -241,6 +243,83 @@ public class ImageData extends ImagePart {
 			return plausible(movDirectory.getDate(QuickTimeDirectory.TAG_CREATION_TIME));
 		}
 		return null;
+	}
+
+	/**
+	 * What took the given file, see {@link ImagePart#getCamera()}.
+	 *
+	 * <p>
+	 * The EXIF make and model of a photo. A video says it in the metadata of its container where
+	 * it says it at all — the phones of the reproduction album say nothing, so their videos carry
+	 * no camera.
+	 * </p>
+	 *
+	 * @return The label, never <code>null</code>; the empty string when nothing is known.
+	 */
+	private static String camera(Metadata metadata) {
+		ExifIFD0Directory exifIFD0Directory = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
+		if (exifIFD0Directory != null) {
+			String label = cameraLabel(exifIFD0Directory.getString(ExifIFD0Directory.TAG_MAKE),
+				exifIFD0Directory.getString(ExifIFD0Directory.TAG_MODEL));
+			if (!label.isEmpty()) {
+				return label;
+			}
+		}
+		QuickTimeMetadataDirectory movMetadata =
+			metadata.getFirstDirectoryOfType(QuickTimeMetadataDirectory.class);
+		if (movMetadata != null) {
+			return cameraLabel(movMetadata.getString(QuickTimeMetadataDirectory.TAG_MAKE),
+				movMetadata.getString(QuickTimeMetadataDirectory.TAG_MODEL));
+		}
+		return "";
+	}
+
+	/**
+	 * The camera label of the given make and model, see {@link ImagePart#getCamera()}.
+	 *
+	 * <p>
+	 * Both are trimmed and joined with a single blank, except that the make is left out when the
+	 * model already begins with it as a whole word, ignoring case: <code>Canon</code> and
+	 * <code>Canon EOS 5D</code> make <code>Canon EOS 5D</code>. Nothing else is taken away. A make
+	 * the model does not repeat literally stays in front of it, even where that reads redundantly
+	 * (<code>NIKON CORPORATION</code> and <code>NIKON D750</code> make
+	 * <code>NIKON CORPORATION NIKON D750</code>): which words of a make are the brand is not
+	 * knowable from two strings, and a label that keeps too much is still exactly as good at
+	 * saying "the same camera" as one that guessed right, while a label that dropped the wrong
+	 * word would merge two cameras.
+	 * </p>
+	 *
+	 * @return The label, never <code>null</code>; the empty string when neither is given.
+	 */
+	public static String cameraLabel(String make, String model) {
+		String cleanMake = clean(make);
+		String cleanModel = clean(model);
+		if (cleanMake.isEmpty()) {
+			return cleanModel;
+		}
+		if (cleanModel.isEmpty()) {
+			return cleanMake;
+		}
+		if (startsWithWord(cleanModel, cleanMake)) {
+			return cleanModel;
+		}
+		return cleanMake + " " + cleanModel;
+	}
+
+	/** The given EXIF string without its padding, and with any run of blanks collapsed into one. */
+	private static String clean(String value) {
+		if (value == null) {
+			return "";
+		}
+		return value.trim().replaceAll("\\s+", " ");
+	}
+
+	/** Whether the model begins with the make, as a whole word and ignoring case. */
+	private static boolean startsWithWord(String model, String make) {
+		if (!model.regionMatches(true, 0, make, 0, make.length())) {
+			return false;
+		}
+		return model.length() == make.length() || model.charAt(make.length()) == ' ';
 	}
 
 	/** The given container time, or <code>null</code> if it cannot be a recording time. */

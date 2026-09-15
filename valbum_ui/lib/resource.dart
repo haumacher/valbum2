@@ -752,6 +752,29 @@ class ImagePart extends AbstractImage {
 	///  A comment describing what this image contains.
 	String comment;
 
+	///  The camera that took this image, see issue #78.
+	/// 
+	///  <p>
+	///  A short label built from the EXIF <code>Make</code> and <code>Model</code> of the original:
+	///  both trimmed, joined with a single blank, and the make left out when the model already
+	///  starts with it (<code>Canon</code> and <code>Canon EOS 5D</code> make
+	///  <code>Canon EOS 5D</code>, not <code>Canon Canon EOS 5D</code>). Phones say the same way
+	///  what they are (<code>SAMSUNG SM-G991B</code>). The empty string when the file says neither,
+	///  which is the case for every video whose container carries no make and model.
+	///  </p>
+	/// 
+	///  <p>
+	///  A label, not an identifier: it is only ever compared for equality, to select every image of
+	///  one camera, and an empty label never matches another empty one.
+	///  </p>
+	/// 
+	///  <p>
+	///  Read when the image is analysed and <em>stored</em> in the sidecar, exactly like
+	///  {@link #date}: a part a sidecar already lists is never analysed again, so an album written
+	///  before this field existed keeps its parts without one until they are analysed afresh.
+	///  </p>
+	String camera;
+
 	///  The {@link ImageGroup}, this {@link ImagePart} is part of, or <code>null</code>, if this {@link ImagePart} is not part of a group.
 	ImageGroup? group;
 
@@ -808,6 +831,7 @@ class ImagePart extends AbstractImage {
 			this.rating = 0, 
 			this.privacy = 0, 
 			this.comment = "", 
+			this.camera = "", 
 			this.group, 
 			this.contributor = "", 
 			this.contributorLabel = "", 
@@ -867,6 +891,10 @@ class ImagePart extends AbstractImage {
 				comment = json.expectString();
 				break;
 			}
+			case "camera": {
+				camera = json.expectString();
+				break;
+			}
 			case "contributor": {
 				contributor = json.expectString();
 				break;
@@ -909,6 +937,9 @@ class ImagePart extends AbstractImage {
 
 		json.addKey("comment");
 		json.addString(comment);
+
+		json.addKey("camera");
+		json.addString(camera);
 
 		json.addKey("contributor");
 		json.addString(contributor);
