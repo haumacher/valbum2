@@ -1,10 +1,35 @@
 /// Inline playback of the videos of an album.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import 'client.dart';
 import 'diagnostics.dart';
+
+/// Asks the server whether a rendition can be played, see
+/// [VAlbumClient.renditionState].
+///
+/// Injected rather than the whole client: what this view needs is one
+/// question, and a test answers it without a transport.
+typedef RenditionProbe = Future<RenditionState> Function(String url);
+
+/// Waits [delay]; injected so that a test does not sit out a `Retry-After`.
+typedef Wait = Future<void> Function(Duration delay);
+
+/// The wait of a running app.
+Future<void> realWait(Duration delay) => Future<void>.delayed(delay);
+
+/// What the view says while the server is still making the rendition
+/// (issues #74/#75).
+const String videoPreparingMessage = "The video is being prepared…";
+
+/// The way past the wait, for whoever does not want to sit it out.
+///
+/// The original is always there — it is what the app played before the
+/// renditions existed, and it stays the download.
+const String videoPlayOriginalLabel = "Play the original";
 
 /// The headline shown when a video cannot be played (issue #73).
 ///
@@ -119,6 +144,16 @@ VideoPlayerController networkController(
 /// never the raw `PlatformException` of the platform player, which said
 /// nothing to the person who reported issue #73. The raw text goes to the
 /// [VideoView.log], where a bug report can fetch it.
+///
+/// What is played is the *rendition* where there is one (issues #74/#75): a
+/// faststart 720p file the server transcodes beside the original, because a
+/// 4K original costs two round trips for its index before the first frame and
+/// then saturates the home network. [VideoView.renditionUrl] is probed before
+/// anything is opened; while the server is still making it, the poster stays
+/// up with [videoPreparingMessage] and the view asks again at the server's
+/// `Retry-After`; where there will be none, the original is played instead.
+/// [VideoView.videoUrl] is therefore always the original — the fallback, and
+/// what [videoPlayOriginalLabel] opens.
 class VideoView extends StatefulWidget {
   /// The URL of the video itself (the "original" URL of the image part).
   final String videoUrl;
@@ -132,8 +167,22 @@ class VideoView extends StatefulWidget {
   /// Whether to start playing as soon as the video is initialised.
   final bool autoPlay;
 
-  /// Creates the controller for [videoUrl], see [VideoControllerFactory].
+  /// Creates the controller for the URL that is played, see
+  /// [VideoControllerFactory].
   final VideoControllerFactory createController;
+
+  /// The URL of the playback rendition, `null` where there is none to ask for.
+  ///
+  /// With a [renditionUrl] and a [probeRendition] this view plays the
+  /// rendition and falls back to [videoUrl]; without either it plays
+  /// [videoUrl] straight away, which is what it did before issue #75.
+  final String? renditionUrl;
+
+  /// Asks whether [renditionUrl] can be played, see [RenditionProbe].
+  final RenditionProbe? probeRendition;
+
+  /// How the view waits out a `Retry-After`, see [Wait].
+  final Wait wait;
 
   /// Where the raw text of a failure is written (issue #73).
   ///
@@ -149,6 +198,9 @@ class VideoView extends StatefulWidget {
     this.autoPlay = true,
     this.createController = networkController,
     this.log,
+    this.renditionUrl,
+    this.probeRendition,
+    this.wait = realWait,
   });
 
   @override
@@ -161,23 +213,115 @@ class VideoViewState extends State<VideoView> {
   /// The problem that kept the video from playing, `null` if there is none.
   Object? _error;
 
+  /// Whether the server is still making the rendition, see
+  /// [videoPreparingMessage].
+  bool _preparing = false;
+
+  /// Which attempt is the current one.
+  ///
+  /// Every way of starting over — a new video, "Play the original" — makes
+  /// this a new number, so that a retry loop that is still waiting out its
+  /// `Retry-After` finds itself stale when it wakes up and stops.
+  int _attempt = 0;
+
   /// Whether the controller has reported a playable video.
   bool get isPlayable => _controller?.value.isInitialized ?? false;
 
   @override
   void initState() {
     super.initState();
-    _open();
+    _resolve();
   }
 
   @override
   void didUpdateWidget(VideoView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.videoUrl != widget.videoUrl) {
+    if (oldWidget.videoUrl != widget.videoUrl ||
+        oldWidget.renditionUrl != widget.renditionUrl) {
       _close();
       _error = null;
-      _open();
+      _preparing = false;
+      _resolve();
     }
+  }
+
+  /// Decides what to play and plays it, see [VideoView.renditionUrl].
+  ///
+  /// The rendition where the server has it, the original where it says there
+  /// will be none, and the poster with [videoPreparingMessage] for as long as
+  /// it is being made — asking again at the interval the server itself named,
+  /// never faster, see [VAlbumClient.renditionState].
+  Future<void> _resolve() async {
+    var rendition = widget.renditionUrl;
+    var probe = widget.probeRendition;
+    var attempt = ++_attempt;
+    if (rendition == null || probe == null) {
+      _open(widget.videoUrl);
+      return;
+    }
+    while (mounted && _attempt == attempt) {
+      RenditionState state;
+      try {
+        state = await probe(rendition);
+      } catch (problem) {
+        // The probe is a courtesy; a question that cannot be asked is not a
+        // reason to refuse the video, it is a reason to play the original.
+        widget.log?.add("video rendition ${maskUrl(rendition)} !! $problem");
+        _fallBackToOriginal(attempt);
+        return;
+      }
+      if (!mounted || _attempt != attempt) {
+        return;
+      }
+      if (state.isReady) {
+        if (_preparing) {
+          setState(() => _preparing = false);
+        }
+        _open(rendition);
+        return;
+      }
+      if (!state.isPending) {
+        // There will be no rendition — a failed transcode, or a caller who may
+        // not have it. The original is what is left, and if that fails too the
+        // speaking error of issue #73 says so.
+        widget.log?.add(
+          "video rendition ${maskUrl(rendition)} unavailable"
+          "${state.message == null ? "" : ": ${state.message}"}",
+        );
+        _fallBackToOriginal(attempt);
+        return;
+      }
+      if (!_preparing) {
+        setState(() => _preparing = true);
+      }
+      await widget.wait(state.retryAfter);
+    }
+  }
+
+  /// Plays the original instead of the rendition, ending attempt [attempt].
+  void _fallBackToOriginal(int attempt) {
+    if (!mounted || _attempt != attempt) {
+      return;
+    }
+    if (_preparing) {
+      setState(() => _preparing = false);
+    }
+    _open(widget.videoUrl);
+  }
+
+  /// Stops waiting for the rendition and plays the original (issue #75).
+  ///
+  /// Offered while the rendition is being made: a transcode takes minutes on
+  /// a small server, and the original was playable all along — it is only the
+  /// worse thing to play, not an impossible one.
+  void playOriginal() {
+    _attempt++;
+    _close();
+    setState(() {
+      _preparing = false;
+      _error = null;
+    });
+    _open(widget.videoUrl);
   }
 
   @override
@@ -195,16 +339,17 @@ class VideoViewState extends State<VideoView> {
     }
   }
 
-  /// Creates the controller and starts playing, or records the failure.
-  Future<void> _open() async {
+  /// Creates the controller for [url] and starts playing, or records the
+  /// failure.
+  Future<void> _open(String url) async {
     VideoPlayerController controller;
     try {
       controller = widget.createController(
-        Uri.parse(widget.videoUrl),
+        Uri.parse(url),
         headers: widget.headers,
       );
     } catch (problem) {
-      _failed(problem);
+      _failed(problem, url);
       return;
     }
     _controller = controller;
@@ -221,18 +366,19 @@ class VideoViewState extends State<VideoView> {
       }
     } catch (problem) {
       if (_controller == controller) {
-        _failed(problem);
+        _failed(problem, url);
       }
       return;
     }
     _update();
   }
 
-  void _failed(Object problem) {
+  void _failed(Object problem, String url) {
     // The whole text, before anything is shown: what the screen says is a
     // sentence, and the platform's own words belong in the bug report — the
-    // `!!` is the convention of [DiagnosticsLog.failed].
-    widget.log?.add("video ${maskUrl(widget.videoUrl)} !! $problem");
+    // `!!` is the convention of [DiagnosticsLog.failed]. The URL is the one
+    // that failed, which is the rendition where a rendition was played.
+    widget.log?.add("video ${maskUrl(url)} !! $problem");
     if (!mounted) {
       _error = problem;
       return;
@@ -293,6 +439,12 @@ class VideoViewState extends State<VideoView> {
           Center(
             child: buildError(_error!),
           ),
+        // While the server is making the rendition: the poster, one line, and
+        // the way past the wait, see [buildPreparing] and issue #75.
+        if (_error == null && _preparing && !isPlayable)
+          Center(
+            child: buildPreparing(),
+          ),
       ],
     );
   }
@@ -321,6 +473,49 @@ class VideoViewState extends State<VideoView> {
               ),
             ),
           ],
+        ),
+      );
+
+  /// What is shown while the server is still making the rendition
+  /// (issue #75).
+  ///
+  /// The poster stays behind it, the line says what is happening, and the
+  /// button plays the original for whoever does not want to wait. It scrolls
+  /// inside its slot for the same reason the error box does.
+  Widget buildPreparing() => Container(
+        key: const Key("video-preparing"),
+        color: Colors.black87,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white70,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                videoPreparingMessage,
+                key: Key("video-preparing-line"),
+                style: TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                key: const Key("video-play-original"),
+                onPressed: playOriginal,
+                child: const Text(
+                  videoPlayOriginalLabel,
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
         ),
       );
 
@@ -385,6 +580,213 @@ class VideoViewState extends State<VideoView> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Whether a teaser is played when the pointer rests on a video tile
+/// (issue #75).
+///
+/// Everywhere but Android and iOS, which is the same thing as "where there is
+/// a pointer": a phone has no hover, and a phone *browser* reports itself as
+/// Android or iOS too, so this is right on the web as well.
+///
+/// There is deliberately no teaser on a touch platform. The substitute would
+/// be "the tile has stood still in the viewport for a moment", and that is a
+/// worse deal than it looks: it needs every tile to watch the scroll position,
+/// it fights the album's own scroll memory, and it would start a decoder and a
+/// range request per tile while somebody flicks through a hundred photos on a
+/// home Wi-Fi. The teaser is a pointer affordance; on a phone a tap opens the
+/// video, which is what the tap is for.
+bool teaserOnHoverSupported() =>
+    defaultTargetPlatform != TargetPlatform.android &&
+    defaultTargetPlatform != TargetPlatform.iOS;
+
+/// Plays the teaser of a video while the pointer rests on its tile
+/// (issue #75).
+///
+/// The tile itself is [child] — the poster the album lays out — and the teaser
+/// is drawn over it, muted and looping, for as long as the pointer is there.
+/// On exit the controller is disposed and the poster is all that is left: a
+/// tile is a tile, and nothing of this survives the pointer leaving it.
+///
+/// A teaser the server has not made yet (`202`) is simply not played. Nothing
+/// is shown for it and nothing is said: a teaser is a nicety, and a row of
+/// error boxes over an album would be worse than no teaser at all. The next
+/// hover asks once more, and after that this tile stops asking for as long as
+/// it lives — one retry per view, never a retry storm, see issue #75.
+class VideoTeaser extends StatefulWidget {
+  /// The URL of the teaser, see [VAlbumClient.teaserUrl].
+  final String teaserUrl;
+
+  /// The headers the player sends, see [networkController].
+  final Map<String, String> headers;
+
+  /// Creates the controller playing the teaser.
+  final VideoControllerFactory createController;
+
+  /// Asks whether the teaser is there, `null` where nobody can be asked — the
+  /// tile then stays a poster.
+  final RenditionProbe? probeTeaser;
+
+  /// Whether to offer the teaser at all; the platform decides where this is
+  /// `null`, see [teaserOnHoverSupported].
+  final bool? enabled;
+
+  /// The tile as the album laid it out.
+  final Widget child;
+
+  const VideoTeaser({
+    super.key,
+    required this.teaserUrl,
+    required this.child,
+    this.headers = const {},
+    this.createController = networkController,
+    this.probeTeaser,
+    this.enabled,
+  });
+
+  /// Whether this tile plays a teaser at all.
+  bool get plays =>
+      probeTeaser != null && (enabled ?? teaserOnHoverSupported());
+
+  @override
+  State<VideoTeaser> createState() => VideoTeaserState();
+}
+
+class VideoTeaserState extends State<VideoTeaser> {
+  VideoPlayerController? _controller;
+
+  /// How often this tile has asked for its teaser.
+  int _asked = 0;
+
+  /// Whether this tile has stopped asking, see [VideoTeaser].
+  bool _givenUp = false;
+
+  /// Which hover is the current one, so that a probe answering after the
+  /// pointer has left finds itself stale.
+  int _hover = 0;
+
+  @override
+  void dispose() {
+    _stop();
+    super.dispose();
+  }
+
+  void _stop() {
+    var controller = _controller;
+    _controller = null;
+    if (controller != null) {
+      controller.removeListener(_update);
+      controller.dispose();
+    }
+  }
+
+  void _update() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// The pointer arrived: ask for the teaser and play it.
+  Future<void> _enter() async {
+    var probe = widget.probeTeaser;
+    if (_givenUp || probe == null || _controller != null) {
+      return;
+    }
+    var hover = ++_hover;
+    _asked++;
+    RenditionState state;
+    try {
+      state = await probe(widget.teaserUrl);
+    } catch (_) {
+      // A teaser is a nicety; a question that cannot be asked ends it.
+      _givenUp = true;
+      return;
+    }
+    if (!mounted || _hover != hover) {
+      return;
+    }
+    if (!state.isReady) {
+      // Pending is asked about once more on the next hover; anything else is
+      // final. Either way nothing is shown.
+      _givenUp = !state.isPending || _asked > 1;
+      return;
+    }
+    VideoPlayerController controller;
+    try {
+      controller = widget.createController(
+        Uri.parse(widget.teaserUrl),
+        headers: widget.headers,
+      );
+    } catch (_) {
+      _givenUp = true;
+      return;
+    }
+    _controller = controller;
+    controller.addListener(_update);
+    try {
+      await controller.initialize();
+      if (!mounted || _hover != hover || _controller != controller) {
+        _stop();
+        return;
+      }
+      await controller.setVolume(0);
+      await controller.setLooping(true);
+      await controller.play();
+    } catch (_) {
+      // A teaser that will not start is a teaser that is not shown.
+      if (_controller == controller) {
+        _stop();
+      }
+      _givenUp = true;
+      return;
+    }
+    _update();
+  }
+
+  /// The pointer left: the tile is a poster again.
+  void _leave() {
+    _hover++;
+    if (_controller == null) {
+      return;
+    }
+    _stop();
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.plays) {
+      return widget.child;
+    }
+    var controller = _controller;
+    var playing = controller != null && controller.value.isInitialized;
+    return MouseRegion(
+      onEnter: (_) => _enter(),
+      onExit: (_) => _leave(),
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          widget.child,
+          if (playing)
+            Positioned.fill(
+              child: FittedBox(
+                fit: BoxFit.contain,
+                clipBehavior: Clip.hardEdge,
+                child: SizedBox.fromSize(
+                  size: controller.value.size,
+                  child: VideoPlayer(
+                    controller,
+                    key: const Key("video-teaser"),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

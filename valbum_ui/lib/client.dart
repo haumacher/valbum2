@@ -349,6 +349,68 @@ class UploadProgress {
 /// outstanding, see [UploadProgress.fraction].
 const double uploadProgressCeiling = 0.99;
 
+/// What the server says about a video rendition, see
+/// [VAlbumClient.renditionState] and issues #74/#75.
+enum RenditionStatus {
+  /// The rendition is there and can be played.
+  ready,
+
+  /// The server is making it; ask again after [RenditionState.retryAfter].
+  pending,
+
+  /// There will be no rendition: the transcode failed, or the caller may not
+  /// have it. Either way the caller falls back to the original.
+  unavailable,
+}
+
+/// The answer of a rendition probe, see [VAlbumClient.renditionState].
+///
+/// Three states and not more: what the player has to decide is *play it*,
+/// *wait* or *fall back to the original*. Why there will be no rendition —
+/// a failed transcode (`RENDITION_FAILED`), a refusal, a server that cannot be
+/// reached — makes no difference to that decision, and the server's own
+/// sentence is kept in [message] for the log and for the speaking error of
+/// issue #73.
+class RenditionState {
+  /// What the server said, see [RenditionStatus].
+  final RenditionStatus status;
+
+  /// How long to wait before asking again, only for [RenditionStatus.pending].
+  ///
+  /// The server's `Retry-After`, clamped to [renditionRetryFloor] ..
+  /// [renditionRetryCap]: a missing, unreadable or absurd header must not turn
+  /// into a retry storm, nor into a wait nobody sits through.
+  final Duration retryAfter;
+
+  /// The server's own words where it spoke, `null` otherwise.
+  final String? message;
+
+  const RenditionState(
+    this.status, {
+    this.retryAfter = renditionRetryDefault,
+    this.message,
+  });
+
+  /// Whether the rendition can be played right now.
+  bool get isReady => status == RenditionStatus.ready;
+
+  /// Whether the server is still making it.
+  bool get isPending => status == RenditionStatus.pending;
+
+  @override
+  String toString() => "RenditionState(${status.name}, $retryAfter, $message)";
+}
+
+/// What a rendition probe waits when the server names no `Retry-After`.
+const Duration renditionRetryDefault = Duration(seconds: 10);
+
+/// The shortest wait between two probes, whatever the server asks for.
+const Duration renditionRetryFloor = Duration(seconds: 1);
+
+/// The longest wait between two probes: somebody is looking at a poster and
+/// waiting, and a minute is as long as that may take before the next word.
+const Duration renditionRetryCap = Duration(seconds: 60);
+
 /// Handle allowing to cancel a running upload.
 class UploadHandle {
   bool _cancelled = false;
@@ -532,6 +594,79 @@ class VAlbumClient {
 
   /// The URL delivering the original of the image at the given URL.
   String originalUrl(String imageUrl) => imageUrl;
+
+  /// The URL of the playback rendition of the video at [imageUrl] (issue #74).
+  ///
+  /// What the app plays instead of the original: a faststart 720p file, which
+  /// starts without the two round trips a 4K original costs for its index and
+  /// without saturating a home server's Wi-Fi. The original stays what it was,
+  /// the download, see [originalUrl].
+  String playbackUrl(String imageUrl) => "$imageUrl?type=video";
+
+  /// The URL of the three-second silent teaser of the video at [imageUrl].
+  String teaserUrl(String imageUrl) => "$imageUrl?type=teaser";
+
+  /// Whether the rendition at [url] can be played, see [RenditionState].
+  ///
+  /// One lightweight request with the bearer this client carries: a `GET` of
+  /// the first byte (`Range: bytes=0-0`), which the server answers `206` — or
+  /// `200` where it ignores the range — for a rendition that is there, `202`
+  /// with a `Retry-After` while it is still being made, and `500` once the
+  /// transcode has failed, see issue #74. A `HEAD` would be cheaper still, but
+  /// one byte also proves that the range requests the player depends on are
+  /// really answered.
+  ///
+  /// Never throws: a server that cannot be reached is not a reason to refuse
+  /// the video, it is a reason to fall back to the original, which is what
+  /// [RenditionStatus.unavailable] says.
+  Future<RenditionState> renditionState(String url) async {
+    http.Response response;
+    try {
+      response = await _http.get(
+        Uri.parse(url),
+        headers: {...authHeaders, "Range": "bytes=0-0"},
+      ).timeout(timeout);
+    } catch (error) {
+      return RenditionState(
+        RenditionStatus.unavailable,
+        message: isTransportFailure(error) ? transportMessage(error) : "$error",
+      );
+    }
+    if (response.statusCode == 200 || response.statusCode == 206) {
+      return const RenditionState(RenditionStatus.ready);
+    }
+    if (response.statusCode == 202) {
+      return RenditionState(
+        RenditionStatus.pending,
+        retryAfter: retryAfterOf(response.headers["retry-after"]),
+        message: errorMessage(response.body),
+      );
+    }
+    return RenditionState(
+      RenditionStatus.unavailable,
+      message: errorMessage(response.body),
+    );
+  }
+
+  /// The `Retry-After` header as a duration, clamped, see
+  /// [RenditionState.retryAfter].
+  ///
+  /// Only the delta-seconds form is read. The HTTP-date form is legal but
+  /// depends on the two clocks agreeing, and the app has no business guessing
+  /// at that: it waits the default instead.
+  static Duration retryAfterOf(String? header) {
+    var seconds = int.tryParse((header ?? "").trim());
+    if (seconds == null) {
+      return renditionRetryDefault;
+    }
+    if (seconds < renditionRetryFloor.inSeconds) {
+      return renditionRetryFloor;
+    }
+    if (seconds > renditionRetryCap.inSeconds) {
+      return renditionRetryCap;
+    }
+    return Duration(seconds: seconds);
+  }
 
   /// Loads the resource at the given path.
   ///

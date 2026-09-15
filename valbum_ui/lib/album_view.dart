@@ -28,6 +28,7 @@ import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
 import 'thumbnails.dart';
+import 'video_view.dart';
 
 /// The clearance an album is shown with in the edit mode, see issue #46.
 ///
@@ -1475,7 +1476,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
     if (image.kind == ImageKind.image && marker == null) {
       return thumbnail;
     }
-    return SizedBox(
+    var tile = SizedBox(
       width: width,
       height: height,
       child: Stack(
@@ -1496,6 +1497,18 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
           if (marker != null) Positioned(top: 4, left: 4, child: marker),
         ],
       ),
+    );
+    if (image.kind == ImageKind.image || state.editMode || state.previewing) {
+      // Nothing to tease, and nothing to tease *with* while the album is
+      // being edited or looked at as somebody else: a video starting under
+      // the pointer of somebody dragging tiles is noise, see issue #75.
+      return tile;
+    }
+    return VideoTeaser(
+      teaserUrl: state.client.teaserUrl("${state.albumUrl}${image.name}"),
+      headers: state.client.authHeaders,
+      probeTeaser: state.client.renditionState,
+      child: tile,
     );
   }
 
