@@ -22,6 +22,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/app.dart';
 import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/diagnostics.dart';
+import 'package:valbum_ui/upload_progress.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
@@ -298,11 +299,16 @@ void main() {
 
         await tester.pump(const Duration(milliseconds: 5));
         expect(
-          find.byType(AlertDialog),
+          find.byKey(uploadProgressDialogKey),
           findsOneWidget,
           reason: "the server has not answered yet",
         );
-        expect(find.text(uploadWaitingMessage), findsOneWidget);
+        // The one line the dialog shows is the phase it is in; the wheel of
+        // issue #70 spins while an answer is outstanding.
+        expect(
+          tester.widget<Text>(find.byKey(uploadProgressCountKey)).data,
+          uploadWaitingMessage,
+        );
 
         // Now the server answers.
         answer.complete();
@@ -312,7 +318,7 @@ void main() {
         await tester.pumpAndSettle();
       });
 
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(uploadProgressDialogKey), findsNothing);
       expect(find.text("1 hochgeladen, 0 bereits vorhanden."), findsOneWidget);
       expect(listings, 2, reason: "the album was fetched again");
     });

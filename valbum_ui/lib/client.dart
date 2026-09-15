@@ -184,10 +184,6 @@ class UploadBatching {
 /// [interruptedUploadMessage].
 const String uploadConnectionLost = "Verbindung verloren";
 
-/// What the dialog says while batch [batch] of [batches] is on its way.
-String uploadBatchMessage(int batch, int batches) =>
-    "Paket $batch von $batches wird übertragen...";
-
 /// What the user is told about an upload that stopped halfway (issue #63).
 ///
 /// Plain words, and the raw exception is not among them: a `ClientException`
@@ -234,9 +230,6 @@ const String uploadCancelledMessage = "Der Upload wurde abgebrochen.";
 /// What the dialog says while the server is asked what it already holds.
 const String uploadAskingMessage = "Der Server wird gefragt...";
 
-/// What the dialog says while the contents are on their way.
-const String uploadTransferMessage = "Dateien werden übertragen...";
-
 /// What the dialog says once the body is handed over and the server's answer
 /// is still outstanding, see issue #59.
 ///
@@ -245,6 +238,116 @@ const String uploadTransferMessage = "Dateien werden übertragen...";
 /// still in flight, so the upload looked like it had happened and the album
 /// looked like it had refused it.
 const String uploadWaitingMessage = "Warte auf den Server...";
+
+/// What the dialog says while the images are on their way (issue #70).
+///
+/// The one measurement the person can check against what they picked: images.
+/// Not batches, not bytes, not requests — the report of #70 was that two
+/// different numbers were counted at once while the wheel only spun.
+String uploadImageCountMessage(int done, int total) =>
+    "$done von $total Bildern";
+
+/// What part of an upload is running, see [UploadProgress].
+enum UploadPhase {
+  /// The contents are being hashed, so that the server can be asked which of
+  /// them it already holds.
+  preparing,
+
+  /// The server is being asked exactly that.
+  asking,
+
+  /// The images are on their way; this is the only phase with a measurable
+  /// progress, see [UploadProgress.determinate].
+  transferring,
+
+  /// The last body is handed over and the server's answer is outstanding, see
+  /// [uploadWaitingMessage] and issue #59.
+  waiting,
+}
+
+/// How far an upload has got, in the one unit the person understands
+/// (issue #70).
+///
+/// The whole of what [VAlbumClient.uploadNew] reports: which phase is running,
+/// how many images of how many have arrived, and the [fraction] the wheel
+/// shows. The batches the transfer is cut into are transport and are never
+/// named here, see [UploadBatching].
+class UploadProgress {
+  /// What is running, see [UploadPhase].
+  final UploadPhase phase;
+
+  /// The images the server has *confirmed* — whole batches that answered.
+  ///
+  /// During [UploadPhase.preparing] this is the image being hashed instead:
+  /// that phase counts its way through the picked files and there is nothing
+  /// on the server yet.
+  final int imagesDone;
+
+  /// How many images are being uploaded.
+  ///
+  /// The number picked until the server has said which of them are new; from
+  /// then on the number that is actually transferred, so that the count the
+  /// person reads is the count that will arrive.
+  final int imagesTotal;
+
+  /// The transfer progress the wheel shows, in `[0, 1]`.
+  ///
+  /// It may move within a batch — the bytes of that batch mapped onto its
+  /// images, so that a single large batch still shows a moving wheel — but
+  /// never past what [imagesDone] will be once the batch answers, and never
+  /// 1.0 before the last answer has arrived: the dialog is closed by the code,
+  /// not by the value, see issue #59.
+  final double fraction;
+
+  const UploadProgress({
+    required this.phase,
+    required this.imagesDone,
+    required this.imagesTotal,
+    this.fraction = 0,
+  });
+
+  /// What the dialog shows before the upload has reported anything.
+  factory UploadProgress.start(int images) => UploadProgress(
+        phase: UploadPhase.preparing,
+        imagesDone: images > 0 ? 1 : 0,
+        imagesTotal: images,
+      );
+
+  /// Whether the wheel can show a value, or has to spin.
+  bool get determinate => phase == UploadPhase.transferring;
+
+  /// [fraction] as whole percent, for the number inside the wheel.
+  int get percent => (fraction * 100).round().clamp(0, 100);
+
+  /// The one line the dialog shows, see [uploadImageCountMessage].
+  String get line => switch (phase) {
+        UploadPhase.preparing =>
+          "Wird vorbereitet: $imagesDone von $imagesTotal...",
+        UploadPhase.asking => uploadAskingMessage,
+        UploadPhase.transferring =>
+          uploadImageCountMessage(imagesDone, imagesTotal),
+        UploadPhase.waiting => uploadWaitingMessage,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is UploadProgress &&
+      other.phase == phase &&
+      other.imagesDone == imagesDone &&
+      other.imagesTotal == imagesTotal &&
+      other.fraction == fraction;
+
+  @override
+  int get hashCode => Object.hash(phase, imagesDone, imagesTotal, fraction);
+
+  @override
+  String toString() =>
+      "UploadProgress(${phase.name}, $imagesDone/$imagesTotal, $fraction)";
+}
+
+/// The greatest [UploadProgress.fraction] reported while an answer is still
+/// outstanding, see [UploadProgress.fraction].
+const double uploadProgressCeiling = 0.99;
 
 /// Handle allowing to cancel a running upload.
 class UploadHandle {
@@ -938,15 +1041,18 @@ class VAlbumClient {
   /// stays arrived. A batch that fails after others succeeded throws an
   /// [UploadInterrupted] saying how much is on the server and how much is not.
   ///
-  /// [onProgress] reports the percentage of the transfer over all batches,
-  /// [onStatus] the phase in words. Hashing a hundred photos on a phone takes long enough that a
-  /// dialog showing nothing at all looks hung, so the hashing counts itself out
-  /// (issue #59); a caller that does not care simply leaves [onStatus] out.
+  /// [onProgress] reports one [UploadProgress] per step: the phase, how many
+  /// images the server has confirmed, and the fraction the wheel shows
+  /// (issue #70). One measurement, images — the batches are transport and are
+  /// never reported. Hashing a hundred photos on a phone takes long enough
+  /// that a dialog showing nothing at all looks hung, so the preparing counts
+  /// itself out (issue #59); a caller that does not care leaves [onProgress]
+  /// out, as the camera-roll sync does, which reports its own progress over
+  /// its own batches, see `camera_roll.dart`.
   Future<UploadSummary> uploadNew(
     List<String> path,
     List<UploadFile> files, {
-    void Function(int percent)? onProgress,
-    void Function(String message)? onStatus,
+    void Function(UploadProgress progress)? onProgress,
     UploadHandle? handle,
     UploadBatching batching = UploadBatching.standard,
   }) async {
@@ -956,15 +1062,22 @@ class VAlbumClient {
 
     var hashed = <UploadFile>[];
     for (var file in files) {
-      onStatus?.call("Wird vorbereitet: ${hashed.length + 1} von "
-          "${files.length}...");
+      onProgress?.call(UploadProgress(
+        phase: UploadPhase.preparing,
+        imagesDone: hashed.length + 1,
+        imagesTotal: files.length,
+      ));
       hashed.add(
         file.sha256 != null
             ? file
             : file.withHash(await sha256Of(file.openRead())),
       );
     }
-    onStatus?.call(uploadAskingMessage);
+    onProgress?.call(UploadProgress(
+      phase: UploadPhase.asking,
+      imagesDone: 0,
+      imagesTotal: files.length,
+    ));
 
     var known = <String>{};
     try {
@@ -994,61 +1107,70 @@ class VAlbumClient {
     ];
     var skipped = hashed.length - pending.length;
     if (pending.isEmpty) {
-      onProgress?.call(100);
+      // Nothing to transfer: everything the person picked is already there.
+      // The wheel is full because the work is done, not because a value said
+      // so — the caller closes the dialog, see issue #59.
+      onProgress?.call(const UploadProgress(
+        phase: UploadPhase.transferring,
+        imagesDone: 0,
+        imagesTotal: 0,
+        fraction: 1,
+      ));
       return UploadSummary(stored: 0, present: skipped);
     }
 
     var batches = batching.split(pending, (file) => file.length);
-    var totalBytes = 0;
-    for (var file in pending) {
-      totalBytes += file.length;
-    }
 
     var stored = 0;
     var present = skipped;
     var sentFiles = 0;
-    var sentBytes = 0;
-    var reported = -1;
-    // The percentage never runs backwards and reaches 100 exactly once, at the
-    // end: the dialog closes itself on 100, and it must not do so between two
-    // batches, see `AlbumState.uploadPicked`.
-    void report(int percent) {
-      if (percent > reported) {
-        reported = percent;
-        onProgress?.call(percent);
+    var images = pending.length;
+    var confirmed = 0;
+    var reported = -1.0;
+    // The fraction never runs backwards, and it reaches 1.0 exactly once, when
+    // the last batch has answered: everything before that is capped at
+    // [uploadProgressCeiling], because an answer is still outstanding.
+    void report(UploadPhase phase, double fraction, {bool finished = false}) {
+      var value = finished
+          ? fraction.clamp(0.0, 1.0)
+          : fraction.clamp(0.0, uploadProgressCeiling);
+      if (value < reported) {
+        value = reported;
       }
+      reported = value;
+      onProgress?.call(UploadProgress(
+        phase: phase,
+        imagesDone: confirmed,
+        imagesTotal: images,
+        fraction: value,
+      ));
     }
 
     for (var index = 0; index < batches.length; index++) {
       var batch = batches[index];
-      var batchBytes = 0;
-      for (var file in batch) {
-        batchBytes += file.length;
-      }
-      onStatus?.call(
-        batches.length == 1
-            ? uploadTransferMessage
-            : uploadBatchMessage(index + 1, batches.length),
-      );
-
-      var done = sentBytes;
-      // Only the last batch may reach 100: the caller shows the waiting phase
-      // there (and a progress dialog closes itself on its maximum), and that
-      // must not happen while three more batches are still to go.
+      // The images of this batch are what its byte progress may advance the
+      // wheel by — never further: what the wheel shows is bounded by what
+      // [UploadProgress.imagesDone] becomes once this batch answers.
+      var batchImages = batch.length;
       var last = index == batches.length - 1;
+      report(UploadPhase.transferring, confirmed / images);
+
       UploadResult result;
       try {
         result = await uploadFiles(
           folderUrl(path),
           batch,
           onProgress: (percent) {
-            if (totalBytes <= 0) {
-              return;
-            }
-            var overall =
-                (100 * (done + batchBytes * percent / 100) / totalBytes)
-                    .round();
-            report(!last && overall > 99 ? 99 : overall);
+            var within = (confirmed + batchImages * percent / 100) / images;
+            // The body of the *last* batch being out is the one wait the
+            // person is told about, see [uploadWaitingMessage] and issue #59;
+            // between batches the image count stays on the screen.
+            report(
+              last && percent >= 100
+                  ? UploadPhase.waiting
+                  : UploadPhase.transferring,
+              within,
+            );
           },
           handle: handle,
         );
@@ -1086,9 +1208,14 @@ class VAlbumClient {
       stored += batchStored;
       present += result.files.length - batchStored;
       sentFiles += batch.length;
-      sentBytes += batchBytes;
+      // Only now, with the answer in hand, are these images on the server.
+      confirmed += batchImages;
+      report(
+        UploadPhase.transferring,
+        confirmed / images,
+        finished: last,
+      );
     }
-    report(100);
     return UploadSummary(stored: stored, present: present);
   }
 

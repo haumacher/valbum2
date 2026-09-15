@@ -4,12 +4,12 @@
 /// dispatches to the view of that route.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import 'package:sn_progress_dialog/options/cancel.dart';
-import 'package:sn_progress_dialog/progress_dialog.dart';
 
 import 'album_model.dart';
 import 'album_view.dart';
@@ -35,6 +35,7 @@ import 'rights.dart';
 import 'routes.dart';
 import 'settings.dart';
 import 'share_session.dart';
+import 'upload_progress.dart';
 import 'urls.dart';
 import 'wakelock.dart';
 
@@ -1658,13 +1659,13 @@ class VAlbumState extends State<VAlbumView>
   /// creates a second copy of a photo. What happened is said on the screen —
   /// both what was uploaded and what was already there.
   ///
-  /// The dialog stays up until the server has answered (issue #59). It is
-  /// never told that it is at 100 %, because `sn_progress_dialog` closes
-  /// itself the moment its value reaches its maximum — which used to happen
-  /// while most of the photos were still in flight on a slow link, leaving the
-  /// user with an album that showed nothing and no dialog to explain it. The
-  /// last percent is therefore kept back and replaced by a message saying what
-  /// is being waited for; [ProgressDialog.close] below is what ends it.
+  /// The dialog stays up until the server has answered (issue #59) and is
+  /// closed by this code, never by a value reaching a maximum: a dialog that
+  /// ends at 100 % used to vanish while most of the photos were still in
+  /// flight on a slow link, leaving the user with an album that showed nothing
+  /// and no dialog to explain it. What it shows is one measurement, images,
+  /// and the wheel shows the percentage of the transfer, see
+  /// [UploadProgressDialog] and issue #70.
   Future<void> uploadPicked(List<UploadFile> uploads) async {
     if (refuseWhileOffline(context)) {
       return;
@@ -1689,19 +1690,42 @@ class VAlbumState extends State<VAlbumView>
   /// The upload itself, see [uploadPicked].
   Future<void> _uploadPicked(List<UploadFile> uploads) async {
     var handle = UploadHandle();
-    ProgressDialog pd = ProgressDialog(context: context);
-    pd.show(
-      msg: uploadTransferMessage,
-      max: 100,
-      closeWithDelay: 500,
-      cancel: Cancel(
-        cancelClicked: () {
-          if (kDebugMode) {
-            print("Aborting upload.");
-          }
-          handle.cancel();
-        },
-      ),
+    // What the dialog shows, fed by the one callback of [VAlbumClient.uploadNew]
+    // (issue #70): images, and the fraction the wheel draws.
+    var progress = ValueNotifier<UploadProgress>(
+      UploadProgress.start(uploads.length),
+    );
+    // The last count the person saw, so that a failure speaks of the same
+    // number the dialog showed, see [interruptedUploadMessage] and issue #64.
+    var shown = 0;
+    var navigator = Navigator.of(context, rootNavigator: true);
+    var open = true;
+    void closeDialog() {
+      if (!open) {
+        return;
+      }
+      open = false;
+      if (navigator.mounted) {
+        navigator.pop();
+      }
+    }
+
+    unawaited(
+      showDialog<void>(
+        context: context,
+        // Only the Cancel button ends this, and only by ending the upload:
+        // a tap beside the dialog must not hide a transfer that is running.
+        barrierDismissible: false,
+        builder: (context) => UploadProgressDialog(
+          progress: progress,
+          onCancel: () {
+            if (kDebugMode) {
+              print("Aborting upload.");
+            }
+            handle.cancel();
+          },
+        ),
+      ).then((_) => open = false),
     );
 
     if (kDebugMode) {
@@ -1710,26 +1734,24 @@ class VAlbumState extends State<VAlbumView>
 
     var messenger = ScaffoldMessenger.of(context);
     UploadSummary summary;
-    var phase = uploadTransferMessage;
     try {
       summary = await client.uploadNew(
         path,
         uploads,
-        onProgress: (percent) => pd.update(
-          // Never `max`: see the note above.
-          value: percent >= 100 ? 99 : percent,
-          msg: percent >= 100 ? uploadWaitingMessage : phase,
-        ),
-        // The phase the transfer is in, kept: the progress of a batch must not
-        // overwrite the line saying which batch it is, see issue #63.
-        onStatus: (message) {
-          phase = message;
-          pd.update(msg: message);
+        onProgress: (report) {
+          // Only what the server has confirmed: the preparing phase counts
+          // the file it is hashing, which is nothing anybody received, see
+          // [UploadProgress.imagesDone].
+          if (report.phase != UploadPhase.preparing) {
+            shown = report.imagesDone;
+          }
+          progress.value = report;
         },
         handle: handle,
       );
     } catch (error) {
-      pd.close(delay: 500);
+      closeDialog();
+      progress.dispose();
       // The server said why it refused, or the transfer was lost after some
       // of the photos had arrived (issue #63) — either way it is a plain
       // sentence, never the raw exception, which is in the diagnostics log.
@@ -1737,13 +1759,14 @@ class VAlbumState extends State<VAlbumView>
       // A lost connection is told in the same plain words, even where not a
       // single photo made it: a `ClientException` about a broken pipe says
       // nothing to the person holding the phone, and the raw text is in the
-      // diagnostics log where a bug report can fetch it.
+      // diagnostics log where a bug report can fetch it. The count is the one
+      // the dialog last showed, see [shown].
       var lost = partial == null && VAlbumClient.isTransportFailure(error)
           ? interruptedUploadMessage(
               cause: uploadConnectionLost,
-              onServer: 0,
+              onServer: shown,
               total: uploads.length,
-              remaining: uploads.length,
+              remaining: uploads.length - shown,
             )
           : null;
       _tell(
@@ -1764,7 +1787,8 @@ class VAlbumState extends State<VAlbumView>
       return;
     }
 
-    pd.close(delay: 500);
+    closeDialog();
+    progress.dispose();
 
     if (kDebugMode) {
       print("Upload complete: ${summary.message}");

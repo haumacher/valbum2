@@ -64,6 +64,11 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   `NoDeviceCodeScanner`, `FakeDeviceCodeScanner`, `DeviceCodeScannerScope`), with the
   `mobile_scanner`-backed implementation in `lib/device_code_scanner_plugin.dart`, reached only
   through the conditional import of `lib/platform.dart` — the web build never links it.
+- `lib/upload_progress.dart` — the dialog an upload runs behind (issue #70): one measurement,
+  images (`12 von 48 Bildern`, wrapping, never truncated), the percentage in a determinate wheel,
+  and a Cancel that asks the upload to stop. It never closes itself — the code that opened it
+  closes it once the server has answered (issue #59). What it shows is `UploadProgress`, the one
+  value `VAlbumClient.uploadNew` reports.
 - `lib/urls.dart` — derives the server URL from the page origin on the web
   (from the app base, not from the location: the location is the view, see
   `lib/routes.dart`).

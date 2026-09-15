@@ -72,10 +72,10 @@ void main() {
   const path = ["album"];
   final files = [sizedFile("a.jpg", 5000, 1), sizedFile("b.jpg", 7000, 2)];
 
-  test('nothing to send: no PUT, 100 once, the phases say so', () async {
+  test('nothing to send: no PUT, one full report, the phases say so',
+      () async {
     var log = DiagnosticsLog();
-    var progress = <int>[];
-    var status = <String>[];
+    var progress = <UploadProgress>[];
     var client = VAlbumClient(
       dataUrl: "http://pi/valbum/data",
       token: "t",
@@ -87,17 +87,19 @@ void main() {
       path,
       files,
       onProgress: progress.add,
-      onStatus: status.add,
     );
 
     expect(summary.stored, 0);
     expect(summary.present, 2);
-    expect(progress, [100]);
-    expect(status, [
+    // The lines the person reads, in order: the preparing counts images, and
+    // there is nothing to transfer, so the wheel is simply full (issue #70).
+    expect([for (var report in progress) report.line], [
       "Wird vorbereitet: 1 von 2...",
       "Wird vorbereitet: 2 von 2...",
       uploadAskingMessage,
+      "0 von 0 Bildern",
     ]);
+    expect(progress.last.fraction, 1);
     var text = messagesOf(log);
     expect(text, contains("POST http://pi/valbum/data/album/?action=check (bearer) -> 200"));
     expect(text, isNot(contains("PUT")));
@@ -106,8 +108,8 @@ void main() {
   test('an older server: everything is sent, progress follows the drain',
       () async {
     var log = DiagnosticsLog();
-    var progress = <int>[];
-    var status = <String>[];
+    var progress = <double>[];
+    var phases = <UploadPhase>[];
     var consumed = 0;
     var progressAtConsumption = <int, int>{};
     var client = VAlbumClient(
@@ -123,25 +125,34 @@ void main() {
     var summary = await client.uploadNew(
       path,
       files,
-      onProgress: (p) {
-        progress.add(p);
-        progressAtConsumption[p] = consumed;
+      onProgress: (report) {
+        phases.add(report.phase);
+        if (report.phase == UploadPhase.transferring ||
+            report.phase == UploadPhase.waiting) {
+          progress.add(report.fraction);
+          progressAtConsumption[report.percent] = consumed;
+        }
       },
-      onStatus: status.add,
     );
 
     expect(summary.stored, 2);
-    expect(status.last, uploadTransferMessage);
-    // Monotone, ends at 100, and 100 is reported exactly once.
+    // The last thing said is the count of the images that arrived, not a word
+    // about batches or bytes (issue #70).
+    expect(progress.last, 1.0);
+    // Monotone, ends at 1.0, and 1.0 is reported exactly once.
     for (var i = 1; i < progress.length; i++) {
       expect(progress[i], greaterThanOrEqualTo(progress[i - 1]));
     }
-    expect(progress.where((p) => p == 100), hasLength(1));
-    expect(progress.last, 100);
+    expect(progress.where((p) => p == 1.0), hasLength(1));
+    // The one wait the person is told about is the last body being out, see
+    // issue #59.
+    expect(phases, contains(UploadPhase.waiting));
     // The client never runs far ahead of the server: when it said 50 %, the
     // server had received a substantial part already (the pull is what is
     // counted, with one chunk of slack at most).
-    var half = progress.firstWhere((p) => p >= 50);
+    var half = progressAtConsumption.keys.where((p) => p >= 50).reduce(
+          (a, b) => a < b ? a : b,
+        );
     expect(progressAtConsumption[half]!, greaterThan(0));
     var text = messagesOf(log);
     expect(text, contains("?action=check -> 404"));
