@@ -19,15 +19,17 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber.Exception;
@@ -68,18 +70,26 @@ public class PreviewCache {
 	 */
 	private static final double MAX_PORTRAIT_UNIT_WIDTH = 0.75;
 
-	private static final long LAST_UPDATE = lastUpdate();
+	/**
+	 * Time of the last update that required to re-build preview images:
+	 * 2022-05-15 13:30:00 in <code>Europe/Berlin</code>.
+	 *
+	 * <p>
+	 * A constant, computed from an explicit zone rather than parsed from a literal: the former
+	 * {@link java.text.SimpleDateFormat} pattern resolved the zone name <code>MEST</code> only
+	 * on a runtime whose locale data, default locale and default time zone happened to know it,
+	 * and warned and fell back to 0 everywhere else (issue #67) — which invalidated every cached
+	 * preview.
+	 * </p>
+	 */
+	static final long LAST_UPDATE =
+		ZonedDateTime.of(2022, 5, 15, 13, 30, 0, 0, ZoneId.of("Europe/Berlin")).toInstant().toEpochMilli();
 
 	/**
 	 * Time of the last update that required to re-build preview images.
 	 */
 	public static long lastUpdate() {
-		try {
-			return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss zzzz").parse("2022-05-15 13:30:00 MEST").getTime();
-		} catch (ParseException ex) {
-			Logger.getLogger(PreviewCache.class.getName()).log(Level.WARNING, "Failed to parse update time.", ex);
-			return 0L;
-		}
+		return LAST_UPDATE;
 	}
 
 	/**
@@ -127,45 +137,146 @@ public class PreviewCache {
 		return JPG;
 	}
 
+	/**
+	 * Creates the preview of the given image.
+	 *
+	 * <p>
+	 * The original is never decoded at full resolution: a phone photo of 50 megapixels would need
+	 * 150-200&nbsp;MB of heap for one request and exhausted the small heap of the deployment
+	 * (issue #68). The metadata already know the original's size before a pixel is read, so the
+	 * reader is asked for a subsampled raster (see {@link #subsampling(int, int, int, int)}) that
+	 * is at most twice the preview in each dimension, whatever the original's size. The scale and
+	 * orientation transform below is therefore computed against the raster actually decoded, not
+	 * against the original's size.
+	 * </p>
+	 */
 	private static void createImagePreview(File file, File previewCache, String imgType)
 			throws ImageProcessingException, IOException, MetadataException {
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
-		ImageDimension dimension = getImageDimension(metadata);
+		int orientationCode = getImageOrientation(metadata);
+		Orientation orientation = Orientations.fromCode(orientationCode);
+		boolean swapped = orientationCode >= 5;
 
-		int origWidth = dimension.getWidth();
-		int origHeight = dimension.getHeight();
+		try (ImageInputStream in = ImageIO.createImageInputStream(file)) {
+			if (in == null) {
+				throw new IOException("Cannot open image data of '" + file.getName() + "'.");
+			}
+			Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
+			if (!readers.hasNext()) {
+				throw new IOException("No image reader for '" + file.getName() + "'.");
+			}
+			ImageReader reader = readers.next();
+			try {
+				reader.setInput(in, true, true);
 
-		int previewHeight;
+				ImageDimension dimension = imageDimension(metadata, reader, swapped);
+				int origWidth = dimension.getWidth();
+				int origHeight = dimension.getHeight();
 
-		double unitWidth = ((double) origWidth) / origHeight;
-		if (unitWidth <= MAX_PORTRAIT_UNIT_WIDTH) {
-			previewHeight = PREVIEW_HEIGHT_PORTRAIT;
-		} else {
-			previewHeight = PREVIEW_HEIGHT;
+				int previewHeight;
+				double unitWidth = ((double) origWidth) / origHeight;
+				if (unitWidth <= MAX_PORTRAIT_UNIT_WIDTH) {
+					previewHeight = PREVIEW_HEIGHT_PORTRAIT;
+				} else {
+					previewHeight = PREVIEW_HEIGHT;
+				}
+				int previewWidth = ((int) Math.round(previewHeight / dimension.getRatio()));
+
+				BufferedImage orig =
+					read(reader, subsampling(origWidth, origHeight, previewWidth, previewHeight));
+
+				// The raster as decoded, in the file's own (un-rotated) orientation.
+				int rawWidth = orig.getWidth();
+				int rawHeight = orig.getHeight();
+
+				// The same raster as the viewer sees it, which is what the preview box is filled with.
+				int decodedWidth = swapped ? rawHeight : rawWidth;
+				int decodedHeight = swapped ? rawWidth : rawHeight;
+
+				BufferedImage copy = new BufferedImage(previewWidth, previewHeight, imageType(orig));
+				Graphics2D g = (Graphics2D) copy.getGraphics();
+
+				double scaleX = Math.min(1.0, ((double) previewWidth) / decodedWidth);
+				double scaleY = Math.min(1.0, ((double) previewHeight) / decodedHeight);
+
+				AffineTransform tx = new AffineTransform();
+				tx.translate((previewWidth - rawWidth * scaleX) / 2, (previewHeight - rawHeight * scaleY) / 2);
+				tx.scale(scaleX, scaleY);
+				applyOrientation(tx, orientation, rawWidth / 2, rawHeight / 2);
+				g.setTransform(tx);
+
+				g.drawImage(orig, null, 0, 0);
+				ImageIO.write(copy, imgType, previewCache);
+			} finally {
+				reader.dispose();
+			}
 		}
+	}
 
-		BufferedImage orig = ImageIO.read(file);
-		int rawWidth = orig.getWidth();
-		int rawHeight = orig.getHeight();
+	/**
+	 * Decodes the first image of the given reader, sampling only every <code>n</code>-th pixel.
+	 */
+	private static BufferedImage read(ImageReader reader, int n) throws IOException {
+		ImageReadParam param = reader.getDefaultReadParam();
+		if (n > 1) {
+			param.setSourceSubsampling(n, n, 0, 0);
+		}
+		return reader.read(0, param);
+	}
 
-		int previewWidth = ((int) Math.round(previewHeight / dimension.getRatio()));
+	/**
+	 * The factor to sample the original with so that the decoded raster still covers the preview.
+	 *
+	 * <p>
+	 * The largest <code>n &gt;= 1</code> with <code>origWidth / n &gt;= previewWidth</code> and
+	 * <code>origHeight / n &gt;= previewHeight</code>, so that the decoded raster is never smaller
+	 * than the preview (nothing is up-scaled that was not up-scaled before) and never more than
+	 * twice its size in a dimension (a bounded amount of heap, independent of the original).
+	 * </p>
+	 */
+	static int subsampling(int origWidth, int origHeight, int previewWidth, int previewHeight) {
+		int n = Math.min(bound(origWidth, previewWidth), bound(origHeight, previewHeight));
+		return Math.max(1, n);
+	}
 
-		Orientation orientation = Orientations.fromCode(getImageOrientation(metadata));
+	private static int bound(int orig, int preview) {
+		if (orig <= 0 || preview <= 0) {
+			return 1;
+		}
+		return orig / preview;
+	}
 
-		BufferedImage copy = new BufferedImage(previewWidth, previewHeight, orig.getType());
-		Graphics2D g = (Graphics2D) copy.getGraphics();
+	/**
+	 * The original's dimension as the viewer sees it, from the metadata where they have it.
+	 *
+	 * <p>
+	 * Some files carry neither the JPEG frame header nor the PNG header the metadata are read
+	 * from; the reader's own idea of the size stands in, so that no file is ever decoded without
+	 * a bound on the raster.
+	 * </p>
+	 */
+	private static ImageDimension imageDimension(Metadata metadata, ImageReader reader, boolean swapped)
+			throws IOException {
+		try {
+			ImageDimension dimension = getImageDimension(metadata);
+			if (dimension.getWidth() > 0 && dimension.getHeight() > 0) {
+				return dimension;
+			}
+		} catch (MetadataException | IllegalArgumentException ex) {
+			// No dimension in the metadata, ask the reader below.
+		}
+		int rawWidth = reader.getWidth(0);
+		int rawHeight = reader.getHeight(0);
+		return swapped ? new ImageDimension(rawHeight, rawWidth) : new ImageDimension(rawWidth, rawHeight);
+	}
 
-		double scaleX = Math.min(1.0, ((double)previewWidth) / origWidth);
-		double scaleY = Math.min(1.0, ((double)previewHeight) / origHeight);
-
-		AffineTransform tx = new AffineTransform();
-		tx.translate((previewWidth - rawWidth * scaleX) / 2, (previewHeight - rawHeight * scaleY) / 2);
-		tx.scale(scaleX, scaleY);
-		applyOrientation(tx, orientation, rawWidth / 2, rawHeight / 2);
-		g.setTransform(tx);
-
-		g.drawImage(orig, null, 0, 0);
-		ImageIO.write(copy, imgType, previewCache);
+	/**
+	 * The type to create the preview raster with: the decoded raster's own type, unless the reader
+	 * produced a custom one that {@link BufferedImage} cannot be constructed with.
+	 */
+	private static int imageType(BufferedImage orig) {
+		int type = orig.getType();
+		return type == BufferedImage.TYPE_CUSTOM ? BufferedImage.TYPE_INT_RGB : type;
 	}
 
 	private static void applyOrientation(AffineTransform tx, Orientation orientation, int centerX, int centerY) {

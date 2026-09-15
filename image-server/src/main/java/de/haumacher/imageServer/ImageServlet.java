@@ -186,6 +186,18 @@ public class ImageServlet extends HttpServlet {
 	public static final String VIEW_AS_REFUSED =
 		"Unknown 'viewAs' value; use 'public' or 'members'.";
 
+	/**
+	 * The message a thumbnail request is answered with when the preview cannot be built.
+	 *
+	 * <p>
+	 * A failure of the preview generator is a failure of this server, not a missing file: the
+	 * former <code>404</code> told the app the image was gone and hid every such failure in the
+	 * server's log (issue #68). What is missing is answered with a <code>404</code> before the
+	 * preview is ever asked for, see {@link #doGet(HttpServletRequest, HttpServletResponse)}.
+	 * </p>
+	 */
+	public static final String PREVIEW_FAILED = "The preview of this image cannot be created.";
+
 	static {
 		LOG.info("Loading: " + ExifReaderPatch.class);
 	}
@@ -2491,7 +2503,7 @@ public class ImageServlet extends HttpServlet {
 				data = PreviewCache.createPreview(pathInfo.toFile());
 			} catch (PreviewException ex) {
 				LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
-				error404(context);
+				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, PREVIEW_FAILED);
 				return;
 			}
 			serveData(context, data, "image/jpeg");
