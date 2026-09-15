@@ -198,8 +198,6 @@ void main() {
       await tester.longPress(find.text("Zoo"));
       await tester.pumpAndSettle();
 
-      expect(find.text("Remove from my albums"), findsNothing);
-      expect(find.text("Share with…"), findsNothing);
       expect(find.text("Share link…"), findsNothing);
       expect(find.text("Move to…"), findsNothing);
     });

@@ -241,7 +241,6 @@ class AlbumContentState extends State<AlbumContent>
       client,
       widget.albumState.path,
       rights,
-      isGuest: CallerInfo.isGuestPeek(context),
       // A caller the server says may hand out no links is not asked about
       // them either; a caller nobody named is asked as before, see issue #85.
       mayShare: _permission.mayShare || !_permission.named,
@@ -259,12 +258,6 @@ class AlbumContentState extends State<AlbumContent>
   void didChangeDependencies() {
     super.didChangeDependencies();
     share = ShareSession.of(context);
-    // The server answers who is calling after the first build, so the guest
-    // may only be known now — and a guest shares nothing of their own, see
-    // [couldManageGrants].
-    if (_mayShare && CallerInfo.isGuestCaller(context)) {
-      _mayShare = false;
-    }
   }
 
   @override
@@ -858,13 +851,6 @@ class AlbumContentState extends State<AlbumContent>
                     tooltip: "Album properties",
                     icon: const Icon(Icons.tune),
                   ),
-                if (editMode && _mayShare)
-                  IconButton(
-                    key: const Key("share-with"),
-                    onPressed: shareAlbum,
-                    tooltip: "Share with…",
-                    icon: const Icon(Icons.share),
-                  ),
                 if (editMode)
                   IconButton(
                     onPressed: save,
@@ -942,8 +928,6 @@ class AlbumContentState extends State<AlbumContent>
             ),
             const PopupMenuDivider(),
           ],
-          if (_mayShare)
-            menuItem(Icons.share, "Share with…", (_) => shareAlbum()),
           if (_mayShare)
             menuItem(Icons.link, "Share link…", (_) => shareAlbumLink()),
           // An edit like every other one: offered inside the edit session, so
@@ -1101,14 +1085,6 @@ class AlbumContentState extends State<AlbumContent>
       widget.albumState.reload();
     }
   }
-
-  /// Opens the share dialog on this album, see issue #49.
-  void shareAlbum() => shareWith(
-        context: context,
-        client: client,
-        path: widget.albumState.path,
-        label: "'${widget.album.title}'",
-      );
 
   /// Opens the share-link dialog on this album, see issue #51.
   void shareAlbumLink() => shareLinksOf(

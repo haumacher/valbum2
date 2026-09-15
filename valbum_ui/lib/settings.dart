@@ -28,7 +28,6 @@ import 'client.dart';
 import 'device_code_payload.dart';
 import 'device_code_scanner.dart';
 import 'diagnostics.dart';
-import 'groups_view.dart';
 import 'invitation.dart';
 import 'manage_view.dart';
 import 'offline.dart';
@@ -1438,14 +1437,12 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
               if (offer != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  "${userDisplayName(offer.invitedBy)} invited you to this "
-                  "album server as a ${invitationRoleName(offer.role)}.",
+                  invitationHeadline(offer.invitedBy, offer.role),
                   key: const Key("settings.invitation.offer"),
                 ),
                 if (offer.note.trim().isNotEmpty)
                   Text(offer.note.trim(),
                       key: const Key("settings.invitation.note")),
-                if (offer.role == roleGuest) const Text(guestRoleExplanation),
               ],
               if (problem != null) ...[
                 const SizedBox(height: 8),
@@ -1501,12 +1498,6 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
             icon: const Icon(Icons.person_add),
             label: const Text("Invite…"),
           ),
-          OutlinedButton.icon(
-            key: groupsButtonKey,
-            onPressed: client == null ? null : () => _openGroups(client),
-            icon: const Icon(Icons.group),
-            label: const Text("Groups…"),
-          ),
         ],
       ),
       // What became of the invitations one handed out: the administrator is
@@ -1561,10 +1552,6 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       ),
     ];
   }
-
-  /// Opens the screen managing the caller's groups, see issue #55.
-  Future<void> _openGroups(VAlbumClient client) =>
-      openGroupsScreen(context, client);
 
   /// Opens the dialog issuing an invitation at the *saved* server.
   ///

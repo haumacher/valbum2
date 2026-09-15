@@ -23,7 +23,9 @@ import 'devices_test.dart'
 /// An invitation as the server lists it.
 String invitationEntry(
   String id, {
-  String role = "member",
+  String role = "edit",
+  String clearance = "all",
+  bool mayShare = true,
   String note = "",
   String expires = "2099-12-24T17:00:00Z",
   String invitedBy = "bob",
@@ -31,7 +33,8 @@ String invitationEntry(
   String usedBy = "",
   String revoked = "",
 }) =>
-    '{"id": "$id", "role": "$role", "note": "$note", "expires": "$expires", '
+    '{"id": "$id", "role": "$role", "clearance": "$clearance", '
+    '"mayShare": $mayShare, "note": "$note", "expires": "$expires", '
     '"invitedBy": "$invitedBy", "created": "2026-09-13T10:00:00Z", '
     '"used": "$used", "usedBy": "$usedBy", "revoked": "$revoked"}';
 
@@ -42,7 +45,14 @@ String invitationList(List<String> entries) =>
 /// The list the tests start from: one open, one accepted, one withdrawn.
 String mixedInvitations() => invitationList([
       invitationEntry("i1", note: "Aunt Mary"),
-      invitationEntry("i2", role: "guest", expires: "", invitedBy: ""),
+      invitationEntry(
+        "i2",
+        role: "view",
+        clearance: "public",
+        mayShare: false,
+        expires: "",
+        invitedBy: "",
+      ),
       invitationEntry("i3", used: "2026-09-14T08:00:00Z", usedBy: "dora"),
       invitationEntry("i4", revoked: "2026-09-14T09:00:00Z"),
     ]);
@@ -103,12 +113,21 @@ void main() {
     expect(find.byKey(const Key("invitation-i3")), findsNothing);
     expect(find.byKey(const Key("invitation-i4")), findsNothing);
 
-    expect(find.text("As a member by bob"), findsOneWidget);
+    // What the invited person will be allowed, in the words the settings use
+    // about the caller themselves (issue #85).
+    expect(
+      find.text("may edit the albums — sees all images — may share links — "
+          "invited by bob"),
+      findsOneWidget,
+    );
     expect(find.textContaining("Aunt Mary"), findsOneWidget);
     expect(find.textContaining("expires Dec 24, 2099"), findsOneWidget);
     // An invitation without an instant lives forever, and says so.
     expect(find.textContaining("expires: never"), findsOneWidget);
-    expect(find.text("As a guest"), findsOneWidget);
+    expect(
+      find.text("may look — sees the public images — no links"),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an expired invitation is listed as expired', (tester) async {

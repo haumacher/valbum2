@@ -198,6 +198,42 @@ class CallerPermission {
   String _sharing() =>
       mayShare ? "you may share links" : "you may not share links";
 
+  /// What this permission allows, in the same three clauses but about
+  /// somebody else — for a row of the users or invitations list (issue #85).
+  String get phrase => "${roleWord(role)} — ${clearanceWord(clearance)} — "
+      "${mayShare ? "may share links" : "no links"}";
+
+  /// What the role [name] allows, in words.
+  static String roleWord(String name) => switch (normalizeRole(name)) {
+        roleAdmin => "manages this server",
+        roleEdit => "may edit the albums",
+        roleContribute => "may add photos",
+        roleView => "may look",
+        _ => "unknown role",
+      };
+
+  /// What the role [name] allows, said to the person it is about.
+  ///
+  /// Empty for a role the app does not know: a sentence that names nothing is
+  /// better than one that promises the wrong thing, see [invitationRoleName].
+  static String roleWordYou(String name) => switch (normalizeRole(name)) {
+        roleAdmin => "you manage this server",
+        roleEdit => "you may edit the albums",
+        roleContribute => "you may add photos",
+        roleView => "you may look at the albums",
+        _ => "",
+      };
+
+  /// What the clearance [name] shows, in words.
+  ///
+  /// [role] is what an empty clearance is read as, see [normalizeClearance].
+  static String clearanceWord(String name, {String role = ""}) =>
+      switch (normalizeClearance(name, normalizeRole(role))) {
+        clearanceAll => "sees all images",
+        clearanceNonPrivate => "sees all but the private images",
+        _ => "sees the public images",
+      };
+
   @override
   bool operator ==(Object other) =>
       other is CallerPermission &&

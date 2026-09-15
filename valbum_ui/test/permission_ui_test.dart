@@ -392,7 +392,6 @@ void main() {
 
       await openMenu(tester);
 
-      expect(find.text("Share with…"), findsOneWidget);
       expect(find.text("Share link…"), findsOneWidget);
     });
 
@@ -405,7 +404,6 @@ void main() {
 
       await openMenu(tester);
 
-      expect(find.text("Share with…"), findsNothing);
       expect(find.text("Share link…"), findsNothing);
       // What is left is what an editor may do with the folder itself.
       expect(find.text("Create album"), findsOneWidget);
@@ -423,7 +421,6 @@ void main() {
 
       await openMenu(tester);
 
-      expect(find.text("Share with…"), findsOneWidget);
       expect(find.text("Share link…"), findsOneWidget);
     });
   });
