@@ -100,6 +100,24 @@ public class GenerateTestAlbum extends TestCase {
 	 *        The <code>.mp4</code> file to (re-)create.
 	 */
 	public static void recordTinyVideo(File target) throws Exception {
+		recordTinyVideo(target, null);
+	}
+
+	/**
+	 * Records the tiny video of {@link #recordTinyVideo(File)} with a recording time.
+	 *
+	 * <p>
+	 * The time lands in the <code>mvhd</code> creation time of the container, which is where a
+	 * video says when it was recorded and where the server reads it (issue #72). Without one, the
+	 * field stays at the QuickTime epoch 1904-01-01 and the server falls back to the file's
+	 * modification time.
+	 * </p>
+	 *
+	 * @param creationTime
+	 *        The recording time as FFmpeg spells it, e.g. <code>2005-08-24T12:00:00Z</code>;
+	 *        <code>null</code> to write none.
+	 */
+	public static void recordTinyVideo(File target, String creationTime) throws Exception {
 		int width = 160;
 		int height = 120;
 		int frames = 10;
@@ -110,6 +128,9 @@ public class GenerateTestAlbum extends TestCase {
 			recorder.setPixelFormat(org.bytedeco.ffmpeg.global.avutil.AV_PIX_FMT_YUV420P);
 			recorder.setFrameRate(5);
 			recorder.setVideoQuality(30);
+			if (creationTime != null) {
+				recorder.setMetadata("creation_time", creationTime);
+			}
 			recorder.start();
 
 			try (Java2DFrameConverter converter = new Java2DFrameConverter()) {

@@ -23,6 +23,8 @@ import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.util.Orientations;
 import java.io.File;
 import java.io.IOException;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.Date;
 import java.util.logging.Logger;
 
@@ -63,11 +65,7 @@ public class ImageData extends ImagePart {
 		ImageData result = new ImageData(album, file, file.getName());
 
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
-		Date date = date(metadata);
-		if (date == null) {
-			date = new Date(file.lastModified());
-		}
-		result.setDate(date.getTime());
+		result.setDate(date(metadata, file).getTime());
 
 		JpegDirectory jpegDirectory = metadata.getFirstDirectoryOfType(JpegDirectory.class);
 		if (jpegDirectory != null) {
@@ -173,12 +171,88 @@ public class ImageData extends ImagePart {
 		throw new IllegalArgumentException("Neither JPG, PNG, MOV, nor MP4 file: " + file);
 	}
 
-	private static Date date(Metadata metadata) {
+	/**
+	 * The earliest time a container time is taken for a recording time, 1990-01-01 UTC.
+	 *
+	 * <p>
+	 * An mp4 or QuickTime time is counted from 1904-01-01, so a field that was never filled in
+	 * reads as that date (metadata-extractor hands it out as a {@link Date} like any other, it
+	 * does not leave the tag out): the fixture video FFmpeg writes without a
+	 * <code>creation_time</code> is such a file. Nothing in a photo album was recorded before
+	 * consumer camcorders, so a container time below this bound is not a recording time but an
+	 * unset or broken field, and the file's modification time is the better guess. The bound is
+	 * deliberately a long way below any digital video and a long way above the 1904 epoch, so that
+	 * it never has to be adjusted for a real recording.
+	 * </p>
+	 */
+	public static final long EARLIEST_RECORDING =
+		ZonedDateTime.of(1990, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli();
+
+	/**
+	 * When the given file was taken or recorded.
+	 *
+	 * <p>
+	 * A photo says so in its EXIF data. A video has no EXIF data at all, so before issue #72 every
+	 * video got its modification time — for an uploaded or moved video the time it arrived on the
+	 * server, later than every photo of the trip, which sorted all videos behind all photos. The
+	 * recording time of a video is in its container instead, see {@link #recordingTime(Metadata)}.
+	 * </p>
+	 *
+	 * @return The date to sort the part by, never <code>null</code>: the file's modification time
+	 *         when neither the EXIF data nor the container say anything usable.
+	 */
+	private static Date date(Metadata metadata, File file) {
 		ExifSubIFDDirectory directory = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
-		if (directory == null) {
+		if (directory != null) {
+			Date dateOriginal = directory.getDateOriginal();
+			if (dateOriginal != null) {
+				return dateOriginal;
+			}
+		}
+		Date recorded = recordingTime(metadata);
+		if (recorded != null) {
+			return recorded;
+		}
+		return new Date(file.lastModified());
+	}
+
+	/**
+	 * When the video was recorded, from the <code>mvhd</code> creation time of its container.
+	 *
+	 * <p>
+	 * The time is taken as the library hands it out, exactly as the EXIF date is: the box is
+	 * defined as UTC, but phones write local time into it and there is nothing in the file that
+	 * says which of the two it is, so guessing would only move the error around.
+	 * </p>
+	 *
+	 * @return <code>null</code> if this is no video, or its container carries no usable time, see
+	 *         {@link #EARLIEST_RECORDING}.
+	 */
+	private static Date recordingTime(Metadata metadata) {
+		Mp4Directory mp4Directory = metadata.getFirstDirectoryOfType(Mp4Directory.class);
+		if (mp4Directory != null) {
+			Date created = plausible(mp4Directory.getDate(Mp4Directory.TAG_CREATION_TIME));
+			if (created != null) {
+				return created;
+			}
+		}
+		QuickTimeDirectory movDirectory = metadata.getFirstDirectoryOfType(QuickTimeDirectory.class);
+		if (movDirectory != null) {
+			return plausible(movDirectory.getDate(QuickTimeDirectory.TAG_CREATION_TIME));
+		}
+		return null;
+	}
+
+	/** The given container time, or <code>null</code> if it cannot be a recording time. */
+	private static Date plausible(Date date) {
+		if (date == null) {
 			return null;
 		}
-		return directory.getDateOriginal();
+		if (date.getTime() < EARLIEST_RECORDING) {
+			LOG.fine("Ignoring the container time " + date + ": before " + new Date(EARLIEST_RECORDING) + ".");
+			return null;
+		}
+		return date;
 	}
 
 }
