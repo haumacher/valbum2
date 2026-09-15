@@ -159,6 +159,10 @@ delivery:
   listing) for the album path — the app then renders a listing where the probe expects an album,
   and the route looks right while the screen looks wrong. Match on `Uri.decodeComponent(path)` or
   on the date prefix.
+- **A `curl -d` POST against the servlet needs `-H 'Content-Type: application/json'`.** Without it
+  curl sends `application/x-www-form-urlencoded`, and the servlet's first `getParameter("action")`
+  makes Jetty consume the body as form fields — `readBody` then sees nothing and every pairing or
+  action POST answers 400 "The pairing request cannot be read." That is the probe, not the server.
 - **The harness kills tracked long commands under memory pressure** ("stopped because the system
   is running low on memory"), and an Android build (Gradle + Kotlin daemons) trips it even with
   headroom. Run `flutter build apk` detached — `nohup bash -c '... > $S/apk.log 2>&1; echo $? >
