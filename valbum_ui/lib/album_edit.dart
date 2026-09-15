@@ -754,6 +754,47 @@ List<ImagePart> selectedImages(AlbumInfo album, Set<AlbumPart> selection) {
   return result;
 }
 
+/// The images of the album that were taken by the same camera as [reference]
+/// (issue #78).
+///
+/// The parts to *add* to the selection, so that one gesture gathers everything
+/// one device contributed to an album that was fed from several — the
+/// selection the recording time adjustment of issue #77 then acts on.
+///
+/// [ImagePart.camera] is a label the server derived from the EXIF make and
+/// model, and it is only ever compared for equality: an image whose label is
+/// empty (a video, an original without the tags, a part written before the
+/// field existed) matches nothing at all, not even another image without a
+/// label. The reference itself is part of the answer where it carries one.
+///
+/// An image inside an [ImageGroup] joins the answer *as the image*, not as its
+/// group: that is how a selection names a group member everywhere else (see
+/// [selectedImages]), and a group holding photos of two cameras must not be
+/// adjusted as a whole because one of them matched. The group's tile is
+/// therefore not marked — what is selected is the image, and the edit that
+/// follows says how many images it applies to.
+Set<AlbumPart> sameCamera(AlbumInfo album, ImagePart reference) {
+  var result = Set<AlbumPart>.identity();
+  var label = reference.camera;
+  if (label.isEmpty) {
+    return result;
+  }
+  for (var part in album.parts) {
+    if (part is ImagePart) {
+      if (part.camera == label) {
+        result.add(part);
+      }
+    } else if (part is ImageGroup) {
+      for (var image in part.images) {
+        if (image.camera == label) {
+          result.add(image);
+        }
+      }
+    }
+  }
+  return result;
+}
+
 /// The image the recording time adjustment is stated relative to (issue #77).
 ///
 /// The tile the action was invoked on, if that tile shows a selected image (a
