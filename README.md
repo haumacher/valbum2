@@ -71,6 +71,7 @@ Options:
 | `--webroot <dir>` | Serve the web app from a directory instead of the bundled copy (development) | bundled |
 | `--auth off\|writes\|all` | What requires a paired device: nothing, changes and uploads, or every request | `writes` |
 | `--pairing-secret <secret>` | The secret a device presents to be paired; a random one is printed at start-up if none is given | generated |
+| `--preview-threads <n>` | How many thumbnails are generated at the same time; serving an already cached thumbnail is never throttled (the system property `valbum.previewThreads` does the same) | number of processors |
 | `--migrate-to-user <name>` | One-time: move the albums at the base folder into a folder `<name>` and make it the library owner's space (see below); the server does not start afterwards | none |
 
 ### Signing in a device
@@ -312,7 +313,7 @@ Alben, jedes Album ein Ordner mit Photos und Videos. VAlbum fasst Deine Dateien 
 
 Bauen: `flutter build web` in `valbum_ui/`, dann `mvn clean install` im Hauptverzeichnis (JDK 21 und
 Maven nötig). Starten: `java -jar image-server-jar-with-dependencies.jar --basepath /pfad/zu/den/photos`,
-danach http://localhost:8080/ im Browser öffnen. Optionen: `--port`, `--contextpath`, `--webroot`, `--auth`, `--pairing-secret`.
+danach http://localhost:8080/ im Browser öffnen. Optionen: `--port`, `--contextpath`, `--webroot`, `--auth`, `--pairing-secret`, `--preview-threads`.
 
 Standardmäßig lehnt der Server anonyme Änderungen ab (`--auth writes`). Beim Start gibt er ein
 Kopplungsgeheimnis aus; damit koppelst Du in den Server-Einstellungen der App dieses Gerät, das

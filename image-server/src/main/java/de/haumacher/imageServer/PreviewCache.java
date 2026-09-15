@@ -19,6 +19,9 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
@@ -26,6 +29,12 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
@@ -92,6 +101,136 @@ public class PreviewCache {
 		return LAST_UPDATE;
 	}
 
+	private static final Logger LOG = Logger.getLogger(PreviewCache.class.getName());
+
+	/**
+	 * The system property overriding how many previews are generated at the same time.
+	 */
+	public static final String PREVIEW_THREADS_PROPERTY = "valbum.previewThreads";
+
+	/** The name a preview is written under before it is moved into place. */
+	static final String TMP_SUFFIX = ".tmp";
+
+	/**
+	 * How many previews may be generated at the same time.
+	 *
+	 * <p>
+	 * An album page asks for all of its thumbnails at once and Jetty answers on as many threads as
+	 * it has (200 by default), so without a limit a page of a hundred fresh photos starts a hundred
+	 * decodes, which on a small machine thrashes CPU, disk and the decoder's own buffers for no
+	 * gain: the previews arrive no earlier, they only arrive all late.
+	 * </p>
+	 *
+	 * <p>
+	 * A fixed number of permits, deliberately <em>not</em> a limit derived from free memory:
+	 * {@link Runtime#freeMemory()} reports the state the collector happens to be in, not what the
+	 * next decode needs, and a decision built on it is neither testable nor reproducible. With the
+	 * decode itself bounded by the preview size (issue #68) the memory of one generation is known
+	 * in advance, so the count is there to spend CPU and disk sensibly and can be chosen for the
+	 * machine: {@link Runtime#availableProcessors()}, overridable by the system property
+	 * {@value #PREVIEW_THREADS_PROPERTY} or the server's <code>--preview-threads</code> option.
+	 * </p>
+	 *
+	 * <p>
+	 * Only the <em>generation</em> of a preview takes a permit. Serving one that is already in
+	 * the cache is a file read like any other and never waits, so a warm album is answered at full
+	 * speed no matter what the limit is.
+	 * </p>
+	 */
+	private static volatile Semaphore permits = new Semaphore(configuredPermits(), true);
+
+	/** How many permits {@link #permits} was created with, for the start-up message. */
+	private static volatile int permitCount = permits.availablePermits();
+
+	/**
+	 * The generations currently in flight, by the absolute path of the preview they produce.
+	 *
+	 * <p>
+	 * Two requests for the same not-yet-cached preview (a listing tile and the album, or two
+	 * devices) would otherwise both generate it and both write the same file, so one of them could
+	 * serve a half-written image. The second request finds the first one's future here and waits
+	 * for it instead of doing the work again; a failure reaches every waiter as the same
+	 * {@link PreviewException}, and the entry is dropped afterwards so that a later request may
+	 * try again.
+	 * </p>
+	 */
+	private static final ConcurrentHashMap<String, CompletableFuture<Void>> IN_FLIGHT = new ConcurrentHashMap<>();
+
+	/** Observation points of the generation, attached by the concurrency tests only. */
+	interface Hook {
+
+		/** A permit for generating the preview of the given original was taken. */
+		void permitAcquired(File file);
+
+		/** The generation of the given original begins, inside the permit. */
+		void generationStarted(File file);
+
+		/** The generation of the given original has ended, successfully or not. */
+		void generationFinished(File file);
+
+	}
+
+	private static final Hook NO_HOOK = new Hook() {
+		@Override
+		public void permitAcquired(File file) {
+			// Nothing to observe in production.
+		}
+
+		@Override
+		public void generationStarted(File file) {
+			// Nothing to observe in production.
+		}
+
+		@Override
+		public void generationFinished(File file) {
+			// Nothing to observe in production.
+		}
+	};
+
+	private static volatile Hook hook = NO_HOOK;
+
+	/** How many previews may be generated at the same time. */
+	static int permitCount() {
+		return permitCount;
+	}
+
+	/**
+	 * Sets how many previews may be generated at the same time, see {@link #permits}.
+	 *
+	 * <p>
+	 * Called at start-up from the command line, and by the tests. Not while previews are being
+	 * generated: the permits in flight are given back to the semaphore that handed them out.
+	 * </p>
+	 */
+	public static void setPermitCount(int count) {
+		if (count < 1) {
+			throw new IllegalArgumentException("At least one preview must be generated at a time: " + count);
+		}
+		permits = new Semaphore(count, true);
+		permitCount = count;
+	}
+
+	/** Attaches an observer of the generation, <code>null</code> to detach. Tests only. */
+	static void setHook(Hook newHook) {
+		hook = newHook == null ? NO_HOOK : newHook;
+	}
+
+	private static int configuredPermits() {
+		String value = System.getProperty(PREVIEW_THREADS_PROPERTY);
+		if (value != null && !value.isEmpty()) {
+			try {
+				int count = Integer.parseInt(value.trim());
+				if (count >= 1) {
+					return count;
+				}
+				LOG.warning("Ignoring '" + PREVIEW_THREADS_PROPERTY + "=" + value + "': not a positive number.");
+			} catch (NumberFormatException ex) {
+				LOG.warning("Ignoring '" + PREVIEW_THREADS_PROPERTY + "=" + value + "': not a number.");
+			}
+		}
+		return Runtime.getRuntime().availableProcessors();
+	}
+
 	/**
 	 * Lookup or creates the preview data for the given image or video file.
 	 */
@@ -102,32 +241,160 @@ public class PreviewCache {
 
 		File cacheDir = new File(file.getParentFile(), CACHE_DIRECTORY_NAME);
 		File previewCache = new File(cacheDir, "preview-" + fileName + (suffix.equals(imageType) ? "" : "." + imageType));
-		if (!previewCache.exists() || file.lastModified() > previewCache.lastModified() || previewCache.lastModified() < LAST_UPDATE) {
-			if (!cacheDir.exists()) {
-				cacheDir.mkdir();
-			}
-			switch (suffix) {
-				case JPG:
-				case JPEG:
-				case PNG:
-					try {
-						createImagePreview(file, previewCache, imageType);
-					} catch (ImageProcessingException | MetadataException | IOException ex) {
-						throw new PreviewException("Cannot create image preview for '" + fileName  + "'.", ex);
-					}
-					break;
-				case MP4:
-					try {
-						createVideoPreview(file, previewCache);
-					} catch (ImageProcessingException | MetadataException | IOException ex) {
-						throw new PreviewException("Cannot create video preview for '" + fileName  + "'.", ex);
-					}
-					break;
-				default:
-					throw new PreviewException("Unsupported format: " + fileName);
-			}
+		if (!upToDate(file, previewCache)) {
+			generate(file, previewCache, suffix, imageType);
 		}
 		return previewCache;
+	}
+
+	/**
+	 * Whether the cached preview is there and still describes the given original.
+	 *
+	 * <p>
+	 * A preview from before the last change of the generator is stale, see {@link #LAST_UPDATE}.
+	 * The temporary file a generation writes is never mistaken for a preview: it is named
+	 * {@value #TMP_SUFFIX} behind the preview's own name and nothing ever looks it up.
+	 * </p>
+	 */
+	private static boolean upToDate(File file, File previewCache) {
+		if (!previewCache.exists()) {
+			return false;
+		}
+		long previewTime = previewCache.lastModified();
+		return file.lastModified() <= previewTime && previewTime >= LAST_UPDATE;
+	}
+
+	/**
+	 * Generates the preview, or waits for the generation somebody else has already started.
+	 */
+	private static void generate(File file, File previewCache, String suffix, String imageType)
+			throws PreviewException {
+		String key = previewCache.getAbsolutePath();
+		CompletableFuture<Void> mine = new CompletableFuture<>();
+		CompletableFuture<Void> running = IN_FLIGHT.putIfAbsent(key, mine);
+		if (running != null) {
+			await(running, previewCache);
+			return;
+		}
+		try {
+			build(file, previewCache, suffix, imageType);
+			mine.complete(null);
+		} catch (PreviewException | RuntimeException | Error ex) {
+			mine.completeExceptionally(ex);
+			throw ex;
+		} finally {
+			IN_FLIGHT.remove(key, mine);
+		}
+	}
+
+	/**
+	 * Waits for the generation that is already in flight and shares its outcome.
+	 */
+	private static void await(CompletableFuture<Void> running, File previewCache) throws PreviewException {
+		try {
+			running.get();
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			throw new PreviewException("Interrupted while waiting for the preview '"
+				+ previewCache.getName() + "'.", ex);
+		} catch (ExecutionException ex) {
+			Throwable cause = ex.getCause();
+			if (cause instanceof PreviewException) {
+				// The same failure the generating request is answered with.
+				throw (PreviewException) cause;
+			}
+			if (cause instanceof RuntimeException) {
+				throw (RuntimeException) cause;
+			}
+			if (cause instanceof Error) {
+				throw (Error) cause;
+			}
+			throw new PreviewException("Cannot create the preview '" + previewCache.getName() + "'.", cause);
+		}
+	}
+
+	/**
+	 * Builds the preview, holding one of the {@link #permits}.
+	 *
+	 * <p>
+	 * The preview is written to a temporary name beside it and moved into place when it is
+	 * complete, so that a request being served the preview at the same time never reads a
+	 * half-written file. A temporary file left behind by a crash is overwritten by the next
+	 * generation and is never served.
+	 * </p>
+	 */
+	private static void build(File file, File previewCache, String suffix, String imageType)
+			throws PreviewException {
+		String fileName = file.getName();
+		if (!SUPPORTED_EXTENSIONS.contains(suffix)) {
+			throw new PreviewException("Unsupported format: " + fileName);
+		}
+
+		Semaphore semaphore = permits;
+		try {
+			semaphore.acquire();
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			throw new PreviewException("Interrupted while waiting to create the preview of '"
+				+ fileName + "'.", ex);
+		}
+		hook.permitAcquired(file);
+		try {
+			// The generation may have been waited out; nothing is built twice.
+			if (upToDate(file, previewCache)) {
+				return;
+			}
+
+			File cacheDir = previewCache.getParentFile();
+			if (!cacheDir.exists()) {
+				cacheDir.mkdirs();
+			}
+			File tmp = new File(cacheDir, previewCache.getName() + TMP_SUFFIX);
+			hook.generationStarted(file);
+			try {
+				switch (suffix) {
+					case JPG:
+					case JPEG:
+					case PNG:
+						try {
+							createImagePreview(file, tmp, imageType);
+						} catch (ImageProcessingException | MetadataException | IOException ex) {
+							throw new PreviewException("Cannot create image preview for '" + fileName + "'.", ex);
+						}
+						break;
+					default:
+						try {
+							createVideoPreview(file, tmp);
+						} catch (ImageProcessingException | MetadataException | IOException ex) {
+							throw new PreviewException("Cannot create video preview for '" + fileName + "'.", ex);
+						}
+						break;
+				}
+				try {
+					moveIntoPlace(tmp, previewCache);
+				} catch (IOException ex) {
+					throw new PreviewException("Cannot store the preview of '" + fileName + "'.", ex);
+				}
+			} finally {
+				// Nothing half-written is left behind; after the move there is nothing to delete.
+				tmp.delete();
+				hook.generationFinished(file);
+			}
+		} finally {
+			semaphore.release();
+		}
+	}
+
+	/**
+	 * Makes the completed temporary file the preview, in one step where the file system can.
+	 */
+	private static void moveIntoPlace(File tmp, File previewCache) throws IOException {
+		try {
+			Files.move(tmp.toPath(), previewCache.toPath(), StandardCopyOption.ATOMIC_MOVE);
+		} catch (AtomicMoveNotSupportedException | UnsupportedOperationException ex) {
+			LOG.log(Level.FINE, "No atomic move for '" + previewCache + "', replacing instead.", ex);
+			Files.move(tmp.toPath(), previewCache.toPath(), StandardCopyOption.REPLACE_EXISTING);
+		}
 	}
 
 	private static String imageType(String suffix) {

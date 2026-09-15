@@ -69,6 +69,10 @@ public class Main {
 		parser.addArgument("--invite").choices("members", "admin").setDefault("members").help(
 			"Who may invite somebody onto this server (issue #52): 'members' lets every member hand "
 				+ "out an invitation, 'admin' reserves that for the library owner");
+		parser.addArgument("--preview-threads").type(type).help(
+			"How many thumbnails are generated at the same time (issue #69); the default is the "
+				+ "number of processors, and the system property 'valbum.previewThreads' does the "
+				+ "same. Serving an already cached thumbnail is never throttled");
 		parser.addArgument("--pairing-secret").help(
 			"The secret a device must present to be paired with this server; "
 				+ "a random one is generated and printed at start-up if none is given");
@@ -146,6 +150,11 @@ public class Main {
 		_authMode = AuthMode.parse(ns.getString("auth"));
 		_inviteMode = InviteMode.parse(ns.getString("invite"));
 
+		Integer previewThreads = ns.get("preview_threads");
+		if (previewThreads != null) {
+			PreviewCache.setPermitCount(previewThreads.intValue());
+		}
+
 		String secret = ns.getString("pairing_secret");
 		if (_authMode != AuthMode.OFF && (secret == null || secret.isEmpty())) {
 			// Without a secret nobody could ever pair; a generated one is printed at start-up.
@@ -163,6 +172,7 @@ public class Main {
 		if (_webRoot != null) {
 			System.out.println("Serving the web application from: " + _webRoot);
 		}
+		System.out.println("Preview generation: " + PreviewCache.permitCount() + " at a time");
 		System.out.println("Authentication: " + _authMode.protocolName());
 		if (_authMode != AuthMode.OFF) {
 			System.out.println("Invitations: " + _inviteMode.protocolName());
