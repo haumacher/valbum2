@@ -52,6 +52,9 @@ void main() {
     await settle(tester, () => tester.tap(find.byIcon(Icons.more_vert)));
     await settle(tester, () => tester.tap(find.text("Server...")));
     await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
+    // The secret names the space's administrator, so a name is required
+    // (issue #86).
+    await tester.enterText(find.byKey(userNameFieldKey), "haui");
     await settle(tester, () async {
       await tester.ensureVisible(find.widgetWithText(FilledButton, "Sign in"));
       await tester.pumpAndSettle();
@@ -81,6 +84,9 @@ void main() {
     await settle(tester, () => tester.tap(find.byIcon(Icons.more_vert)));
     await settle(tester, () => tester.tap(find.text("Server...")));
     await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
+    // The secret names the space's administrator, so a name is required
+    // (issue #86).
+    await tester.enterText(find.byKey(userNameFieldKey), "haui");
     await settle(tester, () async {
       await tester.ensureVisible(find.widgetWithText(FilledButton, "Sign in"));
       await tester.pumpAndSettle();

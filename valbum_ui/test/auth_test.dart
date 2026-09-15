@@ -363,8 +363,17 @@ void main() {
         settings,
         MockClient((request) async {
           requests.add(request);
+          if (request.url.queryParameters["type"] == "auth") {
+            // What the block is filled from since issue #86.
+            return http.Response(
+              '{"mode":"writes","deviceName":"Kamera","writeAllowed":true,'
+              '"userName":"haui","role":"admin","space":"haui",'
+              '"clearance":"all","mayShare":true}',
+              200,
+            );
+          }
           return http.Response(
-            '{"token":"tok-42","deviceName":"Kamera"}',
+            '{"token":"tok-42","deviceName":"Kamera","userName":"haui"}',
             200,
           );
         }),
@@ -374,16 +383,29 @@ void main() {
 
       await tester.enterText(find.byKey(deviceNameFieldKey), "Kamera");
       await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
+      // The secret names the administrator of the space, so a name is
+      // required, see issue #86.
+      await tester.enterText(find.byKey(userNameFieldKey), "haui");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
       expect(store.token, "tok-42");
       expect(store.deviceName, "Kamera");
-      expect(find.text("Signed in as the library owner"), findsOneWidget);
+      expect(find.text("Signed in as haui"), findsOneWidget);
       expect(find.text("Device: Kamera"), findsOneWidget);
+      // The space and the permission come from the auth answer, at once.
+      expect(find.text("Space: haui"), findsOneWidget);
       expect(
-        (requests.single as http.Request).body,
-        '{"secret":"demo","deviceName":"Kamera","userName":"","invitation":"","deviceCode":""}',
+        tester.widget<Text>(find.byKey(permissionLineKey)).data,
+        "You manage this server; you see all images; you may share links.",
+      );
+      var pair = requests
+          .whereType<http.Request>()
+          .where((r) => r.url.queryParameters["action"] == "pair")
+          .single;
+      expect(
+        pair.body,
+        '{"secret":"demo","deviceName":"Kamera","userName":"haui","invitation":"","deviceCode":""}',
       );
       // The secret is never kept on the device.
       expect(
@@ -409,6 +431,7 @@ void main() {
       );
 
       await tester.enterText(find.byKey(pairingSecretFieldKey), "guess");
+      await tester.enterText(find.byKey(userNameFieldKey), "haui");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 

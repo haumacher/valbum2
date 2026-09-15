@@ -91,6 +91,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
+    // The secret names the space's administrator, so a name is required
+    // (issue #86).
+    await tester.enterText(find.byKey(userNameFieldKey), "haui");
       await tester.enterText(find.byKey(deviceNameFieldKey), "Phone");
       await tester.pumpAndSettle();
 

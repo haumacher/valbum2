@@ -98,29 +98,40 @@ void main() {
       expect(find.textContaining("Space:"), findsNothing);
     });
 
-    testWidgets('an owner without a name is the library owner', (tester) async {
+    testWidgets('a sign-in with the secret and no name is refused here',
+        (tester) async {
+      // Issue #86: the secret names the administrator of the space, and a user
+      // without a name can be neither credited nor managed. It used to sign in
+      // "the library owner", which was right while a library had exactly one.
       var store = InMemorySettingsStore("http://server/valbum/");
       var settings = ServerSettings(store: store);
       await settings.load();
 
+      var requests = <http.Request>[];
       await pumpSettings(
         tester,
         settings,
-        MockClient(
-          (_) async => http.Response(
+        MockClient((request) async {
+          requests.add(request);
+          return http.Response(
             '{"token":"tok-2","deviceName":"Phone","userName":"",'
             '"role":"admin","space":""}',
             200,
-          ),
-        ),
+          );
+        }),
       );
 
       await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
-      expect(find.text("Signed in as the library owner"), findsOneWidget);
-      expect(find.text("Role: admin"), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(signInErrorKey)).data,
+        "Enter your name.",
+      );
+      expect(requests, isEmpty, reason: "nothing is sent without a name");
+      expect(store.token, isNull);
+      expect(find.text("Not signed in"), findsOneWidget);
     });
 
     testWidgets('a refused name shows the server message and stores nothing',
