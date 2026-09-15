@@ -174,8 +174,9 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 
 ## Phase 6 — Spaces: the multi-user model reshaped
 
-*Decided 2026-09-15 by the author; issues filed the same day. Supersedes the Phase 3 model of
-grants, groups, links and guests, which stays in the code until this phase replaces it.*
+*Decided 2026-09-15 by the author; issues #82–#85 filed the same day and delivered 2026-09-16
+(follow-up: #86, the first admin of a space must have a name). Supersedes the Phase 3 model of
+grants, groups, links and guests, which is retired: its endpoints answer 410 for one release.*
 
 Goal: a server hosts one or several **spaces**. A space is a mandator: it has its own users, its
 own albums and its own share links, and nothing crosses its boundary — no shared user, no move,
@@ -215,6 +216,20 @@ The model:
   rights and one for clearance; this phase changes what those two methods consult.
 
 ## Decisions log
+
+- **2026-09-16** — Phase 6 delivered (#82–#85). A server hosts one or several spaces, decided at
+  start-up by the presence of `space.json`; in multi-space mode the space is the first path segment
+  of everything that belongs to it, sessions included, and a root-level session address is refused
+  with a sentence saying where such links live. Each space has its own user store, so credentials of
+  one space are nothing in another and no permission check knows about spaces. Permission is role ×
+  clearance + share flag, stored per user, the same for every path; the rights method no longer looks
+  at the path. A share link is its own permission, refused rather than trimmed when it would show
+  more than its maker may see, so what it shows is frozen when it is made; removing a user withdraws
+  their links. The app reads sessions under a space, offers what the role allows where the server
+  answered no rights, lets an admin edit and remove users, and lost the groups and link screens.
+  Verified in a real browser on a two-space server: the app under `/valbum/alice/` asks
+  `/valbum/alice/data/`, the closed space refuses anonymous callers, the secret makes the space's
+  admin, the album renders. About 250 server tests of the retired mechanisms went with them.
 
 - **2026-09-15 (evening)** — Spaces (Phase 6). The author reshaped the multi-user doctrine: album
   spaces are separated from users and become mandators — disjoint, with their own users, sharing
