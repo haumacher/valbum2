@@ -198,12 +198,37 @@ public class ImageServlet extends HttpServlet {
 	 */
 	public static final String PREVIEW_FAILED = "The preview of this image cannot be created.";
 
+	/**
+	 * The message a request for a video rendition that is not made yet is answered with.
+	 *
+	 * <p>
+	 * A transcode takes minutes, so no request ever waits for one: the answer is
+	 * <code>202 Accepted</code> with a <code>Retry-After</code>, and the work is queued, see
+	 * {@link VideoRenditions}.
+	 * </p>
+	 */
+	public static final String RENDITION_PENDING = "This video is being prepared; please try again shortly.";
+
+	/** The message a request for a video rendition that cannot be made is answered with. */
+	public static final String RENDITION_FAILED = "This video cannot be prepared for playback.";
+
+	/** How long a caller waits before asking for a pending rendition again, in seconds. */
+	public static final String RETRY_AFTER_SECONDS = "10";
+
 	static {
 		LOG.info("Loading: " + ExifReaderPatch.class);
 	}
 
 	private Path _basePath;
 	private ResourceCache _cache;
+
+	/** The transcoded sidecars of the videos this server shows, see issue #74. */
+	private final VideoRenditions _videos = new VideoRenditions();
+
+	/** The video renditions of this server, for the tests that wait for a transcode. */
+	VideoRenditions videos() {
+		return _videos;
+	}
 
 	private PrivacyFilter _privacy;
 
@@ -256,6 +281,7 @@ public class ImageServlet extends HttpServlet {
 	 */
 	@Override
 	public void destroy() {
+		_videos.shutdown();
 		try {
 			_cache.close();
 		} catch (IOException ex) {
@@ -363,7 +389,9 @@ public class ImageServlet extends HttpServlet {
 			serveFolder(context, resourcePath, clearance, viewAs, caller);
 		} else if (ResourceCache.isImage(file)) {
 			// The description and the thumbnail are looking; the original file is taking a copy.
-			String right = jsonRequested(context) || "tn".equals(type) ? Rights.VIEW : Rights.DOWNLOAD;
+			// A rendition is looking, exactly as the thumbnail is; only the original is taking a copy.
+			String right = jsonRequested(context) || "tn".equals(type) || VideoRenditions.Kind.PLAYBACK.parameter().equals(type)
+				|| VideoRenditions.Kind.TEASER.parameter().equals(type) ? Rights.VIEW : Rights.DOWNLOAD;
 			if (!_auth.rights(caller, resourcePath).contains(right)) {
 				refuse(context, caller, resourcePath, right, false);
 				return;
@@ -2507,6 +2535,10 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			serveData(context, data, "image/jpeg");
+		} else if (VideoRenditions.Kind.PLAYBACK.parameter().equals(type)) {
+			serveRendition(context, pathInfo, VideoRenditions.Kind.PLAYBACK);
+		} else if (VideoRenditions.Kind.TEASER.parameter().equals(type)) {
+			serveRendition(context, pathInfo, VideoRenditions.Kind.TEASER);
 		} else {
 			Resource resource = _cache.lookup(pathInfo);
 			if (resource != null) {
@@ -2514,6 +2546,39 @@ public class ImageServlet extends HttpServlet {
 
 				serveData(context, pathInfo.toFile(), mimeType);
 			}
+		}
+	}
+
+	/**
+	 * Delivers a transcoded rendition of a video, see issue #74.
+	 *
+	 * <p>
+	 * The rendition is never made while the request waits: what is not there is queued and
+	 * answered with <code>202</code>, so that the app can come back for it. What could not be made
+	 * is a failure of this server, answered like any other, and coming back would not help.
+	 * </p>
+	 */
+	private void serveRendition(Context context, PathInfo pathInfo, VideoRenditions.Kind kind) throws IOException {
+		File file = pathInfo.toFile();
+		if (!VideoRenditions.isVideo(file)) {
+			// Only a video has renditions; a photo has its thumbnail.
+			error404(context);
+			return;
+		}
+		VideoRenditions.Rendition rendition = _videos.lookup(file, kind);
+		switch (rendition.getState()) {
+			case READY:
+				serveData(context, rendition.getFile(), "video/mp4");
+				return;
+			case PENDING:
+				context.response().setHeader("Retry-After", RETRY_AFTER_SECONDS);
+				errorInfo(context, HttpServletResponse.SC_ACCEPTED, RENDITION_PENDING);
+				return;
+			default:
+				LOG.warning("Refusing the " + kind.parameter() + " rendition of '"
+					+ context.request().getPathInfo() + "': " + _videos.failure(rendition.getFile()));
+				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, RENDITION_FAILED);
+				return;
 		}
 	}
 

@@ -293,6 +293,8 @@ public class TestImageServletPut extends TestCase {
 
 		private final java.io.ByteArrayOutputStream _body = new java.io.ByteArrayOutputStream();
 
+		private String _contentType;
+
 		private final HttpServletResponse _response = (HttpServletResponse) Proxy.newProxyInstance(
 			TestImageServletPut.class.getClassLoader(), new Class<?>[] { HttpServletResponse.class }, this);
 
@@ -306,6 +308,16 @@ public class TestImageServletPut extends TestCase {
 
 		String header(String name) {
 			return _headers.get(name);
+		}
+
+		/** What the response was declared to be. */
+		String contentType() {
+			return _contentType;
+		}
+
+		/** What was written to the response stream, as bytes. */
+		byte[] bodyBytes() {
+			return _body.toByteArray();
 		}
 
 		/** What was written to the response stream, decoded as UTF-8. */
@@ -332,6 +344,8 @@ public class TestImageServletPut extends TestCase {
 					_headers.put((String) args[0], (String) args[1]);
 					return null;
 				case "setContentType":
+					_contentType = (String) args[0];
+					return null;
 				case "setCharacterEncoding":
 				case "setContentLength":
 				case "setContentLengthLong":
