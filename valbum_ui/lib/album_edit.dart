@@ -726,6 +726,255 @@ bool sortSectionsByDate(AlbumInfo album) {
   return true;
 }
 
+/// The images of the album the given selection stands for, in stored order.
+///
+/// A selected [ImageGroup] stands for all of its images — a group is one
+/// thing to a viewer, and an action on it is an action on its members. A
+/// selected [ImagePart] stands for itself, whether it sits in the album or
+/// inside a group; a selected [Heading] is no image and contributes nothing.
+///
+/// The parts are compared by identity, as everywhere in the album model.
+List<ImagePart> selectedImages(AlbumInfo album, Set<AlbumPart> selection) {
+  var chosen = Set<AlbumPart>.identity()..addAll(selection);
+  var result = <ImagePart>[];
+  for (var part in album.parts) {
+    if (part is ImagePart) {
+      if (chosen.contains(part)) {
+        result.add(part);
+      }
+    } else if (part is ImageGroup) {
+      var whole = chosen.contains(part);
+      for (var image in part.images) {
+        if (whole || chosen.contains(image)) {
+          result.add(image);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/// The image the recording time adjustment is stated relative to (issue #77).
+///
+/// The tile the action was invoked on, if that tile shows a selected image (a
+/// group's tile stands for its representative); otherwise the first selected
+/// image in stored order. `null` if nothing that carries a date is selected.
+ImagePart? referenceImage(
+  AlbumInfo album,
+  Set<AlbumPart> selection, [
+  AlbumPart? invokedOn,
+]) {
+  var images = selectedImages(album, selection);
+  if (invokedOn is AbstractImage) {
+    var image = ToImage.toImage(invokedOn);
+    if (images.any((candidate) => identical(candidate, image))) {
+      return image;
+    }
+  }
+  return images.isEmpty ? null : images.first;
+}
+
+/// The offset that moves the recording time of [reference] to [corrected].
+///
+/// `null` when there is nothing to compute from: no corrected time was
+/// entered, or the reference image carries no date at all (`0`) — an offset
+/// from "unknown" would be an invented recording time, see
+/// [adjustRecordingTime].
+Duration? offsetFor(ImagePart reference, DateTime? corrected) {
+  if (corrected == null || reference.date == 0) {
+    return null;
+  }
+  return corrected
+      .difference(DateTime.fromMillisecondsSinceEpoch(reference.date));
+}
+
+/// The given offset in words, as the dialog shows it before applying it:
+/// `"+2 h 13 min 5 s"`, `"−1 d 0 h 4 min"`.
+///
+/// The sign is always there (a real minus sign, U+2212, not a hyphen), and
+/// the units run from the largest one that is not zero down to the smallest
+/// one that is not zero — a zero in between is kept, so that the reading is
+/// unambiguous, a zero at either end is left out. The zero offset reads
+/// `"0 s"`; the dialog says "Nothing to adjust" instead.
+String offsetInWords(Duration offset) {
+  var millis = offset.inMilliseconds;
+  if (millis == 0) {
+    return "0 s";
+  }
+  var sign = millis < 0 ? "−" : "+";
+  var rest = millis.abs();
+  var units = [
+    ("d", Duration.millisecondsPerDay),
+    ("h", Duration.millisecondsPerHour),
+    ("min", Duration.millisecondsPerMinute),
+    ("s", Duration.millisecondsPerSecond),
+  ];
+  var values = <(String, int)>[];
+  for (var (name, size) in units) {
+    values.add((name, rest ~/ size));
+    rest = rest % size;
+  }
+  var first = values.indexWhere((value) => value.$2 != 0);
+  var last = values.lastIndexWhere((value) => value.$2 != 0);
+  if (first < 0) {
+    // Less than a second, but not nothing: say it in seconds rather than
+    // claiming there is no offset.
+    return "$sign${(offset.inMilliseconds.abs() / 1000).toStringAsFixed(3)} s";
+  }
+  var words = [
+    for (var i = first; i <= last; i++) "${values[i].$2} ${values[i].$1}",
+  ];
+  return "$sign${words.join(" ")}";
+}
+
+/// Where an image taken at [date] is inserted into the given parts.
+///
+/// The album's insertion rule, mirroring the server's `AlbumUtil.insertSorted`
+/// (`image-server-shared`): directly *after* the last entry, in stored order,
+/// whose date is not later than [date]. A group counts with [dateOf], the
+/// earliest date of its images; a [Heading] has no date and is passed over,
+/// so an image lands in the section of the entry it follows. If no entry is
+/// that old the image goes *before* the earliest-dated entry, and into an
+/// album holding no dated entry at all it goes last.
+int insertIndexByDate(List<AlbumPart> parts, int date) {
+  var after = -1;
+  for (var index = 0; index < parts.length; index++) {
+    var part = parts[index];
+    if (part is Heading) {
+      continue;
+    }
+    if (dateOf(part) <= date) {
+      after = index;
+    }
+  }
+  if (after >= 0) {
+    return after + 1;
+  }
+
+  var earliest = -1;
+  int? least;
+  for (var index = 0; index < parts.length; index++) {
+    var part = parts[index];
+    if (part is Heading) {
+      continue;
+    }
+    var candidate = dateOf(part);
+    if (least == null || candidate < least) {
+      least = candidate;
+      earliest = index;
+    }
+  }
+  return earliest < 0 ? parts.length : earliest;
+}
+
+/// Adds [offset] to the recording time of every selected image and puts the
+/// adjusted images back where their new date belongs (issue #77).
+///
+/// The cameras an album is fed from run off by seconds, minutes or even days,
+/// which makes a date order nonsense. The correction is a *sidecar* edit: only
+/// [ImagePart.date] changes, and the EXIF data of the original file is never
+/// touched — the server can read the original recording time again for any
+/// part that is taken out of the sidecar.
+///
+/// Every selected image is adjusted, videos included (see [selectedImages]:
+/// a selected group stands for all of its images). An image without a date
+/// (`0`) is left alone: `0` means "no recording time known", and shifting it
+/// would invent one and file the image at the beginning of the album.
+///
+/// Each adjusted image is then taken out of wherever it stands and re-inserted
+/// at the album level by [insertIndexByDate], earliest first — a clock that
+/// was a day off moved the image under the wrong heading, and the correction
+/// has to be able to move it out of that section again. Taking it out means:
+///
+/// * out of its group. A group left with a single image is dissolved the way
+///   [ungroup] dissolves it today, and a group left with none disappears;
+///   [ImageGroup.representative] follows its image, falling back to the first
+///   remaining one if the representative itself was adjusted away.
+/// * out of its heading section — the re-insertion decides the new one.
+///
+/// Adjusted images that shared a group and end up side by side again are *not*
+/// regrouped: the group was an edit of its own, and grouping them again is one
+/// gesture away.
+///
+/// Entries that were not adjusted never move relative to each other.
+///
+/// Returns whether anything changed, so the caller marks the album dirty (and
+/// writes it back) only then.
+bool adjustRecordingTime(
+  AlbumInfo album,
+  Set<AlbumPart> selected,
+  Duration offset,
+) {
+  var millis = offset.inMilliseconds;
+  if (millis == 0) {
+    return false;
+  }
+  // The undated ones keep their "unknown", see above.
+  var moved = [
+    for (var image in selectedImages(album, selected))
+      if (image.date != 0) image,
+  ];
+  if (moved.isEmpty) {
+    return false;
+  }
+
+  var adjusted = Set<ImagePart>.identity()..addAll(moved);
+  for (var image in moved) {
+    image.date += millis;
+  }
+
+  // Take the adjusted images out of the album, groups included.
+  var remaining = <AlbumPart>[];
+  var dissolving = <ImageGroup>[];
+  for (var part in album.parts) {
+    if (part is ImagePart) {
+      if (!adjusted.contains(part)) {
+        remaining.add(part);
+      }
+      continue;
+    }
+    if (part is ImageGroup && part.images.any(adjusted.contains)) {
+      var kept = [
+        for (var image in part.images)
+          if (!adjusted.contains(image)) image,
+      ];
+      if (kept.isEmpty) {
+        // Nothing left of it.
+        continue;
+      }
+      var index = part.representative;
+      var representing =
+          index >= 0 && index < part.images.length ? part.images[index] : null;
+      part.images = kept;
+      var stillThere = representing == null
+          ? -1
+          : kept.indexWhere((image) => identical(image, representing));
+      part.representative = stillThere < 0 ? 0 : stillThere;
+      remaining.add(part);
+      if (kept.length == 1) {
+        dissolving.add(part);
+      }
+      continue;
+    }
+    remaining.add(part);
+  }
+  album.parts = remaining;
+
+  // A group of one is no group, see [ungroup].
+  for (var group in dissolving) {
+    ungroup(album, group);
+  }
+
+  // And back in, the earliest first, so that images of the same new date
+  // keep the order they had.
+  for (var image in sortedByDate(moved)) {
+    album.parts.insert(insertIndexByDate(album.parts, image.date), image);
+  }
+
+  AlbumInitializer().init(album);
+  return true;
+}
+
 /// Whether both lists hold the same parts in the same order.
 bool _sameOrder(List<AlbumPart> left, List<AlbumPart> right) {
   if (left.length != right.length) {
