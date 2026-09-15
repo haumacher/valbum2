@@ -56,6 +56,14 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   `?action=move` write and returns the server's outcomes.
 - `lib/settings.dart` — the server settings: URL, the sign-in (user name, pairing secret, device
   name) and who this device is signed in as (user, role, device, space); the settings store.
+- `lib/device_code_payload.dart` — what the QR code of a device code carries and the only place
+  scanned text is interpreted: `valbum-device://pair?server=…&code=…`, deliberately no URL the
+  server serves, so a forwarded picture is worth exactly as much as a forwarded code (issue #66).
+  Pure, no widgets.
+- `lib/device_code_scanner.dart` — the camera behind an interface (`DeviceCodeScanner`,
+  `NoDeviceCodeScanner`, `FakeDeviceCodeScanner`, `DeviceCodeScannerScope`), with the
+  `mobile_scanner`-backed implementation in `lib/device_code_scanner_plugin.dart`, reached only
+  through the conditional import of `lib/platform.dart` — the web build never links it.
 - `lib/urls.dart` — derives the server URL from the page origin on the web
   (from the app base, not from the location: the location is the view, see
   `lib/routes.dart`).

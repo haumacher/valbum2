@@ -25,6 +25,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'device_code_payload.dart';
+import 'device_code_scanner.dart';
 import 'diagnostics.dart';
 import 'groups_view.dart';
 import 'invitation.dart';
@@ -708,6 +710,13 @@ const Key userNameFieldKey = Key("settings.userName");
 /// beside the pairing secret and never together with it.
 const Key deviceCodeFieldKey = Key("settings.deviceCode");
 
+/// The key of the button opening the camera to read a device code (issue #66).
+///
+/// Beside [deviceCodeFieldKey], and built only where there is a camera to
+/// open: on the web and on a desktop the field is typed into, and no button
+/// promises a scanner that does not exist, see [DeviceCodeScanner.available].
+const Key deviceCodeScanKey = Key("settings.deviceCode.scan");
+
 /// The key of the sign-in section's own refusal, see [bothCredentialsRefusal].
 const Key signInErrorKey = Key("settings.signIn.error");
 
@@ -1239,22 +1248,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
           onSubmitted: (_) => _signIn(),
         ),
       if (!inviting) const SizedBox(height: 16),
-      if (!inviting)
-        TextField(
-          key: deviceCodeFieldKey,
-          controller: deviceCodeController,
-          autocorrect: false,
-          textCapitalization: TextCapitalization.characters,
-          inputFormatters: [deviceCodeFormatter],
-          decoration: const InputDecoration(
-            labelText: "Device code",
-            helperText: "Shown under My devices on a device you are already "
-                "signed in on.",
-            helperMaxLines: 2,
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (_) => _signIn(),
-        ),
+      if (!inviting) _deviceCodeField(),
       if (!inviting) const SizedBox(height: 16),
       TextField(
         key: deviceNameFieldKey,
@@ -1308,6 +1302,83 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       ..._devicesSection(),
       ..._inviteSection(),
     ];
+  }
+
+  /// The device-code field, with the camera beside it where there is one
+  /// (issue #66).
+  ///
+  /// The scan is an addition to the typing and never a replacement: the field
+  /// is the same field, and a platform without a camera simply has no button.
+  Widget _deviceCodeField() {
+    var scanner = DeviceCodeScannerScope.of(context);
+    var field = TextField(
+      key: deviceCodeFieldKey,
+      controller: deviceCodeController,
+      autocorrect: false,
+      textCapitalization: TextCapitalization.characters,
+      inputFormatters: [deviceCodeFormatter],
+      decoration: const InputDecoration(
+        labelText: "Device code",
+        helperText: "Shown under My devices on a device you are already "
+            "signed in on.",
+        helperMaxLines: 2,
+        border: OutlineInputBorder(),
+      ),
+      onSubmitted: (_) => _signIn(),
+    );
+    if (!scanner.available) {
+      return field;
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: field),
+        const SizedBox(width: 8),
+        IconButton(
+          key: deviceCodeScanKey,
+          icon: const Icon(Icons.qr_code_scanner),
+          tooltip: "Scan code",
+          onPressed: () => _scanDeviceCode(scanner),
+        ),
+      ],
+    );
+  }
+
+  /// Reads a device code off the camera and puts it into the fields
+  /// (issue #66).
+  ///
+  /// What is scanned fills the server field and the device-code field, and
+  /// *nothing else happens*: the sign-in is the button below, pressed by the
+  /// person who can now see what was read. A picture of a QR code is worth no
+  /// more than a forwarded code, and neither is sent anywhere until somebody
+  /// says so.
+  ///
+  /// A scan that was cancelled, refused or impossible answers `null` and is
+  /// silent here — the scanner itself said why, on its own page. Text that is
+  /// not a device code is refused with [notADeviceCodeRefusal], and the fields
+  /// are left exactly as they were.
+  Future<void> _scanDeviceCode(DeviceCodeScanner scanner) async {
+    var scanned = await scanner.scan(context);
+    if (scanned == null || !mounted) {
+      return;
+    }
+    var payload = parseDeviceCodePayload(scanned);
+    if (payload == null) {
+      setState(() {
+        signInError = notADeviceCodeRefusal;
+        pairing = null;
+      });
+      return;
+    }
+    controller.text = payload.serverUrl;
+    deviceCodeController.text = payload.formattedCode;
+    setState(() {
+      error = null;
+      signInError = null;
+      result = null;
+      pairing = null;
+      _enteredChanged();
+    });
   }
 
   /// The invitation the entered URL carries: who invited, as what, and the way

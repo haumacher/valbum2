@@ -3,6 +3,10 @@
    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+   <!-- Reading a device code off another screen as a QR code (issue #66).
+        No intent filter and no URL handler goes with it: the payload of such a
+        code is not a link, see `lib/device_code_payload.dart`. -->
+   <uses-permission android:name="android.permission.CAMERA"/>
    <application
         android:label="valbum_ui"
         android:name="${applicationName}"

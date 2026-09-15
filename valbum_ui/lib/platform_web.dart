@@ -6,6 +6,7 @@ import 'dart:js_interop';
 
 import 'background.dart';
 import 'connectivity.dart';
+import 'device_code_scanner.dart';
 import 'diagnostics.dart';
 import 'offline.dart';
 import 'photo_library.dart';
@@ -39,6 +40,16 @@ PhotoLibrary defaultPhotoLibrary() => const UnavailablePhotoLibrary(
 /// the machine takes its upload with it either way (issue #63). The
 /// `wakelock_plus` plugin is never imported in the web build.
 Wakelock defaultWakelock() => const NoWakelock();
+
+/// What reads a device code off the camera in a browser: nothing, see
+/// [DeviceCodeScanner].
+///
+/// A page could ask for the camera, but the web build is opened on a machine
+/// with a keyboard, and eight characters are typed there in seconds; the
+/// scanner is a phone's affordance (issue #66). The `mobile_scanner` plugin is
+/// never imported in the web build, and the sign-in screen builds no scan
+/// button here.
+DeviceCodeScanner defaultDeviceCodeScanner() => const NoDeviceCodeScanner();
 
 /// The network a browser is on: it does not say, see [ConnectivitySource].
 ///
