@@ -544,6 +544,32 @@ class AlbumContentState extends State<AlbumContent>
     setState(markDirty);
   }
 
+  /// Adds every image of one camera to the selection (issue #78).
+  ///
+  /// An album fed from a phone and a camera is gathered device by device: the
+  /// images carrying the same [ImagePart.camera] label as [reference] are
+  /// *added* to what is selected, never replacing it, so a second call on an
+  /// image of another camera collects that one too. A grouped image joins the
+  /// selection as the image, see [sameCamera].
+  ///
+  /// This is the selection the recording time adjustment of issue #77 works
+  /// on: select one photo of the camera whose clock was off, gather its
+  /// images, correct them in one go.
+  void selectSameCamera(ImagePart reference) {
+    var added = [
+      for (var part in sameCamera(widget.album, reference))
+        if (!selection.contains(part)) part,
+    ];
+    if (added.isEmpty) {
+      showMessage("No other image from this camera");
+      return;
+    }
+    setState(() {
+      selection.addAll(added);
+      lastClicked = added.last;
+    });
+  }
+
   /// Corrects the recording time of the selected images (issue #77).
   ///
   /// The tile the action was invoked on names the reference image — the one
@@ -1788,6 +1814,16 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
           ),
         ],
       ],
+      // Everything one device contributed, in one gesture — the selection the
+      // recording time correction below then works on, see issue #78. An
+      // image whose camera is unknown has nothing to gather, so the tool is
+      // not offered on it rather than refusing the tap.
+      if (image.camera.isNotEmpty)
+        toolButton(
+          Icons.photo_camera,
+          "Select all from this camera",
+          () => album.selectSameCamera(image),
+        ),
       // A camera whose clock is off files its photos in the wrong place; the
       // correction acts on the whole selection, see issue #77.
       toolButton(
@@ -1952,6 +1988,18 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         label: "Kommentar",
         text: image.comment,
         multiLine: true,
+        // What the album knows about this image and does not edit here: the
+        // recording time it is sorted by (the sidecar's, which the adjustment
+        // of issue #77 may have corrected) and the camera that took it (issue
+        // #78). Each line only where there is something to say.
+        details: [
+          if (image.date != 0)
+            "Aufnahmezeit: "
+                "${AdjustRecordingTimeDialogState.timeFormat.format(
+              DateTime.fromMillisecondsSinceEpoch(image.date),
+            )}",
+          if (image.camera.isNotEmpty) "Kamera: ${image.camera}",
+        ],
         // Who added this photo, the editor's own contributions included: the
         // screen saying what an image is says where it came from, see #53.
         note: attributionShown(image),
@@ -2357,6 +2405,10 @@ class TextInputDialog extends StatefulWidget {
   final String text;
   final bool multiLine;
 
+  /// Read-only lines under the field, what the dialog shows but does not
+  /// edit: the recording time and the camera of an image, see issue #78.
+  final List<String> details;
+
   /// A read-only line under the field, `null` where there is nothing to say.
   ///
   /// What the dialog shows besides what it edits: the attribution of issue
@@ -2371,6 +2423,7 @@ class TextInputDialog extends StatefulWidget {
     required this.text,
     this.multiLine = false,
     this.note,
+    this.details = const [],
   });
 
   @override
@@ -2412,6 +2465,22 @@ class TextInputDialogState extends State<TextInputDialog> {
               maxLines: widget.multiLine ? 8 : 1,
               decoration: InputDecoration(label: Text(widget.label)),
             ),
+            if (widget.details.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Column(
+                  key: const Key("properties-details"),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var line in widget.details)
+                      Text(
+                        line,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                  ],
+                ),
+              ),
             if (widget.note != null)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
