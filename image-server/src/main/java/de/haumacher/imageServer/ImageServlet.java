@@ -11,6 +11,7 @@ import de.haumacher.imageServer.auth.AuthService.Caller;
 import de.haumacher.imageServer.auth.AuthService.Location;
 import de.haumacher.imageServer.auth.AuthService.PairRefused;
 import de.haumacher.imageServer.auth.AuthService.PathRefused;
+import de.haumacher.imageServer.auth.Clearances;
 import de.haumacher.imageServer.auth.DeviceCodeStore;
 import de.haumacher.imageServer.auth.GrantStore;
 import de.haumacher.imageServer.auth.GroupStore;
@@ -61,6 +62,7 @@ import de.haumacher.imageServer.shared.model.UploadResult;
 import de.haumacher.imageServer.shared.model.UploadedFile;
 import de.haumacher.imageServer.shared.model.UserEntry;
 import de.haumacher.imageServer.shared.model.UserList;
+import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.imageServer.upload.HashCache;
 import de.haumacher.imageServer.upload.UploadFactory;
 import de.haumacher.imageServer.upload.UploadItem;
@@ -226,12 +228,18 @@ public class ImageServlet extends HttpServlet {
 	 */
 	public static final String RENDITIONS_UNAVAILABLE = "Video renditions are not available on this server: ";
 
+	/** The message an invitation naming a clearance this build does not know is refused with. */
+	public static final String CLEARANCE_REFUSED = "Unknown clearance; use one of " + Clearances.names() + ".";
+
 	static {
 		LOG.info("Loading: " + ExifReaderPatch.class);
 	}
 
 	private Path _basePath;
 	private ResourceCache _cache;
+
+	/** The space this servlet serves, see {@link #ImageServlet(File, AuthService, String)}. */
+	private final String _space;
 
 	/** The transcoded sidecars of the videos this server shows, see issue #74. */
 	private final VideoRenditions _videos = new VideoRenditions();
@@ -265,6 +273,19 @@ public class ImageServlet extends HttpServlet {
 	 * @param auth Decides who may read and who may write, see {@link AuthService}.
 	 */
 	public ImageServlet(File basePath, AuthService auth) throws IOException {
+		this(basePath, auth, "");
+	}
+
+	/**
+	 * Creates an {@link ImageServlet} serving one space of a multi-space server (issue #82).
+	 *
+	 * @param space
+	 *        The first path segment this space is addressed by, the empty string on a
+	 *        single-space server. It is what <code>?type=auth</code> names, so that the app knows
+	 *        which space it is talking to.
+	 */
+	public ImageServlet(File basePath, AuthService auth, String space) throws IOException {
+		_space = space == null ? "" : space;
 		_basePath = basePath.toPath();
 		_cache = new ResourceCache();
 		_privacy = new PrivacyFilter(_cache);
@@ -321,7 +342,7 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			// Always answerable: this is how an unpaired app learns that it must pair.
-			serveJsonObject(response, _auth.authInfo(caller, _basePath));
+			serveJsonObject(response, _auth.authInfo(caller, _basePath, _space));
 			return;
 		}
 		if ("invitations".equals(type)) {
@@ -1586,10 +1607,36 @@ public class ImageServlet extends HttpServlet {
 	 * <code>/s/</code> for a share link (issue #51) and <code>/i/</code> for an invitation (issue
 	 * #52): two tokens of different kinds, one static handler, and the same rule for both.
 	 * </p>
+	 *
+	 * <p>
+	 * A session of a space lives <em>under</em> that space (issue #82):
+	 * <code>&lt;context&gt;/&lt;space&gt;/s/&lt;token&gt;/</code>, because the space is the first
+	 * path segment and the app opened at the link has to find a data root — at the context root of
+	 * a multi-space server there is none. The base is taken from the request itself rather than
+	 * from a field, so a single-space server keeps spelling <code>&lt;context&gt;/s/&lt;token&gt;/</code>
+	 * exactly as before.
+	 * </p>
 	 */
 	private static String appUrl(Context context, String segment, String token) {
 		String contextPath = context.getContextPath() == null ? "" : context.getContextPath();
-		return contextPath + "/" + segment + "/" + token + "/";
+		return contextPath + appBase(context) + "/" + segment + "/" + token + "/";
+	}
+
+	/**
+	 * Where the web application is mounted for the request at hand, without a trailing slash.
+	 *
+	 * <p>
+	 * The servlet path of a request is <code>/data</code> on a single-space server and
+	 * <code>/&lt;space&gt;/data</code> on a multi-space one, see
+	 * {@link SpaceServlet.InSpace}: what is in front of the data prefix is the application's base.
+	 * </p>
+	 */
+	private static String appBase(Context context) {
+		String servletPath = context.request().getServletPath();
+		if (servletPath == null || !servletPath.endsWith(Settings.DATA_PREFIX)) {
+			return "";
+		}
+		return servletPath.substring(0, servletPath.length() - Settings.DATA_PREFIX.length());
 	}
 
 	/**
@@ -1686,8 +1733,24 @@ public class ImageServlet extends HttpServlet {
 		}
 		String note = request.getNote() == null ? "" : request.getNote().trim();
 
+		// What the invitee will hold, see issue #82: what the invitation says, capped at what the
+		// inviter holds themselves — nobody hands out more than they have.
+		String clearance = request.getClearance() == null ? "" : request.getClearance().trim();
+		if (!clearance.isEmpty() && !Clearances.isKnown(clearance)) {
+			LOG.warning("Refusing an invitation with the unknown clearance '" + clearance + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, CLEARANCE_REFUSED);
+			return;
+		}
+		if (clearance.isEmpty()) {
+			clearance = Clearances.ofRole(role);
+		}
+		if (Clearances.level(clearance) > Clearances.level(caller.getClearance())) {
+			clearance = caller.getClearance();
+		}
+		boolean mayShare = request.isMayShare() && caller.mayShare();
+
 		InvitationStore.Issued issued =
-			_auth.getInvitations().create(role, caller.getUserName(), note, expires);
+			_auth.getInvitations().create(role, clearance, mayShare, caller.getUserName(), note, expires);
 		LOG.info("Issued " + issued.getInvitation() + ".");
 		serveJsonObject(context.response(), InvitationCreated.create()
 			.setInvitation(onTheWire(issued.getInvitation()))
@@ -1839,6 +1902,8 @@ public class ImageServlet extends HttpServlet {
 		return Invitation.create()
 			.setId(invitation.getId())
 			.setRole(invitation.getRole())
+			.setClearance(invitation.getClearance())
+			.setMayShare(invitation.isShare())
 			.setNote(invitation.getNote())
 			.setExpires(invitation.getExpires())
 			.setInvitedBy(invitation.getInvitedBy())
@@ -2051,6 +2116,8 @@ public class ImageServlet extends HttpServlet {
 			.setRole(user.getRole())
 			.setSpace(user.getSpace())
 			.setCreated(user.getCreated())
+			.setClearance(user.getClearance())
+			.setMayShare(user.isShare())
 			.setDevices(user.getDevices().size());
 	}
 

@@ -172,7 +172,63 @@ The model, decided 2026-09-06 (issue bodies carry the design notes):
 - Docker image for the server (from the same platform jar).
 - Store builds for Android and iOS; desktop bundles.
 
+## Phase 6 — Spaces: the multi-user model reshaped
+
+*Decided 2026-09-15 by the author; issues filed the same day. Supersedes the Phase 3 model of
+grants, groups, links and guests, which stays in the code until this phase replaces it.*
+
+Goal: a server hosts one or several **spaces**. A space is a mandator: it has its own users, its
+own albums and its own share links, and nothing crosses its boundary — no shared user, no move,
+no link, no grant into another space. Within a space every user holds one permission for every
+album; who may see what is decided by two independent axes and one flag, not by a tree of grants.
+
+The model:
+
+- **Two server modes.** *Single-space*: the base folder is the one space, the layout of an
+  un-migrated library today. *Multi-space*: every folder directly under the base folder that
+  carries a `.valbum/space.json` is a space; a space is created on disk by hand, never by the
+  server. The space is the first path segment of the app base a person types
+  (`https://host/valbum/<space>/`); single-space mode keeps today's addresses.
+- **Users belong to exactly one space** and live in the space's own `.valbum/users.json` with
+  their devices. One person in two spaces is two accounts; we assume that does not happen.
+- **Permission = role × clearance + share flag.** Role ∈ {admin, edit, contribute, view} says what
+  a user may do; clearance ∈ {public, non-private, all} says which privacy levels they see; the
+  share flag says whether they may create share links. Admin implies edit, full clearance, share
+  and the management of the space's users. A user holds the same permission in every album of the
+  space. Per-image privacy stays; clearance is what it is compared against.
+- **Anonymous access is a property of the space** (`none` or `public images only`), set in
+  `space.json`, not a server mode.
+- **Bootstrap and invitations.** The server-wide pairing secret creates a space's first admin; every
+  further user comes in through an invitation issued by an admin, carrying the role and clearance
+  the invitee gets. No guest accounts and no pseudo-spaces: a guest is a user with view and a low
+  clearance.
+- **A share link is not a user.** It is an expiring, restricted view of one album or folder,
+  created by a user with the share flag, cut to at most the creator's clearance, optionally
+  allowing contribution with attribution to the link. On the web it shows the shared album as the
+  top-level entity. Copying a shared album into one's own space is a future extension.
+- **Migration is explicit and reported.** An un-migrated library becomes the one space of a
+  single-space server; a library migrated per user becomes a multi-space server where each user's
+  folder is a space and the user its admin. Grants held into a space by others, groups,
+  materialised links, share registries and guest pseudo-spaces cannot be represented and are
+  dropped, each named in a start-up report so the admin can re-invite.
+- **The endpoints do not change their questions.** Every endpoint keeps asking one method for
+  rights and one for clearance; this phase changes what those two methods consult.
+
 ## Decisions log
+
+- **2026-09-15 (evening)** — Spaces (Phase 6). The author reshaped the multi-user doctrine: album
+  spaces are separated from users and become mandators — disjoint, with their own users, sharing
+  nothing and moving nothing across their boundary. A user holds one permission for the whole
+  space, expressed on two axes (role: admin, edit, contribute, view; clearance: public,
+  non-private, all) plus a share flag, which resolves the tension between "the same permission in
+  every album" and per-image privacy. Anonymous access becomes a property of the space. Share
+  links stay expiring restricted views without a user. Grants per subtree, groups, links between
+  spaces and guest pseudo-spaces of the Phase 3 model are retired with an explicit, reported
+  migration. One person in two spaces is assumed not to exist. Also this day: previews decode at
+  preview scale and are generated once (#67–#69), video renditions and teasers (#74, #75), the
+  device code as a QR code (#66), image-counting upload progress (#70), the heading anchor (#71),
+  video dating and playback on Android (#72, #73), sort by date (#76), recording-time adjustment
+  (#77), camera selection (#78), the fullscreen description edit (#80).
 
 - **2026-09-13 (night)** — Distribution (Phase 5). The server installs on a Raspberry Pi like any other
   package: `apt install valbum` from an APT repository at <https://haumacher.github.io/valbum2/>, and

@@ -633,6 +633,16 @@ public class AuthService {
 			return _user == null ? "" : _user.getRole();
 		}
 
+		/** Which privacy levels the signed-in user may see, see {@link Clearances} and issue #82. */
+		public String getClearance() {
+			return _user == null ? Clearances.PUBLIC : _user.getClearance();
+		}
+
+		/** Whether the signed-in user may create share links, see issue #82. */
+		public boolean mayShare() {
+			return _user != null && _user.isShare();
+		}
+
 		/**
 		 * The folder below the server's base folder every path of this caller is resolved against.
 		 *
@@ -1836,13 +1846,28 @@ public class AuthService {
 	 *        <code>null</code> is answered without that question.
 	 */
 	public AuthInfo authInfo(Caller caller, Path basePath) {
+		return authInfo(caller, basePath, "");
+	}
+
+	/**
+	 * What the given caller is allowed to do, in the space the request addressed.
+	 *
+	 * @param space
+	 *        The first path segment the space is addressed by on a multi-space server (issue #82),
+	 *        the empty string on a single-space one. It overrides the caller's own space, which is
+	 *        what it always was: on a multi-space server every service is rooted at its space, so
+	 *        a user of it has no folder below the base folder of their own.
+	 */
+	public AuthInfo authInfo(Caller caller, Path basePath, String space) {
 		AuthInfo result = AuthInfo.create()
 			.setMode(_mode.protocolName())
 			.setDeviceName(caller.getDeviceName())
 			.setWriteAllowed(writeAllowed(caller))
 			.setUserName(caller.getUserName())
 			.setRole(caller.getRole())
-			.setSpace(caller.getSpace());
+			.setClearance(caller.isPaired() ? caller.getClearance() : "")
+			.setMayShare(caller.isPaired() && caller.mayShare())
+			.setSpace(space == null || space.isEmpty() ? caller.getSpace() : space);
 		if (caller.getInvitation() != null) {
 			// An invitation is no login: the caller is anonymous above and stays anonymous. This is
 			// the one thing the server says about the token it was handed, see issue #52.
@@ -2140,7 +2165,9 @@ public class AuthService {
 			if (member && !isLibraryMigrated()) {
 				throw new PairRefused(HttpServletResponse.SC_CONFLICT, SPACE_REFUSED);
 			}
-			user = _users.addUser(new User(name, role, member ? name : "", java.time.Instant.now().toString()));
+			// The invitation says what the new user holds, see issue #82; issue #83 enforces it.
+			user = _users.addUser(new User(name, role, member ? name : "", java.time.Instant.now().toString(),
+				invitation.getClearance(), invitation.isShare()));
 			// The device token and the user are written in one store, by this call.
 			String issued = _users.addDevice(user, request.getDeviceName());
 			deviceName = user.getDevices().get(user.getDevices().size() - 1).getName();

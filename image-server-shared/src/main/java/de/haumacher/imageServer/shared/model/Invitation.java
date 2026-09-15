@@ -33,6 +33,12 @@ public class Invitation extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getRole() */
 	private static final String ROLE__PROP = "role";
 
+	/** @see #getClearance() */
+	private static final String CLEARANCE__PROP = "clearance";
+
+	/** @see #isMayShare() */
+	private static final String MAY_SHARE__PROP = "mayShare";
+
 	/** @see #getNote() */
 	private static final String NOTE__PROP = "note";
 
@@ -57,6 +63,10 @@ public class Invitation extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _id = "";
 
 	private String _role = "";
+
+	private String _clearance = "";
+
+	private boolean _mayShare = false;
 
 	private String _note = "";
 
@@ -124,6 +134,52 @@ public class Invitation extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** Internal setter for {@link #getRole()} without chain call utility. */
 	protected final void internalSetRole(String value) {
 		_role = value;
+	}
+
+	/**
+	 * Which privacy levels the accepting user may see: <code>public</code>,
+	 * <code>nonPrivate</code> or <code>all</code> (issue #82).
+	 *
+	 * <p>
+	 * Empty means what the role implies. Never above the inviter's own clearance; stored with the
+	 * created user and enforced by issue #83.
+	 * </p>
+	 */
+	public final String getClearance() {
+		return _clearance;
+	}
+
+	/**
+	 * @see #getClearance()
+	 */
+	public de.haumacher.imageServer.shared.model.Invitation setClearance(String value) {
+		internalSetClearance(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getClearance()} without chain call utility. */
+	protected final void internalSetClearance(String value) {
+		_clearance = value;
+	}
+
+	/**
+	 * Whether the accepting user may create share links (issue #82).
+	 */
+	public final boolean isMayShare() {
+		return _mayShare;
+	}
+
+	/**
+	 * @see #isMayShare()
+	 */
+	public de.haumacher.imageServer.shared.model.Invitation setMayShare(boolean value) {
+		internalSetMayShare(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isMayShare()} without chain call utility. */
+	protected final void internalSetMayShare(boolean value) {
+		_mayShare = value;
 	}
 
 	/**
@@ -290,6 +346,10 @@ public class Invitation extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getId());
 		out.name(ROLE__PROP);
 		out.value(getRole());
+		out.name(CLEARANCE__PROP);
+		out.value(getClearance());
+		out.name(MAY_SHARE__PROP);
+		out.value(isMayShare());
 		out.name(NOTE__PROP);
 		out.value(getNote());
 		out.name(EXPIRES__PROP);
@@ -311,6 +371,8 @@ public class Invitation extends de.haumacher.msgbuf.data.AbstractDataObject {
 		switch (field) {
 			case ID__PROP: setId(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case ROLE__PROP: setRole(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case CLEARANCE__PROP: setClearance(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case MAY_SHARE__PROP: setMayShare(in.nextBoolean()); break;
 			case NOTE__PROP: setNote(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case EXPIRES__PROP: setExpires(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case INVITED_BY__PROP: setInvitedBy(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;

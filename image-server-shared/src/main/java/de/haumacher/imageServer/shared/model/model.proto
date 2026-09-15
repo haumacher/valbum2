@@ -571,8 +571,32 @@ message AuthInfo {
 	/** The caller's role: <code>admin</code>, <code>member</code> or <code>guest</code>; empty for an anonymous caller. */
 	string role;
 	
-	/** The folder below the server's base folder the caller's requests are resolved against, empty for the base folder itself. */
+	/**
+	 * The space the caller is in: the folder below the server's base folder their requests are
+	 * resolved against, empty for the base folder itself.
+	 *
+	 * <p>
+	 * On a multi-space server (issue #82) this is the space of the address the request was sent to
+	 * — the first segment of <code>&lt;context&gt;/&lt;space&gt;/data/...</code> — and every user,
+	 * device and album the answer speaks of belongs to it. On a single-space server it is empty,
+	 * as it was for a library that was never migrated.
+	 * </p>
+	 */
 	string space;
+
+	/**
+	 * Which privacy levels the caller may see: <code>public</code>, <code>nonPrivate</code> or
+	 * <code>all</code>; empty for an anonymous caller (issue #82).
+	 *
+	 * <p>
+	 * One of the two axes of the permission model of Phase 6, stored with the user and enforced by
+	 * issue #83. It is compared against an image's privacy level, which does not change.
+	 * </p>
+	 */
+	string clearance;
+
+	/** Whether the caller may create share links, see issue #82; false for an anonymous caller. */
+	bool mayShare;
 
 	/**
 	 * The share link this caller opened, <code>null</code> for everybody else (issue #51).
@@ -956,6 +980,15 @@ message UserEntry {
 
 	/** How many devices the user is signed in on, answered by the server (issue #55). */
 	int devices;
+
+	/**
+	 * Which privacy levels this user may see: <code>public</code>, <code>nonPrivate</code> or
+	 * <code>all</code> (issue #82).
+	 */
+	string clearance;
+
+	/** Whether this user may create share links (issue #82). */
+	bool mayShare;
 }
 
 /**
@@ -1169,6 +1202,20 @@ message Invitation {
 	 * </p>
 	 */
 	string role;
+
+	/**
+	 * Which privacy levels the accepting user may see: <code>public</code>,
+	 * <code>nonPrivate</code> or <code>all</code> (issue #82).
+	 *
+	 * <p>
+	 * Empty means what the role implies. Never above the inviter's own clearance; stored with the
+	 * created user and enforced by issue #83.
+	 * </p>
+	 */
+	string clearance;
+
+	/** Whether the accepting user may create share links (issue #82). */
+	bool mayShare;
 
 	/** A note the inviter wrote for themselves, shown wherever the invitation is listed; may be empty. */
 	string note;

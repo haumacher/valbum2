@@ -37,6 +37,12 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getDevices() */
 	private static final String DEVICES__PROP = "devices";
 
+	/** @see #getClearance() */
+	private static final String CLEARANCE__PROP = "clearance";
+
+	/** @see #isMayShare() */
+	private static final String MAY_SHARE__PROP = "mayShare";
+
 	private String _name = "";
 
 	private String _role = "";
@@ -46,6 +52,10 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _created = "";
 
 	private int _devices = 0;
+
+	private String _clearance = "";
+
+	private boolean _mayShare = false;
 
 	/**
 	 * Creates a {@link UserEntry} instance.
@@ -161,6 +171,47 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_devices = value;
 	}
 
+	/**
+	 * Which privacy levels this user may see: <code>public</code>, <code>nonPrivate</code> or
+	 * <code>all</code> (issue #82).
+	 */
+	public final String getClearance() {
+		return _clearance;
+	}
+
+	/**
+	 * @see #getClearance()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setClearance(String value) {
+		internalSetClearance(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getClearance()} without chain call utility. */
+	protected final void internalSetClearance(String value) {
+		_clearance = value;
+	}
+
+	/**
+	 * Whether this user may create share links (issue #82).
+	 */
+	public final boolean isMayShare() {
+		return _mayShare;
+	}
+
+	/**
+	 * @see #isMayShare()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setMayShare(boolean value) {
+		internalSetMayShare(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isMayShare()} without chain call utility. */
+	protected final void internalSetMayShare(boolean value) {
+		_mayShare = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.UserEntry readUserEntry(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.UserEntry result = new de.haumacher.imageServer.shared.model.UserEntry();
@@ -186,6 +237,10 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getCreated());
 		out.name(DEVICES__PROP);
 		out.value(getDevices());
+		out.name(CLEARANCE__PROP);
+		out.value(getClearance());
+		out.name(MAY_SHARE__PROP);
+		out.value(isMayShare());
 	}
 
 	@Override
@@ -196,6 +251,8 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case SPACE__PROP: setSpace(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CREATED__PROP: setCreated(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case DEVICES__PROP: setDevices(in.nextInt()); break;
+			case CLEARANCE__PROP: setClearance(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case MAY_SHARE__PROP: setMayShare(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}
