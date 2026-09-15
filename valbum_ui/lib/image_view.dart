@@ -477,6 +477,9 @@ class ImageViewState extends State<ImageView>
             videoUrl: widget.client.originalUrl(dataUrl),
             posterUrl: widget.client.thumbnailUrl(dataUrl),
             headers: widget.client.authHeaders,
+            // A failure of the platform player goes into the same log every
+            // request of this app goes into, see issue #73.
+            log: widget.client.log,
           ),
         ),
       ),

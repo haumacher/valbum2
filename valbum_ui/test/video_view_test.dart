@@ -265,15 +265,15 @@ void main() {
 
     expect(find.byKey(const Key("video-error")), findsOneWidget);
 
-    // The message names the URL and the problem.
+    // The message names the URL and says one plain sentence; the raw failure
+    // is in the diagnostics log, not on the screen, see issue #73 and
+    // `video_error_test.dart`.
     expect(
       find.text("http://server/valbum/data/album/clip.mp4"),
       findsOneWidget,
     );
-    expect(
-      find.textContaining("No player for"),
-      findsOneWidget,
-    );
+    expect(find.text(videoErrorHeadline), findsOneWidget);
+    expect(find.textContaining("No player for"), findsNothing);
 
     // The poster stays visible behind the message.
     expect(
@@ -289,7 +289,8 @@ void main() {
     await pumpVideo(tester);
 
     expect(find.byKey(const Key("video-error")), findsOneWidget);
-    expect(find.textContaining("Cannot open video"), findsOneWidget);
+    expect(find.text(videoErrorHeadline), findsOneWidget);
+    expect(find.textContaining("PlatformException"), findsNothing);
     expect(
       shownUrls(tester),
       ["http://server/valbum/data/album/clip.mp4?type=tn"],
