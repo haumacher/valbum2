@@ -112,7 +112,9 @@ public class TestAuthProbe extends TestCase {
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("action", "pair");
 		FakeResponse response = new FakeResponse();
-		byte[] body = ("{\"secret\":\"" + SECRET + "\",\"deviceName\":\"" + deviceName + "\"}")
+		// A first sign-in with the secret names the administrator of the space, see issue #86.
+		byte[] body = ("{\"secret\":\"" + SECRET + "\",\"userName\":\"haui\",\"deviceName\":\""
+			+ deviceName + "\"}")
 			.getBytes(StandardCharsets.UTF_8);
 		servlet.doPost(TestImageServletPut.request("/", "application/json", body, Collections.emptyMap(), parameters),
 			response.response());

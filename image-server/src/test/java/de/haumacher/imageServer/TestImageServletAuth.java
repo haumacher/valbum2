@@ -293,8 +293,17 @@ public class TestImageServletAuth extends TestCase {
 		return PairResponse.readPairResponse(reader(response.body()));
 	}
 
+	/**
+	 * A pairing request with a user name: a first sign-in with the secret names the administrator
+	 * of the space, see issue #86.
+	 */
 	private static String pairRequest(String secret, String deviceName) {
-		return "{\"secret\":\"" + secret + "\",\"deviceName\":\"" + deviceName + "\"}";
+		return pairRequest(secret, deviceName, "haui");
+	}
+
+	private static String pairRequest(String secret, String deviceName, String userName) {
+		return "{\"secret\":\"" + secret + "\",\"userName\":\"" + userName + "\",\"deviceName\":\""
+			+ deviceName + "\"}";
 	}
 
 	private AuthInfo authInfo(ImageServlet servlet, String token) throws Exception {

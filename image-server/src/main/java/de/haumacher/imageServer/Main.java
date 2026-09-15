@@ -242,6 +242,18 @@ public class Main {
 
 	/** Says who administers the given space and whether anybody may look in without signing in. */
 	private void reportSpace(Spaces spaces, Spaces.Space space) {
+		try {
+			// A library written before Phase 6 could have a nameless owner; in a space the
+			// administrator is one user among several and needs a name, see issue #86.
+			String named = space.getAuth().nameNamelessOwner(space.getSegment());
+			if (named != null) {
+				System.out.println("Named the administrator of "
+					+ (space.getSegment().isEmpty() ? "this library" : "space '" + space.getSegment() + "'")
+					+ " '" + named + "' (it had no name); every device keeps working.");
+			}
+		} catch (IOException ex) {
+			System.err.println("Cannot name the administrator of '" + space.getRoot() + "': " + ex.getMessage());
+		}
 		String where = spaces.getMode() == SpaceMode.SINGLE
 			? "Library owner: "
 			: "Space '" + space.getSegment() + "' (" + space.getConfig().getName() + ", anonymous: "

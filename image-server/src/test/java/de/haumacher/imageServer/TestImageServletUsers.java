@@ -87,26 +87,52 @@ public class TestImageServletUsers extends TestCase {
 		assertEquals(Roles.ADMIN, owner.getRole());
 	}
 
-	public void testASignInWithoutANameKeepsTheOwnerUnnamed() throws Exception {
+	/**
+	 * The first sign-in with the secret creates the administrator of the space, and an
+	 * administrator without a name is nobody the space can talk about, see issue #86.
+	 */
+	public void testAFirstSignInWithoutANameIsRefused() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.WRITES);
 
-		PairResponse response = signIn(servlet, "", "Phone");
+		FakeResponse response = post(servlet, "pair", pairRequest(SECRET, "Phone", ""), null);
 
-		assertEquals("A pre-#45 app sends no name and is still the owner.", "", response.getUserName());
-		assertEquals(Roles.ADMIN, response.getRole());
-		assertEquals("", new UserStore(_base).getOwner().getName());
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status());
+		assertEquals(AuthService.ADMIN_NAME_REQUIRED, errorMessage(response));
+		assertNull("Nobody was created.", new UserStore(_base).getOwner());
+
+		// Blanks are no name either.
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST,
+			post(servlet, "pair", pairRequest(SECRET, "Phone", "   "), null).status());
+		assertNull(new UserStore(_base).getOwner());
 	}
 
-	public void testTheSecondSignInNamesTheUnnamedOwner() throws Exception {
+	/**
+	 * A library written before Phase 6 can have a nameless owner; adding a device to them keeps
+	 * working with no name, and a name given then is theirs, see issues #82 and #86.
+	 */
+	public void testANamelessOwnerOfAnOlderLibraryStillAddsDevices() throws Exception {
+		namelessOwner();
 		ImageServlet servlet = servlet(AuthMode.WRITES);
-		signIn(servlet, "", "Phone");
 
-		PairResponse response = signIn(servlet, "haui", "Tablet");
+		PairResponse nameless = signIn(servlet, "", "Phone");
+		assertEquals("A device of the nameless owner, as before.", "", nameless.getUserName());
+		assertEquals(Roles.ADMIN, nameless.getRole());
 
-		assertEquals("haui", response.getUserName());
+		PairResponse named = signIn(servlet, "haui", "Tablet");
+		assertEquals("haui", named.getUserName());
 		UserStore store = new UserStore(_base);
 		assertEquals(1, store.getUsers().size());
-		assertEquals("Both devices belong to the one owner.", 2, store.getOwner().getDevices().size());
+		assertEquals("Every device belongs to the one administrator.", 3, store.getOwner().getDevices().size());
+	}
+
+	/** A user store as an older build wrote it: one administrator, without a name. */
+	private void namelessOwner() throws Exception {
+		java.nio.file.Path file = _base.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME);
+		java.nio.file.Files.createDirectories(file.getParent());
+		java.nio.file.Files.write(file, ("{\"version\":1,\"users\":[{\"name\":\"\",\"role\":\"admin\","
+			+ "\"space\":\"\",\"created\":\"2026-09-06T10:11:12Z\",\"devices\":[{\"id\":\"aaaaaaaa\","
+			+ "\"name\":\"Old\",\"tokenHash\":\"" + UserStore.hash("old-token")
+			+ "\",\"created\":\"2026-09-06T10:11:12Z\"}]}]}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
 	}
 
 

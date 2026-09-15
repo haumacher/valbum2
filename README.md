@@ -80,11 +80,14 @@ Options:
 
 With `--auth writes` (the default) the server serves every read but refuses an anonymous change or
 upload with `401` and a message the app shows. To let a device change something, open the app's
-server settings and sign in: enter a user name, the pairing secret the server printed at start-up
+server settings and sign in: enter your name, the pairing secret the server printed at start-up
 ("Pairing secret: ...") and a device name, then press "Sign in". The server issues a token for
 this device, the app stores it beside the server URL and sends it on every request from then on;
 the settings show who the device is signed in as (user, role, device, space). "Sign out" forgets
-the token. `--auth all` refuses anonymous reads as well; `--auth off` is the old behaviour, open to
+the token. The **first** sign-in with the secret creates the administrator of the space, so the name
+is required then: it is what the users list shows, what an uploaded photo is attributed to, and
+what a permission change addresses. Later sign-ins with the secret add further devices of that same
+administrator, and a different name is refused. `--auth all` refuses anonymous reads as well; `--auth off` is the old behaviour, open to
 everyone who can reach the server.
 
 ### Adding a further device of your own

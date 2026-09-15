@@ -153,6 +153,7 @@ public class SpacesMigration {
 			report.say("This library was never migrated per user, so it is one space: the base folder.");
 			report.say("The server runs in single-space mode; " + UserStore.DIRECTORY_NAME + "/"
 				+ UserStore.FILE_NAME + " stays where it is. Nothing was moved.");
+			nameOwner(basePath, "", report);
 			return report;
 		}
 
@@ -175,6 +176,12 @@ public class SpacesMigration {
 			// The admin of their own space, with everything in it, and their devices along.
 			User admin = new User(name, Roles.ADMIN, "", user.getCreated().isEmpty()
 				? Instant.now().toString() : user.getCreated(), Clearances.ALL, true);
+			if (user.getName().isEmpty()) {
+				// A nameless owner of a library written before Phase 6 is named after the folder
+				// that becomes their space, see issue #86.
+				report.say("The owner of '" + user.getSpace() + "' had no name and is now '" + name
+					+ "'; their devices and tokens are untouched.");
+			}
 			for (Device device : user.getDevices()) {
 				admin.addDevice(new Device(device.getId(), device.getName(), device.getTokenHash(),
 					device.getCreated()));
@@ -202,6 +209,24 @@ public class SpacesMigration {
 		report.say("What was set aside is under " + UserStore.DIRECTORY_NAME + "/" + RETIRED_DIRECTORY_NAME
 			+ "/; nothing was deleted.");
 		return report;
+	}
+
+	/**
+	 * Names the administrator of the given space folder if they have none, see issue #86.
+	 *
+	 * <p>
+	 * The one case the per-user branch above does not cover: an un-migrated library, where nothing
+	 * moves and the user store stays where it is, but a nameless owner still has to become
+	 * somebody the space can talk about.
+	 * </p>
+	 */
+	private static void nameOwner(Path spaceRoot, String segment, Report report) throws IOException {
+		AuthService auth = new AuthService(AuthMode.WRITES, null, spaceRoot);
+		String named = auth.nameNamelessOwner(segment);
+		if (named != null) {
+			report.say("The owner of this library had no name and is now '" + named
+				+ "'; their devices and tokens are untouched.");
+		}
 	}
 
 	/** Moves the server-wide state aside, naming what each file held. */

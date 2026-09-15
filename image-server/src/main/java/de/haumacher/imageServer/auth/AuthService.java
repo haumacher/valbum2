@@ -287,6 +287,77 @@ public class AuthService {
 		return "'" + name + "' is a user of this server; a group cannot take a user's name.";
 	}
 
+	/** Whether the given name is nothing but blanks. */
+	private static boolean blank(String name) {
+		return name == null || name.trim().isEmpty();
+	}
+
+	/**
+	 * Gives the space's administrator a name if they have none, see issue #86.
+	 *
+	 * <p>
+	 * A library written before Phase 6 could have a nameless owner: the one user of a library
+	 * needed no name. In a space the administrator is one user among several, so they get one —
+	 * once, at start-up or by the migration, with their devices and token hashes untouched, so
+	 * that every device that worked keeps working. The name is the space's own (the folder it is
+	 * addressed by, {@value #DEFAULT_OWNER_NAME} for a single-space server); a name already taken
+	 * by a user or by a folder at the top of the space gets a number appended.
+	 * </p>
+	 *
+	 * @param suggestion
+	 *        What to call them, the space's segment or the empty string for a single-space server.
+	 * @return The name they were given, <code>null</code> if there was nothing to do (no
+	 *         administrator, or one that has a name already).
+	 */
+	public String nameNamelessOwner(String suggestion) throws IOException {
+		if (_users == null) {
+			return null;
+		}
+		synchronized (_users) {
+			User owner = _users.getOwner();
+			if (owner == null || !owner.getName().isEmpty()) {
+				return null;
+			}
+			String name = freeName(suggestion);
+			owner.setName(name);
+			_users.store();
+			LOG.info("Named the administrator of this space '" + name + "'.");
+			return name;
+		}
+	}
+
+	/** What a nameless administrator is called when nothing else says. */
+	public static final String DEFAULT_OWNER_NAME = "owner";
+
+	/**
+	 * A name for the administrator that nothing else in the space holds.
+	 *
+	 * <p>
+	 * The suggestion if it is a usable name and free, otherwise the suggestion with a number
+	 * appended. The fallback is {@value #DEFAULT_OWNER_NAME}, which a single-space server has no
+	 * better name than.
+	 * </p>
+	 */
+	private String freeName(String suggestion) {
+		String base;
+		try {
+			base = UserStore.checkUserName(blank(suggestion) ? DEFAULT_OWNER_NAME : suggestion);
+		} catch (IllegalArgumentException ex) {
+			// A folder name no user may carry (a dot, a tilde, a control character).
+			base = DEFAULT_OWNER_NAME;
+		}
+		if (isNameFree(base)) {
+			return base;
+		}
+		for (int n = 2; n < 1000; n++) {
+			String candidate = base + "-" + n;
+			if (isNameFree(candidate)) {
+				return candidate;
+			}
+		}
+		throw new IllegalStateException("No free name for the administrator of this space.");
+	}
+
 	/** Whether a user of the given name exists, see {@link #groupNameIsUser(String)}. */
 	public boolean isUserName(String name) {
 		return _users != null && _users.getUser(name) != null;
@@ -552,7 +623,14 @@ public class AuthService {
 			if (_share != null) {
 				return _share.getSubject();
 			}
-			if (_user != null && !_user.getName().isEmpty()) {
+			if (_user != null) {
+				if (_user.getName().isEmpty()) {
+					// Cannot happen since issue #86: a first sign-in with the secret names the
+					// administrator, and a nameless one from an older library is named at
+					// start-up. If it ever does, say so rather than record a broken subject.
+					LOG.warning("A signed-in user without a name; their contribution is unattributed.");
+					return "anonymous";
+				}
 				return "user:" + _user.getName();
 			}
 			return "anonymous";
@@ -977,6 +1055,20 @@ public class AuthService {
 			+ (clearance <= Privacy.PUBLIC ? "public" : clearance == Privacy.MEMBERS ? "members" : "private")
 			+ "' as its privacy limit.";
 	}
+
+	/**
+	 * The message a first sign-in with the pairing secret without a name is refused with (#86).
+	 *
+	 * <p>
+	 * The administrator of a space is one user among several: their name is what the users list
+	 * shows, what an attribution records and what <code>set-permission</code> and
+	 * <code>remove-user</code> address them by. A nameless one was a library with a single owner,
+	 * and that is not what a space is.
+	 * </p>
+	 */
+	public static final String ADMIN_NAME_REQUIRED =
+		"The first sign-in with the pairing secret names the administrator of this space. "
+			+ "Enter your name.";
 
 	/** The message the demotion or removal of the last administrator is refused with. */
 	public static final String LAST_ADMIN =
@@ -1766,6 +1858,11 @@ public class AuthService {
 
 		User owner;
 		synchronized (_users) {
+			if (_users.getOwner() == null && blank(request.getUserName())) {
+				// This pairing would create the administrator, and an administrator without a name
+				// is nobody the space can talk about, see issue #86.
+				throw new PairRefused(HttpServletResponse.SC_BAD_REQUEST, ADMIN_NAME_REQUIRED);
+			}
 			try {
 				owner = _users.nameOwner(request.getUserName());
 			} catch (IllegalArgumentException ex) {
@@ -1990,9 +2087,8 @@ public class AuthService {
 		if (_users != null && _users.getUser(name) != null) {
 			return false;
 		}
-		if (false) {
-			return false;
-		}
+		// A user's name is also a folder name at the top of the space; two of a kind would shadow
+		// each other.
 		return _basePath == null || !Files.exists(_basePath.resolve(name));
 	}
 
