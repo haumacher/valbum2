@@ -274,17 +274,104 @@ bool isActiveRating(int rating, int value) {
   return rating == value;
 }
 
-/// Inserts a heading with the given text before [part].
+/// Inserts a heading with the given text before [part], at its stored index.
+///
+/// The plain form of [insertHeadingBeforeDisplayed]: with no display order at
+/// hand the stored order is the displayed one.
 ///
 /// Returns the index the heading was inserted at, or `-1` if [part] is not a
 /// part of the album.
-int insertHeadingBefore(AlbumInfo album, AlbumPart part, String text) {
-  var index = album.parts.indexOf(part);
-  if (index < 0) {
+int insertHeadingBefore(AlbumInfo album, AlbumPart part, String text) =>
+    insertHeadingBeforeDisplayed(album, part, const [], text);
+
+/// Inserts a heading with the given text before the *displayed* [part].
+///
+/// This is the model side of the tile action "insert a heading before this
+/// tile's part" (issue #71). The row layout buffers landscape images to pair
+/// one with a portrait image into a double row and re-flows the rest
+/// afterwards (see `album_layout.dart`), so within a block of rows the
+/// displayed order is a permutation of the stored order: a part stored behind
+/// [part] may well be shown before it, and one stored before it behind it.
+///
+/// A heading splits the stored sequence and the layout re-flows each side on
+/// its own, so *every* part stored before the heading is displayed before it.
+/// Inserting at the stored index of [part] therefore pulled a part that was
+/// displayed *after* the tile in front of the new heading — the tile the
+/// heading was meant to introduce ended up behind a photo the heading was
+/// supposed to come after.
+///
+/// The anchor is read off the display instead: the heading lands before every
+/// part that is displayed at or after [part], at the smallest stored index
+/// among `{part} ∪ {parts displayed after part}`. The intent of "before this
+/// tile" is stated relative to what follows the cursor, so what follows the
+/// cursor follows the heading. Parts displayed *before* the tile but stored
+/// behind that index are re-flowed behind the heading; in a sequence model one
+/// of the two has to give, and this is the smaller surprise.
+///
+/// Two insertions before the same tile stack in the order they were made: the
+/// first heading is displayed before the tile and is not part of the
+/// displayed-after set, so the second one lands between the first heading and
+/// the parts it introduces.
+///
+/// [displayOrder] is the parts in the order their tiles are shown, headings
+/// included, as `AlbumView`'s display order provides it (its parts are
+/// compared by identity). It need not cover the whole album: parts the rating
+/// filter hides are simply not displayed after [part] and stay where they are.
+/// If [displayOrder] does not hold [part], or holds a part that does not
+/// belong to the album, the stored index of [part] is the anchor — the plain
+/// behaviour, never a refusal.
+///
+/// Returns the index the heading was inserted at, or `-1` if [part] is not a
+/// part of the album.
+int insertHeadingBeforeDisplayed(
+  AlbumInfo album,
+  AlbumPart part,
+  List<AlbumPart> displayOrder,
+  String text,
+) {
+  var parts = album.parts;
+  var stored = Map<AlbumPart, int>.identity();
+  for (var i = 0; i < parts.length; i++) {
+    stored[parts[i]] = i;
+  }
+  var index = stored[part];
+  if (index == null) {
     return -1;
   }
-  album.parts.insert(index, Heading(text: text));
-  return index;
+
+  var at = _displayedHeadingAnchor(stored, part, index, displayOrder);
+  parts.insert(at, Heading(text: text));
+  return at;
+}
+
+/// The stored index a heading inserted before the displayed [part] lands at,
+/// see [insertHeadingBeforeDisplayed].
+int _displayedHeadingAnchor(
+  Map<AlbumPart, int> stored,
+  AlbumPart part,
+  int index,
+  List<AlbumPart> displayOrder,
+) {
+  var shown = displayOrder.indexWhere((p) => identical(p, part));
+  if (shown < 0) {
+    // The display order does not know this part: the stored order is all
+    // there is to go by.
+    return index;
+  }
+
+  var anchor = index;
+  for (var i = shown + 1; i < displayOrder.length; i++) {
+    var behind = stored[displayOrder[i]];
+    if (behind == null) {
+      // The display order and the album disagree; fall back to the plain
+      // stored index rather than anchoring on a guess.
+      return index;
+    }
+    if (behind < anchor) {
+      anchor = behind;
+    }
+  }
+  return anchor;
 }
 
 /// The images between [from] and [to] in the album's part order, excluding

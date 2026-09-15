@@ -1829,6 +1829,10 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   }
 
   /// Inserts a heading before this tile's part.
+  ///
+  /// The heading is anchored on what is *displayed* after this tile, not on
+  /// the tile's stored index — see [insertHeadingBeforeDisplayed] for why the
+  /// two differ and why the display decides (issue #71).
   Future<void> createHeading() async {
     var text = await showDialog<String>(
       context: context,
@@ -1841,7 +1845,12 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     if (text == null || !mounted) {
       return;
     }
-    album.editImage(() => insertHeadingBefore(album.widget.album, part, text));
+    album.editImage(() => insertHeadingBeforeDisplayed(
+          album.widget.album,
+          part,
+          album.displayOrder,
+          text,
+        ));
   }
 
   /// Edits the comment of the image shown by this tile.

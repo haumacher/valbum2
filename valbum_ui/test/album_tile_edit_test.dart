@@ -197,7 +197,8 @@ void main() {
       });
     });
 
-    testWidgets('inserts a heading before the image', (tester) async {
+    testWidgets('inserts a heading before what is shown after the image',
+        (tester) async {
       var client = clientReturning(fixture("album.json"));
 
       await withFakeImageHttp(() async {
@@ -207,6 +208,15 @@ void main() {
         await tapTile(tester, "portrait.jpg");
         expect(albumState(tester).selection, hasLength(1));
 
+        // The layout pulls the portrait image in front of the landscape
+        // image stored before it, so the landscape tile is shown *after* the
+        // selected one (see album_heading_anchor_test.dart).
+        var stored = album(tester).parts;
+        expect(
+          albumState(tester).displayOrder,
+          [stored[0], stored[2], stored[1], stored[3]],
+        );
+
         await tapTool(tester, "portrait.jpg", Icons.title);
         expect(find.text("Überschrift einfügen"), findsOneWidget);
         await tester.enterText(find.byType(TextField), "Am Mittag");
@@ -214,9 +224,13 @@ void main() {
         await tester.pumpAndSettle();
 
         var parts = album(tester).parts;
-        // Heading, landscape, [new heading], portrait, group.
-        expect(parts[2], isA<Heading>());
-        expect((parts[2] as Heading).text, "Am Mittag");
+        // Heading, [new heading], landscape, portrait, group: the heading
+        // lands before the landscape image that is displayed behind the
+        // selected tile, so everything shown after the cursor stays behind
+        // the heading (issue #71).
+        expect(parts[1], isA<Heading>());
+        expect((parts[1] as Heading).text, "Am Mittag");
+        expect((parts[2] as ImagePart).name, "landscape.jpg");
         expect((parts[3] as ImagePart).name, "portrait.jpg");
         expect(find.text("Am Mittag"), findsOneWidget);
       });
