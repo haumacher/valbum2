@@ -28,7 +28,6 @@ import 'client.dart';
 import 'device_code_payload.dart';
 import 'device_code_scanner.dart';
 import 'diagnostics.dart';
-import 'groups_view.dart';
 import 'invitation.dart';
 import 'manage_view.dart';
 import 'offline.dart';
@@ -605,12 +604,29 @@ class SignedInUser {
   /// the server has not said; empty means the whole library.
   final String? space;
 
+  /// Which privacy levels this user sees, as the server spelled it; empty
+  /// where it said nothing, see [CallerPermission] and issue #85.
+  final String clearance;
+
+  /// Whether this user may create share links, as the server said it.
+  final bool mayShare;
+
   const SignedInUser({
     this.userName,
     required this.deviceName,
     this.role,
     this.space,
+    this.clearance = "",
+    this.mayShare = false,
   });
+
+  /// What this user may do and see, in the normalised form every view reads,
+  /// see [CallerPermission.of].
+  CallerPermission get permission => CallerPermission.ofFields(
+        role: role ?? "",
+        clearance: clearance,
+        mayShare: mayShare,
+      );
 }
 
 Future<ConnectionTestResult> _reachServer(VAlbumClient client) async {
@@ -716,6 +732,9 @@ const Key deviceCodeFieldKey = Key("settings.deviceCode");
 /// open: on the web and on a desktop the field is typed into, and no button
 /// promises a scanner that does not exist, see [DeviceCodeScanner.available].
 const Key deviceCodeScanKey = Key("settings.deviceCode.scan");
+
+/// The key of the line saying what the caller may do and see (issue #85).
+const Key permissionLineKey = Key("settings.permission");
 
 /// The key of the sign-in section's own refusal, see [bothCredentialsRefusal].
 const Key signInErrorKey = Key("settings.signIn.error");
@@ -1047,6 +1066,8 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         deviceName: info.deviceName,
         role: info.role,
         space: info.space,
+        clearance: info.clearance,
+        mayShare: info.mayShare,
       );
     });
   }
@@ -1416,14 +1437,12 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
               if (offer != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  "${userDisplayName(offer.invitedBy)} invited you to this "
-                  "album server as a ${invitationRoleName(offer.role)}.",
+                  invitationHeadline(offer.invitedBy, offer.role),
                   key: const Key("settings.invitation.offer"),
                 ),
                 if (offer.note.trim().isNotEmpty)
                   Text(offer.note.trim(),
                       key: const Key("settings.invitation.note")),
-                if (offer.role == roleGuest) const Text(guestRoleExplanation),
               ],
               if (problem != null) ...[
                 const SizedBox(height: 8),
@@ -1478,12 +1497,6 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
             onPressed: _invite,
             icon: const Icon(Icons.person_add),
             label: const Text("Invite…"),
-          ),
-          OutlinedButton.icon(
-            key: groupsButtonKey,
-            onPressed: client == null ? null : () => _openGroups(client),
-            icon: const Icon(Icons.group),
-            label: const Text("Groups…"),
           ),
         ],
       ),
@@ -1540,10 +1553,6 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     ];
   }
 
-  /// Opens the screen managing the caller's groups, see issue #55.
-  Future<void> _openGroups(VAlbumClient client) =>
-      openGroupsScreen(context, client);
-
   /// Opens the dialog issuing an invitation at the *saved* server.
   ///
   /// The saved server and its token: an invitation is issued by a signed-in
@@ -1599,6 +1608,11 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       lines.add("Not signed in");
     }
     var problem = user == null ? null : identityProblem;
+    // What this caller may do and see, in plain words (issue #85): the role,
+    // the clearance and whether links may be handed out are three answers of
+    // the server, and somebody checking whether it thinks of them what they
+    // think it does should not have to read three field names to find out.
+    var permission = user?.permission;
     return [
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1611,7 +1625,17 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [for (var line in lines) Text(line)],
+              children: [
+                for (var line in lines) Text(line),
+                if (permission != null && permission.named)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      permission.sentence,
+                      key: permissionLineKey,
+                    ),
+                  ),
+              ],
             ),
           ),
         ],

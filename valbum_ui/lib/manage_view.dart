@@ -8,10 +8,6 @@
 /// together here rather than swelling `settings.dart`. Each is a section of
 /// the settings screen, not a screen of its own: they are all about *this
 /// device and this person*, which is what the settings screen is.
-///
-/// Groups are the exception and have a screen of their own, see
-/// `groups_view.dart`: a group is about other people, it outlives the device,
-/// and it is reached from here.
 library;
 
 import 'dart:async';
@@ -23,10 +19,49 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'device_code_payload.dart';
-import 'groups_view.dart';
 import 'resource.dart';
 import 'settings.dart';
 import 'urls.dart';
+
+/// The reason a request was refused, as it is shown to the user.
+///
+/// A [VAlbumException] carries the server's own sentence (the `ErrorInfo` of
+/// the refusal); anything else — a transport failure — is said as it is, so
+/// that nothing ever fails silently.
+String refusalMessage(Object error) =>
+    error is VAlbumException ? error.message : "$error";
+
+/// Asks the user before something is thrown away, answering their choice.
+///
+/// One dialog for every "are you sure?" of the management screens, so that
+/// they all read and behave the same way.
+Future<bool?> confirmHere({
+  required BuildContext context,
+  required String dialogKey,
+  required String title,
+  required String message,
+  required String confirmLabel,
+  required String confirmKey,
+}) =>
+    showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: Key(dialogKey),
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            key: Key(confirmKey),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
 
 /// The day of an ISO-8601 instant, in the reader's own time zone.
 ///
@@ -48,9 +83,6 @@ const Key usersSectionKey = Key("settings.users");
 
 /// The key of the pending invitations section.
 const Key invitationsSectionKey = Key("settings.invitations");
-
-/// The key of the "Groups…" button.
-const Key groupsButtonKey = Key("settings.groups");
 
 /// The key of the "Add a device…" button of the devices section (issue #65).
 const Key addDeviceButtonKey = Key("settings.devices.add");
@@ -659,9 +691,6 @@ class UsersSectionState extends State<UsersSection> {
   /// The server's reason for the last refusal, `null` while all is well.
   String? _problem;
 
-  /// Whether a request of this section is running.
-  bool _busy = false;
-
   @override
   void initState() {
     super.initState();
@@ -698,8 +727,8 @@ class UsersSectionState extends State<UsersSection> {
         ...sectionHead(
           context,
           "Users",
-          "Everybody who has an account on this server. A guest has no library "
-              "of their own until you make them a member.",
+          "Everybody who has an account on this server, and what they may do "
+              "and see in it.",
         ),
         if (users == null) sectionProgress("Asking the server..."),
         if (problem != null)
@@ -709,34 +738,35 @@ class UsersSectionState extends State<UsersSection> {
             key: Key("user-${user.name}"),
             contentPadding: EdgeInsets.zero,
             leading: Icon(
-              user.role == roleAdmin
+              CallerPermission.normalizeRole(user.role) == roleAdmin
                   ? Icons.admin_panel_settings
-                  : user.role == roleGuest
-                      ? Icons.person_outline
-                      : Icons.person,
+                  : Icons.person,
             ),
             title: Text(userDisplayName(user.name)),
-            subtitle: Text(_describe(user)),
-            trailing: user.role == roleGuest
-                ? TextButton(
-                    key: Key("user-promote-${user.name}"),
-                    onPressed: _busy ? null : () => _promote(user),
-                    child: const Text("Make member"),
-                  )
-                : null,
+            subtitle: Text(
+              _describe(user),
+              key: Key("user-permission-${user.name}"),
+            ),
           ),
       ],
     );
   }
 
-  /// The line under a user's name: what they are, where they are, and since
-  /// when.
+  /// The line under a user's name: what they may do and see, where their
+  /// library is, and since when (issue #85).
+  ///
+  /// Words, not field names: the three answers of the permission model read as
+  /// a sentence about that person, see [CallerPermission.phrase]. Editing them
+  /// is the admin's business and waits for the server's `?action=set-permission`.
   String _describe(UserEntry user) {
+    var permission = CallerPermission.ofFields(
+      role: user.role,
+      clearance: user.clearance,
+      mayShare: user.mayShare,
+    );
     var parts = <String>[
-      user.role.isEmpty ? "unknown role" : user.role,
-      user.role == roleGuest
-          ? "no library of their own"
-          : "library: ${spaceDisplayName(user.space)}",
+      permission.phrase,
+      "library: ${spaceDisplayName(user.space)}",
       "${user.devices} device${user.devices == 1 ? "" : "s"}",
     ];
     if (user.created.isNotEmpty) {
@@ -745,49 +775,6 @@ class UsersSectionState extends State<UsersSection> {
     return parts.join(" — ");
   }
 
-  /// Makes the guest [user] a member, after asking.
-  Future<void> _promote(UserEntry user) async {
-    var confirmed = await confirmHere(
-      context: context,
-      dialogKey: "promote-confirm",
-      title: "Make ${user.name} a member?",
-      message: "A folder of their own is created for them, and they can put "
-          "albums into it. There is no way back.",
-      confirmLabel: "Make member",
-      confirmKey: "promote-confirmed",
-    );
-    if (confirmed != true || !mounted) {
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _problem = null;
-    });
-    UserEntry answer;
-    try {
-      answer = await widget.client.promote(user.name);
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _problem = refusalMessage(error);
-        });
-      }
-      return;
-    }
-    if (!mounted) {
-      return;
-    }
-    // What the server answered takes the place of the row it is about: the
-    // rest of the list did not change, and nothing else has to be fetched.
-    setState(() {
-      _busy = false;
-      _users = [
-        for (var known in _users ?? const <UserEntry>[])
-          if (known.name == answer.name) answer else known,
-      ];
-    });
-  }
 }
 
 /// The invitations that are still open (issue #55).
@@ -918,13 +905,20 @@ class InvitationsSectionState extends State<InvitationsSection> {
     );
   }
 
-  /// Whom the invitation makes what, and by whom.
+  /// What the invitation makes somebody, and by whom (issue #85).
+  ///
+  /// The same words the users list uses, because it is the same thing: the
+  /// permission this person will have, see [CallerPermission.phrase].
   String _headline(Invitation invitation) {
-    var role = invitation.role == roleGuest ? "guest" : "member";
+    var permission = CallerPermission.ofFields(
+      role: invitation.role,
+      clearance: invitation.clearance,
+      mayShare: invitation.mayShare,
+    );
     var by = invitation.invitedBy.isEmpty
         ? ""
-        : " by ${userDisplayName(invitation.invitedBy)}";
-    return "As a $role$by";
+        : " — invited by ${userDisplayName(invitation.invitedBy)}";
+    return "${permission.phrase}$by";
   }
 
   /// The line under an invitation: the note it carries and how long it lives.

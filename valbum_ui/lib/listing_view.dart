@@ -11,7 +11,6 @@ import 'app.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
-import 'links.dart';
 import 'move_view.dart';
 import 'resource.dart';
 import 'offline.dart';
@@ -94,16 +93,7 @@ Widget indexPictureTile(
       ),
     );
 
-/// What a guest's own, empty root says (issue #56).
-///
-/// A guest has no albums of their own — their library is what others share
-/// with them — so an empty root is not a mistake, and the screen says so
-/// rather than showing a black page with a name on it.
-const String guestRootEmptyNotice =
-    "Nothing has been shared with you yet. Albums others share with you "
-    "appear here.";
-
-/// What an empty library says, see [guestRootEmptyNotice].
+/// What an empty library says.
 const String libraryEmptyNotice = "There are no albums here yet.";
 
 /// How an empty library is filled, said where the caller may fill it.
@@ -125,29 +115,19 @@ class ListingView extends StatelessWidget {
 
   /// What the caller may do with this folder, as the server answered it with
   /// the listing itself, see issue #49.
-  Rights get rights => Rights.of(listing);
+  ///
+  /// Where the server answered no rights at all, the caller's *role* decides
+  /// what is offered instead, and that is why this takes a context: the role
+  /// is published to the tree, see [offeredRights] and issue #85.
+  Rights rightsIn(BuildContext context) => offeredRights(
+        Rights.of(listing),
+        CallerInfo.permissionOf(context),
+      );
 
   /// The line saying that this folder belongs to somebody else, `null` while
   /// the caller is its owner.
-  String? get sharedLine => sharingNotice(albumState.path, rights);
-
-  /// Whether this folder is a guest's own root, where nothing may be created.
-  ///
-  /// A guest's library is what others share with them: the server hands them
-  /// every right there — they rearrange and decline their links — and refuses
-  /// by *role* the one thing that folder is not for, an album, a photo or a
-  /// folder of their own (`AuthService.GUEST_SPACE_REFUSED`, issue #52). What
-  /// is refused is not offered, so the creating entries go.
-  ///
-  /// "Their own" is the very question [sharingNotice] already answers: a path
-  /// that names nobody else's space and rights that are complete. A guest who
-  /// was granted `edit` on somebody's folder *through a link* reads the same
-  /// way and loses the creating entries there too — the answer carries the
-  /// rights but not whose space they are in, and a guest who edits another
-  /// member's folder is rare enough to pay that price rather than offer
-  /// something the server refuses at the root, which is the common case.
-  bool guestRoot(BuildContext context) =>
-      CallerInfo.isGuestCaller(context) && sharedLine == null;
+  String? sharedLineIn(BuildContext context) =>
+      sharingNotice(albumState.path, rightsIn(context));
 
   /// Whether the caller manages the grants of the folder at [path], asked once
   /// and remembered by the router.
@@ -158,15 +138,16 @@ class ListingView extends StatelessWidget {
   ///
   /// Never inside a share link: a link caller carries a token and may hold
   /// every right the link gives, but manages nothing, see issue #51.
-  /// Never in a guest's own root either: there the answer is known without
-  /// asking, see [guestRoot] and [couldManageGrants].
   Future<bool> mayShare(BuildContext context, List<String> path) =>
       ShareSession.of(context) == null &&
               couldManageGrants(
                 client,
                 albumState.path,
-                rights,
-                isGuest: CallerInfo.isGuestCaller(context),
+                rightsIn(context),
+                // A caller who may hand out no links is offered none, and the
+                // server is not asked about them, see issue #85.
+                mayShare: CallerInfo.permissionOf(context).mayShare ||
+                    !CallerInfo.permissionOf(context).named,
               )
           ? albumState.navigator.delegate.mayManageGrants(path)
           : _no;
@@ -188,7 +169,8 @@ class ListingView extends StatelessWidget {
     // at a bare URL is told what they were given, see issue #51. Nothing that
     // changes anything is offered, and neither is the way to the settings.
     var link = ShareSession.of(context);
-    var mayChange = rights.mayEdit && link == null && !guestRoot(context);
+    var sharedLine = sharedLineIn(context);
+    var mayChange = rightsIn(context).mayEdit && link == null;
     return Scaffold(
       // Black like the album pages, so that the way down does not flash from
       // a light page to a dark one, see issue #40.
@@ -228,7 +210,7 @@ class ListingView extends StatelessWidget {
               if (sharedLine != null) ...[
                 PopupMenuItem<void Function(BuildContext)>(
                   enabled: false,
-                  child: Text(sharedLine!, key: const Key("shared-line")),
+                  child: Text(sharedLine, key: const Key("shared-line")),
                 ),
                 const PopupMenuDivider(),
               ],
@@ -248,12 +230,6 @@ class ListingView extends StatelessWidget {
               // nothing to file, see issue #48.
               if (mayChange && self.placement != Placement.none)
                 menuItem(Icons.auto_awesome_motion, 'Apply rule', applyRule),
-              if (snapshot.data ?? false)
-                menuItem(
-                  Icons.share,
-                  'Share with…',
-                  (context) => shareFolder(context, albumState.path, self.title),
-                ),
               if (snapshot.data ?? false)
                 menuItem(
                   Icons.link,
@@ -324,17 +300,14 @@ class ListingView extends StatelessWidget {
   /// — and the person it hits hardest is a guest who has just joined, whose
   /// library is *correctly* empty until somebody shares an album with them.
   ///
-  /// Three sentences, because there are three empty folders: the guest's own
-  /// root (nothing has been shared yet), the root of a library (no albums
-  /// yet, and how to make one where the caller may), and any other folder.
-  /// Inside a share link the shared folder is the root, but it is somebody
-  /// else's folder, so it reads as a folder.
+  /// Two sentences, because there are two empty folders: the root of a
+  /// library (no albums yet, and how to make one where the caller may) and
+  /// any other folder. Inside a share link the shared folder is the root, but
+  /// it is somebody else's folder, so it reads as a folder.
   Widget emptyNotice(BuildContext context, bool inLink, bool mayChange) {
     var atRoot = albumState.path.isEmpty && !inLink;
     String sentence;
-    if (atRoot && CallerInfo.isGuestCaller(context)) {
-      sentence = guestRootEmptyNotice;
-    } else if (atRoot) {
+    if (atRoot) {
       sentence = mayChange
           ? "$libraryEmptyNotice $libraryEmptyHint"
           : libraryEmptyNotice;
@@ -399,19 +372,6 @@ class ListingView extends StatelessWidget {
                       ),
                       textAlign: TextAlign.center,
                     ),
-                  // Whose album this tile shows: a link carries the name of
-                  // the owner who shared it, see issue #50.
-                  if (linkOwnerOf(folder) != null)
-                    Text(
-                      "from ${linkOwnerOf(folder)}",
-                      key: Key("link-owner-${folder.name}"),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: Colors.white70,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
                 ],
               ),
             ),
@@ -421,39 +381,14 @@ class ListingView extends StatelessWidget {
     );
   }
 
-  /// The picture of one tile, with the link badge on it where the tile is a
-  /// link to somebody else's album, see issue #50.
-  Widget buildFolderWidget(FolderInfo folder, double width) {
-    var picture = buildFolderPicture(folder, width);
-    var owner = linkOwnerOf(folder);
-    if (owner == null) {
-      return picture;
-    }
-    return Stack(
-      children: [
-        picture,
-        Positioned(
-          top: 4,
-          left: 4,
-          child: Tooltip(
-            message: "Shared by $owner",
-            child: Semantics(
-              label: "Shared by $owner",
-              child: Container(
-                key: Key("link-badge-${folder.name}"),
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Icon(Icons.link, size: 16, color: Colors.white),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  /// The picture of one tile.
+  ///
+  /// A `link` field on a folder is what issue #50 made and issue #85 retired:
+  /// a space is addressed by its own URL now, and nothing of somebody else's
+  /// hangs in this tree. A listing that still carries one — an old server —
+  /// shows the folder plainly, and never an error.
+  Widget buildFolderWidget(FolderInfo folder, double width) =>
+      buildFolderPicture(folder, width);
 
   Widget buildFolderPicture(FolderInfo folder, double width) {
     var indexPicture = folder.indexPicture;
@@ -492,14 +427,9 @@ class ListingView extends StatelessWidget {
     // separately. The answer is remembered per folder, so a second long press
     // asks nothing again.
     var link = ShareSession.of(context);
-    // Moving inside a guest's own root is refused as well: every target the
-    // picker offers lies in that root, see [guestRoot].
-    var mayMove = rights.mayEdit && link == null && !guestRoot(context);
-    // A link is an entry of *this* folder, so removing it is an edit of this
-    // folder; the album it points at is not touched, see issue #50.
-    var mayUnlink = rights.mayEdit && link == null && folder.link.isNotEmpty;
+    var mayMove = rightsIn(context).mayEdit && link == null;
     var mayShareChild = await mayShare(context, childPath);
-    if (!context.mounted || (!mayMove && !mayShareChild && !mayUnlink)) {
+    if (!context.mounted || (!mayMove && !mayShareChild)) {
       // Nothing this caller may do here: no menu rather than an empty one.
       return;
     }
@@ -522,26 +452,10 @@ class ListingView extends StatelessWidget {
           ),
         if (mayShareChild)
           const PopupMenuItem<String>(
-            value: "share",
-            child: ListTile(
-              leading: Icon(Icons.share),
-              title: Text("Share with…"),
-            ),
-          ),
-        if (mayShareChild)
-          const PopupMenuItem<String>(
             value: "share-link",
             child: ListTile(
               leading: Icon(Icons.link),
               title: Text("Share link…"),
-            ),
-          ),
-        if (mayUnlink)
-          const PopupMenuItem<String>(
-            value: "unlink",
-            child: ListTile(
-              leading: Icon(Icons.link_off),
-              title: Text("Remove from my albums"),
             ),
           ),
       ],
@@ -549,16 +463,8 @@ class ListingView extends StatelessWidget {
     if (chosen == null || !context.mounted) {
       return;
     }
-    if (chosen == "share") {
-      await shareFolder(context, childPath, folder.title);
-      return;
-    }
     if (chosen == "share-link") {
       await shareFolderLink(context, childPath, folder.title);
-      return;
-    }
-    if (chosen == "unlink") {
-      await removeLink(context, folder);
       return;
     }
     await moveWithPicker(
@@ -570,89 +476,6 @@ class ListingView extends StatelessWidget {
       onMoved: albumState.reload,
     );
   }
-
-  /// Removes the link [folder] from this folder, see issue #50.
-  ///
-  /// Only the entry goes: the album stays with its owner, and it is the
-  /// owner's to share again. That is what the confirmation says — a tile that
-  /// looks exactly like an album of one's own must not vanish on a menu entry
-  /// without a word about what is being thrown away.
-  Future<void> removeLink(BuildContext context, FolderInfo folder) async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
-    var owner = linkOwnerOf(folder) ?? "its owner";
-    var messenger = ScaffoldMessenger.of(context);
-    var confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        key: const Key("unlink-confirm"),
-        title: const Text("Remove from my albums"),
-        content: Text(
-          "The album stays with $owner; only your entry is removed. "
-          "It does not come back on its own.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton.icon(
-            key: const Key("unlink-confirmed"),
-            icon: const Icon(Icons.link_off),
-            label: const Text("Remove"),
-            onPressed: () => Navigator.of(context).pop(true),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) {
-      return;
-    }
-
-    MoveResult result;
-    try {
-      result = await client.unlink(albumState.path, [folder.name]);
-    } catch (error) {
-      // The server's own reason, as every refused write shows it.
-      showRefusal(messenger, error);
-      return;
-    }
-
-    // The tile is gone from the folder: the listing on the screen has to be
-    // fetched again before the outcome is read out.
-    albumState.reload();
-
-    var removed = result.outcomes.length - refusedOutcomes(result).length;
-    var summary =
-        removed == 0 ? "Nothing removed." : "Removed from my albums.";
-    if (!context.mounted) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(summary), duration: const Duration(seconds: 6)),
-      );
-      return;
-    }
-    await reportOutcomes(
-      context: context,
-      messenger: messenger,
-      title: "Remove",
-      summary: summary,
-      result: result,
-    );
-  }
-
-  /// Opens the share dialog on the folder at [path], see issue #49.
-  Future<void> shareFolder(
-    BuildContext context,
-    List<String> path,
-    String title,
-  ) =>
-      shareWith(
-        context: context,
-        client: client,
-        path: path,
-        label: title.isEmpty ? null : "'$title'",
-      );
 
   /// Opens the share-link dialog on the folder at [path], see issue #51.
   Future<void> shareFolderLink(

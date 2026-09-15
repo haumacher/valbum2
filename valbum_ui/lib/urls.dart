@@ -1,4 +1,27 @@
 /// Derivation of the server URL the app talks to.
+///
+/// ## Where a server lives
+///
+/// A single-space server serves the app at its context path and its API in the
+/// `data` folder below it:
+///
+///  * app `https://host/valbum/`, API `https://host/valbum/data`,
+///  * a share link `https://host/valbum/s/<token>/`,
+///  * an invitation `https://host/valbum/i/<token>/`.
+///
+/// A multi-space server (Phase 6, issue #85) puts everything of one space
+/// below the space's own segment, and nothing else changes:
+///
+///  * app `https://host/valbum/alice/`, API `https://host/valbum/alice/data`,
+///  * a share link `https://host/valbum/alice/s/<token>/`,
+///  * an invitation `https://host/valbum/alice/i/<token>/`.
+///
+/// Nothing here has to *know* which of the two it is looking at, and that is
+/// the point: every derivation in this library is relative to the app base —
+/// the directory the app was served from — so a space is simply one more
+/// segment of that base, exactly like a context path of several segments
+/// (`https://host/photos/deep/alice/`). See [sessionUrl] for the one rule
+/// that reads a path rather than deriving from it.
 library;
 
 /// The data URL used on platforms that cannot derive it from their own origin.
@@ -128,11 +151,12 @@ String _folderOf(String path) {
 }
 
 /// The path segment below which the server serves the app for a share link,
-/// see issue #51 (`<context>/s/<token>/`).
+/// see issue #51 (`<base>/s/<token>/`, where `<base>` is the context path and,
+/// on a multi-space server, the space below it).
 const String shareUrlSegment = "s";
 
 /// The path segment below which the server serves the app for an invitation,
-/// see issue #52 (`<context>/i/<token>/`).
+/// see issue #52 (`<base>/i/<token>/`, see [shareUrlSegment]).
 const String invitationUrlSegment = "i";
 
 /// What a token in the app base opens: a share link, or an invitation.
@@ -224,16 +248,41 @@ class SessionUrl {
 /// [basePath] is omitted the directory part of [base] is used, which is the
 /// app base of a start page.
 ///
-/// A base ending in `/s/<segment>/` or `/i/<segment>/` is a session: the
-/// segment is the token and the data URL is the one of the context the
-/// `/<segment>/<token>` part hangs below:
+/// ## The rule
+///
+/// **The last two segments decide, and nothing else does.** A base ending in
+/// `/s/<segment>/` or `/i/<segment>/` is a session; the segment is the token,
+/// and *everything before those two segments* is the base the session belongs
+/// to — the context path, plus the space on a multi-space server (issue #85).
+/// Any number of leading segments is allowed, zero included:
 ///
 ///  * `/valbum/s/abc/` at `http://h:8080` yields the token `abc` and
 ///    `http://h:8080/valbum/data`,
+///  * `/valbum/alice/s/abc/` yields `http://h:8080/valbum/alice/data`, the
+///    space `alice` being part of the base like any other segment,
+///  * `/photos/deep/alice/i/abc/` yields `http://h:8080/photos/deep/alice/data`,
 ///  * `/i/abc/` yields `http://h:8080/data` — a server at its root.
+///
+/// The app does not count segments and cannot: how deep a context path is, and
+/// whether the last segment before `/s/` is a space or part of the context, is
+/// the server's business, and both answers lead to the same data URL and the
+/// same app base. What [SessionUrl.appBase] answers — `http://h:8080/valbum/`
+/// or `http://h:8080/valbum/alice/` — is therefore always the plain app of the
+/// very server the session came from, which is where an accepted invitation
+/// returns to, see `platform_web.dart`.
 ///
 /// An empty segment (`/valbum/s/`) is not a token and yields `null`, as does
 /// every base that carries neither segment.
+///
+/// ## The one ambiguity, and how it is settled
+///
+/// `<context>/s/<token>/` on a single-space server and `<context>/<space>/…`
+/// where the space is *named* `s` would be the same string. The server settles
+/// it and not the app: `s` and `i` are reserved and no space may be called
+/// either. So this function reads `…/s/<x>/` and `…/i/<x>/` as a session
+/// always, and a non-empty `<x>` is a token whatever it looks like — tokens
+/// are opaque, and a shape rule here would refuse tokens a future server hands
+/// out.
 SessionUrl? sessionUrl(Uri base, {String? basePath}) {
   var path = basePath ?? _directoryOf(base.path);
   var segments = [
@@ -332,6 +381,11 @@ const String shareLinkRefusal =
 /// A plain URL is read exactly as [dataUrlOf] reads it and carries no token. A
 /// share link (`/s/<token>/`) is recognised as well, so that the screen can
 /// say what it is instead of storing a server that does not exist.
+///
+/// A space is part of the server, not something this has to know about: both
+/// `https://h/valbum/` and `https://h/valbum/alice/` are stored as they are,
+/// and an invitation into a space (`https://h/valbum/alice/i/<token>/`) stores
+/// `https://h/valbum/alice/`, see [sessionUrl] and issue #85.
 ///
 /// Throws a [FormatException] if [entered] is not an absolute URL with a host.
 ServerLocation serverLocationOf(String entered) {

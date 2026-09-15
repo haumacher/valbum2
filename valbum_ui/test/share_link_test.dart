@@ -248,8 +248,6 @@ void main() {
       expect(find.text("Party"), findsOneWidget);
       expect(find.byKey(const Key("share-label")), findsOneWidget);
       // Nothing of the edit mode, and no way into the settings.
-      expect(find.byKey(const Key("share-with")), findsNothing);
-      expect(find.text("Share with…"), findsNothing);
       expect(find.text("Share link…"), findsNothing);
       expect(find.text("Server..."), findsNothing);
       expect(find.byType(ServerSettingsScreen), findsNothing);
@@ -506,7 +504,7 @@ void main() {
   });
 
   group('"Share link…"', () {
-    testWidgets('is offered where "Share with…" is', (tester) async {
+    testWidgets('is offered to whoever manages the folder', (tester) async {
       var client = ownerClient((request) {
         var type = request.url.queryParameters["type"];
         if (type == "grants") {
@@ -536,7 +534,6 @@ void main() {
       await tester.tap(find.byIcon(Icons.more_vert));
       await tester.pumpAndSettle();
 
-      expect(find.text("Share with…"), findsOneWidget);
       expect(find.text("Share link…"), findsOneWidget);
 
       await tester.tap(find.text("Share link…"));

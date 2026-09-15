@@ -1,8 +1,8 @@
 /// Tests of what an empty listing says (issue #56).
 ///
 /// A folder with no tiles used to be a black page with nothing but the app
-/// bar on it — which hits a freshly joined guest hardest, whose library is
-/// *correctly* empty until somebody shares an album with them.
+/// bar on it — which hits a freshly joined person hardest, whose library is
+/// *correctly* empty until somebody puts something into it.
 library;
 
 import 'package:flutter/material.dart';
@@ -85,22 +85,23 @@ Future<void> pumpLibrary(
 }
 
 void main() {
-  testWidgets('a guest with nothing shared is told exactly that',
+  testWidgets('somebody who may not create is told what the folder is',
       (tester) async {
+    // The sentence a guest used to get is retired with the guest role itself
+    // (issue #85): a `view` user's empty library reads like any other.
     await pumpLibrary(
       tester,
-      role: "guest",
+      role: "view",
       root: listing("carol", const []),
     );
 
     expect(find.byKey(const Key("listing-empty")), findsOneWidget);
-    expect(
-      find.text(
-        "Nothing has been shared with you yet. Albums others share with you "
-        "appear here.",
-      ),
-      findsOneWidget,
-    );
+    // The ordinary sentence; the one about what others share is gone with the
+    // guest role. What is offered besides it is the folder's own rights, see
+    // the next test.
+    expect(find.textContaining("There are no albums here yet."),
+        findsOneWidget);
+    expect(find.textContaining("shared with you"), findsNothing);
     // The app bar is still there, naming whose library this is.
     expect(find.text("carol"), findsOneWidget);
   });

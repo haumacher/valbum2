@@ -28,6 +28,226 @@ const String roleMember = "member";
 /// The role of somebody whose library is what others share with them.
 const String roleGuest = "guest";
 
+/// The role of somebody who may change every album of their space (issue #85).
+///
+/// The Phase 6 model has four roles and no `member`/`guest` any more: `admin`,
+/// `edit`, `contribute`, `view`. For one release a server may still answer the
+/// old names, and they are read as the new ones, see [CallerPermission.of].
+const String roleEdit = "edit";
+
+/// The role of somebody who may add photos but change nothing (issue #85).
+const String roleContribute = "contribute";
+
+/// The role of somebody who may look and nothing else (issue #85).
+const String roleView = "view";
+
+/// The clearance of somebody who sees only what is public (issue #85).
+const String clearancePublic = "public";
+
+/// The clearance of somebody who sees everything but the private images.
+const String clearanceNonPrivate = "nonPrivate";
+
+/// The clearance of somebody who sees every image, private ones included.
+const String clearanceAll = "all";
+
+/// What the caller may do and see on this server, as the permission model of
+/// Phase 6 states it (issues #82/#83/#85).
+///
+/// Two axes and a flag: the **role** says what may be *done* (look, add,
+/// change, manage), the **clearance** what may be *seen* (the privacy levels
+/// of issue #46), and [mayShare] whether links may be handed out. It is the
+/// server's word, normalised here once so that no view has to know which
+/// spelling arrived.
+///
+/// This is what the app *offers*. What a request may do is still the per-folder
+/// rights the server answers with every folder, see [Rights] — the two agree on
+/// a Phase 6 server, and where they do not, the rights win, see
+/// `offeredRights`.
+@immutable
+class CallerPermission {
+  /// The role, always one of [roleAdmin], [roleEdit], [roleContribute],
+  /// [roleView] — or empty, where the server named no caller at all.
+  final String role;
+
+  /// The clearance, always one of [clearanceAll], [clearanceNonPrivate],
+  /// [clearancePublic].
+  final String clearance;
+
+  /// Whether this caller may create share links.
+  final bool mayShare;
+
+  const CallerPermission({
+    this.role = "",
+    this.clearance = clearancePublic,
+    this.mayShare = false,
+  });
+
+  /// What nobody said: an anonymous caller, or a server that never answered.
+  static const CallerPermission unknown = CallerPermission();
+
+  /// The permission the given answer of `?type=auth` describes.
+  ///
+  /// Three mappings, each of them the server's business made explicit here:
+  ///
+  ///  * the **role** is taken as it comes, except that the old `member` is the
+  ///    new [roleEdit] and the old `guest` is [roleView] — for one release both
+  ///    spellings are in the field, and a view must not have to know that;
+  ///  * an empty **clearance** is what the role implies: the admin sees
+  ///    everything, anybody else the server named sees everything but the
+  ///    private images, and a caller nobody named sees what is public;
+  ///  * **mayShare** is what the server said, and always true for the admin,
+  ///    who hands out what everybody else may only be given — but a server
+  ///    that does not know the field at all says nothing rather than "no", see
+  ///    [statesPermissions]: silence is not a refusal, and on such a server
+  ///    the per-folder rights decide as they always did.
+  factory CallerPermission.of(AuthInfo info) => CallerPermission.ofFields(
+        role: info.role,
+        clearance: info.clearance,
+        mayShare: info.mayShare,
+      );
+
+  /// The permission of the given raw fields, see [CallerPermission.of].
+  factory CallerPermission.ofFields({
+    String role = "",
+    String clearance = "",
+    bool mayShare = false,
+  }) {
+    var named = normalizeRole(role);
+    return CallerPermission(
+      role: named,
+      clearance: normalizeClearance(clearance, named),
+      mayShare: named.isEmpty
+          ? false
+          : mayShare || named == roleAdmin || !statesPermissions(role),
+    );
+  }
+
+  /// Whether the role [name] is one only a Phase 6 server answers.
+  ///
+  /// `edit`, `contribute` and `view` are the new vocabulary, and a server that
+  /// speaks it also states [mayShare] and the [clearance]. `member`, `guest`
+  /// — and `admin`, which is in both vocabularies — say nothing about either,
+  /// so their silence must not be read as a refusal, see
+  /// [CallerPermission.of].
+  static bool statesPermissions(String name) => switch (name.trim()) {
+        roleEdit || roleContribute || roleView => true,
+        _ => false,
+      };
+
+  /// The role of [name] in the spelling of Phase 6, empty for anything the
+  /// app does not know.
+  static String normalizeRole(String name) => switch (name.trim()) {
+        roleAdmin => roleAdmin,
+        roleEdit || roleMember => roleEdit,
+        roleContribute => roleContribute,
+        roleView || roleGuest => roleView,
+        _ => "",
+      };
+
+  /// The clearance of [name], or the one [role] implies where it is empty.
+  static String normalizeClearance(String name, String role) =>
+      switch (name.trim()) {
+        clearanceAll => clearanceAll,
+        clearanceNonPrivate => clearanceNonPrivate,
+        clearancePublic => clearancePublic,
+        // Nothing said: the admin sees everything, anybody the server named
+        // sees everything but the private images, a stranger sees the public.
+        _ => role == roleAdmin
+            ? clearanceAll
+            : role.isEmpty
+                ? clearancePublic
+                : clearanceNonPrivate,
+      };
+
+  /// Whether the server named this caller at all.
+  bool get named => role.isNotEmpty;
+
+  /// Whether every album of this space may be changed.
+  bool get mayEdit => role == roleAdmin || role == roleEdit;
+
+  /// Whether photos may be added.
+  bool get mayContribute => mayEdit || role == roleContribute;
+
+  /// Whether the private images are seen as well.
+  bool get seesPrivate => clearance == clearanceAll;
+
+  /// Whether anything beyond the public images is seen.
+  bool get seesMembers => seesPrivate || clearance == clearanceNonPrivate;
+
+  /// What this permission allows, in plain words (issue #85).
+  ///
+  /// One sentence of three clauses — what may be done, what is seen, whether
+  /// links may be handed out — because that is how somebody checks whether the
+  /// server thinks of them what they think it does.
+  String get sentence => "${_doing()}; ${_seeing()}; ${_sharing()}.";
+
+  String _doing() => switch (role) {
+        roleAdmin => "You manage this server",
+        roleEdit => "You may edit every album of this space",
+        roleContribute => "You may add photos to this space",
+        roleView => "You may look at this space",
+        _ => "You are not signed in",
+      };
+
+  String _seeing() => switch (clearance) {
+        clearanceAll => "you see all images",
+        clearanceNonPrivate => "you see all but the private images",
+        _ => "you see the public images",
+      };
+
+  String _sharing() =>
+      mayShare ? "you may share links" : "you may not share links";
+
+  /// What this permission allows, in the same three clauses but about
+  /// somebody else — for a row of the users or invitations list (issue #85).
+  String get phrase => "${roleWord(role)} — ${clearanceWord(clearance)} — "
+      "${mayShare ? "may share links" : "no links"}";
+
+  /// What the role [name] allows, in words.
+  static String roleWord(String name) => switch (normalizeRole(name)) {
+        roleAdmin => "manages this server",
+        roleEdit => "may edit the albums",
+        roleContribute => "may add photos",
+        roleView => "may look",
+        _ => "unknown role",
+      };
+
+  /// What the role [name] allows, said to the person it is about.
+  ///
+  /// Empty for a role the app does not know: a sentence that names nothing is
+  /// better than one that promises the wrong thing, see [invitationRoleName].
+  static String roleWordYou(String name) => switch (normalizeRole(name)) {
+        roleAdmin => "you manage this server",
+        roleEdit => "you may edit the albums",
+        roleContribute => "you may add photos",
+        roleView => "you may look at the albums",
+        _ => "",
+      };
+
+  /// What the clearance [name] shows, in words.
+  ///
+  /// [role] is what an empty clearance is read as, see [normalizeClearance].
+  static String clearanceWord(String name, {String role = ""}) =>
+      switch (normalizeClearance(name, normalizeRole(role))) {
+        clearanceAll => "sees all images",
+        clearanceNonPrivate => "sees all but the private images",
+        _ => "sees the public images",
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is CallerPermission &&
+      other.role == role &&
+      other.clearance == clearance &&
+      other.mayShare == mayShare;
+
+  @override
+  int get hashCode => Object.hash(role, clearance, mayShare);
+
+  @override
+  String toString() => "CallerPermission($role, $clearance, $mayShare)";
+}
+
 /// The sentence a guest is told what their library is with.
 const String guestLibraryNotice =
     "Guest: your library is what others share with you.";
@@ -47,10 +267,19 @@ class CallerInfo {
   /// server's base folder itself.
   final String space;
 
+  /// Which privacy levels the caller may see, as the server spelled it
+  /// (issue #85); empty where it said nothing, see [permission].
+  final String clearance;
+
+  /// Whether the caller may create share links, as the server said it.
+  final bool mayShare;
+
   const CallerInfo({
     this.userName = "",
     this.role = "",
     this.space = "",
+    this.clearance = "",
+    this.mayShare = false,
   });
 
   /// What the server answered about this caller.
@@ -58,6 +287,15 @@ class CallerInfo {
         userName: info.userName,
         role: info.role,
         space: info.space,
+        clearance: info.clearance,
+        mayShare: info.mayShare,
+      );
+
+  /// What this caller may do and see, normalised, see [CallerPermission].
+  CallerPermission get permission => CallerPermission.ofFields(
+        role: role,
+        clearance: clearance,
+        mayShare: mayShare,
       );
 
   /// Whether this caller is a guest, whose root is not a library of their own.
@@ -76,10 +314,12 @@ class CallerInfo {
       other is CallerInfo &&
       other.userName == userName &&
       other.role == role &&
-      other.space == space;
+      other.space == space &&
+      other.clearance == clearance &&
+      other.mayShare == mayShare;
 
   @override
-  int get hashCode => Object.hash(userName, role, space);
+  int get hashCode => Object.hash(userName, role, space, clearance, mayShare);
 
   @override
   String toString() => "CallerInfo($userName, $role, $space)";
@@ -93,6 +333,13 @@ class CallerInfo {
   /// Whether the enclosing app is signed in as a guest, see [isGuest].
   static bool isGuestCaller(BuildContext context) =>
       maybeOf(context)?.isGuest ?? false;
+
+  /// What the caller of the enclosing app may do and see (issue #85).
+  ///
+  /// [CallerPermission.unknown] where the server has not said: nothing is
+  /// hidden on a guess, see `offeredRights`.
+  static CallerPermission permissionOf(BuildContext context) =>
+      maybeOf(context)?.permission ?? CallerPermission.unknown;
 
   /// Who the app is signed in as, asked without becoming dependent on it.
   ///

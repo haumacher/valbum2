@@ -178,9 +178,12 @@ String rightsField(List<String> names) =>
     '"rights": [${names.map((name) => '{"name": "$name"}').join(", ")}], ';
 
 /// A root listing of one link tile, with a placement rule set.
-String rootListing() => '["ListingInfo", {"path": "", "title": "My albums", '
-    '${rightsField(const ["edit"])}'
+String rootListing({List<String>? rights = const ["edit"]}) =>
+    '["ListingInfo", {"path": "", "title": "My albums", '
+    '${rights == null ? "" : rightsField(rights)}'
     '"placement": "BY_YEAR", '
+    // The `link` field is what issue #50 made and issue #85 retired: an old
+    // server may still send it, and the tile shows the folder, plainly.
     '"folders": [{"name": "Zoo", "title": "Zoo", "link": "~alice/2024/Zoo"}]}]';
 
 /// Opens the app-bar menu of the view shown.
@@ -206,6 +209,7 @@ Future<List<http.Request>> pumpLibraryOf(
   WidgetTester tester,
   String role, {
   http.Response? grantsAnswer,
+  List<String>? rights = const ["edit"],
 }) async {
   var requests = <http.Request>[];
   var client = VAlbumClient(
@@ -218,7 +222,7 @@ Future<List<http.Request>> pumpLibraryOf(
         return json(authOfUser(role));
       }
       if (request.url.queryParameters["type"] == "json") {
-        return json(rootListing());
+        return json(rootListing(rights: rights));
       }
       if (request.url.queryParameters["type"] == "grants") {
         return grantsAnswer ?? refusal(403, "Not yours to share.");
@@ -246,8 +250,11 @@ void main() {
       var session = await pumpInvitation(tester, liveInvitation());
 
       expect(find.byKey(const Key("invitation-welcome")), findsOneWidget);
+      // What the invitation promises, in the words the settings use about it
+      // (issue #85).
       expect(
-        find.text("alice invited you to this album server as a member."),
+        find.text("alice invited you to this album server: you may edit the "
+            "albums."),
         findsOneWidget,
       );
       expect(find.text("Welcome"), findsOneWidget);
@@ -265,14 +272,14 @@ void main() {
       expect(session.store.wasRead, isFalse);
     });
 
-    testWidgets('says what a guest gets', (tester) async {
-      await pumpInvitation(tester, liveInvitation(role: "guest"));
+    testWidgets('says what somebody who may only look gets', (tester) async {
+      await pumpInvitation(tester, liveInvitation(role: "view"));
 
       expect(
-        find.text("alice invited you to this album server as a guest."),
+        find.text("alice invited you to this album server: you may look at "
+            "the albums."),
         findsOneWidget,
       );
-      expect(find.byKey(const Key("invitation-guest-note")), findsOneWidget);
     });
   });
 
@@ -397,7 +404,7 @@ void main() {
         MockClient((request) async {
           requests.add(request);
           if (request.url.queryParameters["type"] == "auth") {
-            return json(authOfInvitation(role: "guest", note: ""));
+            return json(authOfInvitation(role: "view", note: ""));
           }
           return json(pairedAnswer);
         }),
@@ -412,7 +419,8 @@ void main() {
       expect(find.byKey(invitationSectionKey), findsOneWidget);
       expect(find.byKey(pairingSecretFieldKey), findsNothing);
       expect(
-        find.text("alice invited you to this album server as a guest."),
+        find.text("alice invited you to this album server: you may look at "
+            "the albums."),
         findsOneWidget,
       );
       var probe = requests.single;
@@ -481,7 +489,7 @@ void main() {
             return json(authOfUser("admin", name: "haui"));
           }
           return json(
-            '{"invitation": {"id": "i7", "role": "guest", "note": "Party", '
+            '{"invitation": {"id": "i7", "role": "view", "note": "Party", '
             '"expires": "2026-12-24T17:00:00Z", "invitedBy": "haui", '
             '"created": "", "used": "", "usedBy": "", "revoked": ""}, '
             '"token": "tok", "url": "/valbum/i/tok/"}',
@@ -492,7 +500,12 @@ void main() {
       await tapVisible(tester, find.byKey(inviteButtonKey));
       expect(find.byKey(const Key("invite-dialog")), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key("invite-role-guest")));
+      // The permission the invited person gets, chosen here (issue #85).
+      await tester.tap(find.byKey(const Key("invite-role-contribute")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key("invite-clearance-all")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key("invite-may-share")));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key("invite-note")), "Party");
       await tester.pumpAndSettle();
@@ -503,7 +516,9 @@ void main() {
 
       var invite = requests.last;
       expect(invite.url.queryParameters["action"], "invite");
-      expect(invite.body, contains('"role":"guest"'));
+      expect(invite.body, contains('"role":"contribute"'));
+      expect(invite.body, contains('"clearance":"all"'));
+      expect(invite.body, contains('"mayShare":true'));
       expect(invite.body, contains('"note":"Party"'));
       var expires = RegExp('"expires":"([^"]+)"').firstMatch(invite.body)![1]!;
       var instant = DateTime.parse(expires);
@@ -582,61 +597,21 @@ void main() {
     });
   });
 
-  group('the library of a guest', () {
-    // The server grants a guest every right in their own root — they
-    // rearrange and decline the links others shared with them there — and
-    // refuses by role the one thing that root is not for. Every test here
-    // pumps its own app: a popup menu that is dismissed to open another one
-    // makes a test about what is offered depend on where a stray tap lands.
+  group('the library of somebody who may only look', () {
+    // The guest of issue #52 is a `view` user since issue #85, and what is
+    // offered follows from that role where the folder itself carries no
+    // rights. Every test here pumps its own app: a popup menu that is
+    // dismissed to open another one makes a test about what is offered depend
+    // on where a stray tap lands.
     testWidgets('offers nothing that would put something into it',
         (tester) async {
-      await pumpLibraryOf(tester, "guest");
+      await pumpLibraryOf(tester, "view", rights: const []);
       await openMenu(tester);
 
       expect(find.text("Create album"), findsNothing);
       expect(find.text("Create folder"), findsNothing);
       expect(find.text("Folder properties"), findsNothing);
       expect(find.text("Apply rule"), findsNothing);
-    });
-
-    testWidgets('offers no sharing, and does not ask whether it may',
-        (tester) async {
-      // The server answers `?type=grants` at a guest's root with a perfectly
-      // ordinary empty list — there is nothing to list — and refuses the
-      // *grant* with `GUEST_GRANT_REFUSED`. So the answer to "may I share
-      // here?" must not be read off that list.
-      var requests = await pumpLibraryOf(
-        tester,
-        "guest",
-        grantsAnswer: json('{"grants": []}'),
-      );
-      await openMenu(tester);
-
-      expect(find.text("Share with…"), findsNothing);
-      expect(find.text("Share link…"), findsNothing);
-      // The question is known and therefore never asked.
-      expect(
-        requests.where((r) => r.url.queryParameters["type"] == "grants"),
-        isEmpty,
-      );
-    });
-
-    testWidgets('keeps the one thing a guest does with a link', (tester) async {
-      var requests = await pumpLibraryOf(
-        tester,
-        "guest",
-        grantsAnswer: json('{"grants": []}'),
-      );
-      await longPressTile(tester, "Zoo");
-
-      expect(find.text("Remove from my albums"), findsOneWidget);
-      expect(find.text("Move to…"), findsNothing);
-      expect(find.text("Share with…"), findsNothing);
-      expect(find.text("Share link…"), findsNothing);
-      expect(
-        requests.where((r) => r.url.queryParameters["type"] == "grants"),
-        isEmpty,
-      );
     });
 
     testWidgets('a member with the same listing is offered all of it',
@@ -652,7 +627,6 @@ void main() {
       expect(find.text("Create folder"), findsOneWidget);
       expect(find.text("Folder properties"), findsOneWidget);
       expect(find.text("Apply rule"), findsOneWidget);
-      expect(find.text("Share with…"), findsOneWidget);
       expect(find.text("Share link…"), findsOneWidget);
     });
 
@@ -665,8 +639,7 @@ void main() {
       await longPressTile(tester, "Zoo");
 
       expect(find.text("Move to…"), findsOneWidget);
-      expect(find.text("Share with…"), findsOneWidget);
-      expect(find.text("Remove from my albums"), findsOneWidget);
+      expect(find.text("Share link…"), findsOneWidget);
     });
   });
 }

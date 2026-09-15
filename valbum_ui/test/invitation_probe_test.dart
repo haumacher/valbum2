@@ -246,33 +246,24 @@ void main() {
     });
   });
 
-  group('a guest', () {
-    testWidgets('contributes through a link although their root is photo-free',
-        (tester) async {
-      await pumpAs(tester, "guest");
+  group('somebody who may only look', () {
+    // The guest role of issue #52 is retired with the space model: a guest is
+    // a `view` user now, and what a view user is offered is what the folder's
+    // rights say, see issue #85.
+    testWidgets('uploads where the folder says they may', (tester) async {
+      await pumpAs(tester, "view");
       expect(find.text("Zoo"), findsOneWidget);
 
       await tester.tap(find.text("Zoo"));
       await tester.pumpAndSettle();
 
       expect(find.byTooltip("Upload"), findsOneWidget,
-          reason: "the grant on the target decides, not the caller's role");
+          reason: "the rights on the folder decide, not the caller's role");
     });
 
-    testWidgets('is offered no sharing at their own root', (tester) async {
-      await pumpAs(tester, "guest");
-
-      await tester.tap(find.byIcon(Icons.more_vert).first);
-      await tester.pumpAndSettle();
-
-      expect(find.text("Share with…"), findsNothing);
-      expect(find.text("Share link…"), findsNothing);
-      expect(find.text("Create album"), findsNothing);
-    });
-
-    testWidgets('as a member the same root offers creation (control)',
+    testWidgets('and the same root offers an editor its creation (control)',
         (tester) async {
-      await pumpAs(tester, "member");
+      await pumpAs(tester, "edit");
 
       await tester.tap(find.byIcon(Icons.more_vert).first);
       await tester.pumpAndSettle();

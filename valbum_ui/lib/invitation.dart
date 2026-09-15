@@ -37,22 +37,56 @@ import 'resource.dart';
 import 'settings.dart';
 import 'urls.dart';
 
-/// How the role an invitation offers is named on the screen.
-String invitationRoleName(String role) =>
-    role == roleGuest ? "guest" : "member";
+/// What an invitation promises, said to the person who opened it (issue #85).
+///
+/// The words of the settings, so that what an invitation promises and what the
+/// invited person later reads about themselves are the same, see
+/// [CallerPermission.roleWordYou]. A role the app does not know promises
+/// nothing rather than the wrong thing, and the sentence then simply ends
+/// after the invitation, see [invitationHeadline].
+String invitationRoleName(String role) => CallerPermission.roleWordYou(role);
+
+/// Who invited, and what they offered.
+String invitationHeadline(String invitedBy, String role) {
+  var may = invitationRoleName(role);
+  return "${userDisplayName(invitedBy)} invited you to this album server"
+      "${may.isEmpty ? "." : ": $may."}";
+}
 
 /// What being invited as a guest means, in one line.
 ///
-/// Said on the welcome screen and again beside the choice in the invite
-/// dialog: a guest is not a lesser member, they are somebody whose library is
-/// what others share with them, see `AuthService.GUEST_SPACE_REFUSED`.
+/// Kept for the welcome screen of an invitation that a pre-#83 server issued
+/// with the retired `guest` role; a guest is a `view` user now, see issue #85.
 const String guestRoleExplanation =
     "A guest has no albums of their own: their library is what others share "
     "with them.";
 
-/// What being invited as a member means, in one line.
-const String memberRoleExplanation =
-    "A member has a library of their own and may share albums with others.";
+/// What each role an invitation may offer means, in one line.
+const Map<String, String> inviteRoleExplanations = {
+  roleEdit: "May create albums, change them and add photos.",
+  roleContribute: "May add photos to the albums, but change nothing.",
+  roleView: "May look at the albums, and nothing more.",
+};
+
+/// What each clearance an invitation may offer means, in one line.
+const Map<String, String> inviteClearanceExplanations = {
+  clearanceAll: "Sees every image, the private ones included.",
+  clearanceNonPrivate: "Sees every image that is not marked private.",
+  clearancePublic: "Sees only the images marked public.",
+};
+
+/// The role a new invitation offers unless another is chosen (issue #85).
+///
+/// The least that still lets somebody see the family's pictures: whoever
+/// invites can widen it in the dialog, and a permission given too generously
+/// is not noticed until somebody changes what they should not have.
+const String defaultInviteRole = roleView;
+
+/// The clearance a new invitation offers unless another is chosen.
+///
+/// Not [clearancePublic]: an invited person is somebody the library's owner
+/// knows, and the public level is what a link to a stranger gets.
+const String defaultInviteClearance = clearanceNonPrivate;
 
 /// The key of the user name field of the welcome screen.
 const Key invitationUserFieldKey = Key("invitation.userName");
@@ -158,14 +192,12 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
   /// The invitation itself, and the form that accepts it.
   List<Widget> _invitation(BuildContext context) {
     var info = widget.info;
-    var role = invitationRoleName(info.role);
     var refusal = _refusal;
     return [
       const Icon(Icons.mail_outline, size: 48),
       const SizedBox(height: 16),
       Text(
-        "${userDisplayName(info.invitedBy)} invited you to this album server "
-        "as a $role.",
+        invitationHeadline(info.invitedBy, info.role),
         key: const Key("invitation-headline"),
         style: Theme.of(context).textTheme.titleMedium,
       ),
@@ -353,7 +385,11 @@ class InviteDialog extends StatefulWidget {
 class InviteDialogState extends State<InviteDialog> {
   final TextEditingController _note = TextEditingController();
 
-  String _role = roleMember;
+  String _role = defaultInviteRole;
+
+  String _clearance = defaultInviteClearance;
+
+  bool _mayShare = false;
 
   InviteExpiry _expiry = InviteExpiry.week;
 
@@ -400,20 +436,42 @@ class InviteDialogState extends State<InviteDialog> {
     var titles = Theme.of(context).textTheme.titleSmall;
     var refusal = _refusal;
     return [
-      Text("As", style: titles),
-      _choiceTile(
-        key: "invite-role-member",
-        chosen: _role == roleMember,
-        title: "Member",
-        subtitle: memberRoleExplanation,
-        onTap: () => setState(() => _role = roleMember),
-      ),
-      _choiceTile(
-        key: "invite-role-guest",
-        chosen: _role == roleGuest,
-        title: "Guest",
-        subtitle: guestRoleExplanation,
-        onTap: () => setState(() => _role = roleGuest),
+      // What the invited person may do, see, and hand out: the permission
+      // model of Phase 6, asked where the invitation is made (issue #85).
+      Text("May", style: titles),
+      for (var role in const [roleEdit, roleContribute, roleView])
+        _choiceTile(
+          key: "invite-role-$role",
+          chosen: _role == role,
+          title: CallerPermission.roleWord(role),
+          subtitle: inviteRoleExplanations[role],
+          onTap: () => setState(() => _role = role),
+        ),
+      const SizedBox(height: 8),
+      Text("Sees", style: titles),
+      for (var clearance in const [
+        clearanceAll,
+        clearanceNonPrivate,
+        clearancePublic,
+      ])
+        _choiceTile(
+          key: "invite-clearance-$clearance",
+          chosen: _clearance == clearance,
+          title: CallerPermission.clearanceWord(clearance),
+          subtitle: inviteClearanceExplanations[clearance],
+          onTap: () => setState(() => _clearance = clearance),
+        ),
+      const SizedBox(height: 8),
+      SwitchListTile(
+        key: const Key("invite-may-share"),
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        value: _mayShare,
+        title: const Text("May share links"),
+        subtitle: const Text(
+          "May hand out links that open an album for whoever holds them.",
+        ),
+        onChanged: _busy ? null : (value) => setState(() => _mayShare = value),
       ),
       const SizedBox(height: 8),
       TextField(
@@ -492,6 +550,8 @@ class InviteDialogState extends State<InviteDialog> {
     try {
       answer = await widget.client.invite(Invitation(
         role: _role,
+        clearance: _clearance,
+        mayShare: _mayShare,
         note: _note.text.trim(),
         expires: _expiresAt,
       ));

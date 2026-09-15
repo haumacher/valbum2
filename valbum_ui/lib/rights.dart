@@ -6,6 +6,7 @@
 /// reading of that field can be unit-tested on its own.
 library;
 
+import 'caller.dart';
 import 'resource.dart';
 
 /// The name of the right to see a listing and its thumbnails.
@@ -53,7 +54,15 @@ class Rights {
   /// The rights held, closed under the implications.
   final Set<String> names;
 
-  const Rights._(this.names);
+  /// Whether the server really answered them for this folder (issue #85).
+  ///
+  /// `false` for the [everything] that stands in where a folder carries no
+  /// rights at all — that is a server from before issue #49 saying nothing,
+  /// not a server saying "all of them". Where nothing was said the app falls
+  /// back on the caller's role, see [offeredRights].
+  final bool answered;
+
+  const Rights._(this.names, {this.answered = true});
 
   /// Every right — what an owner holds, and what an answer that says nothing
   /// is read as, see [Rights.of].
@@ -63,6 +72,14 @@ class Rights {
     rightContribute,
     rightEdit,
   });
+
+  /// [everything], but marked as nobody's word, see [answered].
+  static const Rights unanswered = Rights._({
+    rightView,
+    rightDownload,
+    rightContribute,
+    rightEdit,
+  }, answered: false);
 
   /// The rights the given names denote, with the implications applied.
   factory Rights.ofNames(Iterable<String> names) {
@@ -93,7 +110,7 @@ class Rights {
   factory Rights.of(FolderResource? folder) {
     var names = folder?.rights ?? const <RightName>[];
     if (names.isEmpty) {
-      return everything;
+      return unanswered;
     }
     return Rights.ofNames([for (var right in names) right.name]);
   }
@@ -132,6 +149,31 @@ class Rights {
 
   @override
   String toString() => "Rights(${names.join(", ")})";
+}
+
+/// What the app *offers* for a folder, see [Rights] and [CallerPermission].
+///
+/// The server's per-folder rights are the source of truth and stay it: where
+/// they were answered they decide alone — nothing more is offered than they
+/// allow, and nothing they allow is hidden. Where they were *not* answered
+/// (a server from before issue #49, or a view that has no folder at all) the
+/// caller's role decides instead, so that a `view` or `contribute` caller is
+/// not offered the edit mode and a `view` caller no upload (issue #85).
+///
+/// And where nobody said anything — no rights, no role — everything is offered
+/// exactly as before all of this existed: the app never hides on a guess, and
+/// a refusal speaks when it comes.
+Rights offeredRights(Rights rights, CallerPermission permission) {
+  if (rights.answered || !permission.named) {
+    return rights;
+  }
+  if (permission.mayEdit) {
+    return Rights.everything;
+  }
+  if (permission.mayContribute) {
+    return Rights.ofNames(const [rightContribute, rightDownload]);
+  }
+  return Rights.ofNames(const [rightView]);
 }
 
 /// The prefix marking the canonical path into another user's space.

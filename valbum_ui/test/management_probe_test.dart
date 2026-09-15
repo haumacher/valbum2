@@ -74,7 +74,6 @@ void main() {
 
     expect(find.byKey(devicesSectionKey), findsOneWidget);
     expect(find.byKey(const Key("device-d1")), findsOneWidget);
-    expect(find.byKey(groupsButtonKey), findsNothing);
     expect(find.byKey(inviteButtonKey), findsNothing);
     expect(find.byKey(usersSectionKey), findsNothing);
     expect(find.byKey(invitationsSectionKey), findsNothing);
@@ -168,7 +167,6 @@ void main() {
     expect(settings.signedIn, isFalse);
     expect(find.byKey(devicesSectionKey), findsNothing);
     expect(find.byKey(usersSectionKey), findsNothing);
-    expect(find.byKey(groupsButtonKey), findsNothing);
     for (var request in requests.skip(before + 1)) {
       expect(request.headers["authorization"], isNot("Bearer dev-2"),
           reason: "${request.url} still carried the unpaired token");
