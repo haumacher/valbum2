@@ -215,6 +215,17 @@ public class ImageServlet extends HttpServlet {
 	/** How long a caller waits before asking for a pending rendition again, in seconds. */
 	public static final String RETRY_AFTER_SECONDS = "10";
 
+	/**
+	 * What a rendition request is answered with on a server that cannot transcode at all.
+	 *
+	 * <p>
+	 * The reason follows: on a machine without the system libraries the bundled FFmpeg links, the
+	 * program does not load, and saying so once is better than queueing work that can never be
+	 * done (issue #81).
+	 * </p>
+	 */
+	public static final String RENDITIONS_UNAVAILABLE = "Video renditions are not available on this server: ";
+
 	static {
 		LOG.info("Loading: " + ExifReaderPatch.class);
 	}
@@ -2574,9 +2585,15 @@ public class ImageServlet extends HttpServlet {
 				context.response().setHeader("Retry-After", RETRY_AFTER_SECONDS);
 				errorInfo(context, HttpServletResponse.SC_ACCEPTED, RENDITION_PENDING);
 				return;
+			case UNAVAILABLE:
+				LOG.warning("Refusing the " + kind.parameter() + " rendition of '"
+					+ context.request().getPathInfo() + "': " + rendition.getReason());
+				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+					RENDITIONS_UNAVAILABLE + rendition.getReason());
+				return;
 			default:
 				LOG.warning("Refusing the " + kind.parameter() + " rendition of '"
-					+ context.request().getPathInfo() + "': " + _videos.failure(rendition.getFile()));
+					+ context.request().getPathInfo() + "': " + rendition.getReason());
 				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, RENDITION_FAILED);
 				return;
 		}

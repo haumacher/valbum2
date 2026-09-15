@@ -102,7 +102,12 @@ public class VideoRenditions {
 		PENDING,
 
 		/** Making the rendition failed; coming back will not help. */
-		FAILED
+		FAILED,
+
+		/**
+		 * This server cannot make renditions at all, see {@link VideoRenditions#unavailability()}.
+		 */
+		UNAVAILABLE
 	}
 
 	/** The answer of {@link VideoRenditions#lookup(File, Kind)}. */
@@ -112,9 +117,21 @@ public class VideoRenditions {
 
 		private final File _file;
 
+		private final String _reason;
+
 		Rendition(State state, File file) {
+			this(state, file, null);
+		}
+
+		Rendition(State state, File file, String reason) {
 			_state = state;
 			_file = file;
+			_reason = reason;
+		}
+
+		/** Why the rendition is not there; <code>null</code> when nothing went wrong. */
+		public String getReason() {
+			return _reason;
 		}
 
 		/** Whether the rendition is ready, still being made, or failed for good. */
@@ -168,10 +185,16 @@ public class VideoRenditions {
 			return new Rendition(State.READY, rendition);
 		}
 
+		String unavailable = unavailability();
+		if (unavailable != null) {
+			// Nothing is queued that cannot be done; the caller is told so at once.
+			return new Rendition(State.UNAVAILABLE, rendition, unavailable);
+		}
+
 		String key = rendition.getAbsolutePath();
 		String failure = _failed.get(key);
 		if (failure != null) {
-			return new Rendition(State.FAILED, rendition);
+			return new Rendition(State.FAILED, rendition, failure);
 		}
 		queue(file, rendition, kind, key);
 		return new Rendition(State.PENDING, rendition);
@@ -208,10 +231,14 @@ public class VideoRenditions {
 				return _transcoder.submit(() -> {
 					try {
 						transcode(file, rendition, kind);
-					} catch (IOException | RuntimeException ex) {
+					} catch (Throwable ex) {
+						// Every Throwable, an Error included: a native library that does not load
+						// throws an UnsatisfiedLinkError, and an uncaught one would leave the
+						// request answered with 202 for ever — the silent failure the 202 protocol
+						// must never produce, see issue #81.
 						LOG.log(Level.WARNING, "Cannot create the " + kind.parameter() + " rendition of '"
-							+ file.getName() + "': " + ex.getMessage(), ex);
-						_failed.put(key, ex.getMessage());
+							+ file.getName() + "': " + reason(ex), ex);
+						_failed.put(key, reason(ex));
 					} finally {
 						_inFlight.remove(key);
 					}
@@ -244,6 +271,11 @@ public class VideoRenditions {
 		} catch (java.util.concurrent.RejectedExecutionException ex) {
 			return true;
 		}
+	}
+
+	/** How many transcodes are queued or running. For the tests. */
+	int queued() {
+		return _inFlight.size();
 	}
 
 	/** Why the rendition at the given path failed, <code>null</code> if it did not. */
@@ -454,22 +486,123 @@ public class VideoRenditions {
 		}
 	}
 
-	private static volatile String _executable;
+	/**
+	 * How the FFmpeg program is found.
+	 *
+	 * <p>
+	 * A seam, so that a test can make the program unloadable without a machine that has no FFmpeg.
+	 * </p>
+	 */
+	interface ProgramLocator {
+
+		/** The path of the FFmpeg program, or a throw saying why there is none. */
+		String locate() throws Exception;
+	}
+
+	private static final ProgramLocator BUNDLED = () -> Loader.load(org.bytedeco.ffmpeg.ffmpeg.class);
+
+	private static volatile ProgramLocator _locator = BUNDLED;
 
 	private static volatile String _encoder;
 
-	/** The FFmpeg program the bundled artifact ships. */
-	static String executable() throws IOException {
-		String executable = _executable;
-		if (executable == null) {
-			try {
-				executable = Loader.load(org.bytedeco.ffmpeg.ffmpeg.class);
-			} catch (RuntimeException ex) {
-				throw new IOException("No FFmpeg program available.", ex);
-			}
-			_executable = executable;
+	/** Why renditions cannot be made here, <code>null</code> when they can. */
+	private static volatile String _unavailable;
+
+	private static volatile boolean _checked;
+
+	private static final Object AVAILABILITY_LOCK = new Object();
+
+	/**
+	 * Replaces how the FFmpeg program is found and forgets what was found before. Tests only.
+	 *
+	 * @param locator
+	 *        <code>null</code> to go back to the program the bundled artifact ships.
+	 */
+	static void setProgramLocator(ProgramLocator locator) {
+		synchronized (AVAILABILITY_LOCK) {
+			_locator = locator == null ? BUNDLED : locator;
+			_encoder = null;
+			_unavailable = null;
+			_checked = false;
 		}
-		return executable;
+	}
+
+	/**
+	 * Whether this server can transcode at all.
+	 *
+	 * <p>
+	 * Asked once and remembered: the program is either there with an H.264 encoder or it is not,
+	 * and a machine does not grow one while the server runs. A server that cannot transcode says
+	 * so on every rendition request instead of queueing work that cannot be done — on a runner
+	 * without ALSA and X11 the native libraries of the bundled FFmpeg do not load at all, which
+	 * used to surface as a request answered <code>202</code> for ever (issue #81).
+	 * </p>
+	 *
+	 * @return The reason renditions are not available, <code>null</code> when they are.
+	 */
+	public static String unavailability() {
+		if (_checked) {
+			return _unavailable;
+		}
+		synchronized (AVAILABILITY_LOCK) {
+			if (!_checked) {
+				try {
+					String executable = executable();
+					String encoder = encoder();
+					LOG.info("Video renditions are available: '" + executable + "' with '" + encoder + "'.");
+					_unavailable = null;
+				} catch (Throwable ex) {
+					// Every Throwable: a missing native library arrives as an Error.
+					String reason = reason(ex);
+					LOG.log(Level.WARNING, "Video renditions are not available: " + reason, ex);
+					_unavailable = reason;
+				}
+				_checked = true;
+			}
+			return _unavailable;
+		}
+	}
+
+	/** The encoder in use, for the start-up message; <code>null</code> if there is none. */
+	public static String encoderName() {
+		return _encoder;
+	}
+
+	/** What to tell about the given failure, never empty. */
+	private static String reason(Throwable ex) {
+		String message = ex.getMessage();
+		if (message == null || message.isEmpty()) {
+			message = ex.getClass().getName();
+		} else {
+			message = ex.getClass().getSimpleName() + ": " + message;
+		}
+		Throwable cause = ex.getCause();
+		if (cause != null && cause != ex) {
+			message = message + " (" + reason(cause) + ")";
+		}
+		return message;
+	}
+
+	/**
+	 * The FFmpeg program the bundled artifact ships.
+	 *
+	 * <p>
+	 * Asked of the locator every time rather than remembered: it is a map lookup after the first
+	 * call, and a test that makes the program fail later must be able to.
+	 * </p>
+	 */
+	static String executable() throws IOException {
+		try {
+			String executable = _locator.locate();
+			if (executable == null) {
+				throw new IOException("No FFmpeg program available.");
+			}
+			return executable;
+		} catch (IOException ex) {
+			throw ex;
+		} catch (Exception ex) {
+			throw new IOException("No FFmpeg program available.", ex);
+		}
 	}
 
 	/**

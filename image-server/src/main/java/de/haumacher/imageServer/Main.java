@@ -173,6 +173,10 @@ public class Main {
 			System.out.println("Serving the web application from: " + _webRoot);
 		}
 		System.out.println("Preview generation: " + PreviewCache.permitCount() + " at a time");
+		String renditions = VideoRenditions.unavailability();
+		System.out.println(renditions == null
+			? "Video renditions: available, transcoding with '" + VideoRenditions.encoderName() + "'"
+			: "Video renditions: NOT available - " + renditions);
 		System.out.println("Authentication: " + _authMode.protocolName());
 		if (_authMode != AuthMode.OFF) {
 			System.out.println("Invitations: " + _inviteMode.protocolName());

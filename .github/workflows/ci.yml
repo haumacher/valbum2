@@ -18,6 +18,22 @@ jobs:
           cache: maven
       - name: Spotless check
         run: mvn -B -q spotless:check
+      # The video renditions of issue #74 are made by the FFmpeg *program* the bundled
+      # `org.bytedeco:ffmpeg` artifact ships, and loading it pulls in every native library of that
+      # artifact. `libavdevice` links ALSA and X11/xcb, which a bare runner does not carry — the
+      # poster frame never needed them, because JavaCV loads only avformat/avcodec, which is why
+      # this only broke when transcoding arrived (issue #81). `ldd` on the cached
+      # `ffmpeg`/`libjniavdevice.so` names exactly these; libva, libva-drm and libdrm come bundled
+      # inside the artifact and need no package.
+      - name: Install the system libraries the bundled FFmpeg links
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 \
+            libxau6 libxdmcp6 libbsd0 libmd0
+          # ALSA was renamed in Ubuntu 24.04; take whichever name the runner has.
+          sudo apt-get install -y --no-install-recommends libasound2t64 \
+            || sudo apt-get install -y --no-install-recommends libasound2
       - name: Build and test
         run: mvn -B clean install
 
