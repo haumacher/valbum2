@@ -167,56 +167,84 @@ void main() {
       expect(puts, 3);
     });
 
-    test('reports progress monotonically, reaching 100 exactly once', () async {
+    test('reports progress monotonically, reaching 1.0 exactly once',
+        () async {
       var server = BatchServer();
-      var progress = <int>[];
+      var progress = <double>[];
 
       await server.valbum.uploadNew(
         const ["album"],
         files(60, size: 4096),
-        onProgress: progress.add,
+        onProgress: (report) {
+          if (report.phase == UploadPhase.transferring ||
+              report.phase == UploadPhase.waiting) {
+            progress.add(report.fraction);
+          }
+        },
       );
 
       expect(progress, isNotEmpty);
       for (var i = 1; i < progress.length; i++) {
         expect(progress[i], greaterThanOrEqualTo(progress[i - 1]));
       }
-      expect(progress.where((p) => p == 100), hasLength(1));
-      expect(progress.last, 100);
+      expect(progress.where((p) => p == 1.0), hasLength(1));
+      expect(progress.last, 1.0);
       expect(
-        progress.where((p) => p > 0 && p < 100),
+        progress.where((p) => p > 0 && p < 1.0),
         isNotEmpty,
         reason: "the batches in between are visible",
       );
     });
 
-    test('says which batch is on its way', () async {
+    test('never tells the person about a batch, only about images (issue #70)',
+        () async {
       var server = BatchServer();
-      var phases = <String>[];
+      var lines = <String>[];
 
       await server.valbum.uploadNew(
         const ["album"],
         files(60),
-        onStatus: phases.add,
+        onProgress: (report) => lines.add(report.line),
       );
 
-      expect(phases, contains(uploadBatchMessage(1, 3)));
-      expect(phases, contains(uploadBatchMessage(3, 3)));
-      expect(phases.last, uploadBatchMessage(3, 3));
+      // Three batches went out, see the test above; not one of them is named.
+      expect(server.puts, hasLength(3));
+      for (var line in lines) {
+        expect(line, isNot(contains("Paket")));
+        expect(line, isNot(contains("von 3")));
+      }
+      // What the person reads while the transfer runs is images, and the count
+      // ends where the batches end.
+      expect(lines, contains("0 von 60 Bildern"));
+      expect(lines, contains("25 von 60 Bildern"));
+      expect(lines, contains("50 von 60 Bildern"));
+      expect(lines.last, "60 von 60 Bildern");
     });
 
-    test('does not announce batches where there is only one', () async {
+    test('counts the images the server confirmed, batch by batch', () async {
       var server = BatchServer();
-      var phases = <String>[];
+      var confirmed = <int>[];
 
       await server.valbum.uploadNew(
         const ["album"],
-        files(3),
-        onStatus: phases.add,
+        files(60),
+        onProgress: (report) {
+          // The preparing phase counts the file it is hashing, not the server,
+          // see [UploadProgress.imagesDone]; the transfer is what is asked
+          // about here.
+          if (report.phase != UploadPhase.transferring &&
+              report.phase != UploadPhase.waiting) {
+            return;
+          }
+          if (confirmed.isEmpty || confirmed.last != report.imagesDone) {
+            confirmed.add(report.imagesDone);
+          }
+        },
       );
 
-      expect(phases, contains(uploadTransferMessage));
-      expect(server.puts, hasLength(1));
+      // A batch counts when it has answered, never when it was sent: 25, 25
+      // and the 10 that are left, see [UploadProgress.imagesDone].
+      expect(confirmed, [0, 25, 50, 60]);
     });
   });
 

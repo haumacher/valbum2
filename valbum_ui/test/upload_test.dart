@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:valbum_ui/app.dart';
 import 'package:valbum_ui/client.dart';
+import 'package:valbum_ui/upload_progress.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
@@ -335,6 +336,44 @@ void main() {
       expect(uploaded.single, contains('filename="b.jpg"'));
       expect(uploaded.single, isNot(contains('filename="a.jpg"')));
       expect(find.text("1 hochgeladen, 1 bereits vorhanden."), findsOneWidget);
+    });
+
+    testWidgets('closes the upload dialog when the server has answered',
+        (WidgetTester tester) async {
+      // The composition of issue #70: the dialog of this app (never one that
+      // closes itself at a maximum, see issue #59) is up while the upload
+      // runs and gone once the summary is on the screen. That it stays up
+      // until the server answers is pinned by `upload_progress_test.dart`.
+      var client = clientHandling((request) {
+        if (request.method == "POST") {
+          return http.Response('{"present":[]}', 200);
+        }
+        if (request.method == "PUT") {
+          return http.Response(
+            uploadAnswer([
+              ["a.jpg", "a.jpg", "h-a", "stored"],
+              ["b.jpg", "b.jpg", "h-b", "stored"],
+            ]),
+            200,
+          );
+        }
+        return http.Response(fixture("album.json"), 200);
+      });
+
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(VAlbumApp(client: client));
+        await tester.pumpAndSettle();
+
+        var state = tester.state<VAlbumState>(find.byType(VAlbumView));
+        await state.uploadPicked([
+          fileNamed("a.jpg", "a".codeUnits),
+          fileNamed("b.jpg", "b".codeUnits),
+        ]);
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.byKey(uploadProgressDialogKey), findsNothing);
+      expect(find.text("2 hochgeladen, 0 bereits vorhanden."), findsOneWidget);
     });
 
     testWidgets('shows the reason of a refused upload',
