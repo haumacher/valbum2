@@ -154,6 +154,22 @@ class GroupDetailView extends StatelessWidget {
   /// other, and the winner is picked where it is seen.
   final VoidCallback? onSetRepresentative;
 
+  /// The path of the album the group lives in, for the description a long
+  /// press edits here (issue #80).
+  ///
+  /// A group member has a description of its own, and it is written to the
+  /// album's sidecar like every other one. This is *not* the viewer's
+  /// `albumPath`, which stays unset here on purpose: a take-back moves a group
+  /// as a whole and is offered in the album's viewer, not in this one.
+  final List<String>? editPath;
+
+  /// Whether the album is being edited, see [ImageView.editing].
+  final bool editing;
+
+  /// Marks the album dirty after an edit into its buffer, see
+  /// [ImageView.onEdited].
+  final VoidCallback? onEdited;
+
   const GroupDetailView({
     super.key,
     required this.client,
@@ -163,6 +179,9 @@ class GroupDetailView extends StatelessWidget {
     required this.onUp,
     this.isRepresentative = false,
     this.onSetRepresentative,
+    this.editPath,
+    this.editing = false,
+    this.onEdited,
   });
 
   @override
@@ -177,6 +196,9 @@ class GroupDetailView extends StatelessWidget {
       // No "down" out of the detail view, and no rating filter: the group
       // shows all of its alternatives.
       minRating: noMinRating,
+      editPath: editPath,
+      editing: editing,
+      onEdited: onEdited,
       actions: [
         if (onSetRepresentative != null)
           imageOverlayButton(
