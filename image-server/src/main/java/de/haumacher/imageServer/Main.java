@@ -69,9 +69,6 @@ public class Main {
 		parser.addArgument("-a", "--auth").choices("off", "writes", "all").setDefault("writes").help(
 			"What requires a device paired with this server: 'off' serves every request, "
 				+ "'writes' refuses anonymous changes and uploads, 'all' refuses anonymous reads as well");
-		parser.addArgument("--invite").choices("members", "admin").setDefault("members").help(
-			"Who may invite somebody onto this server (issue #52): 'members' lets every member hand "
-				+ "out an invitation, 'admin' reserves that for the library owner");
 		parser.addArgument("--spaces").choices("auto", "single", "multi").setDefault("auto").help(
 			"Whether this server hosts one space or several (issue #82): 'auto' decides from the "
 				+ "folder tree — multi as soon as one folder directly below the base folder carries "
@@ -197,7 +194,8 @@ public class Main {
 		_contextPath = normlizeContextPath(ns.get("contextpath"));
 		_webRoot = ns.get("webroot");
 		_authMode = AuthMode.parse(ns.getString("auth"));
-		_inviteMode = InviteMode.parse(ns.getString("invite"));
+		// Only an administrator invites into a space since issue #83; the option is gone.
+		_inviteMode = InviteMode.MEMBERS;
 
 		Integer previewThreads = ns.get("preview_threads");
 		if (previewThreads != null) {
@@ -234,7 +232,6 @@ public class Main {
 				+ "every address is answered with 'no such space')");
 		}
 		if (_authMode != AuthMode.OFF) {
-			System.out.println("Invitations: " + _inviteMode.protocolName());
 			System.out.println("Pairing secret: " + _pairingSecret);
 			for (Spaces.Space space : spaces.getSpaces()) {
 				reportSpace(spaces, space);

@@ -15,7 +15,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,13 +105,13 @@ public class TestShareCaller extends ShareTestCase {
 		assertEquals(HttpServletResponse.SC_NOT_FOUND, up.status());
 		assertEquals(AuthService.SHARE_CONFINED, errorMessage(up));
 
-		FakeResponse canonical = get("/~alice/" + SharingFixture.PRIVATE + "/", "json", token);
-		assertEquals(HttpServletResponse.SC_NOT_FOUND, canonical.status());
-		assertEquals(AuthService.SHARE_CONFINED, errorMessage(canonical));
+		// Inside the link, a name of another album of the space is simply a folder that is not
+		// there: the link's root is the shared album, and nothing above it exists for this caller.
+		FakeResponse inside = get("/" + SharingFixture.PRIVATE + "/", "json", token);
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, inside.status());
 
-		FakeResponse ownSpace = get("/~bob/", "json", token);
-		assertEquals(HttpServletResponse.SC_NOT_FOUND, ownSpace.status());
-		assertEquals(AuthService.SHARE_CONFINED, errorMessage(ownSpace));
+		FakeResponse elsewhere = get("/" + SharingFixture.PUBLIC + "/", "json", token);
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, elsewhere.status());
 	}
 
 	public void testALinkOnAFolderBrowsesDownwardsOnly() throws Exception {
@@ -129,40 +128,14 @@ public class TestShareCaller extends ShareTestCase {
 			get("/../" + SharingFixture.PUBLIC + "/", "json", token).status());
 	}
 
-	/**
-	 * A link entry of issue #50 inside the shared folder that points out of it: a 404 for the link
-	 * caller, and the album it points at for bob, who reaches it through his own grant.
-	 */
-	public void testALinkEntryLeadingOutOfTheSubtreeIsNotThere() throws Exception {
-		link("alice/" + SharingFixture.YEAR, "Elsewhere", "alice", SharingFixture.PUBLIC);
-		String token = issue("alice", SharingFixture.YEAR, "The year", "", Privacy.PUBLIC, 0, Rights.VIEW);
 
-		FakeResponse escaped = get("/Elsewhere/", "json", token);
-		assertEquals(HttpServletResponse.SC_NOT_FOUND, escaped.status());
-		assertEquals(AuthService.SHARE_CONFINED, errorMessage(escaped));
-		assertFalse("A tile leading nowhere is not shown either.",
-			entryNames(listing(get("/", "json", token))).contains("Elsewhere"));
-
-		// bob holds view and download on the year folder and reaches the very same entry.
-		new de.haumacher.imageServer.auth.GrantStore(_base).grant("alice", SharingFixture.PUBLIC,
-			de.haumacher.imageServer.auth.Subjects.user("bob"), Collections.singletonList(Rights.VIEW));
-		restartServer();
-		assertEquals("Public",
-			album(get("/~alice/" + SharingFixture.YEAR + "/Elsewhere/", "json", SharingFixture.BOB)).getTitle());
-	}
-
-	public void testALinkEntryInsideTheSubtreeIsFollowed() throws Exception {
-		link("alice/" + SharingFixture.YEAR, "Also the zoo", "alice", SharingFixture.ZOO);
-		String token = issue("alice", SharingFixture.YEAR, "The year", "", Privacy.PUBLIC, 0, Rights.VIEW);
-
-		assertEquals("Zoo", album(get("/Also the zoo/", "json", token)).getTitle());
-	}
 
 	public void testALinkNeverManagesAnything() throws Exception {
 		String token = zooToken(Rights.VIEW, Rights.DOWNLOAD);
 
+		// The grant endpoint is retired (issue #83): it says so to everybody, links included.
 		FakeResponse grants = get("/", "grants", token);
-		assertEquals(HttpServletResponse.SC_FORBIDDEN, grants.status());
+		assertEquals(HttpServletResponse.SC_GONE, grants.status());
 		assertRefusalSpoken(grants);
 
 		FakeResponse listed = shares("/", token);
@@ -179,8 +152,9 @@ public class TestShareCaller extends ShareTestCase {
 		FakeResponse placed = place("/", token);
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, placed.status());
 
+		// Granting is retired (issue #83); it says so to everybody, links included.
 		FakeResponse granting = grant("/", token, "grant", "user:bob", Rights.VIEW);
-		assertEquals(HttpServletResponse.SC_FORBIDDEN, granting.status());
+		assertEquals(HttpServletResponse.SC_GONE, granting.status());
 
 		FakeResponse sharing = share("/", token, shareBody("Onwards", "", 0, 0, Rights.VIEW));
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, sharing.status());
@@ -199,39 +173,9 @@ public class TestShareCaller extends ShareTestCase {
 		FakeResponse response = upload("/", token, "guest.jpg");
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
 		assertEquals(AuthService.SHARE_WRITE_REFUSED, errorMessage(response));
-		assertFalse(Files.exists(_base.resolve("alice/" + SharingFixture.ZOO).resolve("guest.jpg")));
+		assertFalse(Files.exists(_base.resolve(SharingFixture.ZOO).resolve("guest.jpg")));
 	}
 
-	public void testAContributeLinkUploadsIntoTheOwnersAlbum() throws Exception {
-		String token = zooToken(Rights.VIEW, Rights.CONTRIBUTE);
-
-		FakeResponse response = upload("/", token, "guest.jpg");
-		assertEquals(HttpServletResponse.SC_OK, response.status());
-		assertTrue("The photo lands in alice's album.",
-			Files.exists(_base.resolve("alice/" + SharingFixture.ZOO).resolve("guest.jpg")));
-
-		Map<String, String> check = new HashMap<>();
-		check.put("action", "check");
-		assertEquals(HttpServletResponse.SC_OK,
-			post("/", "{\"hashes\":[]}", token, check).status());
-	}
-
-	/**
-	 * The message of {@link AuthService#LIBRARY_REFUSED} tells people to open a share link; opening
-	 * one is what this caller did, so it reads while a caller without a token still may not.
-	 */
-	public void testALinkReadsInAMigratedLibrary() throws Exception {
-		String token = zooToken(Rights.VIEW, Rights.DOWNLOAD);
-		// The fixture library is migrated: every user has a space folder of their own.
-		assertTrue(new AuthService(de.haumacher.imageServer.auth.AuthMode.WRITES, SharingFixture.SECRET, _base)
-			.isLibraryMigrated());
-
-		assertEquals("Zoo", album(get("/", "json", token)).getTitle());
-
-		FakeResponse anonymous = get("/~alice/" + SharingFixture.PRIVATE + "/", "json", null);
-		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, anonymous.status());
-		assertEquals(AuthService.LIBRARY_REFUSED, errorMessage(anonymous));
-	}
 
 	public void testBrowsingWritesNothingIntoTheOwnersLibrary() throws Exception {
 		String token = zooToken(Rights.VIEW, Rights.DOWNLOAD);
@@ -268,6 +212,6 @@ public class TestShareCaller extends ShareTestCase {
 		String message = errorMessage(response);
 		assertFalse("A refusal must speak: " + response.body(), message.isEmpty());
 		assertFalse("A link holder is never told to sign in: " + message,
-			message.equals(AuthService.LIBRARY_REFUSED));
+			message.equals(AuthService.READ_REFUSED));
 	}
 }

@@ -4,11 +4,8 @@
 package de.haumacher.imageServer.auth;
 
 import de.haumacher.imageServer.PathInfo;
-import de.haumacher.imageServer.auth.GrantStore.Grant;
-import de.haumacher.imageServer.auth.GroupStore.Group;
 import de.haumacher.imageServer.auth.UserStore.Login;
 import de.haumacher.imageServer.auth.UserStore.User;
-import de.haumacher.imageServer.links.LinkStore;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.InvitationInfo;
 import de.haumacher.imageServer.shared.model.PairRequest;
@@ -17,18 +14,14 @@ import de.haumacher.imageServer.shared.model.ShareInfo;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -67,14 +60,14 @@ public class AuthService {
 		"This server runs without authentication; there is nothing to pair with.";
 
 	/**
-	 * The message an anonymous caller is refused with once the library belongs to its users.
+	 * The message an anonymous caller of a closed space was refused with before issue #83.
 	 *
 	 * <p>
-	 * Before the library is migrated the base folder <em>is</em> the owner's library and anonymous
-	 * reads stay open in mode {@link AuthMode#WRITES}. Afterwards the base folder holds nothing but
-	 * user spaces, and an anonymous caller has no space to look at.
+	 * Kept so that a build reading an older message catalogue still finds it; a space that is not
+	 * open to anonymous callers answers {@link #READ_REFUSED} now, which says what to do.
 	 * </p>
 	 */
+	@Deprecated
 	public static final String LIBRARY_REFUSED =
 		"This library belongs to its users. Sign in on this device to see your photos, "
 			+ "or open a share link you were given.";
@@ -82,7 +75,7 @@ public class AuthService {
 	/** The message a caller is refused with whose stored user has a role this build does not know. */
 	public static final String ROLE_REFUSED =
 		"This user has a role this server does not know; the user store needs repair. Known roles: "
-			+ "admin, member, guest.";
+			+ Roles.names() + ".";
 
 	/**
 	 * The first character of a path segment addressing another user's library, see
@@ -395,10 +388,6 @@ public class AuthService {
 			+ "' addresses another user's library.";
 	}
 
-	/** The message a grant to somebody this server does not know is refused with. */
-	public static String unknownSubject(String subject) {
-		return "'" + subject + "' is nobody this server knows. " + Subjects.SUBJECT_REFUSED;
-	}
 
 	/** The message a grant of a right this server does not know is refused with. */
 	public static String unknownRight(String right) {
@@ -551,7 +540,7 @@ public class AuthService {
 		}
 
 		/**
-		 * How a {@link GrantStore.Grant} would name this caller, see {@link Subjects}.
+		 * How an attribution names this caller, see issue #53.
 		 *
 		 * <p>
 		 * The seam of issue #53: whoever contributes something is named by exactly one string, and
@@ -563,9 +552,9 @@ public class AuthService {
 				return _share.getSubject();
 			}
 			if (_user != null && !_user.getName().isEmpty()) {
-				return Subjects.user(_user.getName());
+				return "user:" + _user.getName();
 			}
-			return Subjects.ANONYMOUS;
+			return "anonymous";
 		}
 
 		/**
@@ -628,9 +617,23 @@ public class AuthService {
 			return _user == null ? "" : _user.getName();
 		}
 
-		/** The role of the signed-in user, the empty string for an anonymous caller. */
+		/**
+		 * The role of the signed-in user, the empty string for an anonymous caller.
+		 *
+		 * <p>
+		 * In the names of issue #83, whatever the store spells: a library written before it calls
+		 * its users <code>member</code> and <code>guest</code>, and everything that asks what
+		 * somebody may do — this server and the app alike — asks in the new names. A role this
+		 * build does not know at all is answered as it stands, and the sign-in is refused, see
+		 * {@link AuthService#ROLE_REFUSED}.
+		 * </p>
+		 */
 		public String getRole() {
-			return _user == null ? "" : _user.getRole();
+			if (_user == null) {
+				return "";
+			}
+			String known = Roles.of(_user.getRole());
+			return known == null ? _user.getRole() : known;
 		}
 
 		/** Which privacy levels the signed-in user may see, see {@link Clearances} and issue #82. */
@@ -670,10 +673,6 @@ public class AuthService {
 
 	private final UserStore _users;
 
-	private final GrantStore _grants;
-
-	private final GroupStore _groups;
-
 	private final ShareStore _shares;
 
 	private final InvitationStore _invitations;
@@ -709,8 +708,6 @@ public class AuthService {
 		_basePath = basePath;
 		_inviteMode = inviteMode;
 		_users = mode == AuthMode.OFF ? null : new UserStore(basePath);
-		_grants = mode == AuthMode.OFF ? null : new GrantStore(basePath);
-		_groups = mode == AuthMode.OFF ? null : new GroupStore(basePath);
 		_shares = mode == AuthMode.OFF ? null : new ShareStore(basePath);
 		_invitations = mode == AuthMode.OFF ? null : new InvitationStore(basePath);
 		_deviceCodes = mode == AuthMode.OFF ? null : new DeviceCodeStore(basePath);
@@ -731,15 +728,7 @@ public class AuthService {
 		return _users;
 	}
 
-	/** The sharing grants of this server, <code>null</code> while {@link AuthMode#OFF}. */
-	public GrantStore getGrants() {
-		return _grants;
-	}
 
-	/** The user groups of this server, <code>null</code> while {@link AuthMode#OFF}. */
-	public GroupStore getGroups() {
-		return _groups;
-	}
 
 	/** The share links of this server, <code>null</code> while {@link AuthMode#OFF}. */
 	public ShareStore getShares() {
@@ -770,32 +759,23 @@ public class AuthService {
 	 * </p>
 	 */
 	public boolean mayInvite(Caller caller) {
-		if (!caller.isPaired() || Roles.GUEST.equals(caller.getRole())) {
-			return false;
-		}
-		return _inviteMode != InviteMode.ADMIN || Roles.ADMIN.equals(caller.getRole());
-	}
-
-	/** The root of the given guest, see {@link UserStore#GUESTS_DIRECTORY_NAME}. */
-	public static Path guestRoot(Path basePath, String name) {
-		return basePath.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.GUESTS_DIRECTORY_NAME).resolve(name);
+		// Only the administrator of a space invites into it (issue #83): who belongs to a space is
+		// the one decision that is nobody else's, and it keeps the answer to "who let this person
+		// in" a single name. The --invite option is therefore no longer consulted.
+		return caller.isPaired() && Roles.isAdmin(caller.getRole());
 	}
 
 	/**
-	 * The folder the given user's paths are resolved against, without creating anything.
+	 * The folder the given user's paths are resolved against.
 	 *
 	 * <p>
-	 * A member's space folder, the base folder for the owner of a library that was never migrated,
-	 * and the little root of issue #52 for a guest. The creating counterpart is
-	 * {@link #spaceRoot(User, Path)}; reading must never create a folder, see
-	 * {@link de.haumacher.imageServer.links.LinkService}.
+	 * The base folder: every user of a space sees the same tree, the whole space (issue #83). The
+	 * stored {@link User#getSpace() space} of a library written before Phase 6 is not a folder of
+	 * their own any more — one server is one space, or several, and a space is the served tree.
 	 * </p>
 	 */
 	public static Path spaceFolder(Path basePath, User user) {
-		if (Roles.GUEST.equals(user.getRole())) {
-			return guestRoot(basePath, user.getName());
-		}
-		return user.getSpace().isEmpty() ? basePath : basePath.resolve(user.getSpace());
+		return basePath;
 	}
 
 	/** Generates a pairing secret for a server that was not given one. */
@@ -860,22 +840,6 @@ public class AuthService {
 		return token.isEmpty() ? null : token;
 	}
 
-	/**
-	 * Whether the library was migrated into user spaces, see
-	 * {@link LibraryMigration#migrate(Path, String)}.
-	 *
-	 * <p>
-	 * While it was not, the base folder is the owner's library and an anonymous caller may look at
-	 * it exactly as before issue #45.
-	 * </p>
-	 */
-	public boolean isLibraryMigrated() {
-		if (_users == null) {
-			return false;
-		}
-		User owner = _users.getOwner();
-		return owner != null && !owner.getSpace().isEmpty();
-	}
 
 	/** Whether the given caller may read. */
 	public boolean readAllowed(Caller caller) {
@@ -887,9 +851,6 @@ public class AuthService {
 			// share link they were given, and this is them doing it, see issue #51. What the link
 			// may do where it points at is still the grant's business, see #rights(Caller, PathInfo).
 			return !caller.isShareGone();
-		}
-		if (!caller.isPaired() && isLibraryMigrated()) {
-			return false;
 		}
 		return _mode != AuthMode.ALL || caller.isPaired();
 	}
@@ -905,9 +866,6 @@ public class AuthService {
 		if (caller.isShareLink()) {
 			// A link is no paired device: what it may change is exactly what its grant says, asked
 			// for at the path the request names, see #mayContribute(Caller, PathInfo).
-			return false;
-		}
-		if (!caller.isPaired() && isLibraryMigrated()) {
 			return false;
 		}
 		return caller.isPaired();
@@ -976,46 +934,61 @@ public class AuthService {
 		if (caller.hasInvalidToken() || caller.isShareGone()) {
 			return Rights.NONE;
 		}
-
-		Set<String> held = new LinkedHashSet<>(spaceRights(caller, path));
-		Space space = spaceOf(path);
-		if (space != null && !held.containsAll(Rights.ALL)) {
-			Set<String> subjects = subjects(caller);
-			for (Grant grant : _grants.covering(space.getOwner(), space.getPath())) {
-				if (subjects.contains(grant.getSubject())) {
-					held.addAll(grant.getRights());
-				}
-			}
+		if (caller.isShareLink()) {
+			// The link is the permission: what it was created with, and not one right more.
+			return Rights.closure(caller.getShare().getRights());
 		}
-		return Rights.closure(held);
+		if (caller.isPaired()) {
+			// The same everywhere in the space: one role, one answer, no path to consult.
+			return Roles.rightsOf(caller.getRole());
+		}
+		return anonymousRights();
 	}
 
 	/**
-	 * The rights the given caller holds at the given path without any grant.
+	 * What somebody who did not sign in may do here.
 	 *
 	 * <p>
-	 * That is the own space under the rules of the {@link AuthMode}, and it is what the server did
-	 * before issue #49: the owner of a space holds everything in it, and the anonymous caller of a
-	 * library that was never migrated may look at the base folder while the mode is
-	 * {@link AuthMode#WRITES}.
+	 * Anonymous access is a property of the space (issue #82), which the space's
+	 * {@link AuthMode} carries: {@link AuthMode#WRITES} is a space open to the public — look and
+	 * download, never change — and {@link AuthMode#ALL} is one that is not open at all. The
+	 * {@link #clearance(Caller, PathInfo)} of such a caller is {@link Privacy#PUBLIC}, so what
+	 * "open" means is exactly the public images.
 	 * </p>
 	 */
-	public Set<String> spaceRights(Caller caller, PathInfo path) {
-		if (_mode == AuthMode.OFF) {
-			return Rights.ALL;
+	private Set<String> anonymousRights() {
+		return _mode == AuthMode.WRITES ? Rights.READ_ONLY : Rights.NONE;
+	}
+
+	/** The message a request naming a role this build does not know is refused with. */
+	public static String roleRefused(String role) {
+		return "Unknown role '" + role + "'; use one of " + Roles.names() + ".";
+	}
+
+	/** The message a request naming a clearance this build does not know is refused with. */
+	public static String clearanceRefused(String clearance) {
+		return "Unknown clearance '" + clearance + "'; use one of " + Clearances.names() + ".";
+	}
+
+	/** The message the demotion or removal of the last administrator is refused with. */
+	public static final String LAST_ADMIN =
+		"This is the only administrator of this space; make somebody else an administrator first.";
+
+	/**
+	 * Whether the presented secret is the expected one, compared in constant time.
+	 *
+	 * <p>
+	 * The comparison must not say <em>where</em> two secrets differ, or a caller could find one
+	 * character at a time.
+	 * </p>
+	 */
+	private static boolean matches(String presented, String expected) {
+		if (presented == null) {
+			return false;
 		}
-		if (caller.hasInvalidToken() || caller.isShareLink()) {
-			// A share link owns no space and is nobody's anonymous visitor: it holds what its grant
-			// gives it and not one right more, see issue #51.
-			return Rights.NONE;
-		}
-		if (caller.isPaired()) {
-			return isOwnSpace(caller, path) ? Rights.ALL : Rights.NONE;
-		}
-		if (!isLibraryMigrated() && _mode == AuthMode.WRITES && isBaseSpace(path)) {
-			return Rights.READ_ONLY;
-		}
-		return Rights.NONE;
+		byte[] a = presented.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		byte[] b = expected.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		return java.security.MessageDigest.isEqual(a, b);
 	}
 
 	/**
@@ -1084,14 +1057,9 @@ public class AuthService {
 	 * </p>
 	 */
 	public boolean mayManageGrants(Caller caller, PathInfo path) {
-		if (!caller.isPaired()) {
-			return false;
-		}
-		if (Roles.ADMIN.equals(caller.getRole())) {
-			return true;
-		}
-		Space space = spaceOf(path);
-		return space != null && space.getOwner().equals(caller.getUserName());
+		// The share flag of issue #83, and nothing else: an administrator always holds it, and a
+		// user holds it wherever it was given to them — a permission is the same in every album.
+		return caller.isPaired() && (Roles.isAdmin(caller.getRole()) || caller.mayShare());
 	}
 
 	/** Whether the given caller may see who else uses this server: members and the admin. */
@@ -1099,40 +1067,8 @@ public class AuthService {
 		if (_mode == AuthMode.OFF) {
 			return true;
 		}
-		return caller.isPaired() && !Roles.GUEST.equals(caller.getRole());
-	}
-
-	/** Whether the given caller may have groups of their own: members and the admin. */
-	public boolean mayOwnGroups(Caller caller) {
-		return caller.isPaired() && !Roles.GUEST.equals(caller.getRole());
-	}
-
-	/**
-	 * The subjects a grant may name the given caller by, see {@link Subjects}.
-	 *
-	 * <p>
-	 * What {@link #rights(Caller, PathInfo)} asks the {@link GrantStore} with, and what the link
-	 * entries of issue #50 are materialised from: the grants naming one of these are the albums
-	 * shared with this caller.
-	 * </p>
-	 */
-	public Set<String> subjects(Caller caller) {
-		Set<String> result = new LinkedHashSet<>();
-		// "anonymous" names everybody: a grant to it is what opens an album to the world.
-		result.add(Subjects.ANONYMOUS);
-		if (caller.isShareLink()) {
-			// The one line issue #49 left open: a share link is named by its own subject, see #51.
-			result.add(caller.getShare().getSubject());
-			return result;
-		}
-		String name = caller.getUserName();
-		if (caller.isPaired() && !name.isEmpty()) {
-			result.add(Subjects.user(name));
-			for (String group : _groups.groupsOf(name)) {
-				result.add(Subjects.group(group));
-			}
-		}
-		return result;
+		// Who else is in the space is the administrator's business, see issue #83.
+		return caller.isPaired() && Roles.isAdmin(caller.getRole());
 	}
 
 	/**
@@ -1161,70 +1097,20 @@ public class AuthService {
 			return null;
 		}
 		String relative = base.relativize(resolved).toString().replace(java.io.File.separatorChar, '/');
-
-		Space guest = guestSpaceOf(relative);
-		if (guest != null) {
-			return guest;
-		}
-
-		User deepest = null;
-		for (User user : _users.getUsers()) {
-			String space = user.getSpace();
-			if (space.isEmpty() || !GrantStore.isBelow(relative, space)) {
-				continue;
-			}
-			if (deepest == null || space.length() > deepest.getSpace().length()) {
-				deepest = user;
-			}
-		}
-		if (deepest != null) {
-			String space = deepest.getSpace();
-			return new Space(deepest.getName(),
-				relative.equals(space) ? "" : relative.substring(space.length() + 1));
-		}
-
-		User owner = _users.getOwner();
-		if (owner != null && owner.getSpace().isEmpty()) {
-			// The library was never migrated: the base folder is the owner's own library.
-			return new Space(owner.getName(), relative);
-		}
-		return null;
+		return new Space(spaceOwner(), relative);
 	}
 
 	/**
-	 * The space of a guest the given base-relative path lies in, see issue #52.
+	 * The name a share link of this space records as its owner.
 	 *
 	 * <p>
-	 * A guest's root lies below {@link UserStore#DIRECTORY_NAME}, so it is never a folder of
-	 * anybody's album tree and never shadowed by one: it is asked for before the member spaces,
-	 * and no member space can ever contain it, a user name being unable to start with a dot.
+	 * The space's administrator, whoever created the link: a link belongs to the space, not to the
+	 * person who happened to hand it out, and the space is the unit everything here is about.
 	 * </p>
-	 *
-	 * @return <code>null</code> if the path lies in no guest's root.
 	 */
-	private Space guestSpaceOf(String relative) {
-		String head = UserStore.DIRECTORY_NAME + "/" + UserStore.GUESTS_DIRECTORY_NAME + "/";
-		if (!relative.startsWith(head)) {
-			return null;
-		}
-		String rest = relative.substring(head.length());
-		int slash = rest.indexOf('/');
-		String name = slash < 0 ? rest : rest.substring(0, slash);
-		User user = name.isEmpty() ? null : _users.getUser(name);
-		if (user == null || !Roles.GUEST.equals(user.getRole())) {
-			return null;
-		}
-		return new Space(name, slash < 0 ? "" : rest.substring(slash + 1));
-	}
-
-	/** Whether the given path lies in the root of a guest, see issue #52. */
-	public boolean isGuestSpace(PathInfo path) {
-		Space space = spaceOf(path);
-		if (space == null || _users == null) {
-			return false;
-		}
-		User user = _users.getUser(space.getOwner());
-		return user != null && Roles.GUEST.equals(user.getRole());
+	private String spaceOwner() {
+		User owner = _users.getOwner();
+		return owner == null ? "" : owner.getName();
 	}
 
 	/**
@@ -1265,39 +1151,6 @@ public class AuthService {
 		public String getPath() {
 			return _path;
 		}
-	}
-
-	/**
-	 * Whether the given path is resolved against the folder the given caller's own paths resolve
-	 * against.
-	 *
-	 * <p>
-	 * That is the caller's own library, and it is what the server granted them before issue #49:
-	 * the owner of a library that was never migrated keeps seeing everything below the base folder
-	 * exactly as they did, the spaces of the members inside it included, see
-	 * {@link #spaceRights(Caller, PathInfo)}. What she may <em>share</em> of it is a different
-	 * question, decided by {@link #spaceOf(PathInfo)}.
-	 * </p>
-	 */
-	private boolean isOwnSpace(Caller caller, PathInfo path) {
-		if (_basePath == null || path.getBasePath() == null) {
-			return false;
-		}
-		Path root;
-		if (Roles.GUEST.equals(caller.getRole())) {
-			// A guest has no library, but they do own their own little root: the links that were
-			// made for them are theirs to look at, to rearrange and to decline, see issue #52.
-			// What must not land in it is a photo, and that is refused by role, never by rights.
-			root = guestRoot(_basePath, caller.getUserName());
-		} else {
-			String space = caller.getSpace();
-			if (space.isEmpty() && !isUnmigratedOwner(caller)) {
-				// The base folder of a migrated library belongs to nobody.
-				return false;
-			}
-			root = space.isEmpty() ? _basePath : _basePath.resolve(space);
-		}
-		return normalize(path.getBasePath()).equals(normalize(root));
 	}
 
 	/** Whether the given caller is the owner of a library that was never migrated. */
@@ -1637,29 +1490,6 @@ public class AuthService {
 			Path folder = consumed == null ? currentRoot : currentRoot.resolve(consumed);
 			Path candidate = folder.resolve(name);
 
-			if (_users != null && !Files.exists(candidate) && Files.isDirectory(folder)
-				&& LinkStore.exists(folder.toFile())) {
-				LinkStore.Link link = new LinkStore(folder.toFile()).get(name);
-				if (link != null) {
-					User owner = _users.getUser(link.getOwner());
-					if (owner == null) {
-						// The user the link names is gone; the link leads nowhere, and it says so.
-						throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, unknownSpace(link.getOwner()));
-					}
-					String target = linkTarget(link);
-					if (++hops > MAX_LINK_DEPTH || !visited.add(link.getOwner() + "/" + target)) {
-						LOG.warning("Refusing the link chain at '" + link + "': too long or circular.");
-						throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, LINK_LOOP);
-					}
-					currentRoot = spaceRoot(owner, basePath);
-					consumed = target.isEmpty() ? null : java.nio.file.Paths.get(target);
-					linkOwner = link.getOwner();
-					linkTarget = target;
-					linkPath = spelled + name;
-					spelled = linkPath + "/";
-					continue;
-				}
-			}
 
 			consumed = consumed == null ? java.nio.file.Paths.get(name) : consumed.resolve(name);
 			spelled = spelled + name + "/";
@@ -1671,27 +1501,6 @@ public class AuthService {
 		return new Location(prefix, spaceOf(path), path, linkOwner, linkTarget, linkPath);
 	}
 
-	/**
-	 * The target of the given link as a path relative to its owner's space.
-	 *
-	 * <p>
-	 * A link may only ever point into a user's library: a record that names something else is a
-	 * damaged sidecar, and following it would be the one way out of the folder tree this server
-	 * serves.
-	 * </p>
-	 */
-	private static String linkTarget(LinkStore.Link link) throws PathRefused {
-		String path = link.getPath();
-		if (path.isEmpty()) {
-			return "";
-		}
-		Path relative = java.nio.file.Paths.get(path).normalize();
-		if (relative.isAbsolute() || relative.startsWith("..") || relative.toString().isEmpty()) {
-			LOG.warning("Refusing the link '" + link + "': its target leaves the library.");
-			throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, LINK_ESCAPED);
-		}
-		return relative.toString().replace(java.io.File.separatorChar, '/');
-	}
 
 	/** Why the given caller is refused, ready to be shown to the user. */
 	public String refusal(Caller caller, boolean write) {
@@ -1703,9 +1512,6 @@ public class AuthService {
 			// Never LIBRARY_REFUSED: telling somebody who opened a share link to open a share link
 			// would be nonsense, and there is nothing they could sign in as, see issue #51.
 			return write ? SHARE_WRITE_REFUSED : SHARE_READ_REFUSED;
-		}
-		if (!caller.isPaired() && isLibraryMigrated()) {
-			return LIBRARY_REFUSED;
 		}
 		return write ? WRITE_REFUSED : READ_REFUSED;
 	}
@@ -1735,7 +1541,7 @@ public class AuthService {
 	 * </p>
 	 */
 	public Path spaceRoot(Caller caller, Path basePath) {
-		return spaceRoot(caller.getSpace(), caller.getUserName(), caller.getRole(), basePath);
+		return basePath;
 	}
 
 	/**
@@ -1748,26 +1554,10 @@ public class AuthService {
 	 * </p>
 	 */
 	public Path spaceRoot(User user, Path basePath) {
-		return spaceRoot(user.getSpace(), user.getName(), user.getRole(), basePath);
+		// One space, one tree: nothing is created for a user any more, see #spaceFolder.
+		return basePath;
 	}
 
-	/** See {@link #spaceRoot(User, Path)}. */
-	private Path spaceRoot(String space, String userName, String role, Path basePath) {
-		boolean guest = Roles.GUEST.equals(role);
-		if (space.isEmpty() && !guest) {
-			return basePath;
-		}
-		Path root = guest ? guestRoot(basePath, userName) : basePath.resolve(space);
-		if (!Files.isDirectory(root)) {
-			try {
-				Files.createDirectories(root);
-				LOG.info("Created the space of '" + userName + "': " + root);
-			} catch (IOException ex) {
-				LOG.log(Level.WARNING, "Cannot create the space '" + root + "': " + ex.getMessage());
-			}
-		}
-		return root;
-	}
 
 	/**
 	 * How much of the images at the given path the given caller may see, see {@link Privacy}.
@@ -1801,19 +1591,17 @@ public class AuthService {
 			return Privacy.PRIVATE;
 		}
 		if (caller.isShareLink()) {
-			// A link holder is a member of the album it opens, never its owner, and the author's
-			// own limit cuts that down further, see issue #51.
+			// A link holder sees what the link was cut to, never more than the members' level.
 			return Math.min(Privacy.MEMBERS, caller.getShare().getMaxPrivacy());
 		}
 		if (!caller.isPaired()) {
 			return Privacy.PUBLIC;
 		}
-		if (spaceRights(caller, path).containsAll(Rights.ALL)) {
-			// The owner of the library the path lies in, see AuthService#spaceRights.
+		if (Roles.isAdmin(caller.getRole())) {
+			// The administrator of a space sees everything in it, whatever is recorded.
 			return Privacy.PRIVATE;
 		}
-		// A signed-in caller reaching somebody else's album through a grant is a member of it.
-		return mayView(caller, path) ? Privacy.MEMBERS : Privacy.PUBLIC;
+		return Clearances.level(caller.getClearance());
 	}
 
 	/**
@@ -1910,7 +1698,8 @@ public class AuthService {
 	 * </p>
 	 */
 	public static String canonical(ShareStore.Link share) {
-		return HOME_PREFIX + share.getOwner() + (share.getPath().isEmpty() ? "" : "/" + share.getPath());
+		// One space, one spelling: the path inside the space, see issue #83.
+		return share.getPath();
 	}
 
 	/** Thrown by {@link AuthService#pair(PairRequest)} when the request is not honoured. */
@@ -2140,9 +1929,9 @@ public class AuthService {
 		if (gone != null) {
 			throw new PairRefused(HttpServletResponse.SC_GONE, gone);
 		}
-		String role = Roles.MEMBER.equals(invitation.getRole()) || Roles.GUEST.equals(invitation.getRole())
-			? invitation.getRole() : null;
-		if (role == null) {
+		String role = Roles.of(invitation.getRole());
+		if (role == null || Roles.ADMIN.equals(role)) {
+			// A record this build creates nobody with: an unknown role, or the administrator's seat.
 			// A record from a store this build does not understand; it creates nobody.
 			LOG.warning("Refusing " + invitation + ": its role is none this build creates anybody with.");
 			throw new PairRefused(HttpServletResponse.SC_GONE, invitationRoleRefused(invitation.getRole()));
@@ -2161,23 +1950,14 @@ public class AuthService {
 			if (!isNameFree(name)) {
 				throw new PairRefused(HttpServletResponse.SC_CONFLICT, nameTaken(name));
 			}
-			boolean member = Roles.MEMBER.equals(role);
-			if (member && !isLibraryMigrated()) {
-				throw new PairRefused(HttpServletResponse.SC_CONFLICT, SPACE_REFUSED);
-			}
-			// The invitation says what the new user holds, see issue #82; issue #83 enforces it.
-			user = _users.addUser(new User(name, role, member ? name : "", java.time.Instant.now().toString(),
+			// The invitation says what the new user holds, see issues #82 and #83.
+			user = _users.addUser(new User(name, role, "", java.time.Instant.now().toString(),
 				invitation.getClearance(), invitation.isShare()));
 			// The device token and the user are written in one store, by this call.
 			String issued = _users.addDevice(user, request.getDeviceName());
 			deviceName = user.getDevices().get(user.getDevices().size() - 1).getName();
 			// Used up before the answer: a single-use token must not survive its own success.
 			_invitations.markUsed(invitation.getId(), name);
-			if (_basePath != null && member) {
-				// The member's own folder, made now rather than at their first upload, so that
-				// their very first listing is of something that exists.
-				spaceRoot(user, _basePath);
-			}
 			LOG.info("Accepted " + invitation + ": created the " + role + " '" + name + "'.");
 			return PairResponse.create()
 				.setToken(issued)
@@ -2202,7 +1982,7 @@ public class AuthService {
 		if (_users != null && _users.getUser(name) != null) {
 			return false;
 		}
-		if (_groups != null && _groups.getGroup(name) != null) {
+		if (false) {
 			return false;
 		}
 		return _basePath == null || !Files.exists(_basePath.resolve(name));
@@ -2283,85 +2063,66 @@ public class AuthService {
 		}
 	}
 
+
 	/**
-	 * Renames a group and every grant made out to it, see issue #55.
+	 * Changes what the user of the given name may do, see issue #83.
 	 *
 	 * <p>
-	 * A group is named in two places — its own record and the {@link Subjects#GROUP_PREFIX} subject
-	 * of every grant made out to it — so renaming it is one operation over both stores, or the
-	 * albums shared with the group would stop being shared because somebody fixed a typo.
+	 * The administrator's own decision, and the only way a permission ever changes. The last
+	 * administrator of a space cannot be demoted: a space without one could never be administered
+	 * again, and there is no other door in.
 	 * </p>
 	 *
-	 * <p>
-	 * The group is written first, the grants second. A crash between the two writes leaves the
-	 * group under its new name while the grants still name the old one; nothing is lost and nothing
-	 * leaks, because a grant to a group nobody is in matches nobody — the shared albums simply stop
-	 * being visible to the group's members until it is repaired. The repair is the same request
-	 * backwards: renaming the group back to its old name makes the two agree again exactly as they
-	 * did before (the rewrite of the grants finds nothing to do), and the rename can then be
-	 * retried. The reverse order would not have that property, which is why it is this one.
-	 * </p>
-	 *
-	 * @return The renamed group.
+	 * @return The changed user.
+	 * @throws Refused
+	 *         If the change is not carried out; nothing was changed in that case.
 	 */
-	public GroupStore.Group renameGroup(Caller caller, String name, String newName) throws Refused, IOException {
-		if (_groups == null || _grants == null) {
+	public User setPermission(String userName, String role, String clearance, boolean share)
+			throws Refused, IOException {
+		if (_users == null) {
 			throw new Refused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
 		}
-		String from = name == null ? "" : name.trim();
-		String to;
-		try {
-			to = UserStore.checkUserName(newName);
-		} catch (IllegalArgumentException ex) {
-			throw new Refused(HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
+		String known = Roles.of(role);
+		if (known == null) {
+			throw new Refused(HttpServletResponse.SC_BAD_REQUEST, roleRefused(role));
 		}
-		synchronized (_groups) {
-			GroupStore.Group group = from.isEmpty() ? null : _groups.getGroup(from);
-			if (group == null) {
-				throw new Refused(HttpServletResponse.SC_NOT_FOUND, GROUP_UNKNOWN);
+		String level = clearance == null || clearance.isEmpty() ? Clearances.ofRole(known) : clearance;
+		if (!Clearances.isKnown(level)) {
+			throw new Refused(HttpServletResponse.SC_BAD_REQUEST, clearanceRefused(clearance));
+		}
+		synchronized (_users) {
+			String name = userName == null ? "" : userName.trim();
+			User user = name.isEmpty() ? null : _users.getUser(name);
+			if (user == null) {
+				throw new Refused(HttpServletResponse.SC_NOT_FOUND, unknownUser(name));
 			}
-			// The administrator may rename anybody's group: they are the one who has to keep the
-			// names of this server in order, and a rename gives nobody a right they did not have.
-			if (!group.getOwner().equals(caller.getUserName()) && !Roles.ADMIN.equals(caller.getRole())) {
-				throw new Refused(HttpServletResponse.SC_FORBIDDEN, GROUP_REFUSED);
+			if (Roles.isAdmin(user.getRole()) && !Roles.ADMIN.equals(known) && isLastAdmin(user)) {
+				throw new Refused(HttpServletResponse.SC_CONFLICT, LAST_ADMIN);
 			}
-			if (!to.equals(from) && _groups.getGroup(to) != null) {
-				throw new Refused(HttpServletResponse.SC_CONFLICT, groupNameTaken(to));
-			}
-			if (!to.equals(from) && isUserName(to)) {
-				throw new Refused(HttpServletResponse.SC_CONFLICT, groupNameIsUser(to));
-			}
-
-			_groups.rename(group, to);
-			int rewritten = _grants.renameSubject(Subjects.group(from), Subjects.group(to));
-			LOG.info("Renamed the group '" + from + "' to '" + to + "' and " + rewritten + " grant(s) with it.");
-			return group;
+			user.setRole(known);
+			user.setClearance(Roles.ADMIN.equals(known) ? Clearances.ALL : level);
+			user.setShare(Roles.ADMIN.equals(known) || share);
+			_users.store();
+			LOG.info("Set the permission of '" + name + "' to " + user.getRole() + "/"
+				+ user.getClearance() + (user.isShare() ? "/share" : ""));
+			return user;
 		}
 	}
 
 	/**
-	 * Turns the guest of the given name into a member with a space of their own, see issue #52.
+	 * Removes the user of the given name and every device they signed in on, see issue #83.
 	 *
 	 * <p>
-	 * One rename does the whole move: a guest's root is already shaped like a space root (link
-	 * sidecars beside a {@value UserStore#DIRECTORY_NAME} holding the share registry), so renaming
-	 * <code>{@value UserStore#DIRECTORY_NAME}/{@value UserStore#GUESTS_DIRECTORY_NAME}/&lt;name&gt;</code>
-	 * to <code>&lt;name&gt;</code> makes it the new space and carries the links and the registry
-	 * into exactly the places a member keeps them. It is a rename within one file system, like the
-	 * library migration of issue #45 — nothing is copied and no photo is touched, there being none.
+	 * Their tokens stop working at once, which is what "remove" has to mean. Nothing of theirs is
+	 * deleted from the album tree: what they uploaded belongs to the space, and their name stays in
+	 * the attribution of issue #53 as a record of who brought a photo here.
 	 * </p>
 	 *
-	 * <p>
-	 * There is no way back: demotion is not offered, see {@link User#setRole(String)}. Everything
-	 * is checked before anything is moved.
-	 * </p>
-	 *
-	 * @return The promoted user.
 	 * @throws Refused
-	 *         If the promotion is not carried out; nothing was moved in that case.
+	 *         If the user is not removed; nothing was changed in that case.
 	 */
-	public User promote(String userName) throws Refused, IOException {
-		if (_users == null || _basePath == null) {
+	public void removeUser(String userName) throws Refused, IOException {
+		if (_users == null) {
 			throw new Refused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
 		}
 		synchronized (_users) {
@@ -2370,39 +2131,23 @@ public class AuthService {
 			if (user == null) {
 				throw new Refused(HttpServletResponse.SC_NOT_FOUND, unknownUser(name));
 			}
-			if (!Roles.GUEST.equals(user.getRole())) {
-				throw new Refused(HttpServletResponse.SC_BAD_REQUEST, notAGuest(name));
+			if (Roles.isAdmin(user.getRole()) && isLastAdmin(user)) {
+				throw new Refused(HttpServletResponse.SC_CONFLICT, LAST_ADMIN);
 			}
-			if (!isLibraryMigrated()) {
-				throw new Refused(HttpServletResponse.SC_CONFLICT, SPACE_REFUSED);
-			}
-
-			Path target = _basePath.resolve(name);
-			Path source = guestRoot(_basePath, name);
-			if (Files.exists(target)) {
-				// Somebody's folder is already there; a promotion never merges two folders.
-				throw new Refused(HttpServletResponse.SC_CONFLICT, promotionBlocked(name));
-			}
-			if (Files.isDirectory(source)) {
-				Files.move(source, target);
-			} else {
-				// A guest nothing was ever shared with has no root yet; the member's is made empty.
-				Files.createDirectories(target);
-			}
-
-			user.setRole(Roles.MEMBER);
-			user.setSpace(name);
+			_users.removeUser(user);
 			_users.store();
-			LOG.info("Promoted the guest '" + name + "' to a member with the space '" + name + "'.");
-			return user;
+			LOG.info("Removed the user '" + name + "' with their devices.");
 		}
 	}
 
-	private static boolean matches(String presented, String expected) {
-		if (presented == null) {
-			return false;
+	/** Whether the given user is the only administrator this space has. */
+	private boolean isLastAdmin(User user) {
+		for (User other : _users.getUsers()) {
+			if (other != user && Roles.isAdmin(other.getRole())) {
+				return false;
+			}
 		}
-		return MessageDigest.isEqual(presented.getBytes(StandardCharsets.UTF_8),
-			expected.getBytes(StandardCharsets.UTF_8));
+		return true;
 	}
+
 }

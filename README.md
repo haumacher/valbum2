@@ -89,7 +89,7 @@ everyone who can reach the server.
 
 ### Adding a further device of your own
 
-A member or guest who wants a second device does not need the pairing secret and must not use an
+A user who wants a second device does not need the pairing secret and must not use an
 invitation (that would create another user). On a device you are already signed in on, open "My
 devices" in the server settings and press "Add a device…": the server issues a short code
 (`XXXX-XXXX`) that lives ten minutes and works once. Type it into the "Device code" field of the
@@ -148,14 +148,43 @@ places whatever lands in the folder: an album created there is filed into `YYYY/
 already there, once, explicitly. Year folders are ordinary folders. The rule places, it does not
 police: what you drag elsewhere by hand stays there.
 
+### Who may do what
+
+Everybody in a space holds **one permission for the whole space** — there are no per-album
+permissions:
+
+| | may look and download | may add photos | may change albums | may manage the space |
+|---|---|---|---|---|
+| `admin` | yes | yes | yes | yes |
+| `edit` | yes | yes | yes | no |
+| `contribute` | yes | yes | no | no |
+| `view` | yes | no | no | no |
+
+Beside the role, every user has a **clearance** — `public`, `nonPrivate` or `all` — which says how
+far up the privacy levels below they may look, and a **share flag** which says whether they may
+hand out share links. An administrator holds everything: full clearance, the share flag, and the
+users of the space.
+
+Only an administrator invites people into a space (`?action=invite`, the invitation carries the
+role, clearance and share flag the invitee gets), changes what somebody may do
+(`?action=set-permission`) or removes a user with their devices (`?action=remove-user`). The last
+administrator of a space can be neither demoted nor removed.
+
+A library written by an older build calls its users `member` and `guest`; they are read as `edit`
+(clearance `all`, may share) and `view` (clearance `nonPrivate`), and the stored file is not
+rewritten. The sharing of that build — grants, groups, albums linked into somebody else's tree and
+guest accounts — is gone; its endpoints answer `410 Gone` with a message naming what does the job
+now, for one release.
+
 ### Privacy levels
 
 Every image has a privacy level, set on its tile in the app: **public** (0), **members** (1) or
 **private** (2). The server enforces it on the way out: a listing omits what the caller may not
 see, and the image, thumbnail and preview endpoints refuse such an image with a message (401 for an
-anonymous caller, 403 for a signed-in one). The owner of a space sees everything in it; an
-anonymous caller in `--auth writes` mode sees only public images, so a single-user library on a home
-network keeps working minus its restricted photos; `--auth off` shows everything to everyone. A
+anonymous caller, 403 for a signed-in one). How far up the scale somebody may look is their
+**clearance** (see below); an administrator sees everything in their space; an anonymous caller in
+`--auth writes` mode sees only public images, so a single-user library on a home network keeps
+working minus its restricted photos; `--auth off` shows everything to everyone. A
 group whose representative is hidden is shown by its best visible member, and an album whose cover
 is hidden gets its first visible image as cover. `?viewAs=public` or `?viewAs=members` on a request
 lowers the caller's own clearance for that request (it can never raise it) — the app's "view as"
@@ -214,7 +243,6 @@ Everything is set in `/etc/default/valbum`:
 | `VALBUM_PORT` | HTTP port | `8080` |
 | `VALBUM_CONTEXTPATH` | First path segment of the URL | none |
 | `VALBUM_AUTH` | `off`, `writes` or `all` | `writes` |
-| `VALBUM_INVITE` | Who may invite: `admin` or `members` | `members` |
 | `VALBUM_OPTS` | Further server options | none |
 | `JAVA_OPTS` / `JAVA_HOME` | JVM options and the JVM to use | system default |
 

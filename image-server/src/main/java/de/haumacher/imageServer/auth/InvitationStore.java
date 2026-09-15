@@ -519,7 +519,7 @@ public class InvitationStore {
 	private static Link readInvitation(JsonReader in) throws IOException {
 		String id = "";
 		String tokenHash = "";
-		String role = Roles.MEMBER;
+		String role = Roles.EDIT;
 		String clearance = "";
 		Boolean share = null;
 		String invitedBy = "";

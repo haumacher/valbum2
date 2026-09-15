@@ -54,7 +54,11 @@ public class Rights {
 	/** Nothing at all: what a caller without a grant holds. */
 	public static final Set<String> NONE = Collections.emptySet();
 
-	/** Looking without changing: what an anonymous caller holds in an unmigrated library. */
+	/** Looking, downloading and adding, but changing nothing: the {@link Roles#CONTRIBUTE} role. */
+	public static final Set<String> CONTRIBUTE_ONLY = Collections
+		.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(VIEW, DOWNLOAD, CONTRIBUTE)));
+
+	/** Looking without changing: the {@link Roles#VIEW} role, and an anonymous caller of an open space. */
 	public static final Set<String> READ_ONLY =
 		Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(VIEW, DOWNLOAD)));
 

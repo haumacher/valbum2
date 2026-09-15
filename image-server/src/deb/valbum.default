@@ -33,11 +33,6 @@ VALBUM_CONTEXTPATH=
 #   all    - anonymous requests are refused altogether
 VALBUM_AUTH=writes
 
-# Who may invite somebody onto this server:
-#   members - every member may hand out an invitation
-#   admin   - only the library owner may
-VALBUM_INVITE=members
-
 # Further server arguments, appended to the ones above. The most useful one is
 # a fixed pairing secret; without it the server generates one at every start and
 # prints it to the journal (journalctl -u valbum):

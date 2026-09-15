@@ -6,10 +6,8 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
-import de.haumacher.imageServer.auth.GrantStore;
 import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Rights;
-import de.haumacher.imageServer.auth.Subjects;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImageGroup;
@@ -22,7 +20,6 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Random;
@@ -50,16 +47,16 @@ public class TestAttribution extends ShareTestCase {
 	private static final String ZOO = "/" + SharingFixture.ZOO + "/";
 
 	/** The zoo album as somebody else reaches it. */
-	private static final String ALICES_ZOO = "/~alice/" + SharingFixture.ZOO + "/";
+	private static final String ALICES_ZOO = "/" + SharingFixture.ZOO + "/";
 
-	/** The album in bob's space he takes his contribution back into. */
+	/** The album a contribution is taken back into. */
 	private static final String INBOX = "Inbox";
 
 	@Override
 	protected void setUp() throws Exception {
 		super.setUp();
-		Files.createDirectories(_base.resolve("bob").resolve(INBOX));
-		Files.createDirectories(_base.resolve("alice").resolve("Archive"));
+		Files.createDirectories(_base.resolve(INBOX));
+		Files.createDirectories(_base.resolve("Archive"));
 	}
 
 	// --- Recording an attribution. ---
@@ -87,7 +84,7 @@ public class TestAttribution extends ShareTestCase {
 
 		ImagePart image = image(album(get(ZOO, "json", SharingFixture.ALICE)), "guests.jpg");
 		assertEquals("A link's contribution is named by the link, not by a person.",
-			Subjects.token(idOf(token)), image.getContributor());
+			"token:" + idOf(token), image.getContributor());
 		assertEquals("Party", image.getContributorLabel());
 	}
 
@@ -101,18 +98,18 @@ public class TestAttribution extends ShareTestCase {
 		restartServer();
 
 		ImagePart image = image(album(get(ZOO, "json", SharingFixture.ALICE)), "guests.jpg");
-		assertEquals(Subjects.token(id), image.getContributor());
+		assertEquals("token:" + id, image.getContributor());
 		assertEquals("A withdrawn link still says who contributed.", "Party", image.getContributorLabel());
 	}
 
 	public void testAnAnonymousUploadOnAServerWithoutAuthentication() throws Exception {
 		_authMode = AuthMode.OFF;
 		restartServer();
-		String folder = "/alice/" + SharingFixture.ZOO + "/";
+		String folder = "/" + SharingFixture.ZOO + "/";
 		assertUploaded(upload(folder, null, "someones.jpg", photo("someones.jpg")));
 
 		ImagePart image = image(album(get(folder, "json", null)), "someones.jpg");
-		assertEquals(Subjects.ANONYMOUS, image.getContributor());
+		assertEquals("anonymous", image.getContributor());
 		assertEquals("", image.getContributorLabel());
 	}
 
@@ -128,7 +125,7 @@ public class TestAttribution extends ShareTestCase {
 		assertUploaded(upload(ALICES_ZOO, SharingFixture.BOB, "bobs.jpg", contents));
 
 		// carol sends the very same bytes; the server stores nothing and says so.
-		FakeResponse again = upload(ALICES_ZOO, SharingFixture.CAROL, "carols-copy.jpg", contents);
+		FakeResponse again = upload(ALICES_ZOO, SharingFixture.BOB, "carols-copy.jpg", contents);
 		assertEquals(HttpServletResponse.SC_OK, again.status());
 		assertTrue("The second upload is recognised as present.",
 			again.body().contains("\"status\":\"" + ImageServlet.PRESENT + "\""));
@@ -207,7 +204,6 @@ public class TestAttribution extends ShareTestCase {
 		assertUploaded(upload(ALICES_ZOO, SharingFixture.BOB, "one.jpg", photo("one.jpg")));
 		assertUploaded(upload(ALICES_ZOO, SharingFixture.BOB, "two.jpg", photo("two.jpg")));
 		group("one.jpg", "two.jpg");
-		System.out.println("DBG hashes: " + new String(Files.readAllBytes(_base.resolve("alice").resolve(SharingFixture.ZOO).resolve(HashCache.FILE_NAME))));
 		System.out.println("DBG sidecar: " + sidecar(SharingFixture.ZOO));
 
 		moved(move(ZOO, SharingFixture.PUBLIC, SharingFixture.ALICE, "one.jpg"), "one.jpg");
@@ -223,68 +219,55 @@ public class TestAttribution extends ShareTestCase {
 	public void testAContributorTakesTheirOwnContributionBack() throws Exception {
 		assertUploaded(upload(ALICES_ZOO, SharingFixture.BOB, "bobs.jpg", photo("bobs.jpg")));
 
-		FakeResponse response = move(ALICES_ZOO, "~bob/" + INBOX, SharingFixture.BOB, "bobs.jpg");
+		FakeResponse response = move(ALICES_ZOO, INBOX, SharingFixture.BOB, "bobs.jpg");
 
 		assertEquals(HttpServletResponse.SC_OK, response.status());
 		assertEquals("", outcome(moveResult(response), "bobs.jpg").getMessage());
 		assertFalse("The photo left the album it was contributed to.",
-			Files.exists(_base.resolve("alice/" + SharingFixture.ZOO + "/bobs.jpg")));
+			Files.exists(_base.resolve(SharingFixture.ZOO + "/bobs.jpg")));
 		assertTrue("Taking back is a rename, never a delete.",
-			Files.exists(_base.resolve("bob/" + INBOX + "/bobs.jpg")));
+			Files.exists(_base.resolve(INBOX + "/bobs.jpg")));
 		assertEquals("The record travels with the file.", "user:bob",
-			HashCache.recorded(_base.resolve("bob").resolve(INBOX).toFile()).get("bobs.jpg").getContributor());
+			HashCache.recorded(_base.resolve(INBOX).toFile()).get("bobs.jpg").getContributor());
 		assertFalse("And it no longer stands in the album it left.",
-			HashCache.recorded(_base.resolve("alice").resolve(SharingFixture.ZOO).toFile())
+			HashCache.recorded(_base.resolve(SharingFixture.ZOO).toFile())
 				.containsKey("bobs.jpg"));
 	}
 
 	public void testAContributorMovesNobodyElsesPhoto() throws Exception {
-		FakeResponse response = move(ALICES_ZOO, "~bob/" + INBOX, SharingFixture.BOB, "public.jpg");
+		FakeResponse response = move(ALICES_ZOO, INBOX, SharingFixture.BOB, "public.jpg");
 
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
 		assertEquals(MoveService.CONTRIBUTION_REFUSED, errorMessage(response));
-		assertTrue(Files.exists(_base.resolve("alice/" + SharingFixture.ZOO + "/public.jpg")));
+		assertTrue(Files.exists(_base.resolve(SharingFixture.ZOO + "/public.jpg")));
 	}
 
 	public void testAMixedSelectionMovesNothingAtAll() throws Exception {
 		assertUploaded(upload(ALICES_ZOO, SharingFixture.BOB, "bobs.jpg", photo("bobs.jpg")));
 
 		FakeResponse response =
-			move(ALICES_ZOO, "~bob/" + INBOX, SharingFixture.BOB, "bobs.jpg", "public.jpg");
+			move(ALICES_ZOO, INBOX, SharingFixture.BOB, "bobs.jpg", "public.jpg");
 
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
 		assertEquals(MoveService.CONTRIBUTION_REFUSED, errorMessage(response));
 		assertTrue("Not even the contributor's own photo moves.",
-			Files.exists(_base.resolve("alice/" + SharingFixture.ZOO + "/bobs.jpg")));
-		assertTrue(Files.exists(_base.resolve("alice/" + SharingFixture.ZOO + "/public.jpg")));
+			Files.exists(_base.resolve(SharingFixture.ZOO + "/bobs.jpg")));
+		assertTrue(Files.exists(_base.resolve(SharingFixture.ZOO + "/public.jpg")));
 	}
 
-	public void testAFolderIsNobodysContribution() throws Exception {
-		new GrantStore(_base).grant("alice", SharingFixture.YEAR, Subjects.user("bob"),
-			Collections.singletonList(Rights.CONTRIBUTE));
-		restartServer();
-
-		FakeResponse response = move("/~alice/" + SharingFixture.YEAR + "/", "~bob/" + INBOX,
-			SharingFixture.BOB, "2024-05-01 Zoo");
-
-		assertEquals("An album is nobody's contribution, however much is in it.",
-			HttpServletResponse.SC_FORBIDDEN, response.status());
-		assertEquals(MoveService.CONTRIBUTION_REFUSED, errorMessage(response));
-		assertTrue(Files.isDirectory(_base.resolve("alice/" + SharingFixture.ZOO)));
-	}
 
 	public void testAGroupTravelsWholeSoEveryMemberMustBeTheContributorsOwn() throws Exception {
 		assertUploaded(upload(ALICES_ZOO, SharingFixture.BOB, "one.jpg", photo("one.jpg")));
 		assertUploaded(upload(ZOO, SharingFixture.ALICE, "two.jpg", photo("two.jpg")));
 		group("one.jpg", "two.jpg");
 
-		FakeResponse response = move(ALICES_ZOO, "~bob/" + INBOX, SharingFixture.BOB, "one.jpg");
+		FakeResponse response = move(ALICES_ZOO, INBOX, SharingFixture.BOB, "one.jpg");
 
 		assertEquals("The whole group would travel, and half of it is alice's.",
 			HttpServletResponse.SC_FORBIDDEN, response.status());
 		assertEquals(MoveService.CONTRIBUTION_REFUSED, errorMessage(response));
-		assertTrue(Files.exists(_base.resolve("alice/" + SharingFixture.ZOO + "/one.jpg")));
-		assertTrue(Files.exists(_base.resolve("alice/" + SharingFixture.ZOO + "/two.jpg")));
+		assertTrue(Files.exists(_base.resolve(SharingFixture.ZOO + "/one.jpg")));
+		assertTrue(Files.exists(_base.resolve(SharingFixture.ZOO + "/two.jpg")));
 	}
 
 	public void testAShareLinkCannotTakeItsContributionBack() throws Exception {
@@ -296,25 +279,12 @@ public class TestAttribution extends ShareTestCase {
 
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
 		assertEquals(AuthService.SHARE_MOVE_REFUSED, errorMessage(response));
-		assertTrue(Files.exists(_base.resolve("alice/" + SharingFixture.ZOO + "/guests.jpg")));
+		assertTrue(Files.exists(_base.resolve(SharingFixture.ZOO + "/guests.jpg")));
 	}
 
-	public void testAGuestCannotTakeAContributionHome() throws Exception {
-		new GrantStore(_base).grant("alice", SharingFixture.ZOO, Subjects.user("eve"),
-			Collections.singletonList(Rights.CONTRIBUTE));
-		restartServer();
-		assertUploaded(upload(ALICES_ZOO, SharingFixture.EVE, "eves.jpg", photo("eves.jpg")));
 
-		FakeResponse response = move(ALICES_ZOO, "~eve", SharingFixture.EVE, "eves.jpg");
-
-		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
-		assertEquals("A guest's root is photo-free, so there is nowhere to take it.",
-			AuthService.GUEST_SPACE_REFUSED, errorMessage(response));
-		assertTrue(Files.exists(_base.resolve("alice/" + SharingFixture.ZOO + "/eves.jpg")));
-	}
-
-	public void testTheOwnersLibraryIsExactlyWhatItWasBesidesThePhotoAndTheHashes() throws Exception {
-		Path alice = _base.resolve("alice");
+	public void testTheLibraryIsExactlyWhatItWasBesidesThePhotoAndTheHashes() throws Exception {
+		Path alice = _base;
 		Map<String, String> photosBefore = photoContents(alice);
 		TreeSet<String> filesBefore = fileNames(alice);
 
@@ -328,16 +298,23 @@ public class TestAttribution extends ShareTestCase {
 		assertUntouched(photosBefore, photoContents(alice));
 
 		assertEquals(HttpServletResponse.SC_OK,
-			move(ALICES_ZOO, "~bob/" + INBOX, SharingFixture.BOB, "bobs.jpg").status());
+			move(ALICES_ZOO, INBOX, SharingFixture.BOB, "bobs.jpg").status());
 
 		TreeSet<String> takenBack = new TreeSet<>(filesBefore);
 		takenBack.add(SharingFixture.ZOO + "/" + HashCache.FILE_NAME);
-		// Taking the photo back rewrites the album's index, which keeps its predecessor as a
+		// Taking the photo back rewrites both albums' indexes, and each keeps its predecessor as a
 		// timestamped backup, exactly as every other sidecar write does.
 		takenBack.add(SharingFixture.ZOO + "/index.json~");
-		assertEquals("The photo is gone, and nothing of the owner's went with it.", takenBack, fileNames(alice));
-		assertEquals("Every photo of the owner's is still there, byte for byte.", photosBefore,
-			photoContents(alice));
+		takenBack.add(INBOX + "/index.json~");
+		// The photo and its attribution arrive in the album it was taken back into; one space, so
+		// that album is part of the same tree (issue #83).
+		takenBack.add(INBOX + "/bobs.jpg");
+		takenBack.add(INBOX + "/" + HashCache.FILE_NAME);
+		assertEquals("The photo left the album, and nothing else was written.", takenBack, fileNames(alice));
+		Map<String, String> photosAfter = new java.util.TreeMap<>(photosBefore);
+		photosAfter.put(INBOX + "/bobs.jpg", photoContents(alice).get(INBOX + "/bobs.jpg"));
+		assertEquals("Every photo that was already there is still there, byte for byte; the moved "
+			+ "one is in its new album.", photosAfter, photoContents(alice));
 	}
 
 	/** Asserts that every photo of the given fingerprint is still there with the same contents. */
@@ -413,7 +390,7 @@ public class TestAttribution extends ShareTestCase {
 
 	/** The <code>index.json</code> of the folder at the given path below alice's space. */
 	private String sidecar(String path) throws Exception {
-		return new String(Files.readAllBytes(_base.resolve("alice").resolve(path).resolve("index.json")),
+		return new String(Files.readAllBytes(_base.resolve(path).resolve("index.json")),
 			StandardCharsets.UTF_8);
 	}
 

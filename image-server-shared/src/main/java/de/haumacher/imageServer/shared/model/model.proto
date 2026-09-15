@@ -940,6 +940,29 @@ message MemberName {
 }
 
 /**
+ * What a user of this space may do, sent to <code>&lt;data&gt;/?action=set-permission</code>
+ * (issue #83).
+ *
+ * <p>
+ * The administrator's decision, and the only way a permission ever changes. The last administrator
+ * of a space cannot be demoted.
+ * </p>
+ */
+message UserPermission {
+	/** The name of the user whose permission is set. */
+	string name;
+
+	/** The role to give them: <code>admin</code>, <code>edit</code>, <code>contribute</code> or <code>view</code>. */
+	string role;
+
+	/** The clearance to give them: <code>public</code>, <code>nonPrivate</code> or <code>all</code>. */
+	string clearance;
+
+	/** Whether they may create share links. */
+	bool mayShare;
+}
+
+/**
  * The groups the caller owns and the groups they are in, answered by
  * <code>&lt;data&gt;/?type=groups</code>.
  */

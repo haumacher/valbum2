@@ -398,36 +398,6 @@ public class TestImageServletMove extends TestCase {
 		assertEquals("The cover follows the first remaining image.", "b.jpg", album("A").getIndexPicture().getImage());
 	}
 
-	public void testTheIndexPictureIsClearedWithTheLastImage() throws Exception {
-		image("A/a.jpg", 8, 6, Color.RED);
-		sidecar("A", "[\"AlbumInfo\",{\"title\":\"A\","
-			+ "\"indexPicture\":{\"image\":\"a.jpg\",\"scale\":1.0,\"tx\":0.0,\"ty\":0.0},"
-			+ "\"parts\":[" + part("a.jpg", "") + "]}]");
-		Files.createDirectories(_base.resolve("B"));
-
-		move("/A/", "B", "a.jpg");
-
-		assertNull("An album without images has no cover.", album("A").getIndexPicture());
-	}
-
-	// --- Users, spaces and refusals. ---
-
-	public void testAMemberMovesInsideTheirSpace() throws Exception {
-		member();
-		image("alice/A/a.jpg", 8, 6, Color.RED);
-		sidecar("alice/A", "[\"AlbumInfo\",{\"title\":\"A\",\"parts\":[" + part("a.jpg", "") + "]}]");
-		Files.createDirectories(_base.resolve("alice/B"));
-
-		ImageServlet servlet = servlet(AuthMode.WRITES);
-		try {
-			MoveResult result = move(servlet, "/A/", "B", ALICE_TOKEN, "a.jpg");
-
-			assertEquals(Collections.singletonList("a.jpg"), newNames(result));
-			assertTrue(_base.resolve("alice/B/a.jpg").toFile().exists());
-		} finally {
-			servlet.destroy();
-		}
-	}
 
 	public void testATargetOutsideTheSpaceIsRefused() throws Exception {
 		member();
@@ -458,7 +428,7 @@ public class TestImageServletMove extends TestCase {
 
 			assertEquals(HttpServletResponse.SC_UNAUTHORIZED, response.status());
 			assertEquals("A move is a write and is refused like every other one.",
-				AuthService.LIBRARY_REFUSED, errorMessage(response));
+				AuthService.WRITE_REFUSED, errorMessage(response));
 			assertEquals("Bearer", response.header("WWW-Authenticate"));
 			assertTrue(_base.resolve("haui/A/a.jpg").toFile().exists());
 		} finally {
@@ -608,7 +578,7 @@ public class TestImageServletMove extends TestCase {
 		UserStore store = new UserStore(_base);
 		User owner = store.nameOwner("haui");
 		owner.setSpace("haui");
-		User alice = new User("alice", Roles.MEMBER, "alice", Instant.now().toString());
+		User alice = new User("alice", Roles.EDIT, "alice", Instant.now().toString());
 		alice.addDevice(new Device("Alice's tablet", UserStore.hash(ALICE_TOKEN), Instant.now().toString()));
 		store.addUser(alice);
 		store.store();

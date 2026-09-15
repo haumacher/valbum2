@@ -87,6 +87,8 @@ public class ShareStore {
 
 	private static final String ID__PROP = "id";
 
+	private static final String RIGHTS__PROP = "rights";
+
 	private static final String TOKEN_HASH__PROP = "tokenHash";
 
 	private static final String OWNER__PROP = "owner";
@@ -126,11 +128,22 @@ public class ShareStore {
 
 		private final String _created;
 
+		private final java.util.Set<String> _rights;
+
 		private String _revoked;
 
-		/** Creates a {@link Link}. */
+		/** Creates a {@link Link} that allows looking and downloading. */
 		public Link(String id, String tokenHash, String owner, String path, String label, String expires,
 				int maxPrivacy, int minRating, String created, String revoked) {
+			this(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating, Rights.READ_ONLY, created,
+				revoked);
+		}
+
+		/** Creates a {@link Link} carrying what it allows, see issue #83. */
+		public Link(String id, String tokenHash, String owner, String path, String label, String expires,
+				int maxPrivacy, int minRating, java.util.Collection<String> rights, String created,
+				String revoked) {
+			_rights = Rights.closure(rights);
 			_id = id;
 			_tokenHash = tokenHash;
 			_owner = owner;
@@ -141,6 +154,20 @@ public class ShareStore {
 			_minRating = minRating;
 			_created = created;
 			_revoked = revoked;
+		}
+
+		/**
+		 * What this link allows, see issue #83.
+		 *
+		 * <p>
+		 * The link <em>is</em> the permission: it was created with these rights, and they are what
+		 * its holder may do — there is no grant record beside it any more. A link stored before
+		 * this build carries none and is read as looking and downloading, which is what every link
+		 * allowed.
+		 * </p>
+		 */
+		public java.util.Set<String> getRights() {
+			return _rights;
 		}
 
 		/** The short id of this link; what the {@link Subjects#token(String) subject} names. */
@@ -229,14 +256,19 @@ public class ShareStore {
 			return !isRevoked() && !isExpired(Instant.now());
 		}
 
-		/** The subject a {@link GrantStore.Grant} names this link by. */
+		/** How an attribution names a contribution made through this link, see issue #53. */
 		public String getSubject() {
-			return Subjects.token(_id);
+			return "token:" + _id;
+		}
+
+		/** Whether the given path is the given folder or lies below it. */
+		static boolean isBelow(String path, String folder) {
+			return folder.isEmpty() || path.equals(folder) || path.startsWith(folder + "/");
 		}
 
 		/** Whether this link covers the given path in the given space. */
 		public boolean covers(String owner, String path) {
-			return _owner.equals(owner) && GrantStore.isBelow(path, _path);
+			return _owner.equals(owner) && isBelow(path, _path);
 		}
 
 		@Override
@@ -368,12 +400,18 @@ public class ShareStore {
 	 */
 	public synchronized Issued create(String owner, String path, String label, String expires, int maxPrivacy,
 			int minRating) throws IOException {
+		return create(owner, path, label, expires, maxPrivacy, minRating, Rights.READ_ONLY);
+	}
+
+	/** Issues a link allowing exactly the given rights, see issue #83. */
+	public synchronized Issued create(String owner, String path, String label, String expires, int maxPrivacy,
+			int minRating, java.util.Collection<String> rights) throws IOException {
 		byte[] bytes = new byte[TOKEN_BYTES];
 		_random.nextBytes(bytes);
 		String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 
 		Link link = new Link(freeId(), UserStore.hash(token), owner, path, label, expires, maxPrivacy, minRating,
-			Instant.now().toString(), "");
+			rights, Instant.now().toString(), "");
 		_links.add(link);
 		store();
 		return new Issued(link, token);
@@ -469,10 +507,19 @@ public class ShareStore {
 		int minRating = Ratings.MIN;
 		String created = "";
 		String revoked = "";
+		java.util.List<String> rights = null;
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
 			switch (key) {
+				case RIGHTS__PROP:
+					rights = new java.util.ArrayList<>();
+					in.beginArray();
+					while (in.hasNext()) {
+						rights.add(in.nextString());
+					}
+					in.endArray();
+					break;
 				case ID__PROP:
 					id = in.nextString();
 					break;
@@ -509,7 +556,9 @@ public class ShareStore {
 			}
 		}
 		in.endObject();
-		return new Link(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating, created, revoked);
+		// A link written before issue #83 says nothing about its rights: it allowed looking.
+		return new Link(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating,
+			rights == null ? Rights.READ_ONLY : rights, created, revoked);
 	}
 
 	/** Writes this store to disk, atomically: a crash never leaves a half-written store. */
@@ -549,6 +598,12 @@ public class ShareStore {
 		out.value(link.getId());
 		out.name(TOKEN_HASH__PROP);
 		out.value(link.getTokenHash());
+		out.name(RIGHTS__PROP);
+		out.beginArray();
+		for (String right : link.getRights()) {
+			out.value(right);
+		}
+		out.endArray();
 		out.name(OWNER__PROP);
 		out.value(link.getOwner());
 		out.name(PATH__PROP);

@@ -88,7 +88,7 @@ public class TestDevices extends ShareTestCase {
 		FakeResponse response = get("/", "devices", null);
 
 		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, response.status());
-		assertEquals(AuthService.LIBRARY_REFUSED, errorMessage(response));
+		assertEquals(AuthService.READ_REFUSED, errorMessage(response));
 	}
 
 	public void testAShareLinkIsToldThatItIsNoDevice() throws Exception {
@@ -104,7 +104,7 @@ public class TestDevices extends ShareTestCase {
 		FakeResponse response = get("/", "devices", invitation());
 
 		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, response.status());
-		assertEquals(AuthService.LIBRARY_REFUSED, errorMessage(response));
+		assertEquals(AuthService.READ_REFUSED, errorMessage(response));
 	}
 
 	// --- Signing a device out. ---
@@ -221,7 +221,7 @@ public class TestDevices extends ShareTestCase {
 	/** An invitation token, which is a token this server issued but no sign-in. */
 	private String invitation() throws IOException {
 		InvitationStore.Issued issued =
-			new InvitationStore(_base).create(Roles.MEMBER, "alice", "", Instant.now().plusSeconds(3600).toString());
+			new InvitationStore(_base).create(Roles.EDIT, "alice", "", Instant.now().plusSeconds(3600).toString());
 		return issued.getToken();
 	}
 

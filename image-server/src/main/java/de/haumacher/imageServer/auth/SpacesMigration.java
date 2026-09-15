@@ -209,10 +209,10 @@ public class SpacesMigration {
 			throws IOException {
 		retire(serverState.resolve(UserStore.FILE_NAME), retired, report,
 			"the users of the whole server; every user is now the admin of their own space");
-		retire(serverState.resolve(GrantStore.FILE_NAME), retired, report,
+		retire(serverState.resolve("grants.json"), retired, report,
 			"who was allowed into somebody else's albums; nothing crosses a space boundary any more "
 				+ "→ invite them into that space, or share a link");
-		retire(serverState.resolve(GroupStore.FILE_NAME), retired, report,
+		retire(serverState.resolve("groups.json"), retired, report,
 			"the named groups; a permission belongs to a user now → invite the members individually");
 		retire(serverState.resolve(ShareStore.FILE_NAME), retired, report,
 			"the share links; each worked together with a grant that cannot be carried → share again "

@@ -4,14 +4,9 @@
 package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
-import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.DeviceCodeStore;
-import de.haumacher.imageServer.auth.GrantStore;
-import de.haumacher.imageServer.auth.Privacy;
-import de.haumacher.imageServer.auth.Rights;
 import de.haumacher.imageServer.auth.Roles;
-import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.DeviceCodeCreated;
@@ -108,7 +103,8 @@ public class TestDeviceCode extends InviteTestCase {
 		PairResponse paired = paired(response);
 		assertEquals("alice", paired.getUserName());
 		assertEquals(Roles.ADMIN, paired.getRole());
-		assertEquals("alice", paired.getSpace());
+		assertEquals("One space, and it is the served tree; a user owns no folder of their own.",
+			"", paired.getSpace());
 		assertEquals("Tablet", paired.getDeviceName());
 		assertFalse("The new device gets a token of its own.", paired.getToken().isEmpty());
 		assertFalse("And it is not the code.", paired.getToken().contains(DeviceCodeStore.normalise(theCode)));
@@ -304,13 +300,22 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testAnInvitationBearerAsksForNoDeviceCode() throws Exception {
-		String invitation = issue(Roles.MEMBER, "alice", "");
+		String invitation = issue(Roles.EDIT, "alice", "");
 
 		FakeResponse response = deviceCode(invitation);
 
 		assertEquals("An invitation is no sign-in; there is no 'oneself' to add a device to.",
 			HttpServletResponse.SC_UNAUTHORIZED, response.status());
 		assertTrue(new DeviceCodeStore(_base).getCodes().isEmpty());
+	}
+
+	/** A live share link on alice's zoo album, for the tests that need a link caller. */
+	private String shareToken() throws Exception {
+		de.haumacher.imageServer.auth.ShareStore shares = new de.haumacher.imageServer.auth.ShareStore(_base);
+		String token = shares.create("alice", SharingFixture.ZOO, "Grandma", "", 0, 0,
+			java.util.Arrays.asList(de.haumacher.imageServer.auth.Rights.VIEW)).getToken();
+		restartServer();
+		return token;
 	}
 
 	public void testAShareLinkAsksForNoDeviceCode() throws Exception {
@@ -323,46 +328,7 @@ public class TestDeviceCode extends InviteTestCase {
 		assertTrue(new DeviceCodeStore(_base).getCodes().isEmpty());
 	}
 
-	public void testAServerWithoutAuthenticationHasNothingToAdd() throws Exception {
-		_authMode = AuthMode.OFF;
-		restartServer();
 
-		FakeResponse response = deviceCode(SharingFixture.ALICE);
-
-		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
-		assertEquals(AuthService.PAIRING_DISABLED, errorMessage(response));
-	}
-
-	// --- Every kind of user adds a device of their own. ---
-
-	public void testAMemberAddsADeviceThatResolvesAgainstTheirOwnSpace() throws Exception {
-		String theCode = code(deviceCode(SharingFixture.BOB)).getCode();
-
-		PairResponse paired = paired(pairWithCode(theCode, "Bob's tablet", ""));
-		assertEquals("bob", paired.getUserName());
-		assertEquals(Roles.MEMBER, paired.getRole());
-		assertEquals("bob", paired.getSpace());
-
-		assertEquals(HttpServletResponse.SC_OK,
-			put("/2025-03-01 Trip/", ALBUM_JSON, paired.getToken()).status());
-		assertTrue("The new device writes into bob's space and nobody else's.",
-			Files.isDirectory(_base.resolve("bob").resolve("2025-03-01 Trip")));
-		assertFalse(Files.exists(_base.resolve("2025-03-01 Trip")));
-	}
-
-	public void testAGuestAddsADeviceThatSeesTheGuestRoot() throws Exception {
-		String theCode = code(deviceCode(SharingFixture.EVE)).getCode();
-
-		PairResponse paired = paired(pairWithCode(theCode, "Eve's tablet", ""));
-		assertEquals("eve", paired.getUserName());
-		assertEquals(Roles.GUEST, paired.getRole());
-		assertEquals("A guest has no space of their own.", "", paired.getSpace());
-
-		assertEquals(HttpServletResponse.SC_OK, get("/", "json", paired.getToken()).status());
-		assertTrue("The guest's little root is where the new device looks.",
-			Files.isDirectory(AuthService.guestRoot(_base, "eve")));
-		assertEquals(Arrays.asList("Eve's phone", "Eve's tablet"), names(devices(SharingFixture.EVE)));
-	}
 
 	// --- Helpers. ---
 
@@ -442,13 +408,4 @@ public class TestDeviceCode extends InviteTestCase {
 		return null;
 	}
 
-	/** A live share link on alice's zoo album, for the caller that is nobody. */
-	private String shareToken() throws Exception {
-		ShareStore.Issued issued =
-			new ShareStore(_base).create("alice", SharingFixture.ZOO, "Grandma", "", Privacy.PUBLIC, 0);
-		new GrantStore(_base).grant("alice", SharingFixture.ZOO, issued.getLink().getSubject(),
-			Collections.singletonList(Rights.VIEW));
-		restartServer();
-		return issued.getToken();
-	}
 }

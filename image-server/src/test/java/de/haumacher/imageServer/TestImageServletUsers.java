@@ -15,10 +15,8 @@ import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.Resource;
-import de.haumacher.imageServer.shared.model.UploadCheckResult;
 import de.haumacher.imageServer.shared.model.UserEntry;
 import de.haumacher.imageServer.shared.model.UserList;
-import de.haumacher.imageServer.upload.HashCache;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -111,163 +109,6 @@ public class TestImageServletUsers extends TestCase {
 		assertEquals("Both devices belong to the one owner.", 2, store.getOwner().getDevices().size());
 	}
 
-	public void testSigningInUnderTheOwnersNameAgain() throws Exception {
-		ImageServlet servlet = servlet(AuthMode.WRITES);
-		signIn(servlet, "haui", "Phone");
-
-		assertEquals("haui", signIn(servlet, "haui", "Tablet").getUserName());
-		assertEquals("An empty name still means 'the library owner'.", "haui",
-			signIn(servlet, "", "Laptop").getUserName());
-	}
-
-	public void testSigningInUnderAnotherNameRefused() throws Exception {
-		ImageServlet servlet = servlet(AuthMode.WRITES);
-		signIn(servlet, "haui", "Phone");
-
-		FakeResponse response = post(servlet, "pair", pairRequest(SECRET, "Intruder", "somebody-else"), null);
-
-		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, response.status());
-		assertEquals(UserStore.ownerMismatch("haui"), errorMessage(response));
-		assertEquals("A refused sign-in must not add a device.", 1,
-			new UserStore(_base).getOwner().getDevices().size());
-	}
-
-	public void testSigningInWithAnInvalidNameRefused() throws Exception {
-		ImageServlet servlet = servlet(AuthMode.WRITES);
-
-		FakeResponse response = post(servlet, "pair", pairRequest(SECRET, "Phone", "a\\/b"), null);
-
-		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, response.status());
-		assertEquals(UserStore.NAME_REFUSED, errorMessage(response));
-		assertFalse("A refused sign-in must not create the store.",
-			_base.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME).toFile().exists());
-	}
-
-	// --- The owner of a migrated library is re-rooted at their space. ---
-
-	public void testTheOwnerSeesTheirSpaceAsTheRoot() throws Exception {
-		Files.createDirectories(_base.resolve("2020 Trip"));
-		String token = signIn(servlet(AuthMode.WRITES), "haui", "Phone").getToken();
-		LibraryMigration.migrate(_base, "haui");
-
-		ImageServlet servlet = servlet(AuthMode.WRITES);
-		String listing = body(get(servlet, "/", "json", token));
-
-		assertTrue("The owner's root is their space folder: " + listing, listing.contains("2020 Trip"));
-		assertFalse("The space folder must not appear inside itself: " + listing, listing.contains("haui"));
-	}
-
-	public void testTheOwnerWritesIntoTheirSpace() throws Exception {
-		String token = signIn(servlet(AuthMode.WRITES), "haui", "Phone").getToken();
-		LibraryMigration.migrate(_base, "haui");
-
-		FakeResponse response = put(servlet(AuthMode.WRITES), "/", ALBUM_JSON, token);
-
-		assertEquals(HttpServletResponse.SC_OK, response.status());
-		assertEquals(ALBUM_JSON, read(_base.resolve("haui").resolve("index.json")));
-		assertFalse("Nothing may be written at the base folder any more.",
-			_base.resolve("index.json").toFile().exists());
-	}
-
-	public void testASignInAfterTheMigrationReportsTheSpace() throws Exception {
-		signIn(servlet(AuthMode.WRITES), "haui", "Phone");
-		LibraryMigration.migrate(_base, "haui");
-
-		PairResponse response = signIn(servlet(AuthMode.WRITES), "haui", "Tablet");
-
-		assertEquals("haui", response.getUserName());
-		assertEquals("haui", response.getSpace());
-		assertEquals(Roles.ADMIN, response.getRole());
-	}
-
-	// --- A member owns a space of their own (the way in arrives with issue #52). ---
-
-	public void testAMemberSeesOnlyTheirOwnSpace() throws Exception {
-		member();
-		Files.createDirectories(_base.resolve("alice").resolve("Alice's album"));
-		Files.createDirectories(_base.resolve("haui").resolve("The owner's album"));
-
-		ImageServlet servlet = servlet(AuthMode.WRITES);
-		String listing = body(get(servlet, "/", "json", ALICE_TOKEN));
-
-		assertTrue(listing, listing.contains("Alice&apos;s album") || listing.contains("Alice's album"));
-		assertFalse("A member must not see another user's space: " + listing,
-			listing.contains("The owner&apos;s album") || listing.contains("The owner's album"));
-	}
-
-	public void testAMemberCannotEscapeTheirSpace() throws Exception {
-		member();
-		ImageServlet servlet = servlet(AuthMode.WRITES);
-
-		assertEquals("A path leaving the space is a 404, exactly like one leaving the base folder.",
-			HttpServletResponse.SC_NOT_FOUND, get(servlet, "/../", "json", ALICE_TOKEN).status());
-		assertEquals(HttpServletResponse.SC_NOT_FOUND,
-			get(servlet, "/haui/", "json", ALICE_TOKEN).status());
-		assertEquals(HttpServletResponse.SC_NOT_FOUND,
-			put(servlet, "/../escape/", ALBUM_JSON, ALICE_TOKEN).status());
-	}
-
-	public void testAMemberWritesIntoTheirSpace() throws Exception {
-		member();
-
-		FakeResponse response = put(servlet(AuthMode.WRITES), "/", ALBUM_JSON, ALICE_TOKEN);
-
-		assertEquals(HttpServletResponse.SC_OK, response.status());
-		assertEquals(ALBUM_JSON, read(_base.resolve("alice").resolve("index.json")));
-	}
-
-	public void testAMembersSpaceIsCreatedWhenItIsFirstNeeded() throws Exception {
-		member();
-		assertFalse("The space of a member who never signed in does not exist yet.",
-			_base.resolve("alice").toFile().exists());
-
-		assertEquals(HttpServletResponse.SC_OK, get(servlet(AuthMode.WRITES), "/", "json", ALICE_TOKEN).status());
-
-		assertTrue("A member's space is created when it is first needed.",
-			_base.resolve("alice").toFile().isDirectory());
-	}
-
-	public void testAMemberUploadsIntoTheirSpace() throws Exception {
-		member();
-		ImageServlet servlet = servlet(AuthMode.WRITES);
-		servlet.init();
-
-		FakeResponse response = new FakeResponse();
-		LinkedHashMap<String, byte[]> files = new LinkedHashMap<>();
-		files.put("a.jpg", "red pixels".getBytes(StandardCharsets.UTF_8));
-		Map<String, String> headers = new HashMap<>();
-		headers.put("Content-Type", "multipart/form-data; boundary=" + BOUNDARY);
-		headers.put("Authorization", "Bearer " + ALICE_TOKEN);
-		servlet.doPut(TestImageServletPut.request("/", "multipart/form-data; boundary=" + BOUNDARY, multipart(files),
-			headers, Collections.emptyMap()), response.response());
-
-		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
-		assertTrue("The upload lands in the member's space.", _base.resolve("alice").resolve("a.jpg").toFile().exists());
-		assertFalse("Nothing may be written at the base folder.", _base.resolve("a.jpg").toFile().exists());
-		assertTrue("The staging area belongs to the server, not to a space.",
-			_base.resolve(UserStore.UPLOAD_DIRECTORY_NAME).toFile().isDirectory());
-		assertFalse(_base.resolve("alice").resolve(UserStore.UPLOAD_DIRECTORY_NAME).toFile().exists());
-	}
-
-	public void testTheUploadPreCheckAsksTheMembersSpace() throws Exception {
-		member();
-		Files.createDirectories(_base.resolve("alice"));
-		Files.write(_base.resolve("alice").resolve("a.jpg"), "red pixels".getBytes(StandardCharsets.UTF_8));
-		Files.write(_base.resolve("haui").resolve("b.jpg"), "blue pixels".getBytes(StandardCharsets.UTF_8));
-
-		Map<String, String> parameters = new HashMap<>();
-		parameters.put("action", "check");
-		FakeResponse response = new FakeResponse();
-		String body = "{\"hashes\":[{\"hash\":\"" + HashCache.sha256("red pixels".getBytes(StandardCharsets.UTF_8))
-			+ "\"},{\"hash\":\"" + HashCache.sha256("blue pixels".getBytes(StandardCharsets.UTF_8)) + "\"}]}";
-		servlet(AuthMode.WRITES).doPost(request("/", "application/json", body, ALICE_TOKEN, parameters),
-			response.response());
-
-		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
-		UploadCheckResult result = UploadCheckResult.readUploadCheckResult(reader(response.body()));
-		assertEquals("Only what the member's own space holds is present.", 1, result.getPresent().size());
-		assertEquals("a.jpg", result.getPresent().get(0).getName());
-	}
 
 	public void testAUserWithAnUnknownRoleIsRefused() throws Exception {
 		UserStore store = new UserStore(_base);
@@ -285,43 +126,7 @@ public class TestImageServletUsers extends TestCase {
 
 	// --- Anonymous callers. ---
 
-	public void testAnonymousReadsStayOpenBeforeTheMigration() throws Exception {
-		signIn(servlet(AuthMode.WRITES), "haui", "Phone");
 
-		FakeResponse response = get(servlet(AuthMode.WRITES), "/", "json", null);
-
-		assertEquals("A single-user library looks exactly as it did before issue #45.",
-			HttpServletResponse.SC_OK, response.status());
-	}
-
-	public void testAnonymousReadsAreRefusedAfterTheMigration() throws Exception {
-		signIn(servlet(AuthMode.WRITES), "haui", "Phone");
-		LibraryMigration.migrate(_base, "haui");
-
-		FakeResponse response = get(servlet(AuthMode.WRITES), "/", "json", null);
-
-		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, response.status());
-		assertEquals("Bearer", response.header("WWW-Authenticate"));
-		assertEquals(AuthService.LIBRARY_REFUSED, errorMessage(response));
-	}
-
-	public void testAnonymousWritesAreRefusedAfterTheMigration() throws Exception {
-		signIn(servlet(AuthMode.WRITES), "haui", "Phone");
-		LibraryMigration.migrate(_base, "haui");
-
-		FakeResponse response = put(servlet(AuthMode.WRITES), "/", ALBUM_JSON, null);
-
-		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, response.status());
-		assertEquals(AuthService.LIBRARY_REFUSED, errorMessage(response));
-	}
-
-	public void testTheMigratedLibraryIsClosedInEveryMode() throws Exception {
-		signIn(servlet(AuthMode.WRITES), "haui", "Phone");
-		LibraryMigration.migrate(_base, "haui");
-
-		assertEquals(AuthService.LIBRARY_REFUSED, errorMessage(get(servlet(AuthMode.ALL), "/", "json", null)));
-		assertEquals(AuthService.LIBRARY_REFUSED, errorMessage(get(servlet(AuthMode.WRITES), "/", "json", null)));
-	}
 
 	public void testAuthOffIgnoresTheUsersEntirely() throws Exception {
 		signIn(servlet(AuthMode.WRITES), "haui", "Phone");
@@ -357,7 +162,7 @@ public class TestImageServletUsers extends TestCase {
 
 		assertEquals("Alice's tablet", info.getDeviceName());
 		assertEquals("alice", info.getUserName());
-		assertEquals(Roles.MEMBER, info.getRole());
+		assertEquals(Roles.EDIT, info.getRole());
 		assertEquals("alice", info.getSpace());
 		assertTrue(info.isWriteAllowed());
 	}
@@ -411,14 +216,15 @@ public class TestImageServletUsers extends TestCase {
 		assertEquals("Nobody else grew a device.", 1, entry(listed, "alice").getDevices());
 	}
 
-	public void testAMemberSeesTheSameShapeAndNoTokens() throws Exception {
+	public void testTheAdminSeesTheSameShapeAndNoTokens() throws Exception {
 		member();
 		ImageServlet servlet = servlet(AuthMode.WRITES);
-		signIn(servlet, "haui", "Phone");
+		String owner = signIn(servlet, "haui", "Phone").getToken();
 
-		String listed = body(get(servlet, "/", "users", ALICE_TOKEN));
+		// Who else is in the space is the administrator's business, see issue #83.
+		String listed = body(get(servlet, "/", "users", owner));
 
-		assertTrue(listed, listed.contains("\"space\":\"haui\""));
+		assertTrue(listed, listed.contains("\"clearance\""));
 		assertTrue(listed, listed.contains("\"devices\":1"));
 		assertFalse("A user list never carries a token or its hash.", listed.contains("tokenHash"));
 		assertFalse(listed, listed.contains(UserStore.hash(ALICE_TOKEN)));
@@ -443,7 +249,7 @@ public class TestImageServletUsers extends TestCase {
 		UserStore store = new UserStore(_base);
 		User owner = store.nameOwner("haui");
 		owner.setSpace("haui");
-		User alice = new User("alice", Roles.MEMBER, "alice", Instant.now().toString());
+		User alice = new User("alice", Roles.EDIT, "alice", Instant.now().toString());
 		alice.addDevice(new Device("Alice's tablet", UserStore.hash(ALICE_TOKEN), Instant.now().toString()));
 		store.addUser(alice);
 		store.store();

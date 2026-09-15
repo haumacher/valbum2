@@ -46,14 +46,14 @@ public class TestInvitationStore extends TestCase {
 	public void testACreatedInvitationIsFoundByIdAndByToken() throws Exception {
 		InvitationStore store = new InvitationStore(_base);
 
-		Issued issued = store.create(Roles.MEMBER, "alice", "Uncle Bob", "");
+		Issued issued = store.create(Roles.EDIT, "alice", "Uncle Bob", "");
 		Link invitation = issued.getInvitation();
 
 		assertSame(invitation, store.get(invitation.getId()));
 		assertSame(invitation, store.lookup(issued.getToken()));
 		assertNull(store.lookup("a token nobody ever issued"));
 		assertNull(store.get("no such id"));
-		assertEquals(Roles.MEMBER, invitation.getRole());
+		assertEquals(Roles.EDIT, invitation.getRole());
 		assertEquals("alice", invitation.getInvitedBy());
 		assertEquals("Uncle Bob", invitation.getNote());
 		assertTrue("A fresh invitation can be accepted.", invitation.isLive());
@@ -64,7 +64,7 @@ public class TestInvitationStore extends TestCase {
 	public void testTheStoreHoldsTheHashNeverTheToken() throws Exception {
 		InvitationStore store = new InvitationStore(_base);
 
-		Issued issued = store.create(Roles.GUEST, "alice", "", "");
+		Issued issued = store.create(Roles.VIEW, "alice", "", "");
 
 		String contents = read(store.getFile());
 		assertFalse("The token itself must never be stored: " + contents, contents.contains(issued.getToken()));
@@ -77,7 +77,7 @@ public class TestInvitationStore extends TestCase {
 
 	public void testAnAcceptedInvitationIsMarkedUsedAndKept() throws Exception {
 		InvitationStore store = new InvitationStore(_base);
-		Issued issued = store.create(Roles.MEMBER, "alice", "", "");
+		Issued issued = store.create(Roles.EDIT, "alice", "", "");
 
 		Link used = store.markUsed(issued.getInvitation().getId(), "carol");
 
@@ -92,7 +92,7 @@ public class TestInvitationStore extends TestCase {
 
 	public void testAWithdrawnInvitationIsMarkedRevokedAndKept() throws Exception {
 		InvitationStore store = new InvitationStore(_base);
-		Issued issued = store.create(Roles.GUEST, "bob", "", "");
+		Issued issued = store.create(Roles.VIEW, "bob", "", "");
 
 		Link revoked = store.revoke(issued.getInvitation().getId());
 
@@ -106,11 +106,11 @@ public class TestInvitationStore extends TestCase {
 		InvitationStore store = new InvitationStore(_base);
 		Instant now = Instant.parse("2026-09-13T12:00:00Z");
 
-		Link live = store.create(Roles.MEMBER, "alice", "", "2026-09-20T00:00:00Z").getInvitation();
-		Link expired = store.create(Roles.MEMBER, "alice", "", "2026-09-01T00:00:00Z").getInvitation();
-		Link used = store.create(Roles.MEMBER, "alice", "", "2026-09-20T00:00:00Z").getInvitation();
+		Link live = store.create(Roles.EDIT, "alice", "", "2026-09-20T00:00:00Z").getInvitation();
+		Link expired = store.create(Roles.EDIT, "alice", "", "2026-09-01T00:00:00Z").getInvitation();
+		Link used = store.create(Roles.EDIT, "alice", "", "2026-09-20T00:00:00Z").getInvitation();
 		store.markUsed(used.getId(), "carol");
-		Link revoked = store.create(Roles.MEMBER, "alice", "", "2026-09-20T00:00:00Z").getInvitation();
+		Link revoked = store.create(Roles.EDIT, "alice", "", "2026-09-20T00:00:00Z").getInvitation();
 		store.revoke(revoked.getId());
 
 		assertFalse(live.isDead(now));
@@ -123,7 +123,7 @@ public class TestInvitationStore extends TestCase {
 	public void testAnUnreadableExpiryIsTreatedAsExpired() throws Exception {
 		InvitationStore store = new InvitationStore(_base);
 
-		Link broken = store.create(Roles.MEMBER, "alice", "", "whenever").getInvitation();
+		Link broken = store.create(Roles.EDIT, "alice", "", "whenever").getInvitation();
 
 		assertTrue("An invitation whose lifetime nobody can read is not one that lives forever.",
 			broken.isExpired(Instant.now()));
@@ -132,8 +132,8 @@ public class TestInvitationStore extends TestCase {
 
 	public void testAStoreWrittenByThisBuildReloadsEqual() throws Exception {
 		InvitationStore store = new InvitationStore(_base);
-		Issued member = store.create(Roles.MEMBER, "alice", "Uncle Bob", "2026-12-24T00:00:00Z");
-		Issued guest = store.create(Roles.GUEST, "bob", "", "");
+		Issued member = store.create(Roles.EDIT, "alice", "Uncle Bob", "2026-12-24T00:00:00Z");
+		Issued guest = store.create(Roles.VIEW, "bob", "", "");
 		store.markUsed(guest.getInvitation().getId(), "carol");
 		store.revoke(member.getInvitation().getId());
 
@@ -142,14 +142,14 @@ public class TestInvitationStore extends TestCase {
 		assertEquals(2, reloaded.getInvitations().size());
 		Link reloadedMember = reloaded.lookup(member.getToken());
 		assertEquals(member.getInvitation().getId(), reloadedMember.getId());
-		assertEquals(Roles.MEMBER, reloadedMember.getRole());
+		assertEquals(Roles.EDIT, reloadedMember.getRole());
 		assertEquals("alice", reloadedMember.getInvitedBy());
 		assertEquals("Uncle Bob", reloadedMember.getNote());
 		assertEquals("2026-12-24T00:00:00Z", reloadedMember.getExpires());
 		assertEquals(member.getInvitation().getCreated(), reloadedMember.getCreated());
 		assertTrue(reloadedMember.isRevoked());
 		Link reloadedGuest = reloaded.lookup(guest.getToken());
-		assertEquals(Roles.GUEST, reloadedGuest.getRole());
+		assertEquals(Roles.VIEW, reloadedGuest.getRole());
 		assertEquals("carol", reloadedGuest.getUsedBy());
 		assertEquals(guest.getInvitation().getUsed(), reloadedGuest.getUsed());
 	}
@@ -168,7 +168,9 @@ public class TestInvitationStore extends TestCase {
 		assertEquals(1, store.getInvitations().size());
 		Link invitation = store.get("abc");
 		assertNotNull("An unknown field must not lose the record.", invitation);
-		assertEquals(Roles.GUEST, invitation.getRole());
+		assertEquals("The stored string is kept as it is; it is read as a role where it is used.",
+			"guest", invitation.getRole());
+		assertEquals(Roles.VIEW, Roles.of(invitation.getRole()));
 		assertEquals("alice", invitation.getInvitedBy());
 		assertEquals("n", invitation.getNote());
 		assertSame(invitation, store.lookup("the-token"));
@@ -182,7 +184,7 @@ public class TestInvitationStore extends TestCase {
 
 		InvitationStore store = new InvitationStore(_base);
 		assertTrue("A broken store must not lock the server up.", store.getInvitations().isEmpty());
-		store.create(Roles.MEMBER, "alice", "", "");
+		store.create(Roles.EDIT, "alice", "", "");
 
 		String[] names = file.getParent().toFile().list();
 		boolean kept = false;

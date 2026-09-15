@@ -20,7 +20,7 @@ if [ -r "$CONFIG" ]; then
 	# set in the caller's environment wins over the file, so that
 	# 'VALBUM_PORT=9090 valbum-server' does what it says: the values present before
 	# sourcing are remembered and put back afterwards.
-	for var in VALBUM_BASEPATH VALBUM_PORT VALBUM_CONTEXTPATH VALBUM_AUTH VALBUM_INVITE VALBUM_OPTS JAVA_OPTS JAVA_HOME; do
+	for var in VALBUM_BASEPATH VALBUM_PORT VALBUM_CONTEXTPATH VALBUM_AUTH VALBUM_OPTS JAVA_OPTS JAVA_HOME; do
 		if eval "[ -n \"\${$var+set}\" ]"; then
 			eval "env_$var=\$$var"
 			eval "env_${var}_set=1"
@@ -28,7 +28,7 @@ if [ -r "$CONFIG" ]; then
 	done
 	# shellcheck source=/dev/null
 	. "$CONFIG"
-	for var in VALBUM_BASEPATH VALBUM_PORT VALBUM_CONTEXTPATH VALBUM_AUTH VALBUM_INVITE VALBUM_OPTS JAVA_OPTS JAVA_HOME; do
+	for var in VALBUM_BASEPATH VALBUM_PORT VALBUM_CONTEXTPATH VALBUM_AUTH VALBUM_OPTS JAVA_OPTS JAVA_HOME; do
 		if eval "[ -n \"\${env_${var}_set:-}\" ]"; then
 			eval "$var=\$env_$var"
 		fi
@@ -39,7 +39,6 @@ VALBUM_JAR=${VALBUM_JAR:-/usr/share/valbum/valbum.jar}
 VALBUM_BASEPATH=${VALBUM_BASEPATH:-/var/lib/valbum}
 VALBUM_PORT=${VALBUM_PORT:-8080}
 VALBUM_AUTH=${VALBUM_AUTH:-writes}
-VALBUM_INVITE=${VALBUM_INVITE:-members}
 
 REQUIRED_MAJOR=21
 
@@ -124,7 +123,7 @@ set -- $VALBUM_OPTS "$@"
 if [ -n "$VALBUM_CONTEXTPATH" ]; then
 	set -- --contextpath "$VALBUM_CONTEXTPATH" "$@"
 fi
-set -- --basepath "$VALBUM_BASEPATH" --port "$VALBUM_PORT" --auth "$VALBUM_AUTH" --invite "$VALBUM_INVITE" "$@"
+set -- --basepath "$VALBUM_BASEPATH" --port "$VALBUM_PORT" --auth "$VALBUM_AUTH" "$@"
 
 # shellcheck disable=SC2086
 exec "$JAVA" $JAVA_OPTS -jar "$VALBUM_JAR" "$@"

@@ -7,8 +7,6 @@ import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.InviteMode;
-import de.haumacher.imageServer.links.LinkStore;
-import de.haumacher.imageServer.links.ShareRegistry;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
@@ -41,22 +39,21 @@ import java.util.stream.Stream;
 import junit.framework.TestCase;
 
 /**
- * The library and the request fakes the link tests of issue #50 are driven with.
+ * The library and the request fakes the space tests are driven with.
  *
  * <p>
- * The {@link SharingFixture} of issue #49 unchanged — alice's zoo album shared with bob (view,
- * download) and with the group <code>family</code> (contribute), dave holding nothing, eve a guest
- * — plus what a link needs: a folder <code>Trips</code> in bob's space to move a link into.
+ * The {@link SharingFixture} on the space model of issue #83 — one space, five users of different
+ * roles — plus a folder <code>Trips</code> to move things into.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 @SuppressWarnings("javadoc")
-public abstract class LinkTestCase extends TestCase {
+public abstract class SpaceTestCase extends TestCase {
 
 	private static final String BOUNDARY = "----valbumLinkTestBoundary";
 
-	/** The folder in bob's space a link is moved into. */
+	/** A folder to move things into. */
 	protected static final String TRIPS = "Trips";
 
 	protected Path _base;
@@ -74,7 +71,7 @@ public abstract class LinkTestCase extends TestCase {
 	@Override
 	protected void setUp() throws Exception {
 		super.setUp();
-		_base = Files.createTempDirectory("valbum-links-test");
+		_base = Files.createTempDirectory("valbum-space-test");
 		SharingFixture.create(_base);
 		Files.createDirectories(_base.resolve("bob").resolve(TRIPS));
 	}
@@ -96,21 +93,8 @@ public abstract class LinkTestCase extends TestCase {
 
 	// --- The library. ---
 
-	/** The link store of the folder at the given path below the base folder. */
-	protected LinkStore links(String path) {
-		return new LinkStore(_base.resolve(path).toFile());
-	}
 
-	/** The share registry of the space of the given user. */
-	protected ShareRegistry registry(String user) {
-		return new ShareRegistry(_base.resolve(user));
-	}
 
-	/** Records a link in the folder at the given path below the base folder. */
-	protected void link(String folder, String name, String owner, String target) throws IOException {
-		Files.createDirectories(_base.resolve(folder));
-		links(folder).put(name, owner, target);
-	}
 
 	/** Makes the folder at the given path below the base folder file what lands in it by year. */
 	protected void filedByYear(String path) throws IOException {

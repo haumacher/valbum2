@@ -3007,6 +3007,91 @@ class MemberName extends _JsonObject {
 
 }
 
+///  What a user of this space may do, sent to <code>&lt;data&gt;/?action=set-permission</code>
+///  (issue #83).
+/// 
+///  <p>
+///  The administrator's decision, and the only way a permission ever changes. The last administrator
+///  of a space cannot be demoted.
+///  </p>
+class UserPermission extends _JsonObject {
+	///  The name of the user whose permission is set.
+	String name;
+
+	///  The role to give them: <code>admin</code>, <code>edit</code>, <code>contribute</code> or <code>view</code>.
+	String role;
+
+	///  The clearance to give them: <code>public</code>, <code>nonPrivate</code> or <code>all</code>.
+	String clearance;
+
+	///  Whether they may create share links.
+	bool mayShare;
+
+	/// Creates a UserPermission.
+	UserPermission({
+			this.name = "", 
+			this.role = "", 
+			this.clearance = "", 
+			this.mayShare = false, 
+	});
+
+	/// Parses a UserPermission from a string source.
+	static UserPermission? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a UserPermission instance from the given reader.
+	static UserPermission read(JsonReader json) {
+		UserPermission result = UserPermission();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "UserPermission";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "role": {
+				role = json.expectString();
+				break;
+			}
+			case "clearance": {
+				clearance = json.expectString();
+				break;
+			}
+			case "mayShare": {
+				mayShare = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("role");
+		json.addString(role);
+
+		json.addKey("clearance");
+		json.addString(clearance);
+
+		json.addKey("mayShare");
+		json.addBool(mayShare);
+	}
+
+}
+
 ///  The groups the caller owns and the groups they are in, answered by
 ///  <code>&lt;data&gt;/?type=groups</code>.
 class GroupList extends _JsonObject {

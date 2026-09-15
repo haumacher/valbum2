@@ -13,18 +13,14 @@ import de.haumacher.imageServer.auth.AuthService.PairRefused;
 import de.haumacher.imageServer.auth.AuthService.PathRefused;
 import de.haumacher.imageServer.auth.Clearances;
 import de.haumacher.imageServer.auth.DeviceCodeStore;
-import de.haumacher.imageServer.auth.GrantStore;
-import de.haumacher.imageServer.auth.GroupStore;
 import de.haumacher.imageServer.auth.InvitationStore;
 import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.Rights;
 import de.haumacher.imageServer.auth.Roles;
 import de.haumacher.imageServer.auth.ShareStore;
-import de.haumacher.imageServer.auth.Subjects;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
-import de.haumacher.imageServer.links.LinkService;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
@@ -33,11 +29,6 @@ import de.haumacher.imageServer.shared.model.DeviceEntry;
 import de.haumacher.imageServer.shared.model.DeviceList;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
-import de.haumacher.imageServer.shared.model.Grant;
-import de.haumacher.imageServer.shared.model.GrantList;
-import de.haumacher.imageServer.shared.model.Group;
-import de.haumacher.imageServer.shared.model.GroupList;
-import de.haumacher.imageServer.shared.model.GroupRename;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Invitation;
@@ -62,6 +53,7 @@ import de.haumacher.imageServer.shared.model.UploadResult;
 import de.haumacher.imageServer.shared.model.UploadedFile;
 import de.haumacher.imageServer.shared.model.UserEntry;
 import de.haumacher.imageServer.shared.model.UserList;
+import de.haumacher.imageServer.shared.model.UserPermission;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.imageServer.upload.HashCache;
 import de.haumacher.imageServer.upload.UploadFactory;
@@ -92,7 +84,6 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -228,6 +219,32 @@ public class ImageServlet extends HttpServlet {
 	 */
 	public static final String RENDITIONS_UNAVAILABLE = "Video renditions are not available on this server: ";
 
+	/** What a request for the retired sharing grants of issue #49 is answered with. */
+	public static final String RETIRED_GRANTS =
+		"Sharing with a user is done by inviting them into the space: see the users of the space "
+			+ "and invite whom you want in, with the role and clearance they should have.";
+
+	/** What a request for the retired user groups of issue #49 is answered with. */
+	public static final String RETIRED_GROUPS =
+		"Groups are gone: a permission belongs to a user now. Invite the people you meant "
+			+ "individually, each with the role and clearance they should have.";
+
+	/** What a request for the retired shared-album links of issue #50 is answered with. */
+	public static final String RETIRED_LINKS =
+		"An album is no longer shared into somebody's own tree: invite them into this space, or "
+			+ "hand them a share link.";
+
+	/** What a request for the retired guest promotion of issue #52 is answered with. */
+	public static final String RETIRED_PROMOTE =
+		"There are no guests any more: a guest is a user with the 'view' role and a low clearance. "
+			+ "Change what they may do with 'set-permission'.";
+
+	/** The message a management request from somebody who is not an administrator is refused with. */
+	public static final String ADMIN_ONLY = "Only an administrator of this space may do that.";
+
+	/** The message an unreadable permission or user name is refused with. */
+	public static final String PERMISSION_UNREADABLE = "The request cannot be read.";
+
 	/** The message an invitation naming a clearance this build does not know is refused with. */
 	public static final String CLEARANCE_REFUSED = "Unknown clearance; use one of " + Clearances.names() + ".";
 
@@ -251,7 +268,6 @@ public class ImageServlet extends HttpServlet {
 
 	private PrivacyFilter _privacy;
 
-	private LinkService _links;
 
 	private JakartaServletFileUpload<UploadItem, UploadFactory> _fileUpload;
 
@@ -290,7 +306,6 @@ public class ImageServlet extends HttpServlet {
 		_cache = new ResourceCache();
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
-		_links = new LinkService(_basePath, auth, _privacy);
 	}
 
 	@Override
@@ -354,7 +369,15 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		if ("groups".equals(type)) {
-			serveGroups(context, caller);
+			retired(context, RETIRED_GROUPS);
+			return;
+		}
+		if ("grants".equals(type)) {
+			retired(context, RETIRED_GRANTS);
+			return;
+		}
+		if ("links".equals(type)) {
+			retired(context, RETIRED_LINKS);
 			return;
 		}
 		if ("devices".equals(type)) {
@@ -377,10 +400,6 @@ public class ImageServlet extends HttpServlet {
 		}
 		PathInfo resourcePath = location.getPath();
 
-		if ("grants".equals(type)) {
-			serveGrants(context, caller, location);
-			return;
-		}
 		if ("shares".equals(type)) {
 			serveShares(context, caller, location);
 			return;
@@ -415,8 +434,7 @@ public class ImageServlet extends HttpServlet {
 				refuse(context, caller, resourcePath, Rights.VIEW, false);
 				return;
 			}
-			materialiseLinks(caller, location);
-			// "View as" only ever lowers: it is safe for anybody to send, see Privacy#viewAs(String).
+				// "View as" only ever lowers: it is safe for anybody to send, see Privacy#viewAs(String).
 			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
 			serveFolder(context, resourcePath, clearance, viewAs, caller);
 		} else if (ResourceCache.isImage(file)) {
@@ -506,23 +524,12 @@ public class ImageServlet extends HttpServlet {
 					refuse(context, caller, folder, Rights.EDIT, true);
 					return;
 				}
-				if (guestSpaceRefused(context, folder)) {
-					return;
-				}
 				createAlbum(context, location, resourcePath);
 				return;
 			}
 
 			if (!_auth.mayContribute(caller, folder)) {
 				refuse(context, caller, folder, Rights.CONTRIBUTE, true);
-				return;
-			}
-			if (reservedName(folder, resourcePath.getName())) {
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST,
-					AuthService.homeNameRefused(resourcePath.getName()));
-				return;
-			}
-			if (guestSpaceRefused(context, folder)) {
 				return;
 			}
 			storeSingleImage(context, caller, folder, file);
@@ -532,9 +539,6 @@ public class ImageServlet extends HttpServlet {
 		if (baseType.equals("multipart/form-data")) {
 			if (!_auth.mayContribute(caller, resourcePath)) {
 				refuse(context, caller, resourcePath, Rights.CONTRIBUTE, true);
-				return;
-			}
-			if (guestSpaceRefused(context, resourcePath)) {
 				return;
 			}
 			storeUploads(context, caller, resourcePath);
@@ -605,43 +609,6 @@ public class ImageServlet extends HttpServlet {
 			context.response().setHeader("WWW-Authenticate", "Bearer");
 			errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, message);
 		}
-	}
-
-	/**
-	 * Refuses a request that would put something into a guest's root, see issue #52.
-	 *
-	 * <p>
-	 * A guest's root is not a library: it holds the albums that were shared with them and nothing
-	 * else — no album of their own, no upload, no move into it. It is a refusal by <em>role</em>,
-	 * layered on top of the rights: the guest does hold every right in their own root (they
-	 * rearrange and decline their links there, see issue #50), and what is refused is only the one
-	 * thing that folder is not for. What a guest may add to somebody else's album is a grant's
-	 * business and untouched by this.
-	 * </p>
-	 *
-	 * @return Whether the request was answered here.
-	 */
-	private boolean guestSpaceRefused(Context context, PathInfo folder) throws IOException {
-		if (!_auth.isGuestSpace(folder)) {
-			return false;
-		}
-		LOG.warning("Refusing to store anything in the guest root '" + folder.toFile() + "'.");
-		errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GUEST_SPACE_REFUSED);
-		return true;
-	}
-
-	/**
-	 * Whether the given path would lie at the top of a space under a name starting with
-	 * <code>~</code>.
-	 *
-	 * <p>
-	 * Such a name is shadowed by the canonical form <code>~&lt;user&gt;</code> and could never be
-	 * reached again, so it is refused wherever an entry is named: on creation, on upload and on a
-	 * move, see {@link AuthService#homeNameRefused(String)}.
-	 * </p>
-	 */
-	static boolean reservedName(PathInfo folder, String name) {
-		return folder.isRoot() && name.startsWith(AuthService.HOME_PREFIX);
 	}
 
 	/**
@@ -828,12 +795,6 @@ public class ImageServlet extends HttpServlet {
 				error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
 				return;
 			}
-			if (reservedName(folderPath, name)) {
-				LOG.warning("Refusing the reserved upload name: " + name);
-				discard(uploads);
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.homeNameRefused(name));
-				return;
-			}
 		}
 
 		UploadResult result = UploadResult.create();
@@ -945,9 +906,6 @@ public class ImageServlet extends HttpServlet {
 			refuseMove(context, caller, MoveService.CONTRIBUTE_REFUSED, true);
 			return;
 		}
-		if (guestSpaceRefused(context, target)) {
-			return;
-		}
 
 		MoveResult result;
 		try {
@@ -1037,8 +995,9 @@ public class ImageServlet extends HttpServlet {
 		// Contributing is what the answer is for. In the caller's own space, and in the
 		// single-user library mode WRITES keeps open, it stays the plain read it has been since
 		// issue #29 — that library has no grants and never had this endpoint closed.
-		if (!_auth.mayContribute(caller, resourcePath)
-			&& !_auth.spaceRights(caller, resourcePath).contains(Rights.VIEW)) {
+		// Contributing is what the answer is for, but it says no more than a listing does — which
+		// of these photos are already here — so looking is enough to ask it.
+		if (!_auth.mayContribute(caller, resourcePath) && !_auth.mayView(caller, resourcePath)) {
 			refuse(context, caller, resourcePath, Rights.CONTRIBUTE, false);
 			return;
 		}
@@ -1162,28 +1121,6 @@ public class ImageServlet extends HttpServlet {
 		serveJsonObject(context.response(), result);
 	}
 
-	/**
-	 * Answers the caller's groups at <code>&lt;data&gt;/?type=groups</code>, see issue #49.
-	 *
-	 * <p>
-	 * The groups the caller owns and the groups they are in; a guest sees the groups they were put
-	 * into, which is how they learn what they are part of.
-	 * </p>
-	 */
-	private void serveGroups(Context context, Caller caller) throws IOException {
-		if (!caller.isPaired()) {
-			unauthorized(context, caller, false);
-			return;
-		}
-		GroupList result = GroupList.create();
-		GroupStore groups = _auth.getGroups();
-		if (groups != null) {
-			for (GroupStore.Group group : groups.visibleTo(caller.getUserName())) {
-				result.addGroup(onTheWire(group));
-			}
-		}
-		serveJsonObject(context.response(), result);
-	}
 
 	/**
 	 * Answers the caller's own devices at <code>&lt;data&gt;/?type=devices</code>, see issue #55.
@@ -1328,76 +1265,7 @@ public class ImageServlet extends HttpServlet {
 		return result;
 	}
 
-	/**
-	 * Renames a group at <code>&lt;data&gt;/?action=regroup</code>, see issue #55.
-	 *
-	 * <p>
-	 * The group's owner, or the administrator, who has to keep the names of this server in order;
-	 * a rename gives nobody a right they did not have. Every grant made out to the group is
-	 * rewritten in the same step, see
-	 * {@link AuthService#renameGroup(Caller, String, String)}, and the answer is the renamed group
-	 * exactly as <code>?action=group</code> answers it.
-	 * </p>
-	 */
-	private void renameGroup(Context context) throws IOException {
-		Caller caller = _auth.caller(context.request());
-		if (!caller.isPaired()) {
-			unauthorized(context, caller, true);
-			return;
-		}
 
-		GroupRename request;
-		try {
-			byte[] contents = readBody(context.request());
-			request = GroupRename.readGroupRename(new JsonReader(
-				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
-		} catch (IOException | RuntimeException ex) {
-			LOG.warning("Rejecting an unparsable group rename: " + ex.getMessage());
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, RENAME_UNREADABLE);
-			return;
-		}
-
-		GroupStore.Group renamed;
-		try {
-			renamed = _auth.renameGroup(caller, request.getName(), request.getNewName());
-		} catch (AuthService.Refused ex) {
-			LOG.warning("Refusing to rename the group '" + request.getName() + "': " + ex.getMessage());
-			errorInfo(context, ex.getStatus(), ex.getMessage());
-			return;
-		}
-		serveJsonObject(context.response(), GroupList.create().addGroup(onTheWire(renamed)));
-	}
-
-	/**
-	 * Answers the grants covering the addressed folder at
-	 * <code>&lt;folder&gt;/?type=grants</code>, see issue #49.
-	 *
-	 * <p>
-	 * The grants on the folder and on every folder above it within the space, the nearest one
-	 * first: that is what actually decides who may do what here. Only the owner of the space and
-	 * the administrator may ask — who else was let in is nobody else's business.
-	 * </p>
-	 */
-	private void serveGrants(Context context, Caller caller, Location location) throws IOException {
-		if (!caller.isPaired()) {
-			unauthorized(context, caller, false);
-			return;
-		}
-		if (!_auth.mayManageGrants(caller, location.getPath())) {
-			LOG.warning("Refusing the grants of '" + location.getOwner() + "' to '" + caller.getUserName() + "'.");
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GRANTS_REFUSED);
-			return;
-		}
-
-		GrantList result = GrantList.create();
-		GrantStore grants = _auth.getGrants();
-		if (grants != null) {
-			for (GrantStore.Grant grant : grants.covering(location.getOwner(), location.getOwnerPath())) {
-				result.addGrant(onTheWire(grant));
-			}
-		}
-		serveJsonObject(context.response(), result);
-	}
 
 	/**
 	 * Answers the share links covering the addressed folder at
@@ -1514,10 +1382,11 @@ public class ImageServlet extends HttpServlet {
 		}
 		String label = request.getLabel() == null ? "" : request.getLabel().trim();
 
+		// The link is the permission (issue #83): what it may do is recorded on the link itself,
+		// and there is no grant beside it any more.
 		ShareStore.Issued issued = _auth.getShares().create(location.getOwner(), location.getOwnerPath(), label,
-			expires, maxPrivacy, minRating);
+			expires, maxPrivacy, minRating, rights);
 		ShareStore.Link link = issued.getLink();
-		_auth.getGrants().grant(link.getOwner(), link.getPath(), link.getSubject(), rights);
 
 		LOG.info("Created the share link " + link + " with " + rights + ".");
 		serveJsonObject(context.response(), ShareLinkCreated.create()
@@ -1568,7 +1437,6 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		shares.revoke(link.getId());
-		_auth.getGrants().revoke(link.getOwner(), link.getPath(), link.getSubject());
 		LOG.info("Withdrew the share link " + link + ".");
 		serveJsonObject(context.response(), ShareLinkList.create().addLink(onTheWire(link)));
 	}
@@ -1640,7 +1508,7 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * The given share link as the protocol carries it, with the rights its grant gives it.
+	 * The given share link as the protocol carries it, with the rights it was created with.
 	 *
 	 * <p>
 	 * Never the token and never its hash: what a listing shows is what the author needs to tell one
@@ -1648,16 +1516,7 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 */
 	private ShareLink onTheWire(ShareStore.Link link) {
-		Set<String> rights = Rights.NONE;
-		GrantStore grants = _auth.getGrants();
-		if (grants != null) {
-			for (GrantStore.Grant grant : grants.covering(link.getOwner(), link.getPath())) {
-				if (grant.getSubject().equals(link.getSubject())) {
-					rights = Rights.closure(grant.getRights());
-					break;
-				}
-			}
-		}
+		Set<String> rights = link.getRights();
 		return ShareLink.create()
 			.setId(link.getId())
 			.setLabel(link.getLabel())
@@ -1693,14 +1552,9 @@ public class ImageServlet extends HttpServlet {
 			unauthorized(context, caller, true);
 			return;
 		}
-		if (Roles.GUEST.equals(caller.getRole())) {
-			LOG.warning("Refusing an invitation to the guest '" + caller.getUserName() + "'.");
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.INVITE_GUEST_REFUSED);
-			return;
-		}
 		if (!_auth.mayInvite(caller)) {
-			LOG.warning("Refusing an invitation to '" + caller.getUserName() + "': "
-				+ _auth.getInviteMode().protocolName() + " invites here.");
+			LOG.warning("Refusing an invitation to '" + caller.getUserName() + "': only an "
+				+ "administrator invites into a space.");
 			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.INVITE_ADMIN_ONLY);
 			return;
 		}
@@ -1709,16 +1563,17 @@ public class ImageServlet extends HttpServlet {
 		if (request == null) {
 			return;
 		}
-		String role = request.getRole() == null || request.getRole().trim().isEmpty() ? Roles.MEMBER
+		String requested = request.getRole() == null || request.getRole().trim().isEmpty() ? Roles.VIEW
 			: request.getRole().trim();
+		String role = Roles.of(requested);
 		if (Roles.ADMIN.equals(role)) {
 			LOG.warning("Refusing an invitation into the administrator's seat.");
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.INVITATION_ADMIN_REFUSED);
 			return;
 		}
-		if (!Roles.MEMBER.equals(role) && !Roles.GUEST.equals(role)) {
-			LOG.warning("Refusing an invitation with the unknown role '" + role + "'.");
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.invitationRoleRefused(role));
+		if (role == null) {
+			LOG.warning("Refusing an invitation with the unknown role '" + requested + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.invitationRoleRefused(requested));
 			return;
 		}
 		String expires = request.getExpires() == null ? "" : request.getExpires().trim();
@@ -1773,8 +1628,8 @@ public class ImageServlet extends HttpServlet {
 			unauthorized(context, caller, false);
 			return;
 		}
-		if (Roles.GUEST.equals(caller.getRole())) {
-			LOG.warning("Refusing the invitations to the guest '" + caller.getUserName() + "'.");
+		if (!Roles.isAdmin(caller.getRole())) {
+			LOG.warning("Refusing the invitations to '" + caller.getUserName() + "'.");
 			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.INVITATIONS_REFUSED);
 			return;
 		}
@@ -1809,7 +1664,7 @@ public class ImageServlet extends HttpServlet {
 			unauthorized(context, caller, true);
 			return;
 		}
-		if (Roles.GUEST.equals(caller.getRole())) {
+		if (!Roles.isAdmin(caller.getRole())) {
 			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.INVITATIONS_REFUSED);
 			return;
 		}
@@ -1834,48 +1689,6 @@ public class ImageServlet extends HttpServlet {
 		serveJsonObject(context.response(), InvitationList.create().addInvitation(onTheWire(invitation)));
 	}
 
-	/**
-	 * Turns a guest into a member at <code>&lt;data&gt;/?action=promote</code>, see issue #52.
-	 *
-	 * <p>
-	 * Only the admin, who is the one who hands out space on this server. The body names the user
-	 * and nothing else: a {@link MemberName} is the smallest message that carries a name, and the
-	 * role is not read — there is exactly one direction, guest to member, and no demotion.
-	 * </p>
-	 */
-	private void promoteUser(Context context) throws IOException {
-		Caller caller = _auth.caller(context.request());
-		if (!caller.isPaired()) {
-			unauthorized(context, caller, true);
-			return;
-		}
-		if (!Roles.ADMIN.equals(caller.getRole())) {
-			LOG.warning("Refusing a promotion to '" + caller.getUserName() + "'.");
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.PROMOTE_REFUSED);
-			return;
-		}
-
-		MemberName request;
-		try {
-			byte[] contents = readBody(context.request());
-			request = MemberName.readMemberName(new JsonReader(
-				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
-		} catch (IOException | RuntimeException ex) {
-			LOG.warning("Rejecting an unparsable promotion: " + ex.getMessage());
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PROMOTION_UNREADABLE);
-			return;
-		}
-
-		UserStore.User promoted;
-		try {
-			promoted = _auth.promote(request.getName());
-		} catch (AuthService.Refused ex) {
-			LOG.warning("Refusing to promote '" + request.getName() + "': " + ex.getMessage());
-			errorInfo(context, ex.getStatus(), ex.getMessage());
-			return;
-		}
-		serveJsonObject(context.response(), onTheWire(promoted));
-	}
 
 	/** The body of an invitation request, <code>null</code> if it cannot be read (the response is complete). */
 	private static Invitation readInvitation(Context context) throws IOException {
@@ -1913,193 +1726,99 @@ public class ImageServlet extends HttpServlet {
 			.setRevoked(invitation.getRevoked());
 	}
 
+
+
+
+
 	/**
-	 * Records or removes a grant on the addressed folder, see issue #49.
+	 * Sets what a user of this space may do, at <code>&lt;data&gt;/?action=set-permission</code>,
+	 * see issue #83.
 	 *
 	 * <p>
-	 * The owner and the path come from the URL, never from the body: a grant is made where it is
-	 * made. Granting again replaces the rights of an earlier grant to the same subject; revoking
-	 * removes it. A grant to somebody this server does not know is refused rather than recorded,
-	 * so that the list of grants never promises anything to nobody.
+	 * The administrator's own decision. A user's permission is the same in every album, so this is
+	 * the whole of sharing inside a space: who is in it, and what they may do.
 	 * </p>
 	 */
-	private void changeGrant(Context context, boolean revoke) throws IOException {
+	private void setPermission(Context context) throws IOException {
 		Caller caller = _auth.caller(context.request());
-		Location location = resolve(context, caller);
-		if (location == null) {
+		if (!administrator(context, caller)) {
 			return;
 		}
-		if (!caller.isPaired()) {
-			unauthorized(context, caller, true);
-			return;
-		}
-		if (!_auth.mayManageGrants(caller, location.getPath())) {
-			LOG.warning("Refusing to change the grants of '" + location.getOwner() + "'.");
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GRANTS_REFUSED);
-			return;
-		}
-		if (location.getOwner().isEmpty()) {
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.PATH_ESCAPED);
-			return;
-		}
-		if (_auth.isGuestSpace(location.getPath())) {
-			// A guest owns no album; what lies in their root are other people's, see issue #52.
-			LOG.warning("Refusing a grant on the guest root of '" + location.getOwner() + "'.");
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GUEST_GRANT_REFUSED);
-			return;
-		}
-
-		Grant request;
+		UserPermission request;
 		try {
 			byte[] contents = readBody(context.request());
-			request = Grant.readGrant(new JsonReader(
+			request = UserPermission.readUserPermission(new JsonReader(
 				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
 		} catch (IOException | RuntimeException ex) {
-			LOG.warning("Rejecting unparsable grant: " + ex.getMessage());
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, GRANT_UNREADABLE);
+			LOG.warning("Rejecting an unparsable permission: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PERMISSION_UNREADABLE);
 			return;
 		}
-
-		String subject = request.getSubject() == null ? "" : request.getSubject().trim();
-		if (subject.startsWith(Subjects.TOKEN_PREFIX)) {
-			// The grant of a share link is the link's: it comes and goes with the link, see issue #51.
-			LOG.warning("Refusing to " + (revoke ? "revoke" : "grant") + " the share-link subject '" + subject + "'.");
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, SHARE_GRANT_REFUSED);
-			return;
+		try {
+			UserStore.User user = _auth.setPermission(request.getName(), request.getRole(),
+				request.getClearance(), request.isMayShare());
+			LOG.info("The permission of '" + user.getName() + "' is now " + user.getRole() + ".");
+			serveJsonObject(context.response(), userList());
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing to set a permission: " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
 		}
-		if (!Subjects.isKnown(subject) || !subjectExists(subject)) {
-			LOG.warning("Refusing a grant to the unknown subject '" + subject + "'.");
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.unknownSubject(subject));
-			return;
-		}
-
-		GrantStore grants = _auth.getGrants();
-		String path = location.getOwnerPath();
-		if (revoke) {
-			grants.revoke(location.getOwner(), path, subject);
-			serveJsonObject(context.response(), GrantList.create());
-			return;
-		}
-
-		Set<String> rights = new LinkedHashSet<>();
-		for (de.haumacher.imageServer.shared.model.RightName right : request.getRights()) {
-			String name = right.getName();
-			if (!Rights.isKnown(name)) {
-				LOG.warning("Refusing a grant of the unknown right '" + name + "'.");
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.unknownRight(name));
-				return;
-			}
-			rights.add(name);
-		}
-
-		GrantStore.Grant stored = grants.grant(location.getOwner(), path, subject, rights);
-		LOG.info("Granted " + stored + ".");
-		serveJsonObject(context.response(), GrantList.create().addGrant(onTheWire(stored)));
-	}
-
-	/** Whether the given subject names somebody this server knows. */
-	private boolean subjectExists(String subject) {
-		String user = Subjects.nameOf(subject, Subjects.USER_PREFIX);
-		if (user != null) {
-			return _auth.getUsers() != null && _auth.getUsers().getUser(user) != null;
-		}
-		String group = Subjects.nameOf(subject, Subjects.GROUP_PREFIX);
-		if (group != null) {
-			return _auth.getGroups() != null && _auth.getGroups().getGroup(group) != null;
-		}
-		return Subjects.ANONYMOUS.equals(subject);
 	}
 
 	/**
-	 * Creates a group, replaces its members, or removes it, see issue #49.
+	 * Removes a user of this space with their devices, at
+	 * <code>&lt;data&gt;/?action=remove-user</code>, see issue #83.
 	 *
 	 * <p>
-	 * A group belongs to whoever created it; nobody else changes or removes it. A member name the
-	 * server does not know is refused rather than stored, so that a group never lists somebody who
-	 * is not there.
+	 * Their tokens stop working at once. Nothing of theirs leaves the album tree: what they
+	 * uploaded belongs to the space, and their name stays in its attribution.
 	 * </p>
 	 */
-	private void changeGroup(Context context, boolean remove) throws IOException {
+	private void removeUser(Context context) throws IOException {
 		Caller caller = _auth.caller(context.request());
-		if (!caller.isPaired()) {
-			unauthorized(context, caller, true);
+		if (!administrator(context, caller)) {
 			return;
 		}
-
-		Group request;
+		MemberName request;
 		try {
 			byte[] contents = readBody(context.request());
-			request = Group.readGroup(new JsonReader(
+			request = MemberName.readMemberName(new JsonReader(
 				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
 		} catch (IOException | RuntimeException ex) {
-			LOG.warning("Rejecting unparsable group: " + ex.getMessage());
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, GROUP_UNREADABLE);
+			LOG.warning("Rejecting an unparsable user name: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PERMISSION_UNREADABLE);
 			return;
 		}
-
-		String name;
 		try {
-			name = UserStore.checkUserName(request.getName());
-		} catch (IllegalArgumentException ex) {
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
-			return;
+			_auth.removeUser(request.getName());
+			serveJsonObject(context.response(), userList());
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing to remove a user: " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
 		}
-
-		GroupStore groups = _auth.getGroups();
-		GroupStore.Group existing = groups.getGroup(name);
-		if (existing != null && !existing.getOwner().equals(caller.getUserName())) {
-			LOG.warning("Refusing to change the group '" + name + "' of '" + existing.getOwner() + "'.");
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GROUP_REFUSED);
-			return;
-		}
-
-		if (remove) {
-			if (existing == null) {
-				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.GROUP_UNKNOWN);
-				return;
-			}
-			groups.remove(name);
-			LOG.info("Removed the group '" + name + "'.");
-			serveJsonObject(context.response(), GroupList.create());
-			return;
-		}
-
-		if (existing == null && !_auth.mayOwnGroups(caller)) {
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GROUP_CREATE_REFUSED);
-			return;
-		}
-		if (existing == null && _auth.isUserName(name)) {
-			// Found by the review probe of #55: a user may not be named like a group, so a group may
-			// not be named like a user either — the rename already refused it, the creation did not.
-			LOG.warning("Refusing the group name '" + name + "': it is a user's.");
-			errorInfo(context, HttpServletResponse.SC_CONFLICT, AuthService.groupNameIsUser(name));
-			return;
-		}
-
-		List<String> members = new ArrayList<>();
-		for (MemberName member : request.getMembers()) {
-			if (_auth.getUsers() == null || _auth.getUsers().getUser(member.getName()) == null) {
-				LOG.warning("Refusing the unknown group member '" + member.getName() + "'.");
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST,
-					AuthService.unknownSubject(Subjects.user(member.getName())));
-				return;
-			}
-			members.add(member.getName());
-		}
-
-		GroupStore.Group stored = groups.put(name, caller.getUserName(), members);
-		LOG.info("Stored the group " + stored + ".");
-		serveJsonObject(context.response(), GroupList.create().addGroup(onTheWire(stored)));
 	}
 
-	/** The given grant as the protocol carries it. */
-	private static Grant onTheWire(GrantStore.Grant grant) {
-		return Grant.create()
-			.setOwner(grant.getOwner())
-			.setPath(grant.getPath())
-			.setSubject(grant.getSubject())
-			.setRights(Rights.onTheWire(grant.getRights()))
-			.setCreated(grant.getCreated());
+	/** Whether the caller administers this space; the refusal is answered here if not. */
+	private boolean administrator(Context context, Caller caller) throws IOException {
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return false;
+		}
+		if (!Roles.isAdmin(caller.getRole())) {
+			LOG.warning("Refusing the management request of '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, ADMIN_ONLY);
+			return false;
+		}
+		return true;
+	}
+
+	/** The users of this space, as the protocol carries them. */
+	private UserList userList() {
+		UserList result = UserList.create();
+		for (UserStore.User user : _auth.getUsers().getUsers()) {
+			result.addUser(onTheWire(user));
+		}
+		return result;
 	}
 
 	/**
@@ -2121,17 +1840,6 @@ public class ImageServlet extends HttpServlet {
 			.setDevices(user.getDevices().size());
 	}
 
-	/** The given group as the protocol carries it. */
-	private static Group onTheWire(GroupStore.Group group) {
-		Group result = Group.create()
-			.setName(group.getName())
-			.setOwner(group.getOwner())
-			.setCreated(group.getCreated());
-		for (String member : group.getMembers()) {
-			result.addMember(MemberName.create().setName(member));
-		}
-		return result;
-	}
 
 	/**
 	 * Handles the pairing request at <code>&lt;data&gt;/?action=pair</code>.
@@ -2164,19 +1872,19 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		if ("unlink".equals(action)) {
-			unlinkEntries(context);
+			retired(context, RETIRED_LINKS);
 			return;
 		}
 		if ("grant".equals(action) || "revoke".equals(action)) {
-			changeGrant(context, "revoke".equals(action));
+			retired(context, RETIRED_GRANTS);
 			return;
 		}
 		if ("group".equals(action) || "ungroup".equals(action)) {
-			changeGroup(context, "ungroup".equals(action));
+			retired(context, RETIRED_GROUPS);
 			return;
 		}
 		if ("regroup".equals(action)) {
-			renameGroup(context);
+			retired(context, RETIRED_GROUPS);
 			return;
 		}
 		if ("unpair".equals(action)) {
@@ -2204,7 +1912,15 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		if ("promote".equals(action)) {
-			promoteUser(context);
+			retired(context, RETIRED_PROMOTE);
+			return;
+		}
+		if ("set-permission".equals(action)) {
+			setPermission(context);
+			return;
+		}
+		if ("remove-user".equals(action)) {
+			removeUser(context);
 			return;
 		}
 
@@ -2304,6 +2020,20 @@ public class ImageServlet extends HttpServlet {
 		LOG.warning("Refusing '" + context.request().getPathInfo() + "': " + caller.getGone());
 		errorInfo(context, HttpServletResponse.SC_GONE, caller.getGone());
 		return true;
+	}
+
+	/**
+	 * Answers a request for something this build has retired, see issue #83.
+	 *
+	 * <p>
+	 * <code>410 Gone</code> and not <code>404</code>: the endpoint was here and is not coming
+	 * back, and the message names what does the job now. Kept for one release, so that an app that
+	 * was not updated says something useful instead of failing silently.
+	 * </p>
+	 */
+	private static void retired(Context context, String message) throws IOException {
+		LOG.warning("Refusing the retired endpoint '" + context.request().getPathInfo() + "': " + message);
+		errorInfo(context, HttpServletResponse.SC_GONE, message);
 	}
 
 	/** Answers with the given status and an {@link ErrorInfo} body carrying the given message. */
@@ -2462,7 +2192,6 @@ public class ImageServlet extends HttpServlet {
 				// The shared albums of this folder, shown as what they point at, see issue #50.
 				// After the privacy filter: a link is filtered by the clearance on its own target,
 				// which is not the one this listing was filtered with.
-				answer = _links.augment((ListingInfo) answer, pathInfo, caller, viewAs);
 			}
 			serveJson(context.response(), withRights(answer, _auth.rights(caller, pathInfo)));
 		} else {
@@ -2470,74 +2199,7 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
-	/**
-	 * Creates the links for what was shared with the caller, when the caller lists their own space
-	 * root, see issue #50.
-	 *
-	 * <p>
-	 * A read that writes, and the only one: a share becomes an entry in the recipient's tree the
-	 * first time they look at it, which is what spares the server a fan-out write whenever a group
-	 * gains a member. It happens in the caller's own space and nowhere else — not in a folder
-	 * reached through the canonical form, not through a link, and never for a caller without a
-	 * space of their own (a guest, an anonymous caller, mode {@link de.haumacher.imageServer.auth.AuthMode#OFF}).
-	 * </p>
-	 */
-	private void materialiseLinks(Caller caller, Location location) {
-		PathInfo path = location.getPath();
-		if (!caller.isPaired() || !path.isRoot() || location.isLinked() || !location.getPrefix().isEmpty()) {
-			return;
-		}
-		if (!_auth.spaceRights(caller, path).containsAll(Rights.ALL)) {
-			// Not the owner of this space: a guest looking at the base folder, say.
-			return;
-		}
-		if (_links.materialise(caller, path)) {
-			// A placement rule may have created a year folder for a new link.
-			_cache.invalidateTree(path);
-		}
-	}
 
-	/**
-	 * Removes link entries of the addressed folder at <code>&lt;folder&gt;/?action=unlink</code>,
-	 * see issue #50.
-	 *
-	 * <p>
-	 * The folder is the caller's own and the request changes it, so it asks for exactly what a move
-	 * out of it asks for: the edit right. Nothing of the owner's is touched and no grant changes —
-	 * this is the recipient saying that they do not want the shared album in their tree, and it is
-	 * remembered, see {@link LinkService#unlink(Caller, PathInfo, java.util.List)}.
-	 * </p>
-	 */
-	private void unlinkEntries(Context context) throws IOException {
-		Caller caller = _auth.caller(context.request());
-		Location location = resolve(context, caller);
-		if (location == null) {
-			return;
-		}
-		PathInfo folder = location.getPath();
-		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folder)) {
-			unauthorized(context, caller, true);
-			return;
-		}
-		if (!_auth.mayEdit(caller, folder)) {
-			refuse(context, caller, folder, Rights.EDIT, true);
-			return;
-		}
-
-		MoveRequest request;
-		try {
-			byte[] contents = readBody(context.request());
-			request = MoveRequest.readMoveRequest(new JsonReader(
-				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
-		} catch (IOException | RuntimeException ex) {
-			LOG.warning("Rejecting unparsable unlink request: " + ex.getMessage());
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, UNLINK_UNREADABLE);
-			return;
-		}
-
-		List<String> names = request.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
-		serveJsonObject(context.response(), _links.unlink(caller, folder, names));
-	}
 
 	/**
 	 * The given folder answer carrying the caller's rights on it, see {@link FolderResource#getRights()}.

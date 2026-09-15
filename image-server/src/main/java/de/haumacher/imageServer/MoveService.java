@@ -6,8 +6,6 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
-import de.haumacher.imageServer.links.LinkService;
-import de.haumacher.imageServer.links.LinkStore;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageGroup;
@@ -275,12 +273,6 @@ public class MoveService {
 		 */
 		String _newName;
 
-		/** The link record to move, <code>null</code> unless this is a link entry, see issue #50. */
-		LinkStore.Link _link;
-
-		/** The plain name a moved link takes in its destination folder, see {@link #_newName}. */
-		String _linkName;
-
 		/** The single image to move, <code>null</code> unless this is an image entry. */
 		ImagePart _image;
 
@@ -344,9 +336,8 @@ public class MoveService {
 		// an image lands in an album, never in a folder of folders, and is refused above.
 		PlacementRule rule = PlacementRule.of(targetSidecar);
 
-		LinkStore sourceLinks = new LinkStore(sourceFolder);
 		List<Entry> entries = classify(sourceFolder, targetFolder, sourceAlbum, targetTakesImages, rule,
-			target.isRoot(), sourceLinks, names);
+			target.isRoot(), names);
 
 		MoveResult result = MoveResult.create();
 		HashCache sourceHashes = new HashCache(sourceFolder);
@@ -370,9 +361,7 @@ public class MoveService {
 				}
 
 				try {
-					if (entry._link != null) {
-						result.addOutcome(moveLink(entry, sourceLinks));
-					} else if (entry._folder != null) {
+					if (entry._folder != null) {
 						result.addOutcome(moveFolder(entry));
 					} else if (entry._group != null) {
 						result.addOutcome(moveGroup(entry, entries, sourceAlbum, targetAlbum, sourceFolder,
@@ -427,7 +416,7 @@ public class MoveService {
 	 * </p>
 	 */
 	private List<Entry> classify(File sourceFolder, File targetFolder, AlbumInfo sourceAlbum,
-			boolean targetTakesImages, PlacementRule rule, boolean targetIsSpaceRoot, LinkStore sourceLinks,
+			boolean targetTakesImages, PlacementRule rule, boolean targetIsSpaceRoot,
 			List<String> names) {
 		List<Entry> result = new ArrayList<>(names.size());
 		Set<String> seen = new HashSet<>();
@@ -452,13 +441,7 @@ public class MoveService {
 
 			File file = new File(sourceFolder, name);
 			if (!file.exists()) {
-				// Not on disk: a link entry of this folder is an entry all the same, see issue #50.
-				LinkStore.Link link = sourceLinks == null ? null : sourceLinks.get(name);
-				if (link == null) {
-					entry._refusal = notFound(name);
-				} else {
-					classifyLink(entry, link, rule, sourceFolder, targetFolder);
-				}
+				entry._refusal = notFound(name);
 				continue;
 			}
 
@@ -524,74 +507,7 @@ public class MoveService {
 		return outcome(entry._name, entry._newName, "");
 	}
 
-	/**
-	 * Decides where a link entry lands and whether it may go there at all, see issue #50.
-	 *
-	 * <p>
-	 * A link travels like a folder — it is filed by the target's date, it is reported by the path
-	 * it takes below the target folder — with two refusals of its own and one liberty of its own.
-	 * The refusals: a link may only ever be kept in its holder's own library (moving somebody
-	 * else's album into a third person's space would be sharing what is not yours), and it may not
-	 * be moved into the very album it points at. The liberty: a name clash renames the link instead
-	 * of refusing it, because a link is a name and nothing else, see
-	 * {@link LinkService#freeName(File, LinkStore, String)}.
-	 * </p>
-	 */
-	private void classifyLink(Entry entry, LinkStore.Link link, PlacementRule rule, File sourceFolder,
-			File targetFolder) {
-		entry._link = link;
 
-		PathInfo target = LinkService.target(_auth, _basePath, link);
-		if (target != null && isBelow(targetFolder, target.toFile())) {
-			entry._refusal = linkIntoTarget(entry._name);
-			return;
-		}
-		if (_auth != null) {
-			String source = _auth.ownerOf(new PathInfo(sourceFolder.toPath()));
-			String destination = _auth.ownerOf(new PathInfo(targetFolder.toPath()));
-			if (source != null && !source.equals(destination)) {
-				entry._refusal = linkEscaped(entry._name);
-				return;
-			}
-		}
-
-		File folder = targetFolder;
-		String prefix = "";
-		String targetName = target == null ? entry._name : target.toFile().getName();
-		if (rule.isActive() && !PlacementRule.isPlacementFolder(targetName)) {
-			AlbumDate date = AlbumDate.ofFolder(target == null ? null : ResourceCache.sidecar(target.toFile()),
-				targetName);
-			Path placement = rule.placementFor(targetFolder.toPath(), date);
-			if (placement != null) {
-				folder = placement.toFile();
-				prefix = targetFolder.toPath().relativize(placement).toString().replace(File.separatorChar, '/')
-					+ "/";
-			}
-		}
-
-		entry._destination = folder;
-		entry._linkName = LinkService.freeName(folder, new LinkStore(folder), entry._name);
-		entry._newName = prefix + entry._linkName;
-	}
-
-	/**
-	 * Moves a link entry from one folder to another: the record travels, nothing on disk is
-	 * renamed.
-	 *
-	 * <p>
-	 * The rename-only doctrine is trivially kept here — there is no file to rename, and the album
-	 * the link points at is not touched, not read and not told, see issue #50.
-	 * </p>
-	 */
-	private MoveOutcome moveLink(Entry entry, LinkStore sourceLinks) throws IOException {
-		File destination = entry._destination;
-		if (!destination.isDirectory() && !destination.mkdirs()) {
-			throw new IOException("Cannot create the folder '" + destination.getAbsolutePath() + "'.");
-		}
-		sourceLinks.move(entry._link, new LinkStore(destination), entry._linkName);
-		LOG.info("Moved the link '" + entry._link + "' to '" + destination + "' as '" + entry._linkName + "'.");
-		return outcome(entry._name, entry._newName, "");
-	}
 
 	/**
 	 * Where a folder of the given name lands below the given target, and how that is reported.
@@ -695,7 +611,6 @@ public class MoveService {
 					stopped = true;
 				}
 			}
-			placeLinks(dir, rule, result, stopped);
 		} finally {
 			// Whatever moved changed this folder and the year folders below it.
 			_cache.invalidateTree(folder);
@@ -703,49 +618,6 @@ public class MoveService {
 		return result;
 	}
 
-	/**
-	 * Files the link entries of the given folder by that folder's rule, see {@link #place(PathInfo)}.
-	 *
-	 * <p>
-	 * A shared album is filed by the date of what it points at, exactly as an album of one's own is
-	 * filed by its own: "apply rule" leaves nothing behind because it was somebody else's photo.
-	 * </p>
-	 */
-	private void placeLinks(File dir, PlacementRule rule, MoveResult result, boolean stopped) throws IOException {
-		if (!LinkStore.exists(dir)) {
-			return;
-		}
-		LinkStore links = new LinkStore(dir);
-		for (LinkStore.Link link : links.getLinks()) {
-			String name = link.getName();
-			if (!rule.isActive()) {
-				result.addOutcome(outcome(name, "", NO_RULE));
-				continue;
-			}
-			if (stopped) {
-				result.addOutcome(outcome(name, "", ABANDONED));
-				continue;
-			}
-
-			Entry entry = new Entry(name);
-			classifyLink(entry, link, rule, dir, dir);
-			if (entry._refusal != null) {
-				result.addOutcome(outcome(name, "", entry._refusal));
-				continue;
-			}
-			if (dir.equals(entry._destination)) {
-				result.addOutcome(outcome(name, "", KEPT_NO_DATE));
-				continue;
-			}
-			try {
-				result.addOutcome(moveLink(entry, links));
-			} catch (IOException ex) {
-				LOG.log(Level.WARNING, "Cannot file the link '" + link + "' in '" + dir + "': " + ex.getMessage(), ex);
-				result.addOutcome(outcome(name, "", failed(ex.getMessage())));
-				stopped = true;
-			}
-		}
-	}
 
 	/** Moves a single image out of the source album and appends it to the target album. */
 	private MoveOutcome moveImage(Entry entry, AlbumInfo sourceAlbum, AlbumInfo targetAlbum, File sourceFolder,

@@ -7,7 +7,6 @@ import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Rights;
-import de.haumacher.imageServer.auth.Subjects;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImagePart;
@@ -29,7 +28,7 @@ public class TestShareProbe extends ShareTestCase {
 
 	public void testAContributeLinkUploadsAPhotoOnceHoweverOftenItIsSent() throws Exception {
 		String token = zooToken(Rights.CONTRIBUTE);
-		File zoo = _base.resolve("alice/" + SharingFixture.ZOO).toFile();
+		File zoo = _base.resolve(SharingFixture.ZOO).toFile();
 		int before = imageCount(zoo);
 
 		assertEquals(HttpServletResponse.SC_OK, upload("/", token, "party.jpg").status());
@@ -55,24 +54,6 @@ public class TestShareProbe extends ShareTestCase {
 		assertEquals("Nothing of alice's changed.", owners, albumFingerprint("alice"));
 	}
 
-	public void testTheGrantOfALinkIsWithdrawnWithTheLinkNotThroughTheGrantApi() throws Exception {
-		String token = zooToken(Rights.VIEW);
-		assertEquals(HttpServletResponse.SC_OK, get("/", "json", token).status());
-
-		FakeResponse revoked = grant("/" + SharingFixture.ZOO + "/", SharingFixture.ALICE, "revoke",
-			Subjects.token(idOf(token)), null);
-		assertEquals(revoked.body(), HttpServletResponse.SC_BAD_REQUEST, revoked.status());
-		assertEquals("The refusal points at the one route that keeps the two stores in step.",
-			ImageServlet.SHARE_GRANT_REFUSED, errorMessage(revoked));
-
-		FakeResponse granted = grant("/" + SharingFixture.ZOO + "/", SharingFixture.ALICE, "grant",
-			Subjects.token(idOf(token)), Rights.EDIT);
-		assertEquals(granted.body(), HttpServletResponse.SC_BAD_REQUEST, granted.status());
-
-		assertEquals("The link works as before; nothing was half-changed.", HttpServletResponse.SC_OK,
-			get("/", "json", token).status());
-		assertEquals(Arrays.asList(Rights.VIEW), rightsOf(folder(get("/", "json", token))));
-	}
 
 	public void testTwoLinksOnOneAlbumKeepTheirOwnLimits() throws Exception {
 		ShareLinkCreated family = created(share("/" + SharingFixture.ZOO + "/", SharingFixture.ALICE,

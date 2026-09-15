@@ -517,6 +517,18 @@ public class UserStore {
 	}
 
 	/**
+	 * Removes the given user with every device they signed in on, see issue #83.
+	 *
+	 * <p>
+	 * The caller stores. Their tokens stop working with the next load, which is what removing a
+	 * user has to mean; nothing of theirs is taken out of the album tree.
+	 * </p>
+	 */
+	public synchronized boolean removeUser(User user) {
+		return _users.remove(user);
+	}
+
+	/**
 	 * Names the library owner, creating it if it does not exist yet.
 	 *
 	 * <p>

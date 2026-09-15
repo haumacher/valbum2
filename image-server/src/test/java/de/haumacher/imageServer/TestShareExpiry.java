@@ -5,7 +5,6 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthService;
-import de.haumacher.imageServer.auth.GrantStore;
 import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Rights;
 import de.haumacher.imageServer.auth.ShareStore;
@@ -61,7 +60,7 @@ public class TestShareExpiry extends ShareTestCase {
 		assertNotNull("The app learns from this that it is inside a share link.", info.getShare());
 		assertEquals("Grandma", info.getShare().getLabel());
 		assertEquals("2030-01-01T00:00:00Z", info.getShare().getExpires());
-		assertEquals("~alice/" + SharingFixture.ZOO, info.getShare().getPath());
+		assertEquals("" + SharingFixture.ZOO, info.getShare().getPath());
 		assertEquals(Arrays.asList(Rights.VIEW, Rights.DOWNLOAD), names(info.getShare().getRights()));
 		assertFalse("A link that may not contribute allows no writes.", info.isWriteAllowed());
 		assertEquals("A link is nobody's user.", "", info.getUserName());
@@ -83,23 +82,6 @@ public class TestShareExpiry extends ShareTestCase {
 		assertNull(auth(get("/", "auth", null)).getShare());
 	}
 
-	/**
-	 * Withdrawing a link removes its grant, so what is left is a record saying "withdrawn" — and
-	 * that is what the next request with that token is answered with.
-	 */
-	public void testWithdrawingThroughTheEndpointClosesTheDoor() throws Exception {
-		String token = zooToken(Rights.VIEW);
-		String id = idOf(token);
-		assertEquals("Zoo", album(get("/", "json", token)).getTitle());
-
-		unshare("/~alice/" + SharingFixture.ZOO + "/", SharingFixture.ALICE, id);
-		restartServer();
-
-		assertGone(get("/", "json", token), AuthService.LINK_REVOKED);
-		for (GrantStore.Grant grant : grantsOf("alice")) {
-			assertFalse(grant.toString(), grant.getSubject().equals("token:" + id));
-		}
-	}
 
 	public void testAnExpiredLinkChangesNothingInTheLibrary() throws Exception {
 		String token = issue("alice", SharingFixture.ZOO, "Grandma", "2020-01-01T00:00:00Z", Privacy.PUBLIC, 0,

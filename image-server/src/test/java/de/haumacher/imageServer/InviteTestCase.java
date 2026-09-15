@@ -19,7 +19,7 @@ import java.util.Map;
  * The request helpers the invitation tests of issue #52 are driven with.
  *
  * <p>
- * The {@link SharingFixture} of issue #49 as {@link LinkTestCase} sets it up: alice is the admin
+ * The {@link SharingFixture} of issue #49 as {@link SpaceTestCase} sets it up: alice is the admin
  * and the library is migrated, bob, carol and dave are members and eve is a guest. That is exactly
  * the library an invitation lands in.
  * </p>
@@ -27,7 +27,7 @@ import java.util.Map;
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 @SuppressWarnings("javadoc")
-public abstract class InviteTestCase extends LinkTestCase {
+public abstract class InviteTestCase extends SpaceTestCase {
 
 	// --- Inviting over HTTP. ---
 

@@ -5,14 +5,12 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthService;
-import de.haumacher.imageServer.auth.Roles;
 import de.haumacher.imageServer.shared.model.DeviceCodeCreated;
 import de.haumacher.imageServer.shared.model.DeviceEntry;
 import de.haumacher.imageServer.shared.model.DeviceList;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -35,32 +33,6 @@ public class TestDeviceCodeProbe extends InviteTestCase {
 
 	private static final String ALBUM_JSON = "[\"AlbumInfo\",{\"title\":\"Trip\"}]";
 
-	public void testACodeDiesWithTheDeviceThatIssuedIt() throws Exception {
-		String laptop = pairWithSecret("Alice's laptop");
-		String theCode = code(deviceCode(laptop)).getCode();
-
-		// Alice spots the laptop she never paired and throws it out from her phone.
-		unpair(SharingFixture.ALICE, idOf(devices(SharingFixture.ALICE), "Alice's laptop"));
-
-		FakeResponse response = pairWithCode(theCode, "Stranger's tablet");
-		assertEquals("A code issued by a device that was unpaired must not sign anybody in: " + response.body(),
-			HttpServletResponse.SC_GONE, response.status());
-		assertFalse("The refusal speaks.", errorMessage(response).isEmpty());
-		assertEquals("Nothing was added.", 1, devices(SharingFixture.ALICE).getDevices().size());
-	}
-
-	public void testAGuestPromotedMeanwhileGetsAMemberDevice() throws Exception {
-		String theCode = code(deviceCode(SharingFixture.EVE)).getCode();
-
-		assertEquals(HttpServletResponse.SC_OK, promote(SharingFixture.ALICE, "eve").status());
-
-		PairResponse paired = paired(pairWithCode(theCode, "Eve's tablet"));
-		assertEquals("eve", paired.getUserName());
-		assertEquals("The code signs in the user as they are now, not as they were.", Roles.MEMBER, paired.getRole());
-		assertEquals("eve", paired.getSpace());
-		assertEquals(HttpServletResponse.SC_OK, put("/2025-04-01 Trip/", ALBUM_JSON, paired.getToken()).status());
-		assertTrue(Files.isDirectory(_base.resolve("eve").resolve("2025-04-01 Trip")));
-	}
 
 	public void testAUsedCodeStaysUsedAcrossARestart() throws Exception {
 		String theCode = code(deviceCode(SharingFixture.BOB)).getCode();

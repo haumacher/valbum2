@@ -319,21 +319,6 @@ public class TestPrivacy extends TestCase {
 		assertEquals(ImageServlet.IMAGE_REFUSED, errorMessage(response));
 	}
 
-	public void testTheOwnerReadsTheirOwnPrivateImage() throws Exception {
-		library();
-
-		String token = signIn();
-		assertEquals(HttpServletResponse.SC_OK, get(servlet(), "/" + TRIP + "/a.jpg", "tn", token).status());
-	}
-
-	public void testAMemberSeesThePrivateImagesOfTheirOwnSpace() throws Exception {
-		member();
-
-		ImageServlet servlet = servlet();
-		assertEquals("The owner of the space sees everything in it.",
-			HttpServletResponse.SC_OK, get(servlet, "/Album/private.jpg", "tn", ALICE_TOKEN).status());
-		assertNames(album(get(servlet, "/Album/", "json", ALICE_TOKEN)), "private.jpg");
-	}
 
 	// --- Nothing of this is cached or written back. ---
 
@@ -419,7 +404,7 @@ public class TestPrivacy extends TestCase {
 		UserStore store = new UserStore(_base);
 		User owner = store.nameOwner("haui");
 		owner.setSpace("haui");
-		User alice = new User("alice", Roles.MEMBER, "alice", Instant.now().toString());
+		User alice = new User("alice", Roles.EDIT, "alice", Instant.now().toString());
 		alice.addDevice(new Device("Alice's tablet", UserStore.hash(ALICE_TOKEN), Instant.now().toString()));
 		store.addUser(alice);
 		store.store();

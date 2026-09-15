@@ -4,7 +4,6 @@
 package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
-import de.haumacher.imageServer.auth.GrantStore;
 import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.Rights;
@@ -31,7 +30,7 @@ import java.util.stream.Stream;
  * The library and the request helpers the share-link tests of issue #51 are driven with.
  *
  * <p>
- * The {@link SharingFixture} of issue #49 as {@link LinkTestCase} sets it up, plus one rejected
+ * The {@link SharingFixture} of issue #49 as {@link SpaceTestCase} sets it up, plus one rejected
  * photo in alice's zoo album: <code>rejected.jpg</code> with the rating <code>-1</code>, which is
  * what a link with a rating limit must hide. It is added here rather than in the fixture so that
  * every test written against the fixture before issue #51 keeps counting what it counted.
@@ -40,7 +39,7 @@ import java.util.stream.Stream;
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 @SuppressWarnings("javadoc")
-public abstract class ShareTestCase extends LinkTestCase {
+public abstract class ShareTestCase extends SpaceTestCase {
 
 	/** The photo in the zoo album that a rating limit of <code>0</code> hides. */
 	protected static final String REJECTED = "rejected.jpg";
@@ -48,7 +47,7 @@ public abstract class ShareTestCase extends LinkTestCase {
 	@Override
 	protected void setUp() throws Exception {
 		super.setUp();
-		SharingFixture.album(_base, "alice/" + SharingFixture.ZOO, "Zoo",
+		SharingFixture.album(_base, SharingFixture.ZOO, "Zoo",
 			"[\"ImagePart\",{\"name\":\"public.jpg\",\"width\":4,\"height\":3}],"
 				+ "[\"ImagePart\",{\"name\":\"members.jpg\",\"width\":4,\"height\":3,\"privacy\":1}],"
 				+ "[\"ImagePart\",{\"name\":\"private.jpg\",\"width\":4,\"height\":3,\"privacy\":2}],"
@@ -135,8 +134,8 @@ public abstract class ShareTestCase extends LinkTestCase {
 	protected String issue(String owner, String path, String label, String expires, int maxPrivacy, int minRating,
 			String... rights) throws Exception {
 		ShareStore shares = new ShareStore(_base);
-		ShareStore.Issued issued = shares.create(owner, path, label, expires, maxPrivacy, minRating);
-		new GrantStore(_base).grant(owner, path, issued.getLink().getSubject(),
+		// The link is the permission, see issue #83: what it may do is recorded on the link itself.
+		ShareStore.Issued issued = shares.create(owner, path, label, expires, maxPrivacy, minRating,
 			rights.length == 0 ? Arrays.asList(Rights.VIEW) : Arrays.asList(rights));
 		restartServer();
 		return issued.getToken();
@@ -152,10 +151,6 @@ public abstract class ShareTestCase extends LinkTestCase {
 		return new ShareStore(_base).lookup(token).getId();
 	}
 
-	/** The grants recorded for the given space. */
-	protected List<GrantStore.Grant> grantsOf(String owner) {
-		return new GrantStore(_base).ofOwner(owner);
-	}
 
 	/** The contents of the share store on disk. */
 	protected String shareStoreContents() throws IOException {
@@ -174,11 +169,15 @@ public abstract class ShareTestCase extends LinkTestCase {
 	 */
 	protected String albumFingerprint(String space) throws Exception {
 		MessageDigest digest = MessageDigest.getInstance("SHA-256");
-		Path root = _base.resolve(space);
+		// The space is the served tree now, see issue #83.
+		Path root = _base.resolve(space.equals("alice") ? "" : space);
 		List<Path> files = new ArrayList<>();
 		try (Stream<Path> walk = Files.walk(root)) {
 			walk.filter(Files::isRegularFile)
 				.filter(file -> !root.relativize(file).toString().contains(PreviewCache.CACHE_DIRECTORY_NAME))
+				// The server's own state is not part of anybody's library, see issue #83.
+				.filter(file -> !root.relativize(file).toString()
+					.startsWith(de.haumacher.imageServer.auth.UserStore.DIRECTORY_NAME + "/"))
 				.forEach(files::add);
 		}
 		files.sort(Comparator.comparing(Path::toString));

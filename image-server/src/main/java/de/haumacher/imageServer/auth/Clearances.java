@@ -73,11 +73,18 @@ public class Clearances {
 	 * </p>
 	 */
 	public static String ofRole(String role) {
-		return Roles.GUEST.equals(role) ? PUBLIC : ALL;
+		String known = Roles.of(role);
+		if (Roles.ADMIN.equals(known) || Roles.EDIT.equals(known)) {
+			return ALL;
+		}
+		// What a guest of the build before #83 effectively saw: the albums shared with them, which
+		// were served at the members' level, never the owner's private ones.
+		return NON_PRIVATE;
 	}
 
 	/** Whether a user of the given role may create share links when nothing was recorded. */
 	public static boolean mayShareByRole(String role) {
-		return !Roles.GUEST.equals(role);
+		String known = Roles.of(role);
+		return Roles.ADMIN.equals(known) || Roles.EDIT.equals(known);
 	}
 }
