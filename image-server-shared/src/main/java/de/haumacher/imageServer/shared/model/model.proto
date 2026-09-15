@@ -1025,6 +1025,17 @@ message UserEntry {
 message UserList {
 	/** The users, in the order they were created. */
 	repeated UserEntry users;
+
+	/**
+	 * How many share links were withdrawn along with a removed user (issue #84).
+	 *
+	 * <p>
+	 * Answered by <code>&lt;data&gt;/?action=remove-user</code> only, and <code>0</code>
+	 * everywhere else: removing somebody takes back what they handed out, and the answer says how
+	 * much that was, so that nobody has to guess.
+	 * </p>
+	 */
+	int revokedLinks;
 }
 
 /**
@@ -1155,8 +1166,19 @@ message ShareLink {
 	 */
 	repeated RightName rights;
 
-	/** The canonical <code>~&lt;owner&gt;/&lt;path&gt;</code> of the link's target; answered by the server. */
+	/** The path of the link's target inside the space; answered by the server. */
 	string path;
+
+	/**
+	 * The name of the user who created the link; answered by the server (issue #84).
+	 *
+	 * <p>
+	 * A link belongs to whoever handed it out: they see it in the listing of the folder and may
+	 * withdraw it, and so may an administrator of the space. Empty for a link made before this
+	 * field existed, which only an administrator sees.
+	 * </p>
+	 */
+	string createdBy;
 
 	/** When the link was created, an ISO-8601 instant; answered by the server. */
 	string created;

@@ -48,6 +48,9 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getPath() */
 	private static final String PATH__PROP = "path";
 
+	/** @see #getCreatedBy() */
+	private static final String CREATED_BY__PROP = "createdBy";
+
 	/** @see #getCreated() */
 	private static final String CREATED__PROP = "created";
 
@@ -67,6 +70,8 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private final java.util.List<de.haumacher.imageServer.shared.model.RightName> _rights = new java.util.ArrayList<>();
 
 	private String _path = "";
+
+	private String _createdBy = "";
 
 	private String _created = "";
 
@@ -228,7 +233,7 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The canonical <code>~&lt;owner&gt;/&lt;path&gt;</code> of the link's target; answered by the server.
+	 * The path of the link's target inside the space; answered by the server.
 	 */
 	public final String getPath() {
 		return _path;
@@ -245,6 +250,32 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** Internal setter for {@link #getPath()} without chain call utility. */
 	protected final void internalSetPath(String value) {
 		_path = value;
+	}
+
+	/**
+	 * The name of the user who created the link; answered by the server (issue #84).
+	 *
+	 * <p>
+	 * A link belongs to whoever handed it out: they see it in the listing of the folder and may
+	 * withdraw it, and so may an administrator of the space. Empty for a link made before this
+	 * field existed, which only an administrator sees.
+	 * </p>
+	 */
+	public final String getCreatedBy() {
+		return _createdBy;
+	}
+
+	/**
+	 * @see #getCreatedBy()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink setCreatedBy(String value) {
+		internalSetCreatedBy(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getCreatedBy()} without chain call utility. */
+	protected final void internalSetCreatedBy(String value) {
+		_createdBy = value;
 	}
 
 	/**
@@ -320,6 +351,8 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.endArray();
 		out.name(PATH__PROP);
 		out.value(getPath());
+		out.name(CREATED_BY__PROP);
+		out.value(getCreatedBy());
 		out.name(CREATED__PROP);
 		out.value(getCreated());
 		out.name(REVOKED__PROP);
@@ -343,6 +376,7 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 			}
 			break;
 			case PATH__PROP: setPath(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case CREATED_BY__PROP: setCreatedBy(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CREATED__PROP: setCreated(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case REVOKED__PROP: setRevoked(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);

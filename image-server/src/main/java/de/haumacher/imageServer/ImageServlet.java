@@ -1283,9 +1283,9 @@ public class ImageServlet extends HttpServlet {
 			unauthorized(context, caller, false);
 			return;
 		}
-		if (!_auth.mayManageGrants(caller, location.getPath())) {
+		if (!_auth.mayShareLinks(caller)) {
 			LOG.warning("Refusing the share links of '" + location.getOwner() + "' to '" + caller.getUserName() + "'.");
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GRANTS_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.SHARING_REFUSED);
 			return;
 		}
 
@@ -1293,7 +1293,11 @@ public class ImageServlet extends HttpServlet {
 		ShareStore shares = _auth.getShares();
 		if (shares != null) {
 			for (ShareStore.Link link : shares.covering(location.getOwner(), location.getOwnerPath())) {
-				result.addLink(onTheWire(link));
+				// A link belongs to whoever handed it out; an administrator of the space sees them
+				// all, because keeping the space in order is what an administrator is for (#84).
+				if (mine(caller, link)) {
+					result.addLink(onTheWire(link));
+				}
 			}
 		}
 		serveJsonObject(context.response(), result);
@@ -1325,9 +1329,9 @@ public class ImageServlet extends HttpServlet {
 			unauthorized(context, caller, true);
 			return;
 		}
-		if (!_auth.mayManageGrants(caller, location.getPath())) {
+		if (!_auth.mayShareLinks(caller)) {
 			LOG.warning("Refusing to share the library of '" + location.getOwner() + "'.");
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GRANTS_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.SHARING_REFUSED);
 			return;
 		}
 		if (location.getOwner().isEmpty()) {
@@ -1365,6 +1369,15 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_PRIVACY_REFUSED);
 			return;
 		}
+		// Nobody hands out more than they hold, and it is said rather than quietly trimmed: a link
+		// answered with a lower limit than the one asked for would be a link its maker believes
+		// shows more than it does, see issue #84.
+		int clearance = _auth.clearance(caller, location.getPath());
+		if (maxPrivacy > clearance) {
+			LOG.warning("Refusing a share link showing more than '" + caller.getUserName() + "' may see.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.shareAboveClearance(clearance));
+			return;
+		}
 		int minRating = request.getMinRating();
 		if (!Ratings.isKnown(minRating)) {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_RATING_REFUSED);
@@ -1385,7 +1398,7 @@ public class ImageServlet extends HttpServlet {
 		// The link is the permission (issue #83): what it may do is recorded on the link itself,
 		// and there is no grant beside it any more.
 		ShareStore.Issued issued = _auth.getShares().create(location.getOwner(), location.getOwnerPath(), label,
-			expires, maxPrivacy, minRating, rights);
+			expires, maxPrivacy, minRating, rights, caller.getUserName());
 		ShareStore.Link link = issued.getLink();
 
 		LOG.info("Created the share link " + link + " with " + rights + ".");
@@ -1415,9 +1428,9 @@ public class ImageServlet extends HttpServlet {
 			unauthorized(context, caller, true);
 			return;
 		}
-		if (!_auth.mayManageGrants(caller, location.getPath())) {
+		if (!_auth.mayShareLinks(caller)) {
 			LOG.warning("Refusing to withdraw a share link of '" + location.getOwner() + "'.");
-			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.GRANTS_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.SHARING_REFUSED);
 			return;
 		}
 
@@ -1428,7 +1441,7 @@ public class ImageServlet extends HttpServlet {
 		String id = request.getId() == null ? "" : request.getId().trim();
 		ShareStore shares = _auth.getShares();
 		ShareStore.Link link = id.isEmpty() ? null : shares.get(id);
-		if (link == null || !link.covers(location.getOwner(), location.getOwnerPath())) {
+		if (link == null || !link.covers(location.getOwner(), location.getOwnerPath()) || !mine(caller, link)) {
 			// A link of somebody else's, or of no folder above this one, is a link this request
 			// never saw: it is told that there is none, not whose it is.
 			LOG.warning("Refusing to withdraw the unknown share link '" + id + "'.");
@@ -1439,6 +1452,18 @@ public class ImageServlet extends HttpServlet {
 		shares.revoke(link.getId());
 		LOG.info("Withdrew the share link " + link + ".");
 		serveJsonObject(context.response(), ShareLinkList.create().addLink(onTheWire(link)));
+	}
+
+	/**
+	 * Whether the given link is the caller's business, see issue #84.
+	 *
+	 * <p>
+	 * Their own, or anybody's if they administer the space. A link stored before the creator was
+	 * recorded belongs to nobody and is an administrator's to manage.
+	 * </p>
+	 */
+	private static boolean mine(Caller caller, ShareStore.Link link) {
+		return Roles.isAdmin(caller.getRole()) || caller.getUserName().equals(link.getCreatedBy());
 	}
 
 	/** The body of a share request, <code>null</code> if it cannot be read (the response is complete). */
@@ -1519,6 +1544,7 @@ public class ImageServlet extends HttpServlet {
 		Set<String> rights = link.getRights();
 		return ShareLink.create()
 			.setId(link.getId())
+			.setCreatedBy(link.getCreatedBy())
 			.setLabel(link.getLabel())
 			.setExpires(link.getExpires())
 			.setMaxPrivacy(link.getMaxPrivacy())
@@ -1790,8 +1816,8 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		try {
-			_auth.removeUser(request.getName());
-			serveJsonObject(context.response(), userList());
+			int revoked = _auth.removeUser(request.getName());
+			serveJsonObject(context.response(), userList().setRevokedLinks(revoked));
 		} catch (AuthService.Refused ex) {
 			LOG.warning("Refusing to remove a user: " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());

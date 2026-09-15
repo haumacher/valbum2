@@ -61,11 +61,11 @@ public class TestImageServletShare extends ShareTestCase {
 		FakeResponse creating = share(ZOO, SharingFixture.CAROL,
 			shareBody("Mine now", "", Privacy.PUBLIC, 0, Rights.VIEW));
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, creating.status());
-		assertEquals(AuthService.GRANTS_REFUSED, errorMessage(creating));
+		assertEquals(AuthService.SHARING_REFUSED, errorMessage(creating));
 
 		FakeResponse listing = shares(ZOO, SharingFixture.CAROL);
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, listing.status());
-		assertEquals(AuthService.GRANTS_REFUSED, errorMessage(listing));
+		assertEquals(AuthService.SHARING_REFUSED, errorMessage(listing));
 
 		assertTrue("Nothing may have been recorded.", new ShareStore(_base).getLinks().isEmpty());
 	}

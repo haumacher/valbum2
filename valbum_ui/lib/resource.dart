@@ -3287,9 +3287,19 @@ class UserList extends _JsonObject {
 	///  The users, in the order they were created.
 	List<UserEntry> users;
 
+	///  How many share links were withdrawn along with a removed user (issue #84).
+	/// 
+	///  <p>
+	///  Answered by <code>&lt;data&gt;/?action=remove-user</code> only, and <code>0</code>
+	///  everywhere else: removing somebody takes back what they handed out, and the answer says how
+	///  much that was, so that nobody has to guess.
+	///  </p>
+	int revokedLinks;
+
 	/// Creates a UserList.
 	UserList({
 			this.users = const [], 
+			this.revokedLinks = 0, 
 	});
 
 	/// Parses a UserList from a string source.
@@ -3323,6 +3333,10 @@ class UserList extends _JsonObject {
 				}
 				break;
 			}
+			case "revokedLinks": {
+				revokedLinks = json.expectInt();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3337,6 +3351,9 @@ class UserList extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("revokedLinks");
+		json.addNumber(revokedLinks);
 	}
 
 }
@@ -3668,8 +3685,17 @@ class ShareLink extends _JsonObject {
 	///  </p>
 	List<RightName> rights;
 
-	///  The canonical <code>~&lt;owner&gt;/&lt;path&gt;</code> of the link's target; answered by the server.
+	///  The path of the link's target inside the space; answered by the server.
 	String path;
+
+	///  The name of the user who created the link; answered by the server (issue #84).
+	/// 
+	///  <p>
+	///  A link belongs to whoever handed it out: they see it in the listing of the folder and may
+	///  withdraw it, and so may an administrator of the space. Empty for a link made before this
+	///  field existed, which only an administrator sees.
+	///  </p>
+	String createdBy;
 
 	///  When the link was created, an ISO-8601 instant; answered by the server.
 	String created;
@@ -3686,6 +3712,7 @@ class ShareLink extends _JsonObject {
 			this.minRating = 0, 
 			this.rights = const [], 
 			this.path = "", 
+			this.createdBy = "", 
 			this.created = "", 
 			this.revoked = "", 
 	});
@@ -3745,6 +3772,10 @@ class ShareLink extends _JsonObject {
 				path = json.expectString();
 				break;
 			}
+			case "createdBy": {
+				createdBy = json.expectString();
+				break;
+			}
 			case "created": {
 				created = json.expectString();
 				break;
@@ -3785,6 +3816,9 @@ class ShareLink extends _JsonObject {
 
 		json.addKey("path");
 		json.addString(path);
+
+		json.addKey("createdBy");
+		json.addString(createdBy);
 
 		json.addKey("created");
 		json.addString(created);

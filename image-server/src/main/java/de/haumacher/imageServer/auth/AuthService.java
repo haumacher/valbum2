@@ -118,9 +118,10 @@ public class AuthService {
 	/** The message a caller is refused with that may look but not change a folder. */
 	public static final String EDIT_REFUSED = "You may look at this album but not change it.";
 
-	/** The message a caller is refused the grants of a space with. */
-	public static final String GRANTS_REFUSED =
-		"Only the owner of this library and the administrator may see and change who it is shared with.";
+	/** The message a caller without the share flag is refused a share link with, see issue #84. */
+	public static final String SHARING_REFUSED =
+		"You may not hand out share links here. Ask an administrator of this space for the "
+			+ "permission, or ask them to share it.";
 
 	/** The message a caller of an expired share link is refused with, see issue #51. */
 	public static final String LINK_EXPIRED = "This link has expired.";
@@ -970,6 +971,13 @@ public class AuthService {
 		return "Unknown clearance '" + clearance + "'; use one of " + Clearances.names() + ".";
 	}
 
+	/** The message a share link showing more than its maker may see is refused with. */
+	public static String shareAboveClearance(int clearance) {
+		return "This link would show more than you may see yourself. Choose at most '"
+			+ (clearance <= Privacy.PUBLIC ? "public" : clearance == Privacy.MEMBERS ? "members" : "private")
+			+ "' as its privacy limit.";
+	}
+
 	/** The message the demotion or removal of the last administrator is refused with. */
 	public static final String LAST_ADMIN =
 		"This is the only administrator of this space; make somebody else an administrator first.";
@@ -1056,7 +1064,7 @@ public class AuthService {
 	 * able to look into every album, see {@link #rights(Caller, PathInfo)}.
 	 * </p>
 	 */
-	public boolean mayManageGrants(Caller caller, PathInfo path) {
+	public boolean mayShareLinks(Caller caller) {
 		// The share flag of issue #83, and nothing else: an administrator always holds it, and a
 		// user holds it wherever it was given to them — a permission is the same in every album.
 		return caller.isPaired() && (Roles.isAdmin(caller.getRole()) || caller.mayShare());
@@ -2113,15 +2121,17 @@ public class AuthService {
 	 * Removes the user of the given name and every device they signed in on, see issue #83.
 	 *
 	 * <p>
-	 * Their tokens stop working at once, which is what "remove" has to mean. Nothing of theirs is
-	 * deleted from the album tree: what they uploaded belongs to the space, and their name stays in
-	 * the attribution of issue #53 as a record of who brought a photo here.
+	 * Their tokens stop working at once, which is what "remove" has to mean, and every share link
+	 * they handed out is withdrawn with them (issue #84). Nothing of theirs is deleted from the
+	 * album tree: what they uploaded belongs to the space, and their name stays in the attribution
+	 * of issue #53 as a record of who brought a photo here.
 	 * </p>
 	 *
+	 * @return How many share links were withdrawn along with them.
 	 * @throws Refused
 	 *         If the user is not removed; nothing was changed in that case.
 	 */
-	public void removeUser(String userName) throws Refused, IOException {
+	public int removeUser(String userName) throws Refused, IOException {
 		if (_users == null) {
 			throw new Refused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
 		}
@@ -2136,7 +2146,12 @@ public class AuthService {
 			}
 			_users.removeUser(user);
 			_users.store();
-			LOG.info("Removed the user '" + name + "' with their devices.");
+			// What they handed out goes with them: a share link of theirs must not outlive the
+			// account it was made from, see issue #84.
+			int revoked = _shares == null ? 0 : _shares.revokeCreatedBy(name);
+			LOG.info("Removed the user '" + name + "' with their devices"
+				+ (revoked > 0 ? " and " + revoked + " share link(s)." : "."));
+			return revoked;
 		}
 	}
 

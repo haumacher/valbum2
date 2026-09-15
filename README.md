@@ -176,6 +176,26 @@ rewritten. The sharing of that build — grants, groups, albums linked into some
 guest accounts — is gone; its endpoints answer `410 Gone` with a message naming what does the job
 now, for one release.
 
+### Share links
+
+Somebody with the share flag hands out a link to one album or folder: press "Share" on it, give the
+link a label, say how long it lives, how far up the privacy levels it shows, which ratings it
+includes, and whether whoever opens it may also add photos. The server answers a URL of the form
+`<host>/<context>/s/<token>/` (under the space on a multi-space server) and shows the token exactly
+once — it is the link, so treat it like a password.
+
+A link is its own permission: it shows what it was cut to at the moment it was made, and that does
+not change afterwards, whatever happens to the permission of the person who made it. A link can
+never show more than its maker may see (the server refuses such a link rather than trimming it
+silently), never shows a private image, and never allows changing what is there. Whoever opens it
+sees that album as the whole site; there is nothing above it. Contributions through a link are
+recorded as coming from the link, not from a person.
+
+You see and withdraw the links you handed out yourself; an administrator sees and withdraws every
+link of the space. Removing a user withdraws every link they handed out, and the answer says how
+many. An expired or withdrawn link answers `410 Gone` with a sentence saying which of the two it
+is.
+
 ### Privacy levels
 
 Every image has a privacy level, set on its tile in the app: **public** (0), **members** (1) or

@@ -23,7 +23,12 @@ public class UserList extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getUsers() */
 	private static final String USERS__PROP = "users";
 
+	/** @see #getRevokedLinks() */
+	private static final String REVOKED_LINKS__PROP = "revokedLinks";
+
 	private final java.util.List<de.haumacher.imageServer.shared.model.UserEntry> _users = new java.util.ArrayList<>();
+
+	private int _revokedLinks = 0;
 
 	/**
 	 * Creates a {@link UserList} instance.
@@ -76,6 +81,32 @@ public class UserList extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_users.remove(value);
 	}
 
+	/**
+	 * How many share links were withdrawn along with a removed user (issue #84).
+	 *
+	 * <p>
+	 * Answered by <code>&lt;data&gt;/?action=remove-user</code> only, and <code>0</code>
+	 * everywhere else: removing somebody takes back what they handed out, and the answer says how
+	 * much that was, so that nobody has to guess.
+	 * </p>
+	 */
+	public final int getRevokedLinks() {
+		return _revokedLinks;
+	}
+
+	/**
+	 * @see #getRevokedLinks()
+	 */
+	public de.haumacher.imageServer.shared.model.UserList setRevokedLinks(int value) {
+		internalSetRevokedLinks(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getRevokedLinks()} without chain call utility. */
+	protected final void internalSetRevokedLinks(int value) {
+		_revokedLinks = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.UserList readUserList(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.UserList result = new de.haumacher.imageServer.shared.model.UserList();
@@ -97,6 +128,8 @@ public class UserList extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(REVOKED_LINKS__PROP);
+		out.value(getRevokedLinks());
 	}
 
 	@Override
@@ -110,6 +143,7 @@ public class UserList extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
+			case REVOKED_LINKS__PROP: setRevokedLinks(in.nextInt()); break;
 			default: super.readField(in, field);
 		}
 	}

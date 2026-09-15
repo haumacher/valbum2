@@ -89,6 +89,8 @@ public class ShareStore {
 
 	private static final String RIGHTS__PROP = "rights";
 
+	private static final String CREATED_BY__PROP = "createdBy";
+
 	private static final String TOKEN_HASH__PROP = "tokenHash";
 
 	private static final String OWNER__PROP = "owner";
@@ -130,6 +132,8 @@ public class ShareStore {
 
 		private final java.util.Set<String> _rights;
 
+		private final String _createdBy;
+
 		private String _revoked;
 
 		/** Creates a {@link Link} that allows looking and downloading. */
@@ -143,6 +147,14 @@ public class ShareStore {
 		public Link(String id, String tokenHash, String owner, String path, String label, String expires,
 				int maxPrivacy, int minRating, java.util.Collection<String> rights, String created,
 				String revoked) {
+			this(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating, rights, "", created, revoked);
+		}
+
+		/** Creates a {@link Link} that knows who handed it out, see issue #84. */
+		public Link(String id, String tokenHash, String owner, String path, String label, String expires,
+				int maxPrivacy, int minRating, java.util.Collection<String> rights, String createdBy,
+				String created, String revoked) {
+			_createdBy = createdBy == null ? "" : createdBy;
 			_rights = Rights.closure(rights);
 			_id = id;
 			_tokenHash = tokenHash;
@@ -154,6 +166,19 @@ public class ShareStore {
 			_minRating = minRating;
 			_created = created;
 			_revoked = revoked;
+		}
+
+		/**
+		 * The name of the user who created this link, see issue #84.
+		 *
+		 * <p>
+		 * A link belongs to whoever handed it out: they and an administrator of the space see it
+		 * and may withdraw it, and removing them takes it back. The empty string for a link stored
+		 * before this field existed — nobody's, so only an administrator manages it.
+		 * </p>
+		 */
+		public String getCreatedBy() {
+			return _createdBy;
 		}
 
 		/**
@@ -406,12 +431,18 @@ public class ShareStore {
 	/** Issues a link allowing exactly the given rights, see issue #83. */
 	public synchronized Issued create(String owner, String path, String label, String expires, int maxPrivacy,
 			int minRating, java.util.Collection<String> rights) throws IOException {
+		return create(owner, path, label, expires, maxPrivacy, minRating, rights, "");
+	}
+
+	/** Issues a link that knows who handed it out, see issue #84. */
+	public synchronized Issued create(String owner, String path, String label, String expires, int maxPrivacy,
+			int minRating, java.util.Collection<String> rights, String createdBy) throws IOException {
 		byte[] bytes = new byte[TOKEN_BYTES];
 		_random.nextBytes(bytes);
 		String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 
 		Link link = new Link(freeId(), UserStore.hash(token), owner, path, label, expires, maxPrivacy, minRating,
-			rights, Instant.now().toString(), "");
+			rights, createdBy, Instant.now().toString(), "");
 		_links.add(link);
 		store();
 		return new Issued(link, token);
@@ -422,7 +453,7 @@ public class ShareStore {
 	 *
 	 * <p>
 	 * The record stays: a withdrawn link is shown as withdrawn, and its id is never handed out
-	 * again. The caller removes the grant, which is what actually closes the door.
+	 * again. The link is the permission (issue #83), so withdrawing it is what closes the door.
 	 * </p>
 	 *
 	 * @return The link, <code>null</code> if there is none of that id.
@@ -506,6 +537,7 @@ public class ShareStore {
 		int maxPrivacy = Privacy.PUBLIC;
 		int minRating = Ratings.MIN;
 		String created = "";
+		String createdBy = "";
 		String revoked = "";
 		java.util.List<String> rights = null;
 		in.beginObject();
@@ -522,6 +554,9 @@ public class ShareStore {
 					break;
 				case ID__PROP:
 					id = in.nextString();
+					break;
+				case CREATED_BY__PROP:
+					createdBy = in.nextString();
 					break;
 				case TOKEN_HASH__PROP:
 					tokenHash = in.nextString();
@@ -558,7 +593,35 @@ public class ShareStore {
 		in.endObject();
 		// A link written before issue #83 says nothing about its rights: it allowed looking.
 		return new Link(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating,
-			rights == null ? Rights.READ_ONLY : rights, created, revoked);
+			rights == null ? Rights.READ_ONLY : rights, createdBy, created, revoked);
+	}
+
+	/**
+	 * Withdraws every live link the given user handed out, see issue #84.
+	 *
+	 * <p>
+	 * Removing somebody takes back what they gave away: a link is a door they opened, and it must
+	 * not outlive their account. Links of nobody (stored before the creator was recorded) are left
+	 * alone — they were not this user's to lose.
+	 * </p>
+	 *
+	 * @return How many links were withdrawn.
+	 */
+	public synchronized int revokeCreatedBy(String user) throws IOException {
+		if (user == null || user.isEmpty()) {
+			return 0;
+		}
+		int revoked = 0;
+		for (Link link : getLinks()) {
+			if (user.equals(link.getCreatedBy()) && !link.isRevoked()) {
+				link.setRevoked(Instant.now().toString());
+				revoked++;
+			}
+		}
+		if (revoked > 0) {
+			store();
+		}
+		return revoked;
 	}
 
 	/** Writes this store to disk, atomically: a crash never leaves a half-written store. */
@@ -616,6 +679,8 @@ public class ShareStore {
 		out.value(link.getMaxPrivacy());
 		out.name(MIN_RATING__PROP);
 		out.value(link.getMinRating());
+		out.name(CREATED_BY__PROP);
+		out.value(link.getCreatedBy());
 		out.name(CREATED__PROP);
 		out.value(link.getCreated());
 		out.name(REVOKED__PROP);
