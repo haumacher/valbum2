@@ -23,6 +23,7 @@ import 'listing_view.dart';
 import 'move_view.dart';
 import 'resource.dart';
 import 'offline.dart';
+import 'routes.dart';
 import 'rights.dart';
 import 'settings.dart';
 import 'share_session.dart';
@@ -476,6 +477,19 @@ class AlbumContentState extends State<AlbumContent>
   /// Groups the selected parts, [representative] becoming the image shown for
   /// the group in the album, see [groupSelection].
   ///
+  /// The group is opened straight away, full-screen, on the image it was made
+  /// from (issue #79): which of several shots of one scene is the best is not
+  /// a question tiles can answer, and the answer — "make this the
+  /// representative" — is offered exactly there. The created-from image stays
+  /// the representative until another is chosen.
+  ///
+  /// A route change, not an overlay: the album is already loaded and the
+  /// router hands the *same* [AlbumInfo] to the viewer (resources are cached
+  /// by album path, see `VAlbumRouterDelegate.resourceAt`), so the viewer
+  /// shows the group that exists only in this editing buffer — and the
+  /// group member's own URL is what the location bar shows, deep-linkable as
+  /// before.
+  ///
   /// Returns whether the group was created.
   bool groupSelected(AbstractImage representative) {
     var group = groupSelection(widget.album, selection, representative);
@@ -484,6 +498,12 @@ class AlbumContentState extends State<AlbumContent>
     }
     markDirty();
     setState(clearSelection);
+    // The group is addressed by its representative, which is the image the
+    // group was made from — and that is the member the viewer opens on.
+    var name = group.images[group.representative].name;
+    widget.albumState.navigator.go(
+      MemberRoute(widget.albumState.path, name, name),
+    );
     return true;
   }
 

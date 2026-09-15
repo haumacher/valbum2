@@ -43,8 +43,8 @@ void main() {
     expect(routeOf(tester), const AlternativesRoute([], "group-a.jpg"));
     await tap(tester, memberTile("group-b.jpg"));
     await tap(tester, find.byTooltip("Als Gruppenbild verwenden"));
-    await press(tester, LogicalKeyboardKey.arrowUp);
-    await tap(tester, find.byTooltip("Zurück zum Album"));
+    // One step out of the group and into the album: the alternatives view is
+    // no longer a stop on the way out, see issue #79.
     await press(tester, LogicalKeyboardKey.arrowUp);
     expect(routeOf(tester), ListingOrAlbumRoute.root);
 
@@ -71,8 +71,6 @@ void main() {
 
     // Dissolving the group afterwards is still possible: the edit session
     // holds a selection that names the (possibly re-represented) group.
-    await press(tester, LogicalKeyboardKey.arrowUp);
-    await tap(tester, find.byTooltip("Zurück zum Album"));
     await press(tester, LogicalKeyboardKey.arrowUp);
     await settle(
       tester,

@@ -35,6 +35,20 @@ AlbumContentState albumState(WidgetTester tester) =>
 
 AlbumInfo album(WidgetTester tester) => albumState(tester).widget.album;
 
+/// The album behind the viewer, for the drill-in of issue #79.
+AlbumInfo albumOfViewer(WidgetTester tester) =>
+    tester.widget<ImageView>(find.byType(ImageView)).image.owner!;
+
+/// The file name of the image the viewer shows.
+String shownName(WidgetTester tester) =>
+    tester.widget<ImageView>(find.byType(ImageView)).image.thumbnailName;
+
+/// Sends a key to the app and lets it settle.
+Future<void> press(WidgetTester tester, LogicalKeyboardKey key) async {
+  await tester.sendKeyEvent(key);
+  await tester.pumpAndSettle();
+}
+
 /// Taps a tile beside its toolbars, so that the tap reaches the tile itself.
 Future<void> tapTile(WidgetTester tester, String name) async {
   var box = tester.getRect(tile(name));
@@ -195,13 +209,22 @@ void main() {
             tester, "portrait.jpg", LogicalKeyboardKey.controlLeft);
         await tapTool(tester, "landscape.jpg", Icons.join_left);
 
-        var parts = album(tester).parts;
-        expect(parts, hasLength(3));
-        var group = parts[1] as ImageGroup;
+        // The group was made, and the viewer opened on the image it was made
+        // from: which shot is the best is decided full-screen, not from the
+        // tiles (issue #79). The album is behind it, with the group in its
+        // editing buffer.
+        var group = albumOfViewer(tester).parts[1] as ImageGroup;
         expect(
             group.images.map((i) => i.name), ["landscape.jpg", "portrait.jpg"]);
         expect(group.representative, 0);
-        // The selection is cleared, the tile shows the representative.
+        expect(find.byType(ImageView), findsOneWidget);
+        expect(find.byType(AlbumContent), findsNothing);
+        expect(shownName(tester), "landscape.jpg");
+
+        // And the way back is one step, to the album, where the group now
+        // stands as one tile.
+        await press(tester, LogicalKeyboardKey.arrowUp);
+        expect(album(tester).parts, hasLength(3));
         expect(albumState(tester).selection, isEmpty);
         expect(tile("landscape.jpg"), findsOneWidget);
         expect(tile("portrait.jpg"), findsNothing);
@@ -243,6 +266,9 @@ void main() {
             tester, "portrait.jpg", LogicalKeyboardKey.controlLeft);
         await tapTool(tester, "landscape.jpg", Icons.join_left);
 
+        // Grouping drills into the new group (issue #79); the album — and its
+        // save button — is one step up.
+        await press(tester, LogicalKeyboardKey.arrowUp);
         await tester.tap(find.byIcon(Icons.save));
         await tester.pumpAndSettle();
       });

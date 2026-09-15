@@ -25,8 +25,9 @@ void main() {
         expect(parseRoute(Uri.parse(uri.toString()), basePath: base), route);
       }
     }
-    // A member route's up leads to the alternatives, whose up is the image,
-    // whose up is the album, whose up is the parent listing, ending at root.
+    // A member route's up is the album it lies in — a group is one thing in
+    // the album, and leaving it leaves it, see issue #79. From there the
+    // ascent is the folder chain, ending at the root.
     VAlbumRoute r = const MemberRoute(["a", "b"], "rep.jpg", "m.jpg");
     var chain = <String>[];
     while (true) {
@@ -37,8 +38,6 @@ void main() {
     }
     expect(chain, [
       "MemberRoute",
-      "AlternativesRoute",
-      "ImageRoute",
       "ListingOrAlbumRoute",
       "ListingOrAlbumRoute",
       "ListingOrAlbumRoute",
