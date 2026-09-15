@@ -710,6 +710,21 @@ String defaultDeviceName() {
 /// The key of the server URL field, so that a test can address it.
 const Key serverUrlFieldKey = Key("settings.serverUrl");
 
+/// The key of the line explaining what belongs in that field.
+const Key serverUrlHelpKey = Key("settings.serverUrl.help");
+
+/// What belongs in the server field (issue #85).
+///
+/// Both shapes, because both are addresses somebody is given: a server with
+/// one library is reached at its context path, and a server with several
+/// spaces puts each of them below a segment of its own — and the space is
+/// simply part of the address, see `urls.dart`.
+const String serverUrlHelp =
+    "The address the album server is reached at, as you would open it in a "
+    "browser, e.g. 'http://nas.local:8080/valbum/'. Where the server holds "
+    "several spaces, the address carries the space: "
+    "'https://host/valbum/<space>/'.";
+
 /// The key of the device name field, see [serverUrlFieldKey].
 const Key deviceNameFieldKey = Key("settings.deviceName");
 
@@ -1118,8 +1133,8 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               const Text(
-                "The address the album server is reached at, as you would "
-                "open it in a browser, e.g. 'http://nas.local:8080/valbum/'.",
+                serverUrlHelp,
+                key: serverUrlHelpKey,
               ),
               const SizedBox(height: 16),
               TextField(
@@ -1595,9 +1610,11 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       if (user.deviceName.isNotEmpty) {
         lines.add("Device: ${user.deviceName}");
       }
+      // The space of the address this device talks to (issue #85); empty on
+      // a server with a single library, which then says nothing about it.
       var space = user.space;
-      if (space != null && !(role == roleGuest)) {
-        lines.add("Space: ${spaceDisplayName(space)}");
+      if (space != null && space.isNotEmpty) {
+        lines.add("Space: $space");
       }
       // A guest's space is not a library of their own, so it is said in words
       // rather than shown as a folder, see issue #52.

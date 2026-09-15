@@ -177,21 +177,71 @@ void main() {
       expect(answer.invitations.single.revoked, isNotEmpty);
     });
 
-    test('promotes a guest to a member', () async {
+    test('sets what a user may do, answering the whole list', () async {
+      // The one way a permission changes since issue #83; `promote` and the
+      // grants it stood beside are retired with the guest role.
       var requests = <http.Request>[];
       var client = clientAnswering(
-        '{"name": "carol", "role": "member"}',
+        '{"users": [{"name": "carol", "role": "contribute", '
+        '"clearance": "all", "mayShare": true, "space": "carol", '
+        '"created": "", "devices": 1}]}',
         requests: requests,
       );
 
-      var answer = await client.promote("carol");
+      var answer = await client.setPermission(UserPermission(
+        name: "carol",
+        role: "contribute",
+        clearance: "all",
+        mayShare: true,
+      ));
 
       expect(requests.single.method, "POST");
       expect(requests.single.url.path, "/valbum/data/");
-      expect(requests.single.url.queryParameters["action"], "promote");
+      expect(
+        requests.single.url.queryParameters["action"],
+        "set-permission",
+      );
       expect(requests.single.body, contains('"name":"carol"'));
-      expect(answer.name, "carol");
-      expect(answer.role, "member");
+      expect(requests.single.body, contains('"role":"contribute"'));
+      expect(requests.single.body, contains('"clearance":"all"'));
+      expect(requests.single.body, contains('"mayShare":true'));
+      expect(answer.users.single.name, "carol");
+      expect(answer.users.single.role, "contribute");
+      expect(answer.users.single.clearance, "all");
+      expect(answer.users.single.mayShare, isTrue);
+    });
+
+    test('removes a user, answering the remaining ones', () async {
+      var requests = <http.Request>[];
+      var client = clientAnswering(
+        '{"users": [{"name": "haui", "role": "admin", "space": "", '
+        '"created": "", "devices": 2}]}',
+        requests: requests,
+      );
+
+      var answer = await client.removeUser("carol");
+
+      expect(requests.single.method, "POST");
+      expect(requests.single.url.queryParameters["action"], "remove-user");
+      expect(requests.single.body, contains('"name":"carol"'));
+      expect(answer.users, hasLength(1));
+      expect(answer.users.single.name, "haui");
+    });
+
+    test('speaks the server\'s reason for a refused permission', () async {
+      var client = clientAnswering(
+        '["ErrorInfo", {"message": "The last administrator stays."}]',
+        status: 409,
+      );
+
+      await expectLater(
+        client.setPermission(UserPermission(name: "haui", role: "view")),
+        throwsA(isA<VAlbumException>().having(
+          (e) => e.message,
+          "message",
+          "The last administrator stays.",
+        )),
+      );
     });
   });
 }

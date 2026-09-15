@@ -61,20 +61,6 @@ const String guestRoleExplanation =
     "A guest has no albums of their own: their library is what others share "
     "with them.";
 
-/// What each role an invitation may offer means, in one line.
-const Map<String, String> inviteRoleExplanations = {
-  roleEdit: "May create albums, change them and add photos.",
-  roleContribute: "May add photos to the albums, but change nothing.",
-  roleView: "May look at the albums, and nothing more.",
-};
-
-/// What each clearance an invitation may offer means, in one line.
-const Map<String, String> inviteClearanceExplanations = {
-  clearanceAll: "Sees every image, the private ones included.",
-  clearanceNonPrivate: "Sees every image that is not marked private.",
-  clearancePublic: "Sees only the images marked public.",
-};
-
 /// The role a new invitation offers unless another is chosen (issue #85).
 ///
 /// The least that still lets somebody see the family's pictures: whoever
@@ -436,42 +422,18 @@ class InviteDialogState extends State<InviteDialog> {
     var titles = Theme.of(context).textTheme.titleSmall;
     var refusal = _refusal;
     return [
-      // What the invited person may do, see, and hand out: the permission
-      // model of Phase 6, asked where the invitation is made (issue #85).
-      Text("May", style: titles),
-      for (var role in const [roleEdit, roleContribute, roleView])
-        _choiceTile(
-          key: "invite-role-$role",
-          chosen: _role == role,
-          title: CallerPermission.roleWord(role),
-          subtitle: inviteRoleExplanations[role],
-          onTap: () => setState(() => _role = role),
-        ),
-      const SizedBox(height: 8),
-      Text("Sees", style: titles),
-      for (var clearance in const [
-        clearanceAll,
-        clearanceNonPrivate,
-        clearancePublic,
-      ])
-        _choiceTile(
-          key: "invite-clearance-$clearance",
-          chosen: _clearance == clearance,
-          title: CallerPermission.clearanceWord(clearance),
-          subtitle: inviteClearanceExplanations[clearance],
-          onTap: () => setState(() => _clearance = clearance),
-        ),
-      const SizedBox(height: 8),
-      SwitchListTile(
-        key: const Key("invite-may-share"),
-        contentPadding: EdgeInsets.zero,
-        dense: true,
-        value: _mayShare,
-        title: const Text("May share links"),
-        subtitle: const Text(
-          "May hand out links that open an album for whoever holds them.",
-        ),
-        onChanged: _busy ? null : (value) => setState(() => _mayShare = value),
+      // What the invited person may do, see and hand out: the same three
+      // choices the administrator changes later, see [PermissionChoices] and
+      // issue #85.
+      PermissionChoices(
+        keyPrefix: "invite",
+        role: _role,
+        clearance: _clearance,
+        mayShare: _mayShare,
+        enabled: !_busy,
+        onRole: (value) => setState(() => _role = value),
+        onClearance: (value) => setState(() => _clearance = value),
+        onMayShare: (value) => setState(() => _mayShare = value),
       ),
       const SizedBox(height: 8),
       TextField(

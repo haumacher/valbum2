@@ -142,13 +142,19 @@ class AlbumContentState extends State<AlbumContent>
   /// for it while it is being disposed as well.
   ShareSession? share;
 
-  /// Whether the caller may see and change who this album is shared with.
+  /// Whether the caller may hand out a link to this album (issues #83/#85).
   ///
-  /// Asked once per album — `?type=grants` answers the owner of the space and
-  /// refuses everybody else — and remembered by the router, see
-  /// [VAlbumRouterDelegate.mayManageGrants]. Until the answer is there the
-  /// entry is simply not offered.
-  bool _mayShare = false;
+  /// No request of its own: the caller's own permission says whether they may
+  /// share at all, and the album's rights say the rest, see [mayShareFolder].
+  bool get _mayShare =>
+      share == null &&
+      mayShareFolder(
+        client,
+        widget.albumState.path,
+        rights,
+        // A caller nobody named is offered it as before, see issue #85.
+        mayShare: _permission.mayShare || !_permission.named,
+      );
 
   /// Whether the album carries edits that have not been written back yet.
   bool get dirty => session.dirty;
@@ -223,35 +229,6 @@ class AlbumContentState extends State<AlbumContent>
   void initState() {
     super.initState();
     _dragScroller = DragEdgeScroller(this, onScrolled: _followScrolledContent);
-    _askMayShare();
-  }
-
-  /// Asks the router whether this caller manages the grants of this album.
-  ///
-  /// Only where the answer can be "yes" at all, see [couldManageGrants]: an
-  /// anonymous caller and a guest are not made to pay for a request whose
-  /// answer is known.
-  Future<void> _askMayShare() async {
-    // A link caller carries a token and may hold every right the link gives,
-    // but manages nothing: the question is not asked inside a link session.
-    if (ShareSession.peek(context) != null) {
-      return;
-    }
-    if (!couldManageGrants(
-      client,
-      widget.albumState.path,
-      rights,
-      // A caller the server says may hand out no links is not asked about
-      // them either; a caller nobody named is asked as before, see issue #85.
-      mayShare: _permission.mayShare || !_permission.named,
-    )) {
-      return;
-    }
-    var may = await widget.albumState.navigator.delegate
-        .mayManageGrants(widget.albumState.path);
-    if (mounted && may != _mayShare) {
-      setState(() => _mayShare = may);
-    }
   }
 
   @override
