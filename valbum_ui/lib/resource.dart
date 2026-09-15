@@ -1446,12 +1446,30 @@ class PairRequest extends _JsonObject {
 	///  </p>
 	String invitation;
 
+	///  The code shown on a device that is already signed in, see {@link DeviceCodeCreated} (issue #65).
+	/// 
+	///  <p>
+	///  Adding a further device of one's own: the code is typed on the new device and pairs it as the
+	///  <em>same user</em> as the device that showed it, which is exactly what an
+	///  {@link #invitation} must never do. It is no link and no bearer — it travels in this one
+	///  request and nowhere else — it lives ten minutes and it works once. Spelled with or without
+	///  the dash the other device shows, in any case.
+	///  </p>
+	/// 
+	///  <p>
+	///  Empty in every other request. A request carrying an {@link #invitation} as well is read as an
+	///  invitation; one carrying a {@link #secret} as well is read as a device code, and a
+	///  {@link #userName} naming somebody other than the code's user is refused.
+	///  </p>
+	String deviceCode;
+
 	/// Creates a PairRequest.
 	PairRequest({
 			this.secret = "", 
 			this.deviceName = "", 
 			this.userName = "", 
 			this.invitation = "", 
+			this.deviceCode = "", 
 	});
 
 	/// Parses a PairRequest from a string source.
@@ -1488,6 +1506,10 @@ class PairRequest extends _JsonObject {
 				invitation = json.expectString();
 				break;
 			}
+			case "deviceCode": {
+				deviceCode = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1507,6 +1529,9 @@ class PairRequest extends _JsonObject {
 
 		json.addKey("invitation");
 		json.addString(invitation);
+
+		json.addKey("deviceCode");
+		json.addString(deviceCode);
 	}
 
 }
@@ -3293,6 +3318,77 @@ class DeviceList extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+	}
+
+}
+
+///  The answer to <code>&lt;data&gt;/?action=device-code</code>: a code to type on a further device
+///  of one's own, see issue #65.
+/// 
+///  <p>
+///  A device credential, never an invitation: whoever types this code is signed in as the user who
+///  asked for it, so it is deliberately nothing that can be forwarded — no link, no URL and no
+///  bearer token, but eight characters shown on the screen of a device that is already signed in.
+///  It lives ten minutes and it works once, and the device it pairs appears in
+///  {@link DeviceList} at once, where it can be signed out again.
+///  </p>
+/// 
+///  <p>
+///  The one and only time the {@link #code} is answered; the server keeps its hash and can never
+///  show it again. A code that was not typed in time is simply asked for anew.
+///  </p>
+class DeviceCodeCreated extends _JsonObject {
+	///  The code to type on the other device, grouped as <code>XXXX-XXXX</code>; the dash is decoration.
+	String code;
+
+	///  When the code stops working, an ISO-8601 instant; ten minutes after it was issued.
+	String expires;
+
+	/// Creates a DeviceCodeCreated.
+	DeviceCodeCreated({
+			this.code = "", 
+			this.expires = "", 
+	});
+
+	/// Parses a DeviceCodeCreated from a string source.
+	static DeviceCodeCreated? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a DeviceCodeCreated instance from the given reader.
+	static DeviceCodeCreated read(JsonReader json) {
+		DeviceCodeCreated result = DeviceCodeCreated();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "DeviceCodeCreated";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "code": {
+				code = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("code");
+		json.addString(code);
+
+		json.addKey("expires");
+		json.addString(expires);
 	}
 
 }

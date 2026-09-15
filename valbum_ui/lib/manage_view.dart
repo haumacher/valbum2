@@ -14,6 +14,8 @@
 /// and it is reached from here.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -46,6 +48,48 @@ const Key invitationsSectionKey = Key("settings.invitations");
 
 /// The key of the "Groups…" button.
 const Key groupsButtonKey = Key("settings.groups");
+
+/// The key of the "Add a device…" button of the devices section (issue #65).
+const Key addDeviceButtonKey = Key("settings.devices.add");
+
+/// The key of the dialog showing a device code.
+const Key deviceCodeDialogKey = Key("settings.deviceCode.dialog");
+
+/// The key of the code itself, shown large and monospaced as `XXXX-XXXX`.
+const Key deviceCodeKey = Key("settings.deviceCode.code");
+
+/// The key of the line saying how long the code still works.
+const Key deviceCodeRemainingKey = Key("settings.deviceCode.remaining");
+
+/// The key of the line saying that a device paired while the dialog was open.
+const Key deviceCodeJoinedKey = Key("settings.deviceCode.joined");
+
+/// The key of the server's reason for refusing a code.
+const Key deviceCodeErrorKey = Key("settings.deviceCode.error");
+
+/// The key of the button asking for a fresh code once one has run out.
+const Key deviceCodeRenewKey = Key("settings.deviceCode.renew");
+
+/// What a device code is, said where it is shown (issue #65).
+///
+/// The whole point in one sentence: this is a credential for a device of
+/// *one's own*, and handing it to somebody else hands them one's library.
+const String deviceCodeAdvice =
+    "Type this on the other device within 10 minutes. It signs that device in "
+    "as you \u2014 never give it to anyone else.";
+
+/// How often the device list is read again while a code is on screen.
+const Duration deviceCodePollInterval = Duration(seconds: 3);
+
+/// The beat the device-code dialog counts and polls with.
+///
+/// A second of real time by default; a test hands in a stream it drives
+/// itself, so that ten minutes pass in a pump.
+typedef DeviceCodeTicker = Stream<void> Function();
+
+/// The ticker of a running app: one tick a second, forever.
+Stream<void> secondsTicker() =>
+    Stream<void>.periodic(const Duration(seconds: 1), (_) {});
 
 /// The heading and the explanation every section of this library opens with.
 List<Widget> sectionHead(BuildContext context, String title, String lead) => [
@@ -98,10 +142,18 @@ class DevicesSection extends StatefulWidget {
   /// the token it was talking with proves nothing any more.
   final Future<void> Function() onSignedOutHere;
 
+  /// The beat the device-code dialog counts and polls with (issue #65).
+  final DeviceCodeTicker ticker;
+
+  /// The clock the device-code dialog measures the remaining time against.
+  final DateTime Function() now;
+
   const DevicesSection({
     super.key,
     required this.client,
     required this.onSignedOutHere,
+    this.ticker = secondsTicker,
+    this.now = DateTime.now,
   });
 
   @override
@@ -184,7 +236,46 @@ class DevicesSectionState extends State<DevicesSection> {
               onPressed: _busy ? null : () => _remove(device),
             ),
           ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            key: addDeviceButtonKey,
+            onPressed: _busy ? null : _addDevice,
+            icon: const Icon(Icons.phonelink_setup),
+            label: const Text("Add a device\u2026"),
+          ),
+        ),
       ],
+    );
+  }
+
+  /// Shows a code to type on a further device of this person's own (issue #65).
+  ///
+  /// Deliberately not the invitation dialog and deliberately not a link: a
+  /// device credential is read off this screen and typed on the other one, so
+  /// that there is nothing to forward. What the dialog watches for while it is
+  /// open is the other device arriving, which is also what makes a stranger
+  /// using the code visible at once.
+  Future<void> _addDevice() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => DeviceCodeDialog(
+        client: widget.client,
+        known: {
+          for (var device in _devices ?? const <DeviceEntry>[]) device.id,
+        },
+        onDevices: (devices) {
+          if (mounted) {
+            setState(() {
+              _devices = devices;
+              _problem = null;
+            });
+          }
+        },
+        ticker: widget.ticker,
+        now: widget.now,
+      ),
     );
   }
 
@@ -239,6 +330,225 @@ class DevicesSectionState extends State<DevicesSection> {
       _busy = false;
       _devices = answer.devices;
     });
+  }
+}
+
+/// The dialog showing a code for a further device of one's own (issue #65).
+///
+/// A *device* credential and nothing that looks like an invitation: no link,
+/// no URL, nothing to forward — eight characters read off this screen and
+/// typed on the other one, good for ten minutes and for one device. The dialog
+/// says so in [deviceCodeAdvice], counts the minutes down, and watches the
+/// device list while it is open, so that the other device arriving is
+/// confirmed here and a stranger arriving is seen here.
+class DeviceCodeDialog extends StatefulWidget {
+  /// The client talking to the saved server, carrying this device's token.
+  final VAlbumClient client;
+
+  /// The ids of the devices that were listed before the code was asked for.
+  final Set<String> known;
+
+  /// Hands the freshly read device list to the section behind the dialog.
+  final void Function(List<DeviceEntry> devices) onDevices;
+
+  /// The beat this dialog counts and polls with, see [DeviceCodeTicker].
+  final DeviceCodeTicker ticker;
+
+  /// The clock the remaining time is measured against.
+  final DateTime Function() now;
+
+  const DeviceCodeDialog({
+    super.key,
+    required this.client,
+    required this.onDevices,
+    this.known = const {},
+    this.ticker = secondsTicker,
+    this.now = DateTime.now,
+  });
+
+  @override
+  State<DeviceCodeDialog> createState() => DeviceCodeDialogState();
+}
+
+class DeviceCodeDialogState extends State<DeviceCodeDialog> {
+  /// The code the server issued, `null` while it is being asked for.
+  DeviceCodeCreated? _code;
+
+  /// The server's reason for refusing, `null` while all is well.
+  String? _problem;
+
+  /// What the dialog says once a device paired, `null` while none did.
+  String? _joined;
+
+  /// The devices that were there before; anything else is the new one.
+  late Set<String> _known = {...widget.known};
+
+  StreamSubscription<void>? _ticks;
+
+  /// How many ticks have passed, so that the list is read every third one.
+  int _ticksSeen = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ask();
+    _ticks = widget.ticker().listen((_) => _tick());
+  }
+
+  @override
+  void dispose() {
+    _ticks?.cancel();
+    super.dispose();
+  }
+
+  /// Asks the server for a code, and says so when it refuses.
+  Future<void> _ask() async {
+    setState(() {
+      _code = null;
+      _problem = null;
+      _joined = null;
+    });
+    try {
+      var answer = await widget.client.deviceCode();
+      if (mounted) {
+        setState(() {
+          _code = answer;
+          _problem = null;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _problem = refusalMessage(error);
+        });
+      }
+    }
+  }
+
+  /// One beat: the countdown moves, and every third one asks who is here.
+  void _tick() {
+    _ticksSeen++;
+    if (mounted) {
+      setState(() {});
+    }
+    if (_ticksSeen % (deviceCodePollInterval.inSeconds) == 0) {
+      _poll();
+    }
+  }
+
+  /// Reads the device list again, watching for one that was not there before.
+  ///
+  /// A failure is swallowed on purpose: this is a courtesy poll, and a network
+  /// hiccup while a code is on screen says nothing about the code. What the
+  /// server refuses when it is *asked for a code* is shown, see [_ask].
+  Future<void> _poll() async {
+    if (_joined != null) {
+      return;
+    }
+    List<DeviceEntry> devices;
+    try {
+      devices = (await widget.client.devices()).devices;
+    } catch (_) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    widget.onDevices(devices);
+    var arrived = [
+      for (var device in devices)
+        if (!_known.contains(device.id)) device,
+    ];
+    if (arrived.isNotEmpty) {
+      setState(() {
+        _joined = "${arrived.first.name} joined.";
+        _known = {for (var device in devices) device.id};
+      });
+    }
+  }
+
+  /// How long the code still works, `null` while there is none.
+  Duration? get remaining {
+    var code = _code;
+    if (code == null || code.expires.isEmpty) {
+      return null;
+    }
+    try {
+      return DateTime.parse(code.expires).difference(widget.now());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// A duration as `m:ss`, never negative.
+  static String minutesAndSeconds(Duration left) {
+    var seconds = left.isNegative ? 0 : left.inSeconds;
+    return "${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, "0")}";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var code = _code;
+    var problem = _problem;
+    var left = remaining;
+    var expired = left != null && left <= Duration.zero;
+    return AlertDialog(
+      key: deviceCodeDialogKey,
+      title: const Text("Add a device"),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (problem != null)
+              sectionProblem(context, problem, deviceCodeErrorKey),
+            if (problem == null && code == null)
+              sectionProgress("Asking the server..."),
+            if (code != null) ...[
+              SelectableText(
+                code.code,
+                key: deviceCodeKey,
+                style: const TextStyle(
+                  fontFamily: "monospace",
+                  fontSize: 34,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 4,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                expired
+                    ? "This code has expired."
+                    : "Expires in ${minutesAndSeconds(left ?? Duration.zero)}",
+                key: deviceCodeRemainingKey,
+              ),
+              const SizedBox(height: 12),
+              const Text(deviceCodeAdvice),
+            ],
+            if (_joined != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _joined!,
+                key: deviceCodeJoinedKey,
+                style: TextStyle(color: Theme.of(context).colorScheme.primary),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        if (expired || problem != null)
+          TextButton(
+            key: deviceCodeRenewKey,
+            onPressed: _ask,
+            child: const Text("New code"),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text("Done"),
+        ),
+      ],
+    );
   }
 }
 

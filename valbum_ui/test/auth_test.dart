@@ -210,7 +210,7 @@ void main() {
       expect(request.method, "POST");
       expect(
         request.body,
-        '{"secret":"s3cret","deviceName":"Phone","userName":"haui","invitation":""}',
+        '{"secret":"s3cret","deviceName":"Phone","userName":"haui","invitation":"","deviceCode":""}',
       );
     });
 
@@ -383,7 +383,7 @@ void main() {
       expect(find.text("Device: Kamera"), findsOneWidget);
       expect(
         (requests.single as http.Request).body,
-        '{"secret":"demo","deviceName":"Kamera","userName":"","invitation":""}',
+        '{"secret":"demo","deviceName":"Kamera","userName":"","invitation":"","deviceCode":""}',
       );
       // The secret is never kept on the device.
       expect(

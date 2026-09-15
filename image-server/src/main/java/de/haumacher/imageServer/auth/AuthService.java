@@ -319,6 +319,52 @@ public class AuthService {
 	 */
 	public static final String DEVICE_UNKNOWN = "There is no device of that id.";
 
+	/**
+	 * The message a share-link caller is refused a device code with, see issue #65.
+	 *
+	 * <p>
+	 * A device code signs a further device in <em>as the caller</em>; a share link is nobody, so
+	 * there is nobody for it to add a device to.
+	 * </p>
+	 */
+	public static final String DEVICE_CODE_REFUSED =
+		"A share link is not a sign-in: it has no devices to add one to.";
+
+	/** The message a device code nobody ever issued is refused with, see issue #65. */
+	public static final String DEVICE_CODE_UNKNOWN = "There is no device code like that.";
+
+	/** The message a device code whose ten minutes ran out is refused with. */
+	public static final String DEVICE_CODE_EXPIRED = "This device code has expired.";
+
+	/** The message a device code that already paired a device is refused with. */
+	public static final String DEVICE_CODE_USED = "This device code was already used.";
+
+	/**
+	 * The message a device code presented under somebody else's name is refused with.
+	 *
+	 * <p>
+	 * Which user it signs in is deliberately not said: whoever types a code they were not given
+	 * learns nothing from the refusal but that it is not theirs.
+	 * </p>
+	 */
+	public static final String DEVICE_CODE_OTHER_USER = "This device code signs in a different user.";
+
+	/** The message a device code whose user is gone is refused with. */
+	public static final String DEVICE_CODE_USER_GONE = "The user of this device code no longer exists.";
+
+	/**
+	 * The message a device code whose issuing device is gone is refused with, see issue #65.
+	 *
+	 * <p>
+	 * Its own sentence, distinct from "used" and from "expired": a code that stopped working
+	 * because the device that made it was signed out is a different story from one that was typed
+	 * twice or typed too late, and whoever is standing in front of the field deserves to know which
+	 * happened. Signing a device out is also how a stranger found in the device list is thrown out,
+	 * so this is the refusal that shuts the door behind them.
+	 * </p>
+	 */
+	public static final String DEVICE_CODE_ISSUER_GONE = "The device that issued this code was signed out.";
+
 	/** The message a guest is refused the creation of a group with. */
 	public static final String GROUP_CREATE_REFUSED =
 		"A guest has no groups of their own; ask a member to put you in one.";
@@ -622,6 +668,8 @@ public class AuthService {
 
 	private final InvitationStore _invitations;
 
+	private final DeviceCodeStore _deviceCodes;
+
 	private final InviteMode _inviteMode;
 
 	/**
@@ -655,6 +703,7 @@ public class AuthService {
 		_groups = mode == AuthMode.OFF ? null : new GroupStore(basePath);
 		_shares = mode == AuthMode.OFF ? null : new ShareStore(basePath);
 		_invitations = mode == AuthMode.OFF ? null : new InvitationStore(basePath);
+		_deviceCodes = mode == AuthMode.OFF ? null : new DeviceCodeStore(basePath);
 	}
 
 	/** An {@link AuthService} serving every request, as before issue #28. */
@@ -690,6 +739,11 @@ public class AuthService {
 	/** The invitations of this server, <code>null</code> while {@link AuthMode#OFF}. */
 	public InvitationStore getInvitations() {
 		return _invitations;
+	}
+
+	/** The device codes of this server, <code>null</code> while {@link AuthMode#OFF}. */
+	public DeviceCodeStore getDeviceCodes() {
+		return _deviceCodes;
 	}
 
 	/** Who may hand out an invitation on this server, see issue #52. */
@@ -1860,6 +1914,14 @@ public class AuthService {
 	 * the owner while it has no name yet and must match the owner's name afterwards.
 	 * </p>
 	 *
+	 * <p>
+	 * Three ways in, in this order: a {@link PairRequest#getInvitation() invitation} creates a new
+	 * user (issue #52), a {@link PairRequest#getDeviceCode() device code} adds a further device of
+	 * a user who is already here (issue #65), and the {@link #_pairingSecret pairing secret} signs
+	 * in the library owner. They are deliberately different things and the first non-empty one
+	 * decides; nothing is ever both.
+	 * </p>
+	 *
 	 * @throws PairRefused
 	 *         If the server does not pair at all, the secret does not match, or the request names
 	 *         somebody other than the library owner.
@@ -1871,6 +1933,10 @@ public class AuthService {
 		String invitation = request.getInvitation() == null ? "" : request.getInvitation().trim();
 		if (!invitation.isEmpty()) {
 			return accept(request, invitation);
+		}
+		String deviceCode = request.getDeviceCode() == null ? "" : request.getDeviceCode().trim();
+		if (!deviceCode.isEmpty()) {
+			return addDevice(request, deviceCode);
 		}
 		if (_pairingSecret == null || _pairingSecret.isEmpty() || !matches(request.getSecret(), _pairingSecret)) {
 			throw new PairRefused(HttpServletResponse.SC_FORBIDDEN, SECRET_REFUSED);
@@ -1897,6 +1963,109 @@ public class AuthService {
 			.setUserName(owner.getName())
 			.setRole(owner.getRole())
 			.setSpace(owner.getSpace());
+	}
+
+	/**
+	 * Issues a device code for the caller's own next device, see issue #65.
+	 *
+	 * <p>
+	 * A device credential and deliberately not an invitation: what it creates is another device of
+	 * the <em>asking</em> user, never another user, so it is nothing that can be forwarded — no
+	 * link, no URL and no bearer, but eight characters read off one screen and typed on another. It
+	 * lives {@link DeviceCodeStore#LIFETIME_MINUTES} minutes and it works once, and the device it
+	 * pairs is an ordinary device from the moment it exists: it shows up in
+	 * {@link #devices(Caller)}, it can be signed out from any of the user's devices, and its token
+	 * is worth exactly what the user's other tokens are worth.
+	 * </p>
+	 *
+	 * @throws Refused
+	 *         If the server does not pair at all, or the caller is no signed-in device.
+	 */
+	public DeviceCodeStore.Issued deviceCode(Caller caller) throws Refused, IOException {
+		if (_mode == AuthMode.OFF || _deviceCodes == null) {
+			throw new Refused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
+		}
+		if (caller.isShareLink()) {
+			throw new Refused(HttpServletResponse.SC_FORBIDDEN, DEVICE_CODE_REFUSED);
+		}
+		if (!caller.isPaired()) {
+			// An anonymous caller and an invitation bearer alike: there is no "oneself" here yet.
+			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, WRITE_REFUSED);
+		}
+		return _deviceCodes.create(caller.getUserName(), caller.getDeviceId());
+	}
+
+	/**
+	 * Pairs a further device of a user who is already here, against a device code (issue #65).
+	 *
+	 * <p>
+	 * The code says who: the new device is signed in as the user the code was issued for, with
+	 * their role and their space, exactly as if they had signed in with the secret. A
+	 * {@link PairRequest#getUserName() user name} in the request is therefore not a choice but a
+	 * check — a name that is not the code's user is refused, and the refusal does not say whose
+	 * code it is.
+	 * </p>
+	 *
+	 * <p>
+	 * A code is good only while the device that issued it is still one of that user's devices. That
+	 * is what makes the device list the whole answer to a stolen code: a stranger who is spotted
+	 * there and signed out loses, in the same step, every code they asked for meanwhile and had not
+	 * yet spent — otherwise they would simply walk back in with one. The check is against the
+	 * user's devices rather than against a flag, so it is fail-closed: an issuer that is not in the
+	 * list, an empty one included, signs nobody in, whatever the store says.
+	 * {@link DeviceCodeStore#revokeIssuedBy(String)} marks such codes when the device goes, which
+	 * keeps the file honest but is a second line and not what this rule rests on.
+	 * </p>
+	 *
+	 * <p>
+	 * The code is used up before the answer is written, so a code that raced itself pairs exactly
+	 * one device.
+	 * </p>
+	 */
+	private PairResponse addDevice(PairRequest request, String code) throws PairRefused, IOException {
+		DeviceCodeStore.Code record = _deviceCodes.lookup(code);
+		if (record == null) {
+			throw new PairRefused(HttpServletResponse.SC_UNAUTHORIZED, DEVICE_CODE_UNKNOWN);
+		}
+		if (record.isUsed()) {
+			throw new PairRefused(HttpServletResponse.SC_GONE, DEVICE_CODE_USED);
+		}
+		if (record.isExpired(_deviceCodes.getClock().instant())) {
+			throw new PairRefused(HttpServletResponse.SC_GONE, DEVICE_CODE_EXPIRED);
+		}
+		String requested = request.getUserName() == null ? "" : request.getUserName().trim();
+		if (!requested.isEmpty() && !requested.equals(record.getUser())) {
+			throw new PairRefused(HttpServletResponse.SC_UNAUTHORIZED, DEVICE_CODE_OTHER_USER);
+		}
+
+		synchronized (_users) {
+			User user = _users.getUser(record.getUser());
+			if (user == null) {
+				// The user was removed while the code was on its way; it signs nobody in.
+				LOG.warning("Refusing " + record + ": its user is gone.");
+				throw new PairRefused(HttpServletResponse.SC_GONE, DEVICE_CODE_USER_GONE);
+			}
+			if (record.isRevoked() || user.getDevice(record.getIssuedBy()) == null) {
+				// The device that made this code is no longer one of the user's; the code dies with
+				// it, which is what makes signing a stranger's device out actually shut the door.
+				LOG.warning("Refusing " + record + ": the device that issued it is gone.");
+				throw new PairRefused(HttpServletResponse.SC_GONE, DEVICE_CODE_ISSUER_GONE);
+			}
+			String token = _users.addDevice(user, request.getDeviceName());
+			UserStore.Device device = user.getDevices().get(user.getDevices().size() - 1);
+			// Used up before the answer: a single-use code must not survive its own success.
+			_deviceCodes.markUsed(record.getId(), device.getId());
+			if (_basePath != null && !user.getSpace().isEmpty()) {
+				spaceRoot(user, _basePath);
+			}
+			LOG.info("Added the device '" + device.getName() + "' of '" + user.getName() + "' by " + record + ".");
+			return PairResponse.create()
+				.setToken(token)
+				.setDeviceName(device.getName())
+				.setUserName(user.getName())
+				.setRole(user.getRole())
+				.setSpace(user.getSpace());
+		}
 	}
 
 	/**
@@ -2056,6 +2225,12 @@ public class AuthService {
 	 * properly, and the next request carrying its token is refused.
 	 * </p>
 	 *
+	 * <p>
+	 * Since issue #65 this also withdraws every device code the device issued and nobody has typed
+	 * yet: the device list is the answer to a stolen code only if throwing a device out takes what
+	 * it handed out with it.
+	 * </p>
+	 *
 	 * @return The device that was removed.
 	 */
 	public UserStore.Device unpair(Caller caller, String id) throws Refused, IOException {
@@ -2068,6 +2243,15 @@ public class AuthService {
 				throw new Refused(HttpServletResponse.SC_NOT_FOUND, DEVICE_UNKNOWN);
 			}
 			_users.removeDevice(caller._user, device);
+			if (_deviceCodes != null) {
+				// Whatever this device handed out and nobody typed goes with it, see issue #65. The
+				// pairing check would refuse those codes anyway; marking them keeps the store from
+				// holding a code that looks live and says why a person's code stopped working.
+				int revoked = _deviceCodes.revokeIssuedBy(device.getId());
+				if (revoked > 0) {
+					LOG.info("Withdrew " + revoked + " device code(s) of the device '" + device.getName() + "'.");
+				}
+			}
 			return device;
 		}
 	}

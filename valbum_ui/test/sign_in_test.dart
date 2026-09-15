@@ -84,7 +84,7 @@ void main() {
       expect(pair.url.query, "action=pair");
       expect(
         pair.body,
-        '{"secret":"demo","deviceName":"Kamera","userName":"haui","invitation":""}',
+        '{"secret":"demo","deviceName":"Kamera","userName":"haui","invitation":"","deviceCode":""}',
       );
       expect(store.token, "tok-1");
       expect(store.deviceName, "Kamera");

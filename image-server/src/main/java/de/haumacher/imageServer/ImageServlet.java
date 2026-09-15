@@ -5,11 +5,13 @@ package de.haumacher.imageServer;
 
 
 import de.haumacher.imageServer.MoveService.MoveRefused;
+import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.AuthService.Caller;
 import de.haumacher.imageServer.auth.AuthService.Location;
 import de.haumacher.imageServer.auth.AuthService.PairRefused;
 import de.haumacher.imageServer.auth.AuthService.PathRefused;
+import de.haumacher.imageServer.auth.DeviceCodeStore;
 import de.haumacher.imageServer.auth.GrantStore;
 import de.haumacher.imageServer.auth.GroupStore;
 import de.haumacher.imageServer.auth.InvitationStore;
@@ -25,6 +27,7 @@ import de.haumacher.imageServer.links.LinkService;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
+import de.haumacher.imageServer.shared.model.DeviceCodeCreated;
 import de.haumacher.imageServer.shared.model.DeviceEntry;
 import de.haumacher.imageServer.shared.model.DeviceList;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -1190,6 +1193,56 @@ public class ImageServlet extends HttpServlet {
 		serveJsonObject(context.response(), devices(caller));
 	}
 
+	/**
+	 * Issues a code for a further device of the caller at
+	 * <code>&lt;data&gt;/?action=device-code</code>, see issue #65.
+	 *
+	 * <p>
+	 * Adding a device of one's own is not inviting somebody, and it is built so that it can never
+	 * be mistaken for it: the answer is a code to type, not a link to send — no URL, no path
+	 * segment, and nothing that is a bearer anywhere. It lives ten minutes, it works once, and
+	 * whoever types it is signed in <em>as the caller</em>, which is why a device typing it appears
+	 * in <code>?type=devices</code> at once and can be signed out there.
+	 * </p>
+	 *
+	 * <p>
+	 * The request needs no body and any body it carries is ignored: everything the code says — whom
+	 * it signs in and which device asked — the server already knows from the token. A share link is
+	 * refused (<code>403</code>): it is nobody, and there is nobody for it to add a device to. An
+	 * anonymous caller and an invitation bearer are answered <code>401</code>, exactly as
+	 * <code>?type=devices</code> answers them.
+	 * </p>
+	 */
+	private void createDeviceCode(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (_auth.getMode() == AuthMode.OFF) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.PAIRING_DISABLED);
+			return;
+		}
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing a device code to the share link '" + caller.getShareLabel() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.DEVICE_CODE_REFUSED);
+			return;
+		}
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+
+		DeviceCodeStore.Issued issued;
+		try {
+			issued = _auth.deviceCode(caller);
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing a device code to '" + caller.getUserName() + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+		LOG.info("Issued " + issued.getRecord() + ".");
+		serveJsonObject(context.response(), DeviceCodeCreated.create()
+			.setCode(DeviceCodeStore.format(issued.getCode()))
+			.setExpires(issued.getRecord().getExpires()));
+	}
+
 	/** The caller's own devices as the protocol carries them, the asking one marked. */
 	private DeviceList devices(Caller caller) {
 		DeviceList result = DeviceList.create();
@@ -2010,6 +2063,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("unpair".equals(action)) {
 			unpairDevice(context);
+			return;
+		}
+		if ("device-code".equals(action)) {
+			createDeviceCode(context);
 			return;
 		}
 		if ("share".equals(action)) {

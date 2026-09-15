@@ -27,6 +27,9 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getInvitation() */
 	private static final String INVITATION__PROP = "invitation";
 
+	/** @see #getDeviceCode() */
+	private static final String DEVICE_CODE__PROP = "deviceCode";
+
 	private String _secret = "";
 
 	private String _deviceName = "";
@@ -34,6 +37,8 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _userName = "";
 
 	private String _invitation = "";
+
+	private String _deviceCode = "";
 
 	/**
 	 * Creates a {@link PairRequest} instance.
@@ -142,6 +147,40 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_invitation = value;
 	}
 
+	/**
+	 * The code shown on a device that is already signed in, see {@link DeviceCodeCreated} (issue #65).
+	 *
+	 * <p>
+	 * Adding a further device of one's own: the code is typed on the new device and pairs it as the
+	 * <em>same user</em> as the device that showed it, which is exactly what an
+	 * {@link #getInvitation()} must never do. It is no link and no bearer — it travels in this one
+	 * request and nowhere else — it lives ten minutes and it works once. Spelled with or without
+	 * the dash the other device shows, in any case.
+	 * </p>
+	 *
+	 * <p>
+	 * Empty in every other request. A request carrying an {@link #getInvitation()} as well is read as an
+	 * invitation; one carrying a {@link #getSecret()} as well is read as a device code, and a
+	 * {@link #getUserName()} naming somebody other than the code's user is refused.
+	 * </p>
+	 */
+	public final String getDeviceCode() {
+		return _deviceCode;
+	}
+
+	/**
+	 * @see #getDeviceCode()
+	 */
+	public de.haumacher.imageServer.shared.model.PairRequest setDeviceCode(String value) {
+		internalSetDeviceCode(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getDeviceCode()} without chain call utility. */
+	protected final void internalSetDeviceCode(String value) {
+		_deviceCode = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.PairRequest readPairRequest(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.PairRequest result = new de.haumacher.imageServer.shared.model.PairRequest();
@@ -165,6 +204,8 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getUserName());
 		out.name(INVITATION__PROP);
 		out.value(getInvitation());
+		out.name(DEVICE_CODE__PROP);
+		out.value(getDeviceCode());
 	}
 
 	@Override
@@ -174,6 +215,7 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case DEVICE_NAME__PROP: setDeviceName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case USER_NAME__PROP: setUserName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case INVITATION__PROP: setInvitation(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case DEVICE_CODE__PROP: setDeviceCode(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

@@ -1338,6 +1338,23 @@ class VAlbumClient {
     return DeviceList.read(JsonReader.fromString(response));
   }
 
+  /// A code to type on a further device of one's own (issue #65).
+  ///
+  /// Adding a device is not inviting somebody, and the wire says so: the
+  /// answer is eight characters and an expiry, never a link and never a token
+  /// that is a bearer anywhere. Whoever types it is signed in *as this
+  /// caller*, so the code lives ten minutes, works once, and the device it
+  /// pairs shows up in [devices] at once, where it can be signed out again.
+  ///
+  /// The request needs no body: whom the code signs in and which device asked
+  /// the server reads from this client's token. Refused with the server's own
+  /// sentence for a share link (403) and for a caller that is no device (401).
+  Future<DeviceCodeCreated> deviceCode() async {
+    var url = "${folderUrl(const [])}?action=device-code";
+    var response = await _postBody(url, "{}");
+    return DeviceCodeCreated.read(JsonReader.fromString(response));
+  }
+
   /// The names and roles of the users of this server (issue #49).
   ///
   /// Needed to share: a member picks whom to grant something to. A guest and
@@ -1426,6 +1443,12 @@ class VAlbumClient {
   /// refused where it is taken. The request carries one or the other; a
   /// request carrying both is read by the server as an invitation.
   ///
+  /// [deviceCode] is the third way in (issue #65) and the one that creates
+  /// nobody: a code shown on a device that is already signed in adds a
+  /// *further device of the same user*, so the [userName] is a check and not a
+  /// choice there — the server refuses a name that is not the code's user. The
+  /// [secret] stays empty with it.
+  ///
   /// Never carries the device's own token: a sign-in is how a device *gets*
   /// one, and an invitation token is a bearer for nothing but `?type=auth`.
   Future<PairResponse> pair({
@@ -1433,6 +1456,7 @@ class VAlbumClient {
     required String deviceName,
     String userName = "",
     String invitation = "",
+    String deviceCode = "",
   }) async {
     var url = "${folderUrl(const [])}?action=pair";
     var request = PairRequest(
@@ -1440,6 +1464,7 @@ class VAlbumClient {
       deviceName: deviceName,
       userName: userName,
       invitation: invitation,
+      deviceCode: deviceCode,
     );
     var body = StringBuffer();
     request.writeContent(jsonStringWriter(body));

@@ -482,6 +482,11 @@ void main() {
       );
       expect(find.text("Currently cached: 4.0 kB"), findsOneWidget);
 
+      // The screen grows as sections are added to it (the device code of
+      // issue #65 was the last); centre the button rather than trusting that
+      // scrolling it into range left it tappable.
+      await tester.ensureVisible(find.byKey(clearCacheButtonKey));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(clearCacheButtonKey));
       await tester.pumpAndSettle();
       await tester.tap(find.text("Clear"));

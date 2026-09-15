@@ -84,6 +84,18 @@ the settings show who the device is signed in as (user, role, device, space). "S
 the token. `--auth all` refuses anonymous reads as well; `--auth off` is the old behaviour, open to
 everyone who can reach the server.
 
+### Adding a further device of your own
+
+A member or guest who wants a second device does not need the pairing secret and must not use an
+invitation (that would create another user). On a device you are already signed in on, open "My
+devices" in the server settings and press "Add a device…": the server issues a short code
+(`XXXX-XXXX`) that lives ten minutes and works once. Type it into the "Device code" field of the
+sign-in section on the new device, together with a device name, and press "Sign in": the new
+device is signed in as you and appears in your device list at once, where it can be signed out
+again. The code is deliberately not a link — it is never sent anywhere and cannot be forwarded —
+and it dies with the device that issued it: signing that device out withdraws every code it handed
+out that was not used yet. Never give a device code to anybody else; it signs them in as you.
+
 ### Users and spaces
 
 A paired device belongs to a user. The pairing secret signs in the **library owner** (the admin);

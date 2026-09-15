@@ -701,6 +701,44 @@ const Key pairingSecretFieldKey = Key("settings.pairingSecret");
 /// The key of the user name field, see [serverUrlFieldKey].
 const Key userNameFieldKey = Key("settings.userName");
 
+/// The key of the device code field, see [serverUrlFieldKey] and issue #65.
+///
+/// The other way to sign in on a device: a code shown under "My devices" on a
+/// device that is already signed in adds *this* device to the same user. It is
+/// beside the pairing secret and never together with it.
+const Key deviceCodeFieldKey = Key("settings.deviceCode");
+
+/// The key of the sign-in section's own refusal, see [bothCredentialsRefusal].
+const Key signInErrorKey = Key("settings.signIn.error");
+
+/// Keeps a device code readable while it is typed (issue #65).
+///
+/// Upper case, letters, digits and the dash the other device shows; anything
+/// else is not part of a code and is dropped rather than carried to the
+/// server, which would only refuse it.
+final TextInputFormatter deviceCodeFormatter =
+    TextInputFormatter.withFunction((oldValue, newValue) {
+  var kept = newValue.text.toUpperCase().replaceAll(RegExp("[^A-Z0-9-]"), "");
+  if (kept == newValue.text) {
+    return newValue;
+  }
+  return TextEditingValue(
+    text: kept,
+    selection: TextSelection.collapsed(
+      offset: kept.length < newValue.selection.end
+          ? kept.length
+          : newValue.selection.end,
+    ),
+  );
+});
+
+/// What a sign-in naming both a secret and a device code is refused with.
+///
+/// Said here rather than by the server: the two are different ways in and
+/// mean different things, so the app must not quietly pick one.
+const String bothCredentialsRefusal =
+    "Enter either the pairing secret or a device code, not both.";
+
 /// The key of the "Clear cache" button, see [serverUrlFieldKey].
 const Key clearCacheButtonKey = Key("settings.clearCache");
 
@@ -778,6 +816,15 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   ///
   /// Never stored: it is exchanged for the device token exactly once.
   final TextEditingController secretController = TextEditingController();
+
+  /// The code shown on a device that is already signed in (issue #65).
+  ///
+  /// Never stored either, and never sent together with the secret: it is
+  /// exchanged for this device's own token exactly once.
+  final TextEditingController deviceCodeController = TextEditingController();
+
+  /// Why the sign-in was not even attempted, if it was not.
+  String? signInError;
 
   /// The outcome of the last sign-in attempt, if any.
   ConnectionTestResult? pairing;
@@ -1010,6 +1057,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     deviceController.dispose();
     userController.dispose();
     secretController.dispose();
+    deviceCodeController.dispose();
     super.dispose();
   }
 
@@ -1152,88 +1200,114 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     }
     var inviting = invitationToken.isNotEmpty;
     return [
-        const SizedBox(height: 8),
-        Text("Sign in", style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        if (!inviting)
-          const Text(
-            "The pairing secret, which the server prints at start-up, signs in "
-            "the library owner. The first sign-in that gives a name names the "
-            "owner; later sign-ins may repeat that name or leave it empty.",
-          ),
-        const SizedBox(height: 16),
-        ..._identityDisplay(settings),
-        const SizedBox(height: 16),
-        if (inviting) ..._invitationDisplay(),
-        TextField(
-          key: userNameFieldKey,
-          controller: userController,
-          autocorrect: false,
-          decoration: InputDecoration(
-            labelText: inviting ? "Your name" : "User name",
-            helperText: inviting
-                ? "How the others on this server see you."
-                : "Leave empty to sign in as the library owner.",
-            border: const OutlineInputBorder(),
-          ),
+      const SizedBox(height: 8),
+      Text("Sign in", style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      if (!inviting)
+        const Text(
+          "The pairing secret, which the server prints at start-up, signs in "
+          "the library owner. The first sign-in that gives a name names the "
+          "owner; later sign-ins may repeat that name or leave it empty.",
         ),
-        const SizedBox(height: 16),
-        if (!inviting)
-          TextField(
-            key: pairingSecretFieldKey,
-            controller: secretController,
-            autocorrect: false,
-            obscureText: true,
-            decoration: const InputDecoration(
-              labelText: "Pairing secret",
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: (_) => _signIn(),
-          ),
-        if (!inviting) const SizedBox(height: 16),
+      const SizedBox(height: 16),
+      ..._identityDisplay(settings),
+      const SizedBox(height: 16),
+      if (inviting) ..._invitationDisplay(),
+      TextField(
+        key: userNameFieldKey,
+        controller: userController,
+        autocorrect: false,
+        decoration: InputDecoration(
+          labelText: inviting ? "Your name" : "User name",
+          helperText: inviting
+              ? "How the others on this server see you."
+              : "Leave empty to sign in as the library owner.",
+          border: const OutlineInputBorder(),
+        ),
+      ),
+      const SizedBox(height: 16),
+      if (!inviting)
         TextField(
-          key: deviceNameFieldKey,
-          controller: deviceController,
+          key: pairingSecretFieldKey,
+          controller: secretController,
           autocorrect: false,
+          obscureText: true,
           decoration: const InputDecoration(
-            labelText: "Device name",
+            labelText: "Pairing secret",
             border: OutlineInputBorder(),
           ),
+          onSubmitted: (_) => _signIn(),
         ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+      if (!inviting) const SizedBox(height: 16),
+      if (!inviting)
+        TextField(
+          key: deviceCodeFieldKey,
+          controller: deviceCodeController,
+          autocorrect: false,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: [deviceCodeFormatter],
+          decoration: const InputDecoration(
+            labelText: "Device code",
+            helperText: "Shown under My devices on a device you are already "
+                "signed in on.",
+            helperMaxLines: 2,
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => _signIn(),
+        ),
+      if (!inviting) const SizedBox(height: 16),
+      TextField(
+        key: deviceNameFieldKey,
+        controller: deviceController,
+        autocorrect: false,
+        decoration: const InputDecoration(
+          labelText: "Device name",
+          border: OutlineInputBorder(),
+        ),
+      ),
+      const SizedBox(height: 16),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          FilledButton.icon(
+            onPressed: pairingRunning ? null : _signIn,
+            icon: const Icon(Icons.login),
+            label: const Text("Sign in"),
+          ),
+          TextButton.icon(
+            onPressed: settings.signedIn ? _signOut : null,
+            icon: const Icon(Icons.logout),
+            label: const Text("Sign out"),
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+      if (pairingRunning)
+        const Row(
           children: [
-            FilledButton.icon(
-              onPressed: pairingRunning ? null : _signIn,
-              icon: const Icon(Icons.login),
-              label: const Text("Sign in"),
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            TextButton.icon(
-              onPressed: settings.signedIn ? _signOut : null,
-              icon: const Icon(Icons.logout),
-              label: const Text("Sign out"),
-            ),
+            SizedBox(width: 8),
+            Text("Signing in..."),
           ],
         ),
-        const SizedBox(height: 16),
-        if (pairingRunning)
-          const Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              SizedBox(width: 8),
-              Text("Signing in..."),
-            ],
+      if (signInError != null)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            signInError!,
+            key: signInErrorKey,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
-        if (!pairingRunning && pairing != null) _outcome(pairing!),
-        ..._devicesSection(),
-        ..._inviteSection(),
-      ];
+        ),
+      if (!pairingRunning && pairing != null) _outcome(pairing!),
+      ..._devicesSection(),
+      ..._inviteSection(),
+    ];
   }
 
   /// The invitation the entered URL carries: who invited, as what, and the way
@@ -1278,8 +1352,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
                 if (offer.note.trim().isNotEmpty)
                   Text(offer.note.trim(),
                       key: const Key("settings.invitation.note")),
-                if (offer.role == roleGuest)
-                  const Text(guestRoleExplanation),
+                if (offer.role == roleGuest) const Text(guestRoleExplanation),
               ],
               if (problem != null) ...[
                 const SizedBox(height: 8),
@@ -1691,19 +1764,34 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       return;
     }
 
+    var location = serverLocationOf(entered);
+    var secret = location.isInvitation ? "" : secretController.text.trim();
+    var deviceCode =
+        location.isInvitation ? "" : deviceCodeController.text.trim();
+    if (secret.isNotEmpty && deviceCode.isNotEmpty) {
+      // Two different ways in, meaning two different things: the app must not
+      // pick one quietly, see [bothCredentialsRefusal] and issue #65.
+      setState(() {
+        signInError = bothCredentialsRefusal;
+        pairing = null;
+      });
+      return;
+    }
+
     setState(() {
       error = null;
+      signInError = null;
       pairing = null;
       pairingRunning = true;
     });
 
-    var location = serverLocationOf(entered);
     var client = widget.clientFor(location.dataUrl).withToken(null);
     ConnectionTestResult outcome;
     SignedInUser? signedIn;
     try {
       var response = await client.pair(
-        secret: location.isInvitation ? "" : secretController.text.trim(),
+        secret: secret,
+        deviceCode: deviceCode,
         invitation: location.invitation,
         deviceName: deviceController.text.trim().isEmpty
             ? defaultDeviceName()
@@ -1743,6 +1831,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       pairing = outcome;
       if (outcome.ok) {
         secretController.clear();
+        deviceCodeController.clear();
         identity = signedIn;
         identityProblem = null;
         userController.text = signedIn?.userName ?? "";
