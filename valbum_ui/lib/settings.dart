@@ -775,6 +775,30 @@ final TextInputFormatter deviceCodeFormatter =
   );
 });
 
+/// What belongs in the user name field (issue #86).
+///
+/// It used to say "leave empty to sign in as the library owner", which was
+/// right while the owner was the one user of a library and is wrong in a space
+/// where the administrator is one user among several: a nameless user has no
+/// attribution, shows as an empty row in the users list, and cannot be
+/// addressed by `set-permission` or `remove-user`.
+const String userNameHelp =
+    "Your name in this space; the first sign-in with the secret names the "
+    "administrator.";
+
+/// What the sign-in section says about the pairing secret (issue #86).
+const String pairingSecretExplanation =
+    "The pairing secret, which the server prints at start-up, signs in the "
+    "administrator of this space. The first sign-in with it names that "
+    "administrator.";
+
+/// What a sign-in with the secret and no name is refused with (issue #86).
+///
+/// Said here, before anything is sent: the server refuses the same thing with
+/// a sentence of its own, and that one is shown as well where it arrives —
+/// but a name is not something to learn about from a round trip.
+const String nameRequiredRefusal = "Enter your name.";
+
 /// What a sign-in naming both a secret and a device code is refused with.
 ///
 /// Said here rather than by the server: the two are different ways in and
@@ -1248,12 +1272,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       const SizedBox(height: 8),
       Text("Sign in", style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
-      if (!inviting)
-        const Text(
-          "The pairing secret, which the server prints at start-up, signs in "
-          "the library owner. The first sign-in that gives a name names the "
-          "owner; later sign-ins may repeat that name or leave it empty.",
-        ),
+      if (!inviting) const Text(pairingSecretExplanation),
       const SizedBox(height: 16),
       ..._identityDisplay(settings),
       const SizedBox(height: 16),
@@ -1264,9 +1283,9 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         autocorrect: false,
         decoration: InputDecoration(
           labelText: inviting ? "Your name" : "User name",
-          helperText: inviting
-              ? "How the others on this server see you."
-              : "Leave empty to sign in as the library owner.",
+          helperText:
+              inviting ? "How the others on this server see you." : userNameHelp,
+          helperMaxLines: 3,
           border: const OutlineInputBorder(),
         ),
       ),
@@ -1889,6 +1908,18 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       });
       return;
     }
+    var userName = userController.text.trim();
+    if (secret.isNotEmpty && userName.isEmpty) {
+      // The secret creates the administrator of this space, and a user without
+      // a name can be neither credited nor managed, see [nameRequiredRefusal]
+      // and issue #86. A device code needs no name (it joins the user who
+      // issued it) and an invitation asks for one of its own.
+      setState(() {
+        signInError = nameRequiredRefusal;
+        pairing = null;
+      });
+      return;
+    }
 
     setState(() {
       error = null;
@@ -1908,7 +1939,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         deviceName: deviceController.text.trim().isEmpty
             ? defaultDeviceName()
             : deviceController.text.trim(),
-        userName: userController.text.trim(),
+        userName: userName,
       );
       if (location.isInvitation) {
         // Before the token is stored: saving a server forgets the token of
@@ -1920,12 +1951,11 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         response.deviceName,
         userName: response.userName,
       );
-      signedIn = SignedInUser(
-        userName: response.userName,
-        deviceName: response.deviceName,
-        role: response.role,
-        space: response.space,
-      );
+      // The block is filled from one `?type=auth` and not from the pairing
+      // answer (issue #86): that answer carries no space, no clearance and no
+      // share flag, so the block used to be half empty until the caller scope
+      // asked the same question a moment later.
+      signedIn = await _identityOf(location.dataUrl, response);
       outcome = const ConnectionTestResult(true, "Sign-in succeeded.");
     } on VAlbumException catch (failure) {
       outcome = ConnectionTestResult(false, failure.message);
@@ -1955,6 +1985,44 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         }
       }
     });
+  }
+
+  /// Who the server says this device is, right after it was paired
+  /// (issue #86).
+  ///
+  /// The same question the caller scope asks, asked once here so that the
+  /// signed-in block is right at once: the pairing answer names the user, the
+  /// device and the role, but not the space, the clearance or the share flag.
+  /// Where the question cannot be asked — a server that answers the pairing
+  /// and nothing else — what the pairing said stands, which is what the block
+  /// showed before this existed.
+  Future<SignedInUser> _identityOf(
+    String dataUrl,
+    PairResponse response,
+  ) async {
+    var fallback = SignedInUser(
+      userName: response.userName,
+      deviceName: response.deviceName,
+      role: response.role,
+      space: response.space,
+    );
+    try {
+      var info =
+          await widget.clientFor(dataUrl).withToken(response.token).authInfo();
+      if (info.deviceName.isEmpty) {
+        return fallback;
+      }
+      return SignedInUser(
+        userName: info.userName,
+        deviceName: info.deviceName,
+        role: info.role,
+        space: info.space,
+        clearance: info.clearance,
+        mayShare: info.mayShare,
+      );
+    } catch (_) {
+      return fallback;
+    }
   }
 
   /// Forgets the token of this device; the server keeps its entry.

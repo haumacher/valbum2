@@ -110,6 +110,9 @@ void main() {
     // Pair from the page's own button.
     await settle(tester, () => tester.tap(find.text("Server settings...")));
     await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
+    // The secret names the space's administrator, so a name is required
+    // (issue #86).
+    await tester.enterText(find.byKey(userNameFieldKey), "haui");
     await settle(tester, () async {
       await tester.ensureVisible(find.widgetWithText(FilledButton, "Sign in"));
       await tester.pumpAndSettle();
