@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Plain HTTP is allowed for this app (issue #73).
+
+    VAlbum talks to a *self-hosted* album server: the one the person runs at
+    home, reached by IP address (192.168.x.y) or by a local host name
+    (nas.local, pi) over plain http://. No per-domain rule can name that
+    server, because nobody knows at build time what it is called - which is
+    why the permission is in the base configuration and not in a
+    <domain-config>.
+
+    Without this, Android 9+ refuses cleartext to every *native* network
+    stack. That is exactly the bug that was reported: albums and thumbnails
+    load, because Dart's own HTTP client is not bound by this policy, while
+    the video fails with an ExoPlayer "Source error" - ExoPlayer is bound by
+    it. The Dart side already speaks cleartext to the very same server, so
+    nothing is opened up here that the app was not already doing.
+
+    Deliberately not `android:usesCleartextTraffic` on <application> as well:
+    two switches for one decision, and this one is the more precise of the
+    two (it keeps the system trust anchors, so an https:// server is still
+    validated as strictly as before).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

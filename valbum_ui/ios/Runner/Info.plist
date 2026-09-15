@@ -16,6 +16,17 @@
 	<string>VAlbum uploads new photos from this device into your own album server.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>VAlbum uploads new photos from this device into your own album server.</string>
+	<!-- Plain http:// to a self-hosted album server on the home network
+	     (issue #73). The same reasoning as the Android network security
+	     config: the server is reached by IP or by a local host name that no
+	     exception domain can name at build time, and the Dart HTTP client of
+	     this app already talks cleartext to it. Without this, AVPlayer - which
+	     plays the videos - is refused where the album itself loads. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>VAlbum reads the device code shown on a device you are already signed in on, so that you do not have to type it.</string>
 	<key>CFBundleName</key>
