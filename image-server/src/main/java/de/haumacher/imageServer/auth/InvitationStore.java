@@ -97,6 +97,10 @@ public class InvitationStore {
 
 	private static final String ROLE__PROP = "role";
 
+	private static final String CLEARANCE__PROP = "clearance";
+
+	private static final String SHARE__PROP = "mayShare";
+
 	private static final String INVITED_BY__PROP = "invitedBy";
 
 	private static final String NOTE__PROP = "note";
@@ -120,6 +124,10 @@ public class InvitationStore {
 
 		private final String _role;
 
+		private final String _clearance;
+
+		private final boolean _share;
+
 		private final String _invitedBy;
 
 		private final String _note;
@@ -137,6 +145,15 @@ public class InvitationStore {
 		/** Creates a {@link Link}. */
 		public Link(String id, String tokenHash, String role, String invitedBy, String note, String expires,
 				String created, String used, String usedBy, String revoked) {
+			this(id, tokenHash, role, Clearances.ofRole(role), Clearances.mayShareByRole(role), invitedBy,
+				note, expires, created, used, usedBy, revoked);
+		}
+
+		/** Creates a {@link Link} carrying the permission the accepting user is created with (issue #82). */
+		public Link(String id, String tokenHash, String role, String clearance, boolean share, String invitedBy,
+				String note, String expires, String created, String used, String usedBy, String revoked) {
+			_clearance = clearance;
+			_share = share;
 			_id = id;
 			_tokenHash = tokenHash;
 			_role = role;
@@ -160,6 +177,16 @@ public class InvitationStore {
 		}
 
 		/** The {@link Roles role} the accepting user is created with: member or guest. */
+		public String getClearance() {
+			return _clearance;
+		}
+
+		/** Whether the accepting user may create share links, see issue #82. */
+		public boolean isShare() {
+			return _share;
+		}
+
+		/** The role the accepting user is created with. */
 		public String getRole() {
 			return _role;
 		}
@@ -363,15 +390,25 @@ public class InvitationStore {
 	 *        When the invitation runs out, an ISO-8601 instant; empty for
 	 *        {@link #DEFAULT_DAYS} days from now.
 	 */
-	public synchronized Issued create(String role, String invitedBy, String note, String expires) throws IOException {
+	public synchronized Issued create(String role, String invitedBy, String note, String expires)
+			throws IOException {
+		return create(role, Clearances.ofRole(role), Clearances.mayShareByRole(role), invitedBy, note, expires);
+	}
+
+	/**
+	 * Issues an invitation carrying the permission the accepting user is created with (issue #82).
+	 */
+	public synchronized Issued create(String role, String clearance, boolean share, String invitedBy, String note,
+			String expires) throws IOException {
 		byte[] bytes = new byte[TOKEN_BYTES];
 		_random.nextBytes(bytes);
 		String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 
 		String lifetime = expires == null || expires.isEmpty()
 			? Instant.now().plus(java.time.Duration.ofDays(DEFAULT_DAYS)).toString() : expires;
-		Link invitation = new Link(freeId(), UserStore.hash(token), role, invitedBy, note == null ? "" : note,
-			lifetime, Instant.now().toString(), "", "", "");
+		Link invitation = new Link(freeId(), UserStore.hash(token), role,
+			Clearances.isKnown(clearance) ? clearance : Clearances.ofRole(role), share, invitedBy,
+			note == null ? "" : note, lifetime, Instant.now().toString(), "", "", "");
 		_invitations.add(invitation);
 		store();
 		return new Issued(invitation, token);
@@ -483,6 +520,8 @@ public class InvitationStore {
 		String id = "";
 		String tokenHash = "";
 		String role = Roles.MEMBER;
+		String clearance = "";
+		Boolean share = null;
 		String invitedBy = "";
 		String note = "";
 		String expires = "";
@@ -502,6 +541,12 @@ public class InvitationStore {
 					break;
 				case ROLE__PROP:
 					role = in.nextString();
+					break;
+				case CLEARANCE__PROP:
+					clearance = in.nextString();
+					break;
+				case SHARE__PROP:
+					share = Boolean.valueOf(in.nextBoolean());
 					break;
 				case INVITED_BY__PROP:
 					invitedBy = in.nextString();
@@ -530,7 +575,11 @@ public class InvitationStore {
 			}
 		}
 		in.endObject();
-		return new Link(id, tokenHash, role, invitedBy, note, expires, created, used, usedBy, revoked);
+		// An invitation written before issue #82 carries neither: its role says what it offers.
+		return new Link(id, tokenHash, role,
+			Clearances.isKnown(clearance) ? clearance : Clearances.ofRole(role),
+			share == null ? Clearances.mayShareByRole(role) : share.booleanValue(),
+			invitedBy, note, expires, created, used, usedBy, revoked);
 	}
 
 	/** Writes this store to disk, atomically: a crash never leaves a half-written store. */
@@ -572,6 +621,10 @@ public class InvitationStore {
 		out.value(invitation.getTokenHash());
 		out.name(ROLE__PROP);
 		out.value(invitation.getRole());
+		out.name(CLEARANCE__PROP);
+		out.value(invitation.getClearance());
+		out.name(SHARE__PROP);
+		out.value(invitation.isShare());
 		out.name(INVITED_BY__PROP);
 		out.value(invitation.getInvitedBy());
 		out.name(NOTE__PROP);

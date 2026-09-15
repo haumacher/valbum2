@@ -1674,8 +1674,28 @@ class AuthInfo extends _JsonObject {
 	///  The caller's role: <code>admin</code>, <code>member</code> or <code>guest</code>; empty for an anonymous caller.
 	String role;
 
-	///  The folder below the server's base folder the caller's requests are resolved against, empty for the base folder itself.
+	///  The space the caller is in: the folder below the server's base folder their requests are
+	///  resolved against, empty for the base folder itself.
+	/// 
+	///  <p>
+	///  On a multi-space server (issue #82) this is the space of the address the request was sent to
+	///  — the first segment of <code>&lt;context&gt;/&lt;space&gt;/data/...</code> — and every user,
+	///  device and album the answer speaks of belongs to it. On a single-space server it is empty,
+	///  as it was for a library that was never migrated.
+	///  </p>
 	String space;
+
+	///  Which privacy levels the caller may see: <code>public</code>, <code>nonPrivate</code> or
+	///  <code>all</code>; empty for an anonymous caller (issue #82).
+	/// 
+	///  <p>
+	///  One of the two axes of the permission model of Phase 6, stored with the user and enforced by
+	///  issue #83. It is compared against an image's privacy level, which does not change.
+	///  </p>
+	String clearance;
+
+	///  Whether the caller may create share links, see issue #82; false for an anonymous caller.
+	bool mayShare;
 
 	///  The share link this caller opened, <code>null</code> for everybody else (issue #51).
 	/// 
@@ -1704,6 +1724,8 @@ class AuthInfo extends _JsonObject {
 			this.userName = "", 
 			this.role = "", 
 			this.space = "", 
+			this.clearance = "", 
+			this.mayShare = false, 
 			this.share, 
 			this.invitation, 
 	});
@@ -1750,6 +1772,14 @@ class AuthInfo extends _JsonObject {
 				space = json.expectString();
 				break;
 			}
+			case "clearance": {
+				clearance = json.expectString();
+				break;
+			}
+			case "mayShare": {
+				mayShare = json.expectBool();
+				break;
+			}
 			case "share": {
 				share = json.tryNull() ? null : ShareInfo.read(json);
 				break;
@@ -1783,6 +1813,12 @@ class AuthInfo extends _JsonObject {
 
 		json.addKey("space");
 		json.addString(space);
+
+		json.addKey("clearance");
+		json.addString(clearance);
+
+		json.addKey("mayShare");
+		json.addBool(mayShare);
 
 		var _share = share;
 		if (_share != null) {
@@ -3060,6 +3096,13 @@ class UserEntry extends _JsonObject {
 	///  How many devices the user is signed in on, answered by the server (issue #55).
 	int devices;
 
+	///  Which privacy levels this user may see: <code>public</code>, <code>nonPrivate</code> or
+	///  <code>all</code> (issue #82).
+	String clearance;
+
+	///  Whether this user may create share links (issue #82).
+	bool mayShare;
+
 	/// Creates a UserEntry.
 	UserEntry({
 			this.name = "", 
@@ -3067,6 +3110,8 @@ class UserEntry extends _JsonObject {
 			this.space = "", 
 			this.created = "", 
 			this.devices = 0, 
+			this.clearance = "", 
+			this.mayShare = false, 
 	});
 
 	/// Parses a UserEntry from a string source.
@@ -3107,6 +3152,14 @@ class UserEntry extends _JsonObject {
 				devices = json.expectInt();
 				break;
 			}
+			case "clearance": {
+				clearance = json.expectString();
+				break;
+			}
+			case "mayShare": {
+				mayShare = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3129,6 +3182,12 @@ class UserEntry extends _JsonObject {
 
 		json.addKey("devices");
 		json.addNumber(devices);
+
+		json.addKey("clearance");
+		json.addString(clearance);
+
+		json.addKey("mayShare");
+		json.addBool(mayShare);
 	}
 
 }
@@ -3816,6 +3875,18 @@ class Invitation extends _JsonObject {
 	///  </p>
 	String role;
 
+	///  Which privacy levels the accepting user may see: <code>public</code>,
+	///  <code>nonPrivate</code> or <code>all</code> (issue #82).
+	/// 
+	///  <p>
+	///  Empty means what the role implies. Never above the inviter's own clearance; stored with the
+	///  created user and enforced by issue #83.
+	///  </p>
+	String clearance;
+
+	///  Whether the accepting user may create share links (issue #82).
+	bool mayShare;
+
 	///  A note the inviter wrote for themselves, shown wherever the invitation is listed; may be empty.
 	String note;
 
@@ -3846,6 +3917,8 @@ class Invitation extends _JsonObject {
 	Invitation({
 			this.id = "", 
 			this.role = "", 
+			this.clearance = "", 
+			this.mayShare = false, 
 			this.note = "", 
 			this.expires = "", 
 			this.invitedBy = "", 
@@ -3879,6 +3952,14 @@ class Invitation extends _JsonObject {
 			}
 			case "role": {
 				role = json.expectString();
+				break;
+			}
+			case "clearance": {
+				clearance = json.expectString();
+				break;
+			}
+			case "mayShare": {
+				mayShare = json.expectBool();
 				break;
 			}
 			case "note": {
@@ -3922,6 +4003,12 @@ class Invitation extends _JsonObject {
 
 		json.addKey("role");
 		json.addString(role);
+
+		json.addKey("clearance");
+		json.addString(clearance);
+
+		json.addKey("mayShare");
+		json.addBool(mayShare);
 
 		json.addKey("note");
 		json.addString(note);

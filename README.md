@@ -71,6 +71,8 @@ Options:
 | `--webroot <dir>` | Serve the web app from a directory instead of the bundled copy (development) | bundled |
 | `--auth off\|writes\|all` | What requires a paired device: nothing, changes and uploads, or every request | `writes` |
 | `--pairing-secret <secret>` | The secret a device presents to be paired; a random one is printed at start-up if none is given | generated |
+| `--spaces auto\|single\|multi` | Whether this server hosts one space or several (issue #82); `auto` decides from the folder tree: multi as soon as one folder below the base folder carries `.valbum/space.json` | `auto` |
+| `--migrate-to-spaces` | One-time: turn a library migrated per user into a multi-space server, every user folder a space with that user as its admin, and report what could not be carried; the server does not start afterwards | none |
 | `--preview-threads <n>` | How many thumbnails are generated at the same time; serving an already cached thumbnail is never throttled (the system property `valbum.previewThreads` does the same) | number of processors |
 | `--migrate-to-user <name>` | One-time: move the albums at the base folder into a folder `<name>` and make it the library owner's space (see below); the server does not start afterwards | none |
 

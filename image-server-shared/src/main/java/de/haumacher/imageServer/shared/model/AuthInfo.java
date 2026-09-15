@@ -33,6 +33,12 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getSpace() */
 	private static final String SPACE__PROP = "space";
 
+	/** @see #getClearance() */
+	private static final String CLEARANCE__PROP = "clearance";
+
+	/** @see #isMayShare() */
+	private static final String MAY_SHARE__PROP = "mayShare";
+
 	/** @see #getShare() */
 	private static final String SHARE__PROP = "share";
 
@@ -50,6 +56,10 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _role = "";
 
 	private String _space = "";
+
+	private String _clearance = "";
+
+	private boolean _mayShare = false;
 
 	private de.haumacher.imageServer.shared.model.ShareInfo _share = null;
 
@@ -165,7 +175,15 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The folder below the server's base folder the caller's requests are resolved against, empty for the base folder itself.
+	 * The space the caller is in: the folder below the server's base folder their requests are
+	 * resolved against, empty for the base folder itself.
+	 *
+	 * <p>
+	 * On a multi-space server (issue #82) this is the space of the address the request was sent to
+	 * — the first segment of <code>&lt;context&gt;/&lt;space&gt;/data/...</code> — and every user,
+	 * device and album the answer speaks of belongs to it. On a single-space server it is empty,
+	 * as it was for a library that was never migrated.
+	 * </p>
 	 */
 	public final String getSpace() {
 		return _space;
@@ -182,6 +200,52 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** Internal setter for {@link #getSpace()} without chain call utility. */
 	protected final void internalSetSpace(String value) {
 		_space = value;
+	}
+
+	/**
+	 * Which privacy levels the caller may see: <code>public</code>, <code>nonPrivate</code> or
+	 * <code>all</code>; empty for an anonymous caller (issue #82).
+	 *
+	 * <p>
+	 * One of the two axes of the permission model of Phase 6, stored with the user and enforced by
+	 * issue #83. It is compared against an image's privacy level, which does not change.
+	 * </p>
+	 */
+	public final String getClearance() {
+		return _clearance;
+	}
+
+	/**
+	 * @see #getClearance()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setClearance(String value) {
+		internalSetClearance(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getClearance()} without chain call utility. */
+	protected final void internalSetClearance(String value) {
+		_clearance = value;
+	}
+
+	/**
+	 * Whether the caller may create share links, see issue #82; false for an anonymous caller.
+	 */
+	public final boolean isMayShare() {
+		return _mayShare;
+	}
+
+	/**
+	 * @see #isMayShare()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setMayShare(boolean value) {
+		internalSetMayShare(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isMayShare()} without chain call utility. */
+	protected final void internalSetMayShare(boolean value) {
+		_mayShare = value;
 	}
 
 	/**
@@ -278,6 +342,10 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getRole());
 		out.name(SPACE__PROP);
 		out.value(getSpace());
+		out.name(CLEARANCE__PROP);
+		out.value(getClearance());
+		out.name(MAY_SHARE__PROP);
+		out.value(isMayShare());
 		if (hasShare()) {
 			out.name(SHARE__PROP);
 			getShare().writeTo(out);
@@ -297,6 +365,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case USER_NAME__PROP: setUserName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case ROLE__PROP: setRole(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SPACE__PROP: setSpace(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case CLEARANCE__PROP: setClearance(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case MAY_SHARE__PROP: setMayShare(in.nextBoolean()); break;
 			case SHARE__PROP: setShare(de.haumacher.imageServer.shared.model.ShareInfo.readShareInfo(in)); break;
 			case INVITATION__PROP: setInvitation(de.haumacher.imageServer.shared.model.InvitationInfo.readInvitationInfo(in)); break;
 			default: super.readField(in, field);

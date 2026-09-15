@@ -10,6 +10,9 @@ import de.haumacher.imageServer.auth.InviteMode;
 import de.haumacher.imageServer.auth.LibraryMigration;
 import de.haumacher.imageServer.auth.LibraryMigration.MigrationRefused;
 import de.haumacher.imageServer.auth.ShareStore;
+import de.haumacher.imageServer.auth.SpaceMode;
+import de.haumacher.imageServer.auth.Spaces;
+import de.haumacher.imageServer.auth.SpacesMigration;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.util.servlet.ResourceServlet;
@@ -69,6 +72,15 @@ public class Main {
 		parser.addArgument("--invite").choices("members", "admin").setDefault("members").help(
 			"Who may invite somebody onto this server (issue #52): 'members' lets every member hand "
 				+ "out an invitation, 'admin' reserves that for the library owner");
+		parser.addArgument("--spaces").choices("auto", "single", "multi").setDefault("auto").help(
+			"Whether this server hosts one space or several (issue #82): 'auto' decides from the "
+				+ "folder tree — multi as soon as one folder directly below the base folder carries "
+				+ "'.valbum/space.json', single otherwise — and 'single'/'multi' say so outright");
+		parser.addArgument("--migrate-to-spaces").action(net.sourceforge.argparse4j.impl.Arguments.storeTrue())
+			.help("Turn a library migrated per user (--migrate-to-user) into a multi-space server: "
+				+ "every user folder becomes a space with that user as its admin, and what the space "
+				+ "model cannot represent is moved aside and reported. A one-time, explicit, "
+				+ "rename-only step; the server is not started afterwards");
 		parser.addArgument("--preview-threads").type(type).help(
 			"How many thumbnails are generated at the same time (issue #69); the default is the "
 				+ "number of processors, and the system property 'valbum.previewThreads' does the "
@@ -99,6 +111,12 @@ public class Main {
 			return;
 		}
 
+		if (Boolean.TRUE.equals(ns.getBoolean("migrate_to_spaces"))) {
+			File basePath = ns.get("basepath");
+			System.exit(migrateToSpaces(basePath.toPath()));
+			return;
+		}
+
 		new Main(ns).start();
 	}
 
@@ -108,6 +126,35 @@ public class Main {
 	 * @return The process exit code: <code>0</code> if the library was moved, non-zero if the
 	 *         migration was refused (nothing was moved then).
 	 */
+	/**
+	 * Runs the explicit migration to the space model, see {@link SpacesMigration}.
+	 *
+	 * @return The process exit code: <code>0</code> if the library was migrated (or already is one
+	 *         space), non-zero if the migration was refused (nothing was moved then).
+	 */
+	private static int migrateToSpaces(Path basePath) {
+		try {
+			SpacesMigration.Report report = SpacesMigration.migrate(basePath);
+			System.out.println("Migrating '" + basePath + "' to the space model:");
+			for (String line : report.getLines()) {
+				System.out.println("  " + line);
+			}
+			if (report.getSpaces().isEmpty()) {
+				System.out.println("This server now runs in single-space mode.");
+			} else {
+				System.out.println("This server now hosts " + report.getSpaces().size() + " space(s): "
+					+ String.join(", ", report.getSpaces()));
+			}
+			return 0;
+		} catch (SpacesMigration.MigrationRefused ex) {
+			System.err.println("Cannot migrate to spaces: " + ex.getMessage());
+			return 1;
+		} catch (IOException ex) {
+			System.err.println("Cannot migrate to spaces: " + ex.getMessage());
+			return 1;
+		}
+	}
+
 	private static int migrateLibrary(Path basePath, String userName) {
 		try {
 			List<String> moved = LibraryMigration.migrate(basePath, userName);
@@ -139,6 +186,8 @@ public class Main {
 
 	private final String _pairingSecret;
 
+	private final SpaceMode _spaceMode;
+
 	/**
 	 * Creates a {@link Main}.
 	 */
@@ -161,11 +210,12 @@ public class Main {
 			secret = AuthService.generateSecret();
 		}
 		_pairingSecret = secret;
+		_spaceMode = SpaceMode.parse(ns.getString("spaces"));
 	}
 
 	private void start() throws Exception {
-		AuthService auth = new AuthService(_authMode, _pairingSecret, _basePath.toPath(), _inviteMode);
-		final Server server = createServer(_port, _contextPath, _basePath, _webRoot, auth);
+		Spaces spaces = Spaces.detect(_basePath.toPath(), _spaceMode, _authMode, _pairingSecret, _inviteMode);
+		final Server server = createServer(_port, _contextPath, _basePath, _webRoot, spaces);
 		server.start();
 
 		System.out.println("Image server started: http://localhost:" + _port + _contextPath + "/ serving folder: " + _basePath);
@@ -178,18 +228,36 @@ public class Main {
 			? "Video renditions: available, transcoding with '" + VideoRenditions.encoderName() + "'"
 			: "Video renditions: NOT available - " + renditions);
 		System.out.println("Authentication: " + _authMode.protocolName());
+		System.out.println("Spaces: " + spaces.getMode().protocolName());
+		if (spaces.getMode() == SpaceMode.MULTI && spaces.getSpaces().isEmpty()) {
+			System.out.println("  (no folder below the base folder carries .valbum/space.json; "
+				+ "every address is answered with 'no such space')");
+		}
 		if (_authMode != AuthMode.OFF) {
 			System.out.println("Invitations: " + _inviteMode.protocolName());
 			System.out.println("Pairing secret: " + _pairingSecret);
-			UserStore.User owner = auth.getUsers().getOwner();
-			if (owner == null) {
-				System.out.println("Library owner: not signed in yet");
-			} else {
-				System.out.println("Library owner: '" + (owner.getName().isEmpty() ? "<unnamed>" : owner.getName())
-					+ "', space: " + (owner.getSpace().isEmpty() ? "<the base folder>" : owner.getSpace()));
+			for (Spaces.Space space : spaces.getSpaces()) {
+				reportSpace(spaces, space);
 			}
 		}
 		server.join();
+	}
+
+	/** Says who administers the given space and whether anybody may look in without signing in. */
+	private void reportSpace(Spaces spaces, Spaces.Space space) {
+		String where = spaces.getMode() == SpaceMode.SINGLE
+			? "Library owner: "
+			: "Space '" + space.getSegment() + "' (" + space.getConfig().getName() + ", anonymous: "
+				+ space.getConfig().getAnonymous() + "), admin: ";
+		UserStore.User owner = space.getAuth().getUsers() == null ? null : space.getAuth().getUsers().getOwner();
+		if (owner == null) {
+			System.out.println(where + "not signed in yet");
+		} else {
+			System.out.println(where + "'" + (owner.getName().isEmpty() ? "<unnamed>" : owner.getName())
+				+ "'" + (spaces.getMode() == SpaceMode.SINGLE
+					? ", space: " + (owner.getSpace().isEmpty() ? "<the base folder>" : owner.getSpace())
+					: ""));
+		}
 	}
 
 	/**
@@ -210,6 +278,14 @@ public class Main {
 	 */
 	static Server createServer(int port, String contextPath, File basePath, File webRoot, AuthService auth)
 			throws IOException {
+		return createServer(port, contextPath, basePath, webRoot, Spaces.singleSpace(basePath.toPath(), auth));
+	}
+
+	/**
+	 * Builds the server for the given spaces, see {@link #createServer(int, String, File, File, AuthService)}.
+	 */
+	static Server createServer(int port, String contextPath, File basePath, File webRoot, Spaces spaces)
+			throws IOException {
 		final Server server = new Server();
 
 		HttpConfiguration config = new HttpConfiguration();
@@ -224,13 +300,22 @@ public class Main {
 		WebAppContext webapp = new WebAppContext();
 		webapp.setContextPath(contextPath);
 		webapp.setResourceBase(basePath.toString());
-		webapp.addServlet(new ServletHolder(new ImageServlet(basePath, auth)), Settings.DATA_PREFIX + "/*");
 		Path webRootPath = webRoot == null ? null : webRoot.toPath();
 		// The same application is served below "/s/<token>/" (a share link, issue #51) and
 		// "/i/<token>/" (an invitation, issue #52), so that either opens it with its own base href;
 		// the static handler never looks at the token.
-		webapp.addServlet(new ServletHolder(new ResourceServlet(webRootPath, Settings.DATA_PREFIX,
-			ShareStore.URL_SEGMENT, InvitationStore.URL_SEGMENT)), STATIC_PREFIX + "/*");
+		ResourceServlet app = new ResourceServlet(webRootPath, Settings.DATA_PREFIX,
+			ShareStore.URL_SEGMENT, InvitationStore.URL_SEGMENT);
+		if (spaces.getMode() == SpaceMode.SINGLE) {
+			webapp.addServlet(new ServletHolder(new ImageServlet(basePath, spaces.single().getAuth())),
+				Settings.DATA_PREFIX + "/*");
+			webapp.addServlet(new ServletHolder(app), STATIC_PREFIX + "/*");
+		} else {
+			// The space is the first path segment: one door decides which space a request reaches,
+			// and the application is rebased onto "/<space>/" like a share session, see SpaceServlet.
+			app.setBaseSegments(spaces.segments());
+			webapp.addServlet(new ServletHolder(new SpaceServlet(spaces, app)), STATIC_PREFIX + "/*");
+		}
 		webapp.setClassLoader(Main.class.getClassLoader());
 
 		handlers.addHandler(webapp);

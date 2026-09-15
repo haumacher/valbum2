@@ -90,6 +90,60 @@ public class WebRootResolver {
 		return null;
 	}
 
+	/**
+	 * The virtual base of a session that lives inside a space: <code>/&lt;space&gt;/s/&lt;token&gt;</code>.
+	 *
+	 * <p>
+	 * On a multi-space server a share link or an invitation of a space is opened under that space
+	 * (issue #82), so that the application served there finds the space's data root. Three
+	 * segments instead of two, and the same rule otherwise.
+	 * </p>
+	 *
+	 * @param segments
+	 *        The first segments that are spaces.
+	 * @param prefixes
+	 *        The session prefixes, as for {@link #virtualBase(String, String...)}.
+	 * @return The base, including its leading slash and without a trailing one; <code>null</code>
+	 *         if the path is no such session.
+	 */
+	public static String spaceSessionBase(String pathInfo, java.util.Collection<String> segments,
+			String... prefixes) {
+		String space = singleSegmentBase(pathInfo, segments);
+		if (space == null) {
+			return null;
+		}
+		String session = virtualBase(pathInfo.substring(space.length()), prefixes);
+		return session == null ? null : space + session;
+	}
+
+	/**
+	 * The virtual base of a path whose <em>first</em> segment is one of the given names.
+	 *
+	 * <p>
+	 * The spaces of a multi-space server are addressed that way (issue #82):
+	 * <code>/&lt;space&gt;/</code> is the application's base, exactly as
+	 * <code>/s/&lt;token&gt;/</code> is for a share link — one segment instead of two, because the
+	 * space is a name somebody types, not a token somebody was handed.
+	 * </p>
+	 *
+	 * @param segments
+	 *        The first segments that are a base of their own; <code>null</code> or empty for a
+	 *        server that has none.
+	 * @return The base, including its leading slash and without a trailing one;
+	 *         <code>null</code> if the path does not lie below one of them.
+	 */
+	public static String singleSegmentBase(String pathInfo, java.util.Collection<String> segments) {
+		if (pathInfo == null || segments == null || segments.isEmpty() || !pathInfo.startsWith("/")) {
+			return null;
+		}
+		int end = pathInfo.indexOf('/', 1);
+		String segment = end < 0 ? pathInfo.substring(1) : pathInfo.substring(1, end);
+		if (segment.isEmpty() || !segments.contains(segment)) {
+			return null;
+		}
+		return "/" + segment;
+	}
+
 	private static String virtualBase(String pathInfo, String prefix) {
 		if (prefix == null || prefix.isEmpty()) {
 			return null;

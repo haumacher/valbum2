@@ -45,6 +45,8 @@ public class ResourceServlet extends HttpServlet {
 
 	private final String[] _virtualPrefixes;
 
+	private java.util.Collection<String> _baseSegments = java.util.Collections.emptySet();
+
 	/**
 	 * Creates a {@link ResourceServlet} serving the class path only.
 	 *
@@ -95,11 +97,31 @@ public class ResourceServlet extends HttpServlet {
 		_dataPath = dataPath;
 	}
 
+	/**
+	 * The first path segments that are a base of the application in their own right, see
+	 * {@link WebRootResolver#singleSegmentBase(String, java.util.Collection)}.
+	 *
+	 * <p>
+	 * The spaces of a multi-space server (issue #82). Fixed once at start-up: a space is created on
+	 * disk by hand and picked up by a restart.
+	 * </p>
+	 */
+	public void setBaseSegments(java.util.Collection<String> segments) {
+		_baseSegments = segments == null ? java.util.Collections.emptySet() : segments;
+	}
+
 	@Override
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
 
 		String virtualBase = WebRootResolver.virtualBase(pathInfo, _virtualPrefixes);
+		if (virtualBase == null) {
+			// A session of a space is the longer base, so it is asked for before the space itself.
+			virtualBase = WebRootResolver.spaceSessionBase(pathInfo, _baseSegments, _virtualPrefixes);
+		}
+		if (virtualBase == null) {
+			virtualBase = WebRootResolver.singleSegmentBase(pathInfo, _baseSegments);
+		}
 		String relative = virtualBase == null ? pathInfo : pathInfo.substring(virtualBase.length());
 		if (virtualBase != null && relative.isEmpty()) {
 			// "/s/<token>" (and "/i/<token>") without a trailing slash is the entry point, too.
@@ -166,6 +188,25 @@ public class ResourceServlet extends HttpServlet {
 		String page = new String(html, StandardCharsets.UTF_8);
 		String rebased = page.replaceFirst("<base href=\"/\">", "<base href=\"" + base + "/\">");
 		return rebased.getBytes(StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * Whether a file is actually served at the given context-relative path.
+	 *
+	 * <p>
+	 * The plain question, without the <code>index.html</code> fallback {@link WebRootResolver}
+	 * makes for a client-side route: a caller that must tell an asset from a name somebody typed
+	 * needs to know whether anything is really there (issue #82).
+	 * </p>
+	 */
+	public boolean hasFile(String path) {
+		String relative = WebRootResolver.normalize(path);
+		if (relative == null) {
+			return false;
+		}
+		String candidate = relative.isEmpty() || relative.endsWith("/")
+			? relative + WebRootResolver.INDEX : relative;
+		return exists(candidate);
 	}
 
 	private boolean exists(String resource) {

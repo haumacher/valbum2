@@ -140,6 +140,10 @@ public class UserStore {
 
 	private static final String CREATED__PROP = "created";
 
+	private static final String CLEARANCE__PROP = "clearance";
+
+	private static final String SHARE__PROP = "mayShare";
+
 	private static final String ID__PROP = "id";
 
 	/** The number of random bytes a device id is built from; it is a name, not a secret. */
@@ -223,14 +227,52 @@ public class UserStore {
 
 		private final String _created;
 
+		private String _clearance;
+
+		private boolean _share;
+
 		private final List<Device> _devices = new ArrayList<>();
 
-		/** Creates a {@link User}. */
+		/** Creates a {@link User} with what their role implies, see {@link Clearances#ofRole(String)}. */
 		public User(String name, String role, String space, String created) {
+			this(name, role, space, created, Clearances.ofRole(role), Clearances.mayShareByRole(role));
+		}
+
+		/** Creates a {@link User}. */
+		public User(String name, String role, String space, String created, String clearance, boolean share) {
 			_name = name;
 			_role = role;
 			_space = space;
 			_created = created;
+			_clearance = clearance;
+			_share = share;
+		}
+
+		/**
+		 * Which privacy levels this user may see, one of {@link Clearances} (issue #82).
+		 *
+		 * <p>
+		 * Stored here and enforced by issue #83. A user written before the field existed reads
+		 * with what their role implies, so nothing about them changes.
+		 * </p>
+		 */
+		public String getClearance() {
+			return _clearance;
+		}
+
+		/** See {@link #getClearance()}. */
+		public void setClearance(String clearance) {
+			_clearance = clearance;
+		}
+
+		/** Whether this user may create share links (issue #82). */
+		public boolean isShare() {
+			return _share;
+		}
+
+		/** See {@link #isShare()}. */
+		public void setShare(boolean share) {
+			_share = share;
 		}
 
 		/**
@@ -746,6 +788,8 @@ public class UserStore {
 		String role = "";
 		String space = "";
 		String created = "";
+		String clearance = "";
+		Boolean share = null;
 		List<Device> devices = new ArrayList<>();
 		in.beginObject();
 		while (in.hasNext()) {
@@ -763,6 +807,12 @@ public class UserStore {
 				case CREATED__PROP:
 					created = in.nextString();
 					break;
+				case CLEARANCE__PROP:
+					clearance = in.nextString();
+					break;
+				case SHARE__PROP:
+					share = Boolean.valueOf(in.nextBoolean());
+					break;
 				case DEVICES__PROP:
 					in.beginArray();
 					while (in.hasNext()) {
@@ -777,7 +827,10 @@ public class UserStore {
 		}
 		in.endObject();
 
-		User result = new User(name, role, space, created);
+		// A store written before issue #82 carries neither: the role says what such a user held.
+		User result = new User(name, role, space, created,
+			Clearances.isKnown(clearance) ? clearance : Clearances.ofRole(role),
+			share == null ? Clearances.mayShareByRole(role) : share.booleanValue());
 		for (Device device : devices) {
 			result.addDevice(device);
 		}
@@ -858,6 +911,10 @@ public class UserStore {
 		out.value(user.getSpace());
 		out.name(CREATED__PROP);
 		out.value(user.getCreated());
+		out.name(CLEARANCE__PROP);
+		out.value(user.getClearance());
+		out.name(SHARE__PROP);
+		out.value(user.isShare());
 		out.name(DEVICES__PROP);
 		out.beginArray();
 		for (Device device : user.getDevices()) {
