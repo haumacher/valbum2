@@ -142,6 +142,20 @@ jobs:
           path: valbum_ui/build/web
       - name: Set the project version from the tag
         run: mvn -B versions:set -DnewVersion=${{ needs.prepare.outputs.version }} -DgenerateBackupPoms=false
+      # The tested leg needs what the CI workflow installs for the same reason: the bundled
+      # FFmpeg's device library links xcb and ALSA, which a bare runner does not carry, and
+      # `TestFfmpegProgram` runs the program so a missing library fails the build by name
+      # (issue #81). The legs that skip the tests never load it.
+      - name: Install the system libraries the bundled FFmpeg links
+        if: matrix.test_flags == ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 \
+            libxau6 libxdmcp6 libbsd0 libmd0
+          # ALSA was renamed in Ubuntu 24.04; take whichever name the runner has.
+          sudo apt-get install -y --no-install-recommends libasound2t64 \
+            || sudo apt-get install -y --no-install-recommends libasound2
       - name: Build the Debian package
         run: mvn -B -Djavacpp.platform=${{ matrix.platform }} ${{ matrix.test_flags }} clean install
       - name: Check the package
