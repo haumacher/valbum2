@@ -54,6 +54,9 @@ public class PreviewCache {
 	/** The directory a folder's generated previews are kept in, beside the originals. */
 	public static final String CACHE_DIRECTORY_NAME = ".vacache";
 
+	/** The name every preview begins with, inside {@value #CACHE_DIRECTORY_NAME}. */
+	public static final String PREVIEW_PREFIX = "preview-";
+
 
 	private static final String MP4 = "mp4";
 
@@ -109,7 +112,7 @@ public class PreviewCache {
 	public static final String PREVIEW_THREADS_PROPERTY = "valbum.previewThreads";
 
 	/** The name a preview is written under before it is moved into place. */
-	static final String TMP_SUFFIX = ".tmp";
+	public static final String TMP_SUFFIX = ".tmp";
 
 	/**
 	 * How many previews may be generated at the same time.
@@ -240,7 +243,7 @@ public class PreviewCache {
 		String imageType = imageType(suffix);
 
 		File cacheDir = new File(file.getParentFile(), CACHE_DIRECTORY_NAME);
-		File previewCache = new File(cacheDir, "preview-" + fileName + (suffix.equals(imageType) ? "" : "." + imageType));
+		File previewCache = new File(cacheDir, PREVIEW_PREFIX + fileName + (suffix.equals(imageType) ? "" : "." + imageType));
 		if (!upToDate(file, previewCache)) {
 			generate(file, previewCache, suffix, imageType);
 		}

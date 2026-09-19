@@ -24,10 +24,15 @@ import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.util.Orientations;
 import java.io.File;
 import java.io.IOException;
+import java.time.DateTimeException;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Date;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * TODO
@@ -201,7 +206,8 @@ public class ImageData extends ImagePart {
 	 * </p>
 	 *
 	 * @return The date to sort the part by, never <code>null</code>: the file's modification time
-	 *         when neither the EXIF data nor the container say anything usable.
+	 *         when neither the EXIF data, nor the container, nor the file name say anything
+	 *         usable.
 	 */
 	private static Date date(Metadata metadata, File file) {
 		ExifSubIFDDirectory directory = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
@@ -214,6 +220,10 @@ public class ImageData extends ImagePart {
 		Date recorded = recordingTime(metadata);
 		if (recorded != null) {
 			return recorded;
+		}
+		Date named = nameDate(file.getName());
+		if (named != null) {
+			return named;
 		}
 		return new Date(file.lastModified());
 	}
@@ -332,6 +342,137 @@ public class ImageData extends ImagePart {
 			return null;
 		}
 		return date;
+	}
+
+	/**
+	 * The earliest year a date in a file name is taken for a recording time.
+	 *
+	 * <p>
+	 * The same bound as {@link #EARLIEST_RECORDING}, and for the same reason: a run of digits that
+	 * reads as 1970 or 1904 is a counter or an unset field, not a recording.
+	 * </p>
+	 */
+	private static final int EARLIEST_NAME_YEAR = 1990;
+
+	/**
+	 * The date forms a file name is searched for, see {@link #nameDate(String)}.
+	 *
+	 * <p>
+	 * One alternation, tried in this order at every position of the name, so that the longest and
+	 * most specific form wins where several would match at the same place:
+	 * </p>
+	 *
+	 * <ol>
+	 * <li><code>YYYYMMDD</code>, an optional <code>_</code>, <code>-</code> or blank, and
+	 * <code>HHMMSS</code> followed by any further digits — the sub-second digits of
+	 * <code>PXL_20240315_142233123.mp4</code> and the shape of <code>VID_</code>,
+	 * <code>IMG_</code>, <code>Screenshot_</code> and a bare
+	 * <code>20240315_142233.mp4</code>.</li>
+	 * <li><code>YYYY-MM-DD</code>, a separator of <code> at </code>, <code>_</code>, a blank or
+	 * <code>T</code>, and a time whose two separators are the same character (<code>.</code>,
+	 * <code>-</code>, <code>:</code> or nothing) — <code>WhatsApp Video 2024-03-15 at
+	 * 14.22.33.mp4</code> and its relatives.</li>
+	 * <li>A bare <code>YYYY-MM-DD</code> or <code>YYYYMMDD</code> not followed by a further digit
+	 * — that day at midnight.</li>
+	 * </ol>
+	 *
+	 * <p>
+	 * Every form that begins with an undelimited run of digits is guarded by
+	 * <code>(?&lt;!\d)</code>: a date starts where a digit run starts, so a sixteen-digit counter
+	 * cannot be read as a date by chopping four digits off its front.
+	 * </p>
+	 */
+	private static final Pattern NAME_DATE = Pattern.compile(
+		// YYYYMMDD [sep] HHMMSS [further digits]
+		"(?<!\\d)(\\d{4})(\\d{2})(\\d{2})[_\\- ]?(\\d{2})(\\d{2})(\\d{2})\\d*"
+			// YYYY-MM-DD [sep] HH[.:-]MM[.:-]SS [further digits]
+			+ "|(?<!\\d)(\\d{4})-(\\d{2})-(\\d{2})(?: at |[_ T])(\\d{2})([.:\\-]?)(\\d{2})\\11(\\d{2})\\d*"
+			// A bare day, in either spelling.
+			+ "|(?<!\\d)(\\d{4})-(\\d{2})-(\\d{2})(?!\\d)"
+			+ "|(?<!\\d)(\\d{4})(\\d{2})(\\d{2})(?!\\d)");
+
+	/**
+	 * The recording time a file name carries, see issue #102.
+	 *
+	 * <p>
+	 * A camera, a phone and a messenger all write the moment of the recording into the name they
+	 * give a file, and for a video that is often the only place it survives: the container time is
+	 * lost in every re-encode, and the file's modification time is the time of the copy. So the
+	 * name is asked after the file itself has been asked and before its modification time is
+	 * taken, see {@link #date(Metadata, File)}.
+	 * </p>
+	 *
+	 * <p>
+	 * The first match of {@link #NAME_DATE} that is a real date wins, the search going on one
+	 * character further where it is not: a name may well carry a number in front of the date, and
+	 * a run of digits that is no date must not stop the one that is. A date is real when its year
+	 * lies between {@value #EARLIEST_NAME_YEAR} and the year after the current one — nothing in an
+	 * album was recorded before that, and nothing was recorded the year after next — and when the
+	 * day exists and the time is a time of day.
+	 * </p>
+	 *
+	 * <p>
+	 * The result is read in the server's default zone, exactly as an EXIF date and a container
+	 * time are taken as they come: the name carries no zone, so anything else would only move the
+	 * error around.
+	 * </p>
+	 *
+	 * @param fileName
+	 *        The plain name of the file, without a path.
+	 * @return The time the name says, or <code>null</code> when it says none.
+	 */
+	public static Date nameDate(String fileName) {
+		if (fileName == null) {
+			return null;
+		}
+		Matcher matcher = NAME_DATE.matcher(fileName);
+		int from = 0;
+		while (from <= fileName.length() && matcher.find(from)) {
+			Date result = dateOf(matcher);
+			if (result != null) {
+				return result;
+			}
+			from = matcher.start() + 1;
+		}
+		return null;
+	}
+
+	/**
+	 * The date of the group that matched, <code>null</code> when those digits are no date.
+	 */
+	private static Date dateOf(Matcher matcher) {
+		if (matcher.group(1) != null) {
+			return at(matcher, 1, 2, 3, 4, 5, 6);
+		}
+		if (matcher.group(7) != null) {
+			return at(matcher, 7, 8, 9, 10, 12, 13);
+		}
+		if (matcher.group(14) != null) {
+			return at(matcher, 14, 15, 16, -1, -1, -1);
+		}
+		return at(matcher, 17, 18, 19, -1, -1, -1);
+	}
+
+	/** The date the given groups spell, <code>null</code> when it is none. */
+	private static Date at(Matcher matcher, int year, int month, int day, int hour, int minute, int second) {
+		int y = number(matcher, year);
+		if (y < EARLIEST_NAME_YEAR || y > ZonedDateTime.now().getYear() + 1) {
+			return null;
+		}
+		try {
+			LocalDateTime local = LocalDateTime.of(y, number(matcher, month), number(matcher, day),
+				number(matcher, hour), number(matcher, minute), number(matcher, second));
+			return Date.from(local.atZone(ZoneId.systemDefault()).toInstant());
+		} catch (DateTimeException ex) {
+			// A month, a day of a month, or a time of day that does not exist: these digits are
+			// no date, and the search goes on.
+			return null;
+		}
+	}
+
+	/** The number the given group holds, zero for a group the form has not got. */
+	private static int number(Matcher matcher, int group) {
+		return group < 0 ? 0 : Integer.parseInt(matcher.group(group));
 	}
 
 }
