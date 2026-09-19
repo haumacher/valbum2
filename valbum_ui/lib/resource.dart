@@ -2689,6 +2689,63 @@ class CreateResult extends _JsonObject {
 
 }
 
+///  Answer to <code>&lt;folder&gt;/?action=refresh-cache</code>, see issue #98.
+/// 
+///  <p>
+///  An administrator throws the generated files of one folder away — the thumbnails and the video
+///  renditions the server made itself — and the server makes them anew the next time they are asked
+///  for. Nothing else in the folder is touched, so the number below is the whole of what happened.
+///  </p>
+class CacheRefreshed extends _JsonObject {
+	///  How many generated files were deleted; zero when the folder had no cache at all.
+	/// 
+	///  <p>
+	///  Worth showing: it is the only evidence the caller gets that the broken thumbnail they were
+	///  looking at is really gone.
+	///  </p>
+	int removed;
+
+	/// Creates a CacheRefreshed.
+	CacheRefreshed({
+			this.removed = 0, 
+	});
+
+	/// Parses a CacheRefreshed from a string source.
+	static CacheRefreshed? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a CacheRefreshed instance from the given reader.
+	static CacheRefreshed read(JsonReader json) {
+		CacheRefreshed result = CacheRefreshed();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "CacheRefreshed";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "removed": {
+				removed = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("removed");
+		json.addNumber(removed);
+	}
+
+}
+
 ///  A sharing grant: who may do what on which subtree, see issue #49.
 /// 
 ///  <p>

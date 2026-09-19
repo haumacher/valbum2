@@ -22,6 +22,7 @@ import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.CacheRefreshed;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
 import de.haumacher.imageServer.shared.model.DeviceCodeCreated;
@@ -251,6 +252,10 @@ public class ImageServlet extends HttpServlet {
 
 	/** The message an invitation naming a clearance this build does not know is refused with. */
 	public static final String CLEARANCE_REFUSED = "Unknown clearance; use one of " + Clearances.names() + ".";
+
+	/** The message a cache refresh from somebody who is not an administrator is refused with. */
+	public static final String CACHE_REFRESH_REFUSED =
+		"Only an administrator may throw an album's previews away.";
 
 	static {
 		LOG.info("Loading: " + ExifReaderPatch.class);
@@ -982,6 +987,58 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Throws away the generated cache files of the addressed folder, see issue #98.
+	 *
+	 * <p>
+	 * The administrator's handle on the server's own cache, and nothing else: a preview written by
+	 * a build that could still crash mid-write stays broken for ever, because a cached file is
+	 * judged by its timestamp and nobody ever looks inside it. The files are deleted by the names
+	 * the server writes them under (see {@link CacheRefresh}), so no request can ever reach a
+	 * sidecar or an original through this.
+	 * </p>
+	 *
+	 * <p>
+	 * It is the administrator's alone — not an {@link Rights#EDIT} right on the folder. Deleting
+	 * previews touches nothing of the album's content, but it makes the server redo work for a
+	 * whole album on the next visit, which is a decision about the machine rather than about the
+	 * photos, and the person who runs it is the one who makes it.
+	 * </p>
+	 */
+	private void refreshCache(Context context) throws IOException {
+		// Who the caller is, before where they are pointing: whether a folder exists is nothing an
+		// anonymous caller learns from a management request.
+		Caller caller = _auth.caller(context.request());
+		if (!_auth.mayAdminister(caller)) {
+			if (!caller.isPaired() && !caller.isShareLink()) {
+				// Nobody yet: told how to become somebody, like every other refusal.
+				unauthorized(context, caller, true);
+				return;
+			}
+			LOG.warning("Refusing the cache refresh at '" + context.request().getPathInfo() + "': "
+				+ CACHE_REFRESH_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, CACHE_REFRESH_REFUSED);
+			return;
+		}
+
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		File folder = location.getPath().toFile();
+		if (!folder.isDirectory()) {
+			error404(context);
+			return;
+		}
+
+		int removed = CacheRefresh.refresh(folder);
+		// A rendition that failed once is never tried again while the server runs; the whole point
+		// of throwing it away is that it is made afresh, see issue #74.
+		_videos.forget(CacheRefresh.cacheDir(folder));
+
+		serveJsonObject(context.response(), CacheRefreshed.create().setRemoved(removed));
 	}
 
 	/**
@@ -1933,6 +1990,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("place".equals(action)) {
 			placeEntries(context);
+			return;
+		}
+		if ("refresh-cache".equals(action)) {
+			refreshCache(context);
 			return;
 		}
 		if ("unlink".equals(action)) {

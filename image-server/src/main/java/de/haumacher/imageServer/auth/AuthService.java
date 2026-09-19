@@ -1248,6 +1248,27 @@ public class AuthService {
 	}
 
 	/**
+	 * Whether the given caller administers this space, see issue #98.
+	 *
+	 * <p>
+	 * What is asked for an operation on the server itself rather than on the photos — throwing the
+	 * generated cache of a folder away, for one. A share link never administers anything, whatever
+	 * rights it carries: it is a view of somebody's album, not a seat at the machine.
+	 * </p>
+	 *
+	 * <p>
+	 * {@link AuthMode#OFF} knows no users at all, so there is nobody to refuse: whoever reaches a
+	 * server started that way runs it, exactly as they may write everything else there.
+	 * </p>
+	 */
+	public boolean mayAdminister(Caller caller) {
+		if (_mode == AuthMode.OFF) {
+			return true;
+		}
+		return caller.isPaired() && !caller.isShareLink() && Roles.isAdmin(caller.getRole());
+	}
+
+	/**
 	 * Which user's space the given path lies in, and where in it.
 	 *
 	 * <p>

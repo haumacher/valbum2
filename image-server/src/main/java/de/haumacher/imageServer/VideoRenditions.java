@@ -85,6 +85,16 @@ public class VideoRenditions {
 			_prefix = prefix;
 		}
 
+		/** The name every rendition of this kind begins with. */
+		public String prefix() {
+			return _prefix;
+		}
+
+		/** The extension every rendition carries, whatever the original is called. */
+		public static String extension() {
+			return MP4;
+		}
+
 		/** The name a rendition of this kind has, beside the original's poster frame. */
 		public String fileName(String originalName) {
 			return _prefix + originalName + (Util.suffix(originalName).equals(MP4) ? "" : "." + MP4);
@@ -285,6 +295,41 @@ public class VideoRenditions {
 	/** Why the rendition at the given path failed, <code>null</code> if it did not. */
 	String failure(File rendition) {
 		return _failed.get(rendition.getAbsolutePath());
+	}
+
+	/** Remembers a failed transcode without running one. For the tests. */
+	void remember(File rendition, String reason) {
+		_failed.put(rendition.getAbsolutePath(), reason);
+	}
+
+	/**
+	 * Forgets that a rendition of the given folder ever failed, see issue #98.
+	 *
+	 * <p>
+	 * A failure is remembered for the lifetime of the process, so that a file FFmpeg cannot read
+	 * does not keep the machine busy. That memory is the very thing an administrator refreshing
+	 * the folder's cache wants undone: the rendition is thrown away to be made again, and a
+	 * remembered failure would answer <code>500</code> for ever instead of trying. Only this
+	 * folder's renditions are forgotten — every other folder keeps its memory.
+	 * </p>
+	 *
+	 * @param cacheDir
+	 *        The folder's {@value PreviewCache#CACHE_DIRECTORY_NAME} directory, the parent of
+	 *        every rendition of that folder; it need not exist.
+	 * @return How many remembered failures were dropped.
+	 */
+	public int forget(File cacheDir) {
+		String prefix = cacheDir.getAbsolutePath() + File.separator;
+		int forgotten = 0;
+		for (String key : new ArrayList<>(_failed.keySet())) {
+			// The renditions of this folder and of no other: a path below the folder's cache
+			// directory, with nothing further below it.
+			if (key.startsWith(prefix) && key.indexOf(File.separatorChar, prefix.length()) < 0
+				&& _failed.remove(key) != null) {
+				forgotten++;
+			}
+		}
+		return forgotten;
 	}
 
 	/**
