@@ -88,18 +88,174 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
 ///
 /// The counterpart of the `Image.network` the app used before: same arguments,
 /// but the bytes come through the client, see [ThumbnailImage].
+///
+/// [displayHeight] is the height the image itself is drawn at, in logical
+/// pixels. Where the caller knows it, the thumbnail is decoded at that height
+/// times the device's pixel ratio instead of at its full size — see
+/// [resizedThumbnail]. Where it does not (the viewer's fallback, the cropped
+/// index picture of a listing, which magnifies a part of the thumbnail), the
+/// provider is left alone and the full thumbnail is decoded, as before.
 Widget thumbnail(
   VAlbumClient client,
   String imageUrl, {
   Key? key,
   double? width,
   double? height,
+  double? displayHeight,
   BoxFit? fit,
 }) =>
-    Image(
+    _Thumbnail(
       key: key,
-      image: ThumbnailImage(client, imageUrl),
+      client: client,
+      imageUrl: imageUrl,
       width: width,
       height: height,
+      displayHeight: displayHeight,
       fit: fit,
     );
+
+/// The thumbnail of [imageUrl], decoded at the size it is shown at.
+///
+/// The server's thumbnails are 600 px high (1200 for a portrait one), which is
+/// roughly 2 MB decoded; an album tile shows perhaps 200 px of that. Decoding
+/// every tile at its full size fills Flutter's [ImageCache] with a few dozen
+/// images, and an album larger than that evicts its own thumbnails while the
+/// viewer is open — the way back then fetches and decodes them all again, see
+/// issue #93. Decoded at the height it is drawn at, a tile costs a ninth of
+/// that and the cache holds many times more of the album.
+///
+/// The height asked for is the displayed height times the device's pixel
+/// ratio, rounded up, so nothing is ever drawn from fewer pixels than it
+/// shows; `allowUpscaling: false` caps it at the thumbnail's own size, so a
+/// tile larger than the thumbnail decodes it unchanged instead of blowing it
+/// up in memory. The cache key changes with the size, which is the point: two
+/// tiles of different size are two different decodings of one download.
+ImageProvider resizedThumbnail(
+  VAlbumClient client,
+  String imageUrl, {
+  required double displayHeight,
+  required double devicePixelRatio,
+}) =>
+    ResizeImage(
+      ThumbnailImage(client, imageUrl),
+      height: (displayHeight * devicePixelRatio).ceil(),
+      allowUpscaling: false,
+    );
+
+/// A tile that holds on to its picture for as long as it is mounted.
+///
+/// The [Image] widget alone does not: a route that is covered by another one
+/// stays mounted but is switched to [TickerMode] `enabled: false`, and
+/// `Image` answers that by dropping its listener on the image stream. With
+/// the last listener gone, Flutter's [ImageCache] forgets the image as a
+/// *live* one — and once it has also been evicted from the size-limited cache
+/// (which a large album does to its own thumbnails, see issue #93), the way
+/// back resolves the provider again, misses, and fetches and decodes every
+/// visible tile from the server a second time.
+///
+/// Keeping the album mounted beneath the viewer is therefore only half the
+/// answer; the other half is this listener, which does not go away when the
+/// page is covered. It costs one image per *mounted* tile — the album's list
+/// is lazy, so that is the viewport — and it is what makes ascending from a
+/// photo free.
+class _Thumbnail extends StatefulWidget {
+  final VAlbumClient client;
+  final String imageUrl;
+  final double? width;
+  final double? height;
+  final double? displayHeight;
+  final BoxFit? fit;
+
+  const _Thumbnail({
+    super.key,
+    required this.client,
+    required this.imageUrl,
+    required this.width,
+    required this.height,
+    required this.displayHeight,
+    required this.fit,
+  });
+
+  @override
+  State<_Thumbnail> createState() => _ThumbnailState();
+}
+
+class _ThumbnailState extends State<_Thumbnail> {
+  /// The stream this tile holds a listener on, see [_Thumbnail].
+  ImageStream? _held;
+
+  /// Takes the frame and lets go of it again: the picture is drawn by the
+  /// [Image] below, this listener is here to be counted, not to paint. An
+  /// [ImageInfo] handed to a listener is its own to dispose.
+  late final ImageStreamListener _listener = ImageStreamListener(
+    (ImageInfo image, bool synchronous) => image.dispose(),
+    // Errors are reported by the [Image] widget; a listener without an error
+    // handler would let a failed thumbnail throw out of the stream.
+    onError: (Object error, StackTrace? stack) {},
+  );
+
+  /// The provider of this tile, at the size it is drawn at where that is
+  /// known, see [thumbnail].
+  ImageProvider _provider(BuildContext context) {
+    var displayHeight = widget.displayHeight;
+    if (displayHeight == null || !displayHeight.isFinite || displayHeight <= 0) {
+      return ThumbnailImage(widget.client, widget.imageUrl);
+    }
+    return resizedThumbnail(
+      widget.client,
+      widget.imageUrl,
+      displayHeight: displayHeight,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
+  }
+
+  void _hold() {
+    var stream =
+        _provider(context).resolve(createLocalImageConfiguration(context));
+    if (stream.key == _held?.key) {
+      return;
+    }
+    _held?.removeListener(_listener);
+    _held = stream..addListener(_listener);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The device's pixel ratio decides the size the tile is decoded at.
+    _hold();
+  }
+
+  @override
+  void didUpdateWidget(_Thumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _hold();
+  }
+
+  @override
+  void dispose() {
+    _held?.removeListener(_listener);
+    _held = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Image(
+        image: _provider(context),
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+      );
+}
+
+/// The [ThumbnailImage] an image provider fetches through, `null` for
+/// anything else.
+///
+/// A tile that knows the height it is drawn at wraps the provider in a
+/// [ResizeImage], see [resizedThumbnail]; what the tile shows is the same
+/// image either way, and this is how a test of the layout finds it.
+ThumbnailImage? thumbnailOf(ImageProvider provider) => switch (provider) {
+      ThumbnailImage() => provider,
+      ResizeImage(imageProvider: var inner) => thumbnailOf(inner),
+      _ => null,
+    };

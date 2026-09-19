@@ -103,6 +103,7 @@ class GroupView extends StatelessWidget {
             key: ValueKey("group-tile-${self.name}"),
             width: width,
             height: height,
+            displayHeight: height,
             fit: BoxFit.contain,
           ),
           // The representative stands out, so that the choice can be checked

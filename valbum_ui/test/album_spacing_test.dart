@@ -41,8 +41,8 @@ Finder tile(String name) => find.byWidgetPredicate((widget) {
       if (widget is! Image) {
         return false;
       }
-      var image = widget.image;
-      return image is ThumbnailImage && image.imageUrl.endsWith("/$name");
+      var image = thumbnailOf(widget.image);
+      return image != null && image.imageUrl.endsWith("/$name");
     });
 
 /// Renders the given album at the given page width.

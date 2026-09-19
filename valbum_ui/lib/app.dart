@@ -1129,14 +1129,82 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
 
   /// The system back button (and the browser's, on the web) goes up.
   ///
-  /// A dialog or another imperatively pushed route is closed first.
+  /// A dialog or another imperatively pushed route is closed first. The pages
+  /// of the router itself are *not* popped here: the way up out of a group
+  /// leads to the album in one step (issue #79), which is what [goUp]
+  /// answers, while popping a page would stop at the alternatives view on the
+  /// way. What the pages are for is keeping the levels below alive, see
+  /// [levelsOf], not deciding where "up" leads.
   @override
   Future<bool> popRoute() async {
     var navigator = navigatorKey.currentState;
-    if (navigator != null && await navigator.maybePop()) {
+    if (navigator != null &&
+        _imperative.onTop &&
+        await navigator.maybePop()) {
       return true;
     }
     return goUp();
+  }
+
+  /// The route of every level of [route], the outermost first.
+  ///
+  /// This is what the page stack is built from, and it is derived from the
+  /// route's depth alone — one page per level, no special case for the
+  /// viewer: an image and the alternatives of a group sit on their album, a
+  /// group member sits on the alternatives. Every level therefore stays
+  /// mounted while the next one is shown, and ascending is a pop that finds
+  /// the level below exactly as it was left — the album's tiles with their
+  /// thumbnails held live and its scroll offset untouched, see issue #93.
+  static List<VAlbumRoute> levelsOf(VAlbumRoute route) => switch (route) {
+        ListingOrAlbumRoute() => [route],
+        ImageRoute(albumPath: var album) => [
+            ListingOrAlbumRoute(album),
+            route,
+          ],
+        AlternativesRoute(albumPath: var album) => [
+            ListingOrAlbumRoute(album),
+            route,
+          ],
+        MemberRoute(albumPath: var album, name: var name) => [
+            ListingOrAlbumRoute(album),
+            AlternativesRoute(album, name),
+            route,
+          ],
+      };
+
+  /// Watches what sits on top of the pages, see [popRoute].
+  final _ImperativeRoutes _imperative = _ImperativeRoutes();
+
+  /// The page showing the given level of the route.
+  ///
+  /// The key is derived from what the page shows — the album by its path, an
+  /// image by its album and its file name, and so on — so that a step within
+  /// one level (the next image in the viewer, reached by a swipe or an arrow
+  /// key) exchanges the topmost page while the levels below it are not
+  /// touched at all.
+  static Page<void> _pageOf(VAlbumRoute level) => _LevelPage(
+        key: ValueKey("valbum:${level.path}"),
+        level: level,
+        child: VAlbumView(route: level),
+      );
+
+  /// A page that left the stack: the route falls back to the level beneath it.
+  ///
+  /// Only a real pop (the back gesture, an imperative `Navigator.pop`) is
+  /// meant here. A page that was *replaced* — the viewer moving on to the
+  /// next image, or a descent into another folder — is removed as well, and
+  /// is told apart by the route having moved on already: the page removed is
+  /// then no longer the top level of what is shown.
+  void _pageRemoved(Page<Object?> page) {
+    if (page is! _LevelPage) {
+      return;
+    }
+    var levels = levelsOf(_route);
+    if (levels.length < 2 || levels.last != page.level) {
+      return;
+    }
+    _route = levels[levels.length - 2];
+    notifyListeners();
   }
 
   @override
@@ -1147,17 +1215,61 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       delegate: this,
       child: Navigator(
         key: navigatorKey,
-        pages: [
-          MaterialPage<void>(
-            // Keyed by the album path, not by the route: opening an image of
-            // the album keeps the album loaded.
-            key: ValueKey("valbum:${_pathKey(_route.albumPath)}"),
-            child: VAlbumView(route: _route),
-          ),
-        ],
-        onDidRemovePage: (page) {},
+        observers: [_imperative],
+        pages: [for (var level in levelsOf(_route)) _pageOf(level)],
+        onDidRemovePage: _pageRemoved,
       ),
     );
+  }
+}
+
+/// One level of the route, see [VAlbumRouterDelegate.levelsOf].
+class _LevelPage extends MaterialPage<void> {
+  /// The route this page shows.
+  final VAlbumRoute level;
+
+  const _LevelPage({
+    required super.key,
+    required this.level,
+    required super.child,
+  });
+}
+
+/// Whether something imperative — a dialog, a bottom sheet, a menu — sits on
+/// top of the pages the router built.
+///
+/// The system back button closes that first and only then leaves the view,
+/// see [VAlbumRouterDelegate.popRoute]. A page-based route carries its [Page]
+/// as its settings, everything else does not.
+class _ImperativeRoutes extends NavigatorObserver {
+  final List<Route<dynamic>> _stack = [];
+
+  /// Whether the topmost route was pushed imperatively.
+  bool get onTop => _stack.isNotEmpty && _stack.last.settings is! Page;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _stack.add(route);
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _stack.remove(route);
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _stack.remove(route);
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    var at = _stack.indexOf(oldRoute!);
+    if (at < 0) {
+      return;
+    }
+    if (newRoute == null) {
+      _stack.removeAt(at);
+    } else {
+      _stack[at] = newRoute;
+    }
   }
 }
 

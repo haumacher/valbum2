@@ -27,8 +27,7 @@ VAlbumRoute routeOf(WidgetTester tester) => routerOf(tester).route;
 Finder tile(String name) => find.byWidgetPredicate(
       (widget) =>
           widget is Image &&
-          widget.image is ThumbnailImage &&
-          (widget.image as ThumbnailImage).url.contains(name),
+          thumbnailOf(widget.image)?.url.contains(name) == true,
     );
 
 /// The URL of the single image the viewer shows.

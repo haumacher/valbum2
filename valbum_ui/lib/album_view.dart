@@ -1625,18 +1625,27 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   }
 
   Widget orientedThumbnail(ImagePart image) {
+    var delta = OrientationOps.delta(
+      state.layoutOrientation(image),
+      image.orientation,
+    );
+
+    // What the tile draws of the image itself: its own height where the tile
+    // is not turned, and at most the longer side where it is — the thumbnail
+    // is then laid out, turned and fitted into the tile, so the height of the
+    // tile is no longer the height the image is drawn at. Never less than what
+    // is shown, see [thumbnail].
     Widget result = thumbnail(
       state.client,
       "${state.albumUrl}${image.thumbnailName}",
       width: width,
       height: height,
+      displayHeight: delta == PlaneTransform.identity
+          ? height
+          : (width > height ? width : height),
       fit: BoxFit.contain,
     );
 
-    var delta = OrientationOps.delta(
-      state.layoutOrientation(image),
-      image.orientation,
-    );
     if (delta == PlaneTransform.identity) {
       return result;
     }

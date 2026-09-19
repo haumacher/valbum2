@@ -25,7 +25,8 @@ Finder tile(String name) => find.byWidgetPredicate((widget) {
         return false;
       }
       var provider = widget.image;
-      return provider is ThumbnailImage && provider.imageUrl.endsWith("/$name");
+      var image = thumbnailOf(provider);
+      return image != null && image.imageUrl.endsWith("/$name");
     });
 
 Future<void> pumpAlbum(WidgetTester tester, String album,
