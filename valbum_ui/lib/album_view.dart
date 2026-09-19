@@ -67,6 +67,19 @@ IconData? privacyIcon(int level) => switch (level) {
 /// included.
 IconData privacyControlIcon(int level) => privacyIcon(level) ?? Icons.public;
 
+/// What is to become of the unsaved changes when an album being edited is
+/// left, see [AlbumContentState.confirmLeave] (issue #99).
+enum LeaveEdit {
+  /// Write the album back and leave once the server has it.
+  save,
+
+  /// Leave and throw the changes away.
+  discard,
+
+  /// Do not leave; the edit goes on.
+  stay,
+}
+
 class AlbumContent extends StatefulWidget {
   final VAlbumState albumState;
   final AlbumInfo album;
@@ -212,6 +225,13 @@ class AlbumContentState extends State<AlbumContent>
   /// ends — whether it was dropped or cancelled.
   final Set<AlbumPart> _carried = Set.identity();
 
+  /// This view's answer to the router's question whether the album may be
+  /// left, see [confirmLeave] (issue #99).
+  ///
+  /// One closure, held: two tear-offs of the same method need not be
+  /// identical, and the registration is taken back by identity.
+  late final Future<bool> Function() _leaveGuard = confirmLeave;
+
   /// Scrolls the album while a carried tile rests near the top or the bottom
   /// edge of the view, see [DragEdgeScroller] (issue #42).
   late final DragEdgeScroller _dragScroller;
@@ -229,6 +249,11 @@ class AlbumContentState extends State<AlbumContent>
   void initState() {
     super.initState();
     _dragScroller = DragEdgeScroller(this, onScrolled: _followScrolledContent);
+    // While this view is on the screen it is the one that answers what is to
+    // become of the unsaved changes when the app leaves the album, see
+    // [confirmLeave] and [VAlbumRouterDelegate.leaveAlbum] (issue #99).
+    widget.albumState.navigator.delegate
+        .registerLeaveGuard(widget.albumState.path, _leaveGuard);
   }
 
   @override
@@ -397,6 +422,8 @@ class AlbumContentState extends State<AlbumContent>
 
   @override
   void dispose() {
+    widget.albumState.navigator.delegate
+        .unregisterLeaveGuard(widget.albumState.path, _leaveGuard);
     _dragScroller.dispose();
     super.dispose();
   }
@@ -639,9 +666,13 @@ class AlbumContentState extends State<AlbumContent>
   /// re-fetched, so that the transient links between its parts are rebuilt
   /// from the state the server now has. A failed write keeps the edit mode
   /// open and reports the HTTP status.
-  Future<void> save() async {
+  ///
+  /// Answers whether the album reached the server: what is on the way out of
+  /// the album asks, so that a failed write keeps the user here with the
+  /// message instead of leaving the changes behind, see [confirmLeave].
+  Future<bool> save() async {
     if (refuseWhileOffline(context)) {
-      return;
+      return false;
     }
     var messenger = ScaffoldMessenger.of(context);
 
@@ -656,11 +687,11 @@ class AlbumContentState extends State<AlbumContent>
         ),
       );
       // Stay in edit mode, the changes are not persisted yet.
-      return;
+      return false;
     }
 
     if (!mounted) {
-      return;
+      return true;
     }
 
     setState(() {
@@ -680,6 +711,129 @@ class AlbumContentState extends State<AlbumContent>
           .forget(path.sublist(0, path.length - 1));
     }
     widget.albumState.reload();
+    return true;
+  }
+
+  /// Leaves the edit mode, asking about unsaved changes first (issue #99).
+  ///
+  /// The counterpart of [save]: an edit that was accidental, wrong or simply
+  /// unwanted is taken back here. Nothing unsaved is thrown away silently —
+  /// with changes in the buffer the album asks, and [discardEdits] is what
+  /// the answer "discard" runs.
+  Future<void> cancelEdit() async {
+    if (!dirty) {
+      setState(() {
+        editMode = false;
+        clearSelection();
+      });
+      return;
+    }
+    var discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key("discard-dialog"),
+        title: const Text("Discard the changes to this album?"),
+        content: const Text(
+          "The changes made here have not been saved. Discarding them shows "
+          "the album again as the server has it.",
+        ),
+        actions: [
+          TextButton(
+            key: const Key("keep-editing"),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text("Keep editing"),
+          ),
+          ElevatedButton(
+            key: const Key("discard-changes"),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text("Discard"),
+          ),
+        ],
+      ),
+    );
+    if (discard != true || !mounted) {
+      return;
+    }
+    discardEdits();
+  }
+
+  /// Throws the unsaved changes away and leaves the edit mode.
+  ///
+  /// What [save] does after a successful write, minus the write: the album in
+  /// the buffer carries the edits, so it is forgotten and fetched again — what
+  /// is then on the screen is exactly what the server has. Nothing is sent,
+  /// the server never heard of the edit.
+  ///
+  /// [reload] is off where the album is being left anyway: the view is about
+  /// to go, and forgetting the buffer is enough for the next visit to show
+  /// what the server has.
+  void discardEdits({bool reload = true}) {
+    setState(() {
+      editMode = false;
+      session.dirty = false;
+      clearSelection();
+      _layoutOrientation.clear();
+    });
+    var path = widget.albumState.path;
+    widget.albumState.navigator.delegate.forget(path);
+    if (reload) {
+      widget.albumState.reload();
+    }
+  }
+
+  /// Whether the app may leave this album, see
+  /// [VAlbumRouterDelegate.leaveAlbum] (issue #99).
+  ///
+  /// Asked by the router for every way out — the way up, the home button, a
+  /// listing tile above, the system's or the browser's back button, a deep
+  /// link — and only where the edit carries unsaved changes. Saving leaves
+  /// only where the write went through: a server that refused keeps the user
+  /// here with the message, exactly as [save] does otherwise.
+  Future<bool> confirmLeave() async {
+    if (!mounted) {
+      return true;
+    }
+    var choice = await showDialog<LeaveEdit>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key("leave-dialog"),
+        title: const Text("Save the changes to this album?"),
+        content: const Text(
+          "Leaving the album ends the edit. Unsaved changes are lost unless "
+          "they are saved now.",
+        ),
+        actions: [
+          TextButton(
+            key: const Key("stay"),
+            onPressed: () => Navigator.of(context).pop(LeaveEdit.stay),
+            child: const Text("Stay"),
+          ),
+          TextButton(
+            key: const Key("discard-and-leave"),
+            onPressed: () => Navigator.of(context).pop(LeaveEdit.discard),
+            child: const Text("Discard"),
+          ),
+          ElevatedButton(
+            key: const Key("save-and-leave"),
+            onPressed: () => Navigator.of(context).pop(LeaveEdit.save),
+            child: const Text("Save"),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) {
+      return true;
+    }
+    switch (choice) {
+      case null:
+      case LeaveEdit.stay:
+        return false;
+      case LeaveEdit.discard:
+        discardEdits(reload: false);
+        return true;
+      case LeaveEdit.save:
+        return save();
+    }
   }
 
   /// Moves the selected parts into another folder, see issue #47.
@@ -792,12 +946,18 @@ class AlbumContentState extends State<AlbumContent>
     // — a visitor arriving at a bare URL is told what they were given and by
     // whom, see issue #51.
     var link = share;
-    var immersive = !session.editMode && self.parts.isNotEmpty && link == null;
+    var editing = session.editMode;
+    var immersive = !editing && self.parts.isNotEmpty && link == null;
+    // The way out of the album sits where a way out belongs: at the left of
+    // the app bar, ahead of everything the edit mode offers (issue #99).
+    var up = wayUp();
 
     return Scaffold(
       appBar: immersive
           ? null
           : AppBar(
+              leading: editing && up.isNotEmpty ? up.first : null,
+              automaticallyImplyLeading: false,
               title: Column(
                 children: [
                   Text(
@@ -810,11 +970,15 @@ class AlbumContentState extends State<AlbumContent>
                 ],
               ),
               centerTitle: true,
+              // The edit mode reads from the left: the way out, then what
+              // the edit offers, and the album's menu last at the right,
+              // where a menu belongs (issue #99). Outside the edit mode the
+              // navigation keeps the place it had.
               actions: [
-                ...navigationActions(context),
+                if (!editing) ...navigationActions(context),
                 // In the edit session, whether the owner's view or a preview
                 // is on the screen: it is the way back out of a preview.
-                if (session.editMode) viewAsMenu(context),
+                if (editing) viewAsMenu(context),
                 if (editMode && selection.isNotEmpty)
                   IconButton(
                     key: const Key("move-to"),
@@ -830,10 +994,18 @@ class AlbumContentState extends State<AlbumContent>
                   ),
                 if (editMode)
                   IconButton(
-                    onPressed: save,
+                    onPressed: () => save(),
                     tooltip: "Save",
                     icon: const Icon(Icons.save),
                   ),
+                if (editMode)
+                  IconButton(
+                    key: const Key("edit-cancel"),
+                    onPressed: cancelEdit,
+                    tooltip: "Cancel",
+                    icon: const Icon(Icons.close),
+                  ),
+                if (editing) ...albumMenu(context),
               ],
             ),
       backgroundColor: Colors.black,
@@ -1188,12 +1360,19 @@ class AlbumContentState extends State<AlbumContent>
   }
 
   /// The `+` and `-` keys of the GWT client, widening and narrowing the rating
-  /// filter.
+  /// filter — and `Escape`, which is Cancel in the edit mode (issue #99).
   KeyEventResult onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
     var key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape) {
+      if (!editMode) {
+        return KeyEventResult.ignored;
+      }
+      cancelEdit();
+      return KeyEventResult.handled;
+    }
     if (event.character == "+" ||
         key == LogicalKeyboardKey.add ||
         key == LogicalKeyboardKey.numpadAdd) {
@@ -1992,6 +2171,10 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         // of issue #77 may have corrected) and the camera that took it (issue
         // #78). Each line only where there is something to say.
         details: [
+          // What the image is in the folder: the name the file carries, for
+          // an image and a video alike, and the representative's name where
+          // the tile shows a group, see issue #103.
+          "Datei: ${image.name}",
           if (image.date != 0)
             "Aufnahmezeit: "
                 "${AdjustRecordingTimeDialogState.timeFormat.format(
@@ -2405,7 +2588,10 @@ class TextInputDialog extends StatefulWidget {
   final bool multiLine;
 
   /// Read-only lines under the field, what the dialog shows but does not
-  /// edit: the recording time and the camera of an image, see issue #78.
+  /// edit: the file name (issue #103), the recording time and the camera of
+  /// an image (issue #78).
+  ///
+  /// Selectable, so that the name of a file can be copied out of the dialog.
   final List<String> details;
 
   /// A read-only line under the field, `null` where there is nothing to say.
@@ -2473,7 +2659,7 @@ class TextInputDialogState extends State<TextInputDialog> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     for (var line in widget.details)
-                      Text(
+                      SelectableText(
                         line,
                         style: Theme.of(context).textTheme.bodySmall,
                       ),

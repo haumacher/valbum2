@@ -1055,12 +1055,53 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
 
   @override
   Future<void> setNewRoutePath(VAlbumRoute configuration) {
-    _route = configuration;
+    var may = _mayLeaveFor(configuration);
+    if (may is bool) {
+      if (may) {
+        _route = configuration;
+      } else {
+        // The location has moved on already (a deep link, the browser's
+        // history): saying "stay" must put it back where the view is.
+        notifyListeners();
+      }
+      return SynchronousFuture(null);
+    }
+    // The question is the user's to answer, and the platform is not kept
+    // waiting for it: the view stays where it is until the answer arrives,
+    // and the location follows it then.
+    may.then((leaving) {
+      if (leaving) {
+        _route = configuration;
+      }
+      notifyListeners();
+    });
     return SynchronousFuture(null);
   }
 
   /// Shows the given view, adding a history entry.
+  ///
+  /// Leaving an album that is being edited passes the leave guard first, see
+  /// [leaveAlbum] (issue #99): the album may ask what is to become of its
+  /// unsaved changes, and the view only moves once that is answered.
   void go(VAlbumRoute target) {
+    if (target == _route) {
+      return;
+    }
+    var may = _mayLeaveFor(target);
+    if (may is bool) {
+      if (may) {
+        _goNow(target);
+      }
+      return;
+    }
+    may.then((leaving) {
+      if (leaving) {
+        _goNow(target);
+      }
+    });
+  }
+
+  void _goNow(VAlbumRoute target) {
     if (target == _route) {
       return;
     }
@@ -1070,7 +1111,8 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
 
   /// Leaves the current view for the one above it, see [VAlbumRoute.up].
   ///
-  /// Returns whether there was one.
+  /// Returns whether there was one — not whether the view actually moved: an
+  /// album being edited may still ask, and the answer arrives later, see [go].
   bool goUp() {
     var target = _route.up;
     if (target == null) {
@@ -1078,6 +1120,69 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     }
     go(target);
     return true;
+  }
+
+  /// The album a mounted view offers to end the edit of, see [leaveAlbum].
+  final Map<String, Future<bool> Function()> _leaveGuards = {};
+
+  /// The album view at [path] answers from now on what is to become of its
+  /// unsaved changes when the app leaves it (issue #99).
+  ///
+  /// The delegate knows no [BuildContext] with a [Navigator] of its own, and
+  /// the question is the album's anyway — it is the album that knows what was
+  /// changed and how it is written back. The view registers itself while it
+  /// is mounted and takes the registration back when it is disposed.
+  void registerLeaveGuard(List<String> path, Future<bool> Function() guard) =>
+      _leaveGuards[_pathKey(path)] = guard;
+
+  /// Takes back what [registerLeaveGuard] registered, if it is still the one.
+  void unregisterLeaveGuard(List<String> path, Future<bool> Function() guard) {
+    var key = _pathKey(path);
+    if (identical(_leaveGuards[key], guard)) {
+      _leaveGuards.remove(key);
+    }
+  }
+
+  /// Whether the app may show [target] now, see [leaveAlbum].
+  ///
+  /// Staying within the album — descending into one of its images, into the
+  /// alternatives of a group and back — is not leaving it: the edit goes on,
+  /// as it always has, see [editSession].
+  FutureOr<bool> _mayLeaveFor(VAlbumRoute target) {
+    var path = _route.albumPath;
+    if (listEquals(path, target.albumPath)) {
+      return true;
+    }
+    return leaveAlbum(path);
+  }
+
+  /// Ends the edit of the album at [path], asking about unsaved changes.
+  ///
+  /// This is the one gate every way out of an album passes — the way up, the
+  /// home button, a listing tile above, the system's or the browser's back
+  /// button, a deep link (issue #99). An album that is not being edited lets
+  /// the app pass at once. An edit without unsaved changes is simply dropped,
+  /// so the album is not in the edit mode when it is next visited. An edit
+  /// with unsaved changes is the album's own question: its view asks whether
+  /// they are to be saved, discarded, or the trip abandoned. Where no view is
+  /// mounted for that path there is nobody to ask, and the session is dropped.
+  FutureOr<bool> leaveAlbum(List<String> path) {
+    var key = _pathKey(path);
+    var session = _editSessions[key];
+    if (session == null || !session.editMode) {
+      return true;
+    }
+    var guard = _leaveGuards[key];
+    if (!session.dirty || guard == null) {
+      _editSessions.remove(key);
+      return true;
+    }
+    return guard().then((leaving) {
+      if (leaving) {
+        _editSessions.remove(key);
+      }
+      return leaving;
+    });
   }
 
   /// Re-fetches the resource of the current route from the server.
@@ -1138,9 +1243,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   @override
   Future<bool> popRoute() async {
     var navigator = navigatorKey.currentState;
-    if (navigator != null &&
-        _imperative.onTop &&
-        await navigator.maybePop()) {
+    if (navigator != null && _imperative.onTop && await navigator.maybePop()) {
       return true;
     }
     return goUp();
