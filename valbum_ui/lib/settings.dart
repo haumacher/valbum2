@@ -725,6 +725,15 @@ const String serverUrlHelp =
     "several spaces, the address carries the space: "
     "'https://host/valbum/<space>/'.";
 
+/// The key of the line naming the server, shown in place of the address
+/// section on the web (issue #90).
+///
+/// A browser talks to the server it was loaded from and to no other: an album
+/// of a different origin cannot be read from this page. So there is nothing to
+/// enter there, and the screen says which server it is about instead of
+/// offering a field that could only be wrong.
+const Key serverLineKey = Key("settings.serverLine");
+
 /// The key of the device name field, see [serverUrlFieldKey].
 const Key deviceNameFieldKey = Key("settings.deviceName");
 
@@ -861,12 +870,25 @@ class ServerSettingsScreen extends StatefulWidget {
   /// until something uses it.
   final DiagnosticsLog? diagnostics;
 
+  /// Whether this screen runs in the web build (issue #90).
+  ///
+  /// A browser can act on less than a device: it talks to the server it was
+  /// loaded from and to no other, and it has no camera roll. So the address
+  /// section and the camera-roll section are not built here at all — what a
+  /// browser cannot do is not shown, rather than shown and refused.
+  ///
+  /// A parameter (not [kIsWeb] read inline), exactly as
+  /// [ServerSettings.platformDefault] is a function: a widget test runs off
+  /// the web and pumps this screen both ways.
+  final bool isWeb;
+
   const ServerSettingsScreen({
     super.key,
     required this.settings,
     required this.clientFor,
     this.diagnostics,
     this.closable = true,
+    this.isWeb = kIsWeb,
   });
 
   @override
@@ -1165,6 +1187,46 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (widget.isWeb)
+                ..._serverLine(settings)
+              else
+                ..._addressSection(settings),
+              const SizedBox(height: 24),
+              const Divider(),
+              ..._signInSection(settings),
+              if (!widget.isWeb) const CameraRollSection(),
+              ..._cacheSection(),
+              ..._diagnosticsSection(settings),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The one line the web build shows in place of the address section: which
+  /// server this browser talks to, see [serverLineKey].
+  ///
+  /// [ServerSettings.dataUrl] rather than the platform default alone, so that
+  /// the line names the server the app really asks — normally the origin it
+  /// was loaded from, and a stored address where an accepted invitation wrote
+  /// one. The data URL is spelled back as the app base, which is the address
+  /// the browser itself shows.
+  List<Widget> _serverLine(ServerSettings settings) {
+    var dataUrl = settings.dataUrl;
+    return [
+      Text(
+        dataUrl == null
+            ? "This browser talks to no server yet."
+            : "This browser talks to ${appBaseOf(dataUrl)}",
+        key: serverLineKey,
+      ),
+    ];
+  }
+
+  /// The address section: what the server URL is, the field it is entered in
+  /// and what can be done with it. Built off the web only (issue #90).
+  List<Widget> _addressSection(ServerSettings settings) => [
               const Text(
                 serverUrlHelp,
                 key: serverUrlHelpKey,
@@ -1232,18 +1294,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
                   padding: const EdgeInsets.only(top: 8, left: 32),
                   child: Text(result!.authStatus!),
                 ),
-              const SizedBox(height: 24),
-              const Divider(),
-              ..._signInSection(settings),
-              const CameraRollSection(),
-              ..._cacheSection(),
-              ..._diagnosticsSection(settings),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+      ];
 
   /// The icon and message of a connection test or pairing attempt.
   Widget _outcome(ConnectionTestResult outcome) => Row(
