@@ -412,9 +412,17 @@ public class TestCacheRefresh extends TestCase {
 	}
 
 	/** Copies the fixture tree, because a test never writes into the fixtures. */
+	/**
+	 * Copies the fixture album, leaving out the cache directories a demo server or a browser check
+	 * may have generated into the checked-out fixture: they are not part of the fixture, and a
+	 * test that counts cache files must start from none.
+	 */
 	private static void copy(Path from, Path to) throws Exception {
 		try (Stream<Path> files = Files.walk(from)) {
 			for (Path source : (Iterable<Path>) files::iterator) {
+				if (from.relativize(source).toString().contains(PreviewCache.CACHE_DIRECTORY_NAME)) {
+					continue;
+				}
 				Path target = to.resolve(from.relativize(source).toString());
 				if (Files.isDirectory(source)) {
 					Files.createDirectories(target);
