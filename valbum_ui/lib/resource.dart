@@ -1478,13 +1478,15 @@ class PairRequest extends _JsonObject {
 	///  </p>
 	String userName;
 
-	///  The token of an {@link Invitation}, the alternative to the {@link #secret} (issue #52).
+	///  The token of an {@link Invitation}; an alias of {@link #deviceCode}, retired by issue #89.
 	/// 
 	///  <p>
-	///  Accepting an invitation is pairing: a live, unused invitation together with a free
-	///  {@link #userName} creates the user with the invitation's role, issues this device's token and
-	///  marks the invitation used. Empty in every other request; a request carrying both is read as
-	///  an invitation.
+	///  An invitation is a pending user carrying a code: the user is created when the invitation is
+	///  issued and the link carries the single-use code that adds their first device, so accepting
+	///  an invitation is the ordinary pairing and the token belongs in {@link #deviceCode}. This
+	///  field is read for one release &mdash; a request carrying it and no {@link #deviceCode} is
+	///  redeemed exactly as if it had carried one &mdash; so that an app from before the change
+	///  keeps joining.
 	///  </p>
 	String invitation;
 
@@ -3263,6 +3265,36 @@ class UserEntry extends _JsonObject {
 	///  Whether this user may create share links (issue #82).
 	bool mayShare;
 
+	///  Whether this user is an invitation nobody has accepted yet (issue #89).
+	/// 
+	///  <p>
+	///  An invitation <em>is</em> a pending user: the user is created when the invitation is
+	///  issued, with the permission it carries and no name and no device, and the invitation's
+	///  link carries the single-use code that adds the first one. Such a user holds nothing until
+	///  somebody redeems the code &mdash; they have no device and therefore no token &mdash; and
+	///  withdrawing the invitation removes them again.
+	///  </p>
+	bool pending;
+
+	///  Whom the inviter meant this invitation for, empty where nobody said (issue #89).
+	/// 
+	///  <p>
+	///  The inviter's own memento, see {@link Invitation#recipient}; it stays beside the name once
+	///  the person has chosen one, so that "who is 'bob42' again?" has an answer.
+	///  </p>
+	String recipient;
+
+	///  The name of the user who invited this one, empty for everybody else (issue #89).
+	String invitedBy;
+
+	///  The id of the invitation this user came in by, empty for everybody else (issue #89).
+	/// 
+	///  <p>
+	///  What names the invitation at <code>?action=uninvite</code>, so that a pending user can be
+	///  withdrawn from the users list itself. It stays as history once the invitation was accepted.
+	///  </p>
+	String invitation;
+
 	/// Creates a UserEntry.
 	UserEntry({
 			this.name = "", 
@@ -3272,6 +3304,10 @@ class UserEntry extends _JsonObject {
 			this.devices = 0, 
 			this.clearance = "", 
 			this.mayShare = false, 
+			this.pending = false, 
+			this.recipient = "", 
+			this.invitedBy = "", 
+			this.invitation = "", 
 	});
 
 	/// Parses a UserEntry from a string source.
@@ -3320,6 +3356,22 @@ class UserEntry extends _JsonObject {
 				mayShare = json.expectBool();
 				break;
 			}
+			case "pending": {
+				pending = json.expectBool();
+				break;
+			}
+			case "recipient": {
+				recipient = json.expectString();
+				break;
+			}
+			case "invitedBy": {
+				invitedBy = json.expectString();
+				break;
+			}
+			case "invitation": {
+				invitation = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3348,6 +3400,18 @@ class UserEntry extends _JsonObject {
 
 		json.addKey("mayShare");
 		json.addBool(mayShare);
+
+		json.addKey("pending");
+		json.addBool(pending);
+
+		json.addKey("recipient");
+		json.addString(recipient);
+
+		json.addKey("invitedBy");
+		json.addString(invitedBy);
+
+		json.addKey("invitation");
+		json.addString(invitation);
 	}
 
 }
@@ -4169,6 +4233,16 @@ class Invitation extends _JsonObject {
 	///  A note the inviter wrote for themselves, shown wherever the invitation is listed; may be empty.
 	String note;
 
+	///  Whom this invitation was meant for, the inviter's own memento (issue #89).
+	/// 
+	///  <p>
+	///  Optional and free text: "Grandma", "Bob from the choir" &mdash; what the inviter needs in
+	///  order to tell one open invitation from another weeks later, and what the users list keeps
+	///  beside the name once the person has chosen one. It is stored on the pending user the
+	///  invitation creates, not on a store of its own.
+	///  </p>
+	String recipient;
+
 	///  When the invitation expires, an ISO-8601 instant.
 	/// 
 	///  <p>
@@ -4199,6 +4273,7 @@ class Invitation extends _JsonObject {
 			this.clearance = "", 
 			this.mayShare = false, 
 			this.note = "", 
+			this.recipient = "", 
 			this.expires = "", 
 			this.invitedBy = "", 
 			this.created = "", 
@@ -4243,6 +4318,10 @@ class Invitation extends _JsonObject {
 			}
 			case "note": {
 				note = json.expectString();
+				break;
+			}
+			case "recipient": {
+				recipient = json.expectString();
 				break;
 			}
 			case "expires": {
@@ -4291,6 +4370,9 @@ class Invitation extends _JsonObject {
 
 		json.addKey("note");
 		json.addString(note);
+
+		json.addKey("recipient");
+		json.addString(recipient);
 
 		json.addKey("expires");
 		json.addString(expires);
@@ -4473,12 +4555,22 @@ class InvitationInfo extends _JsonObject {
 	///  When the invitation expires, an ISO-8601 instant.
 	String expires;
 
+	///  Whom the inviter wrote this invitation for, empty if they wrote nobody (issue #89).
+	/// 
+	///  <p>
+	///  The inviter's memento, see {@link Invitation#recipient}. The application does not show it
+	///  to the person who opened the link &mdash; it is a note the inviter made to themselves, not
+	///  a greeting &mdash; and it travels only so that a client that wants to greet by name could.
+	///  </p>
+	String recipient;
+
 	/// Creates a InvitationInfo.
 	InvitationInfo({
 			this.role = "", 
 			this.invitedBy = "", 
 			this.note = "", 
 			this.expires = "", 
+			this.recipient = "", 
 	});
 
 	/// Parses a InvitationInfo from a string source.
@@ -4515,6 +4607,10 @@ class InvitationInfo extends _JsonObject {
 				expires = json.expectString();
 				break;
 			}
+			case "recipient": {
+				recipient = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -4534,6 +4630,9 @@ class InvitationInfo extends _JsonObject {
 
 		json.addKey("expires");
 		json.addString(expires);
+
+		json.addKey("recipient");
+		json.addString(recipient);
 	}
 
 }

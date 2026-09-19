@@ -43,6 +43,18 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #isMayShare() */
 	private static final String MAY_SHARE__PROP = "mayShare";
 
+	/** @see #isPending() */
+	private static final String PENDING__PROP = "pending";
+
+	/** @see #getRecipient() */
+	private static final String RECIPIENT__PROP = "recipient";
+
+	/** @see #getInvitedBy() */
+	private static final String INVITED_BY__PROP = "invitedBy";
+
+	/** @see #getInvitation() */
+	private static final String INVITATION__PROP = "invitation";
+
 	private String _name = "";
 
 	private String _role = "";
@@ -56,6 +68,14 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _clearance = "";
 
 	private boolean _mayShare = false;
+
+	private boolean _pending = false;
+
+	private String _recipient = "";
+
+	private String _invitedBy = "";
+
+	private String _invitation = "";
 
 	/**
 	 * Creates a {@link UserEntry} instance.
@@ -212,6 +232,104 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_mayShare = value;
 	}
 
+	/**
+	 * Whether this user is an invitation nobody has accepted yet (issue #89).
+	 *
+	 * <p>
+	 * An invitation <em>is</em> a pending user: the user is created when the invitation is
+	 * issued, with the permission it carries and no name and no device, and the invitation's
+	 * link carries the single-use code that adds the first one. Such a user holds nothing until
+	 * somebody redeems the code &mdash; they have no device and therefore no token &mdash; and
+	 * withdrawing the invitation removes them again.
+	 * </p>
+	 */
+	public final boolean isPending() {
+		return _pending;
+	}
+
+	/**
+	 * @see #isPending()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setPending(boolean value) {
+		internalSetPending(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isPending()} without chain call utility. */
+	protected final void internalSetPending(boolean value) {
+		_pending = value;
+	}
+
+	/**
+	 * Whom the inviter meant this invitation for, empty where nobody said (issue #89).
+	 *
+	 * <p>
+	 * The inviter's own memento, see {@link Invitation#getRecipient()}; it stays beside the name once
+	 * the person has chosen one, so that "who is 'bob42' again?" has an answer.
+	 * </p>
+	 */
+	public final String getRecipient() {
+		return _recipient;
+	}
+
+	/**
+	 * @see #getRecipient()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setRecipient(String value) {
+		internalSetRecipient(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getRecipient()} without chain call utility. */
+	protected final void internalSetRecipient(String value) {
+		_recipient = value;
+	}
+
+	/**
+	 * The name of the user who invited this one, empty for everybody else (issue #89).
+	 */
+	public final String getInvitedBy() {
+		return _invitedBy;
+	}
+
+	/**
+	 * @see #getInvitedBy()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setInvitedBy(String value) {
+		internalSetInvitedBy(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getInvitedBy()} without chain call utility. */
+	protected final void internalSetInvitedBy(String value) {
+		_invitedBy = value;
+	}
+
+	/**
+	 * The id of the invitation this user came in by, empty for everybody else (issue #89).
+	 *
+	 * <p>
+	 * What names the invitation at <code>?action=uninvite</code>, so that a pending user can be
+	 * withdrawn from the users list itself. It stays as history once the invitation was accepted.
+	 * </p>
+	 */
+	public final String getInvitation() {
+		return _invitation;
+	}
+
+	/**
+	 * @see #getInvitation()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setInvitation(String value) {
+		internalSetInvitation(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getInvitation()} without chain call utility. */
+	protected final void internalSetInvitation(String value) {
+		_invitation = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.UserEntry readUserEntry(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.UserEntry result = new de.haumacher.imageServer.shared.model.UserEntry();
@@ -241,6 +359,14 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getClearance());
 		out.name(MAY_SHARE__PROP);
 		out.value(isMayShare());
+		out.name(PENDING__PROP);
+		out.value(isPending());
+		out.name(RECIPIENT__PROP);
+		out.value(getRecipient());
+		out.name(INVITED_BY__PROP);
+		out.value(getInvitedBy());
+		out.name(INVITATION__PROP);
+		out.value(getInvitation());
 	}
 
 	@Override
@@ -253,6 +379,10 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case DEVICES__PROP: setDevices(in.nextInt()); break;
 			case CLEARANCE__PROP: setClearance(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case MAY_SHARE__PROP: setMayShare(in.nextBoolean()); break;
+			case PENDING__PROP: setPending(in.nextBoolean()); break;
+			case RECIPIENT__PROP: setRecipient(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case INVITED_BY__PROP: setInvitedBy(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case INVITATION__PROP: setInvitation(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

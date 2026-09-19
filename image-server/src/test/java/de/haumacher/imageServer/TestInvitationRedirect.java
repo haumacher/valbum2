@@ -5,7 +5,9 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthMode;
-import de.haumacher.imageServer.auth.InvitationStore;
+import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.Clearances;
+import de.haumacher.imageServer.auth.DeviceCodeStore;
 import de.haumacher.imageServer.auth.InviteMode;
 import de.haumacher.imageServer.auth.Roles;
 import de.haumacher.imageServer.auth.SpaceMode;
@@ -133,7 +135,7 @@ public class TestInvitationRedirect extends TestCase {
 		assertEquals("/valbum/?invitation=expired", location(get("/i/" + expired + "/")));
 
 		String withdrawn = issue("", Roles.VIEW, tomorrow());
-		store("").revoke(store("").lookup(withdrawn).getId());
+		auth("").uninvite(code("", withdrawn).getId());
 		assertEquals("/valbum/?invitation=withdrawn", location(get("/i/" + withdrawn + "/")));
 
 		assertEquals("A token nobody issued is not an invitation of this server.",
@@ -153,7 +155,7 @@ public class TestInvitationRedirect extends TestCase {
 
 		assertEquals("A page load never uses up, expires or withdraws anything.", before,
 			storeContents(""));
-		assertFalse("The live invitation is still live.", store().lookup(live).isUsed());
+		assertFalse("The live invitation is still live.", code("", live).isUsed());
 	}
 
 	/** A deep link below a dead base is a page load, too, and lands on the same start page. */
@@ -199,7 +201,7 @@ public class TestInvitationRedirect extends TestCase {
 		assertEquals(HttpServletResponse.SC_OK, live.status());
 		assertTrue(live.body(), live.body().contains("<base href=\"/valbum/alice/i/" + token + "/\">"));
 
-		store("alice").markUsed(store("alice").lookup(token).getId(), "carol");
+		auth("alice").getDeviceCodes().markUsed(code("alice", token).getId(), "some-device");
 		assertEquals("/valbum/alice/?invitation=used", location(get("/alice/i/" + token + "/")));
 	}
 
@@ -253,23 +255,26 @@ public class TestInvitationRedirect extends TestCase {
 		_front.init(config());
 	}
 
-	/** The invitation store of the given space. */
-	InvitationStore store(String segment) {
-		return _spaces.bySegment(segment).getAuth().getInvitations();
+	/** The authentication of the given space. */
+	AuthService auth(String segment) {
+		return _spaces.bySegment(segment).getAuth();
 	}
 
-	InvitationStore store() {
-		return store("");
+	/** The code of the given invitation token, whatever became of it (issue #89). */
+	DeviceCodeStore.Code code(String segment, String token) {
+		return auth(segment).getDeviceCodes().lookup(token);
 	}
 
 	/** Issues an invitation of the given space directly, and answers its token. */
 	String issue(String segment, String role, String expires) throws Exception {
-		return store(segment).create(role, "alice", "Welcome", expires).getToken();
+		return auth(segment)
+			.createInvitation("alice", "", role, Clearances.ofRole(role), false, "Welcome", expires, "")
+			.getToken();
 	}
 
-	/** The bytes of the given space's invitation store, to tell a write from a read. */
+	/** The bytes of the given space's code store, to tell a write from a read. */
 	private String storeContents(String segment) throws Exception {
-		Path file = store(segment).getFile();
+		Path file = auth(segment).getDeviceCodes().getFile();
 		return Files.exists(file) ? new String(Files.readAllBytes(file), StandardCharsets.UTF_8) : "";
 	}
 

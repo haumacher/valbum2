@@ -31,7 +31,7 @@ public class TestInvitationProbe extends InviteTestCase {
 		FakeResponse unreadable = invite(SharingFixture.ALICE, Roles.VIEW, "next week", "");
 		assertEquals(HttpServletResponse.SC_BAD_REQUEST, unreadable.status());
 		assertFalse("The refusal speaks.", errorMessage(unreadable).isEmpty());
-		assertEquals("Only the readable one was recorded.", 1, store().getInvitations().size());
+		assertEquals("Only the readable one was recorded.", 1, stored().size());
 	}
 
 	private static String tomorrow() {
@@ -47,8 +47,8 @@ public class TestInvitationProbe extends InviteTestCase {
 		assertEquals("A 200 depends on the bearer that asked.", "no-store", live.header("Cache-Control"));
 		assertEquals("Authorization", live.header("Vary"));
 
-		String id = store().lookup(token).getId();
-		store().revoke(id);
+		String id = servlet().auth().getDeviceCodes().lookup(token).getId();
+		servlet().auth().uninvite(id);
 		restartServer();
 		FakeResponse gone = authOf(token);
 		assertEquals(HttpServletResponse.SC_GONE, gone.status());
@@ -73,7 +73,8 @@ public class TestInvitationProbe extends InviteTestCase {
 		assertFalse("The refusal speaks.", errorMessage(response).isEmpty());
 		assertFalse("No space folder was created.", Files.exists(_base.resolve("~alice")));
 		assertNull(new UserStore(_base).getUser("~alice"));
-		assertFalse("The invitation is still open.", store().lookup(token).isUsed());
+		assertFalse("The invitation is still open.",
+			servlet().auth().getDeviceCodes().lookup(token).isUsed());
 	}
 
 

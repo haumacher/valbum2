@@ -219,6 +219,15 @@ role, clearance and share flag the invitee gets), changes what somebody may do
 (`?action=set-permission`) or removes a user with their devices (`?action=remove-user`). The last
 administrator of a space can be neither demoted nor removed.
 
+**An invitation is a pending user carrying a code.** Issuing one creates the user right away —
+without a name, without a device, with the permission the invitation carries — and one single-use
+code for them; the link `<context>/i/<token>/` is that code. Whoever opens it chooses the name
+they want to be known by, and joining is the ordinary sign-in. The users list therefore shows the
+people who are here *and* the seats still waiting for somebody ("Invited for Grandma (pending)",
+with the optional memento the inviter wrote for themselves); withdrawing an invitation, or letting
+it run out, removes that seat again, while somebody who already joined keeps their account.
+Removing the inviter withdraws the invitations they sent and nobody accepted.
+
 A library written by an older build calls its users `member` and `guest`; they are read as `edit`
 (clearance `all`, may share) and `view` (clearance `nonPrivate`), and the stored file is not
 rewritten. The sharing of that build — grants, groups, albums linked into somebody else's tree and

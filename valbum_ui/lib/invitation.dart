@@ -141,6 +141,13 @@ const Key invitationUserFieldKey = Key("invitation.userName");
 /// The key of the device name field of the welcome screen.
 const Key invitationDeviceFieldKey = Key("invitation.deviceName");
 
+/// The field the inviter's memento is entered in, see issue #89.
+///
+/// Whom the invitation is meant for, in the inviter's own words. It is stored
+/// on the pending user the invitation creates and shown wherever that user is
+/// listed; the person who opens the link never sees it.
+const Key invitationRecipientFieldKey = Key("invite-recipient");
+
 /// The screen an invitation link opens: who invited, and the way in.
 ///
 /// Everything a person needs to decide and nothing else — there is no server
@@ -333,7 +340,8 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
     ];
   }
 
-  /// Accepts the invitation: the pairing request that creates the user.
+  /// Accepts the invitation: the ordinary pairing, with the link's token as
+  /// the code and the chosen name written on the pending user (issue #89).
   Future<void> _join() async {
     var name = _user.text.trim();
     if (name.isEmpty) {
@@ -347,7 +355,9 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
     PairResponse answer;
     try {
       answer = await widget.client.pair(
-        invitation: widget.token,
+        // An invitation is a code since issue #89, and it travels in the field
+        // every other code travels in.
+        deviceCode: widget.token,
         deviceName:
             _device.text.trim().isEmpty ? defaultDeviceName() : _device.text.trim(),
         userName: name,
@@ -432,6 +442,9 @@ class InviteDialog extends StatefulWidget {
 class InviteDialogState extends State<InviteDialog> {
   final TextEditingController _note = TextEditingController();
 
+  /// Whom the invitation is for, the inviter's own memento (issue #89).
+  final TextEditingController _recipient = TextEditingController();
+
   String _role = defaultInviteRole;
 
   String _clearance = defaultInviteClearance;
@@ -452,6 +465,7 @@ class InviteDialogState extends State<InviteDialog> {
   @override
   void dispose() {
     _note.dispose();
+    _recipient.dispose();
     super.dispose();
   }
 
@@ -497,12 +511,26 @@ class InviteDialogState extends State<InviteDialog> {
         onMayShare: (value) => setState(() => _mayShare = value),
       ),
       const SizedBox(height: 8),
+      // The memento of issue #89: it is stored on the pending user this
+      // invitation creates, it names them in the users list until they choose
+      // a name of their own — and it is never shown to the person who opens
+      // the link, because it is a note the inviter made to themselves.
+      TextField(
+        key: invitationRecipientFieldKey,
+        controller: _recipient,
+        decoration: const InputDecoration(
+          label: Text("For whom"),
+          helperText: "A note to yourself: whom this invitation is for. "
+              "Optional.",
+        ),
+      ),
+      const SizedBox(height: 8),
       TextField(
         key: const Key("invite-note"),
         controller: _note,
         decoration: const InputDecoration(
           label: Text("Note"),
-          helperText: "Who this is, for your own list.",
+          helperText: "What the invited person reads when they open the link.",
         ),
       ),
       const SizedBox(height: 8),
@@ -576,6 +604,7 @@ class InviteDialogState extends State<InviteDialog> {
         clearance: _clearance,
         mayShare: _mayShare,
         note: _note.text.trim(),
+        recipient: _recipient.text.trim(),
         expires: _expiresAt,
       ));
     } on VAlbumException catch (failure) {
@@ -649,6 +678,7 @@ class InviteDialogState extends State<InviteDialog> {
           onPressed: () => setState(() {
             _created = null;
             _note.clear();
+            _recipient.clear();
           }),
           child: const Text("Done"),
         ),

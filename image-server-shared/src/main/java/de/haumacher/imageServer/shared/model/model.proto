@@ -518,13 +518,15 @@ message PairRequest {
 	string userName;
 
 	/**
-	 * The token of an {@link Invitation}, the alternative to the {@link #secret} (issue #52).
+	 * The token of an {@link Invitation}; an alias of {@link #deviceCode}, retired by issue #89.
 	 *
 	 * <p>
-	 * Accepting an invitation is pairing: a live, unused invitation together with a free
-	 * {@link #userName} creates the user with the invitation's role, issues this device's token and
-	 * marks the invitation used. Empty in every other request; a request carrying both is read as
-	 * an invitation.
+	 * An invitation is a pending user carrying a code: the user is created when the invitation is
+	 * issued and the link carries the single-use code that adds their first device, so accepting
+	 * an invitation is the ordinary pairing and the token belongs in {@link #deviceCode}. This
+	 * field is read for one release &mdash; a request carrying it and no {@link #deviceCode} is
+	 * redeemed exactly as if it had carried one &mdash; so that an app from before the change
+	 * keeps joining.
 	 * </p>
 	 */
 	string invitation;
@@ -1053,6 +1055,42 @@ message UserEntry {
 
 	/** Whether this user may create share links (issue #82). */
 	bool mayShare;
+
+	/**
+	 * Whether this user is an invitation nobody has accepted yet (issue #89).
+	 *
+	 * <p>
+	 * An invitation <em>is</em> a pending user: the user is created when the invitation is
+	 * issued, with the permission it carries and no name and no device, and the invitation's
+	 * link carries the single-use code that adds the first one. Such a user holds nothing until
+	 * somebody redeems the code &mdash; they have no device and therefore no token &mdash; and
+	 * withdrawing the invitation removes them again.
+	 * </p>
+	 */
+	bool pending;
+
+	/**
+	 * Whom the inviter meant this invitation for, empty where nobody said (issue #89).
+	 *
+	 * <p>
+	 * The inviter's own memento, see {@link Invitation#recipient}; it stays beside the name once
+	 * the person has chosen one, so that "who is 'bob42' again?" has an answer.
+	 * </p>
+	 */
+	string recipient;
+
+	/** The name of the user who invited this one, empty for everybody else (issue #89). */
+	string invitedBy;
+
+	/**
+	 * The id of the invitation this user came in by, empty for everybody else (issue #89).
+	 *
+	 * <p>
+	 * What names the invitation at <code>?action=uninvite</code>, so that a pending user can be
+	 * withdrawn from the users list itself. It stays as history once the invitation was accepted.
+	 * </p>
+	 */
+	string invitation;
 }
 
 /**
@@ -1352,6 +1390,18 @@ message Invitation {
 	string note;
 
 	/**
+	 * Whom this invitation was meant for, the inviter's own memento (issue #89).
+	 *
+	 * <p>
+	 * Optional and free text: "Grandma", "Bob from the choir" &mdash; what the inviter needs in
+	 * order to tell one open invitation from another weeks later, and what the users list keeps
+	 * beside the name once the person has chosen one. It is stored on the pending user the
+	 * invitation creates, not on a store of its own.
+	 * </p>
+	 */
+	string recipient;
+
+	/**
 	 * When the invitation expires, an ISO-8601 instant.
 	 *
 	 * <p>
@@ -1430,4 +1480,15 @@ message InvitationInfo {
 
 	/** When the invitation expires, an ISO-8601 instant. */
 	string expires;
+
+	/**
+	 * Whom the inviter wrote this invitation for, empty if they wrote nobody (issue #89).
+	 *
+	 * <p>
+	 * The inviter's memento, see {@link Invitation#recipient}. The application does not show it
+	 * to the person who opened the link &mdash; it is a note the inviter made to themselves, not
+	 * a greeting &mdash; and it travels only so that a client that wants to greet by name could.
+	 * </p>
+	 */
+	string recipient;
 }

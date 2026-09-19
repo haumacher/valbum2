@@ -3,6 +3,8 @@
  */
 package de.haumacher.imageServer;
 
+import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.DeviceCodeStore;
 import de.haumacher.imageServer.auth.InvitationStore;
 import de.haumacher.imageServer.auth.Spaces;
 import de.haumacher.util.servlet.ResourceServlet;
@@ -97,13 +99,16 @@ public class InvitationRedirect implements ResourceServlet.SessionGuard {
 	 * Why the given token is no live invitation of the given space, <code>null</code> if it is one.
 	 */
 	private static String reason(Spaces.Space space, String token) {
-		InvitationStore invitations = space.getAuth() == null ? null : space.getAuth().getInvitations();
-		if (invitations == null) {
+		AuthService auth = space.getAuth();
+		DeviceCodeStore codes = auth == null ? null : auth.getDeviceCodes();
+		if (codes == null) {
 			// A server started with '--auth off' issues no invitation and honours none.
 			return UNKNOWN;
 		}
-		InvitationStore.Link invitation = invitations.lookup(token);
-		if (invitation == null) {
+		// An invitation is a code since issue #89; every other kind of code is no bearer at all
+		// and is therefore no address of this server either.
+		DeviceCodeStore.Code invitation = codes.lookup(token);
+		if (invitation == null || !invitation.isInvitation()) {
 			return UNKNOWN;
 		}
 		if (invitation.isRevoked()) {
@@ -114,6 +119,10 @@ public class InvitationRedirect implements ResourceServlet.SessionGuard {
 		}
 		if (invitation.isExpired(Instant.now())) {
 			return EXPIRED;
+		}
+		if (auth.getUsers() == null || auth.getUsers().getInvited(invitation.getId()) == null) {
+			// The code stands but the user it would name is gone; there is nobody to become.
+			return WITHDRAWN;
 		}
 		return null;
 	}

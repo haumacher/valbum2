@@ -218,6 +218,26 @@ The model:
 
 ## Decisions log
 
+- **2026-09-19** — An invitation is a pending user carrying a code (#89, step two). The author,
+  finishing the unification of #89: "When creating an invitation, allow adding a name to have a
+  memento to what person you sent this invitation - optional." And, on what an invitation is:
+  "Each space can have an unnamed admin user when created. When a seat code is entered for an
+  unnamed user, the app can ask the user for a name. This makes inviting a user more easy, because
+  the user can name himself." So issuing an invitation **creates the user at once** — nameless,
+  deviceless, with the permission the inviter chose — and one ordinary single-use code for them;
+  the `/i/<token>/` link *is* that code, and joining is the ordinary pairing that names the user
+  and adds their first device. There is no second store, no second redemption path and no second
+  kind of token left: **`invitations.json` is retired**, read once at start-up and set aside under
+  `.valbum/retired/`, with every live invitation carried over under its own token hash so that a
+  link somebody was sent last week keeps working. `?type=invitations` is derived from the users
+  and their codes. What follows from "a pending user is a user" is the rest of the design:
+  the users list shows the seats still waiting for somebody, withdrawing or expiring an invitation
+  removes that seat again while somebody who already joined keeps their account, and removing an
+  inviter withdraws what they put in the post. The **recipient memento** is the inviter's own note
+  about whom they wrote to; it names the seat until the person chooses a name, stays beside the
+  name afterwards — and is never shown to the invitee, because it is a note somebody made to
+  themselves.
+
 - **2026-09-19** — The backup code is the missing end, and the sign-in form belongs where the
   refusal is (#91, #92). The author, on the sign-out button: "While it is required, when opening
   an album on a foreign device, it is dangerous, because you normally cannot re-login, because you

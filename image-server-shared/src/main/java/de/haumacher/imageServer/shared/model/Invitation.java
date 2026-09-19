@@ -42,6 +42,9 @@ public class Invitation extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getNote() */
 	private static final String NOTE__PROP = "note";
 
+	/** @see #getRecipient() */
+	private static final String RECIPIENT__PROP = "recipient";
+
 	/** @see #getExpires() */
 	private static final String EXPIRES__PROP = "expires";
 
@@ -69,6 +72,8 @@ public class Invitation extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private boolean _mayShare = false;
 
 	private String _note = "";
+
+	private String _recipient = "";
 
 	private String _expires = "";
 
@@ -200,6 +205,33 @@ public class Invitation extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** Internal setter for {@link #getNote()} without chain call utility. */
 	protected final void internalSetNote(String value) {
 		_note = value;
+	}
+
+	/**
+	 * Whom this invitation was meant for, the inviter's own memento (issue #89).
+	 *
+	 * <p>
+	 * Optional and free text: "Grandma", "Bob from the choir" &mdash; what the inviter needs in
+	 * order to tell one open invitation from another weeks later, and what the users list keeps
+	 * beside the name once the person has chosen one. It is stored on the pending user the
+	 * invitation creates, not on a store of its own.
+	 * </p>
+	 */
+	public final String getRecipient() {
+		return _recipient;
+	}
+
+	/**
+	 * @see #getRecipient()
+	 */
+	public de.haumacher.imageServer.shared.model.Invitation setRecipient(String value) {
+		internalSetRecipient(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getRecipient()} without chain call utility. */
+	protected final void internalSetRecipient(String value) {
+		_recipient = value;
 	}
 
 	/**
@@ -352,6 +384,8 @@ public class Invitation extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(isMayShare());
 		out.name(NOTE__PROP);
 		out.value(getNote());
+		out.name(RECIPIENT__PROP);
+		out.value(getRecipient());
 		out.name(EXPIRES__PROP);
 		out.value(getExpires());
 		out.name(INVITED_BY__PROP);
@@ -374,6 +408,7 @@ public class Invitation extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case CLEARANCE__PROP: setClearance(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case MAY_SHARE__PROP: setMayShare(in.nextBoolean()); break;
 			case NOTE__PROP: setNote(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case RECIPIENT__PROP: setRecipient(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case EXPIRES__PROP: setExpires(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case INVITED_BY__PROP: setInvitedBy(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CREATED__PROP: setCreated(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;

@@ -146,6 +146,14 @@ public class UserStore {
 
 	private static final String ID__PROP = "id";
 
+	private static final String INVITATION__PROP = "invitation";
+
+	private static final String INVITED_BY__PROP = "invitedBy";
+
+	private static final String NOTE__PROP = "note";
+
+	private static final String RECIPIENT__PROP = "recipient";
+
 	/** The number of random bytes a device id is built from; it is a name, not a secret. */
 	private static final int ID_BYTES = 6;
 
@@ -231,6 +239,14 @@ public class UserStore {
 
 		private boolean _share;
 
+		private String _invitation = "";
+
+		private String _invitedBy = "";
+
+		private String _note = "";
+
+		private String _recipient = "";
+
 		private final List<Device> _devices = new ArrayList<>();
 
 		/** Creates a {@link User} with what their role implies, see {@link Clearances#ofRole(String)}. */
@@ -273,6 +289,81 @@ public class UserStore {
 		/** See {@link #isShare()}. */
 		public void setShare(boolean share) {
 			_share = share;
+		}
+
+		/**
+		 * The id of the invitation this user came in by, empty for everybody else (issue #89).
+		 *
+		 * <p>
+		 * <b>An invitation is a pending user carrying a code.</b> Issuing one creates this user
+		 * &mdash; nameless, deviceless, with the permission the inviter chose &mdash; and one
+		 * single-use code of {@link DeviceCodeStore#KIND_INVITATION} whose id is exactly this
+		 * string. The link hands that code out; redeeming it is the ordinary pairing, which names
+		 * the user and adds their first device. There is no second store and no second mechanism:
+		 * {@code ?type=invitations} is this field joined with {@link DeviceCodeStore}.
+		 * </p>
+		 *
+		 * <p>
+		 * It stays once the invitation was accepted, as the history of how somebody got here.
+		 * </p>
+		 */
+		public String getInvitation() {
+			return _invitation;
+		}
+
+		/** See {@link #getInvitation()}. */
+		public void setInvitation(String invitation) {
+			_invitation = invitation == null ? "" : invitation;
+		}
+
+		/**
+		 * Whether this user is an invitation nobody has accepted yet, see {@link #getInvitation()}.
+		 *
+		 * <p>
+		 * A user of an invitation who has no name: nobody has redeemed the code, so nobody holds a
+		 * device of theirs and therefore no token signs anybody in as them. Withdrawing the
+		 * invitation removes them; accepting it names them and they become an ordinary user.
+		 * </p>
+		 */
+		public boolean isPending() {
+			return _name.isEmpty() && !_invitation.isEmpty();
+		}
+
+		/** The name of the user who invited this one, empty for everybody else. */
+		public String getInvitedBy() {
+			return _invitedBy;
+		}
+
+		/** See {@link #getInvitedBy()}. */
+		public void setInvitedBy(String invitedBy) {
+			_invitedBy = invitedBy == null ? "" : invitedBy;
+		}
+
+		/** The note the inviter wrote, shown to the person who opens the link; may be empty. */
+		public String getNote() {
+			return _note;
+		}
+
+		/** See {@link #getNote()}. */
+		public void setNote(String note) {
+			_note = note == null ? "" : note;
+		}
+
+		/**
+		 * Whom the inviter meant the invitation for, their own memento (issue #89).
+		 *
+		 * <p>
+		 * Free text and optional: what tells one open invitation from another weeks later, and
+		 * what stays beside the name once the person has chosen one.
+		 * </p>
+		 */
+		public String getRecipient() {
+			return _recipient;
+		}
+
+		/** See {@link #getRecipient()}. */
+		public void setRecipient(String recipient) {
+			_recipient = recipient == null ? "" : recipient;
 		}
 
 		/**
@@ -456,8 +547,38 @@ public class UserStore {
 	 * @return <code>null</code> if no such user exists.
 	 */
 	public synchronized User getUser(String name) {
+		if (name == null) {
+			return null;
+		}
 		for (User user : _users) {
+			// A pending user has no name (issue #89), and nothing must reach them by asking for
+			// none: they are named by the invitation that created them, see #getInvited(String).
+			if (user.isPending()) {
+				continue;
+			}
 			if (user.getName().equals(name)) {
+				return user;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The user the invitation of the given id created, see {@link User#getInvitation()}.
+	 *
+	 * <p>
+	 * How a code of {@link DeviceCodeStore#KIND_INVITATION} finds its target: a pending user has
+	 * no name to be looked up by, so the invitation's id is what names them.
+	 * </p>
+	 *
+	 * @return <code>null</code> if no user came in by that invitation.
+	 */
+	public synchronized User getInvited(String invitationId) {
+		if (invitationId == null || invitationId.isEmpty()) {
+			return null;
+		}
+		for (User user : _users) {
+			if (invitationId.equals(user.getInvitation())) {
 				return user;
 			}
 		}
@@ -823,6 +944,10 @@ public class UserStore {
 		String created = "";
 		String clearance = "";
 		Boolean share = null;
+		String invitation = "";
+		String invitedBy = "";
+		String note = "";
+		String recipient = "";
 		List<Device> devices = new ArrayList<>();
 		in.beginObject();
 		while (in.hasNext()) {
@@ -846,6 +971,18 @@ public class UserStore {
 				case SHARE__PROP:
 					share = Boolean.valueOf(in.nextBoolean());
 					break;
+				case INVITATION__PROP:
+					invitation = in.nextString();
+					break;
+				case INVITED_BY__PROP:
+					invitedBy = in.nextString();
+					break;
+				case NOTE__PROP:
+					note = in.nextString();
+					break;
+				case RECIPIENT__PROP:
+					recipient = in.nextString();
+					break;
 				case DEVICES__PROP:
 					in.beginArray();
 					while (in.hasNext()) {
@@ -864,6 +1001,12 @@ public class UserStore {
 		User result = new User(name, role, space, created,
 			Clearances.isKnown(clearance) ? clearance : Clearances.ofRole(role),
 			share == null ? Clearances.mayShareByRole(role) : share.booleanValue());
+		// A store written before issue #89 has none of these: nobody there came in by an
+		// invitation that is a user, so everybody there reads as an ordinary user.
+		result.setInvitation(invitation);
+		result.setInvitedBy(invitedBy);
+		result.setNote(note);
+		result.setRecipient(recipient);
 		for (Device device : devices) {
 			result.addDevice(device);
 		}
@@ -948,6 +1091,14 @@ public class UserStore {
 		out.value(user.getClearance());
 		out.name(SHARE__PROP);
 		out.value(user.isShare());
+		out.name(INVITATION__PROP);
+		out.value(user.getInvitation());
+		out.name(INVITED_BY__PROP);
+		out.value(user.getInvitedBy());
+		out.name(NOTE__PROP);
+		out.value(user.getNote());
+		out.name(RECIPIENT__PROP);
+		out.value(user.getRecipient());
 		out.name(DEVICES__PROP);
 		out.beginArray();
 		for (Device device : user.getDevices()) {

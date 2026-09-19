@@ -4,7 +4,8 @@
 package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
-import de.haumacher.imageServer.auth.InvitationStore;
+import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.Clearances;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.Invitation;
 import de.haumacher.imageServer.shared.model.InvitationCreated;
@@ -38,9 +39,16 @@ public abstract class InviteTestCase extends SpaceTestCase {
 
 	/** Sends <code>&lt;data&gt;/?action=invite</code> with role, expiry and note. */
 	protected FakeResponse invite(String token, String role, String expires, String note) throws Exception {
+		return invite(token, role, expires, note, "");
+	}
+
+	/** Sends <code>&lt;data&gt;/?action=invite</code> with role, expiry, note and recipient. */
+	protected FakeResponse invite(String token, String role, String expires, String note, String recipient)
+			throws Exception {
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("action", "invite");
-		String body = "{\"role\":\"" + role + "\",\"expires\":\"" + expires + "\",\"note\":\"" + note + "\"}";
+		String body = "{\"role\":\"" + role + "\",\"expires\":\"" + expires + "\",\"note\":\"" + note
+			+ "\",\"recipient\":\"" + recipient + "\"}";
 		return post("/", body, token, parameters);
 	}
 
@@ -63,8 +71,25 @@ public abstract class InviteTestCase extends SpaceTestCase {
 		return post("/", "{\"name\":\"" + name + "\"}", token, parameters);
 	}
 
-	/** Sends <code>&lt;data&gt;/?action=pair</code> accepting the given invitation token. */
+	/**
+	 * Sends <code>&lt;data&gt;/?action=pair</code> redeeming the given invitation token.
+	 *
+	 * <p>
+	 * The ordinary pairing since issue #89: the token of an invitation is a code, and it travels
+	 * in the field every other code travels in. What the retired {@link #acceptAsBefore} field
+	 * does is asserted separately.
+	 * </p>
+	 */
 	protected FakeResponse accept(String invitation, String userName) throws Exception {
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", "pair");
+		String body = "{\"deviceCode\":\"" + invitation + "\",\"deviceName\":\"Phone\",\"userName\":\""
+			+ userName + "\"}";
+		return post("/", body, null, parameters);
+	}
+
+	/** Redeems an invitation through the retired <code>invitation</code> field (issue #52). */
+	protected FakeResponse acceptAsBefore(String invitation, String userName) throws Exception {
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("action", "pair");
 		String body = "{\"invitation\":\"" + invitation + "\",\"deviceName\":\"Phone\",\"userName\":\""
@@ -109,22 +134,27 @@ public abstract class InviteTestCase extends SpaceTestCase {
 		return null;
 	}
 
-	/** The invitation store on disk, freshly read. */
-	protected InvitationStore store() {
-		return new InvitationStore(_base);
+	/** The invitations of the running server, derived from its users and codes (issue #89). */
+	protected java.util.List<AuthService.Invited> stored() throws Exception {
+		return servlet().auth().invitations();
+	}
+
+	/** The invitation of the given id on the running server, <code>null</code> if there is none. */
+	protected AuthService.Invited stored(String id) throws Exception {
+		return servlet().auth().invitation(id);
 	}
 
 	/**
-	 * Issues an invitation directly in the store and answers its token.
+	 * Issues an invitation directly, without the endpoint, and answers its token.
 	 *
 	 * <p>
-	 * The way to build an invitation that is already expired: the endpoint refuses to create one,
-	 * and rightly so. The caller restarts the servlet, so that it reads what was written here.
+	 * The way to build an invitation that is already expired or that a test wants to see before
+	 * the servlet does: the endpoint refuses a past instant, and rightly so.
 	 * </p>
 	 */
 	protected String issue(String role, String invitedBy, String expires) throws Exception {
-		InvitationStore.Issued issued = new InvitationStore(_base).create(role, invitedBy, "", expires);
-		restartServer();
-		return issued.getToken();
+		return servlet().auth()
+			.createInvitation(invitedBy, "", role, Clearances.ofRole(role), false, "", expires, "")
+			.getToken();
 	}
 }

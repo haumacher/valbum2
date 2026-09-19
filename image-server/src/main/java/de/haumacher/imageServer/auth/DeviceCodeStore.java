@@ -96,6 +96,22 @@ public class DeviceCodeStore {
 	public static final int KEEP_DEAD_HOURS = 24;
 
 	/**
+	 * How long the dead code of an invitation is kept, see issue #89.
+	 *
+	 * <p>
+	 * Thirty days rather than {@value #KEEP_DEAD_HOURS} hours, because the two are remembered for
+	 * different lengths of time by the people holding them: a device code is read off one screen
+	 * and typed on another within ten minutes, and nobody comes back to it a day later; an
+	 * invitation is a link in a message, and the person it was sent to may well click it weeks
+	 * after it ran out. What they are told then &mdash; "this invitation has expired", "this
+	 * invitation was already used", "this invitation was withdrawn", see
+	 * {@link de.haumacher.imageServer.InvitationRedirect} &mdash; is worth keeping the record for.
+	 * Afterwards the link is simply unknown, which is all anybody can still say about it.
+	 * </p>
+	 */
+	public static final int KEEP_DEAD_INVITATION_DAYS = 30;
+
+	/**
 	 * The characters a code is spelled with.
 	 *
 	 * <p>
@@ -124,6 +140,23 @@ public class DeviceCodeStore {
 	public static final int BACKUP_CODE_LENGTH = 16;
 
 	/**
+	 * The number of random bytes the code of an invitation is built from, see issue #89.
+	 *
+	 * <p>
+	 * Not characters to type but a token to click: an invitation travels in a URL, so it is
+	 * spelled like a device token &mdash; {@value} random bytes, base64url &mdash; and nobody ever
+	 * reads it off a screen. The store looks a code up by the hash of what it was given, so the
+	 * length and the alphabet are free; it is the hash of the token exactly as it stands, which is
+	 * also what makes an invitation issued before this build keep working, see
+	 * {@link #lookup(String)}.
+	 * </p>
+	 */
+	public static final int INVITATION_TOKEN_BYTES = 32;
+
+	/** How long an invitation lives when the request names no expiry: seven days. */
+	public static final int INVITATION_DEFAULT_DAYS = 7;
+
+	/**
 	 * What {@link Code#getKind()} holds for an ordinary code: nothing.
 	 *
 	 * <p>
@@ -145,6 +178,31 @@ public class DeviceCodeStore {
 	 * </p>
 	 */
 	public static final String KIND_BACKUP = "backup";
+
+	/**
+	 * What {@link Code#getKind()} holds for the code of an invitation, see issue #89.
+	 *
+	 * <p>
+	 * <b>An invitation is a pending user carrying a code.</b> Issuing an invitation creates the
+	 * user it will name &mdash; nameless, without devices, with the permission the inviter chose
+	 * &mdash; and one code of this kind for them; the {@code /i/<token>/} link carries the code,
+	 * and redeeming it is the ordinary pairing of {@link AuthService}, which asks the person for a
+	 * name and adds their first device. Invitation, seat code, recovery code, device code and
+	 * backup code are one mechanism: a single-use secret that adds a device to one target user,
+	 * and the kind says who issued it and how long it lives.
+	 * </p>
+	 *
+	 * <p>
+	 * Three things follow from the kind and from nothing else: the code is spelled as a
+	 * {@value #INVITATION_TOKEN_BYTES}-byte token rather than typed, so it may be a bearer at
+	 * <code>?type=auth</code> where no other code ever is; it lives days rather than
+	 * {@value #LIFETIME_MINUTES} minutes; and it is exempt from
+	 * {@link AuthService#DEVICE_CODE_ISSUER_GONE} like the {@link #KIND_BACKUP backup} code &mdash;
+	 * an inviter who signs a device out must not void the invitations they sent. Their <em>user</em>
+	 * being removed does void them, see {@link AuthService#removeUser(String)}.
+	 * </p>
+	 */
+	public static final String KIND_INVITATION = "invitation";
 
 	/**
 	 * What stands in {@link Code#getIssuedBy()} for a code the server itself issued (issue #89).
@@ -287,6 +345,11 @@ public class DeviceCodeStore {
 		/** Whether this is the user's backup code, see {@link #KIND_BACKUP}. */
 		public boolean isBackup() {
 			return KIND_BACKUP.equals(_kind);
+		}
+
+		/** Whether this is the code of an invitation, see {@link #KIND_INVITATION}. */
+		public boolean isInvitation() {
+			return KIND_INVITATION.equals(_kind);
 		}
 
 		/** The short id of this code; what names it in the store, never on the wire. */
@@ -446,8 +509,8 @@ public class DeviceCodeStore {
 
 		@Override
 		public String toString() {
-			return (isBackup() ? "backup-code:" : "device-code:") + _id + " (for " + _user + ", by device "
-				+ _issuedBy + ")"
+			return (isBackup() ? "backup-code:" : isInvitation() ? "invitation:" : "device-code:") + _id
+				+ " (for " + (_user.isEmpty() ? "<unnamed>" : _user) + ", by device " + _issuedBy + ")"
 				+ (isUsed() ? " used by device " + _usedBy : "") + (isRevoked() ? " (revoked)" : "");
 		}
 	}
@@ -554,14 +617,26 @@ public class DeviceCodeStore {
 	 * @return <code>null</code> if the characters are no code of this server.
 	 */
 	public synchronized Code lookup(String code) {
-		String normalised = normalise(code);
-		if (normalised.isEmpty()) {
+		if (code == null || code.isEmpty()) {
 			return null;
 		}
-		byte[] hash = UserStore.hash(normalised).getBytes(StandardCharsets.US_ASCII);
+		String normalised = normalise(code);
+		// Two spellings, one store (issue #89). A typed code is hashed in its normalised form, so
+		// that the dash and the shouting do not matter; the token of an invitation is hashed
+		// exactly as it stands, because it is clicked and not typed and normalising it would
+		// throw away its case and its dashes. Neither can be mistaken for the other: what is
+		// stored is a hash, and only the spelling it was created from produces it.
+		byte[] typed = normalised.isEmpty() ? null
+			: UserStore.hash(normalised).getBytes(StandardCharsets.US_ASCII);
+		byte[] token = UserStore.hash(code).getBytes(StandardCharsets.US_ASCII);
 		for (Code candidate : _codes) {
+			byte[] stored = candidate.getCodeHash().getBytes(StandardCharsets.US_ASCII);
 			// Constant-time comparison: the hash of a guessed code must not be probed by timing.
-			if (MessageDigest.isEqual(hash, candidate.getCodeHash().getBytes(StandardCharsets.US_ASCII))) {
+			if (candidate.isInvitation()) {
+				if (MessageDigest.isEqual(token, stored)) {
+					return candidate;
+				}
+			} else if (typed != null && MessageDigest.isEqual(typed, stored)) {
 				return candidate;
 			}
 		}
@@ -629,6 +704,78 @@ public class DeviceCodeStore {
 		_codes.add(record);
 		store();
 		return new Issued(record, code);
+	}
+
+	/**
+	 * Issues the code of an invitation, see {@link #KIND_INVITATION} (issue #89).
+	 *
+	 * <p>
+	 * The same single-use record as every other code, told apart by its kind: it is spelled as a
+	 * token because it travels in a link, it lives until the instant the inviter chose rather than
+	 * ten minutes, and it outlives the device that made it. What it adds a device to is the
+	 * pending user the invitation created, who is found by this code's {@link Code#getId() id}
+	 * and not by a name they do not have yet, see {@link UserStore#getInvited(String)}.
+	 * </p>
+	 *
+	 * @param issuedBy
+	 *        The id of the inviter's device; history, since an invitation does not die with it.
+	 * @param expires
+	 *        When the invitation runs out, an ISO-8601 instant; empty for
+	 *        {@value #INVITATION_DEFAULT_DAYS} days from now.
+	 */
+	public synchronized Issued createInvitation(String issuedBy, String expires) throws IOException {
+		Instant now = _clock.instant();
+		byte[] bytes = new byte[INVITATION_TOKEN_BYTES];
+		_random.nextBytes(bytes);
+		String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+		String lifetime = expires == null || expires.isEmpty()
+			? now.plus(Duration.ofDays(INVITATION_DEFAULT_DAYS)).toString() : expires;
+		Code record = new Code(freeId(), UserStore.hash(token), "", issuedBy == null ? "" : issuedBy,
+			now.toString(), lifetime, "", "", "", KIND_INVITATION);
+		_codes.add(record);
+		store();
+		return new Issued(record, token);
+	}
+
+	/**
+	 * Adopts a code whose hash is already known, see issue #89.
+	 *
+	 * <p>
+	 * What carries an invitation issued by a build that kept its own store into this one: the
+	 * token is not here to be hashed again, but its hash is, and a store that looks up by hash
+	 * needs nothing else. A link somebody was sent last week therefore keeps working.
+	 * </p>
+	 */
+	public synchronized Code adopt(String codeHash, String issuedBy, String created, String expires, String kind)
+			throws IOException {
+		Code record = new Code(freeId(), codeHash, "", issuedBy == null ? "" : issuedBy,
+			created == null ? _clock.instant().toString() : created, expires == null ? "" : expires,
+			"", "", "", kind);
+		_codes.add(record);
+		store();
+		return record;
+	}
+
+	/**
+	 * Withdraws the code of the given id, see issue #89.
+	 *
+	 * <p>
+	 * What withdrawing an invitation does to its code. The record stays and is marked, so that
+	 * whoever opens the link is told that it was withdrawn rather than that it never existed.
+	 * </p>
+	 *
+	 * @return The code, <code>null</code> if there is none of that id.
+	 */
+	public synchronized Code revoke(String id) throws IOException {
+		Code code = get(id);
+		if (code == null) {
+			return null;
+		}
+		if (!code.isRevoked() && !code.isUsed()) {
+			code.setRevoked(_clock.instant().toString());
+			store();
+		}
+		return code;
 	}
 
 	/**
@@ -725,6 +872,12 @@ public class DeviceCodeStore {
 		String now = _clock.instant().toString();
 		int revoked = 0;
 		for (Code code : _codes) {
+			if (code.isInvitation()) {
+				// An invitation outlives the device that sent it (issue #89): an inviter who signs
+				// a laptop out has not taken back what they put in the post. It is withdrawn by
+				// ?action=uninvite, by running out, or by its inviter's user being removed.
+				continue;
+			}
 			if (code.isBackup()) {
 				// A backup code outlives the device that made it; that is its whole purpose, and
 				// the device list argument does not apply to a code its own owner wrote down
@@ -822,9 +975,11 @@ public class DeviceCodeStore {
 	private void forgetTheLongDead() {
 		Instant now = _clock.instant();
 		Instant limit = now.minus(Duration.ofHours(KEEP_DEAD_HOURS));
+		Instant invitationLimit = now.minus(Duration.ofDays(KEEP_DEAD_INVITATION_DAYS));
 		for (Iterator<Code> it = _codes.iterator(); it.hasNext();) {
-			Instant dead = it.next().deadSince(now);
-			if (dead != null && dead.isBefore(limit)) {
+			Code code = it.next();
+			Instant dead = code.deadSince(now);
+			if (dead != null && dead.isBefore(code.isInvitation() ? invitationLimit : limit)) {
 				it.remove();
 			}
 		}

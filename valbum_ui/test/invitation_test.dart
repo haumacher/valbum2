@@ -294,7 +294,9 @@ void main() {
 
       var pair = session.requests.last;
       expect(pair.url.queryParameters["action"], "pair");
-      expect(pair.body, contains('"invitation":"inv-1"'));
+      // An invitation is a code since issue #89: the token travels in the
+      // field every other code travels in.
+      expect(pair.body, contains('"deviceCode":"inv-1"'));
       expect(pair.body, contains('"userName":"carol"'));
       expect(pair.body, contains('"secret":""'));
       expect(
@@ -440,7 +442,9 @@ void main() {
           .where((request) => request.url.queryParameters["action"] == "pair")
           .single;
       expect(pair.url.queryParameters["action"], "pair");
-      expect(pair.body, contains('"invitation":"inv-1"'));
+      // An invitation is a code since issue #89: the token travels in the
+      // field every other code travels in.
+      expect(pair.body, contains('"deviceCode":"inv-1"'));
       expect(pair.body, contains('"userName":"carol"'));
       expect(store.value, serverUrl);
       expect(store.token, "dev-9");

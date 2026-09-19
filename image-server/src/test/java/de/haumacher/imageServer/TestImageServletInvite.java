@@ -46,9 +46,10 @@ public class TestImageServletInvite extends InviteTestCase {
 		assertEquals("/valbum/" + InvitationStore.URL_SEGMENT + "/" + created.getToken() + "/", created.getUrl());
 		assertFalse("The token travels back exactly once.", created.getToken().isEmpty());
 
-		InvitationStore.Link stored = store().get(created.getInvitation().getId());
-		assertEquals("alice", stored.getInvitedBy());
-		assertEquals(UserStore.hash(created.getToken()), stored.getTokenHash());
+		AuthService.Invited stored = stored(created.getInvitation().getId());
+		assertEquals("alice", stored.getUser().getInvitedBy());
+		assertEquals(UserStore.hash(created.getToken()), stored.getCode().getCodeHash());
+		assertTrue("An invitation is a pending user (issue #89).", stored.isPending());
 	}
 
 	public void testTheAdminInvitesAnEditor() throws Exception {
@@ -68,7 +69,7 @@ public class TestImageServletInvite extends InviteTestCase {
 
 		assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status());
 		assertEquals(AuthService.INVITATION_ADMIN_REFUSED, errorMessage(response));
-		assertTrue("A refused invitation records nothing.", store().getInvitations().isEmpty());
+		assertTrue("A refused invitation records nothing.", stored().isEmpty());
 	}
 
 
@@ -109,7 +110,8 @@ public class TestImageServletInvite extends InviteTestCase {
 	}
 
 	public void testAnExpiredInvitationIsGoneAtTheAuthEndpoint() throws Exception {
-		String token = issue(Roles.EDIT, "alice", "2026-01-01T00:00:00Z");
+		String token = issue(Roles.EDIT, "alice",
+			java.time.Instant.now().minus(java.time.Duration.ofDays(1)).toString());
 
 		FakeResponse response = authOf(token);
 

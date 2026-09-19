@@ -132,13 +132,15 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The token of an {@link Invitation}, the alternative to the {@link #getSecret()} (issue #52).
+	 * The token of an {@link Invitation}; an alias of {@link #getDeviceCode()}, retired by issue #89.
 	 *
 	 * <p>
-	 * Accepting an invitation is pairing: a live, unused invitation together with a free
-	 * {@link #getUserName()} creates the user with the invitation's role, issues this device's token and
-	 * marks the invitation used. Empty in every other request; a request carrying both is read as
-	 * an invitation.
+	 * An invitation is a pending user carrying a code: the user is created when the invitation is
+	 * issued and the link carries the single-use code that adds their first device, so accepting
+	 * an invitation is the ordinary pairing and the token belongs in {@link #getDeviceCode()}. This
+	 * field is read for one release &mdash; a request carrying it and no {@link #getDeviceCode()} is
+	 * redeemed exactly as if it had carried one &mdash; so that an app from before the change
+	 * keeps joining.
 	 * </p>
 	 */
 	public final String getInvitation() {

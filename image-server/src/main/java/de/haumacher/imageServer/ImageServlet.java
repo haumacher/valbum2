@@ -1177,8 +1177,10 @@ public class ImageServlet extends HttpServlet {
 		UserStore users = _auth.getUsers();
 		if (users != null) {
 			for (UserStore.User user : users.getUsers()) {
-				if (user.getName().isEmpty()) {
-					// The owner of a library that was never named; there is nothing to share with.
+				if (user.getName().isEmpty() && !user.isPending()) {
+					// The administrator's seat of a space nobody has signed into yet; there is
+					// nobody there. A pending user is listed, and is marked as pending: somebody
+					// was invited and has not arrived, which is exactly what the list should say.
 					continue;
 				}
 				result.addUser(onTheWire(user));
@@ -1713,10 +1715,11 @@ public class ImageServlet extends HttpServlet {
 	 * Issues an invitation at <code>&lt;data&gt;/?action=invite</code>, see issue #52.
 	 *
 	 * <p>
-	 * An invitation is a single-use token that <em>creates a user</em>, so it names no path and
-	 * touches no album: it is answered at the data root and the request body says only what the
-	 * accepting user becomes. The token travels back exactly once, in the
-	 * {@link InvitationCreated}, together with the URL the app is served under for it.
+	 * An invitation is a <em>pending user carrying a code</em> since issue #89: the user is created
+	 * here, nameless and without devices, with what the request says they become, and one
+	 * single-use code is made for them. It names no path and touches no album; the token travels
+	 * back exactly once, in the {@link InvitationCreated}, together with the
+	 * <code>/i/&lt;token&gt;/</code> URL the app is served under for it.
 	 * </p>
 	 *
 	 * <p>
@@ -1783,12 +1786,12 @@ public class ImageServlet extends HttpServlet {
 			clearance = caller.getClearance();
 		}
 		boolean mayShare = request.isMayShare() && caller.mayShare();
+		String recipient = request.getRecipient() == null ? "" : request.getRecipient().trim();
 
-		InvitationStore.Issued issued =
-			_auth.getInvitations().create(role, clearance, mayShare, caller.getUserName(), note, expires);
-		LOG.info("Issued " + issued.getInvitation() + ".");
+		AuthService.Invited issued = _auth.createInvitation(caller.getUserName(), caller.getDeviceId(),
+			role, clearance, mayShare, note, expires, recipient);
 		serveJsonObject(context.response(), InvitationCreated.create()
-			.setInvitation(onTheWire(issued.getInvitation()))
+			.setInvitation(onTheWire(issued))
 			.setToken(issued.getToken())
 			.setUrl(appUrl(context, InvitationStore.URL_SEGMENT, issued.getToken())));
 	}
@@ -1802,6 +1805,11 @@ public class ImageServlet extends HttpServlet {
 	 * server in order. A guest and an anonymous caller see none at all, and no answer ever carries
 	 * a token.
 	 * </p>
+	 *
+	 * <p>
+	 * Derived and not stored since issue #89: the list is the pending users of this space joined
+	 * with their codes, see {@link AuthService#invitations()}. There is no invitation store left.
+	 * </p>
 	 */
 	private void serveInvitations(Context context, Caller caller) throws IOException {
 		if (!caller.isPaired()) {
@@ -1814,14 +1822,15 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
+		// An invitation that simply ran out leaves a user nobody can become; they go before the
+		// list is answered, so that what is shown is what is there (issue #89).
+		_auth.pruneInvitations();
+
 		InvitationList result = InvitationList.create();
-		InvitationStore invitations = _auth.getInvitations();
-		if (invitations != null) {
-			boolean admin = Roles.ADMIN.equals(caller.getRole());
-			for (InvitationStore.Link invitation : invitations.getInvitations()) {
-				if (admin || invitation.getInvitedBy().equals(caller.getUserName())) {
-					result.addInvitation(onTheWire(invitation));
-				}
+		boolean admin = Roles.ADMIN.equals(caller.getRole());
+		for (AuthService.Invited invitation : _auth.invitations()) {
+			if (admin || invitation.getUser().getInvitedBy().equals(caller.getUserName())) {
+				result.addInvitation(onTheWire(invitation));
 			}
 		}
 		serveJsonObject(context.response(), result);
@@ -1831,11 +1840,12 @@ public class ImageServlet extends HttpServlet {
 	 * Withdraws an invitation at <code>&lt;data&gt;/?action=uninvite</code>, see issue #52.
 	 *
 	 * <p>
-	 * The record is marked withdrawn and kept — a management screen shows what became of an
-	 * invitation somebody handed out, see issue #55 — and the token is refused from then on. A user
-	 * the invitation already created is untouched: withdrawing an invitation is not removing
-	 * somebody. Only the issuer and the admin may withdraw; anybody else is told that there is no
-	 * such invitation, not whose it is.
+	 * The code is marked withdrawn and kept — a management screen shows what became of an
+	 * invitation somebody handed out, see issue #55 — and the link is refused from then on.
+	 * <b>A pending user goes with it</b> (issue #89): an invitation nobody accepted is a user
+	 * nobody is. Somebody who already accepted keeps their account: withdrawing an invitation is
+	 * not removing somebody. Only the issuer and the admin may withdraw; anybody else is told that
+	 * there is no such invitation, not whose it is.
 	 * </p>
 	 */
 	private void removeInvitation(Context context) throws IOException {
@@ -1854,18 +1864,16 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		String id = request.getId() == null ? "" : request.getId().trim();
-		InvitationStore invitations = _auth.getInvitations();
-		InvitationStore.Link invitation = id.isEmpty() || invitations == null ? null : invitations.get(id);
+		AuthService.Invited invitation = _auth.invitation(id);
 		boolean mine = invitation != null && (Roles.ADMIN.equals(caller.getRole())
-			|| invitation.getInvitedBy().equals(caller.getUserName()));
+			|| invitation.getUser().getInvitedBy().equals(caller.getUserName()));
 		if (!mine) {
 			LOG.warning("Refusing to withdraw the unknown invitation '" + id + "'.");
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.INVITATION_UNKNOWN);
 			return;
 		}
 
-		invitations.revoke(invitation.getId());
-		LOG.info("Withdrew " + invitation + ".");
+		_auth.uninvite(invitation.getId());
 		serveJsonObject(context.response(), InvitationList.create().addInvitation(onTheWire(invitation)));
 	}
 
@@ -1891,19 +1899,23 @@ public class ImageServlet extends HttpServlet {
 	 * one invitation from another and to see what became of it, see issue #52.
 	 * </p>
 	 */
-	private static Invitation onTheWire(InvitationStore.Link invitation) {
+	private static Invitation onTheWire(AuthService.Invited invitation) {
+		UserStore.User user = invitation.getUser();
+		DeviceCodeStore.Code code = invitation.getCode();
 		return Invitation.create()
-			.setId(invitation.getId())
-			.setRole(invitation.getRole())
-			.setClearance(invitation.getClearance())
-			.setMayShare(invitation.isShare())
-			.setNote(invitation.getNote())
-			.setExpires(invitation.getExpires())
-			.setInvitedBy(invitation.getInvitedBy())
-			.setCreated(invitation.getCreated())
-			.setUsed(invitation.getUsed())
-			.setUsedBy(invitation.getUsedBy())
-			.setRevoked(invitation.getRevoked());
+			.setId(code.getId())
+			.setRole(user.getRole())
+			.setClearance(user.getClearance())
+			.setMayShare(user.isShare())
+			.setNote(user.getNote())
+			.setRecipient(user.getRecipient())
+			.setExpires(code.getExpires())
+			.setInvitedBy(user.getInvitedBy())
+			.setCreated(code.getCreated())
+			.setUsed(code.getUsed())
+			// Whom it made: the name the person chose when they redeemed it, see issue #89.
+			.setUsedBy(code.isUsed() ? user.getName() : "")
+			.setRevoked(code.getRevoked());
 	}
 
 
@@ -1996,6 +2008,9 @@ public class ImageServlet extends HttpServlet {
 	private UserList userList() {
 		UserList result = UserList.create();
 		for (UserStore.User user : _auth.getUsers().getUsers()) {
+			if (user.getName().isEmpty() && !user.isPending()) {
+				continue;
+			}
 			result.addUser(onTheWire(user));
 		}
 		return result;
@@ -2017,7 +2032,13 @@ public class ImageServlet extends HttpServlet {
 			.setCreated(user.getCreated())
 			.setClearance(user.getClearance())
 			.setMayShare(user.isShare())
-			.setDevices(user.getDevices().size());
+			.setDevices(user.getDevices().size())
+			// An invitation is a pending user (issue #89), and the users list is where the
+			// administrator sees whom they are still waiting for.
+			.setPending(user.isPending())
+			.setRecipient(user.getRecipient())
+			.setInvitedBy(user.getInvitedBy())
+			.setInvitation(user.getInvitation());
 	}
 
 

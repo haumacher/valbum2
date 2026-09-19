@@ -306,7 +306,10 @@ public class TestDeviceCode extends InviteTestCase {
 
 		assertEquals("An invitation is no sign-in; there is no 'oneself' to add a device to.",
 			HttpServletResponse.SC_UNAUTHORIZED, response.status());
-		assertTrue(new DeviceCodeStore(_base).getCodes().isEmpty());
+		// The invitation's own code is in the store (issue #89); nothing was added beside it.
+		for (DeviceCodeStore.Code code : new DeviceCodeStore(_base).getCodes()) {
+			assertTrue("Nothing but the invitation was recorded: " + code, code.isInvitation());
+		}
 	}
 
 	/** A live share link on alice's zoo album, for the tests that need a link caller. */

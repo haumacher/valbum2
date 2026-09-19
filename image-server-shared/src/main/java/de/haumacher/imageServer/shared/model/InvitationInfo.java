@@ -33,6 +33,9 @@ public class InvitationInfo extends de.haumacher.msgbuf.data.AbstractDataObject 
 	/** @see #getExpires() */
 	private static final String EXPIRES__PROP = "expires";
 
+	/** @see #getRecipient() */
+	private static final String RECIPIENT__PROP = "recipient";
+
 	private String _role = "";
 
 	private String _invitedBy = "";
@@ -40,6 +43,8 @@ public class InvitationInfo extends de.haumacher.msgbuf.data.AbstractDataObject 
 	private String _note = "";
 
 	private String _expires = "";
+
+	private String _recipient = "";
 
 	/**
 	 * Creates a {@link InvitationInfo} instance.
@@ -130,6 +135,32 @@ public class InvitationInfo extends de.haumacher.msgbuf.data.AbstractDataObject 
 		_expires = value;
 	}
 
+	/**
+	 * Whom the inviter wrote this invitation for, empty if they wrote nobody (issue #89).
+	 *
+	 * <p>
+	 * The inviter's memento, see {@link Invitation#getRecipient()}. The application does not show it
+	 * to the person who opened the link &mdash; it is a note the inviter made to themselves, not
+	 * a greeting &mdash; and it travels only so that a client that wants to greet by name could.
+	 * </p>
+	 */
+	public final String getRecipient() {
+		return _recipient;
+	}
+
+	/**
+	 * @see #getRecipient()
+	 */
+	public de.haumacher.imageServer.shared.model.InvitationInfo setRecipient(String value) {
+		internalSetRecipient(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getRecipient()} without chain call utility. */
+	protected final void internalSetRecipient(String value) {
+		_recipient = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.InvitationInfo readInvitationInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.InvitationInfo result = new de.haumacher.imageServer.shared.model.InvitationInfo();
@@ -153,6 +184,8 @@ public class InvitationInfo extends de.haumacher.msgbuf.data.AbstractDataObject 
 		out.value(getNote());
 		out.name(EXPIRES__PROP);
 		out.value(getExpires());
+		out.name(RECIPIENT__PROP);
+		out.value(getRecipient());
 	}
 
 	@Override
@@ -162,6 +195,7 @@ public class InvitationInfo extends de.haumacher.msgbuf.data.AbstractDataObject 
 			case INVITED_BY__PROP: setInvitedBy(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case NOTE__PROP: setNote(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case EXPIRES__PROP: setExpires(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case RECIPIENT__PROP: setRecipient(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

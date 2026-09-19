@@ -318,15 +318,19 @@ class SignInFormState extends State<SignInForm> {
 
   /// Signs this device in at [SignInForm.location], storing what comes back.
   ///
-  /// The invitation of the location is the alternative to the code: accepting
-  /// one *is* pairing, and the name is then the name of the user to create,
-  /// see issue #52. Everything else is the code, whoever issued it — a seat
-  /// code, a code from another of one's devices, a recovery code or a backup
-  /// code (issue #92); the server tells them apart, this form does not.
+  /// One field and one request, whoever made the code: a seat code, a code
+  /// from another of one's devices, a recovery code, a backup code (issue
+  /// #92) — or the token of an invitation, which since issue #89 *is* a code
+  /// and goes in the very same field. The invitation of the location takes
+  /// the place of what would be typed, because its link carries it; the name
+  /// is then the name the new user chooses for themselves. The server tells
+  /// the kinds apart, this form does not.
   Future<void> signIn() async {
     var location = widget.location;
-    var code = location.isInvitation ? "" : codeController.text.trim();
-    if (!location.isInvitation && code.isEmpty) {
+    var code = location.isInvitation
+        ? location.invitation
+        : codeController.text.trim();
+    if (code.isEmpty) {
       // There is one way in and it is a code (issue #89); an empty field is
       // said here rather than sent to be refused.
       setState(() {
@@ -352,7 +356,6 @@ class SignInFormState extends State<SignInForm> {
     try {
       var response = await client.pair(
         deviceCode: code,
-        invitation: location.invitation,
         deviceName: deviceController.text.trim().isEmpty
             ? defaultDeviceName()
             : deviceController.text.trim(),

@@ -986,7 +986,9 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   int _cacheGeneration = 0;
 
   /// Counts the invitations issued here, so that the list of the open ones
-  /// reads itself again, see [InvitationsSection.generation].
+  /// reads itself again, see [InvitationsSection.generation]. The users list
+  /// listens to the same counter: an invitation *is* a pending user (issue
+  /// #89), so issuing one adds a seat to that list.
   int _invitationGeneration = 0;
 
   /// A pre-filled suggestion: the server the app talks to, or the demo server.
@@ -1509,7 +1511,8 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
           generation: _invitationGeneration,
         ),
       // Who is on this server at all is the administrator's business alone.
-      if (client != null && role == roleAdmin) UsersSection(client: client),
+      if (client != null && role == roleAdmin)
+        UsersSection(client: client, generation: _invitationGeneration),
     ];
   }
 

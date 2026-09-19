@@ -16,6 +16,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -554,7 +555,9 @@ public class AuthService {
 
 		private final String _gone;
 
-		private InvitationStore.Link _invitation;
+		private DeviceCodeStore.Code _invitation;
+
+		private User _invited;
 
 		private String _invitationGone;
 
@@ -592,16 +595,37 @@ public class AuthService {
 		 * @param gone
 		 *        Why the invitation cannot be accepted any more, <code>null</code> while it can.
 		 */
-		static Caller invitation(InvitationStore.Link invitation, String gone) {
+		static Caller invitation(DeviceCodeStore.Code invitation, User invited, String gone) {
 			Caller result = new Caller(null, null, false, null, null, null);
 			result._invitation = invitation;
+			result._invited = invited;
 			result._invitationGone = gone;
 			return result;
 		}
 
-		/** The invitation this caller presented, <code>null</code> for everybody else. */
-		public InvitationStore.Link getInvitation() {
+		/**
+		 * The code of the invitation this caller presented, <code>null</code> for everybody else.
+		 *
+		 * <p>
+		 * An invitation is a pending user carrying a code (issue #89): this is the code, and
+		 * {@link #getInvited()} is the user it will name.
+		 * </p>
+		 */
+		public DeviceCodeStore.Code getInvitation() {
 			return _invitation;
+		}
+
+		/**
+		 * The pending user this caller's invitation created, <code>null</code> for everybody else.
+		 *
+		 * <p>
+		 * Who the person would become: the role, the clearance, the share flag and the inviter's
+		 * words are all stored here, and redeeming the code writes the name they choose on this
+		 * very user. <code>null</code> also for an invitation whose user is already gone.
+		 * </p>
+		 */
+		public User getInvited() {
+			return _invited;
 		}
 
 		/**
@@ -803,8 +827,6 @@ public class AuthService {
 
 	private final ShareStore _shares;
 
-	private final InvitationStore _invitations;
-
 	private final DeviceCodeStore _deviceCodes;
 
 	private final InviteMode _inviteMode;
@@ -833,9 +855,17 @@ public class AuthService {
 		_inviteMode = inviteMode;
 		_users = mode == AuthMode.OFF ? null : new UserStore(basePath);
 		_shares = mode == AuthMode.OFF ? null : new ShareStore(basePath);
-		_invitations = mode == AuthMode.OFF ? null : new InvitationStore(basePath);
 		_deviceCodes = mode == AuthMode.OFF ? null : new DeviceCodeStore(basePath);
 		ensureAdminSeat();
+		adoptInvitations();
+		try {
+			// An invitation that ran out leaves a user nobody can become; they go at start-up,
+			// see pruneInvitations (issue #89).
+			pruneInvitations();
+		} catch (IOException ex) {
+			LOG.log(java.util.logging.Level.WARNING,
+				"Cannot remove the pending users of '" + basePath + "': " + ex.getMessage());
+		}
 	}
 
 	/**
@@ -872,6 +902,78 @@ public class AuthService {
 				LOG.log(java.util.logging.Level.WARNING,
 					"Cannot write the administrator of '" + _basePath + "': " + ex.getMessage());
 			}
+		}
+	}
+
+	/**
+	 * Carries an {@code invitations.json} written before issue #89 into this build, once.
+	 *
+	 * <p>
+	 * An invitation is a pending user carrying a code now, so the store of issue #52 has nothing
+	 * left to hold. Every invitation of it that can <em>still be accepted</em> becomes exactly
+	 * that: a nameless user with its role, clearance and share flag, and a code of
+	 * {@link DeviceCodeStore#KIND_INVITATION} carrying <b>the very hash the old store held</b>.
+	 * The hash is the same function over the same token in both stores, and a store that looks up
+	 * by hash needs nothing else &mdash; so a link somebody was sent last week keeps working, and
+	 * keeps its id, and the redirect of issue #88 keeps answering for it.
+	 * </p>
+	 *
+	 * <p>
+	 * A used, withdrawn or expired invitation is carried nowhere: it is a record of something that
+	 * is over, and the file it stands in is set aside rather than deleted, under
+	 * <code>.valbum/{@value SpacesMigration#RETIRED_DIRECTORY_NAME}/&lt;timestamp&gt;/</code>, so
+	 * that nothing this server ever wrote is lost. Nothing happens at all where there is no file,
+	 * which is every library after the first start.
+	 * </p>
+	 */
+	private void adoptInvitations() {
+		if (_users == null || _deviceCodes == null || _basePath == null) {
+			return;
+		}
+		Path file = _basePath.resolve(UserStore.DIRECTORY_NAME).resolve(InvitationStore.FILE_NAME);
+		if (!Files.exists(file)) {
+			return;
+		}
+		try {
+			InvitationStore old = new InvitationStore(_basePath);
+			int carried = 0;
+			int dropped = 0;
+			synchronized (_users) {
+				for (InvitationStore.Link link : old.getInvitations()) {
+					String role = Roles.of(link.getRole());
+					if (!link.isLive() || role == null || Roles.ADMIN.equals(role)) {
+						dropped++;
+						continue;
+					}
+					DeviceCodeStore.Code code = _deviceCodes.adopt(link.getTokenHash(), "", link.getCreated(),
+						link.getExpires(), DeviceCodeStore.KIND_INVITATION);
+					User user = _users.addUser(new User("", role, "", link.getCreated(),
+						Clearances.isKnown(link.getClearance()) ? link.getClearance() : Clearances.ofRole(role),
+						link.isShare()));
+					user.setInvitation(code.getId());
+					user.setInvitedBy(link.getInvitedBy());
+					user.setNote(link.getNote());
+					carried++;
+				}
+				if (carried > 0) {
+					_users.store();
+				}
+			}
+			Path retired = _basePath.resolve(UserStore.DIRECTORY_NAME)
+				.resolve(SpacesMigration.RETIRED_DIRECTORY_NAME)
+				.resolve(java.time.Instant.now().toString().replace(':', '-'));
+			Files.createDirectories(retired);
+			Files.move(file, retired.resolve(InvitationStore.FILE_NAME),
+				java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			LOG.info("Carried " + carried + " open invitation(s) of '" + file
+				+ "' over as pending users; " + dropped + " that were over were dropped, and the file was set "
+				+ "aside under " + UserStore.DIRECTORY_NAME + "/" + SpacesMigration.RETIRED_DIRECTORY_NAME
+				+ "/. Every open invitation link keeps working.");
+		} catch (IOException | RuntimeException ex) {
+			// A library that cannot be written keeps its old file and is told so; nothing is lost,
+			// and the invitations of the old store simply do not work until it can be carried.
+			LOG.log(java.util.logging.Level.WARNING,
+				"Cannot carry the invitations of '" + file + "' over: " + ex.getMessage());
 		}
 	}
 
@@ -935,11 +1037,6 @@ public class AuthService {
 		return _shares;
 	}
 
-	/** The invitations of this server, <code>null</code> while {@link AuthMode#OFF}. */
-	public InvitationStore getInvitations() {
-		return _invitations;
-	}
-
 	/** The device codes of this server, <code>null</code> while {@link AuthMode#OFF}. */
 	public DeviceCodeStore getDeviceCodes() {
 		return _deviceCodes;
@@ -992,15 +1089,20 @@ public class AuthService {
 			// Not a device token; it may still be a share link of issue #51.
 			ShareStore.Link share = _shares.lookup(token);
 			if (share == null) {
-				// Nor a share link; it may still be an invitation of issue #52. The share store is
-				// asked first because a share token is a session that reaches every endpoint, while
-				// an invitation is anonymous everywhere but at "?type=auth" — and a token can never
-				// be in both stores, both being 32 random bytes.
-				InvitationStore.Link invitation = _invitations.lookup(token);
-				if (invitation == null) {
+				// Nor a share link; it may still be an invitation of issue #52, which since issue
+				// #89 is a code of the device code store. The share store is asked first because a
+				// share token is a session that reaches every endpoint, while an invitation is
+				// anonymous everywhere but at "?type=auth" — and a token can never be in both
+				// stores, both being 32 random bytes.
+				DeviceCodeStore.Code invitation = _deviceCodes == null ? null : _deviceCodes.lookup(token);
+				if (invitation == null || !invitation.isInvitation()) {
+					// Only the code of an invitation is ever a bearer. A typed device code is no
+					// session and must never become one by being put in an Authorization header,
+					// see DeviceCodeStore.
 					return Caller.INVALID;
 				}
-				return Caller.invitation(invitation, invitationGone(invitation));
+				User invited = _users.getInvited(invitation.getId());
+				return Caller.invitation(invitation, invited, invitationGone(invitation, invited));
 			}
 			if (share.isRevoked()) {
 				return Caller.shareGone(share, LINK_REVOKED);
@@ -1882,11 +1984,13 @@ public class AuthService {
 		if (caller.getInvitation() != null) {
 			// An invitation is no login: the caller is anonymous above and stays anonymous. This is
 			// the one thing the server says about the token it was handed, see issue #52.
-			InvitationStore.Link invitation = caller.getInvitation();
+			DeviceCodeStore.Code invitation = caller.getInvitation();
+			User invited = caller.getInvited();
 			return result.setInvitation(InvitationInfo.create()
-				.setRole(invitation.getRole())
-				.setInvitedBy(invitation.getInvitedBy())
-				.setNote(invitation.getNote())
+				.setRole(invited == null ? "" : invited.getRole())
+				.setInvitedBy(invited == null ? "" : invited.getInvitedBy())
+				.setNote(invited == null ? "" : invited.getNote())
+				.setRecipient(invited == null ? "" : invited.getRecipient())
 				.setExpires(invitation.getExpires()));
 		}
 		if (!caller.isShareLink() || caller.isShareGone() || basePath == null) {
@@ -1956,10 +2060,14 @@ public class AuthService {
 	 * </p>
 	 *
 	 * <p>
-	 * Beside it, an {@link PairRequest#getInvitation() invitation} creates a new user (issue #52)
-	 * and is read first where a request carries both. A request carrying the retired
+	 * Since issue #89 an invitation is one of them and no longer a mechanism of its own: issuing
+	 * one creates a pending user and a code of
+	 * {@link DeviceCodeStore#KIND_INVITATION} for them, and the <code>/i/&lt;token&gt;/</code>
+	 * link carries that code. The retired {@link PairRequest#getInvitation() invitation} field is
+	 * therefore read as an alias of {@link PairRequest#getDeviceCode()} for one release, so that
+	 * an app from before the change keeps joining. A request carrying the retired
 	 * {@link PairRequest#getSecret() pairing secret} and no code is answered <code>410</code> with
-	 * {@link #SECRET_RETIRED}, for one release.
+	 * {@link #SECRET_RETIRED}, for one release too.
 	 * </p>
 	 *
 	 * @throws PairRefused
@@ -1969,11 +2077,11 @@ public class AuthService {
 		if (_mode == AuthMode.OFF) {
 			throw new PairRefused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
 		}
-		String invitation = request.getInvitation() == null ? "" : request.getInvitation().trim();
-		if (!invitation.isEmpty()) {
-			return accept(request, invitation);
-		}
 		String deviceCode = request.getDeviceCode() == null ? "" : request.getDeviceCode().trim();
+		if (deviceCode.isEmpty()) {
+			// The retired field of issue #52, read as what it always carried: a code, see #89.
+			deviceCode = request.getInvitation() == null ? "" : request.getInvitation().trim();
+		}
 		if (!deviceCode.isEmpty()) {
 			return addDevice(request, deviceCode);
 		}
@@ -2156,21 +2264,28 @@ public class AuthService {
 		if (record == null) {
 			throw new PairRefused(HttpServletResponse.SC_UNAUTHORIZED, DEVICE_CODE_UNKNOWN);
 		}
+		// An invitation is a code too (issue #89), and the person holding one was sent a link
+		// rather than eight characters: it is refused in the words of an invitation.
+		boolean invited = record.isInvitation();
 		if (record.isUsed()) {
-			throw new PairRefused(HttpServletResponse.SC_GONE, DEVICE_CODE_USED);
+			throw new PairRefused(HttpServletResponse.SC_GONE, invited ? INVITATION_USED : DEVICE_CODE_USED);
 		}
 		if (record.isExpired(_deviceCodes.getClock().instant())) {
-			throw new PairRefused(HttpServletResponse.SC_GONE, DEVICE_CODE_EXPIRED);
+			throw new PairRefused(HttpServletResponse.SC_GONE, invited ? INVITATION_EXPIRED : DEVICE_CODE_EXPIRED);
 		}
 		String requested = request.getUserName() == null ? "" : request.getUserName().trim();
 
 		synchronized (_users) {
-			// A code for a nameless user names its target by the seat, not by a name nobody has.
-			User user = record.getUser().isEmpty() ? _users.getOwner() : _users.getUser(record.getUser());
+			// The code says whom it signs in. An invitation names the pending user it created by
+			// its own id, since that user has no name yet; every other code for a nameless user
+			// names the administrator's seat of this space, see issue #89.
+			User user = invited ? _users.getInvited(record.getId())
+				: record.getUser().isEmpty() ? _users.getOwner() : _users.getUser(record.getUser());
 			if (user == null) {
 				// The user was removed while the code was on its way; it signs nobody in.
 				LOG.warning("Refusing " + record + ": its user is gone.");
-				throw new PairRefused(HttpServletResponse.SC_GONE, DEVICE_CODE_USER_GONE);
+				throw new PairRefused(HttpServletResponse.SC_GONE,
+					invited ? INVITATION_REVOKED : DEVICE_CODE_USER_GONE);
 			}
 			boolean nameless = user.getName().isEmpty();
 			if (!nameless && !requested.isEmpty() && !requested.equals(user.getName())) {
@@ -2181,7 +2296,8 @@ public class AuthService {
 				// is told exactly that; a backup code is withdrawn by its owner, see issue #92.
 				LOG.warning("Refusing " + record + ": it was withdrawn.");
 				throw new PairRefused(HttpServletResponse.SC_GONE,
-					record.isBackup() ? BACKUP_CODE_REVOKED : DEVICE_CODE_ISSUER_GONE);
+					invited ? INVITATION_REVOKED
+						: record.isBackup() ? BACKUP_CODE_REVOKED : DEVICE_CODE_ISSUER_GONE);
 			}
 			if (!issuerAlive(record)) {
 				// The device that made this code is no longer one of the user's; the code dies with
@@ -2206,7 +2322,8 @@ public class AuthService {
 				}
 				user.setName(name);
 				_users.store();
-				LOG.info("Named the " + user.getRole() + " of this space '" + name + "'.");
+				LOG.info("Named the " + user.getRole() + " of this space '" + name + "'"
+					+ (invited ? " (invited by '" + user.getInvitedBy() + "')." : "."));
 			}
 			String token = _users.addDevice(user, request.getDeviceName());
 			UserStore.Device device = user.getDevices().get(user.getDevices().size() - 1);
@@ -2244,6 +2361,12 @@ public class AuthService {
 	 * </p>
 	 */
 	private boolean issuerAlive(DeviceCodeStore.Code record) {
+		if (record.isInvitation()) {
+			// An invitation outlives the device that sent it (issue #89): an inviter who signs a
+			// laptop out has not taken back what they put in the post. It is withdrawn by
+			// ?action=uninvite, by running out, or with the inviter's own user.
+			return true;
+		}
 		if (record.isBackup()) {
 			// The one code that is meant to outlive its issuer (issue #92): it is made on the
 			// device one is about to sign out of, and it would be worth nothing if it went along.
@@ -2266,7 +2389,7 @@ public class AuthService {
 	 * same rule was set for a share link.
 	 * </p>
 	 */
-	public static String invitationGone(InvitationStore.Link invitation) {
+	public static String invitationGone(DeviceCodeStore.Code invitation, User invited) {
 		if (invitation.isRevoked()) {
 			return INVITATION_REVOKED;
 		}
@@ -2276,70 +2399,249 @@ public class AuthService {
 		if (invitation.isExpired(java.time.Instant.now())) {
 			return INVITATION_EXPIRED;
 		}
+		if (invited == null) {
+			// The code stands but the user it would name is gone — a store somebody edited, or an
+			// inviter who was removed. There is nobody to become, so the link is over; it is said
+			// as "withdrawn", which is what happened to it.
+			return INVITATION_REVOKED;
+		}
 		return null;
 	}
 
 	/**
-	 * Accepts an invitation: creates the user it offers and signs this device in as them (#52).
+	 * An invitation: the pending user it created and the code that lets somebody become them.
 	 *
 	 * <p>
-	 * Accepting <em>is</em> pairing, which is why it lives here and answers a
-	 * {@link PairResponse}: the app that ends up holding the device token cannot tell how the token
-	 * was earned, and nothing else in the server can either. The invitation is used up before the
-	 * answer is written, so a token that raced itself creates exactly one user.
-	 * </p>
-	 *
-	 * <p>
-	 * A member needs a folder of their own, which a library that was never migrated has no room
-	 * for: that is refused, spoken, and nothing is created. A guest needs no folder at all and is
-	 * accepted either way, see {@link UserStore#GUESTS_DIRECTORY_NAME}.
+	 * Nothing of its own is stored &mdash; this is the join of
+	 * {@link UserStore.User#getInvitation()} and the {@link DeviceCodeStore.Code} of that id, made
+	 * whenever somebody asks. That is the whole of issue #89's second step: an invitation was a
+	 * store, a token and a redemption path of its own, and it is now a user who has not arrived
+	 * yet plus one ordinary single-use code.
 	 * </p>
 	 */
-	private PairResponse accept(PairRequest request, String token) throws PairRefused, IOException {
-		InvitationStore.Link invitation = _invitations.lookup(token);
-		if (invitation == null) {
-			throw new PairRefused(HttpServletResponse.SC_GONE, INVITATION_UNKNOWN_TOKEN);
-		}
-		String gone = invitationGone(invitation);
-		if (gone != null) {
-			throw new PairRefused(HttpServletResponse.SC_GONE, gone);
-		}
-		String role = Roles.of(invitation.getRole());
-		if (role == null || Roles.ADMIN.equals(role)) {
-			// A record this build creates nobody with: an unknown role, or the administrator's seat.
-			// A record from a store this build does not understand; it creates nobody.
-			LOG.warning("Refusing " + invitation + ": its role is none this build creates anybody with.");
-			throw new PairRefused(HttpServletResponse.SC_GONE, invitationRoleRefused(invitation.getRole()));
+	public static final class Invited {
+
+		private final User _user;
+
+		private final DeviceCodeStore.Code _code;
+
+		private final String _token;
+
+		Invited(User user, DeviceCodeStore.Code code, String token) {
+			_user = user;
+			_code = code;
+			_token = token;
 		}
 
-		String name;
-		try {
-			name = UserStore.checkUserName(request.getUserName());
-		} catch (IllegalArgumentException ex) {
-			throw new PairRefused(HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
+		/** The user this invitation creates; nameless and deviceless while it is pending. */
+		public User getUser() {
+			return _user;
 		}
 
-		User user;
-		String deviceName;
+		/** The single-use code of this invitation; the link carries its token. */
+		public DeviceCodeStore.Code getCode() {
+			return _code;
+		}
+
+		/**
+		 * The token the link is spelled with, answered exactly once and never stored.
+		 *
+		 * @return The empty string everywhere but in the answer to the request that issued it.
+		 */
+		public String getToken() {
+			return _token;
+		}
+
+		/** The id naming this invitation in a request; the code's id. */
+		public String getId() {
+			return _code.getId();
+		}
+
+		/** Whether nobody has accepted this invitation yet. */
+		public boolean isPending() {
+			return _user.isPending();
+		}
+	}
+
+	/**
+	 * Issues an invitation: creates the pending user and the code that becomes them (issue #89).
+	 *
+	 * <p>
+	 * <b>An invitation is a pending user carrying a code.</b> The user is created here, with the
+	 * role, the clearance and the share flag the inviter chose &mdash; capped at their own by the
+	 * caller &mdash; and with no name and no device, so they hold nothing at all until somebody
+	 * redeems the code. Redeeming it is the ordinary pairing: the person chooses the name they
+	 * want to be known by, it is written on this user, and their first device is added. Nothing is
+	 * created at that moment that did not exist already, which is why there is no second code path
+	 * left in this class.
+	 * </p>
+	 *
+	 * <p>
+	 * The token is answered exactly once, in {@link Invited#getToken()}; the store keeps its hash.
+	 * </p>
+	 *
+	 * @param invitedBy
+	 *        The name of the inviter, which is what the invitation and the invited user record.
+	 * @param issuedByDevice
+	 *        The id of the inviter's device; history, since an invitation does not die with it.
+	 * @param recipient
+	 *        Whom the inviter is writing to, their own memento; may be empty.
+	 */
+	public Invited createInvitation(String invitedBy, String issuedByDevice, String role, String clearance,
+			boolean share, String note, String expires, String recipient) throws IOException {
 		synchronized (_users) {
-			if (!isNameFree(name)) {
-				throw new PairRefused(HttpServletResponse.SC_CONFLICT, nameTaken(name));
+			DeviceCodeStore.Issued issued = _deviceCodes.createInvitation(issuedByDevice, expires);
+			User user = _users.addUser(new User("", role, "", java.time.Instant.now().toString(), clearance, share));
+			user.setInvitation(issued.getRecord().getId());
+			user.setInvitedBy(invitedBy == null ? "" : invitedBy);
+			user.setNote(note == null ? "" : note);
+			user.setRecipient(recipient == null ? "" : recipient);
+			_users.store();
+			LOG.info("Issued " + issued.getRecord() + " as a pending " + role
+				+ (user.getRecipient().isEmpty() ? "" : " for '" + user.getRecipient() + "'") + ".");
+			return new Invited(user, issued.getRecord(), issued.getCode());
+		}
+	}
+
+	/**
+	 * Every invitation this space issued and still remembers, newest last.
+	 *
+	 * <p>
+	 * Derived, not stored: every user who came in by an invitation, joined with the code of that
+	 * id. A code that has been dead longer than {@link DeviceCodeStore#KEEP_DEAD_HOURS} is dropped
+	 * by its own store, and the invitation goes out of this list with it &mdash; the user it
+	 * created stays, as an ordinary user.
+	 * </p>
+	 */
+	public List<Invited> invitations() {
+		if (_users == null || _deviceCodes == null) {
+			return Collections.emptyList();
+		}
+		synchronized (_users) {
+			List<Invited> result = new ArrayList<>();
+			for (User user : _users.getUsers()) {
+				if (user.getInvitation().isEmpty()) {
+					continue;
+				}
+				DeviceCodeStore.Code code = _deviceCodes.get(user.getInvitation());
+				if (code != null) {
+					result.add(new Invited(user, code, ""));
+				}
 			}
-			// The invitation says what the new user holds, see issues #82 and #83.
-			user = _users.addUser(new User(name, role, "", java.time.Instant.now().toString(),
-				invitation.getClearance(), invitation.isShare()));
-			// The device token and the user are written in one store, by this call.
-			String issued = _users.addDevice(user, request.getDeviceName());
-			deviceName = user.getDevices().get(user.getDevices().size() - 1).getName();
-			// Used up before the answer: a single-use token must not survive its own success.
-			_invitations.markUsed(invitation.getId(), name);
-			LOG.info("Accepted " + invitation + ": created the " + role + " '" + name + "'.");
-			return PairResponse.create()
-				.setToken(issued)
-				.setDeviceName(deviceName)
-				.setUserName(name)
-				.setRole(role)
-				.setSpace(user.getSpace());
+			return result;
+		}
+	}
+
+	/**
+	 * The invitation of the given id, <code>null</code> if this space has none.
+	 */
+	public Invited invitation(String id) {
+		if (_users == null || _deviceCodes == null || id == null || id.isEmpty()) {
+			return null;
+		}
+		synchronized (_users) {
+			DeviceCodeStore.Code code = _deviceCodes.get(id);
+			User user = _users.getInvited(id);
+			return code == null || user == null ? null : new Invited(user, code, "");
+		}
+	}
+
+	/**
+	 * Withdraws the invitation of the given id, see issue #89.
+	 *
+	 * <p>
+	 * The code is marked withdrawn, so that whoever opens the link is told what became of it
+	 * rather than that it never existed. <b>A pending user goes with it</b>: an invitation nobody
+	 * accepted is a user nobody is, and leaving them in the list would be a seat with no way into
+	 * it. Somebody who already accepted keeps their account, their name and their photos &mdash;
+	 * withdrawing an invitation is not removing somebody &mdash; and only the code is withdrawn.
+	 * </p>
+	 *
+	 * @return The withdrawn invitation, <code>null</code> if there is none of that id.
+	 */
+	public Invited uninvite(String id) throws IOException {
+		Invited invitation = invitation(id);
+		if (invitation == null) {
+			return null;
+		}
+		synchronized (_users) {
+			_deviceCodes.revoke(id);
+			if (invitation.isPending()) {
+				_users.removeUser(invitation.getUser());
+				_users.store();
+			}
+			LOG.info("Withdrew " + invitation.getCode()
+				+ (invitation.isPending() ? " and the pending user it would have created." : "."));
+			return invitation;
+		}
+	}
+
+	/**
+	 * Withdraws every invitation the given user handed out and nobody accepted, see issue #89.
+	 *
+	 * <p>
+	 * What removing a user does to what they put in the post. An invitation outlives the
+	 * <em>device</em> that sent it, because signing a laptop out is not taking an invitation back;
+	 * it does not outlive its inviter's account, because the person who vouched for the newcomer
+	 * is not here any more. Somebody who already accepted stays exactly as they are: they are a
+	 * user of this space now, not an invitation.
+	 * </p>
+	 *
+	 * @return How many invitations were withdrawn.
+	 */
+	private int revokeInvitationsOf(String userName) throws IOException {
+		if (userName == null || userName.isEmpty()) {
+			return 0;
+		}
+		int revoked = 0;
+		for (Invited invitation : invitations()) {
+			if (invitation.isPending() && userName.equals(invitation.getUser().getInvitedBy())) {
+				_deviceCodes.revoke(invitation.getId());
+				_users.removeUser(invitation.getUser());
+				revoked++;
+			}
+		}
+		if (revoked > 0) {
+			_users.store();
+		}
+		return revoked;
+	}
+
+	/**
+	 * Removes the pending users of invitations that can no longer be accepted, see issue #89.
+	 *
+	 * <p>
+	 * "Withdrawing or expiring an invitation removes a deviceless user": withdrawal does it at
+	 * once, and this is the other half &mdash; an invitation that simply ran out leaves a user
+	 * nobody can ever become, and they are swept up here, at start-up and whenever the invitations
+	 * are listed. A code the store has already forgotten counts as gone too, which is what keeps
+	 * the two files from drifting apart.
+	 * </p>
+	 *
+	 * @return How many pending users were removed.
+	 */
+	public int pruneInvitations() throws IOException {
+		if (_users == null || _deviceCodes == null) {
+			return 0;
+		}
+		synchronized (_users) {
+			java.time.Instant now = _deviceCodes.getClock().instant();
+			int removed = 0;
+			for (User user : _users.getUsers()) {
+				if (!user.isPending()) {
+					continue;
+				}
+				DeviceCodeStore.Code code = _deviceCodes.get(user.getInvitation());
+				if (code == null || code.isDead(now)) {
+					_users.removeUser(user);
+					removed++;
+				}
+			}
+			if (removed > 0) {
+				_users.store();
+				LOG.info("Removed " + removed + " pending user(s) of invitations that are over.");
+			}
+			return removed;
 		}
 	}
 
@@ -2515,8 +2817,12 @@ public class AuthService {
 			// What they handed out goes with them: a share link of theirs must not outlive the
 			// account it was made from, see issue #84.
 			int revoked = _shares == null ? 0 : _shares.revokeCreatedBy(name);
+			// And what they put in the post: an invitation nobody accepted yet dies with the
+			// account that vouched for it, see revokeInvitationsOf (issue #89).
+			int withdrawn = revokeInvitationsOf(name);
 			LOG.info("Removed the user '" + name + "' with their devices"
-				+ (revoked > 0 ? " and " + revoked + " share link(s)." : "."));
+				+ (revoked > 0 ? ", " + revoked + " share link(s)" : "")
+				+ (withdrawn > 0 ? ", " + withdrawn + " open invitation(s)" : "") + ".");
 			return revoked;
 		}
 	}
@@ -2524,7 +2830,9 @@ public class AuthService {
 	/** Whether the given user is the only administrator this space has. */
 	private boolean isLastAdmin(User user) {
 		for (User other : _users.getUsers()) {
-			if (other != user && Roles.isAdmin(other.getRole())) {
+			if (other != user && Roles.isAdmin(other.getRole()) && !other.isPending()) {
+				// A pending user is nobody yet (issue #89): they have no device and no token, so
+				// they can administer nothing and can never be the administrator that is left.
 				return false;
 			}
 		}

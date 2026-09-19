@@ -1264,7 +1264,19 @@ class PermissionDialogState extends State<PermissionDialog> {
 class UsersSection extends StatefulWidget {
   final VAlbumClient client;
 
-  const UsersSection({super.key, required this.client});
+  /// Counts the invitations issued elsewhere on this screen; a change makes
+  /// the list read itself again (issue #89).
+  ///
+  /// An invitation is a pending user, so issuing one puts a seat into this
+  /// very list — and a list that did not notice would be the old model showing
+  /// through.
+  final int generation;
+
+  const UsersSection({
+    super.key,
+    required this.client,
+    this.generation = 0,
+  });
 
   @override
   State<UsersSection> createState() => UsersSectionState();
@@ -1284,6 +1296,14 @@ class UsersSectionState extends State<UsersSection> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(UsersSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.generation != widget.generation) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -1324,21 +1344,33 @@ class UsersSectionState extends State<UsersSection> {
           sectionProblem(context, problem, const Key("settings.users.error")),
         for (var user in users ?? const <UserEntry>[])
           ListTile(
-            key: Key("user-${user.name}"),
+            key: _keyOf(user),
             contentPadding: EdgeInsets.zero,
             leading: Icon(
-              CallerPermission.normalizeRole(user.role) == roleAdmin
-                  ? Icons.admin_panel_settings
-                  : Icons.person,
+              user.pending
+                  ? Icons.mail_outline
+                  : CallerPermission.normalizeRole(user.role) == roleAdmin
+                      ? Icons.admin_panel_settings
+                      : Icons.person,
             ),
-            title: Text(userDisplayName(user.name)),
+            title: Text(_headline(user)),
             subtitle: Text(
               _describe(user),
-              key: Key("user-permission-${user.name}"),
+              key: Key("user-permission-${_idOf(user)}"),
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // An invitation nobody accepted is a pending user (issue #89),
+                // and the one thing to do with them is to take the invitation
+                // back — which removes them again.
+                if (user.pending)
+                  IconButton(
+                    key: Key("user-withdraw-${_idOf(user)}"),
+                    icon: const Icon(Icons.cancel_outlined),
+                    tooltip: "Withdraw",
+                    onPressed: _busy ? null : () => _withdraw(user),
+                  ),
                 // Somebody who lost every device they had gets the same code
                 // as everybody else, made by an administrator (issue #89). A
                 // user who never signed in has no name to make one for: the
@@ -1350,18 +1382,20 @@ class UsersSectionState extends State<UsersSection> {
                     tooltip: "Recovery code",
                     onPressed: _busy ? null : () => _recoveryCode(user),
                   ),
-                IconButton(
-                  key: Key("user-edit-${user.name}"),
-                  icon: const Icon(Icons.tune),
-                  tooltip: "Change what they may do",
-                  onPressed: _busy ? null : () => _edit(user),
-                ),
-                IconButton(
-                  key: Key("user-remove-${user.name}"),
-                  icon: const Icon(Icons.person_remove_outlined),
-                  tooltip: "Remove",
-                  onPressed: _busy ? null : () => _remove(user),
-                ),
+                if (!user.pending) ...[
+                  IconButton(
+                    key: Key("user-edit-${user.name}"),
+                    icon: const Icon(Icons.tune),
+                    tooltip: "Change what they may do",
+                    onPressed: _busy ? null : () => _edit(user),
+                  ),
+                  IconButton(
+                    key: Key("user-remove-${user.name}"),
+                    icon: const Icon(Icons.person_remove_outlined),
+                    tooltip: "Remove",
+                    onPressed: _busy ? null : () => _remove(user),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1445,6 +1479,67 @@ class UsersSectionState extends State<UsersSection> {
     }
   }
 
+  /// What names a row of this list: a user by their name, a pending user by
+  /// the invitation they came in by (issue #89), which is what withdraws it.
+  static String _idOf(UserEntry user) =>
+      user.pending ? "pending-${user.invitation}" : user.name;
+
+  static Key _keyOf(UserEntry user) => Key("user-${_idOf(user)}");
+
+  /// The bold line of a row: who this is.
+  ///
+  /// A pending user has no name yet, so they are named by the inviter's own
+  /// memento — "Invited for Grandma" — or, where the inviter wrote none, by
+  /// the plain fact that somebody was invited (issue #89).
+  static String _headline(UserEntry user) {
+    if (!user.pending) {
+      return userDisplayName(user.name);
+    }
+    return user.recipient.trim().isEmpty
+        ? "Invited (pending)"
+        : "Invited for ${user.recipient.trim()} (pending)";
+  }
+
+  /// Withdraws the invitation of a pending [user], after asking (issue #89).
+  ///
+  /// Withdrawing it removes them: an invitation nobody accepted is a user
+  /// nobody is.
+  Future<void> _withdraw(UserEntry user) async {
+    var confirmed = await confirmHere(
+      context: context,
+      dialogKey: "withdraw-user-confirm",
+      title: "Withdraw this invitation?",
+      message: "The link stops working, and the seat it was holding goes.",
+      confirmLabel: "Withdraw",
+      confirmKey: "withdraw-user-confirmed",
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _problem = null;
+    });
+    try {
+      await widget.client.uninvite(user.invitation);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _problem = refusalMessage(error);
+        });
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() => _busy = false);
+    // The withdrawal answers the invitation, not the users; the list says
+    // what is there by asking again.
+    await _load();
+  }
+
   /// The line under a user's name: what they may do and see, where their
   /// library is, and since when (issue #85).
   ///
@@ -1457,11 +1552,24 @@ class UsersSectionState extends State<UsersSection> {
       clearance: user.clearance,
       mayShare: user.mayShare,
     );
-    var parts = <String>[
-      permission.phrase,
-      "library: ${spaceDisplayName(user.space)}",
-      "${user.devices} device${user.devices == 1 ? "" : "s"}",
-    ];
+    var parts = <String>[permission.phrase];
+    if (user.pending) {
+      // Nothing to say about a library or devices: they have neither until
+      // somebody redeems the invitation (issue #89).
+      if (user.invitedBy.isNotEmpty) {
+        parts.add("invited by ${userDisplayName(user.invitedBy)}");
+      }
+      if (user.created.isNotEmpty) {
+        parts.add("since ${dayOf(user.created)}");
+      }
+      return parts.join(" — ");
+    }
+    parts.add("library: ${spaceDisplayName(user.space)}");
+    parts.add("${user.devices} device${user.devices == 1 ? "" : "s"}");
+    if (user.recipient.trim().isNotEmpty) {
+      // The inviter's memento stays beside the name: "who is 'bob42' again?"
+      parts.add("invited for ${user.recipient.trim()}");
+    }
     if (user.created.isNotEmpty) {
       parts.add("since ${dayOf(user.created)}");
     }
@@ -1617,6 +1725,10 @@ class InvitationsSectionState extends State<InvitationsSection> {
   /// The line under an invitation: the note it carries and how long it lives.
   String _describe(Invitation invitation) {
     var parts = <String>[];
+    if (invitation.recipient.trim().isNotEmpty) {
+      // The inviter's own memento, see issue #89.
+      parts.add("for ${invitation.recipient.trim()}");
+    }
     if (invitation.note.trim().isNotEmpty) {
       parts.add(invitation.note.trim());
     }
