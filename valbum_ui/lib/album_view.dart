@@ -16,11 +16,13 @@ import 'album_edit.dart';
 import 'album_model.dart';
 import 'app.dart';
 import 'attribution.dart';
+import 'cache_refresh.dart';
 import 'camera_roll_view.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'listing_view.dart';
 import 'move_view.dart';
+import 'name_date.dart';
 import 'resource.dart';
 import 'offline.dart';
 import 'routes.dart';
@@ -38,21 +40,77 @@ import 'video_view.dart';
 /// that clearance (`?viewAs=members`, `?viewAs=public`), so that the author
 /// can see what the family, or a share link, will be shown.
 enum ViewAs {
-  owner("Owner", Icons.edit),
-  members("Members", Icons.group),
-  public("Public", Icons.public);
+  owner("Yourself", "yourself", Icons.edit),
+  members("Members", "members", Icons.group),
+  public("Public", "public", Icons.public);
 
-  /// What the app calls this view.
+  /// What the app calls this view, as the menu entry choosing it reads.
   final String label;
+
+  /// The same view named in the line that says which one is on the screen:
+  /// "View as — yourself", see [AlbumContentState.albumMenu] (issue #100).
+  final String state;
 
   /// The icon the app shows this view by.
   final IconData icon;
 
-  const ViewAs(this.label, this.icon);
+  const ViewAs(this.label, this.state, this.icon);
 
   /// The value of the `viewAs` request parameter, `null` for the [owner],
   /// whose request carries none.
   String? get parameter => this == ViewAs.owner ? null : name;
+}
+
+/// A menu entry like the app's [menuItem], carrying a key.
+///
+/// The shared helper takes none, and the menus of the app are found by their
+/// text. The entries of issues #98 and #100 are addressed by key instead —
+/// "Refresh previews" and the three "View as" choices, whose text is what the
+/// user reads and may be translated — so they are built here rather than
+/// changing what every menu of the app is built from.
+PopupMenuItem<void Function(BuildContext)> keyedMenuItem(
+  Key key,
+  IconData icon,
+  String text,
+  void Function(BuildContext) action,
+) =>
+    PopupMenuItem<void Function(BuildContext)>(
+      key: key,
+      value: action,
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Icon(icon, color: Colors.blueAccent),
+          ),
+          // Wraps instead of overflowing the menu at a long text.
+          Flexible(child: Text(text)),
+        ],
+      ),
+    );
+
+/// Makes Flutter forget every thumbnail it has decoded (issue #98).
+///
+/// The whole cache, not the album's own entries: a tile that knows the height
+/// it is drawn at resolves its picture through a [ResizeImage] whose key is
+/// built from that height times the device's pixel ratio (see
+/// `resizedThumbnail`), and neither the heights of a laid-out album nor the
+/// keys held by the cache can be enumerated from here — a per-image eviction
+/// would therefore miss exactly the tiles that are on the screen, which is the
+/// one thing it has to hit.
+///
+/// [ImageCache.clear] alone is not enough either: a mounted tile holds a
+/// listener on its stream (see `thumbnails.dart`), which makes its image a
+/// *live* one, and a live image is handed out again without being fetched.
+/// Both halves therefore go.
+///
+/// The cost is that the listing's index pictures and the albums visited before
+/// are decoded again as they are shown. That is a few dozen decodes, once, for
+/// an action an administrator invokes when something is visibly broken.
+void forgetDecodedThumbnails() {
+  var cache = PaintingBinding.instance.imageCache;
+  cache.clear();
+  cache.clearLiveImages();
 }
 
 /// The icon the app shows the given privacy level by, `null` for
@@ -622,23 +680,66 @@ class AlbumContentState extends State<AlbumContent>
       return;
     }
 
-    var corrected = await showDialog<DateTime>(
+    var answer = await showDialog<TimeCorrection>(
       context: context,
       builder: (context) => AdjustRecordingTimeDialog(
         reference: reference,
-        count: images.length,
+        images: images,
       ),
     );
-    if (corrected == null || !mounted) {
+    if (answer == null || !mounted) {
       return;
     }
 
-    var offset = offsetFor(reference, corrected);
-    if (offset == null ||
-        !adjustRecordingTime(widget.album, selection, offset)) {
+    switch (answer) {
+      case UseNameDates():
+        applyNameDates(images);
+      case ShiftToTime(corrected: var corrected):
+        var offset = offsetFor(reference, corrected);
+        if (offset == null ||
+            !adjustRecordingTime(widget.album, selection, offset)) {
+          showMessage("Nothing to adjust");
+          return;
+        }
+        keepAdjusted(images);
+    }
+  }
+
+  /// Dates every one of [images] by the time its own *file name* says, the
+  /// app half of issue #102.
+  ///
+  /// Not one offset for all of them, as [adjustRecordingTime] applies: the
+  /// name of each file says when that file was recorded, and the reason the
+  /// dates are wrong is that the server had to fall back to the write time,
+  /// which is the time of the copy and is a different lie for every file. An
+  /// image whose name says nothing, or says what the image already carries,
+  /// is left exactly as it is, see [differingNameDate].
+  ///
+  /// Each image is corrected by the machinery of issue #77, one at a time, so
+  /// it is refiled where its new date belongs and taken out of a group and a
+  /// heading section it no longer fits — exactly as a manual correction of
+  /// that one image would have done it. Only the sidecar changes; the album
+  /// is marked dirty and written back by the save action.
+  void applyNameDates(List<ImagePart> images) {
+    var changed = false;
+    for (var image in images) {
+      var named = differingNameDate(image);
+      var offset = named == null ? null : offsetFor(image, named);
+      if (offset == null) {
+        continue;
+      }
+      var one = Set<AlbumPart>.identity()..add(image);
+      changed = adjustRecordingTime(widget.album, one, offset) || changed;
+    }
+    if (!changed) {
       showMessage("Nothing to adjust");
       return;
     }
+    keepAdjusted(images);
+  }
+
+  /// Marks the album dirty and keeps the adjusted images selected.
+  void keepAdjusted(List<ImagePart> images) {
     setState(() {
       markDirty();
       // What was adjusted is what the user is now looking for — and a group
@@ -968,13 +1069,12 @@ class AlbumContentState extends State<AlbumContent>
               centerTitle: true,
               // The edit mode reads from the left: the way out, then what
               // the edit offers, and the album's menu last at the right,
-              // where a menu belongs (issue #99). Outside the edit mode the
-              // navigation keeps the place it had.
+              // where a menu belongs (issues #99, #100). Outside the edit
+              // mode the navigation keeps the place it had. "View as" is not
+              // a button of its own any more — it is an entry of the menu,
+              // see [albumMenu] (issue #100).
               actions: [
                 if (!editing) ...navigationActions(context),
-                // In the edit session, whether the owner's view or a preview
-                // is on the screen: it is the way back out of a preview.
-                if (editing) viewAsMenu(context),
                 if (editMode && selection.isNotEmpty)
                   IconButton(
                     key: const Key("move-to"),
@@ -1073,6 +1173,11 @@ class AlbumContentState extends State<AlbumContent>
             ),
             const PopupMenuDivider(),
           ],
+          // What the album is looked at as, in the edit session where the
+          // button used to be (issue #100): a line saying which view is on
+          // the screen, the three choices under it — the idiom the rating
+          // filter below uses.
+          if (session.editMode) ...viewAsEntries(),
           if (_mayShare)
             menuItem(Icons.link, "Share link…", (_) => shareAlbumLink()),
           // An edit like every other one: offered inside the edit session, so
@@ -1099,40 +1204,44 @@ class AlbumContentState extends State<AlbumContent>
           ),
           const PopupMenuDivider(),
           menuItem(Icons.update, "Reload", (_) => reloadShown()),
+          // Only the administrator, who owns the server's own files: the
+          // entry a non-admin may not use is not offered at all, see #98.
+          if (mayRefreshCache(context))
+            keyedMenuItem(
+              const Key("refresh-previews"),
+              Icons.cleaning_services,
+              "Refresh previews",
+              (_) => refreshPreviews(),
+            ),
           // A visitor of a link has no server of their own to configure.
           if (share == null)
             menuItem(Icons.settings, "Server...", openServerSettings),
         ]),
       ];
 
-  /// The "view as" switch of the edit mode, see [setViewAs] (issue #46).
+  /// The "view as" switch of the edit session, see [setViewAs] (issue #46).
   ///
-  /// A popup, not a segmented control: the app bar of the edit mode already
-  /// carries the way up, the album menu, the properties and the save action,
-  /// and three labelled segments do not fit beside them on a phone. The album
-  /// says what it currently shows in the same popup idiom the rating filter
-  /// uses — a label naming the state, the choices below it.
-  Widget viewAsMenu(BuildContext context) => PopupMenuButton<ViewAs>(
-        icon: Icon(viewAs.icon),
-        tooltip: "View as",
-        initialValue: viewAs,
-        onSelected: setViewAs,
-        itemBuilder: (context) => [
-          for (var value in ViewAs.values)
-            PopupMenuItem<ViewAs>(
-              value: value,
-              child: Row(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: Icon(value.icon, color: Colors.blueAccent),
-                  ),
-                  Text(value.label),
-                ],
-              ),
-            ),
-        ],
-      );
+  /// Entries of the album's own menu since issue #100, where it was a button
+  /// of its own before: the app bar of the edit mode carries the way out, the
+  /// move, the properties, the save and the cancel, and a phone has no room
+  /// for a seventh control — while the menu is where the album's other
+  /// standing choice, the rating filter, already lives. The idiom is that
+  /// one: a label naming the view on the screen, the three choices under it.
+  List<PopupMenuEntry<void Function(BuildContext)>> viewAsEntries() => [
+        menuLabel(
+          "View as",
+          viewAs.state,
+          valueKey: const Key("view-as-state"),
+        ),
+        for (var value in ViewAs.values)
+          keyedMenuItem(
+            Key("view-as-${value.name}"),
+            value.icon,
+            value.label,
+            (_) => setViewAs(value),
+          ),
+        const PopupMenuDivider(),
+      ];
 
   /// Says which view is on the screen while a preview is shown.
   Widget previewBanner() => Material(
@@ -1229,6 +1338,85 @@ class AlbumContentState extends State<AlbumContent>
     } else {
       widget.albumState.reload();
     }
+  }
+
+  /// Whether this caller may throw the album's generated cache away (#98).
+  ///
+  /// The administrator, and only them: the server's own files are theirs, and
+  /// the server refuses anybody else with `CACHE_REFRESH_REFUSED`. An entry
+  /// that would be refused is not offered, see issue #49. Inside a share link
+  /// nothing of the kind is offered either — a link is a view, not a console.
+  bool mayRefreshCache(BuildContext context) =>
+      share == null && CallerInfo.permissionOf(context).role == roleAdmin;
+
+  /// Throws the album's generated previews and video renditions away and
+  /// fetches them anew, the app half of issue #98.
+  ///
+  /// Asked first, because it is work the server has to do again: a preview of
+  /// a 4K photo costs a second, and an album of five hundred costs an
+  /// afternoon of a home server. The confirmation therefore names exactly
+  /// what goes and what stays.
+  ///
+  /// Afterwards the app has to forget its *own* copies, or the broken
+  /// thumbnail the author is looking at stays on the screen: the decoded
+  /// images of Flutter's [ImageCache] go (see [forgetDecodedThumbnails]) and
+  /// the album is asked for again. The offline store needs no eviction — a
+  /// thumbnail is fetched network-first and only a server that cannot be
+  /// *reached* is answered from it, so the next request overwrites it, see
+  /// [VAlbumClient.thumbnailBytes].
+  Future<void> refreshPreviews() async {
+    var confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key("refresh-previews-dialog"),
+        title: const Text("Refresh previews"),
+        content: const Text(
+          "The thumbnails and video renditions of this album are thrown away "
+          "and made anew when they are next shown. The photos themselves are "
+          "not touched.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            key: const Key("refresh-previews-confirm"),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text("Refresh"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    CacheRefreshed answer;
+    try {
+      answer = await client.refreshCache(widget.albumState.path);
+    } catch (error) {
+      if (mounted) {
+        // The server's own reason — a refusal speaks, see issue #49.
+        showMessage(error is VAlbumException ? error.message : "$error");
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    // Said before the album is thrown away and fetched again, so that the
+    // count survives the rebuild that follows it.
+    showMessage(
+      "${answer.removed} cached files thrown away; "
+      "the previews are made anew.",
+    );
+    forgetDecodedThumbnails();
+    // The album itself is asked for again: the server may now answer other
+    // dimensions for a part whose preview it regenerates.
+    widget.albumState.navigator.delegate.forget(widget.albumState.path);
+    widget.albumState.reload();
   }
 
   /// Opens the share-link dialog on this album, see issue #51.
@@ -2200,6 +2388,12 @@ const double insertCursorWidth = 4;
 /// The factor the dragged tile is reduced by while it follows the pointer.
 const double dragFeedbackScale = 0.5;
 
+/// The side of the square drag handle of a tile, in logical pixels.
+///
+/// A finger's target: Flutter's own reorderable lists hand the drag to a
+/// handle on touch platforms for the same reason, see issue #94.
+const double dragHandleSize = 40;
+
 /// What a drag of the album's edit mode carries.
 ///
 /// A drag picking up a tile that belongs to the current multi-selection
@@ -2391,13 +2585,26 @@ class DragEdgeScroller {
 /// One album part as a drag source and a drop target of the reordering of the
 /// edit mode (issue #37).
 ///
-/// The gesture is a *horizontal* drag on the part itself, not a long press
-/// and not a handle: the long press already toggles the selection (and enters
-/// the edit mode outside of it), the tap opens the tile, and the album scrolls
-/// vertically — so the horizontal axis is the only one still free, and
-/// [Draggable.affinity] hands it to the drag while every vertical drag stays
-/// with the scroll view. A tile is picked up by pulling it sideways, and can
-/// then be carried anywhere.
+/// Two ways to pick a part up, one machinery (issue #94):
+///
+///  * a **handle** in the tile's top right corner ([handle]), which lifts the
+///    tile immediately and in *any* direction, on every platform. A finger's
+///    first movement is rarely straight; its vertical component reaches the
+///    touch slop first and the album's scroll view wins the gesture arena, so
+///    the sideways pull below all but never lifted a tile on a phone — and
+///    nothing on the screen said the gesture existed. Flutter's own
+///    reorderable lists answer the same problem the same way.
+///  * a **horizontal** drag on the tile itself, which is what a mouse does
+///    naturally and what the edit mode had before: the long press already
+///    toggles the selection (and enters the edit mode outside of it), the tap
+///    opens the tile, and the album scrolls vertically — so the horizontal
+///    axis is the only one still free, and [Draggable.affinity] hands it to
+///    the drag while every vertical drag stays with the scroll view.
+///
+/// Both go through [carrier]: the same [DraggedParts] (a tile of the current
+/// multi-selection carries the whole selection), the same feedback, the same
+/// drop targets, the same insert cursor and the same edge scrolling. A tile
+/// is carried anywhere once it is up, whichever way it was lifted.
 ///
 /// While a part is carried over this one, an insert cursor is drawn on the
 /// half the pointer is in: dropping puts the dragged part before or behind
@@ -2461,42 +2668,18 @@ class ReorderablePartState extends State<ReorderablePart> {
       },
       builder: (context, candidate, rejected) => Stack(
         children: [
-          Draggable<DraggedParts>(
-            data: dragged,
-            onDragStarted: () => widget.album.startCarry(dragged),
-            // Whether the drop was taken or the drag was cancelled: the parts
-            // are no longer on their way, see [AlbumContentState.endCarry].
-            onDragEnd: (details) => widget.album.endCarry(),
-            onDraggableCanceled: (velocity, offset) => widget.album.endCarry(),
-            // Only a sideways pull picks the part up, see [ReorderablePart].
+          carrier(
+            dragged,
+            // Only a sideways pull picks the *tile* up, see [ReorderablePart].
             affinity: Axis.horizontal,
-            // The tile itself: its [MouseRegion] is not opaque and reports the
-            // hit as a miss (`RenderMouseRegion.hitTest`), which would keep
-            // the pointer of the drag from ever reaching this [Draggable].
-            hitTestBehavior: HitTestBehavior.opaque,
-            // The pointer itself is the anchor, so that the offset reported to
-            // the drop targets is the position of the pointer and not the
-            // corner of the feedback, see [sideOf].
-            dragAnchorStrategy: pointerDragAnchorStrategy,
-            feedback: FractionalTranslation(
-              key: const Key("drag-feedback"),
-              translation: const Offset(-0.5, -0.5),
-              child: Opacity(
-                opacity: 0.75,
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: Transform.scale(
-                    scale: dragFeedbackScale,
-                    child: feedbackOf(dragged),
-                  ),
-                ),
-              ),
-            ),
             childWhenDragging: Opacity(opacity: 0.3, child: widget.child),
             child: carried
                 ? Opacity(opacity: 0.3, child: widget.child)
                 : widget.child,
           ),
+          // The handle, which picks the tile up in any direction and on every
+          // platform, see [ReorderablePart] (issue #94).
+          Positioned(top: 0, right: 0, child: handle(dragged)),
           if (_cursor != null)
             Positioned(
               top: 0,
@@ -2522,6 +2705,82 @@ class ReorderablePartState extends State<ReorderablePart> {
       ),
     );
   }
+
+  /// A [Draggable] carrying [dragged], built once for the tile and once for
+  /// its handle (issue #94).
+  ///
+  /// Everything that makes the reordering work is in here and is therefore
+  /// the same for both: the carried parts, the start and the end of the
+  /// carry, the feedback that follows the pointer and the anchor the drop
+  /// targets read the insert side from. The two differ in one argument only,
+  /// the [affinity] — which is the whole point of the handle.
+  Widget carrier(
+    DraggedParts dragged, {
+    Axis? affinity,
+    Key? key,
+    Widget? childWhenDragging,
+    required Widget child,
+  }) =>
+      Draggable<DraggedParts>(
+        key: key,
+        data: dragged,
+        onDragStarted: () => widget.album.startCarry(dragged),
+        // Whether the drop was taken or the drag was cancelled: the parts
+        // are no longer on their way, see [AlbumContentState.endCarry].
+        onDragEnd: (details) => widget.album.endCarry(),
+        onDraggableCanceled: (velocity, offset) => widget.album.endCarry(),
+        affinity: affinity,
+        // The tile itself: its [MouseRegion] is not opaque and reports the
+        // hit as a miss (`RenderMouseRegion.hitTest`), which would keep
+        // the pointer of the drag from ever reaching this [Draggable].
+        hitTestBehavior: HitTestBehavior.opaque,
+        // The pointer itself is the anchor, so that the offset reported to
+        // the drop targets is the position of the pointer and not the
+        // corner of the feedback, see [sideOf].
+        dragAnchorStrategy: pointerDragAnchorStrategy,
+        feedback: FractionalTranslation(
+          key: const Key("drag-feedback"),
+          translation: const Offset(-0.5, -0.5),
+          child: Opacity(
+            opacity: 0.75,
+            child: Material(
+              type: MaterialType.transparency,
+              child: Transform.scale(
+                scale: dragFeedbackScale,
+                child: feedbackOf(dragged),
+              ),
+            ),
+          ),
+        ),
+        childWhenDragging: childWhenDragging,
+        child: child,
+      );
+
+  /// The grip a tile is picked up by, in its top right corner (issue #94).
+  ///
+  /// [dragHandleSize] square, which is a finger's target, and always visible
+  /// in the edit mode — a gesture nobody can see is a gesture nobody uses,
+  /// and the sideways pull was exactly that.
+  Widget handle(DraggedParts dragged) => carrier(
+        dragged,
+        // No affinity at all: the handle exists to be pulled in *any*
+        // direction, see [ReorderablePart]. It is a small target of its own,
+        // so the scroll view loses nothing by it.
+        child: const Tooltip(
+          message: "Drag to reorder",
+          child: SizedBox(
+            key: Key("drag-handle"),
+            width: dragHandleSize,
+            height: dragHandleSize,
+            child: Icon(
+              Icons.drag_indicator,
+              size: 22,
+              color: Colors.white,
+              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+            ),
+          ),
+        ),
+      );
 
   /// What follows the pointer: the tile picked up, and how many parts are on
   /// their way with it if it is a whole block, see [DraggedParts].
@@ -2699,12 +2958,64 @@ class TextInputDialogState extends State<TextInputDialog> {
   }
 }
 
+/// What the "Adjust recording time" dialog answers, `null` when it was
+/// cancelled (issues #77, #102).
+///
+/// Two corrections that differ in kind: one *offset*, entered once and added
+/// to every selected image (issue #77, a camera whose clock was off by the
+/// same amount all along), or every image dated by its **own** file name
+/// (issue #102, files whose recording time the server could only guess from
+/// the write time, which is a different lie for each of them).
+sealed class TimeCorrection {
+  const TimeCorrection();
+}
+
+/// Move the reference image to [corrected], and everything else by the same
+/// offset, see [adjustRecordingTime].
+class ShiftToTime extends TimeCorrection {
+  /// The time the reference image should carry.
+  final DateTime corrected;
+
+  const ShiftToTime(this.corrected);
+}
+
+/// Date every image by the time its own file name says, see
+/// [AlbumContentState.applyNameDates].
+class UseNameDates extends TimeCorrection {
+  const UseNameDates();
+}
+
+/// The recording time the file name of [image] says where that differs from
+/// the time the image carries, `null` otherwise (issue #102).
+///
+/// `null` for an image whose name says no date, for one whose name says what
+/// it already carries, and for one that carries no date at all (`0` means
+/// "unknown", and [offsetFor] refuses to compute an offset from it).
+///
+/// "Differs" is a minute: a part the server dated *from its own name* carries
+/// that very second, and a difference of seconds is not worth offering a
+/// correction for — what this repairs is an album dated by the write times of
+/// a copy, which are off by hours, days or years.
+DateTime? differingNameDate(ImagePart image) {
+  if (image.date == 0) {
+    return null;
+  }
+  var named = nameDate(image.name);
+  if (named == null) {
+    return null;
+  }
+  var stored = DateTime.fromMillisecondsSinceEpoch(image.date);
+  return named.difference(stored).abs() < const Duration(minutes: 1)
+      ? null
+      : named;
+}
+
 /// Asks for the correct recording time of one image of the selection and
 /// says what that does to the others, see issue #77.
 ///
-/// The dialog answers the corrected time of the reference image, `null` when
-/// it was cancelled; the offset it applies is the difference to the time the
-/// reference carries now (see [offsetFor]).
+/// The dialog answers a [TimeCorrection], `null` when it was cancelled; the
+/// offset a [ShiftToTime] applies is the difference to the time the reference
+/// carries now (see [offsetFor]).
 ///
 /// The time is edited as text, `yyyy-MM-dd HH:mm:ss`, with the pickers behind
 /// the button beside it: a camera that is off by two hours and thirteen
@@ -2714,14 +3025,21 @@ class AdjustRecordingTimeDialog extends StatefulWidget {
   /// The image whose correct time is entered — the offset is its difference.
   final ImagePart reference;
 
-  /// How many images the offset is applied to, the reference included.
-  final int count;
+  /// The images the correction is applied to, the reference included.
+  ///
+  /// The count the dialog names, and — since issue #102 — what it looks
+  /// through for file names carrying a recording time of their own, see
+  /// [differingNameDate].
+  final List<ImagePart> images;
 
   const AdjustRecordingTimeDialog({
     super.key,
     required this.reference,
-    required this.count,
+    required this.images,
   });
+
+  /// How many images the correction is applied to.
+  int get count => images.length;
 
   @override
   State<StatefulWidget> createState() => AdjustRecordingTimeDialogState();
@@ -2783,6 +3101,28 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
   String get countText => widget.count == 1
       ? "Applies to 1 image"
       : "Applies to ${widget.count} images";
+
+  /// The images whose file name says a recording time other than the one they
+  /// carry — what the suggestion of issue #102 would repair.
+  late final List<ImagePart> nameDated = [
+    for (var image in widget.images)
+      if (differingNameDate(image) != null) image,
+  ];
+
+  /// What the "use the file name" button says.
+  ///
+  /// One image: the very time it would get, so that it can be read before it
+  /// is applied. Several: how many of the selection it applies to, because
+  /// each of them gets a *different* time and no single one could be shown —
+  /// and because the ones whose name says nothing stay as they are, which is
+  /// what a count that is smaller than the selection tells.
+  String get nameDateText {
+    if (nameDated.length == 1) {
+      var named = differingNameDate(nameDated.first)!;
+      return "Use the time in the file name: ${timeFormat.format(named)}";
+    }
+    return "Use the time in the file name (${nameDated.length} images)";
+  }
 
   /// Fills the field from the date and time pickers.
   Future<void> pickTime() async {
@@ -2864,6 +3204,19 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
               child: Text(offsetText, key: const Key("adjust-offset")),
             ),
             Text(countText, key: const Key("adjust-count")),
+            // One tap for what the file names already say, offered only where
+            // there is something to repair, see issue #102.
+            if (nameDated.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: OutlinedButton.icon(
+                  key: const Key("use-name-date"),
+                  icon: const Icon(Icons.drive_file_rename_outline),
+                  label: Text(nameDateText),
+                  onPressed: () =>
+                      Navigator.of(context).pop(const UseNameDates()),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: Text(
@@ -2889,7 +3242,8 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
                       label: const Text("Übernehmen"),
                       onPressed: corrected == null
                           ? null
-                          : () => Navigator.of(context).pop(corrected),
+                          : () => Navigator.of(context)
+                              .pop(ShiftToTime(corrected!)),
                     ),
                   ),
                 ],

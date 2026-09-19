@@ -159,6 +159,14 @@ set aside in `.valbum/duplicates/`, never deleted. Every name gets an outcome: i
 below the target when the target files by year, see below), or the reason it was not moved. Nothing
 is ever overwritten.
 
+### Reordering images
+
+In edit mode every tile carries a drag handle in its top right corner: drag it — in any direction,
+with a finger or with the mouse — to move the image somewhere else in the album; an insert cursor
+shows whether it lands before or behind the tile under the pointer, and a selection of several
+tiles is carried by the handle of any of them. With a mouse a tile can also be picked up by pulling
+it sideways. The new order is written when you save the album.
+
 ### Album dates and placement rules
 
 An album has a date: the one its author sets in the album properties (stored in `index.json`), else
@@ -413,6 +421,13 @@ dabei den Namen, unter dem Du in diesem Raum bekannt sein willst. Danach wird ni
 ausgegeben — ein weiteres eigenes Gerät meldest Du mit einem Code von einem Gerät an, das Du schon
 hast, und wer alle Geräte verloren hat, bekommt vom Administrator einen Wiederherstellungs-Code
 (oder, wenn es den Administrator selbst trifft, hilft ein Neustart des Servers).
+
+Im Bearbeitungsmodus trägt jede Kachel rechts oben einen Ziehgriff: Zieh daran — in jede
+Richtung, mit dem Finger oder mit der Maus —, um das Bild an eine andere Stelle des Albums zu
+schieben; ein Einfügebalken zeigt, ob es vor oder hinter die Kachel unter dem Zeiger kommt, und
+eine Mehrfachauswahl wird am Griff einer beliebigen ihrer Kacheln getragen. Mit der Maus lässt
+sich eine Kachel auch weiterhin durch seitliches Ziehen aufnehmen. Die neue Reihenfolge wird beim
+Speichern des Albums geschrieben.
 
 Auf einem Raspberry Pi (oder einem anderen Debian/Ubuntu-Rechner) installierst Du den
 Server als Paket aus dem APT-Repository:

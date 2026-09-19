@@ -163,6 +163,17 @@ class ListingView extends StatelessWidget {
       // a light page to a dark one, see issue #40.
       backgroundColor: Colors.black,
       appBar: AppBar(
+        // The way back is the leading control at the left on every page of
+        // the app — the album, the viewer and this listing (issue #100).
+        // Nothing to go up to at the root, see issue #40.
+        leading: albumState.path.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Up',
+                onPressed: albumState.showParent,
+              ),
+        automaticallyImplyLeading: false,
         title: Text(self.title),
         actions: <Widget>[
           // Unobtrusive while a camera-roll sync runs, nothing otherwise.
@@ -174,49 +185,45 @@ class ListingView extends StatelessWidget {
               tooltip: 'Home',
               onPressed: albumState.showRoot,
             ),
-          if (albumState.path.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              tooltip: 'Up',
-              onPressed: albumState.showParent,
-            ),
+          // The three-dots menu is the last control at the right, here as on
+          // every other page (issue #100).
           menu(context, [
-              // Whose folder this is and what may be done with it, where that
-              // is not simply "mine", see issue #49.
-              if (sharedLine != null) ...[
-                PopupMenuItem<void Function(BuildContext)>(
-                  enabled: false,
-                  child: Text(sharedLine, key: const Key("shared-line")),
-                ),
-                const PopupMenuDivider(),
-              ],
-              // Only with `edit`: what the caller may not do is not offered,
-              // never offered and then refused, see issue #49.
-              if (mayChange)
-                menuItem(Icons.create_new_folder, 'Create album', createAlbum),
-              if (mayChange)
-                menuItem(
-                  Icons.create_new_folder_outlined,
-                  'Create folder',
-                  createFolder,
-                ),
-              if (mayChange)
-                menuItem(Icons.tune, 'Folder properties', editFolder),
-              // Only where there is a rule to apply: a folder without one has
-              // nothing to file, see issue #48.
-              if (mayChange && self.placement != Placement.none)
-                menuItem(Icons.auto_awesome_motion, 'Apply rule', applyRule),
-              if (mayShare(context, albumState.path))
-                menuItem(
-                  Icons.link,
-                  'Share link…',
-                  (context) =>
-                      shareFolderLink(context, albumState.path, self.title),
-                ),
-              menuItem(Icons.update, "Reload", (_) => albumState.reload()),
-              // A visitor of a link has no server of their own to configure.
-              if (link == null)
-                menuItem(Icons.settings, "Server...", openServerSettings),
+            // Whose folder this is and what may be done with it, where that
+            // is not simply "mine", see issue #49.
+            if (sharedLine != null) ...[
+              PopupMenuItem<void Function(BuildContext)>(
+                enabled: false,
+                child: Text(sharedLine, key: const Key("shared-line")),
+              ),
+              const PopupMenuDivider(),
+            ],
+            // Only with `edit`: what the caller may not do is not offered,
+            // never offered and then refused, see issue #49.
+            if (mayChange)
+              menuItem(Icons.create_new_folder, 'Create album', createAlbum),
+            if (mayChange)
+              menuItem(
+                Icons.create_new_folder_outlined,
+                'Create folder',
+                createFolder,
+              ),
+            if (mayChange)
+              menuItem(Icons.tune, 'Folder properties', editFolder),
+            // Only where there is a rule to apply: a folder without one has
+            // nothing to file, see issue #48.
+            if (mayChange && self.placement != Placement.none)
+              menuItem(Icons.auto_awesome_motion, 'Apply rule', applyRule),
+            if (mayShare(context, albumState.path))
+              menuItem(
+                Icons.link,
+                'Share link…',
+                (context) =>
+                    shareFolderLink(context, albumState.path, self.title),
+              ),
+            menuItem(Icons.update, "Reload", (_) => albumState.reload()),
+            // A visitor of a link has no server of their own to configure.
+            if (link == null)
+              menuItem(Icons.settings, "Server...", openServerSettings),
           ]),
         ],
       ),
@@ -605,8 +612,10 @@ class ListingView extends StatelessWidget {
 }
 
 /// The segments of a space-relative resource path, the empty path none.
-List<String> splitPath(String path) =>
-    [for (var segment in path.split("/")) if (segment.isNotEmpty) segment];
+List<String> splitPath(String path) => [
+      for (var segment in path.split("/"))
+        if (segment.isNotEmpty) segment
+    ];
 
 /// The values edited by the [FolderPropertiesDialog].
 class FolderProperties {

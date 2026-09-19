@@ -65,11 +65,17 @@ Future<void> pumpEditMode(
   await tapTile(tester, select);
 }
 
-/// Chooses the given entry of the "view as" menu of the edit mode.
+/// Chooses the given "view as" entry of the album's menu (issue #100).
+///
+/// A button of its own until then; since the controls are in the same place on
+/// every page it is an entry of the three-dots menu, where the album's other
+/// standing choice, the rating filter, already lived.
 Future<void> chooseViewAs(WidgetTester tester, ViewAs view) async {
-  await tester.tap(find.byTooltip("View as"));
+  // The topmost page's menu: a preview leaves the album it came from mounted
+  // beneath it, see issue #93.
+  await tester.tap(find.byIcon(Icons.more_vert).last);
   await tester.pumpAndSettle();
-  await tester.tap(find.text(view.label).last);
+  await tester.tap(find.byKey(Key("view-as-${view.name}")));
   await tester.pumpAndSettle();
 }
 
