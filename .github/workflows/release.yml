@@ -168,6 +168,16 @@ jobs:
             exit 1
           fi
           dpkg-deb --info "$deb"
+          # The bundled FFmpeg links system libraries no artifact ships (#87). They are
+          # recommended, not depended on, so only this check keeps them in the package.
+          recommends="$(dpkg-deb --field "$deb" Recommends)"
+          echo "Recommends: $recommends"
+          for lib in libxcb-shape0 libasound2; do
+            if ! echo "$recommends" | grep -q "$lib"; then
+              echo "::error::The package's Recommends field does not name $lib: $recommends"
+              exit 1
+            fi
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: deb-${{ matrix.arch }}

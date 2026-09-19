@@ -6,6 +6,7 @@ Architecture: ${deb.arch}
 Maintainer: Bernhard Haumacher <haui@haumacher.de>
 Homepage: https://github.com/haumacher/valbum2
 Depends: default-jre-headless (>= 2:1.21) | java21-runtime-headless | java22-runtime-headless | java23-runtime-headless | java24-runtime-headless | java25-runtime-headless | java-runtime-headless (>= 21), adduser
+Recommends: libxcb1, libxcb-shm0, libxcb-shape0, libxcb-xfixes0, libasound2t64 | libasound2
 Suggests: openjdk-21-jre-headless
 Description: Self-hosted photo and video album server
  VAlbum serves a folder tree of photos and videos as a private album: a JSON
@@ -20,3 +21,9 @@ Description: Self-hosted photo and video album server
  The server runs as the system user "valbum" under systemd. Its configuration
  lives in /etc/default/valbum, its default library folder is /var/lib/valbum.
  That folder is never removed by the package, not even on purge.
+ .
+ Video renditions - the streamable MP4 and the short teaser VAlbum makes beside
+ a video - are transcoded with the FFmpeg build bundled in the package, which
+ links the recommended X11/xcb and ALSA libraries. Without them the server runs
+ normally, albums, photos, thumbnails and video poster frames all work, and only
+ a rendition request is refused, with the reason named in the journal.

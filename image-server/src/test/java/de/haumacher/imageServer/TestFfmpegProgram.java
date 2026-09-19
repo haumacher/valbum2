@@ -3,8 +3,10 @@
  */
 package de.haumacher.imageServer;
 
+import java.io.File;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import junit.framework.TestCase;
 
 /**
@@ -41,6 +43,29 @@ public class TestFfmpegProgram extends TestCase {
 		assertNull("Video renditions must be available here: " + VideoRenditions.unavailability(),
 			VideoRenditions.unavailability());
 		assertNotNull("No H.264 encoder in the bundled FFmpeg.", VideoRenditions.encoder());
+	}
+
+	/**
+	 * The child process is told where the bundled libraries are, see issue #87: on ARM the program's
+	 * <code>DT_RUNPATH</code> does not reach the libraries its own libraries need.
+	 */
+	public void testTheChildProcessFindsTheBundledLibraries() throws Exception {
+		String executable = VideoRenditions.executable();
+		String directory = new File(executable).getAbsoluteFile().getParent();
+
+		ProcessBuilder builder = VideoRenditions.program(List.of(executable, "-version"));
+		// The machine running the test may itself have a library path set; ours goes in front of it.
+		assertEquals("The libraries beside the program must be found first.",
+			VideoRenditions.libraryPath(directory, System.getenv(VideoRenditions.LIBRARY_PATH)),
+			builder.environment().get(VideoRenditions.LIBRARY_PATH));
+
+		// Whatever the machine already said stays, behind ours.
+		assertEquals("The inherited library path must be kept, behind ours.",
+			directory + File.pathSeparator + "/opt/lib",
+			VideoRenditions.libraryPath(directory, "/opt/lib"));
+		assertEquals("Nothing inherited, nothing appended.", directory,
+			VideoRenditions.libraryPath(directory, null));
+		assertEquals("An empty value is nothing.", directory, VideoRenditions.libraryPath(directory, ""));
 	}
 
 }

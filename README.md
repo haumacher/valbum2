@@ -253,6 +253,19 @@ The server needs a **Java 21 runtime**, which Debian 13 (trixie), Raspberry Pi O
 trixie and Ubuntu 24.04 have; Debian 12 (bookworm) ships only Java 17 and is not
 enough.
 
+The package *recommends* the X11/xcb and ALSA libraries the bundled FFmpeg links
+for video renditions (the streamable MP4 and the teaser made beside a video).
+`apt install` pulls recommendations in by default; installing with
+`--no-install-recommends` leaves them out, and the server then says
+`Video renditions: NOT available - ...` in its journal while albums, photos,
+thumbnails and video poster frames keep working. They can be added at any time:
+
+```
+sudo apt install libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64
+```
+
+(`libasound2` instead of `libasound2t64` before Debian trixie and Ubuntu 24.04.)
+
 The package installs the jar as `/usr/share/valbum/valbum.jar` with the wrapper
 `/usr/bin/valbum-server`, and enables and starts the systemd service `valbum`.
 
@@ -384,6 +397,13 @@ sudo apt update && sudo apt install valbum
 
 Es gibt Pakete für `arm64`, `amd64` und `armhf`; eine Java-21-Laufzeitumgebung wird
 benötigt (Debian 13 bzw. Raspberry Pi OS trixie, Ubuntu 24.04 — Debian 12 reicht nicht).
+Das Paket empfiehlt (`Recommends`) die X11/xcb- und ALSA-Bibliotheken, die das
+mitgelieferte FFmpeg für Video-Konvertierungen braucht; `apt install` installiert sie
+standardmäßig mit. Bei `--no-install-recommends` fehlen sie, im Journal steht dann
+`Video renditions: NOT available - ...`, alles andere (Alben, Fotos, Vorschaubilder,
+Standbilder von Videos) funktioniert weiter. Nachrüsten mit
+`sudo apt install libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64`
+(vor trixie bzw. 24.04 heißt das Paket `libasound2`).
 Eingestellt wird alles in `/etc/default/valbum` (vor allem `VALBUM_BASEPATH`, danach
 `sudo systemctl restart valbum`); das Kopplungsgeheimnis steht beim ersten Start im
 Journal (`journalctl -u valbum`). Aktualisiert wird mit `sudo apt upgrade`. Die

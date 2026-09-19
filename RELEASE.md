@@ -248,4 +248,5 @@ python3 -m http.server -d site 8000       # then point a test machine at http://
 | `apksigner was not found` | The Flutter action's Android SDK lacks build tools; usually a transient image problem, rerun. |
 | `Expected ...deb, but the build produced:` | The version in the pom and the tag disagree, or the `deb.arch` mapping for the platform is missing; build locally as above. |
 | `apt update` on a client: `NO_PUBKEY` or `The following signatures couldn't be verified` | The signing key changed. Re-import `valbum.gpg` from the site on the client. |
+| `Video renditions: NOT available - ... libxcb-shape.so.0 ...` (or `libasound.so.2`) in the journal | The server was installed with `--no-install-recommends`, or runs from the jar on a headless machine. The bundled FFmpeg links these. `sudo apt install libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64` (`libasound2` before trixie/24.04), then `sudo systemctl restart valbum`. |
 | The site lists a version but `apt` does not offer it | The client's architecture has no package in that version, or `apt update` was not run. `apt policy valbum` shows what is seen. |

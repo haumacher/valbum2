@@ -17,6 +17,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -61,6 +62,9 @@ public class VideoRenditions {
 
 	/** How many lines of the child's error output are kept for the log. */
 	private static final int ERROR_TAIL_LINES = 20;
+
+	/** The environment variable naming the directories the dynamic loader searches. */
+	static final String LIBRARY_PATH = "LD_LIBRARY_PATH";
 
 	/** The kinds of rendition a video has. */
 	public enum Kind {
@@ -330,7 +334,7 @@ public class VideoRenditions {
 
 	/** Runs the given command, keeping the tail of its error output for the message. */
 	private void run(List<String> command) throws IOException {
-		ProcessBuilder builder = new ProcessBuilder(command);
+		ProcessBuilder builder = program(command);
 		builder.redirectErrorStream(true);
 		Process process = builder.start();
 		_running = process;
@@ -360,6 +364,66 @@ public class VideoRenditions {
 			LOG.warning(message + ":\n" + String.join("\n", tail));
 			throw new IOException(message + ".");
 		}
+	}
+
+	/**
+	 * The {@link ProcessBuilder} for running the bundled FFmpeg program, with the library path the
+	 * child process needs.
+	 *
+	 * <p>
+	 * The bundled program and its libraries are extracted side by side into the JavaCPP cache
+	 * directory, and the program finds them through a run path of <code>$ORIGIN/</code>. Which
+	 * flavour of run path that is decides whether the child process starts at all: the
+	 * <code>linux-x86_64</code> program carries <code>DT_RPATH</code>, which the loader applies
+	 * transitively, but the <code>linux-arm64</code> and <code>linux-armhf</code> programs carry
+	 * <code>DT_RUNPATH</code>, which the loader applies to the program's own direct dependencies
+	 * only. So on ARM the indirect ones — <code>libasound.so.2</code> behind
+	 * <code>libavdevice</code>, the VideoCore libraries behind <code>libavcodec</code> — are
+	 * looked for on the system path, where a plain Debian machine does not have them, although the
+	 * very same files sit beside the program. In the JVM itself that never shows, because the
+	 * JavaCPP presets preload those libraries in process; it shows only here, where FFmpeg runs as
+	 * a child process (issue #87).
+	 * </p>
+	 *
+	 * <p>
+	 * Therefore the child is given <code>LD_LIBRARY_PATH</code> pointing at the directory the
+	 * program was extracted to, in front of whatever the environment already said. Every library a
+	 * platform artifact ships then reaches the child on every architecture, whatever its run path
+	 * says, and only libraries that no artifact ships have to come from the system (the Debian
+	 * package recommends those, see <code>src/deb/control/control</code>). Do not "clean this up":
+	 * without it the ARM packages cannot transcode at all.
+	 * </p>
+	 *
+	 * @param command
+	 *        The command line, the program itself first.
+	 */
+	static ProcessBuilder program(List<String> command) {
+		ProcessBuilder builder = new ProcessBuilder(command);
+		File directory = new File(command.get(0)).getParentFile();
+		// A bare program name (found on the PATH) has no directory of its own: the working
+		// directory is not where its libraries are and must never be put on the loader's path.
+		if (directory != null) {
+			Map<String, String> environment = builder.environment();
+			environment.put(LIBRARY_PATH,
+				libraryPath(directory.getAbsolutePath(), environment.get(LIBRARY_PATH)));
+		}
+		return builder;
+	}
+
+	/**
+	 * The library path for the child process: the directory the program was extracted to first, what
+	 * the environment already said behind it.
+	 *
+	 * @param directory
+	 *        Where the bundled program and its libraries are.
+	 * @param inherited
+	 *        What the environment says, may be <code>null</code> or empty.
+	 */
+	static String libraryPath(String directory, String inherited) {
+		if (inherited == null || inherited.isEmpty()) {
+			return directory;
+		}
+		return directory + File.pathSeparator + inherited;
 	}
 
 	/**
@@ -625,7 +689,7 @@ public class VideoRenditions {
 
 	private static String findEncoder() throws IOException {
 		List<String> available = new ArrayList<>();
-		ProcessBuilder builder = new ProcessBuilder(executable(), "-hide_banner", "-encoders");
+		ProcessBuilder builder = program(List.of(executable(), "-hide_banner", "-encoders"));
 		builder.redirectErrorStream(true);
 		Process process = builder.start();
 		try (InputStream in = process.getInputStream();
