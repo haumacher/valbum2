@@ -170,7 +170,12 @@ void main() {
     expect(shown, isNot(contains("invite")));
     expect(shown, isNot(contains("Invite")));
     expect(shown, isNot(contains("invitation")));
-    expect(shown, isNot(contains("http")));
+    // Nothing a browser offers to open: the link the dialog shows is the
+    // app's own `valbum-device://` payload (issue #91), and the server it
+    // names is percent-encoded inside it, never a `http://` address to click.
+    expect(shown, isNot(contains("http://")));
+    expect(shown, isNot(contains("https://")));
+    expect(shown, contains("valbum-device://pair"));
     expect(shown, contains("Add a device"));
   });
 

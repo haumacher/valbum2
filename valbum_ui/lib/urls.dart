@@ -360,6 +360,32 @@ class ServerLocation {
   bool get isShare => share.isNotEmpty;
 }
 
+/// Whether two server addresses name the same server (issue #91).
+///
+/// Spelling, not identity: a trailing slash and the case of the host say
+/// nothing, so `http://Nas.local/valbum` and `http://nas.local/valbum/` are
+/// the same address. Anything that cannot be parsed is compared as text,
+/// which answers `false` for two different strings and never claims a match
+/// nobody can check.
+bool sameServer(String one, String other) {
+  String canonical(String url) {
+    try {
+      var uri = Uri.parse(url.trim());
+      var path = uri.path.endsWith("/") ? uri.path : "${uri.path}/";
+      return Uri(
+        scheme: uri.scheme.toLowerCase(),
+        host: uri.host.toLowerCase(),
+        port: uri.hasPort ? uri.port : null,
+        path: path,
+      ).toString();
+    } on FormatException {
+      return url.trim();
+    }
+  }
+
+  return canonical(one) == canonical(other);
+}
+
 /// The sentence a share link is refused in the server field with.
 ///
 /// A share link opens one album in a browser and signs nothing in; pasting it

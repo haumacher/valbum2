@@ -3535,9 +3535,20 @@ class DeviceList extends _JsonObject {
 	///  The devices, in the order they were paired.
 	List<DeviceEntry> devices;
 
+	///  When the caller's backup code was made, empty while they have none (issue #92).
+	/// 
+	///  <p>
+	///  Never the code itself — that is answered exactly once, when it is made. What the list
+	///  says is only whether there <em>is</em> one and since when, which is what the devices section
+	///  shows and what the sign-out warning needs: signing out of one's last device is a door that
+	///  locks behind one, unless a backup code is lying in a drawer.
+	///  </p>
+	String backupCodeCreated;
+
 	/// Creates a DeviceList.
 	DeviceList({
 			this.devices = const [], 
+			this.backupCodeCreated = "", 
 	});
 
 	/// Parses a DeviceList from a string source.
@@ -3571,6 +3582,10 @@ class DeviceList extends _JsonObject {
 				}
 				break;
 			}
+			case "backupCodeCreated": {
+				backupCodeCreated = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3585,6 +3600,9 @@ class DeviceList extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("backupCodeCreated");
+		json.addString(backupCodeCreated);
 	}
 
 }
@@ -3668,6 +3686,14 @@ class DeviceCodeCreated extends _JsonObject {
 	String code;
 
 	///  When the code stops working, an ISO-8601 instant; ten minutes after it was issued.
+	/// 
+	///  <p>
+	///  <b>Empty means never</b> (issue #92): a <em>backup code</em> is the one code that does not
+	///  run out, because it is written down today for a day nobody can foresee. It is sixteen
+	///  characters instead of eight for exactly that reason, it is still single-use, and it is
+	///  withdrawn by making a new one or by
+	///  <code>&lt;data&gt;/?action=revoke-backup-code</code>.
+	///  </p>
 	String expires;
 
 	/// Creates a DeviceCodeCreated.

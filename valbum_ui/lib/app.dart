@@ -21,6 +21,7 @@ import 'client.dart';
 import 'connectivity.dart';
 import 'device_code_scanner.dart';
 import 'diagnostics.dart';
+import 'first_screen.dart';
 import 'group_view.dart';
 import 'image_view.dart';
 import 'invitation.dart';
@@ -33,6 +34,7 @@ import 'resource.dart';
 import 'routes.dart';
 import 'settings.dart';
 import 'share_session.dart';
+import 'sign_in_form.dart';
 import 'upload_progress.dart';
 import 'urls.dart';
 import 'wakelock.dart';
@@ -333,6 +335,18 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// [VAlbumApp.rewriteLocation].
   late final void Function(Uri uri) _rewriteLocation =
       widget.rewriteLocation ?? ((uri) => rewritePageUrl(uri.toString()));
+
+  /// The invitation somebody pasted into the first screen, `null` while none
+  /// was (issue #91).
+  ///
+  /// The sibling of [invitation], which is an invitation the app was *opened*
+  /// at: off the web there is no address bar to open one at, so it arrives in
+  /// the one field of [FirstScreen] — and then does exactly what it does in a
+  /// browser, the same welcome screen and the same join.
+  ServerLocation? _pastedInvitation;
+
+  /// What the server said the pasted invitation offers.
+  InvitationInfo? _pastedInvitationInfo;
 
   /// The reason a dead invitation address sent this start here, `null` when
   /// none was named, when the reason is one this build does not know, or once
@@ -907,11 +921,65 @@ class VAlbumAppState extends State<VAlbumApp> {
     if (!settings.loaded) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    var pasted = _pastedInvitation;
+    if (pasted != null && _pastedInvitationInfo != null) {
+      // An invitation typed or pasted into the first screen does what one
+      // clicked in a browser does, see [FirstScreen] and issue #91.
+      return InvitationWelcomeScreen(
+        client: clientFor(pasted.dataUrl).withToken(pasted.invitation),
+        info: _pastedInvitationInfo!,
+        token: pasted.invitation,
+        appBase: pasted.serverUrl,
+        onJoined: (answer) => _pastedInvitationAccepted(pasted, answer),
+        // There is no page to leave off the web: what "continue" does here is
+        // let go of the invitation, and the app runs on with the server and
+        // the token the join just stored.
+        openUrl: (_) => setState(() {
+          _pastedInvitation = null;
+          _pastedInvitationInfo = null;
+          _syncClient();
+        }),
+        onGone: (message) => setState(() {
+          _pastedInvitation = null;
+          _pastedInvitationInfo = null;
+          _invitationNotice = message;
+        }),
+      );
+    }
+    if (!kIsWeb) {
+      // Off the web the app has to be told where the album is, and the one
+      // field takes an address, an invitation link or a scanned code
+      // (issue #91). A browser never gets here: its origin is its server.
+      return FirstScreen(
+        settings: settings,
+        clientFor: clientFor,
+        onInvited: (location, info) => setState(() {
+          _pastedInvitation = location;
+          _pastedInvitationInfo = info;
+        }),
+      );
+    }
     return ServerSettingsScreen(
       settings: settings,
       clientFor: clientFor,
       diagnostics: diagnostics,
       closable: false,
+    );
+  }
+
+  /// Stores what an invitation from the first screen answered (issue #91).
+  ///
+  /// The same store a link session writes, see [_invitationAccepted]: the
+  /// plain server of the invitation, and the device token it handed out.
+  Future<void> _pastedInvitationAccepted(
+    ServerLocation location,
+    PairResponse answer,
+  ) async {
+    await settings.save(location.serverUrl);
+    await settings.signedInAs(
+      answer.token,
+      answer.deviceName,
+      userName: answer.userName,
     );
   }
 
@@ -1572,25 +1640,36 @@ class VAlbumState extends State<VAlbumView>
   }
 
   /// The view of a server that refuses this device because nobody is signed
-  /// in on it.
+  /// in on it — and the form that ends the refusal (issue #91).
   ///
-  /// The server says so with a 401 and its own message — which names the way
-  /// in, be it the sign-in or a share link; the remedy is one button away, the
-  /// sign-in lives in the server settings, see [ServerSettingsScreen].
+  /// The server says so with a 401 and its own message. Where the app is
+  /// already talking to that server — which in a browser is always the case,
+  /// the page having been loaded from it — everything needed to sign in is a
+  /// code, so the code field is *here*, not two screens away behind a
+  /// "Server settings…" button. It is [SignInForm], the same widget the
+  /// server screen builds its sign-in section from: the same fields, the same
+  /// name prompt when the server answers `NAME_REQUIRED`, and the same stored
+  /// token afterwards, upon which the app carries straight on into the album.
+  ///
+  /// The way to the server screen stays, for the devices, the people, the
+  /// cache and the diagnostics — it is simply no longer the way *in*.
+  ///
   /// Reaching this page is a normal first contact with a server started with
   /// `--auth all`, or with a library that has been migrated to its users (see
   /// issue #45), not a failure of the app, so it says what to do instead of
   /// quoting an error.
   Widget buildSignInRequired(VAlbumException refusal) {
+    var scope = ServerSettingsScope.of(context);
+    var dataUrl = scope.settings.dataUrl;
     return Scaffold(
       appBar: AppBar(title: const Text("Sign-in required")),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Icon(Icons.lock_outline, size: 48),
                 const SizedBox(height: 16),
@@ -1601,15 +1680,29 @@ class VAlbumState extends State<VAlbumView>
                 ),
                 const SizedBox(height: 8),
                 Text(refusal.message, textAlign: TextAlign.center),
-                const SizedBox(height: 8),
-                const Text(
-                  "Sign in on this device: the server settings ask for the "
-                  "code the server printed at start-up, or one from a device "
-                  "you are already signed in on.",
-                  textAlign: TextAlign.center,
-                ),
                 const SizedBox(height: 24),
-                FilledButton.icon(
+                if (dataUrl != null)
+                  SignInForm(
+                    key: signInRequiredFormKey,
+                    settings: scope.settings,
+                    clientFor: scope.clientFor,
+                    location: ServerLocation(
+                      serverUrl: appBaseOf(dataUrl),
+                      dataUrl: dataUrl,
+                    ),
+                    explain: true,
+                    // Nothing more to do here: storing the token notifies the
+                    // settings, the app builds a client carrying it, and the
+                    // album this page stands in front of loads itself.
+                    onSignedIn: (_, __) => reload(),
+                  )
+                else
+                  const Text(
+                    "This app talks to no server yet.",
+                    textAlign: TextAlign.center,
+                  ),
+                const SizedBox(height: 24),
+                TextButton.icon(
                   onPressed: () => openServerSettings(context),
                   icon: const Icon(Icons.settings),
                   label: const Text("Server settings..."),

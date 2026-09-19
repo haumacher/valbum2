@@ -70,6 +70,13 @@ import java.util.logging.Logger;
  *   "used":"","usedBy":"","revoked":""}]}
  * </pre>
  *
+ * <p>
+ * A record may carry a <code>"kind"</code> (issue #92): absent or empty for an ordinary code, and
+ * <code>"backup"</code> for the one code that neither runs out nor dies with the device that made
+ * it, see {@link #KIND_BACKUP}. A file written before that field existed reads as a file of
+ * ordinary codes, which is exactly what it is.
+ * </p>
+ *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class DeviceCodeStore {
@@ -101,6 +108,43 @@ public class DeviceCodeStore {
 
 	/** How many characters a code has. */
 	public static final int CODE_LENGTH = 8;
+
+	/**
+	 * How many characters a {@link #KIND_BACKUP backup} code has, see issue #92.
+	 *
+	 * <p>
+	 * Sixteen instead of {@value #CODE_LENGTH}, because the two live for different lengths of
+	 * time: a device code is read off one screen and typed on another within ten minutes, so forty
+	 * bits of it are more than anybody can guess in that window; a backup code is written down and
+	 * kept until the day somebody needs it, and eighty bits is what makes "forever" an acceptable
+	 * lifetime. Same alphabet and the same grouping, so it is read and typed exactly like every
+	 * other code &mdash; the length is not what tells the two apart, {@link Code#getKind()} is.
+	 * </p>
+	 */
+	public static final int BACKUP_CODE_LENGTH = 16;
+
+	/**
+	 * What {@link Code#getKind()} holds for an ordinary code: nothing.
+	 *
+	 * <p>
+	 * The empty string on purpose, so that a record written before issue #92 &mdash; which has no
+	 * <code>kind</code> at all &mdash; reads back as exactly what it was.
+	 * </p>
+	 */
+	public static final String KIND_DEVICE = "";
+
+	/**
+	 * What {@link Code#getKind()} holds for a backup code, see issue #92.
+	 *
+	 * <p>
+	 * The one code that does not die with the device that made it and does not run out. Both
+	 * exemptions hang on this value and on nothing else &mdash; not on the length, not on the
+	 * issuer, not on an empty expiry &mdash; so that a damaged record can never be read as an
+	 * eternal credential: a code without a lifetime that is not marked here is still treated as
+	 * expired, see {@link Code#isExpired(Instant)}.
+	 * </p>
+	 */
+	public static final String KIND_BACKUP = "backup";
 
 	/**
 	 * What stands in {@link Code#getIssuedBy()} for a code the server itself issued (issue #89).
@@ -181,6 +225,8 @@ public class DeviceCodeStore {
 
 	private static final String REVOKED__PROP = "revoked";
 
+	private static final String KIND__PROP = "kind";
+
 	/** A single device code, see {@link DeviceCodeStore}. */
 	public static final class Code {
 
@@ -202,9 +248,17 @@ public class DeviceCodeStore {
 
 		private String _revoked;
 
-		/** Creates a {@link Code}. */
+		private final String _kind;
+
+		/** Creates an ordinary {@link Code}. */
 		public Code(String id, String codeHash, String user, String issuedBy, String created, String expires,
 				String used, String usedBy, String revoked) {
+			this(id, codeHash, user, issuedBy, created, expires, used, usedBy, revoked, KIND_DEVICE);
+		}
+
+		/** Creates a {@link Code} of the given kind, see {@link #getKind()}. */
+		public Code(String id, String codeHash, String user, String issuedBy, String created, String expires,
+				String used, String usedBy, String revoked, String kind) {
 			_id = id;
 			_codeHash = codeHash;
 			_user = user;
@@ -214,6 +268,25 @@ public class DeviceCodeStore {
 			_used = used;
 			_usedBy = usedBy;
 			_revoked = revoked;
+			_kind = kind == null ? KIND_DEVICE : kind;
+		}
+
+		/**
+		 * What kind of code this is: {@link #KIND_DEVICE} or {@link #KIND_BACKUP}.
+		 *
+		 * <p>
+		 * The one thing that tells a backup code from every other, see {@link #KIND_BACKUP}. A
+		 * kind this build does not know is read as an ordinary code, which is the fail-closed
+		 * reading: an unknown kind gets no exemption.
+		 * </p>
+		 */
+		public String getKind() {
+			return _kind;
+		}
+
+		/** Whether this is the user's backup code, see {@link #KIND_BACKUP}. */
+		public boolean isBackup() {
+			return KIND_BACKUP.equals(_kind);
 		}
 
 		/** The short id of this code; what names it in the store, never on the wire. */
@@ -248,7 +321,16 @@ public class DeviceCodeStore {
 			return _created;
 		}
 
-		/** When the code stops working, an ISO-8601 instant; never empty. */
+		/**
+		 * When the code stops working, an ISO-8601 instant.
+		 *
+		 * <p>
+		 * Empty on a {@link #isBackup() backup} code and there only: that code is written down
+		 * for a day nobody can foresee, so it dies by being used or by being withdrawn and by
+		 * nothing else. Empty on any other record means a damaged file, and such a code is treated
+		 * as expired, see {@link #isExpired(Instant)}.
+		 * </p>
+		 */
 		public String getExpires() {
 			return _expires;
 		}
@@ -299,12 +381,18 @@ public class DeviceCodeStore {
 		 * Whether this code's ten minutes have run out at the given moment.
 		 *
 		 * <p>
-		 * An {@link #getExpires() expiry} this server cannot parse is treated as expired: a code
-		 * whose lifetime nobody can read is not a code that lives forever.
+		 * A {@link #isBackup() backup} code never runs out: an empty expiry <em>is</em> its
+		 * lifetime, see {@link #KIND_BACKUP}. On every other record an empty expiry is a damaged
+		 * file, and an {@link #getExpires() expiry} this server cannot parse is treated as expired
+		 * either way: a code whose lifetime nobody can read is not a code that lives forever.
 		 * </p>
 		 */
 		public boolean isExpired(Instant now) {
 			if (_expires.isEmpty()) {
+				if (isBackup()) {
+					// Written down and kept; it dies by use or by withdrawal, see KIND_BACKUP.
+					return false;
+				}
 				// A record from a damaged file: a code without a lifetime is no code.
 				LOG.warning("The device code '" + _id + "' has no expiry; it is treated as expired.");
 				return true;
@@ -358,7 +446,8 @@ public class DeviceCodeStore {
 
 		@Override
 		public String toString() {
-			return "device-code:" + _id + " (for " + _user + ", by device " + _issuedBy + ")"
+			return (isBackup() ? "backup-code:" : "device-code:") + _id + " (for " + _user + ", by device "
+				+ _issuedBy + ")"
 				+ (isUsed() ? " used by device " + _usedBy : "") + (isRevoked() ? " (revoked)" : "");
 		}
 	}
@@ -506,12 +595,87 @@ public class DeviceCodeStore {
 	 */
 	public synchronized Issued create(String user, String issuedBy, String fixed) throws IOException {
 		Instant now = _clock.instant();
-		String code = fixed == null ? randomCode() : checkCode(fixed);
+		String code = fixed == null ? randomCode(CODE_LENGTH) : checkCode(fixed);
 		Code record = new Code(freeId(), UserStore.hash(code), user, issuedBy == null ? "" : issuedBy,
-			now.toString(), now.plus(Duration.ofMinutes(LIFETIME_MINUTES)).toString(), "", "", "");
+			now.toString(), now.plus(Duration.ofMinutes(LIFETIME_MINUTES)).toString(), "", "", "", KIND_DEVICE);
 		_codes.add(record);
 		store();
 		return new Issued(record, code);
+	}
+
+	/**
+	 * Issues the given user's backup code, withdrawing the one they had, see issue #92.
+	 *
+	 * <p>
+	 * The way back from signing out of one's last device, and the only code this store makes that
+	 * outlives the moment: {@value #BACKUP_CODE_LENGTH} characters, no expiry, and exempt from the
+	 * rule that a code dies with the device that issued it &mdash; the device that made it is
+	 * precisely the one that will be gone when it is needed. Single use like every other code, and
+	 * one per user at a time: making a new one withdraws the old one in the same step, so that a
+	 * person never has two pieces of paper of which only one works.
+	 * </p>
+	 *
+	 * <p>
+	 * The issuing device is recorded all the same, because it is history worth keeping &mdash; it
+	 * simply grants nothing, see {@link Code#isBackup()}.
+	 * </p>
+	 */
+	public synchronized Issued createBackup(String user, String issuedBy) throws IOException {
+		Instant now = _clock.instant();
+		markBackupRevoked(user, now);
+		String code = randomCode(BACKUP_CODE_LENGTH);
+		Code record = new Code(freeId(), UserStore.hash(code), user, issuedBy == null ? "" : issuedBy,
+			now.toString(), "", "", "", "", KIND_BACKUP);
+		_codes.add(record);
+		store();
+		return new Issued(record, code);
+	}
+
+	/**
+	 * The given user's backup code while it still works.
+	 *
+	 * @return <code>null</code> if they have none; the code itself is not in it, only its record.
+	 */
+	public synchronized Code backupCodeOf(String user) {
+		if (user == null) {
+			return null;
+		}
+		Instant now = _clock.instant();
+		for (Code code : _codes) {
+			if (code.isBackup() && user.equals(code.getUser()) && !code.isDead(now)) {
+				return code;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Withdraws the given user's backup code, see issue #92.
+	 *
+	 * @return How many were withdrawn; zero, or one, unless a damaged file held more.
+	 */
+	public synchronized int revokeBackup(String user) throws IOException {
+		int revoked = markBackupRevoked(user, _clock.instant());
+		if (revoked > 0) {
+			store();
+		}
+		return revoked;
+	}
+
+	/** Marks the given user's live backup codes withdrawn, without writing the store. */
+	private int markBackupRevoked(String user, Instant now) {
+		if (user == null) {
+			return 0;
+		}
+		String stamp = now.toString();
+		int revoked = 0;
+		for (Code code : _codes) {
+			if (code.isBackup() && user.equals(code.getUser()) && !code.isDead(now)) {
+				code.setRevoked(stamp);
+				revoked++;
+			}
+		}
+		return revoked;
 	}
 
 	/**
@@ -561,6 +725,12 @@ public class DeviceCodeStore {
 		String now = _clock.instant().toString();
 		int revoked = 0;
 		for (Code code : _codes) {
+			if (code.isBackup()) {
+				// A backup code outlives the device that made it; that is its whole purpose, and
+				// the device list argument does not apply to a code its own owner wrote down
+				// (issue #92). It is withdrawn by making a new one, or explicitly.
+				continue;
+			}
 			if (deviceId.equals(code.getIssuedBy()) && !code.isUsed() && !code.isRevoked()) {
 				code.setRevoked(now);
 				revoked++;
@@ -573,18 +743,27 @@ public class DeviceCodeStore {
 	}
 
 	/**
-	 * The characters of a code as they are shown: <code>XXXX-XXXX</code>.
+	 * The characters of a code as they are shown: groups of {@value #GROUP_LENGTH}, dash-separated.
 	 *
 	 * <p>
-	 * The dash is decoration and nothing else — {@link #normalise(String)} throws it away again, so
-	 * a person may type it or not.
+	 * <code>XXXX-XXXX</code> for a device code and <code>XXXX-XXXX-XXXX-XXXX</code> for a backup
+	 * code (issue #92) — one rule, so the two are read and copied the same way. The dash is
+	 * decoration and nothing else: {@link #normalise(String)} throws it away again, so a person
+	 * may type it or not.
 	 * </p>
 	 */
 	public static String format(String code) {
-		if (code == null || code.length() <= GROUP_LENGTH) {
-			return code == null ? "" : code;
+		if (code == null) {
+			return "";
 		}
-		return code.substring(0, GROUP_LENGTH) + "-" + code.substring(GROUP_LENGTH);
+		StringBuilder result = new StringBuilder(code.length() + code.length() / GROUP_LENGTH);
+		for (int n = 0, cnt = code.length(); n < cnt; n++) {
+			if (n > 0 && n % GROUP_LENGTH == 0) {
+				result.append('-');
+			}
+			result.append(code.charAt(n));
+		}
+		return result.toString();
 	}
 
 	/**
@@ -610,10 +789,10 @@ public class DeviceCodeStore {
 		return result.toString();
 	}
 
-	/** A fresh code of {@value #CODE_LENGTH} characters from {@link #ALPHABET}. */
-	private String randomCode() {
-		StringBuilder result = new StringBuilder(CODE_LENGTH);
-		for (int n = 0; n < CODE_LENGTH; n++) {
+	/** A fresh code of the given number of characters from {@link #ALPHABET}. */
+	private String randomCode(int length) {
+		StringBuilder result = new StringBuilder(length);
+		for (int n = 0; n < length; n++) {
 			result.append(ALPHABET.charAt(_random.nextInt(ALPHABET.length())));
 		}
 		return result.toString();
@@ -706,6 +885,7 @@ public class DeviceCodeStore {
 		String used = "";
 		String usedBy = "";
 		String revoked = "";
+		String kind = KIND_DEVICE;
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -737,13 +917,16 @@ public class DeviceCodeStore {
 				case REVOKED__PROP:
 					revoked = in.nextString();
 					break;
+				case KIND__PROP:
+					kind = in.nextString();
+					break;
 				default:
 					in.skipValue();
 					break;
 			}
 		}
 		in.endObject();
-		return new Code(id, codeHash, user, issuedBy, created, expires, used, usedBy, revoked);
+		return new Code(id, codeHash, user, issuedBy, created, expires, used, usedBy, revoked, kind);
 	}
 
 	/** Writes this store to disk, atomically: a crash never leaves a half-written store. */
@@ -799,6 +982,12 @@ public class DeviceCodeStore {
 		out.value(code.getUsedBy());
 		out.name(REVOKED__PROP);
 		out.value(code.getRevoked());
+		if (!KIND_DEVICE.equals(code.getKind())) {
+			// Written only where there is something to say, so that the file of a library that
+			// never made a backup code looks exactly as it did before issue #92.
+			out.name(KIND__PROP);
+			out.value(code.getKind());
+		}
 		out.endObject();
 	}
 }

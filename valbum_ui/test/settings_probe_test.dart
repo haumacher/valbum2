@@ -7,6 +7,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:valbum_ui/first_screen.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
@@ -120,7 +121,8 @@ void main() {
         settings: ServerSettings(store: store, platformDefault: () => null),
       ),
     );
-    expect(find.text("Album server"), findsOneWidget);
+    // No server: the app asks where the album is, see issue #91.
+    expect(find.text(firstScreenTitle), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:valbum_ui/first_screen.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
@@ -96,6 +97,7 @@ void main() {
     });
     expect(store.value, isNull);
     expect(store.token, isNull);
-    expect(find.text("Album server"), findsOneWidget);
+    // A device that knows no server is asked where its album is (issue #91).
+    expect(find.text(firstScreenTitle), findsOneWidget);
   });
 }

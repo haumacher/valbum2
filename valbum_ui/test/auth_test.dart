@@ -456,6 +456,10 @@ void main() {
       expect(find.text("Device: Phone"), findsOneWidget);
 
       await tapVisible(tester, find.text("Sign out"));
+      // The server could not say how many devices there are, so the sign-out
+      // asks before the door falls shut, see issue #92.
+      await tester.pumpAndSettle();
+      await tapVisible(tester, find.byKey(const Key("sign-out-confirmed")));
 
       expect(store.token, isNull);
       expect(settings.signedIn, isFalse);
@@ -566,6 +570,9 @@ void main() {
       );
 
       await withFakeImageHttp(() async {
+        // Below the sign-in form the page now leads with (issue #91).
+        await tester.ensureVisible(find.text("Server settings..."));
+        await tester.pumpAndSettle();
         await tester.tap(find.text("Server settings..."));
         await tester.pumpAndSettle();
       });

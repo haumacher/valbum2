@@ -70,6 +70,14 @@ public class DeviceCodeCreated extends de.haumacher.msgbuf.data.AbstractDataObje
 
 	/**
 	 * When the code stops working, an ISO-8601 instant; ten minutes after it was issued.
+	 *
+	 * <p>
+	 * <b>Empty means never</b> (issue #92): a <em>backup code</em> is the one code that does not
+	 * run out, because it is written down today for a day nobody can foresee. It is sixteen
+	 * characters instead of eight for exactly that reason, it is still single-use, and it is
+	 * withdrawn by making a new one or by
+	 * <code>&lt;data&gt;/?action=revoke-backup-code</code>.
+	 * </p>
 	 */
 	public final String getExpires() {
 		return _expires;

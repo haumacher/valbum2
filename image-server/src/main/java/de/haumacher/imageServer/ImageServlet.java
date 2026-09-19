@@ -1347,9 +1347,68 @@ public class ImageServlet extends HttpServlet {
 		return parsed.getUserName() == null ? "" : parsed.getUserName();
 	}
 
+	/**
+	 * Issues the caller's own backup code at <code>&lt;data&gt;/?action=backup-code</code>, see
+	 * issue #92.
+	 *
+	 * <p>
+	 * The way back from signing out of one's last device: a code the caller writes down today and
+	 * types on some device on some later day. The answer is a {@link DeviceCodeCreated} like every
+	 * other code's, with an empty {@link DeviceCodeCreated#getExpires() expiry} saying that this
+	 * one does not run out — shown once, never again. Making one withdraws the one the caller
+	 * had, so that there is never more than one piece of paper in the world.
+	 * </p>
+	 *
+	 * <p>
+	 * Always for the caller themselves, whatever the body says: making a code somebody else keeps
+	 * is a different thing and is the administrator's ten-minute recovery code, see
+	 * {@link #createDeviceCode(Context)}.
+	 * </p>
+	 */
+	private void createBackupCode(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		DeviceCodeStore.Issued issued;
+		try {
+			issued = _auth.backupCode(caller);
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing a backup code: " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+		LOG.info("Issued " + issued.getRecord() + ".");
+		serveJsonObject(context.response(), DeviceCodeCreated.create()
+			.setCode(DeviceCodeStore.format(issued.getCode()))
+			.setExpires(issued.getRecord().getExpires()));
+	}
+
+	/**
+	 * Withdraws the caller's own backup code at
+	 * <code>&lt;data&gt;/?action=revoke-backup-code</code>, see issue #92.
+	 *
+	 * <p>
+	 * The answer is what is left, as every device endpoint answers: the caller's devices, now
+	 * saying that there is no backup code any more. A caller who has none is told so
+	 * (<code>404</code>) rather than quietly congratulated.
+	 * </p>
+	 */
+	private void revokeBackupCode(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		try {
+			_auth.revokeBackupCode(caller);
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing to withdraw a backup code: " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+		LOG.info("Withdrew the backup code of '" + caller.getUserName() + "'.");
+		serveJsonObject(context.response(), devices(caller));
+	}
+
 	/** The caller's own devices as the protocol carries them, the asking one marked. */
 	private DeviceList devices(Caller caller) {
 		DeviceList result = DeviceList.create();
+		// Not a code and never one: only that there is one and since when, see issue #92.
+		result.setBackupCodeCreated(_auth.backupCodeCreated(caller));
 		for (UserStore.Device device : _auth.devices(caller)) {
 			result.addDevice(DeviceEntry.create()
 				.setId(device.getId())
@@ -2018,6 +2077,14 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("device-code".equals(action)) {
 			createDeviceCode(context);
+			return;
+		}
+		if ("backup-code".equals(action)) {
+			createBackupCode(context);
+			return;
+		}
+		if ("revoke-backup-code".equals(action)) {
+			revokeBackupCode(context);
 			return;
 		}
 		if ("share".equals(action)) {

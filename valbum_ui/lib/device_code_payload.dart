@@ -34,6 +34,23 @@ const String deviceCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 /// How many characters a device code has.
 const int deviceCodeLength = 8;
 
+/// How many characters a backup code has (issue #92).
+///
+/// The one code that is written down and kept, so it is eighty bits instead of
+/// forty. Same alphabet, same grouping in fours, same field: the length is not
+/// what tells the two apart — the server's record is.
+const int backupCodeLength = 16;
+
+/// The lengths a code of this server may have, see [isDeviceCode].
+///
+/// Two, and neither of them means anything by itself: a code is looked up by
+/// its hash, and the app refuses here only what cannot be a code at all, so
+/// that a typo is said on this screen instead of on the wire.
+const List<int> deviceCodeLengths = [deviceCodeLength, backupCodeLength];
+
+/// How many characters a group of a code has, see [formatDeviceCode].
+const int deviceCodeGroupLength = 4;
+
 /// A device code and the server it belongs to, as a QR code carries them.
 class DeviceCodePayload {
   /// The app base of the album server, the value the server field holds.
@@ -73,7 +90,7 @@ String normalizeDeviceCode(String code) =>
 /// Normalised first, so `abcd efgh` is judged as `ABCDEFGH`.
 bool isDeviceCode(String code) {
   var normalized = normalizeDeviceCode(code);
-  if (normalized.length != deviceCodeLength) {
+  if (!deviceCodeLengths.contains(normalized.length)) {
     return false;
   }
   for (var index = 0; index < normalized.length; index++) {
@@ -84,17 +101,22 @@ bool isDeviceCode(String code) {
   return true;
 }
 
-/// A device code as both screens spell it: `XXXX-XXXX`.
+/// A code as every screen spells it: groups of four, dash-separated.
 ///
-/// Anything that is not a code of the expected length is handed back
-/// normalised but unsplit — a shape nobody promised is better than a dash in
-/// the wrong place.
+/// `XXXX-XXXX` for a device code and `XXXX-XXXX-XXXX-XXXX` for a backup code
+/// (issue #92) — one rule, because they are one thing. Anything that is not a
+/// code of an expected length is handed back normalised but unsplit: a shape
+/// nobody promised is better than a dash in the wrong place.
 String formatDeviceCode(String code) {
   var normalized = normalizeDeviceCode(code);
-  if (normalized.length != deviceCodeLength) {
+  if (!deviceCodeLengths.contains(normalized.length)) {
     return normalized;
   }
-  return "${normalized.substring(0, 4)}-${normalized.substring(4)}";
+  var groups = <String>[
+    for (var at = 0; at < normalized.length; at += deviceCodeGroupLength)
+      normalized.substring(at, at + deviceCodeGroupLength),
+  ];
+  return groups.join("-");
 }
 
 /// What the QR code of [code] at [serverUrl] contains, see the library

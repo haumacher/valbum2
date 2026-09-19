@@ -89,7 +89,10 @@ device yet:
 This library: sign the administrator in with the code ABCD-EFGH (valid 10 minutes, once; restart the server for a new one).
 ```
 
-Open the app's server settings, enter that code and a device name and press "Sign in". The
+Open the album in a browser: a server that shows nothing to strangers answers with a
+**sign-in page**, and that page is the form — enter the code and a device name there and press
+"Sign in". In the app off the web, the first screen asks where your album is; type the server
+address (or paste an invitation link, or scan a QR code), and the same sign-in follows. The
 administrator of a fresh space has no name yet, so the app asks for one and signs in again with
 it: that name is what the users list shows, what an uploaded photo is attributed to and what a
 permission change addresses. The server issues a token for this device, the app stores it beside
@@ -121,6 +124,21 @@ If you lost every device you had — a cleared browser, an app reinstalled — a
 the same code for you: in the users list, "Recovery code" beside your name. It is the same
 single-use code with the same ten minutes; it signs a device in as *you*, and it dies with the
 administrator's device that made it.
+
+### The backup code: the way back from your last sign-out
+
+Signing out on a borrowed device is harmless — your own device is still signed in. Signing out
+of your **last** device is not: a device code lives ten minutes and dies with the device that made
+it, so there would be nothing left to sign in with. The app therefore asks before that sign-out and
+names the ways back, and one of them you can lay in a drawer today.
+
+Under "My devices", "Create backup code…" gives you a code of your own: sixteen characters
+(`XXXX-XXXX-XXXX-XXXX`) of the same alphabet, shown **once**, with **no expiry at all**. Write it
+down or put it in a password manager. It is typed into the same sign-in field as every other code,
+it works **once**, and unlike a device code it does *not* die with the device that made it —
+which is the whole point, since that is the device you are about to sign out of. You have one at a
+time: making a new one withdraws the old one, and "Withdraw" ends it without a replacement. The
+server keeps only its hash and says no more than that there is one and since when.
 
 ### Users and spaces
 

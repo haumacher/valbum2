@@ -13,6 +13,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -137,6 +138,116 @@ const String deviceCodeAdvice =
     "Type this on the other device within 10 minutes. It signs that device in "
     "as you \u2014 never give it to anyone else.";
 
+/// The key of the copyable link carrying the same credential as the QR code
+/// above it (issue #91).
+///
+/// The very same payload the QR code holds, as text: a person who cannot hold
+/// two screens together sends it to their other device instead. It is no URL
+/// the server serves and nothing a browser offers to open, see
+/// [encodeDeviceCodePayload].
+const Key deviceCodeLinkKey = Key("settings.deviceCode.link");
+
+/// The key of the button putting that link on the clipboard.
+const Key deviceCodeCopyKey = Key("settings.deviceCode.copy");
+
+/// What the link is for, said beside it.
+const String deviceCodeLinkAdvice =
+    "Or send this link to the other device and open it in the app:";
+
+/// The key of the "Backup code" line of the devices section (issue #92).
+const Key backupCodeStateKey = Key("settings.backupCode.state");
+
+/// The key of the button making a backup code.
+const Key backupCodeCreateKey = Key("settings.backupCode.create");
+
+/// The key of the button withdrawing it.
+const Key backupCodeRevokeKey = Key("settings.backupCode.revoke");
+
+/// The key of the dialog showing a freshly made backup code.
+const Key backupCodeDialogKey = Key("settings.backupCode.dialog");
+
+/// What a backup code is, said where it is shown (issue #92).
+///
+/// The whole point in one sentence: it is the way back into one's own account
+/// on a day when no device of one's own is signed in any more — which is also
+/// why it must be written down now, and why nobody else may ever read it.
+const String backupCodeAdvice =
+    "Write this down and keep it somewhere safe \u2014 a password manager, a "
+    "drawer. It never expires, it works once, and it signs a device in as you, "
+    "so give it to nobody. This is the only time it is shown.";
+
+/// What the devices section says while there is no backup code.
+const String noBackupCode =
+    "Backup code: none. Without one, signing out of your last device leaves "
+    "you dependent on your administrator.";
+
+/// What it says once there is one; [made] is the day it was made.
+String backupCodeMade(String made) =>
+    "Backup code: made on $made. Keep it safe; making a new one withdraws it.";
+
+/// The question a sign-out that has no way back asks (issue #92).
+///
+/// Signing out on a *foreign* device is harmless — the device that showed
+/// the code is still signed in. The danger is one's **last** device, and the
+/// question names the ways back there are, in words, rather than letting the
+/// door fall shut in silence.
+String lastDeviceWarning({required bool isAdmin, required bool hasBackupCode}) {
+  var ways = <String>[
+    if (hasBackupCode) "your backup code",
+    isAdmin
+        ? "a recovery code from another administrator"
+        : "a recovery code from your administrator",
+    if (isAdmin) "a restart of the server, which prints a new sign-in code",
+  ];
+  var last = ways.removeLast();
+  var spelled = ways.isEmpty ? last : "${ways.join(", ")}, or $last";
+  return "This is your only signed-in device. To sign in again you need "
+      "$spelled.";
+}
+
+/// What the warning says when the devices could not even be read.
+const String maybeLastDeviceWarning =
+    "This may be your only signed-in device, and the server could not be "
+    "asked. If it is, you need a recovery code from your administrator, your "
+    "backup code, or a restart of the server to get back in.";
+
+/// Asks before a sign-out that may have no way back, see issue #92.
+///
+/// Answers `true` when the sign-out may go ahead. It asks only where there is
+/// something to warn about: with a second device signed in there is always a
+/// way back, and a question nobody needs is a question people learn to click
+/// away. [devices] is `null` where the server could not be asked, and that is
+/// asked about too — the safe side of not knowing.
+Future<bool> confirmLastSignOut({
+  required BuildContext context,
+  required DeviceList? devices,
+  required String role,
+}) async {
+  var known = devices?.devices;
+  if (known != null && known.length > 1) {
+    return true;
+  }
+  if (known != null && known.isEmpty) {
+    // Nothing to sign out of; the token this app holds proves nothing anyway.
+    return true;
+  }
+  var message = known == null
+      ? maybeLastDeviceWarning
+      : lastDeviceWarning(
+          isAdmin: role == roleAdmin,
+          hasBackupCode: (devices?.backupCodeCreated ?? "").isNotEmpty,
+        );
+  var confirmed = await confirmHere(
+    context: context,
+    dialogKey: "sign-out-confirm",
+    title: "Sign out this device?",
+    message: message,
+    confirmLabel: "Sign out",
+    confirmKey: "sign-out-confirmed",
+  );
+  return confirmed == true;
+}
+
 /// How often the device list is read again while a code is on screen.
 const Duration deviceCodePollInterval = Duration(seconds: 3);
 
@@ -207,12 +318,24 @@ class DevicesSection extends StatefulWidget {
   /// The clock the device-code dialog measures the remaining time against.
   final DateTime Function() now;
 
+  /// The role of the caller, so that the sign-out warning can name the ways
+  /// back an administrator has (issue #92); empty where nobody said.
+  final String role;
+
+  /// Hands every device list this section reads to whoever is above it.
+  ///
+  /// The sign-out button of the settings needs exactly what this section
+  /// reads: how many devices there are, and whether a backup code exists.
+  final void Function(DeviceList devices)? onDevices;
+
   const DevicesSection({
     super.key,
     required this.client,
     required this.onSignedOutHere,
     this.ticker = secondsTicker,
     this.now = DateTime.now,
+    this.role = "",
+    this.onDevices,
   });
 
   @override
@@ -222,6 +345,10 @@ class DevicesSection extends StatefulWidget {
 class DevicesSectionState extends State<DevicesSection> {
   /// The devices, `null` while they are being read.
   List<DeviceEntry>? _devices;
+
+  /// When the caller's backup code was made, empty while they have none
+  /// (issue #92); never the code, which the server cannot show again.
+  String _backupCodeCreated = "";
 
   /// The server's reason for the last refusal, `null` while all is well.
   String? _problem;
@@ -239,10 +366,7 @@ class DevicesSectionState extends State<DevicesSection> {
     try {
       var answer = await widget.client.devices();
       if (mounted) {
-        setState(() {
-          _devices = answer.devices;
-          _problem = null;
-        });
+        setState(() => _took(answer));
       }
     } catch (error) {
       if (mounted) {
@@ -253,6 +377,24 @@ class DevicesSectionState extends State<DevicesSection> {
       }
     }
   }
+
+  /// Takes over what the server answered, and passes it on (issue #92).
+  ///
+  /// Called inside a `setState`: one place reads a [DeviceList], so one place
+  /// is where the backup code and the device list are kept in step.
+  void _took(DeviceList answer) {
+    _devices = answer.devices;
+    _backupCodeCreated = answer.backupCodeCreated;
+    _problem = null;
+    widget.onDevices?.call(answer);
+  }
+
+  /// The devices as the enclosing screen would see them, for the sign-out
+  /// question of issue #92.
+  DeviceList get _list => DeviceList(
+        devices: _devices ?? const [],
+        backupCodeCreated: _backupCodeCreated,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -305,8 +447,111 @@ class DevicesSectionState extends State<DevicesSection> {
             label: const Text("Add a device\u2026"),
           ),
         ),
+        ..._backupCodeLines(),
       ],
     );
+  }
+
+  /// The backup code: whether there is one, and the two things one can do
+  /// about it (issue #92).
+  ///
+  /// Never the code itself — that is shown once, when it is made, and the
+  /// server keeps only its hash. What stands here is that there is one and
+  /// since when, which is exactly what the sign-out warning needs.
+  List<Widget> _backupCodeLines() {
+    var made = _backupCodeCreated;
+    return [
+      const SizedBox(height: 16),
+      Text(
+        made.isEmpty ? noBackupCode : backupCodeMade(dayOf(made)),
+        key: backupCodeStateKey,
+      ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            key: backupCodeCreateKey,
+            onPressed: _busy ? null : _createBackupCode,
+            icon: const Icon(Icons.vpn_key),
+            label: Text(made.isEmpty
+                ? "Create backup code\u2026"
+                : "Create a new backup code\u2026"),
+          ),
+          if (made.isNotEmpty)
+            TextButton.icon(
+              key: backupCodeRevokeKey,
+              onPressed: _busy ? null : _revokeBackupCode,
+              icon: const Icon(Icons.delete_outline),
+              label: const Text("Withdraw"),
+            ),
+        ],
+      ),
+    ];
+  }
+
+  /// Shows a freshly made backup code, once (issue #92).
+  ///
+  /// The same dialog a device code is shown in, because it is the same thing:
+  /// a code to type, a QR code to scan and a link to send. What differs is
+  /// that this one does not count down, and that it says to write it down.
+  Future<void> _createBackupCode() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => DeviceCodeDialog(
+        key: backupCodeDialogKey,
+        client: widget.client,
+        backup: true,
+        onDevices: (devices) {},
+        ticker: widget.ticker,
+        now: widget.now,
+      ),
+    );
+    if (mounted) {
+      // Whatever was made — or refused — the list above says what is true now.
+      await _load();
+    }
+  }
+
+  /// Withdraws the backup code, after asking.
+  Future<void> _revokeBackupCode() async {
+    var confirmed = await confirmHere(
+      context: context,
+      dialogKey: "backup-code-confirm",
+      title: "Withdraw the backup code?",
+      message: "The code you wrote down stops working. Signing out of your "
+          "last device then leaves you dependent on a recovery code from your "
+          "administrator.",
+      confirmLabel: "Withdraw",
+      confirmKey: "backup-code-confirmed",
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _problem = null;
+    });
+    DeviceList answer;
+    try {
+      answer = await widget.client.revokeBackupCode();
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _problem = refusalMessage(error);
+        });
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _took(answer);
+    });
   }
 
   /// Shows a code to type on a further device of this person's own (issue #65).
@@ -329,6 +574,7 @@ class DevicesSectionState extends State<DevicesSection> {
             setState(() {
               _devices = devices;
               _problem = null;
+              widget.onDevices?.call(_list);
             });
           }
         },
@@ -344,14 +590,23 @@ class DevicesSectionState extends State<DevicesSection> {
   /// away and this app drops the token it was talking with, exactly as the
   /// sign-out button does — the section goes with it.
   Future<void> _remove(DeviceEntry device) async {
+    var lastOne = device.current && (_devices ?? const []).length <= 1;
     var confirmed = await confirmHere(
       context: context,
       dialogKey: "device-confirm",
       title:
           device.current ? "Sign out this device?" : "Remove '${device.name}'?",
       message: device.current
-          ? "This device forgets its sign-in and talks to the server "
-              "anonymously again. You can sign in again at any time."
+          // The last one is a door that locks behind you, so it says what the
+          // way back is instead of "you can sign in again at any time", which
+          // would then be a lie (issue #92).
+          ? (lastOne
+              ? lastDeviceWarning(
+                  isAdmin: widget.role == roleAdmin,
+                  hasBackupCode: _backupCodeCreated.isNotEmpty,
+                )
+              : "This device forgets its sign-in and talks to the server "
+                  "anonymously again. You can sign in again at any time.")
           : "'${device.name}' stops being signed in. It has to sign in again "
               "before it can change anything.",
       confirmLabel: device.current ? "Sign out" : "Remove",
@@ -387,7 +642,7 @@ class DevicesSectionState extends State<DevicesSection> {
     }
     setState(() {
       _busy = false;
-      _devices = answer.devices;
+      _took(answer);
     });
   }
 }
@@ -423,6 +678,14 @@ class DeviceCodeDialog extends StatefulWidget {
   /// one's own to watch for, and the advice names the person.
   final String forUser;
 
+  /// Whether this is the caller's **backup** code (issue #92).
+  ///
+  /// The same dialog, because it is the same thing: a code to type, a QR code
+  /// to scan, a link to send. Two things differ — it does not count down,
+  /// because it does not run out, and it says to write it down rather than to
+  /// type it within ten minutes.
+  final bool backup;
+
   const DeviceCodeDialog({
     super.key,
     required this.client,
@@ -431,6 +694,7 @@ class DeviceCodeDialog extends StatefulWidget {
     this.ticker = secondsTicker,
     this.now = DateTime.now,
     this.forUser = "",
+    this.backup = false,
   });
 
   @override
@@ -476,7 +740,9 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
       _joined = null;
     });
     try {
-      var answer = await widget.client.deviceCode(userName: widget.forUser);
+      var answer = widget.backup
+          ? await widget.client.backupCode()
+          : await widget.client.deviceCode(userName: widget.forUser);
       if (mounted) {
         setState(() {
           _code = answer;
@@ -509,7 +775,7 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
   /// hiccup while a code is on screen says nothing about the code. What the
   /// server refuses when it is *asked for a code* is shown, see [_ask].
   Future<void> _poll() async {
-    if (_joined != null || widget.forUser.isNotEmpty) {
+    if (_joined != null || widget.forUser.isNotEmpty || widget.backup) {
       // A code for somebody else adds a device to *their* list, never to this
       // one; there is nothing here to watch for (issue #89).
       return;
@@ -557,6 +823,20 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
     }
   }
 
+  /// Puts the link on the clipboard and says so (issue #91).
+  Future<void> _copy(String payload) async {
+    await Clipboard.setData(ClipboardData(text: payload));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("The link is on the clipboard."),
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
   /// A duration as `m:ss`, never negative.
   static String minutesAndSeconds(Duration left) {
     var seconds = left.isNegative ? 0 : left.inSeconds;
@@ -569,11 +849,15 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
     var problem = _problem;
     var left = remaining;
     var expired = left != null && left <= Duration.zero;
+    var payload =
+        code == null ? "" : encodeDeviceCodePayload(serverUrl, code.code);
     return AlertDialog(
       key: deviceCodeDialogKey,
-      title: Text(widget.forUser.isEmpty
-          ? "Add a device"
-          : "Recovery code for ${widget.forUser}"),
+      title: Text(widget.backup
+          ? "Backup code"
+          : widget.forUser.isEmpty
+              ? "Add a device"
+              : "Recovery code for ${widget.forUser}"),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -596,9 +880,13 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
               ),
               const SizedBox(height: 12),
               Text(
-                expired
-                    ? "This code has expired."
-                    : "Expires in ${minutesAndSeconds(left ?? Duration.zero)}",
+                widget.backup
+                    // It has no expiry at all, and that is the whole point.
+                    ? "This code does not expire. It works once."
+                    : expired
+                        ? "This code has expired."
+                        : "Expires in "
+                            "${minutesAndSeconds(left ?? Duration.zero)}",
                 key: deviceCodeRemainingKey,
               ),
               // The same credential in a form a camera reads, so that
@@ -612,16 +900,45 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
                 Center(
                   child: DeviceCodeQr(
                     key: deviceCodeQrKey,
-                    payload: encodeDeviceCodePayload(serverUrl, code.code),
+                    payload: payload,
                   ),
                 ),
                 const SizedBox(height: 8),
                 const Text(deviceCodeQrAdvice),
+                // The same payload as text, for the other device that is not
+                // in the room (issue #91). Copyable, because it is long, and
+                // shown in full, because nothing is hidden from the person
+                // the code belongs to.
+                const SizedBox(height: 12),
+                const Text(deviceCodeLinkAdvice),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        payload,
+                        key: deviceCodeLinkKey,
+                        style: const TextStyle(
+                          fontFamily: "monospace",
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      key: deviceCodeCopyKey,
+                      icon: const Icon(Icons.copy),
+                      tooltip: "Copy the link",
+                      onPressed: () => _copy(payload),
+                    ),
+                  ],
+                ),
               ],
               const SizedBox(height: 12),
-              Text(widget.forUser.isEmpty
-                  ? deviceCodeAdvice
-                  : recoveryCodeAdvice(widget.forUser)),
+              Text(widget.backup
+                  ? backupCodeAdvice
+                  : widget.forUser.isEmpty
+                      ? deviceCodeAdvice
+                      : recoveryCodeAdvice(widget.forUser)),
             ],
             if (_joined != null) ...[
               const SizedBox(height: 12),

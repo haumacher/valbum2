@@ -19,7 +19,12 @@ public class DeviceList extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getDevices() */
 	private static final String DEVICES__PROP = "devices";
 
+	/** @see #getBackupCodeCreated() */
+	private static final String BACKUP_CODE_CREATED__PROP = "backupCodeCreated";
+
 	private final java.util.List<de.haumacher.imageServer.shared.model.DeviceEntry> _devices = new java.util.ArrayList<>();
+
+	private String _backupCodeCreated = "";
 
 	/**
 	 * Creates a {@link DeviceList} instance.
@@ -72,6 +77,33 @@ public class DeviceList extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_devices.remove(value);
 	}
 
+	/**
+	 * When the caller's backup code was made, empty while they have none (issue #92).
+	 *
+	 * <p>
+	 * Never the code itself — that is answered exactly once, when it is made. What the list
+	 * says is only whether there <em>is</em> one and since when, which is what the devices section
+	 * shows and what the sign-out warning needs: signing out of one's last device is a door that
+	 * locks behind one, unless a backup code is lying in a drawer.
+	 * </p>
+	 */
+	public final String getBackupCodeCreated() {
+		return _backupCodeCreated;
+	}
+
+	/**
+	 * @see #getBackupCodeCreated()
+	 */
+	public de.haumacher.imageServer.shared.model.DeviceList setBackupCodeCreated(String value) {
+		internalSetBackupCodeCreated(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getBackupCodeCreated()} without chain call utility. */
+	protected final void internalSetBackupCodeCreated(String value) {
+		_backupCodeCreated = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.DeviceList readDeviceList(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.DeviceList result = new de.haumacher.imageServer.shared.model.DeviceList();
@@ -93,6 +125,8 @@ public class DeviceList extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(BACKUP_CODE_CREATED__PROP);
+		out.value(getBackupCodeCreated());
 	}
 
 	@Override
@@ -106,6 +140,7 @@ public class DeviceList extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
+			case BACKUP_CODE_CREATED__PROP: setBackupCodeCreated(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

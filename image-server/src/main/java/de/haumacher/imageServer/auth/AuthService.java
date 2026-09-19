@@ -40,15 +40,15 @@ public class AuthService {
 
 	/** The message an anonymous caller is refused a write with. */
 	public static final String WRITE_REFUSED =
-		"This server requires a paired device for changes. Pair this device in the server settings.";
+		"This server requires a signed-in device for changes. Sign in with a code.";
 
 	/** The message an anonymous caller is refused a read with. */
 	public static final String READ_REFUSED =
-		"This server requires a paired device. Pair this device in the server settings.";
+		"This server requires a signed-in device. Sign in with a code.";
 
 	/** The message a caller with an unknown token is refused with. */
 	public static final String TOKEN_REFUSED =
-		"This device is no longer paired with the server. Pair it again in the server settings.";
+		"This device is no longer signed in at the server. Sign in again with a code.";
 
 	/**
 	 * The message a pairing carrying the retired pairing secret is refused with, see issue #89.
@@ -454,6 +454,32 @@ public class AuthService {
 	 * </p>
 	 */
 	public static final String DEVICE_CODE_ISSUER_GONE = "The device that issued this code was signed out.";
+
+	/**
+	 * The message a share link asking about backup codes is refused with, see issue #92.
+	 *
+	 * <p>
+	 * A link is nobody: there is no "oneself" for it to keep a way back to.
+	 * </p>
+	 */
+	public static final String BACKUP_CODE_REFUSED =
+		"A share link is no sign-in: it has no devices and no backup code.";
+
+	/** The message a caller without a backup code is told when they withdraw one, see issue #92. */
+	public static final String NO_BACKUP_CODE = "You have no backup code to withdraw.";
+
+	/**
+	 * The message a withdrawn backup code is refused with, see issue #92.
+	 *
+	 * <p>
+	 * Its own sentence, because {@link #DEVICE_CODE_ISSUER_GONE} would be a lie here: a backup
+	 * code has no issuer to lose, and it is withdrawn by its owner — usually by making a
+	 * newer one, which is what the person should go and look for.
+	 * </p>
+	 */
+	public static final String BACKUP_CODE_REVOKED =
+		"This backup code was withdrawn. Use the one that replaced it, or ask your administrator "
+			+ "for a recovery code.";
 
 	/** The message a guest is refused the creation of a group with. */
 	public static final String GROUP_CREATE_REFUSED =
@@ -2014,6 +2040,84 @@ public class AuthService {
 	}
 
 	/**
+	 * Issues the caller's own backup code, see issue #92.
+	 *
+	 * <p>
+	 * The missing end of the sign-out: a device code lives ten minutes and dies with the device
+	 * that made it, so "make one before you sign out" is no answer to losing one's last device.
+	 * This one is written down instead — {@value DeviceCodeStore#BACKUP_CODE_LENGTH}
+	 * characters, no expiry, and exempt from {@link #DEVICE_CODE_ISSUER_GONE} — and it is
+	 * redeemed through the ordinary pairing, in the same field as every other code. Single use,
+	 * and one per user: this call withdraws the one the caller had.
+	 * </p>
+	 *
+	 * <p>
+	 * Always for the caller themselves. Nobody makes a backup code for somebody else: that is what
+	 * the recovery code of {@link #deviceCode(Caller, String)} is, and it is the administrator's
+	 * doing and lives ten minutes for good reason.
+	 * </p>
+	 */
+	public DeviceCodeStore.Issued backupCode(Caller caller) throws Refused, IOException {
+		checkOwnCodes(caller);
+		return _deviceCodes.createBackup(caller.getUserName(), caller.getDeviceId());
+	}
+
+	/**
+	 * Withdraws the caller's own backup code, see issue #92.
+	 *
+	 * @return How many were withdrawn.
+	 * @throws Refused
+	 *         With {@link #NO_BACKUP_CODE} if there was none: a withdrawal that withdraws nothing
+	 *         says so rather than reporting a success nobody had.
+	 */
+	public int revokeBackupCode(Caller caller) throws Refused, IOException {
+		checkOwnCodes(caller);
+		int revoked = _deviceCodes.revokeBackup(caller.getUserName());
+		if (revoked == 0) {
+			throw new Refused(HttpServletResponse.SC_NOT_FOUND, NO_BACKUP_CODE);
+		}
+		return revoked;
+	}
+
+	/**
+	 * When the caller's backup code was made, the empty string while they have none.
+	 *
+	 * <p>
+	 * Never the code, which this server cannot show again in any case: only that there is one, so
+	 * that the devices section can say so and the sign-out warning can name it as a way back.
+	 * </p>
+	 */
+	public String backupCodeCreated(Caller caller) {
+		if (_deviceCodes == null || caller == null || !caller.isPaired() || caller.isShareLink()) {
+			return "";
+		}
+		DeviceCodeStore.Code code = _deviceCodes.backupCodeOf(caller.getUserName());
+		return code == null ? "" : code.getCreated();
+	}
+
+	/**
+	 * Refuses a caller who has no codes of their own to ask about, see issue #92.
+	 *
+	 * <p>
+	 * The same three answers the device endpoints give: a server that does not pair at all says
+	 * so, a share link is told that it is nobody, and anybody who has not signed in is answered
+	 * <code>401</code> — which is also the right advice, since signing in is exactly what
+	 * they should do.
+	 * </p>
+	 */
+	private void checkOwnCodes(Caller caller) throws Refused {
+		if (_mode == AuthMode.OFF || _deviceCodes == null) {
+			throw new Refused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
+		}
+		if (caller.isShareLink()) {
+			throw new Refused(HttpServletResponse.SC_FORBIDDEN, BACKUP_CODE_REFUSED);
+		}
+		if (!caller.isPaired()) {
+			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, WRITE_REFUSED);
+		}
+	}
+
+	/**
 	 * Pairs a further device of a user who is already here, against a device code (issue #65).
 	 *
 	 * <p>
@@ -2072,7 +2176,14 @@ public class AuthService {
 			if (!nameless && !requested.isEmpty() && !requested.equals(user.getName())) {
 				throw new PairRefused(HttpServletResponse.SC_UNAUTHORIZED, DEVICE_CODE_OTHER_USER);
 			}
-			if (record.isRevoked() || !issuerAlive(record)) {
+			if (record.isRevoked()) {
+				// An ordinary code is withdrawn when the device that made it was signed out, and
+				// is told exactly that; a backup code is withdrawn by its owner, see issue #92.
+				LOG.warning("Refusing " + record + ": it was withdrawn.");
+				throw new PairRefused(HttpServletResponse.SC_GONE,
+					record.isBackup() ? BACKUP_CODE_REVOKED : DEVICE_CODE_ISSUER_GONE);
+			}
+			if (!issuerAlive(record)) {
 				// The device that made this code is no longer one of the user's; the code dies with
 				// it, which is what makes signing a stranger's device out actually shut the door.
 				LOG.warning("Refusing " + record + ": the device that issued it is gone.");
@@ -2133,6 +2244,13 @@ public class AuthService {
 	 * </p>
 	 */
 	private boolean issuerAlive(DeviceCodeStore.Code record) {
+		if (record.isBackup()) {
+			// The one code that is meant to outlive its issuer (issue #92): it is made on the
+			// device one is about to sign out of, and it would be worth nothing if it went along.
+			// What it rests on instead is that it is the user's own, written down by them, single
+			// use, and withdrawn by making a new one or by asking.
+			return true;
+		}
 		if (DeviceCodeStore.SERVER_ISSUER.equals(record.getIssuedBy())) {
 			return true;
 		}

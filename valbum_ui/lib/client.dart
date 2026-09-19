@@ -1489,6 +1489,37 @@ class VAlbumClient {
     return DeviceCodeCreated.read(JsonReader.fromString(response));
   }
 
+  /// The caller's own backup code: the way back from the last sign-out
+  /// (issue #92).
+  ///
+  /// The same wire shape as [deviceCode] and deliberately so — a code, not a
+  /// second credential system. Two values differ: it is sixteen characters
+  /// instead of eight, and its expiry is **empty**, which means it never runs
+  /// out. It is still single-use, it is still typed into the one sign-in
+  /// field, and it is answered exactly once: the server keeps the hash and
+  /// can never show it again.
+  ///
+  /// Always for the caller themselves, and one at a time: this call withdraws
+  /// the code the caller had. Refused with the server's own sentence for a
+  /// share link (403) and for a caller that is no device (401).
+  Future<DeviceCodeCreated> backupCode() async {
+    var url = "${folderUrl(const [])}?action=backup-code";
+    var response = await _postBody(url, "");
+    return DeviceCodeCreated.read(JsonReader.fromString(response));
+  }
+
+  /// Withdraws the caller's own backup code, answering the devices that
+  /// remain (issue #92).
+  ///
+  /// The answer is a [DeviceList] whose [DeviceList.backupCodeCreated] is
+  /// empty again, exactly as [unpair] answers what is left. A caller who has
+  /// none is refused with the server's own sentence (404).
+  Future<DeviceList> revokeBackupCode() async {
+    var url = "${folderUrl(const [])}?action=revoke-backup-code";
+    var response = await _postBody(url, "");
+    return DeviceList.read(JsonReader.fromString(response));
+  }
+
   /// Who is in this space, and what each of them may do (issues #83/#85).
   ///
   /// The administrator's question: a user's permission is the same in every
