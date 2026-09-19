@@ -74,6 +74,67 @@ const String defaultInviteRole = roleView;
 /// knows, and the public level is what a link to a stranger gets.
 const String defaultInviteClearance = clearanceNonPrivate;
 
+/// The query parameter a dead invitation address is redirected with (#88).
+///
+/// A page load of `<context>[/<space>]/i/<token>/` whose token is no live
+/// invitation of that space is answered `302` to the ordinary app base of that
+/// space, with the reason here. The app reads it once, says it, and removes it
+/// from the location again, see `VAlbumApp.location`.
+const String invitationNoticeParameter = "invitation";
+
+/// The invitation was accepted already, see [invitationNoticeParameter].
+const String invitationUsed = "used";
+
+/// The invitation's lifetime has run out.
+const String invitationExpired = "expired";
+
+/// The invitation was withdrawn by whoever issued it.
+const String invitationWithdrawn = "withdrawn";
+
+/// This server never issued such an invitation.
+const String invitationUnknown = "unknown";
+
+/// What the notice of a dead invitation address says, `null` for a reason this
+/// build does not know (issue #88).
+///
+/// The used one is the reason this exists, and it is the one that depends on
+/// the device: the browser that joined through the very link that is now used
+/// up *is* signed in here, so it is told so by name. A device that is not
+/// signed in is told the one thing that still works — a device code from the
+/// device that accepted the invitation.
+///
+/// An unknown reason says nothing rather than something wrong; the parameter
+/// is removed from the location either way.
+String? invitationNoticeText(
+  String reason, {
+  required bool signedIn,
+  String? userName,
+}) {
+  switch (reason) {
+    case invitationUsed:
+      if (!signedIn) {
+        return "This invitation was already used. If you accepted it on "
+            "another device, sign in here with a device code from that "
+            "device; otherwise ask for a new invitation.";
+      }
+      var name = userName ?? "";
+      if (name.isEmpty) {
+        return "This invitation was already used \u2014 you are already "
+            "signed in here.";
+      }
+      return "This invitation was already used \u2014 you are signed in here "
+          "as $name.";
+    case invitationExpired:
+      return "This invitation has expired. Ask for a new one.";
+    case invitationWithdrawn:
+      return "This invitation was withdrawn.";
+    case invitationUnknown:
+      return "This is not an invitation of this server.";
+    default:
+      return null;
+  }
+}
+
 /// The key of the user name field of the welcome screen.
 const Key invitationUserFieldKey = Key("invitation.userName");
 

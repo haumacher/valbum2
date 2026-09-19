@@ -315,6 +315,8 @@ public class Main {
 		// the static handler never looks at the token.
 		ResourceServlet app = new ResourceServlet(webRootPath, Settings.DATA_PREFIX,
 			ShareStore.URL_SEGMENT, InvitationStore.URL_SEGMENT);
+		// A page load of a dead invitation address is the start page of its space, see issue #88.
+		app.setSessionGuard(new InvitationRedirect(spaces));
 		if (spaces.getMode() == SpaceMode.SINGLE) {
 			webapp.addServlet(new ServletHolder(new ImageServlet(basePath, spaces.single().getAuth())),
 				Settings.DATA_PREFIX + "/*");

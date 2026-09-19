@@ -90,6 +90,19 @@ void leaveForUrl(String url) => _replaceLocation(url);
 @JS('window.location.replace')
 external void _replaceLocation(String url);
 
+/// Rewrites the browser location to [url] without loading anything.
+///
+/// The sibling of [leaveForUrl] for the one thing that must *not* be a
+/// navigation: the reason a dead invitation address was redirected with
+/// (`?invitation=used`, issue #88) is said once, and then it has no business
+/// in the location any more — a reload or a bookmark taken afterwards must not
+/// repeat it. `replaceState` leaves the page and the history entry where they
+/// are and changes only what the address bar shows.
+void rewritePageUrl(String url) => _replaceState(null, "", url);
+
+@JS('window.history.replaceState')
+external void _replaceState(JSAny? data, String title, String url);
+
 /// What this machine says about itself, for the header of a diagnostics log.
 ///
 /// A browser is asked through the page, not through `dart:io`; the user agent

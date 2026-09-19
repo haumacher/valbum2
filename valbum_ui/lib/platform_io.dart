@@ -113,6 +113,12 @@ void executeBackgroundTask(Future<bool> Function() task) =>
 /// simply carries on with the token it was given, see `invitation.dart`.
 void leaveForUrl(String url) {}
 
+/// Rewrites the location of the page the app runs in: nothing, off the web.
+///
+/// There is no address bar on a phone or a desktop, and no redirect that could
+/// have written a reason into one, see issue #88.
+void rewritePageUrl(String url) {}
+
 /// What this machine says about itself, for the header of a diagnostics log.
 String platformDescription() =>
     "${Platform.operatingSystem} ${Platform.operatingSystemVersion}";

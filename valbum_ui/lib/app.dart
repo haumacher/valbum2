@@ -118,6 +118,30 @@ class VAlbumApp extends StatefulWidget {
   /// server field, see `invitation.dart`. Tests inject it.
   final SessionUrl? session;
 
+  /// The location the app was opened at, read once at start-up (issue #88).
+  ///
+  /// Only one thing is read from it, and only on an ordinary start: the
+  /// `?invitation=<reason>` a dead invitation address was redirected with, see
+  /// [VAlbumAppState._readInvitationNotice]. Defaults to `Uri.base` on the web
+  /// and to `null` everywhere else, where there is no document location at
+  /// all. Tests inject it.
+  final Uri? location;
+
+  /// Rewrites the browser location without loading anything, see
+  /// [rewritePageUrl].
+  ///
+  /// What removes the `?invitation=<reason>` from the location once it has
+  /// been said, so that a reload or a bookmark does not repeat it. Tests
+  /// inject it to read what the app wrote.
+  final void Function(Uri uri)? rewriteLocation;
+
+  /// Leaves the page the app runs in for another URL, see [leaveForUrl].
+  ///
+  /// The platform's own navigation by default: an accepted invitation leaves
+  /// its session base for the ordinary one, and so does the refusal page of an
+  /// invitation that died in the meantime (issue #88). Tests inject it.
+  final void Function(String url)? openUrl;
+
   const VAlbumApp({
     super.key,
     this.client,
@@ -131,6 +155,9 @@ class VAlbumApp extends StatefulWidget {
     this.wakelock,
     this.deviceCodeScanner,
     this.session,
+    this.location,
+    this.rewriteLocation,
+    this.openUrl,
   });
 
   @override
@@ -299,6 +326,19 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// asked once per client and not once per rebuild.
   String? _callerAsked;
 
+  /// Leaves the page for another URL, see [VAlbumApp.openUrl].
+  late final void Function(String url) _openUrl = widget.openUrl ?? leaveForUrl;
+
+  /// Rewrites the location without loading anything, see
+  /// [VAlbumApp.rewriteLocation].
+  late final void Function(Uri uri) _rewriteLocation =
+      widget.rewriteLocation ?? ((uri) => rewritePageUrl(uri.toString()));
+
+  /// The reason a dead invitation address sent this start here, `null` when
+  /// none was named, when the reason is one this build does not know, or once
+  /// the notice was dismissed (issue #88).
+  String? _invitationNotice;
+
   /// Why the session cannot start, `null` while all is well.
   ///
   /// A `410` (expired, withdrawn, used up) is the reason this exists; every
@@ -436,6 +476,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     // it was opened at, see [_defaultSettings] and [_initialRouteInformation].
     settings.addListener(_settingsChanged);
     _initialRouteInformation;
+    _readInvitationNotice();
     _syncClient();
     if (session != null) {
       // A link session asks one question before it shows anything: is this
@@ -461,6 +502,101 @@ class VAlbumAppState extends State<VAlbumApp> {
         cameraRoll.start();
       }
     });
+  }
+
+  /// Reads the `?invitation=<reason>` of a redirected dead invitation address
+  /// once, and takes it out of the location again (issue #88).
+  ///
+  /// Only on an ordinary start: inside a session the app base *is* the
+  /// invitation, and nothing was redirected. Off the web there is no document
+  /// location, so there is nothing to read and nothing to rewrite.
+  ///
+  /// The parameter is removed whatever it said — an unknown reason shows no
+  /// notice, and leaving it in the location would make a reload or a bookmark
+  /// carry a word this build cannot say.
+  void _readInvitationNotice() {
+    if (session != null) {
+      return;
+    }
+    var location = widget.location ?? (kIsWeb ? Uri.base : null);
+    if (location == null) {
+      return;
+    }
+    var reason = location.queryParameters[invitationNoticeParameter];
+    if (reason == null) {
+      return;
+    }
+    var rest = Map<String, String>.from(location.queryParameters)
+      ..remove(invitationNoticeParameter);
+    _rewriteLocation(Uri(
+      scheme: location.hasScheme ? location.scheme : null,
+      userInfo: location.userInfo.isEmpty ? null : location.userInfo,
+      host: location.host.isEmpty ? null : location.host,
+      port: location.hasPort ? location.port : null,
+      path: location.path,
+      queryParameters: rest.isEmpty ? null : rest,
+      fragment: location.fragment.isEmpty ? null : location.fragment,
+    ));
+    if (invitationNoticeText(reason, signedIn: false) != null) {
+      _invitationNotice = reason;
+    }
+  }
+
+  /// The notice of [_invitationNotice] as it reads right now, `null` while
+  /// there is none to show.
+  ///
+  /// Asked on every build rather than computed once: whether this device is
+  /// signed in and under which name is answered by the stored settings and by
+  /// the one `?type=auth` of [caller], and the latter arrives after the first
+  /// frame.
+  String? get _invitationNoticeText {
+    var reason = _invitationNotice;
+    if (reason == null) {
+      return null;
+    }
+    var name = caller?.userName ?? "";
+    if (name.isEmpty) {
+      name = settings.userName ?? "";
+    }
+    return invitationNoticeText(
+      reason,
+      signedIn: (settings.token ?? "").isNotEmpty,
+      userName: name,
+    );
+  }
+
+  /// Puts the notice of a dead invitation address above whatever the ordinary
+  /// start shows, see [_readInvitationNotice].
+  ///
+  /// The `builder` of both [MaterialApp]s of this app, so that the album and
+  /// the sign-in screen carry it alike — and inside them, so that the banner
+  /// is themed and laid out like everything else.
+  Widget _withInvitationNotice(BuildContext context, Widget? child) {
+    var text = _invitationNoticeText;
+    var below = child ?? const SizedBox.shrink();
+    if (text == null) {
+      return below;
+    }
+    return Column(
+      children: [
+        SafeArea(
+          bottom: false,
+          child: MaterialBanner(
+            key: const Key("invitation-notice"),
+            content: Text(text),
+            leading: const Icon(Icons.info_outline),
+            actions: [
+              TextButton(
+                key: const Key("invitation-notice-dismiss"),
+                onPressed: () => setState(() => _invitationNotice = null),
+                child: const Text("Dismiss"),
+              ),
+            ],
+          ),
+        ),
+        Expanded(child: below),
+      ],
+    );
   }
 
   /// Asks the server once what the token in the app base really is.
@@ -717,6 +853,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   Widget _beforeTheRouter() => MaterialApp.router(
         title: 'Virtual Photo Album',
         theme: ThemeData(primarySwatch: Colors.blue),
+        builder: _withInvitationNotice,
         routerDelegate: _preRouter ??= SilentRouterDelegate(_startupScreen),
       );
 
@@ -730,8 +867,15 @@ class VAlbumAppState extends State<VAlbumApp> {
     var refusal = _shareRefusal;
     if (refusal != null) {
       // A link that is gone says so and offers nothing else: there is no
-      // server to configure and no device to sign in, see issue #51.
-      return ShareGoneScreen(message: refusal.message);
+      // server to configure and no device to sign in, see issue #51. An
+      // invitation that died between the page load and the probe is the one
+      // exception: this browser may be signed in here already, so it is
+      // offered the ordinary start page of the very same server (issue #88).
+      var invite = invitation;
+      return ShareGoneScreen(
+        message: refusal.message,
+        onContinue: invite == null ? null : () => _openUrl(invite.appBase),
+      );
     }
     var invite = invitation;
     if (invite != null) {
@@ -747,6 +891,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         token: invite.token,
         appBase: invite.appBase,
         onJoined: _invitationAccepted,
+        openUrl: _openUrl,
         // An invitation that died between the welcome and the "Join" is gone
         // exactly as one that was dead on arrival, and says the same thing.
         onGone: (message) => setState(
@@ -775,6 +920,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         child: MaterialApp.router(
           title: 'Virtual Photo Album',
           theme: ThemeData(primarySwatch: Colors.blue),
+          builder: _withInvitationNotice,
           routerDelegate: router,
           routeInformationParser: const VAlbumRouteInformationParser(),
           // Always this app's own provider: it carries the location the app

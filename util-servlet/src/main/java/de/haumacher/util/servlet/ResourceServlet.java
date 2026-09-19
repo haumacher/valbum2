@@ -110,14 +110,68 @@ public class ResourceServlet extends HttpServlet {
 		_baseSegments = segments == null ? java.util.Collections.emptySet() : segments;
 	}
 
+	/**
+	 * Whether the application may be served for the token of a virtual session base, and where to
+	 * send the caller instead.
+	 *
+	 * <p>
+	 * The static handler never looks at a token itself and must not learn what one means: what a
+	 * token opens is the JSON API's business. This is the one question it asks somebody else, and
+	 * only for a <em>page load</em> — the entry point itself and the extension-less deep links
+	 * below it. The application's own files are served whatever the answer would be, because a
+	 * page that is being served needs them.
+	 * </p>
+	 */
+	@FunctionalInterface
+	public interface SessionGuard {
+
+		/**
+		 * Where a page load below the given session base belongs instead.
+		 *
+		 * @param appBase
+		 *        What the session lives below, without a trailing slash: the empty string at the
+		 *        context root, <code>/&lt;space&gt;</code> below a space, see
+		 *        {@link WebRootResolver#spaceSessionBase}.
+		 * @param prefix
+		 *        The first segment of the session base, one of the virtual prefixes this servlet
+		 *        was created with.
+		 * @param token
+		 *        The second segment, the opaque token.
+		 * @return The context-relative path (with a leading slash) to redirect the page load to,
+		 *         <code>null</code> to serve the application as usual.
+		 */
+		String redirect(String appBase, String prefix, String token);
+	}
+
+	private SessionGuard _sessionGuard;
+
+	/**
+	 * Installs the {@link SessionGuard} asked before a page below a virtual session base is served.
+	 *
+	 * <p>
+	 * <code>null</code> (the default) serves every session base, which is what this servlet did
+	 * before anybody asked.
+	 * </p>
+	 */
+	public void setSessionGuard(SessionGuard guard) {
+		_sessionGuard = guard;
+	}
+
 	@Override
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
 
 		String virtualBase = WebRootResolver.virtualBase(pathInfo, _virtualPrefixes);
+		// What the session lives below: the context root, or a space of a multi-space server.
+		String appBase = "";
+		String sessionBase = virtualBase;
 		if (virtualBase == null) {
 			// A session of a space is the longer base, so it is asked for before the space itself.
 			virtualBase = WebRootResolver.spaceSessionBase(pathInfo, _baseSegments, _virtualPrefixes);
+			if (virtualBase != null) {
+				appBase = WebRootResolver.singleSegmentBase(pathInfo, _baseSegments);
+				sessionBase = virtualBase.substring(appBase.length());
+			}
 		}
 		if (virtualBase == null) {
 			virtualBase = WebRootResolver.singleSegmentBase(pathInfo, _baseSegments);
@@ -126,6 +180,18 @@ public class ResourceServlet extends HttpServlet {
 		if (virtualBase != null && relative.isEmpty()) {
 			// "/s/<token>" (and "/i/<token>") without a trailing slash is the entry point, too.
 			relative = "/";
+		}
+
+		if (sessionBase != null && _sessionGuard != null && WebRootResolver.isRoute(relative)) {
+			// A page load below a session base; an asset below it is served whatever the answer.
+			int slash = sessionBase.indexOf('/', 1);
+			String target = _sessionGuard.redirect(appBase, sessionBase.substring(1, slash),
+				sessionBase.substring(slash + 1));
+			if (target != null) {
+				response.sendRedirect(
+					(request.getContextPath() == null ? "" : request.getContextPath()) + target);
+				return;
+			}
 		}
 
 		String resource = WebRootResolver.resolve(relative, this::exists);

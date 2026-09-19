@@ -191,19 +191,38 @@ class SharePlainPage extends StatelessWidget {
 
 /// The page of a link that expired or was withdrawn: the server's `410`.
 ///
-/// Nothing but the sentence: there is no remedy the visitor holds — the link
-/// is gone, and only the person who made it can make another one.
+/// For a share link, nothing but the sentence: there is no remedy the visitor
+/// holds — the link is gone, and only the person who made it can make another
+/// one.
+///
+/// An invitation is the one case where there is somewhere to go (issue #88).
+/// The page was served while the invitation was still alive and the start-up
+/// probe found it dead — the race the redirect of #88 cannot catch — and the
+/// browser that opened it may well be signed in on this server already. So it
+/// is offered the way to the ordinary start page, see [onContinue].
 class ShareGoneScreen extends StatelessWidget {
-  /// The server's reason, which tells expired from withdrawn.
+  /// The server's reason, which tells expired from withdrawn from used.
   final String message;
 
-  const ShareGoneScreen({super.key, required this.message});
+  /// Leaves for the ordinary app base of this server, `null` where there is no
+  /// such way on (a share link).
+  final VoidCallback? onContinue;
+
+  const ShareGoneScreen({super.key, required this.message, this.onContinue});
 
   @override
   Widget build(BuildContext context) => SharePlainPage(
         key: const Key("share-gone"),
         icon: Icons.link_off,
         message: message,
+        action: onContinue == null
+            ? null
+            : FilledButton.icon(
+                key: const Key("invitation-continue"),
+                onPressed: onContinue,
+                icon: const Icon(Icons.home),
+                label: const Text("Continue to the start page"),
+              ),
       );
 }
 
