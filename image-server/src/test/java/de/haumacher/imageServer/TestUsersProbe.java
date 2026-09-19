@@ -41,8 +41,6 @@ import junit.framework.TestCase;
 @SuppressWarnings("javadoc")
 public class TestUsersProbe extends TestCase {
 
-	private static final String SECRET = "let-me-in";
-
 	private static final String OLD_TOKEN = "token-issued-before-users-existed";
 
 	private static final String ALBUM = "2020-01-01 Some Trip";
@@ -71,14 +69,16 @@ public class TestUsersProbe extends TestCase {
 	}
 
 
-	public void testAnotherNameAtTheSecretIsRefusedWithTheOwnersName() throws Exception {
+	/** A code says whom it signs in; a name that is not theirs is refused, see issues #65 and #89. */
+	public void testAnotherNameAtACodeIsRefused() throws Exception {
 		ImageServlet servlet = servlet();
 		signIn(servlet, "haui", "Tablet");
 
-		FakeResponse response = post(servlet, "pair", pairRequest(SECRET, "Phone", "mallory"), null);
+		FakeResponse response =
+			post(servlet, "pair", Codes.pairRequest(Codes.forServlet(servlet), "Phone", "mallory"), null);
 
 		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, response.status());
-		assertEquals(UserStore.ownerMismatch("haui"), errorMessage(response));
+		assertEquals(AuthService.DEVICE_CODE_OTHER_USER, errorMessage(response));
 		assertEquals("No device was added by the refused sign-in.", 2,
 			new UserStore(_base).getOwner().getDevices().size());
 	}
@@ -86,18 +86,14 @@ public class TestUsersProbe extends TestCase {
 	// --- Helpers. ---
 
 	private ImageServlet servlet() throws IOException {
-		return new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SECRET, _base));
+		return new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base));
 	}
 
 	private PairResponse signIn(ImageServlet servlet, String userName, String deviceName) throws Exception {
-		FakeResponse response = post(servlet, "pair", pairRequest(SECRET, deviceName, userName), null);
+		FakeResponse response =
+			post(servlet, "pair", Codes.pairRequest(Codes.forServlet(servlet), deviceName, userName), null);
 		assertEquals("Sign-in failed: " + response.body(), HttpServletResponse.SC_OK, response.status());
 		return PairResponse.readPairResponse(reader(response.body()));
-	}
-
-	private static String pairRequest(String secret, String deviceName, String userName) {
-		return "{\"secret\":\"" + secret + "\",\"deviceName\":\"" + deviceName + "\",\"userName\":\"" + userName
-			+ "\"}";
 	}
 
 	private AuthInfo authInfo(ImageServlet servlet, String token) throws Exception {

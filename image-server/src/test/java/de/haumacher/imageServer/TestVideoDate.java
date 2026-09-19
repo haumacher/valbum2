@@ -190,7 +190,7 @@ public class TestVideoDate extends TestCase {
 	/** The album at the given path, as the server describes it. */
 	private AlbumInfo album(String pathInfo) throws Exception {
 		if (_servlet == null) {
-			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.OFF, "", _base));
+			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.OFF, _base));
 		}
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("type", "json");

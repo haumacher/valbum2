@@ -1,11 +1,11 @@
-/// Tests of the two things the real-browser check of the space model found
-/// (issue #86).
+/// Tests of the name a sign-in gives a user (issues #86, #89).
 ///
-/// The secret creates the **administrator of a space**, one user among
-/// several — not "the library owner" of a library that had exactly one. A user
-/// without a name can be neither credited (attribution falls back to
-/// `anonymous`) nor managed (`set-permission` and `remove-user` address users
-/// by name), so the name is required before anything is sent.
+/// A code says whom it signs in, so the app asks for nothing — except where
+/// the code's user has **no name yet**: the seat code of a space nobody signed
+/// into. A user without a name can be neither credited (attribution falls back
+/// to `anonymous`) nor managed (`set-permission` and `remove-user` address
+/// users by name), so the server answers `400` with its own sentence, the
+/// field appears, and the person chooses their own name.
 ///
 /// And the signed-in block is filled from one `?type=auth` right after the
 /// pairing, because the pairing answer carries no space, no clearance and no
@@ -103,9 +103,9 @@ Iterable<http.Request> pairsIn(List<http.Request> requests) =>
     requests.where((r) => r.url.queryParameters["action"] == "pair");
 
 void main() {
-  group('the name the secret signs in under', () {
-    testWidgets('is required, and said before anything is sent',
-        (tester) async {
+  group('the name a code signs in under', () {
+    testWidgets('is not asked for while the server does not ask', (tester) async {
+      // A code says whom it signs in; asking would be asking for nothing.
       var store = InMemorySettingsStore(serverUrl);
       var requests = <http.Request>[];
       await pumpSettings(
@@ -114,48 +114,7 @@ void main() {
         serverAnswering(requests),
       );
 
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
-      await tester.pumpAndSettle();
-      await tapVisible(tester, signInButton);
-
-      expect(
-        tester.widget<Text>(find.byKey(signInErrorKey)).data,
-        "Enter your name.",
-      );
-      expect(pairsIn(requests), isEmpty);
-      expect(store.token, isNull);
-    });
-
-    testWidgets('goes through once it is there', (tester) async {
-      var store = InMemorySettingsStore(serverUrl);
-      var requests = <http.Request>[];
-      await pumpSettings(
-        tester,
-        await freshSettings(store),
-        serverAnswering(requests),
-      );
-
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
-      await tester.enterText(find.byKey(userNameFieldKey), "haui");
-      await tester.pumpAndSettle();
-      await tapVisible(tester, signInButton);
-
-      expect(find.byKey(signInErrorKey), findsNothing);
-      expect(pairsIn(requests).single.body, contains('"userName":"haui"'));
-      expect(store.token, "tok-9");
-    });
-
-    testWidgets('is not required for a device code, which needs none',
-        (tester) async {
-      // A code adds a further device of the user who issued it: there is
-      // nobody to name, see issue #65.
-      var store = InMemorySettingsStore(serverUrl);
-      var requests = <http.Request>[];
-      await pumpSettings(
-        tester,
-        await freshSettings(store),
-        serverAnswering(requests),
-      );
+      expect(find.byKey(userNameFieldKey), findsNothing);
 
       await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-2345");
       await tester.pumpAndSettle();
@@ -168,62 +127,80 @@ void main() {
       expect(store.token, "tok-9");
     });
 
-    testWidgets('is explained at the field, in the words of the space model',
+    testWidgets('is asked for when the server says the user has none',
         (tester) async {
+      // The seat code of a fresh space: the first answer is the server's
+      // sentence, the second press carries the name (issue #89).
+      var store = InMemorySettingsStore(serverUrl);
+      var requests = <http.Request>[];
+      var answered = 0;
       await pumpSettings(
         tester,
-        await freshSettings(InMemorySettingsStore(serverUrl)),
-        serverAnswering([]),
+        await freshSettings(store),
+        serverAnswering(
+          requests,
+          pair: () => answered++ == 0
+              ? http.Response(refusal(nameRequiredMessage), 400)
+              : http.Response(paired, 200),
+        ),
       );
 
+      await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-2345");
+      await tester.pumpAndSettle();
+      await tapVisible(tester, signInButton);
+
+      // The server's own words, and the field it asked for.
       expect(
-        tester.widget<TextField>(find.byKey(userNameFieldKey)).decoration
-            ?.helperText,
-        "Your name in this space; the first sign-in with the secret names the "
-        "administrator.",
+        tester.widget<Text>(find.byKey(signInErrorKey)).data,
+        nameRequiredMessage,
       );
-      // And the paragraph above it no longer promises a nameless owner.
-      expect(find.textContaining("Leave empty"), findsNothing);
-      expect(find.textContaining("library owner"), findsNothing);
-      expect(
-        find.text("The pairing secret, which the server prints at start-up, "
-            "signs in the administrator of this space. The first sign-in with "
-            "it names that administrator."),
-        findsOneWidget,
-      );
+      expect(find.byKey(userNameFieldKey), findsOneWidget);
+      expect(store.token, isNull);
+
+      await tester.enterText(find.byKey(userNameFieldKey), "haui");
+      await tester.pumpAndSettle();
+      await tapVisible(tester, signInButton);
+
+      var second = pairsIn(requests).last;
+      expect(second.body, contains('"userName":"haui"'));
+      // The code is still the same one: it was never spent.
+      expect(second.body, contains('"deviceCode":"ABCD-2345"'));
+      expect(store.token, "tok-9");
+      expect(store.userName, "haui");
+      expect(find.text("Signed in as haui"), findsOneWidget);
     });
 
-    testWidgets('and the server\'s own refusal is shown where it comes',
+    testWidgets('is explained at the field, in the words of the space model',
         (tester) async {
-      var requests = <http.Request>[];
+      var answered = 0;
       await pumpSettings(
         tester,
         await freshSettings(InMemorySettingsStore(serverUrl)),
         serverAnswering(
-          requests,
-          pair: () => http.Response(
-            refusal("The first administrator of a space must have a name."),
-            400,
-          ),
+          [],
+          pair: () => answered++ == 0
+              ? http.Response(refusal(nameRequiredMessage), 400)
+              : http.Response(paired, 200),
         ),
       );
 
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
-      await tester.enterText(find.byKey(userNameFieldKey), " ");
+      // The paragraph above the fields is about the code now.
+      expect(find.text(signInCodeExplanation), findsOneWidget);
+      expect(find.textContaining("Leave empty"), findsNothing);
+      expect(find.textContaining("pairing secret"), findsNothing);
+
+      await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-2345");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
-      // A name of blanks is no name here either, so nothing is sent — the
-      // sentence the server would answer is shown where it does arrive, see
-      // the next test.
       expect(
-        tester.widget<Text>(find.byKey(signInErrorKey)).data,
-        "Enter your name.",
+        tester.widget<TextField>(find.byKey(userNameFieldKey)).decoration
+            ?.helperText,
+        userNameHelp,
       );
-      expect(pairsIn(requests), isEmpty);
     });
 
-    testWidgets('a server that refuses the name says so, word for word',
+    testWidgets('and a refusal that is not about a name is shown as a failure',
         (tester) async {
       await pumpSettings(
         tester,
@@ -231,21 +208,19 @@ void main() {
         serverAnswering(
           [],
           pair: () => http.Response(
-            refusal("The first administrator of a space must have a name."),
-            400,
+            refusal("This device code has expired."),
+            410,
           ),
         ),
       );
 
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
-      await tester.enterText(find.byKey(userNameFieldKey), "haui");
+      await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-2345");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
-      expect(
-        find.text("The first administrator of a space must have a name."),
-        findsOneWidget,
-      );
+      expect(find.text("This device code has expired."), findsOneWidget);
+      // No name field: this refusal is not about a name.
+      expect(find.byKey(userNameFieldKey), findsNothing);
     });
   });
 
@@ -259,8 +234,7 @@ void main() {
         serverAnswering(requests),
       );
 
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
-      await tester.enterText(find.byKey(userNameFieldKey), "haui");
+      await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-2345");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
@@ -294,8 +268,7 @@ void main() {
         }),
       );
 
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
-      await tester.enterText(find.byKey(userNameFieldKey), "haui");
+      await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-2345");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 

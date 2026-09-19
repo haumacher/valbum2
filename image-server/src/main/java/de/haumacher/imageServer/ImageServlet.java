@@ -25,6 +25,7 @@ import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
 import de.haumacher.imageServer.shared.model.DeviceCodeCreated;
+import de.haumacher.imageServer.shared.model.DeviceCodeRequest;
 import de.haumacher.imageServer.shared.model.DeviceEntry;
 import de.haumacher.imageServer.shared.model.DeviceList;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -159,6 +160,9 @@ public class ImageServlet extends HttpServlet {
 	/** The message an unreadable group rename is refused with, see issue #55. */
 	public static final String RENAME_UNREADABLE = "The request naming the group to rename cannot be read.";
 
+	/** The message an unreadable device code request is refused with, see issue #89. */
+	public static final String DEVICE_CODE_UNREADABLE = "The request naming whom the code is for cannot be read.";
+
 	/** The message an unreadable unpair request is refused with, see issue #55. */
 	public static final String DEVICE_UNREADABLE = "The request naming the device to sign out cannot be read.";
 
@@ -272,6 +276,11 @@ public class ImageServlet extends HttpServlet {
 	private JakartaServletFileUpload<UploadItem, UploadFactory> _fileUpload;
 
 	private final AuthService _auth;
+
+	/** Who may do what here; the users, devices and codes of the space this servlet serves. */
+	AuthService auth() {
+		return _auth;
+	}
 
 	/**
 	 * Creates a {@link ImageServlet} serving every request without authentication.
@@ -1215,9 +1224,11 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 *
 	 * <p>
-	 * The request needs no body and any body it carries is ignored: everything the code says — whom
-	 * it signs in and which device asked — the server already knows from the token. A share link is
-	 * refused (<code>403</code>): it is nobody, and there is nobody for it to add a device to. An
+	 * The request needs no body: everything the code says — whom it signs in and which device
+	 * asked — the server already knows from the token. A body may name somebody else
+	 * ({@link DeviceCodeRequest}), which only an administrator may do: the <em>recovery code</em>
+	 * of issue #89, for a person who lost every device they had. A share link is refused
+	 * (<code>403</code>): it is nobody, and there is nobody for it to add a device to. An
 	 * anonymous caller and an invitation bearer are answered <code>401</code>, exactly as
 	 * <code>?type=devices</code> answers them.
 	 * </p>
@@ -1238,9 +1249,18 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
+		String userName;
+		try {
+			userName = deviceCodeTarget(context.request());
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unreadable device code request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, DEVICE_CODE_UNREADABLE);
+			return;
+		}
+
 		DeviceCodeStore.Issued issued;
 		try {
-			issued = _auth.deviceCode(caller);
+			issued = _auth.deviceCode(caller, userName);
 		} catch (AuthService.Refused ex) {
 			LOG.warning("Refusing a device code to '" + caller.getUserName() + "': " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());
@@ -1250,6 +1270,24 @@ public class ImageServlet extends HttpServlet {
 		serveJsonObject(context.response(), DeviceCodeCreated.create()
 			.setCode(DeviceCodeStore.format(issued.getCode()))
 			.setExpires(issued.getRecord().getExpires()));
+	}
+
+	/**
+	 * Whom the given device-code request is for, the empty string for the caller themselves.
+	 *
+	 * <p>
+	 * An empty body is the ordinary case and stays what it always was; a body that is a
+	 * {@link DeviceCodeRequest} names the user the code signs in, see issue #89.
+	 * </p>
+	 */
+	private static String deviceCodeTarget(HttpServletRequest request) throws IOException {
+		byte[] contents = readBody(request);
+		if (contents.length == 0) {
+			return "";
+		}
+		DeviceCodeRequest parsed = DeviceCodeRequest.readDeviceCodeRequest(new JsonReader(
+			new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		return parsed.getUserName() == null ? "" : parsed.getUserName();
 	}
 
 	/** The caller's own devices as the protocol carries them, the asking one marked. */

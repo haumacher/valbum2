@@ -90,10 +90,8 @@ void main() {
         "http://homepi:8082/valbum/",
       );
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
-    // The secret names the space's administrator, so a name is required
-    // (issue #86).
-    await tester.enterText(find.byKey(userNameFieldKey), "haui");
+      // One field and one thing in it: the code the server printed (issue #89).
+    await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-EFGH");
       await tester.enterText(find.byKey(deviceNameFieldKey), "Phone");
       await tester.pumpAndSettle();
 

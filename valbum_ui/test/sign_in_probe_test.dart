@@ -90,7 +90,7 @@ void main() {
     expect(find.text("Not signed in"), findsOneWidget);
     expect(find.text("Signed in as haui"), findsNothing);
     // The sign-in fields are back, ready for the other server.
-    expect(find.byKey(userNameFieldKey), findsOneWidget);
+    expect(find.byKey(deviceCodeFieldKey), findsOneWidget);
     expect(find.widgetWithText(FilledButton, "Sign in"), findsOneWidget);
     // The token of the old server was never sent to the new one.
     expect(authRequests.where((url) => url.host == "elsewhere"), isEmpty);
@@ -117,7 +117,7 @@ void main() {
     expect(find.text("Role: admin"), findsNothing);
     // Signing in again is possible right here.
     expect(find.widgetWithText(FilledButton, "Sign in"), findsOneWidget);
-    expect(find.byKey(pairingSecretFieldKey), findsOneWidget);
+    expect(find.byKey(deviceCodeFieldKey), findsOneWidget);
   });
 
   testWidgets('the refusal page of a migrated library leads to the sign-in',
@@ -148,13 +148,12 @@ void main() {
     expect(find.text(refused), findsOneWidget);
     // Nothing on the page speaks of pairing a device any more.
     expect(find.textContaining("Pair"), findsNothing);
-    expect(find.textContaining("pairing secret"), findsWidgets);
+    expect(find.textContaining("the code the server printed"), findsWidgets);
 
     await tapVisible(tester, find.text("Server settings..."));
 
     expect(find.text("Sign in"), findsWidgets);
-    expect(find.byKey(userNameFieldKey), findsOneWidget);
-    expect(find.byKey(pairingSecretFieldKey), findsOneWidget);
+    expect(find.byKey(deviceCodeFieldKey), findsOneWidget);
     expect(find.text("Not signed in"), findsOneWidget);
   });
 }

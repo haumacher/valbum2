@@ -54,7 +54,7 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   `VAlbumScope` so tests can pass a `MockClient`. `loadPreview` is the one load that bypasses the
   offline cache: a "view as" preview is never the copy the app browses offline. `move` posts the
   `?action=move` write and returns the server's outcomes.
-- `lib/settings.dart` — the server settings: URL, the sign-in (user name, pairing secret, device
+- `lib/settings.dart` — the server settings: URL, the sign-in (sign-in code, device
   name) and who this device is signed in as (user, role, device, space); the settings store.
 - `lib/device_code_payload.dart` — what the QR code of a device code carries and the only place
   scanned text is interpreted: `valbum-device://pair?server=…&code=…`, deliberately no URL the

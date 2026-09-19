@@ -74,8 +74,7 @@ public class TestSpacesMigration extends TestCase {
 			Files.exists(_base.resolve(".valbum").resolve(SpaceStore.FILE_NAME)));
 		assertEquals("An album sidecar is never touched.", album, read(_base.resolve("2024 Trip").resolve("index.json")));
 
-		assertEquals(SpaceMode.SINGLE, Spaces.detect(_base, null, de.haumacher.imageServer.auth.AuthMode.WRITES,
-			"secret", de.haumacher.imageServer.auth.InviteMode.MEMBERS).getMode());
+		assertEquals(SpaceMode.SINGLE, Spaces.detect(_base, null, de.haumacher.imageServer.auth.AuthMode.WRITES, de.haumacher.imageServer.auth.InviteMode.MEMBERS).getMode());
 	}
 
 	/** A library migrated per user becomes a multi-space server, one space per user folder. */
@@ -152,8 +151,7 @@ public class TestSpacesMigration extends TestCase {
 			read(_base.resolve("alice").resolve("2024 Alice").resolve("index.json")));
 
 		// And the server comes up as a multi-space server afterwards.
-		Spaces spaces = Spaces.detect(_base, null, de.haumacher.imageServer.auth.AuthMode.WRITES, "secret",
-			de.haumacher.imageServer.auth.InviteMode.MEMBERS);
+		Spaces spaces = Spaces.detect(_base, null, de.haumacher.imageServer.auth.AuthMode.WRITES, de.haumacher.imageServer.auth.InviteMode.MEMBERS);
 		assertEquals(SpaceMode.MULTI, spaces.getMode());
 		assertEquals(java.util.Arrays.asList("alice", "bob"), spaces.segments());
 	}

@@ -105,7 +105,7 @@ public class TestVideoDateProbe extends TestCase {
 
 	private Resource read(String pathInfo) throws Exception {
 		if (_servlet == null) {
-			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.OFF, "", _base));
+			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.OFF, _base));
 		}
 		FakeResponse response = new FakeResponse();
 		_servlet.doGet(request(pathInfo, null, new byte[0], Map.of(), Map.of("type", "json")), response.response());

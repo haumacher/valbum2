@@ -10,7 +10,6 @@ import de.haumacher.imageServer.shared.model.CreateResult;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.MoveOutcome;
 import de.haumacher.imageServer.shared.model.MoveResult;
-import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.Placement;
 import de.haumacher.imageServer.shared.model.Resource;
@@ -428,8 +427,7 @@ public class TestPlacement extends TestCase {
 	/** The token of the signed-in library owner; the sign-in happens before the servlet exists. */
 	private String token() throws Exception {
 		if (_token == null) {
-			PairResponse response = new AuthService(AuthMode.WRITES, SECRET, _base).pair(PairRequest.create()
-				.setSecret(SECRET).setDeviceName("Phone").setUserName("haui"));
+			PairResponse response = Codes.signInAdmin(new AuthService(AuthMode.WRITES, _base), "Phone", "haui");
 			_token = response.getToken();
 		}
 		return _token;
@@ -437,7 +435,7 @@ public class TestPlacement extends TestCase {
 
 	private ImageServlet servlet() throws IOException {
 		if (_servlet == null) {
-			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SECRET, _base));
+			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base));
 			_servlets.add(_servlet);
 		}
 		return _servlet;

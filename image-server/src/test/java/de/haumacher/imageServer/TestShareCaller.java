@@ -162,9 +162,9 @@ public class TestShareCaller extends ShareTestCase {
 		Map<String, String> pairing = new HashMap<>();
 		pairing.put("action", "pair");
 		FakeResponse paired = post("/", "{\"secret\":\"a link is not a secret\"}", token, pairing);
-		assertEquals("A link buys nothing at the pairing endpoint; the secret does.",
-			HttpServletResponse.SC_FORBIDDEN, paired.status());
-		assertEquals(AuthService.SECRET_REFUSED, errorMessage(paired));
+		assertEquals("A link buys nothing at the pairing endpoint, and the secret is gone (#89).",
+			HttpServletResponse.SC_GONE, paired.status());
+		assertEquals(AuthService.SECRET_RETIRED, errorMessage(paired));
 	}
 
 	public void testAViewOnlyLinkMayNotUpload() throws Exception {

@@ -10,7 +10,6 @@ import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.MoveResult;
-import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PresentFile;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.UploadCheckResult;
@@ -182,14 +181,13 @@ public class TestMoveProbe extends TestCase {
 	}
 
 	private ImageServlet servlet() throws IOException {
-		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SECRET, _base));
+		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base));
 		_servlets.add(servlet);
 		return servlet;
 	}
 
 	private String signIn() throws Exception {
-		return new AuthService(AuthMode.WRITES, SECRET, _base)
-			.pair(PairRequest.create().setSecret(SECRET).setDeviceName("Phone").setUserName("haui")).getToken();
+		return Codes.signInAdmin(new AuthService(AuthMode.WRITES, _base), "Phone", "haui").getToken();
 	}
 
 	private void write(String relativePath, byte[] contents) throws IOException {

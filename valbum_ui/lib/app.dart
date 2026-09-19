@@ -679,7 +679,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// Stores what the accepted invitation answered: this server, and the token
   /// this device is signed in with from now on, see issue #52.
   ///
-  /// Exactly what a sign-in with the pairing secret stores, and stored through
+  /// Exactly what a sign-in with a code stores, and stored through
   /// the same [ServerSettings]: what came out of an invitation is an ordinary
   /// device token. The invitation token itself is written nowhere.
   Future<void> _invitationAccepted(PairResponse answer) async {
@@ -1388,9 +1388,9 @@ class VAlbumState extends State<VAlbumView>
                 Text(refusal.message, textAlign: TextAlign.center),
                 const SizedBox(height: 8),
                 const Text(
-                  "Sign in on this device: the server settings ask for your "
-                  "user name and the pairing secret the server printed at "
-                  "start-up.",
+                  "Sign in on this device: the server settings ask for the "
+                  "code the server printed at start-up, or one from a device "
+                  "you are already signed in on.",
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),

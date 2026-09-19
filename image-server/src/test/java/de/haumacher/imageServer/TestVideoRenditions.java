@@ -192,7 +192,7 @@ public class TestVideoRenditions extends TestCase {
 	public void testAnonymousCallerRefused() throws Exception {
 		File video = copyFixture("MVI_0450.mp4");
 
-		_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.ALL, "secret", _base));
+		_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.ALL, _base));
 		_servlets.add(_servlet);
 
 		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, get(video, "video").status());
@@ -296,7 +296,7 @@ public class TestVideoRenditions extends TestCase {
 
 	private ImageServlet servlet() throws IOException {
 		if (_servlet == null) {
-			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.OFF, "", _base));
+			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.OFF, _base));
 			_servlets.add(_servlet);
 		}
 		return _servlet;

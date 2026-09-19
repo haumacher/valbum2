@@ -5,6 +5,7 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.DeviceCodeStore;
 import de.haumacher.imageServer.auth.InvitationStore;
 import de.haumacher.imageServer.auth.InviteMode;
 import de.haumacher.imageServer.auth.LibraryMigration;
@@ -19,6 +20,7 @@ import de.haumacher.util.servlet.ResourceServlet;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.helper.HelpScreenException;
@@ -83,8 +85,14 @@ public class Main {
 				+ "number of processors, and the system property 'valbum.previewThreads' does the "
 				+ "same. Serving an already cached thumbnail is never throttled");
 		parser.addArgument("--pairing-secret").help(
-			"The secret a device must present to be paired with this server; "
-				+ "a random one is generated and printed at start-up if none is given");
+			"Retired by issue #89; the server refuses to start when it is given. Use --admin-code, "
+				+ "or let the server print a fresh sign-in code for the administrator at start-up");
+		parser.addArgument("--admin-code").help(
+			"The sign-in code the server prints for the administrator of a space that has no "
+				+ "signed-in device yet, instead of a random one (issue #89): " + DeviceCodeStore.CODE_LENGTH
+				+ " characters of '" + DeviceCodeStore.ALPHABET + "', a dash between groups allowed. "
+				+ "It is issued anew at every start while the administrator has no device, and never "
+				+ "once they have one");
 		parser.addArgument("--migrate-to-user").help(
 			"Move the albums at the base folder into a folder of that name and make it the library "
 				+ "owner's space (issue #45). A one-time, explicit rename-only move; the server is "
@@ -97,6 +105,20 @@ public class Main {
 			System.exit(-1);
 			return;
 		} catch (ArgumentParserException ex) {
+			System.exit(-1);
+			return;
+		}
+
+		String retired = retiredSecret(ns.getString("pairing_secret"));
+		if (retired != null) {
+			System.err.println(retired);
+			System.exit(-1);
+			return;
+		}
+
+		String codeProblem = adminCodeProblem(ns.getString("admin_code"));
+		if (codeProblem != null) {
+			System.err.println(codeProblem);
 			System.exit(-1);
 			return;
 		}
@@ -115,6 +137,45 @@ public class Main {
 		}
 
 		new Main(ns).start();
+	}
+
+	/**
+	 * What a server started with the retired <code>--pairing-secret</code> is refused with (#89).
+	 *
+	 * <p>
+	 * Refused, never ignored: somebody who wrote a secret into <code>/etc/default/valbum</code>
+	 * believes it guards their library, and starting anyway would leave them believing it. The one
+	 * line names what does the job now.
+	 * </p>
+	 *
+	 * @return The message to print, <code>null</code> if no secret was given.
+	 */
+	static String retiredSecret(String secret) {
+		if (secret == null || secret.isEmpty()) {
+			return null;
+		}
+		return "--pairing-secret is gone (issue #89). This server prints a single-use sign-in code "
+			+ "for the administrator of every space that has no signed-in device yet, valid "
+			+ DeviceCodeStore.LIFETIME_MINUTES + " minutes; restart for a new one. Use --admin-code <code> "
+			+ "to fix that code instead of taking the printed one.";
+	}
+
+	/**
+	 * What a server started with an unusable <code>--admin-code</code> is refused with (#89).
+	 *
+	 * @return The message to print, <code>null</code> if the code is one this server could issue
+	 *         itself (or none was given).
+	 */
+	static String adminCodeProblem(String code) {
+		if (code == null || code.isEmpty()) {
+			return null;
+		}
+		try {
+			DeviceCodeStore.checkCode(code);
+			return null;
+		} catch (IllegalArgumentException ex) {
+			return "Cannot use --admin-code: " + ex.getMessage();
+		}
 	}
 
 	/**
@@ -181,7 +242,7 @@ public class Main {
 
 	private final InviteMode _inviteMode;
 
-	private final String _pairingSecret;
+	private final String _adminCode;
 
 	private final SpaceMode _spaceMode;
 
@@ -202,17 +263,13 @@ public class Main {
 			PreviewCache.setPermitCount(previewThreads.intValue());
 		}
 
-		String secret = ns.getString("pairing_secret");
-		if (_authMode != AuthMode.OFF && (secret == null || secret.isEmpty())) {
-			// Without a secret nobody could ever pair; a generated one is printed at start-up.
-			secret = AuthService.generateSecret();
-		}
-		_pairingSecret = secret;
+		String adminCode = ns.getString("admin_code");
+		_adminCode = adminCode == null || adminCode.isEmpty() ? null : DeviceCodeStore.checkCode(adminCode);
 		_spaceMode = SpaceMode.parse(ns.getString("spaces"));
 	}
 
 	private void start() throws Exception {
-		Spaces spaces = Spaces.detect(_basePath.toPath(), _spaceMode, _authMode, _pairingSecret, _inviteMode);
+		Spaces spaces = Spaces.detect(_basePath.toPath(), _spaceMode, _authMode, _inviteMode);
 		final Server server = createServer(_port, _contextPath, _basePath, _webRoot, spaces);
 		server.start();
 
@@ -232,27 +289,46 @@ public class Main {
 				+ "every address is answered with 'no such space')");
 		}
 		if (_authMode != AuthMode.OFF) {
-			System.out.println("Pairing secret: " + _pairingSecret);
 			for (Spaces.Space space : spaces.getSpaces()) {
-				reportSpace(spaces, space);
+				for (String line : reportSpace(spaces, space, _adminCode)) {
+					System.out.println(line);
+				}
 			}
 		}
 		server.join();
 	}
 
-	/** Says who administers the given space and whether anybody may look in without signing in. */
-	private void reportSpace(Spaces spaces, Spaces.Space space) {
+	/**
+	 * Says who administers the given space, and prints its seat code while nobody signed in (#89).
+	 *
+	 * <p>
+	 * The lines are answered rather than printed, so that a test can read what a start-up says
+	 * without reading the console. The seat code is issued here and nowhere else: a space whose
+	 * administrator already has a device gets none, which is what keeps the printed code from
+	 * being the standing master key the pairing secret was.
+	 * </p>
+	 *
+	 * @param fixedCode
+	 *        What <code>--admin-code</code> fixed the seat code to, <code>null</code> for a random
+	 *        one.
+	 */
+	static List<String> reportSpace(Spaces spaces, Spaces.Space space, String fixedCode) {
+		List<String> lines = new ArrayList<>();
+		String named;
 		try {
-			// A library written before Phase 6 could have a nameless owner; in a space the
-			// administrator is one user among several and needs a name, see issue #86.
-			String named = space.getAuth().nameNamelessOwner(space.getSegment());
-			if (named != null) {
-				System.out.println("Named the administrator of "
-					+ (space.getSegment().isEmpty() ? "this library" : "space '" + space.getSegment() + "'")
-					+ " '" + named + "' (it had no name); every device keeps working.");
-			}
+			// A library written before Phase 6 could have a nameless owner *with* devices; in a
+			// space the administrator is one user among several and needs a name, see issue #86.
+			// A nameless administrator without devices is the fresh seat of issue #89 and is named
+			// by whoever redeems the code below.
+			named = space.getAuth().nameNamelessOwner(space.getSegment());
 		} catch (IOException ex) {
-			System.err.println("Cannot name the administrator of '" + space.getRoot() + "': " + ex.getMessage());
+			named = null;
+			lines.add("Cannot name the administrator of '" + space.getRoot() + "': " + ex.getMessage());
+		}
+		if (named != null) {
+			lines.add("Named the administrator of "
+				+ (space.getSegment().isEmpty() ? "this library" : "space '" + space.getSegment() + "'")
+				+ " '" + named + "' (it had no name); every device keeps working.");
 		}
 		String where = spaces.getMode() == SpaceMode.SINGLE
 			? "Library owner: "
@@ -260,13 +336,30 @@ public class Main {
 				+ space.getConfig().getAnonymous() + "), admin: ";
 		UserStore.User owner = space.getAuth().getUsers() == null ? null : space.getAuth().getUsers().getOwner();
 		if (owner == null) {
-			System.out.println(where + "not signed in yet");
+			lines.add(where + "not signed in yet");
 		} else {
-			System.out.println(where + "'" + (owner.getName().isEmpty() ? "<unnamed>" : owner.getName())
+			lines.add(where + "'" + (owner.getName().isEmpty() ? "<unnamed>" : owner.getName())
 				+ "'" + (spaces.getMode() == SpaceMode.SINGLE
 					? ", space: " + (owner.getSpace().isEmpty() ? "<the base folder>" : owner.getSpace())
 					: ""));
 		}
+		try {
+			DeviceCodeStore.Issued seat = space.getAuth().issueSeatCode(fixedCode);
+			if (seat != null) {
+				lines.add(seatCodeLine(space, seat.getCode()));
+			}
+		} catch (IOException ex) {
+			lines.add("Cannot issue a sign-in code for the administrator of '" + space.getRoot() + "': "
+				+ ex.getMessage());
+		}
+		return lines;
+	}
+
+	/** The one line that says how to sign the administrator of a space in, see issue #89. */
+	static String seatCodeLine(Spaces.Space space, String code) {
+		return (space.getSegment().isEmpty() ? "This library" : "Space '" + space.getSegment() + "'")
+			+ ": sign the administrator in with the code " + DeviceCodeStore.format(code) + " (valid "
+			+ DeviceCodeStore.LIFETIME_MINUTES + " minutes, once; restart the server for a new one).";
 	}
 
 	/**

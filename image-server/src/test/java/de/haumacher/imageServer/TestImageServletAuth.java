@@ -6,6 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.DeviceCodeStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -44,9 +45,10 @@ public class TestImageServletAuth extends TestCase {
 
 	private static final String ALBUM_JSON = "[\"AlbumInfo\",{\"title\":\"Root\",\"parts\":[]}]";
 
-	private static final String SECRET = "let-me-in";
-
 	private Path _base;
+
+	/** The service the servlet under test was built with; the seat code comes from it. */
+	private AuthService _auth;
 
 	@Override
 	protected void setUp() throws Exception {
@@ -90,7 +92,7 @@ public class TestImageServletAuth extends TestCase {
 	public void testWriteWithTokenAllowed() throws Exception {
 		AuthService auth = auth(AuthMode.WRITES);
 		ImageServlet servlet = servlet(auth);
-		String token = pair(servlet, SECRET, "Phone").getToken();
+		String token = pair(servlet, "Phone").getToken();
 
 		FakeResponse response = put(servlet, "/", ALBUM_JSON, token);
 
@@ -121,7 +123,7 @@ public class TestImageServletAuth extends TestCase {
 
 	public void testReadWithTokenInModeAll() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.ALL);
-		String token = pair(servlet, SECRET, "Phone").getToken();
+		String token = pair(servlet, "Phone").getToken();
 
 		FakeResponse response = get(servlet, "/", "json", token);
 
@@ -143,7 +145,7 @@ public class TestImageServletAuth extends TestCase {
 	public void testPairingRefusedWhenAuthIsOff() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.OFF);
 
-		FakeResponse response = post(servlet, "pair", pairRequest(SECRET, "Phone"), null);
+		FakeResponse response = post(servlet, "pair", pairRequest("ABCDEFGH", "Phone", "haui"), null);
 
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
 		assertEquals(AuthService.PAIRING_DISABLED, errorMessage(response));
@@ -151,21 +153,44 @@ public class TestImageServletAuth extends TestCase {
 
 	// --- Pairing. ---
 
-	public void testWrongSecretRefused() throws Exception {
+	/** The pairing secret is gone, and an app still sending one is told what replaced it (#89). */
+	public void testRetiredSecretRefused() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.WRITES);
 
-		FakeResponse response = post(servlet, "pair", pairRequest("guess", "Phone"), null);
+		FakeResponse response = post(servlet, "pair",
+			"{\"secret\":\"let-me-in\",\"userName\":\"haui\",\"deviceName\":\"Phone\"}", null);
 
-		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
-		assertEquals(AuthService.SECRET_REFUSED, errorMessage(response));
-		assertFalse("A refused pairing must not create the device store.",
-			_base.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME).toFile().exists());
+		assertEquals(HttpServletResponse.SC_GONE, response.status());
+		assertEquals(AuthService.SECRET_RETIRED, errorMessage(response));
+		assertFalse("A refused pairing signs no device in.",
+			read(_base.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME).toFile())
+				.contains("\"devices\":[{"));
+	}
+
+	/** A pairing carrying nothing at all says what to enter, rather than failing mutely (#89). */
+	public void testPairingWithoutACodeRefused() throws Exception {
+		ImageServlet servlet = servlet(AuthMode.WRITES);
+
+		FakeResponse response = post(servlet, "pair", "{\"deviceName\":\"Phone\"}", null);
+
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status());
+		assertEquals(AuthService.CODE_REQUIRED, errorMessage(response));
+	}
+
+	/** A code for a user who has no name yet is refused until the pairing carries one (#89). */
+	public void testSeatCodeWithoutANameRefused() throws Exception {
+		ImageServlet servlet = servlet(AuthMode.WRITES);
+
+		FakeResponse response = post(servlet, "pair", pairRequest(seatCode(), "Phone", ""), null);
+
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status());
+		assertEquals(AuthService.NAME_REQUIRED, errorMessage(response));
 	}
 
 	public void testStoreHoldsTheHashNeverTheToken() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.WRITES);
 
-		String token = pair(servlet, SECRET, "Phone").getToken();
+		String token = pair(servlet, "Phone").getToken();
 
 		String stored = read(_base.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME).toFile());
 		assertFalse("The token itself must never be stored: " + stored, stored.contains(token));
@@ -178,7 +203,7 @@ public class TestImageServletAuth extends TestCase {
 
 	public void testStoreWrittenByThisBuildLoadsBack() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.WRITES);
-		String token = pair(servlet, SECRET, "Phone").getToken();
+		String token = pair(servlet, "Phone").getToken();
 
 		UserStore reloaded = new UserStore(_base);
 
@@ -193,7 +218,7 @@ public class TestImageServletAuth extends TestCase {
 
 	public void testTokenSurvivesARestart() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.WRITES);
-		String token = pair(servlet, SECRET, "Phone").getToken();
+		String token = pair(servlet, "Phone").getToken();
 
 		// A new servlet on the same base path is what a restarted server looks like.
 		ImageServlet restarted = servlet(AuthMode.WRITES);
@@ -205,11 +230,12 @@ public class TestImageServletAuth extends TestCase {
 	public void testPairingWritesNothingButItsOwnDirectory() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.WRITES);
 
-		pair(servlet, SECRET, "Phone");
+		pair(servlet, "Phone");
 
 		assertEquals("Pairing must write nothing but its own directory.",
 			Collections.singletonList(UserStore.DIRECTORY_NAME), entries(_base));
-		assertEquals(Collections.singletonList(UserStore.FILE_NAME),
+		assertEquals("The users and the codes that sign them in, and nothing else.",
+			Arrays.asList(DeviceCodeStore.FILE_NAME, UserStore.FILE_NAME),
 			entries(_base.resolve(UserStore.DIRECTORY_NAME)));
 	}
 
@@ -245,7 +271,7 @@ public class TestImageServletAuth extends TestCase {
 
 	public void testAuthInfoOfPairedCaller() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.WRITES);
-		String token = pair(servlet, SECRET, "Phone").getToken();
+		String token = pair(servlet, "Phone").getToken();
 
 		AuthInfo info = authInfo(servlet, token);
 
@@ -276,7 +302,8 @@ public class TestImageServletAuth extends TestCase {
 	// --- Helpers. ---
 
 	private AuthService auth(AuthMode mode) {
-		return new AuthService(mode, SECRET, _base);
+		_auth = new AuthService(mode, _base);
+		return _auth;
 	}
 
 	private ImageServlet servlet(AuthMode mode) throws IOException {
@@ -284,25 +311,33 @@ public class TestImageServletAuth extends TestCase {
 	}
 
 	private ImageServlet servlet(AuthService auth) throws IOException {
+		_auth = auth;
 		return new ImageServlet(_base.toFile(), auth);
 	}
 
-	private PairResponse pair(ImageServlet servlet, String secret, String deviceName) throws Exception {
-		FakeResponse response = post(servlet, "pair", pairRequest(secret, deviceName), null);
+	/**
+	 * Signs the administrator in with the seat code this server printed for them, see issue #89.
+	 *
+	 * <p>
+	 * The administrator of a fresh space has no name, so the pairing carries the name they choose;
+	 * that is the whole bootstrap, and there is nothing else to present.
+	 * </p>
+	 */
+	private PairResponse pair(ImageServlet servlet, String deviceName) throws Exception {
+		FakeResponse response = post(servlet, "pair", pairRequest(seatCode(), deviceName, "haui"), null);
 		assertEquals("Pairing failed: " + response.body(), HttpServletResponse.SC_OK, response.status());
 		return PairResponse.readPairResponse(reader(response.body()));
 	}
 
-	/**
-	 * A pairing request with a user name: a first sign-in with the secret names the administrator
-	 * of the space, see issue #86.
-	 */
-	private static String pairRequest(String secret, String deviceName) {
-		return pairRequest(secret, deviceName, "haui");
+	/** The seat code of the space under test, see {@link AuthService#issueSeatCode(String)}. */
+	private String seatCode() throws IOException {
+		DeviceCodeStore.Issued issued = _auth.issueSeatCode(null);
+		assertNotNull("A space nobody signed into has a seat code.", issued);
+		return issued.getCode();
 	}
 
-	private static String pairRequest(String secret, String deviceName, String userName) {
-		return "{\"secret\":\"" + secret + "\",\"userName\":\"" + userName + "\",\"deviceName\":\""
+	private static String pairRequest(String code, String deviceName, String userName) {
+		return "{\"deviceCode\":\"" + code + "\",\"userName\":\"" + userName + "\",\"deviceName\":\""
 			+ deviceName + "\"}";
 	}
 

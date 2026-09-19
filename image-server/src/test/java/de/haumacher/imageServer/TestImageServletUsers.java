@@ -46,8 +46,6 @@ public class TestImageServletUsers extends TestCase {
 
 	private static final String ALBUM_JSON = "[\"AlbumInfo\",{\"title\":\"Root\",\"parts\":[]}]";
 
-	private static final String SECRET = "let-me-in";
-
 	private static final String ALICE_TOKEN = "alice-token";
 
 	private static final String BOUNDARY = "----valbumUsersTestBoundary";
@@ -88,41 +86,54 @@ public class TestImageServletUsers extends TestCase {
 	}
 
 	/**
-	 * The first sign-in with the secret creates the administrator of the space, and an
-	 * administrator without a name is nobody the space can talk about, see issue #86.
+	 * The seat code signs the administrator of the space in, and a user without a name is nobody
+	 * the space can talk about, see issues #86 and #89.
 	 */
 	public void testAFirstSignInWithoutANameIsRefused() throws Exception {
 		ImageServlet servlet = servlet(AuthMode.WRITES);
+		String code = Codes.forUser(_auth, "");
 
-		FakeResponse response = post(servlet, "pair", pairRequest(SECRET, "Phone", ""), null);
+		FakeResponse response = post(servlet, "pair", Codes.pairRequest(code, "Phone", ""), null);
 
 		assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status());
-		assertEquals(AuthService.ADMIN_NAME_REQUIRED, errorMessage(response));
-		assertNull("Nobody was created.", new UserStore(_base).getOwner());
+		assertEquals(AuthService.NAME_REQUIRED, errorMessage(response));
+		assertEquals("Nobody was signed in.", "", new UserStore(_base).getOwner().getName());
+		assertTrue(new UserStore(_base).getOwner().getDevices().isEmpty());
 
-		// Blanks are no name either.
+		// Blanks are no name either, and the code is still there to try again with.
 		assertEquals(HttpServletResponse.SC_BAD_REQUEST,
-			post(servlet, "pair", pairRequest(SECRET, "Phone", "   "), null).status());
-		assertNull(new UserStore(_base).getOwner());
+			post(servlet, "pair", Codes.pairRequest(code, "Phone", "   "), null).status());
+		assertEquals("", new UserStore(_base).getOwner().getName());
 	}
 
 	/**
-	 * A library written before Phase 6 can have a nameless owner; adding a device to them keeps
-	 * working with no name, and a name given then is theirs, see issues #82 and #86.
+	 * A library written before Phase 6 can have a nameless owner; a further device of theirs is
+	 * signed in with a code of the devices they have, and the pairing asks for the name they never
+	 * had, see issues #82, #86 and #89.
+	 *
+	 * <p>
+	 * In a running server it never gets this far: the start-up names such an administrator, see
+	 * {@link AuthService#nameNamelessOwner(String)}. Where it does, the person is asked rather
+	 * than left nameless — nobody would want the answer to be a nameless second device.
+	 * </p>
 	 */
-	public void testANamelessOwnerOfAnOlderLibraryStillAddsDevices() throws Exception {
+	public void testANamelessOwnerOfAnOlderLibraryIsNamedByTheNextSignIn() throws Exception {
 		namelessOwner();
 		ImageServlet servlet = servlet(AuthMode.WRITES);
 
-		PairResponse nameless = signIn(servlet, "", "Phone");
-		assertEquals("A device of the nameless owner, as before.", "", nameless.getUserName());
-		assertEquals(Roles.ADMIN, nameless.getRole());
+		FakeResponse refused =
+			post(servlet, "pair", Codes.pairRequest(Codes.forUser(_auth, ""), "Phone", ""), null);
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST, refused.status());
+		assertEquals(AuthService.NAME_REQUIRED, errorMessage(refused));
 
 		PairResponse named = signIn(servlet, "haui", "Tablet");
 		assertEquals("haui", named.getUserName());
+		assertEquals(Roles.ADMIN, named.getRole());
 		UserStore store = new UserStore(_base);
 		assertEquals(1, store.getUsers().size());
-		assertEquals("Every device belongs to the one administrator.", 3, store.getOwner().getDevices().size());
+		assertEquals("Every device belongs to the one administrator.", 2, store.getOwner().getDevices().size());
+		assertEquals("The token of the device they already had keeps working.", "haui",
+			authInfo(servlet(AuthMode.WRITES), "old-token").getUserName());
 	}
 
 	/** A user store as an older build wrote it: one administrator, without a name. */
@@ -281,19 +292,27 @@ public class TestImageServletUsers extends TestCase {
 		store.store();
 	}
 
+	/** The service the last {@link #servlet(AuthMode)} was built with; the codes come from it. */
+	private AuthService _auth;
+
 	private ImageServlet servlet(AuthMode mode) throws IOException {
-		return new ImageServlet(_base.toFile(), new AuthService(mode, SECRET, _base));
+		_auth = new AuthService(mode, _base);
+		return new ImageServlet(_base.toFile(), _auth);
 	}
 
+	/**
+	 * Signs a device in with a code, see issue #89.
+	 *
+	 * <p>
+	 * The seat code of a space nobody signed into yet, and a code from a device the administrator
+	 * already has afterwards: the same request either way.
+	 * </p>
+	 */
 	private PairResponse signIn(ImageServlet servlet, String userName, String deviceName) throws Exception {
-		FakeResponse response = post(servlet, "pair", pairRequest(SECRET, deviceName, userName), null);
+		String code = Codes.forUser(_auth, _auth.getUsers().getOwner().getName());
+		FakeResponse response = post(servlet, "pair", Codes.pairRequest(code, deviceName, userName), null);
 		assertEquals("Sign-in failed: " + response.body(), HttpServletResponse.SC_OK, response.status());
 		return PairResponse.readPairResponse(reader(response.body()));
-	}
-
-	private static String pairRequest(String secret, String deviceName, String userName) {
-		return "{\"secret\":\"" + secret + "\",\"deviceName\":\"" + deviceName + "\",\"userName\":\"" + userName
-			+ "\"}";
 	}
 
 	private AuthInfo authInfo(ImageServlet servlet, String token) throws Exception {

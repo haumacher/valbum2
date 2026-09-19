@@ -8,6 +8,7 @@ import static de.haumacher.imageServer.TestImageServletPut.request;
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.msgbuf.json.JsonReader;
@@ -25,12 +26,10 @@ import junit.framework.TestCase;
 
 /**
  * Probe for #86: a nameless admin of an older library is named once, keeps their device, and the
- * next sign-in with the secret must name them, not create a second admin.
+ * next sign-in must name them, not create a second admin.
  */
 @SuppressWarnings("javadoc")
 public class TestAdminNameProbe extends TestCase {
-
-	private static final String SECRET = "let-me-in";
 
 	private Path _base;
 
@@ -52,17 +51,25 @@ public class TestAdminNameProbe extends TestCase {
 	}
 
 	public void testRefusalLeavesNothingBehind() throws Exception {
-		AuthService auth = new AuthService(AuthMode.WRITES, SECRET, _base);
+		AuthService auth = new AuthService(AuthMode.WRITES, _base);
+		String seat = auth.issueSeatCode(null).getCode();
 		try {
-			auth.pair(PairRequest.create().setSecret(SECRET).setDeviceName("Phone").setUserName("  "));
+			auth.pair(PairRequest.create().setDeviceCode(seat).setDeviceName("Phone").setUserName("  "));
 			fail("A nameless first sign-in must be refused.");
 		} catch (Exception expected) {
-			assertTrue(expected.getMessage(), expected.getMessage().contains("names the administrator"));
+			assertEquals(AuthService.NAME_REQUIRED, expected.getMessage());
 		}
-		assertFalse("Nothing may be created by a refused pairing.", Files.exists(_base.resolve(".valbum").resolve("users.json")));
-		// The next, named, sign-in creates the admin and a second device may then come nameless.
-		String first = auth.pair(PairRequest.create().setSecret(SECRET).setDeviceName("Phone").setUserName("haui")).getToken();
-		String second = auth.pair(PairRequest.create().setSecret(SECRET).setDeviceName("Tablet").setUserName("")).getToken();
+		assertEquals("A refused pairing signs nobody in.", 0,
+			new UserStore(_base).getOwner().getDevices().size());
+		// The same code, now with a name: it creates nothing, it *names* the seat that was there.
+		String first =
+			auth.pair(PairRequest.create().setDeviceCode(seat).setDeviceName("Phone").setUserName("haui"))
+				.getToken();
+		// A second device comes from a code of the first, and needs no name: the user has one.
+		String code = Codes.forUser(auth, "haui");
+		String second =
+			auth.pair(PairRequest.create().setDeviceCode(code).setDeviceName("Tablet").setUserName(""))
+				.getToken();
 		assertNotNull(first);
 		assertNotNull(second);
 		_servlet = new ImageServlet(_base.toFile(), auth);
@@ -78,12 +85,13 @@ public class TestAdminNameProbe extends TestCase {
 			assertEquals("haui", info.getUserName());
 			assertEquals("admin", info.getRole());
 		}
-		// And a stranger's name is refused by the secret.
+		// And a stranger's name is refused: a code says whom it signs in.
 		try {
-			auth.pair(PairRequest.create().setSecret(SECRET).setDeviceName("Laptop").setUserName("eve"));
-			fail("The secret names one admin only.");
-		} catch (Exception expected) {
-			// as designed
+			auth.pair(PairRequest.create().setDeviceCode(Codes.forUser(auth, "haui")).setDeviceName("Laptop")
+				.setUserName("eve"));
+			fail("A code names one user only.");
+		} catch (AuthService.PairRefused expected) {
+			assertEquals(AuthService.DEVICE_CODE_OTHER_USER, expected.getMessage());
 		}
 	}
 }

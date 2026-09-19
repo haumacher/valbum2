@@ -117,7 +117,7 @@ public class TestUploadProbe extends TestCase {
 	// --- Helpers. ---
 
 	private ImageServlet servlet() throws Exception {
-		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, "s3cret", _base));
+		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base));
 		servlet.init();
 		return servlet;
 	}
@@ -125,7 +125,7 @@ public class TestUploadProbe extends TestCase {
 	private String pair(ImageServlet servlet) throws Exception {
 		FakeResponse response = new FakeResponse();
 		servlet.doPost(request("/", "application/json",
-			"{\"secret\":\"s3cret\",\"userName\":\"haui\",\"deviceName\":\"Phone\"}".getBytes(StandardCharsets.UTF_8), null,
+			Codes.pairRequest(Codes.forServlet(servlet), "Phone", "haui").getBytes(StandardCharsets.UTF_8), null,
 			parameters("action", "pair")), response.response());
 		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
 		return PairResponse.readPairResponse(reader(response.body())).getToken();

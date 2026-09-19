@@ -35,8 +35,6 @@ public class TestAuthProbe extends TestCase {
 
 	private static final String ALBUM_JSON = "[\"AlbumInfo\",{\"title\":\"Nested\",\"parts\":[]}]";
 
-	private static final String SECRET = "s3cret";
-
 	private Path _base;
 
 	@Override
@@ -55,7 +53,7 @@ public class TestAuthProbe extends TestCase {
 	}
 
 	public void testNestedFolderInModeAll() throws Exception {
-		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.ALL, SECRET, _base));
+		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.ALL, _base));
 
 		FakeResponse anonymous = get(servlet, "/2020 Trip/", null);
 		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, anonymous.status());
@@ -74,7 +72,7 @@ public class TestAuthProbe extends TestCase {
 	}
 
 	public void testTwoDevicesWithTheSameName() throws Exception {
-		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SECRET, _base));
+		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base));
 		String first = pair(servlet, "Phone").getToken();
 		String second = pair(servlet, "Phone").getToken();
 		assertFalse(first.equals(second));
@@ -85,14 +83,14 @@ public class TestAuthProbe extends TestCase {
 	}
 
 	public void testDamagedStoreIsNotSilentlyDiscarded() throws Exception {
-		ImageServlet before = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SECRET, _base));
+		ImageServlet before = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base));
 		String token = pair(before, "Phone").getToken();
 
 		Path file = _base.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME);
 		Files.write(file, "{\"version\":1,\"users\":[{\"name\":\"\",\"role\":\"admin\",".getBytes(StandardCharsets.UTF_8));
 
 		// A restart on the damaged store: the server comes up, the old token is refused with a reason.
-		ImageServlet after = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SECRET, _base));
+		ImageServlet after = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base));
 		FakeResponse refused = put(after, "/2020 Trip/", "Bearer " + token);
 		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, refused.status());
 		assertEquals(AuthService.TOKEN_REFUSED, errorMessage(refused));
@@ -112,9 +110,8 @@ public class TestAuthProbe extends TestCase {
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("action", "pair");
 		FakeResponse response = new FakeResponse();
-		// A first sign-in with the secret names the administrator of the space, see issue #86.
-		byte[] body = ("{\"secret\":\"" + SECRET + "\",\"userName\":\"haui\",\"deviceName\":\""
-			+ deviceName + "\"}")
+		// A code, and a name where the user has none yet: that is the whole sign-in (issue #89).
+		byte[] body = Codes.pairRequest(Codes.forServlet(servlet), deviceName, "haui")
 			.getBytes(StandardCharsets.UTF_8);
 		servlet.doPost(TestImageServletPut.request("/", "application/json", body, Collections.emptyMap(), parameters),
 			response.response());

@@ -77,9 +77,9 @@ void main() {
         requests: requests,
       );
 
-      await client.pair(secret: "demo", deviceName: "Phone");
+      await client.pair(deviceCode: "ABCD-EFGH", deviceName: "Phone");
 
-      expect(requests.single.body, contains('"secret":"demo"'));
+      expect(requests.single.body, contains('"deviceCode":"ABCD-EFGH"'));
       expect(requests.single.body, contains('"invitation":""'));
     });
   });

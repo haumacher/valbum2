@@ -117,6 +117,18 @@ const double deviceCodeQrSize = 200;
 const String deviceCodeQrAdvice =
     "Or scan this on the other device, at Sign in.";
 
+/// The key of the "Recovery code" action beside a user (issue #89).
+const Key recoveryCodeKey = Key("settings.users.recovery");
+
+/// What a recovery code is, said where it is shown (issue #89).
+///
+/// The one difference from [deviceCodeAdvice]: this code signs a device in as
+/// *somebody else*, so the sentence says whose and says to hand it to them and
+/// nobody in between.
+String recoveryCodeAdvice(String userName) =>
+    "Give this to $userName within 10 minutes; it signs one of their devices "
+    "in as them. It works once \u2014 give it to nobody else.";
+
 /// What a device code is, said where it is shown (issue #65).
 ///
 /// The whole point in one sentence: this is a credential for a device of
@@ -404,6 +416,13 @@ class DeviceCodeDialog extends StatefulWidget {
   /// The clock the remaining time is measured against.
   final DateTime Function() now;
 
+  /// Whom the code is for, empty for the caller themselves (issue #89).
+  ///
+  /// The recovery code an administrator makes for somebody who lost every
+  /// device they had: the same code, said differently — there is no device of
+  /// one's own to watch for, and the advice names the person.
+  final String forUser;
+
   const DeviceCodeDialog({
     super.key,
     required this.client,
@@ -411,6 +430,7 @@ class DeviceCodeDialog extends StatefulWidget {
     this.known = const {},
     this.ticker = secondsTicker,
     this.now = DateTime.now,
+    this.forUser = "",
   });
 
   @override
@@ -456,7 +476,7 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
       _joined = null;
     });
     try {
-      var answer = await widget.client.deviceCode();
+      var answer = await widget.client.deviceCode(userName: widget.forUser);
       if (mounted) {
         setState(() {
           _code = answer;
@@ -489,7 +509,9 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
   /// hiccup while a code is on screen says nothing about the code. What the
   /// server refuses when it is *asked for a code* is shown, see [_ask].
   Future<void> _poll() async {
-    if (_joined != null) {
+    if (_joined != null || widget.forUser.isNotEmpty) {
+      // A code for somebody else adds a device to *their* list, never to this
+      // one; there is nothing here to watch for (issue #89).
       return;
     }
     List<DeviceEntry> devices;
@@ -549,7 +571,9 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
     var expired = left != null && left <= Duration.zero;
     return AlertDialog(
       key: deviceCodeDialogKey,
-      title: const Text("Add a device"),
+      title: Text(widget.forUser.isEmpty
+          ? "Add a device"
+          : "Recovery code for ${widget.forUser}"),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -595,7 +619,9 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
                 const Text(deviceCodeQrAdvice),
               ],
               const SizedBox(height: 12),
-              const Text(deviceCodeAdvice),
+              Text(widget.forUser.isEmpty
+                  ? deviceCodeAdvice
+                  : recoveryCodeAdvice(widget.forUser)),
             ],
             if (_joined != null) ...[
               const SizedBox(height: 12),
@@ -996,6 +1022,17 @@ class UsersSectionState extends State<UsersSection> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Somebody who lost every device they had gets the same code
+                // as everybody else, made by an administrator (issue #89). A
+                // user who never signed in has no name to make one for: the
+                // seat code of the space is what signs them in.
+                if (user.name.isNotEmpty)
+                  IconButton(
+                    key: Key("user-recovery-${user.name}"),
+                    icon: const Icon(Icons.key_outlined),
+                    tooltip: "Recovery code",
+                    onPressed: _busy ? null : () => _recoveryCode(user),
+                  ),
                 IconButton(
                   key: Key("user-edit-${user.name}"),
                   icon: const Icon(Icons.tune),
@@ -1012,6 +1049,24 @@ class UsersSectionState extends State<UsersSection> {
             ),
           ),
       ],
+    );
+  }
+
+  /// Shows a code signing a device of [user] in, for somebody who lost theirs
+  /// (issue #89).
+  ///
+  /// The same code as every other — one device, one user, ten minutes, once —
+  /// and the same dialog; only its target differs, and it dies with this
+  /// administrator's device like every device-issued code.
+  Future<void> _recoveryCode(UserEntry user) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => DeviceCodeDialog(
+        key: recoveryCodeKey,
+        client: widget.client,
+        forUser: user.name,
+        onDevices: (_) {},
+      ),
     );
   }
 

@@ -50,7 +50,15 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The pairing secret the server was started with.
+	 * The pairing secret the server was started with; retired by issue #89.
+	 *
+	 * <p>
+	 * There is no pairing secret any more: the server issues an ordinary single-use
+	 * {@link #getDeviceCode()} for the administrator of a space that has no signed-in device yet and
+	 * prints it at start-up. The field is read for one release and a request carrying it — and no
+	 * {@link #getDeviceCode()} — is answered <code>410 Gone</code> with an {@link ErrorInfo} naming the
+	 * code, so that an app that was not updated says something useful instead of failing silently.
+	 * </p>
 	 */
 	public final String getSecret() {
 		return _secret;
@@ -90,12 +98,15 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The name of the user signing in, empty for "the library owner".
+	 * The name of the user signing in, empty where the code already says who.
 	 *
 	 * <p>
-	 * A request carrying the pairing secret signs in the library owner (the <code>admin</code>): an
-	 * empty name means the owner, a non-empty one names the owner when it has no name yet and must
-	 * match the stored name afterwards. An app from before issue #45 sends no name at all.
+	 * A {@link #getDeviceCode()} names its own user, so the name is not a choice but a check: a name
+	 * that is not the code's user is refused. The one exception is a code for a user who has
+	 * <em>no name yet</em> — the seat code the server prints for the administrator of a fresh
+	 * space (issue #89), and the code of an invitation. There the name is what the user will be
+	 * known by in the space, it must be free, and a pairing without it is refused
+	 * <code>400</code> so that the app can ask for one.
 	 * </p>
 	 *
 	 * <p>
@@ -156,6 +167,13 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	 * {@link #getInvitation()} must never do. It is no link and no bearer — it travels in this one
 	 * request and nowhere else — it lives ten minutes and it works once. Spelled with or without
 	 * the dash the other device shows, in any case.
+	 * </p>
+	 *
+	 * <p>
+	 * Since issue #89 this is the one way a device is signed in: the seat code the server prints
+	 * for the administrator of a space that has no device yet, a code from a device of one's own,
+	 * and the recovery code an administrator makes for somebody who lost theirs are all the same
+	 * single-use secret with the same lifetime, told apart only by who issued them.
 	 * </p>
 	 *
 	 * <p>

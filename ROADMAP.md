@@ -199,10 +199,11 @@ The model:
   space. Per-image privacy stays; clearance is what it is compared against.
 - **Anonymous access is a property of the space** (`none` or `public images only`), set in
   `space.json`, not a server mode.
-- **Bootstrap and invitations.** The server-wide pairing secret creates a space's first admin; every
-  further user comes in through an invitation issued by an admin, carrying the role and clearance
-  the invitee gets. No guest accounts and no pseudo-spaces: a guest is a user with view and a low
-  clearance.
+- **Bootstrap and invitations.** A space has a nameless admin from the moment it exists, and the
+  server prints a single-use seat code for them while they have no device (#89); whoever redeems
+  it chooses their own name. Every further user comes in through an invitation issued by an admin,
+  carrying the role and clearance the invitee gets. No guest accounts and no pseudo-spaces: a
+  guest is a user with view and a low clearance.
 - **A share link is not a user.** It is an expiring, restricted view of one album or folder,
   created by a user with the share flag, cut to at most the creator's clearance, optionally
   allowing contribution with attribution to the link. On the web it shows the shared album as the
@@ -217,6 +218,28 @@ The model:
 
 ## Decisions log
 
+- **2026-09-19** — The pairing secret and the device code are one mechanism (#89, step one).
+  The author's observation: "A pairing secret is more or less a device code that is offered by the
+  server for the admin account during startup. The only (?) difference is that the user gives
+  himself a name during the first assignment." So there is one thing left: a **code** — a
+  single-use secret, ten minutes, that adds one device to one target user. Three issuers, and the
+  issuer is all that differs: the server at start-up (the **seat code**, for a space's
+  administrator while they have no device), a signed-in device (for its own user, #65), and an
+  administrator (the **recovery code**, for anybody who cleared a browser or reinstalled an app).
+  Every space has its administrator from the moment its folder does — nameless and without
+  devices; the seat is never empty, only unnamed — and redeeming a code for a nameless user
+  requires a name, which the app asks for and the person chooses for themselves. That is also what
+  makes inviting easy: nobody ever names anybody else. `--pairing-secret` is gone: given, the
+  server refuses to start and names `--admin-code <code>`, which fixes the printed code for a demo
+  server or for `/etc/default/valbum`; a pairing that still carries `secret` is answered `410`
+  naming its replacement, for one release. Losing the last device of a space is recovered by a
+  restart, which only somebody with the machine can do — the same trust anchor as before, without
+  a standing master key printed into a journal. **This reverses the #86 decision** that a nameless
+  administrator can only come from a library written before Phase 6: a nameless administrator
+  *without devices* is now the fresh seat of every space, and #86's start-up auto-naming applies
+  only to a nameless administrator *with* devices, where nobody would ever be asked. Step two
+  (invitations as a pending user carrying a code, with an optional recipient memento) follows.
+
 - **2026-09-16** — Phase 6 delivered (#82–#85). A server hosts one or several spaces, decided at
   start-up by the presence of `space.json`; in multi-space mode the space is the first path segment
   of everything that belongs to it, sessions included, and a root-level session address is refused
@@ -228,7 +251,7 @@ The model:
   their links. The app reads sessions under a space, offers what the role allows where the server
   answered no rights, lets an admin edit and remove users, and lost the groups and link screens.
   Verified in a real browser on a two-space server: the app under `/valbum/alice/` asks
-  `/valbum/alice/data/`, the closed space refuses anonymous callers, the secret makes the space's
+  `/valbum/alice/data/`, the closed space refuses anonymous callers, the pairing makes the space's
   admin, the album renders. About 250 server tests of the retired mechanisms went with them.
 
 - **2026-09-15 (evening)** — Spaces (Phase 6). The author reshaped the multi-user doctrine: album

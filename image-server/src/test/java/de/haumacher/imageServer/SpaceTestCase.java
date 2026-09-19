@@ -127,7 +127,7 @@ public abstract class SpaceTestCase extends TestCase {
 	protected ImageServlet servlet() throws Exception {
 		if (_servlet == null) {
 			_servlet = new ImageServlet(_base.toFile(),
-				new AuthService(_authMode, SharingFixture.SECRET, _base, _inviteMode));
+				new AuthService(_authMode, _base, _inviteMode));
 			_servlet.init();
 			_servlets.add(_servlet);
 		}

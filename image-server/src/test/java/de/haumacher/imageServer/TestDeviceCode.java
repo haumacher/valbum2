@@ -45,8 +45,8 @@ public class TestDeviceCode extends InviteTestCase {
 
 	// --- Asking for a code. ---
 
-	public void testTheOwnerPairsWithTheSecretAndThenAsksForADeviceCode() throws Exception {
-		String owner = pairWithSecret();
+	public void testTheOwnerSignsInAndThenAsksForADeviceCode() throws Exception {
+		String owner = signInOwner();
 
 		FakeResponse response = deviceCode(owner);
 
@@ -67,7 +67,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testTheAnswerIsNeitherALinkNorAToken() throws Exception {
-		String owner = pairWithSecret();
+		String owner = signInOwner();
 
 		String body = body(deviceCode(owner));
 
@@ -77,7 +77,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testACodeIsNoBearerAnywhere() throws Exception {
-		String owner = pairWithSecret();
+		String owner = signInOwner();
 		String theCode = code(deviceCode(owner)).getCode();
 
 		FakeResponse response = authOf(theCode);
@@ -94,7 +94,7 @@ public class TestDeviceCode extends InviteTestCase {
 	// --- Pairing with it. ---
 
 	public void testACodePairsAFurtherDeviceOfTheSameUser() throws Exception {
-		String owner = pairWithSecret();
+		String owner = signInOwner();
 		String theCode = code(deviceCode(owner)).getCode();
 
 		FakeResponse response = pairWithCode(theCode, "Tablet", "");
@@ -110,11 +110,11 @@ public class TestDeviceCode extends InviteTestCase {
 		assertFalse("And it is not the code.", paired.getToken().contains(DeviceCodeStore.normalise(theCode)));
 	}
 
-	public void testTheCodePairsWithoutTheSecretAndHoweverItIsSpelled() throws Exception {
-		String owner = pairWithSecret();
+	public void testTheCodePairsHoweverItIsSpelled() throws Exception {
+		String owner = signInOwner();
 		String theCode = code(deviceCode(owner)).getCode();
 
-		// No secret in the body at all, and the dash left out.
+		// The dash left out and shouted in lower case.
 		String body = "{\"deviceCode\":\"" + DeviceCodeStore.normalise(theCode).toLowerCase()
 			+ "\",\"deviceName\":\"Tablet\"}";
 		FakeResponse response = post("/", body, null, pairParameters());
@@ -124,7 +124,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testBothDevicesSeeEachOtherAndExactlyTheAskingOneIsCurrent() throws Exception {
-		String owner = pairWithSecret();
+		String owner = signInOwner();
 		String tablet = paired(pairWithCode(code(deviceCode(owner)).getCode(), "Tablet", "")).getToken();
 
 		DeviceList fromOwner = devices(owner);
@@ -138,7 +138,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testTheNewDeviceWritesWhatItsUserMayWriteUntilItIsUnpaired() throws Exception {
-		String owner = pairWithSecret();
+		String owner = signInOwner();
 		String tablet = paired(pairWithCode(code(deviceCode(owner)).getCode(), "Tablet", "")).getToken();
 
 		assertEquals("The new token is worth what the user's other tokens are worth.",
@@ -158,7 +158,7 @@ public class TestDeviceCode extends InviteTestCase {
 	// --- Once, and only for its own user. ---
 
 	public void testACodeWorksExactlyOnce() throws Exception {
-		String owner = pairWithSecret();
+		String owner = signInOwner();
 		String theCode = code(deviceCode(owner)).getCode();
 		assertEquals(HttpServletResponse.SC_OK, pairWithCode(theCode, "Tablet", "").status());
 
@@ -171,7 +171,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testACodeDiesWithTheDeviceThatIssuedIt() throws Exception {
-		String laptop = pairWithSecret();
+		String laptop = signInOwner();
 		String theCode = code(deviceCode(laptop)).getCode();
 
 		// Alice spots a device she never paired and throws it out from her phone.
@@ -187,7 +187,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testTheIssuerGoneRefusalIsItsOwnStory() throws Exception {
-		String laptop = pairWithSecret();
+		String laptop = signInOwner();
 		String theCode = code(deviceCode(laptop)).getCode();
 		unpair(SharingFixture.ALICE, idOf(devices(SharingFixture.ALICE), "Alice's laptop"));
 
@@ -201,7 +201,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testSigningOutHereWithdrawsWhatThisDeviceHandedOut() throws Exception {
-		String laptop = pairWithSecret();
+		String laptop = signInOwner();
 		String theCode = code(deviceCode(laptop)).getCode();
 
 		// "Sign out here": the device names itself, which is allowed and is the point.
@@ -213,7 +213,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testADeviceAddedByACodeIsNoChildOfTheDeviceThatAddedIt() throws Exception {
-		String laptop = pairWithSecret();
+		String laptop = signInOwner();
 		String tablet = paired(pairWithCode(code(deviceCode(laptop)).getCode(), "Tablet", "")).getToken();
 		String pending = code(deviceCode(laptop)).getCode();
 
@@ -239,7 +239,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testAWrongCodeIsRefused() throws Exception {
-		pairWithSecret();
+		signInOwner();
 
 		FakeResponse response = pairWithCode("ZZZZ-ZZZZ", "Tablet", "");
 
@@ -248,7 +248,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testACodeUnderSomebodyElsesNameIsRefused() throws Exception {
-		String owner = pairWithSecret();
+		String owner = signInOwner();
 		String theCode = code(deviceCode(owner)).getCode();
 
 		FakeResponse response = pairWithCode(theCode, "Tablet", "bob");
@@ -265,7 +265,7 @@ public class TestDeviceCode extends InviteTestCase {
 	}
 
 	public void testAnExpiredCodeIsRefused() throws Exception {
-		pairWithSecret();
+		signInOwner();
 		// Issued eleven minutes ago, which no endpoint would do; the store's clock makes it so.
 		DeviceCodeStore past =
 			new DeviceCodeStore(_base, Clock.fixed(Instant.now().minus(Duration.ofMinutes(11)), java.time.ZoneOffset.UTC));
@@ -339,18 +339,15 @@ public class TestDeviceCode extends InviteTestCase {
 		return post("/", "", token, parameters);
 	}
 
-	/** Sends <code>&lt;data&gt;/?action=pair</code> with a device code and no secret. */
+	/** Sends <code>&lt;data&gt;/?action=pair</code> with a device code. */
 	private FakeResponse pairWithCode(String deviceCode, String deviceName, String userName) throws Exception {
-		String body = "{\"secret\":\"\",\"deviceCode\":\"" + deviceCode + "\",\"deviceName\":\"" + deviceName
-			+ "\",\"userName\":\"" + userName + "\"}";
-		return post("/", body, null, pairParameters());
+		return post("/", Codes.pairRequest(deviceCode, deviceName, userName), null, pairParameters());
 	}
 
-	/** Signs the library owner in with the pairing secret, answering the new device's token. */
-	private String pairWithSecret() throws Exception {
-		String body = "{\"secret\":\"" + SharingFixture.SECRET + "\",\"deviceName\":\"Alice's laptop\","
-			+ "\"userName\":\"alice\"}";
-		FakeResponse response = post("/", body, null, pairParameters());
+	/** Signs a laptop of the library owner in with a code of their phone, answering its token. */
+	private String signInOwner() throws Exception {
+		FakeResponse response =
+			pairWithCode(Codes.forUser(servlet().auth(), "alice"), "Alice's laptop", "alice");
 		assertEquals(body(response), HttpServletResponse.SC_OK, response.status());
 		return paired(response).getToken();
 	}

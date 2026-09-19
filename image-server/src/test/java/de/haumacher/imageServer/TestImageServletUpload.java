@@ -358,7 +358,7 @@ public class TestImageServletUpload extends TestCase {
 	// --- Helpers. ---
 
 	private AuthService auth(AuthMode mode) {
-		return new AuthService(mode, "let-me-in", _base);
+		return new AuthService(mode, _base);
 	}
 
 	private ImageServlet servlet(AuthMode mode) throws Exception {
@@ -370,7 +370,7 @@ public class TestImageServletUpload extends TestCase {
 	private String token(ImageServlet servlet) throws Exception {
 		FakeResponse response = new FakeResponse();
 		servlet.doPost(request("/", "application/json",
-			"{\"secret\":\"let-me-in\",\"userName\":\"haui\",\"deviceName\":\"Phone\"}".getBytes(StandardCharsets.UTF_8), null,
+			Codes.pairRequest(Codes.forServlet(servlet), "Phone", "haui").getBytes(StandardCharsets.UTF_8), null,
 			parameters("action", "pair")), response.response());
 		assertEquals("Pairing failed: " + response.body(), HttpServletResponse.SC_OK, response.status());
 		return de.haumacher.imageServer.shared.model.PairResponse.readPairResponse(reader(response.body())).getToken();

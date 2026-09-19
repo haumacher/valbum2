@@ -50,7 +50,7 @@ public class TestServerRedirects extends TestCase {
 		super.setUp();
 		_base = Files.createTempDirectory("valbum-redirect-test");
 		Files.createDirectory(_base.resolve("album"));
-		AuthService auth = new AuthService(AuthMode.OFF, null, _base);
+		AuthService auth = new AuthService(AuthMode.OFF, _base);
 		_server = Main.createServer(0, "/valbum", _base.toFile(), null, auth);
 
 		// What a request looks like from inside: a servlet echoing the surface it reports.

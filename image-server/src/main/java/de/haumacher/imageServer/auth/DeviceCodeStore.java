@@ -102,6 +102,57 @@ public class DeviceCodeStore {
 	/** How many characters a code has. */
 	public static final int CODE_LENGTH = 8;
 
+	/**
+	 * What stands in {@link Code#getIssuedBy()} for a code the server itself issued (issue #89).
+	 *
+	 * <p>
+	 * The seat code of a space: at start-up the server issues one ordinary code for the
+	 * administrator of every space whose administrator has no device yet, and prints it. It is the
+	 * same code as every other — same alphabet, same {@value #LIFETIME_MINUTES} minutes, same
+	 * single use — and the one thing that differs is that it has no issuing device, so the
+	 * {@link AuthService#DEVICE_CODE_ISSUER_GONE} rule has nothing to check: it dies by being used,
+	 * by running out, or by the next start-up, which withdraws it and prints a new one.
+	 * </p>
+	 *
+	 * <p>
+	 * It can never be mistaken for a device id: an id is eight characters of base64url
+	 * ({@link UserStore}), and this is six lower-case letters.
+	 * </p>
+	 */
+	public static final String SERVER_ISSUER = "server";
+
+	/** The message a fixed code that is no code of this server is refused with, see issue #89. */
+	public static String codeRefused(String code) {
+		return "'" + code + "' is no sign-in code: a code is " + CODE_LENGTH + " characters of '"
+			+ ALPHABET + "', optionally grouped with a dash.";
+	}
+
+	/**
+	 * The normalised form of a code somebody fixed on the command line, see issue #89.
+	 *
+	 * <p>
+	 * <code>--admin-code</code> takes the place of the random seat code, for the demo server and
+	 * for a server whose administrator cannot read its journal. It has to be a code this server
+	 * could have issued itself, or it would be a code nobody can type: the alphabet leaves out the
+	 * look-alikes, and the length is what the field expects.
+	 * </p>
+	 *
+	 * @throws IllegalArgumentException
+	 *         With {@link #codeRefused(String)} if it is no such code.
+	 */
+	public static String checkCode(String code) {
+		String normalised = normalise(code);
+		if (normalised.length() != CODE_LENGTH) {
+			throw new IllegalArgumentException(codeRefused(code));
+		}
+		for (int n = 0; n < normalised.length(); n++) {
+			if (ALPHABET.indexOf(normalised.charAt(n)) < 0) {
+				throw new IllegalArgumentException(codeRefused(code));
+			}
+		}
+		return normalised;
+	}
+
 	/** After how many characters the code is grouped for display, see {@link #format(String)}. */
 	private static final int GROUP_LENGTH = 4;
 
@@ -442,8 +493,20 @@ public class DeviceCodeStore {
 	 *        The id of the device that asked.
 	 */
 	public synchronized Issued create(String user, String issuedBy) throws IOException {
+		return create(user, issuedBy, null);
+	}
+
+	/**
+	 * Issues a code for the given user, spelled as the caller says, see {@link #create(String, String)}.
+	 *
+	 * @param fixed
+	 *        The characters the code has to be, <code>null</code> for a random one. What
+	 *        <code>--admin-code</code> fixes (issue #89); it must have passed
+	 *        {@link #checkCode(String)}.
+	 */
+	public synchronized Issued create(String user, String issuedBy, String fixed) throws IOException {
 		Instant now = _clock.instant();
-		String code = randomCode();
+		String code = fixed == null ? randomCode() : checkCode(fixed);
 		Code record = new Code(freeId(), UserStore.hash(code), user, issuedBy == null ? "" : issuedBy,
 			now.toString(), now.plus(Duration.ofMinutes(LIFETIME_MINUTES)).toString(), "", "", "");
 		_codes.add(record);

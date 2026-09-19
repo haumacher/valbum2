@@ -88,14 +88,14 @@ void main() {
         ),
       );
 
-      await client.pair(deviceName: "Phone", secret: "demo");
+      await client.pair(deviceName: "Phone", deviceCode: "ABCD-EFGH");
 
       expect(
         messagesOf(log),
         allOf(contains("POST"), contains("action=pair"), contains("-> 200")),
       );
-      // Never the body: it carries the pairing secret.
-      expect(messagesOf(log), isNot(contains("demo")));
+      // Never the body: it carries the sign-in code.
+      expect(messagesOf(log), isNot(contains("ABCD-EFGH")));
     });
 
     test('drops the oldest entries beyond its capacity', () {

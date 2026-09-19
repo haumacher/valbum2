@@ -211,7 +211,7 @@ public class TestCamera extends TestCase {
 
 	private ImageServlet servlet() throws IOException {
 		if (_servlet == null) {
-			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.OFF, "", _base));
+			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.OFF, _base));
 			_servlets.add(_servlet);
 		}
 		return _servlet;

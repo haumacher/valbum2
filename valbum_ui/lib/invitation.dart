@@ -6,14 +6,14 @@
 /// token for as long as the page is open and stores nothing. An invitation
 /// carries its token for exactly one question and one answer — "who invited me
 /// and as what?", "here is my name" — and what comes out of it is an ordinary
-/// device token, stored exactly as a sign-in with the pairing secret stores
+/// device token, stored exactly as a sign-in with a code stores
 /// one. Three things follow, and this library is where they are said once:
 ///
 ///  * the invitation token is **never** stored. It is a bearer for
 ///    `?type=auth` and a field of the pairing request, and nothing else ever
 ///    sees it;
 ///  * accepting *is* pairing: the app calls [VAlbumClient.pair] with the
-///    invitation instead of the secret, and the answer is the same
+///    invitation instead of a code, and the answer is the same
 ///    [PairResponse] the settings screen already knows what to do with;
 ///  * once the device is signed in, the app has no business at
 ///    `<context>/i/<token>/` any more. It leaves that base for `<context>/` in

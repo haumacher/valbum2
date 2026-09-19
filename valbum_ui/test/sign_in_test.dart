@@ -70,8 +70,7 @@ void main() {
         }),
       );
 
-      await tester.enterText(find.byKey(userNameFieldKey), "haui");
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
+      await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-EFGH");
       await tester.enterText(find.byKey(deviceNameFieldKey), "Kamera");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
@@ -84,7 +83,8 @@ void main() {
       expect(pair.url.query, "action=pair");
       expect(
         pair.body,
-        '{"secret":"demo","deviceName":"Kamera","userName":"haui","invitation":"","deviceCode":""}',
+        '{"secret":"","deviceName":"Kamera","userName":"","invitation":"",'
+        '"deviceCode":"ABCD-EFGH"}',
       );
       expect(store.token, "tok-1");
       expect(store.deviceName, "Kamera");
@@ -98,11 +98,9 @@ void main() {
       expect(find.textContaining("Space:"), findsNothing);
     });
 
-    testWidgets('a sign-in with the secret and no name is refused here',
-        (tester) async {
-      // Issue #86: the secret names the administrator of the space, and a user
-      // without a name can be neither credited nor managed. It used to sign in
-      // "the library owner", which was right while a library had exactly one.
+    testWidgets('a sign-in without a code is refused here', (tester) async {
+      // Issue #89: there is one way in and it is a code; an empty field is
+      // said here rather than sent to be refused.
       var store = InMemorySettingsStore("http://server/valbum/");
       var settings = ServerSettings(store: store);
       await settings.load();
@@ -121,24 +119,22 @@ void main() {
         }),
       );
 
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
       expect(
         tester.widget<Text>(find.byKey(signInErrorKey)).data,
-        "Enter your name.",
+        codeRequiredRefusal,
       );
-      expect(requests, isEmpty, reason: "nothing is sent without a name");
+      expect(requests, isEmpty, reason: "nothing is sent without a code");
       expect(store.token, isNull);
       expect(find.text("Not signed in"), findsOneWidget);
     });
 
-    testWidgets('a refused name shows the server message and stores nothing',
+    testWidgets('a refused code shows the server message and stores nothing',
         (tester) async {
       // The server's own words, see AuthService of the image server.
-      const refused = "The pairing secret signs in the library owner 'haui'. "
-          "Sign in under that name, or ask the owner for an invitation.";
+      const refused = "This device code signs in a different user.";
       var store = InMemorySettingsStore("http://server/valbum/");
       var settings = ServerSettings(store: store);
       await settings.load();
@@ -149,8 +145,7 @@ void main() {
         MockClient((_) async => http.Response(refusal(refused), 403)),
       );
 
-      await tester.enterText(find.byKey(userNameFieldKey), "someone");
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
+      await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-EFGH");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
@@ -190,8 +185,9 @@ void main() {
       expect(store.userName, isNull);
       expect(settings.signedIn, isFalse);
       expect(find.text("Not signed in"), findsOneWidget);
-      expect(find.byKey(userNameFieldKey), findsOneWidget);
-      expect(find.byKey(pairingSecretFieldKey), findsOneWidget);
+      expect(find.byKey(deviceCodeFieldKey), findsOneWidget);
+      // The name is asked for only where the server asks for it (issue #89).
+      expect(find.byKey(userNameFieldKey), findsNothing);
     });
   });
 

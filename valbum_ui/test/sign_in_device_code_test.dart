@@ -138,8 +138,10 @@ void main() {
     );
   });
 
-  testWidgets('refuses a secret and a code together, before asking anybody',
+  testWidgets('refuses an empty code field, before asking anybody',
       (tester) async {
+    // There is one way in and it is a code (issue #89); an empty field is
+    // said here rather than sent to be refused.
     var store = InMemorySettingsStore(serverUrl);
     var settings = ServerSettings(store: store);
     await settings.load();
@@ -151,19 +153,17 @@ void main() {
       serverAnswering(requests, () => http.Response(paired, 200)),
     );
 
-    await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
-    await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-2345");
     await tester.pumpAndSettle();
     await tapVisible(tester, signInButton);
 
     expect(
       tester.widget<Text>(find.byKey(signInErrorKey)).data,
-      "Enter either the pairing secret or a device code, not both.",
+      codeRequiredRefusal,
     );
     expect(
       requests.where((request) => request.url.query == "action=pair"),
       isEmpty,
-      reason: "Nothing is sent while the app does not know what was meant.",
+      reason: "Nothing is sent while there is nothing to send.",
     );
     expect(store.token, isNull);
   });
@@ -205,9 +205,11 @@ void main() {
     expect(find.byKey(deviceCodeFieldKey), findsOneWidget);
     expect(
       find.text(
-        "Shown under My devices on a device you are already signed in on.",
+        "From the server's start-up, from My devices on a device you are "
+        "already signed in on, or from your administrator.",
       ),
       findsOneWidget,
     );
+    expect(find.textContaining("invite"), findsNothing);
   });
 }

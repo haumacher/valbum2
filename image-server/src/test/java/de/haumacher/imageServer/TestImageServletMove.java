@@ -566,7 +566,7 @@ public class TestImageServletMove extends TestCase {
 	// --- Helpers. ---
 
 	private ImageServlet servlet(AuthMode mode) throws Exception {
-		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(mode, SECRET, _base));
+		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(mode, _base));
 		servlet.init();
 		return servlet;
 	}

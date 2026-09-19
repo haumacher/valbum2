@@ -153,7 +153,7 @@ public class TestImageServletInvite extends InviteTestCase {
 
 	private static ImageServlet servletOn(Path base) throws Exception {
 		ImageServlet servlet = new ImageServlet(base.toFile(),
-			new AuthService(AuthMode.WRITES, SharingFixture.SECRET, base));
+			new AuthService(AuthMode.WRITES, base));
 		servlet.init();
 		return servlet;
 	}

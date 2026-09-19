@@ -221,7 +221,7 @@ public class SpacesMigration {
 	 * </p>
 	 */
 	private static void nameOwner(Path spaceRoot, String segment, Report report) throws IOException {
-		AuthService auth = new AuthService(AuthMode.WRITES, null, spaceRoot);
+		AuthService auth = new AuthService(AuthMode.WRITES, spaceRoot);
 		String named = auth.nameNamelessOwner(segment);
 		if (named != null) {
 			report.say("The owner of this library had no name and is now '" + named

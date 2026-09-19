@@ -17,7 +17,6 @@ import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
-import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.msgbuf.json.JsonReader;
@@ -435,7 +434,7 @@ public class TestPrivacy extends TestCase {
 	 */
 	private ImageServlet servlet() throws IOException {
 		if (_servlet == null) {
-			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SECRET, _base));
+			_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base));
 			_servlets.add(_servlet);
 		}
 		return _servlet;
@@ -443,8 +442,7 @@ public class TestPrivacy extends TestCase {
 
 	/** Signs the library owner in and answers the token of their device. */
 	private String signIn() throws Exception {
-		PairResponse response = new AuthService(AuthMode.WRITES, SECRET, _base).pair(PairRequest.create()
-			.setSecret(SECRET).setDeviceName("Phone").setUserName("haui"));
+		PairResponse response = Codes.signInAdmin(new AuthService(AuthMode.WRITES, _base), "Phone", "haui");
 		return response.getToken();
 	}
 

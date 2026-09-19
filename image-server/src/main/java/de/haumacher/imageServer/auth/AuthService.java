@@ -16,8 +16,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.SecureRandom;
-import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -52,8 +50,26 @@ public class AuthService {
 	public static final String TOKEN_REFUSED =
 		"This device is no longer paired with the server. Pair it again in the server settings.";
 
-	/** The message a wrong pairing secret is refused with. */
-	public static final String SECRET_REFUSED = "Wrong pairing secret.";
+	/**
+	 * The message a pairing carrying the retired pairing secret is refused with, see issue #89.
+	 *
+	 * <p>
+	 * There is no secret any more, and an app that still sends one is told what to do instead
+	 * rather than being left with "wrong secret": the server prints a single-use sign-in code for
+	 * the administrator of a space whose administrator has no device yet, and that code goes into
+	 * the same field every other code goes into. Answered <code>410 Gone</code> for one release,
+	 * the retirement pattern of issue #83.
+	 * </p>
+	 */
+	public static final String SECRET_RETIRED =
+		"The pairing secret is gone. Sign in with the code this server prints at start-up for the "
+			+ "administrator of this space, with a code from a device you are already signed in on, "
+			+ "or with a recovery code from your administrator.";
+
+	/** The message a pairing that carries no credential at all is refused with, see issue #89. */
+	public static final String CODE_REQUIRED =
+		"This sign-in needs a code. Enter the code the server printed at start-up, a code from one "
+			+ "of your devices, or a recovery code from your administrator.";
 
 	/** The message pairing is refused with while the server runs without authentication. */
 	public static final String PAIRING_DISABLED =
@@ -304,10 +320,19 @@ public class AuthService {
 	 * by a user or by a folder at the top of the space gets a number appended.
 	 * </p>
 	 *
+	 * <p>
+	 * <b>Only an administrator who has devices</b>, since issue #89: a nameless administrator
+	 * <em>without</em> devices is not an old library but the fresh seat of a space, waiting for
+	 * the person who redeems its seat code to choose a name for themselves. Naming them here would
+	 * take that choice away and leave every space administered by somebody called "owner". A
+	 * nameless administrator with devices is the other case and only the other case — somebody is
+	 * signed in as them already, so nobody will ever be asked, and the name has to be invented.
+	 * </p>
+	 *
 	 * @param suggestion
 	 *        What to call them, the space's segment or the empty string for a single-space server.
 	 * @return The name they were given, <code>null</code> if there was nothing to do (no
-	 *         administrator, or one that has a name already).
+	 *         administrator, one that has a name already, or a seat nobody signed into yet).
 	 */
 	public String nameNamelessOwner(String suggestion) throws IOException {
 		if (_users == null) {
@@ -315,7 +340,7 @@ public class AuthService {
 		}
 		synchronized (_users) {
 			User owner = _users.getOwner();
-			if (owner == null || !owner.getName().isEmpty()) {
+			if (owner == null || !owner.getName().isEmpty() || owner.getDevices().isEmpty()) {
 				return null;
 			}
 			String name = freeName(suggestion);
@@ -746,8 +771,6 @@ public class AuthService {
 
 	private final AuthMode _mode;
 
-	private final String _pairingSecret;
-
 	private final Path _basePath;
 
 	private final UserStore _users;
@@ -763,8 +786,8 @@ public class AuthService {
 	/**
 	 * Creates an {@link AuthService} whose members may invite, see {@link InviteMode#MEMBERS}.
 	 */
-	public AuthService(AuthMode mode, String pairingSecret, Path basePath) {
-		this(mode, pairingSecret, basePath, InviteMode.MEMBERS);
+	public AuthService(AuthMode mode, Path basePath) {
+		this(mode, basePath, InviteMode.MEMBERS);
 	}
 
 	/**
@@ -772,29 +795,101 @@ public class AuthService {
 	 *
 	 * @param mode
 	 *        What requires a paired device.
-	 * @param pairingSecret
-	 *        The secret a device must present to be paired, <code>null</code> while pairing is
-	 *        impossible.
 	 * @param basePath
 	 *        The root of the served album tree; the user store lives below it and the user spaces
 	 *        are folders in it.
 	 * @param inviteMode
 	 *        Who may hand out an invitation, see issue #52.
 	 */
-	public AuthService(AuthMode mode, String pairingSecret, Path basePath, InviteMode inviteMode) {
+	public AuthService(AuthMode mode, Path basePath, InviteMode inviteMode) {
 		_mode = mode;
-		_pairingSecret = pairingSecret;
 		_basePath = basePath;
 		_inviteMode = inviteMode;
 		_users = mode == AuthMode.OFF ? null : new UserStore(basePath);
 		_shares = mode == AuthMode.OFF ? null : new ShareStore(basePath);
 		_invitations = mode == AuthMode.OFF ? null : new InvitationStore(basePath);
 		_deviceCodes = mode == AuthMode.OFF ? null : new DeviceCodeStore(basePath);
+		ensureAdminSeat();
+	}
+
+	/**
+	 * Makes sure this space has an administrator, nameless and without devices (issue #89).
+	 *
+	 * <p>
+	 * <b>The seat is never empty, only unnamed.</b> A space exists the moment its folder does, and
+	 * from that moment it has exactly one administrator — who they are is decided by whoever
+	 * redeems the seat code the server prints, and the name they choose is written on this user.
+	 * That is what makes the bootstrap one mechanism with everything else: there is no "first
+	 * sign-in creates a user" special case left, only a code that adds a device to a user who is
+	 * already there.
+	 * </p>
+	 *
+	 * <p>
+	 * A library written before issue #89 has its administrator already and nothing happens here.
+	 * In {@link AuthMode#OFF} there are no users at all, as before.
+	 * </p>
+	 */
+	private void ensureAdminSeat() {
+		if (_users == null) {
+			return;
+		}
+		synchronized (_users) {
+			if (_users.getOwner() != null) {
+				return;
+			}
+			_users.createOwner();
+			try {
+				_users.store();
+			} catch (IOException ex) {
+				// A read-only or unwritable library: the seat is there in memory and every read
+				// works; the next write says so again. Nothing is refused over it.
+				LOG.log(java.util.logging.Level.WARNING,
+					"Cannot write the administrator of '" + _basePath + "': " + ex.getMessage());
+			}
+		}
+	}
+
+	/**
+	 * Issues the seat code of this space, see {@link DeviceCodeStore#SERVER_ISSUER} (issue #89).
+	 *
+	 * <p>
+	 * The one thing that bootstraps a space, and deliberately the same thing as every other way
+	 * in: an ordinary single-use device code for the space's administrator, with the ordinary ten
+	 * minutes, issued by the server rather than by a device. It is issued only while that
+	 * administrator has <em>no device</em> — once somebody signed in, a further device of theirs
+	 * comes from a device they hold (issue #65) or from a recovery code, and a printed code would
+	 * be a standing master key, which is exactly what the pairing secret was and why it is gone.
+	 * </p>
+	 *
+	 * <p>
+	 * Every start-up withdraws the previous one and prints a new one, so a code that was printed
+	 * into a journal an hour ago is worth nothing, and losing the last device of a space is
+	 * recovered by a restart — which only somebody with the machine can do.
+	 * </p>
+	 *
+	 * @param fixed
+	 *        The characters the code has to be (<code>--admin-code</code>), <code>null</code> for
+	 *        a random one.
+	 * @return The issued code, <code>null</code> if this space needs none.
+	 */
+	public DeviceCodeStore.Issued issueSeatCode(String fixed) throws IOException {
+		if (_users == null || _deviceCodes == null) {
+			return null;
+		}
+		synchronized (_users) {
+			User admin = _users.getOwner();
+			if (admin == null || !admin.getDevices().isEmpty()) {
+				return null;
+			}
+			// The code of the previous start dies with it: one live seat code at a time.
+			_deviceCodes.revokeIssuedBy(DeviceCodeStore.SERVER_ISSUER);
+			return _deviceCodes.create(admin.getName(), DeviceCodeStore.SERVER_ISSUER, fixed);
+		}
 	}
 
 	/** An {@link AuthService} serving every request, as before issue #28. */
 	public static AuthService disabled() {
-		return new AuthService(AuthMode.OFF, null, null);
+		return new AuthService(AuthMode.OFF, null);
 	}
 
 	/** What requires a paired device. */
@@ -855,13 +950,6 @@ public class AuthService {
 	 */
 	public static Path spaceFolder(Path basePath, User user) {
 		return basePath;
-	}
-
-	/** Generates a pairing secret for a server that was not given one. */
-	public static String generateSecret() {
-		byte[] bytes = new byte[12];
-		new SecureRandom().nextBytes(bytes);
-		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 	}
 
 	/** Identifies the sender of the given request. */
@@ -1057,39 +1145,27 @@ public class AuthService {
 	}
 
 	/**
-	 * The message a first sign-in with the pairing secret without a name is refused with (#86).
+	 * The message a sign-in for a user who has no name yet is refused without one (#86, #89).
 	 *
 	 * <p>
-	 * The administrator of a space is one user among several: their name is what the users list
-	 * shows, what an attribution records and what <code>set-permission</code> and
-	 * <code>remove-user</code> address them by. A nameless one was a library with a single owner,
-	 * and that is not what a space is.
+	 * A user of a space is one among several: their name is what the users list shows, what an
+	 * attribution records and what <code>set-permission</code> and <code>remove-user</code>
+	 * address them by. The seat code of a fresh space signs in an administrator who has no name
+	 * yet, so the name is asked for here — once, by the person themselves, which is also what
+	 * makes inviting somebody easy: nobody has to choose a name for anybody else.
 	 * </p>
 	 */
-	public static final String ADMIN_NAME_REQUIRED =
-		"The first sign-in with the pairing secret names the administrator of this space. "
-			+ "Enter your name.";
+	public static final String NAME_REQUIRED =
+		"This code signs in a user who has no name yet. Choose the name you want to be known by in "
+			+ "this space.";
+
+	/** The message a caller is refused a code for somebody else with, see issue #89. */
+	public static final String RECOVERY_REFUSED =
+		"Only an administrator of this space may create a sign-in code for somebody else.";
 
 	/** The message the demotion or removal of the last administrator is refused with. */
 	public static final String LAST_ADMIN =
 		"This is the only administrator of this space; make somebody else an administrator first.";
-
-	/**
-	 * Whether the presented secret is the expected one, compared in constant time.
-	 *
-	 * <p>
-	 * The comparison must not say <em>where</em> two secrets differ, or a caller could find one
-	 * character at a time.
-	 * </p>
-	 */
-	private static boolean matches(String presented, String expected) {
-		if (presented == null) {
-			return false;
-		}
-		byte[] a = presented.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-		byte[] b = expected.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-		return java.security.MessageDigest.isEqual(a, b);
-	}
 
 	/**
 	 * The message a share link's move is refused with, see issue #53.
@@ -1823,22 +1899,24 @@ public class AuthService {
 	 * Signs a device in and issues its token.
 	 *
 	 * <p>
-	 * The pairing secret signs in the library owner: an empty {@link PairRequest#getUserName()}
-	 * means "the owner" (that is what an app from before issue #45 sends), a non-empty one names
-	 * the owner while it has no name yet and must match the owner's name afterwards.
+	 * <b>One mechanism</b> since issue #89: a <em>code</em> is a single-use secret that adds a
+	 * device to one target user, and who issued it is the only thing that differs. The server
+	 * issues one for the administrator of a space that has no device yet (the seat code,
+	 * {@link #issueSeatCode(String)}), a signed-in device issues one for its own user (issue #65),
+	 * and an administrator issues one for somebody who lost their devices (the recovery code). All
+	 * three arrive in {@link PairRequest#getDeviceCode()} and are redeemed by the same
+	 * {@link #addDevice(PairRequest, String)}.
 	 * </p>
 	 *
 	 * <p>
-	 * Three ways in, in this order: a {@link PairRequest#getInvitation() invitation} creates a new
-	 * user (issue #52), a {@link PairRequest#getDeviceCode() device code} adds a further device of
-	 * a user who is already here (issue #65), and the {@link #_pairingSecret pairing secret} signs
-	 * in the library owner. They are deliberately different things and the first non-empty one
-	 * decides; nothing is ever both.
+	 * Beside it, an {@link PairRequest#getInvitation() invitation} creates a new user (issue #52)
+	 * and is read first where a request carries both. A request carrying the retired
+	 * {@link PairRequest#getSecret() pairing secret} and no code is answered <code>410</code> with
+	 * {@link #SECRET_RETIRED}, for one release.
 	 * </p>
 	 *
 	 * @throws PairRefused
-	 *         If the server does not pair at all, the secret does not match, or the request names
-	 *         somebody other than the library owner.
+	 *         If the server does not pair at all, or the code is not one that still works.
 	 */
 	public PairResponse pair(PairRequest request) throws PairRefused, IOException {
 		if (_mode == AuthMode.OFF) {
@@ -1852,36 +1930,12 @@ public class AuthService {
 		if (!deviceCode.isEmpty()) {
 			return addDevice(request, deviceCode);
 		}
-		if (_pairingSecret == null || _pairingSecret.isEmpty() || !matches(request.getSecret(), _pairingSecret)) {
-			throw new PairRefused(HttpServletResponse.SC_FORBIDDEN, SECRET_REFUSED);
+		if (!blank(request.getSecret())) {
+			// An app from before issue #89; it is told what replaced the secret, not that it is
+			// wrong, see SECRET_RETIRED.
+			throw new PairRefused(HttpServletResponse.SC_GONE, SECRET_RETIRED);
 		}
-
-		User owner;
-		synchronized (_users) {
-			if (_users.getOwner() == null && blank(request.getUserName())) {
-				// This pairing would create the administrator, and an administrator without a name
-				// is nobody the space can talk about, see issue #86.
-				throw new PairRefused(HttpServletResponse.SC_BAD_REQUEST, ADMIN_NAME_REQUIRED);
-			}
-			try {
-				owner = _users.nameOwner(request.getUserName());
-			} catch (IllegalArgumentException ex) {
-				throw new PairRefused(HttpServletResponse.SC_UNAUTHORIZED, ex.getMessage());
-			}
-		}
-
-		String token = _users.addDevice(owner, request.getDeviceName());
-		UserStore.Device device = owner.getDevices().get(owner.getDevices().size() - 1);
-		String deviceName = device.getName();
-		if (!owner.getSpace().isEmpty() && _basePath != null) {
-			spaceRoot(Caller.signedIn(owner, device), _basePath);
-		}
-		return PairResponse.create()
-			.setToken(token)
-			.setDeviceName(deviceName)
-			.setUserName(owner.getName())
-			.setRole(owner.getRole())
-			.setSpace(owner.getSpace());
+		throw new PairRefused(HttpServletResponse.SC_BAD_REQUEST, CODE_REQUIRED);
 	}
 
 	/**
@@ -1897,10 +1951,21 @@ public class AuthService {
 	 * is worth exactly what the user's other tokens are worth.
 	 * </p>
 	 *
+	 * <p>
+	 * An administrator may name somebody else instead (issue #89): the <em>recovery code</em> for
+	 * a person who cleared their browser or reinstalled the app and has no device left. It is the
+	 * same code, with the same ten minutes and the same single use, and it still dies with the
+	 * administrator's device that issued it — so a code handed out by a device that is later
+	 * signed out is worth nothing, exactly as for one's own.
+	 * </p>
+	 *
+	 * @param userName
+	 *        The user the code signs in, empty or <code>null</code> for the caller themselves.
 	 * @throws Refused
-	 *         If the server does not pair at all, or the caller is no signed-in device.
+	 *         If the server does not pair at all, the caller is no signed-in device, the caller
+	 *         names somebody else without being an administrator, or there is no such user.
 	 */
-	public DeviceCodeStore.Issued deviceCode(Caller caller) throws Refused, IOException {
+	public DeviceCodeStore.Issued deviceCode(Caller caller, String userName) throws Refused, IOException {
 		if (_mode == AuthMode.OFF || _deviceCodes == null) {
 			throw new Refused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
 		}
@@ -1911,7 +1976,20 @@ public class AuthService {
 			// An anonymous caller and an invitation bearer alike: there is no "oneself" here yet.
 			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, WRITE_REFUSED);
 		}
-		return _deviceCodes.create(caller.getUserName(), caller.getDeviceId());
+		String target = userName == null ? "" : userName.trim();
+		if (target.isEmpty() || target.equals(caller.getUserName())) {
+			return _deviceCodes.create(caller.getUserName(), caller.getDeviceId());
+		}
+		if (!Roles.ADMIN.equals(caller.getRole())) {
+			throw new Refused(HttpServletResponse.SC_FORBIDDEN, RECOVERY_REFUSED);
+		}
+		synchronized (_users) {
+			User user = _users.getUser(target);
+			if (user == null) {
+				throw new Refused(HttpServletResponse.SC_NOT_FOUND, unknownUser(target));
+			}
+			return _deviceCodes.create(user.getName(), caller.getDeviceId());
+		}
 	}
 
 	/**
@@ -1919,10 +1997,17 @@ public class AuthService {
 	 *
 	 * <p>
 	 * The code says who: the new device is signed in as the user the code was issued for, with
-	 * their role and their space, exactly as if they had signed in with the secret. A
-	 * {@link PairRequest#getUserName() user name} in the request is therefore not a choice but a
-	 * check — a name that is not the code's user is refused, and the refusal does not say whose
-	 * code it is.
+	 * their role and their space. A {@link PairRequest#getUserName() user name} in the request is
+	 * therefore not a choice but a check — a name that is not the code's user is refused, and the
+	 * refusal does not say whose code it is.
+	 * </p>
+	 *
+	 * <p>
+	 * The one exception, and the bootstrap of every space (issue #89): a code for a user who has
+	 * <em>no name yet</em>. There the name is not a check but the choice the person makes for
+	 * themselves — it is required ({@link #NAME_REQUIRED}), it must be free
+	 * ({@link #nameTaken(String)}), and it is written on the user by this pairing. Nobody ever
+	 * chooses a name for somebody else.
 	 * </p>
 	 *
 	 * <p>
@@ -1953,22 +2038,43 @@ public class AuthService {
 			throw new PairRefused(HttpServletResponse.SC_GONE, DEVICE_CODE_EXPIRED);
 		}
 		String requested = request.getUserName() == null ? "" : request.getUserName().trim();
-		if (!requested.isEmpty() && !requested.equals(record.getUser())) {
-			throw new PairRefused(HttpServletResponse.SC_UNAUTHORIZED, DEVICE_CODE_OTHER_USER);
-		}
 
 		synchronized (_users) {
-			User user = _users.getUser(record.getUser());
+			// A code for a nameless user names its target by the seat, not by a name nobody has.
+			User user = record.getUser().isEmpty() ? _users.getOwner() : _users.getUser(record.getUser());
 			if (user == null) {
 				// The user was removed while the code was on its way; it signs nobody in.
 				LOG.warning("Refusing " + record + ": its user is gone.");
 				throw new PairRefused(HttpServletResponse.SC_GONE, DEVICE_CODE_USER_GONE);
 			}
-			if (record.isRevoked() || user.getDevice(record.getIssuedBy()) == null) {
+			boolean nameless = user.getName().isEmpty();
+			if (!nameless && !requested.isEmpty() && !requested.equals(user.getName())) {
+				throw new PairRefused(HttpServletResponse.SC_UNAUTHORIZED, DEVICE_CODE_OTHER_USER);
+			}
+			if (record.isRevoked() || !issuerAlive(record)) {
 				// The device that made this code is no longer one of the user's; the code dies with
 				// it, which is what makes signing a stranger's device out actually shut the door.
 				LOG.warning("Refusing " + record + ": the device that issued it is gone.");
 				throw new PairRefused(HttpServletResponse.SC_GONE, DEVICE_CODE_ISSUER_GONE);
+			}
+			if (nameless) {
+				// The fresh seat of a space: the person signing in chooses what to be called, and
+				// the name is written on the user before anything else, see issue #89.
+				if (requested.isEmpty()) {
+					throw new PairRefused(HttpServletResponse.SC_BAD_REQUEST, NAME_REQUIRED);
+				}
+				String name;
+				try {
+					name = UserStore.checkUserName(requested);
+				} catch (IllegalArgumentException ex) {
+					throw new PairRefused(HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
+				}
+				if (!isNameFree(name)) {
+					throw new PairRefused(HttpServletResponse.SC_CONFLICT, nameTaken(name));
+				}
+				user.setName(name);
+				_users.store();
+				LOG.info("Named the " + user.getRole() + " of this space '" + name + "'.");
 			}
 			String token = _users.addDevice(user, request.getDeviceName());
 			UserStore.Device device = user.getDevices().get(user.getDevices().size() - 1);
@@ -1985,6 +2091,31 @@ public class AuthService {
 				.setRole(user.getRole())
 				.setSpace(user.getSpace());
 		}
+	}
+
+	/**
+	 * Whether the device that issued the given code is still one of the user's, see issue #65.
+	 *
+	 * <p>
+	 * The device is looked for in the whole space, not among the code's own user's devices: a
+	 * recovery code is made by an <em>administrator's</em> device for somebody else (issue #89),
+	 * and it must die with that device exactly as one's own code dies with one's own. Ids are free
+	 * across the store, so one id names at most one device, and a device that was signed out is
+	 * gone from the store altogether.
+	 * </p>
+	 *
+	 * <p>
+	 * A code the <em>server</em> issued has no issuing device to lose ({@link
+	 * DeviceCodeStore#SERVER_ISSUER}): the seat code of a space is withdrawn by the next start-up
+	 * instead, which is the same thing said differently — whoever can restart the server is the
+	 * trust anchor of the space either way.
+	 * </p>
+	 */
+	private boolean issuerAlive(DeviceCodeStore.Code record) {
+		if (DeviceCodeStore.SERVER_ISSUER.equals(record.getIssuedBy())) {
+			return true;
+		}
+		return _users.deviceOwner(record.getIssuedBy()) != null;
 	}
 
 	/**

@@ -165,7 +165,7 @@ void main() {
     expect(find.byKey(deviceCodeFieldKey), findsOneWidget);
   });
 
-  testWidgets('a scan beside a typed secret is still refused on sign-in',
+  testWidgets('a scan replaces what was typed and signs in with it',
       (tester) async {
     var requests = <http.Request>[];
     var settings = ServerSettings(store: InMemorySettingsStore(serverUrl));
@@ -181,26 +181,24 @@ void main() {
       FakeDeviceCodeScanner(payload),
     );
 
-    await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
+    await tester.enterText(find.byKey(deviceCodeFieldKey), "WXYZ-9876");
     await tester.pumpAndSettle();
     await tapVisible(tester, find.byKey(deviceCodeScanKey));
 
-    // The scan says nothing about the secret: both fields hold what they
-    // hold, and the refusal is the one the sign-in makes.
+    // What was scanned is what is in the fields; the scan alone sends nothing.
     expect(fieldText(tester, serverUrlFieldKey), scannedServerUrl);
     expect(fieldText(tester, deviceCodeFieldKey), "ABCD-2345");
-    expect(fieldText(tester, pairingSecretFieldKey), "demo");
     expect(find.byKey(signInErrorKey), findsNothing);
-
-    await tapVisible(tester, signInButton);
-
-    expect(
-      tester.widget<Text>(find.byKey(signInErrorKey)).data,
-      "Enter either the pairing secret or a device code, not both.",
-    );
     expect(
       requests.where((request) => request.url.query == "action=pair"),
       isEmpty,
     );
+
+    await tapVisible(tester, signInButton);
+
+    var pair = requests
+        .where((request) => request.url.query == "action=pair")
+        .single;
+    expect(pair.body, contains('"deviceCode":"ABCD-2345"'));
   });
 }

@@ -39,8 +39,6 @@ import junit.framework.TestCase;
 @SuppressWarnings("javadoc")
 public class TestSpacesProbe extends TestCase {
 
-	private static final String SECRET = "let-me-in";
-
 	private Path _base;
 
 	private Path _webRoot;
@@ -62,7 +60,8 @@ public class TestSpacesProbe extends TestCase {
 			ImageIO.write(new BufferedImage(4, 3, BufferedImage.TYPE_3BYTE_BGR), "jpg",
 				album.resolve("image.jpg").toFile());
 		}
-		Spaces spaces = Spaces.detect(_base, null, AuthMode.WRITES, SECRET, InviteMode.MEMBERS);
+		_spaces = Spaces.detect(_base, null, AuthMode.WRITES, InviteMode.MEMBERS);
+		Spaces spaces = _spaces;
 		ResourceServlet app = new ResourceServlet(_webRoot, "/data", "s", "i");
 		app.setBaseSegments(spaces.segments());
 		_servlet = new SpaceServlet(spaces, app);
@@ -138,9 +137,13 @@ public class TestSpacesProbe extends TestCase {
 			tilde.status() >= 400);
 	}
 
+	/** The spaces under test; each has a seat code of its own, see issue #89. */
+	private Spaces _spaces;
+
 	private String pair(String pathInfo, String userName) throws Exception {
-		FakeResponse response = post(pathInfo, "pair", null, "{\"secret\":\"" + SECRET
-			+ "\",\"userName\":\"" + userName + "\",\"deviceName\":\"Phone\"}");
+		String segment = pathInfo.substring(1, pathInfo.indexOf('/', 1));
+		String code = Codes.forOwner(_spaces.bySegment(segment).getAuth());
+		FakeResponse response = post(pathInfo, "pair", null, Codes.pairRequest(code, "Phone", userName));
 		assertEquals("Pairing failed: " + response.body(), HttpServletResponse.SC_OK, response.status());
 		return PairResponse.readPairResponse(reader(response.body())).getToken();
 	}

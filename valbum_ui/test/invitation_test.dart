@@ -417,7 +417,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(invitationSectionKey), findsOneWidget);
-      expect(find.byKey(pairingSecretFieldKey), findsNothing);
+      expect(find.byKey(deviceCodeFieldKey), findsNothing);
       expect(
         find.text("alice invited you to this album server: you may look at "
             "the albums."),
@@ -465,7 +465,7 @@ void main() {
       expect(find.byKey(shareLinkRefusalKey), findsOneWidget);
       expect(find.text(shareLinkRefusal), findsOneWidget);
       expect(find.byKey(userNameFieldKey), findsNothing);
-      expect(find.byKey(pairingSecretFieldKey), findsNothing);
+      expect(find.byKey(deviceCodeFieldKey), findsNothing);
       expect(signInButton, findsNothing);
     });
   });

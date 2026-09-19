@@ -34,10 +34,14 @@ VALBUM_CONTEXTPATH=
 VALBUM_AUTH=writes
 
 # Further server arguments, appended to the ones above. The most useful one is
-# a fixed pairing secret; without it the server generates one at every start and
-# prints it to the journal (journalctl -u valbum):
+# a fixed sign-in code for the administrator of a space that nobody has signed
+# into yet; without it the server makes a fresh one at every start and prints it
+# to the journal (journalctl -u valbum). The code is eight characters of
+# ABCDEFGHJKLMNPQRSTUVWXYZ23456789, a dash between the groups allowed; it works
+# once, lives ten minutes, and is issued again at every start until somebody
+# signed in:
 #
-#   VALBUM_OPTS="--pairing-secret my-secret"
+#   VALBUM_OPTS="--admin-code ABCD-EFGH"
 #
 # A web application built separately can be served from disk with
 # --webroot /path/to/build/web (the one bundled into the package is used

@@ -214,7 +214,7 @@ public class TestShareLinks extends ShareTestCase {
 			SharingFixture.album(other, "Elsewhere", "Elsewhere",
 				"[\"ImagePart\",{\"name\":\"theirs.jpg\",\"width\":4,\"height\":3}]", "theirs.jpg");
 			ImageServlet elsewhere = new ImageServlet(other.toFile(),
-				new AuthService(AuthMode.WRITES, "other-secret", other), "other");
+				new AuthService(AuthMode.WRITES, other), "other");
 			try {
 				elsewhere.init(TestSpaces.config());
 				FakeResponse response = new FakeResponse();

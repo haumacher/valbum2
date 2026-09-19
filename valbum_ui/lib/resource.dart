@@ -1447,18 +1447,29 @@ class ErrorInfo extends Resource {
 
 ///  Request to issue a device token, sent to <code>&lt;data&gt;/?action=pair</code>.
 class PairRequest extends _JsonObject {
-	///  The pairing secret the server was started with.
+	///  The pairing secret the server was started with; retired by issue #89.
+	/// 
+	///  <p>
+	///  There is no pairing secret any more: the server issues an ordinary single-use
+	///  {@link #deviceCode} for the administrator of a space that has no signed-in device yet and
+	///  prints it at start-up. The field is read for one release and a request carrying it — and no
+	///  {@link #deviceCode} — is answered <code>410 Gone</code> with an {@link ErrorInfo} naming the
+	///  code, so that an app that was not updated says something useful instead of failing silently.
+	///  </p>
 	String secret;
 
 	///  The name the device announces itself with.
 	String deviceName;
 
-	///  The name of the user signing in, empty for "the library owner".
+	///  The name of the user signing in, empty where the code already says who.
 	/// 
 	///  <p>
-	///  A request carrying the pairing secret signs in the library owner (the <code>admin</code>): an
-	///  empty name means the owner, a non-empty one names the owner when it has no name yet and must
-	///  match the stored name afterwards. An app from before issue #45 sends no name at all.
+	///  A {@link #deviceCode} names its own user, so the name is not a choice but a check: a name
+	///  that is not the code's user is refused. The one exception is a code for a user who has
+	///  <em>no name yet</em> — the seat code the server prints for the administrator of a fresh
+	///  space (issue #89), and the code of an invitation. There the name is what the user will be
+	///  known by in the space, it must be free, and a pairing without it is refused
+	///  <code>400</code> so that the app can ask for one.
 	///  </p>
 	/// 
 	///  <p>
@@ -1485,6 +1496,13 @@ class PairRequest extends _JsonObject {
 	///  {@link #invitation} must never do. It is no link and no bearer — it travels in this one
 	///  request and nowhere else — it lives ten minutes and it works once. Spelled with or without
 	///  the dash the other device shows, in any case.
+	///  </p>
+	/// 
+	///  <p>
+	///  Since issue #89 this is the one way a device is signed in: the seat code the server prints
+	///  for the administrator of a space that has no device yet, a code from a device of one's own,
+	///  and the recovery code an administrator makes for somebody who lost theirs are all the same
+	///  single-use secret with the same lifetime, told apart only by who issued them.
 	///  </p>
 	/// 
 	///  <p>
@@ -3510,6 +3528,65 @@ class DeviceList extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+	}
+
+}
+
+///  What a request to <code>&lt;data&gt;/?action=device-code</code> may carry, see issue #89.
+/// 
+///  <p>
+///  Nothing, and that is the ordinary case: a code for a further device of one's own needs no body,
+///  because the token already says who is asking. An administrator may name somebody else instead —
+///  the <em>recovery code</em> for a person who cleared their browser or reinstalled the app and
+///  lost every device they had. It is the same code with the same ten minutes and the same single
+///  use; only its target differs, and it still dies with the device that issued it.
+///  </p>
+class DeviceCodeRequest extends _JsonObject {
+	///  The user the code signs in, empty for the caller themselves.
+	/// 
+	///  <p>
+	///  Only an administrator of the space may name somebody other than themselves; a user this
+	///  space does not know is answered <code>404</code>.
+	///  </p>
+	String userName;
+
+	/// Creates a DeviceCodeRequest.
+	DeviceCodeRequest({
+			this.userName = "", 
+	});
+
+	/// Parses a DeviceCodeRequest from a string source.
+	static DeviceCodeRequest? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a DeviceCodeRequest instance from the given reader.
+	static DeviceCodeRequest read(JsonReader json) {
+		DeviceCodeRequest result = DeviceCodeRequest();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "DeviceCodeRequest";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "userName": {
+				userName = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("userName");
+		json.addString(userName);
 	}
 
 }

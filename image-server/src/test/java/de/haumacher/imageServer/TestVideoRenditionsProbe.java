@@ -8,7 +8,6 @@ import static de.haumacher.imageServer.TestImageServletPut.request;
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
-import de.haumacher.imageServer.shared.model.PairRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -86,8 +85,7 @@ public class TestVideoRenditionsProbe extends TestCase {
 			+ "[\"ImagePart\",{\"name\":\"clip.mp4\",\"kind\":\"VIDEO\",\"width\":4,\"height\":3,\"privacy\":2}]]}]";
 		Files.write(_album.toPath().resolve("index.json"), index.getBytes(StandardCharsets.UTF_8));
 		// Paired before the servlet exists, so that the servlet's own store knows the device.
-		String token = new AuthService(AuthMode.WRITES, SECRET, _base).pair(PairRequest.create()
-			.setSecret(SECRET).setDeviceName("Phone").setUserName("haui")).getToken();
+		String token = Codes.signInAdmin(new AuthService(AuthMode.WRITES, _base), "Phone", "haui").getToken();
 		servlet(AuthMode.WRITES);
 
 		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, get("clip.mp4", "tn", null).status());
@@ -123,7 +121,7 @@ public class TestVideoRenditionsProbe extends TestCase {
 	}
 
 	private void servlet(AuthMode mode) throws Exception {
-		_servlet = new ImageServlet(_base.toFile(), new AuthService(mode, SECRET, _base));
+		_servlet = new ImageServlet(_base.toFile(), new AuthService(mode, _base));
 	}
 
 	private FakeResponse get(String name, String type, String token) throws Exception {

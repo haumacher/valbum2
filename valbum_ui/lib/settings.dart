@@ -9,7 +9,7 @@
 /// see [dataUrlOf].
 ///
 /// The device token this app is signed in with lives beside the URL (issue
-/// #28): it is issued by the server against the pairing secret, stored here
+/// #28): it is issued by the server against a sign-in code, stored here
 /// and sent by [VAlbumClient] on every request. Since issue #45 the token
 /// belongs to a *user* — the name that user signed in under is stored beside
 /// the token, so the settings can say who this device is even while the
@@ -559,9 +559,9 @@ Future<String?> _authStatus(VAlbumClient client) async {
 
 /// How the user of the given name is named on the screen.
 ///
-/// The server leaves the name empty for the owner of a library nobody has
-/// named yet: the pairing secret signs that owner in, and the first sign-in
-/// carrying a name gives them one (issue #45).
+/// The server leaves the name empty for the administrator of a space nobody
+/// has signed into yet: the seat is there from the start, and the sign-in that
+/// redeems its code gives them their name (issues #45, #89).
 String userDisplayName(String userName) =>
     userName.isEmpty ? "the library owner" : userName;
 
@@ -728,17 +728,20 @@ const String serverUrlHelp =
 /// The key of the device name field, see [serverUrlFieldKey].
 const Key deviceNameFieldKey = Key("settings.deviceName");
 
-/// The key of the pairing secret field, see [serverUrlFieldKey].
-const Key pairingSecretFieldKey = Key("settings.pairingSecret");
-
 /// The key of the user name field, see [serverUrlFieldKey].
+///
+/// Shown only where a name is actually needed (issue #89): when an invitation
+/// is being accepted, and when the server answered [nameRequiredMessage] to a
+/// sign-in — a code for a user who has no name yet. Everywhere else the code
+/// says who is signing in, and asking would be asking for nothing.
 const Key userNameFieldKey = Key("settings.userName");
 
-/// The key of the device code field, see [serverUrlFieldKey] and issue #65.
+/// The key of the code field, see [serverUrlFieldKey] and issues #65 and #89.
 ///
-/// The other way to sign in on a device: a code shown under "My devices" on a
-/// device that is already signed in adds *this* device to the same user. It is
-/// beside the pairing secret and never together with it.
+/// The one way to sign a device in: a single-use code that adds this device to
+/// one user — the one the server printed at start-up for the administrator of
+/// a space nobody signed into yet, one shown under "My devices" on a device
+/// that is already signed in, or a recovery code from an administrator.
 const Key deviceCodeFieldKey = Key("settings.deviceCode");
 
 /// The key of the button opening the camera to read a device code (issue #66).
@@ -775,7 +778,7 @@ final TextInputFormatter deviceCodeFormatter =
   );
 });
 
-/// What belongs in the user name field (issue #86).
+/// What belongs in the user name field (issues #86, #89).
 ///
 /// It used to say "leave empty to sign in as the library owner", which was
 /// right while the owner was the one user of a library and is wrong in a space
@@ -783,28 +786,34 @@ final TextInputFormatter deviceCodeFormatter =
 /// attribution, shows as an empty row in the users list, and cannot be
 /// addressed by `set-permission` or `remove-user`.
 const String userNameHelp =
-    "Your name in this space; the first sign-in with the secret names the "
-    "administrator.";
+    "Your name in this space; it is what the others see and what your photos "
+    "are attributed to.";
 
-/// What the sign-in section says about the pairing secret (issue #86).
-const String pairingSecretExplanation =
-    "The pairing secret, which the server prints at start-up, signs in the "
-    "administrator of this space. The first sign-in with it names that "
-    "administrator.";
+/// What the sign-in section says about the code (issue #89).
+const String signInCodeExplanation =
+    "Enter the code the server printed at start-up, or a code from one of your "
+    "devices, or a recovery code your administrator gave you.";
 
-/// What a sign-in with the secret and no name is refused with (issue #86).
+/// What the server answers a sign-in that needs a name it was not given.
 ///
-/// Said here, before anything is sent: the server refuses the same thing with
-/// a sentence of its own, and that one is shown as well where it arrives —
-/// but a name is not something to learn about from a round trip.
-const String nameRequiredRefusal = "Enter your name.";
+/// The server's own sentence, mirrored here so that the app can tell this
+/// refusal from every other `400` and show the name field. It is compared
+/// against what arrives, never shown instead of it: what the person reads is
+/// always what the server said (issue #89).
+const String nameRequiredMessage =
+    "This code signs in a user who has no name yet. Choose the name you want "
+    "to be known by in this space.";
 
-/// What a sign-in naming both a secret and a device code is refused with.
+/// What a sign-in without any code is refused with, before anything is sent.
+const String codeRequiredRefusal = "Enter the code that signs this device in.";
+
+/// Whether the given failure is the server asking for a name (issue #89).
 ///
-/// Said here rather than by the server: the two are different ways in and
-/// mean different things, so the app must not quietly pick one.
-const String bothCredentialsRefusal =
-    "Enter either the pairing secret or a device code, not both.";
+/// Matched on the status and the server's own sentence, never on a code of our
+/// own invention: the protocol carries a message, and this is the one `400`
+/// the app does something else with than showing it as a failure.
+bool needsAName(VAlbumException failure) =>
+    failure.status == 400 && failure.message.trim() == nameRequiredMessage;
 
 /// The key of the "Clear cache" button, see [serverUrlFieldKey].
 const Key clearCacheButtonKey = Key("settings.clearCache");
@@ -879,16 +888,17 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     text: widget.settings.userName ?? "",
   );
 
-  /// The pairing secret the server was started with.
+  /// The code signing this device in (issues #65, #89).
   ///
-  /// Never stored: it is exchanged for the device token exactly once.
-  final TextEditingController secretController = TextEditingController();
-
-  /// The code shown on a device that is already signed in (issue #65).
-  ///
-  /// Never stored either, and never sent together with the secret: it is
-  /// exchanged for this device's own token exactly once.
+  /// Never stored: it is exchanged for this device's own token exactly once.
   final TextEditingController deviceCodeController = TextEditingController();
+
+  /// Whether the server asked for a name, see [nameRequiredMessage].
+  ///
+  /// The name field is not shown until it does: a code says whom it signs in,
+  /// and the one case where it does not — a user who has no name yet — is
+  /// something only the server knows.
+  bool nameRequired = false;
 
   /// Why the sign-in was not even attempted, if it was not.
   String? signInError;
@@ -1125,7 +1135,6 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     controller.dispose();
     deviceController.dispose();
     userController.dispose();
-    secretController.dispose();
     deviceCodeController.dispose();
     super.dispose();
   }
@@ -1251,11 +1260,12 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
   /// The section signing this device in at the server.
   ///
-  /// A server refusing anonymous changes issues a token against the pairing
-  /// secret it was started with; the token is stored with the server URL and
-  /// sent on every request from then on. Since issue #45 the token belongs to
-  /// a user, so the section asks for that user's name as well and shows who
-  /// this device is signed in as.
+  /// One field and one thing in it: a **code** (issue #89). Whoever issued it
+  /// — the server at start-up, a device of one's own, an administrator — the
+  /// server answers a token for this device, which is stored with the server
+  /// URL and sent on every request from then on. The name is asked for only
+  /// where the server says it is needed, and the section shows who this device
+  /// is signed in as.
   List<Widget> _signInSection(ServerSettings settings) {
     // A share link is no sign-in and names no server: it is said, not stored,
     // see [shareLinkRefusal].
@@ -1272,37 +1282,31 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       const SizedBox(height: 8),
       Text("Sign in", style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
-      if (!inviting) const Text(pairingSecretExplanation),
+      if (!inviting) const Text(signInCodeExplanation),
       const SizedBox(height: 16),
       ..._identityDisplay(settings),
       const SizedBox(height: 16),
       if (inviting) ..._invitationDisplay(),
-      TextField(
-        key: userNameFieldKey,
-        controller: userController,
-        autocorrect: false,
-        decoration: InputDecoration(
-          labelText: inviting ? "Your name" : "User name",
-          helperText:
-              inviting ? "How the others on this server see you." : userNameHelp,
-          helperMaxLines: 3,
-          border: const OutlineInputBorder(),
-        ),
-      ),
-      const SizedBox(height: 16),
-      if (!inviting)
+      // The name is asked for where it is a choice — an invitation, and a code
+      // for a user who has no name yet — and nowhere else, see issue #89.
+      if (inviting || nameRequired) ...[
         TextField(
-          key: pairingSecretFieldKey,
-          controller: secretController,
+          key: userNameFieldKey,
+          controller: userController,
+          autofocus: nameRequired,
           autocorrect: false,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: "Pairing secret",
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: inviting ? "Your name" : "User name",
+            helperText: inviting
+                ? "How the others on this server see you."
+                : userNameHelp,
+            helperMaxLines: 3,
+            border: const OutlineInputBorder(),
           ),
           onSubmitted: (_) => _signIn(),
         ),
-      if (!inviting) const SizedBox(height: 16),
+        const SizedBox(height: 16),
+      ],
       if (!inviting) _deviceCodeField(),
       if (!inviting) const SizedBox(height: 16),
       TextField(
@@ -1373,10 +1377,10 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       textCapitalization: TextCapitalization.characters,
       inputFormatters: [deviceCodeFormatter],
       decoration: const InputDecoration(
-        labelText: "Device code",
-        helperText: "Shown under My devices on a device you are already "
-            "signed in on.",
-        helperMaxLines: 2,
+        labelText: "Sign-in code",
+        helperText: "From the server's start-up, from My devices on a device "
+            "you are already signed in on, or from your administrator.",
+        helperMaxLines: 3,
         border: OutlineInputBorder(),
       ),
       onSubmitted: (_) => _signIn(),
@@ -1871,7 +1875,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     );
   }
 
-  /// Exchanges the pairing secret — or the invitation — for a device token at
+  /// Exchanges the sign-in code — or the invitation — for a device token at
   /// the *entered* server.
   ///
   /// The URL does not have to be saved for this: the sign-in reaches the
@@ -1896,30 +1900,24 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     }
 
     var location = serverLocationOf(entered);
-    var secret = location.isInvitation ? "" : secretController.text.trim();
     var deviceCode =
         location.isInvitation ? "" : deviceCodeController.text.trim();
-    if (secret.isNotEmpty && deviceCode.isNotEmpty) {
-      // Two different ways in, meaning two different things: the app must not
-      // pick one quietly, see [bothCredentialsRefusal] and issue #65.
+    if (!location.isInvitation && deviceCode.isEmpty) {
+      // There is one way in and it is a code (issue #89); an empty field is
+      // said here rather than sent to be refused.
       setState(() {
-        signInError = bothCredentialsRefusal;
+        signInError = codeRequiredRefusal;
         pairing = null;
       });
       return;
     }
-    var userName = userController.text.trim();
-    if (secret.isNotEmpty && userName.isEmpty) {
-      // The secret creates the administrator of this space, and a user without
-      // a name can be neither credited nor managed, see [nameRequiredRefusal]
-      // and issue #86. A device code needs no name (it joins the user who
-      // issued it) and an invitation asks for one of its own.
-      setState(() {
-        signInError = nameRequiredRefusal;
-        pairing = null;
-      });
-      return;
-    }
+    // The name is sent where there is one to send: an invitation names the
+    // user it creates, and a code whose user has no name yet needs the name
+    // the server asked for. Everywhere else the code says who, and a name the
+    // server did not ask for would only be a check it can fail.
+    var userName = location.isInvitation || nameRequired
+        ? userController.text.trim()
+        : "";
 
     setState(() {
       error = null;
@@ -1933,7 +1931,6 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     SignedInUser? signedIn;
     try {
       var response = await client.pair(
-        secret: secret,
         deviceCode: deviceCode,
         invitation: location.invitation,
         deviceName: deviceController.text.trim().isEmpty
@@ -1958,6 +1955,22 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       signedIn = await _identityOf(location.dataUrl, response);
       outcome = const ConnectionTestResult(true, "Sign-in succeeded.");
     } on VAlbumException catch (failure) {
+      if (needsAName(failure)) {
+        // The code signs in a user who has no name yet: the server says so,
+        // the field appears with the server's own sentence above it, and the
+        // person chooses the name themselves (issue #89). The code is left in
+        // the field: it is still good, and the next press sends it with the
+        // name.
+        if (mounted) {
+          setState(() {
+            pairingRunning = false;
+            nameRequired = true;
+            pairing = null;
+            signInError = failure.message;
+          });
+        }
+        return;
+      }
       outcome = ConnectionTestResult(false, failure.message);
     } on http.ClientException catch (failure) {
       outcome = ConnectionTestResult(false, failure.message);
@@ -1972,7 +1985,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       pairingRunning = false;
       pairing = outcome;
       if (outcome.ok) {
-        secretController.clear();
+        nameRequired = false;
         deviceCodeController.clear();
         identity = signedIn;
         identityProblem = null;

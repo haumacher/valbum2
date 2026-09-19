@@ -70,7 +70,7 @@ Options:
 | `--contextpath <name>` | First path segment of the URL, e.g. `photos` → `http://host:8080/photos/` | none |
 | `--webroot <dir>` | Serve the web app from a directory instead of the bundled copy (development) | bundled |
 | `--auth off\|writes\|all` | What requires a paired device: nothing, changes and uploads, or every request | `writes` |
-| `--pairing-secret <secret>` | The secret a device presents to be paired; a random one is printed at start-up if none is given | generated |
+| `--admin-code <code>` | The sign-in code the server prints for the administrator of a space nobody signed into yet, instead of a random one; eight characters of `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, a dash between the groups allowed | a fresh one at every start |
 | `--spaces auto\|single\|multi` | Whether this server hosts one space or several (issue #82); `auto` decides from the folder tree: multi as soon as one folder below the base folder carries `.valbum/space.json` | `auto` |
 | `--migrate-to-spaces` | One-time: turn a library migrated per user into a multi-space server, every user folder a space with that user as its admin, and report what could not be carried; the server does not start afterwards | none |
 | `--preview-threads <n>` | How many thumbnails are generated at the same time; serving an already cached thumbnail is never throttled (the system property `valbum.previewThreads` does the same) | number of processors |
@@ -79,21 +79,36 @@ Options:
 ### Signing in a device
 
 With `--auth writes` (the default) the server serves every read but refuses an anonymous change or
-upload with `401` and a message the app shows. To let a device change something, open the app's
-server settings and sign in: enter your name, the pairing secret the server printed at start-up
-("Pairing secret: ...") and a device name, then press "Sign in". The server issues a token for
-this device, the app stores it beside the server URL and sends it on every request from then on;
-the settings show who the device is signed in as (user, role, device, space). "Sign out" forgets
-the token. The **first** sign-in with the secret creates the administrator of the space, so the name
-is required then: it is what the users list shows, what an uploaded photo is attributed to, and
-what a permission change addresses. Later sign-ins with the secret add further devices of that same
-administrator, and a different name is refused. `--auth all` refuses anonymous reads as well; `--auth off` is the old behaviour, open to
-everyone who can reach the server.
+upload with `401` and a message the app shows. There is one way in, and it is always the same
+thing: a **code**. A code works once, lives ten minutes and signs one device in as one user.
+
+At start-up the server prints a code for the administrator of every space that has no signed-in
+device yet:
+
+```
+This library: sign the administrator in with the code ABCD-EFGH (valid 10 minutes, once; restart the server for a new one).
+```
+
+Open the app's server settings, enter that code and a device name and press "Sign in". The
+administrator of a fresh space has no name yet, so the app asks for one and signs in again with
+it: that name is what the users list shows, what an uploaded photo is attributed to and what a
+permission change addresses. The server issues a token for this device, the app stores it beside
+the server URL and sends it on every request from then on; the settings show who the device is
+signed in as (user, role, device, space). "Sign out" forgets the token.
+
+Once somebody signed in, nothing is printed any more — the printed code is a bootstrap, never a
+standing master key. A further device comes from a code of a device you already hold (below), and
+somebody who lost every device they had gets a **recovery code** from an administrator. If the
+administrator themselves has no device left, restart the server: a fresh code is printed, which
+only somebody with the machine can do.
+
+`--auth all` refuses anonymous reads as well; `--auth off` is the old behaviour, open to everyone
+who can reach the server.
 
 ### Adding a further device of your own
 
-A user who wants a second device does not need the pairing secret and must not use an
-invitation (that would create another user). On a device you are already signed in on, open "My
+A user who wants a second device must not use an invitation (that would create another user). On
+a device you are already signed in on, open "My
 devices" in the server settings and press "Add a device…": the server issues a short code
 (`XXXX-XXXX`) that lives ten minutes and works once. Type it into the "Device code" field of the
 sign-in section on the new device, together with a device name, and press "Sign in": the new
@@ -102,11 +117,16 @@ again. The code is deliberately not a link — it is never sent anywhere and can
 and it dies with the device that issued it: signing that device out withdraws every code it handed
 out that was not used yet. Never give a device code to anybody else; it signs them in as you.
 
+If you lost every device you had — a cleared browser, an app reinstalled — an administrator makes
+the same code for you: in the users list, "Recovery code" beside your name. It is the same
+single-use code with the same ten minutes; it signs a device in as *you*, and it dies with the
+administrator's device that made it.
+
 ### Users and spaces
 
-A paired device belongs to a user. The pairing secret signs in the **library owner** (the admin);
-the first sign-in that gives a user name names the owner, later sign-ins with the secret use that
-name or none. Users, their role and their devices are kept in `<basepath>/.valbum/users.json`,
+A paired device belongs to a user. A space has its administrator (the **library owner**) from the
+moment it exists — nameless and without devices until the seat code is redeemed, which is what
+gives them their name. Users, their role and their devices are kept in `<basepath>/.valbum/users.json`,
 which holds a hash of every issued token, never the token itself; a `devices.json` written by an
 older server is taken over on first start and kept as `devices.json.migrated`. Besides the
 `index.json` sidecars and the per-folder `.hashes.json` of the upload, `.valbum/` is the only place
@@ -293,15 +313,18 @@ The library folder is never deleted by the package, not even when it is purged.
 
 ### Signing in the first device
 
-At its first start the server prints a pairing secret to the journal:
+At every start, while nobody is signed in, the server prints a sign-in code for the
+administrator to the journal:
 
 ```
-journalctl -u valbum | grep -i pairing
+journalctl -u valbum | grep "with the code"
 ```
 
 Then open `http://<your-pi>:8080/` in a browser — or point the app's server setting
-at that address — and sign in with that secret; the first sign-in chooses the name
-of the library owner.
+at that address — and sign in with that code within ten minutes; the app asks for the
+name the library owner should be known by. Missed the ten minutes? `sudo systemctl
+restart valbum` prints a new one. A fixed code instead of a fresh one at every start:
+`VALBUM_OPTS="--admin-code ABCD-EFGH"` in `/etc/default/valbum`.
 
 To give the owner a space of their own (see *Users and spaces* above), stop the
 service and migrate once:
@@ -359,8 +382,9 @@ sudo apt update && sudo apt upgrade
 Every release also carries a signed APK, `valbum-<version>.apk`, on the
 [Releases page](https://github.com/haumacher/valbum2/releases). It is not in Google
 Play, so Android asks you to allow installing apps from the browser or file manager
-you download it with. Point it at your server in its settings and sign in with the
-pairing secret.
+you download it with. Point it at your server in its settings and sign in with a code —
+the one the server printed at start-up, one from a device you already hold, or a
+recovery code from your administrator.
 
 ## Contributing
 
@@ -379,11 +403,16 @@ Alben, jedes Album ein Ordner mit Photos und Videos. VAlbum fasst Deine Dateien 
 
 Bauen: `flutter build web` in `valbum_ui/`, dann `mvn clean install` im Hauptverzeichnis (JDK 21 und
 Maven nötig). Starten: `java -jar image-server-jar-with-dependencies.jar --basepath /pfad/zu/den/photos`,
-danach http://localhost:8080/ im Browser öffnen. Optionen: `--port`, `--contextpath`, `--webroot`, `--auth`, `--pairing-secret`, `--preview-threads`.
+danach http://localhost:8080/ im Browser öffnen. Optionen: `--port`, `--contextpath`, `--webroot`, `--auth`, `--admin-code`, `--preview-threads`.
 
-Standardmäßig lehnt der Server anonyme Änderungen ab (`--auth writes`). Beim Start gibt er ein
-Kopplungsgeheimnis aus; damit koppelst Du in den Server-Einstellungen der App dieses Gerät, das
-danach ein eigenes Token mitschickt.
+Standardmäßig lehnt der Server anonyme Änderungen ab (`--auth writes`). Angemeldet wird immer mit
+einem **Code**: Er gilt zehn Minuten, funktioniert einmal und meldet ein Gerät als einen Benutzer
+an. Solange sich in einem Raum noch niemand angemeldet hat, gibt der Server beim Start einen Code
+für dessen Administrator aus; Du gibst ihn in den Server-Einstellungen der App ein und wählst
+dabei den Namen, unter dem Du in diesem Raum bekannt sein willst. Danach wird nichts mehr
+ausgegeben — ein weiteres eigenes Gerät meldest Du mit einem Code von einem Gerät an, das Du schon
+hast, und wer alle Geräte verloren hat, bekommt vom Administrator einen Wiederherstellungs-Code
+(oder, wenn es den Administrator selbst trifft, hilft ein Neustart des Servers).
 
 Auf einem Raspberry Pi (oder einem anderen Debian/Ubuntu-Rechner) installierst Du den
 Server als Paket aus dem APT-Repository:
@@ -405,7 +434,8 @@ Standbilder von Videos) funktioniert weiter. Nachrüsten mit
 `sudo apt install libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64`
 (vor trixie bzw. 24.04 heißt das Paket `libasound2`).
 Eingestellt wird alles in `/etc/default/valbum` (vor allem `VALBUM_BASEPATH`, danach
-`sudo systemctl restart valbum`); das Kopplungsgeheimnis steht beim ersten Start im
-Journal (`journalctl -u valbum`). Aktualisiert wird mit `sudo apt upgrade`. Die
+`sudo systemctl restart valbum`); der Anmelde-Code für den Administrator steht bei
+jedem Start im Journal (`journalctl -u valbum`), solange sich noch niemand angemeldet
+hat. Aktualisiert wird mit `sudo apt upgrade`. Die
 Android-App liegt als signierte APK-Datei bei jedem Release auf der
 [Releases-Seite](https://github.com/haumacher/valbum2/releases).

@@ -53,8 +53,6 @@ import junit.framework.TestCase;
 @SuppressWarnings("javadoc")
 public class TestSpaces extends TestCase {
 
-	private static final String SECRET = "let-me-in";
-
 	private Path _base;
 
 	private Path _webRoot;
@@ -293,27 +291,31 @@ public class TestSpaces extends TestCase {
 		assertTrue("The admin of a space may share.", signedIn.isMayShare());
 	}
 
-	/** The pairing secret makes the first admin of a space, and only further devices afterwards. */
-	public void testTheSecretMakesTheFirstAdminOfASpace() throws Exception {
+	/** The seat code makes the first admin of a space, and only further devices afterwards (#89). */
+	public void testTheSeatCodeMakesTheFirstAdminOfASpace() throws Exception {
 		space("alice", "{\"anonymous\":\"public\"}");
 
 		String first = pair("/alice/data/", "Alice", "Phone");
 		assertNotNull(first);
 
-		// The same person adds a device: told apart from a stranger by the user name.
+		// The seat is taken; there is no printed code any more, only one of Alice's own devices.
+		assertNull("A space whose admin has a device gets no seat code.",
+			_spaces.bySegment("alice").getAuth().issueSeatCode(null));
+
+		// The same person adds a device: the code of her phone says whom it signs in.
 		FakeResponse second = post("/alice/data/", "pair",
-			"{\"secret\":\"" + SECRET + "\",\"userName\":\"Alice\",\"deviceName\":\"Tablet\"}");
+			Codes.pairRequest(Codes.forOwner(_spaces.bySegment("alice").getAuth()), "Tablet", "Alice"));
 		assertEquals(HttpServletResponse.SC_OK, second.status());
 
 		FakeResponse stranger = post("/alice/data/", "pair",
-			"{\"secret\":\"" + SECRET + "\",\"userName\":\"Mallory\",\"deviceName\":\"Laptop\"}");
-		assertEquals("A second person cannot become admin through the secret.",
+			Codes.pairRequest(Codes.forOwner(_spaces.bySegment("alice").getAuth()), "Laptop", "Mallory"));
+		assertEquals("A code signs in the user it was made for, nobody else.",
 			HttpServletResponse.SC_UNAUTHORIZED, stranger.status());
 
 		assertEquals("Two devices of one admin.", 2, devices("alice"));
 	}
 
-	/** Each space bootstraps its own admin; the secret is the server's, the admin is the space's. */
+	/** Each space bootstraps its own admin, with a seat code of its own (issue #89). */
 	public void testEachSpaceHasItsOwnAdmin() throws Exception {
 		space("alice", "{\"anonymous\":\"public\"}");
 		space("bob", "{\"anonymous\":\"public\"}");
@@ -386,7 +388,7 @@ public class TestSpaces extends TestCase {
 	}
 
 	private Spaces detect(SpaceMode forced, AuthMode mode) throws Exception {
-		return Spaces.detect(_base, forced, mode, SECRET, InviteMode.MEMBERS);
+		return Spaces.detect(_base, forced, mode, InviteMode.MEMBERS);
 	}
 
 	/** A folder below the base that is a space, with the given <code>space.json</code>. */
@@ -404,9 +406,13 @@ public class TestSpaces extends TestCase {
 			folder.resolve("image.jpg").toFile());
 	}
 
+	/** The spaces the servlet under test serves; the seat codes come from their services. */
+	private Spaces _spaces;
+
 	private SpaceServlet servlet() throws Exception {
 		if (_servlet == null) {
 			Spaces spaces = detect(null, AuthMode.WRITES);
+			_spaces = spaces;
 			ResourceServlet app = new ResourceServlet(_webRoot, "/data", "s", "i");
 			app.setBaseSegments(spaces.segments());
 			_servlet = new SpaceServlet(spaces, app);
@@ -450,12 +456,21 @@ public class TestSpaces extends TestCase {
 		return response;
 	}
 
-	/** Pairs a device against the server-wide secret and answers its token. */
+	/** Signs a device in with a code of the addressed space, and answers its token (issue #89). */
 	private String pair(String pathInfo, String userName, String deviceName) throws Exception {
-		FakeResponse response = post(pathInfo, "pair", "{\"secret\":\"" + SECRET
-			+ "\",\"userName\":\"" + userName + "\",\"deviceName\":\"" + deviceName + "\"}");
+		FakeResponse response =
+			post(pathInfo, "pair", Codes.pairRequest(seatCode(pathInfo), deviceName, userName));
 		assertEquals("Pairing failed: " + response.body(), HttpServletResponse.SC_OK, response.status());
 		return PairResponse.readPairResponse(reader(response.body())).getToken();
+	}
+
+	/** The code signing the administrator of the space the given address names in. */
+	private String seatCode(String pathInfo) throws Exception {
+		servlet();
+		String rest = pathInfo.startsWith("/") ? pathInfo.substring(1) : pathInfo;
+		String segment = rest.contains("/") ? rest.substring(0, rest.indexOf('/')) : rest;
+		Spaces.Space space = _spaces.bySegment(_spaces.isSpace(segment) ? segment : "");
+		return Codes.forOwner(space.getAuth());
 	}
 
 	private AuthInfo auth(String pathInfo, String token) throws Exception {

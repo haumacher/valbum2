@@ -15,7 +15,6 @@ import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.MoveOutcome;
 import de.haumacher.imageServer.shared.model.MoveResult;
-import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.Placement;
 import de.haumacher.imageServer.shared.model.Resource;
@@ -311,8 +310,7 @@ public class TestPlacementProbe extends TestCase {
 
 	private String token() throws Exception {
 		if (_token == null) {
-			PairResponse response = new AuthService(AuthMode.WRITES, SECRET, _base).pair(PairRequest.create()
-				.setSecret(SECRET).setDeviceName("Phone").setUserName("haui"));
+			PairResponse response = Codes.signInAdmin(new AuthService(AuthMode.WRITES, _base), "Phone", "haui");
 			_token = response.getToken();
 		}
 		return _token;
@@ -326,7 +324,7 @@ public class TestPlacementProbe extends TestCase {
 
 	/** Another servlet on the same folder: what a restarted server reads from the disk. */
 	private ImageServlet freshServlet() throws IOException {
-		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, SECRET, _base));
+		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base));
 		_servlets.add(servlet);
 		return servlet;
 	}

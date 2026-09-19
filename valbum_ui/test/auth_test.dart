@@ -192,13 +192,12 @@ void main() {
   });
 
   group('pair and authInfo', () {
-    test('signing in posts the secret and the user, and returns the token',
-        () async {
+    test('signing in posts the code and returns the token', () async {
       var requests = <http.BaseRequest>[];
       var response = await recording(
         requests,
         (_) => http.Response('{"token":"abc","deviceName":"Phone"}', 200),
-      ).pair(secret: "s3cret", deviceName: "Phone", userName: "haui");
+      ).pair(deviceCode: "ABCD-EFGH", deviceName: "Phone");
 
       expect(response.token, "abc");
       expect(response.deviceName, "Phone");
@@ -210,17 +209,19 @@ void main() {
       expect(request.method, "POST");
       expect(
         request.body,
-        '{"secret":"s3cret","deviceName":"Phone","userName":"haui","invitation":"","deviceCode":""}',
+        '{"secret":"","deviceName":"Phone","userName":"","invitation":"",'
+        '"deviceCode":"ABCD-EFGH"}',
       );
     });
 
-    test('a wrong secret carries the server message', () {
+    test('a code that does not work carries the server message', () {
       expect(
-        () => clientReturning(refusal("Wrong pairing secret."), status: 403)
-            .pair(secret: "nope", deviceName: "Phone"),
+        () => clientReturning(refusal("There is no device code like that."),
+                status: 401)
+            .pair(deviceCode: "ABCD-EFGH", deviceName: "Phone"),
         throwsA(
-          isA<VAlbumException>()
-              .having((e) => e.message, 'message', "Wrong pairing secret."),
+          isA<VAlbumException>().having(
+              (e) => e.message, 'message', "There is no device code like that."),
         ),
       );
     });
@@ -382,10 +383,8 @@ void main() {
       expect(find.text("Not signed in"), findsOneWidget);
 
       await tester.enterText(find.byKey(deviceNameFieldKey), "Kamera");
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "demo");
-      // The secret names the administrator of the space, so a name is
-      // required, see issue #86.
-      await tester.enterText(find.byKey(userNameFieldKey), "haui");
+      // One field and one thing in it: the code (issue #89).
+      await tester.enterText(find.byKey(deviceCodeFieldKey), "ABCD-EFGH");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
@@ -405,19 +404,21 @@ void main() {
           .single;
       expect(
         pair.body,
-        '{"secret":"demo","deviceName":"Kamera","userName":"haui","invitation":"","deviceCode":""}',
+        '{"secret":"","deviceName":"Kamera","userName":"","invitation":"",'
+        '"deviceCode":"ABCD-EFGH"}',
       );
-      // The secret is never kept on the device.
+      // The code is never kept on the device: it was spent.
       expect(
         tester
-            .widget<TextField>(find.byKey(pairingSecretFieldKey))
+            .widget<TextField>(find.byKey(deviceCodeFieldKey))
             .controller!
             .text,
         "",
       );
     });
 
-    testWidgets('shows the server message for a wrong secret', (tester) async {
+    testWidgets('shows the server message for a code that does not work',
+        (tester) async {
       var store = InMemorySettingsStore("http://server/valbum/");
       var settings = ServerSettings(store: store);
       await settings.load();
@@ -426,16 +427,16 @@ void main() {
         tester,
         settings,
         MockClient(
-          (_) async => http.Response(refusal("Wrong pairing secret."), 403),
+          (_) async =>
+              http.Response(refusal("There is no device code like that."), 401),
         ),
       );
 
-      await tester.enterText(find.byKey(pairingSecretFieldKey), "guess");
-      await tester.enterText(find.byKey(userNameFieldKey), "haui");
+      await tester.enterText(find.byKey(deviceCodeFieldKey), "WXYZ-9876");
       await tester.pumpAndSettle();
       await tapVisible(tester, signInButton);
 
-      expect(find.text("Wrong pairing secret."), findsOneWidget);
+      expect(find.text("There is no device code like that."), findsOneWidget);
       expect(store.token, isNull);
       expect(find.text("Not signed in"), findsOneWidget);
     });

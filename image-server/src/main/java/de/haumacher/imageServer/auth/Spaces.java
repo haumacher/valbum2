@@ -158,8 +158,8 @@ public class Spaces {
 	 *        The mode to use whatever the folder tree says, <code>null</code> to decide by the
 	 *        rule described at {@link Spaces}.
 	 */
-	public static Spaces detect(Path basePath, SpaceMode forced, AuthMode authMode, String pairingSecret,
-			InviteMode inviteMode) throws IOException {
+	public static Spaces detect(Path basePath, SpaceMode forced, AuthMode authMode, InviteMode inviteMode)
+			throws IOException {
 		List<String> segments = spaceFolders(basePath);
 		SpaceMode mode = forced != null ? forced : (segments.isEmpty() ? SpaceMode.SINGLE : SpaceMode.MULTI);
 
@@ -167,7 +167,7 @@ public class Spaces {
 		if (mode == SpaceMode.SINGLE) {
 			SpaceStore.Config config = SpaceStore.load(basePath, "");
 			spaces.put("", new Space("", basePath,
-				config, new AuthService(authMode, pairingSecret, basePath, inviteMode)));
+				config, new AuthService(authMode, basePath, inviteMode)));
 		} else {
 			for (String segment : segments) {
 				Path root = basePath.resolve(segment);
@@ -176,7 +176,7 @@ public class Spaces {
 				// ever closes further (and --auth off stays off, which is what development wants).
 				AuthMode spaceMode = authModeOf(authMode, config);
 				spaces.put(segment, new Space(segment, root, config,
-					new AuthService(spaceMode, pairingSecret, root, inviteMode)));
+					new AuthService(spaceMode, root, inviteMode)));
 			}
 		}
 		return new Spaces(mode, spaces);

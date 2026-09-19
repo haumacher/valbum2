@@ -63,13 +63,13 @@ public class TestAdminName extends TestCase {
 	public void testASingleSpaceServerNamesTheOwnerOwner() throws Exception {
 		namelessOwner(_base);
 
-		AuthService auth = new AuthService(AuthMode.WRITES, "secret", _base);
+		AuthService auth = new AuthService(AuthMode.WRITES, _base);
 		assertEquals(AuthService.DEFAULT_OWNER_NAME, auth.nameNamelessOwner(""));
 
 		UserStore users = new UserStore(_base);
 		assertEquals(AuthService.DEFAULT_OWNER_NAME, users.getOwner().getName());
 		assertEquals("The store is written once, not on every read.", null,
-			new AuthService(AuthMode.WRITES, "secret", _base).nameNamelessOwner(""));
+			new AuthService(AuthMode.WRITES, _base).nameNamelessOwner(""));
 	}
 
 	/** On a multi-space server the space's own name is the obvious one. */
@@ -79,7 +79,7 @@ public class TestAdminName extends TestCase {
 		Files.write(SpaceStore.file(alice), "{}".getBytes(StandardCharsets.UTF_8));
 		namelessOwner(alice);
 
-		Spaces spaces = Spaces.detect(_base, null, AuthMode.WRITES, "secret", InviteMode.MEMBERS);
+		Spaces spaces = Spaces.detect(_base, null, AuthMode.WRITES, InviteMode.MEMBERS);
 		Spaces.Space space = spaces.bySegment("alice");
 		assertEquals("alice", space.getAuth().nameNamelessOwner(space.getSegment()));
 		assertEquals("alice", new UserStore(alice).getOwner().getName());
@@ -90,7 +90,7 @@ public class TestAdminName extends TestCase {
 		namelessOwner(_base);
 		Files.createDirectories(_base.resolve(AuthService.DEFAULT_OWNER_NAME));
 
-		AuthService auth = new AuthService(AuthMode.WRITES, "secret", _base);
+		AuthService auth = new AuthService(AuthMode.WRITES, _base);
 		assertEquals(AuthService.DEFAULT_OWNER_NAME + "-2", auth.nameNamelessOwner(""));
 	}
 
@@ -101,7 +101,7 @@ public class TestAdminName extends TestCase {
 		users.addUser(new UserStore.User("alice", Roles.VIEW, "", "2026-09-06T10:11:12Z"));
 		users.store();
 
-		AuthService auth = new AuthService(AuthMode.WRITES, "secret", _base);
+		AuthService auth = new AuthService(AuthMode.WRITES, _base);
 		assertEquals("alice-2", auth.nameNamelessOwner("alice"));
 	}
 
@@ -109,7 +109,7 @@ public class TestAdminName extends TestCase {
 	public void testAnImpossibleSuggestionFallsBackToTheDefault() throws Exception {
 		namelessOwner(_base);
 
-		AuthService auth = new AuthService(AuthMode.WRITES, "secret", _base);
+		AuthService auth = new AuthService(AuthMode.WRITES, _base);
 		assertEquals(AuthService.DEFAULT_OWNER_NAME, auth.nameNamelessOwner("~odd"));
 	}
 
@@ -120,7 +120,7 @@ public class TestAdminName extends TestCase {
 		users.getOwner().setName("haui");
 		users.store();
 
-		assertNull(new AuthService(AuthMode.WRITES, "secret", _base).nameNamelessOwner("alice"));
+		assertNull(new AuthService(AuthMode.WRITES, _base).nameNamelessOwner("alice"));
 		assertEquals("haui", new UserStore(_base).getOwner().getName());
 	}
 
@@ -129,7 +129,7 @@ public class TestAdminName extends TestCase {
 		namelessOwner(_base);
 		String hashBefore = new UserStore(_base).getOwner().getDevices().get(0).getTokenHash();
 
-		AuthService auth = new AuthService(AuthMode.WRITES, "secret", _base);
+		AuthService auth = new AuthService(AuthMode.WRITES, _base);
 		auth.nameNamelessOwner("");
 
 		UserStore.User owner = new UserStore(_base).getOwner();
@@ -138,16 +138,16 @@ public class TestAdminName extends TestCase {
 		assertEquals(hashBefore, owner.getDevices().get(0).getTokenHash());
 		assertEquals("The very token that worked before still names the administrator.",
 			AuthService.DEFAULT_OWNER_NAME,
-			new AuthService(AuthMode.WRITES, "secret", _base).caller(bearer(OLD_TOKEN)).getUserName());
+			new AuthService(AuthMode.WRITES, _base).caller(bearer(OLD_TOKEN)).getUserName());
 	}
 
 	/** A signed-in user always has a name, so their contribution is never filed as anonymous. */
 	public void testASignedInUserIsNeverAnonymous() throws Exception {
 		namelessOwner(_base);
-		new AuthService(AuthMode.WRITES, "secret", _base).nameNamelessOwner("");
+		new AuthService(AuthMode.WRITES, _base).nameNamelessOwner("");
 
 		AuthService.Caller caller =
-			new AuthService(AuthMode.WRITES, "secret", _base).caller(bearer(OLD_TOKEN));
+			new AuthService(AuthMode.WRITES, _base).caller(bearer(OLD_TOKEN));
 		assertTrue(caller.isPaired());
 		assertEquals("user:" + AuthService.DEFAULT_OWNER_NAME, caller.subject());
 	}
@@ -160,11 +160,11 @@ public class TestAdminName extends TestCase {
 		Files.write(album.resolve("index.json"),
 			"[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[]}]".getBytes(StandardCharsets.UTF_8));
 
-		String name = new AuthService(AuthMode.WRITES, "secret", _base).nameNamelessOwner("");
+		String name = new AuthService(AuthMode.WRITES, _base).nameNamelessOwner("");
 		assertEquals(AuthService.DEFAULT_OWNER_NAME, name);
 
 		ImageServlet servlet =
-			new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, "secret", _base));
+			new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base));
 		try {
 			servlet.init(TestSpaces.config());
 			assertEquals(HttpServletResponse.SC_OK, upload(servlet, "/2024 Trip/", OLD_TOKEN).status());

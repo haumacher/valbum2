@@ -227,7 +227,7 @@ public class TestInvitationRedirect extends TestCase {
 
 	/** A single-space server on the base folder. */
 	void single() throws Exception {
-		_spaces = Spaces.detect(_base, SpaceMode.SINGLE, AuthMode.WRITES, SECRET, InviteMode.MEMBERS);
+		_spaces = Spaces.detect(_base, SpaceMode.SINGLE, AuthMode.WRITES, InviteMode.MEMBERS);
 		_app = new ResourceServlet(_webRoot, Settings.DATA_PREFIX, "s", "i");
 		_app.setSessionGuard(new InvitationRedirect(_spaces));
 		_app.init(config());
@@ -244,7 +244,7 @@ public class TestInvitationRedirect extends TestCase {
 			Files.write(root.resolve(".valbum").resolve("space.json"),
 				"{\"anonymous\":\"public\"}".getBytes(StandardCharsets.UTF_8));
 		}
-		_spaces = Spaces.detect(_base, null, AuthMode.WRITES, SECRET, InviteMode.MEMBERS);
+		_spaces = Spaces.detect(_base, null, AuthMode.WRITES, InviteMode.MEMBERS);
 		assertEquals(SpaceMode.MULTI, _spaces.getMode());
 		_app = new ResourceServlet(_webRoot, Settings.DATA_PREFIX, "s", "i");
 		_app.setBaseSegments(_spaces.segments());

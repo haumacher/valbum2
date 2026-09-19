@@ -632,6 +632,27 @@ public class UserStore {
 		}
 	}
 
+	/**
+	 * The user holding the device of the given id, <code>null</code> if nobody does.
+	 *
+	 * <p>
+	 * Ids are free across the whole store, so one id names at most one device. What a device code
+	 * asks when it wants to know whether the device that issued it is still signed in — which may
+	 * be an administrator's device rather than the code's own user's, see issue #89.
+	 * </p>
+	 */
+	public synchronized User deviceOwner(String id) {
+		if (id == null || id.isEmpty()) {
+			return null;
+		}
+		for (User user : _users) {
+			if (user.getDevice(id) != null) {
+				return user;
+			}
+		}
+		return null;
+	}
+
 	private boolean taken(String id) {
 		for (User user : _users) {
 			if (user.getDevice(id) != null) {

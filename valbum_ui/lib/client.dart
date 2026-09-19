@@ -1472,12 +1472,20 @@ class VAlbumClient {
   /// caller*, so the code lives ten minutes, works once, and the device it
   /// pairs shows up in [devices] at once, where it can be signed out again.
   ///
-  /// The request needs no body: whom the code signs in and which device asked
-  /// the server reads from this client's token. Refused with the server's own
-  /// sentence for a share link (403) and for a caller that is no device (401).
-  Future<DeviceCodeCreated> deviceCode() async {
+  /// Without [userName] the request needs no body: whom the code signs in and
+  /// which device asked the server reads from this client's token. Refused
+  /// with the server's own sentence for a share link (403) and for a caller
+  /// that is no device (401).
+  ///
+  /// [userName] names somebody else, which only an administrator may do: the
+  /// *recovery code* of issue #89, for a person who cleared their browser or
+  /// reinstalled the app and has no device left. It is the same code with the
+  /// same ten minutes and the same single use, and it dies with the
+  /// administrator's device that made it.
+  Future<DeviceCodeCreated> deviceCode({String userName = ""}) async {
     var url = "${folderUrl(const [])}?action=device-code";
-    var response = await _postBody(url, "{}");
+    var response = await _postBody(
+        url, _jsonOf(DeviceCodeRequest(userName: userName).writeContent));
     return DeviceCodeCreated.read(JsonReader.fromString(response));
   }
 
@@ -1572,31 +1580,30 @@ class VAlbumClient {
   ///
   /// The token is what makes the app a known caller; store it with the server
   /// settings and hand it to [withToken]. Throws a [VAlbumException] carrying
-  /// the server's reason when the secret is wrong or the name is not the one
-  /// the server holds.
+  /// the server's reason when the code does not work or the name is not the
+  /// one the server holds.
   ///
-  /// [userName] names the user signing in and is empty for "the library
-  /// owner": the pairing secret signs the owner in, and the first sign-in that
-  /// carries a name gives the owner that name (issue #45). The wire action is
-  /// still the pairing request of issue #28, so an older server simply ignores
-  /// the name.
+  /// [deviceCode] is the one way in since issue #89: a single-use code that
+  /// adds this device to one user — the one the server printed at start-up for
+  /// the administrator of a space nobody signed into yet, one shown on a
+  /// device that is already signed in (issue #65), or a recovery code from an
+  /// administrator. Which of them it is is the server's business, never this
+  /// client's.
+  ///
+  /// [userName] is a check where the code's user has a name — the server
+  /// refuses a name that is not theirs — and a *choice* where they have none:
+  /// the server answers `400` with [VAlbumException.status] and its own
+  /// sentence, the app asks, and the sign-in is sent again with the name.
   ///
   /// [invitation] is the other way in (issue #52): accepting an invitation
-  /// *is* pairing, so a live invitation token takes the place of the [secret]
-  /// and the [userName] is then the name of the user to create — required, and
+  /// *is* pairing, so a live invitation token takes the place of the code and
+  /// the [userName] is then the name of the user to create — required, and
   /// refused where it is taken. The request carries one or the other; a
   /// request carrying both is read by the server as an invitation.
-  ///
-  /// [deviceCode] is the third way in (issue #65) and the one that creates
-  /// nobody: a code shown on a device that is already signed in adds a
-  /// *further device of the same user*, so the [userName] is a check and not a
-  /// choice there — the server refuses a name that is not the code's user. The
-  /// [secret] stays empty with it.
   ///
   /// Never carries the device's own token: a sign-in is how a device *gets*
   /// one, and an invitation token is a bearer for nothing but `?type=auth`.
   Future<PairResponse> pair({
-    String secret = "",
     required String deviceName,
     String userName = "",
     String invitation = "",
@@ -1604,7 +1611,6 @@ class VAlbumClient {
   }) async {
     var url = "${folderUrl(const [])}?action=pair";
     var request = PairRequest(
-      secret: secret,
       deviceName: deviceName,
       userName: userName,
       invitation: invitation,
