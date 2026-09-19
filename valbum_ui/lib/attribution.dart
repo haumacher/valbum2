@@ -55,7 +55,17 @@ String? callerSubject(BuildContext context) {
 ///
 /// Nothing without a label, and nothing for the caller's own contribution: the
 /// viewer is a caption, not a receipt.
+///
+/// And nothing at all inside a share link (issue #96). The attribution is
+/// bookkeeping among the members of a space — who brought what into the
+/// family's album — and a visitor of a link stands outside it: to them the
+/// names mean nothing, and "Added by …" under *every* photo (a link caller is
+/// never the contributor, see [callerSubject]) is noise, not information. What
+/// a link hands out is a plain gallery.
 String? attributionOf(BuildContext context, ImagePart image) {
+  if (ShareSession.of(context) != null) {
+    return null;
+  }
   var label = image.contributorLabel.trim();
   if (label.isEmpty) {
     return null;

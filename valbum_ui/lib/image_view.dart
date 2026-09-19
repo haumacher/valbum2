@@ -57,6 +57,41 @@ const double _rubberBandFraction = 1 / 5;
 /// How long a drag that did not navigate takes to slide back (issue #61).
 const Duration _snapBackDuration = Duration(milliseconds: 150);
 
+/// What is said when a picture could not be delivered at all (issue #95).
+///
+/// A *right* the caller does not hold is never mentioned here: what they may
+/// not do is not offered, so the viewer never asks for it and the server never
+/// refuses it. This is the other case — a server error, a broken connection —
+/// and that one speaks, once, the way every other failure of this app speaks.
+const String pictureFailedMessage = "This picture could not be loaded.";
+
+/// The picture the viewer shows for the image at [imageUrl] (issue #95).
+///
+/// With `download` that is the original, as it always was. Without it the
+/// server would refuse the original (`AuthService.DOWNLOAD_REFUSED`), so the
+/// viewer asks for the **preview rendition** instead — `?type=tn`, which the
+/// `view` right allows and which the album tiles are drawn from anyway. It is
+/// the largest picture such a caller can have, so it is shown fitted to the
+/// page and never resized on the way in.
+///
+/// One helper for one question, because the display and the prefetch of
+/// issue #101 must produce the *same* [ImageProvider]: an [ImageCache] key
+/// that differs by a hair turns a prefetched neighbour into a second download.
+ImageProvider viewerPicture(
+  VAlbumClient client,
+  String imageUrl, {
+  required bool mayDownload,
+}) {
+  if (mayDownload) {
+    // The original is not cached (an album of originals would fill the
+    // device), but it must still identify itself: a server started with
+    // `--auth all` refuses an anonymous image.
+    return NetworkImage(client.originalUrl(imageUrl),
+        headers: client.authHeaders);
+  }
+  return ThumbnailImage(client, imageUrl);
+}
+
 /// The axis a drag of the fitted image was locked to, see issue #61.
 ///
 /// A drag of the fitted image follows the finger along one axis only: the
@@ -401,19 +436,16 @@ class ImageViewState extends State<ImageView>
     return self is ImageGroup ? self : part.group;
   }
 
-  /// The server's reason for not showing the original, `null` while the
-  /// picture is fine or the reason has not been asked for yet (issue #49).
-  ///
-  /// A `view`-only grant lets the album and its thumbnails through and refuses
-  /// the original with a 403 and a message meant for the user. The viewer
-  /// opens the original — until a preview rendition exists (Phase 4) that is
-  /// all there is — so it says what the server said, over the thumbnail, and
-  /// never shows a broken picture.
-  String? _refusal;
+  /// Whether the failure of the current picture was already reported, so that
+  /// a picture that keeps failing says so once (issue #95).
+  bool _failureReported = false;
 
-  /// Whether the reason has already been asked for, so that a picture that
-  /// keeps failing asks once.
-  bool _refusalAsked = false;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The first thing a viewer does, before anybody pages anywhere.
+    prefetchNeighbours();
+  }
 
   @override
   void didUpdateWidget(ImageView oldWidget) {
@@ -422,21 +454,69 @@ class ImageViewState extends State<ImageView>
       // Start over with the fitted view.
       _stopSnapBack();
       _transform = null;
-      _refusal = null;
-      _refusalAsked = false;
+      _failureReported = false;
+      // The neighbours of the image now shown are two others, see issue #101.
+      prefetchNeighbours();
     }
   }
 
-  /// Asks the server why the original did not load, once per image.
-  void _askRefusal() {
-    if (_refusalAsked) {
+  /// The picture of the displayed image, see [viewerPicture].
+  ImageProvider get picture => pictureOf(part);
+
+  /// The picture of any image of this album, the displayed one included.
+  ///
+  /// The rights are the album's, and the neighbours live in the same album, so
+  /// what the caller may have of them is what they may have of this one.
+  ImageProvider pictureOf(ImagePart image) => viewerPicture(
+        widget.client,
+        "${widget.baseUrl}/${image.name}",
+        mayDownload: rights.mayDownload,
+      );
+
+  /// Fetches and decodes the pictures of [previous] and [next] (issue #101).
+  ///
+  /// Paging then paints the neighbour from the [ImageCache] in the very frame
+  /// the route changes, instead of leaving the screen empty for as long as an
+  /// original takes to arrive. Exactly two — the memory of a phone is not an
+  /// album — and the same provider the display would use, so that the picture
+  /// really is a cache hit and not a second download.
+  ///
+  /// A video is left alone: what the viewer shows of one is the player, whose
+  /// poster is the thumbnail the album has anyway. A prefetch that fails is
+  /// simply not cached and never reported — nobody asked for it.
+  void prefetchNeighbours() {
+    for (var neighbour in [previous, next]) {
+      if (neighbour == null) {
+        continue;
+      }
+      var image = ToImage.toImage(neighbour);
+      if (image.kind != ImageKind.image) {
+        continue;
+      }
+      precacheImage(pictureOf(image), context, onError: (error, stack) {});
+    }
+  }
+
+  /// Says once that the picture could not be delivered, see
+  /// [pictureFailedMessage].
+  ///
+  /// Called from a builder, so the message is shown after the frame: a
+  /// snack bar may not be put up while the tree is being built.
+  void _reportFailure() {
+    if (_failureReported) {
       return;
     }
-    _refusalAsked = true;
-    widget.client.originalRefusal(dataUrl).then((message) {
-      if (mounted && message != null) {
-        setState(() => _refusal = message);
+    _failureReported = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(pictureFailedMessage, key: Key("image-failed")),
+          duration: Duration(seconds: 6),
+        ),
+      );
     });
   }
 
@@ -555,78 +635,95 @@ class ImageViewState extends State<ImageView>
         child: ClipRect(
           child: Stack(
             clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: 0,
-                top: 0,
-                width: tx.rawWidth,
-                height: tx.rawHeight,
-                child: Transform(
-                  transform: tx.matrix,
-                  child: buildContent(),
-                ),
-              ),
-            ],
+            children: buildLayers(tx),
           ),
         ),
       ),
     );
   }
 
-  /// The image itself.
-  Widget buildContent() {
-    var self = part;
-    return Image.network(
-      widget.client.originalUrl(dataUrl),
-      // The original is not cached (an album of originals would fill the
-      // device), but it must still identify itself: a server started with
-      // `--auth all` refuses an anonymous image.
-      headers: widget.client.authHeaders,
-      width: self.width.toDouble(),
-      height: self.height.toDouble(),
+  /// What is drawn into the viewport: the thumbnail, and the picture over it.
+  ///
+  /// Two layers, because a picture that is not there yet must not leave the
+  /// screen empty (issue #101): the thumbnail of the album is already fetched
+  /// and decoded, so it is painted in the very first frame and the picture
+  /// appears over it as soon as its own first frame arrives. A switch from one
+  /// image to the next is therefore thumbnail -> sharp, never blank -> sharp,
+  /// and with the neighbour prefetched it is sharp at once.
+  List<Widget> buildLayers(ImageTransform tx) => [
+        uprightLayer(
+          tx,
+          thumbnail(
+            widget.client,
+            dataUrl,
+            key: const Key("image-thumbnail"),
+            fit: BoxFit.contain,
+          ),
+        ),
+        buildContent(tx),
+      ];
+
+  /// The picture itself, in the layer its coordinates belong to.
+  Widget buildContent(ImageTransform tx) {
+    var image = Image(
+      // What a test asks for when it asks what the viewer shows: the
+      // thumbnail beneath is a second [Image] in the same tree.
+      key: const Key("image-picture"),
+      image: picture,
       fit: BoxFit.fill,
-      // `Image.network` opens a connection of its own and can only say *that*
-      // the picture failed; the reason is asked for through the client, see
-      // [_askRefusal]. Until it arrives the thumbnail stands in, so the screen
-      // is never a broken image.
+      // A rebuild with the same picture keeps what is on the screen.
+      gaplessPlayback: true,
+      // Nothing until the first frame has decoded: what shows through is the
+      // thumbnail beneath, see [buildLayers].
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
+          wasSynchronouslyLoaded || frame != null
+              ? child
+              : const SizedBox.expand(),
+      // `Image` can only say *that* the picture failed. It is never a refused
+      // right — the viewer asks for nothing this caller may not have, see
+      // [viewerPicture] — so it is a failure, and failures speak once.
       errorBuilder: (context, error, stackTrace) {
-        WidgetsBinding.instance
-            .addPostFrameCallback((_) => _askRefusal());
-        return buildRefused(self);
+        _reportFailure();
+        return const SizedBox.expand();
       },
     );
+    return rights.mayDownload ? rawLayer(tx, image) : uprightLayer(tx, image);
   }
 
-  /// What is shown in place of an original the server did not hand over: the
-  /// thumbnail, with the server's own reason over it.
-  Widget buildRefused(ImagePart self) {
-    var message = _refusal;
-    return SizedBox(
-      width: self.width.toDouble(),
-      height: self.height.toDouble(),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Whatever the album already showed: a thumbnail the caller may see
-          // (and the cache may still hold) is better than a grey box.
-          thumbnail(widget.client, dataUrl, fit: BoxFit.contain),
-          if (message != null)
-            Center(
-              child: Container(
-                color: Colors.black54,
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  message,
-                  key: const Key("image-refusal"),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  /// The layer of a picture in the *raw* pixels of the file: the original.
+  ///
+  /// [ImageTransform.matrix] maps the raw rectangle onto the viewport, the
+  /// [ImagePart.orientation] included — a camera's rotation flag is applied
+  /// here, on the way to the screen.
+  Widget rawLayer(ImageTransform tx, Widget child) => Positioned(
+        left: 0,
+        top: 0,
+        width: tx.rawWidth,
+        height: tx.rawHeight,
+        child: Transform(transform: tx.matrix, child: child),
+      );
+
+  /// The layer of a picture the server has already turned upright: the
+  /// thumbnail and the preview rendition.
+  ///
+  /// `PreviewCache` applies the orientation when it makes a rendition (which
+  /// is why the album tiles show one unrotated), so applying it again here
+  /// would lay every portrait photo on its side. Only the zoom and the pan of
+  /// [tx] are left, over the box the oriented image occupies.
+  Widget uprightLayer(ImageTransform tx, Widget child) => Positioned(
+        left: 0,
+        top: 0,
+        width: tx.width,
+        height: tx.height,
+        child: Transform(
+          transform: Matrix4.identity()
+            ..setEntry(0, 0, tx.scale)
+            ..setEntry(1, 1, tx.scale)
+            ..setEntry(0, 3, tx.tx)
+            ..setEntry(1, 3, tx.ty),
+          child: child,
+        ),
+      );
 
   /// The video player, filling the slot the image would occupy.
   ///

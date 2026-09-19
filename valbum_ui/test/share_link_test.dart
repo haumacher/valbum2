@@ -238,15 +238,20 @@ String bodyOf(List<http.Request> requests, String action) => requests
 
 void main() {
   group('a link session', () {
-    testWidgets('opens the shared album and names the link', (tester) async {
+    testWidgets('opens the shared album as its owner sees it (issue #97)',
+        (tester) async {
       var run = await pumpLinkSession(tester, liveLink());
 
       // The state of a real browser: the device's settings were never read,
       // and the router did not wait for them — the review's endless splash.
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(run.store.wasRead, isFalse);
-      expect(find.text("Party"), findsOneWidget);
-      expect(find.byKey(const Key("share-label")), findsOneWidget);
+      // The album's own title, once, in its own immersive heading: no app bar
+      // over it, and the link's label is not a caption.
+      expect(find.text("Zoo"), findsOneWidget);
+      expect(find.byType(AppBar), findsNothing);
+      expect(find.text("Party"), findsNothing);
+      expect(find.byKey(const Key("share-label")), findsNothing);
       // Nothing of the edit mode, and no way into the settings.
       expect(find.text("Share link…"), findsNothing);
       expect(find.text("Server..."), findsNothing);
@@ -299,7 +304,7 @@ void main() {
       );
 
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.text("Party"), findsOneWidget);
+      expect(find.text("Zoo"), findsOneWidget);
       // The stored token of that device takes no part in the session.
       for (var request in run.requests) {
         expect(request.headers["Authorization"], "Bearer tok-42");
@@ -359,7 +364,7 @@ void main() {
       expect(find.textContaining("Loading failed"), findsNothing);
 
       await tapKey(tester, "share-home");
-      expect(find.text("Party"), findsOneWidget);
+      expect(find.text("Zoo"), findsOneWidget);
     });
 
     testWidgets('falls back to an ordinary start when the token is no link',

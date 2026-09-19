@@ -942,12 +942,13 @@ class AlbumContentState extends State<AlbumContent>
     // nothing being edited there is no app bar, only the floating controls over
     // the photos, see [contentView]. A "view as" preview keeps the app bar:
     // the switch back to the owner's view lives in it.
-    // Inside a share link the app bar always stays: it is what names the link
-    // — a visitor arriving at a bare URL is told what they were given and by
-    // whom, see issue #51.
+    // A share link is no exception (issue #97): a link shows the album exactly
+    // as its owner sees it. The link's *label* names the link where links are
+    // managed, it is not a caption — shown over the album it only said the
+    // title twice, in two styles, before the album had started.
     var link = share;
     var editing = session.editMode;
-    var immersive = !editing && self.parts.isNotEmpty && link == null;
+    var immersive = !editing && self.parts.isNotEmpty;
     // The way out of the album sits where a way out belongs: at the left of
     // the app bar, ahead of everything the edit mode offers (issue #99).
     var up = wayUp();
@@ -960,13 +961,8 @@ class AlbumContentState extends State<AlbumContent>
               automaticallyImplyLeading: false,
               title: Column(
                 children: [
-                  Text(
-                    link == null ? self.title : link.label,
-                    key: link == null ? null : const Key("share-label"),
-                  ),
-                  if (link != null && self.title.isNotEmpty) Text(self.title),
-                  if (link == null && self.subTitle.isNotEmpty)
-                    Text(self.subTitle),
+                  Text(self.title),
+                  if (self.subTitle.isNotEmpty) Text(self.subTitle),
                 ],
               ),
               centerTitle: true,

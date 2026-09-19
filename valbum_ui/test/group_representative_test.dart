@@ -20,7 +20,7 @@ Finder representativeMark(String name) => find.descendant(
 
 /// The URL of the single image the viewer shows.
 String shownUrl(WidgetTester tester) {
-  var image = tester.widget<Image>(find.byType(Image).first);
+  var image = tester.widget<Image>(find.byKey(const Key("image-picture")));
   return (image.image as NetworkImage).url;
 }
 

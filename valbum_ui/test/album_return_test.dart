@@ -312,10 +312,16 @@ void main() {
     // Only the topmost page was exchanged.
     expect(identical(albumStateOf(tester), album), isTrue);
 
+    // The viewer draws the thumbnail of the image it shows beneath the
+    // picture (issue #101), so paging costs that one thumbnail; the way back
+    // costs nothing, which is what this test is about.
+    expect(thumbnails.length, afterDescent + 1);
+    var beforeReturn = thumbnails.length;
+
     await tap(tester, find.byIcon(Icons.arrow_back));
     expect(find.byType(AlbumContent), findsOneWidget);
     expect(identical(albumStateOf(tester), album), isTrue);
-    expect(thumbnails.length, afterDescent);
+    expect(thumbnails.length, beforeReturn);
   });
 
   testWidgets('the system back button leaves the viewer and then the album',

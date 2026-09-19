@@ -96,11 +96,16 @@ void main() {
       expect(tester.widget<ImageView>(find.byType(ImageView)).image.thumbnailName, "shot 1.jpg");
       expect(identical(albumState(tester), state), isTrue, reason: "the album stays mounted beneath");
 
+      // What the way back may not cost: the viewer draws the thumbnail of the
+      // image it shows beneath the picture (issue #101), and with a cache of
+      // one byte every one of those is a fetch of its own — so the count is
+      // taken where the album is returned to, not where it was left.
+      var beforeReturn = thumbnails.length;
       await settle(tester, () => tester.binding.handlePopRoute());
       expect(find.byType(ImageView), findsNothing);
       expect(find.byType(AlbumContent), findsOneWidget);
       expect(identical(albumState(tester), state), isTrue, reason: "round trip $trip keeps the state");
-      expect(thumbnails.length, afterAlbum, reason: "round trip $trip fetched no thumbnail again");
+      expect(thumbnails.length, beforeReturn, reason: "round trip $trip fetched no thumbnail again");
     }
 
     // A popup menu is an imperative route: the system back closes it and

@@ -134,7 +134,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(find.byKey(const Key("share-label")), findsOneWidget);
+    // The folder is named by the folder, not by the link (issue #97).
+    expect(find.byKey(const Key("share-label")), findsNothing);
     expect(find.text("Schlosspark"), findsOneWidget);
     expect(store.reads, 0, reason: "a link names its own server and token");
   });
@@ -162,13 +163,18 @@ void main() {
           return http.Response("No such resource: $path", 404);
         };
 
-    testWidgets('opens a listing root, named by the link, and descends '
+    testWidgets('opens a listing root, named by the folder, and descends '
         'into a date-named album without the token in the data path',
         (tester) async {
       var requests = await pumpSession(tester, folderLink());
 
-      expect(find.byKey(const Key("share-label")), findsOneWidget);
-      expect(find.text("Family 2002"), findsOneWidget);
+      // The listing keeps its app bar — it has no immersive mode — but it
+      // names the folder once and the link not at all (issue #97).
+      expect(find.byKey(const Key("share-label")), findsNothing);
+      // The link is labelled "Family 2002", the folder is called "2002": the
+      // app bar shows the folder's name and the label nowhere.
+      expect(find.text("Family 2002"), findsNothing);
+      expect(find.text("2002"), findsOneWidget);
       expect(find.text("Schlosspark"), findsOneWidget);
 
       await tester.tap(find.text("Schlosspark"));
@@ -188,7 +194,7 @@ void main() {
       for (var request in requests) {
         expect(request.headers["Authorization"], "Bearer tok-42");
       }
-      expect(find.byKey(const Key("share-label")), findsOneWidget);
+      expect(find.byKey(const Key("share-label")), findsNothing);
     });
 
     testWidgets('never offers to remove a link tile the owner filed there',
@@ -221,7 +227,7 @@ void main() {
         (tester) async {
       await pumpSession(tester, folderLink(writeAllowed: true));
 
-      expect(find.byKey(const Key("share-label")), findsOneWidget);
+      expect(find.byKey(const Key("share-label")), findsNothing);
       // Whatever the listing offers for new albums or folders in a real
       // session, a link may only upload into the album it opens.
       expect(find.textContaining("New album"), findsNothing);

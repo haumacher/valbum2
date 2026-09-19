@@ -150,9 +150,11 @@ class ListingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var self = listing;
-    // Inside a share link the folder is named by the link: a visitor arriving
-    // at a bare URL is told what they were given, see issue #51. Nothing that
-    // changes anything is offered, and neither is the way to the settings.
+    // Inside a share link nothing that changes anything is offered, and
+    // neither is the way to the settings. The folder is named by the folder,
+    // not by the link (issue #97): the link's label names the link where links
+    // are managed, and over the folder's own title it only said the same thing
+    // twice.
     var link = ShareSession.of(context);
     var sharedLine = sharedLineIn(context);
     var mayChange = rightsIn(context).mayEdit && link == null;
@@ -161,14 +163,7 @@ class ListingView extends StatelessWidget {
       // a light page to a dark one, see issue #40.
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: link == null
-            ? Text(self.title)
-            : Column(
-                children: [
-                  Text(link.label, key: const Key("share-label")),
-                  if (self.title.isNotEmpty) Text(self.title),
-                ],
-              ),
+        title: Text(self.title),
         actions: <Widget>[
           // Unobtrusive while a camera-roll sync runs, nothing otherwise.
           const CameraRollIndicator(),

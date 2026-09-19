@@ -91,7 +91,16 @@ Future<void> pumpViewer(
 
 /// The URL of the single image shown by the viewer.
 String shownUrl(WidgetTester tester) {
-  var image = tester.widget<Image>(find.byType(Image));
+  var image = tester.widget<Image>(find.byKey(const Key("image-picture")));
+  return (image.image as NetworkImage).url;
+}
+
+/// The URL of the poster the video player of the viewer shows.
+///
+/// A video has no picture layer (see [shownUrl]): what the viewer draws is the
+/// player, and the only [Image] in it is the poster.
+String posterUrl(WidgetTester tester) {
+  var image = tester.widget<Image>(find.byType(Image).first);
   return (image.image as NetworkImage).url;
 }
 
@@ -292,7 +301,7 @@ void main() {
     // platform is installed, so the player reports that it cannot play.
     expect(find.byType(VideoView), findsOneWidget);
     expect(
-        shownUrl(tester), "http://server/valbum/data/album/clip.mp4?type=tn");
+        posterUrl(tester), "http://server/valbum/data/album/clip.mp4?type=tn");
   });
 
   testWidgets('the mouse wheel zooms around the cursor', (tester) async {

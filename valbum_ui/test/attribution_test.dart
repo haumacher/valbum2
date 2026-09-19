@@ -205,8 +205,8 @@ void main() {
       expect(caption, findsNothing);
     });
 
-    testWidgets('is shown in a share session, which is no user',
-        (tester) async {
+    testWidgets('is never shown in a share session, which is no member '
+        '(issue #96)', (tester) async {
       var images = [
         imagePart("a.jpg", contributor: "user:bob", contributorLabel: "bob"),
       ];
@@ -214,7 +214,11 @@ void main() {
 
       await pumpViewer(tester, images[0], share: shareSession());
 
-      expect(attribution, findsOneWidget);
+      // A visitor of a link stands outside the space: the names of its
+      // members mean nothing to them, and a link caller is never recognised
+      // as the contributor, so the line would stand under every single photo.
+      expect(attribution, findsNothing);
+      expect(caption, findsNothing);
     });
 
     testWidgets('an image of an old album carries no caption at all',

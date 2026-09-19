@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/image_view.dart';
 import 'package:valbum_ui/resource.dart';
+import 'package:valbum_ui/thumbnails.dart';
 import 'package:valbum_ui/video_view.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
@@ -79,10 +80,19 @@ Future<void> pumpVideo(
 }
 
 /// The URLs of all images currently displayed.
+///
+/// A still image is drawn in two layers since issue #101 — the thumbnail, and
+/// the picture over it — so both kinds of provider are read here.
 List<String> shownUrls(WidgetTester tester) => tester
     .widgetList<Image>(find.byType(Image))
-    .map((image) => (image.image as NetworkImage).url)
+    .map((image) => urlOf(image.image))
     .toList();
+
+/// The URL a provider of the viewer fetches from.
+String urlOf(ImageProvider provider) => switch (provider) {
+      NetworkImage(url: var url) => url,
+      _ => thumbnailOf(provider)?.url ?? "$provider",
+    };
 
 void main() {
   late FakeVideoPlayerPlatform platform;
@@ -133,7 +143,10 @@ void main() {
     await pumpViewer(tester, image);
 
     expect(find.byType(VideoView), findsNothing);
-    expect(shownUrls(tester), ["http://server/valbum/data/album/a.jpg"]);
+    expect(shownUrls(tester), [
+      "http://server/valbum/data/album/a.jpg?type=tn",
+      "http://server/valbum/data/album/a.jpg",
+    ]);
   });
 
   testWidgets('the viewer keeps its chrome around a video', (tester) async {
