@@ -151,7 +151,10 @@ class _CameraRollSectionState extends State<CameraRollSection> {
             const SizedBox(width: 8),
             OutlinedButton.icon(
               key: cameraRollChooseKey,
-              onPressed: guest ? null : () => _chooseInbox(sync),
+              // The same condition as the switches above (issue #90): where
+              // nothing will ever be uploaded — no photo library, or a guest
+              // with no space of their own — an album is not chosen either.
+              onPressed: available ? () => _chooseInbox(sync) : null,
               icon: const Icon(Icons.folder_open),
               label: const Text("Choose..."),
             ),
