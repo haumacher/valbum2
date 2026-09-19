@@ -206,7 +206,7 @@ void main() {
     expect(
       find.text(
         "From the server's start-up, from My devices on a device you are "
-        "already signed in on, or from your administrator.",
+        "already signed in on, from your administrator, or your backup code.",
       ),
       findsOneWidget,
     );

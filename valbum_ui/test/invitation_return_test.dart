@@ -7,6 +7,7 @@ import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:valbum_ui/first_screen.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
@@ -166,7 +167,9 @@ void main() {
         serverKnown: false,
       );
 
-      expect(find.byType(ServerSettingsScreen), findsOneWidget);
+      // A device that knows no server starts at "Where is your album?"
+      // (issue #91); the notice stands above it all the same.
+      expect(find.byType(FirstScreen), findsOneWidget);
       expect(notice, findsOneWidget);
       expect(
         find.text("This invitation was already used. If you accepted it on "

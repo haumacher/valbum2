@@ -218,6 +218,27 @@ The model:
 
 ## Decisions log
 
+- **2026-09-19** — The backup code is the missing end, and the sign-in form belongs where the
+  refusal is (#91, #92). The author, on the sign-out button: "While it is required, when opening
+  an album on a foreign device, it is dangerous, because you normally cannot re-login, because you
+  need another device to create a code. So there is still a missing end." And on what closes it:
+  "The backup code is fine — but since it must live forever, it should be much longer." So a
+  **backup code**: the same record in the same store as every other code (#89), told apart by one
+  field, and differing in exactly two values — sixteen characters instead of eight, because it
+  is written down and kept, and **no expiry at all**, because the day it is needed is the day
+  nobody could foresee. It is exempt from the rule that a code dies with the device that issued
+  it, for the plain reason that the device that issued it is precisely the one that will be gone;
+  what it rests on instead is that it is one's own, single use, one per user, and withdrawn by
+  making a new one. Signing out of one's **last** device now asks first and names the ways back in
+  words, and asks even when the device list could not be read, because "probably fine" is no
+  answer to a door that locks behind one. And the author, on signing in: "After codes/secrets are
+  unified, you should be able to log in simply by entering a code — at least in a browser,
+  since the server is already known there." So the browser's "sign-in required" page **is** the
+  sign-in form, one widget shared with the server screen; off the web the app opens with one
+  screen, one field that takes an address **or** an invitation link, and the scanner beside it;
+  and every code that is shown is offered as characters, as a QR code and as the same payload in a
+  link one can send.
+
 - **2026-09-19** — The pairing secret and the device code are one mechanism (#89, step one).
   The author's observation: "A pairing secret is more or less a device code that is offered by the
   server for the admin account during startup. The only (?) difference is that the user gives

@@ -33,6 +33,7 @@ import 'manage_view.dart';
 import 'offline.dart';
 import 'platform.dart';
 import 'resource.dart';
+import 'sign_in_form.dart';
 import 'urls.dart';
 
 /// Persistence of the server URL on the device.
@@ -493,6 +494,23 @@ class ConnectionTestResult {
       ConnectionTestResult(ok, message, authStatus: status);
 }
 
+/// The icon and the message of a connection test or a sign-in attempt.
+///
+/// One row for every place that reports such an outcome — the address section,
+/// the sign-in form, the refusal page — so that a success and a refusal look
+/// the same wherever they are shown.
+Widget outcomeRow(BuildContext context, ConnectionTestResult outcome) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          outcome.ok ? Icons.check_circle : Icons.error,
+          color: outcome.ok ? Colors.green : Colors.red,
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Text(outcome.message)),
+      ],
+    );
+
 /// Fetches the root resource of the server [client] talks to.
 ///
 /// Every outcome is reported as a message; nothing fails silently. Every step
@@ -763,6 +781,18 @@ const Key deviceCodeScanKey = Key("settings.deviceCode.scan");
 /// The key of the line saying what the caller may do and see (issue #85).
 const Key permissionLineKey = Key("settings.permission");
 
+/// The key of the "Sign in" button, see [SignInForm].
+const Key signInButtonKey = Key("settings.signIn");
+
+/// The key of the sign-in form itself, see [SignInForm].
+const Key signInFormKey = Key("settings.signIn.form");
+
+/// The key of the "Sign out" button beside it.
+const Key signOutButtonKey = Key("settings.signOut");
+
+/// The key of what a sign-out left to say.
+const Key signOutMessageKey = Key("settings.signOut.message");
+
 /// The key of the sign-in section's own refusal, see [bothCredentialsRefusal].
 const Key signInErrorKey = Key("settings.signIn.error");
 
@@ -900,36 +930,15 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     text: widget.settings.serverUrl ?? _suggestion(),
   );
 
-  /// The name this device announces itself with when it signs in.
-  late final TextEditingController deviceController = TextEditingController(
-    text: widget.settings.deviceName ?? defaultDeviceName(),
-  );
-
-  /// The name the user signs in under, empty for "the library owner".
-  late final TextEditingController userController = TextEditingController(
-    text: widget.settings.userName ?? "",
-  );
-
-  /// The code signing this device in (issues #65, #89).
+  /// The caller's devices as the devices section last read them (issue #92).
   ///
-  /// Never stored: it is exchanged for this device's own token exactly once.
-  final TextEditingController deviceCodeController = TextEditingController();
+  /// What the sign-out needs to know whether this is the last one, and
+  /// whether there is a backup code to fall back on. `null` while nothing has
+  /// been read.
+  DeviceList? deviceList;
 
-  /// Whether the server asked for a name, see [nameRequiredMessage].
-  ///
-  /// The name field is not shown until it does: a code says whom it signs in,
-  /// and the one case where it does not — a user who has no name yet — is
-  /// something only the server knows.
-  bool nameRequired = false;
-
-  /// Why the sign-in was not even attempted, if it was not.
-  String? signInError;
-
-  /// The outcome of the last sign-in attempt, if any.
-  ConnectionTestResult? pairing;
-
-  /// Whether a sign-in request is running.
-  bool pairingRunning = false;
+  /// What a sign-out left to say, `null` while there is nothing.
+  String? signOutMessage;
 
   /// Who this device is signed in as, `null` while it is signed out.
   SignedInUser? identity;
@@ -1155,9 +1164,6 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   void dispose() {
     widget.settings.removeListener(_settingsChanged);
     controller.dispose();
-    deviceController.dispose();
-    userController.dispose();
-    deviceCodeController.dispose();
     super.dispose();
   }
 
@@ -1297,26 +1303,20 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       ];
 
   /// The icon and message of a connection test or pairing attempt.
-  Widget _outcome(ConnectionTestResult outcome) => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            outcome.ok ? Icons.check_circle : Icons.error,
-            color: outcome.ok ? Colors.green : Colors.red,
-          ),
-          const SizedBox(width: 8),
-          Expanded(child: Text(outcome.message)),
-        ],
-      );
+  Widget _outcome(ConnectionTestResult outcome) => outcomeRow(context, outcome);
 
   /// The section signing this device in at the server.
   ///
   /// One field and one thing in it: a **code** (issue #89). Whoever issued it
-  /// — the server at start-up, a device of one's own, an administrator — the
-  /// server answers a token for this device, which is stored with the server
-  /// URL and sent on every request from then on. The name is asked for only
-  /// where the server says it is needed, and the section shows who this device
-  /// is signed in as.
+  /// — the server at start-up, a device of one's own, an administrator, or the
+  /// person themselves as a backup code (issue #92) — the server answers a
+  /// token for this device, which is stored with the server URL and sent on
+  /// every request from then on.
+  ///
+  /// The form itself is [SignInForm], the same widget the refusal page of a
+  /// server that shows nothing to anonymous callers is built from (issue #91):
+  /// what this screen adds around it is who this device is signed in as, the
+  /// way out, and the management sections below.
   List<Widget> _signInSection(ServerSettings settings) {
     // A share link is no sign-in and names no server: it is said, not stored,
     // see [shareLinkRefusal].
@@ -1328,6 +1328,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         const Text(shareLinkRefusal, key: shareLinkRefusalKey),
       ];
     }
+    var location = entered;
     var inviting = invitationToken.isNotEmpty;
     return [
       const SizedBox(height: 8),
@@ -1338,156 +1339,67 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       ..._identityDisplay(settings),
       const SizedBox(height: 16),
       if (inviting) ..._invitationDisplay(),
-      // The name is asked for where it is a choice — an invitation, and a code
-      // for a user who has no name yet — and nowhere else, see issue #89.
-      if (inviting || nameRequired) ...[
-        TextField(
-          key: userNameFieldKey,
-          controller: userController,
-          autofocus: nameRequired,
-          autocorrect: false,
-          decoration: InputDecoration(
-            labelText: inviting ? "Your name" : "User name",
-            helperText: inviting
-                ? "How the others on this server see you."
-                : userNameHelp,
-            helperMaxLines: 3,
-            border: const OutlineInputBorder(),
-          ),
-          onSubmitted: (_) => _signIn(),
-        ),
-        const SizedBox(height: 16),
-      ],
-      if (!inviting) _deviceCodeField(),
-      if (!inviting) const SizedBox(height: 16),
-      TextField(
-        key: deviceNameFieldKey,
-        controller: deviceController,
-        autocorrect: false,
-        decoration: const InputDecoration(
-          labelText: "Device name",
-          border: OutlineInputBorder(),
-        ),
-      ),
-      const SizedBox(height: 16),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          FilledButton.icon(
-            onPressed: pairingRunning ? null : _signIn,
-            icon: const Icon(Icons.login),
-            label: const Text("Sign in"),
-          ),
-          TextButton.icon(
-            onPressed: settings.signedIn ? _signOut : null,
-            icon: const Icon(Icons.logout),
-            label: const Text("Sign out"),
-          ),
-        ],
-      ),
-      const SizedBox(height: 16),
-      if (pairingRunning)
-        const Row(
-          children: [
-            SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
+      if (location == null)
+        const Text(
+          "Name a server above before signing in.",
+          key: Key("settings.signIn.noServer"),
+        )
+      else
+        SignInForm(
+          key: signInFormKey,
+          settings: settings,
+          clientFor: widget.clientFor,
+          location: location,
+          onScanned: _scannedServer,
+          onSignedIn: _signedIn,
+          actions: [
+            TextButton.icon(
+              key: signOutButtonKey,
+              onPressed: settings.signedIn ? _signOut : null,
+              icon: const Icon(Icons.logout),
+              label: const Text("Sign out"),
             ),
-            SizedBox(width: 8),
-            Text("Signing in..."),
           ],
         ),
-      if (signInError != null)
+      if (signOutMessage != null)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text(
-            signInError!,
-            key: signInErrorKey,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
+          child: Text(signOutMessage!, key: signOutMessageKey),
         ),
-      if (!pairingRunning && pairing != null) _outcome(pairing!),
       ..._devicesSection(),
       ..._inviteSection(),
     ];
   }
 
-  /// The device-code field, with the camera beside it where there is one
-  /// (issue #66).
+  /// A scanned payload names a server too: it goes into the field above
+  /// (issues #66, #91).
   ///
-  /// The scan is an addition to the typing and never a replacement: the field
-  /// is the same field, and a platform without a camera simply has no button.
-  Widget _deviceCodeField() {
-    var scanner = DeviceCodeScannerScope.of(context);
-    var field = TextField(
-      key: deviceCodeFieldKey,
-      controller: deviceCodeController,
-      autocorrect: false,
-      textCapitalization: TextCapitalization.characters,
-      inputFormatters: [deviceCodeFormatter],
-      decoration: const InputDecoration(
-        labelText: "Sign-in code",
-        helperText: "From the server's start-up, from My devices on a device "
-            "you are already signed in on, or from your administrator.",
-        helperMaxLines: 3,
-        border: OutlineInputBorder(),
-      ),
-      onSubmitted: (_) => _signIn(),
-    );
-    if (!scanner.available) {
-      return field;
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: field),
-        const SizedBox(width: 8),
-        IconButton(
-          key: deviceCodeScanKey,
-          icon: const Icon(Icons.qr_code_scanner),
-          tooltip: "Scan code",
-          onPressed: () => _scanDeviceCode(scanner),
-        ),
-      ],
-    );
-  }
-
-  /// Reads a device code off the camera and puts it into the fields
-  /// (issue #66).
-  ///
-  /// What is scanned fills the server field and the device-code field, and
-  /// *nothing else happens*: the sign-in is the button below, pressed by the
-  /// person who can now see what was read. A picture of a QR code is worth no
-  /// more than a forwarded code, and neither is sent anywhere until somebody
-  /// says so.
-  ///
-  /// A scan that was cancelled, refused or impossible answers `null` and is
-  /// silent here — the scanner itself said why, on its own page. Text that is
-  /// not a device code is refused with [notADeviceCodeRefusal], and the fields
-  /// are left exactly as they were.
-  Future<void> _scanDeviceCode(DeviceCodeScanner scanner) async {
-    var scanned = await scanner.scan(context);
-    if (scanned == null || !mounted) {
-      return;
-    }
-    var payload = parseDeviceCodePayload(scanned);
-    if (payload == null) {
-      setState(() {
-        signInError = notADeviceCodeRefusal;
-        pairing = null;
-      });
-      return;
-    }
+  /// The code itself the form keeps; this is only the server it belongs to,
+  /// and it is *shown*, never acted on — the sign-in is the button below,
+  /// pressed by the person who can now see what was read.
+  void _scannedServer(DeviceCodePayload payload) {
     controller.text = payload.serverUrl;
-    deviceCodeController.text = payload.formattedCode;
     setState(() {
       error = null;
-      signInError = null;
       result = null;
-      pairing = null;
       _enteredChanged();
+    });
+  }
+
+  /// The sign-in succeeded: show who this device is now, see [SignInForm].
+  void _signedIn(SignedInUser user, ServerLocation location) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      identity = user;
+      identityProblem = null;
+      if (invitationToken.isNotEmpty) {
+        // Used up: the field shows the server it named, and the section is
+        // the ordinary sign-in again.
+        controller.text = location.serverUrl;
+        _enteredChanged();
+      }
     });
   }
 
@@ -1635,9 +1547,17 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     return [
       DevicesSection(
         client: client,
+        role: identity?.role ?? "",
         // The same sign-out the button above performs: the server has already
         // taken this device's entry away, and the device forgets its token.
-        onSignedOutHere: _signOut,
+        onSignedOutHere: _forgetToken,
+        // What the sign-out button above needs to know whether this is the
+        // last device, and whether a backup code is lying in a drawer.
+        onDevices: (list) {
+          if (mounted) {
+            setState(() => deviceList = list);
+          }
+        },
       ),
     ];
   }
@@ -1926,171 +1846,25 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     );
   }
 
-  /// Exchanges the sign-in code — or the invitation — for a device token at
-  /// the *entered* server.
+  /// Forgets the token of this device; the server keeps its entry.
   ///
-  /// The URL does not have to be saved for this: the sign-in reaches the
-  /// address the user is looking at, like the connection test does. An
-  /// invitation URL is the exception: what it names is a server *and* a token,
-  /// and a device that just became somebody's on that server belongs at it —
-  /// so the plain server URL is stored with the sign-in, never the `/i/…`
-  /// form, see issue #52.
-  Future<void> _signIn() async {
-    // No offline guard here (issue #57): that flag describes the server the
-    // app last *loaded* from, and a sign-in talks to the server in the field,
-    // which may be a different one entirely. A pairing request that cannot be
-    // delivered reports itself below, which is the only refusal that is true.
-    var entered = controller.text;
-    var problem = serverUrlError(entered);
-    if (problem != null) {
-      setState(() {
-        error = problem;
-        pairing = null;
-      });
-      return;
-    }
-
-    var location = serverLocationOf(entered);
-    var deviceCode =
-        location.isInvitation ? "" : deviceCodeController.text.trim();
-    if (!location.isInvitation && deviceCode.isEmpty) {
-      // There is one way in and it is a code (issue #89); an empty field is
-      // said here rather than sent to be refused.
-      setState(() {
-        signInError = codeRequiredRefusal;
-        pairing = null;
-      });
-      return;
-    }
-    // The name is sent where there is one to send: an invitation names the
-    // user it creates, and a code whose user has no name yet needs the name
-    // the server asked for. Everywhere else the code says who, and a name the
-    // server did not ask for would only be a check it can fail.
-    var userName = location.isInvitation || nameRequired
-        ? userController.text.trim()
-        : "";
-
-    setState(() {
-      error = null;
-      signInError = null;
-      pairing = null;
-      pairingRunning = true;
-    });
-
-    var client = widget.clientFor(location.dataUrl).withToken(null);
-    ConnectionTestResult outcome;
-    SignedInUser? signedIn;
-    try {
-      var response = await client.pair(
-        deviceCode: deviceCode,
-        invitation: location.invitation,
-        deviceName: deviceController.text.trim().isEmpty
-            ? defaultDeviceName()
-            : deviceController.text.trim(),
-        userName: userName,
-      );
-      if (location.isInvitation) {
-        // Before the token is stored: saving a server forgets the token of
-        // the one it replaces, see [ServerSettings.save].
-        await widget.settings.save(location.serverUrl);
-      }
-      await widget.settings.signedInAs(
-        response.token,
-        response.deviceName,
-        userName: response.userName,
-      );
-      // The block is filled from one `?type=auth` and not from the pairing
-      // answer (issue #86): that answer carries no space, no clearance and no
-      // share flag, so the block used to be half empty until the caller scope
-      // asked the same question a moment later.
-      signedIn = await _identityOf(location.dataUrl, response);
-      outcome = const ConnectionTestResult(true, "Sign-in succeeded.");
-    } on VAlbumException catch (failure) {
-      if (needsAName(failure)) {
-        // The code signs in a user who has no name yet: the server says so,
-        // the field appears with the server's own sentence above it, and the
-        // person chooses the name themselves (issue #89). The code is left in
-        // the field: it is still good, and the next press sends it with the
-        // name.
-        if (mounted) {
-          setState(() {
-            pairingRunning = false;
-            nameRequired = true;
-            pairing = null;
-            signInError = failure.message;
-          });
-        }
-        return;
-      }
-      outcome = ConnectionTestResult(false, failure.message);
-    } on http.ClientException catch (failure) {
-      outcome = ConnectionTestResult(false, failure.message);
-    } catch (failure) {
-      outcome = ConnectionTestResult(false, failure.toString());
-    }
-
+  /// Asks first where there is no way back: the last signed-in device
+  /// (issue #92). What the question says is what the person would need to get
+  /// in again — a recovery code, a restart of the server, their backup code —
+  /// and it is asked even when the device list could not be read, because
+  /// "probably fine" is no answer to a door that locks behind one.
+  Future<void> _signOut() async {
+    var known = await _knownDevices();
     if (!mounted) {
       return;
     }
-    setState(() {
-      pairingRunning = false;
-      pairing = outcome;
-      if (outcome.ok) {
-        nameRequired = false;
-        deviceCodeController.clear();
-        identity = signedIn;
-        identityProblem = null;
-        userController.text = signedIn?.userName ?? "";
-        if (invitationToken.isNotEmpty) {
-          // Used up: the field shows the server it named, and the section is
-          // the ordinary sign-in again.
-          controller.text = serverLocationOf(entered).serverUrl;
-          _enteredChanged();
-        }
-      }
-    });
-  }
-
-  /// Who the server says this device is, right after it was paired
-  /// (issue #86).
-  ///
-  /// The same question the caller scope asks, asked once here so that the
-  /// signed-in block is right at once: the pairing answer names the user, the
-  /// device and the role, but not the space, the clearance or the share flag.
-  /// Where the question cannot be asked — a server that answers the pairing
-  /// and nothing else — what the pairing said stands, which is what the block
-  /// showed before this existed.
-  Future<SignedInUser> _identityOf(
-    String dataUrl,
-    PairResponse response,
-  ) async {
-    var fallback = SignedInUser(
-      userName: response.userName,
-      deviceName: response.deviceName,
-      role: response.role,
-      space: response.space,
-    );
-    try {
-      var info =
-          await widget.clientFor(dataUrl).withToken(response.token).authInfo();
-      if (info.deviceName.isEmpty) {
-        return fallback;
-      }
-      return SignedInUser(
-        userName: info.userName,
-        deviceName: info.deviceName,
-        role: info.role,
-        space: info.space,
-        clearance: info.clearance,
-        mayShare: info.mayShare,
-      );
-    } catch (_) {
-      return fallback;
+    if (!await confirmLastSignOut(
+      context: context,
+      devices: known,
+      role: identity?.role ?? "",
+    )) {
+      return;
     }
-  }
-
-  /// Forgets the token of this device; the server keeps its entry.
-  Future<void> _signOut() async {
     await widget.settings.signOut();
     if (!mounted) {
       return;
@@ -2098,11 +1872,47 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     setState(() {
       identity = null;
       identityProblem = null;
-      pairing = const ConnectionTestResult(
-        true,
-        "This device no longer identifies itself to the server.",
-      );
+      signOutMessage = "This device no longer identifies itself to the server.";
     });
+  }
+
+  /// Drops the token of this device, the server having signed it out already.
+  ///
+  /// What the devices section calls after it removed *this* device: the
+  /// question was asked there, and asking it twice would be asking about a
+  /// door that is already shut.
+  Future<void> _forgetToken() async {
+    await widget.settings.signOut();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      identity = null;
+      identityProblem = null;
+      deviceList = null;
+      signOutMessage = "This device no longer identifies itself to the server.";
+    });
+  }
+
+  /// The caller's devices as this screen last saw them, asked for if it has
+  /// not seen any yet.
+  ///
+  /// `null` where the server could not be asked at all; the sign-out warning
+  /// reads that as "possibly the last one", see [confirmLastSignOut].
+  Future<DeviceList?> _knownDevices() async {
+    var known = deviceList;
+    if (known != null) {
+      return known;
+    }
+    var client = _managementClient();
+    if (client == null || !widget.settings.signedIn) {
+      return null;
+    }
+    try {
+      return await client.devices();
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Fetches the root resource of the *entered* server, without saving it.
@@ -2171,7 +1981,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       controller.text = _suggestion();
       result = null;
       error = null;
-      pairing = null;
+      signOutMessage = null;
     });
     if (widget.closable &&
         widget.settings.configured &&

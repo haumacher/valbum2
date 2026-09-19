@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:valbum_ui/first_screen.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
@@ -290,7 +291,7 @@ void main() {
   });
 
   group('start-up', () {
-    testWidgets('opens the settings when no server is configured',
+    testWidgets('asks where the album is when no server is configured',
         (tester) async {
       await pumpApp(
         tester,
@@ -300,12 +301,14 @@ void main() {
         ),
       );
 
-      expect(find.text("Album server"), findsOneWidget);
+      // One screen and one field, off the web, see issue #91.
+      expect(find.text(firstScreenTitle), findsOneWidget);
+      expect(find.byKey(firstScreenFieldKey), findsOneWidget);
       // Nothing to go back to: the screen is the app.
       expect(find.byType(BackButton), findsNothing);
     });
 
-    testWidgets('goes from the setup screen to the album app', (tester) async {
+    testWidgets('goes from the first screen to the album app', (tester) async {
       // The app swaps its whole router here: the screens before the router
       // exist run on a delegate of their own, see issue #35.
       await pumpApp(
@@ -316,14 +319,21 @@ void main() {
           platformDefault: null,
         ),
       );
-      expect(find.text("Album server"), findsOneWidget);
+      expect(find.text(firstScreenTitle), findsOneWidget);
 
-      await enter(tester, "http://server/valbum/");
-      await withFakeImageHttp(() async {
-        await tapButton(tester, "Save");
-      });
+      await tester.enterText(
+        find.byKey(firstScreenFieldKey),
+        "http://server/valbum/",
+      );
+      await tester.pumpAndSettle();
+      await tapButton(tester, "Continue");
+      // The server is known; a server that shows its albums needs no sign-in.
+      await tester.ensureVisible(find.byKey(firstScreenSkipKey));
+      await tester.pumpAndSettle();
+      await tapButton(tester, "Open without signing in");
+      await withFakeImageHttp(() => tester.pumpAndSettle());
 
-      expect(find.text("Album server"), findsNothing);
+      expect(find.text(firstScreenTitle), findsNothing);
       expect(find.text("Test-album"), findsOneWidget);
     });
 
