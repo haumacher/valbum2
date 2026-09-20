@@ -1436,12 +1436,30 @@ class ThumbnailInfo extends _JsonObject {
 	///  The translation in Y to apply to the the original image for producing the thumbnail image.
 	double ty;
 
+	///  The {@link Orientation} the crop was made in, and the one to apply to the server's rendition
+	///  before the crop transform, see issue #115.
+	/// 
+	///  <p>
+	///  A rendition the server makes is upright by the <em>file</em>; the rotation an author stored
+	///  beside the image ({@link ImagePart#getOrientation()}) is applied on top of it by the client.
+	///  A crop is therefore only meaningful together with the orientation it was framed in: the
+	///  {@link #getScale() scale} and the {@link #getTx() offsets} are measured in the frame this
+	///  field names, and the tile turns the rendition by it before applying them.
+	///  </p>
+	/// 
+	///  <p>
+	///  Absent in every sidecar written before this field existed, which reads as
+	///  {@link Orientation#IDENTITY} — the frame such a crop was made in.
+	///  </p>
+	Orientation orientation;
+
 	/// Creates a ThumbnailInfo.
 	ThumbnailInfo({
 			this.image = "", 
 			this.scale = 0.0, 
 			this.tx = 0.0, 
 			this.ty = 0.0, 
+			this.orientation = Orientation.identity, 
 	});
 
 	/// Parses a ThumbnailInfo from a string source.
@@ -1478,6 +1496,10 @@ class ThumbnailInfo extends _JsonObject {
 				ty = json.expectDouble();
 				break;
 			}
+			case "orientation": {
+				orientation = readOrientation(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1497,6 +1519,9 @@ class ThumbnailInfo extends _JsonObject {
 
 		json.addKey("ty");
 		json.addNumber(ty);
+
+		json.addKey("orientation");
+		writeOrientation(json, orientation);
 	}
 
 }

@@ -12,6 +12,7 @@ import 'client.dart';
 import 'move_view.dart';
 import 'resource.dart';
 import 'offline.dart';
+import 'oriented_thumbnail.dart';
 import 'rights.dart';
 import 'settings.dart';
 import 'share_session.dart';
@@ -65,6 +66,15 @@ Matrix4 thumbnailTransform(ThumbnailInfo info, double tileSize) {
 /// the box (CSS `max-width/max-height: 100%` on a centred image), cropped by
 /// the box (`overflow: hidden`) and zoomed/shifted by the index picture's
 /// transform.
+///
+/// The server's rendition is upright by the *file*; the rotation an author
+/// stored beside the image is applied on top of it, here as everywhere else
+/// (see `orientedBox`, issue #106). It is applied *before* the crop, because
+/// that is the frame the crop was measured in, see
+/// [ThumbnailInfo.orientation] and issue #115: the box is square, so the turn
+/// costs the fitted picture nothing, and a crop without the field
+/// (`Orientation.identity`, every sidecar written before it) draws exactly the
+/// tree it always drew.
 Widget indexPictureTile(
   VAlbumClient client,
   String imageUrl,
@@ -80,12 +90,15 @@ Widget indexPictureTile(
         child: Transform(
           alignment: Alignment.center,
           transform: thumbnailTransform(info, size),
-          child: thumbnail(
-            client,
-            imageUrl,
-            width: size,
-            height: size,
-            fit: BoxFit.contain,
+          child: orientedBox(
+            info.orientation,
+            thumbnail(
+              client,
+              imageUrl,
+              width: size,
+              height: size,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
       ),

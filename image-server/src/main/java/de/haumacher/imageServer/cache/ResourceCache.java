@@ -19,6 +19,7 @@ import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
+import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.shared.util.AlbumUtil;
@@ -391,6 +392,11 @@ public class ResourceCache {
 
 						ThumbnailInfo thumbnail = ThumbnailInfo.create().setImage(indexPicture.getName()).setScale(scale);
 						thumbnail.setTy(ty);
+						// A folder without a sidecar carries no stored rotation: the frame this
+						// crop was measured in is the one the server's own rendition has, which is
+						// the file upright (ImageData applies the EXIF orientation to the
+						// dimensions above). See ThumbnailInfo#getOrientation() and issue #115.
+						thumbnail.setOrientation(Orientation.IDENTITY);
 						folderInfo.setIndexPicture(thumbnail);
 					} catch (ImageProcessingException
 							| MetadataException | IOException ex) {

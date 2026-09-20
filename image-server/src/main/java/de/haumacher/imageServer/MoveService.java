@@ -834,7 +834,8 @@ public class MoveService {
 	 * <p>
 	 * The cover of an album whose cover was moved away is the album's first image, computed
 	 * exactly as a listing computes the cover of a folder without a sidecar; an album with no
-	 * image left has no cover.
+	 * image left has no cover. The new cover is framed in the frame its image is displayed in and
+	 * says so, see {@link ThumbnailInfo#getOrientation()} and issue #115.
 	 * </p>
 	 */
 	private static void repairIndexPicture(AlbumInfo album) {

@@ -1057,17 +1057,30 @@ const double indexPictureTileSize = 300;
 
 /// The index picture showing the given image in the parent listing, framed
 /// as the server frames its own fallback (the first image of a folder without
-/// a sidecar, see `ResourceCache.loadFolderInfo`).
+/// a sidecar, see `ResourceCache.loadFolderInfo` and `PrivacyFilter.thumbnail`).
 ///
 /// The listing tile is square; the image is scaled up by its aspect ratio so
 /// that it fills the square, and a portrait image is shifted down so that its
 /// middle is what the square shows. The offsets are in the pixels of the
 /// 300px tile of the GWT client, see `thumbnailTransform`.
+///
+/// The frame is the one the image is *displayed* in, not the one the file
+/// holds: a landscape file stored as `rotL` is a portrait picture and is
+/// framed as one. Which frame that is travels with the crop
+/// ([ThumbnailInfo.orientation], issue #115), so that the tile can turn the
+/// server's rendition by it before applying the crop — the two are only
+/// meaningful together.
 ThumbnailInfo indexPictureOf(ImagePart image) {
-  double width = image.width.toDouble();
-  double height = image.height.toDouble();
+  var orientation = image.orientation;
+  var swapped = PlaneTransform.of(orientation).swapsDimensions;
+  double width = (swapped ? image.height : image.width).toDouble();
+  double height = (swapped ? image.width : image.height).toDouble();
   if (width <= 0 || height <= 0) {
-    return ThumbnailInfo(image: image.name, scale: 1);
+    return ThumbnailInfo(
+      image: image.name,
+      scale: 1,
+      orientation: orientation,
+    );
   }
   var scale = width / height;
   var ty = 0.0;
@@ -1075,7 +1088,26 @@ ThumbnailInfo indexPictureOf(ImagePart image) {
     scale = 1 / scale;
     ty = (height - width) / height * (indexPictureTileSize / 2);
   }
-  return ThumbnailInfo(image: image.name, scale: scale, ty: ty);
+  return ThumbnailInfo(
+    image: image.name,
+    scale: scale,
+    ty: ty,
+    orientation: orientation,
+  );
+}
+
+/// Keeps the crop of the album picture in the frame its image is displayed
+/// in, after that image was turned in the edit mode (issue #115).
+///
+/// The crop values themselves are kept: a quarter turn may shift what the
+/// square shows a little, which is less surprising than a crop that resets
+/// itself — and the crop editor is one menu entry away. Nothing happens when
+/// [image] is not the album's picture.
+void syncIndexPictureOrientation(AlbumInfo album, ImagePart image) {
+  var info = album.indexPicture;
+  if (info != null && info.image == image.name) {
+    info.orientation = image.orientation;
+  }
 }
 
 /// Whether the given image is the one representing its album in the listing.
@@ -1108,6 +1140,8 @@ ThumbnailInfo panIndexPicture(
     scale: info.scale,
     tx: info.tx + dx / factor,
     ty: info.ty + dy / factor,
+    // The frame the crop is measured in does not change by panning it.
+    orientation: info.orientation,
   );
 }
 
@@ -1124,6 +1158,7 @@ ThumbnailInfo zoomIndexPicture(ThumbnailInfo info, double factor) {
     scale: (scale * factor).clamp(minIndexPictureScale, maxIndexPictureScale),
     tx: info.tx,
     ty: info.ty,
+    orientation: info.orientation,
   );
 }
 

@@ -27,6 +27,9 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getTy() */
 	private static final String TY__PROP = "ty";
 
+	/** @see #getOrientation() */
+	private static final String ORIENTATION__PROP = "orientation";
+
 	private String _image = "";
 
 	private double _scale = 0.0d;
@@ -34,6 +37,8 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private double _tx = 0.0d;
 
 	private double _ty = 0.0d;
+
+	private de.haumacher.imageServer.shared.model.Orientation _orientation = de.haumacher.imageServer.shared.model.Orientation.IDENTITY;
 
 	/**
 	 * Creates a {@link ThumbnailInfo} instance.
@@ -124,6 +129,41 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_ty = value;
 	}
 
+	/**
+	 * The {@link Orientation} the crop was made in, and the one to apply to the server's rendition
+	 * before the crop transform, see issue #115.
+	 *
+	 * <p>
+	 * A rendition the server makes is upright by the <em>file</em>; the rotation an author stored
+	 * beside the image ({@link ImagePart#getOrientation()}) is applied on top of it by the client.
+	 * A crop is therefore only meaningful together with the orientation it was framed in: the
+	 * {@link #getScale() scale} and the {@link #getTx() offsets} are measured in the frame this
+	 * field names, and the tile turns the rendition by it before applying them.
+	 * </p>
+	 *
+	 * <p>
+	 * Absent in every sidecar written before this field existed, which reads as
+	 * {@link Orientation#IDENTITY} — the frame such a crop was made in.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.Orientation getOrientation() {
+		return _orientation;
+	}
+
+	/**
+	 * @see #getOrientation()
+	 */
+	public de.haumacher.imageServer.shared.model.ThumbnailInfo setOrientation(de.haumacher.imageServer.shared.model.Orientation value) {
+		internalSetOrientation(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getOrientation()} without chain call utility. */
+	protected final void internalSetOrientation(de.haumacher.imageServer.shared.model.Orientation value) {
+		if (value == null) throw new IllegalArgumentException("Property 'orientation' cannot be null.");
+		_orientation = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ThumbnailInfo readThumbnailInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ThumbnailInfo result = new de.haumacher.imageServer.shared.model.ThumbnailInfo();
@@ -147,6 +187,8 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getTx());
 		out.name(TY__PROP);
 		out.value(getTy());
+		out.name(ORIENTATION__PROP);
+		getOrientation().writeTo(out);
 	}
 
 	@Override
@@ -156,6 +198,7 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case SCALE__PROP: setScale(in.nextDouble()); break;
 			case TX__PROP: setTx(in.nextDouble()); break;
 			case TY__PROP: setTy(in.nextDouble()); break;
+			case ORIENTATION__PROP: setOrientation(de.haumacher.imageServer.shared.model.Orientation.readOrientation(in)); break;
 			default: super.readField(in, field);
 		}
 	}

@@ -13,8 +13,10 @@ import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
+import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
+import de.haumacher.imageServer.shared.util.Orientations;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -262,10 +264,18 @@ public class PrivacyFilter {
 	 * A {@link ThumbnailInfo} showing the given image, computed exactly as the one a listing builds
 	 * for a folder without a sidecar (see <code>ResourceCache.Loader#loadFolderInfo</code>): the
 	 * image is scaled to fill the square tile and a portrait image is shifted to its top.
+	 *
+	 * <p>
+	 * The frame is the one the image is <em>displayed</em> in: the crop is measured against the
+	 * width and height the stored {@link ImagePart#getOrientation() orientation} gives the image,
+	 * and that orientation is written on the crop, so the tile turns the rendition before applying
+	 * it (see {@link ThumbnailInfo#getOrientation()} and issue #115).
+	 * </p>
 	 */
 	static ThumbnailInfo thumbnail(ImagePart image) {
-		double width = image.getWidth();
-		double height = image.getHeight();
+		Orientation orientation = image.getOrientation();
+		double width = Orientations.width(orientation, image.getWidth(), image.getHeight());
+		double height = Orientations.height(orientation, image.getWidth(), image.getHeight());
 		double scale;
 		double ty;
 		if (width <= 0 || height <= 0) {
@@ -281,7 +291,8 @@ public class PrivacyFilter {
 				ty = 0.0;
 			}
 		}
-		return ThumbnailInfo.create().setImage(image.getName()).setScale(scale).setTy(ty);
+		return ThumbnailInfo.create().setImage(image.getName()).setScale(scale).setTy(ty)
+			.setOrientation(orientation);
 	}
 
 	/**

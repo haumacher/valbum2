@@ -2613,20 +2613,22 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         onPressed: onPressed,
       );
 
-  void rotateLeft() =>
-      album.editImage(() => image.orientation = OrientationOps.rotL(
-            image.orientation,
-          ));
+  void rotateLeft() => turn(OrientationOps.rotL);
 
-  void rotateRight() =>
-      album.editImage(() => image.orientation = OrientationOps.rotR(
-            image.orientation,
-          ));
+  void rotateRight() => turn(OrientationOps.rotR);
 
-  void flipVertically() =>
-      album.editImage(() => image.orientation = OrientationOps.flipV(
-            image.orientation,
-          ));
+  void flipVertically() => turn(OrientationOps.flipV);
+
+  /// Applies [operation] to this tile's image.
+  ///
+  /// An image that is the album's picture takes its crop along into the new
+  /// frame, so that the listing tile keeps showing what the crop editor shows,
+  /// see [syncIndexPictureOrientation] and issue #115.
+  void turn(Orientation Function(Orientation) operation) =>
+      album.editImage(() {
+        image.orientation = operation(image.orientation);
+        syncIndexPictureOrientation(album.widget.album, image);
+      });
 
   void setRating(int value) => album.editImage(
         () => image.rating = toggleRating(image.rating, value),
@@ -3670,6 +3672,8 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
           scale: info.scale,
           tx: info.tx,
           ty: info.ty,
+          // The frame the crop is measured in travels with it, see issue #115.
+          orientation: info.orientation,
         );
 
   @override

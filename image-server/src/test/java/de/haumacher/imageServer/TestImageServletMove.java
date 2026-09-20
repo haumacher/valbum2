@@ -21,6 +21,7 @@ import de.haumacher.imageServer.shared.model.MoveOutcome;
 import de.haumacher.imageServer.shared.model.MoveResult;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.upload.HashCache;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
@@ -440,6 +441,26 @@ public class TestImageServletMove extends TestCase {
 		move("/A/", "B", "a.jpg");
 
 		assertEquals("The cover follows the first remaining image.", "b.jpg", album("A").getIndexPicture().getImage());
+	}
+
+	/** Issue #115: the cover a move computes says which frame its crop was measured in. */
+	public void testTheRepairedIndexPictureCarriesTheOrientation() throws Exception {
+		image("A/a.jpg", 8, 6, Color.RED);
+		image("A/b.jpg", 8, 6, Color.GREEN);
+		sidecar("A", "[\"AlbumInfo\",{\"title\":\"A\","
+			+ "\"indexPicture\":{\"image\":\"a.jpg\",\"scale\":1.0,\"tx\":0.0,\"ty\":0.0},"
+			+ "\"parts\":[" + part("a.jpg", "") + "," + part("b.jpg", "\"orientation\":\"ROT_L\"") + "]}]");
+		Files.createDirectories(_base.resolve("B"));
+
+		move("/A/", "B", "a.jpg");
+
+		ThumbnailInfo cover = album("A").getIndexPicture();
+		assertEquals("b.jpg", cover.getImage());
+		assertEquals("The new cover is framed in the frame its image is displayed in.",
+			Orientation.ROT_L, cover.getOrientation());
+		assertEquals("An 8x6 file turned a quarter is a portrait picture and fills the square.",
+			4.0 / 3, cover.getScale(), 1e-9);
+		assertEquals(37.5, cover.getTy(), 1e-9);
 	}
 
 
