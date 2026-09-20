@@ -16,11 +16,11 @@ import 'album_date.dart';
 import 'album_edit.dart';
 import 'album_model.dart';
 import 'app.dart';
-import 'attribution.dart';
 import 'cache_refresh.dart';
 import 'camera_roll_view.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'image_properties.dart';
 import 'listing_view.dart';
 import 'move_view.dart';
 import 'name_date.dart';
@@ -950,6 +950,75 @@ class AlbumContentState extends State<AlbumContent>
     }
   }
 
+  /// Whether this caller may change the album itself (issue #121).
+  ///
+  /// What the edit mode needs, without needing the edit mode: the album's
+  /// properties are edited from the menu in the view mode as well, and are
+  /// then written by themselves, see [editProperties]. Never inside a share
+  /// link — a link is not an account — and never over somebody else's view of
+  /// the album, which is read-only, see [setViewAs].
+  bool get mayEditAlbum => rights.mayEdit && share == null && !previewing;
+
+  /// Whether the menu's move acts on the selection, see issue #121.
+  ///
+  /// Exactly the condition the toolbar button carried: the edit mode holding
+  /// a selection. The edit mode itself already asks for `edit` and refuses a
+  /// share link, see [editMode].
+  bool get mayMoveSelection => editMode && selection.isNotEmpty;
+
+  /// Whether the menu's move acts on the album itself, see [moveAlbum].
+  ///
+  /// Nothing at the root of the space: an album is an entry of the listing
+  /// above it, and above the root there is no listing to move it into.
+  bool get mayMoveAlbum => mayEditAlbum && widget.albumState.path.isNotEmpty;
+
+  /// Moves this album itself into another folder, see issues #47 and #121.
+  ///
+  /// The move the listing above offers on the album's own tile, asked from
+  /// inside the album: the entry that moves is this album's folder, and the
+  /// move is posted to the folder it lives in. Afterwards the app ascends —
+  /// the album is no longer where the address says it is, and the listing
+  /// above is where it can be found again.
+  Future<void> moveAlbum() async {
+    var path = widget.albumState.path;
+    if (path.isEmpty) {
+      return;
+    }
+    // The same rule the move of a selection follows: the album is fetched
+    // again afterwards, which would throw unsaved edits away.
+    if (dirty) {
+      showMessage("Save or discard your changes first");
+      return;
+    }
+    var name = path.last;
+    var parent = path.sublist(0, path.length - 1);
+    var delegate = widget.albumState.navigator.delegate;
+    var moved = false;
+
+    await moveWithPicker(
+      context: context,
+      client: client,
+      source: parent,
+      names: [name],
+      subject: EntrySubject(name),
+      onMoved: () {
+        moved = true;
+        // Neither the album nor the listing above is what was loaded: the
+        // album may live somewhere else now, and the listing no longer shows
+        // it where it did.
+        delegate.forget(path);
+        delegate.forget(parent);
+      },
+    );
+
+    // Ascended after the outcome was read out, not inside [onMoved]: the
+    // report of a refused entry needs this view still on the screen to open
+    // its dialog, see `moveWithPicker`.
+    if (moved && mounted) {
+      widget.albumState.showParent();
+    }
+  }
+
   /// Moves the selected parts into another folder, see issue #47.
   ///
   /// The names sent are the file names of the selected images; a selected
@@ -1005,8 +1074,20 @@ class AlbumContentState extends State<AlbumContent>
   }
 
   /// Opens the album properties editor and applies its result to the album.
+  ///
+  /// Inside an edit session the result goes into the buffer like every other
+  /// edit, and is written when the album is saved. Outside of one — the menu
+  /// offers this in the view mode too, see issue #121 — there is no buffer to
+  /// put it in: the album is written at once, the way the folder properties
+  /// of a listing are, and a refused write takes the change back and says the
+  /// server's own reason. An edit that could never be written is refused
+  /// before the dialog opens, see [refuseWhileOffline].
   Future<void> editProperties() async {
     var album = widget.album;
+    var editing = session.editMode;
+    if (!editing && refuseWhileOffline(context)) {
+      return;
+    }
     var result = await showDialog<AlbumProperties>(
       context: context,
       builder: (context) => AlbumPropertiesDialog(
@@ -1030,15 +1111,60 @@ class AlbumContentState extends State<AlbumContent>
       return;
     }
 
-    setState(() {
-      album.title = result.title;
-      album.subTitle = result.subTitle;
+    // What the album held before, so that a refused write can be taken back.
+    var before = AlbumProperties(
+      title: album.title,
+      subTitle: album.subTitle,
+      date: album.date,
+      indexPicture: album.indexPicture,
+    );
+
+    void apply(AlbumProperties values) {
+      album.title = values.title;
+      album.subTitle = values.subTitle;
       // The explicit date, and only that one: the effective date is derived
       // by the server on every read and is never written by the app.
-      album.date = result.date;
-      album.indexPicture = result.indexPicture;
-      markDirty();
+      album.date = values.date;
+      album.indexPicture = values.indexPicture;
+    }
+
+    setState(() {
+      apply(result);
+      if (editing) {
+        markDirty();
+      }
     });
+
+    if (editing) {
+      // The edit session writes the whole album when it is saved.
+      return;
+    }
+
+    var messenger = ScaffoldMessenger.of(context);
+    try {
+      await client.saveAlbum(widget.albumState.path, album);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      // Nothing was stored, so nothing has changed: the screen says what the
+      // server holds, not what was attempted.
+      setState(() => apply(before));
+      showRefusal(messenger, error);
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    // The listing above shows this album by its title and its index picture,
+    // both of which may have just changed.
+    var path = widget.albumState.path;
+    if (path.isNotEmpty) {
+      widget.albumState.navigator.delegate
+          .forget(path.sublist(0, path.length - 1));
+    }
+    widget.albumState.reload();
   }
 
   String get albumUrl => "${widget.baseUrl}/${widget.album.path}";
@@ -1089,22 +1215,12 @@ class AlbumContentState extends State<AlbumContent>
               // where a menu belongs (issues #99, #100). Outside the edit
               // mode the navigation keeps the place it had. "View as" is not
               // a button of its own any more — it is an entry of the menu,
-              // see [albumMenu] (issue #100).
+              // see [albumMenu] (issue #100); the move and the album
+              // properties are entries of that menu too, and are therefore
+              // offered in the view mode as well, see issue #121. Save and
+              // Cancel stay here: they are the edit's own.
               actions: [
                 if (!editing) ...navigationActions(context),
-                if (editMode && selection.isNotEmpty)
-                  IconButton(
-                    key: const Key("move-to"),
-                    onPressed: moveSelection,
-                    tooltip: "Move to…",
-                    icon: const Icon(Icons.drive_file_move),
-                  ),
-                if (editMode)
-                  IconButton(
-                    onPressed: editProperties,
-                    tooltip: "Album properties",
-                    icon: const Icon(Icons.tune),
-                  ),
                 if (editMode)
                   IconButton(
                     onPressed: () => save(),
@@ -1197,6 +1313,34 @@ class AlbumContentState extends State<AlbumContent>
           if (session.editMode) ...viewAsEntries(),
           if (_mayShare)
             menuItem(Icons.link, "Share link…", (_) => shareAlbumLink()),
+          // What is done *with* this album, offered in the view mode as well
+          // as in the edit mode (issue #121): the properties were a toolbar
+          // icon of the edit mode alone, so retitling an album meant entering
+          // an edit session first.
+          if (mayEditAlbum)
+            keyedMenuItem(
+              const Key("album-properties"),
+              Icons.tune,
+              "Album properties",
+              (_) => editProperties(),
+            ),
+          // One entry, two meanings, told apart by what there is to move: the
+          // selection while the edit mode holds one, the album itself
+          // otherwise — which is the move the listing tile above offers.
+          if (mayMoveSelection)
+            keyedMenuItem(
+              const Key("move-to"),
+              Icons.drive_file_move,
+              "Move ${ImageSubject(selection.length).asked} to…",
+              (_) => moveSelection(),
+            )
+          else if (mayMoveAlbum)
+            keyedMenuItem(
+              const Key("move-to"),
+              Icons.drive_file_move,
+              "Move album to…",
+              (_) => moveAlbum(),
+            ),
           // An edit like every other one: offered inside the edit session, so
           // that the new order is reviewed and saved (or discarded) the way a
           // move or a heading is, see issue #76.
@@ -2309,7 +2453,7 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         "Adjust recording time…",
         () => album.adjustRecordingTimeOf(part),
       ),
-      toolButton(Icons.notes, "Bildeigenschaften", editImageProperties),
+      toolButton(Icons.notes, "Image properties", editImageProperties),
       // The image standing for the album in the listing above, chosen where
       // the images are compared: the representative of a group stands for it.
       toolButton(
@@ -2458,35 +2602,11 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   }
 
   /// Edits the comment of the image shown by this tile.
+  ///
+  /// The one image properties dialog, which the viewer opens as well, see
+  /// `image_properties.dart` (issue #122).
   Future<void> editImageProperties() async {
-    var text = await showDialog<String>(
-      context: context,
-      builder: (context) => TextInputDialog(
-        title: "Bildeigenschaften",
-        label: "Kommentar",
-        text: image.comment,
-        multiLine: true,
-        // What the album knows about this image and does not edit here: the
-        // recording time it is sorted by (the sidecar's, which the adjustment
-        // of issue #77 may have corrected) and the camera that took it (issue
-        // #78). Each line only where there is something to say.
-        details: [
-          // What the image is in the folder: the name the file carries, for
-          // an image and a video alike, and the representative's name where
-          // the tile shows a group, see issue #103.
-          "Datei: ${image.name}",
-          if (image.date != 0)
-            "Aufnahmezeit: "
-                "${AdjustRecordingTimeDialogState.timeFormat.format(
-              DateTime.fromMillisecondsSinceEpoch(image.date),
-            )}",
-          if (image.camera.isNotEmpty) "Kamera: ${image.camera}",
-        ],
-        // Who added this photo, the editor's own contributions included: the
-        // screen saying what an image is says where it came from, see #53.
-        note: attributionShown(image),
-      ),
-    );
+    var text = await showImageProperties(context, image);
     if (text == null || !mounted) {
       return;
     }
@@ -2962,8 +3082,11 @@ class TextInputDialog extends StatefulWidget {
   /// edit: the file name (issue #103), the recording time and the camera of
   /// an image (issue #78).
   ///
-  /// Selectable, so that the name of a file can be copied out of the dialog.
-  final List<String> details;
+  /// Widgets, not texts, so that each line carries its own key: the image
+  /// properties are composed in one place and addressed line by line, see
+  /// `image_properties.dart` (issues #122, #112). They are laid out in the
+  /// dialog's small style; a [SelectableText] lets a file name be copied out.
+  final List<Widget> details;
 
   /// A read-only line under the field, `null` where there is nothing to say.
   ///
@@ -3024,17 +3147,14 @@ class TextInputDialogState extends State<TextInputDialog> {
             if (widget.details.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
-                child: Column(
-                  key: const Key("properties-details"),
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var line in widget.details)
-                      SelectableText(
-                        line,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                  ],
+                child: DefaultTextStyle.merge(
+                  style: Theme.of(context).textTheme.bodySmall,
+                  child: Column(
+                    key: const Key("properties-details"),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: widget.details,
+                  ),
                 ),
               ),
             if (widget.note != null)

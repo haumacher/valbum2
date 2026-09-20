@@ -303,7 +303,7 @@ void main() {
       await withFakeImageHttp(() async {
         await openProperties(tester, contributedAlbum());
 
-        expect(find.text("Bildeigenschaften"), findsOneWidget);
+        expect(find.text("Image properties"), findsOneWidget);
         expect(
           find.byKey(const Key("properties-contributor")),
           findsOneWidget,
@@ -317,7 +317,7 @@ void main() {
       await withFakeImageHttp(() async {
         await openProperties(tester, fixture("album.json"));
 
-        expect(find.text("Bildeigenschaften"), findsOneWidget);
+        expect(find.text("Image properties"), findsOneWidget);
         expect(find.byKey(const Key("properties-contributor")), findsNothing);
       });
     });

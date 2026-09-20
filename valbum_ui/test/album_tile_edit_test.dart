@@ -182,7 +182,7 @@ void main() {
         await pumpEditMode(tester, client);
 
         await tapTool(tester, "landscape.jpg", Icons.notes);
-        expect(find.text("Bildeigenschaften"), findsOneWidget);
+        expect(find.text("Image properties"), findsOneWidget);
         await tester.enterText(
           find.byType(TextField),
           "Ein Baum\nim Schlosspark",

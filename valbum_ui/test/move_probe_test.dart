@@ -84,6 +84,8 @@ void main() {
     expect(post.body, '{"target":"Inbox","names":[{"name":"a.jpg"}]}');
     // Nothing moved, so nothing was reloaded and the edit mode is still on.
     expect(jsonGets(requests.sublist(requests.indexOf(post) + 1)), isEmpty);
+    expect(find.byTooltip("Cancel"), findsOneWidget);
+    await openAlbumMenu(tester);
     expect(find.byKey(const Key("move-to")), findsOneWidget);
   });
 }

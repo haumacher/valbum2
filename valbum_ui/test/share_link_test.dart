@@ -269,7 +269,7 @@ void main() {
 
       expect(find.byTooltip("Upload"), findsOneWidget);
       // Still no edit mode: a link is not an account.
-      expect(find.byTooltip("Album properties"), findsNothing);
+      expect(find.byKey(const Key("album-properties")), findsNothing);
       expect(find.byKey(const Key("share-with")), findsNothing);
     });
 
@@ -295,7 +295,8 @@ void main() {
       expect(run.store.value, "http://other-server/valbum/");
     });
 
-    testWidgets('shows the album on a device that had already loaded its '
+    testWidgets(
+        'shows the album on a device that had already loaded its '
         'settings', (tester) async {
       var run = await pumpLinkSession(
         tester,
@@ -326,8 +327,7 @@ void main() {
       expect(find.byIcon(Icons.settings), findsNothing);
     });
 
-    testWidgets('shows the server reason for a withdrawn link',
-        (tester) async {
+    testWidgets('shows the server reason for a withdrawn link', (tester) async {
       await pumpLinkSession(
         tester,
         (request) => refusal(410, "This link was withdrawn."),
@@ -469,7 +469,8 @@ void main() {
 
       // About a week from now, as an ISO-8601 instant.
       var expires = RegExp('"expires":"([^"]*)"').firstMatch(body)!.group(1)!;
-      var days = DateTime.parse(expires).difference(DateTime.now()).inHours / 24;
+      var days =
+          DateTime.parse(expires).difference(DateTime.now()).inHours / 24;
       expect(days, closeTo(7, 0.1));
 
       // The URL, once, made absolute against the server this client talks to.

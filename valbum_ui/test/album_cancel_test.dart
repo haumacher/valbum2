@@ -180,11 +180,13 @@ void main() {
       // The three-dots menu is the last thing in the row.
       expect(bar.actions!.last, isA<PopupMenuButton>());
       // And the edit's own actions sit between them, Cancel behind Save.
+      // The move and the album properties are entries of the menu since
+      // issue #121.
       var tooltips = [
         for (var action in bar.actions!)
           if (action is IconButton) action.tooltip,
       ];
-      expect(tooltips, ["Move to…", "Album properties", "Save", "Cancel"]);
+      expect(tooltips, ["Save", "Cancel"]);
     });
   });
 }

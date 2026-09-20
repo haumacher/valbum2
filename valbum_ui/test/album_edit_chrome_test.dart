@@ -78,12 +78,15 @@ void main() {
 
       // "View as" is no longer a control of its own.
       expect(find.byTooltip("View as"), findsNothing);
+      // Neither are the move and the album properties: they are entries of
+      // the menu since issue #121, and only the edit's own Save and Cancel
+      // are left in the bar.
       expect(
         [
           for (var action in bar.actions!)
             if (action is IconButton) action.tooltip,
         ],
-        ["Move to…", "Album properties", "Save", "Cancel"],
+        ["Save", "Cancel"],
       );
     });
   });

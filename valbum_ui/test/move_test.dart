@@ -101,8 +101,15 @@ Future<void> pumpAlbumEditMode(
   await tester.pumpAndSettle();
 }
 
-/// Opens the folder picker from the album's app bar.
+/// Opens the album menu, where the move lives since issue #121.
+Future<void> openAlbumMenu(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.more_vert).last);
+  await tester.pumpAndSettle();
+}
+
+/// Opens the folder picker from the album's menu.
 Future<void> openPicker(WidgetTester tester) async {
+  await openAlbumMenu(tester);
   await tester.tap(find.byKey(const Key("move-to")));
   await tester.pumpAndSettle();
 }
@@ -364,6 +371,7 @@ void main() {
         state.goneOffline(null);
         await tester.pumpAndSettle();
 
+        await openAlbumMenu(tester);
         await tester.tap(find.byKey(const Key("move-to")));
         await tester.pumpAndSettle();
 

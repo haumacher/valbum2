@@ -27,7 +27,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.longPress(find.byType(Image).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.byIcon(Icons.tune));
+      await tester.tap(find.byIcon(Icons.more_vert).last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key("album-properties")));
       await tester.pumpAndSettle();
       var fields = find.byType(TextField);
       await tester.enterText(fields.at(0), 'Grüße "aus" Karlsruhe \\ 2002');
@@ -40,8 +42,8 @@ void main() {
 
     var puts = requests.where((r) => r.method == "PUT").toList();
     expect(puts, hasLength(1));
-    var saved = Resource.read(JsonReader.fromString(puts.single.body))
-        as AlbumInfo;
+    var saved =
+        Resource.read(JsonReader.fromString(puts.single.body)) as AlbumInfo;
     var original = Resource.read(JsonReader.fromString(fixture("album.json")))
         as AlbumInfo;
     expect(saved.title, 'Grüße "aus" Karlsruhe \\ 2002');
@@ -54,7 +56,8 @@ void main() {
     var group = saved.parts.whereType<ImageGroup>().single;
     var origGroup = original.parts.whereType<ImageGroup>().single;
     expect(group.representative, origGroup.representative);
-    expect(group.images.map((i) => i.name), origGroup.images.map((i) => i.name));
+    expect(
+        group.images.map((i) => i.name), origGroup.images.map((i) => i.name));
     expect(saved.parts.whereType<Heading>().single.text,
         original.parts.whereType<Heading>().single.text);
   });

@@ -47,7 +47,10 @@ Future<void> openProperties(
     await tester.pumpAndSettle();
     await tester.longPress(find.byType(Image).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.tune));
+    // The properties live in the album's menu since issue #121.
+    await tester.tap(find.byIcon(Icons.more_vert).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key("album-properties")));
     await tester.pumpAndSettle();
   });
 }

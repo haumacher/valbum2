@@ -10,9 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'album_layout.dart' show ToImage;
-import 'album_view.dart' show TextInputDialog;
 import 'attribution.dart';
 import 'client.dart';
+import 'image_properties.dart';
 import 'image_transform.dart';
 import 'move_view.dart';
 import 'offline.dart';
@@ -27,17 +27,6 @@ import 'video_view.dart';
 /// Refusals speak: a long press that does nothing at all would look like a
 /// broken gesture. English, like the rest of this view.
 const String notEditableMessage = "You may not edit this album.";
-
-/// The heading of the description dialog, as the tile editor of the album
-/// spells it.
-///
-/// Deliberately the album's own wording and not this view's English: it is the
-/// same dialog editing the same field of the same album, and one thing must
-/// not have two names depending on where it was opened from.
-const String descriptionDialogTitle = "Bildeigenschaften";
-
-/// The label of the field, likewise the album's, see [descriptionDialogTitle].
-const String descriptionDialogLabel = "Kommentar";
 
 /// The velocity (in pixels per second) a drag must reach to count as a swipe.
 const double _swipeVelocity = 400;
@@ -372,17 +361,13 @@ class ImageViewState extends State<ImageView>
     ImagePart image,
     String initial,
   ) async {
-    var text = await showDialog<String>(
-      context: context,
-      builder: (context) => TextInputDialog(
-        title: descriptionDialogTitle,
-        label: descriptionDialogLabel,
-        text: initial,
-        multiLine: true,
-        // Who added this photo: the screen saying what an image is says where
-        // it came from, exactly as the tile editor does, see issue #53.
-        note: attributionShown(image),
-      ),
+    // The one image properties dialog, which the album's tile editor opens as
+    // well: what it shows of an image is composed in one place, see issue
+    // #122 and `image_properties.dart`.
+    var text = await showImageProperties(
+      context,
+      image,
+      initialDescription: initial,
     );
     if (text == null || !mounted || text == image.comment) {
       return;

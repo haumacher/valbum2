@@ -121,6 +121,9 @@ Future<void> pumpSelection(WidgetTester tester, VAlbumClient client) async {
 }
 
 Future<void> openPicker(WidgetTester tester) async {
+  // The move lives in the album's menu since issue #121.
+  await tester.tap(find.byIcon(Icons.more_vert).last);
+  await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key("move-to")));
   await tester.pumpAndSettle();
 }

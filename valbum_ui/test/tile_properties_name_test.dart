@@ -73,10 +73,10 @@ void main() {
     await withFakeImageHttp(() async {
       await openProperties(tester, "a.jpg");
 
-      expect(find.text("Bildeigenschaften"), findsOneWidget);
+      expect(find.text("Image properties"), findsOneWidget);
       var lines = detailLines(tester);
-      expect(lines.first, "Datei: a.jpg");
-      expect(lines[1], startsWith("Aufnahmezeit: "));
+      expect(lines.first, "File: a.jpg");
+      expect(lines[1], startsWith("Taken: "));
     });
   });
 
@@ -84,7 +84,7 @@ void main() {
     await withFakeImageHttp(() async {
       await openProperties(tester, "clip.mp4");
 
-      expect(detailLines(tester).first, "Datei: clip.mp4");
+      expect(detailLines(tester).first, "File: clip.mp4");
     });
   });
 
@@ -92,7 +92,7 @@ void main() {
     await withFakeImageHttp(() async {
       await openProperties(tester, "g1.jpg");
 
-      expect(detailLines(tester).first, "Datei: g1.jpg");
+      expect(detailLines(tester).first, "File: g1.jpg");
     });
   });
 
@@ -108,7 +108,7 @@ void main() {
         ),
         findsWidgets,
       );
-      expect(find.text("Datei: a.jpg"), findsOneWidget);
+      expect(find.text("File: a.jpg"), findsOneWidget);
     });
   });
 }

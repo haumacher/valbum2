@@ -206,11 +206,11 @@ void main() {
         await tester.tap(tool("cam1.jpg", Icons.notes));
         await tester.pumpAndSettle();
 
-        expect(find.text("Bildeigenschaften"), findsOneWidget);
+        expect(find.text("Image properties"), findsOneWidget);
         expect(find.byKey(const Key("properties-details")), findsOneWidget);
-        expect(find.text("Kamera: $canon"), findsOneWidget);
+        expect(find.text("Camera: $canon"), findsOneWidget);
         // Beneath the recording time the album sorts it by.
-        expect(find.textContaining("Aufnahmezeit: "), findsOneWidget);
+        expect(find.textContaining("Taken: "), findsOneWidget);
       });
     });
 
@@ -221,8 +221,8 @@ void main() {
         await tester.tap(tool("clip.mp4", Icons.notes));
         await tester.pumpAndSettle();
 
-        expect(find.textContaining("Kamera: "), findsNothing);
-        expect(find.textContaining("Aufnahmezeit: "), findsOneWidget);
+        expect(find.textContaining("Camera: "), findsNothing);
+        expect(find.textContaining("Taken: "), findsOneWidget);
       });
     });
 

@@ -114,12 +114,15 @@ void main() {
 
         await enterEditMode(tester);
 
-        // The edit mode shows the save and the properties action.
+        // The edit mode shows the save; the properties are an entry of the
+        // album's menu since issue #121.
         expect(find.byIcon(Icons.save), findsOneWidget);
-        expect(find.byIcon(Icons.tune), findsOneWidget);
+        expect(find.byIcon(Icons.tune), findsNothing);
 
         // Change the title through the album properties editor.
-        await tester.tap(find.byIcon(Icons.tune));
+        await tester.tap(find.byIcon(Icons.more_vert).last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key("album-properties")));
         await tester.pumpAndSettle();
         expect(find.text("Titel"), findsOneWidget);
         expect(find.text("Subtitel"), findsOneWidget);

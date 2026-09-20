@@ -1,6 +1,5 @@
-/// Probe for #100/#98: the relocated menu entries composed with a share
-/// session (nothing an outsider may do is offered) and with a dirty edit
-/// session (the "View as" choice from the menu still speaks the #99 refusal).
+/// Probe for #121/#122: album properties saved outside an edit session from
+/// a deep link, cancelled without a write, and the properties of a video.
 library;
 
 import 'package:flutter/material.dart' hide Orientation;
@@ -9,101 +8,112 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
-import 'util/edit_drag.dart';
+import 'move_test.dart' hide main;
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
 
-const String dataUrl = "http://server/valbum/data";
-
-const String album =
-    '["AlbumInfo", {"path": "Zoo", "title": "Zoo", "subTitle": "", "rights": [{"name": "view"}, {"name": "download"}, {"name": "contribute"}, {"name": "edit"}], "parts": ['
-    '["ImagePart", {"kind": "IMAGE", "name": "a.jpg", "date": 1, "width": 2000, "height": 1000, "orientation": "IDENTITY", "rating": 0}],'
-    '["ImagePart", {"kind": "IMAGE", "name": "b.jpg", "date": 2, "width": 2000, "height": 1000, "orientation": "IDENTITY", "rating": 0}]'
+String album({String subTitle = ""}) =>
+    '["AlbumInfo", {"path": "2021/Trip", "title": "Trip", "subTitle": "$subTitle", '
+    '"rights": [{"name": "edit"}], "parts": ['
+    '["ImagePart", {"kind": "IMAGE", "name": "a.jpg", "date": 1015113600000, '
+    '"width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0}], '
+    '["ImagePart", {"kind": "VIDEO", "name": "clip.mp4", "date": 1015113700000, '
+    '"width": 1920, "height": 1080, "orientation": "IDENTITY", "rating": 0}]'
     ']}]';
 
-http.Response json(String body) => http.Response(body, 200,
-    headers: const {"content-type": "application/json; charset=utf-8"});
-
-VAlbumClient adminClient(List<http.Request> requests) => VAlbumClient(
+Future<void> pumpDeepLink(
+  WidgetTester tester,
+  http.Response Function(http.Request) handler,
+  List<http.Request> requests,
+) async {
+  await tester.pumpWidget(VAlbumApp(
+    client: VAlbumClient(
       dataUrl: dataUrl,
-      token: "dev-9",
-      userName: "carol",
       httpClient: MockClient(servingThumbnails((request) async {
         requests.add(request);
-        var query = request.url.queryParameters;
-        if (query["type"] == "auth") {
-          return json('{"mode": "all", "deviceName": "Phone", "writeAllowed": true, '
-              '"userName": "carol", "role": "admin", "space": "", "clearance": "all", "mayShare": true}');
-        }
-        return json(album);
+        return handler(request);
       })),
-    );
+    ),
+    initialRoute: const ListingOrAlbumRoute(["2021", "Trip"]),
+  ));
+  await tester.pumpAndSettle();
+}
 
-Future<void> openMenu(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.more_vert).last);
+Future<void> openEntry(WidgetTester tester, String key) async {
+  await openAlbumMenu(tester);
+  await tester.tap(find.byKey(Key(key)));
   await tester.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('a share visitor is offered neither View as nor Refresh previews',
-      (tester) async {
-    const share = SessionUrl(kind: SessionKind.share, token: "t0ken", dataUrl: dataUrl, basePath: "/valbum/s/t0ken/");
-    var client = VAlbumClient(
-      dataUrl: dataUrl,
-      token: "t0ken",
-      httpClient: MockClient(servingThumbnails((request) async {
-        if (request.url.queryParameters["type"] == "auth") {
-          return json('{"mode": "all", "deviceName": "", "writeAllowed": false, "userName": "", "role": "", '
-              '"space": "", "share": {"id": "s1", "label": "For grandma", "path": "Zoo", "rights": [{"name": "view"}], "expires": ""}}');
-        }
-        return json(album);
-      })),
-    );
+  testWidgets('a subtitle set outside an edit session on a deep-linked album '
+      'is written with the title kept, and shown', (tester) async {
+    var requests = <http.Request>[];
+    var stored = album();
     await withFakeImageHttp(() async {
-      await tester.pumpWidget(VAlbumApp(client: client, session: share));
+      await pumpDeepLink(tester, (request) {
+        if (request.method == "PUT") {
+          stored = album(subTitle: "Am Meer");
+          return json("");
+        }
+        if (pathOf(request) == "/valbum/data/2021/Trip/") return json(stored);
+        return json('["ListingInfo", {"path": "2021", "title": "2021", '
+            '"rights": [{"name": "edit"}], "folders": []}]');
+      }, requests);
+      await openEntry(tester, "album-properties");
+      // The second text field is the subtitle; the first the title.
+      await tester.enterText(find.byType(TextField).at(1), "Am Meer");
+      await tester.tap(find.text("Übernehmen"));
       await tester.pumpAndSettle();
     });
-    expect(find.byType(AlbumContent), findsOneWidget);
-
-    await openMenu(tester);
-    expect(find.byKey(const Key("refresh-previews")), findsNothing);
-    expect(find.byKey(const Key("view-as-state")), findsNothing);
-    expect(find.text("Share link…"), findsNothing);
-    expect(find.text("Mehr Bilder zeigen"), findsOneWidget, reason: "the rating filter is a visitor's too");
+    var put = requests.singleWhere((r) => r.method == "PUT");
+    expect(Uri.decodeFull(put.url.path), "/valbum/data/2021/Trip/");
+    expect(put.body, contains('"title":"Trip"'));
+    expect(put.body, contains('"subTitle":"Am Meer"'));
+    expect(find.text("Am Meer"), findsOneWidget);
+    expect(find.byIcon(Icons.save), findsNothing, reason: "no edit session");
   });
 
-  testWidgets('View as from the menu still refuses while the album is dirty',
-      (tester) async {
+  testWidgets('cancelling the properties outside an edit session writes '
+      'nothing', (tester) async {
     var requests = <http.Request>[];
     await withFakeImageHttp(() async {
-      await tester.pumpWidget(VAlbumApp(
-        client: adminClient(requests),
-        initialRoute: const ListingOrAlbumRoute(["Zoo"]),
-        // The app asks `?type=auth` for a signed-in device only.
-        settings: ServerSettings(
-          store: InMemorySettingsStore(),
-          platformDefault: () => dataUrl,
-          token: "dev-9",
-          userName: "carol",
-          loaded: true,
-        ),
-      ));
-      await tester.pumpAndSettle();
-      await tester.longPress(tile("a.jpg"));
-      await tester.pumpAndSettle();
-      await dragBehind(tester, "a.jpg", "b.jpg");
-      expect(albumStateOf(tester).dirty, isTrue);
-
-      await openMenu(tester);
-      expect(find.byKey(const Key("view-as-state")), findsOneWidget);
-      expect(find.byKey(const Key("refresh-previews")), findsOneWidget, reason: "an administrator's entry");
-      await tester.tap(find.byKey(const Key("view-as-public")));
+      await pumpDeepLink(tester, (request) {
+        if (pathOf(request) == "/valbum/data/2021/Trip/") return json(album());
+        return json('["ListingInfo", {"path": "2021", "title": "2021", '
+            '"rights": [{"name": "edit"}], "folders": []}]');
+      }, requests);
+      await openEntry(tester, "album-properties");
+      await tester.enterText(find.byType(TextField).first, "Renamed");
+      await tester.tap(find.text("Abbrechen"));
       await tester.pumpAndSettle();
     });
+    expect(requests.where((r) => r.method != "GET"), isEmpty);
+    expect(find.text("Trip"), findsWidgets);
+    expect(find.text("Renamed"), findsNothing);
+  });
 
-    expect(find.text("Save or discard your changes first"), findsOneWidget);
-    expect(find.byKey(const Key("view-as-banner")), findsNothing);
-    expect(albumStateOf(tester).dirty, isTrue, reason: "nothing was thrown away");
-    expect(requests.where((r) => r.url.queryParameters.containsKey("viewAs")), isEmpty);
+  testWidgets('the properties of a video name the file and its time and no '
+      'camera', (tester) async {
+    var requests = <http.Request>[];
+    await withFakeImageHttp(() async {
+      await pumpDeepLink(tester, (request) {
+        if (pathOf(request) == "/valbum/data/2021/Trip/") return json(album());
+        return json('["ListingInfo", {"path": "2021", "title": "2021", '
+            '"rights": [{"name": "edit"}], "folders": []}]');
+      }, requests);
+      var tile = find.byKey(const ValueKey("clip.mp4"));
+      await tester.longPress(tile);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(of: tile, matching: find.byIcon(Icons.notes)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text("Image properties"), findsOneWidget);
+      expect(find.byKey(const Key("property-file")), findsOneWidget);
+      expect(find.textContaining("clip.mp4"), findsWidgets);
+      expect(find.byKey(const Key("property-time")), findsOneWidget);
+      expect(find.byKey(const Key("property-camera")), findsNothing);
+    });
   });
 }
