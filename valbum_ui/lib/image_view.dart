@@ -9,7 +9,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'album_layout.dart' show ToImage;
+import 'album_layout.dart' show Orientations, ToImage;
 import 'attribution.dart';
 import 'client.dart';
 import 'image_properties.dart';
@@ -635,6 +635,14 @@ class ImageViewState extends State<ImageView>
   /// appears over it as soon as its own first frame arrives. A switch from one
   /// image to the next is therefore thumbnail -> sharp, never blank -> sharp,
   /// and with the neighbour prefetched it is sharp at once.
+  ///
+  /// The thumbnail is asked for with the key the *tile* decoded it under
+  /// (`asTileDecoded`, see [decodedThumbnailHeight] and issue #120): the tile
+  /// decodes at the height it is drawn at, and an underlay asking for the raw
+  /// provider instead was a second cache key over the very same download —
+  /// opening an image from its tile fetched its thumbnail twice. An image no
+  /// tile has drawn (a deep link straight into the viewer) has no such key and
+  /// is fetched once, as before.
   List<Widget> buildLayers(ImageTransform tx) => [
         pictureLayer(
           tx,
@@ -642,6 +650,7 @@ class ImageViewState extends State<ImageView>
             widget.client,
             dataUrl,
             key: const Key("image-thumbnail"),
+            asTileDecoded: true,
             fit: BoxFit.fill,
           ),
         ),
@@ -707,10 +716,22 @@ class ImageViewState extends State<ImageView>
   /// controls), so the video is only fitted into the page; the swipe gestures
   /// of the image viewer are kept, as are all the surrounding chrome and the
   /// keyboard shortcuts.
+  ///
+  /// The slot is the *oriented* one (issue #116): the fit is computed from
+  /// [Orientations.widthInt]/[Orientations.heightInt] of the stored
+  /// [ImagePart.orientation] — a `rotL` clip of a landscape file occupies a
+  /// portrait box — and the poster and the playing surface inside it are
+  /// turned by that same orientation, see [VideoView.orientation]. A still
+  /// image is turned by [ImageTransform.matrix] in [pictureLayer]; a video
+  /// cannot be, because the player is a platform surface and not a picture
+  /// this app paints, so it is turned where it is laid out instead.
   Widget buildVideoViewer() {
     var self = part;
-    var aspectRatio =
-        self.width > 0 && self.height > 0 ? self.width / self.height : 16 / 9;
+    var width =
+        Orientations.widthInt(self.orientation, self.width, self.height);
+    var height =
+        Orientations.heightInt(self.orientation, self.width, self.height);
+    var aspectRatio = width > 0 && height > 0 ? width / height : 16 / 9;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       // A video has a description like every other part of the album
@@ -733,6 +754,8 @@ class ImageViewState extends State<ImageView>
             renditionUrl: widget.client.playbackUrl(dataUrl),
             probeRendition: widget.client.renditionState,
             posterUrl: widget.client.thumbnailUrl(dataUrl),
+            // Poster and player turned together, see [VideoView.orientation].
+            orientation: self.orientation,
             headers: widget.client.authHeaders,
             // A failure of the platform player goes into the same log every
             // request of this app goes into, see issue #73.

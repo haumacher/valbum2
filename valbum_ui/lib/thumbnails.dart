@@ -105,6 +105,9 @@ const Duration thumbnailFadeInDuration = Duration(milliseconds: 150);
 /// [resizedThumbnail]. Where it does not (the viewer's fallback, the cropped
 /// index picture of a listing, which magnifies a part of the thumbnail), the
 /// provider is left alone and the full thumbnail is decoded, as before.
+/// Where no [displayHeight] is known but the picture is the one a tile has
+/// already decoded, [asTileDecoded] asks for *that* decoding, see
+/// [decodedThumbnailHeight] and issue #120.
 Widget thumbnail(
   VAlbumClient client,
   String imageUrl, {
@@ -112,6 +115,7 @@ Widget thumbnail(
   double? width,
   double? height,
   double? displayHeight,
+  bool asTileDecoded = false,
   BoxFit? fit,
 }) =>
     _Thumbnail(
@@ -121,6 +125,7 @@ Widget thumbnail(
       width: width,
       height: height,
       displayHeight: displayHeight,
+      asTileDecoded: asTileDecoded,
       fit: fit,
     );
 
@@ -145,12 +150,65 @@ ImageProvider resizedThumbnail(
   String imageUrl, {
   required double displayHeight,
   required double devicePixelRatio,
-}) =>
+}) {
+  var height = (displayHeight * devicePixelRatio).ceil();
+  _rememberDecodedHeight(imageUrl, height);
+  return _decodedAt(client, imageUrl, height);
+}
+
+/// The provider decoding the thumbnail of [imageUrl] at [height] pixels.
+ImageProvider _decodedAt(VAlbumClient client, String imageUrl, int height) =>
     ResizeImage(
       ThumbnailImage(client, imageUrl),
-      height: (displayHeight * devicePixelRatio).ceil(),
+      height: height,
       allowUpscaling: false,
     );
+
+/// At how many pixels the thumbnail of each image was decoded last, see
+/// [decodedThumbnailHeight] (issue #120).
+///
+/// Insertion-ordered, and an entry that is asked for again moves to the end,
+/// so dropping the first entry drops the one longest untouched.
+final Map<String, int> _decodedHeights = <String, int>{};
+
+/// How many decodings are remembered, see [_decodedHeights].
+///
+/// A string and an int per image, and far more than any viewport holds: what
+/// is wanted is that the tiles on the screen — and the ones the list keeps in
+/// its cache region — are still known when the viewer asks. An album larger
+/// than this simply forgets its oldest rows, and a viewer opened on one of
+/// those pays the one request of a deep link.
+const int _decodedHeightsRemembered = 1024;
+
+void _rememberDecodedHeight(String imageUrl, int height) {
+  if (_decodedHeights.remove(imageUrl) == null &&
+      _decodedHeights.length >= _decodedHeightsRemembered) {
+    _decodedHeights.remove(_decodedHeights.keys.first);
+  }
+  _decodedHeights[imageUrl] = height;
+}
+
+/// The height, in pixels, the thumbnail of [imageUrl] was last decoded at by
+/// a tile, `null` where no tile has decoded it (issue #120).
+///
+/// A tile decodes its thumbnail through a [ResizeImage] keyed by the height it
+/// is drawn at, see [resizedThumbnail]; the viewer's underlay (issue #101)
+/// shows the very same picture and used to ask for the raw [ThumbnailImage]
+/// instead. [ResizeImage] resolves its inner provider *outside* the
+/// [ImageCache], so those are two keys over one download and opening an image
+/// from its tile cost a second request for bytes the album already had. Asking
+/// with the tile's own key makes the underlay a cache hit.
+///
+/// It is a height and nothing else — no bytes, no provider, no image — so it
+/// can never be stale: "Refresh previews" (issue #98) empties the [ImageCache]
+/// and the tiles decode again at the same height, which is the same key and
+/// the new bytes. What it cannot answer is an image no tile has drawn: a deep
+/// link straight into the viewer fetches its underlay once, as it did before.
+int? decodedThumbnailHeight(String imageUrl) => _decodedHeights[imageUrl];
+
+/// Forgets every remembered decoding, so that one test never answers the next.
+@visibleForTesting
+void forgetDecodedThumbnailHeights() => _decodedHeights.clear();
 
 /// A tile that holds on to its picture for as long as it is mounted.
 ///
@@ -174,6 +232,7 @@ class _Thumbnail extends StatefulWidget {
   final double? width;
   final double? height;
   final double? displayHeight;
+  final bool asTileDecoded;
   final BoxFit? fit;
 
   const _Thumbnail({
@@ -183,6 +242,7 @@ class _Thumbnail extends StatefulWidget {
     required this.width,
     required this.height,
     required this.displayHeight,
+    required this.asTileDecoded,
     required this.fit,
   });
 
@@ -211,6 +271,14 @@ class _ThumbnailState extends State<_Thumbnail> {
     if (displayHeight == null ||
         !displayHeight.isFinite ||
         displayHeight <= 0) {
+      if (widget.asTileDecoded) {
+        // The picture a tile has already decoded, asked for with the tile's
+        // own key, see [decodedThumbnailHeight] and issue #120.
+        var decoded = decodedThumbnailHeight(widget.imageUrl);
+        if (decoded != null) {
+          return _decodedAt(widget.client, widget.imageUrl, decoded);
+        }
+      }
       return ThumbnailImage(widget.client, widget.imageUrl);
     }
     return resizedThumbnail(

@@ -2,11 +2,13 @@
 library;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Orientation;
 import 'package:video_player/video_player.dart';
 
 import 'client.dart';
 import 'diagnostics.dart';
+import 'oriented_thumbnail.dart';
+import 'resource.dart';
 
 /// Asks the server whether a rendition can be played, see
 /// [VAlbumClient.renditionState].
@@ -190,6 +192,20 @@ class VideoView extends StatefulWidget {
   /// `null` in a view pumped on its own, which then simply logs nothing.
   final DiagnosticsLog? log;
 
+  /// The orientation stored beside the video (issue #116).
+  ///
+  /// The poster the server makes and the frames the player decodes are both
+  /// upright *by the file*; [ImagePart.orientation] is the turn stored beside
+  /// it, on top of what the file says — the same one the album tile is turned
+  /// by since issue #106. Poster and player are wrapped in it together, see
+  /// [orientedBox] and [VideoViewState.oriented]: a video the author rotated
+  /// in the album played on its side here while its tile stood upright.
+  ///
+  /// The slot this view is given is the *oriented* one — the caller computes
+  /// the fit from `Orientations.width/height`, see `ImageViewState
+  /// .buildVideoViewer`. [Orientation.identity] wraps nothing at all.
+  final Orientation orientation;
+
   const VideoView({
     super.key,
     required this.videoUrl,
@@ -201,6 +217,7 @@ class VideoView extends StatefulWidget {
     this.renditionUrl,
     this.probeRendition,
     this.wait = realWait,
+    this.orientation = Orientation.identity,
   });
 
   @override
@@ -412,16 +429,20 @@ class VideoViewState extends State<VideoView> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.network(
-          widget.posterUrl,
-          headers: widget.headers,
-          fit: BoxFit.contain,
+        oriented(
+          Image.network(
+            widget.posterUrl,
+            headers: widget.headers,
+            fit: BoxFit.contain,
+          ),
         ),
         if (controller != null && isPlayable)
-          Center(
-            child: AspectRatio(
-              aspectRatio: controller.value.aspectRatio,
-              child: VideoPlayer(controller),
+          oriented(
+            Center(
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio,
+                child: VideoPlayer(controller),
+              ),
             ),
           ),
         if (controller != null && isPlayable)
@@ -448,6 +469,16 @@ class VideoViewState extends State<VideoView> {
       ],
     );
   }
+
+  /// [child] turned by the stored orientation (issue #116).
+  ///
+  /// The poster and the playing surface, and nothing else: the controls, the
+  /// "being prepared" panel and the error box are chrome of the *screen*, not
+  /// of the picture, and a rotated video must not hand the person a progress
+  /// bar standing on its end. Both pictures go through the one wrapper — the
+  /// same [orientedBox] the album tile and the image viewer use — so that the
+  /// poster and the frames that replace it can never disagree.
+  Widget oriented(Widget child) => orientedBox(widget.orientation, child);
 
   /// The play/pause button and the progress bar.
   Widget buildControls(VideoPlayerController controller) => Container(

@@ -313,9 +313,10 @@ void main() {
     expect(identical(albumStateOf(tester), album), isTrue);
 
     // The viewer draws the thumbnail of the image it shows beneath the
-    // picture (issue #101), so paging costs that one thumbnail; the way back
-    // costs nothing, which is what this test is about.
-    expect(thumbnails.length, afterDescent + 1);
+    // picture (issue #101) — with the key the tile decoded it under, so that
+    // is a cache hit and not a request (issue #120). Neither paging nor the
+    // way back costs a thumbnail, which is what this test is about.
+    expect(thumbnails.length, afterDescent);
     var beforeReturn = thumbnails.length;
 
     await tap(tester, find.byIcon(Icons.arrow_back));

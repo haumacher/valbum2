@@ -109,9 +109,10 @@ void main() {
     expect(find.byType(ImageView), findsNothing);
     expect(scrollPosition(tester).pixels, closeTo(offset, 1));
     expect(tile("img298.jpg"), findsOneWidget);
-    // The viewer's underlay fetches the thumbnail once more through a
-    // provider of its own (issue #120); ascending itself fetches nothing.
-    expect(requests.length, lessThanOrEqualTo(afterScroll + 1),
+    // Nothing at all: the viewer's underlay asks for the thumbnail with the
+    // key the tile decoded it under (issue #120), and ascending finds the
+    // album still mounted (issue #93).
+    expect(requests.length, afterScroll,
         reason: "ascending fetched something: ${requests.sublist(afterScroll)}");
   });
 

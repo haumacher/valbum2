@@ -87,17 +87,7 @@ Widget orientedThumbnail(
     fit: BoxFit.fill,
   );
 
-  // [PlaneTransform] mirrors first and turns afterwards, so the mirror is the
-  // inner wrapper.
-  if (transform.mirrored) {
-    result = Transform.scale(scaleX: -1, scaleY: 1, child: result);
-  }
-  // [PlaneTransform.quarterTurns] counts counter-clockwise, [RotatedBox]
-  // clockwise.
-  var clockwise = (4 - transform.quarterTurns % 4) % 4;
-  if (clockwise != 0) {
-    result = RotatedBox(quarterTurns: clockwise, child: result);
-  }
+  result = orientedBox(orientation, result);
 
   return SizedBox(
     width: width,
@@ -126,3 +116,38 @@ Widget orientedImageThumbnail(
       width: width,
       height: height,
     );
+
+/// [child] turned by [orientation], the one wrapper of issue #106.
+///
+/// The transform every rendition of the app is turned by: the mirror first and
+/// the quarter turns after it, about the box the turned picture occupies. A
+/// [RotatedBox] and not a [Transform.rotate], because the turn is a *layout*:
+/// the child is measured in its own coordinates — landscape for a `rotL`
+/// video, whose slot is portrait — and the box it is given is the turned one.
+///
+/// [Orientation.identity] returns [child] itself, so nothing that is not
+/// turned pays for a wrapper (and a widget test of an upright picture finds
+/// the tree it always found).
+///
+/// Shared by [orientedThumbnail] and by the video viewer, whose poster and
+/// player must be turned by the same rule (issue #116): a poster turned
+/// without its player — or the other way round — is worse than neither.
+Widget orientedBox(Orientation orientation, Widget child) {
+  var transform = PlaneTransform.of(orientation);
+  if (transform == PlaneTransform.identity) {
+    return child;
+  }
+  var result = child;
+  // [PlaneTransform] mirrors first and turns afterwards, so the mirror is the
+  // inner wrapper.
+  if (transform.mirrored) {
+    result = Transform.scale(scaleX: -1, scaleY: 1, child: result);
+  }
+  // [PlaneTransform.quarterTurns] counts counter-clockwise, [RotatedBox]
+  // clockwise.
+  var clockwise = (4 - transform.quarterTurns % 4) % 4;
+  if (clockwise != 0) {
+    result = RotatedBox(quarterTurns: clockwise, child: result);
+  }
+  return result;
+}
