@@ -34,6 +34,16 @@ String albumJson() => AlbumInfo(
           height: 1536,
         ),
         ImagePart(
+          name: "where.jpg",
+          date: 1015113600000,
+          camera: "Canon EOS 70D",
+          comment: "Am Meer",
+          kind: ImageKind.image,
+          width: 2048,
+          height: 1536,
+          location: GeoLocation(latitude: 48.123456, longitude: 8.654321),
+        ),
+        ImagePart(
           name: "plain.jpg",
           comment: "Nichts bekannt",
           kind: ImageKind.image,
@@ -135,6 +145,37 @@ void main() {
       expect(find.byKey(const Key("property-file")), findsOneWidget);
       expect(find.byKey(const Key("property-time")), findsOneWidget);
       expect(find.byKey(const Key("property-camera")), findsOneWidget);
+    });
+  });
+
+  testWidgets('the location line is in the tile and in the viewer alike',
+      (tester) async {
+    await withFakeImageHttp(() async {
+      await pumpViewerOn(tester, "where.jpg");
+      await openFromViewer(tester);
+      var fromViewer = detailLines(tester);
+      expect(find.byKey(const Key("property-location")), findsOneWidget);
+      await cancel(tester);
+
+      await openFromTile(tester, "where.jpg");
+      var fromTile = detailLines(tester);
+      expect(find.byKey(const Key("property-location")), findsOneWidget);
+
+      expect(fromViewer, fromTile);
+      // Where it was taken is the last thing said about the file, after what
+      // took it, see issue #112.
+      expect(fromTile.last, "Location: 48.123456, 8.654321");
+    });
+  });
+
+  testWidgets('an image that says nowhere has no location line',
+      (tester) async {
+    await withFakeImageHttp(() async {
+      await pumpViewerOn(tester, "a.jpg");
+      await openFromViewer(tester);
+
+      expect(find.byKey(const Key("property-location")), findsNothing);
+      expect(detailLines(tester).last, "Camera: Canon EOS 70D");
     });
   });
 

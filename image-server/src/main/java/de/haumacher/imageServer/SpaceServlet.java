@@ -91,7 +91,7 @@ public class SpaceServlet extends HttpServlet {
 		_app = app;
 		for (Spaces.Space space : spaces.getSpaces()) {
 			_data.put(space.getSegment(), new ImageServlet(space.getRoot().toFile(), space.getAuth(),
-				space.getSegment()));
+				space.getSegment(), space.getConfig()));
 		}
 	}
 

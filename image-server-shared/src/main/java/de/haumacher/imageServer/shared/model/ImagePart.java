@@ -45,6 +45,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getCamera() */
 	private static final String CAMERA__PROP = "camera";
 
+	/** @see #getLocation() */
+	private static final String LOCATION__PROP = "location";
+
 	/** @see #getContributor() */
 	private static final String CONTRIBUTOR__PROP = "contributor";
 
@@ -70,6 +73,8 @@ public class ImagePart extends AbstractImage {
 	private String _comment = "";
 
 	private String _camera = "";
+
+	private de.haumacher.imageServer.shared.model.GeoLocation _location = null;
 
 	private transient de.haumacher.imageServer.shared.model.ImageGroup _group = null;
 
@@ -314,6 +319,54 @@ public class ImagePart extends AbstractImage {
 	}
 
 	/**
+	 * Where this image was taken, <code>null</code> when the file says nowhere (issue #112).
+	 *
+	 * <p>
+	 * Read from the EXIF GPS tags of the original when the image is analysed, and from the
+	 * container of a video where that carries a position. The absent message is what "the file
+	 * carries no position" means — see {@link GeoLocation}, where a pair of zeroes would be a real
+	 * place off the coast of Africa.
+	 * </p>
+	 *
+	 * <p>
+	 * <em>Stored</em> in the sidecar, exactly like {@link #getDate() date} and {@link #getCamera()
+	 * camera}: a part a sidecar already lists is never analysed again, so an album written before
+	 * this field existed keeps its parts without a position until they are analysed afresh. A
+	 * round trip read &rarr; write &rarr; read keeps it unchanged, so a client that stores an
+	 * album back never loses where its photos were taken.
+	 * </p>
+	 *
+	 * <p>
+	 * It is answered to whoever may see the image and to nobody else: the position follows the
+	 * image's own {@link #getPrivacy() privacy level} and nothing besides, so a caller the
+	 * {@link #getPrivacy() privacy} filter hands the image to is handed its position with it.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.GeoLocation getLocation() {
+		return _location;
+	}
+
+	/**
+	 * @see #getLocation()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setLocation(de.haumacher.imageServer.shared.model.GeoLocation value) {
+		internalSetLocation(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getLocation()} without chain call utility. */
+	protected final void internalSetLocation(de.haumacher.imageServer.shared.model.GeoLocation value) {
+		_location = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getLocation()} has a value.
+	 */
+	public final boolean hasLocation() {
+		return _location != null;
+	}
+
+	/**
 	 * The {@link ImageGroup}, this {@link ImagePart} is part of, or <code>null</code>, if this {@link ImagePart} is not part of a group.
 	 */
 	public final de.haumacher.imageServer.shared.model.ImageGroup getGroup() {
@@ -476,6 +529,10 @@ public class ImagePart extends AbstractImage {
 		out.value(getComment());
 		out.name(CAMERA__PROP);
 		out.value(getCamera());
+		if (hasLocation()) {
+			out.name(LOCATION__PROP);
+			getLocation().writeTo(out);
+		}
 		out.name(CONTRIBUTOR__PROP);
 		out.value(getContributor());
 		out.name(CONTRIBUTOR_LABEL__PROP);
@@ -495,6 +552,7 @@ public class ImagePart extends AbstractImage {
 			case PRIVACY__PROP: setPrivacy(in.nextInt()); break;
 			case COMMENT__PROP: setComment(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CAMERA__PROP: setCamera(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case LOCATION__PROP: setLocation(de.haumacher.imageServer.shared.model.GeoLocation.readGeoLocation(in)); break;
 			case CONTRIBUTOR__PROP: setContributor(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CONTRIBUTOR_LABEL__PROP: setContributorLabel(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);

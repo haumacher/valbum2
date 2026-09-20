@@ -41,6 +41,15 @@ const String roleContribute = "contribute";
 /// The role of somebody who may look and nothing else (issue #85).
 const String roleView = "view";
 
+/// Where a position is shown when the server names no map, see issue #112.
+///
+/// A URL template carrying `{lat}` and `{lon}`. It is the very default the
+/// server applies for a space whose `space.json` names none
+/// (`SpaceStore.DEFAULT_MAP_URL`), repeated here for the one case the server
+/// cannot cover: a server built before the field existed, which answers
+/// nothing at all.
+const String defaultMapUrl = "https://www.google.com/maps?q={lat},{lon}";
+
 /// The clearance of somebody who sees only what is public (issue #85).
 const String clearancePublic = "public";
 
@@ -274,13 +283,21 @@ class CallerInfo {
   /// Whether the caller may create share links, as the server said it.
   final bool mayShare;
 
+  /// The URL template the space shows a position on a map with (issue #112).
+  ///
+  /// Never empty: [defaultMapUrl] where the server named none, which is what
+  /// a server built before the field existed answers. It carries `{lat}` and
+  /// `{lon}`, see `mapUrlFor`.
+  final String mapUrl;
+
   const CallerInfo({
     this.userName = "",
     this.role = "",
     this.space = "",
     this.clearance = "",
     this.mayShare = false,
-  });
+    String mapUrl = "",
+  }) : mapUrl = mapUrl == "" ? defaultMapUrl : mapUrl;
 
   /// What the server answered about this caller.
   factory CallerInfo.of(AuthInfo info) => CallerInfo(
@@ -289,6 +306,7 @@ class CallerInfo {
         space: info.space,
         clearance: info.clearance,
         mayShare: info.mayShare,
+        mapUrl: info.mapUrl.trim(),
       );
 
   /// What this caller may do and see, normalised, see [CallerPermission].
@@ -316,10 +334,12 @@ class CallerInfo {
       other.role == role &&
       other.space == space &&
       other.clearance == clearance &&
-      other.mayShare == mayShare;
+      other.mayShare == mayShare &&
+      other.mapUrl == mapUrl;
 
   @override
-  int get hashCode => Object.hash(userName, role, space, clearance, mayShare);
+  int get hashCode =>
+      Object.hash(userName, role, space, clearance, mayShare, mapUrl);
 
   @override
   String toString() => "CallerInfo($userName, $role, $space)";
@@ -354,6 +374,14 @@ class CallerInfo {
   /// Whether the app is signed in as a guest, asked without a dependency.
   static bool isGuestPeek(BuildContext context) =>
       peek(context)?.isGuest ?? false;
+
+  /// The map template of the space the enclosing app talks to (issue #112).
+  ///
+  /// [defaultMapUrl] where no server has said anything — a view pumped on its
+  /// own in a test, a server that could not be reached — so that a position
+  /// always has a map to open.
+  static String mapUrlOf(BuildContext context) =>
+      maybeOf(context)?.mapUrl ?? defaultMapUrl;
 }
 
 /// Publishes the [CallerInfo] to the widget tree, see [CallerInfo.maybeOf].

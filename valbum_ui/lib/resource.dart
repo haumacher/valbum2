@@ -723,6 +723,76 @@ ImageKind readImageKind(JsonReader json) {
 	}
 }
 
+///  Where a photo was taken, see issue #112.
+/// 
+///  <p>
+///  Decimal degrees in WGS 84, positive to the north and to the east, exactly as the EXIF GPS tags
+///  of the original say it (<code>GPSLatitude</code>/<code>GPSLongitude</code> with their reference
+///  letters, resolved into one signed number each by metadata-extractor).
+///  </p>
+/// 
+///  <p>
+///  A message of its own rather than two fields on {@link ImagePart}, because a position that is
+///  not there must be tellable from one at the origin: <code>0/0</code> in the Gulf of Guinea is a
+///  real place, so "no position" is the absent {@link ImagePart#getLocation() location}, never a
+///  pair of zeroes.
+///  </p>
+class GeoLocation extends _JsonObject {
+	///  The latitude in decimal degrees, positive to the north of the equator.
+	double latitude;
+
+	///  The longitude in decimal degrees, positive to the east of Greenwich.
+	double longitude;
+
+	/// Creates a GeoLocation.
+	GeoLocation({
+			this.latitude = 0.0, 
+			this.longitude = 0.0, 
+	});
+
+	/// Parses a GeoLocation from a string source.
+	static GeoLocation? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a GeoLocation instance from the given reader.
+	static GeoLocation read(JsonReader json) {
+		GeoLocation result = GeoLocation();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "GeoLocation";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "latitude": {
+				latitude = json.expectDouble();
+				break;
+			}
+			case "longitude": {
+				longitude = json.expectDouble();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("latitude");
+		json.addNumber(latitude);
+
+		json.addKey("longitude");
+		json.addNumber(longitude);
+	}
+
+}
+
 ///  {@link Resource} describing a single image or video file.
 class ImagePart extends AbstractImage {
 	///  The kind of this {@link ImagePart}.
@@ -774,6 +844,30 @@ class ImagePart extends AbstractImage {
 	///  before this field existed keeps its parts without one until they are analysed afresh.
 	///  </p>
 	String camera;
+
+	///  Where this image was taken, <code>null</code> when the file says nowhere (issue #112).
+	/// 
+	///  <p>
+	///  Read from the EXIF GPS tags of the original when the image is analysed, and from the
+	///  container of a video where that carries a position. The absent message is what "the file
+	///  carries no position" means — see {@link GeoLocation}, where a pair of zeroes would be a real
+	///  place off the coast of Africa.
+	///  </p>
+	/// 
+	///  <p>
+	///  <em>Stored</em> in the sidecar, exactly like {@link #getDate() date} and {@link #getCamera()
+	///  camera}: a part a sidecar already lists is never analysed again, so an album written before
+	///  this field existed keeps its parts without a position until they are analysed afresh. A
+	///  round trip read &rarr; write &rarr; read keeps it unchanged, so a client that stores an
+	///  album back never loses where its photos were taken.
+	///  </p>
+	/// 
+	///  <p>
+	///  It is answered to whoever may see the image and to nobody else: the position follows the
+	///  image's own {@link #getPrivacy() privacy level} and nothing besides, so a caller the
+	///  {@link #getPrivacy() privacy} filter hands the image to is handed its position with it.
+	///  </p>
+	GeoLocation? location;
 
 	///  The {@link ImageGroup}, this {@link ImagePart} is part of, or <code>null</code>, if this {@link ImagePart} is not part of a group.
 	ImageGroup? group;
@@ -832,6 +926,7 @@ class ImagePart extends AbstractImage {
 			this.privacy = 0, 
 			this.comment = "", 
 			this.camera = "", 
+			this.location, 
 			this.group, 
 			this.contributor = "", 
 			this.contributorLabel = "", 
@@ -895,6 +990,10 @@ class ImagePart extends AbstractImage {
 				camera = json.expectString();
 				break;
 			}
+			case "location": {
+				location = json.tryNull() ? null : GeoLocation.read(json);
+				break;
+			}
 			case "contributor": {
 				contributor = json.expectString();
 				break;
@@ -940,6 +1039,12 @@ class ImagePart extends AbstractImage {
 
 		json.addKey("camera");
 		json.addString(camera);
+
+		var _location = location;
+		if (_location != null) {
+			json.addKey("location");
+			_location.writeContent(json);
+		}
 
 		json.addKey("contributor");
 		json.addString(contributor);
@@ -1717,6 +1822,24 @@ class AuthInfo extends _JsonObject {
 	///  Whether the caller may create share links, see issue #82; false for an anonymous caller.
 	bool mayShare;
 
+	///  How a position is shown on a map in this space, see issue #112.
+	/// 
+	///  <p>
+	///  A URL template carrying <code>{lat}</code> and <code>{lon}</code>, which the app substitutes
+	///  with the decimal degrees of an {@link ImagePart#getLocation() image's position} — a dot as
+	///  the decimal separator, whatever the locale of the device. The default is
+	///  <code>https://www.google.com/maps?q={lat},{lon}</code>; OpenStreetMap, Apple Maps or a map
+	///  of one's own are simply other templates, which is why there is no provider to choose from.
+	///  </p>
+	/// 
+	///  <p>
+	///  A property of the <em>space</em>, read from its <code>.valbum/space.json</code> beside the
+	///  name and the anonymous access, and answered here because <code>?type=auth</code> is the one
+	///  request the app makes anyway. An older server answers nothing, and the app then applies the
+	///  same default itself.
+	///  </p>
+	String mapUrl;
+
 	///  The share link this caller opened, <code>null</code> for everybody else (issue #51).
 	/// 
 	///  <p>
@@ -1746,6 +1869,7 @@ class AuthInfo extends _JsonObject {
 			this.space = "", 
 			this.clearance = "", 
 			this.mayShare = false, 
+			this.mapUrl = "", 
 			this.share, 
 			this.invitation, 
 	});
@@ -1800,6 +1924,10 @@ class AuthInfo extends _JsonObject {
 				mayShare = json.expectBool();
 				break;
 			}
+			case "mapUrl": {
+				mapUrl = json.expectString();
+				break;
+			}
 			case "share": {
 				share = json.tryNull() ? null : ShareInfo.read(json);
 				break;
@@ -1839,6 +1967,9 @@ class AuthInfo extends _JsonObject {
 
 		json.addKey("mayShare");
 		json.addBool(mayShare);
+
+		json.addKey("mapUrl");
+		json.addString(mapUrl);
 
 		var _share = share;
 		if (_share != null) {

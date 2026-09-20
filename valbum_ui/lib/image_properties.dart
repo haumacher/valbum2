@@ -5,15 +5,17 @@
 /// the file name, the recording time and the camera, while the viewer's
 /// description button composed the same field with the attribution alone — two
 /// call sites building one thing by hand, which is why they had drifted apart.
-/// The composition lives here now, and both open it; the location line of
-/// issue #112 is added here once and is then in both places.
+/// The composition lives here now, and both open it: the location line of
+/// issue #112 was added here once and is thereby in both places.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'album_view.dart' show TextInputDialog;
 import 'attribution.dart';
+import 'caller.dart';
 import 'resource.dart';
 
 /// The heading of the dialog, wherever it was opened from.
@@ -39,10 +41,13 @@ Widget imagePropertyLine(Key key, String text) =>
 ///
 /// Each line only where there is something to say: the name the file carries
 /// (issue #103), the recording time it is sorted by — the sidecar's, which the
-/// adjustment of issue #77 may have corrected — and the camera that took it
-/// (issue #78). The keys are the handle the location line of issue #112 lands
-/// beside.
-List<Widget> imagePropertyLines(ImagePart image) => [
+/// adjustment of issue #77 may have corrected — the camera that took it
+/// (issue #78) and, where the file said so, where it was taken (issue #112).
+///
+/// [mapUrl] is the template of the space, which the location line opens; an
+/// empty one is [defaultMapUrl], so a caller that has no server to ask still
+/// gets a map.
+List<Widget> imagePropertyLines(ImagePart image, {String mapUrl = ""}) => [
       imagePropertyLine(const Key("property-file"), "File: ${image.name}"),
       if (image.date != 0)
         imagePropertyLine(
@@ -54,7 +59,82 @@ List<Widget> imagePropertyLines(ImagePart image) => [
       if (image.camera.isNotEmpty)
         imagePropertyLine(
             const Key("property-camera"), "Camera: ${image.camera}"),
+      if (image.location != null)
+        ImageLocationLine(
+          image.location!,
+          mapUrl: mapUrl.isEmpty ? defaultMapUrl : mapUrl,
+        ),
     ];
+
+/// How many decimals a coordinate is spelled with.
+///
+/// Six of them are about ten centimetres at the equator — finer than any
+/// camera knows where it stood, and coarse enough to read at a glance.
+const int mapCoordinateDecimals = 6;
+
+/// One coordinate as the location line spells it.
+///
+/// A dot as the decimal separator and no thousands separator, **whatever the
+/// locale of the device** (issue #112): this number is read by a map, not by a
+/// person alone, and `48,123456` is a different number to every map there is.
+/// So this does not go through [NumberFormat], which would spell a German
+/// device's comma.
+String mapCoordinate(double value) =>
+    value.toStringAsFixed(mapCoordinateDecimals);
+
+/// Where [location] is on a map, as the template [mapUrl] spells it.
+///
+/// `{lat}` and `{lon}` are substituted with the decimal degrees, each of them
+/// a [mapCoordinate]; a template may name either of them as often as it likes,
+/// as OpenStreetMap's does.
+String mapUrlFor(String mapUrl, GeoLocation location) =>
+    (mapUrl.isEmpty ? defaultMapUrl : mapUrl)
+        .replaceAll("{lat}", mapCoordinate(location.latitude))
+        .replaceAll("{lon}", mapCoordinate(location.longitude));
+
+/// What the location line reads, the coordinates and nothing else.
+String mapLocationText(GeoLocation location) =>
+    "Location: ${mapCoordinate(location.latitude)}, "
+    "${mapCoordinate(location.longitude)}";
+
+/// Where a photo was taken: the coordinates, and a tap opening them on a map.
+///
+/// The text is selectable like every other line of the block, so the numbers
+/// can be copied out of the dialog; the button beside it hands [mapUrlFor] to
+/// whatever the device shows maps with — a browser opens a tab, a phone its
+/// map application.
+class ImageLocationLine extends StatelessWidget {
+  /// Where the photo was taken.
+  final GeoLocation location;
+
+  /// The template of the space, see [mapUrlFor].
+  final String mapUrl;
+
+  const ImageLocationLine(this.location, {super.key, this.mapUrl = ""});
+
+  /// Opens the map of [location], doing nothing where nothing can show it.
+  Future<void> open() async {
+    var url = Uri.parse(mapUrlFor(mapUrl, location));
+    await launchUrl(url, mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Widget build(BuildContext context) => Row(
+        key: const Key("property-location"),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: SelectableText(mapLocationText(location))),
+          IconButton(
+            key: const Key("property-location-map"),
+            icon: const Icon(Icons.map_outlined),
+            iconSize: 18,
+            visualDensity: VisualDensity.compact,
+            tooltip: "Show on a map",
+            onPressed: open,
+          ),
+        ],
+      );
+}
 
 /// The properties of one image: the details block, the attribution note and
 /// the description field.
@@ -81,7 +161,7 @@ class ImagePropertiesDialog extends StatelessWidget {
         label: imagePropertiesLabel,
         text: initial ?? image.comment,
         multiLine: true,
-        details: imagePropertyLines(image),
+        details: imagePropertyLines(image, mapUrl: CallerInfo.mapUrlOf(context)),
         // Who added this photo, the editor's own contributions included: the
         // screen saying what an image is says where it came from, see #53.
         note: attributionShown(image),

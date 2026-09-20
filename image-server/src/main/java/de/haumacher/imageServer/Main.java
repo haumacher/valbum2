@@ -419,7 +419,8 @@ public class Main {
 		// A page load of a dead invitation address is the start page of its space, see issue #88.
 		app.setSessionGuard(new InvitationRedirect(spaces));
 		if (spaces.getMode() == SpaceMode.SINGLE) {
-			ImageServlet data = new ImageServlet(basePath, spaces.single().getAuth());
+			ImageServlet data = new ImageServlet(basePath, spaces.single().getAuth(), "",
+				spaces.single().getConfig());
 			// What a messenger reads when a share link is posted, see issue #104.
 			sharePreview(app, spaces, segment -> data);
 			webapp.addServlet(new ServletHolder(data), Settings.DATA_PREFIX + "/*");

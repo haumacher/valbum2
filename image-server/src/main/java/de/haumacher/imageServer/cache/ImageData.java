@@ -9,6 +9,7 @@ import com.drew.metadata.Metadata;
 import com.drew.metadata.MetadataException;
 import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.exif.ExifSubIFDDirectory;
+import com.drew.metadata.exif.GpsDirectory;
 import com.drew.metadata.jpeg.JpegCommentDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mov.QuickTimeDirectory;
@@ -18,6 +19,7 @@ import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 import com.drew.metadata.png.PngDirectory;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.GeoLocation;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Orientation;
@@ -73,6 +75,7 @@ public class ImageData extends ImagePart {
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
 		result.setDate(date(metadata, file).getTime());
 		result.setCamera(camera(metadata));
+		result.setLocation(location(metadata));
 
 		JpegDirectory jpegDirectory = metadata.getFirstDirectoryOfType(JpegDirectory.class);
 		if (jpegDirectory != null) {
@@ -283,6 +286,82 @@ public class ImageData extends ImagePart {
 		}
 		return "";
 	}
+
+	/**
+	 * Where the given file was taken, <code>null</code> when it says nowhere.
+	 *
+	 * <p>
+	 * The EXIF GPS IFD of a photo, which metadata-extractor resolves into decimal degrees for us:
+	 * it applies the reference letters, so a southern latitude and a western longitude arrive
+	 * negative, and it answers <code>null</code> where the tags are missing or unreadable. A video
+	 * is answered from the very same directory, which the library fills from the ISO 6709 location
+	 * of an mp4 or QuickTime container where the container carries one — so a video says where it
+	 * was recorded exactly when its container does, and nothing is guessed for the rest.
+	 * </p>
+	 *
+	 * <p>
+	 * A position at <code>0/0</code> is kept as what it is: a place in the Gulf of Guinea. "No
+	 * position" is this method's <code>null</code>, see {@link GeoLocation}.
+	 * </p>
+	 */
+	private static GeoLocation location(Metadata metadata) {
+		for (GpsDirectory gps : metadata.getDirectoriesOfType(GpsDirectory.class)) {
+			com.drew.lang.GeoLocation position = gps.getGeoLocation();
+			if (position == null) {
+				continue;
+			}
+			return GeoLocation.create()
+				.setLatitude(position.getLatitude())
+				.setLongitude(position.getLongitude());
+		}
+		QuickTimeMetadataDirectory movMetadata =
+			metadata.getFirstDirectoryOfType(QuickTimeMetadataDirectory.class);
+		if (movMetadata != null) {
+			return iso6709(movMetadata.getString(QuickTimeMetadataDirectory.TAG_LOCATION_ISO6709));
+		}
+		return null;
+	}
+
+	/**
+	 * The position an ISO 6709 string of a QuickTime container states, see {@link #location}.
+	 *
+	 * <p>
+	 * What a phone writes into <code>com.apple.quicktime.location.ISO6709</code> is decimal
+	 * degrees with an explicit sign and a trailing solidus,
+	 * <code>+48.1235+008.6543+123.456/</code> — latitude, longitude, and an altitude this album
+	 * has no use for. The two numbers are read as they stand.
+	 * </p>
+	 *
+	 * <p>
+	 * The standard also allows degrees and minutes (<code>+4807.41+00834.49/</code>), which looks
+	 * exactly the same and means something else. That form is <em>refused</em> rather than guessed
+	 * at: a latitude above 90 or a longitude above 180 degrees is not a decimal position, so the
+	 * file is answered as saying nowhere and the log says why. A wrong place on a map is worse
+	 * than no place at all.
+	 * </p>
+	 *
+	 * @return The position, or <code>null</code> when the string is missing or is not one.
+	 */
+	public static GeoLocation iso6709(String value) {
+		if (value == null) {
+			return null;
+		}
+		Matcher matcher = ISO_6709.matcher(value.trim());
+		if (!matcher.find()) {
+			return null;
+		}
+		double latitude = Double.parseDouble(matcher.group(1));
+		double longitude = Double.parseDouble(matcher.group(2));
+		if (Math.abs(latitude) > 90.0 || Math.abs(longitude) > 180.0) {
+			LOG.warning("Not a position in decimal degrees, ignoring it: " + value);
+			return null;
+		}
+		return GeoLocation.create().setLatitude(latitude).setLongitude(longitude);
+	}
+
+	/** The latitude and the longitude of an ISO 6709 string, see {@link #iso6709(String)}. */
+	private static final Pattern ISO_6709 =
+		Pattern.compile("^([+-]\\d+(?:\\.\\d+)?)([+-]\\d+(?:\\.\\d+)?)");
 
 	/**
 	 * The camera label of the given make and model, see {@link ImagePart#getCamera()}.
