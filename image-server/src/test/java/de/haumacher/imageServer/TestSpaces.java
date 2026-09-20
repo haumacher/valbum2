@@ -530,6 +530,13 @@ public class TestSpaces extends TestCase {
 					return "/valbum";
 				case "getServletPath":
 					return "";
+				// The surface the server was reached under; the share cards of issue #104 need it.
+				case "getScheme":
+					return "http";
+				case "getServerName":
+					return "example.org";
+				case "getServerPort":
+					return Integer.valueOf(80);
 				case "getProtocol":
 					return "HTTP/1.1";
 				case "getServletContext":
