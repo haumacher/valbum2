@@ -160,10 +160,11 @@ class OrientationOps {
   /// The transformation that turns an image displayed in the orientation
   /// [from] into the same image displayed in the orientation [to].
   ///
-  /// The server bakes the orientation it read from the image file into the
-  /// thumbnail it serves. While the tile editor rotates an image, the
-  /// thumbnail on the server is therefore stale by exactly this delta, and the
-  /// tile has to apply it itself.
+  /// The group's division: `to ∘ from⁻¹`. Nothing in the app applies a delta
+  /// to a rendition any more — a rendition is upright by the file and the
+  /// whole [ImagePart.orientation] is applied to it, see issue #106 — but the
+  /// operation is part of the algebra and is pinned by
+  /// `album_orientation_test.dart`.
   static PlaneTransform delta(Orientation from, Orientation to) =>
       PlaneTransform.of(to).concat(PlaneTransform.of(from).inverse);
 }

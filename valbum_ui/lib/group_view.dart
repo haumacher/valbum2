@@ -18,8 +18,8 @@ import 'album_model.dart';
 import 'album_view.dart';
 import 'client.dart';
 import 'image_view.dart';
+import 'oriented_thumbnail.dart';
 import 'resource.dart';
-import 'thumbnails.dart';
 
 /// The height a row of the group layout aims at, as in the album view.
 const double _maxRowHeight = 250;
@@ -97,14 +97,16 @@ class GroupView extends StatelessWidget {
       onTap: () => showDetail(context, self),
       child: Stack(
         children: [
-          thumbnail(
+          // A rendition is upright by the file; what is stored beside the
+          // image is applied here, exactly as the album tile applies it,
+          // see [orientedImageThumbnail] and issue #106.
+          orientedImageThumbnail(
             client,
             "$baseUrl/${self.name}",
+            self,
             key: ValueKey("group-tile-${self.name}"),
             width: width,
             height: height,
-            displayHeight: height,
-            fit: BoxFit.contain,
           ),
           // The representative stands out, so that the choice can be checked
           // here, where all alternatives are seen side by side.

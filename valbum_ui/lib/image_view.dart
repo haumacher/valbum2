@@ -651,13 +651,13 @@ class ImageViewState extends State<ImageView>
   /// image to the next is therefore thumbnail -> sharp, never blank -> sharp,
   /// and with the neighbour prefetched it is sharp at once.
   List<Widget> buildLayers(ImageTransform tx) => [
-        uprightLayer(
+        pictureLayer(
           tx,
           thumbnail(
             widget.client,
             dataUrl,
             key: const Key("image-thumbnail"),
-            fit: BoxFit.contain,
+            fit: BoxFit.fill,
           ),
         ),
         buildContent(tx),
@@ -687,42 +687,33 @@ class ImageViewState extends State<ImageView>
         return const SizedBox.expand();
       },
     );
-    return rights.mayDownload ? rawLayer(tx, image) : uprightLayer(tx, image);
+    // The same layer either way: what the caller may have differs, where it
+    // is drawn does not, see [pictureLayer] and issue #106.
+    return pictureLayer(tx, image);
   }
 
-  /// The layer of a picture in the *raw* pixels of the file: the original.
+  /// The layer every picture of this viewer is drawn in.
   ///
-  /// [ImageTransform.matrix] maps the raw rectangle onto the viewport, the
-  /// [ImagePart.orientation] included — a camera's rotation flag is applied
-  /// here, on the way to the screen.
-  Widget rawLayer(ImageTransform tx, Widget child) => Positioned(
+  /// One layer, because every picture the server delivers stands in the same
+  /// coordinates: the original carries the orientation of its own file, and
+  /// so does a rendition — `PreviewCache` bakes the file's orientation into
+  /// it and nothing else. [ImagePart.orientation] is the transform stored
+  /// *beside* the image, on top of what the file says, and
+  /// [ImageTransform.matrix] applies it together with the zoom and the pan,
+  /// mapping the rectangle `(0, 0)` to ([ImageTransform.rawWidth],
+  /// [ImageTransform.rawHeight]) onto the viewport.
+  ///
+  /// The preview rendition a caller without `download` is shown (issue #95)
+  /// and the thumbnail kept beneath the picture (issue #101) therefore hang
+  /// here as well: they used to skip the orientation and laid a rotated photo
+  /// on its side, see issue #106. A rendition has the aspect ratio of the raw
+  /// rectangle, so filling it distorts nothing.
+  Widget pictureLayer(ImageTransform tx, Widget child) => Positioned(
         left: 0,
         top: 0,
         width: tx.rawWidth,
         height: tx.rawHeight,
         child: Transform(transform: tx.matrix, child: child),
-      );
-
-  /// The layer of a picture the server has already turned upright: the
-  /// thumbnail and the preview rendition.
-  ///
-  /// `PreviewCache` applies the orientation when it makes a rendition (which
-  /// is why the album tiles show one unrotated), so applying it again here
-  /// would lay every portrait photo on its side. Only the zoom and the pan of
-  /// [tx] are left, over the box the oriented image occupies.
-  Widget uprightLayer(ImageTransform tx, Widget child) => Positioned(
-        left: 0,
-        top: 0,
-        width: tx.width,
-        height: tx.height,
-        child: Transform(
-          transform: Matrix4.identity()
-            ..setEntry(0, 0, tx.scale)
-            ..setEntry(1, 1, tx.scale)
-            ..setEntry(0, 3, tx.tx)
-            ..setEntry(1, 3, tx.ty),
-          child: child,
-        ),
       );
 
   /// The video player, filling the slot the image would occupy.

@@ -25,12 +25,12 @@ import 'move_view.dart';
 import 'name_date.dart';
 import 'resource.dart';
 import 'offline.dart';
+import 'oriented_thumbnail.dart';
 import 'routes.dart';
 import 'rights.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
-import 'thumbnails.dart';
 import 'video_view.dart';
 
 /// The clearance an album is shown with in the edit mode, see issue #46.
@@ -1914,13 +1914,17 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
 
   /// The thumbnail of the given image, filling the tile box.
   ///
-  /// The server bakes the orientation of the image file into the thumbnail it
-  /// serves. An orientation changed in the tile editor is therefore applied
-  /// here as the delta to the orientation the tile was laid out with, and the
-  /// re-oriented image is scaled down into the tile box it already occupies,
-  /// so that rotating does not reflow the album.
+  /// The server bakes the orientation of the image *file* into the thumbnail
+  /// it serves; what is stored beside the image comes on top of it and is
+  /// applied here, see [orientedImageThumbnail].
   Widget imageThumbnail(ImagePart image) {
-    var thumbnail = orientedThumbnail(image);
+    var thumbnail = orientedImageThumbnail(
+      state.client,
+      "${state.albumUrl}${image.thumbnailName}",
+      image,
+      width: width,
+      height: height,
+    );
     var marker = privacyMarker(image);
     if (image.kind == ImageKind.image && marker == null) {
       return thumbnail;
@@ -1984,49 +1988,6 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
           shadows: const [Shadow(color: Colors.black, blurRadius: 4)],
         ),
       ),
-    );
-  }
-
-  Widget orientedThumbnail(ImagePart image) {
-    var delta = OrientationOps.delta(
-      state.layoutOrientation(image),
-      image.orientation,
-    );
-
-    // What the tile draws of the image itself: its own height where the tile
-    // is not turned, and at most the longer side where it is — the thumbnail
-    // is then laid out, turned and fitted into the tile, so the height of the
-    // tile is no longer the height the image is drawn at. Never less than what
-    // is shown, see [thumbnail].
-    Widget result = thumbnail(
-      state.client,
-      "${state.albumUrl}${image.thumbnailName}",
-      width: width,
-      height: height,
-      displayHeight: delta == PlaneTransform.identity
-          ? height
-          : (width > height ? width : height),
-      fit: BoxFit.contain,
-    );
-
-    if (delta == PlaneTransform.identity) {
-      return result;
-    }
-
-    if (delta.mirrored) {
-      result = Transform.scale(scaleX: -1, scaleY: 1, child: result);
-    }
-    // [PlaneTransform.quarterTurns] counts counter-clockwise, [RotatedBox]
-    // clockwise.
-    var clockwise = (4 - delta.quarterTurns % 4) % 4;
-    if (clockwise != 0) {
-      result = RotatedBox(quarterTurns: clockwise, child: result);
-    }
-
-    return SizedBox(
-      width: width,
-      height: height,
-      child: FittedBox(fit: BoxFit.contain, child: result),
     );
   }
 }
