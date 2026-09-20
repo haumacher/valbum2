@@ -74,7 +74,29 @@ class PhotoAlbum {
   /// The number of items in it.
   final int count;
 
-  const PhotoAlbum({required this.id, required this.name, this.count = 0});
+  /// Whether this is the platform's "all photos" pseudo-album.
+  ///
+  /// Android calls it *Recent*, iOS *Recents*: it is not a place photos are
+  /// kept but the whole library under one name. Watching it (issue #117)
+  /// would be watching everything, which is the very thing the user asked to
+  /// be rid of, so [CameraRollConfig.sources] never offers it — unless it is
+  /// also the camera roll, see [isCamera].
+  final bool isAll;
+
+  /// Whether this is the album the device's camera writes into.
+  ///
+  /// The one album the sync watches by default, see
+  /// [CameraRollConfig.sources]: what the phone took is what one wants in the
+  /// library, and what an app received is not.
+  final bool isCamera;
+
+  const PhotoAlbum({
+    required this.id,
+    required this.name,
+    this.count = 0,
+    this.isAll = false,
+    this.isCamera = false,
+  });
 
   @override
   bool operator ==(Object other) => other is PhotoAlbum && other.id == id;
@@ -108,11 +130,21 @@ abstract class PhotoLibrary {
 
   /// The items taken at or after [since], oldest first.
   ///
-  /// `null` asks for the whole library: that is what a freshly installed app
-  /// does. The bound is inclusive, so the newest item of the previous run
+  /// `null` asks from the beginning of time: that is what a freshly installed
+  /// app does. The bound is inclusive, so the newest item of the previous run
   /// shows up again; the sync knows it by its [PhotoItem.id] and does not
   /// offer it a second time.
-  Future<List<PhotoItem>> itemsSince(DateTime? since);
+  ///
+  /// [sources] names the albums to look in, by [PhotoAlbum.id] (issue #117):
+  /// the camera-roll sync watches the albums the user ticked, not the whole
+  /// library. Each named album is asked with the same bound and the same
+  /// order, and an item that lies in two of them is answered once. An empty
+  /// list asks the whole library, which is what every caller but the sync
+  /// wants — and what the sync did before there was anything to tick.
+  Future<List<PhotoItem>> itemsSince(
+    DateTime? since, {
+    List<String> sources = const [],
+  });
 
   /// The greatest number of items one [itemsSince] may answer with, `0` when
   /// it always answers with everything.
@@ -176,7 +208,11 @@ class UnavailablePhotoLibrary extends PhotoLibrary {
   Future<bool> requestAccess() async => false;
 
   @override
-  Future<List<PhotoItem>> itemsSince(DateTime? since) async => const [];
+  Future<List<PhotoItem>> itemsSince(
+    DateTime? since, {
+    List<String> sources = const [],
+  }) async =>
+      const [];
 
   @override
   Future<Uint8List?> thumbnail(PhotoItem item, {int size = 256}) async => null;
@@ -202,6 +238,10 @@ class FakePhotoLibrary extends PhotoLibrary {
   /// The number of times [itemsSince] was asked, and with which bound.
   final List<DateTime?> scans = [];
 
+  /// The albums every [itemsSince] was asked for, in the same order as
+  /// [scans]; empty where the whole library was asked for (issue #117).
+  final List<List<String>> scannedSources = [];
+
   /// The albums this library holds, with their items, in order.
   final Map<PhotoAlbum, List<PhotoItem>> albumItems = {};
 
@@ -217,10 +257,25 @@ class FakePhotoLibrary extends PhotoLibrary {
   Future<bool> requestAccess() async => granted;
 
   @override
-  Future<List<PhotoItem>> itemsSince(DateTime? since) async {
+  Future<List<PhotoItem>> itemsSince(
+    DateTime? since, {
+    List<String> sources = const [],
+  }) async {
     scans.add(since);
+    scannedSources.add([...sources]);
+    var candidates = items;
+    if (sources.isNotEmpty) {
+      // The same item may lie in two of the named albums; it is answered
+      // once, as the platform-backed library answers it once.
+      var seen = <String>{};
+      candidates = [
+        for (var id in sources)
+          for (var item in albumItems[PhotoAlbum(id: id, name: id)] ?? const [])
+            if (seen.add(item.id)) item
+      ];
+    }
     var result = [
-      for (var item in items)
+      for (var item in candidates)
         if (since == null || !item.takenAt.isBefore(since)) item
     ];
     result.sort((a, b) => a.takenAt.compareTo(b.takenAt));
@@ -238,14 +293,30 @@ class FakePhotoLibrary extends PhotoLibrary {
       [...?albumItems[album]];
 
   /// Adds an album holding the given items, and the items themselves.
-  PhotoAlbum addAlbum(String name, List<PhotoItem> contents, {String? id}) {
+  ///
+  /// An item that is already there (the same [PhotoItem.id]) is not added a
+  /// second time: a photo can lie in two albums, and the library holds it
+  /// once.
+  PhotoAlbum addAlbum(
+    String name,
+    List<PhotoItem> contents, {
+    String? id,
+    bool camera = false,
+    bool all = false,
+  }) {
     var album = PhotoAlbum(
       id: id ?? name,
       name: name,
       count: contents.length,
+      isCamera: camera,
+      isAll: all,
     );
     albumItems[album] = [...contents];
-    items.addAll(contents);
+    var known = {for (var item in items) item.id};
+    items.addAll([
+      for (var item in contents)
+        if (known.add(item.id)) item
+    ]);
     return album;
   }
 

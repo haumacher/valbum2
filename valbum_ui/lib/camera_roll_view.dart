@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'caller.dart';
 import 'camera_roll.dart';
 import 'client.dart';
+import 'photo_library.dart';
 import 'resource.dart';
 import 'settings.dart';
 
@@ -20,6 +21,19 @@ const Key cameraRollSwitchKey = Key("cameraRoll.enabled");
 
 /// The key of the switch limiting the sync to Wi-Fi (issue #36).
 const Key cameraRollWifiOnlyKey = Key("cameraRoll.wifiOnly");
+
+/// The key of the list of device albums the sync watches (issue #117).
+const Key cameraRollSourcesKey = Key("cameraRoll.sources");
+
+/// The key of the line asking for an album to watch, shown while none is
+/// (issue #117).
+const Key cameraRollNoSourcesKey = Key("cameraRoll.noSources");
+
+/// The key of the line saying why the device's albums cannot be listed.
+const Key cameraRollSourcesProblemKey = Key("cameraRoll.sourcesProblem");
+
+/// The key of the checkbox watching the device album of the given id.
+Key cameraRollSourceKey(String id) => Key("cameraRoll.source.$id");
 
 /// The key of the "Choose..." button opening the inbox picker.
 const Key cameraRollChooseKey = Key("cameraRoll.choose");
@@ -79,6 +93,48 @@ class CameraRollSection extends StatefulWidget {
 class _CameraRollSectionState extends State<CameraRollSection> {
   /// The reason the last request was refused, shown until the next one.
   String? refusal;
+
+  /// The albums of the device, asked once and again whenever access may have
+  /// changed (issue #117).
+  Future<List<PhotoAlbum>>? albums;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    albums ??= _loadAlbums();
+  }
+
+  /// The albums a user may watch, or an empty list where there are none.
+  ///
+  /// Asking the device for its albums needs the same permission the sync
+  /// needs, so the same request is made here; a refusal is not swallowed but
+  /// shown in the library's own words, see [PhotoLibrary.accessProblem].
+  Future<List<PhotoAlbum>> _loadAlbums() async {
+    var sync = CameraRollScope.maybeOf(context);
+    var library = sync?.library;
+    if (library == null || !library.available) {
+      return const [];
+    }
+    if (!sync!.config.enabled) {
+      // Opening the settings must not make the system ask for the photos: the
+      // sync is off, nothing is watched, and the list appears the moment it
+      // is switched on.
+      return const [];
+    }
+    if (!await library.requestAccess()) {
+      return const [];
+    }
+    return selectableSources(await library.albums());
+  }
+
+  /// Asks the device for its albums again, after something may have changed
+  /// what it answers — the access that was just granted, above all.
+  void _reloadAlbums() {
+    var pending = _loadAlbums();
+    setState(() {
+      albums = pending;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -142,6 +198,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
           value: config.wifiOnly,
           onChanged: available ? (value) => _toggleWifiOnly(sync, value) : null,
         ),
+        _sources(sync, available),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -205,6 +262,118 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     );
   }
 
+  /// The device albums the sync watches (issue #117).
+  ///
+  /// Before this existed the sync uploaded the whole photo library — every
+  /// picture any app ever saved. It watches what is ticked here, the camera
+  /// alone where nothing was ticked yet and the device names a camera album;
+  /// where it names none, nothing is watched and the section says so rather
+  /// than quietly uploading everything again.
+  ///
+  /// A device that has no albums at all shows nothing here: there is nothing
+  /// to choose from, and the sync scans what little there is.
+  Widget _sources(CameraRollSync sync, bool available) =>
+      FutureBuilder<List<PhotoAlbum>>(
+        future: albums,
+        builder: (context, snapshot) {
+          // Only while the sync is on: a reason left over from somewhere else
+          // is not this section's news while nothing is being watched.
+          var problem = sync.library.available && sync.config.enabled
+              ? sync.library.accessProblem
+              : null;
+          var found = snapshot.data ?? const <PhotoAlbum>[];
+          if (found.isEmpty) {
+            if (problem == null) {
+              return const SizedBox.shrink();
+            }
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                problem,
+                key: cameraRollSourcesProblemKey,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            );
+          }
+          var watched = sync.config.sourcesOf(found).toSet();
+          return Padding(
+            key: cameraRollSourcesKey,
+            padding: const EdgeInsets.only(top: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  "Albums to sync",
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  newSourceNotice,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (watched.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      noSourcesNotice,
+                      key: cameraRollNoSourcesKey,
+                      style:
+                          TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ),
+                for (var album in found)
+                  CheckboxListTile(
+                    key: cameraRollSourceKey(album.id),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(album.name),
+                    subtitle: Text(
+                      "${album.count} ${album.count == 1 ? "photo" : "photos"}",
+                    ),
+                    value: watched.contains(album.id),
+                    onChanged: available
+                        ? (value) => _chooseSources(
+                              sync,
+                              found,
+                              album,
+                              value ?? false,
+                            )
+                        : null,
+                  ),
+              ],
+            ),
+          );
+        },
+      );
+
+  /// Ticks or unticks one album, and hands the whole choice to the engine.
+  Future<void> _chooseSources(
+    CameraRollSync sync,
+    List<PhotoAlbum> found,
+    PhotoAlbum album,
+    bool watch,
+  ) async {
+    var watched = sync.config.sourcesOf(found).toSet();
+    if (watch) {
+      watched.add(album.id);
+    } else {
+      watched.remove(album.id);
+    }
+    await sync.chooseSources(
+      [
+        // In the order the device names them, so that what is stored does not
+        // depend on the order the boxes were ticked in.
+        for (var candidate in found)
+          if (watched.contains(candidate.id)) candidate.id
+      ],
+      albums: found,
+    );
+    if (mounted) {
+      setState(() => refusal = null);
+    }
+  }
+
   /// What the sync does while the app is closed (issue #32): the report of the
   /// last background run, or the reason this platform has none.
   Widget _backgroundLine(CameraRollSync sync) {
@@ -254,6 +423,9 @@ class _CameraRollSectionState extends State<CameraRollSection> {
       return;
     }
     setState(() => refusal = problem);
+    // Switching the sync on is where the library is asked for access; the
+    // albums it refused to name a moment ago can be named now.
+    _reloadAlbums();
   }
 
   Future<void> _toggleWifiOnly(CameraRollSync sync, bool value) async {

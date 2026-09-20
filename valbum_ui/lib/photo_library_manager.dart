@@ -61,7 +61,10 @@ class PhotoManagerLibrary extends PhotoLibrary {
   }
 
   @override
-  Future<List<PhotoItem>> itemsSince(DateTime? since) async {
+  Future<List<PhotoItem>> itemsSince(
+    DateTime? since, {
+    List<String> sources = const [],
+  }) async {
     var filter = FilterOptionGroup(
       createTimeCond: DateTimeCond(
         min: since ?? DateTime.fromMillisecondsSinceEpoch(0),
@@ -72,17 +75,64 @@ class PhotoManagerLibrary extends PhotoLibrary {
       orders: const [OrderOption(type: OrderOptionType.createDate, asc: true)],
     );
 
-    var result = <PhotoItem>[];
-    for (var page = 0; result.length < photoScanLimit; page++) {
-      var assets = await PhotoManager.getAssetListPaged(
-        page: page,
-        pageCount: _pageSize,
-        filterOption: filter,
-        type: RequestType.common,
+    if (sources.isEmpty) {
+      return _paged(
+        (page) => PhotoManager.getAssetListPaged(
+          page: page,
+          pageCount: _pageSize,
+          filterOption: filter,
+          type: RequestType.common,
+        ),
       );
+    }
+
+    // One album at a time (issue #117): asking without a path is asking for
+    // the whole library — the camera, and every folder any app ever wrote a
+    // picture into.
+    var result = <PhotoItem>[];
+    var seen = <String>{};
+    for (var source in sources) {
+      var path = await _pathOf(source);
+      if (path == null) {
+        // An album that is no longer there is not a reason to fail the run:
+        // the user removed it on the device, and the section shows the
+        // albums it does have.
+        continue;
+      }
+      // The filter of the path decides what a paged request answers, so the
+      // date bound and the order are put on the path itself.
+      var bounded = await path.fetchPathProperties(filterOptionGroup: filter);
+      if (bounded == null) {
+        continue;
+      }
+      for (var item in await _paged(
+        (page) => bounded.getAssetListPaged(page: page, size: _pageSize),
+        limit: photoScanLimit - result.length,
+      )) {
+        // A photo can lie in two of the chosen albums; it is one item.
+        if (seen.add(item.id)) {
+          result.add(item);
+        }
+      }
+      if (result.length >= photoScanLimit) {
+        break;
+      }
+    }
+    result.sort((a, b) => a.takenAt.compareTo(b.takenAt));
+    return result;
+  }
+
+  /// The items of a paged source, at most [limit] of them.
+  Future<List<PhotoItem>> _paged(
+    Future<List<AssetEntity>> Function(int page) page, {
+    int limit = photoScanLimit,
+  }) async {
+    var result = <PhotoItem>[];
+    for (var index = 0; result.length < limit; index++) {
+      var assets = await page(index);
       for (var asset in assets) {
         result.add(await _item(asset));
-        if (result.length >= photoScanLimit) {
+        if (result.length >= limit) {
           break;
         }
       }
@@ -91,6 +141,19 @@ class PhotoManagerLibrary extends PhotoLibrary {
       }
     }
     return result;
+  }
+
+  /// The album of the given [PhotoAlbum.id], `null` where the device has none
+  /// of that id any more.
+  Future<AssetPathEntity?> _pathOf(String id) async {
+    var path = _paths[id];
+    if (path != null) {
+      return path;
+    }
+    // The albums were never listed in this process (a background run), or the
+    // library changed under the sync: ask again before giving up.
+    await albums();
+    return _paths[id];
   }
 
   @override
@@ -115,11 +178,42 @@ class PhotoManagerLibrary extends PhotoLibrary {
       if (count == 0) {
         continue;
       }
-      albums.add(PhotoAlbum(id: path.id, name: path.name, count: count));
+      albums.add(PhotoAlbum(
+        id: path.id,
+        name: path.name,
+        count: count,
+        isAll: path.isAll,
+        isCamera: isCameraPath(path),
+      ));
       _paths[path.id] = path;
     }
     albums.sort((a, b) => b.count.compareTo(a.count));
     return albums;
+  }
+
+  /// Whether [path] is the album the device's camera writes into (issue
+  /// #117).
+  ///
+  /// The two platforms name it differently, and `photo_manager` reports what
+  /// each of them says:
+  ///
+  /// * **Android** keeps the camera's pictures in `DCIM/Camera`, whose
+  ///   `MediaStore` bucket is reported with the display name of the directory
+  ///   — `Camera`. It is an ordinary album beside `WhatsApp Images`,
+  ///   `Screenshots` and the rest, and it is never the `isAll` pseudo-album.
+  /// * **iOS/macOS** has no such folder: the camera writes into the *user
+  ///   library*, the smart album the Photos app shows as *Recents*
+  ///   ([PMDarwinAssetCollectionSubtype.smartAlbumUserLibrary]). That album
+  ///   *is* everything the device holds — which is why it is also the
+  ///   `isAll` album there — and it is exactly what the sync uploaded before
+  ///   issue #117, so an iPhone that is updated keeps doing what it did and
+  ///   the section says so. Ticking a narrower album instead is one tap away.
+  static bool isCameraPath(AssetPathEntity path) {
+    if (path.albumTypeEx?.darwin?.subtype ==
+        PMDarwinAssetCollectionSubtype.smartAlbumUserLibrary) {
+      return true;
+    }
+    return !path.isAll && path.name.trim().toLowerCase() == "camera";
   }
 
   @override
