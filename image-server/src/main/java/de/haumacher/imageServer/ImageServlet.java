@@ -59,6 +59,7 @@ import de.haumacher.imageServer.shared.model.UserList;
 import de.haumacher.imageServer.shared.model.UserPermission;
 import de.haumacher.imageServer.shared.ui.Settings;
 import de.haumacher.imageServer.upload.HashCache;
+import de.haumacher.imageServer.upload.HashIndex;
 import de.haumacher.imageServer.upload.UploadFactory;
 import de.haumacher.imageServer.upload.UploadItem;
 import de.haumacher.msgbuf.json.JsonReader;
@@ -254,6 +255,10 @@ public class ImageServlet extends HttpServlet {
 	/** The message an invitation naming a clearance this build does not know is refused with. */
 	public static final String CLEARANCE_REFUSED = "Unknown clearance; use one of " + Clearances.names() + ".";
 
+	/** The message the duplicate sweep of issue #118 is refused with. */
+	public static final String DUPLICATES_REFUSED =
+		"You may not change this album, so nothing can be set aside from it.";
+
 	/** The message a cache refresh from somebody who is not an administrator is refused with. */
 	public static final String CACHE_REFRESH_REFUSED =
 		"Only an administrator may throw an album's previews away.";
@@ -281,6 +286,37 @@ public class ImageServlet extends HttpServlet {
 
 	/** The transcoded sidecars of the videos this server shows, see issue #74. */
 	private final VideoRenditions _videos = new VideoRenditions();
+
+	/**
+	 * Where every content of this space is, by its hash, see issue #118.
+	 *
+	 * <p>
+	 * One index per space, exactly like the {@link AuthService} and the {@link ResourceCache}: a
+	 * check never looks outside the space it was asked in. It is loaded here and built in the
+	 * background only where somebody asked for that, see {@link #startIndexing()} — a test that
+	 * drives this servlet headlessly gets the lookup and no threads.
+	 * </p>
+	 */
+	private final HashIndex _index;
+
+	/** The hash index of this space, for the tests and for the sweep of issue #118. */
+	public HashIndex index() {
+		return _index;
+	}
+
+	/**
+	 * Starts building the hash index of this space in the background, see {@link HashIndex}.
+	 *
+	 * <p>
+	 * Called once, by the wiring that starts a real server: a first build reads the whole library
+	 * and writes a sidecar into every album that has none, which is the right thing for a server
+	 * that is going to run, and the wrong thing for a unit test that builds a servlet over a
+	 * fixture and asks it one question.
+	 * </p>
+	 */
+	public void startIndexing() {
+		_index.start();
+	}
 
 	/** The video renditions of this server, for the tests that wait for a transcode. */
 	VideoRenditions videos() {
@@ -364,6 +400,7 @@ public class ImageServlet extends HttpServlet {
 		_cache = new ResourceCache();
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
+		_index = new HashIndex(_basePath);
 	}
 
 	@Override
@@ -387,6 +424,7 @@ public class ImageServlet extends HttpServlet {
 	@Override
 	public void destroy() {
 		_videos.shutdown();
+		_index.shutdown();
 		try {
 			_cache.close();
 		} catch (IOException ex) {
@@ -976,6 +1014,11 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
+		// A moved file announces itself through the sidecar it is written into; a moved *folder*
+		// does not, so both trees are read again, see issue #118.
+		_index.treeChanged(source.toFile());
+		_index.treeChanged(target.toFile());
+
 		serveJsonObject(context.response(), result);
 	}
 
@@ -1057,6 +1100,10 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, ex.getStatus(), ex.getMessage());
 			return;
 		}
+
+		// What went into the trash is gone from the album; the index reads the folder again, see
+		// issue #118.
+		_index.treeChanged(folder.toFile());
 
 		serveJsonObject(context.response(), result);
 	}
@@ -1153,12 +1200,26 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * Answers which of the asked contents the addressed folder already holds.
+	 * Answers which of the asked contents this space already holds.
 	 *
 	 * <p>
 	 * A client uses it to skip transferring what is already there, so it asks for what an upload
 	 * asks for: the contribute right, see {@link AuthService#mayContribute(Caller, PathInfo)}. The
-	 * upload itself is idempotent in any case, see {@link #storeUploads(Context, PathInfo)}.
+	 * upload itself is idempotent in any case, see {@link #storeUploads(Context, Caller, PathInfo)}.
+	 * </p>
+	 *
+	 * <p>
+	 * Since issue #118 the answer is not the addressed folder's alone. The folder is asked first —
+	 * which also fills its sidecar, as it always did — and what it does not hold is looked up in
+	 * the space's {@link HashIndex}, so a photo that was synced into the inbox and then moved into
+	 * an album is still <em>present</em>, named by the path it is at now. How far that index has
+	 * got travels with the answer, because a client that syncs a whole camera roll against an
+	 * incomplete index would upload again what it cannot yet be told about.
+	 * </p>
+	 *
+	 * <p>
+	 * A share link is the exception and stays confined to the folder it was made for: a link sees
+	 * no more of the space than its folder, and that includes what it may learn about it.
 	 * </p>
 	 */
 	private void checkUploads(Context context) throws IOException {
@@ -1204,13 +1265,78 @@ public class ImageServlet extends HttpServlet {
 			hashes.flush();
 		}
 
+		// The folder was read (and its sidecar filled); the index hears about that through the
+		// flush above and answers for the rest of the space.
+		boolean confined = caller.isShareLink();
+
 		UploadCheckResult result = UploadCheckResult.create();
+		if (!confined) {
+			result.setIndexed(_index.progress());
+		}
 		for (ContentHash asked : check.getHashes()) {
 			String name = nameByHash.get(asked.getHash());
+			if (name == null && !confined) {
+				// Anywhere in the space, named by the path it is at, see PresentFile#name.
+				name = _index.pathOf(asked.getHash());
+			}
 			if (name != null) {
 				result.addPresent(PresentFile.create().setHash(asked.getHash()).setName(name));
 			}
 		}
+
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Sets aside the photos of the addressed album that lie elsewhere in the space too, see issue
+	 * #118.
+	 *
+	 * <p>
+	 * The sweep that repairs what slipped through while the index was incomplete: every photo of
+	 * this album whose contents are somewhere else in the space as well is renamed into
+	 * <code>{@value de.haumacher.imageServer.auth.UserStore#DIRECTORY_NAME}/{@value MoveService#DUPLICATES_FOLDER}</code>
+	 * — the mechanism of issue #47, hash-prefixed names, nothing deleted — and taken out of the
+	 * album. The answer names, for every photo, where the copy that stays is.
+	 * </p>
+	 *
+	 * <p>
+	 * It needs {@link Rights#EDIT} on the album and nothing more: it changes one album, which is
+	 * what editing an album is. An administrator is not required — whoever may empty this album by
+	 * hand may have the duplicates out of it.
+	 * </p>
+	 */
+	private void findDuplicates(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo folder = location.getPath();
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folder)) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (caller.isShareLink() || !_auth.mayEdit(caller, folder)) {
+			// A share link has no space to compare against, and a visitor has nothing to tidy.
+			refuseMove(context, caller, DUPLICATES_REFUSED, true);
+			return;
+		}
+		if (!folder.toFile().isDirectory()) {
+			error404(context);
+			return;
+		}
+
+		MoveResult result;
+		try {
+			result = new MoveService(_cache, _auth).setAsideDuplicates(folder, _index);
+		} catch (MoveRefused ex) {
+			LOG.warning("Refusing the duplicate sweep in '" + context.request().getPathInfo() + "': "
+				+ ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+
+		_index.treeChanged(folder.toFile());
 
 		serveJsonObject(context.response(), result);
 	}
@@ -2189,6 +2315,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("refresh-cache".equals(action)) {
 			refreshCache(context);
+			return;
+		}
+		if ("find-duplicates".equals(action)) {
+			findDuplicates(context);
 			return;
 		}
 		if ("unlink".equals(action)) {

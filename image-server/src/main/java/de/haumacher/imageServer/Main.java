@@ -421,6 +421,9 @@ public class Main {
 		if (spaces.getMode() == SpaceMode.SINGLE) {
 			ImageServlet data = new ImageServlet(basePath, spaces.single().getAuth(), "",
 				spaces.single().getConfig());
+			// Every photo of the space knows its hash from here on, see issue #118: one low
+			// priority thread that reads the library once and then keeps out of the way.
+			data.startIndexing();
 			// What a messenger reads when a share link is posted, see issue #104.
 			sharePreview(app, spaces, segment -> data);
 			webapp.addServlet(new ServletHolder(data), Settings.DATA_PREFIX + "/*");
@@ -430,6 +433,8 @@ public class Main {
 			// and the application is rebased onto "/<space>/" like a share session, see SpaceServlet.
 			app.setBaseSegments(spaces.segments());
 			SpaceServlet front = new SpaceServlet(spaces, app);
+			// Each space indexes its own photos, and nobody else's, see issue #118.
+			front.startIndexing();
 			sharePreview(app, spaces, front::dataOf);
 			webapp.addServlet(new ServletHolder(front), STATIC_PREFIX + "/*");
 		}

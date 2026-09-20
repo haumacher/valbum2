@@ -81,10 +81,11 @@ public class TestMoveProbe extends TestCase {
 		String owner = signIn();
 		ImageServlet servlet = servlet();
 
-		// Before: the made-up albums list what the folders hold; the pre-check knows x in A only.
+		// Before: the made-up albums list what the folders hold; the pre-check knows x in A -- and
+		// since issue #118 it says so wherever it is asked, naming the path the photo is at.
 		assertEquals(Collections.singletonList("x.jpg"), names(album(get(servlet, "/A/", "json", owner))));
 		assertEquals(Collections.singletonList("x.jpg"), present(servlet, "/A/", owner, x));
-		assertEquals(Collections.emptyList(), present(servlet, "/B/", owner, x));
+		assertEquals(Collections.singletonList("A/x.jpg"), present(servlet, "/B/", owner, x));
 
 		MoveResult result = move(servlet, "/A/", "B", owner, "x.jpg");
 		assertEquals(1, result.getOutcomes().size());
@@ -103,9 +104,10 @@ public class TestMoveProbe extends TestCase {
 		assertEquals(4, moved.getHeight());
 		assertEquals(Collections.emptyList(), names(album(get(servlet, "/A/", "json", owner))));
 
-		// The idempotent upload now knows x at B and no longer at A.
+		// The idempotent upload now knows x at B; asked at A, it says where the photo went -- the
+		// gap issue #118 closed, and the reason a re-scanning app does not upload it a second time.
 		assertEquals(Collections.singletonList("x.jpg"), present(servlet, "/B/", owner, x));
-		assertEquals(Collections.emptyList(), present(servlet, "/A/", owner, x));
+		assertEquals(Collections.singletonList("B/x.jpg"), present(servlet, "/A/", owner, x));
 
 		// A fresh server reads the same truth from disk.
 		ImageServlet restarted = servlet();

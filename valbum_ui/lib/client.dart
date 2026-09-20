@@ -89,8 +89,26 @@ class UploadSummary {
   /// The number of files the server stored.
   final int stored;
 
-  /// The number of files the album already held, which were not stored again.
+  /// The number of files the server already held, which were not stored again.
   final int present;
+
+  /// Where the contents the server already held are, when that is not the
+  /// album the upload was addressed to (issue #118).
+  ///
+  /// Paths relative to the root of the space, as the server answers them, in
+  /// the order they came back and without repetition — a photo that was synced
+  /// into the inbox and later moved into an album is *present*, and this is
+  /// where it went. Empty when everything that was already there was in the
+  /// target album itself, which is what it was before issue #118.
+  final List<String> presentIn;
+
+  /// How far the space's hash index had got when the server was asked,
+  /// `null` where it keeps none (an older server, or a share link).
+  ///
+  /// While it is incomplete, a photo in a not-yet-indexed album is not
+  /// recognised and would be uploaded a second time; the camera-roll sync
+  /// reads this before it transfers anything, see [CameraRollSync].
+  final IndexProgress? indexed;
 
   /// The number of files that never reached the server, see issue #63.
   ///
@@ -104,6 +122,9 @@ class UploadSummary {
     required this.stored,
     required this.present,
     this.remaining = 0,
+    this.presentIn = const [],
+    this.indexed,
+    this.deferred = false,
   });
 
   /// The number of files the upload was asked to transfer.
@@ -115,11 +136,29 @@ class UploadSummary {
   /// Whether everything that was asked for arrived.
   bool get complete => remaining == 0;
 
+  /// Whether the server's hash index was still being built (issue #118).
+  bool get indexing {
+    var progress = indexed;
+    return progress != null && progress.done < progress.total;
+  }
+
+  /// Whether nothing was transferred *because* the index is incomplete, see
+  /// [VAlbumClient.uploadNew] and issue #118.
+  ///
+  /// Not a failure and not a refusal: the caller asked to wait for the index,
+  /// and the server is not ready to say which of these photos it already has.
+  final bool deferred;
+
   /// What the user is told about the upload.
   ///
   /// Both counts are named: a sync that transfers nothing because everything
-  /// is already there must not look like a sync that did nothing.
-  String get message => "$stored hochgeladen, $present bereits vorhanden.";
+  /// is already there must not look like a sync that did nothing. Where the
+  /// photos that were already there are somewhere else in the library, the
+  /// sentence says where — that is the whole answer to "why did this upload
+  /// nothing?", see issue #118.
+  String get message => "$stored hochgeladen, $present bereits vorhanden."
+      "${presentIn.isEmpty ? "" : " Bereits in der Mediathek: "
+          "${presentIn.join(", ")}."}";
 }
 
 /// The greatest number of files one request carries, see [UploadBatching].
@@ -1192,6 +1231,7 @@ class VAlbumClient {
     void Function(UploadProgress progress)? onProgress,
     UploadHandle? handle,
     UploadBatching batching = UploadBatching.standard,
+    bool waitForIndex = false,
   }) async {
     if (files.isEmpty) {
       return const UploadSummary(stored: 0, present: 0);
@@ -1217,9 +1257,19 @@ class VAlbumClient {
     ));
 
     var known = <String>{};
+    var presentIn = <String>[];
+    IndexProgress? indexed;
     try {
       var check = await checkUploads(path, [for (var f in hashed) f.sha256!]);
       known.addAll([for (var present in check.present) present.hash]);
+      indexed = check.indexed;
+      // A bare name is a photo of the album that was asked; a path is a photo
+      // that lies somewhere else in the library, see issue #118.
+      for (var present in check.present) {
+        if (present.name.contains("/") && !presentIn.contains(present.name)) {
+          presentIn.add(present.name);
+        }
+      }
     } on VAlbumException catch (error) {
       // An older server does not know the question (404/405): it still refuses
       // a duplicate when the contents arrive, so the upload goes ahead. Any
@@ -1238,6 +1288,20 @@ class VAlbumClient {
       }
     }
 
+    if (waitForIndex && indexed != null && indexed.done < indexed.total) {
+      // The server cannot yet say which of these photos it already has
+      // somewhere else, and uploading them anyway would make the second copies
+      // this question exists to prevent, see issue #118. Nothing is
+      // transferred and nothing failed; the caller says so and comes back.
+      return UploadSummary(
+        stored: 0,
+        present: 0,
+        remaining: files.length,
+        indexed: indexed,
+        deferred: true,
+      );
+    }
+
     var pending = [
       for (var file in hashed)
         if (!known.contains(file.sha256)) file
@@ -1253,7 +1317,12 @@ class VAlbumClient {
         imagesTotal: 0,
         fraction: 1,
       ));
-      return UploadSummary(stored: 0, present: skipped);
+      return UploadSummary(
+        stored: 0,
+        present: skipped,
+        presentIn: presentIn,
+        indexed: indexed,
+      );
     }
 
     var batches = batching.split(pending, (file) => file.length);
@@ -1353,7 +1422,36 @@ class VAlbumClient {
         finished: last,
       );
     }
-    return UploadSummary(stored: stored, present: present);
+    return UploadSummary(
+      stored: stored,
+      present: present,
+      presentIn: presentIn,
+      indexed: indexed,
+    );
+  }
+
+  /// Sets aside the photos of the album at [path] that lie elsewhere in the
+  /// space too, see issue #118.
+  ///
+  /// The sweep that repairs what slipped through while the index was
+  /// incomplete: nothing is deleted — every duplicate is renamed into the
+  /// space's own folder — and the answer names, for every photo, where the
+  /// copy that stays is.
+  Future<MoveResult> findDuplicates(List<String> path) async {
+    var url = "${folderUrl(path)}?action=find-duplicates";
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        "looking for duplicates in '${path.join("/")}'",
+      );
+    }
+    return MoveResult.read(JsonReader.fromString(response.body));
   }
 
   /// What an upload failure is called in [interruptedUploadMessage].

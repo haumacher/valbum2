@@ -118,6 +118,17 @@ class CameraRollConfig {
   /// Whether the app watches the photo library.
   final bool enabled;
 
+  /// Whether a run goes ahead while the server is still building its hash
+  /// index (issue #118).
+  ///
+  /// Off by default, and deliberately: while the index is incomplete the
+  /// server cannot say that a photo is already in some album it has not read
+  /// yet, so a first sync over an existing library would upload photos it
+  /// already has. The run waits instead and says so, and the section offers
+  /// *Sync anyway* for whoever would rather have the photos now and the
+  /// duplicates later — the sweep of issue #118 takes them out again.
+  final bool syncWhileIndexing;
+
   /// Whether the sync only runs on an unmetered network (issue #36).
   ///
   /// On by default, also for a store written before issue #36 that holds no
@@ -170,6 +181,7 @@ class CameraRollConfig {
   const CameraRollConfig({
     this.enabled = false,
     this.wifiOnly = true,
+    this.syncWhileIndexing = false,
     this.inbox = const [],
     this.since,
     this.done = const [],
@@ -218,6 +230,7 @@ class CameraRollConfig {
   CameraRollConfig copyWith({
     bool? enabled,
     bool? wifiOnly,
+    bool? syncWhileIndexing,
     List<String>? inbox,
     DateTime? since,
     List<String>? done,
@@ -227,6 +240,7 @@ class CameraRollConfig {
       CameraRollConfig(
         enabled: enabled ?? this.enabled,
         wifiOnly: wifiOnly ?? this.wifiOnly,
+        syncWhileIndexing: syncWhileIndexing ?? this.syncWhileIndexing,
         inbox: inbox ?? this.inbox,
         since: since ?? this.since,
         done: done ?? this.done,
@@ -238,6 +252,7 @@ class CameraRollConfig {
   String toJson() => jsonEncode({
         "enabled": enabled,
         "wifiOnly": wifiOnly,
+        if (syncWhileIndexing) "syncWhileIndexing": true,
         "inbox": inbox,
         if (since != null) "since": since!.toUtc().toIso8601String(),
         "done": done,
@@ -268,6 +283,9 @@ class CameraRollConfig {
         // Absent means on: a store from before issue #36 must not start
         // uploading over a mobile connection because it was silent.
         wifiOnly: json["wifiOnly"] != false,
+        // Absent means off: a store written before issue #118 must not sync
+        // against an index that cannot yet answer for the whole library.
+        syncWhileIndexing: json["syncWhileIndexing"] == true,
         inbox: [for (var name in (json["inbox"] as List? ?? [])) "$name"],
         since: since is String ? DateTime.tryParse(since) : null,
         done: [for (var id in (json["done"] as List? ?? [])) "$id"],
@@ -292,6 +310,7 @@ class CameraRollConfig {
       other is CameraRollConfig &&
       other.enabled == enabled &&
       other.wifiOnly == wifiOnly &&
+      other.syncWhileIndexing == syncWhileIndexing &&
       listEquals(other.inbox, inbox) &&
       other.since == since &&
       listEquals(other.done, done) &&
@@ -360,6 +379,21 @@ extension CameraRollStorage on SettingsStore {
       saveCameraRoll(config.toJson());
 }
 
+/// What a run waiting for the server's hash index says (issue #118).
+///
+/// It says both halves: what the server is doing, and what would happen if the
+/// run went ahead anyway — a photo that lies in an album the index has not
+/// read yet cannot be recognised, so it would arrive a second time.
+String indexingNotice(int done, int total) =>
+    "The library is still being indexed ($done of $total folders); photos "
+    "already in an unindexed album may be uploaded again.";
+
+/// Where a photo the server already had is, for the line of a finished run.
+String presentInNotice(List<String> where) => where.isEmpty
+    ? ""
+    : " Already in the library: ${where.take(3).join(", ")}"
+        "${where.length > 3 ? ", ..." : ""}.";
+
 /// What the sync is doing right now, see [CameraRollStatus].
 enum CameraRollPhase {
   /// The user has not switched the sync on.
@@ -408,6 +442,19 @@ class CameraRollStatus {
   final int lastStored;
   final int lastPresent;
 
+  /// Where the photos the server already had are, when that is not the inbox
+  /// itself (issue #118); empty otherwise.
+  final List<String> lastPresentIn;
+
+  /// How far the server's hash index had got when a run deferred (issue #118);
+  /// `null` when the run is not waiting for it.
+  ///
+  /// While this is set, [phase] is [CameraRollPhase.waiting] and [message] is
+  /// [indexingNotice]: the run is postponed, not failed, and the section says
+  /// so and offers *Sync anyway*.
+  final int? indexingDone;
+  final int? indexingTotal;
+
   const CameraRollStatus({
     this.phase = CameraRollPhase.disabled,
     this.done = 0,
@@ -417,7 +464,13 @@ class CameraRollStatus {
     this.lastSuccess,
     this.lastStored = 0,
     this.lastPresent = 0,
+    this.lastPresentIn = const [],
+    this.indexingDone,
+    this.indexingTotal,
   });
+
+  /// Whether the run is waiting for the server to finish indexing (issue #118).
+  bool get indexing => indexingDone != null && indexingTotal != null;
 
   /// Whether a run is transferring items right now.
   bool get running => phase == CameraRollPhase.running;
@@ -440,6 +493,9 @@ class CameraRollStatus {
     DateTime? lastSuccess,
     int? lastStored,
     int? lastPresent,
+    List<String>? lastPresentIn,
+    int? indexingDone,
+    int? indexingTotal,
   }) =>
       CameraRollStatus(
         phase: phase ?? this.phase,
@@ -450,6 +506,11 @@ class CameraRollStatus {
         lastSuccess: lastSuccess ?? this.lastSuccess,
         lastStored: lastStored ?? this.lastStored,
         lastPresent: lastPresent ?? this.lastPresent,
+        lastPresentIn: lastPresentIn ?? this.lastPresentIn,
+        // Like [message]: what a run is waiting for belongs to that run, so the
+        // next transition clears it unless it says otherwise.
+        indexingDone: indexingDone,
+        indexingTotal: indexingTotal,
       );
 
   /// The one line the settings screen and the app-bar tooltip show.
@@ -458,9 +519,14 @@ class CameraRollStatus {
         CameraRollPhase.unavailable =>
           message ?? "No photo library on this platform",
         CameraRollPhase.running => "Uploading ${done + 1} of $total...",
-        CameraRollPhase.waiting =>
-          "Failed: ${message ?? "unknown reason"} - retrying at "
-              "${nextAttempt == null ? "the next attempt" : _time(nextAttempt!)}",
+        // A run that waits for the index has not failed: it is postponed, and
+        // the sentence is the server's own (issue #118).
+        CameraRollPhase.waiting => indexing
+            ? "${message ?? indexingNotice(indexingDone!, indexingTotal!)} "
+                "Waiting until "
+                "${nextAttempt == null ? "the next attempt" : _time(nextAttempt!)}."
+            : "Failed: ${message ?? "unknown reason"} - retrying at "
+                "${nextAttempt == null ? "the next attempt" : _time(nextAttempt!)}",
         CameraRollPhase.failed => "Failed: ${message ?? "unknown reason"}",
         CameraRollPhase.idle => _idleLine,
       };
@@ -475,7 +541,8 @@ class CameraRollStatus {
       return "Nothing new, checked at ${_time(when)}.";
     }
     return "Synced $count ${count == 1 ? "photo" : "photos"} at "
-        "${_time(when)} ($lastStored uploaded, $lastPresent already there).";
+        "${_time(when)} ($lastStored uploaded, $lastPresent already there)."
+        "${presentInNotice(lastPresentIn)}";
   }
 
   static String _time(DateTime when) {
@@ -993,15 +1060,15 @@ class CameraRollSync extends ChangeNotifier {
     // their own space: an app that may not look at any photo — or that is
     // watching none — must not leave an empty album behind on the server.
     if (sources.isEmpty) {
-      _succeed(0, 0);
+      _succeed(0, 0, const []);
       return;
     }
     if (!await _ensureInbox(client)) {
       return;
     }
-
     var stored = 0;
     var present = 0;
+    var presentIn = <String>[];
     var transferred = 0;
     // An item that lies in two watched albums is uploaded once; the mark of
     // both albums still moves past it, see below.
@@ -1072,6 +1139,11 @@ class CameraRollSync extends ChangeNotifier {
               summary = await client.uploadNew(
                 _config.inbox,
                 [for (var item in fresh) item.upload],
+                // While the server is still reading the library it cannot say
+                // that a photo is already in some album, and a first sync over
+                // an existing library would upload what is there. The run
+                // waits -- unless the user said otherwise, see issue #118.
+                waitForIndex: !_config.syncWhileIndexing,
               );
             } on VAlbumException catch (error) {
               _fail(error.message);
@@ -1085,8 +1157,18 @@ class CameraRollSync extends ChangeNotifier {
               );
               return;
             }
+            if (summary.deferred) {
+              var indexed = summary.indexed!;
+              _defer(indexed.done, indexed.total);
+              return;
+            }
             stored += summary.stored;
             present += summary.present;
+            for (var where in summary.presentIn) {
+              if (!presentIn.contains(where)) {
+                presentIn.add(where);
+              }
+            }
             uploaded.addAll([for (var item in fresh) item.id]);
           }
           transferred += batch.length;
@@ -1103,7 +1185,7 @@ class CameraRollSync extends ChangeNotifier {
         }
       }
     }
-    _succeed(stored, present);
+    _succeed(stored, present, presentIn);
   }
 
   /// The device albums this run scans, see [CameraRollConfig.sources].
@@ -1229,7 +1311,7 @@ class CameraRollSync extends ChangeNotifier {
     ));
   }
 
-  void _succeed(int stored, int present) {
+  void _succeed(int stored, int present, List<String> presentIn) {
     _attempt = 0;
     _retryTimer?.cancel();
     _retryTimer = null;
@@ -1238,7 +1320,47 @@ class CameraRollSync extends ChangeNotifier {
       lastSuccess: clock(),
       lastStored: stored,
       lastPresent: present,
+      lastPresentIn: presentIn,
     ));
+  }
+
+  /// Postpones the run until the server has finished indexing (issue #118).
+  ///
+  /// Not a failure: nothing went wrong, the server is simply not ready to
+  /// answer the one question this sync rests on. It is retried like a failure
+  /// — the index finishes on its own — and the attempt counter is left alone,
+  /// so a real failure afterwards still starts its backoff at the beginning.
+  void _defer(int done, int total) {
+    var delay = nextDelay;
+    _retryTimer?.cancel();
+    _retryTimer = timerFactory(delay, () {
+      _retryTimer = null;
+      trigger();
+    });
+    _publish(_status.copyWith(
+      phase: CameraRollPhase.waiting,
+      message: indexingNotice(done, total),
+      nextAttempt: clock().add(delay),
+      done: 0,
+      total: 0,
+      indexingDone: done,
+      indexingTotal: total,
+    ));
+  }
+
+  /// Lets the runs of this device go ahead while the server indexes, or not,
+  /// see [CameraRollConfig.syncWhileIndexing] and issue #118.
+  ///
+  /// Turning it on starts a run at once: it is the answer to a section that is
+  /// saying the sync is waiting.
+  Future<void> setSyncWhileIndexing(bool value) async {
+    if (_config.syncWhileIndexing == value) {
+      return;
+    }
+    await _store(_config.copyWith(syncWhileIndexing: value));
+    if (value && _config.enabled) {
+      trigger();
+    }
   }
 
   /// Ends the run with a reason, and schedules the next attempt.

@@ -1,7 +1,7 @@
 package de.haumacher.imageServer.shared.model;
 
 /**
- * A content of an {@link UploadCheckResult} that the folder already holds.
+ * A content of an {@link UploadCheckResult} that the space already holds.
  */
 public class PresentFile extends de.haumacher.msgbuf.data.AbstractDataObject {
 
@@ -55,7 +55,13 @@ public class PresentFile extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The name of the file in the folder that has this content.
+	 * Where the content is, relative to the root of the caller's space.
+	 *
+	 * <p>
+	 * A bare file name when the addressed folder itself holds the content, exactly as before issue
+	 * #118; a path with <code>/</code> as separator (<code>2020/Trip/IMG_1.jpg</code>) when it
+	 * lies elsewhere in the space. The client only shows it — nothing is addressed by it.
+	 * </p>
 	 */
 	public final String getName() {
 		return _name;

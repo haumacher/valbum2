@@ -17,6 +17,7 @@ import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.shared.util.UpdateTransient;
 import de.haumacher.imageServer.upload.HashCache;
+import de.haumacher.imageServer.upload.HashIndex;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.WriterAdapter;
 import jakarta.servlet.http.HttpServletResponse;
@@ -30,6 +31,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -174,6 +176,15 @@ public class MoveService {
 		return "The target folder already holds this photo as '" + existing + "'; the file was set aside in '"
 			+ DUPLICATES_PATH + "'.";
 	}
+
+	/** The message of a photo the space holds elsewhere too, see the sweep of issue #118. */
+	public static String duplicateElsewhere(String where) {
+		return "This photo is already in the library as '" + where + "'; the file was set aside in '"
+			+ DUPLICATES_PATH + "'.";
+	}
+
+	/** The message a sweep of a folder that does not exist is refused with, see issue #118. */
+	public static final String SWEEP_MISSING = "The album to look through does not exist.";
 
 	/** The message of a group some of whose images the target folder already held. */
 	public static String membersSetAside(int count) {
@@ -970,6 +981,89 @@ public class MoveService {
 
 	private static MoveOutcome outcome(String name, String newName, String message) {
 		return MoveOutcome.create().setName(name).setNewName(newName).setMessage(message);
+	}
+
+	/**
+	 * Sets aside every photo of the given album whose contents lie elsewhere in the space, see
+	 * issue #118.
+	 *
+	 * <p>
+	 * The sweep that repairs what slipped through while the hash index was still being built: the
+	 * album is hashed (which fills its {@value HashCache#FILE_NAME} as any other look at it
+	 * would), every photo whose hash the index finds in <em>another</em> folder of the space is
+	 * renamed into {@code .valbum/}{@value #DUPLICATES_FOLDER} by the very mechanism a colliding
+	 * move uses, and the album's sidecar loses that part. Nothing is deleted and no other copy is
+	 * touched: what the album loses is the second copy, and the answer says where the first one is.
+	 * </p>
+	 *
+	 * <p>
+	 * Two identical photos <em>within</em> this one album are not duplicates in this sense and
+	 * stay: the question this answers is whether the library already has the photo somewhere else.
+	 * </p>
+	 *
+	 * @param index
+	 *        The hash index of the space, see {@link HashIndex}. What it has not indexed yet, it
+	 *        cannot find — the caller is told how far it has got by
+	 *        <code>?action=check</code>.
+	 */
+	public MoveResult setAsideDuplicates(PathInfo folder, HashIndex index) throws MoveRefused, IOException {
+		File dir = folder.toFile();
+		if (!dir.isDirectory()) {
+			throw new MoveRefused(HttpServletResponse.SC_NOT_FOUND, SWEEP_MISSING);
+		}
+		Path space = folder.getBasePath();
+		String here = index.relative(dir);
+
+		AlbumInfo album = albumOf(folder);
+		UpdateTransient.updateTransient(album);
+
+		HashCache hashes = new HashCache(dir);
+		// The album is hashed here, once: a folder nobody ever uploaded to has no sidecar, and
+		// without one there is nothing to compare.
+		Map<String, String> hashByName = new LinkedHashMap<>(hashes.hashByName());
+
+		MoveResult result = MoveResult.create();
+		boolean changed = false;
+		try {
+			for (Map.Entry<String, String> entry : hashByName.entrySet()) {
+				String name = entry.getKey();
+				String hash = entry.getValue();
+				String elsewhere = index.elsewhere(hash, here);
+				if (elsewhere == null) {
+					continue;
+				}
+				File file = new File(dir, name);
+				if (!file.isFile()) {
+					continue;
+				}
+				try {
+					File aside = setAside(space, hash, name);
+					Files.move(file.toPath(), aside.toPath());
+					ImagePart image = album.getImageByName().get(name);
+					if (image != null) {
+						detach(album, image);
+					}
+					changed = true;
+					LOG.info("The library already holds '" + file + "' as '" + elsewhere + "'; set aside as '"
+						+ aside + "'.");
+					result.addOutcome(outcome(name, "", duplicateElsewhere(elsewhere)));
+				} catch (IOException ex) {
+					LOG.log(Level.WARNING, "Cannot set '" + name + "' aside: " + ex.getMessage(), ex);
+					result.addOutcome(outcome(name, "", failed(ex.getMessage())));
+				}
+			}
+		} finally {
+			if (changed) {
+				repairIndexPicture(album);
+				UpdateTransient.updateTransient(album);
+				ImageServlet.storeSidecar(dir, json(album));
+				// The hashes of the files that left go with them.
+				hashes.refresh();
+				hashes.flush();
+				_cache.invalidateTree(folder);
+			}
+		}
+		return result;
 	}
 
 	/**
