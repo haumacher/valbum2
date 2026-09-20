@@ -1426,6 +1426,15 @@ class AlbumContentState extends State<AlbumContent>
           ),
           const PopupMenuDivider(),
           menuItem(Icons.update, "Reload", (_) => reloadShown()),
+          // Whoever may change this album may have the photos out of it that
+          // the library already holds somewhere else, see issue #118.
+          if (mayEditAlbum)
+            keyedMenuItem(
+              const Key("find-duplicates"),
+              Icons.copy_all,
+              "Find duplicates...",
+              (_) => findDuplicates(),
+            ),
           // Only the administrator, who owns the server's own files: the
           // entry a non-admin may not use is not offered at all, see #98.
           if (mayRefreshCache(context))
@@ -1639,6 +1648,66 @@ class AlbumContentState extends State<AlbumContent>
     // dimensions for a part whose preview it regenerates.
     widget.albumState.navigator.delegate.forget(widget.albumState.path);
     widget.albumState.reload();
+  }
+
+  /// Sets aside the photos of this album that the library holds elsewhere too,
+  /// the app half of the sweep of issue #118.
+  ///
+  /// Asked first, because it takes photos out of the album the person is
+  /// looking at. Nothing is deleted — every duplicate is renamed into the
+  /// space's own folder — and the confirmation says so, because "find
+  /// duplicates" must not read as "delete duplicates".
+  Future<void> findDuplicates() async {
+    var confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key("find-duplicates-dialog"),
+        title: const Text("Find duplicates"),
+        content: const Text(
+          "Every photo of this album that the library already holds somewhere "
+          "else is taken out of the album and kept aside in the library's own "
+          "folder. Nothing is deleted, and the other copy stays where it is.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            key: const Key("find-duplicates-confirm"),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text("Find duplicates"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    MoveResult answer;
+    try {
+      answer = await client.findDuplicates(widget.albumState.path);
+    } catch (error) {
+      if (mounted) {
+        // The server's own reason -- a refusal speaks, see issue #49.
+        showMessage(error is VAlbumException ? error.message : "$error");
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    var count = answer.outcomes.length;
+    showMessage(count == 0
+        ? "No photo of this album is anywhere else in the library."
+        : "$count ${count == 1 ? "photo was" : "photos were"} set aside; "
+            "the copies that stay are elsewhere in the library.");
+    if (count > 0) {
+      widget.albumState.navigator.delegate.forget(widget.albumState.path);
+      widget.albumState.reload();
+    }
   }
 
   /// Opens the share-link dialog on this album, see issue #51.

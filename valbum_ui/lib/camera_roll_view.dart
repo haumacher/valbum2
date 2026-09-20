@@ -41,6 +41,10 @@ const Key cameraRollChooseKey = Key("cameraRoll.choose");
 /// The key of the "Sync now" button.
 const Key cameraRollSyncNowKey = Key("cameraRoll.syncNow");
 
+/// The key of the "Sync anyway" button offered while the server is still
+/// building its hash index (issue #118).
+const Key cameraRollSyncAnywayKey = Key("cameraRoll.syncAnyway");
+
 /// The key of the "Stop" button shown while a run transfers.
 const Key cameraRollStopKey = Key("cameraRoll.stop");
 
@@ -243,6 +247,16 @@ class _CameraRollSectionState extends State<CameraRollSection> {
                 onPressed: sync.stop,
                 icon: const Icon(Icons.stop),
                 label: const Text("Stop"),
+              ),
+            // The run is waiting for the server to finish reading the library;
+            // whoever would rather have the photos now is offered the choice,
+            // and it is remembered (issue #118).
+            if (status.indexing && !status.running)
+              OutlinedButton.icon(
+                key: cameraRollSyncAnywayKey,
+                onPressed: () => sync.setSyncWhileIndexing(true),
+                icon: const Icon(Icons.play_arrow),
+                label: const Text("Sync anyway"),
               ),
           ],
         ),

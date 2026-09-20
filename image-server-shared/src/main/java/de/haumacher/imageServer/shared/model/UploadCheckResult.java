@@ -1,7 +1,14 @@
 package de.haumacher.imageServer.shared.model;
 
 /**
- * Answer to an {@link UploadCheck} naming those of the asked hashes that the folder already holds.
+ * Answer to an {@link UploadCheck} naming those of the asked hashes the space already holds.
+ *
+ * <p>
+ * Since issue #118 the answer is not limited to the addressed folder any more: a photo that was
+ * synced into the inbox and then moved into an album is still <em>present</em>, wherever it went,
+ * see {@link PresentFile#getName()}. A contribution through a share link is the exception and stays
+ * confined to the shared folder: a link sees no more of the space than its folder.
+ * </p>
  */
 public class UploadCheckResult extends de.haumacher.msgbuf.data.AbstractDataObject {
 
@@ -18,7 +25,12 @@ public class UploadCheckResult extends de.haumacher.msgbuf.data.AbstractDataObje
 	/** @see #getPresent() */
 	private static final String PRESENT__PROP = "present";
 
+	/** @see #getIndexed() */
+	private static final String INDEXED__PROP = "indexed";
+
 	private final java.util.List<de.haumacher.imageServer.shared.model.PresentFile> _present = new java.util.ArrayList<>();
+
+	private de.haumacher.imageServer.shared.model.IndexProgress _indexed = null;
 
 	/**
 	 * Creates a {@link UploadCheckResult} instance.
@@ -71,6 +83,41 @@ public class UploadCheckResult extends de.haumacher.msgbuf.data.AbstractDataObje
 		_present.remove(value);
 	}
 
+	/**
+	 * How far the space's hash index has got, see issue #118; <code>null</code> where the server
+	 * keeps no index (an older build, or a share-link caller, which is answered from the shared
+	 * folder alone).
+	 *
+	 * <p>
+	 * A client that syncs a camera roll reads it before it transfers anything: while the index is
+	 * incomplete, a photo that lies in a not-yet-indexed album is not recognised and would be
+	 * uploaded a second time.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.IndexProgress getIndexed() {
+		return _indexed;
+	}
+
+	/**
+	 * @see #getIndexed()
+	 */
+	public de.haumacher.imageServer.shared.model.UploadCheckResult setIndexed(de.haumacher.imageServer.shared.model.IndexProgress value) {
+		internalSetIndexed(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getIndexed()} without chain call utility. */
+	protected final void internalSetIndexed(de.haumacher.imageServer.shared.model.IndexProgress value) {
+		_indexed = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getIndexed()} has a value.
+	 */
+	public final boolean hasIndexed() {
+		return _indexed != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.UploadCheckResult readUploadCheckResult(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.UploadCheckResult result = new de.haumacher.imageServer.shared.model.UploadCheckResult();
@@ -92,6 +139,10 @@ public class UploadCheckResult extends de.haumacher.msgbuf.data.AbstractDataObje
 			x.writeTo(out);
 		}
 		out.endArray();
+		if (hasIndexed()) {
+			out.name(INDEXED__PROP);
+			getIndexed().writeTo(out);
+		}
 	}
 
 	@Override
@@ -105,6 +156,7 @@ public class UploadCheckResult extends de.haumacher.msgbuf.data.AbstractDataObje
 				in.endArray();
 			}
 			break;
+			case INDEXED__PROP: setIndexed(de.haumacher.imageServer.shared.model.IndexProgress.readIndexProgress(in)); break;
 			default: super.readField(in, field);
 		}
 	}

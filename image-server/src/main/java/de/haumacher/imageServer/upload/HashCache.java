@@ -322,6 +322,28 @@ public class HashCache {
 		}
 		store();
 		_dirty = false;
+
+		// This is the one place a hash sidecar is ever written — the upload, the move and the
+		// lazy fill of a check all end here — so it is the one place the space-wide index of
+		// issue #118 has to hear about, and no writer has to know that the index exists.
+		HashIndex.sidecarWritten(_folder);
+	}
+
+	/**
+	 * The hashes this sidecar records, by file name, exactly as they stand.
+	 *
+	 * <p>
+	 * The cheap read of {@link #hashByName()}: nothing is opened, nothing is hashed and nothing is
+	 * written, so a folder can be taken into the index of issue #118 for the price of one small
+	 * JSON file. A file the sidecar does not mention is simply not in the result.
+	 * </p>
+	 */
+	public Map<String, String> storedHashByName() {
+		Map<String, String> result = new LinkedHashMap<>();
+		for (Map.Entry<String, Entry> entry : _entries.entrySet()) {
+			result.put(entry.getKey(), entry.getValue()._sha256);
+		}
+		return Collections.unmodifiableMap(result);
 	}
 
 	/** The SHA-256 hash of the given file's contents, in lower-case hex. */

@@ -2200,14 +2200,33 @@ class ContentHash extends _JsonObject {
 
 }
 
-///  Answer to an {@link UploadCheck} naming those of the asked hashes that the folder already holds.
+///  Answer to an {@link UploadCheck} naming those of the asked hashes the space already holds.
+/// 
+///  <p>
+///  Since issue #118 the answer is not limited to the addressed folder any more: a photo that was
+///  synced into the inbox and then moved into an album is still <em>present</em>, wherever it went,
+///  see {@link PresentFile#name}. A contribution through a share link is the exception and stays
+///  confined to the shared folder: a link sees no more of the space than its folder.
+///  </p>
 class UploadCheckResult extends _JsonObject {
 	///  The asked contents that are already present, in the order they were asked for.
 	List<PresentFile> present;
 
+	///  How far the space's hash index has got, see issue #118; <code>null</code> where the server
+	///  keeps no index (an older build, or a share-link caller, which is answered from the shared
+	///  folder alone).
+	/// 
+	///  <p>
+	///  A client that syncs a camera roll reads it before it transfers anything: while the index is
+	///  incomplete, a photo that lies in a not-yet-indexed album is not recognised and would be
+	///  uploaded a second time.
+	///  </p>
+	IndexProgress? indexed;
+
 	/// Creates a UploadCheckResult.
 	UploadCheckResult({
 			this.present = const [], 
+			this.indexed, 
 	});
 
 	/// Parses a UploadCheckResult from a string source.
@@ -2241,6 +2260,10 @@ class UploadCheckResult extends _JsonObject {
 				}
 				break;
 			}
+			case "indexed": {
+				indexed = json.tryNull() ? null : IndexProgress.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -2255,16 +2278,92 @@ class UploadCheckResult extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		var _indexed = indexed;
+		if (_indexed != null) {
+			json.addKey("indexed");
+			_indexed.writeContent(json);
+		}
 	}
 
 }
 
-///  A content of an {@link UploadCheckResult} that the folder already holds.
+///  How far the hash index of a space has got, see {@link UploadCheckResult#indexed} and issue #118.
+/// 
+///  <p>
+///  Folders, not photos: the index walks the space one folder at a time, and a folder is the unit a
+///  person recognises in a progress line. {@link #done} equals {@link #total} exactly when the index
+///  is complete; while the index has not even said how much there is to do, {@link #total} is one
+///  more than {@link #done}, so that an incomplete index never reads as a complete one.
+///  </p>
+class IndexProgress extends _JsonObject {
+	///  The number of folders that are indexed.
+	int done;
+
+	///  The number of folders holding images; never less than {@link #done}.
+	int total;
+
+	/// Creates a IndexProgress.
+	IndexProgress({
+			this.done = 0, 
+			this.total = 0, 
+	});
+
+	/// Parses a IndexProgress from a string source.
+	static IndexProgress? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a IndexProgress instance from the given reader.
+	static IndexProgress read(JsonReader json) {
+		IndexProgress result = IndexProgress();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "IndexProgress";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "done": {
+				done = json.expectInt();
+				break;
+			}
+			case "total": {
+				total = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("done");
+		json.addNumber(done);
+
+		json.addKey("total");
+		json.addNumber(total);
+	}
+
+}
+
+///  A content of an {@link UploadCheckResult} that the space already holds.
 class PresentFile extends _JsonObject {
 	///  The SHA-256 hash (lower-case hex) that was asked for.
 	String hash;
 
-	///  The name of the file in the folder that has this content.
+	///  Where the content is, relative to the root of the caller's space.
+	/// 
+	///  <p>
+	///  A bare file name when the addressed folder itself holds the content, exactly as before issue
+	///  #118; a path with <code>/</code> as separator (<code>2020/Trip/IMG_1.jpg</code>) when it
+	///  lies elsewhere in the space. The client only shows it — nothing is addressed by it.
+	///  </p>
 	String name;
 
 	/// Creates a PresentFile.

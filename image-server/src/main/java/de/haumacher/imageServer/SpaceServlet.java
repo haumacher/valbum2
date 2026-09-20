@@ -108,6 +108,20 @@ public class SpaceServlet extends HttpServlet {
 		return _data.get(segment);
 	}
 
+	/**
+	 * Starts the hash indexing of every space this server hosts, see issue #118.
+	 *
+	 * <p>
+	 * One index, one thread and one file per space: what a space holds is never looked up in
+	 * another's.
+	 * </p>
+	 */
+	public void startIndexing() {
+		for (ImageServlet servlet : _data.values()) {
+			servlet.startIndexing();
+		}
+	}
+
 	@Override
 	public void init(ServletConfig config) throws ServletException {
 		super.init(config);
