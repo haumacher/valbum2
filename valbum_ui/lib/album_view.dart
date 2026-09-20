@@ -965,10 +965,11 @@ class AlbumContentState extends State<AlbumContent>
       showMessage("Save or discard your changes first");
       return;
     }
-    var names = [
+    var selected = [
       for (var part in widget.album.parts)
-        if (isSelected(part) && part is AbstractImage) part.thumbnailName,
+        if (isSelected(part) && part is AbstractImage) part,
     ];
+    var names = [for (var part in selected) part.thumbnailName];
     if (names.isEmpty) {
       showMessage("A heading cannot be moved.");
       return;
@@ -980,6 +981,9 @@ class AlbumContentState extends State<AlbumContent>
       source: widget.albumState.path,
       names: names,
       subject: ImageSubject(names.length),
+      // An album created in the picker is dated by the photos that go into
+      // it, see issue #114.
+      albumDate: newAlbumDay(selected),
       onMoved: () {
         if (!mounted) {
           return;

@@ -399,6 +399,11 @@ void main() {
             return json('{"outcomes":[{"name":"a.jpg","newName":"a.jpg",'
                 '"message":""}]}');
           }
+          // An image goes into an album, so the picker has to reach one,
+          // see issue #113.
+          if (pathOf(request) == "/valbum/data/2020 Trip/") {
+            return json(fixture("album-target.json"));
+          }
           return json(fixture("listing-move.json"));
         },
         dataUrl: dataUrl,
@@ -413,7 +418,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const Key("folder-picker")), findsOneWidget);
 
-        await tester.tap(find.byKey(const Key("picker-folder-2021")));
+        await tester.tap(find.byKey(const Key("picker-folder-2020 Trip")));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key("picker-confirm")));
         await tester.pumpAndSettle();
@@ -425,7 +430,7 @@ void main() {
       ];
       expect(moves, hasLength(1));
       expect(pathOf(moves.single), "/valbum/data/album/");
-      expect(moves.single.body, contains('"target":"2021"'));
+      expect(moves.single.body, contains('"target":"2020 Trip"'));
       expect(moves.single.body, contains('"name":"a.jpg"'));
 
       // The picker is gone and the photo is no longer where it was: the
@@ -445,6 +450,9 @@ void main() {
           if (request.url.queryParameters["action"] == "move") {
             return json('["ErrorInfo",{"message":"$refusal"}]', status: 403);
           }
+          if (pathOf(request) == "/valbum/data/2020 Trip/") {
+            return json(fixture("album-target.json"));
+          }
           return json(fixture("listing-move.json"));
         },
         dataUrl: dataUrl,
@@ -455,6 +463,8 @@ void main() {
 
       await withFakeImageHttp(() async {
         await tester.tap(takeBack);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key("picker-folder-2020 Trip")));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key("picker-confirm")));
         await tester.pumpAndSettle();

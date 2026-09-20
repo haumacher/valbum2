@@ -746,7 +746,14 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
 }
 
 class CreateAlbumDialog extends StatefulWidget {
-  const CreateAlbumDialog({super.key});
+  /// The day the album is proposed with, `null` for none — the field is then
+  /// empty and a day has to be picked, as it always had to be here.
+  ///
+  /// The move dialog fills it with the day the selected photos were taken on,
+  /// see issue #114 and `moveWithPicker`.
+  final DateTime? initialDate;
+
+  const CreateAlbumDialog({super.key, this.initialDate});
 
   @override
   State<StatefulWidget> createState() => CreateAlbumDialogState();
@@ -787,7 +794,11 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
                 mode: DateTimeFieldPickerMode.date,
                 firstDate: DateTime(1900),
                 lastDate: now,
-                initialDate: now,
+                // The day proposed stands in the field, so that it is the
+                // album's date without anything further being done — and the
+                // calendar opens on it when it is changed, see issue #114.
+                initialValue: widget.initialDate,
+                initialDate: widget.initialDate ?? now,
                 onSaved: (value) => albumDate = value,
                 dateFormat: DateFormat("yyyy-MM-dd"),
                 validator: (value) {

@@ -1114,6 +1114,9 @@ class ImageViewState extends State<ImageView>
       source: path,
       names: [part.name],
       subject: const ImageSubject(1),
+      // An album created in the picker is dated by the photo that goes into
+      // it, see issue #114.
+      albumDate: newAlbumDay([part]),
       onMoved: () {
         // The photo is no longer in this album, so the viewer showing it has
         // nothing left to show: back to the album, which is fetched again.

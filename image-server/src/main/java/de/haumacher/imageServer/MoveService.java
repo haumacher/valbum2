@@ -146,6 +146,20 @@ public class MoveService {
 		return "'" + name + "' cannot be moved: the target folder is a folder of folders, not an album.";
 	}
 
+	/**
+	 * The message an album or a folder is refused with whose target folder is an album.
+	 *
+	 * <p>
+	 * The mirror image of {@link #notAnAlbum(String)}, see issue #113: an album is a directory like
+	 * any other on disk, so nothing but this stops a folder from being nested in one — and the
+	 * model has no place for a folder inside an album, so it would be invisible from that moment
+	 * on.
+	 * </p>
+	 */
+	public static String notAFolder(String name) {
+		return "'" + name + "' cannot be moved: the target is an album, and an album holds no folders.";
+	}
+
 	/** The message of an image whose contents the target folder already held. */
 	public static String duplicate(String existing) {
 		return "The target folder already holds this photo as '" + existing + "'; the file was set aside in '"
@@ -331,13 +345,16 @@ public class MoveService {
 		// sidecar is the owner's statement and this server does not overrule it.
 		FolderResource targetSidecar = ResourceCache.sidecar(targetFolder);
 		boolean targetTakesImages = !(targetSidecar instanceof ListingInfo);
+		// The mirror image, see issue #113: a folder that describes itself as an album has no place
+		// for a folder, and a folder nested in one could never be addressed again.
+		boolean targetTakesFolders = !(targetSidecar instanceof AlbumInfo);
 
 		// What lands in a folder is filed by the folder's rule, see issue #48. Only folders are:
 		// an image lands in an album, never in a folder of folders, and is refused above.
 		PlacementRule rule = PlacementRule.of(targetSidecar);
 
-		List<Entry> entries = classify(sourceFolder, targetFolder, sourceAlbum, targetTakesImages, rule,
-			target.isRoot(), names);
+		List<Entry> entries = classify(sourceFolder, targetFolder, sourceAlbum, targetTakesImages,
+			targetTakesFolders, rule, target.isRoot(), names);
 
 		MoveResult result = MoveResult.create();
 		HashCache sourceHashes = new HashCache(sourceFolder);
@@ -416,8 +433,8 @@ public class MoveService {
 	 * </p>
 	 */
 	private List<Entry> classify(File sourceFolder, File targetFolder, AlbumInfo sourceAlbum,
-			boolean targetTakesImages, PlacementRule rule, boolean targetIsSpaceRoot,
-			List<String> names) {
+			boolean targetTakesImages, boolean targetTakesFolders, PlacementRule rule,
+			boolean targetIsSpaceRoot, List<String> names) {
 		List<Entry> result = new ArrayList<>(names.size());
 		Set<String> seen = new HashSet<>();
 		for (String name : names) {
@@ -446,6 +463,12 @@ public class MoveService {
 			}
 
 			if (file.isDirectory()) {
+				if (!targetTakesFolders) {
+					// Refused before anything is renamed, exactly as an image is refused a folder
+					// of folders, see issue #113.
+					entry._refusal = notAFolder(name);
+					continue;
+				}
 				entry._folder = file;
 				Entry destination = destination(rule, targetFolder, file);
 				entry._destination = destination._destination;

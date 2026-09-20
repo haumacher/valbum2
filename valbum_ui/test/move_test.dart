@@ -203,13 +203,13 @@ void main() {
 
         await openPicker(tester);
         expect(find.text("Move 1 image to the top level"), findsOneWidget);
-        await enterFolder(tester, "2021");
+        await enterFolder(tester, "2020 Trip");
         await confirmPicker(tester);
       });
 
       var post = requests.singleWhere((r) => r.method == "POST");
-      expect(post.body, '{"target":"2021","names":[{"name":"g1.jpg"}]}');
-      expect(find.text("Moved 1 image to '2021'."), findsOneWidget);
+      expect(post.body, '{"target":"2020 Trip","names":[{"name":"g1.jpg"}]}');
+      expect(find.text("Moved 1 image to '2020 Trip'."), findsOneWidget);
     });
 
     testWidgets('shows every refusal of the server, and still reloads',
@@ -229,12 +229,12 @@ void main() {
         await pumpAlbumEditMode(tester, client);
         await longPressTile(tester, "b.jpg");
         await openPicker(tester);
-        await enterFolder(tester, "2021");
+        await enterFolder(tester, "2020 Trip");
         await confirmPicker(tester);
 
         // A dialog, not a snack bar: a refusal must not scroll past.
         expect(find.byKey(const Key("move-outcome")), findsOneWidget);
-        expect(find.text("Moved 1 image to '2021'."), findsOneWidget);
+        expect(find.text("Moved 1 image to '2020 Trip'."), findsOneWidget);
         expect(
           find.text("'b.jpg': already exists in the target folder."),
           findsOneWidget,
@@ -267,7 +267,7 @@ void main() {
       await withFakeImageHttp(() async {
         await pumpAlbumEditMode(tester, client);
         await openPicker(tester);
-        await enterFolder(tester, "2021");
+        await enterFolder(tester, "2020 Trip");
         await confirmPicker(tester);
 
         expect(
@@ -298,8 +298,7 @@ void main() {
       expect(requests.where((r) => r.method != "GET"), isEmpty);
     });
 
-    testWidgets('descends and comes back up; the root posts an empty target',
-        (tester) async {
+    testWidgets('descends and comes back up', (tester) async {
       var requests = <http.Request>[];
       var client = recordingClient(
         (request) => request.method == "POST"
@@ -322,12 +321,13 @@ void main() {
         expect(find.text("Top level"), findsOneWidget);
         expect(find.byKey(const Key("picker-folder-2021")), findsOneWidget);
 
+        await enterFolder(tester, "2020 Trip");
         await confirmPicker(tester);
       });
 
       var post = requests.singleWhere((r) => r.method == "POST");
-      expect(post.body, '{"target":"","names":[{"name":"a.jpg"}]}');
-      expect(find.text("Moved 1 image to the top level."), findsOneWidget);
+      expect(post.body, '{"target":"2020 Trip","names":[{"name":"a.jpg"}]}');
+      expect(find.text("Moved 1 image to '2020 Trip'."), findsOneWidget);
     });
 
     testWidgets('shows a loading failure inside the picker', (tester) async {
@@ -419,6 +419,45 @@ void main() {
         contains("/valbum/data/"),
       );
       expect(find.text("Moved '2020 Trip' to '2021'."), findsOneWidget);
+    });
+
+    testWidgets('the root posts an empty target', (tester) async {
+      var requests = <http.Request>[];
+      var client = recordingClient(
+        (request) => request.method == "POST"
+            ? json(movedAll(["Summer"]))
+            : treeAnswer(request),
+        requests,
+      );
+
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(VAlbumApp(
+          client: client,
+          initialRoute: const ListingOrAlbumRoute(["2021"]),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.longPress(
+          find
+              .ancestor(
+                of: find.text("Summer"),
+                matching: find.byType(GestureDetector),
+              )
+              .first,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text("Move to…"));
+        await tester.pumpAndSettle();
+
+        // The picker opens at the parent of the folder that moves: the root,
+        // a folder of folders, which is where a folder may go.
+        expect(find.text("Top level"), findsOneWidget);
+        await confirmPicker(tester);
+      });
+
+      var post = requests.singleWhere((r) => r.method == "POST");
+      expect(post.body, '{"target":"","names":[{"name":"Summer"}]}');
+      expect(find.text("Moved 'Summer' to the top level."), findsOneWidget);
     });
   });
 }

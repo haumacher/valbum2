@@ -364,6 +364,50 @@ public class TestImageServletMove extends TestCase {
 		assertTrue("The sidecar of the target must be untouched.", resource("B") instanceof ListingInfo);
 	}
 
+	public void testAnAlbumIsNotMovedIntoAnAlbum() throws Exception {
+		image("A/2020 Trip/a.jpg", 8, 6, Color.RED);
+		sidecar("A", "[\"ListingInfo\",{\"title\":\"A\"}]");
+		sidecar("A/2020 Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("a.jpg", "") + "]}]");
+		image("B/b.jpg", 8, 6, Color.GREEN);
+		sidecar("B", "[\"AlbumInfo\",{\"title\":\"B\",\"parts\":[" + part("b.jpg", "") + "]}]");
+
+		MoveResult result = move("/A/", "B", "2020 Trip");
+
+		assertEquals(MoveService.notAFolder("2020 Trip"), result.getOutcomes().get(0).getMessage());
+		assertEquals("Nothing may have been renamed.", "", result.getOutcomes().get(0).getNewName());
+		assertTrue("The folder must still be where it was.", _base.resolve("A/2020 Trip/a.jpg").toFile().exists());
+		assertFalse("Nothing may have arrived at the target.", _base.resolve("B/2020 Trip").toFile().exists());
+		assertEquals("The target album must be untouched.", Collections.singletonList("b.jpg"),
+			imageParts(album("B")));
+	}
+
+	public void testAFolderOfFoldersIsNotMovedIntoAnAlbum() throws Exception {
+		Files.createDirectories(_base.resolve("A/2021"));
+		sidecar("A", "[\"ListingInfo\",{\"title\":\"A\"}]");
+		sidecar("A/2021", "[\"ListingInfo\",{\"title\":\"2021\"}]");
+		image("B/b.jpg", 8, 6, Color.GREEN);
+		sidecar("B", "[\"AlbumInfo\",{\"title\":\"B\",\"parts\":[" + part("b.jpg", "") + "]}]");
+
+		MoveResult result = move("/A/", "B", "2021");
+
+		assertEquals(MoveService.notAFolder("2021"), result.getOutcomes().get(0).getMessage());
+		assertTrue("The folder must still be where it was.", _base.resolve("A/2021").toFile().isDirectory());
+		assertFalse("Nothing may have arrived at the target.", _base.resolve("B/2021").toFile().exists());
+	}
+
+	public void testAFolderStillMovesIntoAFolderOfFolders() throws Exception {
+		image("A/2020 Trip/a.jpg", 8, 6, Color.RED);
+		sidecar("A", "[\"ListingInfo\",{\"title\":\"A\"}]");
+		sidecar("A/2020 Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("a.jpg", "") + "]}]");
+		sidecar("B", "[\"ListingInfo\",{\"title\":\"B\"}]");
+
+		MoveResult result = move("/A/", "B", "2020 Trip");
+
+		assertEquals("", result.getOutcomes().get(0).getMessage());
+		assertEquals("2020 Trip", result.getOutcomes().get(0).getNewName());
+		assertTrue(_base.resolve("B/2020 Trip/a.jpg").toFile().exists());
+	}
+
 	public void testAMissingSourceRefusesTheWholeRequest() throws Exception {
 		Files.createDirectories(_base.resolve("B"));
 
@@ -741,6 +785,28 @@ public class TestImageServletMove extends TestCase {
 		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 		ImageIO.write(image, "jpg", buffer);
 		return buffer.toByteArray();
+	}
+
+	/** Probe for #113: one request naming an image and a folder, into an album — only the folder is refused. */
+	public void testProbeMixedRequestRefusesOnlyTheFolder() throws Exception {
+		image("A/a.jpg", 8, 6, Color.RED);
+		image("A/2020 Trip/t.jpg", 8, 6, Color.BLUE);
+		sidecar("A", "[\"AlbumInfo\",{\"title\":\"A\",\"parts\":[" + part("a.jpg", "") + "]}]");
+		sidecar("A/2020 Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("t.jpg", "") + "]}]");
+		image("B/b.jpg", 8, 6, Color.GREEN);
+		sidecar("B", "[\"AlbumInfo\",{\"title\":\"B\",\"parts\":[" + part("b.jpg", "") + "]}]");
+
+		MoveResult result = move("/A/", "B", "a.jpg", "2020 Trip");
+
+		assertEquals(2, result.getOutcomes().size());
+		assertEquals("", result.getOutcomes().get(0).getMessage());
+		assertEquals("a.jpg", result.getOutcomes().get(0).getNewName());
+		assertEquals(MoveService.notAFolder("2020 Trip"), result.getOutcomes().get(1).getMessage());
+		assertTrue(_base.resolve("B/a.jpg").toFile().exists());
+		assertTrue(_base.resolve("A/2020 Trip/t.jpg").toFile().exists());
+		assertFalse(_base.resolve("B/2020 Trip").toFile().exists());
+		assertEquals(java.util.Arrays.asList("b.jpg", "a.jpg"), imageParts(album("B")));
+		assertEquals(Collections.emptyList(), imageParts(album("A")));
 	}
 
 }
