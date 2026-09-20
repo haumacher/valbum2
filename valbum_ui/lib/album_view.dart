@@ -6,6 +6,7 @@ import 'dart:math';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -441,6 +442,18 @@ class AlbumContentState extends State<AlbumContent>
     if (_carried.isNotEmpty) {
       _dragScroller.update(event.position);
     }
+  }
+
+  /// Ends the gesture the album was watching, see [_trackPointer].
+  void _endGesture(PointerEvent event) {
+    if (event.pointer != _pointerId) {
+      return;
+    }
+    _pointerId = null;
+    _pointerPosition = null;
+    // Nothing is carried once the pointer is gone; a drag that reported its
+    // own end has cleared this already and [endCarry] is idempotent.
+    endCarry();
   }
 
   /// Lets the insert cursor follow the album scrolling under a resting pointer.
@@ -1459,73 +1472,51 @@ class AlbumContentState extends State<AlbumContent>
       child: Listener(
         onPointerDown: _trackPointer,
         onPointerMove: _trackPointer,
+        // The end of the gesture, whatever became of it: the rows of the
+        // album are built on demand since issue #111, so the tile a drag
+        // started on may have been disposed on the way (the edge scrolling of
+        // issue #42 can carry it three viewports away) — and a [Draggable]
+        // whose state is gone no longer reports the end of its drag. The
+        // pointer does, here, and the drop itself has been taken by then: the
+        // gesture arena and the drag avatar are served before this listener
+        // sees the release.
+        onPointerUp: _endGesture,
+        onPointerCancel: _endGesture,
         child: Stack(
           children: [
             LayoutBuilder(
               builder: (BuildContext context, BoxConstraints constraints) {
-                return SingleChildScrollView(
+                // The layout of the whole album — cheap, and it needs every
+                // image to decide the rows. Only the *widgets* are built on
+                // demand, see [buildSlivers] (issue #111).
+                var slivers = buildSlivers(
+                  self,
+                  constraints.maxWidth,
+                  hidesEverything: hidesEverything,
+                );
+                // Every sliver is given the full width of the page, whatever
+                // it holds: an album whose images the rating filter all hides
+                // keeps its title centred instead of collapsing it into the
+                // top left corner, which is what the [SizedBox] around the
+                // former [Column] was for, see issue #35.
+                return CustomScrollView(
                   scrollDirection: Axis.vertical,
-                  // The last row of tiles ends above the system navigation
-                  // bar instead of running under it, see issue #60.
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.paddingOf(context).bottom,
-                  ),
-                  // The full width, whatever the content: a `Column` shrinks to
-                  // its widest child, so an album whose images the rating filter
-                  // all hides used to collapse its title into the top left
-                  // corner, under the filter bar, see issue #35.
-                  child: SizedBox(
-                    width: constraints.maxWidth,
-                    child: Column(
-                      children: [
-                        if (!editMode)
-                          Padding(
-                            // Between the floating up button and the menu,
-                            // in the row they float in: the side padding keeps
-                            // a long title from running underneath them, the
-                            // top padding centres a single line on them.
-                            padding: const EdgeInsets.fromLTRB(64, 12, 64, 4),
-                            child: Text(
-                              self.title,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 28,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        if (!editMode)
-                          if (self.subTitle.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                              child: Text(
-                                self.subTitle,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                        // A filter that hides everything says so: an empty black
-                        // page would look like an empty album.
-                        if (hidesEverything)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-                            child: Text(
-                              "No image is rated $minRating or better - "
-                              "press + (or the + button) to show more.",
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ),
-                        ...buildParts(self, constraints.maxWidth),
-                      ],
+                  // The reasonable context around the visible range: the rows
+                  // within three viewport heights of it are built (and their
+                  // thumbnails therefore asked for), the rest follows as the
+                  // album is scrolled, see issue #111.
+                  scrollCacheExtent:
+                      const ScrollCacheExtent.viewport(contextViewports),
+                  slivers: [
+                    ...slivers,
+                    // The last row of tiles ends above the system navigation
+                    // bar instead of running under it, see issue #60.
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: MediaQuery.paddingOf(context).bottom,
+                      ),
                     ),
-                  ),
+                  ],
                 );
               },
             ),
@@ -1572,15 +1563,86 @@ class AlbumContentState extends State<AlbumContent>
     return KeyEventResult.ignored;
   }
 
-  /// Renders the album parts: each run of images is laid out as a block of
-  /// rows, headings separate those blocks.
+  /// The album as the slivers of its scroll view: the title, the headings
+  /// and, between them, one list of the rows of each block of images.
   ///
-  /// Images whose rating is below [minRating] are left out, headings are
-  /// always shown.
-  List<Widget> buildParts(AlbumInfo self, double maxWidth) {
+  /// Each run of images is laid out as a block of rows, headings separate
+  /// those blocks; images whose rating is below [minRating] are left out,
+  /// headings are always shown.
+  ///
+  /// The layout itself is computed here, for the whole album: it is cheap,
+  /// and a row cannot be laid out without its neighbours. What is deferred is
+  /// the *widget* of a row — and with it the [ThumbnailImage] of every tile in
+  /// it, which is what used to ask the server for all 800 thumbnails of a
+  /// large album the moment it was opened, see issue #111. The rows are built
+  /// in the order they are shown, so the visible ones are the first to ask.
+  ///
+  /// A block of rows is a [SliverVariedExtentList], which is told each row's
+  /// height before it is built ([rowExtent]): the scroll view then knows the
+  /// height of the whole album from the start and can lay out any offset
+  /// without touching what lies above it. That is what makes a jump — the
+  /// scrollbar, the `End` key, the scroll offset restored on the way back or
+  /// on a deep link — as cheap as a scroll: only the rows around the offset
+  /// are built, not every row on the way. The title, the headings and the
+  /// notice of the rating filter are text, whose height nobody can promise,
+  /// so each of them is a sliver of its own that measures itself.
+  List<Widget> buildSlivers(
+    AlbumInfo self,
+    double maxWidth, {
+    required bool hidesEverything,
+  }) {
     var result = <Widget>[];
     var images = <AbstractImage>[];
     _displayOrder.clear();
+
+    if (!editMode) {
+      result.add(
+        SliverToBoxAdapter(
+          child: Padding(
+            // Between the floating up button and the menu, in the row they
+            // float in: the side padding keeps a long title from running
+            // underneath them, the top padding centres a single line on them.
+            padding: const EdgeInsets.fromLTRB(64, 12, 64, 4),
+            child: Text(
+              self.title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 28, color: Colors.white),
+            ),
+          ),
+        ),
+      );
+      if (self.subTitle.isNotEmpty) {
+        result.add(
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Text(
+                self.subTitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, color: Colors.white),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    // A filter that hides everything says so: an empty black page would look
+    // like an empty album.
+    if (hidesEverything) {
+      result.add(
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+            child: Text(
+              "No image is rated $minRating or better - "
+              "press + (or the + button) to show more.",
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16, color: Colors.white70),
+            ),
+          ),
+        ),
+      );
+    }
 
     void flushImages() {
       if (images.isEmpty) {
@@ -1594,8 +1656,28 @@ class AlbumContentState extends State<AlbumContent>
       // The images in the order the rows show them, which is not necessarily
       // the order they were handed to the layout in, see [_displayOrder].
       _displayOrder.addAll(layout.getAllImages());
-      var builder = ContentWidgetBuilder(imageTile, layout.getPageWidth());
-      result.addAll(builder.buildRows(layout));
+      var pageWidth = layout.getPageWidth();
+      var builder = ContentWidgetBuilder(imageTile, pageWidth);
+      var rows = layout.getRows();
+      // The gap that used to be a [SizedBox] between two rows: a sliver of
+      // its own would be a sliver that draws nothing, so it is carried by the
+      // row below it — in its widget and in its extent alike.
+      double topGap(int index) => index > 0 ? tileSpacing : 0.0;
+      double extentOf(int index) =>
+          rowExtent(rows[index], pageWidth) + topGap(index);
+      result.add(
+        SliverVariedExtentList(
+          itemExtentBuilder: (index, dimensions) => extentOf(index),
+          delegate: RowListDelegate(
+            (context, index) =>
+                builder.buildRow(rows[index], topGap: topGap(index)),
+            childCount: rows.length,
+            totalExtent: [
+              for (var index = 0; index < rows.length; index++) extentOf(index),
+            ].fold(0.0, (sum, extent) => sum + extent),
+          ),
+        ),
+      );
       images = <AbstractImage>[];
     }
 
@@ -1605,7 +1687,7 @@ class AlbumContentState extends State<AlbumContent>
       } else if (part is Heading) {
         flushImages();
         _displayOrder.add(part);
-        result.add(headingView(part));
+        result.add(SliverToBoxAdapter(child: headingView(part)));
       }
     }
     flushImages();
@@ -1738,6 +1820,61 @@ class AlbumContentState extends State<AlbumContent>
       );
 }
 
+/// The children of one block of rows, which knows the block's exact height.
+///
+/// A sliver list that has not laid out its last child *estimates* what is
+/// left of it from the average of the children it has — and a list whose rows
+/// differ in height (the last row of a block carries a padding) is then off
+/// by a little, which moves the end of the album about while it is scrolled
+/// to. Here the height of every row is known before anything is built (see
+/// [rowExtent]), so the block answers its own total instead of letting it be
+/// guessed, and the scroll extent of the album is the same before and after
+/// any jump (issue #111).
+class RowListDelegate extends SliverChildBuilderDelegate {
+  /// The sum of the extents of every row of the block, gaps included.
+  final double totalExtent;
+
+  RowListDelegate(
+    super.builder, {
+    required super.childCount,
+    required this.totalExtent,
+  });
+
+  @override
+  double? estimateMaxScrollOffset(
+    int firstIndex,
+    int lastIndex,
+    double leadingScrollOffset,
+    double trailingScrollOffset,
+  ) =>
+      totalExtent;
+}
+
+/// The height a row of the layout is drawn at, in logical pixels.
+///
+/// The same number [ContentWidgetBuilder.visitRow] gives the row's contents:
+/// the page minus the gaps between the tiles, divided by the row's unit
+/// width. The row layout fixes it before a single byte of a thumbnail has
+/// arrived, which is what lets the scroll view be told every row's extent up
+/// front, see [AlbumContentState.buildSlivers] (issue #111).
+double rowExtent(layouter.Row row, double pageWidth) {
+  var unitWidth = row.getUnitWidth();
+  if (unitWidth <= 0) {
+    return 0;
+  }
+  var gaps = (row.size() - 1) * tileSpacing;
+  return max(0.0, pageWidth - gaps) / unitWidth;
+}
+
+/// How far beyond the visible range the album is built, in viewport heights
+/// (issue #111).
+///
+/// The rows within this distance are built and their thumbnails asked for —
+/// the "reasonable context" around what is on the screen; everything farther
+/// away waits until scrolling brings it near. Three viewport heights is a
+/// flick's worth of album in either direction.
+const double contextViewports = 3;
+
 /// Builds the tile of one image, given the box the layout assigned to it.
 typedef TileBuilder = Widget Function(
   AbstractImage image,
@@ -1792,6 +1929,20 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, RowBox> {
           row.visit(this, RowBox.page),
         ],
       ];
+
+  /// One row as a widget, [topGap] logical pixels below the row above it.
+  ///
+  /// What the album builds a row with when it builds them one at a time, see
+  /// [AlbumContentState.buildItems]: the gap between two rows of a block is
+  /// carried by the lower one, because a list item that draws nothing but a
+  /// gap would be an item to build for nothing.
+  Widget buildRow(layouter.Row row, {double topGap = 0}) {
+    var built = row.visit(this, RowBox.page);
+    if (topGap <= 0) {
+      return built;
+    }
+    return Padding(padding: EdgeInsets.only(top: topGap), child: built);
+  }
 
   @override
   Widget visitImg(layouter.Img content, RowBox box) {

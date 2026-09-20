@@ -171,11 +171,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // The album's own scroll view — a lazy list since issue #111.
+    var album = find.descendant(
+      of: find.byType(AlbumContent),
+      matching: find.byType(Scrollable),
+    );
+
     // To the end of the album, which now stops above the bar.
-    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -2000));
+    await tester.drag(album, const Offset(0, -2000));
     await tester.pumpAndSettle();
 
-    var scroller = tester.getRect(find.byType(SingleChildScrollView));
+    var scroller = tester.getRect(album);
 
     expect(lowestTile(tester), lessThanOrEqualTo(scroller.bottom - 48 + 0.5));
   });
