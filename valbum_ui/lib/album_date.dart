@@ -17,6 +17,8 @@
 /// therefore never *sets* an effective date; it only reads one.
 library;
 
+import 'package:intl/intl.dart';
+
 import 'resource.dart';
 
 /// Where the date an album is shown and sorted under comes from.
@@ -52,8 +54,7 @@ DateSource describeDateSource(AlbumInfo album, {String? folderName}) {
   if (album.effectiveDate == 0) {
     return DateSource.none;
   }
-  var fromName =
-      folderNameDate(folderName ?? folderNameOf(album.path));
+  var fromName = folderNameDate(folderName ?? folderNameOf(album.path));
   if (fromName != null &&
       fromName.millisecondsSinceEpoch == album.effectiveDate) {
     return DateSource.folderName;
@@ -124,3 +125,27 @@ List<FolderInfo> sortedFolders(List<FolderInfo> folders) {
   });
   return result;
 }
+
+/// The date of an album as the app writes it out for a reader, `null` when
+/// nothing says when the album happened, see issue #107.
+///
+/// [effectiveDate] is what the server derived (`AlbumInfo.effectiveDate`,
+/// `FolderInfo.effectiveDate`), `0` for none. The form is the locale's own
+/// medium date, so the listing tile and the album's own heading say the date
+/// the way the rest of the app does — and never the folder-name spelling,
+/// which is a naming convention and not a thing to read.
+String? albumDateLabel(int effectiveDate) => effectiveDate == 0
+    ? null
+    : DateFormat.yMMMd()
+        .format(DateTime.fromMillisecondsSinceEpoch(effectiveDate));
+
+/// The spelling of a date in a folder name, the naming convention `yyyy-MM-dd`.
+final DateFormat folderDateFormat = DateFormat("yyyy-MM-dd");
+
+/// The folder name an album with [title] taken on [date] is created under.
+///
+/// `yyyy-MM-dd title` by the naming convention, and the title alone when
+/// [date] is `null` — an album without a date is no less an album, it is only
+/// one the placement rules leave where it was made, see issue #119.
+String albumFolderName(DateTime? date, String title) =>
+    date == null ? title : "${folderDateFormat.format(date)} $title";

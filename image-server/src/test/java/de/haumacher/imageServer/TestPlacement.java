@@ -144,6 +144,11 @@ public class TestPlacement extends TestCase {
 		assertTrue(_base.resolve("1999/Trip/index.json").toFile().exists());
 	}
 
+	/**
+	 * An album without a date is left in the folder it was created in, whatever
+	 * that folder files by -- which is how an <code>Inbox</code> is made by hand,
+	 * see issue #119.
+	 */
 	public void testAnAlbumWithoutADateStaysWhereItWasAsked() throws Exception {
 		rule(Placement.BY_YEAR);
 

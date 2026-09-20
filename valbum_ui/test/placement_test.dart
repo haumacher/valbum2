@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:intl/intl.dart';
+import 'package:jsontool/jsontool.dart';
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/resource.dart';
 
@@ -225,6 +226,69 @@ void main() {
       expect(find.text("The name is taken."), findsOneWidget);
       // Nowhere was navigated to: the album was not created.
       expect(jsonGets(requests), ["/valbum/data/"]);
+    });
+  });
+
+  group('creating an album without a date', () {
+    testWidgets('asks for the title alone and is left where it is made',
+        (tester) async {
+      var requests = <http.Request>[];
+      var client = recordingClient((request) {
+        if (request.method == "PUT") {
+          // The server files nothing that has no date, whatever the rule.
+          return json('{"path":"Inbox","message":""}');
+        }
+        if (pathOf(request) == "/valbum/data/Inbox/") {
+          return json(fixture("album-target.json"));
+        }
+        return json(rootListing("BY_YEAR"));
+      }, requests);
+      await pumpRoot(tester, client);
+
+      // The dialog says what an undated album means, and does not insist.
+      await openMenu(tester, "Create album");
+      expect(find.byKey(const Key("create-album-date-hint")), findsOneWidget);
+      expect(find.text("Muss angegeben werden."), findsNothing);
+      await withFakeImageHttp(() async {
+        await tester.enterText(find.byType(TextFormField).first, "Inbox");
+        await tester.tap(find.text("Anlegen"));
+        await tester.pumpAndSettle();
+      });
+
+      var put = requests.singleWhere((request) => request.method == "PUT");
+      // The folder name is the title alone -- no date in front of it.
+      expect(put.url.toString(), "http://server/valbum/data/Inbox/");
+      expect(put.body, contains('"title":"Inbox"'));
+      var asked = Resource.read(JsonReader.fromString(put.body)) as AlbumInfo;
+      // The path travels in the URL; the body says the date, and it is none.
+      expect(asked.date, 0);
+
+      // Where the server put it is where the app goes.
+      expect(jsonGets(requests), contains("/valbum/data/Inbox/"));
+    });
+
+    testWidgets('still spells the folder name with the date that was picked',
+        (tester) async {
+      var askedName = "${DateFormat("yyyy-MM-dd").format(DateTime.now())} Lake";
+      var requests = <http.Request>[];
+      var client = recordingClient((request) {
+        if (request.method == "PUT") {
+          return http.Response("", 200);
+        }
+        if (pathOf(request) == "/valbum/data/$askedName/") {
+          return json(fixture("album-target.json"));
+        }
+        return json(rootListing("BY_YEAR"));
+      }, requests);
+      await pumpRoot(tester, client);
+
+      await createAlbum(tester, "Lake");
+
+      var put = requests.singleWhere((request) => request.method == "PUT");
+      expect(put.url.toString(),
+          "http://server/valbum/data/${Uri.encodeComponent(askedName)}/");
+      var asked = Resource.read(JsonReader.fromString(put.body)) as AlbumInfo;
+      expect(asked.date, isNot(0));
     });
   });
 

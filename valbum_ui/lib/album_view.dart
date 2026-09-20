@@ -1759,6 +1759,26 @@ class AlbumContentState extends State<AlbumContent>
           ),
         ),
       );
+      // When the album is, under its own title and above its subtitle, in the
+      // same words the listing tile says it in, see issue #107. The key is
+      // `album-heading-date` because `album-date` is the field of the
+      // properties dialog.
+      var dateLabel = albumDateLabel(self.effectiveDate);
+      if (dateLabel != null) {
+        result.add(
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Text(
+                dateLabel,
+                key: const Key("album-heading-date"),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, color: Colors.white60),
+              ),
+            ),
+          ),
+        );
+      }
       if (self.subTitle.isNotEmpty) {
         result.add(
           SliverToBoxAdapter(

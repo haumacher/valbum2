@@ -3,7 +3,6 @@ library;
 
 import 'package:date_field/date_field.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import 'album_date.dart';
 import 'app.dart';
@@ -345,6 +344,20 @@ class ListingView extends StatelessWidget {
                     ),
                     textAlign: TextAlign.center,
                   ),
+                  // When the album is, between its title and its subtitle --
+                  // the date the server derived, never one read off the
+                  // folder name here, and no line at all where nothing says
+                  // when the album happened, see issue #107.
+                  if (albumDateLabel(folder.effectiveDate) != null)
+                    Text(
+                      albumDateLabel(folder.effectiveDate)!,
+                      key: const Key("folder-date"),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white60,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   if (folder.subTitle.isNotEmpty)
                     Text(
                       folder.subTitle,
@@ -745,9 +758,15 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
       );
 }
 
+/// What an album without a date means, said in the create dialog where the
+/// date may be left empty, see issue #119.
+const String createAlbumUndatedHint =
+    "Without a date the album stays in this folder.";
+
 class CreateAlbumDialog extends StatefulWidget {
   /// The day the album is proposed with, `null` for none — the field is then
-  /// empty and a day has to be picked, as it always had to be here.
+  /// empty, and it may stay empty: an album without a date is left where it
+  /// is made, see issue #119.
   ///
   /// The move dialog fills it with the day the selected photos were taken on,
   /// see issue #114 and `moveWithPicker`.
@@ -800,13 +819,21 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
                 initialValue: widget.initialDate,
                 initialDate: widget.initialDate ?? now,
                 onSaved: (value) => albumDate = value,
-                dateFormat: DateFormat("yyyy-MM-dd"),
-                validator: (value) {
-                  return value == null ? "Muss angegeben werden." : null;
-                },
+                dateFormat: folderDateFormat,
+                // No validator: an album without a date is one the server
+                // leaves in the folder it was made in, which is how an
+                // `Inbox` is made by hand, see issue #119.
                 decoration: const InputDecoration(
                   label: Text("Datum"),
                   suffixIcon: Icon(Icons.date_range),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  createAlbumUndatedHint,
+                  key: Key("create-album-date-hint"),
+                  style: TextStyle(fontSize: 12),
                 ),
               ),
               TextFormField(
@@ -869,8 +896,9 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
       date: date == null
           ? 0
           : DateTime(date.year, date.month, date.day).millisecondsSinceEpoch,
-      path:
-          (date != null ? DateFormat("yyyy-MM-dd ").format(date) : "") + title,
+      // `yyyy-MM-dd title`, the title alone without a date -- the one
+      // composition, shared with the move picker, see [albumFolderName].
+      path: albumFolderName(date, title),
     );
 
     Navigator.of(context).pop(info);

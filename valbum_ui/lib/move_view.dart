@@ -6,8 +6,8 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
+import 'album_date.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'listing_view.dart';
@@ -366,9 +366,12 @@ String folderLine(FolderInfo folder) {
   if (folder.effectiveDate == 0) {
     return title;
   }
-  var date = DateFormat("yyyy-MM-dd")
-      .format(DateTime.fromMillisecondsSinceEpoch(folder.effectiveDate));
-  return "$date $title";
+  // The one composition of `yyyy-MM-dd title`, shared with the create-album
+  // dialog, see [albumFolderName].
+  return albumFolderName(
+    DateTime.fromMillisecondsSinceEpoch(folder.effectiveDate),
+    title,
+  );
 }
 
 /// Browses the caller's own tree and returns what the move goes into, `null`
