@@ -1100,6 +1100,45 @@ class VAlbumClient {
     return MoveResult.read(JsonReader.fromString(response.body));
   }
 
+  /// Deletes the named entries of the folder at [path], see issue #109.
+  ///
+  /// [names] are entries of that folder, and only albums and folders: an image
+  /// is taken out of an album by moving it. The same request a move is sent
+  /// with, without a target — the target of a delete is the trash of the
+  /// caller's space, which nobody picks.
+  ///
+  /// The answer carries one [MoveOutcome] per name: the name the entry now
+  /// carries in the trash, or nothing where the entry held no picture at all
+  /// and was therefore removed. Either way the outcome's message says what
+  /// happened, in the server's own words. A refusal of the whole request — an
+  /// unpaired device, a share link, a caller who may not change this folder —
+  /// is thrown as a [VAlbumException] carrying its message, like every other
+  /// refused write.
+  Future<MoveResult> delete(List<String> path, List<String> names) async {
+    var url = "${folderUrl(path)}?action=delete";
+    var request = MoveRequest(
+      target: "",
+      names: [for (var name in names) MoveName(name: name)],
+    );
+    var body = StringBuffer();
+    request.writeContent(jsonStringWriter(body));
+
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        "deleting in '${path.join("/")}'",
+      );
+    }
+    return MoveResult.read(JsonReader.fromString(response.body));
+  }
+
   /// Applies the placement rule of the folder at [path] to what is already in
   /// it, see issue #48.
   ///

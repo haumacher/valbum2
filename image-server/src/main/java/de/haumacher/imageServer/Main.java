@@ -288,6 +288,14 @@ public class Main {
 			System.out.println("  (no folder below the base folder carries .valbum/space.json; "
 				+ "every address is answered with 'no such space')");
 		}
+		// A duplicates folder of an older version, which nothing writes to any more: named once,
+		// never moved and never deleted, see issue #109.
+		String legacy = spaces.getMode() == SpaceMode.MULTI
+			? DeleteService.legacyDuplicates(_basePath.toPath())
+			: null;
+		if (legacy != null) {
+			System.out.println(legacy);
+		}
 		if (_authMode != AuthMode.OFF) {
 			for (Spaces.Space space : spaces.getSpaces()) {
 				for (String line : reportSpace(spaces, space, _adminCode)) {

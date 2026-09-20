@@ -205,6 +205,95 @@ Future<void> moveWithPicker({
   );
 }
 
+/// What deleting an album or a folder does, said before it is done (#109).
+///
+/// The app cannot know which of the two will happen: whether anything below
+/// the folder is a photograph is a question about the disk, and the server is
+/// the one looking at it. So both are said, in the order they are decided —
+/// and the sentence that matters most is said last: nothing is deleted from
+/// the disk.
+const String deleteExplanation =
+    "An album without any image is removed; one with images is moved to the "
+    "trash folder of the space (nothing is deleted from disk).";
+
+/// Asks whether [what] is really to be deleted, and deletes it, see #109.
+///
+/// Refused while the app is offline, like every other write, and nothing is
+/// sent while the question is open or when it is answered with "Cancel".
+/// Afterwards [onDeleted] is called — what was deleted is no longer where it
+/// was — and the server's own account of what it did is read out.
+///
+/// Answers whether the request went through, so that a caller standing *in*
+/// what it deleted can leave: a refusal of the whole request (a share link, a
+/// caller who may not change this folder, a server that cannot be reached) is
+/// shown and answered `false`, and the view stays where it is.
+///
+/// [parent] is the folder the entries live in — the delete is posted to it,
+/// as a move is posted to the folder it moves out of.
+Future<bool> deleteWithConfirmation({
+  required BuildContext context,
+  required VAlbumClient client,
+  required List<String> parent,
+  required List<String> names,
+  required String what,
+  required VoidCallback onDeleted,
+}) async {
+  if (refuseWhileOffline(context)) {
+    return false;
+  }
+  var messenger = ScaffoldMessenger.of(context);
+  var confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      key: const Key("delete-dialog"),
+      title: Text("Delete $what?"),
+      content: const Text(deleteExplanation),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text("Cancel"),
+        ),
+        ElevatedButton(
+          key: const Key("delete-confirm"),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text("Delete"),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) {
+    return false;
+  }
+
+  MoveResult result;
+  try {
+    result = await client.delete(parent, names);
+  } catch (error) {
+    // The server's own reason, as every other refused write shows it.
+    showRefusal(messenger, error);
+    return false;
+  }
+
+  // What was deleted is gone from where it was: the view is fetched again
+  // before the outcome is read out.
+  onDeleted();
+
+  // Verbatim, and every name of them: the server says which of the two things
+  // it did — removed, or set aside as this name — and the app paraphrases
+  // neither.
+  var said = [
+    for (var outcome in result.outcomes)
+      if (outcome.message.isNotEmpty) outcome.message,
+  ];
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(said.isEmpty ? "Deleted $what." : said.join(" ")),
+      duration: const Duration(seconds: 8),
+    ),
+  );
+  return true;
+}
+
 /// The entries the server did not move: a [MoveOutcome] carrying a message is
 /// one that stayed where it was, and says why.
 List<MoveOutcome> refusedOutcomes(MoveResult result) => [

@@ -1019,6 +1019,56 @@ class AlbumContentState extends State<AlbumContent>
     }
   }
 
+  /// Whether the menu's delete acts on this album, see [deleteAlbum].
+  ///
+  /// What [mayMoveAlbum] asks, for the same reason: deleting an album changes
+  /// the listing it is an entry of, and at the root of a space there is no
+  /// listing above to change.
+  bool get mayDeleteAlbum => mayMoveAlbum;
+
+  /// Deletes this album itself, see issue #109.
+  ///
+  /// The delete the listing above offers on the album's own tile, asked from
+  /// inside the album: the entry that goes is this album's folder, and the
+  /// request is posted to the folder it lives in. Afterwards the app ascends —
+  /// the album is no longer where the address says it is, and the listing
+  /// above is where that is visible.
+  Future<void> deleteAlbum() async {
+    var path = widget.albumState.path;
+    if (path.isEmpty) {
+      return;
+    }
+    // The same rule the move of this album follows: the view is left behind
+    // afterwards, which would throw unsaved edits away.
+    if (dirty) {
+      showMessage("Save or discard your changes first");
+      return;
+    }
+    var name = path.last;
+    var parent = path.sublist(0, path.length - 1);
+    var delegate = widget.albumState.navigator.delegate;
+
+    var deleted = await deleteWithConfirmation(
+      context: context,
+      client: client,
+      parent: parent,
+      names: [name],
+      what: "'$name'",
+      onDeleted: () {
+        // Neither this album nor the listing above is what was loaded: the
+        // album is gone from where it was, and the listing no longer shows it.
+        delegate.forget(path);
+        delegate.forget(parent);
+      },
+    );
+
+    // Ascended after the outcome was read out, as the move does it: the
+    // message needs a messenger, and the one it was given is the one above.
+    if (deleted && mounted) {
+      widget.albumState.showParent();
+    }
+  }
+
   /// Moves the selected parts into another folder, see issue #47.
   ///
   /// The names sent are the file names of the selected images; a selected
@@ -1340,6 +1390,17 @@ class AlbumContentState extends State<AlbumContent>
               Icons.drive_file_move,
               "Move album to…",
               (_) => moveAlbum(),
+            ),
+          // The delete the listing above offers on this album's own tile,
+          // asked from inside the album (#109) — and under the same condition
+          // the move is: the album is an entry of the listing above it, and
+          // changing that listing is what deleting it is.
+          if (mayDeleteAlbum)
+            keyedMenuItem(
+              const Key("delete-album"),
+              Icons.delete_outline,
+              "Delete album…",
+              (_) => deleteAlbum(),
             ),
           // An edit like every other one: offered inside the edit session, so
           // that the new order is reviewed and saved (or discarded) the way a
