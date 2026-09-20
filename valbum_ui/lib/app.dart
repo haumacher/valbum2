@@ -144,6 +144,14 @@ class VAlbumApp extends StatefulWidget {
   /// invitation that died in the meantime (issue #88). Tests inject it.
   final void Function(String url)? openUrl;
 
+  /// Watchers of the router's [Navigator], beside the app's own.
+  ///
+  /// Empty in the app; a test installs a `NavigatorObserver` here to see what
+  /// a navigation really does to the page stack — which is how it is checked
+  /// that stepping to the next image pushes and replaces nothing (issue
+  /// #105).
+  final List<NavigatorObserver> navigatorObservers;
+
   const VAlbumApp({
     super.key,
     this.client,
@@ -160,6 +168,7 @@ class VAlbumApp extends StatefulWidget {
     this.location,
     this.rewriteLocation,
     this.openUrl,
+    this.navigatorObservers = const [],
   });
 
   @override
@@ -400,6 +409,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   VAlbumRouterDelegate get router => _router ??= VAlbumRouterDelegate(
         client: client!,
         initialRoute: widget.initialRoute ?? ListingOrAlbumRoute.root,
+        observers: widget.navigatorObservers,
       );
 
   /// The settings used when the app is not told otherwise.
@@ -1092,8 +1102,14 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   VAlbumRouterDelegate({
     required VAlbumClient client,
     required VAlbumRoute initialRoute,
+    List<NavigatorObserver> observers = const [],
   })  : _client = client,
-        _route = initialRoute;
+        _route = initialRoute,
+        _observers = observers;
+
+  /// Watchers of the [Navigator] beside [_imperative], see
+  /// [VAlbumApp.navigatorObservers].
+  final List<NavigatorObserver> _observers;
 
   /// The transport to the album server.
   VAlbumClient get client => _client;
@@ -1348,24 +1364,46 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
 
   /// The page showing the given level of the route.
   ///
-  /// The key is derived from what the page shows — the album by its path, an
-  /// image by its album and its file name, and so on — so that a step within
-  /// one level (the next image in the viewer, reached by a swipe or an arrow
-  /// key) exchanges the topmost page while the levels below it are not
-  /// touched at all.
+  /// The key names the *level*, not what it shows: the listing or album by
+  /// its path, and everything inside an album — the viewer, the alternatives
+  /// of a group, a member of one — by the album it pages through. A step
+  /// within one level (the next image in the viewer, reached by a chevron, an
+  /// arrow key or a swipe) therefore keeps the very same page and hands the
+  /// mounted view its new route, which the viewer picks up in
+  /// `ImageViewState.didUpdateWidget`.
+  ///
+  /// Keying the page by the image instead exchanged the topmost page on every
+  /// step, and the `Navigator` ran the platform's page transition between two
+  /// viewers — the fade (or the zoom, or the slide) that made the picture
+  /// flash instead of changing in place, see issue #105. Descending into an
+  /// album's image and ascending from it are different levels and keep their
+  /// transitions.
   static Page<void> _pageOf(VAlbumRoute level) => _LevelPage(
-        key: ValueKey("valbum:${level.path}"),
+        key: ValueKey(_pageKey(level)),
         level: level,
         child: VAlbumView(route: level),
       );
 
+  /// What makes the page of [level] the same page across a step, see
+  /// [_pageOf].
+  static String _pageKey(VAlbumRoute level) {
+    var album = _pathKey(level.albumPath);
+    return switch (level) {
+      ListingOrAlbumRoute() => "valbum:album:$album",
+      ImageRoute() => "valbum:image:$album",
+      AlternativesRoute() => "valbum:alternatives:$album",
+      MemberRoute() => "valbum:member:$album",
+    };
+  }
+
   /// A page that left the stack: the route falls back to the level beneath it.
   ///
   /// Only a real pop (the back gesture, an imperative `Navigator.pop`) is
-  /// meant here. A page that was *replaced* — the viewer moving on to the
-  /// next image, or a descent into another folder — is removed as well, and
-  /// is told apart by the route having moved on already: the page removed is
-  /// then no longer the top level of what is shown.
+  /// meant here. A page that was *replaced* — a descent into another folder,
+  /// where the level below is exchanged — is removed as well, and is told
+  /// apart by the route having moved on already: the page removed is then no
+  /// longer the top level of what is shown. Stepping within a level removes
+  /// nothing at all any more, see [_pageOf].
   void _pageRemoved(Page<Object?> page) {
     if (page is! _LevelPage) {
       return;
@@ -1386,7 +1424,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       delegate: this,
       child: Navigator(
         key: navigatorKey,
-        observers: [_imperative],
+        observers: [_imperative, ..._observers],
         pages: [for (var level in levelsOf(_route)) _pageOf(level)],
         onDidRemovePage: _pageRemoved,
       ),

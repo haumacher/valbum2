@@ -108,7 +108,8 @@ void main() {
     await tester.tap(find.byIcon(Icons.chevron_right));
     await tester.pumpAndSettle();
 
-    // The next image is another viewer, but the bars stay hidden.
+    // The step is no new viewer at all since issue #105, and the bars of the
+    // one viewer stay hidden.
     expect(modes, ["SystemUiMode.immersiveSticky"]);
 
     await tester.pumpWidget(const SizedBox());
