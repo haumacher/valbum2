@@ -68,6 +68,10 @@ dependencies:
   # through `lib/device_code_scanner_plugin.dart`, so the web build never sees
   # it.
   mobile_scanner: ^7.1.2
+  # Opening the map of a photo's position in whatever the device shows maps
+  # with (issue #112); the web build opens a new tab, so there is no platform
+  # the location line is dead on.
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:

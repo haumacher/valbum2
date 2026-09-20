@@ -164,6 +164,32 @@ enum ImageKind {
 	QUICKTIME;
 }
 
+/**
+ * Where a photo was taken, see issue #112.
+ *
+ * <p>
+ * Decimal degrees in WGS 84, positive to the north and to the east, exactly as the EXIF GPS tags
+ * of the original say it (<code>GPSLatitude</code>/<code>GPSLongitude</code> with their reference
+ * letters, resolved into one signed number each by metadata-extractor).
+ * </p>
+ *
+ * <p>
+ * A message of its own rather than two fields on {@link ImagePart}, because a position that is
+ * not there must be tellable from one at the origin: <code>0/0</code> in the Gulf of Guinea is a
+ * real place, so "no position" is the absent {@link ImagePart#getLocation() location}, never a
+ * pair of zeroes.
+ * </p>
+ */
+message GeoLocation {
+
+	/** The latitude in decimal degrees, positive to the north of the equator. */
+	double latitude;
+
+	/** The longitude in decimal degrees, positive to the east of Greenwich. */
+	double longitude;
+
+}
+
 /** {@link Resource} describing a single image or video file. */
 message ImagePart extends AbstractImage {
 
@@ -218,6 +244,32 @@ message ImagePart extends AbstractImage {
 	 * </p>
 	 */
 	string camera;
+
+	/**
+	 * Where this image was taken, <code>null</code> when the file says nowhere (issue #112).
+	 *
+	 * <p>
+	 * Read from the EXIF GPS tags of the original when the image is analysed, and from the
+	 * container of a video where that carries a position. The absent message is what "the file
+	 * carries no position" means — see {@link GeoLocation}, where a pair of zeroes would be a real
+	 * place off the coast of Africa.
+	 * </p>
+	 *
+	 * <p>
+	 * <em>Stored</em> in the sidecar, exactly like {@link #getDate() date} and {@link #getCamera()
+	 * camera}: a part a sidecar already lists is never analysed again, so an album written before
+	 * this field existed keeps its parts without a position until they are analysed afresh. A
+	 * round trip read &rarr; write &rarr; read keeps it unchanged, so a client that stores an
+	 * album back never loses where its photos were taken.
+	 * </p>
+	 *
+	 * <p>
+	 * It is answered to whoever may see the image and to nobody else: the position follows the
+	 * image's own {@link #getPrivacy() privacy level} and nothing besides, so a caller the
+	 * {@link #getPrivacy() privacy} filter hands the image to is handed its position with it.
+	 * </p>
+	 */
+	GeoLocation location;
 
 	/** The {@link ImageGroup}, this {@link ImagePart} is part of, or <code>null</code>, if this {@link ImagePart} is not part of a group. */
 	transient ImageGroup group;
@@ -619,6 +671,26 @@ message AuthInfo {
 
 	/** Whether the caller may create share links, see issue #82; false for an anonymous caller. */
 	bool mayShare;
+
+	/**
+	 * How a position is shown on a map in this space, see issue #112.
+	 *
+	 * <p>
+	 * A URL template carrying <code>{lat}</code> and <code>{lon}</code>, which the app substitutes
+	 * with the decimal degrees of an {@link ImagePart#getLocation() image's position} — a dot as
+	 * the decimal separator, whatever the locale of the device. The default is
+	 * <code>https://www.google.com/maps?q={lat},{lon}</code>; OpenStreetMap, Apple Maps or a map
+	 * of one's own are simply other templates, which is why there is no provider to choose from.
+	 * </p>
+	 *
+	 * <p>
+	 * A property of the <em>space</em>, read from its <code>.valbum/space.json</code> beside the
+	 * name and the anonymous access, and answered here because <code>?type=auth</code> is the one
+	 * request the app makes anyway. An older server answers nothing, and the app then applies the
+	 * same default itself.
+	 * </p>
+	 */
+	string mapUrl;
 
 	/**
 	 * The share link this caller opened, <code>null</code> for everybody else (issue #51).

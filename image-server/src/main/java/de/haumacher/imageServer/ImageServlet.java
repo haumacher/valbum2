@@ -19,6 +19,7 @@ import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.Rights;
 import de.haumacher.imageServer.auth.Roles;
 import de.haumacher.imageServer.auth.ShareStore;
+import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -267,6 +268,17 @@ public class ImageServlet extends HttpServlet {
 	/** The space this servlet serves, see {@link #ImageServlet(File, AuthService, String)}. */
 	private final String _space;
 
+	/**
+	 * The map template of the space this servlet serves, see issue #112.
+	 *
+	 * <p>
+	 * A property of the space, read from its <code>space.json</code> once at start-up and answered
+	 * by <code>?type=auth</code>, so that the app has it with the one request it makes anyway.
+	 * Never empty: {@link SpaceStore#DEFAULT_MAP_URL} where the file names none.
+	 * </p>
+	 */
+	private final String _mapUrl;
+
 	/** The transcoded sidecars of the videos this server shows, see issue #74. */
 	private final VideoRenditions _videos = new VideoRenditions();
 
@@ -334,7 +346,20 @@ public class ImageServlet extends HttpServlet {
 	 *        which space it is talking to.
 	 */
 	public ImageServlet(File basePath, AuthService auth, String space) throws IOException {
+		this(basePath, auth, space, SpaceStore.load(basePath.toPath(), space == null ? "" : space));
+	}
+
+	/**
+	 * Creates an {@link ImageServlet} serving one space whose configuration has already been read.
+	 *
+	 * @param config
+	 *        What the space says about itself, see {@link SpaceStore}. Only its map template
+	 *        (issue #112) is this servlet's business; who may look is the {@link AuthService}'s.
+	 */
+	public ImageServlet(File basePath, AuthService auth, String space, SpaceStore.Config config)
+			throws IOException {
 		_space = space == null ? "" : space;
+		_mapUrl = config == null ? SpaceStore.DEFAULT_MAP_URL : config.getMapUrl();
 		_basePath = basePath.toPath();
 		_cache = new ResourceCache();
 		_privacy = new PrivacyFilter(_cache);
@@ -389,8 +414,10 @@ public class ImageServlet extends HttpServlet {
 				errorInfo(context, HttpServletResponse.SC_GONE, caller.getInvitationGone());
 				return;
 			}
-			// Always answerable: this is how an unpaired app learns that it must pair.
-			serveJsonObject(response, _auth.authInfo(caller, _basePath, _space));
+			// Always answerable: this is how an unpaired app learns that it must pair. The map
+			// template of the space rides along, see issue #112.
+			serveJsonObject(response,
+				_auth.authInfo(caller, _basePath, _space).setMapUrl(_mapUrl));
 			return;
 		}
 		if ("invitations".equals(type)) {

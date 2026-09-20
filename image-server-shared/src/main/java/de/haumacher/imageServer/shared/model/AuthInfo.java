@@ -39,6 +39,9 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #isMayShare() */
 	private static final String MAY_SHARE__PROP = "mayShare";
 
+	/** @see #getMapUrl() */
+	private static final String MAP_URL__PROP = "mapUrl";
+
 	/** @see #getShare() */
 	private static final String SHARE__PROP = "share";
 
@@ -60,6 +63,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _clearance = "";
 
 	private boolean _mayShare = false;
+
+	private String _mapUrl = "";
 
 	private de.haumacher.imageServer.shared.model.ShareInfo _share = null;
 
@@ -249,6 +254,41 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
+	 * How a position is shown on a map in this space, see issue #112.
+	 *
+	 * <p>
+	 * A URL template carrying <code>{lat}</code> and <code>{lon}</code>, which the app substitutes
+	 * with the decimal degrees of an {@link ImagePart#getLocation() image's position} — a dot as
+	 * the decimal separator, whatever the locale of the device. The default is
+	 * <code>https://www.google.com/maps?q={lat},{lon}</code>; OpenStreetMap, Apple Maps or a map
+	 * of one's own are simply other templates, which is why there is no provider to choose from.
+	 * </p>
+	 *
+	 * <p>
+	 * A property of the <em>space</em>, read from its <code>.valbum/space.json</code> beside the
+	 * name and the anonymous access, and answered here because <code>?type=auth</code> is the one
+	 * request the app makes anyway. An older server answers nothing, and the app then applies the
+	 * same default itself.
+	 * </p>
+	 */
+	public final String getMapUrl() {
+		return _mapUrl;
+	}
+
+	/**
+	 * @see #getMapUrl()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setMapUrl(String value) {
+		internalSetMapUrl(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getMapUrl()} without chain call utility. */
+	protected final void internalSetMapUrl(String value) {
+		_mapUrl = value;
+	}
+
+	/**
 	 * The share link this caller opened, <code>null</code> for everybody else (issue #51).
 	 *
 	 * <p>
@@ -346,6 +386,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getClearance());
 		out.name(MAY_SHARE__PROP);
 		out.value(isMayShare());
+		out.name(MAP_URL__PROP);
+		out.value(getMapUrl());
 		if (hasShare()) {
 			out.name(SHARE__PROP);
 			getShare().writeTo(out);
@@ -367,6 +409,7 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case SPACE__PROP: setSpace(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CLEARANCE__PROP: setClearance(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case MAY_SHARE__PROP: setMayShare(in.nextBoolean()); break;
+			case MAP_URL__PROP: setMapUrl(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SHARE__PROP: setShare(de.haumacher.imageServer.shared.model.ShareInfo.readShareInfo(in)); break;
 			case INVITATION__PROP: setInvitation(de.haumacher.imageServer.shared.model.InvitationInfo.readInvitationInfo(in)); break;
 			default: super.readField(in, field);

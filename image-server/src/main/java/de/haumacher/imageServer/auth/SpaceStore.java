@@ -31,13 +31,14 @@ import java.nio.file.StandardCopyOption;
  * </p>
  *
  * <pre>
- * {"version":1,"name":"Alice","anonymous":"public"}
+ * {"version":1,"name":"Alice","anonymous":"public","mapUrl":"https://www.google.com/maps?q={lat},{lon}"}
  * </pre>
  *
  * <p>
  * Everything is optional: a file holding nothing but <code>{}</code> is a space with the folder's
- * own name and no anonymous access. An unknown <code>anonymous</code> value is read as
- * {@link #ANONYMOUS_NONE}, the closed one — a space is never opened by a typo.
+ * own name, no anonymous access and the default map (issue #112). An unknown
+ * <code>anonymous</code> value is read as {@link #ANONYMOUS_NONE}, the closed one — a space is
+ * never opened by a typo.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -53,6 +54,19 @@ public class SpaceStore {
 	/** An anonymous caller may look at the public images of this space. */
 	public static final String ANONYMOUS_PUBLIC = "public";
 
+	/**
+	 * Where a position is shown when the space names no map of its own, see issue #112.
+	 *
+	 * <p>
+	 * A URL template carrying <code>{lat}</code> and <code>{lon}</code>. There is no provider to
+	 * choose from, because a provider <em>is</em> a template: OpenStreetMap is
+	 * <code>https://www.openstreetmap.org/?mlat={lat}&amp;mlon={lon}#map=15/{lat}/{lon}</code>,
+	 * Apple Maps is <code>https://maps.apple.com/?ll={lat},{lon}</code>, and a map of one's own is
+	 * whatever it is. The app applies the same default where an older server answers none.
+	 * </p>
+	 */
+	public static final String DEFAULT_MAP_URL = "https://www.google.com/maps?q={lat},{lon}";
+
 	private static final int VERSION = 1;
 
 	private static final String VERSION__PROP = "version";
@@ -61,6 +75,8 @@ public class SpaceStore {
 
 	private static final String ANONYMOUS__PROP = "anonymous";
 
+	private static final String MAP_URL__PROP = "mapUrl";
+
 	/** What a space says about itself. */
 	public static final class Config {
 
@@ -68,10 +84,23 @@ public class SpaceStore {
 
 		private final String _anonymous;
 
-		/** Creates a {@link Config}. */
+		private final String _mapUrl;
+
+		/** Creates a {@link Config} with the default map, see {@link SpaceStore#DEFAULT_MAP_URL}. */
 		public Config(String name, String anonymous) {
+			this(name, anonymous, "");
+		}
+
+		/**
+		 * Creates a {@link Config}.
+		 *
+		 * @param mapUrl
+		 *        The map template of this space; the empty string for {@link #DEFAULT_MAP_URL}.
+		 */
+		public Config(String name, String anonymous, String mapUrl) {
 			_name = name;
 			_anonymous = anonymous;
+			_mapUrl = mapUrl == null || mapUrl.trim().isEmpty() ? DEFAULT_MAP_URL : mapUrl.trim();
 		}
 
 		/** The name to show for this space; the folder name when the file gives none. */
@@ -84,6 +113,18 @@ public class SpaceStore {
 			return _anonymous;
 		}
 
+		/**
+		 * The URL template a position of this space is shown on a map with, see issue #112.
+		 *
+		 * <p>
+		 * Never empty: a space that names none is answered {@link SpaceStore#DEFAULT_MAP_URL}, so
+		 * that every space has a map and the app never has to decide what "nothing" means.
+		 * </p>
+		 */
+		public String getMapUrl() {
+			return _mapUrl;
+		}
+
 		/** Whether an anonymous caller may look at the public images of this space. */
 		public boolean isAnonymousAllowed() {
 			return ANONYMOUS_PUBLIC.equals(_anonymous);
@@ -91,7 +132,7 @@ public class SpaceStore {
 
 		@Override
 		public String toString() {
-			return "Space[" + _name + ", anonymous=" + _anonymous + "]";
+			return "Space[" + _name + ", anonymous=" + _anonymous + ", map=" + _mapUrl + "]";
 		}
 	}
 
@@ -121,6 +162,7 @@ public class SpaceStore {
 		}
 		String name = "";
 		String anonymous = "";
+		String mapUrl = "";
 		try (Reader reader = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8);
 				JsonReader in = new JsonReader(new ReaderAdapter(reader))) {
 			in.beginObject();
@@ -133,6 +175,9 @@ public class SpaceStore {
 					case ANONYMOUS__PROP:
 						anonymous = in.nextString();
 						break;
+					case MAP_URL__PROP:
+						mapUrl = in.nextString();
+						break;
 					default:
 						in.skipValue();
 						break;
@@ -143,7 +188,7 @@ public class SpaceStore {
 			throw new IOException("Cannot read '" + file + "': " + ex.getMessage(), ex);
 		}
 		return new Config(name.trim().isEmpty() ? folderName : name.trim(),
-			ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE);
+			ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE, mapUrl);
 	}
 
 	/**
@@ -168,6 +213,8 @@ public class SpaceStore {
 			out.value(config.getName());
 			out.name(ANONYMOUS__PROP);
 			out.value(config.getAnonymous());
+			out.name(MAP_URL__PROP);
+			out.value(config.getMapUrl());
 			out.endObject();
 		}
 		Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
