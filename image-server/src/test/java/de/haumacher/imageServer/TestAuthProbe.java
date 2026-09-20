@@ -67,7 +67,9 @@ public class TestAuthProbe extends TestCase {
 
 		FakeResponse stored = put(servlet, "/2020 Trip/", "Bearer " + token);
 		assertEquals(HttpServletResponse.SC_OK, stored.status());
-		assertTrue(new File(_base.toFile(), "2020 Trip/index.json").exists());
+		// The album says it is called "Nested", so its folder does too; the date its name carries
+		// is kept, see issue #130.
+		assertTrue(new File(_base.toFile(), "2020 Nested/index.json").exists());
 		assertFalse("The root must stay untouched.", new File(_base.toFile(), "index.json").exists());
 	}
 

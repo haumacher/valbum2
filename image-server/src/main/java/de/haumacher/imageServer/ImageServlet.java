@@ -653,7 +653,7 @@ public class ImageServlet extends HttpServlet {
 			refuse(context, caller, resourcePath, Rights.EDIT, true);
 			return;
 		}
-		storeFolder(context, resourcePath);
+		storeFolder(context, location, resourcePath);
 	}
 
 	/**
@@ -2519,7 +2519,8 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * Stores the request body as <code>index.json</code> of the given folder.
+	 * Stores the request body as <code>index.json</code> of the given folder, and names the folder
+	 * after what it says about itself, see issue #130.
 	 *
 	 * <p>
 	 * The client's bytes are stored verbatim: the body is only parsed to make sure that it is a
@@ -2527,18 +2528,103 @@ public class ImageServlet extends HttpServlet {
 	 * derived and must not keep, see {@link #stored(byte[], FolderResource)}. A pre-existing
 	 * <code>index.json</code> is kept as a timestamped backup.
 	 * </p>
+	 *
+	 * <p>
+	 * Before anything is written, the name the properties compose ({@link FolderNames#of}) is
+	 * compared with the name the folder has, and where they differ the folder is renamed — the
+	 * same-filesystem rename of {@link MoveService#renameFolder}, which carries the share links on
+	 * the folder and below it along. A name a sibling already holds refuses the whole request with
+	 * a <code>409</code> and writes nothing: one refusal, no half state. A rename never
+	 * <em>places</em> the folder: a changed date does not file an album into another year folder,
+	 * because a rule files on creation, on a move and when it is asked to, see
+	 * {@link PlacementRule}.
+	 * </p>
+	 *
+	 * <p>
+	 * The answer is a {@link CreateResult} naming where the folder is now, exactly as the creation
+	 * of an album answers where it landed, so the client can follow it instead of looking where it
+	 * is not.
+	 * </p>
 	 */
-	private void storeFolder(Context context, PathInfo resourcePath) throws IOException {
+	private void storeFolder(Context context, Location location, PathInfo resourcePath) throws IOException {
 		byte[] contents = readBody(context.request());
 		FolderResource resource = checkFolderResource(context, contents);
 		if (resource == null) {
 			return;
 		}
 
-		storeSidecar(resourcePath.toFile(), stored(contents, resource));
+		PathInfo target = resourcePath;
+		String message = "";
+		String wanted = renameTo(resourcePath, resource);
+		if (wanted != null) {
+			if (!FolderNames.isLegal(wanted)) {
+				LOG.warning("Refusing to name '" + resourcePath.toFile() + "' after '" + wanted + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, FolderNames.illegalName(wanted));
+				return;
+			}
+			try {
+				new MoveService(_cache, _auth).renameFolder(resourcePath, wanted, location.getOwner(),
+					location.getOwnerPath());
+			} catch (MoveRefused ex) {
+				LOG.warning("Refusing to rename '" + resourcePath.toFile() + "': " + ex.getMessage());
+				errorInfo(context, ex.getStatus(), ex.getMessage());
+				return;
+			}
+			target = resourcePath.parent().child(wanted);
+			message = FolderNames.renamedTo(wanted);
+		}
+
+		storeSidecar(target.toFile(), stored(contents, resource));
 
 		// The next read must see what was just written, in the folder and in the listing above.
-		_cache.invalidate(resourcePath);
+		_cache.invalidate(target);
+		if (wanted != null) {
+			// Nothing lies at the old path any more; a cached answer there would be a ghost.
+			_cache.invalidate(resourcePath);
+		}
+
+		serveJsonObject(context.response(),
+			CreateResult.create().setPath(location.spell(target.relativePath())).setMessage(message));
+	}
+
+	/**
+	 * The name the given folder must be renamed to before the given properties are written to it,
+	 * <code>null</code> when it already has the name they compose, see issue #130.
+	 *
+	 * <p>
+	 * Three folders are left alone whatever they say about themselves:
+	 * </p>
+	 * <ul>
+	 * <li>the root of a space, which is not the server's to name — it is the folder the library
+	 * was started on;</li>
+	 * <li>a year or month folder, which is part of a {@link PlacementRule placement} structure and
+	 * means its name, not its title;</li>
+	 * <li>one whose properties compose no name at all, which is every folder that carries no
+	 * title: it keeps the name its owner gave it, and the date in that name goes on being read,
+	 * see {@link AlbumDate#ofFolderName(String)}.</li>
+	 * </ul>
+	 *
+	 * <p>
+	 * An album that carries no explicit date keeps the date its name carries, see
+	 * {@link FolderNames#of(FolderResource, String)}: the fallback stays a fallback, and writing
+	 * the properties of such an album never undates it.
+	 * </p>
+	 * <ul>
+	 * </ul>
+	 */
+	private static String renameTo(PathInfo resourcePath, FolderResource resource) {
+		if (resourcePath.isRoot()) {
+			return null;
+		}
+		String current = resourcePath.getName();
+		if (PlacementRule.isPlacementFolder(current)) {
+			return null;
+		}
+		String wanted = FolderNames.of(resource, current);
+		if (wanted.isEmpty() || wanted.equals(current)) {
+			return null;
+		}
+		return wanted;
 	}
 
 	/**

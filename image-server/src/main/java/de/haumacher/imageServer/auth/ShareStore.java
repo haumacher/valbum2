@@ -118,7 +118,7 @@ public class ShareStore {
 
 		private final String _owner;
 
-		private final String _path;
+		private String _path;
 
 		private final String _label;
 
@@ -211,6 +211,20 @@ public class ShareStore {
 		}
 
 		/** The shared folder as a path relative to the owner's space, <code>/</code> as separator. */
+		/**
+		 * Where this link points after its folder was renamed, see issue #130.
+		 *
+		 * <p>
+		 * The one thing about a link that ever changes besides its withdrawal, and it changes
+		 * nothing the link <em>allows</em>: the folder it was handed out on is the same folder,
+		 * spelled the way it is spelled now. What a link may do and show stays frozen at what it
+		 * was created with, see {@link ShareStore}.
+		 * </p>
+		 */
+		void setPath(String path) {
+			_path = path;
+		}
+
 		public String getPath() {
 			return _path;
 		}
@@ -594,6 +608,56 @@ public class ShareStore {
 		// A link written before issue #83 says nothing about its rights: it allowed looking.
 		return new Link(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating,
 			rights == null ? Rights.READ_ONLY : rights, createdBy, created, revoked);
+	}
+
+	/**
+	 * Rewrites the path of every link on the given folder and below it, see issue #130.
+	 *
+	 * <p>
+	 * A folder is renamed when its properties are written, and a link handed out yesterday must
+	 * keep opening the album it was handed out on. The paths stored here are the only reference to
+	 * a folder that lives outside the folder itself — an index picture is relative to its own
+	 * album, and a sidecar and a <code>.hashes.json</code> ride along inside the folder — so this
+	 * is the whole of "keeping the references".
+	 * </p>
+	 *
+	 * <p>
+	 * A revoked link is rewritten too: its record is kept to say what happened to it, and a record
+	 * that names a folder which no longer exists says less than the truth.
+	 * </p>
+	 *
+	 * @param owner
+	 *        The space the folder lies in, see {@link Link#getOwner()}.
+	 * @param oldPath
+	 *        The folder's path in that space before the rename.
+	 * @param newPath
+	 *        Its path after the rename.
+	 * @return How many links were rewritten.
+	 */
+	public synchronized int rename(String owner, String oldPath, String newPath) throws IOException {
+		if (owner == null || oldPath == null || newPath == null || oldPath.isEmpty()
+			|| oldPath.equals(newPath)) {
+			return 0;
+		}
+		int renamed = 0;
+		for (Link link : _links) {
+			if (!owner.equals(link.getOwner())) {
+				continue;
+			}
+			String path = link.getPath();
+			if (path.equals(oldPath)) {
+				link.setPath(newPath);
+				renamed++;
+			} else if (path.startsWith(oldPath + "/")) {
+				link.setPath(newPath + path.substring(oldPath.length()));
+				renamed++;
+			}
+		}
+		if (renamed > 0) {
+			store();
+			LOG.info("Rewrote " + renamed + " share link(s) from '" + oldPath + "' to '" + newPath + "'.");
+		}
+		return renamed;
 	}
 
 	/**

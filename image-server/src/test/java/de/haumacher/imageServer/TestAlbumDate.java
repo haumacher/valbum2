@@ -183,9 +183,11 @@ public class TestAlbumDate extends TestCase {
 		put("/Trip/", "[\"AlbumInfo\",{\"title\":\"Trip\",\"date\":" + NEW_YEARS_EVE + ",\"parts\":["
 			+ part("a.jpg", 0) + "]}]");
 
+		// Writing the date writes the folder name: the two can no longer disagree, see issue #130.
+		String named = "1999-12-31 Trip";
 		assertEquals("The date the author set is what a sidecar stores.", NEW_YEARS_EVE,
-			((AlbumInfo) sidecar("Trip")).getDate());
-		assertEquals(NEW_YEARS_EVE, album(get("/Trip/")).getEffectiveDate());
+			((AlbumInfo) sidecar(named)).getDate());
+		assertEquals(NEW_YEARS_EVE, album(get("/" + named + "/")).getEffectiveDate());
 	}
 
 	public void testASidecarThatCarriesADerivedDateIsToleratedAndOverwritten() throws Exception {

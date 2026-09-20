@@ -614,14 +614,28 @@ class ListingView extends StatelessWidget {
       folders: listing.folders,
     );
 
+    CreateResult written;
     try {
-      await client.saveListing(albumState.path, stored);
+      written = await client.saveListing(albumState.path, stored);
     } catch (error) {
       showRefusal(messenger, error);
       return;
     }
 
-    albumState.reload();
+    if (written.message.isEmpty) {
+      albumState.reload();
+      return;
+    }
+    // A changed title renames the folder, so the address on the screen has
+    // just become a 404: the server says where the folder is now, and the app
+    // goes there and says the new name, see issue #130.
+    albumState.showPath(splitPath(written.path));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(written.message),
+        duration: const Duration(seconds: 6),
+      ),
+    );
   }
 
   /// Applies the placement rule of this folder to what is already in it.

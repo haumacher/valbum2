@@ -906,17 +906,58 @@ class VAlbumClient {
   /// The album is written to its own URL (the folder at [path]); the server
   /// keeps the previous sidecar as a backup. Throws a [VAlbumException] naming
   /// the HTTP status if the server refuses the write.
-  Future<void> saveAlbum(List<String> path, AlbumInfo album) =>
-      putResource(folderUrl(path), album);
+  ///
+  /// The answer says where the album is *now*: writing its properties writes
+  /// its folder name, so a changed title or date renames the folder and the
+  /// [CreateResult.path] is the new one, with [CreateResult.message] saying so
+  /// (see issue #130). Nothing moved where the message is empty.
+  Future<CreateResult> saveAlbum(List<String> path, AlbumInfo album) =>
+      _saveFolder(path, album);
 
   /// Stores the given listing as the `index.json` sidecar of its own folder.
   ///
   /// The counterpart of [saveAlbum] for a folder of folders: its title and its
   /// placement rule, see issue #48. The derived [FolderInfo.effectiveDate] of
   /// the children travels along with what was loaded; the server drops it
-  /// before it writes, so nothing derived is ever frozen into a sidecar.
-  Future<void> saveListing(List<String> path, ListingInfo listing) =>
-      putResource(folderUrl(path), listing);
+  /// before it writes, so nothing derived is ever frozen into a sidecar. A
+  /// changed title renames the folder, exactly as it renames an album's, and
+  /// the answer says where it is now (issue #130).
+  Future<CreateResult> saveListing(List<String> path, ListingInfo listing) =>
+      _saveFolder(path, listing);
+
+  /// Writes the sidecar of the folder at [path] and answers where it is now.
+  ///
+  /// A server from before issue #130 answers an empty body; it renamed
+  /// nothing, so the folder is where it was asked for — which is exactly what
+  /// [createAlbum] does with an older server's answer.
+  Future<CreateResult> _saveFolder(List<String> path, Resource resource) async {
+    var asked = path.join("/");
+    var response = await _http.put(
+      Uri.parse(folderUrl(path)),
+      encoding: Encoding.getByName("utf-8"),
+      body: resource.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body, "storing '$asked'");
+    }
+    return _createResult(response.body, asked);
+  }
+
+  /// The [CreateResult] in [body], or one naming [asked] where there is none.
+  CreateResult _createResult(String body, String asked) {
+    if (body.trim().isEmpty) {
+      return CreateResult(path: asked);
+    }
+    CreateResult result;
+    try {
+      result = CreateResult.read(JsonReader.fromString(body));
+    } catch (_) {
+      // Not a CreateResult: an older server answering something else.
+      return CreateResult(path: asked);
+    }
+    return result.path.isEmpty ? CreateResult(path: asked) : result;
+  }
 
   /// Creates the album [album] as a new folder named [AlbumInfo.path] below
   /// the folder at [folderPath].
@@ -949,17 +990,7 @@ class VAlbumClient {
       throw failure(response.statusCode, response.body, "creating '$asked'");
     }
 
-    if (response.body.trim().isEmpty) {
-      return CreateResult(path: asked);
-    }
-    CreateResult result;
-    try {
-      result = CreateResult.read(JsonReader.fromString(response.body));
-    } catch (_) {
-      // Not a CreateResult: an older server answering something else.
-      return CreateResult(path: asked);
-    }
-    return result.path.isEmpty ? CreateResult(path: asked) : result;
+    return _createResult(response.body, asked);
   }
 
   /// Uploads the given files to the resource at the given URL.
