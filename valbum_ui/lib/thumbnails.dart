@@ -84,6 +84,16 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
   String toString() => "ThumbnailImage($url)";
 }
 
+/// What a tile is painted with while its thumbnail is on its way (issue #111).
+///
+/// A neutral grey, translucent so that it reads on the album's black page as
+/// well as on the listing's light one. It is a matter of paint only: the box
+/// it fills is the one the tile already has, see [_ThumbnailState._placeheld].
+const Color thumbnailPlaceholderColor = Color(0x33808080);
+
+/// How long an arriving thumbnail takes to fade in over its placeholder.
+const Duration thumbnailFadeInDuration = Duration(milliseconds: 150);
+
 /// The tile showing the thumbnail of [imageUrl].
 ///
 /// The counterpart of the `Image.network` the app used before: same arguments,
@@ -198,7 +208,9 @@ class _ThumbnailState extends State<_Thumbnail> {
   /// known, see [thumbnail].
   ImageProvider _provider(BuildContext context) {
     var displayHeight = widget.displayHeight;
-    if (displayHeight == null || !displayHeight.isFinite || displayHeight <= 0) {
+    if (displayHeight == null ||
+        !displayHeight.isFinite ||
+        displayHeight <= 0) {
       return ThumbnailImage(widget.client, widget.imageUrl);
     }
     return resizedThumbnail(
@@ -245,7 +257,39 @@ class _ThumbnailState extends State<_Thumbnail> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
+        frameBuilder: _placeheld,
       );
+
+  /// The tile while its bytes are on their way, see
+  /// [thumbnailPlaceholderColor] (issue #111).
+  ///
+  /// The box is the one the [Image] itself lays out — the album gives it the
+  /// width and the height the row layout assigned, so the placeholder is
+  /// exactly the picture's own box and nothing ever reflows when the bytes
+  /// arrive. Where the caller gives no size (the cropped index picture of a
+  /// listing), the box is whatever the parent constrains the image to, which
+  /// is what the finished picture gets as well.
+  Widget _placeheld(
+    BuildContext context,
+    Widget child,
+    int? frame,
+    bool wasSynchronouslyLoaded,
+  ) {
+    var shown = wasSynchronouslyLoaded || frame != null;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: shown ? null : thumbnailPlaceholderColor,
+      ),
+      child: AnimatedOpacity(
+        opacity: shown ? 1 : 0,
+        // A picture that was there all along (the cache answered) is simply
+        // there; one that was waited for fades in over its placeholder.
+        duration:
+            wasSynchronouslyLoaded ? Duration.zero : thumbnailFadeInDuration,
+        child: child,
+      ),
+    );
+  }
 }
 
 /// The [ThumbnailImage] an image provider fetches through, `null` for

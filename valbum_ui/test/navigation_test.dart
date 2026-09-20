@@ -82,10 +82,18 @@ String landscapeAlbum(int count) {
 }
 
 /// The number of rows the album layout produced.
+///
+/// Counted in the album's own scroll view, the offstage rows included: the
+/// rows are built on demand since issue #111, and a row in the list's cache
+/// region is built but not on the screen.
 int layoutRows(WidgetTester tester) => find
     .descendant(
-      of: find.byType(SingleChildScrollView),
-      matching: find.byType(Row),
+      of: find.descendant(
+        of: find.byType(AlbumContent),
+        matching: find.byType(Scrollable),
+      ),
+      matching: find.byType(Row, skipOffstage: false),
+      skipOffstage: false,
     )
     .evaluate()
     .length;

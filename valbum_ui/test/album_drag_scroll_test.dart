@@ -4,6 +4,7 @@ import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
+import 'util/edit_drag.dart' show albumOf, partNames;
 import 'util/fixtures.dart';
 
 /// The tile of the image with the given file name.
@@ -50,7 +51,10 @@ String albumJson(int count) => AlbumInfo(
       ],
     ).toString();
 
-String nameOf(int i) => String.fromCharCode("a".codeUnitAt(0) + i);
+/// The name of the i-th image: a letter, and a number where the alphabet
+/// runs out — an album taller than the built range needs more than 26.
+String nameOf(int i) =>
+    i < 26 ? String.fromCharCode("a".codeUnitAt(0) + i) : "img$i";
 
 /// Shrinks the surface to [size] logical pixels for the running test.
 void useSurface(WidgetTester tester, Size size) {
@@ -100,9 +104,16 @@ Future<void> hold(WidgetTester tester, {int frames = 10}) async {
 }
 
 /// The name of the image whose tile lies under the given point.
+///
+/// Only the tiles that are on the screen are looked at: the rows of the album
+/// are built on demand since issue #111, so a tile far from the visible range
+/// has no box to ask about.
 String? tileAt(WidgetTester tester, Offset point, int count) {
   for (var i = 0; i < count; i++) {
     var name = "${nameOf(i)}.jpg";
+    if (tile(name).evaluate().isEmpty) {
+      continue;
+    }
     if (tester.getRect(tile(name)).contains(point)) {
       return name;
     }
@@ -377,6 +388,54 @@ void main() {
 
         await gesture.up();
         await tester.pumpAndSettle();
+      });
+    });
+
+    testWidgets(
+        'a tile is dropped on a row that was not built when it was '
+        'picked up', (tester) async {
+      useSurface(tester, const Size(600, 400));
+
+      await withFakeImageHttp(() async {
+        // Far taller than the viewport and the built context around it, so
+        // the edge scrolling has to build the rows it scrolls to (issue
+        // #111) — and the row the drag started on is left behind.
+        await pumpEditMode(tester, 160);
+
+        var view = viewport(tester);
+        var position = scrollPosition(tester);
+        var target = onTileNearBottom(tester, view, 160);
+        var carried = "a.jpg";
+        expect(partNames(albumOf(tester)).first, carried);
+
+        var gesture = await carry(tester, tile(carried), target);
+        // Down and down, past everything that was built when the drag began.
+        for (var frame = 0; frame < 400 && position.pixels < 3000; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        expect(position.pixels, greaterThan(3000));
+        expect(
+          find.byKey(ValueKey(carried), skipOffstage: false),
+          findsNothing,
+          reason: "the row the tile was picked up from is long gone",
+        );
+
+        var under = tileAt(tester, target, 160);
+        expect(under, isNotNull);
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        // The drop was taken: the carried part now sits beside the tile it
+        // was dropped on, far from where it started.
+        var stored = partNames(albumOf(tester));
+        expect(stored.first, isNot(carried));
+        expect(
+          (stored.indexOf(carried) - stored.indexOf(under!)).abs(),
+          1,
+          reason: "dropped next to the tile under the pointer",
+        );
+        expect(albumState(tester).dragScrolling, isFalse);
+        expect(insertCursor, findsNothing);
       });
     });
   });
