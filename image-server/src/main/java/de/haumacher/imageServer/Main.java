@@ -411,14 +411,18 @@ public class Main {
 		// A page load of a dead invitation address is the start page of its space, see issue #88.
 		app.setSessionGuard(new InvitationRedirect(spaces));
 		if (spaces.getMode() == SpaceMode.SINGLE) {
-			webapp.addServlet(new ServletHolder(new ImageServlet(basePath, spaces.single().getAuth())),
-				Settings.DATA_PREFIX + "/*");
+			ImageServlet data = new ImageServlet(basePath, spaces.single().getAuth());
+			// What a messenger reads when a share link is posted, see issue #104.
+			sharePreview(app, spaces, segment -> data);
+			webapp.addServlet(new ServletHolder(data), Settings.DATA_PREFIX + "/*");
 			webapp.addServlet(new ServletHolder(app), STATIC_PREFIX + "/*");
 		} else {
 			// The space is the first path segment: one door decides which space a request reaches,
 			// and the application is rebased onto "/<space>/" like a share session, see SpaceServlet.
 			app.setBaseSegments(spaces.segments());
-			webapp.addServlet(new ServletHolder(new SpaceServlet(spaces, app)), STATIC_PREFIX + "/*");
+			SpaceServlet front = new SpaceServlet(spaces, app);
+			sharePreview(app, spaces, front::dataOf);
+			webapp.addServlet(new ServletHolder(front), STATIC_PREFIX + "/*");
 		}
 		webapp.setClassLoader(Main.class.getClassLoader());
 
@@ -434,6 +438,21 @@ public class Main {
 
 		server.setHandler(handlers);
 		return server;
+	}
+
+	/**
+	 * Teaches the static handler what a share link is worth showing, see issue #104.
+	 *
+	 * <p>
+	 * Two questions, one answer: the page of a share base carries the Open Graph tags of the
+	 * shared album, and the one picture those tags name is answered below the link itself.
+	 * </p>
+	 */
+	private static void sharePreview(ResourceServlet app, Spaces spaces,
+			java.util.function.Function<String, ImageServlet> data) {
+		SharePreview preview = new SharePreview(spaces, data);
+		app.setPageDecorator(preview);
+		app.setSessionResource(preview);
 	}
 
 	private String normlizeContextPath(String contextPath) {

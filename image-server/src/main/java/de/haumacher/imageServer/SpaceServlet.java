@@ -95,6 +95,19 @@ public class SpaceServlet extends HttpServlet {
 		}
 	}
 
+	/**
+	 * The servlet answering the JSON API of the given space, <code>null</code> if this server hosts
+	 * no such space.
+	 *
+	 * <p>
+	 * What the share preview of issue #104 asks for the album of a link: its cache and its privacy
+	 * filter are the ones the space's answers are built from.
+	 * </p>
+	 */
+	public ImageServlet dataOf(String segment) {
+		return _data.get(segment);
+	}
+
 	@Override
 	public void init(ServletConfig config) throws ServletException {
 		super.init(config);

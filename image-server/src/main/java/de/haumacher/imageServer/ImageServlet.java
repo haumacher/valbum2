@@ -277,6 +277,25 @@ public class ImageServlet extends HttpServlet {
 
 	private PrivacyFilter _privacy;
 
+	/**
+	 * The albums and listings this servlet answers from, shared with the share preview of issue
+	 * #104.
+	 *
+	 * <p>
+	 * One cache per space: the card of a share link is built from the very resource an answer of
+	 * that link would be built from, and a directory watcher is an operating-system resource that
+	 * is not spent twice.
+	 * </p>
+	 */
+	ResourceCache cache() {
+		return _cache;
+	}
+
+	/** What this servlet hides on the way out, shared with the share preview of issue #104. */
+	PrivacyFilter privacy() {
+		return _privacy;
+	}
+
 
 	private JakartaServletFileUpload<UploadItem, UploadFactory> _fileUpload;
 

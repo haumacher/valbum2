@@ -157,6 +157,100 @@ public class ResourceServlet extends HttpServlet {
 		_sessionGuard = guard;
 	}
 
+	/**
+	 * Rewrites the page served for a virtual session base before it goes out, see issue #104.
+	 *
+	 * <p>
+	 * A messenger or a social network fetches a link without running the application and reads
+	 * what the HTML itself says about the page (its <code>&lt;title&gt;</code> and its Open Graph
+	 * tags). What a token opens is the JSON API's business, so the static handler asks somebody
+	 * else what to put there and stays free of album knowledge, exactly as it does for the
+	 * {@link SessionGuard}.
+	 * </p>
+	 */
+	@FunctionalInterface
+	public interface PageDecorator {
+
+		/**
+		 * The page to send for a page load below the given session base.
+		 *
+		 * @param request
+		 *        The request being answered. A crawler needs absolute URLs, so the decorator has
+		 *        to know the surface this server was reached under.
+		 * @param html
+		 *        The page as it would be sent, its <code>&lt;base href&gt;</code> already
+		 *        rewritten.
+		 * @param appBase
+		 *        What the session lives below, see {@link SessionGuard#redirect(String, String, String)}.
+		 * @param prefix
+		 *        The first segment of the session base.
+		 * @param token
+		 *        The second segment, the opaque token.
+		 * @return The page to send; the given one (or <code>null</code>) to send it unchanged.
+		 */
+		String decorate(HttpServletRequest request, String html, String appBase, String prefix, String token);
+	}
+
+	private PageDecorator _pageDecorator;
+
+	/**
+	 * Installs the {@link PageDecorator} asked before a page below a virtual session base is sent.
+	 *
+	 * <p>
+	 * <code>null</code> (the default) sends the page as it is.
+	 * </p>
+	 */
+	public void setPageDecorator(PageDecorator decorator) {
+		_pageDecorator = decorator;
+	}
+
+	/**
+	 * A resource the server answers below a virtual session base itself, see issue #104.
+	 *
+	 * <p>
+	 * The preview picture a share link's card names lives below the link
+	 * (<code>/s/&lt;token&gt;/cover.jpg</code>) and is no file of the web root, so it is asked for
+	 * before the static resolution. What such a name means, and whether the token opens it, is
+	 * again the JSON API's business.
+	 * </p>
+	 */
+	@FunctionalInterface
+	public interface SessionResource {
+
+		/**
+		 * Answers the request, if this is a resource of the session rather than a file of the
+		 * application.
+		 *
+		 * @param appBase
+		 *        What the session lives below, see {@link SessionGuard#redirect(String, String, String)}.
+		 * @param prefix
+		 *        The first segment of the session base.
+		 * @param token
+		 *        The second segment, the opaque token.
+		 * @param relative
+		 *        The path below the session base, with a leading slash
+		 *        (<code>/cover.jpg</code>).
+		 * @return Whether the request was answered here; <code>false</code> serves the
+		 *         application's files as usual.
+		 */
+		boolean serve(HttpServletRequest request, HttpServletResponse response, String appBase, String prefix,
+				String token, String relative) throws IOException;
+	}
+
+	private SessionResource _sessionResource;
+
+	/**
+	 * Installs the {@link SessionResource} asked before anything below a virtual session base is
+	 * resolved against the web root.
+	 *
+	 * <p>
+	 * <code>null</code> (the default) serves the application's files only.
+	 * </p>
+	 */
+	public void setSessionResource(SessionResource resource) {
+		_sessionResource = resource;
+	}
+
 	@Override
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
@@ -182,16 +276,28 @@ public class ResourceServlet extends HttpServlet {
 			relative = "/";
 		}
 
-		if (sessionBase != null && _sessionGuard != null && WebRootResolver.isRoute(relative)) {
-			// A page load below a session base; an asset below it is served whatever the answer.
+		String sessionPrefix = null;
+		String sessionToken = null;
+		if (sessionBase != null) {
 			int slash = sessionBase.indexOf('/', 1);
-			String target = _sessionGuard.redirect(appBase, sessionBase.substring(1, slash),
-				sessionBase.substring(slash + 1));
+			sessionPrefix = sessionBase.substring(1, slash);
+			sessionToken = sessionBase.substring(slash + 1);
+		}
+
+		if (sessionPrefix != null && _sessionGuard != null && WebRootResolver.isRoute(relative)) {
+			// A page load below a session base; an asset below it is served whatever the answer.
+			String target = _sessionGuard.redirect(appBase, sessionPrefix, sessionToken);
 			if (target != null) {
 				response.sendRedirect(
 					(request.getContextPath() == null ? "" : request.getContextPath()) + target);
 				return;
 			}
+		}
+
+		if (sessionPrefix != null && _sessionResource != null
+			&& _sessionResource.serve(request, response, appBase, sessionPrefix, sessionToken, relative)) {
+			// A resource of the session itself, which the web root does not hold.
+			return;
 		}
 
 		String resource = WebRootResolver.resolve(relative, this::exists);
@@ -213,6 +319,14 @@ public class ResourceServlet extends HttpServlet {
 					String base = (request.getContextPath() == null ? "" : request.getContextPath())
 						+ (virtualBase == null ? "" : virtualBase);
 					byte[] html = rebaseIndex(in.readAllBytes(), base);
+					if (sessionPrefix != null && _pageDecorator != null && WebRootResolver.isRoute(relative)) {
+						// What a messenger reads when it fetches the link, see issue #104.
+						String decorated = _pageDecorator.decorate(request,
+							new String(html, StandardCharsets.UTF_8), appBase, sessionPrefix, sessionToken);
+						if (decorated != null) {
+							html = decorated.getBytes(StandardCharsets.UTF_8);
+						}
+					}
 					response.setContentLength(html.length);
 					response.getOutputStream().write(html);
 				} else {

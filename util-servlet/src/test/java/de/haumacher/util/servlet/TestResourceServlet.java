@@ -15,8 +15,11 @@ import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import junit.framework.TestCase;
@@ -126,13 +129,91 @@ public class TestResourceServlet extends TestCase {
 		assertTrue(get("/x/abc/").body().contains("<base href=\"" + CONTEXT + "/\">"));
 	}
 
+	// --- The hooks of issue #104. ---
+
+	/** A page load below a session base goes through the decorator, which is told where it is. */
+	public void testThePageOfASessionIsDecorated() throws Exception {
+		List<String> asked = new ArrayList<>();
+		FakeResponse response = decorated("/s/abc/", (request, html, appBase, prefix, token) -> {
+			asked.add(appBase + "|" + prefix + "|" + token);
+			return html.replace("</head>", "<meta property=\"og:title\" content=\"Zoo\"></head>");
+		});
+		assertEquals(Arrays.asList("|s|abc"), asked);
+		assertTrue(response.body(), response.body().contains("<meta property=\"og:title\" content=\"Zoo\">"));
+		assertTrue("The base is rewritten before the page is decorated: " + response.body(),
+			response.body().contains("<base href=\"" + CONTEXT + "/s/abc/\">"));
+	}
+
+	/** The context root is no session: nothing is asked and nothing is changed. */
+	public void testThePageOfTheContextRootIsNotDecorated() throws Exception {
+		List<String> asked = new ArrayList<>();
+		FakeResponse response = decorated("/", (request, html, appBase, prefix, token) -> {
+			asked.add(prefix);
+			return "decorated";
+		});
+		assertEquals(Arrays.asList(), asked);
+		assertTrue(response.body(), response.body().contains("<base href=\"" + CONTEXT + "/\">"));
+	}
+
+	/** A decorator answering <code>null</code> leaves the page as it is. */
+	public void testADecoratorMayLeaveThePageAlone() throws Exception {
+		FakeResponse response = decorated("/s/abc/", (request, html, appBase, prefix, token) -> null);
+		assertTrue(response.body(), response.body().contains("<base href=\"" + CONTEXT + "/s/abc/\">"));
+	}
+
+	/** A file below a session base is no page: it is served, not decorated. */
+	public void testAnAssetIsNotDecorated() throws Exception {
+		List<String> asked = new ArrayList<>();
+		FakeResponse response = decorated("/s/abc/main.dart.js", (request, html, appBase, prefix, token) -> {
+			asked.add(prefix);
+			return "decorated";
+		});
+		assertEquals(Arrays.asList(), asked);
+		assertEquals(SCRIPT, response.body());
+	}
+
+	/** A resource of the session itself is answered before anything is looked for in the web root. */
+	public void testASessionResourceIsAnsweredBeforeTheWebRoot() throws Exception {
+		ResourceServlet servlet = servlet("s", "i");
+		servlet.setSessionResource((request, response, appBase, prefix, token, relative) -> {
+			if (!"/cover.jpg".equals(relative)) {
+				return false;
+			}
+			response.setContentType("image/jpeg");
+			response.getOutputStream().write((prefix + ":" + token).getBytes(StandardCharsets.UTF_8));
+			return true;
+		});
+		FakeResponse response = new FakeResponse();
+		servlet.doGet(request("/s/abc/cover.jpg"), response.response());
+		assertEquals(HttpServletResponse.SC_OK, response.status());
+		assertEquals("s:abc", response.body());
+
+		FakeResponse other = new FakeResponse();
+		servlet.doGet(request("/s/abc/main.dart.js"), other.response());
+		assertEquals("What the hook does not answer is served from the web root as before.", SCRIPT,
+			other.body());
+	}
+
+	private FakeResponse decorated(String pathInfo, ResourceServlet.PageDecorator decorator) throws Exception {
+		ResourceServlet servlet = servlet("s", "i");
+		servlet.setPageDecorator(decorator);
+		FakeResponse response = new FakeResponse();
+		servlet.doGet(request(pathInfo), response.response());
+		return response;
+	}
+
+	private ResourceServlet servlet(String... virtualPrefix) throws Exception {
+		ResourceServlet servlet = new ResourceServlet(_webRoot, "/data", virtualPrefix);
+		servlet.init(config());
+		return servlet;
+	}
+
 	private FakeResponse get(String pathInfo) throws Exception {
 		return get(pathInfo, "s", "i");
 	}
 
 	private FakeResponse get(String pathInfo, String... virtualPrefix) throws Exception {
-		ResourceServlet servlet = new ResourceServlet(_webRoot, "/data", virtualPrefix);
-		servlet.init(config());
+		ResourceServlet servlet = servlet(virtualPrefix);
 		FakeResponse response = new FakeResponse();
 		servlet.doGet(request(pathInfo), response.response());
 		return response;
