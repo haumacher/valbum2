@@ -50,6 +50,63 @@ const String defaultInboxName = "Inbox";
 /// says the one thing that changes it.
 const String guestNoSpaceNotice = "Ask the admin to give you an album space.";
 
+/// The point one watched album was synced up to, see
+/// [CameraRollConfig.markOf].
+///
+/// Every album has its own, so that ticking a new one does not make the sync
+/// skip what the other albums took in the meantime — and so that a newly
+/// ticked album is fetched from the beginning rather than from the moment it
+/// was ticked (issue #117).
+@immutable
+class SourceMark {
+  /// The taken-at stamp of the newest item of this album that was handled,
+  /// `null` while the album was never scanned — which asks for all of it.
+  final DateTime? since;
+
+  /// The ids of the handled items that carry exactly [since] as their
+  /// taken-at stamp.
+  ///
+  /// Two photos taken in the same second must not make the sync choose
+  /// between uploading one twice and skipping the other, so a mark is a stamp
+  /// *plus* the ids at that stamp.
+  final List<String> done;
+
+  const SourceMark({this.since, this.done = const []});
+
+  /// The mark of an album nothing was ever synced from.
+  static const SourceMark beginning = SourceMark();
+
+  /// This mark as the JSON the configuration keeps.
+  Map<String, Object?> toJson() => {
+        if (since != null) "since": since!.toUtc().toIso8601String(),
+        "done": done,
+      };
+
+  /// The mark stored as [json], [beginning] for anything unreadable.
+  static SourceMark parse(Object? json) {
+    if (json is! Map) {
+      return beginning;
+    }
+    var since = json["since"];
+    return SourceMark(
+      since: since is String ? DateTime.tryParse(since) : null,
+      done: [for (var id in (json["done"] as List? ?? [])) "$id"],
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is SourceMark &&
+      other.since == since &&
+      listEquals(other.done, done);
+
+  @override
+  int get hashCode => Object.hash(since, done.length);
+
+  @override
+  String toString() => jsonEncode(toJson());
+}
+
 /// What the sync does, and what it is configured with.
 ///
 /// Persisted as one JSON blob through the [SettingsStore], see
@@ -92,12 +149,32 @@ class CameraRollConfig {
   /// *plus* the ids at that stamp.
   final List<String> done;
 
+  /// The ids of the device albums the sync watches, `null` while the user
+  /// never ticked any (issue #117).
+  ///
+  /// `null` is not "everything": it is the **default**, which is the camera
+  /// album alone where the device names one, see [defaultSources] — a store
+  /// written before this field therefore starts watching the camera and
+  /// nothing else, and an app that is updated never uploads more than it did.
+  /// An empty list is the user's own decision to watch nothing; the section
+  /// says so and the run finds nothing.
+  final List<String>? sources;
+
+  /// How far each watched album was synced, by [PhotoAlbum.id].
+  ///
+  /// An album with no mark of its own falls back to [since]/[done] — which is
+  /// what carries the single watermark of a store written before issue #117
+  /// over to the camera album it turns out to have been.
+  final Map<String, SourceMark> marks;
+
   const CameraRollConfig({
     this.enabled = false,
     this.wifiOnly = true,
     this.inbox = const [],
     this.since,
     this.done = const [],
+    this.sources,
+    this.marks = const {},
   });
 
   /// The configuration of an app that was never told to sync anything.
@@ -112,6 +189,31 @@ class CameraRollConfig {
   /// [guestNoSpaceNotice].
   bool get hasInbox => inbox.isNotEmpty;
 
+  /// The source id standing for the whole photo library.
+  ///
+  /// The sync falls back to it where the device names no album at all — an
+  /// empty library, or a platform whose [PhotoLibrary] does not enumerate
+  /// albums. There is nothing to tick there, and scanning everything is what
+  /// the sync did before issue #117; its mark is [since]/[done], so nothing
+  /// about a library without albums changed.
+  static const String wholeLibrary = "";
+
+  /// How far [source] was synced, see [marks].
+  SourceMark markOf(String source) =>
+      marks[source] ?? SourceMark(since: since, done: done);
+
+  /// The same configuration with the mark of [source] replaced.
+  CameraRollConfig withMark(String source, SourceMark mark) =>
+      source == wholeLibrary
+          ? copyWith(since: mark.since, done: mark.done)
+          : copyWith(marks: {...marks, source: mark});
+
+  /// The albums this configuration watches, given what the device holds.
+  ///
+  /// The user's own choice where they made one, else [defaultSources].
+  List<String> sourcesOf(List<PhotoAlbum> albums) =>
+      sources ?? defaultSources(albums);
+
   /// The same configuration with the given values replaced.
   CameraRollConfig copyWith({
     bool? enabled,
@@ -119,6 +221,8 @@ class CameraRollConfig {
     List<String>? inbox,
     DateTime? since,
     List<String>? done,
+    List<String>? sources,
+    Map<String, SourceMark>? marks,
   }) =>
       CameraRollConfig(
         enabled: enabled ?? this.enabled,
@@ -126,6 +230,8 @@ class CameraRollConfig {
         inbox: inbox ?? this.inbox,
         since: since ?? this.since,
         done: done ?? this.done,
+        sources: sources ?? this.sources,
+        marks: marks ?? this.marks,
       );
 
   /// This configuration as the JSON blob the store keeps.
@@ -135,6 +241,11 @@ class CameraRollConfig {
         "inbox": inbox,
         if (since != null) "since": since!.toUtc().toIso8601String(),
         "done": done,
+        if (sources != null) "sources": sources,
+        if (marks.isNotEmpty)
+          "marks": {
+            for (var entry in marks.entries) entry.key: entry.value.toJson()
+          },
       });
 
   /// The configuration stored as [text], [disabled] if there is none.
@@ -160,6 +271,16 @@ class CameraRollConfig {
         inbox: [for (var name in (json["inbox"] as List? ?? [])) "$name"],
         since: since is String ? DateTime.tryParse(since) : null,
         done: [for (var id in (json["done"] as List? ?? [])) "$id"],
+        // Absent means "the camera album" (issue #117), which only the device
+        // can name; a missing list is therefore kept missing rather than read
+        // as "nothing" or as "everything", see [sourcesOf].
+        sources: json["sources"] is List
+            ? [for (var id in (json["sources"] as List)) "$id"]
+            : null,
+        marks: {
+          for (var entry in (json["marks"] as Map? ?? {}).entries)
+            "${entry.key}": SourceMark.parse(entry.value)
+        },
       );
     } catch (_) {
       return disabled;
@@ -173,15 +294,60 @@ class CameraRollConfig {
       other.wifiOnly == wifiOnly &&
       listEquals(other.inbox, inbox) &&
       other.since == since &&
-      listEquals(other.done, done);
+      listEquals(other.done, done) &&
+      listEquals(other.sources, sources) &&
+      mapEquals(other.marks, marks);
 
   @override
-  int get hashCode =>
-      Object.hash(enabled, wifiOnly, inbox.length, since, done.length);
+  int get hashCode => Object.hash(
+        enabled,
+        wifiOnly,
+        inbox.length,
+        since,
+        done.length,
+        sources?.length,
+        marks.length,
+      );
 
   @override
   String toString() => toJson();
 }
+
+/// The albums a user may tick, out of what the device holds (issue #117).
+///
+/// Everything but the platform's "all photos" pseudo-album, see
+/// [PhotoAlbum.isAll]: watching *Recents* is watching the whole library,
+/// which is the thing the tick boxes exist to end. On iOS that pseudo-album
+/// *is* the camera roll — there is no `DCIM/Camera` there — so where it is
+/// also the camera it stays in the list and is named like any other album.
+List<PhotoAlbum> selectableSources(List<PhotoAlbum> albums) => [
+      for (var album in albums)
+        if (!album.isAll || album.isCamera) album
+    ];
+
+/// The albums a sync watches while the user ticked none (issue #117).
+///
+/// The camera album where the device names one, and nothing at all where it
+/// does not: an app must never start uploading an album nobody chose. Where
+/// the device names no album whatsoever — an empty library, or a platform
+/// that does not enumerate albums — the whole library is scanned as before,
+/// see [CameraRollConfig.wholeLibrary].
+List<String> defaultSources(List<PhotoAlbum> albums) {
+  if (albums.isEmpty) {
+    return const [CameraRollConfig.wholeLibrary];
+  }
+  return [
+    for (var album in selectableSources(albums))
+      if (album.isCamera) album.id
+  ];
+}
+
+/// What the camera-roll section says while nothing is watched (issue #117).
+const String noSourcesNotice = "Choose the albums to sync.";
+
+/// What the camera-roll section says about a newly ticked album (issue #117).
+const String newSourceNotice =
+    "Photos of a newly chosen album are fetched from the beginning.";
 
 /// Typed access to the camera-roll configuration of a [SettingsStore].
 extension CameraRollStorage on SettingsStore {
@@ -681,14 +847,49 @@ class CameraRollSync extends ChangeNotifier {
     _publish(_restingStatus());
   }
 
+  /// Chooses the device albums the sync watches (issue #117).
+  ///
+  /// [albums] is what the device holds, needed to know which albums were
+  /// watched **before** this choice: while the user never ticked anything,
+  /// that is the default — the camera album — and the camera must not be
+  /// re-scanned from the beginning merely because the user ticked a second
+  /// album beside it.
+  ///
+  /// A newly ticked album is scanned **from the beginning**, not from the
+  /// moment it was ticked: somebody who ticks "WhatsApp Images" wants the
+  /// pictures that are in it, not the ones it will receive from now on. An
+  /// album that was ticked before, unticked and ticked again keeps the mark
+  /// it had — everything below it was offered once already, and the server
+  /// would only answer `present` for it, see [SourceMark].
+  Future<void> chooseSources(
+    List<String> chosen, {
+    List<PhotoAlbum> albums = const [],
+  }) async {
+    var watched = _config.sourcesOf(albums).toSet();
+    var marks = {..._config.marks};
+    for (var source in chosen) {
+      if (!watched.contains(source) && !marks.containsKey(source)) {
+        marks[source] = SourceMark.beginning;
+      }
+    }
+    await _store(_config.copyWith(sources: [...chosen], marks: marks));
+    _publish(_restingStatus());
+    if (_config.enabled) {
+      trigger();
+    }
+  }
+
   /// Forgets what was uploaded, so that the next run re-scans the library.
   ///
   /// Nothing is uploaded twice by this: the server is asked for every hash.
+  /// What is watched is not forgotten — that is a decision of the user, not
+  /// progress.
   Future<void> forgetProgress() async {
     await _store(CameraRollConfig(
       enabled: _config.enabled,
       wifiOnly: _config.wifiOnly,
       inbox: _config.inbox,
+      sources: _config.sources,
     ));
     _publish(_restingStatus());
   }
@@ -781,9 +982,20 @@ class CameraRollSync extends ChangeNotifier {
       _fail(guestNoSpaceNotice, retry: false);
       return;
     }
-    // Only now, with the library readable and the caller in their own space:
-    // an app that may not look at any photo must not leave an empty album
-    // behind on the server.
+    List<String> sources;
+    try {
+      sources = await _sources();
+    } catch (error) {
+      _fail("The photo library could not be read: $error");
+      return;
+    }
+    // Only now, with the library readable, an album to watch and the caller in
+    // their own space: an app that may not look at any photo — or that is
+    // watching none — must not leave an empty album behind on the server.
+    if (sources.isEmpty) {
+      _succeed(0, 0);
+      return;
+    }
     if (!await _ensureInbox(client)) {
       return;
     }
@@ -791,84 +1003,122 @@ class CameraRollSync extends ChangeNotifier {
     var stored = 0;
     var present = 0;
     var transferred = 0;
-    // A platform scan is bounded (see [PhotoLibrary.scanLimit]), so a full
-    // answer may have left items behind; the watermark has advanced by then,
-    // so the next round picks exactly those up. A round that was not full —
-    // and every round of a library that answers with everything — ends the
-    // run.
-    for (var round = 0; round < maxRounds; round++) {
-      List<PhotoItem> items;
-      try {
-        items = await library.itemsSince(_config.since);
-      } catch (error) {
-        _fail("The photo library could not be read: $error");
-        return;
-      }
-
-      var alreadyDone = _config.done.toSet();
-      var pending = [
-        for (var item in items)
-          if (!alreadyDone.contains(item.id)) item
-      ];
-      if (pending.isEmpty) {
-        break;
-      }
-      var truncated =
-          library.scanLimit > 0 && items.length >= library.scanLimit;
-
-      var total = transferred + pending.length;
-      _publish(_status.copyWith(
-        phase: CameraRollPhase.running,
-        done: transferred,
-        total: total,
-      ));
-
-      // The same splitter the explicit upload transfers by, see
-      // [UploadBatching] and issue #63: a batch is what the watermark may
-      // advance by, and it is bounded by the number of items *and* by their
-      // size, so a handful of videos never becomes one endless request.
-      for (var batch in UploadBatching(
-        maxFiles: batchSize,
-        maxBytes: uploadBatchBytes,
-      ).split(pending, (item) => item.length)) {
-        if (_stopRequested) {
-          _publish(_restingStatus());
-          return;
-        }
-        UploadSummary summary;
+    // An item that lies in two watched albums is uploaded once; the mark of
+    // both albums still moves past it, see below.
+    var uploaded = <String>{};
+    // Every watched album has its own watermark, so a newly ticked one is
+    // fetched from the beginning without the others losing their place
+    // (issue #117).
+    for (var source in sources) {
+      // A platform scan is bounded (see [PhotoLibrary.scanLimit]), so a full
+      // answer may have left items behind; the watermark has advanced by
+      // then, so the next round picks exactly those up. A round that was not
+      // full — and every round of a library that answers with everything —
+      // ends this album.
+      for (var round = 0; round < maxRounds; round++) {
+        var mark = _config.markOf(source);
+        List<PhotoItem> items;
         try {
-          summary = await client.uploadNew(
-            _config.inbox,
-            [for (var item in batch) item.upload],
+          items = await library.itemsSince(
+            mark.since,
+            sources:
+                source == CameraRollConfig.wholeLibrary ? const [] : [source],
           );
-        } on VAlbumException catch (error) {
-          _fail(error.message);
-          return;
         } catch (error) {
-          _fail(
-            VAlbumClient.isTransportFailure(error)
-                ? "The server cannot be reached "
-                    "(${VAlbumClient.transportMessage(error)})."
-                : error.toString(),
-          );
+          _fail("The photo library could not be read: $error");
           return;
         }
-        stored += summary.stored;
-        present += summary.present;
-        transferred += batch.length;
-        // Only now: what was accepted is what the watermark may cover.
-        await _advance(batch);
+
+        var alreadyDone = mark.done.toSet();
+        var pending = [
+          for (var item in items)
+            if (!alreadyDone.contains(item.id)) item
+        ];
+        if (pending.isEmpty) {
+          break;
+        }
+        var truncated =
+            library.scanLimit > 0 && items.length >= library.scanLimit;
+
+        var total = transferred + pending.length;
         _publish(_status.copyWith(
           phase: CameraRollPhase.running,
           done: transferred,
           total: total,
         ));
-      }
-      if (!truncated) {
-        break;
+
+        // The same splitter the explicit upload transfers by, see
+        // [UploadBatching] and issue #63: a batch is what the watermark may
+        // advance by, and it is bounded by the number of items *and* by their
+        // size, so a handful of videos never becomes one endless request.
+        for (var batch in UploadBatching(
+          maxFiles: batchSize,
+          maxBytes: uploadBatchBytes,
+        ).split(pending, (item) => item.length)) {
+          if (_stopRequested) {
+            _publish(_restingStatus());
+            return;
+          }
+          // What another watched album already handed over in this run is not
+          // handed over a second time — but this album's mark still moves
+          // past it, because the server has it.
+          var fresh = [
+            for (var item in batch)
+              if (!uploaded.contains(item.id)) item
+          ];
+          if (fresh.isNotEmpty) {
+            UploadSummary summary;
+            try {
+              summary = await client.uploadNew(
+                _config.inbox,
+                [for (var item in fresh) item.upload],
+              );
+            } on VAlbumException catch (error) {
+              _fail(error.message);
+              return;
+            } catch (error) {
+              _fail(
+                VAlbumClient.isTransportFailure(error)
+                    ? "The server cannot be reached "
+                        "(${VAlbumClient.transportMessage(error)})."
+                    : error.toString(),
+              );
+              return;
+            }
+            stored += summary.stored;
+            present += summary.present;
+            uploaded.addAll([for (var item in fresh) item.id]);
+          }
+          transferred += batch.length;
+          // Only now: what was accepted is what the watermark may cover.
+          await _advance(source, batch);
+          _publish(_status.copyWith(
+            phase: CameraRollPhase.running,
+            done: transferred,
+            total: total,
+          ));
+        }
+        if (!truncated) {
+          break;
+        }
       }
     }
     _succeed(stored, present);
+  }
+
+  /// The device albums this run scans, see [CameraRollConfig.sources].
+  ///
+  /// The user's choice where they made one; else the default, which needs the
+  /// device's albums — asked here, after the library granted access, and
+  /// never stored: an album that appears on the device later is picked up by
+  /// the next run, and a tick the user never made is not written behind their
+  /// back.
+  Future<List<String>> _sources() async {
+    var chosen = _config.sources;
+    if (chosen != null) {
+      return chosen;
+    }
+    return defaultSources(await library.albums());
   }
 
   /// Makes sure there is an inbox album, creating it where there is none.
@@ -952,26 +1202,31 @@ class CameraRollSync extends ChangeNotifier {
           if (segment.isNotEmpty) segment
       ];
 
-  /// Records that [batch] was accepted by the server.
+  /// Records that [batch], scanned from [source], was accepted by the server.
   ///
-  /// The watermark becomes the newest taken-at stamp handled so far; the ids
-  /// kept beside it are exactly those at that stamp — the older ones can never
-  /// be offered again, because the next scan starts at the watermark.
-  Future<void> _advance(List<PhotoItem> batch) async {
-    var mark = _config.since;
+  /// The album's watermark becomes the newest taken-at stamp handled so far;
+  /// the ids kept beside it are exactly those at that stamp — the older ones
+  /// can never be offered again, because the next scan of this album starts
+  /// at its watermark.
+  Future<void> _advance(String source, List<PhotoItem> batch) async {
+    var previous = _config.markOf(source);
+    var stamp = previous.since;
     for (var item in batch) {
-      if (mark == null || item.takenAt.isAfter(mark)) {
-        mark = item.takenAt;
+      if (stamp == null || item.takenAt.isAfter(stamp)) {
+        stamp = item.takenAt;
       }
     }
     var kept = <String>{
       // The previously recorded ids belong to the previous watermark; they
       // survive only while that watermark is still the current one.
-      if (mark == _config.since) ..._config.done,
+      if (stamp == previous.since) ...previous.done,
       for (var item in batch)
-        if (item.takenAt == mark) item.id,
+        if (item.takenAt == stamp) item.id,
     };
-    await _store(_config.copyWith(since: mark, done: kept.toList()));
+    await _store(_config.withMark(
+      source,
+      SourceMark(since: stamp, done: kept.toList()),
+    ));
   }
 
   void _succeed(int stored, int present) {
