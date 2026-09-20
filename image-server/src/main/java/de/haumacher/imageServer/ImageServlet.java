@@ -917,7 +917,7 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		List<String> names = moveRequest.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
-		MoveService moveService = new MoveService(_basePath, _cache, _auth);
+		MoveService moveService = new MoveService(_cache, _auth);
 
 		// The source rule of issue #53: the edit right, or one's own contribution and nothing
 		// else. A share link never gets that far — it has no album to take anything back into.
@@ -970,6 +970,71 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Deletes entries of the addressed folder, see issue #109.
+	 *
+	 * <p>
+	 * A sibling of the move above, and the same request: a {@link MoveRequest} whose
+	 * {@link MoveRequest#getTarget() target} is nothing — the target of a delete is the trash of
+	 * the caller's space, which nobody picks. The answer is a {@link MoveResult} with one outcome
+	 * per name, saying whether the entry was renamed into the trash or removed for good.
+	 * </p>
+	 *
+	 * <p>
+	 * It needs {@link Rights#EDIT} on the folder the entry lives in, and nothing else opens it:
+	 * removing an entry is an edit of the listing, and the contributor exception of issue #53 —
+	 * taking one's own photograph back out of somebody else's album — does not reach a whole
+	 * album. A share link is refused in its own words, since a link may well allow adding photos.
+	 * </p>
+	 */
+	private void deleteEntries(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo folder = location.getPath();
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folder)) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing the delete through a share link at '" + context.request().getPathInfo() + "': "
+				+ DeleteService.SHARE_DELETE_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, DeleteService.SHARE_DELETE_REFUSED);
+			return;
+		}
+		if (!_auth.mayEdit(caller, folder)) {
+			refuseMove(context, caller, DeleteService.EDIT_REFUSED, true);
+			return;
+		}
+
+		MoveRequest request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = MoveRequest.readMoveRequest(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable delete request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, DeleteService.DELETE_UNREADABLE);
+			return;
+		}
+		List<String> names = request.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
+
+		MoveResult result;
+		try {
+			// The trash lives below the caller's own space, exactly as the duplicates do: nothing
+			// crosses a space boundary, see issue #82.
+			result = new DeleteService(folder.getBasePath(), _cache).delete(folder, names);
+		} catch (MoveRefused ex) {
+			LOG.warning("Refusing to delete in '" + context.request().getPathInfo() + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
 	 * Files what is already in the addressed folder by that folder's placement rule, see issue #48.
 	 *
 	 * <p>
@@ -997,7 +1062,7 @@ public class ImageServlet extends HttpServlet {
 
 		MoveResult result;
 		try {
-			result = new MoveService(_basePath, _cache, _auth).place(folder);
+			result = new MoveService(_cache, _auth).place(folder);
 		} catch (MoveRefused ex) {
 			LOG.warning("Refusing to apply the placement rule of '" + context.request().getPathInfo() + "': "
 				+ ex.getMessage());
@@ -2085,6 +2150,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("move".equals(action)) {
 			moveEntries(context);
+			return;
+		}
+		if ("delete".equals(action)) {
+			deleteEntries(context);
 			return;
 		}
 		if ("place".equals(action)) {

@@ -451,6 +451,17 @@ class ListingView extends StatelessWidget {
               title: Text("Share link…"),
             ),
           ),
+        // Deleting an entry is an edit of *this* folder, exactly as moving one
+        // out of it is, and it is offered under the same condition (#109).
+        if (mayMove)
+          const PopupMenuItem<String>(
+            key: Key("delete-entry"),
+            value: "delete",
+            child: ListTile(
+              leading: Icon(Icons.delete_outline),
+              title: Text("Delete…"),
+            ),
+          ),
       ],
     );
     if (chosen == null || !context.mounted) {
@@ -458,6 +469,17 @@ class ListingView extends StatelessWidget {
     }
     if (chosen == "share-link") {
       await shareFolderLink(context, childPath, folder.title);
+      return;
+    }
+    if (chosen == "delete") {
+      await deleteWithConfirmation(
+        context: context,
+        client: client,
+        parent: albumState.path,
+        names: [folder.name],
+        what: "'${folder.name}'",
+        onDeleted: albumState.reload,
+      );
       return;
     }
     await moveWithPicker(

@@ -78,6 +78,15 @@ public class MoveService {
 	 * become a second copy at the target either, so it is moved out of the way and kept. Emptying
 	 * that folder is the owner's act, never the server's.
 	 * </p>
+	 *
+	 * <p>
+	 * Below the <em>space</em> the move happens in, like the
+	 * {@link DeleteService#TRASH_FOLDER trash} of issue #109: nothing crosses a space boundary
+	 * since issue #82, and one space's photographs have no business lying below another's. A
+	 * server hosting a single space writes exactly where it always wrote, that space being the
+	 * base folder; what an older multi-space server left below the base folder stays there and is
+	 * named once at start-up, see {@link DeleteService#legacyDuplicates(Path)}.
+	 * </p>
 	 */
 	public static final String DUPLICATES_FOLDER = "duplicates";
 
@@ -205,8 +214,6 @@ public class MoveService {
 	/** The message the entries behind a failed one are reported with. */
 	public static final String ABANDONED = "Not moved: an earlier entry of this request could not be moved.";
 
-	private final Path _basePath;
-
 	private final ResourceCache _cache;
 
 	/** Decides whose space a folder lies in, <code>null</code> in a server without users. */
@@ -215,21 +222,22 @@ public class MoveService {
 	/**
 	 * Creates a {@link MoveService}.
 	 *
-	 * @param basePath
-	 *        The base folder of the server (not the caller's space): the duplicates folder lives
-	 *        below it, so that a set-aside file never lands in an album.
+	 * <p>
+	 * No base folder is needed any more (issue #109): what a move sets aside goes below the space
+	 * the move happens in, and that space is read from the path being moved out of, see
+	 * {@link PathInfo#getBasePath()} and {@link #DUPLICATES_FOLDER}.
+	 * </p>
+	 *
 	 * @param cache
 	 *        The cache that must forget what the move changed.
 	 */
-	public MoveService(Path basePath, ResourceCache cache) {
-		this(basePath, cache, null);
+	public MoveService(ResourceCache cache) {
+		this(cache, null);
 	}
 
 	/**
 	 * Creates a {@link MoveService} that can move the link entries of issue #50, too.
 	 *
-	 * @param basePath
-	 *        The base folder of the server, see {@link #MoveService(Path, ResourceCache)}.
 	 * @param cache
 	 *        The cache that must forget what the move changed.
 	 * @param auth
@@ -237,8 +245,7 @@ public class MoveService {
 	 *        in the recipient's own library, so a move that would carry it into another space is
 	 *        refused. <code>null</code> in a server without users, which has no links either.
 	 */
-	public MoveService(Path basePath, ResourceCache cache, AuthService auth) {
-		_basePath = basePath;
+	public MoveService(ResourceCache cache, AuthService auth) {
 		_cache = cache;
 		_auth = auth;
 	}
@@ -339,6 +346,9 @@ public class MoveService {
 			throw new MoveRefused(HttpServletResponse.SC_BAD_REQUEST, SAME_FOLDER);
 		}
 
+		// The space the move happens in: its .valbum holds what is set aside, see #82 and #109.
+		Path space = source.getBasePath();
+
 		AlbumInfo sourceAlbum = albumOf(source);
 		AlbumInfo targetAlbum = albumOf(target);
 		// A folder that describes itself as a folder of folders has no place for an image; its
@@ -382,12 +392,12 @@ public class MoveService {
 						result.addOutcome(moveFolder(entry));
 					} else if (entry._group != null) {
 						result.addOutcome(moveGroup(entry, entries, sourceAlbum, targetAlbum, sourceFolder,
-							targetFolder, targetHashes, sourceHashes));
+							targetFolder, targetHashes, sourceHashes, space));
 						sourceChanged = true;
 						targetChanged = true;
 					} else {
 						result.addOutcome(moveImage(entry, sourceAlbum, targetAlbum, sourceFolder, targetFolder,
-							targetHashes, sourceHashes));
+							targetHashes, sourceHashes, space));
 						sourceChanged = true;
 						targetChanged = true;
 					}
@@ -644,9 +654,9 @@ public class MoveService {
 
 	/** Moves a single image out of the source album and appends it to the target album. */
 	private MoveOutcome moveImage(Entry entry, AlbumInfo sourceAlbum, AlbumInfo targetAlbum, File sourceFolder,
-			File targetFolder, HashCache targetHashes, HashCache sourceHashes) throws IOException {
+			File targetFolder, HashCache targetHashes, HashCache sourceHashes, Path space) throws IOException {
 		ImagePart image = entry._image;
-		Landing landing = landFile(image.getName(), sourceFolder, targetFolder, targetHashes, sourceHashes);
+		Landing landing = landFile(image.getName(), sourceFolder, targetFolder, targetHashes, sourceHashes, space);
 
 		detach(sourceAlbum, image);
 		if (landing._existing != null) {
@@ -664,7 +674,7 @@ public class MoveService {
 	 * album.
 	 */
 	private MoveOutcome moveGroup(Entry entry, List<Entry> entries, AlbumInfo sourceAlbum, AlbumInfo targetAlbum,
-			File sourceFolder, File targetFolder, HashCache targetHashes, HashCache sourceHashes)
+			File sourceFolder, File targetFolder, HashCache targetHashes, HashCache sourceHashes, Path space)
 			throws IOException {
 		ImageGroup group = entry._group;
 		ImagePart head = representative(group);
@@ -675,7 +685,7 @@ public class MoveService {
 		int setAside = 0;
 		for (ImagePart member : members) {
 			String asked = member.getName();
-			Landing landing = landFile(asked, sourceFolder, targetFolder, targetHashes, sourceHashes);
+			Landing landing = landFile(asked, sourceFolder, targetFolder, targetHashes, sourceHashes, space);
 			if (landing._existing != null) {
 				setAside++;
 				group.removeImage(member);
@@ -721,7 +731,7 @@ public class MoveService {
 		return outcome(entry._name, headName == null ? "" : headName, message);
 	}
 
-	/** Where a single file ended up, see {@link MoveService#landFile(String, File, File, HashCache, HashCache)}. */
+	/** Where a single file ended up, see {@link MoveService#landFile}. */
 	private static final class Landing {
 
 		/** The name the file has in the target folder now, <code>null</code> if it was set aside. */
@@ -747,7 +757,7 @@ public class MoveService {
 	 * </p>
 	 */
 	private Landing landFile(String name, File sourceFolder, File targetFolder, HashCache targetHashes,
-			HashCache sourceHashes) throws IOException {
+			HashCache sourceHashes, Path space) throws IOException {
 		File file = new File(sourceFolder, name);
 		String hash = sourceHashes.hashByName().get(name);
 		if (hash == null) {
@@ -760,7 +770,7 @@ public class MoveService {
 
 		String existing = targetHashes.nameOf(hash);
 		if (existing != null) {
-			File aside = setAside(hash, name);
+			File aside = setAside(space, hash, name);
 			Files.move(file.toPath(), aside.toPath());
 			LOG.info("The target already holds '" + name + "' as '" + existing + "'; set aside as '" + aside + "'.");
 			return new Landing(null, existing);
@@ -773,9 +783,14 @@ public class MoveService {
 		return new Landing(moved.getName(), null);
 	}
 
-	/** The file a duplicate is set aside as; nothing there is ever overwritten either. */
-	private File setAside(String hash, String name) throws IOException {
-		File folder = _basePath.resolve(UserStore.DIRECTORY_NAME).resolve(DUPLICATES_FOLDER).toFile();
+	/**
+	 * The file a duplicate is set aside as; nothing there is ever overwritten either.
+	 *
+	 * @param space
+	 *        The root of the space the move happens in, see {@link #DUPLICATES_FOLDER}.
+	 */
+	private File setAside(Path space, String hash, String name) throws IOException {
+		File folder = space.resolve(UserStore.DIRECTORY_NAME).resolve(DUPLICATES_FOLDER).toFile();
 		if (!folder.isDirectory() && !folder.mkdirs()) {
 			throw new IOException("Cannot create the folder for duplicates: " + folder.getAbsolutePath());
 		}

@@ -1812,6 +1812,12 @@ public class AuthService {
 
 		for (Path segment : relative) {
 			String name = segment.toString();
+			if (name.startsWith(".")) {
+				// The server's own business: the user store, the sidecars, the preview cache, the
+				// duplicates of issue #47 and the trash of issue #109. A listing never shows such a
+				// folder, and since a deleted album lives in one, no address reaches into it either.
+				throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, PATH_ESCAPED);
+			}
 			Path folder = consumed == null ? currentRoot : currentRoot.resolve(consumed);
 			Path candidate = folder.resolve(name);
 
