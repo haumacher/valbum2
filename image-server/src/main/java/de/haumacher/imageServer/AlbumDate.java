@@ -147,6 +147,28 @@ public final class AlbumDate {
 	}
 
 	/**
+	 * The date text at the start of the given folder name, the empty string if it starts with none.
+	 *
+	 * <p>
+	 * The characters {@link #ofFolderName(String)} read, exactly as they are spelled — the
+	 * separator behind them included. An album whose only date is the one in its name keeps that
+	 * spelling when its folder is renamed after its properties, see {@link FolderNames}: composing
+	 * the date anew would turn <code>2020 Trip</code> into <code>2020-01-01 Trip</code> and state a
+	 * day nobody gave.
+	 * </p>
+	 */
+	public static String leadingDateText(String folderName) {
+		if (folderName == null) {
+			return "";
+		}
+		Matcher matcher = LEADING_DATE.matcher(folderName);
+		if (!matcher.lookingAt()) {
+			return "";
+		}
+		return folderName.substring(0, matcher.end());
+	}
+
+	/**
 	 * The date a listing sorts a folder by and a {@link PlacementRule} files it by: the explicit
 	 * date of its sidecar, else the date in its name.
 	 *

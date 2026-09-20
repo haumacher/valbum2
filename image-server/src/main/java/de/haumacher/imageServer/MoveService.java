@@ -4,6 +4,7 @@
 package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -518,6 +519,73 @@ public class MoveService {
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * Renames a folder within the folder it already lies in, carrying every reference along, see
+	 * issue #130.
+	 *
+	 * <p>
+	 * The same same-filesystem rename a move does, with the same refusal at a name that is taken:
+	 * nothing is copied, and the sidecar, the <code>.hashes.json</code> and the <code>.vacache</code>
+	 * of the folder ride along inside it because they never left it. The one reference that lives
+	 * outside the folder is a share link's path, which is rewritten here in the same step, see
+	 * {@link ShareStore#rename(String, String, String)}.
+	 * </p>
+	 *
+	 * <p>
+	 * Nothing is placed: a folder renamed where it stands stays where it stands, and a rule files
+	 * on creation, on a move, and on {@link #place(PathInfo)} — never behind the owner's back.
+	 * </p>
+	 *
+	 * @param folder
+	 *        The folder to rename.
+	 * @param newName
+	 *        Its new name, a plain name and no path.
+	 * @param owner
+	 *        The space the folder lies in, empty if it lies in none.
+	 * @param ownerPath
+	 *        The folder's path in that space, the coordinates a share link is stored in.
+	 * @throws MoveRefused
+	 *         If the folder is gone, the name is no name or a sibling already holds it. Nothing is
+	 *         renamed in that case.
+	 */
+	public void renameFolder(PathInfo folder, String newName, String owner, String ownerPath)
+			throws MoveRefused, IOException {
+		File dir = folder.toFile();
+		if (!dir.isDirectory()) {
+			throw new MoveRefused(HttpServletResponse.SC_NOT_FOUND, SOURCE_MISSING);
+		}
+		if (!isPlainName(newName) || !FolderNames.isLegal(newName)) {
+			throw new MoveRefused(HttpServletResponse.SC_BAD_REQUEST, FolderNames.illegalName(newName));
+		}
+		File parent = dir.getParentFile();
+		if (parent == null) {
+			throw new MoveRefused(HttpServletResponse.SC_NOT_FOUND, SOURCE_MISSING);
+		}
+		File target = new File(parent, newName);
+		// A rename that only changes the spelling of the name is no clash: on a case-insensitive
+		// file system the target "is" the source, and refusing it would freeze every such name.
+		if (target.exists() && !target.getCanonicalFile().equals(dir.getCanonicalFile())) {
+			throw new MoveRefused(HttpServletResponse.SC_CONFLICT, nameTaken(newName));
+		}
+
+		Files.move(dir.toPath(), target.toPath());
+		LOG.info("Renamed folder '" + dir + "' to '" + target + "'.");
+
+		ShareStore shares = _auth == null ? null : _auth.getShares();
+		if (shares != null) {
+			shares.rename(owner, ownerPath, siblingPath(ownerPath, newName));
+		}
+
+		// The folder is gone under its old name, and the listing above shows the new one.
+		_cache.invalidateTree(folder.parent());
+	}
+
+	/** The path of the sibling of the given path that carries the given name. */
+	public static String siblingPath(String path, String name) {
+		int slash = path == null ? -1 : path.lastIndexOf('/');
+		return slash < 0 ? name : path.substring(0, slash + 1) + name;
 	}
 
 	/**

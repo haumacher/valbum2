@@ -1,0 +1,50 @@
+{
+	"comment": [
+		"The folder name an album or a folder of folders has, see issue #130.",
+		"",
+		"Both toolchains compose it: the server in FolderNames.albumFolderName, the app in",
+		"valbum_ui/lib/album_date.dart (albumFolderName). This table is the rule, and both read",
+		"it -- TestFolderNames on the Java side, test/folder_name_test.dart on the Dart side -- so",
+		"a composition changed on one side and not on the other fails here.",
+		"",
+		"'compose' rows: a date (yyyy-MM-dd, local midnight) or null, a title, and the name the two",
+		"make. 'legal' rows: a composed name and whether a folder on disk may carry it; an illegal",
+		"name is refused with 400 and nothing is written."
+	],
+	"compose": [
+		{ "date": "2002-03-04", "title": "Schlosspark", "name": "2002-03-04 Schlosspark" },
+		{ "date": "2024-12-31", "title": "Silvester", "name": "2024-12-31 Silvester" },
+		{ "date": "1990-01-01", "title": "Wende", "name": "1990-01-01 Wende" },
+		{ "date": "2020-05-24", "title": "Trip to the sea", "name": "2020-05-24 Trip to the sea" },
+		{ "date": "2020-05-24", "title": "Trip - part 2", "name": "2020-05-24 Trip - part 2" },
+		{ "date": "2020-05-24", "title": "2020", "name": "2020-05-24 2020" },
+		{ "date": "2020-05-24", "title": "  Trip  ", "name": "2020-05-24 Trip" },
+		{ "date": "2020-05-24", "title": "", "name": "2020-05-24" },
+		{ "date": "2020-05-24", "title": "   ", "name": "2020-05-24" },
+		{ "date": "2020-05-24", "title": "Ostern in Köln", "name": "2020-05-24 Ostern in Köln" },
+
+		{ "date": null, "title": "Schlosspark", "name": "Schlosspark" },
+		{ "date": null, "title": "  Schlosspark  ", "name": "Schlosspark" },
+		{ "date": null, "title": "2020 Trip", "name": "2020 Trip" },
+		{ "date": null, "title": "", "name": "" },
+		{ "date": null, "title": "Ostern in Köln", "name": "Ostern in Köln" }
+	],
+	"legal": [
+		{ "name": "2002-03-04 Schlosspark", "legal": true },
+		{ "name": "Schlosspark", "legal": true },
+		{ "name": "2020", "legal": true },
+		{ "name": "Trip - part 2", "legal": true },
+		{ "name": "Ostern in Köln", "legal": true },
+		{ "name": "a.b", "legal": true },
+		{ "name": "..trip", "legal": false },
+		{ "name": "", "legal": false },
+		{ "name": "   ", "legal": false },
+		{ "name": ".", "legal": false },
+		{ "name": "..", "legal": false },
+		{ "name": ".hidden", "legal": false },
+		{ "name": ".valbum", "legal": false },
+		{ "name": "a/b", "legal": false },
+		{ "name": "/", "legal": false },
+		{ "name": "a\\b", "legal": false }
+	]
+}

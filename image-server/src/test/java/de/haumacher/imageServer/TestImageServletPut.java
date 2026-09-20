@@ -115,13 +115,32 @@ public class TestImageServletPut extends TestCase {
 	}
 
 	public void testPutToNestedFolder() throws Exception {
+		File folder = new File(_base.toFile(), "Root");
+		assertTrue(folder.mkdir());
+
+		FakeResponse response = put("/Root/", "application/json", ALBUM_JSON);
+
+		assertEquals(HttpServletResponse.SC_OK, response.status());
+		assertEquals(ALBUM_JSON, read(new File(folder, "index.json")));
+	}
+
+	/**
+	 * The folder is named after the properties that were just written, see issue #130.
+	 *
+	 * <p>
+	 * The album below is called <code>album</code> and says it is called <code>Root</code>; after
+	 * the write the two agree, which is the whole invariant.
+	 * </p>
+	 */
+	public void testPutRenamesTheFolderAfterTheProperties() throws Exception {
 		File folder = new File(_base.toFile(), "album");
 		assertTrue(folder.mkdir());
 
 		FakeResponse response = put("/album/", "application/json", ALBUM_JSON);
 
 		assertEquals(HttpServletResponse.SC_OK, response.status());
-		assertEquals(ALBUM_JSON, read(new File(folder, "index.json")));
+		assertFalse("The old name is gone.", folder.exists());
+		assertEquals(ALBUM_JSON, read(new File(_base.toFile(), "Root/index.json")));
 	}
 
 	/**
@@ -129,21 +148,24 @@ public class TestImageServletPut extends TestCase {
 	 * (the client chooses the album's index picture there, see the Flutter album edit mode).
 	 */
 	public void testStoringAlbumRefreshesListingAbove() throws Exception {
-		File folder = new File(_base.toFile(), "album");
+		File folder = new File(_base.toFile(), "Before");
 		assertTrue(folder.mkdir());
-		put("/album/", "application/json", "[\"AlbumInfo\",{\"title\":\"Before\",\"parts\":[]}]");
+		put("/Before/", "application/json", "[\"AlbumInfo\",{\"title\":\"Before\",\"parts\":[]}]");
 
 		String listing = getJson("/");
 		assertTrue(listing, listing.contains("\"title\":\"Before\""));
 		assertFalse(listing, listing.contains("indexPicture"));
 
-		FakeResponse response = put("/album/", "application/json",
+		// The title changes, so the folder does too, see issue #130.
+		FakeResponse response = put("/Before/", "application/json",
 			"[\"AlbumInfo\",{\"title\":\"After\",\"indexPicture\":{\"image\":\"pic.jpg\",\"scale\":1.5,\"tx\":0.0,\"ty\":0.0},\"parts\":[]}]");
 		assertEquals(HttpServletResponse.SC_OK, response.status());
 
 		listing = getJson("/");
 		assertTrue(listing, listing.contains("\"title\":\"After\""));
 		assertTrue(listing, listing.contains("\"image\":\"pic.jpg\""));
+		assertTrue(listing, listing.contains("\"name\":\"After\""));
+		assertFalse("The old folder is gone from the listing.", listing.contains("\"name\":\"Before\""));
 	}
 
 	private String getJson(String pathInfo) throws Exception {

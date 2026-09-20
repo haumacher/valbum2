@@ -142,10 +142,50 @@ String? albumDateLabel(int effectiveDate) => effectiveDate == 0
 /// The spelling of a date in a folder name, the naming convention `yyyy-MM-dd`.
 final DateFormat folderDateFormat = DateFormat("yyyy-MM-dd");
 
-/// The folder name an album with [title] taken on [date] is created under.
+/// The folder name an album with [title] taken on [date] is created under —
+/// and, since issue #130, the name its folder is renamed to whenever its
+/// properties are written.
 ///
 /// `yyyy-MM-dd title` by the naming convention, and the title alone when
 /// [date] is `null` — an album without a date is no less an album, it is only
-/// one the placement rules leave where it was made, see issue #119.
-String albumFolderName(DateTime? date, String title) =>
-    date == null ? title : "${folderDateFormat.format(date)} $title";
+/// one the placement rules leave where it was made, see issue #119. The title
+/// is trimmed: a stray blank at either end is a slip of the keyboard, never a
+/// name.
+///
+/// The server composes the very same name (`FolderNames.albumFolderName`), and
+/// the two are pinned against each other by the shared table
+/// `image-server/src/test/fixtures/folder-names.json`, so a rule changed on
+/// one side and not on the other fails the tests of both.
+String albumFolderName(DateTime? date, String title) {
+  var name = title.trim();
+  if (date == null) {
+    return name;
+  }
+  var day = folderDateFormat.format(date);
+  return name.isEmpty ? day : "$day $name";
+}
+
+/// The name of the folder a folder of folders with [title] carries, see
+/// issue #130.
+///
+/// Its title alone: a folder of folders has no date of its own, only the
+/// dates of what lies in it.
+String listingFolderName(String title) => title.trim();
+
+/// Whether [name] may be the name of a folder on disk.
+///
+/// A name that is a path (`a/b`), a name that is a navigation step (`.`,
+/// `..`) and a name that hides the folder (`.thing`, which is what the server
+/// itself uses for `.valbum` and `.vacache`) are none. The twin of the
+/// server's `FolderNames.isLegal`, pinned by the same shared table: the app
+/// says so before the round trip, and the server refuses it with a `400`
+/// either way.
+bool isLegalFolderName(String name) {
+  if (name.trim().isEmpty) {
+    return false;
+  }
+  if (name == "." || name == ".." || name.startsWith(".")) {
+    return false;
+  }
+  return !name.contains("/") && !name.contains(r"\") && !name.contains("\u0000");
+}

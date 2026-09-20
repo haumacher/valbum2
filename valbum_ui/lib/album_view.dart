@@ -790,8 +790,9 @@ class AlbumContentState extends State<AlbumContent>
     }
     var messenger = ScaffoldMessenger.of(context);
 
+    CreateResult stored;
     try {
-      await client.saveAlbum(widget.albumState.path, widget.album);
+      stored = await client.saveAlbum(widget.albumState.path, widget.album);
     } catch (error) {
       messenger.showSnackBar(
         SnackBar(
@@ -824,8 +825,30 @@ class AlbumContentState extends State<AlbumContent>
       widget.albumState.navigator.delegate
           .forget(path.sublist(0, path.length - 1));
     }
-    widget.albumState.reload();
+    followStored(stored, messenger);
     return true;
+  }
+
+  /// Goes where the album is now and says so, after its properties were
+  /// written, see issue #130.
+  ///
+  /// A changed title or date renames the album's folder, so the address the
+  /// app is showing may have just become a 404: the server answers where the
+  /// album really is, and the app follows it instead of reloading nothing.
+  /// Where nothing was renamed this is the ordinary reload.
+  void followStored(CreateResult stored, ScaffoldMessengerState messenger) {
+    if (stored.message.isEmpty) {
+      widget.albumState.reload();
+      return;
+    }
+    widget.albumState.showPath(splitPath(stored.path));
+    // Nothing happens silently: the new name is said, not guessed at.
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(stored.message),
+        duration: const Duration(seconds: 6),
+      ),
+    );
   }
 
   /// Leaves the edit mode, asking about unsaved changes first (issue #99).
@@ -1191,8 +1214,9 @@ class AlbumContentState extends State<AlbumContent>
     }
 
     var messenger = ScaffoldMessenger.of(context);
+    CreateResult stored;
     try {
-      await client.saveAlbum(widget.albumState.path, album);
+      stored = await client.saveAlbum(widget.albumState.path, album);
     } catch (error) {
       if (!mounted) {
         return;
@@ -1208,13 +1232,14 @@ class AlbumContentState extends State<AlbumContent>
     }
 
     // The listing above shows this album by its title and its index picture,
-    // both of which may have just changed.
+    // both of which may have just changed -- and so may the album's own folder
+    // name, see issue #130.
     var path = widget.albumState.path;
     if (path.isNotEmpty) {
       widget.albumState.navigator.delegate
           .forget(path.sublist(0, path.length - 1));
     }
-    widget.albumState.reload();
+    followStored(stored, messenger);
   }
 
   String get albumUrl => "${widget.baseUrl}/${widget.album.path}";
