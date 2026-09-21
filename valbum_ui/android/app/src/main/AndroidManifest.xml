@@ -11,7 +11,7 @@
         what the native players need (issue #73); the reasoning is in the
         referenced file. -->
    <application
-        android:label="valbum_ui"
+        android:label="VAlbum"
         android:name="${applicationName}"
         android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/va_logo">

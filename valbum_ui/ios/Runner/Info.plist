@@ -30,7 +30,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>VAlbum reads the device code shown on a device you are already signed in on, so that you do not have to type it.</string>
 	<key>CFBundleName</key>
-	<string>valbum_ui</string>
+	<string>VAlbum</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
