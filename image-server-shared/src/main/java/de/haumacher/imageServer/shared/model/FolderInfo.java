@@ -30,6 +30,9 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getKind() */
 	private static final String KIND__PROP = "kind";
 
+	/** @see #getImageCount() */
+	private static final String IMAGE_COUNT__PROP = "imageCount";
+
 	/** @see #getIndexPicture() */
 	private static final String INDEX_PICTURE__PROP = "indexPicture";
 
@@ -45,6 +48,8 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private long _effectiveDate = 0L;
 
 	private de.haumacher.imageServer.shared.model.FolderKind _kind = de.haumacher.imageServer.shared.model.FolderKind.ALBUM;
+
+	private int _imageCount = 0;
 
 	private de.haumacher.imageServer.shared.model.ThumbnailInfo _indexPicture = null;
 
@@ -180,6 +185,49 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
+	 * How many photographs an inbox holds, <code>0</code> for everything else, see issue #137.
+	 *
+	 * <p>
+	 * The number of {@link ImagePart}s the folder's own sidecar lists, the members of an
+	 * {@link ImageGroup} counted one by one. Derived on every read like {@link #getKind()} and read from
+	 * the very sidecar the listing opens anyway, so it costs a listing nothing: not one image file
+	 * is opened for it, which is the rule {@link #getEffectiveDate()} is bound by too.
+	 * </p>
+	 *
+	 * <p>
+	 * <b>Only an inbox carries it.</b> An album and a folder of folders answer <code>0</code>, and
+	 * deliberately so: an inbox is a pile of work and its tile says how much is left, while the
+	 * count of an album is no part of what an album is. A folder of folders would have to be walked
+	 * for one, which a listing never does.
+	 * </p>
+	 *
+	 * <p>
+	 * It is what the folder holds, not what the caller may see: a member who may only
+	 * {@link #getKind() contribute} is answered the whole inbox's count although they are shown their
+	 * own contributions inside it (issue #135). The sidecar knows no contributors &mdash; the hash
+	 * sidecar does &mdash; so a count of one's own would cost a second file per entry of every
+	 * listing, and the number the tile shows is "this much is waiting here", which is true for
+	 * everybody.
+	 * </p>
+	 */
+	public final int getImageCount() {
+		return _imageCount;
+	}
+
+	/**
+	 * @see #getImageCount()
+	 */
+	public de.haumacher.imageServer.shared.model.FolderInfo setImageCount(int value) {
+		internalSetImageCount(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getImageCount()} without chain call utility. */
+	protected final void internalSetImageCount(int value) {
+		_imageCount = value;
+	}
+
+	/**
 	 * The picture this entry is shown with, <code>null</code> where it is shown with none.
 	 *
 	 * <p>
@@ -287,6 +335,8 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getEffectiveDate());
 		out.name(KIND__PROP);
 		getKind().writeTo(out);
+		out.name(IMAGE_COUNT__PROP);
+		out.value(getImageCount());
 		if (hasIndexPicture()) {
 			out.name(INDEX_PICTURE__PROP);
 			getIndexPicture().writeTo(out);
@@ -303,6 +353,7 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case SUB_TITLE__PROP: setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case EFFECTIVE_DATE__PROP: setEffectiveDate(in.nextLong()); break;
 			case KIND__PROP: setKind(de.haumacher.imageServer.shared.model.FolderKind.readFolderKind(in)); break;
+			case IMAGE_COUNT__PROP: setImageCount(in.nextInt()); break;
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			case LINK__PROP: setLink(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);

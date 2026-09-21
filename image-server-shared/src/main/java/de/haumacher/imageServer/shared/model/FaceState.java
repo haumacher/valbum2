@@ -16,7 +16,14 @@ public enum FaceState implements de.haumacher.msgbuf.data.ProtocolEnum {
 	 * <p>
 	 * The first constant and therefore what a {@link FaceInfo} of an untouched detection answers,
 	 * and what a client that does not know a value reads. It is never stored: a {@link FaceTag}
-	 * <em>is</em> a decision, so an assignment carrying this state is refused.
+	 * <em>is</em> a decision, and this is the absence of one.
+	 * </p>
+	 *
+	 * <p>
+	 * In a {@link FaceAssignment} it therefore means <em>forget the decision on this box</em>
+	 * (issue #138): the stored tag is removed and the face goes back to being a plain detection
+	 * nobody has said anything about, which issue #127 may suggest for again. It is the one way
+	 * back out of a decision &mdash; every other state replaces one.
 	 * </p>
 	 */
 	UNDECIDED("UNDECIDED"),

@@ -271,7 +271,8 @@ public final class AlbumDate {
 		} else if (resource instanceof ListingInfo) {
 			ListingInfo listing = (ListingInfo) resource;
 			// Every entry of a listing is rebuilt from the disk on every read -- its title, its
-			// date, what kind of thing it is and the picture it is shown with -- so not one of
+			// date, what kind of thing it is, how much lies in it (issue #137) and the picture it
+			// is shown with -- so not one of
 			// them is a statement this file could keep. A stored copy would be stale the moment it
 			// was written, and the cover of a folder (issue #110) would freeze a choice that lives
 			// one folder further down. The listing's own statements stay: its title, its placement
