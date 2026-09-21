@@ -18,9 +18,20 @@ import 'package:valbum_ui/photo_picker_view.dart';
 import 'package:valbum_ui/resource.dart';
 import 'package:valbum_ui/video_view.dart';
 
+import 'package:valbum_ui/album_view.dart';
+import 'package:valbum_ui/camera_roll.dart';
+import 'package:valbum_ui/camera_roll_view.dart';
+import 'package:valbum_ui/image_properties.dart';
+import 'package:valbum_ui/inbox_view.dart';
+import 'package:valbum_ui/move_view.dart';
+import 'package:valbum_ui/notices.dart';
+
+import 'album_menu_actions_test.dart' show pumpAlbum;
 import 'camera_roll_test.dart' show Harness;
 import 'devices_test.dart'
     show authOfUser, json, signedIn, storeSignedIn, threeDevices;
+import 'inbox_view_test.dart' show inboxTree, pumpInbox;
+import 'move_test.dart' show recordingClient, treeAnswer;
 import 'photo_picker_test.dart' show twoAlbums;
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
@@ -116,6 +127,206 @@ void main() {
   });
 
   sliceTwo();
+  sliceThree();
+}
+
+/// Shows the app in German for the length of one test.
+///
+/// The app has no language switch — the platform locale decides, see
+/// `locales.dart` — so a screen pumped through [VAlbumApp] is put into German
+/// by telling the test binding which language the device asks for.
+void speakGerman(WidgetTester tester) {
+  tester.platformDispatcher.localesTestValue = const [Locale("de")];
+  addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+}
+
+/// The screens of slice 3, each pumped in a German locale.
+///
+/// The same rule as [sliceTwo]: one block per screen, always against the
+/// generated `AppLocalizations` of German, never against a German string
+/// typed here. Slice 3 is the rest of the app — the album page, the listing,
+/// the move picker, the image properties, the inbox and the camera-roll
+/// status line — so what these hold is that the app, all of it, speaks the
+/// language of the device.
+void sliceThree() {
+  group('slice 3 speaks German', () {
+    testWidgets('the album page and its menu', (tester) async {
+      speakGerman(tester);
+      await withFakeImageHttp(() async {
+        await pumpAlbum(tester, treeAnswer);
+        await tester.tap(find.byIcon(Icons.more_vert).last);
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.text(de.albumProperties), findsOneWidget);
+      expect(find.text(de.moveAlbumTo), findsOneWidget);
+      expect(find.text(de.deleteAlbumAction), findsOneWidget);
+      expect(find.text(de.minRatingLabel), findsOneWidget);
+      expect(find.text(de.showMoreImages), findsOneWidget);
+      expect(find.text(de.showFewerImages), findsOneWidget);
+      expect(find.text(de.reload), findsOneWidget);
+      expect(find.text(de.serverMenuEntry), findsOneWidget);
+
+      var en = l10nOf(const Locale("en"));
+      expect(find.text(en.albumProperties), findsNothing);
+    });
+
+    testWidgets('the album properties dialog', (tester) async {
+      speakGerman(tester);
+      await tester.pumpWidget(
+        localizedApp(
+          const AlbumPropertiesDialog(
+            AlbumProperties(title: "Zoo", subTitle: ""),
+            mayChangeKind: true,
+          ),
+          locale: const Locale("de"),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.albumProperties), findsOneWidget);
+      expect(find.text(de.titleLabel), findsOneWidget);
+      expect(find.text(de.subtitleLabel), findsOneWidget);
+      expect(find.text(de.dateNone), findsOneWidget);
+      expect(find.text(de.makeThisAnInbox), findsOneWidget);
+      expect(find.text(de.noAlbumPictureHint), findsOneWidget);
+      expect(find.text(de.cancel), findsOneWidget);
+      expect(find.text(de.apply), findsOneWidget);
+    });
+
+    testWidgets('the listing and the dialog making an album', (tester) async {
+      speakGerman(tester);
+      await pumpListingIn(tester);
+      await tester.tap(find.byIcon(Icons.more_vert).last);
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.createAlbum), findsOneWidget);
+      expect(find.text(de.createFolder), findsOneWidget);
+      expect(find.text(de.folderProperties), findsOneWidget);
+
+      await tester.tap(find.text(de.createAlbum));
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.newAlbumTitle), findsOneWidget);
+      expect(find.text(de.createInboxHint), findsOneWidget);
+      expect(find.text(de.createAlbumUndatedHint), findsOneWidget);
+      expect(find.text(de.titleLabel), findsOneWidget);
+      expect(find.text(de.create), findsOneWidget);
+    });
+
+    testWidgets('the move picker', (tester) async {
+      await tester.pumpWidget(
+        localizedApp(
+          FolderPicker(
+            client: recordingClient(treeAnswer, []),
+            initialPath: const [],
+            confirmLabel: (path) => "move",
+          ),
+          locale: const Locale("de"),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.moveToAction), findsOneWidget);
+      expect(find.text(de.pickerTopLevel), findsOneWidget);
+      // An image lives in an album, and the top level is a folder of folders.
+      expect(find.text(de.imagesLiveInAlbums), findsOneWidget);
+      expect(find.text(de.cancel), findsOneWidget);
+    });
+
+    testWidgets('the image properties of the viewer', (tester) async {
+      await tester.pumpWidget(
+        localizedApp(
+          ImagePropertiesDialog(
+            ImagePart(
+              name: "a.jpg",
+              date: DateTime.utc(2026, 3, 1, 12).millisecondsSinceEpoch,
+              camera: "Pentax K-3",
+              location: GeoLocation(latitude: 48.123456, longitude: 8.654321),
+            ),
+            editable: false,
+          ),
+          locale: const Locale("de"),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.imageProperties), findsOneWidget);
+      expect(find.text(de.propertyFile("a.jpg")), findsOneWidget);
+      expect(find.text(de.propertyCamera("Pentax K-3")), findsOneWidget);
+      expect(
+        find.text(de.propertyLocation("48.123456", "8.654321")),
+        findsOneWidget,
+      );
+      expect(find.byTooltip(de.showOnMap), findsOneWidget);
+    });
+
+    testWidgets('the inbox screen', (tester) async {
+      speakGerman(tester);
+      await pumpInbox(tester, inboxTree);
+      await tester.tap(find.byIcon(Icons.more_vert).last);
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.albumProperties), findsOneWidget);
+      expect(find.text(de.reload), findsOneWidget);
+      expect(find.text(de.serverMenuEntry), findsOneWidget);
+      // The day headings are the locale's own, which is why they go through
+      // `DateFormat` rather than through a table of names.
+      expect(
+        find.text(inboxDayFormat(de).format(DateTime(2026, 3, 1))),
+        findsOneWidget,
+      );
+      expect(
+        inboxDayFormat(de).format(DateTime(2026, 3, 1)),
+        isNot(inboxDayFormat(l10nOf(const Locale("en")))
+            .format(DateTime(2026, 3, 1))),
+      );
+    });
+
+    test('the camera-roll status line', () {
+      var status = CameraRollStatus(
+        phase: CameraRollPhase.idle,
+        lastSuccess: DateTime.utc(2026, 3, 1, 12),
+        lastStored: 2,
+        lastPresent: 1,
+      );
+      expect(cameraRollLine(status, de), de.cameraRollSynced(2, 3, "13:00", 1));
+      expect(
+        cameraRollLine(const CameraRollStatus(), de),
+        de.cameraRollOff,
+      );
+      expect(
+        cameraRollLine(
+          const CameraRollStatus(
+            phase: CameraRollPhase.failed,
+            notice: NoWifiMobile(),
+          ),
+          de,
+        ),
+        de.cameraRollFailed(de.noticeNoWifiMobile),
+      );
+      expect(de.cameraRollOff, isNot(l10nOf(const Locale("en")).cameraRollOff));
+    });
+  });
+
+  test('the German words of slice 3 are not the English ones', () {
+    var en = l10nOf(const Locale("en"));
+    expect(de.albumProperties, isNot(en.albumProperties));
+    expect(de.createAlbum, isNot(en.createAlbum));
+    expect(de.moveToAction, isNot(en.moveToAction));
+    expect(de.imageProperties, isNot(en.imageProperties));
+    expect(de.inboxEmptyNotice, isNot(en.inboxEmptyNotice));
+  });
+}
+
+/// Pumps the root listing of the move fixtures.
+Future<void> pumpListingIn(WidgetTester tester) async {
+  await withFakeImageHttp(() async {
+    await tester.pumpWidget(
+      VAlbumApp(client: recordingClient(treeAnswer, [])),
+    );
+    await tester.pumpAndSettle();
+  });
 }
 
 /// The screens of slice 2, each pumped in a German locale.
@@ -190,7 +401,9 @@ void sliceTwo() {
       await tester.pumpAndSettle();
       expect(find.text(de.newLinkHeading), findsOneWidget);
       expect(find.text(de.expiresHeading), findsOneWidget);
-      expect(find.text(de.showsHeading), findsOneWidget);
+      // `findsWidgets`: German spells the heading "Shows" and the right
+      // "View" with the same word, and the dialog carries both.
+      expect(find.text(de.showsHeading), findsWidgets);
       expect(find.text(de.lowestRatingHeading), findsOneWidget);
       expect(find.text(de.privacyMembersNote), findsOneWidget);
       expect(find.text(de.linkNeverEdits), findsOneWidget);

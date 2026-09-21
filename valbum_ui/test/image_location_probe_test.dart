@@ -5,6 +5,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/image_properties.dart';
 import 'package:valbum_ui/resource.dart';
+import 'util/l10n.dart';
 
 void main() {
   test('a template repeating {lat}/{lon} is filled everywhere, negatives kept',
@@ -16,7 +17,7 @@ void main() {
     );
     expect(url,
         "https://www.openstreetmap.org/?mlat=-33.918000&mlon=-70.600000#map=16/-33.918000/-70.600000");
-    expect(mapLocationText(location), contains("-33.918000, -70.600000"));
+    expect(mapLocationText(testL10n, location), contains("-33.918000, -70.600000"));
   });
 
   test('a template without placeholders is answered as it is', () {

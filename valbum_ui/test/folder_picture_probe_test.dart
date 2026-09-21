@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 import 'folder_picture_test.dart' hide main;
 import 'move_test.dart' hide main;
+import 'util/l10n.dart';
 
 void main() {
   testWidgets('a folder keeps its chosen picture when its title is written',
@@ -32,7 +33,7 @@ void main() {
     await tester.tap(find.text("Folder properties"));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, "Family");
-    await tester.tap(find.text("Übernehmen"));
+    await tester.tap(find.text(testL10n.apply));
     await tester.pumpAndSettle();
 
     var put = requests.singleWhere((r) => r.method == "PUT");

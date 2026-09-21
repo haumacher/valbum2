@@ -5,6 +5,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 AlbumContentState albumState(WidgetTester tester) =>
     tester.state<AlbumContentState>(find.byType(AlbumContent));
@@ -61,7 +62,7 @@ void main() {
 
       await tapTool(tester, headingTool(heading, Icons.edit));
       // The dialog is prefilled with the current text.
-      expect(find.text("Überschrift bearbeiten"), findsOneWidget);
+      expect(find.text(testL10n.editHeadingTitle), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller?.text,
         "Am Morgen",
@@ -69,12 +70,12 @@ void main() {
 
       // An empty text is refused.
       await tester.enterText(find.byType(TextField), "   ");
-      await tapTool(tester, find.text("Übernehmen"));
+      await tapTool(tester, find.text(testL10n.apply));
       expect(heading.text, "Am Morgen");
 
       await tapTool(tester, headingTool(heading, Icons.edit));
       await tester.enterText(find.byType(TextField), "Am Abend");
-      await tapTool(tester, find.text("Übernehmen"));
+      await tapTool(tester, find.text(testL10n.apply));
 
       expect(heading.text, "Am Abend");
       expect(find.text("Am Abend"), findsOneWidget);

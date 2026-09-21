@@ -19,6 +19,7 @@ import 'move_test.dart' hide main;
 import 'share_link_test.dart' as share;
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The album `Inbox` with the given rights, the empty list saying nothing at
 /// all (which reads as every right, see `rights.dart`).
@@ -113,9 +114,9 @@ void main() {
         );
 
         await tapEntry(tester, "album-properties");
-        expect(find.text("Titel"), findsOneWidget);
+        expect(find.text(testL10n.titleLabel), findsOneWidget);
         await tester.enterText(find.byType(TextField).first, "Zoo");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
       });
 
@@ -144,7 +145,7 @@ void main() {
 
         await tapEntry(tester, "album-properties");
         await tester.enterText(find.byType(TextField).first, "Zoo");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         // The server's own words, and the album as the server still has it.
@@ -169,8 +170,8 @@ void main() {
 
         await tapEntry(tester, "album-properties");
 
-        expect(find.text(offlineRefusal), findsOneWidget);
-        expect(find.text("Titel"), findsNothing);
+        expect(find.text(testL10n.offlineRefusal), findsOneWidget);
+        expect(find.text(testL10n.titleLabel), findsNothing);
       });
 
       expect(requests.where((r) => r.method != "GET"), isEmpty);

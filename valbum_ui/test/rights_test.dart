@@ -10,6 +10,7 @@ import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/resource.dart';
 
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// A listing carrying the given rights, as the server answers it.
 String listingWith(String rights) => '["ListingInfo", {"path": "", '
@@ -43,7 +44,7 @@ void main() {
       expect(rights.mayContribute, isFalse);
       expect(rights.mayEdit, isFalse);
       expect(rights.complete, isFalse);
-      expect(rights.phrase, "you may look");
+      expect(rights.phrase(testL10n), "you may look");
     });
 
     test('reads an answer without the field as every right', () {
@@ -64,11 +65,11 @@ void main() {
 
   group('the sharing notice', () {
     test('says nothing to the owner of a folder in their own space', () {
-      expect(sharingNotice(const ["2024"], Rights.everything), isNull);
+      expect(sharingNotice(testL10n, const ["2024"], Rights.everything), isNull);
     });
 
     test('names the owner of the space a path reaches into', () {
-      var notice = sharingNotice(
+      var notice = sharingNotice(testL10n, 
         const ["~alice", "2024", "Zoo"],
         Rights.ofNames(const ["view", "download"]),
       );
@@ -78,7 +79,7 @@ void main() {
 
     test('says "shared with you" where the rights are cut in one own space',
         () {
-      var notice = sharingNotice(
+      var notice = sharingNotice(testL10n, 
         const ["2024"],
         Rights.ofNames(const ["contribute"]),
       );

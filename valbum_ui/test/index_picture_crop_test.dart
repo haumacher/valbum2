@@ -5,6 +5,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 Finder tile(String name) => find.byKey(ValueKey(name));
 
@@ -48,7 +49,7 @@ Future<void> openProperties(WidgetTester tester, {bool choose = true}) async {
         () => tester.tapAt(Offset(box.left + 8, box.center.dy)),
       );
     }
-    await tap(tester, tool("landscape.jpg", "Als Albumbild verwenden"));
+    await tap(tester, tool("landscape.jpg", testL10n.useAsAlbumPicture));
   }
   await openPropertiesMenu(tester);
 }
@@ -107,13 +108,13 @@ void main() {
       // Dragging 60px to the right in the 200px editor moves the stored
       // offset by 60 / (4/3 * 200/300) = 67.5.
       await settle(tester, () => tester.drag(editor, const Offset(60, 0)));
-      await tap(tester, find.byTooltip("Vergrößern"));
-      await tap(tester, find.byTooltip("Vergrößern"));
-      await tap(tester, find.byTooltip("Verkleinern"));
+      await tap(tester, find.byTooltip(testL10n.zoomIn));
+      await tap(tester, find.byTooltip(testL10n.zoomIn));
+      await tap(tester, find.byTooltip(testL10n.zoomOut));
 
       expect(album(tester).indexPicture!.tx, 0,
-          reason: "nothing is applied before Übernehmen");
-      await tap(tester, find.text("Übernehmen"));
+          reason: "nothing is applied before the apply button");
+      await tap(tester, find.text(testL10n.apply));
 
       var after = album(tester).indexPicture!;
       expect(after.image, "landscape.jpg");
@@ -129,14 +130,14 @@ void main() {
       await openProperties(tester);
 
       await settle(tester, () => tester.drag(editor, const Offset(0, 30)));
-      await tap(tester, find.text("Abbrechen"));
+      await tap(tester, find.text(testL10n.cancel));
       expect(album(tester).indexPicture!.ty, 0);
 
       await openPropertiesMenu(tester);
       await settle(tester, () => tester.drag(editor, const Offset(0, 30)));
-      await tap(tester, find.byTooltip("Vergrößern"));
-      await tap(tester, find.byTooltip("Ausschnitt zurücksetzen"));
-      await tap(tester, find.text("Übernehmen"));
+      await tap(tester, find.byTooltip(testL10n.zoomIn));
+      await tap(tester, find.byTooltip(testL10n.resetCrop));
+      await tap(tester, find.text(testL10n.apply));
       var info = album(tester).indexPicture!;
       expect(info.ty, 0);
       expect(info.scale, closeTo(4 / 3, 1e-9));
@@ -152,7 +153,7 @@ void main() {
       // The title is still editable as before.
       await settle(
           tester, () => tester.enterText(find.byType(TextField).first, "T"));
-      await tap(tester, find.text("Übernehmen"));
+      await tap(tester, find.text(testL10n.apply));
       expect(album(tester).title, "T");
       expect(album(tester).indexPicture, isNull);
     });

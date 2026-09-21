@@ -29,6 +29,7 @@ import 'invitation.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
 import 'locales.dart';
+import 'notices.dart';
 import 'offline.dart';
 import 'photo_library.dart';
 import 'photo_picker_view.dart';
@@ -232,9 +233,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// of it may reach the device then, exactly as with the settings store and
   /// the cache, see [_defaultCache].
   BackgroundScheduler _defaultScheduler() => widget.client != null
-      ? const UnavailableBackgroundScheduler(
-          "Background sync is not available in this app.",
-        )
+      ? const UnavailableBackgroundScheduler(NoBackgroundSyncInApp())
       : defaultBackgroundScheduler();
 
   /// The camera-roll sync (issue #30), driven by the photo library and the
@@ -564,7 +563,8 @@ class VAlbumAppState extends State<VAlbumApp> {
       queryParameters: rest.isEmpty ? null : rest,
       fragment: location.fragment.isEmpty ? null : location.fragment,
     ));
-    if (invitationNoticeText(reason, signedIn: false) != null) {
+    if (invitationNoticeText(platformMessages, reason, signedIn: false) !=
+        null) {
       _invitationNotice = reason;
     }
   }
@@ -576,7 +576,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// signed in and under which name is answered by the stored settings and by
   /// the one `?type=auth` of [caller], and the latter arrives after the first
   /// frame.
-  String? get _invitationNoticeText {
+  String? _invitationNoticeTextOf(AppLocalizations l10n) {
     var reason = _invitationNotice;
     if (reason == null) {
       return null;
@@ -586,6 +586,7 @@ class VAlbumAppState extends State<VAlbumApp> {
       name = settings.userName ?? "";
     }
     return invitationNoticeText(
+      l10n,
       reason,
       signedIn: (settings.token ?? "").isNotEmpty,
       userName: name,
@@ -599,7 +600,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// the sign-in screen carry it alike — and inside them, so that the banner
   /// is themed and laid out like everything else.
   Widget _withInvitationNotice(BuildContext context, Widget? child) {
-    var text = _invitationNoticeText;
+    var text = _invitationNoticeTextOf(AppLocalizations.of(context)!);
     var below = child ?? const SizedBox.shrink();
     if (text == null) {
       return below;
@@ -1534,7 +1535,7 @@ class VAlbumNavigator extends InheritedWidget {
   /// The navigation API of the enclosing [VAlbumApp].
   static VAlbumNavigator of(BuildContext context) {
     var result = context.dependOnInheritedWidgetOfExactType<VAlbumNavigator>();
-    assert(result != null, "No VAlbumNavigator found in the widget tree.");
+    assert(result != null, "no VAlbumNavigator in the widget tree");
     return result!;
   }
 
@@ -1608,7 +1609,7 @@ class VAlbumState extends State<VAlbumView>
         } else if (snapshot.hasData) {
           var resource = snapshot.data;
           if (resource == null) {
-            return buildError("No data loaded");
+            return buildError(AppLocalizations.of(context)!.noDataLoaded);
           }
           return resource.visitResource(this, context);
         } else {
@@ -1619,9 +1620,10 @@ class VAlbumState extends State<VAlbumView>
   }
 
   Widget buildLoading() {
+    var l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text("Virtual photo album")),
-      body: const Center(child: Text('Loading...')),
+      appBar: AppBar(title: Text(l10n.appTitle)),
+      body: Center(child: Text(l10n.loading)),
     );
   }
 
@@ -1640,8 +1642,9 @@ class VAlbumState extends State<VAlbumView>
     if (error is VAlbumException && error.status == 401) {
       return buildSignInRequired(error);
     }
+    var l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text("Virtual photo album")),
+      appBar: AppBar(title: Text(l10n.appTitle)),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -1649,14 +1652,14 @@ class VAlbumState extends State<VAlbumView>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Loading failed: ${error?.toString()}',
+                l10n.loadingFailed("${error?.toString()}"),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 onPressed: () => openServerSettings(context),
                 icon: const Icon(Icons.settings),
-                label: const Text("Server settings..."),
+                label: Text(l10n.serverSettingsAction),
               ),
             ],
           ),
@@ -1664,7 +1667,7 @@ class VAlbumState extends State<VAlbumView>
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: reload,
-        tooltip: 'Reload',
+        tooltip: l10n.reload,
         child: const Icon(Icons.update),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
@@ -1686,7 +1689,9 @@ class VAlbumState extends State<VAlbumView>
   ///    again.
   Widget buildShareError(Object? error) {
     var refusal = error is VAlbumException ? error : null;
-    var message = refusal?.message ?? "${error ?? "No data loaded"}";
+    var l10n = AppLocalizations.of(context)!;
+    var message =
+        refusal?.message ?? "${error ?? l10n.noDataLoaded}";
     if (refusal?.status == 410) {
       return ShareGoneScreen(message: message);
     }
@@ -1700,7 +1705,7 @@ class VAlbumState extends State<VAlbumView>
         key: const Key("share-retry"),
         onPressed: reload,
         icon: const Icon(Icons.refresh),
-        label: const Text("Try again"),
+        label: Text(l10n.tryAgain),
       ),
     );
   }
@@ -1789,12 +1794,13 @@ class VAlbumState extends State<VAlbumView>
 
   /// The error view of a route naming something the album does not contain.
   Widget buildMessage(String message) {
+    var l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Virtual photo album"),
+        title: Text(l10n.appTitle),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          tooltip: "Up",
+          tooltip: l10n.up,
           onPressed: navigator.up,
         ),
       ),
@@ -1805,7 +1811,7 @@ class VAlbumState extends State<VAlbumView>
   @override
   Widget visitListingInfo(ListingInfo self, BuildContext arg) {
     if (kDebugMode) {
-      print("Rendering listing '${self.path}': ${self.title}");
+      print("rendering listing ${self.path} / ${self.title}");
     }
     return _remembersScrollOffset(ListingView(this, self));
   }
@@ -1832,7 +1838,7 @@ class VAlbumState extends State<VAlbumView>
     var name = _imageName(current);
     var image = _imageByName(self)[name];
     if (image == null) {
-      return buildMessage("No such image: $name");
+      return buildMessage(AppLocalizations.of(context)!.noSuchImage(name));
     }
 
     if (current is ImageRoute) {
@@ -1843,7 +1849,9 @@ class VAlbumState extends State<VAlbumView>
 
     var group = image.group;
     if (group == null) {
-      return buildMessage("No alternatives for image: $name");
+      return buildMessage(
+        AppLocalizations.of(context)!.noAlternatives(name),
+      );
     }
 
     if (current is AlternativesRoute) {
@@ -1861,7 +1869,9 @@ class VAlbumState extends State<VAlbumView>
     var memberName = (current as MemberRoute).member;
     var members = group.images.where((image) => image.name == memberName);
     if (members.isEmpty) {
-      return buildMessage("No such image: $memberName");
+      return buildMessage(
+        AppLocalizations.of(context)!.noSuchImage(memberName),
+      );
     }
     var member = members.first;
     var editing = navigator.delegate.editSession(path).editMode;
@@ -1981,12 +1991,13 @@ class VAlbumState extends State<VAlbumView>
 
   @override
   Widget visitErrorInfo(ErrorInfo self, BuildContext arg) {
+    var l10n = AppLocalizations.of(arg)!;
     return Scaffold(
-      appBar: AppBar(title: const Text("Virtual photo album")),
-      body: Center(child: Text('Loading failed: ${self.message}')),
+      appBar: AppBar(title: Text(l10n.appTitle)),
+      body: Center(child: Text(l10n.loadingFailed(self.message))),
       floatingActionButton: FloatingActionButton(
         onPressed: () {},
-        tooltip: 'Reload',
+        tooltip: l10n.reload,
         child: const Icon(Icons.update),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
@@ -2041,7 +2052,7 @@ class VAlbumState extends State<VAlbumView>
     }
     if (!mounted) {
       if (kDebugMode) {
-        print("Context was destroyed.");
+        print("context gone");
       }
       return;
     }
@@ -2053,7 +2064,7 @@ class VAlbumState extends State<VAlbumView>
     ImagePicker picker = ImagePicker();
     List<XFile> files = await picker.pickMultiImage();
     if (kDebugMode) {
-      print("Files picked: ${files.map((e) => e.name)}");
+      print("files picked ${files.map((e) => e.name)}");
     }
 
     if (files.isEmpty) {
@@ -2071,7 +2082,7 @@ class VAlbumState extends State<VAlbumView>
 
     if (!mounted) {
       if (kDebugMode) {
-        print("Context was destroyed.");
+        print("context gone");
       }
       return;
     }
@@ -2116,6 +2127,7 @@ class VAlbumState extends State<VAlbumView>
 
   /// The upload itself, see [uploadPicked].
   Future<void> _uploadPicked(List<UploadFile> uploads) async {
+    var l10n = AppLocalizations.of(context)!;
     var handle = UploadHandle();
     // What the dialog shows, fed by the one callback of [VAlbumClient.uploadNew]
     // (issue #70): images, and the fraction the wheel draws.
@@ -2147,7 +2159,7 @@ class VAlbumState extends State<VAlbumView>
           progress: progress,
           onCancel: () {
             if (kDebugMode) {
-              print("Aborting upload.");
+              print("upload aborted");
             }
             handle.cancel();
           },
@@ -2156,7 +2168,7 @@ class VAlbumState extends State<VAlbumView>
     );
 
     if (kDebugMode) {
-      print("Starting upload.");
+      print("upload started");
     }
 
     var messenger = ScaffoldMessenger.of(context);
@@ -2190,7 +2202,8 @@ class VAlbumState extends State<VAlbumView>
       // the dialog last showed, see [shown].
       var lost = partial == null && VAlbumClient.isTransportFailure(error)
           ? interruptedUploadMessage(
-              cause: uploadConnectionLost,
+              l10n,
+              cause: uploadConnectionLost(l10n),
               onServer: shown,
               total: uploads.length,
               remaining: uploads.length - shown,
@@ -2200,7 +2213,7 @@ class VAlbumState extends State<VAlbumView>
         messenger,
         SnackBar(
           content: Text(
-            partial?.message ?? lost ?? "Upload fehlgeschlagen: $error",
+            partial?.message ?? lost ?? l10n.uploadFailed("$error"),
           ),
           backgroundColor: Colors.red.shade700,
           duration: const Duration(seconds: 8),
@@ -2218,13 +2231,13 @@ class VAlbumState extends State<VAlbumView>
     progress.dispose();
 
     if (kDebugMode) {
-      print("Upload complete: ${summary.message}");
+      print("upload complete: ${summary.messageOf(l10n)}");
     }
 
     _tell(
       messenger,
       SnackBar(
-        content: Text(summary.message),
+        content: Text(summary.messageOf(l10n)),
         duration: const Duration(seconds: 4),
       ),
     );
@@ -2235,7 +2248,7 @@ class VAlbumState extends State<VAlbumView>
     // the album from the server anyway — but it must not throw either.
     if (!mounted) {
       if (kDebugMode) {
-        print("The album view is gone; not reloading after the upload.");
+        print("album view gone, no reload after upload");
       }
       return;
     }
@@ -2246,7 +2259,7 @@ class VAlbumState extends State<VAlbumView>
   void _tell(ScaffoldMessengerState messenger, SnackBar bar) {
     if (!messenger.mounted) {
       if (kDebugMode) {
-        print("Nobody left to tell: ${bar.content}");
+        print("no messenger for ${bar.content}");
       }
       return;
     }

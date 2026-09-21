@@ -96,7 +96,7 @@ void main() {
       });
 
       expect(wakelock.requests, [true, false]);
-      expect(find.textContaining("Upload fehlgeschlagen"), findsOneWidget);
+      expect(find.textContaining("Upload failed"), findsOneWidget);
     });
 
     testWidgets('and holds it for as long as the transfer runs',

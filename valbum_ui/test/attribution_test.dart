@@ -175,10 +175,10 @@ http.Response json(String body, {int status = 200}) => http.Response(
 void main() {
   group('the attribution line', () {
     test('names the contributor, and nobody without a label', () {
-      expect(attributionLine("bob"), "Added by bob");
-      expect(attributionShown(imagePart("a.jpg")), isNull);
+      expect(attributionLine(testL10n, "bob"), "Added by bob");
+      expect(attributionShown(testL10n, imagePart("a.jpg")), isNull);
       expect(
-        attributionShown(imagePart("a.jpg", contributorLabel: "bob")),
+        attributionShown(testL10n, imagePart("a.jpg", contributorLabel: "bob")),
         "Added by bob",
       );
     });

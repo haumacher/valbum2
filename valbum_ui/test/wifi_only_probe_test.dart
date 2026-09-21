@@ -6,6 +6,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_timers.dart';
 import 'util/l10n.dart';
+import 'package:valbum_ui/notices.dart';
 
 const List<String> inbox = ["2026-03-01 Inbox"];
 
@@ -80,7 +81,8 @@ void main() {
     harness.library.add(photo("b.jpg", 2));
     await harness.sync.syncNow();
     expect(harness.uploads, hasLength(1));
-    expect(harness.sync.status.message, contains("Wi-Fi"));
+    expect(harness.sync.status.notice, const NoWifiMobile());
+    expect(cameraRollLine(harness.sync.status, testL10n), contains("Wi-Fi"));
     config = await harness.store.loadCameraRollConfig();
     expect(config.wifiOnly, isTrue);
     expect(config.since, isNotNull);

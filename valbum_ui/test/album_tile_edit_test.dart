@@ -8,6 +8,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The tile of the image with the given file name.
 Finder tile(String name) => find.byKey(ValueKey(name));
@@ -187,7 +188,7 @@ void main() {
           find.byType(TextField),
           "Ein Baum\nim Schlosspark",
         );
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         expect(
@@ -218,9 +219,9 @@ void main() {
         );
 
         await tapTool(tester, "portrait.jpg", Icons.title);
-        expect(find.text("Überschrift einfügen"), findsOneWidget);
+        expect(find.text(testL10n.insertHeading), findsOneWidget);
         await tester.enterText(find.byType(TextField), "Am Mittag");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         var parts = album(tester).parts;
@@ -317,12 +318,12 @@ void main() {
 
         await tapTool(tester, "landscape.jpg", Icons.notes);
         await tester.enterText(find.byType(TextField), "Ein Baum");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         await tapTool(tester, "landscape.jpg", Icons.title);
         await tester.enterText(find.byType(TextField), "Am Mittag");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         await tester.tap(find.byIcon(Icons.save));

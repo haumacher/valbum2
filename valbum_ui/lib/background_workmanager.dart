@@ -37,6 +37,7 @@ import 'dart:io';
 import 'package:workmanager/workmanager.dart';
 
 import 'background.dart';
+import 'notices.dart';
 
 /// Periodic background execution through `workmanager`.
 class WorkmanagerScheduler extends BackgroundScheduler {
@@ -56,7 +57,7 @@ class WorkmanagerScheduler extends BackgroundScheduler {
   bool get available => true;
 
   @override
-  String get unavailableReason => "";
+  AppNotice? get unavailableReason => null;
 
   @override
   Future<void> schedule(BackgroundNetwork network) async {

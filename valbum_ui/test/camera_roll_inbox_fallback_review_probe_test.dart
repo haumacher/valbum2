@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 const String serverDataUrl = "http://server/valbum/data";
 const List<String> storedInbox = ["2026-01-01 My Inbox"];
@@ -96,13 +97,13 @@ void main() {
     expect((await store.loadCameraRollConfig()).inbox, storedInbox);
     expect(sync.status.phase, CameraRollPhase.waiting);
     expect(sync.status.message, contains("You may not contribute here."));
-    expect(sync.status.inboxNotice, isNull);
+    expect(sync.status.inboxGoneUsing, isNull);
     // The notice belongs to a fallback that worked; it must not leak into a
     // later run that succeeds for another reason.
     server.onCreate = (_) => http.Response('{"path":"Inbox"}', 200);
     await sync.syncNow();
     expect(sync.status.phase, CameraRollPhase.idle);
-    expect(sync.status.inboxNotice, inboxGoneNotice("Inbox"),
+    expect(sync.status.inboxGoneUsing, "Inbox",
         reason: "This second run did fall back, so it says so.");
   });
 
@@ -148,6 +149,6 @@ void main() {
     expect(server.creations, ["Inbox"]);
     expect(server.uploadPaths, ["Inbox", "Inbox"]);
     expect(second.status.phase, CameraRollPhase.idle);
-    expect(second.status.line, contains("Synced 1 photo"));
+    expect(cameraRollLine(second.status, testL10n), contains("Synced 1 photo"));
   });
 }

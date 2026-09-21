@@ -17,6 +17,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 const String albumFolder = "A";
 
@@ -110,7 +111,7 @@ Future<void> chooseIndexPicture(WidgetTester tester, String image) async {
     tester,
     find.descendant(
       of: find.byKey(ValueKey(image)),
-      matching: find.byTooltip("Als Albumbild verwenden"),
+      matching: find.byTooltip(testL10n.useAsAlbumPicture),
     ),
   );
 }
@@ -304,7 +305,7 @@ void main() {
         tester,
         find.descendant(
           of: find.byKey(const ValueKey("turned.jpg")),
-          matching: find.byTooltip("Nach links drehen"),
+          matching: find.byTooltip(testL10n.turnLeft),
         ),
       );
       expect(albumOf(tester).indexPicture!.orientation, Orientation.rot180,
@@ -336,7 +337,7 @@ void main() {
         tester,
         find.descendant(
           of: find.byKey(const ValueKey("turned.jpg")),
-          matching: find.byTooltip("Nach rechts drehen"),
+          matching: find.byTooltip(testL10n.turnRight),
         ),
       );
 

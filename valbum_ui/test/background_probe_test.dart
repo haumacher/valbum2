@@ -18,6 +18,8 @@ import 'package:valbum_ui/main.dart';
 import 'util/fake_image_http.dart';
 import 'util/fake_timers.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
+import 'package:valbum_ui/notices.dart';
 
 const String serverUrl = "http://server/valbum/";
 const String dataUrl = "http://server/valbum/data";
@@ -251,7 +253,7 @@ void main() {
     var library = FakePhotoLibrary(
       items: [photo("one.jpg", 0)],
       granted: false,
-      accessProblem: "Photo access was revoked in the system settings.",
+      accessProblem: const PhotoAccessDenied(),
     );
     addTearDown(library.dispose);
     var requests = 0;
@@ -268,7 +270,10 @@ void main() {
     );
 
     expect(result.ok, isFalse);
-    expect(result.record?.message, contains("revoked"));
+    expect(
+      result.record?.message,
+      contains(testL10n.noticePhotoAccessDenied),
+    );
     expect(requests, 0, reason: "nothing is asked of the server");
   });
 
@@ -302,6 +307,6 @@ void main() {
     var record = await store.loadBackgroundRunRecord();
     expect(record?.ok, isTrue);
     expect(record?.stored, 0);
-    expect(record?.line, contains("0 uploaded, 0 already present"));
+    expect(backgroundRunLine(record!, testL10n), contains("0 uploaded, 0 already present"));
   });
 }

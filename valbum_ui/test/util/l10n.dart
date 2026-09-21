@@ -10,6 +10,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:valbum_ui/l10n/app_localizations.dart';
 import 'package:valbum_ui/locales.dart';
 
@@ -30,8 +31,16 @@ const Locale defaultTestLocale = Locale("en");
 /// Used by a test that asserts on a text the app composes, and by every call
 /// of a function that now takes an [AppLocalizations] (`serverUrlError`,
 /// `lastDeviceWarning`, …).
-AppLocalizations l10nOf([Locale locale = defaultTestLocale]) =>
-    lookupAppLocalizations(locale);
+AppLocalizations l10nOf([Locale locale = defaultTestLocale]) {
+  // What `flutter_localizations` does for a running app, done here for a plain
+  // unit test: a helper that composes a line with a `DateFormat` of the
+  // locale — `cameraRollLine`, the inbox headings — needs the date symbols of
+  // that locale, and outside a widget test nobody has loaded them. The local
+  // implementation fills them in synchronously, so the very next `DateFormat`
+  // finds them.
+  initializeDateFormatting(locale.toLanguageTag());
+  return lookupAppLocalizations(locale);
+}
 
 /// The English strings, the language the test suite reads in.
 AppLocalizations get testL10n => l10nOf();

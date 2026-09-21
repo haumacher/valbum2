@@ -279,7 +279,7 @@ void main() {
       expect(albumStateOf(tester).editMode, isTrue);
       expect(albumStateOf(tester).dirty, isTrue);
       expect(partNames(albumOf(tester)), movedOrder);
-      expect(find.textContaining("Speichern fehlgeschlagen"), findsOneWidget);
+      expect(find.textContaining("Saving failed"), findsOneWidget);
     });
     expect(putsIn(requests), hasLength(1));
   });

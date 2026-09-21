@@ -97,7 +97,7 @@ class UploadProgressDialog extends StatelessWidget {
               // One line, wrapping. Never an ellipsis: the whole complaint of
               // issue #70 was a sentence that could not be read to its end.
               Text(
-                value.line,
+                value.lineOf(AppLocalizations.of(context)!),
                 key: uploadProgressCountKey,
                 textAlign: TextAlign.center,
                 softWrap: true,

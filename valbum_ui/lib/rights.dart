@@ -7,6 +7,7 @@
 library;
 
 import 'caller.dart';
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
 
 /// The name of the right to see a listing and its thumbnails.
@@ -29,21 +30,26 @@ const List<String> allRights = [
   rightEdit,
 ];
 
-/// How a right is named on the screen.
-const Map<String, String> rightLabels = {
-  rightView: "View",
-  rightDownload: "Download",
-  rightContribute: "Contribute",
-  rightEdit: "Edit",
-};
+/// How a right is named on the screen, the name itself where the app knows
+/// no such right (a server newer than this app).
+String rightLabel(AppLocalizations l10n, String right) => switch (right) {
+      rightView => l10n.rightLabelView,
+      rightDownload => l10n.rightLabelDownload,
+      rightContribute => l10n.rightLabelContribute,
+      rightEdit => l10n.rightLabelEdit,
+      _ => right,
+    };
 
-/// What a right means, one line, shown beside its check box.
-const Map<String, String> rightExplanations = {
-  rightView: "See the album and its thumbnails",
-  rightDownload: "Take copies of the originals",
-  rightContribute: "Add photos",
-  rightEdit: "Change the album and everything in it",
-};
+/// What a right means, one line, shown beside its check box; empty where the
+/// app knows no such right.
+String rightExplanation(AppLocalizations l10n, String right) =>
+    switch (right) {
+      rightView => l10n.rightExplanationView,
+      rightDownload => l10n.rightExplanationDownload,
+      rightContribute => l10n.rightExplanationContribute,
+      rightEdit => l10n.rightExplanationEdit,
+      _ => "",
+    };
 
 /// What the caller may do with one folder, see [FolderResource.rights].
 ///
@@ -131,20 +137,20 @@ class Rights {
   bool get complete => names.length == allRights.length;
 
   /// What the caller may do, in one half-sentence.
-  String get phrase {
+  String phrase(AppLocalizations l10n) {
     if (mayEdit) {
-      return "you may change it";
+      return l10n.rightsPhraseEdit;
     }
     if (mayContribute) {
-      return "you may add photos";
+      return l10n.rightsPhraseContribute;
     }
     if (mayDownload) {
-      return "you may look and download";
+      return l10n.rightsPhraseDownload;
     }
     if (mayView) {
-      return "you may look";
+      return l10n.rightsPhraseView;
     }
-    return "you may do nothing here";
+    return l10n.rightsPhraseNone;
   }
 
   @override
@@ -218,11 +224,16 @@ String ownerPathOf(List<String> path) {
 /// <owner>" line says it. Naming the owner in the album as well would mean
 /// carrying the tile along the route, and a route that is opened again from a
 /// bookmark or a reload has no tile to carry.
-String? sharingNotice(List<String> path, Rights rights) {
+String? sharingNotice(
+  AppLocalizations l10n,
+  List<String> path,
+  Rights rights,
+) {
   var owner = spaceOwnerOf(path);
   if (owner == null && rights.complete) {
     return null;
   }
-  var by = owner == null ? "Shared with you" : "Shared by $owner";
-  return "$by — ${rights.phrase}";
+  var by =
+      owner == null ? l10n.sharedWithYou : l10n.sharedByOwner(owner);
+  return "$by — ${rights.phrase(l10n)}";
 }

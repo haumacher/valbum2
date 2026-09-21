@@ -57,7 +57,7 @@ void main() {
     // selected; its tools offer the way into the alternatives.
     await settle(tester, () => tester.longPress(find.byType(Image).at(2)));
     expect(find.byIcon(Icons.save), findsOneWidget, reason: "edit mode");
-    await tap(tester, find.byTooltip("Gruppenbild wählen"));
+    await tap(tester, find.byTooltip(testL10n.chooseGroupPicture));
 
     // The alternatives view marks the current representative.
     expect(find.byType(GroupView), findsOneWidget);
@@ -90,7 +90,7 @@ void main() {
 
     // And the alternatives view, entered again from the tile, shows the new
     // choice.
-    await tap(tester, find.byTooltip("Gruppenbild wählen"));
+    await tap(tester, find.byTooltip(testL10n.chooseGroupPicture));
     expect(representativeMark("group-b.jpg"), findsOneWidget);
     expect(representativeMark("group-a.jpg"), findsNothing);
     await tap(tester, find.byIcon(Icons.arrow_back));

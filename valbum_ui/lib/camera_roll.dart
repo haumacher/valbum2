@@ -32,6 +32,7 @@ import 'client.dart';
 import 'connectivity.dart';
 import 'photo_library.dart';
 import 'resource.dart';
+import 'notices.dart';
 import 'settings.dart';
 
 /// The name of the album the sync creates when the user chose no inbox.
@@ -41,14 +42,15 @@ import 'settings.dart';
 /// see [VAlbumClient.createAlbum].
 const String defaultInboxName = "Inbox";
 
-/// What a guest is told instead of a camera-roll sync, see issue #54.
+/// What a guest is answered instead of a camera-roll sync, see issue #54.
 ///
 /// A guest's root is not a library of their own — it is what others shared
 /// with them — so there is no space to create an inbox in and no album a photo
 /// of theirs could land in. The server refuses it by role
 /// (`AuthService.GUEST_SPACE_REFUSED`); this app says so before it asks, and
-/// says the one thing that changes it.
-const String guestNoSpaceNotice = "Ask the admin to give you an album space.";
+/// says the one thing that changes it — in the words of the device, see
+/// [noticeText] (issue #108).
+const AppNotice guestNoSpaceNotice = GuestHasNoSpace();
 
 /// The point one watched album was synced up to, see
 /// [CameraRollConfig.markOf].
@@ -361,13 +363,6 @@ List<String> defaultSources(List<PhotoAlbum> albums) {
   ];
 }
 
-/// What the camera-roll section says while nothing is watched (issue #117).
-const String noSourcesNotice = "Choose the albums to sync.";
-
-/// What the camera-roll section says about a newly ticked album (issue #117).
-const String newSourceNotice =
-    "Photos of a newly chosen album are fetched from the beginning.";
-
 /// Typed access to the camera-roll configuration of a [SettingsStore].
 extension CameraRollStorage on SettingsStore {
   /// The stored configuration, [CameraRollConfig.disabled] if there is none.
@@ -378,31 +373,6 @@ extension CameraRollStorage on SettingsStore {
   Future<void> saveCameraRollConfig(CameraRollConfig config) =>
       saveCameraRoll(config.toJson());
 }
-
-/// What a run waiting for the server's hash index says (issue #118).
-///
-/// It says both halves: what the server is doing, and what would happen if the
-/// run went ahead anyway — a photo that lies in an album the index has not
-/// read yet cannot be recognised, so it would arrive a second time.
-String indexingNotice(int done, int total) =>
-    "The library is still being indexed ($done of $total folders); photos "
-    "already in an unindexed album may be uploaded again.";
-
-/// What a run says after it found the chosen inbox gone (issue #132).
-///
-/// Since issue #130 a properties write renames an album's directory, so the
-/// path the sync stored can simply stop existing — the server then answers
-/// 404 for the one album this sync uploads into. The run does not stop for
-/// that: it falls back to the default inbox rule, uploads there, and says so,
-/// because a user whose photos land somewhere else must be told where.
-String inboxGoneNotice(String name) =>
-    "The chosen inbox is gone; using '$name'.";
-
-/// Where a photo the server already had is, for the line of a finished run.
-String presentInNotice(List<String> where) => where.isEmpty
-    ? ""
-    : " Already in the library: ${where.take(3).join(", ")}"
-        "${where.length > 3 ? ", ..." : ""}.";
 
 /// What the sync is doing right now, see [CameraRollStatus].
 enum CameraRollPhase {
@@ -438,8 +408,17 @@ class CameraRollStatus {
   /// The number of items the running run set out to transfer.
   final int total;
 
-  /// Why the sync is not running, where there is a reason to show.
+  /// What the **server** said about the run, `null` where it said nothing.
+  ///
+  /// Verbatim, and never translated: the server spells its own refusals, and
+  /// the app neither paraphrases nor re-words them, see issue #108.
   final String? message;
+
+  /// The app's own reason, `null` where the app has none to give.
+  ///
+  /// Data, not words: the section and the tooltip turn it into a sentence in
+  /// the language of the device, see [noticeText] and [AppNotice].
+  final AppNotice? notice;
 
   /// When the next attempt is due, while [phase] is
   /// [CameraRollPhase.waiting].
@@ -459,25 +438,29 @@ class CameraRollStatus {
   /// How far the server's hash index had got when a run deferred (issue #118);
   /// `null` when the run is not waiting for it.
   ///
-  /// While this is set, [phase] is [CameraRollPhase.waiting] and [message] is
-  /// [indexingNotice]: the run is postponed, not failed, and the section says
-  /// so and offers *Sync anyway*.
+  /// While this is set, [phase] is [CameraRollPhase.waiting]: the run is
+  /// postponed, not failed, and the section says so and offers *Sync anyway*.
   final int? indexingDone;
   final int? indexingTotal;
 
-  /// What a run had to say about the inbox itself, `null` while there is
-  /// nothing to say (issue #132).
+  /// The inbox a run fell back to after the chosen one was gone, `null` while
+  /// there is nothing to say (issue #132).
   ///
-  /// Set by the run that found the stored inbox gone and fell back to
-  /// [defaultInboxName], see [inboxGoneNotice]; it belongs to that run, so the
-  /// next successful one clears it, and so does choosing an inbox.
-  final String? inboxNotice;
+  /// Since issue #130 a properties write renames an album's directory, so the
+  /// path the sync stored can simply stop existing — the server then answers
+  /// 404 for the one album this sync uploads into. The run does not stop for
+  /// that: it falls back to the default inbox rule, uploads there, and names
+  /// the album it used, because a user whose photos land somewhere else must
+  /// be told where. It belongs to that run, so the next successful one clears
+  /// it, and so does choosing an inbox.
+  final String? inboxGoneUsing;
 
   const CameraRollStatus({
     this.phase = CameraRollPhase.disabled,
     this.done = 0,
     this.total = 0,
     this.message,
+    this.notice,
     this.nextAttempt,
     this.lastSuccess,
     this.lastStored = 0,
@@ -485,7 +468,7 @@ class CameraRollStatus {
     this.lastPresentIn = const [],
     this.indexingDone,
     this.indexingTotal,
-    this.inboxNotice,
+    this.inboxGoneUsing,
   });
 
   /// Whether the run is waiting for the server to finish indexing (issue #118).
@@ -508,6 +491,7 @@ class CameraRollStatus {
     int? done,
     int? total,
     String? message,
+    AppNotice? notice,
     DateTime? nextAttempt,
     DateTime? lastSuccess,
     int? lastStored,
@@ -515,13 +499,14 @@ class CameraRollStatus {
     List<String>? lastPresentIn,
     int? indexingDone,
     int? indexingTotal,
-    String? inboxNotice,
+    String? inboxGoneUsing,
   }) =>
       CameraRollStatus(
         phase: phase ?? this.phase,
         done: done ?? this.done,
         total: total ?? this.total,
         message: message,
+        notice: notice,
         nextAttempt: nextAttempt,
         lastSuccess: lastSuccess ?? this.lastSuccess,
         lastStored: lastStored ?? this.lastStored,
@@ -533,51 +518,9 @@ class CameraRollStatus {
         indexingTotal: indexingTotal,
         // Like [message]: what one run found out about the inbox is that
         // run's, so the next transition clears it unless it says otherwise.
-        inboxNotice: inboxNotice,
+        inboxGoneUsing: inboxGoneUsing,
       );
 
-  /// The one line the settings screen and the app-bar tooltip show.
-  String get line => switch (phase) {
-        CameraRollPhase.disabled => "Camera-roll sync is off.",
-        CameraRollPhase.unavailable =>
-          message ?? "No photo library on this platform",
-        CameraRollPhase.running => "Uploading ${done + 1} of $total...",
-        // A run that waits for the index has not failed: it is postponed, and
-        // the sentence is the server's own (issue #118).
-        CameraRollPhase.waiting => indexing
-            ? "${message ?? indexingNotice(indexingDone!, indexingTotal!)} "
-                "Waiting until "
-                "${nextAttempt == null ? "the next attempt" : _time(nextAttempt!)}."
-            : "Failed: ${message ?? "unknown reason"} - retrying at "
-                "${nextAttempt == null ? "the next attempt" : _time(nextAttempt!)}",
-        CameraRollPhase.failed => "Failed: ${message ?? "unknown reason"}",
-        CameraRollPhase.idle => _idleLine,
-      };
-
-  String get _idleLine {
-    var notice = inboxNotice;
-    return notice == null ? _lastRunLine : "$notice $_lastRunLine";
-  }
-
-  String get _lastRunLine {
-    var when = lastSuccess;
-    if (when == null) {
-      return "Waiting for new photos.";
-    }
-    var count = lastStored + lastPresent;
-    if (count == 0) {
-      return "Nothing new, checked at ${_time(when)}.";
-    }
-    return "Synced $count ${count == 1 ? "photo" : "photos"} at "
-        "${_time(when)} ($lastStored uploaded, $lastPresent already there)."
-        "${presentInNotice(lastPresentIn)}";
-  }
-
-  static String _time(DateTime when) {
-    var local = when.toLocal();
-    String two(int value) => value.toString().padLeft(2, "0");
-    return "${two(local.hour)}:${two(local.minute)}";
-  }
 }
 
 /// Builds a timer, so that a test does not have to wait for one.
@@ -668,7 +611,7 @@ class CameraRollSync extends ChangeNotifier {
   CameraRollStatus _status = const CameraRollStatus();
   bool _loaded = false;
   BackgroundRunRecord? _lastBackgroundRun;
-  String? _backgroundProblem;
+  AppNotice? _backgroundProblem;
 
   /// Whether a failed run may arm a retry timer.
   ///
@@ -685,7 +628,7 @@ class CameraRollSync extends ChangeNotifier {
   /// — the notice belongs to the *next line the user reads about a run that
   /// worked*, so it is kept until [_succeed] says it, or until the user
   /// chooses an inbox themselves.
-  String? _inboxNotice;
+  String? _inboxGoneUsing;
 
   bool _running = false;
   bool _pending = false;
@@ -752,7 +695,7 @@ class CameraRollSync extends ChangeNotifier {
   /// the platform did what it was asked.
   ///
   /// A plugin that throws is not swallowed: the settings section shows this.
-  String? get backgroundProblem => _backgroundProblem;
+  AppNotice? get backgroundProblem => _backgroundProblem;
 
   /// Arms the triggers: the library's change stream and the periodic scan.
   ///
@@ -869,14 +812,15 @@ class CameraRollSync extends ChangeNotifier {
   /// Switches the sync on or off.
   ///
   /// Returns the reason it refused, `null` when it did what it was asked; a
-  /// switch that flips back on its own would leave the user guessing.
+  /// switch that flips back on its own would leave the user guessing. The
+  /// reason as data, which the section turns into words, see [noticeText].
   ///
   /// A missing inbox album is no longer such a reason (issue #54): the first
   /// run creates [defaultInboxName] in the caller's own space. Choosing one
   /// beforehand stays possible, it is not a condition any more.
-  Future<String?> setEnabled(bool value) async {
+  Future<AppNotice?> setEnabled(bool value) async {
     if (value && !await library.requestAccess()) {
-      return library.accessProblem ?? "The photo library cannot be read.";
+      return library.accessProblem ?? const PhotoLibraryUnreadable();
     }
     await _store(_config.copyWith(enabled: value));
     if (value) {
@@ -908,8 +852,8 @@ class CameraRollSync extends ChangeNotifier {
       _backgroundProblem = null;
     } catch (error) {
       _backgroundProblem = enabled
-          ? "Background sync could not be scheduled: $error"
-          : "Background sync could not be switched off: $error";
+          ? BackgroundScheduleFailed("$error")
+          : BackgroundUnscheduleFailed("$error");
     }
     if (!_disposed) {
       notifyListeners();
@@ -950,7 +894,7 @@ class CameraRollSync extends ChangeNotifier {
   Future<void> chooseInbox(List<String> path) async {
     // The user has decided where the photos go; a run's sentence about an
     // inbox they just replaced would only confuse (issue #132).
-    _inboxNotice = null;
+    _inboxGoneUsing = null;
     await _store(_config.copyWith(inbox: [...path]));
     _publish(_restingStatus());
   }
@@ -1048,7 +992,7 @@ class CameraRollSync extends ChangeNotifier {
 
   Future<void> _runOnce() async {
     if (isOffline()) {
-      _fail("Offline: the album server cannot be reached.");
+      _fail(notice: const ServerOffline());
       return;
     }
     if (_config.wifiOnly) {
@@ -1057,19 +1001,19 @@ class CameraRollSync extends ChangeNotifier {
         // Retried, not abandoned: the device moves back onto a Wi-Fi sooner
         // or later, and the change stream starts a run right then, see
         // [start].
-        _fail(kind.refusal);
+        _fail(notice: kind.refusal);
         return;
       }
     }
     var client = clientOf();
     if (client == null) {
-      _fail("No album server is configured.", retry: false);
+      _fail(notice: const NoServerConfigured(), retry: false);
       return;
     }
     if (!await library.requestAccess()) {
       _publish(_status.copyWith(
         phase: CameraRollPhase.unavailable,
-        message: library.accessProblem ?? "The photo library cannot be read.",
+        notice: library.accessProblem ?? const PhotoLibraryUnreadable(),
       ));
       return;
     }
@@ -1087,14 +1031,14 @@ class CameraRollSync extends ChangeNotifier {
       caller = null;
     }
     if (caller?.isGuest ?? false) {
-      _fail(guestNoSpaceNotice, retry: false);
+      _fail(notice: guestNoSpaceNotice, retry: false);
       return;
     }
     List<String> sources;
     try {
       sources = await _sources();
     } catch (error) {
-      _fail("The photo library could not be read: $error");
+      _fail(notice: PhotoLibraryFailed("$error"));
       return;
     }
     // Only now, with the library readable, an album to watch and the caller in
@@ -1137,7 +1081,7 @@ class CameraRollSync extends ChangeNotifier {
                 source == CameraRollConfig.wholeLibrary ? const [] : [source],
           );
         } catch (error) {
-          _fail("The photo library could not be read: $error");
+          _fail(notice: PhotoLibraryFailed("$error"));
           return;
         }
 
@@ -1213,19 +1157,14 @@ class CameraRollSync extends ChangeNotifier {
                   // restarting must not cost the user their choice.
                   return;
                 }
-                _inboxNotice = inboxGoneNotice(defaultInboxName);
+                _inboxGoneUsing = defaultInboxName;
                 summary = await transfer();
               }
             } on VAlbumException catch (error) {
-              _fail(error.message);
+              _fail(message: error.message);
               return;
             } catch (error) {
-              _fail(
-                VAlbumClient.isTransportFailure(error)
-                    ? "The server cannot be reached "
-                        "(${VAlbumClient.transportMessage(error)})."
-                    : error.toString(),
-              );
+              _fail(notice: _reasonOf(error));
               return;
             }
             if (summary.deferred) {
@@ -1320,18 +1259,13 @@ class CameraRollSync extends ChangeNotifier {
       var existing = await _existingInbox(client, error);
       if (existing == null) {
         // The server's own sentence, not a guess about what it meant.
-        _fail(error.message);
+        _fail(message: error.message);
         return false;
       }
       await _store(_config.copyWith(inbox: existing));
       return true;
     } catch (error) {
-      _fail(
-        VAlbumClient.isTransportFailure(error)
-            ? "The server cannot be reached "
-                "(${VAlbumClient.transportMessage(error)})."
-            : error.toString(),
-      );
+      _fail(notice: _reasonOf(error));
       return false;
     }
     await _store(_config.copyWith(inbox: _pathSegments(created.path)));
@@ -1397,10 +1331,10 @@ class CameraRollSync extends ChangeNotifier {
   }
 
   void _succeed(int stored, int present, List<String> presentIn) {
-    var notice = _inboxNotice;
+    var fallback = _inboxGoneUsing;
     // Said once: this run is the line the user reads, and the next one is
     // about the inbox they now have.
-    _inboxNotice = null;
+    _inboxGoneUsing = null;
     _attempt = 0;
     _retryTimer?.cancel();
     _retryTimer = null;
@@ -1410,7 +1344,7 @@ class CameraRollSync extends ChangeNotifier {
       lastStored: stored,
       lastPresent: present,
       lastPresentIn: presentIn,
-      inboxNotice: notice,
+      inboxGoneUsing: fallback,
     ));
   }
 
@@ -1429,7 +1363,6 @@ class CameraRollSync extends ChangeNotifier {
     });
     _publish(_status.copyWith(
       phase: CameraRollPhase.waiting,
-      message: indexingNotice(done, total),
       nextAttempt: clock().add(delay),
       done: 0,
       total: 0,
@@ -1454,11 +1387,15 @@ class CameraRollSync extends ChangeNotifier {
   }
 
   /// Ends the run with a reason, and schedules the next attempt.
-  void _fail(String message, {bool retry = true}) {
+  ///
+  /// Exactly one of the two is given: [message] is what the **server** said,
+  /// verbatim, and [notice] is the app's own reason as data, see issue #108.
+  void _fail({String? message, AppNotice? notice, bool retry = true}) {
     if (!retry || !_armRetries) {
       _publish(_status.copyWith(
         phase: CameraRollPhase.failed,
         message: message,
+        notice: notice,
         done: 0,
         total: 0,
       ));
@@ -1475,10 +1412,28 @@ class CameraRollSync extends ChangeNotifier {
     _publish(_status.copyWith(
       phase: CameraRollPhase.waiting,
       message: message,
+      notice: notice,
       nextAttempt: clock().add(delay),
       done: 0,
       total: 0,
     ));
+  }
+
+  /// Why a run could not finish, as data (issue #108).
+  ///
+  /// The library's own reason where the device's library refused
+  /// ([PhotoLibraryException]), the transport's where the server could not be
+  /// reached, and the exception's own text otherwise — which is a last resort,
+  /// not a sentence this app composed.
+  static AppNotice _reasonOf(Object error) {
+    if (error is PhotoLibraryException) {
+      return error.notice;
+    }
+    return ServerUnreachable(
+      VAlbumClient.isTransportFailure(error)
+          ? VAlbumClient.transportMessage(error)
+          : error.toString(),
+    );
   }
 
   /// The delay the next failure will be retried after, for the tests and the

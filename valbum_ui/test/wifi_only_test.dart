@@ -12,6 +12,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_timers.dart';
 import 'util/l10n.dart';
+import 'package:valbum_ui/notices.dart';
 
 /// The server the tests talk to, as a user would type it.
 const String serverUrl = "http://server/valbum/";
@@ -159,8 +160,8 @@ void main() {
 
       expect(harness.uploads, isEmpty);
       expect(harness.requests, isEmpty);
-      expect(harness.sync.status.message, contains("Wi-Fi"));
-      expect(harness.sync.status.line, contains("Wi-Fi"));
+      expect(harness.sync.status.notice, const NoWifiMobile());
+      expect(cameraRollLine(harness.sync.status, testL10n), contains("Wi-Fi"));
       // Nothing was handled, so nothing was recorded as handled.
       expect((await harness.store.loadCameraRollConfig()).since, isNull);
     });
@@ -176,7 +177,8 @@ void main() {
       await harness.sync.syncNow();
 
       expect(harness.uploads, isEmpty);
-      expect(harness.sync.status.message, contains("Wi-Fi"));
+      expect(harness.sync.status.notice, const NoWifiOther());
+      expect(cameraRollLine(harness.sync.status, testL10n), contains("Wi-Fi"));
     });
 
     test('says it has no network at all where there is none', () async {
@@ -190,7 +192,11 @@ void main() {
       await harness.sync.syncNow();
 
       expect(harness.uploads, isEmpty);
-      expect(harness.sync.status.message, contains("No network"));
+      expect(harness.sync.status.notice, const NoNetworkForSync());
+      expect(
+        cameraRollLine(harness.sync.status, testL10n),
+        contains("No network"),
+      );
     });
 
     testWidgets('shows the reason where the other refusals are shown',

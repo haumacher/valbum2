@@ -9,6 +9,8 @@ import 'package:http/http.dart' as http;
 import 'package:jsontool/jsontool.dart';
 
 import 'diagnostics.dart';
+import 'l10n/app_localizations.dart';
+import 'locales.dart';
 import 'offline.dart';
 import 'platform.dart';
 import 'resource.dart';
@@ -156,9 +158,13 @@ class UploadSummary {
   /// photos that were already there are somewhere else in the library, the
   /// sentence says where — that is the whole answer to "why did this upload
   /// nothing?", see issue #118.
-  String get message => "$stored hochgeladen, $present bereits vorhanden."
-      "${presentIn.isEmpty ? "" : " Bereits in der Mediathek: "
-          "${presentIn.join(", ")}."}";
+  String messageOf(AppLocalizations l10n) {
+    var summary = l10n.uploadSummary(stored, present);
+    if (presentIn.isEmpty) {
+      return summary;
+    }
+    return "$summary ${l10n.alreadyInLibrary(presentIn.join(", "))}";
+  }
 }
 
 /// The greatest number of files one request carries, see [UploadBatching].
@@ -221,7 +227,7 @@ class UploadBatching {
 
 /// What a lost connection is called on the screen, see
 /// [interruptedUploadMessage].
-const String uploadConnectionLost = "Verbindung verloren";
+String uploadConnectionLost(AppLocalizations l10n) => l10n.uploadConnectionLost;
 
 /// What the user is told about an upload that stopped halfway (issue #63).
 ///
@@ -231,14 +237,14 @@ const String uploadConnectionLost = "Verbindung verloren";
 /// the rest again costs nothing — the server stores no photo twice, see
 /// [VAlbumClient.uploadNew]. The exception itself is in the diagnostics log,
 /// where it belongs, see [DiagnosticsLog].
-String interruptedUploadMessage({
+String interruptedUploadMessage(
+  AppLocalizations l10n, {
   required String cause,
   required int onServer,
   required int total,
   required int remaining,
 }) =>
-    "$cause: $onServer von $total Fotos sind auf dem Server, die übrigen "
-    "$remaining können erneut gesendet werden.";
+    "$cause: ${l10n.uploadInterruptedCounts(total, onServer, remaining)}";
 
 /// An upload that stopped after some of its batches had arrived, see
 /// [VAlbumClient.uploadNew] and issue #63.
@@ -264,10 +270,10 @@ class UploadInterrupted extends VAlbumException {
 /// A cancellation is a refusal like any other, and refusals speak: the user
 /// pressed the button, and the screen says what came of it rather than falling
 /// silent or — worse — claiming success for a body that was cut in half.
-const String uploadCancelledMessage = "Der Upload wurde abgebrochen.";
+String uploadCancelledMessage(AppLocalizations l10n) => l10n.uploadCancelled;
 
 /// What the dialog says while the server is asked what it already holds.
-const String uploadAskingMessage = "Der Server wird gefragt...";
+String uploadAskingMessage(AppLocalizations l10n) => l10n.uploadAsking;
 
 /// What the dialog says once the body is handed over and the server's answer
 /// is still outstanding, see issue #59.
@@ -276,15 +282,15 @@ const String uploadAskingMessage = "Der Server wird gefragt...";
 /// from local storage, reached 100 % and closed itself while the bytes were
 /// still in flight, so the upload looked like it had happened and the album
 /// looked like it had refused it.
-const String uploadWaitingMessage = "Warte auf den Server...";
+String uploadWaitingMessage(AppLocalizations l10n) => l10n.uploadWaiting;
 
 /// What the dialog says while the images are on their way (issue #70).
 ///
 /// The one measurement the person can check against what they picked: images.
 /// Not batches, not bytes, not requests — the report of #70 was that two
 /// different numbers were counted at once while the wheel only spun.
-String uploadImageCountMessage(int done, int total) =>
-    "$done von $total Bildern";
+String uploadImageCountMessage(AppLocalizations l10n, int done, int total) =>
+    l10n.uploadImageCount(total, done);
 
 /// What part of an upload is running, see [UploadProgress].
 enum UploadPhase {
@@ -359,13 +365,12 @@ class UploadProgress {
   int get percent => (fraction * 100).round().clamp(0, 100);
 
   /// The one line the dialog shows, see [uploadImageCountMessage].
-  String get line => switch (phase) {
-        UploadPhase.preparing =>
-          "Wird vorbereitet: $imagesDone von $imagesTotal...",
-        UploadPhase.asking => uploadAskingMessage,
+  String lineOf(AppLocalizations l10n) => switch (phase) {
+        UploadPhase.preparing => l10n.uploadPreparing(imagesTotal, imagesDone),
+        UploadPhase.asking => uploadAskingMessage(l10n),
         UploadPhase.transferring =>
-          uploadImageCountMessage(imagesDone, imagesTotal),
-        UploadPhase.waiting => uploadWaitingMessage,
+          uploadImageCountMessage(l10n, imagesDone, imagesTotal),
+        UploadPhase.waiting => uploadWaitingMessage(l10n),
       };
 
   @override
@@ -719,7 +724,7 @@ class VAlbumClient {
   Future<Resource?> loadResource(List<String> path) async {
     var uri = jsonUrl(path);
     if (kDebugMode) {
-      print("Fetching: $uri");
+      print("fetching $uri");
     }
     http.Response response;
     try {
@@ -733,7 +738,7 @@ class VAlbumClient {
       return _cachedResource(path, uri, error);
     }
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body, "loading '$uri'");
+      throw failure(response.statusCode, response.body, platformMessages.doingLoading("'$uri'"));
     }
     // Parsed before it is cached: an answer that is not album data must not
     // become the cached copy of this album.
@@ -767,7 +772,7 @@ class VAlbumClient {
   Future<Resource?> loadPreview(List<String> path, String viewAs) async {
     var uri = previewUrl(path, viewAs);
     if (kDebugMode) {
-      print("Fetching preview: $uri");
+      print("fetching preview $uri");
     }
     http.Response response;
     try {
@@ -779,12 +784,11 @@ class VAlbumClient {
         rethrow;
       }
       throw VAlbumException(
-        "The server cannot be reached (${transportMessage(error)}), so there "
-        "is nothing to preview.",
+        platformMessages.serverUnreachableNoPreview(transportMessage(error)),
       );
     }
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body, "loading '$uri'");
+      throw failure(response.statusCode, response.body, platformMessages.doingLoading("'$uri'"));
     }
     return parseResource(response.body, uri);
   }
@@ -811,10 +815,8 @@ class VAlbumClient {
   }
 
   /// The failure of an answer that is not album data, see [parseResource].
-  static VAlbumException notAlbumData(String url) => VAlbumException(
-        "The server at '$url' did not answer with album data - not a VAlbum "
-        "server, or is the server URL in the settings wrong?",
-      );
+  static VAlbumException notAlbumData(String url) =>
+      VAlbumException(platformMessages.notVAlbumServer("'$url'"));
 
   /// The last copy of [path] this app saw, after the server could not be
   /// reached.
@@ -830,13 +832,12 @@ class VAlbumClient {
     if (entry == null) {
       offlineState?.goneOffline(null);
       throw VAlbumException(
-        "The server cannot be reached (${transportMessage(error)}), and "
-        "nothing is cached for this view.",
+        platformMessages.serverUnreachableNoCache(transportMessage(error)),
       );
     }
     offlineState?.goneOffline(entry.storedAt);
     if (kDebugMode) {
-      print("Offline, showing the copy from ${entry.storedAt}: $uri");
+      print("offline, copy from ${entry.storedAt} of $uri");
     }
     return Resource.read(JsonReader.fromString(entry.text));
   }
@@ -866,7 +867,7 @@ class VAlbumClient {
       return entry.bytes;
     }
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body, "loading '$url'");
+      throw failure(response.statusCode, response.body, platformMessages.doingLoading("'$url'"));
     }
     await cache?.putThumbnail(url, response.bodyBytes, user: cacheUser);
     return response.bodyBytes;
@@ -879,7 +880,7 @@ class VAlbumClient {
   /// What a transport failure says, without the exception's own decoration.
   static String transportMessage(Object error) => switch (error) {
         http.ClientException(message: var message) => message,
-        TimeoutException() => "no answer in time",
+        TimeoutException() => platformMessages.noAnswerInTime,
         _ => error.toString(),
       };
 
@@ -897,7 +898,7 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "storing '$url'");
+      throw failure(response.statusCode, response.body, platformMessages.doingStoring("'$url'"));
     }
   }
 
@@ -939,7 +940,7 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "storing '$asked'");
+      throw failure(response.statusCode, response.body, platformMessages.doingStoring("'$asked'"));
     }
     return _createResult(response.body, asked);
   }
@@ -987,7 +988,7 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "creating '$asked'");
+      throw failure(response.statusCode, response.body, platformMessages.doingCreating("'$asked'"));
     }
 
     return _createResult(response.body, asked);
@@ -1064,7 +1065,7 @@ class VAlbumClient {
       // A cancelled upload fails the body stream; whatever the transport made
       // of that is not worth quoting, the user knows what they did.
       if (handle != null && handle.cancelled) {
-        throw const VAlbumException(uploadCancelledMessage);
+        throw VAlbumException(uploadCancelledMessage(platformMessages));
       }
       rethrow;
     }
@@ -1072,10 +1073,10 @@ class VAlbumClient {
     // a proxy) can answer a request that was cancelled halfway, and a
     // cancelled upload must never be reported as a success.
     if (handle != null && handle.cancelled) {
-      throw const VAlbumException(uploadCancelledMessage);
+      throw VAlbumException(uploadCancelledMessage(platformMessages));
     }
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, body, "uploading to '$url'");
+      throw failure(response.statusCode, body, platformMessages.doingUploading("'$url'"));
     }
     return uploadResult(body, files);
   }
@@ -1127,7 +1128,7 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
+      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
     }
     return UploadCheckResult.read(JsonReader.fromString(response.body));
   }
@@ -1165,7 +1166,7 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "moving to '$target'");
+      throw failure(response.statusCode, response.body, platformMessages.doingMoving("'$target'"));
     }
     return MoveResult.read(JsonReader.fromString(response.body));
   }
@@ -1203,7 +1204,7 @@ class VAlbumClient {
       throw failure(
         response.statusCode,
         response.body,
-        "deleting in '${path.join("/")}'",
+        platformMessages.doingDeleting("'${path.join("/")}'"),
       );
     }
     return MoveResult.read(JsonReader.fromString(response.body));
@@ -1228,7 +1229,7 @@ class VAlbumClient {
       throw failure(
         response.statusCode,
         response.body,
-        "filing in '${path.join("/")}'",
+        platformMessages.doingFiling("'${path.join("/")}'"),
       );
     }
     return MoveResult.read(JsonReader.fromString(response.body));
@@ -1310,12 +1311,12 @@ class VAlbumClient {
         rethrow;
       }
       if (kDebugMode) {
-        print("The server cannot check uploads: $error");
+        print("upload check !! $error");
       }
     } catch (error) {
       // A transport failure: the upload attempt reports it in its own right.
       if (kDebugMode) {
-        print("Cannot check uploads: $error");
+        print("upload check refused !! $error");
       }
     }
 
@@ -1432,6 +1433,7 @@ class VAlbumClient {
           summary: summary,
           cause: error,
           message: interruptedUploadMessage(
+            platformMessages,
             cause: _uploadFailureCause(error),
             onServer: summary.onServer,
             total: summary.total,
@@ -1479,7 +1481,7 @@ class VAlbumClient {
       throw failure(
         response.statusCode,
         response.body,
-        "looking for duplicates in '${path.join("/")}'",
+        platformMessages.doingFindingDuplicates("'${path.join("/")}'"),
       );
     }
     return MoveResult.read(JsonReader.fromString(response.body));
@@ -1493,7 +1495,7 @@ class VAlbumClient {
   /// continues.
   static String _uploadFailureCause(Object error) {
     if (isTransportFailure(error)) {
-      return uploadConnectionLost;
+      return uploadConnectionLost(platformMessages);
     }
     var message =
         error is VAlbumException ? error.message : error.toString().trim();
@@ -1501,7 +1503,7 @@ class VAlbumClient {
     while (message.endsWith(".") || message.endsWith("!")) {
       message = message.substring(0, message.length - 1).trimRight();
     }
-    return message.isEmpty ? uploadConnectionLost : message;
+    return message.isEmpty ? uploadConnectionLost(platformMessages) : message;
   }
 
   /// The server's reason for refusing the original at [imageUrl], `null` if
@@ -1526,7 +1528,7 @@ class VAlbumClient {
       if (response.statusCode < 300) {
         return null;
       }
-      return failure(response.statusCode, response.body, "loading the image")
+      return failure(response.statusCode, response.body, platformMessages.doingLoadingImage)
           .message;
     } catch (_) {
       return null;
@@ -1543,7 +1545,7 @@ class VAlbumClient {
     var url = "${folderUrl(path)}?type=shares";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
+      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
     }
     return ShareLinkList.read(JsonReader.fromString(response.body));
   }
@@ -1596,7 +1598,7 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
+      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
     }
     return response.body;
   }
@@ -1611,7 +1613,7 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=devices";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
+      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
     }
     return DeviceList.read(JsonReader.fromString(response.body));
   }
@@ -1697,7 +1699,7 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=users";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
+      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
     }
     return UserList.read(JsonReader.fromString(response.body));
   }
@@ -1759,7 +1761,7 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=invitations";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
+      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
     }
     return InvitationList.read(JsonReader.fromString(response.body));
   }
@@ -1825,7 +1827,7 @@ class VAlbumClient {
       headers: const {"Content-Type": "application/json"},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "signing in at '$url'");
+      throw failure(response.statusCode, response.body, platformMessages.doingSigningIn("'$url'"));
     }
     return PairResponse.read(JsonReader.fromString(response.body));
   }
@@ -1839,7 +1841,7 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=auth";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, "asking '$url'");
+      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
     }
     // The answer an unknown path is served with is HTML, not auth data, see
     // [parseResource]: that is the wrong server URL speaking, not a bug.
@@ -1860,7 +1862,10 @@ class VAlbumClient {
     if (message != null) {
       return VAlbumException(message, status: status);
     }
-    return VAlbumException("HTTP $status while $what.", status: status);
+    return VAlbumException(
+      platformMessages.httpFailure(what, status),
+      status: status,
+    );
   }
 
   /// The message of an [ErrorInfo] body, `null` if the body is not one.
@@ -1940,7 +1945,7 @@ class _UploadCancelled implements Exception {
   const _UploadCancelled();
 
   @override
-  String toString() => uploadCancelledMessage;
+  String toString() => uploadCancelledMessage(platformMessages);
 }
 
 /// The one place every request of a [VAlbumClient] passes through.

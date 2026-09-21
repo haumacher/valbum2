@@ -11,6 +11,7 @@ import 'package:valbum_ui/main.dart';
 import 'move_test.dart' hide main;
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 String album({String subTitle = ""}) =>
     '["AlbumInfo", {"path": "2021/Trip", "title": "Trip", "subTitle": "$subTitle", '
@@ -63,7 +64,7 @@ void main() {
       await openEntry(tester, "album-properties");
       // The second text field is the subtitle; the first the title.
       await tester.enterText(find.byType(TextField).at(1), "Am Meer");
-      await tester.tap(find.text("Übernehmen"));
+      await tester.tap(find.text(testL10n.apply));
       await tester.pumpAndSettle();
     });
     var put = requests.singleWhere((r) => r.method == "PUT");
@@ -85,7 +86,7 @@ void main() {
       }, requests);
       await openEntry(tester, "album-properties");
       await tester.enterText(find.byType(TextField).first, "Renamed");
-      await tester.tap(find.text("Abbrechen"));
+      await tester.tap(find.text(testL10n.cancel));
       await tester.pumpAndSettle();
     });
     expect(requests.where((r) => r.method != "GET"), isEmpty);

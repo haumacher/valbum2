@@ -14,6 +14,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_timers.dart';
 import 'util/l10n.dart';
+import 'package:valbum_ui/notices.dart';
 
 /// The album new photos go into.
 const List<String> inbox = ["Inbox"];
@@ -148,9 +149,16 @@ void main() {
 
       expect(
         sync.backgroundProblem,
+        isA<BackgroundScheduleFailed>().having(
+          (failure) => failure.problem,
+          "problem",
+          contains("no WorkManager here"),
+        ),
+      );
+      expect(
+        noticeText(sync.backgroundProblem!, testL10n),
         contains("Background sync could not be scheduled"),
       );
-      expect(sync.backgroundProblem, contains("no WorkManager here"));
       expect(sync.config.wifiOnly, isFalse);
       expect((await store.loadCameraRollConfig()).wifiOnly, isFalse);
     });

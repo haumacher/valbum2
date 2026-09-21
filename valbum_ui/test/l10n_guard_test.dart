@@ -29,28 +29,74 @@ const List<String> generatedArbs = ["lib/l10n/app_de.arb"];
 
 /// The files whose every user-facing word comes from `AppLocalizations`.
 ///
-/// Slice 1 of issue #108: the server settings screen and everything it is
-/// made of. Slice 2: the share link, the share session, the camera-roll
-/// section with its inbox picker, the alternatives view, the video player,
-/// the in-app photo picker, the upload dialog and the code scanner. A later
-/// slice adds its own files here, and the test below then holds them to the
-/// same rule.
+/// Since slice 3 of issue #108 this is **every hand-written file under
+/// `lib/`** — the generated `resource.dart` and the generated `l10n/` are the
+/// only ones left out. The app is converted; what a file may still hold in
+/// spite of that is named in [allowedLiterals], and each entry says why.
 const List<String> convertedFiles = [
+  "lib/album_date.dart",
+  "lib/album_edit.dart",
+  "lib/album_layout.dart",
+  "lib/album_model.dart",
+  "lib/album_view.dart",
+  "lib/app.dart",
+  "lib/attribution.dart",
+  "lib/background.dart",
+  "lib/background_workmanager.dart",
+  "lib/cache_refresh.dart",
   "lib/caller.dart",
+  "lib/camera_roll.dart",
   "lib/camera_roll_view.dart",
+  "lib/client.dart",
+  "lib/connectivity.dart",
+  "lib/connectivity_plugin.dart",
+  "lib/device_code_payload.dart",
   "lib/device_code_scanner.dart",
   "lib/device_code_scanner_plugin.dart",
+  "lib/diagnostics.dart",
   "lib/first_screen.dart",
   "lib/group_view.dart",
+  "lib/image_properties.dart",
+  "lib/image_transform.dart",
+  "lib/image_view.dart",
+  "lib/inbox_view.dart",
+  "lib/invitation.dart",
+  "lib/listing_view.dart",
+  "lib/locales.dart",
+  "lib/main.dart",
   "lib/manage_view.dart",
+  "lib/move_view.dart",
+  "lib/name_date.dart",
+  "lib/notices.dart",
+  "lib/offline.dart",
+  "lib/offline_file.dart",
+  "lib/oriented_thumbnail.dart",
+  "lib/photo_library.dart",
+  "lib/photo_library_manager.dart",
   "lib/photo_picker_view.dart",
+  "lib/platform.dart",
+  "lib/platform_io.dart",
+  "lib/platform_web.dart",
+  "lib/rights.dart",
+  "lib/routes.dart",
   "lib/settings.dart",
   "lib/share_session.dart",
   "lib/share_view.dart",
   "lib/sign_in_form.dart",
+  "lib/thumbnails.dart",
   "lib/upload_progress.dart",
   "lib/urls.dart",
   "lib/video_view.dart",
+  "lib/wakelock.dart",
+  "lib/wakelock_plugin.dart",
+];
+
+/// The files under `lib/` this test does not hold to the rule, and why.
+///
+/// Both of them are generated, and both are regenerated on every build: the
+/// model from `model.proto`, the localizations from the ARB files.
+const List<String> generatedFiles = [
+  "lib/resource.dart",
 ];
 
 /// The literals a converted file may still hold, and why.
@@ -63,22 +109,90 @@ const Map<String, String> allowedLiterals = {
   r"CallerPermission(${}, ${}, ${})": "toString()",
   r"CallerInfo(${}, ${}, ${})": "toString()",
   r"SessionUrl(${} ${} at ${})": "toString()",
+  r"UploadProgress(${}, ${}/${}, ${})": "toString()",
+  r"RenditionState(${}, ${}, ${})": "toString()",
+  r"DeviceCodePayload(${}, ${})": "toString()",
+  r"PhotoAlbum(${}, ${}, ${})": "toString()",
+  r"PlaneTransform(${}, mirrored: ${})": "toString()",
   // The diagnostics log of issue #58, pasted into a bug report in English.
   r"connection test: data URL ${}": "diagnostics log",
   r"connection test: root ${} - ${}": "diagnostics log",
   r"connection test: auth ${}": "diagnostics log",
   r"connection test: no host in '${}' (${})": "diagnostics log",
   r"connection test: no host in '${}'": "diagnostics log",
-  // An assertion message, read by a developer.
+  // The headings of that log itself, see `diagnostics.dart`: the whole file
+  // is a bug report, and a bug report is read by a developer.
+  "VAlbum diagnostics": "diagnostics log",
+  r"App: ${}": "diagnostics log",
+  r"Platform: ${}": "diagnostics log",
+  r"Server: ${}": "diagnostics log",
+  r"Copied: ${}": "diagnostics log",
+  r"Entries: ${} (of ${})": "diagnostics log",
+  "(nothing logged yet)": "diagnostics log",
+  r"lookup ${} ${} -> ${}": "diagnostics log",
+  r"lookup ${} ${} !! ${}": "diagnostics log",
+  r"lookup ${}: name resolution cannot be asked in a browser; the page sees "
+      "only whether the request went through.": "diagnostics log",
+  // The `kDebugMode` prints of the app: a developer's console, never a screen.
+  r"fetching ${}": "debug log",
+  r"fetching preview ${}": "debug log",
+  r"offline, copy from ${} of ${}": "debug log",
+  r"upload check !! ${}": "debug log",
+  r"upload check refused !! ${}": "debug log",
+  r"rendering listing ${} / ${}": "debug log",
+  "context gone": "debug log",
+  r"files picked ${}": "debug log",
+  "upload started": "debug log",
+  "upload aborted": "debug log",
+  r"upload complete: ${}": "debug log",
+  "album view gone, no reload after upload": "debug log",
+  r"no messenger for ${}": "debug log",
+  r"background sync task !! ${}": "debug log",
+  r"wakelock !! ${}": "debug log",
+  r"Cannot open the offline cache: ${}": "debug log",
+  r"The offline cache index is damaged, rebuilding it: ${}": "debug log",
+  r"Cannot read the offline cache directory: ${}": "debug log",
+  r"Cannot read a cached entry: ${}": "debug log",
+  r"Cannot write a cached entry: ${}": "debug log",
+  r"Cannot drop a cached entry: ${}": "debug log",
+  r"Cannot clear the offline cache: ${}": "debug log",
+  r"Cannot write the offline cache index: ${}": "debug log",
+  r"Unknown cache index version: ${}": "debug log, and thrown inside the "
+      "cache where the rebuild catches it",
+  r"Thumbnail: ${}": "an ErrorDescription of the image stream, read in a "
+      "flutter error report",
+  // Assertion messages, read by a developer.
   "No ServerSettingsScope found in the widget tree.":
+      "assertion, never shown to a user",
+  "no OfflineScope in the widget tree": "assertion, never shown to a user",
+  "no VAlbumNavigator in the widget tree": "assertion, never shown to a user",
+  "No VAlbumScope found in the widget tree.":
       "assertion, never shown to a user",
   // Thrown, never shown: see `allowedThrownLiterals`.
   "Not an absolute server URL (expected e.g. 'http://host:8080/valbum/').":
       "thrown, see allowedThrownLiterals",
+  r"The thumbnail at ${} is empty.": "thrown, see allowedThrownLiterals",
   // What the connection test appends to its own, already localized, message.
   r"${} (${})": "punctuation around a localized message",
   // The countdown of a device code: digits and a colon.
   r"${}:${}": "a duration, not a sentence",
+  // A byte count and its unit, see `formatBytes`.
+  r"${} B": "a byte count, not a sentence",
+  // The wire form of a bearer token.
+  r"Bearer ${}": "an HTTP header, not a sentence",
+  // A format pattern, not a text: `yyyy-MM-dd HH:mm:ss` is what the recording
+  // time is typed and read in, and it is the same in every language.
+  "yyyy-MM-dd HH:mm:ss": "a date format pattern, not a text",
+  // The regular expression of `nameDate`, pinned by the shared fixture
+  // `image-server/src/test/fixtures/name-dates.json` (issue #102).
+  r"(?<!\d)(?<y1>\d{4})(?<m1>\d{2})(?<d1>\d{2})[_\- ]?":
+      "a regular expression",
+  r"|(?<!\d)(?<y2>\d{4})-(?<m2>\d{2})-(?<d2>\d{2})(?: at |[_ T])":
+      "a regular expression",
+  // Two adjacent literals of `isLegalFolderName`, which the scanner joins:
+  // `"/"`, `r"\"` and `"\u0000"` are the path separators a folder name may
+  // not carry.
+  "\\\") &&\n      !name.contains(": "path separators, not a sentence",
   // The diagnostics log of the video renditions, issues #73/#74: English in
   // a bug report, like every other line of `diagnostics.dart`.
   r"video rendition ${} !! ${}": "diagnostics log",
@@ -96,6 +210,8 @@ const Map<String, String> allowedLiterals = {
   "response code": "keyword of the video failure classification",
   "unknown host": "keyword of the video failure classification",
   "not permitted": "keyword of the video failure classification",
+  // The thrown message of `album_layout.dart`, see `allowedThrownLiterals`.
+  r"Invalid JPEG orientation code: ${}": "thrown, see allowedThrownLiterals",
 };
 
 /// The message of an exception a converted file throws, and why it may be
@@ -112,6 +228,18 @@ const Map<String, String> allowedThrownLiterals = {
       "FormatException of dataUrlOf/serverLocationOf; serverUrlError answers "
           "`serverUrlInvalid` instead of showing it, and the other callers "
           "match on the exception rather than reading it",
+  r"Unknown cache index version: ${}":
+      "thrown inside `offline_file.dart` and caught two lines further on, "
+          "where the index is rebuilt; it never leaves the cache",
+  r"The thumbnail at ${} is empty.":
+      "thrown into the image stream, where a failed decode is shown as the "
+          "viewer's own `testL10n.pictureFailedMessage` (issue #95)",
+  r"Invalid JPEG orientation code: ${}":
+      "a programming error of the layout: the codes come from the model, and "
+          "an unknown one is a bug, not something a reader is told",
+  r"${}":
+      "not a sentence at all: the exception is built from what the transport "
+          "or the server said, and that text is not a literal of this app",
 };
 
 /// The exception constructors whose first argument is a message.
@@ -416,6 +544,20 @@ void main() {
       for (var path in convertedFiles) {
         expect(File(path).existsSync(), isTrue, reason: "$path is gone");
       }
+    });
+
+    test("are every hand-written file under lib/", () {
+      var found = [
+        for (var entry in Directory("lib").listSync())
+          if (entry is File && entry.path.endsWith(".dart")) entry.path,
+      ]..sort();
+      expect(
+        found.toSet(),
+        {...convertedFiles, ...generatedFiles},
+        reason: "every file under lib/ is either converted (and named in "
+            "`convertedFiles`) or generated (and named in `generatedFiles`); "
+            "a file added since is neither",
+      );
     });
   });
 }

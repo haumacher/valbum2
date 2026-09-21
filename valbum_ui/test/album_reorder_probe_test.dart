@@ -7,6 +7,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 Finder tile(String name) => find.byKey(ValueKey(name));
 
@@ -117,7 +118,7 @@ void main() {
         await tester.tapAt(Offset(box.left + 8, box.center.dy));
         await tester.pumpAndSettle();
       }
-      await tester.tap(find.byTooltip("Gruppierung aufheben"));
+      await tester.tap(find.byTooltip(testL10n.ungroupAction));
       await tester.pumpAndSettle();
       expect(names(album(tester)),
           ["H", "group-a.jpg", "group-b.jpg", "landscape.jpg", "portrait.jpg"]);

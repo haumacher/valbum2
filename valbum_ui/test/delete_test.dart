@@ -17,6 +17,7 @@ import 'album_menu_actions_test.dart' hide main;
 import 'move_test.dart' hide main;
 import 'share_link_test.dart' as share;
 import 'util/fake_image_http.dart';
+import 'util/l10n.dart';
 
 /// What the server answers for an entry it moved into the trash.
 String trashed(String name, String asName) =>
@@ -68,7 +69,7 @@ void main() {
 
         // Both outcomes are named, and the sentence that matters most last.
         expect(find.text("Delete '2020 Trip'?"), findsOneWidget);
-        expect(find.text(deleteExplanation), findsOneWidget);
+        expect(find.text(testL10n.deleteExplanation), findsOneWidget);
         await confirmDelete(tester);
       });
 
@@ -175,7 +176,7 @@ void main() {
         await tester.pumpAndSettle();
       });
 
-      expect(find.text(offlineRefusal), findsOneWidget);
+      expect(find.text(testL10n.offlineRefusal), findsOneWidget);
       expect(find.byKey(const Key("delete-dialog")), findsNothing);
       expect(requests.where((r) => r.method != "GET"), isEmpty);
     });
@@ -200,7 +201,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text("Delete 'Inbox'?"), findsOneWidget);
-        expect(find.text(deleteExplanation), findsOneWidget);
+        expect(find.text(testL10n.deleteExplanation), findsOneWidget);
         await confirmDelete(tester);
       });
 

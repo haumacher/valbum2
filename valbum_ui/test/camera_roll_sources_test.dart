@@ -18,6 +18,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/photo_library_manager.dart';
 import 'util/l10n.dart';
+import 'package:valbum_ui/notices.dart';
 
 /// The server the tests talk to.
 const String serverDataUrl = "http://server/valbum/data";
@@ -455,7 +456,7 @@ void main() {
       expect(find.text("2 photos"), findsOneWidget);
       expect(find.text("WhatsApp Images"), findsOneWidget);
       expect(find.text("1 photo"), findsOneWidget);
-      expect(find.text(newSourceNotice), findsOneWidget);
+      expect(find.text(testL10n.cameraRollNewSource), findsOneWidget);
       expect(
         tester.widget<CheckboxListTile>(find.byKey(cameraRollSourceKey("cam"))),
         isA<CheckboxListTile>().having((tile) => tile.value, "camera", isTrue),
@@ -503,14 +504,14 @@ void main() {
       await pumpSection(tester, harness.sync);
 
       expect(find.byKey(cameraRollNoSourcesKey), findsOneWidget);
-      expect(find.text(noSourcesNotice), findsOneWidget);
+      expect(find.text(testL10n.cameraRollNoSources), findsOneWidget);
     });
 
     testWidgets('says why the albums cannot be listed', (tester) async {
       var harness = Harness();
       addTearDown(harness.dispose);
       harness.library.granted = false;
-      harness.library.accessProblem = "Access to the photo library was denied.";
+      harness.library.accessProblem = const PhotoAccessDenied();
       await harness.sync.load();
 
       await pumpSection(tester, harness.sync);
@@ -518,7 +519,7 @@ void main() {
       expect(find.byKey(cameraRollSourcesKey), findsNothing);
       expect(find.byKey(cameraRollSourcesProblemKey), findsOneWidget);
       expect(
-        find.text("Access to the photo library was denied."),
+        find.text(testL10n.noticePhotoAccessDenied),
         findsOneWidget,
       );
     });
@@ -528,7 +529,7 @@ void main() {
       var harness = Harness(config: const CameraRollConfig(inbox: inbox));
       addTearDown(harness.dispose);
       harness.library.granted = false;
-      harness.library.accessProblem = "Access to the photo library was denied.";
+      harness.library.accessProblem = const PhotoAccessDenied();
       harness.library
           .addAlbum("Camera", [photo("a.jpg", 1)], id: "cam", camera: true);
       await harness.sync.load();

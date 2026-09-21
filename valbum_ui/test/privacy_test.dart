@@ -13,6 +13,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String dataUrl = "http://server/valbum/data";
@@ -112,9 +113,9 @@ List<String?> viewAsOf(List<http.Request> requests) => [
 void main() {
   group('the privacy model helpers', () {
     test('names the three levels', () {
-      expect(privacyName(privacyPublic), "Public");
-      expect(privacyName(privacyMembers), "Members");
-      expect(privacyName(privacyPrivate), "Private");
+      expect(privacyName(testL10n, privacyPublic), "Public");
+      expect(privacyName(testL10n, privacyMembers), "Members");
+      expect(privacyName(testL10n, privacyPrivate), "Private");
     });
 
     test('cycles through the levels', () {

@@ -105,7 +105,7 @@ void main() {
 
       expect(store.token, "tok-57", reason: "The sign-in went through.");
       expect(store.deviceName, "Phone");
-      expect(find.text(offlineRefusal), findsNothing);
+      expect(find.text(testL10n.offlineRefusal), findsNothing);
     });
 
     testWidgets('the connection test reads a 401 as a server that answered',

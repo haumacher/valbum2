@@ -10,6 +10,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String dataUrl = "http://server/valbum/data";
@@ -129,16 +130,16 @@ Future<void> confirmPicker(WidgetTester tester) async {
 void main() {
   group('the move subject', () {
     test('counts images and names an entry', () {
-      expect(const ImageSubject(1).asked, "1 image");
-      expect(const ImageSubject(3).asked, "3 images");
-      expect(const ImageSubject(3).moved(2), "2 images");
-      expect(const EntrySubject("2020 Trip").asked, "'2020 Trip'");
-      expect(const EntrySubject("2020 Trip").moved(1), "'2020 Trip'");
+      expect(const ImageSubject(1).asked(testL10n), "1 image");
+      expect(const ImageSubject(3).asked(testL10n), "3 images");
+      expect(const ImageSubject(3).moved(testL10n, 2), "2 images");
+      expect(const EntrySubject("2020 Trip").asked(testL10n), "'2020 Trip'");
+      expect(const EntrySubject("2020 Trip").moved(testL10n, 1), "'2020 Trip'");
     });
 
     test('names the root of the space as the app calls it', () {
-      expect(targetLabel(const []), "the top level");
-      expect(targetLabel(const ["2021", "Summer"]), "'2021/Summer'");
+      expect(targetLabel(testL10n, const []), "the top level");
+      expect(targetLabel(testL10n, const ["2021", "Summer"]), "'2021/Summer'");
       expect(targetPath(const []), "");
       expect(targetPath(const ["2021", "Summer"]), "2021/Summer");
     });
@@ -293,7 +294,7 @@ void main() {
       await withFakeImageHttp(() async {
         await pumpAlbumEditMode(tester, client);
         // One edit, not saved.
-        await tester.tap(find.byTooltip("Nach rechts drehen").first);
+        await tester.tap(find.byTooltip(testL10n.turnRight).first);
         await tester.pumpAndSettle();
 
         await openPicker(tester);
@@ -375,7 +376,7 @@ void main() {
         await tester.tap(find.byKey(const Key("move-to")));
         await tester.pumpAndSettle();
 
-        expect(find.text(offlineRefusal), findsOneWidget);
+        expect(find.text(testL10n.offlineRefusal), findsOneWidget);
         expect(find.byKey(const Key("folder-picker")), findsNothing);
       });
 

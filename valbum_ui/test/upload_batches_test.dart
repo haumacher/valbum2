@@ -22,6 +22,7 @@ import 'package:valbum_ui/client.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// An upload of [size] bytes under the given name, with a hash of its own, so
 /// that nothing is taken for a duplicate.
@@ -204,21 +205,21 @@ void main() {
       await server.valbum.uploadNew(
         const ["album"],
         files(60),
-        onProgress: (report) => lines.add(report.line),
+        onProgress: (report) => lines.add(report.lineOf(testL10n)),
       );
 
       // Three batches went out, see the test above; not one of them is named.
       expect(server.puts, hasLength(3));
       for (var line in lines) {
-        expect(line, isNot(contains("Paket")));
-        expect(line, isNot(contains("von 3")));
+        expect(line, isNot(contains("batch")));
+        expect(line, isNot(contains("of 3")));
       }
       // What the person reads while the transfer runs is images, and the count
       // ends where the batches end.
-      expect(lines, contains("0 von 60 Bildern"));
-      expect(lines, contains("25 von 60 Bildern"));
-      expect(lines, contains("50 von 60 Bildern"));
-      expect(lines.last, "60 von 60 Bildern");
+      expect(lines, contains("0 of 60 images"));
+      expect(lines, contains("25 of 60 images"));
+      expect(lines, contains("50 of 60 images"));
+      expect(lines.last, "60 of 60 images");
     });
 
     test('counts the images the server confirmed, batch by batch', () async {
@@ -257,10 +258,10 @@ void main() {
         server.valbum.uploadNew(const ["album"], files(60)),
         throwsA(
           isA<UploadInterrupted>()
-              .having((e) => e.message, "message", contains("25 von 60"))
-              .having((e) => e.message, "message", contains("übrigen 35"))
-              .having((e) => e.message, "message", contains("erneut"))
-              .having((e) => e.message, "message", contains("Verbindung"))
+              .having((e) => e.message, "message", contains("25 are on the server"))
+              .having((e) => e.message, "message", contains("remaining 35"))
+              .having((e) => e.message, "message", contains("sent again"))
+              .having((e) => e.message, "message", contains("Connection lost"))
               .having((e) => e.summary.onServer, "on the server", 25)
               .having((e) => e.summary.remaining, "remaining", 35)
               .having((e) => e.summary.total, "total", 60)
@@ -302,7 +303,7 @@ void main() {
         expect(error.summary.onServer, 35);
         expect(error.summary.remaining, 25);
         expect(error.summary.total, 60);
-        expect(error.message, contains("35 von 60"));
+        expect(error.message, contains("35 are on the server"));
       }
     });
 
@@ -334,7 +335,7 @@ void main() {
         fail("the second batch was refused");
       } on UploadInterrupted catch (error) {
         expect(error.message, startsWith("Album ist voll: "));
-        expect(error.message, contains("25 von 60"));
+        expect(error.message, contains("25 are on the server"));
       }
     });
   });
@@ -374,7 +375,7 @@ void main() {
 
       expect(puts, 2, reason: "nothing was sent after the failure");
       expect(
-        find.textContaining("25 von 60 Fotos sind auf dem Server"),
+        find.textContaining("Of 60 photos, 25 are on the server"),
         findsOneWidget,
       );
       expect(find.textContaining("ClientException"), findsNothing);
@@ -407,7 +408,7 @@ void main() {
       });
 
       expect(
-        find.textContaining("Verbindung verloren: 0 von 3 Fotos"),
+        find.textContaining("Connection lost: Of 3 photos, 0 are on the server"),
         findsOneWidget,
       );
       expect(find.textContaining("ClientException"), findsNothing);

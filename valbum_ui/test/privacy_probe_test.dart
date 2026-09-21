@@ -13,6 +13,7 @@ import 'package:valbum_ui/main.dart';
 import 'privacy_test.dart' hide main;
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 Never unreachable(http.Request request) =>
     throw http.ClientException("Connection refused", request.url);
@@ -62,7 +63,7 @@ void main() {
     });
 
     expect(state.offline, isTrue);
-    expect(find.textContaining(offlineMessage(state.lastUpdated)), findsOneWidget);
+    expect(find.textContaining(offlineMessage(testL10n, state.lastUpdated)), findsOneWidget);
     expect(tile("secret.jpg"), findsOneWidget);
     expect(tile("hidden.jpg"), findsOneWidget);
     expect(find.byKey(const Key("view-as-banner")), findsNothing);

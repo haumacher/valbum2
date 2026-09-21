@@ -17,6 +17,23 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 
 import 'client.dart';
+import 'notices.dart';
+
+/// A failure of the device's photo library, carrying its own reason.
+///
+/// The reason as data, never as words ([AppNotice]): what it reads is decided
+/// where it is shown — the camera-roll section, in the language of the device
+/// — so this exception is the one way a platform library tells the engine why
+/// it could not answer, see issue #108.
+class PhotoLibraryException implements Exception {
+  /// Why the library could not answer.
+  final AppNotice notice;
+
+  const PhotoLibraryException(this.notice);
+
+  @override
+  String toString() => "PhotoLibraryException($notice)";
+}
 
 /// One item of the device's photo library.
 ///
@@ -126,7 +143,11 @@ abstract class PhotoLibrary {
   Future<bool> requestAccess();
 
   /// Why the library cannot be read, `null` while nothing refused it.
-  String? get accessProblem;
+  ///
+  /// The reason as data, never as words: it is shown by a view, which turns
+  /// it into a sentence in the language of the device, see [noticeText]
+  /// (issue #108).
+  AppNotice? get accessProblem;
 
   /// The items taken at or after [since], oldest first.
   ///
@@ -195,13 +216,13 @@ abstract class PhotoLibrary {
 /// anything.
 class UnavailablePhotoLibrary extends PhotoLibrary {
   @override
-  final String accessProblem;
+  final AppNotice accessProblem;
 
   @override
   bool get available => false;
 
   const UnavailablePhotoLibrary([
-    this.accessProblem = "No photo library on this platform",
+    this.accessProblem = const NoPhotoLibraryHere(),
   ]);
 
   @override
@@ -233,7 +254,7 @@ class FakePhotoLibrary extends PhotoLibrary {
   bool granted;
 
   @override
-  String? accessProblem;
+  AppNotice? accessProblem;
 
   /// The number of times [itemsSince] was asked, and with which bound.
   final List<DateTime?> scans = [];

@@ -6,6 +6,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 // Issue #78: an album fed from a phone and a camera is gathered device by
 // device. `ImagePart.camera` is the label the server derived from the EXIF
@@ -259,7 +260,7 @@ void main() {
           "+1 h",
         );
 
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         // Both images of that camera moved by an hour, the phone's did not.

@@ -2029,6 +2029,1572 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The camera could not be opened. Type the code instead.'**
   String get cameraNotOpened;
+
+  /// Button closing a dialog that only showed something
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get ok;
+
+  /// Button confirming that something is deleted
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get delete;
+
+  /// Menu entry opening the delete question for an entry of a listing
+  ///
+  /// In en, this message translates to:
+  /// **'Delete…'**
+  String get deleteEllipsis;
+
+  /// Menu entry fetching the current view from the server again
+  ///
+  /// In en, this message translates to:
+  /// **'Reload'**
+  String get reload;
+
+  /// Tooltip of the control leading to the folder above
+  ///
+  /// In en, this message translates to:
+  /// **'Up'**
+  String get up;
+
+  /// Tooltip of the control leading to the top of the library
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get home;
+
+  /// Tooltip of the button adding photos to the album shown
+  ///
+  /// In en, this message translates to:
+  /// **'Upload'**
+  String get upload;
+
+  /// Button of a dialog taking over what was entered
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get apply;
+
+  /// Button throwing unsaved changes away
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get discard;
+
+  /// Button of the leave question: go on editing
+  ///
+  /// In en, this message translates to:
+  /// **'Stay'**
+  String get stay;
+
+  /// Button of the discard question: go on editing
+  ///
+  /// In en, this message translates to:
+  /// **'Keep editing'**
+  String get keepEditing;
+
+  /// Button confirming that the generated previews are made anew
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get refresh;
+
+  /// Tooltip of the tool opening a photograph full screen
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get open;
+
+  /// Tooltip of the selection box of a tile
+  ///
+  /// In en, this message translates to:
+  /// **'Select'**
+  String get select;
+
+  /// Tooltip of the tool making a group of the selected images
+  ///
+  /// In en, this message translates to:
+  /// **'Group'**
+  String get group;
+
+  /// Shown while a view waits for the server
+  ///
+  /// In en, this message translates to:
+  /// **'Loading...'**
+  String get loading;
+
+  /// Menu entry opening the server settings
+  ///
+  /// In en, this message translates to:
+  /// **'Server...'**
+  String get serverMenuEntry;
+
+  /// Label of the field holding the title of an album or a folder
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get titleLabel;
+
+  /// Label of the field holding the subtitle of an album
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitle'**
+  String get subtitleLabel;
+
+  /// Label of the field holding the name of a new folder
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get nameLabel;
+
+  /// Label of the field holding the date of an album
+  ///
+  /// In en, this message translates to:
+  /// **'Date'**
+  String get dateLabel;
+
+  /// Label of the field holding the description of an image
+  ///
+  /// In en, this message translates to:
+  /// **'Comment'**
+  String get commentLabel;
+
+  /// Label of the field holding the text of a heading inside an album
+  ///
+  /// In en, this message translates to:
+  /// **'Heading'**
+  String get headingLabel;
+
+  /// Said under a field that has to be filled in
+  ///
+  /// In en, this message translates to:
+  /// **'Must not be empty'**
+  String get mustNotBeEmpty;
+
+  /// Menu entry showing the album as its owner sees it
+  ///
+  /// In en, this message translates to:
+  /// **'Yourself'**
+  String get viewAsYourself;
+
+  /// Menu entry showing the album as a member of the space sees it
+  ///
+  /// In en, this message translates to:
+  /// **'Members'**
+  String get viewAsMembers;
+
+  /// Menu entry showing the album as the public sees it
+  ///
+  /// In en, this message translates to:
+  /// **'Public'**
+  String get viewAsPublic;
+
+  /// Names the view on the screen in the line 'View as - yourself'
+  ///
+  /// In en, this message translates to:
+  /// **'yourself'**
+  String get viewAsStateYourself;
+
+  /// Names the view on the screen in the line 'View as - members'
+  ///
+  /// In en, this message translates to:
+  /// **'members'**
+  String get viewAsStateMembers;
+
+  /// Names the view on the screen in the line 'View as - public'
+  ///
+  /// In en, this message translates to:
+  /// **'public'**
+  String get viewAsStatePublic;
+
+  /// Menu label above the three choices of whose view of the album is shown
+  ///
+  /// In en, this message translates to:
+  /// **'View as'**
+  String get viewAsLabel;
+
+  /// Banner over an album shown as a member of the space sees it
+  ///
+  /// In en, this message translates to:
+  /// **'Viewing as members - this is what members see'**
+  String get previewAsMembers;
+
+  /// Banner over an album shown as the public sees it
+  ///
+  /// In en, this message translates to:
+  /// **'Viewing as public - this is what the public sees'**
+  String get previewAsPublic;
+
+  /// Title of the dialog editing the text of a heading inside an album
+  ///
+  /// In en, this message translates to:
+  /// **'Edit heading'**
+  String get editHeadingTitle;
+
+  /// Tooltip of the tool putting a heading before a tile
+  ///
+  /// In en, this message translates to:
+  /// **'Insert heading'**
+  String get insertHeading;
+
+  /// Tooltip of the tool removing a heading from an album
+  ///
+  /// In en, this message translates to:
+  /// **'Delete heading'**
+  String get deleteHeadingTooltip;
+
+  /// Said when sorting an album by date would change nothing
+  ///
+  /// In en, this message translates to:
+  /// **'Already in order'**
+  String get alreadyInOrder;
+
+  /// Said when no further image of the album was taken with the same camera
+  ///
+  /// In en, this message translates to:
+  /// **'No other image from this camera'**
+  String get noOtherImageFromCamera;
+
+  /// Said when a recording time correction would change nothing
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to adjust'**
+  String get nothingToAdjust;
+
+  /// Said when the album could not be written to the server
+  ///
+  /// In en, this message translates to:
+  /// **'Saving failed: {problem}'**
+  String saveFailed(String problem);
+
+  /// Title of the question asked when an edit is cancelled
+  ///
+  /// In en, this message translates to:
+  /// **'Discard the changes to this album?'**
+  String get discardChangesTitle;
+
+  /// Explains what discarding the changes to an album does
+  ///
+  /// In en, this message translates to:
+  /// **'The changes made here have not been saved. Discarding them shows the album again as the server has it.'**
+  String get discardChangesMessage;
+
+  /// Title of the question asked when an album with unsaved changes is left
+  ///
+  /// In en, this message translates to:
+  /// **'Save the changes to this album?'**
+  String get saveChangesTitle;
+
+  /// Explains what leaving an album with unsaved changes does
+  ///
+  /// In en, this message translates to:
+  /// **'Leaving the album ends the edit. Unsaved changes are lost unless they are saved now.'**
+  String get saveChangesMessage;
+
+  /// Refuses an action that would throw unsaved changes away
+  ///
+  /// In en, this message translates to:
+  /// **'Save or discard your changes first'**
+  String get saveOrDiscardFirst;
+
+  /// Refuses a move of a selection holding nothing but headings
+  ///
+  /// In en, this message translates to:
+  /// **'A heading cannot be moved.'**
+  String get headingCannotMove;
+
+  /// Menu entry opening the dialog that hands out a link to a folder
+  ///
+  /// In en, this message translates to:
+  /// **'Share link…'**
+  String get shareLinkAction;
+
+  /// Menu entry and dialog title of the properties of an album
+  ///
+  /// In en, this message translates to:
+  /// **'Album properties'**
+  String get albumProperties;
+
+  /// Menu entry and dialog title of the properties of a folder
+  ///
+  /// In en, this message translates to:
+  /// **'Folder properties'**
+  String get folderProperties;
+
+  /// Menu entry moving what is named into another folder
+  ///
+  /// In en, this message translates to:
+  /// **'Move {subject} to…'**
+  String moveSubjectTo(String subject);
+
+  /// Menu entry moving the album being shown into another folder
+  ///
+  /// In en, this message translates to:
+  /// **'Move album to…'**
+  String get moveAlbumTo;
+
+  /// Menu entry deleting the album being shown
+  ///
+  /// In en, this message translates to:
+  /// **'Delete album…'**
+  String get deleteAlbumAction;
+
+  /// Menu entry deleting what is named
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {subject}…'**
+  String deleteSubjectAction(String subject);
+
+  /// Menu entry ordering the images of an album by their recording time
+  ///
+  /// In en, this message translates to:
+  /// **'Sort by date'**
+  String get sortByDate;
+
+  /// Menu label above the rating filter of an album
+  ///
+  /// In en, this message translates to:
+  /// **'Minimum rating'**
+  String get minRatingLabel;
+
+  /// Menu entry lowering the rating an image needs to be shown
+  ///
+  /// In en, this message translates to:
+  /// **'Show more images'**
+  String get showMoreImages;
+
+  /// Menu entry raising the rating an image needs to be shown
+  ///
+  /// In en, this message translates to:
+  /// **'Show fewer images'**
+  String get showFewerImages;
+
+  /// Menu entry looking for photos the library already holds elsewhere
+  ///
+  /// In en, this message translates to:
+  /// **'Find duplicates...'**
+  String get findDuplicatesAction;
+
+  /// Title of the question asked before duplicates are set aside
+  ///
+  /// In en, this message translates to:
+  /// **'Find duplicates'**
+  String get findDuplicatesTitle;
+
+  /// Explains what looking for duplicates does
+  ///
+  /// In en, this message translates to:
+  /// **'Every photo of this album that the library already holds somewhere else is taken out of the album and kept aside in the library\'s own folder. Nothing is deleted, and the other copy stays where it is.'**
+  String get findDuplicatesMessage;
+
+  /// Said when the duplicate sweep found nothing
+  ///
+  /// In en, this message translates to:
+  /// **'No photo of this album is anywhere else in the library.'**
+  String get noDuplicatesFound;
+
+  /// Says how many photos the duplicate sweep took out of the album
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo was set aside; the copy that stays is elsewhere in the library.} other{{count} photos were set aside; the copies that stay are elsewhere in the library.}}'**
+  String duplicatesSetAside(int count);
+
+  /// Menu entry and dialog title of throwing the generated previews away
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh previews'**
+  String get refreshPreviews;
+
+  /// Explains what refreshing the previews of an album does
+  ///
+  /// In en, this message translates to:
+  /// **'The thumbnails and video renditions of this album are thrown away and made anew when they are next shown. The photos themselves are not touched.'**
+  String get refreshPreviewsMessage;
+
+  /// Says how many generated files the server deleted
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 cached file thrown away; the previews are made anew.} other{{count} cached files thrown away; the previews are made anew.}}'**
+  String previewsRefreshed(int count);
+
+  /// Said when the preview of another clearance is not an album
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not answer with an album.'**
+  String get notAnAlbumAnswer;
+
+  /// Said where the rating filter hides every image of the album
+  ///
+  /// In en, this message translates to:
+  /// **'No image is rated {rating} or better - press + (or the + button) to show more.'**
+  String ratingFilterHidesAll(int rating);
+
+  /// Tooltip of the tool turning an image a quarter to the right
+  ///
+  /// In en, this message translates to:
+  /// **'Turn right'**
+  String get turnRight;
+
+  /// Tooltip of the tool turning an image a quarter to the left
+  ///
+  /// In en, this message translates to:
+  /// **'Turn left'**
+  String get turnLeft;
+
+  /// Tooltip of the tool mirroring an image top to bottom
+  ///
+  /// In en, this message translates to:
+  /// **'Flip vertically'**
+  String get flipVertically;
+
+  /// Tooltip of the tool dissolving a group of images
+  ///
+  /// In en, this message translates to:
+  /// **'Ungroup'**
+  String get ungroupAction;
+
+  /// Tooltip of the tool opening the alternatives of a group to pick the one shown
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the group picture'**
+  String get chooseGroupPicture;
+
+  /// Tooltip of the tool adding every image of the same camera to the selection
+  ///
+  /// In en, this message translates to:
+  /// **'Select all from this camera'**
+  String get selectAllFromCamera;
+
+  /// Tooltip of the tool correcting the recording time of the selection
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust recording time…'**
+  String get adjustRecordingTimeAction;
+
+  /// Tooltip and dialog title of what an image is
+  ///
+  /// In en, this message translates to:
+  /// **'Image properties'**
+  String get imageProperties;
+
+  /// Tooltip of the tool making this image the picture of the album
+  ///
+  /// In en, this message translates to:
+  /// **'Use as album picture'**
+  String get useAsAlbumPicture;
+
+  /// Tooltip of the mark on the tile that is the album's picture
+  ///
+  /// In en, this message translates to:
+  /// **'Album picture'**
+  String get albumPictureTooltip;
+
+  /// Tooltip of the control cycling through the privacy levels of an image
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy: {level} (tap for {next})'**
+  String privacyControlTooltip(String next, String level);
+
+  /// Refuses a grouping of fewer than two images
+  ///
+  /// In en, this message translates to:
+  /// **'Select at least two images to group them'**
+  String get groupNeedsTwo;
+
+  /// Tooltip of the handle a tile is picked up by
+  ///
+  /// In en, this message translates to:
+  /// **'Drag to reorder'**
+  String get dragToReorder;
+
+  /// Says how many album parts a drag carries
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 part} other{{count} parts}}'**
+  String partCount(int count);
+
+  /// Said under the field of the recording time dialog while the text is not a time
+  ///
+  /// In en, this message translates to:
+  /// **'Not a time (yyyy-MM-dd HH:mm:ss)'**
+  String get notATime;
+
+  /// Says how many images a recording time correction changes
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Applies to 1 image} other{Applies to {count} images}}'**
+  String appliesToImages(int count);
+
+  /// Button dating one image by the time its file name says
+  ///
+  /// In en, this message translates to:
+  /// **'Use the time in the file name: {time}'**
+  String useNameDateOne(String time);
+
+  /// Button dating several images by the time their file names say
+  ///
+  /// In en, this message translates to:
+  /// **'Use the time in the file name ({count} images)'**
+  String useNameDateMany(int count);
+
+  /// Title of the dialog correcting the recording time of a selection
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust recording time'**
+  String get adjustRecordingTimeTitle;
+
+  /// Label of the field holding the corrected recording time
+  ///
+  /// In en, this message translates to:
+  /// **'Correct time'**
+  String get correctTime;
+
+  /// Tooltip of the button opening the date and time pickers
+  ///
+  /// In en, this message translates to:
+  /// **'Pick date and time'**
+  String get pickDateAndTime;
+
+  /// Says what a recording time correction does not touch
+  ///
+  /// In en, this message translates to:
+  /// **'The original recording time stays in the photo; the album keeps its own.'**
+  String get adjustRecordingTimeHelp;
+
+  /// Label of the switch turning an inbox back into an ordinary album
+  ///
+  /// In en, this message translates to:
+  /// **'Make this an album'**
+  String get makeThisAnAlbum;
+
+  /// Label of the switch turning an album into an inbox
+  ///
+  /// In en, this message translates to:
+  /// **'Make this an inbox'**
+  String get makeThisAnInbox;
+
+  /// Says what an inbox is, beside the switch that makes one
+  ///
+  /// In en, this message translates to:
+  /// **'Photographs waiting to be sorted, shown by the day they were taken.'**
+  String get inboxExplanation;
+
+  /// Says that an album carries no date at all
+  ///
+  /// In en, this message translates to:
+  /// **'Date: none'**
+  String get dateNone;
+
+  /// Says the date an album is shown and filed by
+  ///
+  /// In en, this message translates to:
+  /// **'Date: {date}'**
+  String dateIs(String date);
+
+  /// Tooltip of the button opening the date picker of an album
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a date'**
+  String get pickDate;
+
+  /// Tooltip of the button taking the explicit date of an album away
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the date'**
+  String get clearDate;
+
+  /// Says where the date shown for an album comes from
+  ///
+  /// In en, this message translates to:
+  /// **'Taken from the folder name.'**
+  String get dateFromFolderName;
+
+  /// Says where the date shown for an album comes from
+  ///
+  /// In en, this message translates to:
+  /// **'Taken from the photos.'**
+  String get dateFromPhotos;
+
+  /// Said in the album properties while no picture stands for the album
+  ///
+  /// In en, this message translates to:
+  /// **'No album picture chosen - choose one on a tile in the edit mode.'**
+  String get noAlbumPictureHint;
+
+  /// Tooltip of the button enlarging the crop of the album picture
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom in'**
+  String get zoomIn;
+
+  /// Tooltip of the button shrinking the crop of the album picture
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom out'**
+  String get zoomOut;
+
+  /// Tooltip of the button putting the crop of the album picture back
+  ///
+  /// In en, this message translates to:
+  /// **'Reset the crop'**
+  String get resetCrop;
+
+  /// The privacy level of an image everybody may see
+  ///
+  /// In en, this message translates to:
+  /// **'Public'**
+  String get privacyPublicName;
+
+  /// The privacy level of an image only members of the space may see
+  ///
+  /// In en, this message translates to:
+  /// **'Members'**
+  String get privacyMembersName;
+
+  /// The privacy level of an image only its owner may see
+  ///
+  /// In en, this message translates to:
+  /// **'Private'**
+  String get privacyPrivateName;
+
+  /// The abbreviation of the unit day, in a time offset such as '+1 d 4 h'
+  ///
+  /// In en, this message translates to:
+  /// **'d'**
+  String get unitDays;
+
+  /// The abbreviation of the unit hour, in a time offset such as '+1 d 4 h'
+  ///
+  /// In en, this message translates to:
+  /// **'h'**
+  String get unitHours;
+
+  /// The abbreviation of the unit minute, in a time offset such as '+13 min 5 s'
+  ///
+  /// In en, this message translates to:
+  /// **'min'**
+  String get unitMinutes;
+
+  /// The abbreviation of the unit second, in a time offset such as '+13 min 5 s'
+  ///
+  /// In en, this message translates to:
+  /// **'s'**
+  String get unitSeconds;
+
+  /// Menu entry making this entry the picture of the folder above
+  ///
+  /// In en, this message translates to:
+  /// **'Use as folder picture'**
+  String get useAsFolderPicture;
+
+  /// Menu entry taking the picture of the folder away
+  ///
+  /// In en, this message translates to:
+  /// **'Use no folder picture'**
+  String get useNoFolderPicture;
+
+  /// Said where a library holds nothing
+  ///
+  /// In en, this message translates to:
+  /// **'There are no albums here yet.'**
+  String get libraryEmptyNotice;
+
+  /// Says how an empty library is filled
+  ///
+  /// In en, this message translates to:
+  /// **'Create the first one from the menu at the top right.'**
+  String get libraryEmptyHint;
+
+  /// Said where a folder below the top holds nothing
+  ///
+  /// In en, this message translates to:
+  /// **'This folder has no albums yet.'**
+  String get folderEmptyNotice;
+
+  /// Menu entry making a new album in this folder
+  ///
+  /// In en, this message translates to:
+  /// **'Create album'**
+  String get createAlbum;
+
+  /// Menu entry making a new folder in this folder
+  ///
+  /// In en, this message translates to:
+  /// **'Create folder'**
+  String get createFolder;
+
+  /// Menu entry filing what is already in this folder by its rule
+  ///
+  /// In en, this message translates to:
+  /// **'Apply rule'**
+  String get applyRule;
+
+  /// Menu entry and dialog title of moving something into another folder
+  ///
+  /// In en, this message translates to:
+  /// **'Move to…'**
+  String get moveToAction;
+
+  /// Said when the filing rule moved nothing
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to file.'**
+  String get nothingToFile;
+
+  /// Says how many albums the filing rule moved
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Filed 1 album.} other{Filed {count} albums.}}'**
+  String filedAlbums(int count);
+
+  /// The filing rule that files nothing
+  ///
+  /// In en, this message translates to:
+  /// **'no rule'**
+  String get placementNone;
+
+  /// The filing rule that files what arrives into its year folder
+  ///
+  /// In en, this message translates to:
+  /// **'by year'**
+  String get placementByYear;
+
+  /// The filing rule that files what arrives into its year and month folder
+  ///
+  /// In en, this message translates to:
+  /// **'by year and month'**
+  String get placementByYearMonth;
+
+  /// Heading above the choice of the filing rule of a folder
+  ///
+  /// In en, this message translates to:
+  /// **'Filing rule'**
+  String get placementHeading;
+
+  /// Says what the filing rule of a folder does and does not do
+  ///
+  /// In en, this message translates to:
+  /// **'What arrives here is filed into its year folder. What is already here stays until the filing rule is applied from the menu.'**
+  String get placementExplanation;
+
+  /// Says what leaving the date of a new album empty means
+  ///
+  /// In en, this message translates to:
+  /// **'Without a date the album stays in this folder.'**
+  String get createAlbumUndatedHint;
+
+  /// Label of the choice making the new folder an inbox
+  ///
+  /// In en, this message translates to:
+  /// **'Inbox'**
+  String get createInboxLabel;
+
+  /// Says what an inbox is, in the dialog making one
+  ///
+  /// In en, this message translates to:
+  /// **'Photographs waiting to be sorted: shown by the day they were taken, no date and no order of their own.'**
+  String get createInboxHint;
+
+  /// Title of the dialog making a folder
+  ///
+  /// In en, this message translates to:
+  /// **'New folder'**
+  String get newFolderTitle;
+
+  /// Names the images a move or a delete acts on
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 image} other{{count} images}}'**
+  String imageCount(int count);
+
+  /// Names the root of the library as the target of a move
+  ///
+  /// In en, this message translates to:
+  /// **'the top level'**
+  String get targetTopLevel;
+
+  /// Names the root of the library in the folder picker
+  ///
+  /// In en, this message translates to:
+  /// **'Top level'**
+  String get pickerTopLevel;
+
+  /// Refuses a move that names nothing
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to move.'**
+  String get nothingToMove;
+
+  /// Button of the folder picker, naming what moves and where
+  ///
+  /// In en, this message translates to:
+  /// **'Move {subject} to {target}'**
+  String moveConfirm(String subject, String target);
+
+  /// Says that a move changed nothing
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing moved to {target}.'**
+  String nothingMovedTo(String target);
+
+  /// Says what moved and where
+  ///
+  /// In en, this message translates to:
+  /// **'Moved {subject} to {target}.'**
+  String movedToTarget(String subject, String target);
+
+  /// Says what deleting an album or a folder does
+  ///
+  /// In en, this message translates to:
+  /// **'An album without any image is removed; one with images is moved to the trash folder of the space (nothing is deleted from disk).'**
+  String get deleteExplanation;
+
+  /// Title of the question asked before something is deleted
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {what}?'**
+  String deleteQuestion(String what);
+
+  /// Says what was deleted
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted {what}.'**
+  String deletedWhat(String what);
+
+  /// Said when an album was made but the move into it was refused
+  ///
+  /// In en, this message translates to:
+  /// **'The new album {target} was created and is empty.'**
+  String newAlbumCreatedEmpty(String target);
+
+  /// Says why a folder of folders cannot take images
+  ///
+  /// In en, this message translates to:
+  /// **'Images live in albums - open one.'**
+  String get imagesLiveInAlbums;
+
+  /// Says why an album cannot take an album or a folder
+  ///
+  /// In en, this message translates to:
+  /// **'An album holds no folders.'**
+  String get albumHoldsNoFolders;
+
+  /// Said in the folder picker where the server answered something else
+  ///
+  /// In en, this message translates to:
+  /// **'This folder cannot be shown.'**
+  String get folderCannotBeShown;
+
+  /// Entry of the folder picker making the album to move into
+  ///
+  /// In en, this message translates to:
+  /// **'Create new album…'**
+  String get createNewAlbum;
+
+  /// Title of the dialog reporting what a move did
+  ///
+  /// In en, this message translates to:
+  /// **'Move'**
+  String get moveTitle;
+
+  /// Said where an inbox holds nothing
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is waiting here.'**
+  String get inboxEmptyNotice;
+
+  /// Heading of the photographs of an inbox whose date nobody knows
+  ///
+  /// In en, this message translates to:
+  /// **'Undated'**
+  String get inboxUndatedHeading;
+
+  /// Says what deleting photographs of an inbox does
+  ///
+  /// In en, this message translates to:
+  /// **'The photographs are moved to the trash folder of the space. Nothing is deleted from disk.'**
+  String get inboxDeleteExplanation;
+
+  /// Menu entry unselecting everything
+  ///
+  /// In en, this message translates to:
+  /// **'Clear the selection'**
+  String get clearSelection;
+
+  /// Says how many photographs of an inbox are selected
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 image selected} other{{count} images selected}}'**
+  String selectedCount(int count);
+
+  /// Tooltip of a heading that selects the photographs under it
+  ///
+  /// In en, this message translates to:
+  /// **'Select everything below'**
+  String get selectEverythingBelow;
+
+  /// Refuses an action that needs a selection
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is selected.'**
+  String get nothingSelected;
+
+  /// Refuses the edit mode to a caller who may only look
+  ///
+  /// In en, this message translates to:
+  /// **'You may not edit this album.'**
+  String get notEditableMessage;
+
+  /// Said over the thumbnail when the picture itself did not arrive
+  ///
+  /// In en, this message translates to:
+  /// **'This picture could not be loaded.'**
+  String get pictureFailedMessage;
+
+  /// Tooltip of the control moving one's own photo out of somebody's album
+  ///
+  /// In en, this message translates to:
+  /// **'Take back…'**
+  String get takeBack;
+
+  /// Tooltip of the control showing the image before this one
+  ///
+  /// In en, this message translates to:
+  /// **'Previous image'**
+  String get previousImage;
+
+  /// Tooltip of the control showing the image after this one
+  ///
+  /// In en, this message translates to:
+  /// **'Next image'**
+  String get nextImage;
+
+  /// Tooltip of the control opening the other images of a group
+  ///
+  /// In en, this message translates to:
+  /// **'Show the alternatives'**
+  String get showAlternatives;
+
+  /// The line naming the file an image is stored in
+  ///
+  /// In en, this message translates to:
+  /// **'File: {name}'**
+  String propertyFile(String name);
+
+  /// The line naming when an image was recorded
+  ///
+  /// In en, this message translates to:
+  /// **'Taken: {time}'**
+  String propertyTaken(String time);
+
+  /// The line naming the camera an image was taken with
+  ///
+  /// In en, this message translates to:
+  /// **'Camera: {camera}'**
+  String propertyCamera(String camera);
+
+  /// The line naming where an image was taken, in decimal degrees
+  ///
+  /// In en, this message translates to:
+  /// **'Location: {latitude}, {longitude}'**
+  String propertyLocation(String latitude, String longitude);
+
+  /// Tooltip of the button opening the place a photo was taken on a map
+  ///
+  /// In en, this message translates to:
+  /// **'Show on a map'**
+  String get showOnMap;
+
+  /// The line naming who brought a photo into an album
+  ///
+  /// In en, this message translates to:
+  /// **'Added by {user}'**
+  String addedBy(String user);
+
+  /// The name of the right to see a folder and its thumbnails
+  ///
+  /// In en, this message translates to:
+  /// **'View'**
+  String get rightLabelView;
+
+  /// The name of the right to fetch the originals
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get rightLabelDownload;
+
+  /// The name of the right to add photos
+  ///
+  /// In en, this message translates to:
+  /// **'Contribute'**
+  String get rightLabelContribute;
+
+  /// The name of the right to change a folder
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get rightLabelEdit;
+
+  /// What the right to view means
+  ///
+  /// In en, this message translates to:
+  /// **'See the album and its thumbnails'**
+  String get rightExplanationView;
+
+  /// What the right to download means
+  ///
+  /// In en, this message translates to:
+  /// **'Take copies of the originals'**
+  String get rightExplanationDownload;
+
+  /// What the right to contribute means
+  ///
+  /// In en, this message translates to:
+  /// **'Add photos'**
+  String get rightExplanationContribute;
+
+  /// What the right to edit means
+  ///
+  /// In en, this message translates to:
+  /// **'Change the album and everything in it'**
+  String get rightExplanationEdit;
+
+  /// Half a sentence saying what the caller may do with a folder
+  ///
+  /// In en, this message translates to:
+  /// **'you may change it'**
+  String get rightsPhraseEdit;
+
+  /// Half a sentence saying what the caller may do with a folder
+  ///
+  /// In en, this message translates to:
+  /// **'you may add photos'**
+  String get rightsPhraseContribute;
+
+  /// Half a sentence saying what the caller may do with a folder
+  ///
+  /// In en, this message translates to:
+  /// **'you may look and download'**
+  String get rightsPhraseDownload;
+
+  /// Half a sentence saying what the caller may do with a folder
+  ///
+  /// In en, this message translates to:
+  /// **'you may look'**
+  String get rightsPhraseView;
+
+  /// Half a sentence saying what the caller may do with a folder
+  ///
+  /// In en, this message translates to:
+  /// **'you may do nothing here'**
+  String get rightsPhraseNone;
+
+  /// Says that the folder shown belongs to somebody else
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with you'**
+  String get sharedWithYou;
+
+  /// Names the owner of the folder shown
+  ///
+  /// In en, this message translates to:
+  /// **'Shared by {owner}'**
+  String sharedByOwner(String owner);
+
+  /// Said when a request never got an answer
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not be reached: {problem}'**
+  String serverNotReached(String problem);
+
+  /// Said when the server refused a request without a reason of its own
+  ///
+  /// In en, this message translates to:
+  /// **'HTTP {status} while {doing}.'**
+  String httpFailure(String doing, int status);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'loading {url}'**
+  String doingLoading(String url);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'loading the image'**
+  String get doingLoadingImage;
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'storing {url}'**
+  String doingStoring(String url);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'creating {url}'**
+  String doingCreating(String url);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'uploading to {url}'**
+  String doingUploading(String url);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'asking {url}'**
+  String doingAsking(String url);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'moving to {target}'**
+  String doingMoving(String target);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'deleting in {folder}'**
+  String doingDeleting(String folder);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'filing in {folder}'**
+  String doingFiling(String folder);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'looking for duplicates in {folder}'**
+  String doingFindingDuplicates(String folder);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'signing in at {url}'**
+  String doingSigningIn(String url);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'refreshing the previews of {folder}'**
+  String doingRefreshingPreviews(String folder);
+
+  /// Said when a thumbnail could not be fetched and none is cached
+  ///
+  /// In en, this message translates to:
+  /// **'The server cannot be reached ({problem}), so there is nothing to preview.'**
+  String serverUnreachableNoPreview(String problem);
+
+  /// Said when a view could not be fetched and none is cached
+  ///
+  /// In en, this message translates to:
+  /// **'The server cannot be reached ({problem}), and nothing is cached for this view.'**
+  String serverUnreachableNoCache(String problem);
+
+  /// Said when the answer is not album data
+  ///
+  /// In en, this message translates to:
+  /// **'The server at {server} did not answer with album data - not a VAlbum server, or is the server URL in the settings wrong?'**
+  String notVAlbumServer(String server);
+
+  /// Names a request that timed out
+  ///
+  /// In en, this message translates to:
+  /// **'no answer in time'**
+  String get noAnswerInTime;
+
+  /// Names an upload that was cut off by the network
+  ///
+  /// In en, this message translates to:
+  /// **'Connection lost'**
+  String get uploadConnectionLost;
+
+  /// Says how much of an interrupted upload arrived
+  ///
+  /// In en, this message translates to:
+  /// **'Of {total} photos, {onServer} are on the server; the remaining {remaining} can be sent again.'**
+  String uploadInterruptedCounts(int total, int onServer, int remaining);
+
+  /// Said when the user stopped an upload
+  ///
+  /// In en, this message translates to:
+  /// **'The upload was cancelled.'**
+  String get uploadCancelled;
+
+  /// Said while the server is asked which photos it already holds
+  ///
+  /// In en, this message translates to:
+  /// **'The server is being asked...'**
+  String get uploadAsking;
+
+  /// Said while the last photos are on their way and the answer is outstanding
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the server...'**
+  String get uploadWaiting;
+
+  /// Said while the photos are being hashed
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing: {done} of {total}...'**
+  String uploadPreparing(int total, int done);
+
+  /// Says how many images of an upload have arrived
+  ///
+  /// In en, this message translates to:
+  /// **'{done} of {total} images'**
+  String uploadImageCount(int total, int done);
+
+  /// Says what an upload transferred and what the server already held
+  ///
+  /// In en, this message translates to:
+  /// **'{stored} uploaded, {present} already present.'**
+  String uploadSummary(int stored, int present);
+
+  /// Names where the photos the server already held are kept
+  ///
+  /// In en, this message translates to:
+  /// **'Already in the library: {where}.'**
+  String alreadyInLibrary(String where);
+
+  /// Said to a guest, who has no library of their own to sync into
+  ///
+  /// In en, this message translates to:
+  /// **'Ask the admin to give you an album space.'**
+  String get noticeGuestNoSpace;
+
+  /// Says why the camera-roll sync cannot run
+  ///
+  /// In en, this message translates to:
+  /// **'No album server is configured.'**
+  String get noticeNoServerConfigured;
+
+  /// Says why the camera-roll sync cannot run
+  ///
+  /// In en, this message translates to:
+  /// **'Offline: the album server cannot be reached.'**
+  String get noticeOffline;
+
+  /// Says why the camera-roll sync could not run
+  ///
+  /// In en, this message translates to:
+  /// **'The server cannot be reached ({problem}).'**
+  String noticeServerUnreachable(String problem);
+
+  /// Says why the camera-roll sync cannot run
+  ///
+  /// In en, this message translates to:
+  /// **'The photo library cannot be read.'**
+  String get noticePhotoLibraryUnreadable;
+
+  /// Says why the camera-roll sync could not run
+  ///
+  /// In en, this message translates to:
+  /// **'The photo library could not be read: {problem}'**
+  String noticePhotoLibraryFailed(String problem);
+
+  /// Says that the device refused access to its photos
+  ///
+  /// In en, this message translates to:
+  /// **'Access to the photo library was denied. Allow photo access for VAlbum in the system settings, then try again.'**
+  String get noticePhotoAccessDenied;
+
+  /// Says that the device's photo library could not be opened
+  ///
+  /// In en, this message translates to:
+  /// **'The photo library cannot be opened: {problem}'**
+  String noticePhotoLibraryOpenFailed(String problem);
+
+  /// Says that a photo is not stored on the device itself
+  ///
+  /// In en, this message translates to:
+  /// **'The contents of {name} are not on this device yet (still in the cloud?).'**
+  String noticeAlbumNotOnDevice(String name);
+
+  /// Says that the platform refused the background task
+  ///
+  /// In en, this message translates to:
+  /// **'Background sync could not be scheduled: {problem}'**
+  String noticeBackgroundScheduleFailed(String problem);
+
+  /// Says that the platform refused to drop the background task
+  ///
+  /// In en, this message translates to:
+  /// **'Background sync could not be switched off: {problem}'**
+  String noticeBackgroundUnscheduleFailed(String problem);
+
+  /// Says why a Wi-Fi-only sync is not running
+  ///
+  /// In en, this message translates to:
+  /// **'No network: the sync waits for a Wi-Fi connection.'**
+  String get noticeNoNetwork;
+
+  /// Says why a Wi-Fi-only sync is not running
+  ///
+  /// In en, this message translates to:
+  /// **'No Wi-Fi: the sync is limited to Wi-Fi, and this device is on a mobile connection.'**
+  String get noticeNoWifiMobile;
+
+  /// Says why a Wi-Fi-only sync is not running
+  ///
+  /// In en, this message translates to:
+  /// **'No Wi-Fi: the sync is limited to Wi-Fi, and this device is on another network.'**
+  String get noticeNoWifiOther;
+
+  /// Says that this platform runs no background sync
+  ///
+  /// In en, this message translates to:
+  /// **'Background sync is not available on this platform; the camera roll syncs while the app is open.'**
+  String get noticeNoBackgroundSyncHere;
+
+  /// Says that a browser runs no background sync
+  ///
+  /// In en, this message translates to:
+  /// **'Background sync is not available in a browser; the camera roll syncs while the app is open.'**
+  String get noticeNoBackgroundSyncInBrowser;
+
+  /// Says that this build runs no background sync
+  ///
+  /// In en, this message translates to:
+  /// **'Background sync is not available in this app.'**
+  String get noticeNoBackgroundSyncInApp;
+
+  /// Says that a test drives the sync itself
+  ///
+  /// In en, this message translates to:
+  /// **'No background sync in this test.'**
+  String get noticeNoBackgroundSyncInTest;
+
+  /// Says that this platform has no camera roll
+  ///
+  /// In en, this message translates to:
+  /// **'No photo library on this platform - camera-roll sync runs on Android and iOS.'**
+  String get noticeNoPhotoLibraryPlatform;
+
+  /// Says that a browser has no camera roll
+  ///
+  /// In en, this message translates to:
+  /// **'No photo library in a browser - camera-roll sync runs on Android and iOS.'**
+  String get noticeNoPhotoLibraryBrowser;
+
+  /// The status line of a sync that is switched off
+  ///
+  /// In en, this message translates to:
+  /// **'Camera-roll sync is off.'**
+  String get cameraRollOff;
+
+  /// The status line of a running sync
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading {done} of {total}...'**
+  String cameraRollUploading(int total, int done);
+
+  /// Says when a postponed sync is tried again
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting until {time}.'**
+  String cameraRollWaitingUntil(String time);
+
+  /// Names an unknown time the sync is tried again at
+  ///
+  /// In en, this message translates to:
+  /// **'the next attempt'**
+  String get cameraRollNextAttempt;
+
+  /// The status line of a failed sync that will be tried again
+  ///
+  /// In en, this message translates to:
+  /// **'Failed: {reason} - retrying at {time}'**
+  String cameraRollFailedRetrying(String reason, String time);
+
+  /// The status line of a failed sync that will not be tried again
+  ///
+  /// In en, this message translates to:
+  /// **'Failed: {reason}'**
+  String cameraRollFailed(String reason);
+
+  /// Stands where a failed sync said nothing about why
+  ///
+  /// In en, this message translates to:
+  /// **'unknown reason'**
+  String get cameraRollUnknownReason;
+
+  /// The status line of a sync that has not run yet
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for new photos.'**
+  String get cameraRollWaitingForPhotos;
+
+  /// The status line of a sync that found nothing to do
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing new, checked at {time}.'**
+  String cameraRollNothingNew(String time);
+
+  /// The status line of a sync that transferred something
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Synced 1 photo at {time} ({stored} uploaded, {present} already there).} other{Synced {count} photos at {time} ({stored} uploaded, {present} already there).}}'**
+  String cameraRollSynced(int stored, int count, String time, int present);
+
+  /// Says why a sync transferred nothing while the server builds its index
+  ///
+  /// In en, this message translates to:
+  /// **'The library is still being indexed ({done} of {total} folders); photos already in an unindexed album may be uploaded again.'**
+  String cameraRollIndexing(int total, int done);
+
+  /// Says that the sync fell back to the default inbox
+  ///
+  /// In en, this message translates to:
+  /// **'The chosen inbox is gone; using \'{name}\'.'**
+  String cameraRollInboxGone(String name);
+
+  /// Said while the sync watches no album of the device
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the albums to sync.'**
+  String get cameraRollNoSources;
+
+  /// Says what ticking a further album of the device does
+  ///
+  /// In en, this message translates to:
+  /// **'Photos of a newly chosen album are fetched from the beginning.'**
+  String get cameraRollNewSource;
+
+  /// Says how the last background sync ended
+  ///
+  /// In en, this message translates to:
+  /// **'Last background sync at {time} failed: {problem}'**
+  String backgroundLastRunFailed(String problem, String time);
+
+  /// Says what the last background sync did
+  ///
+  /// In en, this message translates to:
+  /// **'Last background sync at {time}: {stored} uploaded, {present} already present'**
+  String backgroundLastRun(int stored, String time, int present);
+
+  /// Says why a background run did nothing
+  ///
+  /// In en, this message translates to:
+  /// **'The camera-roll sync is switched off.'**
+  String get backgroundSyncOff;
+
+  /// Says that a background run did nothing and said no reason
+  ///
+  /// In en, this message translates to:
+  /// **'The sync did not run.'**
+  String get backgroundSyncDidNotRun;
+
+  /// Says that the background task itself failed
+  ///
+  /// In en, this message translates to:
+  /// **'The background sync task failed: {problem}'**
+  String backgroundTaskFailed(String problem);
+
+  /// Refuses a change while the server cannot be reached
+  ///
+  /// In en, this message translates to:
+  /// **'Offline: changes need the server. Retry when it is reachable again.'**
+  String get offlineRefusal;
+
+  /// The banner over a view that could not be fetched
+  ///
+  /// In en, this message translates to:
+  /// **'Offline - the server cannot be reached.'**
+  String get offlineNoServer;
+
+  /// The banner over a view answered from the offline cache
+  ///
+  /// In en, this message translates to:
+  /// **'Offline - showing the copy from {time}'**
+  String offlineShowingCopy(String time);
+
+  /// Says that an invitation link has been redeemed
+  ///
+  /// In en, this message translates to:
+  /// **'This invitation was already used. If you accepted it on another device, sign in here with a device code from that device; otherwise ask for a new invitation.'**
+  String get invitationUsedNotSignedIn;
+
+  /// Says that an invitation link has been redeemed by this device
+  ///
+  /// In en, this message translates to:
+  /// **'This invitation was already used — you are already signed in here.'**
+  String get invitationUsedSignedIn;
+
+  /// Says that an invitation link has been redeemed by this device
+  ///
+  /// In en, this message translates to:
+  /// **'This invitation was already used — you are signed in here as {user}.'**
+  String invitationUsedSignedInAs(String user);
+
+  /// Says that an invitation link is too old
+  ///
+  /// In en, this message translates to:
+  /// **'This invitation has expired. Ask for a new one.'**
+  String get invitationExpiredNotice;
+
+  /// Says that an invitation link was taken back
+  ///
+  /// In en, this message translates to:
+  /// **'This invitation was withdrawn.'**
+  String get invitationWithdrawnNotice;
+
+  /// Says that this server does not know the invitation link
+  ///
+  /// In en, this message translates to:
+  /// **'This is not an invitation of this server.'**
+  String get invitationNotOfThisServer;
+
+  /// Said when a view could not be fetched
+  ///
+  /// In en, this message translates to:
+  /// **'Loading failed: {problem}'**
+  String loadingFailed(String problem);
+
+  /// Said when the server answered nothing at all
+  ///
+  /// In en, this message translates to:
+  /// **'No data loaded'**
+  String get noDataLoaded;
+
+  /// Button asking the server once more
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get tryAgain;
+
+  /// Said when the address names an image the album does not hold
+  ///
+  /// In en, this message translates to:
+  /// **'No such image: {name}'**
+  String noSuchImage(String name);
+
+  /// Said when the address names the alternatives of an image that is in no group
+  ///
+  /// In en, this message translates to:
+  /// **'No alternatives for image: {name}'**
+  String noAlternatives(String name);
+
+  /// Said when an upload did not go through
+  ///
+  /// In en, this message translates to:
+  /// **'Upload failed: {problem}'**
+  String uploadFailed(String problem);
+
+  /// Button of the offline banner, fetching the view again
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
 }
 
 class _AppLocalizationsDelegate

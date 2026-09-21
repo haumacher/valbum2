@@ -22,6 +22,7 @@ import 'package:http/http.dart' as http;
 import 'package:jsontool/jsontool.dart';
 
 import 'client.dart';
+import 'locales.dart';
 import 'resource.dart';
 
 extension CacheRefreshClient on VAlbumClient {
@@ -47,14 +48,16 @@ extension CacheRefreshClient on VAlbumClient {
       // A server that cannot be reached is not a refusal, and the album must
       // not be reloaded as if the cache had gone.
       throw VAlbumException(
-        "The server could not be reached: ${describeTransportError(error)}",
+        platformMessages.serverNotReached(describeTransportError(error)),
       );
     }
     if (response.statusCode >= 300) {
       throw VAlbumClient.failure(
         response.statusCode,
         response.body,
-        "refreshing the previews of '${path.join("/")}'",
+        platformMessages.doingRefreshingPreviews(
+          "'${path.join("/")}'",
+        ),
       );
     }
     return CacheRefreshed.read(JsonReader.fromString(response.body));

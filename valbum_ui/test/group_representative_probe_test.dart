@@ -40,7 +40,7 @@ void main() {
 
     // Switch the representative from a to b, unsaved.
     await settle(tester, () => tester.longPress(find.byType(Image).at(2)));
-    await tap(tester, find.byTooltip("Gruppenbild wählen"));
+    await tap(tester, find.byTooltip(testL10n.chooseGroupPicture));
     expect(routeOf(tester), const AlternativesRoute([], "group-a.jpg"));
     await tap(tester, memberTile("group-b.jpg"));
     await tap(tester, find.byTooltip(testL10n.useAsGroupPicture));
@@ -59,7 +59,7 @@ void main() {
       tester,
       () => tester.longPress(find.byKey(const ValueKey("group-b.jpg"))),
     );
-    await tap(tester, find.byTooltip("Gruppenbild wählen"));
+    await tap(tester, find.byTooltip(testL10n.chooseGroupPicture));
     expect(routeOf(tester), const AlternativesRoute([], "group-b.jpg"));
     expect(representativeMark("group-b.jpg"), findsOneWidget);
     expect(representativeMark("group-a.jpg"), findsNothing);
@@ -77,7 +77,7 @@ void main() {
       tester,
       () => tester.longPress(find.byKey(const ValueKey("group-b.jpg"))),
     );
-    await tap(tester, find.byTooltip("Gruppierung aufheben"));
+    await tap(tester, find.byTooltip(testL10n.ungroupAction));
     expect(find.byKey(const ValueKey("group-a.jpg")), findsOneWidget);
     expect(find.byKey(const ValueKey("group-b.jpg")), findsOneWidget);
   });

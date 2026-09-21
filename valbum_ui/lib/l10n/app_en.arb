@@ -1972,5 +1972,1722 @@
   "@cameraNotOpened": {
     "description": "Said where the camera failed for a reason the plugin does not name",
     "x-translated": "c08fd863"
+  },
+  "ok": "OK",
+  "@ok": {
+    "description": "Button closing a dialog that only showed something",
+    "x-translated": "d736d92d"
+  },
+  "delete": "Delete",
+  "@delete": {
+    "description": "Button confirming that something is deleted",
+    "x-translated": "3dbe79b1"
+  },
+  "deleteEllipsis": "Delete…",
+  "@deleteEllipsis": {
+    "description": "Menu entry opening the delete question for an entry of a listing",
+    "x-translated": "47a98b64"
+  },
+  "reload": "Reload",
+  "@reload": {
+    "description": "Menu entry fetching the current view from the server again",
+    "x-translated": "a514cb63"
+  },
+  "up": "Up",
+  "@up": {
+    "description": "Tooltip of the control leading to the folder above",
+    "x-translated": "d610cad2"
+  },
+  "home": "Home",
+  "@home": {
+    "description": "Tooltip of the control leading to the top of the library",
+    "x-translated": "d1e4a3ee"
+  },
+  "upload": "Upload",
+  "@upload": {
+    "description": "Tooltip of the button adding photos to the album shown",
+    "x-translated": "1011e329"
+  },
+  "apply": "Apply",
+  "@apply": {
+    "description": "Button of a dialog taking over what was entered",
+    "x-translated": "7ceea31b"
+  },
+  "discard": "Discard",
+  "@discard": {
+    "description": "Button throwing unsaved changes away",
+    "x-translated": "8bf10d56"
+  },
+  "stay": "Stay",
+  "@stay": {
+    "description": "Button of the leave question: go on editing",
+    "x-translated": "fe3b2ca2"
+  },
+  "keepEditing": "Keep editing",
+  "@keepEditing": {
+    "description": "Button of the discard question: go on editing",
+    "x-translated": "7086cfd8"
+  },
+  "refresh": "Refresh",
+  "@refresh": {
+    "description": "Button confirming that the generated previews are made anew",
+    "x-translated": "af3c9967"
+  },
+  "open": "Open",
+  "@open": {
+    "description": "Tooltip of the tool opening a photograph full screen",
+    "x-translated": "4422c9a"
+  },
+  "select": "Select",
+  "@select": {
+    "description": "Tooltip of the selection box of a tile",
+    "x-translated": "4c5eeff6"
+  },
+  "group": "Group",
+  "@group": {
+    "description": "Tooltip of the tool making a group of the selected images",
+    "x-translated": "ac016bc1"
+  },
+  "loading": "Loading...",
+  "@loading": {
+    "description": "Shown while a view waits for the server",
+    "x-translated": "cd643ef3"
+  },
+  "serverMenuEntry": "Server...",
+  "@serverMenuEntry": {
+    "description": "Menu entry opening the server settings",
+    "x-translated": "e6b7173f"
+  },
+  "titleLabel": "Title",
+  "@titleLabel": {
+    "description": "Label of the field holding the title of an album or a folder",
+    "x-translated": "eaf7576f"
+  },
+  "subtitleLabel": "Subtitle",
+  "@subtitleLabel": {
+    "description": "Label of the field holding the subtitle of an album",
+    "x-translated": "a8f3f5e7"
+  },
+  "nameLabel": "Name",
+  "@nameLabel": {
+    "description": "Label of the field holding the name of a new folder",
+    "x-translated": "fe11d138"
+  },
+  "dateLabel": "Date",
+  "@dateLabel": {
+    "description": "Label of the field holding the date of an album",
+    "x-translated": "aac9844"
+  },
+  "commentLabel": "Comment",
+  "@commentLabel": {
+    "description": "Label of the field holding the description of an image",
+    "x-translated": "5bc96bf0"
+  },
+  "headingLabel": "Heading",
+  "@headingLabel": {
+    "description": "Label of the field holding the text of a heading inside an album",
+    "x-translated": "cd09065d"
+  },
+  "mustNotBeEmpty": "Must not be empty",
+  "@mustNotBeEmpty": {
+    "description": "Said under a field that has to be filled in",
+    "x-translated": "e9a1efe8"
+  },
+  "viewAsYourself": "Yourself",
+  "@viewAsYourself": {
+    "description": "Menu entry showing the album as its owner sees it",
+    "x-translated": "d047c22a"
+  },
+  "viewAsMembers": "Members",
+  "@viewAsMembers": {
+    "description": "Menu entry showing the album as a member of the space sees it",
+    "x-translated": "8a1deb63"
+  },
+  "viewAsPublic": "Public",
+  "@viewAsPublic": {
+    "description": "Menu entry showing the album as the public sees it",
+    "x-translated": "3c182b2b"
+  },
+  "viewAsStateYourself": "yourself",
+  "@viewAsStateYourself": {
+    "description": "Names the view on the screen in the line 'View as - yourself'",
+    "x-translated": "2931a07c"
+  },
+  "viewAsStateMembers": "members",
+  "@viewAsStateMembers": {
+    "description": "Names the view on the screen in the line 'View as - members'",
+    "x-translated": "45a0d2ff"
+  },
+  "viewAsStatePublic": "public",
+  "@viewAsStatePublic": {
+    "description": "Names the view on the screen in the line 'View as - public'",
+    "x-translated": "3bb42e1d"
+  },
+  "viewAsLabel": "View as",
+  "@viewAsLabel": {
+    "description": "Menu label above the three choices of whose view of the album is shown",
+    "x-translated": "d80f01f9"
+  },
+  "previewAsMembers": "Viewing as members - this is what members see",
+  "@previewAsMembers": {
+    "description": "Banner over an album shown as a member of the space sees it",
+    "x-translated": "c355b6f0"
+  },
+  "previewAsPublic": "Viewing as public - this is what the public sees",
+  "@previewAsPublic": {
+    "description": "Banner over an album shown as the public sees it",
+    "x-translated": "afda8970"
+  },
+  "editHeadingTitle": "Edit heading",
+  "@editHeadingTitle": {
+    "description": "Title of the dialog editing the text of a heading inside an album",
+    "x-translated": "d50bdcbf"
+  },
+  "insertHeading": "Insert heading",
+  "@insertHeading": {
+    "description": "Tooltip of the tool putting a heading before a tile",
+    "x-translated": "814b8b73"
+  },
+  "deleteHeadingTooltip": "Delete heading",
+  "@deleteHeadingTooltip": {
+    "description": "Tooltip of the tool removing a heading from an album",
+    "x-translated": "19511073"
+  },
+  "alreadyInOrder": "Already in order",
+  "@alreadyInOrder": {
+    "description": "Said when sorting an album by date would change nothing",
+    "x-translated": "8866da2b"
+  },
+  "noOtherImageFromCamera": "No other image from this camera",
+  "@noOtherImageFromCamera": {
+    "description": "Said when no further image of the album was taken with the same camera",
+    "x-translated": "e47d3a89"
+  },
+  "nothingToAdjust": "Nothing to adjust",
+  "@nothingToAdjust": {
+    "description": "Said when a recording time correction would change nothing",
+    "x-translated": "becd7195"
+  },
+  "saveFailed": "Saving failed: {problem}",
+  "@saveFailed": {
+    "description": "Said when the album could not be written to the server",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "266c1b0c"
+  },
+  "discardChangesTitle": "Discard the changes to this album?",
+  "@discardChangesTitle": {
+    "description": "Title of the question asked when an edit is cancelled",
+    "x-translated": "22d85cbe"
+  },
+  "discardChangesMessage": "The changes made here have not been saved. Discarding them shows the album again as the server has it.",
+  "@discardChangesMessage": {
+    "description": "Explains what discarding the changes to an album does",
+    "x-translated": "97ee5327"
+  },
+  "saveChangesTitle": "Save the changes to this album?",
+  "@saveChangesTitle": {
+    "description": "Title of the question asked when an album with unsaved changes is left",
+    "x-translated": "c9f7a2a8"
+  },
+  "saveChangesMessage": "Leaving the album ends the edit. Unsaved changes are lost unless they are saved now.",
+  "@saveChangesMessage": {
+    "description": "Explains what leaving an album with unsaved changes does",
+    "x-translated": "bb457312"
+  },
+  "saveOrDiscardFirst": "Save or discard your changes first",
+  "@saveOrDiscardFirst": {
+    "description": "Refuses an action that would throw unsaved changes away",
+    "x-translated": "c8997670"
+  },
+  "headingCannotMove": "A heading cannot be moved.",
+  "@headingCannotMove": {
+    "description": "Refuses a move of a selection holding nothing but headings",
+    "x-translated": "da7f6260"
+  },
+  "shareLinkAction": "Share link…",
+  "@shareLinkAction": {
+    "description": "Menu entry opening the dialog that hands out a link to a folder",
+    "x-translated": "1e96e65e"
+  },
+  "albumProperties": "Album properties",
+  "@albumProperties": {
+    "description": "Menu entry and dialog title of the properties of an album",
+    "x-translated": "f526ffaa"
+  },
+  "folderProperties": "Folder properties",
+  "@folderProperties": {
+    "description": "Menu entry and dialog title of the properties of a folder",
+    "x-translated": "2ff48589"
+  },
+  "moveSubjectTo": "Move {subject} to…",
+  "@moveSubjectTo": {
+    "description": "Menu entry moving what is named into another folder",
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      }
+    },
+    "x-translated": "5d0ea266"
+  },
+  "moveAlbumTo": "Move album to…",
+  "@moveAlbumTo": {
+    "description": "Menu entry moving the album being shown into another folder",
+    "x-translated": "2457bb0f"
+  },
+  "deleteAlbumAction": "Delete album…",
+  "@deleteAlbumAction": {
+    "description": "Menu entry deleting the album being shown",
+    "x-translated": "3131a3a"
+  },
+  "deleteSubjectAction": "Delete {subject}…",
+  "@deleteSubjectAction": {
+    "description": "Menu entry deleting what is named",
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      }
+    },
+    "x-translated": "92e30b87"
+  },
+  "sortByDate": "Sort by date",
+  "@sortByDate": {
+    "description": "Menu entry ordering the images of an album by their recording time",
+    "x-translated": "2f864fe0"
+  },
+  "minRatingLabel": "Minimum rating",
+  "@minRatingLabel": {
+    "description": "Menu label above the rating filter of an album",
+    "x-translated": "37513b5d"
+  },
+  "showMoreImages": "Show more images",
+  "@showMoreImages": {
+    "description": "Menu entry lowering the rating an image needs to be shown",
+    "x-translated": "e6f0c347"
+  },
+  "showFewerImages": "Show fewer images",
+  "@showFewerImages": {
+    "description": "Menu entry raising the rating an image needs to be shown",
+    "x-translated": "24c28956"
+  },
+  "findDuplicatesAction": "Find duplicates...",
+  "@findDuplicatesAction": {
+    "description": "Menu entry looking for photos the library already holds elsewhere",
+    "x-translated": "448a0349"
+  },
+  "findDuplicatesTitle": "Find duplicates",
+  "@findDuplicatesTitle": {
+    "description": "Title of the question asked before duplicates are set aside",
+    "x-translated": "3677fb5f"
+  },
+  "findDuplicatesMessage": "Every photo of this album that the library already holds somewhere else is taken out of the album and kept aside in the library's own folder. Nothing is deleted, and the other copy stays where it is.",
+  "@findDuplicatesMessage": {
+    "description": "Explains what looking for duplicates does",
+    "x-translated": "dbfcdca1"
+  },
+  "noDuplicatesFound": "No photo of this album is anywhere else in the library.",
+  "@noDuplicatesFound": {
+    "description": "Said when the duplicate sweep found nothing",
+    "x-translated": "1f54eb65"
+  },
+  "duplicatesSetAside": "{count, plural, =1{1 photo was set aside; the copy that stays is elsewhere in the library.} other{{count} photos were set aside; the copies that stay are elsewhere in the library.}}",
+  "@duplicatesSetAside": {
+    "description": "Says how many photos the duplicate sweep took out of the album",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "4b29b612"
+  },
+  "refreshPreviews": "Refresh previews",
+  "@refreshPreviews": {
+    "description": "Menu entry and dialog title of throwing the generated previews away",
+    "x-translated": "b3f01c46"
+  },
+  "refreshPreviewsMessage": "The thumbnails and video renditions of this album are thrown away and made anew when they are next shown. The photos themselves are not touched.",
+  "@refreshPreviewsMessage": {
+    "description": "Explains what refreshing the previews of an album does",
+    "x-translated": "8b6bd1f5"
+  },
+  "previewsRefreshed": "{count, plural, =1{1 cached file thrown away; the previews are made anew.} other{{count} cached files thrown away; the previews are made anew.}}",
+  "@previewsRefreshed": {
+    "description": "Says how many generated files the server deleted",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "89f17f13"
+  },
+  "notAnAlbumAnswer": "The server did not answer with an album.",
+  "@notAnAlbumAnswer": {
+    "description": "Said when the preview of another clearance is not an album",
+    "x-translated": "72f41fcc"
+  },
+  "ratingFilterHidesAll": "No image is rated {rating} or better - press + (or the + button) to show more.",
+  "@ratingFilterHidesAll": {
+    "description": "Said where the rating filter hides every image of the album",
+    "placeholders": {
+      "rating": {
+        "type": "int"
+      }
+    },
+    "x-translated": "4ae80cdb"
+  },
+  "turnRight": "Turn right",
+  "@turnRight": {
+    "description": "Tooltip of the tool turning an image a quarter to the right",
+    "x-translated": "a9f9eeb4"
+  },
+  "turnLeft": "Turn left",
+  "@turnLeft": {
+    "description": "Tooltip of the tool turning an image a quarter to the left",
+    "x-translated": "feec2378"
+  },
+  "flipVertically": "Flip vertically",
+  "@flipVertically": {
+    "description": "Tooltip of the tool mirroring an image top to bottom",
+    "x-translated": "7a142306"
+  },
+  "ungroupAction": "Ungroup",
+  "@ungroupAction": {
+    "description": "Tooltip of the tool dissolving a group of images",
+    "x-translated": "759dc49c"
+  },
+  "chooseGroupPicture": "Choose the group picture",
+  "@chooseGroupPicture": {
+    "description": "Tooltip of the tool opening the alternatives of a group to pick the one shown",
+    "x-translated": "8259ecb"
+  },
+  "selectAllFromCamera": "Select all from this camera",
+  "@selectAllFromCamera": {
+    "description": "Tooltip of the tool adding every image of the same camera to the selection",
+    "x-translated": "2e0baf87"
+  },
+  "adjustRecordingTimeAction": "Adjust recording time…",
+  "@adjustRecordingTimeAction": {
+    "description": "Tooltip of the tool correcting the recording time of the selection",
+    "x-translated": "859f5259"
+  },
+  "imageProperties": "Image properties",
+  "@imageProperties": {
+    "description": "Tooltip and dialog title of what an image is",
+    "x-translated": "91f8fbb9"
+  },
+  "useAsAlbumPicture": "Use as album picture",
+  "@useAsAlbumPicture": {
+    "description": "Tooltip of the tool making this image the picture of the album",
+    "x-translated": "730fff4d"
+  },
+  "albumPictureTooltip": "Album picture",
+  "@albumPictureTooltip": {
+    "description": "Tooltip of the mark on the tile that is the album's picture",
+    "x-translated": "8502da52"
+  },
+  "privacyControlTooltip": "Privacy: {level} (tap for {next})",
+  "@privacyControlTooltip": {
+    "description": "Tooltip of the control cycling through the privacy levels of an image",
+    "placeholders": {
+      "next": {
+        "type": "String"
+      },
+      "level": {
+        "type": "String"
+      }
+    },
+    "x-translated": "e06632ef"
+  },
+  "groupNeedsTwo": "Select at least two images to group them",
+  "@groupNeedsTwo": {
+    "description": "Refuses a grouping of fewer than two images",
+    "x-translated": "eff22f1e"
+  },
+  "dragToReorder": "Drag to reorder",
+  "@dragToReorder": {
+    "description": "Tooltip of the handle a tile is picked up by",
+    "x-translated": "ad5135"
+  },
+  "partCount": "{count, plural, =1{1 part} other{{count} parts}}",
+  "@partCount": {
+    "description": "Says how many album parts a drag carries",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "2a1d4249"
+  },
+  "notATime": "Not a time (yyyy-MM-dd HH:mm:ss)",
+  "@notATime": {
+    "description": "Said under the field of the recording time dialog while the text is not a time",
+    "x-translated": "168e87dd"
+  },
+  "appliesToImages": "{count, plural, =1{Applies to 1 image} other{Applies to {count} images}}",
+  "@appliesToImages": {
+    "description": "Says how many images a recording time correction changes",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "b8b8bbff"
+  },
+  "useNameDateOne": "Use the time in the file name: {time}",
+  "@useNameDateOne": {
+    "description": "Button dating one image by the time its file name says",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    },
+    "x-translated": "2a86534f"
+  },
+  "useNameDateMany": "Use the time in the file name ({count} images)",
+  "@useNameDateMany": {
+    "description": "Button dating several images by the time their file names say",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "96f0be0"
+  },
+  "adjustRecordingTimeTitle": "Adjust recording time",
+  "@adjustRecordingTimeTitle": {
+    "description": "Title of the dialog correcting the recording time of a selection",
+    "x-translated": "3da2ac89"
+  },
+  "correctTime": "Correct time",
+  "@correctTime": {
+    "description": "Label of the field holding the corrected recording time",
+    "x-translated": "ee1aa04a"
+  },
+  "pickDateAndTime": "Pick date and time",
+  "@pickDateAndTime": {
+    "description": "Tooltip of the button opening the date and time pickers",
+    "x-translated": "fd84dc93"
+  },
+  "adjustRecordingTimeHelp": "The original recording time stays in the photo; the album keeps its own.",
+  "@adjustRecordingTimeHelp": {
+    "description": "Says what a recording time correction does not touch",
+    "x-translated": "99b98798"
+  },
+  "makeThisAnAlbum": "Make this an album",
+  "@makeThisAnAlbum": {
+    "description": "Label of the switch turning an inbox back into an ordinary album",
+    "x-translated": "dae2da95"
+  },
+  "makeThisAnInbox": "Make this an inbox",
+  "@makeThisAnInbox": {
+    "description": "Label of the switch turning an album into an inbox",
+    "x-translated": "9d6b47ef"
+  },
+  "inboxExplanation": "Photographs waiting to be sorted, shown by the day they were taken.",
+  "@inboxExplanation": {
+    "description": "Says what an inbox is, beside the switch that makes one",
+    "x-translated": "a840f417"
+  },
+  "dateNone": "Date: none",
+  "@dateNone": {
+    "description": "Says that an album carries no date at all",
+    "x-translated": "f4a3727f"
+  },
+  "dateIs": "Date: {date}",
+  "@dateIs": {
+    "description": "Says the date an album is shown and filed by",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    },
+    "x-translated": "77a3e"
+  },
+  "pickDate": "Pick a date",
+  "@pickDate": {
+    "description": "Tooltip of the button opening the date picker of an album",
+    "x-translated": "90aa60ff"
+  },
+  "clearDate": "Remove the date",
+  "@clearDate": {
+    "description": "Tooltip of the button taking the explicit date of an album away",
+    "x-translated": "cb62ef1d"
+  },
+  "dateFromFolderName": "Taken from the folder name.",
+  "@dateFromFolderName": {
+    "description": "Says where the date shown for an album comes from",
+    "x-translated": "df5532ee"
+  },
+  "dateFromPhotos": "Taken from the photos.",
+  "@dateFromPhotos": {
+    "description": "Says where the date shown for an album comes from",
+    "x-translated": "b3ac03ac"
+  },
+  "noAlbumPictureHint": "No album picture chosen - choose one on a tile in the edit mode.",
+  "@noAlbumPictureHint": {
+    "description": "Said in the album properties while no picture stands for the album",
+    "x-translated": "a956a6a8"
+  },
+  "zoomIn": "Zoom in",
+  "@zoomIn": {
+    "description": "Tooltip of the button enlarging the crop of the album picture",
+    "x-translated": "173dc11b"
+  },
+  "zoomOut": "Zoom out",
+  "@zoomOut": {
+    "description": "Tooltip of the button shrinking the crop of the album picture",
+    "x-translated": "a2a319ad"
+  },
+  "resetCrop": "Reset the crop",
+  "@resetCrop": {
+    "description": "Tooltip of the button putting the crop of the album picture back",
+    "x-translated": "ce3b1f07"
+  },
+  "privacyPublicName": "Public",
+  "@privacyPublicName": {
+    "description": "The privacy level of an image everybody may see",
+    "x-translated": "3c182b2b"
+  },
+  "privacyMembersName": "Members",
+  "@privacyMembersName": {
+    "description": "The privacy level of an image only members of the space may see",
+    "x-translated": "8a1deb63"
+  },
+  "privacyPrivateName": "Private",
+  "@privacyPrivateName": {
+    "description": "The privacy level of an image only its owner may see",
+    "x-translated": "1dbbf84d"
+  },
+  "unitDays": "d",
+  "@unitDays": {
+    "description": "The abbreviation of the unit day, in a time offset such as '+1 d 4 h'",
+    "x-translated": "98dd4acc"
+  },
+  "unitHours": "h",
+  "@unitHours": {
+    "description": "The abbreviation of the unit hour, in a time offset such as '+1 d 4 h'",
+    "x-translated": "916b06e7"
+  },
+  "unitMinutes": "min",
+  "@unitMinutes": {
+    "description": "The abbreviation of the unit minute, in a time offset such as '+13 min 5 s'",
+    "x-translated": "a17b1dd0"
+  },
+  "unitSeconds": "s",
+  "@unitSeconds": {
+    "description": "The abbreviation of the unit second, in a time offset such as '+13 min 5 s'",
+    "x-translated": "1b0ecf0b"
+  },
+  "useAsFolderPicture": "Use as folder picture",
+  "@useAsFolderPicture": {
+    "description": "Menu entry making this entry the picture of the folder above",
+    "x-translated": "9ab2d8ce"
+  },
+  "useNoFolderPicture": "Use no folder picture",
+  "@useNoFolderPicture": {
+    "description": "Menu entry taking the picture of the folder away",
+    "x-translated": "1d35064d"
+  },
+  "libraryEmptyNotice": "There are no albums here yet.",
+  "@libraryEmptyNotice": {
+    "description": "Said where a library holds nothing",
+    "x-translated": "4f9e87c5"
+  },
+  "libraryEmptyHint": "Create the first one from the menu at the top right.",
+  "@libraryEmptyHint": {
+    "description": "Says how an empty library is filled",
+    "x-translated": "9b85fb3e"
+  },
+  "folderEmptyNotice": "This folder has no albums yet.",
+  "@folderEmptyNotice": {
+    "description": "Said where a folder below the top holds nothing",
+    "x-translated": "9a270e7d"
+  },
+  "createAlbum": "Create album",
+  "@createAlbum": {
+    "description": "Menu entry making a new album in this folder",
+    "x-translated": "ef3272ce"
+  },
+  "createFolder": "Create folder",
+  "@createFolder": {
+    "description": "Menu entry making a new folder in this folder",
+    "x-translated": "7f7d5c4c"
+  },
+  "applyRule": "Apply rule",
+  "@applyRule": {
+    "description": "Menu entry filing what is already in this folder by its rule",
+    "x-translated": "86770e1"
+  },
+  "moveToAction": "Move to…",
+  "@moveToAction": {
+    "description": "Menu entry and dialog title of moving something into another folder",
+    "x-translated": "7e4e6f72"
+  },
+  "nothingToFile": "Nothing to file.",
+  "@nothingToFile": {
+    "description": "Said when the filing rule moved nothing",
+    "x-translated": "d2d4b247"
+  },
+  "filedAlbums": "{count, plural, =1{Filed 1 album.} other{Filed {count} albums.}}",
+  "@filedAlbums": {
+    "description": "Says how many albums the filing rule moved",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "ace087de"
+  },
+  "placementNone": "no rule",
+  "@placementNone": {
+    "description": "The filing rule that files nothing",
+    "x-translated": "191a099d"
+  },
+  "placementByYear": "by year",
+  "@placementByYear": {
+    "description": "The filing rule that files what arrives into its year folder",
+    "x-translated": "f66f5d94"
+  },
+  "placementByYearMonth": "by year and month",
+  "@placementByYearMonth": {
+    "description": "The filing rule that files what arrives into its year and month folder",
+    "x-translated": "5757f555"
+  },
+  "placementHeading": "Filing rule",
+  "@placementHeading": {
+    "description": "Heading above the choice of the filing rule of a folder",
+    "x-translated": "655ed054"
+  },
+  "placementExplanation": "What arrives here is filed into its year folder. What is already here stays until the filing rule is applied from the menu.",
+  "@placementExplanation": {
+    "description": "Says what the filing rule of a folder does and does not do",
+    "x-translated": "b1319318"
+  },
+  "createAlbumUndatedHint": "Without a date the album stays in this folder.",
+  "@createAlbumUndatedHint": {
+    "description": "Says what leaving the date of a new album empty means",
+    "x-translated": "46e983c9"
+  },
+  "createInboxLabel": "Inbox",
+  "@createInboxLabel": {
+    "description": "Label of the choice making the new folder an inbox",
+    "x-translated": "bfd0dc3d"
+  },
+  "createInboxHint": "Photographs waiting to be sorted: shown by the day they were taken, no date and no order of their own.",
+  "@createInboxHint": {
+    "description": "Says what an inbox is, in the dialog making one",
+    "x-translated": "71bbc797"
+  },
+  "newFolderTitle": "New folder",
+  "@newFolderTitle": {
+    "description": "Title of the dialog making a folder",
+    "x-translated": "414592f5"
+  },
+  "imageCount": "{count, plural, =1{1 image} other{{count} images}}",
+  "@imageCount": {
+    "description": "Names the images a move or a delete acts on",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "10329880"
+  },
+  "targetTopLevel": "the top level",
+  "@targetTopLevel": {
+    "description": "Names the root of the library as the target of a move",
+    "x-translated": "2631bd11"
+  },
+  "pickerTopLevel": "Top level",
+  "@pickerTopLevel": {
+    "description": "Names the root of the library in the folder picker",
+    "x-translated": "777058d0"
+  },
+  "nothingToMove": "Nothing to move.",
+  "@nothingToMove": {
+    "description": "Refuses a move that names nothing",
+    "x-translated": "91defa2c"
+  },
+  "moveConfirm": "Move {subject} to {target}",
+  "@moveConfirm": {
+    "description": "Button of the folder picker, naming what moves and where",
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      },
+      "target": {
+        "type": "String"
+      }
+    },
+    "x-translated": "24ef622e"
+  },
+  "nothingMovedTo": "Nothing moved to {target}.",
+  "@nothingMovedTo": {
+    "description": "Says that a move changed nothing",
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    },
+    "x-translated": "47190a38"
+  },
+  "movedToTarget": "Moved {subject} to {target}.",
+  "@movedToTarget": {
+    "description": "Says what moved and where",
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      },
+      "target": {
+        "type": "String"
+      }
+    },
+    "x-translated": "bad6c715"
+  },
+  "deleteExplanation": "An album without any image is removed; one with images is moved to the trash folder of the space (nothing is deleted from disk).",
+  "@deleteExplanation": {
+    "description": "Says what deleting an album or a folder does",
+    "x-translated": "aed1370c"
+  },
+  "deleteQuestion": "Delete {what}?",
+  "@deleteQuestion": {
+    "description": "Title of the question asked before something is deleted",
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    },
+    "x-translated": "2b160f84"
+  },
+  "deletedWhat": "Deleted {what}.",
+  "@deletedWhat": {
+    "description": "Says what was deleted",
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    },
+    "x-translated": "fd710701"
+  },
+  "newAlbumCreatedEmpty": "The new album {target} was created and is empty.",
+  "@newAlbumCreatedEmpty": {
+    "description": "Said when an album was made but the move into it was refused",
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    },
+    "x-translated": "1e1f5328"
+  },
+  "imagesLiveInAlbums": "Images live in albums - open one.",
+  "@imagesLiveInAlbums": {
+    "description": "Says why a folder of folders cannot take images",
+    "x-translated": "222d14e7"
+  },
+  "albumHoldsNoFolders": "An album holds no folders.",
+  "@albumHoldsNoFolders": {
+    "description": "Says why an album cannot take an album or a folder",
+    "x-translated": "93e6a253"
+  },
+  "folderCannotBeShown": "This folder cannot be shown.",
+  "@folderCannotBeShown": {
+    "description": "Said in the folder picker where the server answered something else",
+    "x-translated": "acdc6767"
+  },
+  "createNewAlbum": "Create new album…",
+  "@createNewAlbum": {
+    "description": "Entry of the folder picker making the album to move into",
+    "x-translated": "ea69853d"
+  },
+  "moveTitle": "Move",
+  "@moveTitle": {
+    "description": "Title of the dialog reporting what a move did",
+    "x-translated": "4f0c9846"
+  },
+  "inboxEmptyNotice": "Nothing is waiting here.",
+  "@inboxEmptyNotice": {
+    "description": "Said where an inbox holds nothing",
+    "x-translated": "b3ea83f9"
+  },
+  "inboxUndatedHeading": "Undated",
+  "@inboxUndatedHeading": {
+    "description": "Heading of the photographs of an inbox whose date nobody knows",
+    "x-translated": "30facc80"
+  },
+  "inboxDeleteExplanation": "The photographs are moved to the trash folder of the space. Nothing is deleted from disk.",
+  "@inboxDeleteExplanation": {
+    "description": "Says what deleting photographs of an inbox does",
+    "x-translated": "2442647b"
+  },
+  "clearSelection": "Clear the selection",
+  "@clearSelection": {
+    "description": "Menu entry unselecting everything",
+    "x-translated": "f6d98bf2"
+  },
+  "selectedCount": "{count, plural, =1{1 image selected} other{{count} images selected}}",
+  "@selectedCount": {
+    "description": "Says how many photographs of an inbox are selected",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "bfaecbd2"
+  },
+  "selectEverythingBelow": "Select everything below",
+  "@selectEverythingBelow": {
+    "description": "Tooltip of a heading that selects the photographs under it",
+    "x-translated": "32f3456"
+  },
+  "nothingSelected": "Nothing is selected.",
+  "@nothingSelected": {
+    "description": "Refuses an action that needs a selection",
+    "x-translated": "3c128ffe"
+  },
+  "notEditableMessage": "You may not edit this album.",
+  "@notEditableMessage": {
+    "description": "Refuses the edit mode to a caller who may only look",
+    "x-translated": "3ce2f686"
+  },
+  "pictureFailedMessage": "This picture could not be loaded.",
+  "@pictureFailedMessage": {
+    "description": "Said over the thumbnail when the picture itself did not arrive",
+    "x-translated": "73a3164d"
+  },
+  "takeBack": "Take back…",
+  "@takeBack": {
+    "description": "Tooltip of the control moving one's own photo out of somebody's album",
+    "x-translated": "5013d12a"
+  },
+  "previousImage": "Previous image",
+  "@previousImage": {
+    "description": "Tooltip of the control showing the image before this one",
+    "x-translated": "19d53ac4"
+  },
+  "nextImage": "Next image",
+  "@nextImage": {
+    "description": "Tooltip of the control showing the image after this one",
+    "x-translated": "162c13e7"
+  },
+  "showAlternatives": "Show the alternatives",
+  "@showAlternatives": {
+    "description": "Tooltip of the control opening the other images of a group",
+    "x-translated": "196baf8e"
+  },
+  "propertyFile": "File: {name}",
+  "@propertyFile": {
+    "description": "The line naming the file an image is stored in",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "3bc144a6"
+  },
+  "propertyTaken": "Taken: {time}",
+  "@propertyTaken": {
+    "description": "The line naming when an image was recorded",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    },
+    "x-translated": "233200c1"
+  },
+  "propertyCamera": "Camera: {camera}",
+  "@propertyCamera": {
+    "description": "The line naming the camera an image was taken with",
+    "placeholders": {
+      "camera": {
+        "type": "String"
+      }
+    },
+    "x-translated": "7c899f7d"
+  },
+  "propertyLocation": "Location: {latitude}, {longitude}",
+  "@propertyLocation": {
+    "description": "The line naming where an image was taken, in decimal degrees",
+    "placeholders": {
+      "latitude": {
+        "type": "String"
+      },
+      "longitude": {
+        "type": "String"
+      }
+    },
+    "x-translated": "d0cc982c"
+  },
+  "showOnMap": "Show on a map",
+  "@showOnMap": {
+    "description": "Tooltip of the button opening the place a photo was taken on a map",
+    "x-translated": "7d407b84"
+  },
+  "addedBy": "Added by {user}",
+  "@addedBy": {
+    "description": "The line naming who brought a photo into an album",
+    "placeholders": {
+      "user": {
+        "type": "String"
+      }
+    },
+    "x-translated": "ba82760e"
+  },
+  "rightLabelView": "View",
+  "@rightLabelView": {
+    "description": "The name of the right to see a folder and its thumbnails",
+    "x-translated": "5ecf04b0"
+  },
+  "rightLabelDownload": "Download",
+  "@rightLabelDownload": {
+    "description": "The name of the right to fetch the originals",
+    "x-translated": "816ce026"
+  },
+  "rightLabelContribute": "Contribute",
+  "@rightLabelContribute": {
+    "description": "The name of the right to add photos",
+    "x-translated": "afcdd9f1"
+  },
+  "rightLabelEdit": "Edit",
+  "@rightLabelEdit": {
+    "description": "The name of the right to change a folder",
+    "x-translated": "21077124"
+  },
+  "rightExplanationView": "See the album and its thumbnails",
+  "@rightExplanationView": {
+    "description": "What the right to view means",
+    "x-translated": "80e1e90d"
+  },
+  "rightExplanationDownload": "Take copies of the originals",
+  "@rightExplanationDownload": {
+    "description": "What the right to download means",
+    "x-translated": "cf507364"
+  },
+  "rightExplanationContribute": "Add photos",
+  "@rightExplanationContribute": {
+    "description": "What the right to contribute means",
+    "x-translated": "b1d502e7"
+  },
+  "rightExplanationEdit": "Change the album and everything in it",
+  "@rightExplanationEdit": {
+    "description": "What the right to edit means",
+    "x-translated": "891b2eed"
+  },
+  "rightsPhraseEdit": "you may change it",
+  "@rightsPhraseEdit": {
+    "description": "Half a sentence saying what the caller may do with a folder",
+    "x-translated": "36cc18e3"
+  },
+  "rightsPhraseContribute": "you may add photos",
+  "@rightsPhraseContribute": {
+    "description": "Half a sentence saying what the caller may do with a folder",
+    "x-translated": "4d2d6f8"
+  },
+  "rightsPhraseDownload": "you may look and download",
+  "@rightsPhraseDownload": {
+    "description": "Half a sentence saying what the caller may do with a folder",
+    "x-translated": "a61259a5"
+  },
+  "rightsPhraseView": "you may look",
+  "@rightsPhraseView": {
+    "description": "Half a sentence saying what the caller may do with a folder",
+    "x-translated": "123659a3"
+  },
+  "rightsPhraseNone": "you may do nothing here",
+  "@rightsPhraseNone": {
+    "description": "Half a sentence saying what the caller may do with a folder",
+    "x-translated": "630c10ca"
+  },
+  "sharedWithYou": "Shared with you",
+  "@sharedWithYou": {
+    "description": "Says that the folder shown belongs to somebody else",
+    "x-translated": "2f8bf00e"
+  },
+  "sharedByOwner": "Shared by {owner}",
+  "@sharedByOwner": {
+    "description": "Names the owner of the folder shown",
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      }
+    },
+    "x-translated": "5ee3456c"
+  },
+  "serverNotReached": "The server could not be reached: {problem}",
+  "@serverNotReached": {
+    "description": "Said when a request never got an answer",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "5321e433"
+  },
+  "httpFailure": "HTTP {status} while {doing}.",
+  "@httpFailure": {
+    "description": "Said when the server refused a request without a reason of its own",
+    "placeholders": {
+      "doing": {
+        "type": "String"
+      },
+      "status": {
+        "type": "int"
+      }
+    },
+    "x-translated": "91004784"
+  },
+  "doingLoading": "loading {url}",
+  "@doingLoading": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    },
+    "x-translated": "96dbdde3"
+  },
+  "doingLoadingImage": "loading the image",
+  "@doingLoadingImage": {
+    "description": "Names what the app was doing when a request failed",
+    "x-translated": "fbc6e94c"
+  },
+  "doingStoring": "storing {url}",
+  "@doingStoring": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    },
+    "x-translated": "e03d57"
+  },
+  "doingCreating": "creating {url}",
+  "@doingCreating": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    },
+    "x-translated": "3bd08bb7"
+  },
+  "doingUploading": "uploading to {url}",
+  "@doingUploading": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    },
+    "x-translated": "4fc1360e"
+  },
+  "doingAsking": "asking {url}",
+  "@doingAsking": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    },
+    "x-translated": "9893cb32"
+  },
+  "doingMoving": "moving to {target}",
+  "@doingMoving": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    },
+    "x-translated": "9a1b6488"
+  },
+  "doingDeleting": "deleting in {folder}",
+  "@doingDeleting": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    },
+    "x-translated": "47305fbf"
+  },
+  "doingFiling": "filing in {folder}",
+  "@doingFiling": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    },
+    "x-translated": "9b80bb2"
+  },
+  "doingFindingDuplicates": "looking for duplicates in {folder}",
+  "@doingFindingDuplicates": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    },
+    "x-translated": "63d77e3d"
+  },
+  "doingSigningIn": "signing in at {url}",
+  "@doingSigningIn": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    },
+    "x-translated": "4bb1ba6d"
+  },
+  "doingRefreshingPreviews": "refreshing the previews of {folder}",
+  "@doingRefreshingPreviews": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    },
+    "x-translated": "247695bd"
+  },
+  "serverUnreachableNoPreview": "The server cannot be reached ({problem}), so there is nothing to preview.",
+  "@serverUnreachableNoPreview": {
+    "description": "Said when a thumbnail could not be fetched and none is cached",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "f99ff3d5"
+  },
+  "serverUnreachableNoCache": "The server cannot be reached ({problem}), and nothing is cached for this view.",
+  "@serverUnreachableNoCache": {
+    "description": "Said when a view could not be fetched and none is cached",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "328dabc6"
+  },
+  "notVAlbumServer": "The server at {server} did not answer with album data - not a VAlbum server, or is the server URL in the settings wrong?",
+  "@notVAlbumServer": {
+    "description": "Said when the answer is not album data",
+    "placeholders": {
+      "server": {
+        "type": "String"
+      }
+    },
+    "x-translated": "ff7d97c0"
+  },
+  "noAnswerInTime": "no answer in time",
+  "@noAnswerInTime": {
+    "description": "Names a request that timed out",
+    "x-translated": "16666fb3"
+  },
+  "uploadConnectionLost": "Connection lost",
+  "@uploadConnectionLost": {
+    "description": "Names an upload that was cut off by the network",
+    "x-translated": "7512ca10"
+  },
+  "uploadInterruptedCounts": "Of {total} photos, {onServer} are on the server; the remaining {remaining} can be sent again.",
+  "@uploadInterruptedCounts": {
+    "description": "Says how much of an interrupted upload arrived",
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "onServer": {
+        "type": "int"
+      },
+      "remaining": {
+        "type": "int"
+      }
+    },
+    "x-translated": "5489c7a7"
+  },
+  "uploadCancelled": "The upload was cancelled.",
+  "@uploadCancelled": {
+    "description": "Said when the user stopped an upload",
+    "x-translated": "efd3c187"
+  },
+  "uploadAsking": "The server is being asked...",
+  "@uploadAsking": {
+    "description": "Said while the server is asked which photos it already holds",
+    "x-translated": "800eb531"
+  },
+  "uploadWaiting": "Waiting for the server...",
+  "@uploadWaiting": {
+    "description": "Said while the last photos are on their way and the answer is outstanding",
+    "x-translated": "9da7a699"
+  },
+  "uploadPreparing": "Preparing: {done} of {total}...",
+  "@uploadPreparing": {
+    "description": "Said while the photos are being hashed",
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "done": {
+        "type": "int"
+      }
+    },
+    "x-translated": "50f9659f"
+  },
+  "uploadImageCount": "{done} of {total} images",
+  "@uploadImageCount": {
+    "description": "Says how many images of an upload have arrived",
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "done": {
+        "type": "int"
+      }
+    },
+    "x-translated": "52b9e7"
+  },
+  "uploadSummary": "{stored} uploaded, {present} already present.",
+  "@uploadSummary": {
+    "description": "Says what an upload transferred and what the server already held",
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "present": {
+        "type": "int"
+      }
+    },
+    "x-translated": "3713f6f9"
+  },
+  "alreadyInLibrary": "Already in the library: {where}.",
+  "@alreadyInLibrary": {
+    "description": "Names where the photos the server already held are kept",
+    "placeholders": {
+      "where": {
+        "type": "String"
+      }
+    },
+    "x-translated": "3736bf2f"
+  },
+  "noticeGuestNoSpace": "Ask the admin to give you an album space.",
+  "@noticeGuestNoSpace": {
+    "description": "Said to a guest, who has no library of their own to sync into",
+    "x-translated": "7e848170"
+  },
+  "noticeNoServerConfigured": "No album server is configured.",
+  "@noticeNoServerConfigured": {
+    "description": "Says why the camera-roll sync cannot run",
+    "x-translated": "12509f9e"
+  },
+  "noticeOffline": "Offline: the album server cannot be reached.",
+  "@noticeOffline": {
+    "description": "Says why the camera-roll sync cannot run",
+    "x-translated": "75862bf"
+  },
+  "noticeServerUnreachable": "The server cannot be reached ({problem}).",
+  "@noticeServerUnreachable": {
+    "description": "Says why the camera-roll sync could not run",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "5aed62fe"
+  },
+  "noticePhotoLibraryUnreadable": "The photo library cannot be read.",
+  "@noticePhotoLibraryUnreadable": {
+    "description": "Says why the camera-roll sync cannot run",
+    "x-translated": "ee5aa36f"
+  },
+  "noticePhotoLibraryFailed": "The photo library could not be read: {problem}",
+  "@noticePhotoLibraryFailed": {
+    "description": "Says why the camera-roll sync could not run",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "1e407e54"
+  },
+  "noticePhotoAccessDenied": "Access to the photo library was denied. Allow photo access for VAlbum in the system settings, then try again.",
+  "@noticePhotoAccessDenied": {
+    "description": "Says that the device refused access to its photos",
+    "x-translated": "4ed46469"
+  },
+  "noticePhotoLibraryOpenFailed": "The photo library cannot be opened: {problem}",
+  "@noticePhotoLibraryOpenFailed": {
+    "description": "Says that the device's photo library could not be opened",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "5e1667ac"
+  },
+  "noticeAlbumNotOnDevice": "The contents of {name} are not on this device yet (still in the cloud?).",
+  "@noticeAlbumNotOnDevice": {
+    "description": "Says that a photo is not stored on the device itself",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "27a22d9f"
+  },
+  "noticeBackgroundScheduleFailed": "Background sync could not be scheduled: {problem}",
+  "@noticeBackgroundScheduleFailed": {
+    "description": "Says that the platform refused the background task",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "df965be6"
+  },
+  "noticeBackgroundUnscheduleFailed": "Background sync could not be switched off: {problem}",
+  "@noticeBackgroundUnscheduleFailed": {
+    "description": "Says that the platform refused to drop the background task",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "c3f859b8"
+  },
+  "noticeNoNetwork": "No network: the sync waits for a Wi-Fi connection.",
+  "@noticeNoNetwork": {
+    "description": "Says why a Wi-Fi-only sync is not running",
+    "x-translated": "ae77f536"
+  },
+  "noticeNoWifiMobile": "No Wi-Fi: the sync is limited to Wi-Fi, and this device is on a mobile connection.",
+  "@noticeNoWifiMobile": {
+    "description": "Says why a Wi-Fi-only sync is not running",
+    "x-translated": "467ad08c"
+  },
+  "noticeNoWifiOther": "No Wi-Fi: the sync is limited to Wi-Fi, and this device is on another network.",
+  "@noticeNoWifiOther": {
+    "description": "Says why a Wi-Fi-only sync is not running",
+    "x-translated": "485697a1"
+  },
+  "noticeNoBackgroundSyncHere": "Background sync is not available on this platform; the camera roll syncs while the app is open.",
+  "@noticeNoBackgroundSyncHere": {
+    "description": "Says that this platform runs no background sync",
+    "x-translated": "901b5ab1"
+  },
+  "noticeNoBackgroundSyncInBrowser": "Background sync is not available in a browser; the camera roll syncs while the app is open.",
+  "@noticeNoBackgroundSyncInBrowser": {
+    "description": "Says that a browser runs no background sync",
+    "x-translated": "f4c07fb4"
+  },
+  "noticeNoBackgroundSyncInApp": "Background sync is not available in this app.",
+  "@noticeNoBackgroundSyncInApp": {
+    "description": "Says that this build runs no background sync",
+    "x-translated": "b06e1634"
+  },
+  "noticeNoBackgroundSyncInTest": "No background sync in this test.",
+  "@noticeNoBackgroundSyncInTest": {
+    "description": "Says that a test drives the sync itself",
+    "x-translated": "33eecd3c"
+  },
+  "noticeNoPhotoLibraryPlatform": "No photo library on this platform - camera-roll sync runs on Android and iOS.",
+  "@noticeNoPhotoLibraryPlatform": {
+    "description": "Says that this platform has no camera roll",
+    "x-translated": "91126542"
+  },
+  "noticeNoPhotoLibraryBrowser": "No photo library in a browser - camera-roll sync runs on Android and iOS.",
+  "@noticeNoPhotoLibraryBrowser": {
+    "description": "Says that a browser has no camera roll",
+    "x-translated": "89f69e2e"
+  },
+  "cameraRollOff": "Camera-roll sync is off.",
+  "@cameraRollOff": {
+    "description": "The status line of a sync that is switched off",
+    "x-translated": "a45b80f"
+  },
+  "cameraRollUploading": "Uploading {done} of {total}...",
+  "@cameraRollUploading": {
+    "description": "The status line of a running sync",
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "done": {
+        "type": "int"
+      }
+    },
+    "x-translated": "41ac3a84"
+  },
+  "cameraRollWaitingUntil": "Waiting until {time}.",
+  "@cameraRollWaitingUntil": {
+    "description": "Says when a postponed sync is tried again",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    },
+    "x-translated": "d8389513"
+  },
+  "cameraRollNextAttempt": "the next attempt",
+  "@cameraRollNextAttempt": {
+    "description": "Names an unknown time the sync is tried again at",
+    "x-translated": "59cfa89"
+  },
+  "cameraRollFailedRetrying": "Failed: {reason} - retrying at {time}",
+  "@cameraRollFailedRetrying": {
+    "description": "The status line of a failed sync that will be tried again",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    },
+    "x-translated": "ff70784e"
+  },
+  "cameraRollFailed": "Failed: {reason}",
+  "@cameraRollFailed": {
+    "description": "The status line of a failed sync that will not be tried again",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    },
+    "x-translated": "e8e2736b"
+  },
+  "cameraRollUnknownReason": "unknown reason",
+  "@cameraRollUnknownReason": {
+    "description": "Stands where a failed sync said nothing about why",
+    "x-translated": "24885462"
+  },
+  "cameraRollWaitingForPhotos": "Waiting for new photos.",
+  "@cameraRollWaitingForPhotos": {
+    "description": "The status line of a sync that has not run yet",
+    "x-translated": "4e640ee7"
+  },
+  "cameraRollNothingNew": "Nothing new, checked at {time}.",
+  "@cameraRollNothingNew": {
+    "description": "The status line of a sync that found nothing to do",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    },
+    "x-translated": "35150777"
+  },
+  "cameraRollSynced": "{count, plural, =1{Synced 1 photo at {time} ({stored} uploaded, {present} already there).} other{Synced {count} photos at {time} ({stored} uploaded, {present} already there).}}",
+  "@cameraRollSynced": {
+    "description": "The status line of a sync that transferred something",
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      },
+      "time": {
+        "type": "String"
+      },
+      "present": {
+        "type": "int"
+      }
+    },
+    "x-translated": "cae57bf6"
+  },
+  "cameraRollIndexing": "The library is still being indexed ({done} of {total} folders); photos already in an unindexed album may be uploaded again.",
+  "@cameraRollIndexing": {
+    "description": "Says why a sync transferred nothing while the server builds its index",
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "done": {
+        "type": "int"
+      }
+    },
+    "x-translated": "667cec96"
+  },
+  "cameraRollInboxGone": "The chosen inbox is gone; using '{name}'.",
+  "@cameraRollInboxGone": {
+    "description": "Says that the sync fell back to the default inbox",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "973185df"
+  },
+  "cameraRollNoSources": "Choose the albums to sync.",
+  "@cameraRollNoSources": {
+    "description": "Said while the sync watches no album of the device",
+    "x-translated": "829f2e09"
+  },
+  "cameraRollNewSource": "Photos of a newly chosen album are fetched from the beginning.",
+  "@cameraRollNewSource": {
+    "description": "Says what ticking a further album of the device does",
+    "x-translated": "a18ebd33"
+  },
+  "backgroundLastRunFailed": "Last background sync at {time} failed: {problem}",
+  "@backgroundLastRunFailed": {
+    "description": "Says how the last background sync ended",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    },
+    "x-translated": "ec4233a"
+  },
+  "backgroundLastRun": "Last background sync at {time}: {stored} uploaded, {present} already present",
+  "@backgroundLastRun": {
+    "description": "Says what the last background sync did",
+    "placeholders": {
+      "stored": {
+        "type": "int"
+      },
+      "time": {
+        "type": "String"
+      },
+      "present": {
+        "type": "int"
+      }
+    },
+    "x-translated": "14ba5191"
+  },
+  "backgroundSyncOff": "The camera-roll sync is switched off.",
+  "@backgroundSyncOff": {
+    "description": "Says why a background run did nothing",
+    "x-translated": "667481e5"
+  },
+  "backgroundSyncDidNotRun": "The sync did not run.",
+  "@backgroundSyncDidNotRun": {
+    "description": "Says that a background run did nothing and said no reason",
+    "x-translated": "88a23dea"
+  },
+  "backgroundTaskFailed": "The background sync task failed: {problem}",
+  "@backgroundTaskFailed": {
+    "description": "Says that the background task itself failed",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "378996aa"
+  },
+  "offlineRefusal": "Offline: changes need the server. Retry when it is reachable again.",
+  "@offlineRefusal": {
+    "description": "Refuses a change while the server cannot be reached",
+    "x-translated": "d86cdd42"
+  },
+  "offlineNoServer": "Offline - the server cannot be reached.",
+  "@offlineNoServer": {
+    "description": "The banner over a view that could not be fetched",
+    "x-translated": "a41c18a8"
+  },
+  "offlineShowingCopy": "Offline - showing the copy from {time}",
+  "@offlineShowingCopy": {
+    "description": "The banner over a view answered from the offline cache",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    },
+    "x-translated": "172f64cb"
+  },
+  "invitationUsedNotSignedIn": "This invitation was already used. If you accepted it on another device, sign in here with a device code from that device; otherwise ask for a new invitation.",
+  "@invitationUsedNotSignedIn": {
+    "description": "Says that an invitation link has been redeemed",
+    "x-translated": "adcea13d"
+  },
+  "invitationUsedSignedIn": "This invitation was already used — you are already signed in here.",
+  "@invitationUsedSignedIn": {
+    "description": "Says that an invitation link has been redeemed by this device",
+    "x-translated": "a9577b73"
+  },
+  "invitationUsedSignedInAs": "This invitation was already used — you are signed in here as {user}.",
+  "@invitationUsedSignedInAs": {
+    "description": "Says that an invitation link has been redeemed by this device",
+    "placeholders": {
+      "user": {
+        "type": "String"
+      }
+    },
+    "x-translated": "d2e4e03c"
+  },
+  "invitationExpiredNotice": "This invitation has expired. Ask for a new one.",
+  "@invitationExpiredNotice": {
+    "description": "Says that an invitation link is too old",
+    "x-translated": "b54b7955"
+  },
+  "invitationWithdrawnNotice": "This invitation was withdrawn.",
+  "@invitationWithdrawnNotice": {
+    "description": "Says that an invitation link was taken back",
+    "x-translated": "412c4a62"
+  },
+  "invitationNotOfThisServer": "This is not an invitation of this server.",
+  "@invitationNotOfThisServer": {
+    "description": "Says that this server does not know the invitation link",
+    "x-translated": "9940d7b0"
+  },
+  "loadingFailed": "Loading failed: {problem}",
+  "@loadingFailed": {
+    "description": "Said when a view could not be fetched",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "bde83d71"
+  },
+  "noDataLoaded": "No data loaded",
+  "@noDataLoaded": {
+    "description": "Said when the server answered nothing at all",
+    "x-translated": "30f56835"
+  },
+  "tryAgain": "Try again",
+  "@tryAgain": {
+    "description": "Button asking the server once more",
+    "x-translated": "c1dae16"
+  },
+  "noSuchImage": "No such image: {name}",
+  "@noSuchImage": {
+    "description": "Said when the address names an image the album does not hold",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "1269e6c5"
+  },
+  "noAlternatives": "No alternatives for image: {name}",
+  "@noAlternatives": {
+    "description": "Said when the address names the alternatives of an image that is in no group",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "1c318096"
+  },
+  "uploadFailed": "Upload failed: {problem}",
+  "@uploadFailed": {
+    "description": "Said when an upload did not go through",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "1b40734b"
+  },
+  "retry": "Retry",
+  "@retry": {
+    "description": "Button of the offline banner, fetching the view again",
+    "x-translated": "ef217ee7"
   }
 }

@@ -10,6 +10,7 @@ import 'device_code_scanner.dart';
 import 'diagnostics.dart';
 import 'offline.dart';
 import 'photo_library.dart';
+import 'notices.dart';
 import 'wakelock.dart';
 
 /// The cache the web app uses: memory only.
@@ -29,10 +30,8 @@ bool isSocketError(Object error) => false;
 ///
 /// A page cannot watch the machine's photos, so camera-roll sync says so
 /// instead of pretending (issue #30).
-PhotoLibrary defaultPhotoLibrary() => const UnavailablePhotoLibrary(
-      "No photo library in a browser - camera-roll sync runs on Android and "
-      "iOS.",
-    );
+PhotoLibrary defaultPhotoLibrary() =>
+    const UnavailablePhotoLibrary(NoPhotoLibraryBrowser());
 
 /// What keeps the screen awake in a browser: nothing, see [Wakelock].
 ///
@@ -66,10 +65,7 @@ ConnectivitySource defaultConnectivity() => const UnknownConnectivity();
 /// while the app is open and says as much (issue #32). The `workmanager`
 /// plugin is never imported here — the web build must not see its Dart code.
 BackgroundScheduler defaultBackgroundScheduler() =>
-    const UnavailableBackgroundScheduler(
-      "Background sync is not available in a browser; the camera roll syncs "
-      "while the app is open.",
-    );
+    const UnavailableBackgroundScheduler(NoBackgroundSyncInBrowser());
 
 /// Runs [task] as the platform's background task: never, in a browser.
 void executeBackgroundTask(Future<bool> Function() task) {}

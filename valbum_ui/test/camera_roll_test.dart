@@ -16,6 +16,7 @@ import 'util/fake_image_http.dart';
 import 'util/fake_timers.dart';
 import 'util/fixtures.dart';
 import 'util/l10n.dart';
+import 'package:valbum_ui/notices.dart';
 
 /// The server the tests talk to.
 const String serverDataUrl = "http://server/valbum/data";
@@ -228,7 +229,7 @@ void main() {
       expect(harness.sync.status.phase, CameraRollPhase.idle);
       expect(harness.sync.status.lastStored, 3);
       expect(harness.sync.status.lastPresent, 0);
-      expect(harness.sync.status.line, contains("Synced 3 photos"));
+      expect(cameraRollLine(harness.sync.status, testL10n), contains("Synced 3 photos"));
     });
 
     test('uploads into the chosen inbox album', () async {
@@ -274,7 +275,7 @@ void main() {
       expect(harness.uploads, isEmpty);
       expect(harness.requests, isEmpty, reason: "Nothing to even ask about.");
       expect(harness.sync.status.phase, CameraRollPhase.idle);
-      expect(harness.sync.status.line, contains("Nothing new"));
+      expect(cameraRollLine(harness.sync.status, testL10n), contains("Nothing new"));
     });
 
     test('picks up an item added after the previous run', () async {
@@ -308,7 +309,7 @@ void main() {
           reason: "The check answered 'present' for every hash.");
       expect(harness.sync.status.lastStored, 0);
       expect(harness.sync.status.lastPresent, 2);
-      expect(harness.sync.status.line, contains("Synced 2 photos"));
+      expect(cameraRollLine(harness.sync.status, testL10n), contains("Synced 2 photos"));
     });
 
     test('a reinstalled app converges without re-uploading', () async {
@@ -353,10 +354,17 @@ void main() {
       expect(stored.since, DateTime.utc(2026, 3, 1, 12, 1),
           reason: "Only the first batch was accepted.");
       expect(harness.sync.status.phase, CameraRollPhase.waiting);
-      expect(harness.sync.status.message, contains("connection reset"));
+      expect(
+        harness.sync.status.notice,
+        isA<ServerUnreachable>().having(
+          (n) => n.problem,
+          "problem",
+          contains("connection reset"),
+        ),
+      );
       expect(harness.sync.status.nextAttempt,
           harness.timers.now.add(const Duration(seconds: 30)));
-      expect(harness.sync.status.line, contains("retrying at"));
+      expect(cameraRollLine(harness.sync.status, testL10n), contains("retrying at"));
       expect(harness.timers.pending, contains(const Duration(seconds: 30)));
     });
 
@@ -430,7 +438,7 @@ void main() {
 
       expect(harness.sync.status.phase, CameraRollPhase.waiting);
       expect(harness.sync.status.message, "Pair this device.");
-      expect(harness.sync.status.line, contains("Pair this device."));
+      expect(cameraRollLine(harness.sync.status, testL10n), contains("Pair this device."));
     });
 
     test('refuses to run while the app is offline', () async {
@@ -443,7 +451,7 @@ void main() {
 
       expect(harness.uploads, isEmpty);
       expect(harness.sync.status.phase, CameraRollPhase.waiting);
-      expect(harness.sync.status.message, contains("Offline"));
+      expect(harness.sync.status.notice, const ServerOffline());
     });
 
     test('does not refuse a run without an inbox album any more', () async {
@@ -471,14 +479,14 @@ void main() {
       await harness.sync.syncNow();
 
       expect(harness.sync.status.phase, CameraRollPhase.failed);
-      expect(harness.sync.status.message, contains("server"));
+      expect(harness.sync.status.notice, const NoServerConfigured());
     });
 
     test('says what the platform said when access is denied', () async {
       var library = FakePhotoLibrary(
         items: [photo("a.jpg", 1)],
         granted: false,
-        accessProblem: "Allow photo access for VAlbum.",
+        accessProblem: const PhotoAccessDenied(),
       );
       var harness = Harness(photoLibrary: library);
       addTearDown(harness.dispose);
@@ -487,7 +495,11 @@ void main() {
       await harness.sync.syncNow();
 
       expect(harness.sync.status.phase, CameraRollPhase.unavailable);
-      expect(harness.sync.status.line, "Allow photo access for VAlbum.");
+      expect(harness.sync.status.notice, const PhotoAccessDenied());
+      expect(
+        cameraRollLine(harness.sync.status, testL10n),
+        testL10n.noticePhotoAccessDenied,
+      );
     });
   });
 
@@ -617,13 +629,16 @@ void main() {
 
     test('is refused when the platform has no photo library', () async {
       var harness = Harness(
-        photoLibrary: const UnavailablePhotoLibrary("No camera here."),
+        photoLibrary: const UnavailablePhotoLibrary(NoPhotoLibraryPlatform()),
         config: const CameraRollConfig(inbox: inbox),
       );
       addTearDown(harness.sync.dispose);
       await harness.sync.load();
 
-      expect(await harness.sync.setEnabled(true), "No camera here.");
+      expect(
+        await harness.sync.setEnabled(true),
+        const NoPhotoLibraryPlatform(),
+      );
       expect(harness.sync.config.enabled, isFalse);
     });
 
@@ -648,47 +663,53 @@ void main() {
 
   group('the status line', () {
     test('says what every phase means', () {
-      expect(const CameraRollStatus().line, contains("off"));
+      expect(cameraRollLine(const CameraRollStatus(), testL10n), contains("off"));
       expect(
-        const CameraRollStatus(
+        cameraRollLine(const CameraRollStatus(
           phase: CameraRollPhase.unavailable,
-          message: "No photo library on this platform",
-        ).line,
+          notice: NoPhotoLibraryHere(),
+        ), testL10n),
         "No photo library on this platform",
       );
       expect(
-        const CameraRollStatus(
+        cameraRollLine(const CameraRollStatus(
           phase: CameraRollPhase.running,
           done: 2,
           total: 8,
-        ).line,
+        ), testL10n),
         "Uploading 3 of 8...",
       );
       expect(
-        CameraRollStatus(
-          phase: CameraRollPhase.waiting,
-          message: "no route",
-          nextAttempt: DateTime.utc(2026, 3, 1, 12, 5).toLocal(),
-        ).line,
+        cameraRollLine(
+          CameraRollStatus(
+            phase: CameraRollPhase.waiting,
+            message: "no route",
+            nextAttempt: DateTime.utc(2026, 3, 1, 12, 5).toLocal(),
+          ),
+          testL10n,
+        ),
         startsWith("Failed: no route - retrying at "),
       );
       expect(
-        const CameraRollStatus(
+        cameraRollLine(const CameraRollStatus(
           phase: CameraRollPhase.failed,
           message: "no server",
-        ).line,
+        ), testL10n),
         "Failed: no server",
       );
       expect(
-        const CameraRollStatus(phase: CameraRollPhase.idle).line,
+        cameraRollLine(const CameraRollStatus(phase: CameraRollPhase.idle), testL10n),
         "Waiting for new photos.",
       );
       expect(
-        CameraRollStatus(
-          phase: CameraRollPhase.idle,
-          lastSuccess: DateTime.utc(2026, 3, 1, 12),
-          lastStored: 1,
-        ).line,
+        cameraRollLine(
+          CameraRollStatus(
+            phase: CameraRollPhase.idle,
+            lastSuccess: DateTime.utc(2026, 3, 1, 12),
+            lastStored: 1,
+          ),
+          testL10n,
+        ),
         contains("Synced 1 photo at"),
       );
     });
@@ -724,9 +745,7 @@ void main() {
     testWidgets('says that a platform has no photo library',
         (WidgetTester tester) async {
       var harness = Harness(
-        photoLibrary: const UnavailablePhotoLibrary(
-          "No photo library on this platform",
-        ),
+        photoLibrary: const UnavailablePhotoLibrary(),
         config: CameraRollConfig.disabled,
       );
       addTearDown(harness.sync.dispose);

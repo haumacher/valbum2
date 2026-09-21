@@ -9,6 +9,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'move_target_kind_test.dart' as k;
 import 'util/fake_image_http.dart';
+import 'util/l10n.dart';
 
 const int jan1st2001 = 978307200000;
 
@@ -73,7 +74,7 @@ void main() {
           reason: "the group's second member is the earliest dated photo");
       await tester.enterText(find.byType(TextFormField).first, "Probe");
       await tester.pumpAndSettle();
-      await tester.tap(find.text("Anlegen"));
+      await tester.tap(find.text(testL10n.create));
       await tester.pumpAndSettle();
     });
     var put = requests.singleWhere((r) => r.method == "PUT");

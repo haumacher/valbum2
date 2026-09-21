@@ -14,6 +14,7 @@ import 'inbox_view_test.dart' show inboxJson;
 import 'move_test.dart' hide main;
 import 'share_link_test.dart' as share;
 import 'util/fake_image_http.dart';
+import 'util/l10n.dart';
 
 /// A listing holding an inbox and a dated album: the inbox is undated, so the
 /// date order alone would drop it to the end.
@@ -103,14 +104,14 @@ void main() {
       await tester.pumpAndSettle();
 
       // Ticking the box takes the date field away: an inbox has no date.
-      expect(find.text("Datum"), findsOneWidget);
+      expect(find.text(testL10n.dateLabel), findsOneWidget);
       await tester.tap(find.byKey(const Key("create-kind-inbox")));
       await tester.pumpAndSettle();
-      expect(find.text("Datum"), findsNothing);
+      expect(find.text(testL10n.dateLabel), findsNothing);
       expect(find.byKey(const Key("create-album-date-hint")), findsNothing);
 
       await tester.enterText(find.byType(TextFormField).first, "Holiday");
-      await tester.tap(find.text("Anlegen"));
+      await tester.tap(find.text(testL10n.create));
       await tester.pumpAndSettle();
 
       var put = requests.singleWhere((r) => r.method == "PUT");
@@ -145,14 +146,14 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key("album-properties")));
       await tester.pumpAndSettle();
-      expect(find.text(albumKindActionLabel(AlbumKind.album)), findsOneWidget);
+      expect(find.text(albumKindActionLabel(testL10n, AlbumKind.album)), findsOneWidget);
 
       await tester.tap(find.byKey(const Key("album-kind")));
       await tester.pumpAndSettle();
       // The dialog now shows an inbox: no date, no album picture.
       expect(find.byKey(const Key("album-date")), findsNothing);
-      expect(find.text(albumKindActionLabel(AlbumKind.inbox)), findsOneWidget);
-      await tester.tap(find.text("Übernehmen"));
+      expect(find.text(albumKindActionLabel(testL10n, AlbumKind.inbox)), findsOneWidget);
+      await tester.tap(find.text(testL10n.apply));
       await tester.pumpAndSettle();
 
       var put = requests.singleWhere((r) => r.method == "PUT");

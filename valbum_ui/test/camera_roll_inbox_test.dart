@@ -16,6 +16,7 @@ import 'package:valbum_ui/resource.dart';
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
 import 'util/l10n.dart';
+import 'package:valbum_ui/notices.dart';
 
 /// The server the tests talk to.
 const String serverDataUrl = "http://server/valbum/data";
@@ -314,7 +315,7 @@ void main() {
       await pumpSettingsAs(tester, roleGuest);
 
       expect(find.byKey(cameraRollNoSpaceKey), findsOneWidget);
-      expect(find.text(guestNoSpaceNotice), findsOneWidget);
+      expect(find.text(noticeText(guestNoSpaceNotice, testL10n)), findsOneWidget);
       expect(
         tester
             .widget<SwitchListTile>(find.byKey(cameraRollSwitchKey))
@@ -333,7 +334,7 @@ void main() {
       await pumpSettingsAs(tester, roleMember);
 
       expect(find.byKey(cameraRollNoSpaceKey), findsNothing);
-      expect(find.text(guestNoSpaceNotice), findsNothing);
+      expect(find.text(noticeText(guestNoSpaceNotice, testL10n)), findsNothing);
       expect(
         tester
             .widget<SwitchListTile>(find.byKey(cameraRollSwitchKey))
@@ -362,7 +363,7 @@ void main() {
 
       await harness.sync.syncNow();
 
-      expect(harness.sync.status.message, guestNoSpaceNotice);
+      expect(harness.sync.status.notice, guestNoSpaceNotice);
       expect(harness.sync.status.phase, CameraRollPhase.failed);
       expect(server.creations, isEmpty);
       expect(server.uploadUrls, isEmpty);
@@ -384,7 +385,7 @@ void main() {
         caller: const CallerInfo(role: roleGuest, space: "carol"),
       );
 
-      expect(find.textContaining(guestNoSpaceNotice), findsWidgets);
+      expect(find.textContaining(noticeText(guestNoSpaceNotice, testL10n)), findsWidgets);
     });
   });
 }

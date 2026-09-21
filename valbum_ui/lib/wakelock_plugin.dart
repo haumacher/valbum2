@@ -22,7 +22,7 @@ class PluginWakelock extends Wakelock {
       // The upload is not refused because the screen may lock: it is only as
       // fragile as it was before this existed, see [Wakelock].
       if (kDebugMode) {
-        print("The screen cannot be kept awake: $error");
+        print("wakelock !! $error");
       }
     }
   }

@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:valbum_ui/main.dart';
 
 import 'camera_roll_test.dart';
+import 'util/l10n.dart';
 
 /// The answer of a check whose index has read [done] of [total] folders and
 /// knows none of the asked hashes.
@@ -45,13 +46,17 @@ void main() {
       var status = harness.sync.status;
       expect(status.phase, CameraRollPhase.waiting);
       expect(status.indexing, isTrue);
+      expect(status.indexingDone, 312);
+      expect(status.indexingTotal, 1480);
       expect(
-        status.message,
-        "The library is still being indexed (312 of 1480 folders); photos "
-        "already in an unindexed album may be uploaded again.",
+        cameraRollLine(status, testL10n),
+        startsWith(
+          "The library is still being indexed (312 of 1480 folders); photos "
+          "already in an unindexed album may be uploaded again.",
+        ),
       );
-      expect(status.line, isNot(contains("Failed")));
-      expect(status.line, contains("still being indexed"));
+      expect(cameraRollLine(status, testL10n), isNot(contains("Failed")));
+      expect(cameraRollLine(status, testL10n), contains("still being indexed"));
     });
 
     test('comes back by itself when the index is done', () async {
@@ -168,7 +173,7 @@ void main() {
       expect(summary.stored, 0);
       expect(summary.present, 1);
       expect(summary.presentIn, ["2020/Trip/IMG_1.jpg"]);
-      expect(summary.message, contains("2020/Trip/IMG_1.jpg"));
+      expect(summary.messageOf(testL10n), contains("2020/Trip/IMG_1.jpg"));
     });
 
     test('says nothing of the kind when it is in the album itself', () async {
@@ -186,7 +191,7 @@ void main() {
 
       expect(summary.present, 1);
       expect(summary.presentIn, isEmpty);
-      expect(summary.message, isNot(contains("Mediathek")));
+      expect(summary.messageOf(testL10n), isNot(contains("Already in the library")));
     });
 
     test('the sync names where it is, once the run is over', () async {
@@ -201,8 +206,8 @@ void main() {
       var status = harness.sync.status;
       expect(status.lastPresent, 1);
       expect(status.lastPresentIn, ["2020/Trip/a.jpg"]);
-      expect(status.line, contains("1 already there"));
-      expect(status.line, contains("Already in the library: 2020/Trip/a.jpg."));
+      expect(cameraRollLine(status, testL10n), contains("1 already there"));
+      expect(cameraRollLine(status, testL10n), contains("Already in the library: 2020/Trip/a.jpg."));
     });
   });
 

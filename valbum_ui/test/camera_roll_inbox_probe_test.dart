@@ -117,7 +117,7 @@ void main() {
 
     expect(server.creations, isEmpty);
     expect(server.uploads, isEmpty);
-    expect(harness.sync.status.message, guestNoSpaceNotice);
+    expect(harness.sync.status.notice, guestNoSpaceNotice);
     expect(harness.sync.config.inbox, isEmpty, reason: "no album was invented");
   });
 

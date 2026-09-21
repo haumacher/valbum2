@@ -11,6 +11,7 @@ import 'package:valbum_ui/upload_progress.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The SHA-256 of the ASCII bytes "abc", the digest of the standard test
 /// vector.
@@ -288,12 +289,12 @@ void main() {
 
     test('says both counts', () {
       expect(
-        const UploadSummary(stored: 3, present: 2).message,
-        "3 hochgeladen, 2 bereits vorhanden.",
+        const UploadSummary(stored: 3, present: 2).messageOf(testL10n),
+        "3 uploaded, 2 already present.",
       );
       expect(
-        const UploadSummary(stored: 0, present: 0).message,
-        "0 hochgeladen, 0 bereits vorhanden.",
+        const UploadSummary(stored: 0, present: 0).messageOf(testL10n),
+        "0 uploaded, 0 already present.",
       );
     });
   });
@@ -335,7 +336,7 @@ void main() {
       expect(uploaded, hasLength(1));
       expect(uploaded.single, contains('filename="b.jpg"'));
       expect(uploaded.single, isNot(contains('filename="a.jpg"')));
-      expect(find.text("1 hochgeladen, 1 bereits vorhanden."), findsOneWidget);
+      expect(find.text("1 uploaded, 1 already present."), findsOneWidget);
     });
 
     testWidgets('closes the upload dialog when the server has answered',
@@ -373,7 +374,7 @@ void main() {
       });
 
       expect(find.byKey(uploadProgressDialogKey), findsNothing);
-      expect(find.text("2 hochgeladen, 0 bereits vorhanden."), findsOneWidget);
+      expect(find.text("2 uploaded, 0 already present."), findsOneWidget);
     });
 
     testWidgets('shows the reason of a refused upload',

@@ -12,6 +12,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 const String dataUrl = "http://server/valbum/data";
 
@@ -162,7 +163,7 @@ void main() {
         // reason is on the screen.
         expect(find.text("Top level"), findsOneWidget);
         expect(find.byKey(const Key("picker-needs-album")), findsOneWidget);
-        expect(find.text(imagesLiveInAlbums), findsOneWidget);
+        expect(find.text(testL10n.imagesLiveInAlbums), findsOneWidget);
         expect(confirmEnabled(tester), isFalse);
         // The label stays honest either way.
         expect(find.text("Move 2 images to the top level"), findsOneWidget);
@@ -197,7 +198,7 @@ void main() {
 
         await enterFolder(tester, datedAlbumName);
         expect(find.byKey(const Key("picker-leaf")), findsOneWidget);
-        expect(find.text(albumHoldsNoFolders), findsOneWidget);
+        expect(find.text(testL10n.albumHoldsNoFolders), findsOneWidget);
         expect(confirmEnabled(tester), isFalse);
       });
 
@@ -269,7 +270,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField).first, title);
       await tester.pumpAndSettle();
-      await tester.tap(find.text("Anlegen"));
+      await tester.tap(find.text(testL10n.create));
       await tester.pumpAndSettle();
     }
 
@@ -292,7 +293,7 @@ void main() {
 
         await tester.enterText(find.byType(TextFormField).first, "Ausflug");
         await tester.pumpAndSettle();
-        await tester.tap(find.text("Anlegen"));
+        await tester.tap(find.text(testL10n.create));
         await tester.pumpAndSettle();
       });
 

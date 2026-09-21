@@ -21,6 +21,7 @@ import 'camera_roll_view.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'image_properties.dart';
+import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
 import 'move_view.dart';
 import 'name_date.dart';
@@ -41,21 +42,29 @@ import 'video_view.dart';
 /// that clearance (`?viewAs=members`, `?viewAs=public`), so that the author
 /// can see what the family, or a share link, will be shown.
 enum ViewAs {
-  owner("Yourself", "yourself", Icons.edit),
-  members("Members", "members", Icons.group),
-  public("Public", "public", Icons.public);
-
-  /// What the app calls this view, as the menu entry choosing it reads.
-  final String label;
-
-  /// The same view named in the line that says which one is on the screen:
-  /// "View as — yourself", see [AlbumContentState.albumMenu] (issue #100).
-  final String state;
+  owner(Icons.edit),
+  members(Icons.group),
+  public(Icons.public);
 
   /// The icon the app shows this view by.
   final IconData icon;
 
-  const ViewAs(this.label, this.state, this.icon);
+  const ViewAs(this.icon);
+
+  /// What the app calls this view, as the menu entry choosing it reads.
+  String label(AppLocalizations l10n) => switch (this) {
+        ViewAs.owner => l10n.viewAsYourself,
+        ViewAs.members => l10n.viewAsMembers,
+        ViewAs.public => l10n.viewAsPublic,
+      };
+
+  /// The same view named in the line that says which one is on the screen:
+  /// "View as — yourself", see [AlbumContentState.albumMenu] (issue #100).
+  String state(AppLocalizations l10n) => switch (this) {
+        ViewAs.owner => l10n.viewAsStateYourself,
+        ViewAs.members => l10n.viewAsStateMembers,
+        ViewAs.public => l10n.viewAsStatePublic,
+      };
 
   /// The value of the `viewAs` request parameter, `null` for the [owner],
   /// whose request carries none.
@@ -205,7 +214,11 @@ class AlbumContentState extends State<AlbumContent>
 
   /// The line saying that this album belongs to somebody else, `null` while
   /// the caller is its owner.
-  String? get sharedLine => sharingNotice(widget.albumState.path, rights);
+  String? get sharedLine =>
+      sharingNotice(_l10n, widget.albumState.path, rights);
+
+  /// The words this view reads in.
+  AppLocalizations get _l10n => AppLocalizations.of(context)!;
 
   /// The share link this album is being looked at through, `null` in an
   /// ordinary session, see issue #51.
@@ -616,8 +629,8 @@ class AlbumContentState extends State<AlbumContent>
     var text = await showDialog<String>(
       context: context,
       builder: (context) => TextInputDialog(
-        title: "Überschrift bearbeiten",
-        label: "Überschrift",
+        title: _l10n.editHeadingTitle,
+        label: _l10n.headingLabel,
         text: heading.text,
       ),
     );
@@ -643,7 +656,7 @@ class AlbumContentState extends State<AlbumContent>
   /// for a write that changes nothing is worse still.
   void sortByDate() {
     if (!sortSectionsByDate(widget.album)) {
-      showMessage("Already in order");
+      showMessage(_l10n.alreadyInOrder);
       return;
     }
     setState(markDirty);
@@ -666,7 +679,7 @@ class AlbumContentState extends State<AlbumContent>
         if (!selection.contains(part)) part,
     ];
     if (added.isEmpty) {
-      showMessage("No other image from this camera");
+      showMessage(_l10n.noOtherImageFromCamera);
       return;
     }
     setState(() {
@@ -689,7 +702,7 @@ class AlbumContentState extends State<AlbumContent>
     var images = selectedImages(widget.album, selection);
     var reference = referenceImage(widget.album, selection, invokedOn);
     if (reference == null) {
-      showMessage("Nothing to adjust");
+      showMessage(_l10n.nothingToAdjust);
       return;
     }
 
@@ -711,7 +724,7 @@ class AlbumContentState extends State<AlbumContent>
         var offset = offsetFor(reference, corrected);
         if (offset == null ||
             !adjustRecordingTime(widget.album, selection, offset)) {
-          showMessage("Nothing to adjust");
+          showMessage(_l10n.nothingToAdjust);
           return;
         }
         keepAdjusted(images);
@@ -745,7 +758,7 @@ class AlbumContentState extends State<AlbumContent>
       changed = adjustRecordingTime(widget.album, one, offset) || changed;
     }
     if (!changed) {
-      showMessage("Nothing to adjust");
+      showMessage(_l10n.nothingToAdjust);
       return;
     }
     keepAdjusted(images);
@@ -796,7 +809,7 @@ class AlbumContentState extends State<AlbumContent>
     } catch (error) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text("Speichern fehlgeschlagen: $error"),
+          content: Text(_l10n.saveFailed("$error")),
           backgroundColor: Colors.red.shade700,
           duration: const Duration(seconds: 8),
         ),
@@ -869,21 +882,18 @@ class AlbumContentState extends State<AlbumContent>
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("discard-dialog"),
-        title: const Text("Discard the changes to this album?"),
-        content: const Text(
-          "The changes made here have not been saved. Discarding them shows "
-          "the album again as the server has it.",
-        ),
+        title: Text(_l10n.discardChangesTitle),
+        content: Text(_l10n.discardChangesMessage),
         actions: [
           TextButton(
             key: const Key("keep-editing"),
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Keep editing"),
+            child: Text(_l10n.keepEditing),
           ),
           ElevatedButton(
             key: const Key("discard-changes"),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text("Discard"),
+            child: Text(_l10n.discard),
           ),
         ],
       ),
@@ -934,26 +944,23 @@ class AlbumContentState extends State<AlbumContent>
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("leave-dialog"),
-        title: const Text("Save the changes to this album?"),
-        content: const Text(
-          "Leaving the album ends the edit. Unsaved changes are lost unless "
-          "they are saved now.",
-        ),
+        title: Text(_l10n.saveChangesTitle),
+        content: Text(_l10n.saveChangesMessage),
         actions: [
           TextButton(
             key: const Key("stay"),
             onPressed: () => Navigator.of(context).pop(LeaveEdit.stay),
-            child: const Text("Stay"),
+            child: Text(_l10n.stay),
           ),
           TextButton(
             key: const Key("discard-and-leave"),
             onPressed: () => Navigator.of(context).pop(LeaveEdit.discard),
-            child: const Text("Discard"),
+            child: Text(_l10n.discard),
           ),
           ElevatedButton(
             key: const Key("save-and-leave"),
             onPressed: () => Navigator.of(context).pop(LeaveEdit.save),
-            child: const Text("Save"),
+            child: Text(_l10n.save),
           ),
         ],
       ),
@@ -1010,7 +1017,7 @@ class AlbumContentState extends State<AlbumContent>
     // The same rule the move of a selection follows: the album is fetched
     // again afterwards, which would throw unsaved edits away.
     if (dirty) {
-      showMessage("Save or discard your changes first");
+      showMessage(_l10n.saveOrDiscardFirst);
       return;
     }
     var name = path.last;
@@ -1065,7 +1072,7 @@ class AlbumContentState extends State<AlbumContent>
     // The same rule the move of this album follows: the view is left behind
     // afterwards, which would throw unsaved edits away.
     if (dirty) {
-      showMessage("Save or discard your changes first");
+      showMessage(_l10n.saveOrDiscardFirst);
       return;
     }
     var name = path.last;
@@ -1105,7 +1112,7 @@ class AlbumContentState extends State<AlbumContent>
   /// "view as" preview follows, see [setViewAs].
   Future<void> moveSelection() async {
     if (dirty) {
-      showMessage("Save or discard your changes first");
+      showMessage(_l10n.saveOrDiscardFirst);
       return;
     }
     var selected = [
@@ -1114,7 +1121,7 @@ class AlbumContentState extends State<AlbumContent>
     ];
     var names = [for (var part in selected) part.thumbnailName];
     if (names.isEmpty) {
-      showMessage("A heading cannot be moved.");
+      showMessage(_l10n.headingCannotMove);
       return;
     }
 
@@ -1310,14 +1317,14 @@ class AlbumContentState extends State<AlbumContent>
                 if (editMode)
                   IconButton(
                     onPressed: () => save(),
-                    tooltip: "Save",
+                    tooltip: _l10n.save,
                     icon: const Icon(Icons.save),
                   ),
                 if (editMode)
                   IconButton(
                     key: const Key("edit-cancel"),
                     onPressed: cancelEdit,
-                    tooltip: "Cancel",
+                    tooltip: _l10n.cancel,
                     icon: const Icon(Icons.close),
                   ),
                 if (editing) ...albumMenu(context),
@@ -1345,7 +1352,7 @@ class AlbumContentState extends State<AlbumContent>
           ? null
           : FloatingActionButton(
               onPressed: widget.albumState.uploadImages,
-              tooltip: 'Upload',
+              tooltip: _l10n.upload,
               child: const Icon(Icons.cloud_upload),
             ),
     );
@@ -1369,7 +1376,7 @@ class AlbumContentState extends State<AlbumContent>
         if (widget.albumState.path.isNotEmpty)
           IconButton(
             icon: const Icon(Icons.arrow_back),
-            tooltip: "Up",
+            tooltip: _l10n.up,
             onPressed: widget.albumState.showParent,
           ),
       ];
@@ -1398,7 +1405,7 @@ class AlbumContentState extends State<AlbumContent>
           // filter below uses.
           if (session.editMode) ...viewAsEntries(),
           if (_mayShare)
-            menuItem(Icons.link, "Share link…", (_) => shareAlbumLink()),
+            menuItem(Icons.link, _l10n.shareLinkAction, (_) => shareAlbumLink()),
           // What is done *with* this album, offered in the view mode as well
           // as in the edit mode (issue #121): the properties were a toolbar
           // icon of the edit mode alone, so retitling an album meant entering
@@ -1407,7 +1414,7 @@ class AlbumContentState extends State<AlbumContent>
             keyedMenuItem(
               const Key("album-properties"),
               Icons.tune,
-              "Album properties",
+              _l10n.albumProperties,
               (_) => editProperties(),
             ),
           // One entry, two meanings, told apart by what there is to move: the
@@ -1417,14 +1424,14 @@ class AlbumContentState extends State<AlbumContent>
             keyedMenuItem(
               const Key("move-to"),
               Icons.drive_file_move,
-              "Move ${ImageSubject(selection.length).asked} to…",
+              _l10n.moveSubjectTo(ImageSubject(selection.length).asked(_l10n)),
               (_) => moveSelection(),
             )
           else if (mayMoveAlbum)
             keyedMenuItem(
               const Key("move-to"),
               Icons.drive_file_move,
-              "Move album to…",
+              _l10n.moveAlbumTo,
               (_) => moveAlbum(),
             ),
           // The delete the listing above offers on this album's own tile,
@@ -1435,40 +1442,40 @@ class AlbumContentState extends State<AlbumContent>
             keyedMenuItem(
               const Key("delete-album"),
               Icons.delete_outline,
-              "Delete album…",
+              _l10n.deleteAlbumAction,
               (_) => deleteAlbum(),
             ),
           // An edit like every other one: offered inside the edit session, so
           // that the new order is reviewed and saved (or discarded) the way a
           // move or a heading is, see issue #76.
           if (editMode)
-            menuItem(Icons.sort, "Sort by date", (_) => sortByDate()),
+            menuItem(Icons.sort, _l10n.sortByDate, (_) => sortByDate()),
           menuLabel(
-            "Mindestbewertung",
+            _l10n.minRatingLabel,
             "≥ $minRating",
             valueKey: const Key("minRating"),
           ),
           menuItem(
             Icons.add_circle_outline,
-            "Mehr Bilder zeigen",
+            _l10n.showMoreImages,
             (_) => showMore(),
             enabled: minRating > minMinRating,
           ),
           menuItem(
             Icons.remove_circle_outline,
-            "Weniger Bilder zeigen",
+            _l10n.showFewerImages,
             (_) => showLess(),
             enabled: minRating < maxMinRating,
           ),
           const PopupMenuDivider(),
-          menuItem(Icons.update, "Reload", (_) => reloadShown()),
+          menuItem(Icons.update, _l10n.reload, (_) => reloadShown()),
           // Whoever may change this album may have the photos out of it that
           // the library already holds somewhere else, see issue #118.
           if (mayEditAlbum)
             keyedMenuItem(
               const Key("find-duplicates"),
               Icons.copy_all,
-              "Find duplicates...",
+              _l10n.findDuplicatesAction,
               (_) => findDuplicates(),
             ),
           // Only the administrator, who owns the server's own files: the
@@ -1477,12 +1484,12 @@ class AlbumContentState extends State<AlbumContent>
             keyedMenuItem(
               const Key("refresh-previews"),
               Icons.cleaning_services,
-              "Refresh previews",
+              _l10n.refreshPreviews,
               (_) => refreshPreviews(),
             ),
           // A visitor of a link has no server of their own to configure.
           if (share == null)
-            menuItem(Icons.settings, "Server...", openServerSettings),
+            menuItem(Icons.settings, _l10n.serverMenuEntry, openServerSettings),
         ]),
       ];
 
@@ -1496,15 +1503,15 @@ class AlbumContentState extends State<AlbumContent>
   /// one: a label naming the view on the screen, the three choices under it.
   List<PopupMenuEntry<void Function(BuildContext)>> viewAsEntries() => [
         menuLabel(
-          "View as",
-          viewAs.state,
+          _l10n.viewAsLabel,
+          viewAs.state(_l10n),
           valueKey: const Key("view-as-state"),
         ),
         for (var value in ViewAs.values)
           keyedMenuItem(
             Key("view-as-${value.name}"),
             value.icon,
-            value.label,
+            value.label(_l10n),
             (_) => setViewAs(value),
           ),
         const PopupMenuDivider(),
@@ -1518,7 +1525,7 @@ class AlbumContentState extends State<AlbumContent>
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
-              previewMessage(_viewAs),
+              previewMessage(_l10n, _viewAs),
               key: const Key("view-as-banner"),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white),
@@ -1528,9 +1535,10 @@ class AlbumContentState extends State<AlbumContent>
       );
 
   /// What the banner over a preview says.
-  static String previewMessage(ViewAs view) => switch (view) {
-        ViewAs.members => "Viewing as members - this is what members see",
-        ViewAs.public => "Viewing as public - this is what the public sees",
+  static String previewMessage(AppLocalizations l10n, ViewAs view) =>
+      switch (view) {
+        ViewAs.members => l10n.previewAsMembers,
+        ViewAs.public => l10n.previewAsPublic,
         ViewAs.owner => "",
       };
 
@@ -1550,7 +1558,7 @@ class AlbumContentState extends State<AlbumContent>
       return;
     }
     if (dirty) {
-      showMessage("Save or discard your changes first");
+      showMessage(_l10n.saveOrDiscardFirst);
       return;
     }
     if (target == ViewAs.owner) {
@@ -1585,7 +1593,7 @@ class AlbumContentState extends State<AlbumContent>
       return;
     }
     if (answer is! AlbumInfo) {
-      showMessage("The server did not answer with an album.");
+      showMessage(_l10n.notAnAlbumAnswer);
       return;
     }
     AlbumInitializer().init(answer);
@@ -1636,21 +1644,17 @@ class AlbumContentState extends State<AlbumContent>
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("refresh-previews-dialog"),
-        title: const Text("Refresh previews"),
-        content: const Text(
-          "The thumbnails and video renditions of this album are thrown away "
-          "and made anew when they are next shown. The photos themselves are "
-          "not touched.",
-        ),
+        title: Text(_l10n.refreshPreviews),
+        content: Text(_l10n.refreshPreviewsMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
+            child: Text(_l10n.cancel),
           ),
           ElevatedButton(
             key: const Key("refresh-previews-confirm"),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text("Refresh"),
+            child: Text(_l10n.refresh),
           ),
         ],
       ),
@@ -1675,10 +1679,7 @@ class AlbumContentState extends State<AlbumContent>
 
     // Said before the album is thrown away and fetched again, so that the
     // count survives the rebuild that follows it.
-    showMessage(
-      "${answer.removed} cached files thrown away; "
-      "the previews are made anew.",
-    );
+    showMessage(_l10n.previewsRefreshed(answer.removed));
     forgetDecodedThumbnails();
     // The album itself is asked for again: the server may now answer other
     // dimensions for a part whose preview it regenerates.
@@ -1698,21 +1699,17 @@ class AlbumContentState extends State<AlbumContent>
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("find-duplicates-dialog"),
-        title: const Text("Find duplicates"),
-        content: const Text(
-          "Every photo of this album that the library already holds somewhere "
-          "else is taken out of the album and kept aside in the library's own "
-          "folder. Nothing is deleted, and the other copy stays where it is.",
-        ),
+        title: Text(_l10n.findDuplicatesTitle),
+        content: Text(_l10n.findDuplicatesMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
+            child: Text(_l10n.cancel),
           ),
           ElevatedButton(
             key: const Key("find-duplicates-confirm"),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text("Find duplicates"),
+            child: Text(_l10n.findDuplicatesTitle),
           ),
         ],
       ),
@@ -1737,9 +1734,8 @@ class AlbumContentState extends State<AlbumContent>
 
     var count = answer.outcomes.length;
     showMessage(count == 0
-        ? "No photo of this album is anywhere else in the library."
-        : "$count ${count == 1 ? "photo was" : "photos were"} set aside; "
-            "the copies that stay are elsewhere in the library.");
+        ? _l10n.noDuplicatesFound
+        : _l10n.duplicatesSetAside(count));
     if (count > 0) {
       widget.albumState.navigator.delegate.forget(widget.albumState.path);
       widget.albumState.reload();
@@ -1968,8 +1964,7 @@ class AlbumContentState extends State<AlbumContent>
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
             child: Text(
-              "No image is rated $minRating or better - "
-              "press + (or the + button) to show more.",
+              AppLocalizations.of(context)!.ratingFilterHidesAll(minRating),
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 16, color: Colors.white70),
             ),
@@ -2138,7 +2133,7 @@ class AlbumContentState extends State<AlbumContent>
                 icon: const Icon(Icons.edit),
                 iconSize: 20,
                 color: Colors.white,
-                tooltip: "Überschrift bearbeiten",
+                tooltip: _l10n.editHeadingTitle,
                 onPressed: () => editHeading(heading),
               ),
             if (editMode)
@@ -2146,7 +2141,7 @@ class AlbumContentState extends State<AlbumContent>
                 icon: const Icon(Icons.delete_outline),
                 iconSize: 20,
                 color: Colors.white,
-                tooltip: "Überschrift löschen",
+                tooltip: _l10n.deleteHeadingTooltip,
                 onPressed: () => deleteHeading(heading),
               ),
           ],
@@ -2464,7 +2459,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
     }
     return IgnorePointer(
       child: Tooltip(
-        message: privacyName(level),
+        message: privacyName(AppLocalizations.of(state.context)!, level),
         child: Icon(
           icon,
           key: const Key("privacy-marker"),
@@ -2514,6 +2509,9 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   /// Whether the tile shows its toolbars.
   bool get active => selected || _hovered;
 
+  /// The words this tile reads in.
+  AppLocalizations get _l10n => AppLocalizations.of(context)!;
+
   @override
   Widget build(BuildContext context) {
     var width = widget.builder.width;
@@ -2546,13 +2544,13 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
                 ),
               ),
               if (isIndexPicture(album.widget.album, image))
-                const Positioned(
+                Positioned(
                   right: 4,
                   bottom: 4,
                   child: IgnorePointer(
                     child: Tooltip(
-                      message: "Albumbild",
-                      child: Icon(
+                      message: _l10n.albumPictureTooltip,
+                      child: const Icon(
                         Icons.photo_album,
                         key: Key("album-index-picture"),
                         color: Colors.amberAccent,
@@ -2587,13 +2585,13 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   Widget topBar() => toolbar([
         toolButton(
           selected ? Icons.check_box : Icons.check_box_outline_blank,
-          "Auswählen",
+          _l10n.select,
           () => album.toggleSelection(part),
           active: selected,
         ),
-        toolButton(Icons.rotate_right, "Nach rechts drehen", rotateRight),
-        toolButton(Icons.swap_vert, "Vertikal spiegeln", flipVertically),
-        toolButton(Icons.rotate_left, "Nach links drehen", rotateLeft),
+        toolButton(Icons.rotate_right, _l10n.turnRight, rotateRight),
+        toolButton(Icons.swap_vert, _l10n.flipVertically, flipVertically),
+        toolButton(Icons.rotate_left, _l10n.turnLeft, rotateLeft),
       ]);
 
   /// The tools acting on the selection.
@@ -2604,20 +2602,20 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     var self = part;
     return toolbar([
       if (multiSelected)
-        toolButton(Icons.join_left, "Gruppieren", createGroup)
+        toolButton(Icons.join_left, _l10n.group, createGroup)
       else ...[
-        toolButton(Icons.title, "Überschrift einfügen", createHeading),
+        toolButton(Icons.title, _l10n.insertHeading, createHeading),
         if (self is ImageGroup) ...[
           toolButton(
             Icons.call_split,
-            "Gruppierung aufheben",
+            _l10n.ungroupAction,
             () => album.ungroupSelected(self),
           ),
           // Into the alternatives to pick the representative: the edit mode
           // stays on for the way back, see [AlbumEditSession].
           toolButton(
             Icons.collections,
-            "Gruppenbild wählen",
+            _l10n.chooseGroupPicture,
             () => album.widget.albumState.showGroupView(self),
           ),
         ],
@@ -2629,22 +2627,22 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
       if (image.camera.isNotEmpty)
         toolButton(
           Icons.photo_camera,
-          "Select all from this camera",
+          _l10n.selectAllFromCamera,
           () => album.selectSameCamera(image),
         ),
       // A camera whose clock is off files its photos in the wrong place; the
       // correction acts on the whole selection, see issue #77.
       toolButton(
         Icons.more_time,
-        "Adjust recording time…",
+        _l10n.adjustRecordingTimeAction,
         () => album.adjustRecordingTimeOf(part),
       ),
-      toolButton(Icons.notes, "Image properties", editImageProperties),
+      toolButton(Icons.notes, _l10n.imageProperties, editImageProperties),
       // The image standing for the album in the listing above, chosen where
       // the images are compared: the representative of a group stands for it.
       toolButton(
         Icons.photo_album,
-        "Als Albumbild verwenden",
+        _l10n.useAsAlbumPicture,
         setIndexPicture,
         active: isIndexPicture(album.widget.album, image),
       ),
@@ -2653,10 +2651,10 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
 
   /// The rating chooser and, beside it, the privacy level.
   Widget bottomBar() => toolbar([
-        ratingButton(Icons.star, "Sehr gut", 2),
-        ratingButton(Icons.add, "Gut", 1),
-        ratingButton(Icons.remove, "Schlecht", -1),
-        ratingButton(Icons.delete, "Papierkorb", -2),
+        ratingButton(Icons.star, _l10n.ratingVeryGood, 2),
+        ratingButton(Icons.add, _l10n.ratingGood, 1),
+        ratingButton(Icons.remove, _l10n.ratingPoor, -1),
+        ratingButton(Icons.delete, _l10n.ratingTrash, -2),
         privacyButton(),
       ]);
 
@@ -2673,8 +2671,12 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     var next = nextPrivacy(level);
     return toolButton(
       privacyControlIcon(level),
-      "Privacy: ${privacyName(level)} "
-      "(tap for ${privacyName(next)})",
+      // The generated signature names the next level first, see
+      // `app_localizations.dart`.
+      _l10n.privacyControlTooltip(
+        privacyName(_l10n, next),
+        privacyName(_l10n, level),
+      ),
       () => setPrivacy(next),
       active: level != privacyPublic,
       key: const Key("privacy-control"),
@@ -2755,9 +2757,9 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     var self = part;
     if (self is! AbstractImage || !album.groupSelected(self)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Zum Gruppieren mindestens zwei Bilder auswählen"),
-          duration: Duration(seconds: 4),
+        SnackBar(
+          content: Text(_l10n.groupNeedsTwo),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
@@ -2771,9 +2773,9 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   Future<void> createHeading() async {
     var text = await showDialog<String>(
       context: context,
-      builder: (context) => const TextInputDialog(
-        title: "Überschrift einfügen",
-        label: "Überschrift",
+      builder: (context) => TextInputDialog(
+        title: _l10n.insertHeading,
+        label: _l10n.headingLabel,
         text: "",
       ),
     );
@@ -3189,9 +3191,9 @@ class ReorderablePartState extends State<ReorderablePart> {
         // No affinity at all: the handle exists to be pulled in *any*
         // direction, see [ReorderablePart]. It is a small target of its own,
         // so the scroll view loses nothing by it.
-        child: const Tooltip(
-          message: "Drag to reorder",
-          child: SizedBox(
+        child: Tooltip(
+          message: AppLocalizations.of(context)!.dragToReorder,
+          child: const SizedBox(
             key: Key("drag-handle"),
             width: dragHandleSize,
             height: dragHandleSize,
@@ -3226,7 +3228,7 @@ class ReorderablePartState extends State<ReorderablePart> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Text(
-                "${dragged.parts.length} Teile",
+                AppLocalizations.of(context)!.partCount(dragged.parts.length),
                 key: const Key("drag-feedback-count"),
                 style: const TextStyle(
                   fontSize: 28,
@@ -3360,13 +3362,13 @@ class TextInputDialogState extends State<TextInputDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text("Abbrechen"),
+                    child: Text(AppLocalizations.of(context)!.cancel),
                   ),
                   Padding(
                     padding: const EdgeInsets.only(left: 8),
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
-                      label: const Text("Übernehmen"),
+                      label: Text(AppLocalizations.of(context)!.apply),
                       onPressed: () =>
                           Navigator.of(context).pop(controller.text),
                     ),
@@ -3512,18 +3514,18 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
   Duration? get offset => offsetFor(widget.reference, corrected);
 
   /// What the offset line says.
-  String get offsetText {
+  String offsetText(AppLocalizations l10n) {
     var value = offset;
     if (value == null) {
-      return "Not a time (yyyy-MM-dd HH:mm:ss)";
+      return l10n.notATime;
     }
-    return value == Duration.zero ? "Nothing to adjust" : offsetInWords(value);
+    return value == Duration.zero
+        ? l10n.nothingToAdjust
+        : offsetInWords(l10n, value);
   }
 
   /// What the count line says.
-  String get countText => widget.count == 1
-      ? "Applies to 1 image"
-      : "Applies to ${widget.count} images";
+  String countText(AppLocalizations l10n) => l10n.appliesToImages(widget.count);
 
   /// The images whose file name says a recording time other than the one they
   /// carry — what the suggestion of issue #102 would repair.
@@ -3539,12 +3541,12 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
   /// each of them gets a *different* time and no single one could be shown —
   /// and because the ones whose name says nothing stay as they are, which is
   /// what a count that is smaller than the selection tells.
-  String get nameDateText {
+  String nameDateText(AppLocalizations l10n) {
     if (nameDated.length == 1) {
       var named = differingNameDate(nameDated.first)!;
-      return "Use the time in the file name: ${timeFormat.format(named)}";
+      return l10n.useNameDateOne(timeFormat.format(named));
     }
-    return "Use the time in the file name (${nameDated.length} images)";
+    return l10n.useNameDateMany(nameDated.length);
   }
 
   /// Fills the field from the date and time pickers.
@@ -3578,6 +3580,7 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var small = Theme.of(context).textTheme.bodySmall;
     return Dialog(
       child: Padding(
@@ -3592,7 +3595,7 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
               child: Semantics(
                 namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
                 container: true,
-                child: const Text("Adjust recording time"),
+                child: Text(l10n.adjustRecordingTimeTitle),
               ),
             ),
             Padding(
@@ -3609,14 +3612,14 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
                     key: const Key("adjust-time"),
                     controller: controller,
                     autofocus: true,
-                    decoration: const InputDecoration(
-                      label: Text("Correct time"),
+                    decoration: InputDecoration(
+                      label: Text(l10n.correctTime),
                     ),
                   ),
                 ),
                 IconButton(
                   key: const Key("adjust-pick"),
-                  tooltip: "Pick date and time",
+                  tooltip: l10n.pickDateAndTime,
                   icon: const Icon(Icons.edit_calendar),
                   onPressed: pickTime,
                 ),
@@ -3624,9 +3627,9 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
             ),
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text(offsetText, key: const Key("adjust-offset")),
+              child: Text(offsetText(l10n), key: const Key("adjust-offset")),
             ),
-            Text(countText, key: const Key("adjust-count")),
+            Text(countText(l10n), key: const Key("adjust-count")),
             // One tap for what the file names already say, offered only where
             // there is something to repair, see issue #102.
             if (nameDated.isNotEmpty)
@@ -3635,7 +3638,7 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
                 child: OutlinedButton.icon(
                   key: const Key("use-name-date"),
                   icon: const Icon(Icons.drive_file_rename_outline),
-                  label: Text(nameDateText),
+                  label: Text(nameDateText(l10n)),
                   onPressed: () =>
                       Navigator.of(context).pop(const UseNameDates()),
                 ),
@@ -3643,8 +3646,7 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: Text(
-                "The original recording time stays in the photo; the album "
-                "keeps its own.",
+                l10n.adjustRecordingTimeHelp,
                 key: const Key("adjust-help"),
                 style: small,
               ),
@@ -3656,13 +3658,13 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text("Abbrechen"),
+                    child: Text(l10n.cancel),
                   ),
                   Padding(
                     padding: const EdgeInsets.only(left: 8),
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
-                      label: const Text("Übernehmen"),
+                      label: Text(l10n.apply),
                       onPressed: corrected == null
                           ? null
                           : () => Navigator.of(context)
@@ -3716,12 +3718,11 @@ class AlbumProperties {
 /// The label names what the tap *does*, which is the only thing that is not
 /// already visible: the dialog of an inbox shows no date and no album picture,
 /// so what the box is ticked for is said by the box itself.
-String albumKindActionLabel(AlbumKind kind) =>
-    kind == AlbumKind.inbox ? "Make this an album" : "Make this an inbox";
+String albumKindActionLabel(AppLocalizations l10n, AlbumKind kind) =>
+    kind == AlbumKind.inbox ? l10n.makeThisAnAlbum : l10n.makeThisAnInbox;
 
 /// What an inbox is, said beside the switch that makes one.
-const String albumKindExplanation =
-    "Photographs waiting to be sorted, shown by the day they were taken.";
+String albumKindExplanation(AppLocalizations l10n) => l10n.inboxExplanation;
 
 /// The size of the crop editor's preview of the index picture.
 const double indexPictureEditorSize = 200;
@@ -3827,6 +3828,7 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     return Dialog(
       child: Padding(
         // Tight, so that the whole dialog still fits a short screen: the
@@ -3844,17 +3846,17 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
               child: Semantics(
                 namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
                 container: true,
-                child: const Text("Albumeigenschaften"),
+                child: Text(l10n.albumProperties),
               ),
             ),
             TextField(
               controller: titleController,
               autofocus: true,
-              decoration: const InputDecoration(label: Text("Titel")),
+              decoration: InputDecoration(label: Text(l10n.titleLabel)),
             ),
             TextField(
               controller: subTitleController,
-              decoration: const InputDecoration(label: Text("Subtitel")),
+              decoration: InputDecoration(label: Text(l10n.subtitleLabel)),
             ),
             if (!isInbox) buildDateRow(context),
             // The kind switch stands where the "Albumbild" label stood: the
@@ -3871,13 +3873,13 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text("Abbrechen"),
+                    child: Text(l10n.cancel),
                   ),
                   Padding(
                     padding: const EdgeInsets.only(left: 8),
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
-                      label: const Text("Übernehmen"),
+                      label: Text(l10n.apply),
                       onPressed: applyPressed,
                     ),
                   ),
@@ -3911,7 +3913,7 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
             // album picture, so the box says what it is ticked for.
             Flexible(
               child: Text(
-                albumKindActionLabel(kind),
+                albumKindActionLabel(AppLocalizations.of(context)!, kind),
                 key: const Key("album-kind-label"),
               ),
             ),
@@ -3931,6 +3933,7 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
   /// folder name or from its photos says so, so that the empty field is not
   /// read as "this album has no date", see issue #48.
   Widget buildDateRow(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var shown = date != 0 ? date : derivedDate;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3939,30 +3942,30 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
           children: [
             Expanded(
               child: Text(
-                shown == 0 ? "Datum: keines" : "Datum: ${formatDate(shown)}",
+                shown == 0 ? l10n.dateNone : l10n.dateIs(formatDate(shown)),
                 key: const Key("album-date"),
               ),
             ),
             IconButton(
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.date_range),
-              tooltip: "Datum wählen",
+              tooltip: l10n.pickDate,
               onPressed: pickDate,
             ),
             IconButton(
               key: const Key("album-date-clear"),
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.clear),
-              tooltip: "Datum entfernen",
+              tooltip: l10n.clearDate,
               // Back to "no explicit date": what the server derives then
               // takes over again.
               onPressed: date == 0 ? null : () => setState(() => date = 0),
             ),
           ],
         ),
-        if (date == 0 && dateSourceText != null)
+        if (date == 0 && dateSourceText(l10n) != null)
           Text(
-            dateSourceText!,
+            dateSourceText(l10n)!,
             key: const Key("album-date-source"),
             style: Theme.of(context).textTheme.bodySmall,
           ),
@@ -3980,9 +3983,9 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
 
   /// Where the date shown comes from while none is set here, `null` when
   /// there is no date at all.
-  String? get dateSourceText => switch (widget.dateSource) {
-        DateSource.folderName => "Aus dem Ordnernamen übernommen.",
-        DateSource.photos => "Aus den Fotos übernommen.",
+  String? dateSourceText(AppLocalizations l10n) => switch (widget.dateSource) {
+        DateSource.folderName => l10n.dateFromFolderName,
+        DateSource.photos => l10n.dateFromPhotos,
         _ => null,
       };
 
@@ -4013,15 +4016,15 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
   /// The square preview of the index picture with the pan and zoom gestures,
   /// and the zoom tools below it; a hint if no picture is chosen.
   Widget buildIndexPictureEditor(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var info = indexPicture;
     var client = widget.client;
     if (info == null || client == null) {
-      return const Padding(
-        padding: EdgeInsets.only(top: 4),
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
         child: Text(
-          "Kein Albumbild gewählt – im Bearbeitungsmodus auf einer Kachel "
-          "als Albumbild wählen.",
-          key: Key("index-picture-hint"),
+          l10n.noAlbumPictureHint,
+          key: const Key("index-picture-hint"),
         ),
       );
     }
@@ -4054,21 +4057,21 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
           children: [
             IconButton(
               icon: const Icon(Icons.zoom_in),
-              tooltip: "Vergrößern",
+              tooltip: l10n.zoomIn,
               onPressed: info.scale < maxIndexPictureScale
                   ? () => zoom(indexPictureZoomStep)
                   : null,
             ),
             IconButton(
               icon: const Icon(Icons.zoom_out),
-              tooltip: "Verkleinern",
+              tooltip: l10n.zoomOut,
               onPressed: info.scale > minIndexPictureScale
                   ? () => zoom(1 / indexPictureZoomStep)
                   : null,
             ),
             IconButton(
               icon: const Icon(Icons.crop_free),
-              tooltip: "Ausschnitt zurücksetzen",
+              tooltip: l10n.resetCrop,
               onPressed: widget.indexImage == null ? null : resetCrop,
             ),
           ],

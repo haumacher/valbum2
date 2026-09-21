@@ -297,7 +297,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   /// What a link shows and how long it lives, in one paragraph.
   String _describe(AppLocalizations l10n, ShareLink link) {
     var parts = [
-      _rightsOf(link),
+      _rightsOf(l10n, link),
       link.expires.isEmpty
           ? l10n.linkNeverExpires
           : l10n.expiresOnDay(_day(link.expires)),
@@ -320,14 +320,14 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   ///
   /// The words are `rights.dart`'s own: a right is named there once, for
   /// every screen that shows one.
-  String _rightsOf(ShareLink link) {
+  String _rightsOf(AppLocalizations l10n, ShareLink link) {
     var names = [
       for (var right in allRights)
         if (link.rights.any((held) => held.name == right))
-          rightLabels[right] ?? right,
+          rightLabel(l10n, right),
     ];
     return names.isEmpty
-        ? (rightLabels[rightView] ?? rightView)
+        ? rightLabel(l10n, rightView)
         : names.join(", ");
   }
 
@@ -409,8 +409,8 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
         value: true,
         // Always on: a link that allows nothing would be a link to nothing.
         onChanged: null,
-        title: Text(rightLabels[rightView] ?? rightView),
-        subtitle: Text(rightExplanations[rightView] ?? ""),
+        title: Text(rightLabel(l10n, rightView)),
+        subtitle: Text(rightExplanation(l10n, rightView)),
       ),
       for (var right in const [rightDownload, rightContribute])
         CheckboxListTile(
@@ -427,8 +427,8 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
               if (value ?? false) right,
             };
           }),
-          title: Text(rightLabels[right] ?? right),
-          subtitle: Text(rightExplanations[right] ?? ""),
+          title: Text(rightLabel(l10n, right)),
+          subtitle: Text(rightExplanation(l10n, right)),
         ),
       // Never `edit`: a link is not an account, and the server refuses one
       // that would allow it.

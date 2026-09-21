@@ -17,6 +17,7 @@ import 'package:valbum_ui/main.dart';
 import 'move_test.dart' hide main;
 import 'share_link_test.dart' as share;
 import 'util/fake_image_http.dart';
+import 'util/l10n.dart';
 
 /// The listing of the folder `F`, which holds the album `A` and has no choice
 /// of its own yet.
@@ -111,7 +112,7 @@ void main() {
       expect(find.byKey(const Key("use-as-folder-picture")), findsOneWidget);
       // Nothing is chosen yet, so there is nothing to take away.
       expect(find.byKey(const Key("clear-folder-picture")), findsNothing);
-      await tester.tap(find.text(useAsFolderPicture));
+      await tester.tap(find.text(testL10n.useAsFolderPicture));
       await tester.pumpAndSettle();
 
       var put = requests.singleWhere((r) => r.method == "PUT");
@@ -146,7 +147,7 @@ void main() {
 
       await longPressTileNamed(tester, "B");
       expect(find.byKey(const Key("clear-folder-picture")), findsOneWidget);
-      await tester.tap(find.text(useNoFolderPicture));
+      await tester.tap(find.text(testL10n.useNoFolderPicture));
       await tester.pumpAndSettle();
 
       var put = requests.singleWhere((r) => r.method == "PUT");
@@ -169,7 +170,7 @@ void main() {
       );
 
       await longPressTileNamed(tester, "A");
-      await tester.tap(find.text(useAsFolderPicture));
+      await tester.tap(find.text(testL10n.useAsFolderPicture));
       await tester.pumpAndSettle();
 
       expect(find.text("Not your folder."), findsOneWidget);

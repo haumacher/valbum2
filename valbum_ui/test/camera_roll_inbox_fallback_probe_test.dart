@@ -86,7 +86,7 @@ void main() {
     // survives a week without a network.
     expect(requests, isEmpty);
     expect(harness.sync.config.inbox, storedInbox);
-    expect(harness.sync.status.inboxNotice, isNull);
+    expect(harness.sync.status.inboxGoneUsing, isNull);
   });
 
   test('fires on a later batch too, the rest landing in the fallback',
@@ -124,7 +124,7 @@ void main() {
 
     expect(harness.sync.config.inbox, ["Inbox"]);
     expect(harness.sync.status.phase, CameraRollPhase.idle);
-    expect(harness.sync.status.inboxNotice, inboxGoneNotice("Inbox"));
+    expect(harness.sync.status.inboxGoneUsing, "Inbox");
   });
 
   test('refuses to adopt an "Inbox" that is a folder of folders', () async {
@@ -148,7 +148,7 @@ void main() {
 
     expect(harness.sync.config.inbox, storedInbox);
     expect(harness.sync.status.message, "'Inbox' already exists.");
-    expect(harness.sync.status.inboxNotice, isNull);
+    expect(harness.sync.status.inboxGoneUsing, isNull);
   });
 
   test('keeps the sentence when the run then defers for the index', () async {
@@ -184,7 +184,7 @@ void main() {
     await harness.sync.syncNow();
 
     expect(harness.sync.status.phase, CameraRollPhase.idle);
-    expect(harness.sync.status.inboxNotice, inboxGoneNotice("Inbox"));
+    expect(harness.sync.status.inboxGoneUsing, "Inbox");
   });
 
   test('replaces the inbox once, however many albums are watched', () async {
@@ -219,6 +219,6 @@ void main() {
 
     expect(creations, 1);
     expect(harness.sync.status.phase, CameraRollPhase.idle);
-    expect(harness.sync.status.inboxNotice, inboxGoneNotice("Inbox"));
+    expect(harness.sync.status.inboxGoneUsing, "Inbox");
   });
 }

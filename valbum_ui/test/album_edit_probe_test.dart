@@ -7,6 +7,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 // Probe review for issue #16: the save must carry the whole album, in order,
 // including parts the editor cannot touch yet, and survive awkward text.
@@ -34,7 +35,7 @@ void main() {
       var fields = find.byType(TextField);
       await tester.enterText(fields.at(0), 'Grüße "aus" Karlsruhe \\ 2002');
       await tester.enterText(fields.at(1), '');
-      await tester.tap(find.text('Übernehmen'));
+      await tester.tap(find.text(testL10n.apply));
       await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.save));
       await tester.pumpAndSettle();

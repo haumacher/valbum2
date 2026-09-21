@@ -11,6 +11,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fake_timers.dart';
+import 'package:valbum_ui/notices.dart';
 
 const String serverDataUrl = "http://server/valbum/data";
 const List<String> inbox = ["Inbox"];
@@ -163,7 +164,7 @@ void main() {
         takenAt: DateTime.utc(2026, 3, 1, 12, 7),
         length: 3,
         openRead: () => Stream<List<int>>.error(
-          StateError("not on this device yet"),
+          const PhotoLibraryException(PhotoNotOnDevice("'a.jpg'")),
         ),
       ),
     ]);
@@ -184,7 +185,7 @@ void main() {
     await sync.syncNow();
 
     expect(sync.status.phase, CameraRollPhase.waiting);
-    expect(sync.status.message, contains("not on this device yet"));
+    expect(sync.status.notice, isA<PhotoNotOnDevice>());
     expect(sync.config.since, isNull,
         reason: "Nothing was accepted, so nothing may be marked as done.");
     expect(timers.pending, [const Duration(seconds: 30)]);

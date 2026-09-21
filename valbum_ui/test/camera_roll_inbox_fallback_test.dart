@@ -151,9 +151,9 @@ void main() {
       expect((await harness.store.loadCameraRollConfig()).inbox, ["Inbox"]);
       // The run succeeded, and it says where the photos went.
       expect(harness.sync.status.phase, CameraRollPhase.idle);
-      expect(harness.sync.status.inboxNotice, inboxGoneNotice("Inbox"));
-      expect(harness.sync.status.line, contains(inboxGoneNotice("Inbox")));
-      expect(harness.sync.status.line, contains("Synced 1 photo"));
+      expect(harness.sync.status.inboxGoneUsing, "Inbox");
+      expect(cameraRollLine(harness.sync.status, testL10n), contains(testL10n.cameraRollInboxGone("Inbox")));
+      expect(cameraRollLine(harness.sync.status, testL10n), contains("Synced 1 photo"));
     });
 
     test('adopts an "Inbox" that is already there', () async {
@@ -172,7 +172,7 @@ void main() {
       expect(harness.sync.config.inbox, ["Inbox"]);
       expect((await harness.store.loadCameraRollConfig()).inbox, ["Inbox"]);
       expect(server.uploadPaths, ["Inbox"]);
-      expect(harness.sync.status.inboxNotice, inboxGoneNotice("Inbox"));
+      expect(harness.sync.status.inboxGoneUsing, "Inbox");
     });
 
     test('leaves the watermarks alone, so nothing is uploaded twice', () async {
@@ -229,7 +229,7 @@ void main() {
       expect(server.uploadPaths, isEmpty);
       expect(harness.sync.status.phase, CameraRollPhase.waiting);
       expect(harness.sync.status.message, contains("There is no album"));
-      expect(harness.sync.status.inboxNotice, isNull);
+      expect(harness.sync.status.inboxGoneUsing, isNull);
     });
 
     test('says the notice until the next successful run', () async {
@@ -237,13 +237,13 @@ void main() {
       var harness = engine(server);
       await harness.sync.load();
       await harness.sync.syncNow();
-      expect(harness.sync.status.inboxNotice, inboxGoneNotice("Inbox"));
+      expect(harness.sync.status.inboxGoneUsing, "Inbox");
 
       harness.library.items.add(photo("b.jpg"));
       await harness.sync.syncNow();
 
       expect(harness.sync.status.phase, CameraRollPhase.idle);
-      expect(harness.sync.status.inboxNotice, isNull);
+      expect(harness.sync.status.inboxGoneUsing, isNull);
       expect(server.creations, hasLength(1), reason: "Only the first run.");
     });
 
@@ -255,7 +255,7 @@ void main() {
 
       await harness.sync.chooseInbox(const ["2026", "Pictures"]);
 
-      expect(harness.sync.status.inboxNotice, isNull);
+      expect(harness.sync.status.inboxGoneUsing, isNull);
       expect(harness.sync.config.inbox, ["2026", "Pictures"]);
     });
 
@@ -281,7 +281,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining(inboxGoneNotice("Inbox")),
+        find.textContaining(testL10n.cameraRollInboxGone("Inbox")),
         findsWidgets,
       );
     });
@@ -302,7 +302,7 @@ void main() {
       expect((await harness.store.loadCameraRollConfig()).inbox, storedInbox);
       expect(harness.sync.status.phase, CameraRollPhase.waiting);
       expect(harness.sync.status.message, contains("There is no album"));
-      expect(harness.sync.status.inboxNotice, isNull);
+      expect(harness.sync.status.inboxGoneUsing, isNull);
     });
 
     test('does not fall back on a 500 either', () async {
@@ -337,7 +337,7 @@ void main() {
 
       expect(server.requests, isEmpty);
       expect(harness.sync.status.phase, CameraRollPhase.idle);
-      expect(harness.sync.status.line, contains("Nothing new"));
+      expect(cameraRollLine(harness.sync.status, testL10n), contains("Nothing new"));
     });
   });
 }

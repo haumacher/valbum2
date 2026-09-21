@@ -16,16 +16,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'album_view.dart' show TextInputDialog;
 import 'attribution.dart';
 import 'caller.dart';
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
-
-/// The heading of the dialog, wherever it was opened from.
-///
-/// English, like the app, see issue #122 — it was "Bildeigenschaften" while
-/// two call sites spelled it.
-const String imagePropertiesTitle = "Image properties";
-
-/// The label of the one field the dialog edits.
-const String imagePropertiesLabel = "Kommentar";
 
 /// How the recording time is spelled in the details block.
 final DateFormat imagePropertyTimeFormat = DateFormat("yyyy-MM-dd HH:mm:ss");
@@ -47,18 +39,30 @@ Widget imagePropertyLine(Key key, String text) =>
 /// [mapUrl] is the template of the space, which the location line opens; an
 /// empty one is [defaultMapUrl], so a caller that has no server to ask still
 /// gets a map.
-List<Widget> imagePropertyLines(ImagePart image, {String mapUrl = ""}) => [
-      imagePropertyLine(const Key("property-file"), "File: ${image.name}"),
+List<Widget> imagePropertyLines(
+  AppLocalizations l10n,
+  ImagePart image, {
+  String mapUrl = "",
+}) =>
+    [
+      imagePropertyLine(
+        const Key("property-file"),
+        l10n.propertyFile(image.name),
+      ),
       if (image.date != 0)
         imagePropertyLine(
           const Key("property-time"),
-          "Taken: ${imagePropertyTimeFormat.format(
-            DateTime.fromMillisecondsSinceEpoch(image.date),
-          )}",
+          l10n.propertyTaken(
+            imagePropertyTimeFormat.format(
+              DateTime.fromMillisecondsSinceEpoch(image.date),
+            ),
+          ),
         ),
       if (image.camera.isNotEmpty)
         imagePropertyLine(
-            const Key("property-camera"), "Camera: ${image.camera}"),
+          const Key("property-camera"),
+          l10n.propertyCamera(image.camera),
+        ),
       if (image.location != null)
         ImageLocationLine(
           image.location!,
@@ -93,9 +97,11 @@ String mapUrlFor(String mapUrl, GeoLocation location) =>
         .replaceAll("{lon}", mapCoordinate(location.longitude));
 
 /// What the location line reads, the coordinates and nothing else.
-String mapLocationText(GeoLocation location) =>
-    "Location: ${mapCoordinate(location.latitude)}, "
-    "${mapCoordinate(location.longitude)}";
+String mapLocationText(AppLocalizations l10n, GeoLocation location) =>
+    l10n.propertyLocation(
+      mapCoordinate(location.latitude),
+      mapCoordinate(location.longitude),
+    );
 
 /// Where a photo was taken: the coordinates, and a tap opening them on a map.
 ///
@@ -119,21 +125,24 @@ class ImageLocationLine extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Row(
-        key: const Key("property-location"),
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Flexible(child: SelectableText(mapLocationText(location))),
-          IconButton(
-            key: const Key("property-location-map"),
-            icon: const Icon(Icons.map_outlined),
-            iconSize: 18,
-            visualDensity: VisualDensity.compact,
-            tooltip: "Show on a map",
-            onPressed: open,
-          ),
-        ],
-      );
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return Row(
+      key: const Key("property-location"),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: SelectableText(mapLocationText(l10n, location))),
+        IconButton(
+          key: const Key("property-location-map"),
+          icon: const Icon(Icons.map_outlined),
+          iconSize: 18,
+          visualDensity: VisualDensity.compact,
+          tooltip: l10n.showOnMap,
+          onPressed: open,
+        ),
+      ],
+    );
+  }
 }
 
 /// The properties of one image: the details block, the attribution note and
@@ -174,52 +183,63 @@ class ImagePropertiesDialog extends StatelessWidget {
       editable ? _editor(context) : _reader(context);
 
   /// What the dialog shows where nothing is edited: the same lines, no field.
-  Widget _reader(BuildContext context) => AlertDialog(
-        key: const Key("image-properties-read-only"),
-        title: const Text(imagePropertiesTitle),
-        content: SingleChildScrollView(
-          child: DefaultTextStyle.merge(
-            style: Theme.of(context).textTheme.bodySmall,
-            child: Column(
-              key: const Key("properties-details"),
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ...imagePropertyLines(
-                  image,
-                  mapUrl: CallerInfo.mapUrlOf(context),
-                ),
-                if (attributionShown(image) != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      attributionShown(image)!,
-                      key: const Key("properties-contributor"),
-                    ),
+  Widget _reader(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    var note = attributionShown(l10n, image);
+    return AlertDialog(
+      key: const Key("image-properties-read-only"),
+      title: Text(l10n.imageProperties),
+      content: SingleChildScrollView(
+        child: DefaultTextStyle.merge(
+          style: Theme.of(context).textTheme.bodySmall,
+          child: Column(
+            key: const Key("properties-details"),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...imagePropertyLines(
+                l10n,
+                image,
+                mapUrl: CallerInfo.mapUrlOf(context),
+              ),
+              if (note != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    note,
+                    key: const Key("properties-contributor"),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("OK"),
-          ),
-        ],
-      );
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.ok),
+        ),
+      ],
+    );
+  }
 
-  Widget _editor(BuildContext context) => TextInputDialog(
-        title: imagePropertiesTitle,
-        label: imagePropertiesLabel,
-        text: initial ?? image.comment,
-        multiLine: true,
-        details:
-            imagePropertyLines(image, mapUrl: CallerInfo.mapUrlOf(context)),
-        // Who added this photo, the editor's own contributions included: the
-        // screen saying what an image is says where it came from, see #53.
-        note: attributionShown(image),
-      );
+  Widget _editor(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return TextInputDialog(
+      title: l10n.imageProperties,
+      label: l10n.commentLabel,
+      text: initial ?? image.comment,
+      multiLine: true,
+      details: imagePropertyLines(
+        l10n,
+        image,
+        mapUrl: CallerInfo.mapUrlOf(context),
+      ),
+      // Who added this photo, the editor's own contributions included: the
+      // screen saying what an image is says where it came from, see #53.
+      note: attributionShown(l10n, image),
+    );
+  }
 }
 
 /// Opens the [ImagePropertiesDialog] on [image] and answers what was typed.

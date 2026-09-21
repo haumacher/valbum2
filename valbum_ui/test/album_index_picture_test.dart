@@ -8,6 +8,7 @@ import 'package:valbum_ui/routes.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 const String albumFolder = "2002-03-03 Schlosspark Karlsruhe";
 
@@ -113,15 +114,15 @@ void main() {
 
     // The portrait image becomes the album's picture, the tile says so, and
     // the choice moves when another image is chosen.
-    await tap(tester, tool("portrait.jpg", "Als Albumbild verwenden"));
+    await tap(tester, tool("portrait.jpg", testL10n.useAsAlbumPicture));
     expect(badge("portrait.jpg"), findsOneWidget);
     await select(tester, "group-a.jpg");
-    await tap(tester, tool("group-a.jpg", "Als Albumbild verwenden"));
+    await tap(tester, tool("group-a.jpg", testL10n.useAsAlbumPicture));
     expect(badge("portrait.jpg"), findsNothing);
     expect(badge("group-a.jpg"), findsOneWidget,
         reason: "a group is represented by its representative");
     await select(tester, "portrait.jpg");
-    await tap(tester, tool("portrait.jpg", "Als Albumbild verwenden"));
+    await tap(tester, tool("portrait.jpg", testL10n.useAsAlbumPicture));
 
     // Saved with the album.
     await tap(tester, find.byIcon(Icons.save));
@@ -160,7 +161,7 @@ void main() {
     );
     await settle(tester, () => tester.longPress(find.byType(Image).first));
     await select(tester, "landscape.jpg");
-    await tap(tester, tool("landscape.jpg", "Als Albumbild verwenden"));
+    await tap(tester, tool("landscape.jpg", testL10n.useAsAlbumPicture));
     await tap(tester, find.byIcon(Icons.save));
 
     expect(find.byIcon(Icons.save), findsOneWidget, reason: "still editing");

@@ -18,6 +18,7 @@ import 'package:valbum_ui/photo_picker_view.dart';
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
 import 'util/l10n.dart';
+import 'package:valbum_ui/notices.dart';
 
 /// A photo of the fake library, its contents a 1x1 PNG so that the tile of the
 /// picker really decodes a picture.
@@ -239,13 +240,13 @@ void main() {
     testWidgets('says why, in its own words', (WidgetTester tester) async {
       var library = FakePhotoLibrary(
         granted: false,
-        accessProblem: "Access to the photo library was denied.",
+        accessProblem: const PhotoAccessDenied(),
       );
 
       await pumpPicker(tester, library);
 
       expect(
-        find.text("Access to the photo library was denied."),
+        find.text(testL10n.noticePhotoAccessDenied),
         findsOneWidget,
       );
       expect(find.byKey(photoPickerProblemKey), findsOneWidget);

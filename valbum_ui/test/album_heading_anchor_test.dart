@@ -5,6 +5,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 // Issue #71: a heading inserted "before this tile" is anchored on what is
 // *displayed* after the tile, not on the tile's stored index. The row layout
@@ -233,9 +234,9 @@ void main() {
         // Insert a heading before the first tile shown.
         await tester.tap(tool("P.jpg", Icons.title));
         await tester.pumpAndSettle();
-        expect(find.text("Überschrift einfügen"), findsOneWidget);
+        expect(find.text(testL10n.insertHeading), findsOneWidget);
         await tester.enterText(find.byType(TextField), "Am Morgen");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         // Stored first, before the landscape image that used to jump in
@@ -279,7 +280,7 @@ void main() {
         await tester.tap(tool("L2.jpg", Icons.title));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField), "Am Mittag");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         expect(partNames(album(tester)),
