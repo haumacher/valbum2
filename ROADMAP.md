@@ -232,6 +232,15 @@ suggestions across the space), #128 (a person linked to a member), #129 (XMP fac
 
 ## Decisions log
 
+- **2026-09-22** — 2.5.0 released (tag `valbum-2.5.0` on 3d5d7df; Debian packages for amd64, arm64 and
+  armhf, the signed APK, the APT site), master opened 2.6.0. Phase 7 (People) delivered in one day:
+  face detection and clustering per album with crops (#124), the people register and confirmed tags
+  (#125), the face editor "Persons in this album" (#126), recognition across the space answered as
+  suggestions (#127), a person linked to a member (#128), XMP face regions imported (#129), a decision
+  taken back (#138); the inbox tile counts what waits (#137); the whole app speaks the user's language
+  (#108, three slices). Recorded deviations from the design record: a face carrying any decision is
+  never suggested anybody; the float32 SFace model is bundled and checked in (+34.6 MiB on the .deb).
+
 - **2026-09-21** — Phase 7 (People) opened with #124. Also this day: 2.4.0 released the evening
   before and master opened 2.5.0; a folder of folders has no date (#133) and may be shown by a chosen
   child's picture (#110); a moved-into folder is fetched again (#134); the camera-roll sync falls back
