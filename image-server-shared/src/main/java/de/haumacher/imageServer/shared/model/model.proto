@@ -399,6 +399,32 @@ message ImagePart extends AbstractImage {
 	 * </p>
 	 */
 	repeated FaceInfo faces;
+
+	/**
+	 * What somebody said about the faces of this photograph, see issue #125.
+	 *
+	 * <p>
+	 * <b>Stored</b>, and the one piece of the face feature that is: a detection is a guess of a
+	 * model and lives in the album's cache, a tag is a human decision and belongs beside the
+	 * photograph it is about. Nothing clears this field before an <code>index.json</code> is
+	 * written &mdash; unlike {@link #faces}, which is derived on every read.
+	 * </p>
+	 *
+	 * <p>
+	 * The stored statement and the derived answer deliberately do <em>not</em> share a name:
+	 * {@link #tags} is what this album says, {@link #faces} is what the server answers, and the
+	 * second is built from the first plus the detections of the moment.
+	 * </p>
+	 *
+	 * <p>
+	 * It is written by <code>?action=tag-faces</code> alone, and answered to signed-in members
+	 * alone &mdash; exactly like {@link #faces}, see {@link FaceInfo}. A client that reads an album
+	 * and writes it back therefore round-trips the tags it was answered; a client too old to know
+	 * this field would drop them, which is why the tagging action never goes through a
+	 * <code>PUT</code>.
+	 * </p>
+	 */
+	repeated FaceTag tags;
 }
 
 /** One face found in an {@link ImagePart}, see issue #124. */
@@ -446,6 +472,129 @@ message FaceInfo {
 	 * </p>
 	 */
 	string cluster;
+
+	/**
+	 * The person this face is, <code>id</code> of a {@link Person} of the space (issue #125).
+	 *
+	 * <p>
+	 * Derived on every read from the {@link ImagePart#tags} of the photograph: a detection whose
+	 * box overlaps a stored tag is answered that tag's person. Empty when nobody said anything
+	 * about this face, and empty for a {@link FaceState#NOT_A_FACE} tag, which is about nobody.
+	 * </p>
+	 *
+	 * <p>
+	 * Always the <em>surviving</em> person: a tag naming a person that was merged into another one
+	 * is answered with the one it was merged into, so that a merge never has to rewrite an album,
+	 * see {@link Person#id}.
+	 * </p>
+	 *
+	 * <p>
+	 * A suggestion is not a person: what a recogniser believes is issue #127 and will be a field of
+	 * its own. This one is somebody's decision and nothing else.
+	 * </p>
+	 */
+	string person;
+
+	/**
+	 * Whether {@link #person} is a confirmation rather than anything else, see {@link #state}.
+	 *
+	 * <p>
+	 * The plain question the application asks most often &mdash; &quot;may I write this name under
+	 * this face?&quot; &mdash; answered without reading the state: <code>true</code> exactly for
+	 * {@link FaceState#CONFIRMED}.
+	 * </p>
+	 */
+	bool confirmed;
+
+	/**
+	 * What was decided about this face, {@link FaceState#UNDECIDED} while nothing was (issue #125).
+	 *
+	 * <p>
+	 * {@link FaceState#REJECTED} says that this face is <em>not</em> {@link #person} &mdash; the
+	 * person stands in the answer so that the application can go on hiding the suggestion and issue
+	 * #127 never offers it again. {@link FaceState#NOT_A_FACE} says that there is no face here at
+	 * all, so the application hides the box.
+	 * </p>
+	 */
+	FaceState state;
+}
+
+/**
+ * What somebody decided about one face, see {@link FaceTag} and issue #125.
+ *
+ * <p>
+ * A rejection is a decision too: without it, a suggestion that was turned down would come back at
+ * the next pass.
+ * </p>
+ */
+enum FaceState {
+	/**
+	 * Nothing was decided about this face.
+	 *
+	 * <p>
+	 * The first constant and therefore what a {@link FaceInfo} of an untouched detection answers,
+	 * and what a client that does not know a value reads. It is never stored: a {@link FaceTag}
+	 * <em>is</em> a decision, so an assignment carrying this state is refused.
+	 * </p>
+	 */
+	UNDECIDED;
+
+	/** This face is {@link FaceTag#person}: somebody said so. */
+	CONFIRMED;
+
+	/**
+	 * This face is <em>not</em> {@link FaceTag#person}: somebody said so.
+	 *
+	 * <p>
+	 * The person stands in the tag, because that is what was rejected. A face may carry only one
+	 * decision at a time, so a rejection is replaced by a confirmation when somebody names the
+	 * face after all.
+	 * </p>
+	 */
+	REJECTED;
+
+	/** There is no face here at all: what the detector found is a false positive. */
+	NOT_A_FACE;
+}
+
+/**
+ * What somebody said about one face of one photograph, stored in the album, see issue #125.
+ *
+ * <p>
+ * The box is the detector's box <em>as it stood when the tag was made</em>, copied out of the
+ * {@link FaceInfo} the tagging request named and written in the same frame: normalised to
+ * <code>0..1</code> in the raw raster of the file, before the EXIF orientation and before
+ * {@link ImagePart#orientation}. So the tag outlives the cache it came from, the model that found
+ * it and any rotation the user applies; a later detection is matched to it by the overlap of the
+ * two boxes.
+ * </p>
+ */
+message FaceTag {
+	/** The left edge of the face, as a fraction of the image width, see {@link FaceInfo#x}. */
+	double x;
+
+	/** The top edge of the face, as a fraction of the image height, see {@link FaceInfo#x}. */
+	double y;
+
+	/** The width of the face, as a fraction of the image width, see {@link FaceInfo#x}. */
+	double w;
+
+	/** The height of the face, as a fraction of the image height, see {@link FaceInfo#x}. */
+	double h;
+
+	/**
+	 * The {@link Person#id} this decision is about; empty for {@link FaceState#NOT_A_FACE}.
+	 *
+	 * <p>
+	 * Stored as the person's own id at the moment of the tagging. A person that is merged into
+	 * another one afterwards keeps this album untouched: the read path resolves the id through the
+	 * {@link Person#aliases} of the register, see {@link FaceInfo#person}.
+	 * </p>
+	 */
+	string person;
+
+	/** What was decided; never {@link FaceState#UNDECIDED}, which is not a decision. */
+	FaceState state;
 }
 
 /**
@@ -1876,4 +2025,148 @@ message InvitationInfo {
 	 * </p>
 	 */
 	string recipient;
+}
+
+/**
+ * Somebody the photographs of this space are of, see issue #125.
+ *
+ * <p>
+ * The register lives per space in <code>.valbum/people.json</code> and is the only place a person
+ * is named: a {@link FaceTag} carries an {@link #id} and never a name, so renaming a person is one
+ * write and merging two is one write, whatever either of them is tagged in.
+ * </p>
+ */
+message Person {
+	/**
+	 * The identifier of this person, unique within the space and never reused.
+	 *
+	 * <p>
+	 * Sixteen random bytes, Base64url without padding &mdash; opaque, and deliberately not derived
+	 * from the name, which is editable. A person that was merged into another one keeps their id as
+	 * an alias of the surviving one, so an id that was ever handed out goes on resolving, see
+	 * {@link #aliases}.
+	 * </p>
+	 */
+	string id;
+
+	/** What to call this person; editable, and unique within the space ignoring case. */
+	string name;
+
+	/** The face to show this person by, <code>null</code> while nobody chose one (issue #126). */
+	PersonCover cover;
+
+	/**
+	 * The member of the space this person is, empty when they are nobody in particular.
+	 *
+	 * <p>
+	 * The {@link UserEntry#name} of a user. Written by issue #128 and carried here unread: this
+	 * build stores it and answers it and draws no conclusion from it.
+	 * </p>
+	 */
+	string user;
+
+	/**
+	 * The ids that were merged into this person, see <code>?action=merge-persons</code>.
+	 *
+	 * <p>
+	 * Answered so that a client can recognise a tag it read before a merge. The server resolves
+	 * them itself on every read, so nothing has to.
+	 * </p>
+	 */
+	repeated PersonAlias aliases;
+}
+
+/**
+ * One identifier a {@link Person} answers to besides their own, see {@link Person#aliases}.
+ *
+ * <p>
+ * A message and not a plain string: the Dart backend of the model generator mis-types a
+ * <code>repeated string</code> field, see {@link UploadCheck#hashes}.
+ * </p>
+ */
+message PersonAlias {
+	/** The identifier that was merged away. */
+	string id;
+}
+
+/** The face a {@link Person} is shown by, see {@link Person#cover}. */
+message PersonCover {
+	/** The photograph, as a path relative to the space root, <code>/</code> as separator. */
+	string path;
+
+	/** Which face of it, see {@link FaceInfo#index}. */
+	int face;
+}
+
+/** The people of a space, answered by <code>?type=people</code>. */
+message PersonList {
+	/** Every person of the register, in the order they were created; merged ones are not here. */
+	repeated Person people;
+}
+
+/** What <code>?action=create-person</code> asks for. */
+message PersonCreate {
+	/** The name of the new person; blanks are trimmed and an empty name is refused. */
+	string name;
+}
+
+/** What <code>?action=rename-person</code> asks for. */
+message PersonRename {
+	/** The {@link Person#id} to rename; an alias of a person names that person. */
+	string id;
+
+	/** The new name; blanks are trimmed and an empty name is refused. */
+	string name;
+}
+
+/**
+ * What <code>?action=merge-persons</code> asks for: two people who are one.
+ *
+ * <p>
+ * The one that is kept keeps its id, its name and its cover; the other becomes an alias of it and
+ * is gone from every listing. No album is rewritten, see {@link Person#aliases}.
+ * </p>
+ */
+message PersonMerge {
+	/** The {@link Person#id} that survives. */
+	string into;
+
+	/** The {@link Person#id} that becomes an alias of {@link #into}. */
+	string from;
+}
+
+/**
+ * What <code>?action=tag-faces</code> asks for: decisions about the faces of one album.
+ *
+ * <p>
+ * Every assignment is carried out on its own and the whole request is refused if any one of them
+ * cannot be: nothing is written until every name, index and person in it is known, so an album is
+ * never left half tagged.
+ * </p>
+ */
+message TagFaces {
+	/** The decisions to store. */
+	repeated FaceAssignment faces;
+}
+
+/** One decision about one face, see {@link TagFaces}. */
+message FaceAssignment {
+	/** The {@link ImagePart#name} of the photograph in the addressed album. */
+	string image;
+
+	/**
+	 * Which of its faces, the {@link FaceInfo#index} of the answer this client read.
+	 *
+	 * <p>
+	 * The box is copied from that {@link FaceInfo} into the stored {@link FaceTag}, so a client
+	 * never sends coordinates and can never invent a face that was not answered to it.
+	 * </p>
+	 */
+	int face;
+
+	/** The {@link Person#id} the decision is about; empty exactly for {@link FaceState#NOT_A_FACE}. */
+	string person;
+
+	/** What is decided; {@link FaceState#UNDECIDED} is not a decision and is refused. */
+	FaceState state;
 }

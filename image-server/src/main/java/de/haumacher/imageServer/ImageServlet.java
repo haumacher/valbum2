@@ -23,7 +23,9 @@ import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.faces.FaceIndex;
+import de.haumacher.imageServer.faces.FaceTags;
 import de.haumacher.imageServer.faces.Faces;
+import de.haumacher.imageServer.faces.PeopleStore;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.CacheRefreshed;
 import de.haumacher.imageServer.shared.model.ContentHash;
@@ -33,6 +35,10 @@ import de.haumacher.imageServer.shared.model.DeviceCodeRequest;
 import de.haumacher.imageServer.shared.model.DeviceEntry;
 import de.haumacher.imageServer.shared.model.DeviceList;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
+import de.haumacher.imageServer.shared.model.FaceAssignment;
+import de.haumacher.imageServer.shared.model.FaceInfo;
+import de.haumacher.imageServer.shared.model.FaceState;
+import de.haumacher.imageServer.shared.model.FaceTag;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
@@ -47,11 +53,15 @@ import de.haumacher.imageServer.shared.model.MoveRequest;
 import de.haumacher.imageServer.shared.model.MoveResult;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
+import de.haumacher.imageServer.shared.model.PersonCreate;
+import de.haumacher.imageServer.shared.model.PersonMerge;
+import de.haumacher.imageServer.shared.model.PersonRename;
 import de.haumacher.imageServer.shared.model.PresentFile;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ShareLink;
 import de.haumacher.imageServer.shared.model.ShareLinkCreated;
 import de.haumacher.imageServer.shared.model.ShareLinkList;
+import de.haumacher.imageServer.shared.model.TagFaces;
 import de.haumacher.imageServer.shared.model.UploadCheck;
 import de.haumacher.imageServer.shared.model.UploadCheckResult;
 import de.haumacher.imageServer.shared.model.UploadResult;
@@ -90,6 +100,8 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -223,6 +235,58 @@ public class ImageServlet extends HttpServlet {
 	 */
 	public static final String FACE_NOT_FOUND = "There is no such face.";
 
+	/**
+	 * What a request for the people of the space is refused to a share link with, see issue #125.
+	 *
+	 * <p>
+	 * The register is the space's own bookkeeping: who its photographs are of, by name. A link is
+	 * handed an album and nothing around it, and it is never shown a face either (issue #124).
+	 * </p>
+	 */
+	public static final String PEOPLE_REFUSED = "The people of this space are its members' business.";
+
+	/**
+	 * What a tagging request without the edit right is refused with, see issue #125.
+	 *
+	 * <p>
+	 * Naming the people in a photograph needs {@link Rights#EDIT}, and there is deliberately no
+	 * exception for one's own contribution: the contributor exception of issue #53 lets somebody
+	 * take their photograph back out of an album, it does not let them write names into it. Issue
+	 * #123 decided this.
+	 * </p>
+	 */
+	public static final String TAGGING_REFUSED =
+		"Naming the people in a photograph needs the right to edit this album.";
+
+	/** What an unreadable tagging request is refused with. */
+	public static final String TAG_UNREADABLE = "The tagging request cannot be read.";
+
+	/** What an unreadable request about a person is refused with. */
+	public static final String PERSON_UNREADABLE = "The request cannot be read.";
+
+	/** What a confirmation or a rejection that names nobody is refused with. */
+	public static final String TAG_PERSON_REQUIRED = "This decision is about a person; the request names none.";
+
+	/** What a "this is not a face" that names somebody is refused with. */
+	public static final String TAG_PERSON_REFUSED =
+		"A false detection is about nobody; the request names a person.";
+
+	/** What a tag that decides nothing is refused with. */
+	public static final String TAG_UNDECIDED = "A tag is a decision, and 'undecided' is none.";
+
+	/** What a tagging request naming something that is not an album is refused with. */
+	public static final String TAG_NOT_AN_ALBUM = "There are no photographs to tag here.";
+
+	/** Why an image of a tagging request is not in the album it names. */
+	static String unknownImage(String name) {
+		return "There is no image '" + name + "' in this album.";
+	}
+
+	/** Why a face of a tagging request is not one of the faces answered for its image. */
+	static String unknownFace(String image, int index) {
+		return "There is no face " + index + " in '" + image + "'.";
+	}
+
 	/** The <code>type</code> a face crop is asked for with, see issue #124. */
 	public static final String FACE_TYPE = "face";
 
@@ -319,9 +383,17 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private final HashIndex _index;
 
+	/** Who the photographs of this space are of, see issue #125. */
+	private final PeopleStore _people;
+
 	/** The hash index of this space, for the tests and for the sweep of issue #118. */
 	public HashIndex index() {
 		return _index;
+	}
+
+	/** The people register of this space, see issue #125. */
+	public PeopleStore people() {
+		return _people;
 	}
 
 	/**
@@ -440,6 +512,7 @@ public class ImageServlet extends HttpServlet {
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
 		_index = new HashIndex(_basePath);
+		_people = new PeopleStore(_basePath);
 		_faces = new FaceIndex(_basePath, config != null && config.isFacesEnabled());
 		String noFaces = _faces.unavailability();
 		if (noFaces != null) {
@@ -526,6 +599,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("devices".equals(type)) {
 			serveDevices(context, caller);
+			return;
+		}
+		if ("people".equals(type)) {
+			servePeople(context, caller);
 			return;
 		}
 
@@ -2411,6 +2488,15 @@ public class ImageServlet extends HttpServlet {
 			refreshCache(context);
 			return;
 		}
+		if ("create-person".equals(action) || "rename-person".equals(action)
+			|| "merge-persons".equals(action)) {
+			editPeople(context, action);
+			return;
+		}
+		if ("tag-faces".equals(action)) {
+			tagFaces(context);
+			return;
+		}
 		if ("find-duplicates".equals(action)) {
 			findDuplicates(context);
 			return;
@@ -2937,6 +3023,11 @@ public class ImageServlet extends HttpServlet {
 
 		if (jsonRequested(context)) {
 			Resource resource = _cache.lookup(pathInfo);
+			if (resource instanceof ImagePart && !Faces.maySee(_auth, caller, viewAs)) {
+				// What an album answer hides is hidden here too: a single photograph carries the
+				// tags of issue #125 in the cached object, and they are the members' business.
+				resource = Faces.withoutTags((ImagePart) resource);
+			}
 			serveJson(context.response(), resource);
 			return;
 		}
@@ -2969,6 +3060,323 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Answers the people of this space at <code>&lt;data&gt;/?type=people</code>, see issue #125.
+	 *
+	 * <p>
+	 * The members of the space, and nobody else: a share link is told so (<code>403</code>) and an
+	 * anonymous caller is asked to sign in (<code>401</code>), exactly as with the faces themselves
+	 * (issue #124). A server running without authentication has no members to be one of — everybody
+	 * who reaches it is its owner and is answered like one.
+	 * </p>
+	 *
+	 * <p>
+	 * Every role sees the register: the names are what the boxes in an album mean, so somebody who
+	 * may only look needs them to be able to read what they are shown. Changing it needs
+	 * {@link Rights#EDIT}, see {@link #editPeople(Context, String)}.
+	 * </p>
+	 */
+	private void servePeople(Context context, Caller caller) throws IOException {
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing the people to the share link '" + caller.getShareLabel() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, PEOPLE_REFUSED);
+			return;
+		}
+		if (!caller.isPaired() && _auth.getMode() != AuthMode.OFF) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		serveJsonObject(context.response(), _people.toWire());
+	}
+
+	/**
+	 * Creates, renames or merges a person of this space, see issue #125.
+	 *
+	 * <p>
+	 * The register is the space's, not a folder's, so all three ask for the same thing:
+	 * {@link Rights#EDIT}, which since issue #83 is a property of the caller and not of the path.
+	 * A share link is refused whatever it carries — a link is handed an album, never the space's
+	 * bookkeeping.
+	 * </p>
+	 *
+	 * <p>
+	 * Nothing here ever touches an album. A merge writes an alias into the register and the read
+	 * path resolves it, see {@link PeopleStore#resolve(String)}: renaming somebody or deciding that
+	 * two of them are one is a single small write, whatever they are tagged in.
+	 * </p>
+	 */
+	private void editPeople(Context context, String action) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo path = location.getPath();
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing '" + action + "' to the share link '" + caller.getShareLabel() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, PEOPLE_REFUSED);
+			return;
+		}
+		if (!_auth.mayEdit(caller, path)) {
+			refuse(context, caller, path, Rights.EDIT, true);
+			return;
+		}
+
+		byte[] contents = readBody(context.request());
+		PersonCreate create = null;
+		PersonRename rename = null;
+		PersonMerge merge = null;
+		try {
+			switch (action) {
+				case "create-person":
+					create = PersonCreate.readPersonCreate(json(contents));
+					break;
+				case "rename-person":
+					rename = PersonRename.readPersonRename(json(contents));
+					break;
+				default:
+					merge = PersonMerge.readPersonMerge(json(contents));
+					break;
+			}
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unreadable '" + action + "' request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PERSON_UNREADABLE);
+			return;
+		}
+
+		PeopleStore.Entry entry;
+		try {
+			if (create != null) {
+				entry = _people.create(create.getName(), caller.subject());
+			} else if (rename != null) {
+				entry = _people.rename(rename.getId(), rename.getName());
+			} else {
+				entry = _people.merge(merge.getInto(), merge.getFrom());
+			}
+		} catch (PeopleStore.PersonRefused ex) {
+			LOG.warning("Refusing '" + action + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+
+		serveJsonObject(context.response(), entry.toWire());
+	}
+
+	/** A reader over the given request body. */
+	private static JsonReader json(byte[] contents) {
+		return new JsonReader(new ReaderAdapter(
+			new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8)));
+	}
+
+	/**
+	 * Stores what somebody decided about the faces of one album, see issue #125.
+	 *
+	 * <p>
+	 * A detection is a guess of a model and lives in the album's cache; a name under a face is a
+	 * human decision and belongs beside the photograph, in <code>index.json</code>, as a
+	 * {@link FaceTag} of its {@link ImagePart}. This is the one place such a tag is written, and it
+	 * writes the sidecar exactly as <code>?action=place</code> does: through
+	 * {@link #storeSidecar(File, byte[])}, with the derived fields cleared, so that there is one
+	 * sidecar format however a file came to be written.
+	 * </p>
+	 *
+	 * <p>
+	 * The request names a face by the {@link FaceInfo#getIndex() index} of the answer it read, and
+	 * the server copies the box out of that answer: a client never sends coordinates, so it can
+	 * neither invent a face that was not answered to it nor write a box in the wrong frame. The box
+	 * is kept in the raw raster of the file (see {@link Faces}), which is what makes the tag outlive
+	 * the cache it came from, the model that found it and any rotation the album applies.
+	 * </p>
+	 *
+	 * <p>
+	 * A second decision about a face <em>replaces</em> the first: a tag whose box the new one
+	 * overlaps by more than {@link FaceTags#IOU_MATCH} is rewritten instead of being left beside it,
+	 * so a face never carries two decisions at once.
+	 * </p>
+	 *
+	 * <p>
+	 * All or nothing: every name, index and person is checked before anything is written, because
+	 * an album half tagged is a state nobody asked for.
+	 * </p>
+	 */
+	private void tagFaces(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo folderPath = location.getPath();
+		if (caller.isShareLink()) {
+			// Before the general write gate, so that a link is told what it is really refused:
+			// its rights may well allow contributing, and naming a face is not contributing.
+			LOG.warning("Refusing the tagging through a share link at '" + context.request().getPathInfo()
+				+ "': " + TAGGING_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, TAGGING_REFUSED);
+			return;
+		}
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folderPath)) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (!_auth.mayEdit(caller, folderPath)) {
+			// Deliberately the same answer for a viewer and for a contributor: naming the people
+			// in a photograph is an edit of the album, and contributing is not editing.
+			if (!identified(caller)) {
+				unauthorized(context, caller, true);
+				return;
+			}
+			LOG.warning("Refusing the tagging at '" + context.request().getPathInfo() + "': " + TAGGING_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, TAGGING_REFUSED);
+			return;
+		}
+
+		File folder = folderPath.toFile();
+		if (!folder.isDirectory()) {
+			error404(context);
+			return;
+		}
+
+		TagFaces request;
+		try {
+			request = TagFaces.readTagFaces(json(readBody(context.request())));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable tagging request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, TAG_UNREADABLE);
+			return;
+		}
+
+		Resource resource = _cache.lookup(folderPath);
+		if (!(resource instanceof AlbumInfo)) {
+			LOG.warning("Refusing the tagging at '" + context.request().getPathInfo() + "': " + TAG_NOT_AN_ALBUM);
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, TAG_NOT_AN_ALBUM);
+			return;
+		}
+		AlbumInfo album = (AlbumInfo) resource;
+		Map<String, ImagePart> images = new LinkedHashMap<>();
+		for (ImagePart image : FaceIndex.imagesOf(album)) {
+			images.put(image.getName(), image);
+		}
+		// The very numbering this caller was answered: the detections of the moment first, then
+		// every tag no detection matched, see FaceIndex#answered.
+		Map<String, List<FaceInfo>> answered = _faces.answered(album, folder, _people);
+
+		// Everything is checked before anything is written.
+		List<ImagePart> targets = new ArrayList<>();
+		List<FaceTag> tags = new ArrayList<>();
+		for (FaceAssignment assignment : request.getFaces()) {
+			ImagePart image = images.get(assignment.getImage());
+			if (image == null) {
+				LOG.warning("Refusing the tagging of '" + assignment.getImage() + "': unknown image.");
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(assignment.getImage()));
+				return;
+			}
+			List<FaceInfo> faces = answered.get(image.getName());
+			int index = assignment.getFace();
+			if (faces == null || index < 0 || index >= faces.size()) {
+				LOG.warning("Refusing the tagging of '" + assignment.getImage() + "': unknown face "
+					+ index + ".");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST,
+					unknownFace(assignment.getImage(), index));
+				return;
+			}
+			FaceState state = assignment.getState();
+			String person = assignment.getPerson() == null ? "" : assignment.getPerson().trim();
+			if (state == FaceState.UNDECIDED) {
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, TAG_UNDECIDED);
+				return;
+			}
+			if (state == FaceState.NOT_A_FACE) {
+				if (!person.isEmpty()) {
+					errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, TAG_PERSON_REFUSED);
+					return;
+				}
+			} else {
+				if (person.isEmpty()) {
+					errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, TAG_PERSON_REQUIRED);
+					return;
+				}
+				PeopleStore.Entry entry = _people.resolve(person);
+				if (entry == null) {
+					LOG.warning("Refusing the tagging with the unknown person '" + person + "'.");
+					errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PeopleStore.unknownPerson(person));
+					return;
+				}
+				// Stored as the person that survives today; an id merged away later goes on
+				// resolving through the register's aliases.
+				person = entry.getId();
+			}
+			FaceInfo face = faces.get(index);
+			targets.add(image);
+			tags.add(FaceTag.create()
+				.setX(face.getX())
+				.setY(face.getY())
+				.setW(face.getW())
+				.setH(face.getH())
+				.setPerson(person)
+				.setState(state));
+		}
+
+		for (int n = 0; n < targets.size(); n++) {
+			ImagePart image = targets.get(n);
+			FaceTag tag = tags.get(n);
+			List<FaceTag> stored = new ArrayList<>(image.getTags());
+			int existing = FaceTags.indexOf(stored, tag.getX(), tag.getY(), tag.getW(), tag.getH());
+			if (existing >= 0) {
+				stored.set(existing, tag);
+			} else {
+				stored.add(tag);
+			}
+			image.setTags(stored);
+		}
+
+		storeSidecar(folder, sidecarOf(album));
+		// The next read must see what was just written.
+		_cache.invalidate(folderPath);
+
+		LOG.info("Tagged " + tags.size() + " face(s) in '" + folder.getAbsolutePath() + "'.");
+		answerAlbum(context, folderPath, caller);
+	}
+
+	/**
+	 * The bytes to store for a sidecar the server itself changed, see
+	 * {@link #stored(byte[], FolderResource)}.
+	 *
+	 * <p>
+	 * The same rule as for a received one, only without a body to keep verbatim: what the server
+	 * derives on every read is cleared, and what somebody decided stays. The {@link FaceTag}s are
+	 * deliberately not among the derived fields — they <em>are</em> the stored form, see
+	 * {@link AlbumDate#clearDerived(FolderResource)}.
+	 * </p>
+	 */
+	private static byte[] sidecarOf(FolderResource resource) throws IOException {
+		AlbumDate.clearDerived(resource);
+		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(buffer,
+			StandardCharsets.UTF_8)))) {
+			resource.writeTo(json);
+		}
+		return buffer.toByteArray();
+	}
+
+	/**
+	 * Answers the album at the given path as the given caller is answered it by a plain listing.
+	 *
+	 * <p>
+	 * What <code>?action=tag-faces</code> hands back, so that a client sees the effect of its write
+	 * without asking again — filtered, faced and with the caller's rights on it, exactly like the
+	 * <code>GET</code>. The inbox filter of issue #131 is not asked: only a caller with
+	 * {@link Rights#EDIT} gets here, and such a caller sees all of an inbox anyway.
+	 * </p>
+	 */
+	private void answerAlbum(Context context, PathInfo folderPath, Caller caller) throws IOException {
+		Resource stored = _cache.lookup(folderPath);
+		int viewAs = Privacy.PRIVATE;
+		int clearance = Math.min(_auth.clearance(caller, folderPath), viewAs);
+		Resource answer = _privacy.filter(stored, folderPath, clearance, _auth.minRating(caller));
+		answer = withFaces(answer, folderPath, caller, viewAs);
+		serveJson(context.response(), withRights(answer, _auth.rights(caller, folderPath)));
+	}
+
+	/**
 	 * The given answer with the faces of its photographs, for a caller that is answered any.
 	 *
 	 * <p>
@@ -2985,12 +3393,20 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 */
 	private Resource withFaces(Resource answer, PathInfo pathInfo, Caller caller, int viewAs) {
-		if (!(answer instanceof AlbumInfo) || !_faces.isEnabled() || !Faces.maySee(_auth, caller, viewAs)) {
+		if (!(answer instanceof AlbumInfo)) {
 			return answer;
 		}
 		AlbumInfo album = (AlbumInfo) answer;
+		if (!Faces.maySee(_auth, caller, viewAs)) {
+			// A detection is added and is therefore never there for such a caller; a tag is
+			// stored in the album and has to be taken out again, see issue #125.
+			return Faces.withoutTags(album);
+		}
+		if (!_faces.isEnabled() && !FaceIndex.tagged(album)) {
+			return album;
+		}
 		File folder = pathInfo.toFile();
-		AlbumInfo result = _faces.derive(album, folder);
+		AlbumInfo result = _faces.derive(album, folder, _people);
 		if (result.isFacesPending()) {
 			// Whatever is not looked at yet is queued -- after the answer was built, so that what
 			// the answer says about itself is what it was built from. It never waits for the work,

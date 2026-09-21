@@ -1017,6 +1017,30 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	List<FaceInfo> faces;
 
+	///  What somebody said about the faces of this photograph, see issue #125.
+	/// 
+	///  <p>
+	///  <b>Stored</b>, and the one piece of the face feature that is: a detection is a guess of a
+	///  model and lives in the album's cache, a tag is a human decision and belongs beside the
+	///  photograph it is about. Nothing clears this field before an <code>index.json</code> is
+	///  written &mdash; unlike {@link #faces}, which is derived on every read.
+	///  </p>
+	/// 
+	///  <p>
+	///  The stored statement and the derived answer deliberately do <em>not</em> share a name:
+	///  {@link #tags} is what this album says, {@link #faces} is what the server answers, and the
+	///  second is built from the first plus the detections of the moment.
+	///  </p>
+	/// 
+	///  <p>
+	///  It is written by <code>?action=tag-faces</code> alone, and answered to signed-in members
+	///  alone &mdash; exactly like {@link #faces}, see {@link FaceInfo}. A client that reads an album
+	///  and writes it back therefore round-trips the tags it was answered; a client too old to know
+	///  this field would drop them, which is why the tagging action never goes through a
+	///  <code>PUT</code>.
+	///  </p>
+	List<FaceTag> tags;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -1039,6 +1063,7 @@ class ImagePart extends AbstractImage {
 			this.contributor = "", 
 			this.contributorLabel = "", 
 			this.faces = const [], 
+			this.tags = const [], 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1124,6 +1149,19 @@ class ImagePart extends AbstractImage {
 				}
 				break;
 			}
+			case "tags": {
+				json.expectArray();
+				tags = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = FaceTag.read(json);
+						if (value != null) {
+							tags.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1180,6 +1218,13 @@ class ImagePart extends AbstractImage {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("tags");
+		json.startArray();
+		for (var _element in tags) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 	@override
@@ -1227,6 +1272,45 @@ class FaceInfo extends _JsonObject {
 	///  </p>
 	String cluster;
 
+	///  The person this face is, <code>id</code> of a {@link Person} of the space (issue #125).
+	/// 
+	///  <p>
+	///  Derived on every read from the {@link ImagePart#tags} of the photograph: a detection whose
+	///  box overlaps a stored tag is answered that tag's person. Empty when nobody said anything
+	///  about this face, and empty for a {@link FaceState#NOT_A_FACE} tag, which is about nobody.
+	///  </p>
+	/// 
+	///  <p>
+	///  Always the <em>surviving</em> person: a tag naming a person that was merged into another one
+	///  is answered with the one it was merged into, so that a merge never has to rewrite an album,
+	///  see {@link Person#id}.
+	///  </p>
+	/// 
+	///  <p>
+	///  A suggestion is not a person: what a recogniser believes is issue #127 and will be a field of
+	///  its own. This one is somebody's decision and nothing else.
+	///  </p>
+	String person;
+
+	///  Whether {@link #person} is a confirmation rather than anything else, see {@link #state}.
+	/// 
+	///  <p>
+	///  The plain question the application asks most often &mdash; &quot;may I write this name under
+	///  this face?&quot; &mdash; answered without reading the state: <code>true</code> exactly for
+	///  {@link FaceState#CONFIRMED}.
+	///  </p>
+	bool confirmed;
+
+	///  What was decided about this face, {@link FaceState#UNDECIDED} while nothing was (issue #125).
+	/// 
+	///  <p>
+	///  {@link FaceState#REJECTED} says that this face is <em>not</em> {@link #person} &mdash; the
+	///  person stands in the answer so that the application can go on hiding the suggestion and issue
+	///  #127 never offers it again. {@link FaceState#NOT_A_FACE} says that there is no face here at
+	///  all, so the application hides the box.
+	///  </p>
+	FaceState state;
+
 	/// Creates a FaceInfo.
 	FaceInfo({
 			this.index = 0, 
@@ -1235,6 +1319,9 @@ class FaceInfo extends _JsonObject {
 			this.w = 0.0, 
 			this.h = 0.0, 
 			this.cluster = "", 
+			this.person = "", 
+			this.confirmed = false, 
+			this.state = FaceState.undecided, 
 	});
 
 	/// Parses a FaceInfo from a string source.
@@ -1279,6 +1366,18 @@ class FaceInfo extends _JsonObject {
 				cluster = json.expectString();
 				break;
 			}
+			case "person": {
+				person = json.expectString();
+				break;
+			}
+			case "confirmed": {
+				confirmed = json.expectBool();
+				break;
+			}
+			case "state": {
+				state = readFaceState(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1304,6 +1403,182 @@ class FaceInfo extends _JsonObject {
 
 		json.addKey("cluster");
 		json.addString(cluster);
+
+		json.addKey("person");
+		json.addString(person);
+
+		json.addKey("confirmed");
+		json.addBool(confirmed);
+
+		json.addKey("state");
+		writeFaceState(json, state);
+	}
+
+}
+
+///  What somebody decided about one face, see {@link FaceTag} and issue #125.
+/// 
+///  <p>
+///  A rejection is a decision too: without it, a suggestion that was turned down would come back at
+///  the next pass.
+///  </p>
+enum FaceState {
+	///  Nothing was decided about this face.
+	/// 
+	///  <p>
+	///  The first constant and therefore what a {@link FaceInfo} of an untouched detection answers,
+	///  and what a client that does not know a value reads. It is never stored: a {@link FaceTag}
+	///  <em>is</em> a decision, so an assignment carrying this state is refused.
+	///  </p>
+	undecided,
+	///  This face is {@link FaceTag#person}: somebody said so.
+	confirmed,
+	///  This face is <em>not</em> {@link FaceTag#person}: somebody said so.
+	/// 
+	///  <p>
+	///  The person stands in the tag, because that is what was rejected. A face may carry only one
+	///  decision at a time, so a rejection is replaced by a confirmation when somebody names the
+	///  face after all.
+	///  </p>
+	rejected,
+	///  There is no face here at all: what the detector found is a false positive.
+	notAFace,
+}
+
+/// Writes a value of FaceState to a JSON stream.
+void writeFaceState(JsonSink json, FaceState value) {
+	switch (value) {
+		case FaceState.undecided: json.addString("UNDECIDED"); break;
+		case FaceState.confirmed: json.addString("CONFIRMED"); break;
+		case FaceState.rejected: json.addString("REJECTED"); break;
+		case FaceState.notAFace: json.addString("NOT_A_FACE"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of FaceState from a JSON stream.
+FaceState readFaceState(JsonReader json) {
+	switch (json.expectString()) {
+		case "UNDECIDED": return FaceState.undecided;
+		case "CONFIRMED": return FaceState.confirmed;
+		case "REJECTED": return FaceState.rejected;
+		case "NOT_A_FACE": return FaceState.notAFace;
+		default: return FaceState.undecided;
+	}
+}
+
+///  What somebody said about one face of one photograph, stored in the album, see issue #125.
+/// 
+///  <p>
+///  The box is the detector's box <em>as it stood when the tag was made</em>, copied out of the
+///  {@link FaceInfo} the tagging request named and written in the same frame: normalised to
+///  <code>0..1</code> in the raw raster of the file, before the EXIF orientation and before
+///  {@link ImagePart#orientation}. So the tag outlives the cache it came from, the model that found
+///  it and any rotation the user applies; a later detection is matched to it by the overlap of the
+///  two boxes.
+///  </p>
+class FaceTag extends _JsonObject {
+	///  The left edge of the face, as a fraction of the image width, see {@link FaceInfo#x}.
+	double x;
+
+	///  The top edge of the face, as a fraction of the image height, see {@link FaceInfo#x}.
+	double y;
+
+	///  The width of the face, as a fraction of the image width, see {@link FaceInfo#x}.
+	double w;
+
+	///  The height of the face, as a fraction of the image height, see {@link FaceInfo#x}.
+	double h;
+
+	///  The {@link Person#id} this decision is about; empty for {@link FaceState#NOT_A_FACE}.
+	/// 
+	///  <p>
+	///  Stored as the person's own id at the moment of the tagging. A person that is merged into
+	///  another one afterwards keeps this album untouched: the read path resolves the id through the
+	///  {@link Person#aliases} of the register, see {@link FaceInfo#person}.
+	///  </p>
+	String person;
+
+	///  What was decided; never {@link FaceState#UNDECIDED}, which is not a decision.
+	FaceState state;
+
+	/// Creates a FaceTag.
+	FaceTag({
+			this.x = 0.0, 
+			this.y = 0.0, 
+			this.w = 0.0, 
+			this.h = 0.0, 
+			this.person = "", 
+			this.state = FaceState.undecided, 
+	});
+
+	/// Parses a FaceTag from a string source.
+	static FaceTag? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a FaceTag instance from the given reader.
+	static FaceTag read(JsonReader json) {
+		FaceTag result = FaceTag();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "FaceTag";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "x": {
+				x = json.expectDouble();
+				break;
+			}
+			case "y": {
+				y = json.expectDouble();
+				break;
+			}
+			case "w": {
+				w = json.expectDouble();
+				break;
+			}
+			case "h": {
+				h = json.expectDouble();
+				break;
+			}
+			case "person": {
+				person = json.expectString();
+				break;
+			}
+			case "state": {
+				state = readFaceState(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("x");
+		json.addNumber(x);
+
+		json.addKey("y");
+		json.addNumber(y);
+
+		json.addKey("w");
+		json.addNumber(w);
+
+		json.addKey("h");
+		json.addNumber(h);
+
+		json.addKey("person");
+		json.addString(person);
+
+		json.addKey("state");
+		writeFaceState(json, state);
 	}
 
 }
@@ -5280,6 +5555,616 @@ class InvitationInfo extends _JsonObject {
 
 		json.addKey("recipient");
 		json.addString(recipient);
+	}
+
+}
+
+///  Somebody the photographs of this space are of, see issue #125.
+/// 
+///  <p>
+///  The register lives per space in <code>.valbum/people.json</code> and is the only place a person
+///  is named: a {@link FaceTag} carries an {@link #id} and never a name, so renaming a person is one
+///  write and merging two is one write, whatever either of them is tagged in.
+///  </p>
+class Person extends _JsonObject {
+	///  The identifier of this person, unique within the space and never reused.
+	/// 
+	///  <p>
+	///  Sixteen random bytes, Base64url without padding &mdash; opaque, and deliberately not derived
+	///  from the name, which is editable. A person that was merged into another one keeps their id as
+	///  an alias of the surviving one, so an id that was ever handed out goes on resolving, see
+	///  {@link #aliases}.
+	///  </p>
+	String id;
+
+	///  What to call this person; editable, and unique within the space ignoring case.
+	String name;
+
+	///  The face to show this person by, <code>null</code> while nobody chose one (issue #126).
+	PersonCover? cover;
+
+	///  The member of the space this person is, empty when they are nobody in particular.
+	/// 
+	///  <p>
+	///  The {@link UserEntry#name} of a user. Written by issue #128 and carried here unread: this
+	///  build stores it and answers it and draws no conclusion from it.
+	///  </p>
+	String user;
+
+	///  The ids that were merged into this person, see <code>?action=merge-persons</code>.
+	/// 
+	///  <p>
+	///  Answered so that a client can recognise a tag it read before a merge. The server resolves
+	///  them itself on every read, so nothing has to.
+	///  </p>
+	List<PersonAlias> aliases;
+
+	/// Creates a Person.
+	Person({
+			this.id = "", 
+			this.name = "", 
+			this.cover, 
+			this.user = "", 
+			this.aliases = const [], 
+	});
+
+	/// Parses a Person from a string source.
+	static Person? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a Person instance from the given reader.
+	static Person read(JsonReader json) {
+		Person result = Person();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "Person";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "cover": {
+				cover = json.tryNull() ? null : PersonCover.read(json);
+				break;
+			}
+			case "user": {
+				user = json.expectString();
+				break;
+			}
+			case "aliases": {
+				json.expectArray();
+				aliases = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = PersonAlias.read(json);
+						if (value != null) {
+							aliases.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("name");
+		json.addString(name);
+
+		var _cover = cover;
+		if (_cover != null) {
+			json.addKey("cover");
+			_cover.writeContent(json);
+		}
+
+		json.addKey("user");
+		json.addString(user);
+
+		json.addKey("aliases");
+		json.startArray();
+		for (var _element in aliases) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  One identifier a {@link Person} answers to besides their own, see {@link Person#aliases}.
+/// 
+///  <p>
+///  A message and not a plain string: the Dart backend of the model generator mis-types a
+///  <code>repeated string</code> field, see {@link UploadCheck#hashes}.
+///  </p>
+class PersonAlias extends _JsonObject {
+	///  The identifier that was merged away.
+	String id;
+
+	/// Creates a PersonAlias.
+	PersonAlias({
+			this.id = "", 
+	});
+
+	/// Parses a PersonAlias from a string source.
+	static PersonAlias? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PersonAlias instance from the given reader.
+	static PersonAlias read(JsonReader json) {
+		PersonAlias result = PersonAlias();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PersonAlias";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+	}
+
+}
+
+///  The face a {@link Person} is shown by, see {@link Person#cover}.
+class PersonCover extends _JsonObject {
+	///  The photograph, as a path relative to the space root, <code>/</code> as separator.
+	String path;
+
+	///  Which face of it, see {@link FaceInfo#index}.
+	int face;
+
+	/// Creates a PersonCover.
+	PersonCover({
+			this.path = "", 
+			this.face = 0, 
+	});
+
+	/// Parses a PersonCover from a string source.
+	static PersonCover? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PersonCover instance from the given reader.
+	static PersonCover read(JsonReader json) {
+		PersonCover result = PersonCover();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PersonCover";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "path": {
+				path = json.expectString();
+				break;
+			}
+			case "face": {
+				face = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("path");
+		json.addString(path);
+
+		json.addKey("face");
+		json.addNumber(face);
+	}
+
+}
+
+///  The people of a space, answered by <code>?type=people</code>.
+class PersonList extends _JsonObject {
+	///  Every person of the register, in the order they were created; merged ones are not here.
+	List<Person> people;
+
+	/// Creates a PersonList.
+	PersonList({
+			this.people = const [], 
+	});
+
+	/// Parses a PersonList from a string source.
+	static PersonList? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PersonList instance from the given reader.
+	static PersonList read(JsonReader json) {
+		PersonList result = PersonList();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PersonList";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "people": {
+				json.expectArray();
+				people = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = Person.read(json);
+						if (value != null) {
+							people.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("people");
+		json.startArray();
+		for (var _element in people) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  What <code>?action=create-person</code> asks for.
+class PersonCreate extends _JsonObject {
+	///  The name of the new person; blanks are trimmed and an empty name is refused.
+	String name;
+
+	/// Creates a PersonCreate.
+	PersonCreate({
+			this.name = "", 
+	});
+
+	/// Parses a PersonCreate from a string source.
+	static PersonCreate? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PersonCreate instance from the given reader.
+	static PersonCreate read(JsonReader json) {
+		PersonCreate result = PersonCreate();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PersonCreate";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+	}
+
+}
+
+///  What <code>?action=rename-person</code> asks for.
+class PersonRename extends _JsonObject {
+	///  The {@link Person#id} to rename; an alias of a person names that person.
+	String id;
+
+	///  The new name; blanks are trimmed and an empty name is refused.
+	String name;
+
+	/// Creates a PersonRename.
+	PersonRename({
+			this.id = "", 
+			this.name = "", 
+	});
+
+	/// Parses a PersonRename from a string source.
+	static PersonRename? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PersonRename instance from the given reader.
+	static PersonRename read(JsonReader json) {
+		PersonRename result = PersonRename();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PersonRename";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("name");
+		json.addString(name);
+	}
+
+}
+
+///  What <code>?action=merge-persons</code> asks for: two people who are one.
+/// 
+///  <p>
+///  The one that is kept keeps its id, its name and its cover; the other becomes an alias of it and
+///  is gone from every listing. No album is rewritten, see {@link Person#aliases}.
+///  </p>
+class PersonMerge extends _JsonObject {
+	///  The {@link Person#id} that survives.
+	String into;
+
+	///  The {@link Person#id} that becomes an alias of {@link #into}.
+	String from;
+
+	/// Creates a PersonMerge.
+	PersonMerge({
+			this.into = "", 
+			this.from = "", 
+	});
+
+	/// Parses a PersonMerge from a string source.
+	static PersonMerge? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PersonMerge instance from the given reader.
+	static PersonMerge read(JsonReader json) {
+		PersonMerge result = PersonMerge();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PersonMerge";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "into": {
+				into = json.expectString();
+				break;
+			}
+			case "from": {
+				from = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("into");
+		json.addString(into);
+
+		json.addKey("from");
+		json.addString(from);
+	}
+
+}
+
+///  What <code>?action=tag-faces</code> asks for: decisions about the faces of one album.
+/// 
+///  <p>
+///  Every assignment is carried out on its own and the whole request is refused if any one of them
+///  cannot be: nothing is written until every name, index and person in it is known, so an album is
+///  never left half tagged.
+///  </p>
+class TagFaces extends _JsonObject {
+	///  The decisions to store.
+	List<FaceAssignment> faces;
+
+	/// Creates a TagFaces.
+	TagFaces({
+			this.faces = const [], 
+	});
+
+	/// Parses a TagFaces from a string source.
+	static TagFaces? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a TagFaces instance from the given reader.
+	static TagFaces read(JsonReader json) {
+		TagFaces result = TagFaces();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "TagFaces";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "faces": {
+				json.expectArray();
+				faces = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = FaceAssignment.read(json);
+						if (value != null) {
+							faces.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("faces");
+		json.startArray();
+		for (var _element in faces) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  One decision about one face, see {@link TagFaces}.
+class FaceAssignment extends _JsonObject {
+	///  The {@link ImagePart#name} of the photograph in the addressed album.
+	String image;
+
+	///  Which of its faces, the {@link FaceInfo#index} of the answer this client read.
+	/// 
+	///  <p>
+	///  The box is copied from that {@link FaceInfo} into the stored {@link FaceTag}, so a client
+	///  never sends coordinates and can never invent a face that was not answered to it.
+	///  </p>
+	int face;
+
+	///  The {@link Person#id} the decision is about; empty exactly for {@link FaceState#NOT_A_FACE}.
+	String person;
+
+	///  What is decided; {@link FaceState#UNDECIDED} is not a decision and is refused.
+	FaceState state;
+
+	/// Creates a FaceAssignment.
+	FaceAssignment({
+			this.image = "", 
+			this.face = 0, 
+			this.person = "", 
+			this.state = FaceState.undecided, 
+	});
+
+	/// Parses a FaceAssignment from a string source.
+	static FaceAssignment? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a FaceAssignment instance from the given reader.
+	static FaceAssignment read(JsonReader json) {
+		FaceAssignment result = FaceAssignment();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "FaceAssignment";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "image": {
+				image = json.expectString();
+				break;
+			}
+			case "face": {
+				face = json.expectInt();
+				break;
+			}
+			case "person": {
+				person = json.expectString();
+				break;
+			}
+			case "state": {
+				state = readFaceState(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("image");
+		json.addString(image);
+
+		json.addKey("face");
+		json.addNumber(face);
+
+		json.addKey("person");
+		json.addString(person);
+
+		json.addKey("state");
+		writeFaceState(json, state);
 	}
 
 }

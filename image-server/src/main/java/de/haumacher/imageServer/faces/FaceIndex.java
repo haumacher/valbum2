@@ -501,17 +501,33 @@ public class FaceIndex {
 	 * {@link Faces#maySee} answers none, which is the right way round for the most personal thing
 	 * this server knows.
 	 * </p>
+	 *
+	 * <p>
+	 * Since issue #125 this is also where a stored {@link de.haumacher.imageServer.shared.model.FaceTag
+	 * tag} meets the detection it is about, see {@link FaceTags}. A tag is the album's own statement
+	 * and is answered even where the detector is switched off or has not run: an album that carries
+	 * one is copied and merged here whatever the index does.
+	 * </p>
+	 *
+	 * @param people
+	 *        The register a tag's person is resolved through, <code>null</code> when there is none.
 	 */
-	public AlbumInfo derive(AlbumInfo album, File folder) {
-		if (!isEnabled()) {
+	public AlbumInfo derive(AlbumInfo album, File folder, PeopleStore people) {
+		boolean enabled = isEnabled();
+		boolean tagged = tagged(album);
+		if (!enabled && !tagged) {
 			return album;
 		}
 		// The two small sidecars are read once for both questions: which faces are known, and
 		// whether anything is still to come.
-		FaceCache cache = new FaceCache(folder);
-		Map<String, String> hashByName = new HashCache(folder).storedHashByName();
-		Map<String, List<FaceInfo>> byName = facesByName(cache, hashByName);
-		boolean pending = pending(album, folder, cache, hashByName);
+		FaceCache cache = enabled ? new FaceCache(folder) : null;
+		Map<String, String> hashByName =
+			enabled ? new HashCache(folder).storedHashByName() : Collections.emptyMap();
+		Map<String, List<FaceInfo>> detected =
+			enabled ? facesByName(cache, hashByName) : Collections.<String, List<FaceInfo>> emptyMap();
+		boolean pending = enabled && pending(album, folder, cache, hashByName);
+		// What was found and what was decided about it, in one list per photograph.
+		Map<String, List<FaceInfo>> byName = merged(album, detected, people);
 		if (byName.isEmpty() && !pending) {
 			return album;
 		}
@@ -561,10 +577,69 @@ public class FaceIndex {
 			return image;
 		}
 		ImagePart copy = copyOf(image);
-		for (FaceInfo face : faces) {
-			copy.addFace(face);
-		}
+		copy.setFaces(faces);
 		return copy;
+	}
+
+	/**
+	 * What every photograph of the given album is answered as its faces, by file name.
+	 *
+	 * <p>
+	 * The detections of the moment and the decisions the album stores, brought together by
+	 * {@link FaceTags#merge(List, List, PeopleStore)}: the detected faces first, in their own order
+	 * and carrying the person of the tag they match, and behind them every tag no detection matched.
+	 * Only photographs that have something to say are in the map.
+	 * </p>
+	 *
+	 * <p>
+	 * The same numbering an answer carries, which is what a tagging request names a face by, see
+	 * {@link de.haumacher.imageServer.shared.model.FaceAssignment#getFace()}.
+	 * </p>
+	 */
+	public Map<String, List<FaceInfo>> answered(AlbumInfo album, File folder, PeopleStore people) {
+		Map<String, List<FaceInfo>> detected = isEnabled()
+			? facesByName(new FaceCache(folder), new HashCache(folder).storedHashByName())
+			: Collections.<String, List<FaceInfo>> emptyMap();
+		return merged(album, detected, people);
+	}
+
+	private static Map<String, List<FaceInfo>> merged(AlbumInfo album, Map<String, List<FaceInfo>> detected,
+			PeopleStore people) {
+		Map<String, List<FaceInfo>> result = new LinkedHashMap<>();
+		for (ImagePart image : imagesOf(album)) {
+			List<FaceInfo> faces = detected.get(image.getName());
+			if (faces == null) {
+				faces = Collections.emptyList();
+			}
+			if (faces.isEmpty() && image.getTags().isEmpty()) {
+				continue;
+			}
+			result.put(image.getName(), FaceTags.merge(faces, image.getTags(), people));
+		}
+		return result;
+	}
+
+	/** Whether any photograph of the given album carries a decision about a face (issue #125). */
+	public static boolean tagged(AlbumInfo album) {
+		for (ImagePart image : imagesOf(album)) {
+			if (!image.getTags().isEmpty()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Every photograph of the given album, the members of a group included. */
+	public static List<ImagePart> imagesOf(AlbumInfo album) {
+		List<ImagePart> result = new ArrayList<>();
+		for (AlbumPart part : album.getParts()) {
+			if (part instanceof ImagePart) {
+				result.add((ImagePart) part);
+			} else if (part instanceof ImageGroup) {
+				result.addAll(((ImageGroup) part).getImages());
+			}
+		}
+		return result;
 	}
 
 	/**

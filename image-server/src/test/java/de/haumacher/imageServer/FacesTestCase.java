@@ -144,12 +144,26 @@ public abstract class FacesTestCase extends TestCase {
 
 		UserStore store = new UserStore(_base);
 		store.nameOwner("haui");
+		extraUsers(store);
 		store.store();
 
 		_auth = new AuthService(AuthMode.WRITES, _base);
 		_servlet = new ImageServlet(_base.toFile(), _auth, "", SpaceStore.load(_base, ""));
 		_servlet.init();
 		_adminToken = Codes.signInAdmin(_auth, "Phone", "haui").getToken();
+	}
+
+	/**
+	 * Adds further users to the space before it is written, for a test that needs somebody besides
+	 * the administrator (issue #125).
+	 *
+	 * <p>
+	 * Called while the store is being built, because the {@link AuthService} reads it once: a user
+	 * added afterwards would not be known to the servlet under test.
+	 * </p>
+	 */
+	protected void extraUsers(UserStore store) {
+		// Nobody but the administrator, unless a test says otherwise.
 	}
 
 	/** The album folder of the test space. */

@@ -8,6 +8,10 @@ import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.AuthService.Caller;
 import de.haumacher.imageServer.auth.Privacy;
+import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AlbumPart;
+import de.haumacher.imageServer.shared.model.ImageGroup;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.util.Orientations;
 
@@ -211,5 +215,64 @@ public final class Faces {
 			return true;
 		}
 		return auth != null && auth.getMode() == AuthMode.OFF;
+	}
+
+	/**
+	 * The given album without the decisions its photographs carry, see issue #125.
+	 *
+	 * <p>
+	 * The other half of {@link #maySee(AuthService, Caller, int)}, and the reason it has one: a
+	 * detection is <em>added</em> to an answer and is therefore never there for a caller that may
+	 * not have it, but a tag is <em>stored</em> in <code>index.json</code> and is read into the
+	 * cached album like the rating and the comment beside it. It has to be taken out again on the
+	 * way to anybody who is not a signed-in member — a share link, an anonymous visitor, the author
+	 * previewing their own album as the public sees it — because a person's name under a face is the
+	 * most personal thing this server knows.
+	 * </p>
+	 *
+	 * <p>
+	 * A copy, never the cached album, and only where there is something to take out: an album
+	 * nobody has tagged is answered as it stands.
+	 * </p>
+	 */
+	public static AlbumInfo withoutTags(AlbumInfo album) {
+		if (!FaceIndex.tagged(album)) {
+			return album;
+		}
+		AlbumInfo result = AlbumInfo.create()
+			.setKind(album.getKind())
+			.setTitle(album.getTitle())
+			.setSubTitle(album.getSubTitle())
+			.setDate(album.getDate())
+			.setEffectiveDate(album.getEffectiveDate())
+			.setFacesPending(album.isFacesPending());
+		if (album.getIndexPicture() != null) {
+			result.setIndexPicture(album.getIndexPicture());
+		}
+		for (AlbumPart part : album.getParts()) {
+			if (part instanceof ImagePart) {
+				result.addPart(withoutTags((ImagePart) part));
+			} else if (part instanceof ImageGroup) {
+				ImageGroup group = (ImageGroup) part;
+				ImageGroup copy = ImageGroup.create().setRepresentative(group.getRepresentative());
+				for (ImagePart image : group.getImages()) {
+					copy.addImage(withoutTags(image));
+				}
+				result.addPart(copy);
+			} else {
+				result.addPart(part);
+			}
+		}
+		return result;
+	}
+
+	/** The given photograph without the decisions it carries, see {@link #withoutTags(AlbumInfo)}. */
+	public static ImagePart withoutTags(ImagePart image) {
+		if (image.getTags().isEmpty()) {
+			return image;
+		}
+		ImagePart copy = FaceIndex.copyOf(image);
+		copy.setTags(java.util.Collections.emptyList());
+		return copy;
 	}
 }

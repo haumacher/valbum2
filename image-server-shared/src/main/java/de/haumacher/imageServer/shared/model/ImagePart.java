@@ -57,6 +57,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getFaces() */
 	private static final String FACES__PROP = "faces";
 
+	/** @see #getTags() */
+	private static final String TAGS__PROP = "tags";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -86,6 +89,8 @@ public class ImagePart extends AbstractImage {
 	private String _contributorLabel = "";
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.FaceInfo> _faces = new java.util.ArrayList<>();
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.FaceTag> _tags = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -524,6 +529,69 @@ public class ImagePart extends AbstractImage {
 		_faces.remove(value);
 	}
 
+	/**
+	 * What somebody said about the faces of this photograph, see issue #125.
+	 *
+	 * <p>
+	 * <b>Stored</b>, and the one piece of the face feature that is: a detection is a guess of a
+	 * model and lives in the album's cache, a tag is a human decision and belongs beside the
+	 * photograph it is about. Nothing clears this field before an <code>index.json</code> is
+	 * written &mdash; unlike {@link #getFaces()}, which is derived on every read.
+	 * </p>
+	 *
+	 * <p>
+	 * The stored statement and the derived answer deliberately do <em>not</em> share a name:
+	 * {@link #getTags()} is what this album says, {@link #getFaces()} is what the server answers, and the
+	 * second is built from the first plus the detections of the moment.
+	 * </p>
+	 *
+	 * <p>
+	 * It is written by <code>?action=tag-faces</code> alone, and answered to signed-in members
+	 * alone &mdash; exactly like {@link #getFaces()}, see {@link FaceInfo}. A client that reads an album
+	 * and writes it back therefore round-trips the tags it was answered; a client too old to know
+	 * this field would drop them, which is why the tagging action never goes through a
+	 * <code>PUT</code>.
+	 * </p>
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.FaceTag> getTags() {
+		return _tags;
+	}
+
+	/**
+	 * @see #getTags()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setTags(java.util.List<? extends de.haumacher.imageServer.shared.model.FaceTag> value) {
+		internalSetTags(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getTags()} without chain call utility. */
+	protected final void internalSetTags(java.util.List<? extends de.haumacher.imageServer.shared.model.FaceTag> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'tags' cannot be null.");
+		_tags.clear();
+		_tags.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getTags()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart addTag(de.haumacher.imageServer.shared.model.FaceTag value) {
+		internalAddTag(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addTag(de.haumacher.imageServer.shared.model.FaceTag)} without chain call utility. */
+	protected final void internalAddTag(de.haumacher.imageServer.shared.model.FaceTag value) {
+		_tags.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getTags()} list.
+	 */
+	public final void removeTag(de.haumacher.imageServer.shared.model.FaceTag value) {
+		_tags.remove(value);
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -603,6 +671,12 @@ public class ImagePart extends AbstractImage {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(TAGS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.FaceTag x : getTags()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -625,6 +699,14 @@ public class ImagePart extends AbstractImage {
 				in.beginArray();
 				while (in.hasNext()) {
 					addFace(de.haumacher.imageServer.shared.model.FaceInfo.readFaceInfo(in));
+				}
+				in.endArray();
+			}
+			break;
+			case TAGS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addTag(de.haumacher.imageServer.shared.model.FaceTag.readFaceTag(in));
 				}
 				in.endArray();
 			}
