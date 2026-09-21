@@ -52,8 +52,55 @@ message RightName {
 	string name;
 }
 
+/**
+ * What an {@link AlbumInfo} is: an ordinary album, or an inbox, see issue #131.
+ *
+ * <p>
+ * An inbox is a <em>kind of album</em> and not a resource of its own: the same folder, the same
+ * <code>index.json</code>, the same parts, so that every mechanism an album has — upload, hashes,
+ * moving, deleting, thumbnails, attribution — works there unchanged. One stored flag says what it
+ * is, and everything an inbox does differently follows from that flag alone.
+ * </p>
+ *
+ * <p>
+ * {@link #ALBUM} is the first constant and therefore what every sidecar written before this field
+ * existed reads as: an album, exactly as it always was. Switching an album to an inbox and back is
+ * an ordinary properties write and loses nothing — what an inbox derives (its order, its date) is
+ * derived on the way out and never stored, so the album is itself again the moment the flag is
+ * cleared.
+ * </p>
+ */
+enum AlbumKind {
+	/** An ordinary album: the author's order, the author's groups, the author's headings. */
+	ALBUM;
+	
+	/**
+	 * An inbox: photographs waiting to be sorted into albums.
+	 *
+	 * <p>
+	 * The server answers an inbox {@link AlbumInfo#parts flat and by date} whatever the sidecar
+	 * lists, gives it no {@link AlbumInfo#effectiveDate date} of its own, files it nowhere, and
+	 * never shows it to anybody but a caller who may {@link RightName edit} it — a contributor
+	 * sees their own contributions there and nobody else sees that it exists at all. It cannot be
+	 * shared by a link.
+	 * </p>
+	 */
+	INBOX;
+}
+
 /** {@link Resource} describing a collection of {@link AlbumPart}s. */
 message AlbumInfo extends FolderResource {
+	/**
+	 * Whether this is an ordinary album or an inbox, see issue #131.
+	 *
+	 * <p>
+	 * Stored in <code>index.json</code> like the title: it is a statement the author made about
+	 * this folder, not something the server derives. An absent value is {@link AlbumKind#ALBUM},
+	 * so every sidecar written before this field existed reads as the album it always was.
+	 * </p>
+	 */
+	AlbumKind kind;
+	
 	/** The title of this album. */
 	string title;
 	
@@ -464,6 +511,18 @@ enum FolderKind {
 	 * </p>
 	 */
 	FOLDER;
+	
+	/**
+	 * The entry is an inbox: an album (see {@link AlbumKind#INBOX}) holding photographs that wait
+	 * to be sorted.
+	 *
+	 * <p>
+	 * It has no date, it stands first in its listing whatever else lies there, and it is only ever
+	 * an entry of a listing answered to a caller that may see it at all — to everybody else the
+	 * entry is simply not there, see issue #131.
+	 * </p>
+	 */
+	INBOX;
 }
 
 /** {@link Resource} describing collection {@link FolderInfo}s found in a directory. */

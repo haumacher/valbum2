@@ -15,6 +15,9 @@ public class AlbumInfo extends FolderResource {
 	/** Identifier for the {@link de.haumacher.imageServer.shared.model.AlbumInfo} type in JSON format. */
 	public static final String ALBUM_INFO__TYPE = "AlbumInfo";
 
+	/** @see #getKind() */
+	private static final String KIND__PROP = "kind";
+
 	/** @see #getTitle() */
 	private static final String TITLE__PROP = "title";
 
@@ -32,6 +35,8 @@ public class AlbumInfo extends FolderResource {
 
 	/** @see #getParts() */
 	private static final String PARTS__PROP = "parts";
+
+	private de.haumacher.imageServer.shared.model.AlbumKind _kind = de.haumacher.imageServer.shared.model.AlbumKind.ALBUM;
 
 	private String _title = "";
 
@@ -61,6 +66,33 @@ public class AlbumInfo extends FolderResource {
 	@Override
 	public TypeKind kind() {
 		return TypeKind.ALBUM_INFO;
+	}
+
+	/**
+	 * Whether this is an ordinary album or an inbox, see issue #131.
+	 *
+	 * <p>
+	 * Stored in <code>index.json</code> like the title: it is a statement the author made about
+	 * this folder, not something the server derives. An absent value is {@link AlbumKind#ALBUM},
+	 * so every sidecar written before this field existed reads as the album it always was.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.AlbumKind getKind() {
+		return _kind;
+	}
+
+	/**
+	 * @see #getKind()
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo setKind(de.haumacher.imageServer.shared.model.AlbumKind value) {
+		internalSetKind(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getKind()} without chain call utility. */
+	protected final void internalSetKind(de.haumacher.imageServer.shared.model.AlbumKind value) {
+		if (value == null) throw new IllegalArgumentException("Property 'kind' cannot be null.");
+		_kind = value;
 	}
 
 	/**
@@ -333,6 +365,8 @@ public class AlbumInfo extends FolderResource {
 	@Override
 	protected void writeFields(de.haumacher.msgbuf.json.JsonWriter out) throws java.io.IOException {
 		super.writeFields(out);
+		out.name(KIND__PROP);
+		getKind().writeTo(out);
 		out.name(TITLE__PROP);
 		out.value(getTitle());
 		out.name(SUB_TITLE__PROP);
@@ -356,6 +390,7 @@ public class AlbumInfo extends FolderResource {
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
+			case KIND__PROP: setKind(de.haumacher.imageServer.shared.model.AlbumKind.readAlbumKind(in)); break;
 			case TITLE__PROP: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SUB_TITLE__PROP: setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case DATE__PROP: setDate(in.nextLong()); break;

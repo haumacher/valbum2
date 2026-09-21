@@ -303,8 +303,8 @@ public class TestImageServletDelete extends TestCase {
 
 		MoveResult result = delete("/A/", "a.jpg", "index.json", "../A", ".vacache", "nowhere", "Sub", "Sub");
 
-		assertEquals("An image is taken out of an album by moving it, never by this.",
-			DeleteService.notAnEntry("a.jpg"), result.getOutcomes().get(0).getMessage());
+		assertEquals("A photograph is thrown away into the album this one has in the trash.",
+			DeleteService.trashed("a.jpg"), result.getOutcomes().get(0).getMessage());
 		assertEquals(DeleteService.notAnEntry("index.json"), result.getOutcomes().get(1).getMessage());
 		assertEquals("A name is a name, never a path.", DeleteService.notAnEntry("../A"),
 			result.getOutcomes().get(2).getMessage());
@@ -314,7 +314,7 @@ public class TestImageServletDelete extends TestCase {
 		assertEquals(DeleteService.REMOVED, result.getOutcomes().get(5).getMessage());
 		assertEquals(DeleteService.namedTwice("Sub"), result.getOutcomes().get(6).getMessage());
 
-		assertTrue("The photograph must still be there.", _base.resolve("A/a.jpg").toFile().exists());
+		assertTrue("The photograph is in the trash, not deleted.", new File(trash(), "A/a.jpg").isFile());
 		assertTrue("The sidecar must still be there.", _base.resolve("A/index.json").toFile().exists());
 	}
 

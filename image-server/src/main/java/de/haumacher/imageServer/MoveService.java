@@ -375,8 +375,12 @@ public class MoveService {
 		// an image lands in an album, never in a folder of folders, and is refused above.
 		PlacementRule rule = PlacementRule.of(targetSidecar);
 
+		// Whether naming an image names the group behind it: in an album it does, in an inbox
+		// there is no group to see, see issue #131.
+		boolean groupsTravel = Inboxes.groupsTravel(sourceAlbum);
+
 		List<Entry> entries = classify(sourceFolder, targetFolder, sourceAlbum, targetTakesImages,
-			targetTakesFolders, rule, target.isRoot(), names);
+			targetTakesFolders, rule, target.isRoot(), groupsTravel, names);
 
 		MoveResult result = MoveResult.create();
 		HashCache sourceHashes = new HashCache(sourceFolder);
@@ -453,10 +457,14 @@ public class MoveService {
 	 * Nothing is renamed here: a request is looked at as a whole first, so that a refusal never
 	 * leaves a half-moved album behind.
 	 * </p>
+	 *
+	 * @param groupsTravel
+	 *        Whether naming the representative of an {@link ImageGroup} names the whole group, see
+	 *        {@link Inboxes#groupsTravel(AlbumInfo)}.
 	 */
 	private List<Entry> classify(File sourceFolder, File targetFolder, AlbumInfo sourceAlbum,
 			boolean targetTakesImages, boolean targetTakesFolders, PlacementRule rule,
-			boolean targetIsSpaceRoot, List<String> names) {
+			boolean targetIsSpaceRoot, boolean groupsTravel, List<String> names) {
 		List<Entry> result = new ArrayList<>(names.size());
 		Set<String> seen = new HashSet<>();
 		for (String name : names) {
@@ -521,9 +529,10 @@ public class MoveService {
 			}
 
 			ImageGroup group = image.getGroup();
-			if (group != null && representative(group) == image) {
+			if (groupsTravel && group != null && representative(group) == image) {
 				// The whole group travels: an album shows a group by its representative, and a
-				// group left without it would be a different thing.
+				// group left without it would be a different thing. An inbox shows no group at
+				// all, so there one photograph is one photograph, see Inboxes#groupsTravel.
 				entry._group = group;
 			} else {
 				entry._image = image;

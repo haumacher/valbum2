@@ -536,6 +536,22 @@ public class ImageServlet extends HttpServlet {
 			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
 			serveFolder(context, resourcePath, clearance, viewAs, caller);
 		} else if (ResourceCache.isImage(file)) {
+			// An image of an inbox is answered by the rule the inbox is answered by: one the
+			// caller may not see is not there for them, whichever of its shapes they ask for --
+			// its description, its thumbnail, its rendition or the original, see issue #131.
+			PathInfo folderPath = resourcePath.parent();
+			Resource folder = _cache.lookup(folderPath);
+			if (Inboxes.isInbox(folder)) {
+				Resource image = _cache.lookup(resourcePath);
+				Inboxes.Visibility inbox = Inboxes.visibility(_auth, caller, folderPath, viewAs);
+				if (!(image instanceof ImagePart)
+					|| !Inboxes.shows(inbox, (ImagePart) image, caller.subject())) {
+					LOG.warning("Hiding the image of an inbox at '" + pathInfo + "'.");
+					errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
+					return;
+				}
+			}
+
 			// The description and the thumbnail are looking; the original file is taking a copy.
 			// A rendition is looking, exactly as the thumbnail is; only the original is taking a copy.
 			String right = jsonRequested(context) || "tn".equals(type) || VideoRenditions.Kind.PLAYBACK.parameter().equals(type)
@@ -1050,10 +1066,19 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 *
 	 * <p>
-	 * It needs {@link Rights#EDIT} on the folder the entry lives in, and nothing else opens it:
-	 * removing an entry is an edit of the listing, and the contributor exception of issue #53 —
-	 * taking one's own photograph back out of somebody else's album — does not reach a whole
-	 * album. A share link is refused in its own words, since a link may well allow adding photos.
+	 * It deletes an album, a folder <em>and a single photograph</em> (issue #131): a name that is
+	 * an image file is moved into the album this one has in the trash, by the very move of issue
+	 * #47 — the sidecar part and the hash entry ride along, and nothing is unlinked. That is
+	 * general, for every album and not only for an inbox.
+	 * </p>
+	 *
+	 * <p>
+	 * It needs {@link Rights#EDIT} on the folder the entry lives in: removing an entry is an edit
+	 * of the listing. The one exception is the contributor rule of issue #53, and it reaches
+	 * exactly as far as it does for a move — a request naming <em>photographs only</em>, all of
+	 * them the caller's own, is somebody taking their own contribution back out, and it never
+	 * reaches a whole album. A share link is refused in its own words, since a link may well allow
+	 * adding photos.
 	 * </p>
 	 */
 	private void deleteEntries(Context context) throws IOException {
@@ -1073,11 +1098,6 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, DeleteService.SHARE_DELETE_REFUSED);
 			return;
 		}
-		if (!_auth.mayEdit(caller, folder)) {
-			refuseMove(context, caller, DeleteService.EDIT_REFUSED, true);
-			return;
-		}
-
 		MoveRequest request;
 		try {
 			byte[] contents = readBody(context.request());
@@ -1089,6 +1109,21 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		List<String> names = request.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
+
+		if (!_auth.mayEdit(caller, folder)) {
+			// Deleting an album is an edit of the listing it is an entry of, and nothing but the
+			// edit right opens that. A request naming photographs alone is the other case: taking
+			// one's own contribution back out is what the contributor exception of issue #53 is,
+			// and throwing it away is taking it out, see issue #131.
+			if (!DeleteService.onlyImages(folder.toFile(), names)) {
+				refuseMove(context, caller, DeleteService.EDIT_REFUSED, true);
+				return;
+			}
+			if (!new MoveService(_cache, _auth).contributedBy(folder, names, caller.subject())) {
+				refuseMove(context, caller, MoveService.CONTRIBUTION_REFUSED, true);
+				return;
+			}
+		}
 
 		MoveResult result;
 		try {
@@ -1729,6 +1764,14 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (location.getOwner().isEmpty()) {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.PATH_ESCAPED);
+			return;
+		}
+
+		if (Inboxes.isInbox(location.getPath().toFile())) {
+			// An inbox holds photographs nobody has looked at yet; a link to it would hand them
+			// out unseen, see issue #131.
+			LOG.warning("Refusing to share the inbox at '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Inboxes.INBOX_NOT_SHARED);
 			return;
 		}
 
@@ -2552,6 +2595,9 @@ public class ImageServlet extends HttpServlet {
 		if (resource == null) {
 			return;
 		}
+		// An inbox is answered flat and by date; what the client writes back must not freeze that
+		// derived order into the sidecar, see issue #131.
+		boolean rearranged = Inboxes.restoreArrangement(resourcePath.toFile(), resource);
 
 		PathInfo target = resourcePath;
 		String message = "";
@@ -2574,7 +2620,7 @@ public class ImageServlet extends HttpServlet {
 			message = FolderNames.renamedTo(wanted);
 		}
 
-		storeSidecar(target.toFile(), stored(contents, resource));
+		storeSidecar(target.toFile(), stored(contents, resource, rearranged));
 
 		// The next read must see what was just written, in the folder and in the listing above.
 		_cache.invalidate(target);
@@ -2707,7 +2753,21 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 */
 	private static byte[] stored(byte[] contents, FolderResource resource) throws IOException {
-		if (!AlbumDate.clearDerived(resource)) {
+		return stored(contents, resource, false);
+	}
+
+	/**
+	 * The bytes to store for a received sidecar, see {@link #stored(byte[], FolderResource)}.
+	 *
+	 * @param rearranged
+	 *        Whether the parts were already put back into the order the folder stores, see
+	 *        {@link Inboxes#restoreArrangement(File, FolderResource)}.
+	 */
+	private static byte[] stored(byte[] contents, FolderResource resource, boolean rearranged) throws IOException {
+		// Both, always: clearing the derived date must not be skipped because the parts were
+		// rearranged, nor the other way round.
+		boolean cleared = AlbumDate.clearDerived(resource);
+		if (!cleared && !rearranged) {
 			return contents;
 		}
 		LOG.info("Dropping the derived date of a stored sidecar: it is answered, never kept.");
@@ -2730,6 +2790,20 @@ public class ImageServlet extends HttpServlet {
 	private void serveFolder(Context context, PathInfo pathInfo, int clearance, int viewAs, Caller caller)
 			throws IOException {
 		Resource resource = _cache.lookup(pathInfo);
+
+		// What this caller may see of an inbox -- of this folder, if it is one, and of the inboxes
+		// among the entries of this listing, see issue #131.
+		Resource shown = Inboxes.filter(resource, pathInfo, Inboxes.visibility(_auth, caller, pathInfo, viewAs),
+			caller.subject());
+		if (shown == null) {
+			// An inbox this caller may not see is not there for them, and a refusal naming it
+			// would say that there is something to be refused.
+			LOG.warning("Hiding the inbox at '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
+			return;
+		}
+		resource = shown;
+
 		if (jsonRequested(context)) {
 			Resource answer = _privacy.filter(resource, pathInfo, clearance, _auth.minRating(caller));
 			if (answer instanceof ListingInfo) {
@@ -2763,6 +2837,8 @@ public class ImageServlet extends HttpServlet {
 		if (resource instanceof AlbumInfo) {
 			AlbumInfo album = (AlbumInfo) resource;
 			AlbumInfo result = AlbumInfo.create()
+				// Whether this is an album or an inbox is not a question of who is asking.
+				.setKind(album.getKind())
 				.setTitle(album.getTitle())
 				.setSubTitle(album.getSubTitle())
 				.setDate(album.getDate())

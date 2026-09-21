@@ -12,6 +12,7 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import de.haumacher.imageServer.AlbumDate;
 import de.haumacher.imageServer.Contributors;
+import de.haumacher.imageServer.Inboxes;
 import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -202,13 +203,19 @@ public class ResourceCache {
 	 * </p>
 	 *
 	 * <p>
+	 * An inbox stands first whatever else lies there: it is undated (issue #131) and it is what
+	 * needs doing, so it is not sorted in among the albums but in front of them, ties by name.
+	 * </p>
+	 *
+	 * <p>
 	 * A folder without a date sorts by name exactly as every folder did before issue #48. The date
 	 * is the cheap one — a sidecar date or a date in the folder name — so this order costs a
 	 * listing nothing but the sidecars it reads anyway, see {@link FolderInfo#getEffectiveDate()}.
 	 * </p>
 	 */
 	public static final Comparator<FolderInfo> BY_DATE =
-		Comparator.comparingLong(FolderInfo::getEffectiveDate).reversed()
+		Comparator.comparingInt((FolderInfo folder) -> folder.getKind() == FolderKind.INBOX ? 0 : 1)
+			.thenComparing(Comparator.comparingLong(FolderInfo::getEffectiveDate).reversed())
 			.thenComparing(FolderInfo::getName, String.CASE_INSENSITIVE_ORDER);
 
 	public Resource lookup(PathInfo pathInfo) {
@@ -356,8 +363,11 @@ public class ResourceCache {
 			if (folderResource != null) {
 				if (folderResource instanceof AlbumInfo) {
 					AlbumInfo albumInfo = (AlbumInfo) folderResource;
-					// The folder's own sidecar says what it is, see FolderInfo#getKind().
-					folderInfo.setKind(FolderKind.ALBUM);
+					// The folder's own sidecar says what it is, see FolderInfo#getKind(). An inbox
+					// is a kind of album and says so, so that the tile can stand first and show no
+					// date, see issue #131.
+					folderInfo.setKind(
+						Inboxes.isInbox(albumInfo) ? FolderKind.INBOX : FolderKind.ALBUM);
 					folderInfo.setTitle(albumInfo.getTitle());
 					folderInfo.setSubTitle(albumInfo.getSubTitle());
 					folderInfo.setIndexPicture(albumInfo.getIndexPicture());

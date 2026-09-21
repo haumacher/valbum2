@@ -112,6 +112,8 @@ public class PrivacyFilter {
 	 */
 	AlbumInfo filterAlbum(AlbumInfo album, int clearance, int minRating) {
 		AlbumInfo result = AlbumInfo.create()
+			// Hiding an image does not turn an inbox into an album, see issue #131.
+			.setKind(album.getKind())
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
 			// Hiding an image does not change when the album happened.

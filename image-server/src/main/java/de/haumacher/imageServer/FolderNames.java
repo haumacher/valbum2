@@ -112,6 +112,11 @@ public final class FolderNames {
 			if (isBlank(album.getTitle())) {
 				return "";
 			}
+			if (Inboxes.isInbox(album)) {
+				// An inbox has no date (see issue #131), so its name is its title and nothing
+				// else -- neither a stored date nor the date its current name happens to carry.
+				return album.getTitle().trim();
+			}
 			if (album.getDate() > 0L) {
 				return albumFolderName(album.getDate(), album.getTitle());
 			}

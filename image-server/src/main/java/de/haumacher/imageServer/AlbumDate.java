@@ -184,6 +184,12 @@ public final class AlbumDate {
 	 *        The name of the folder on disk.
 	 */
 	public static AlbumDate ofFolder(FolderResource sidecar, String folderName) {
+		if (Inboxes.isInbox(sidecar)) {
+			// An inbox is not a day that happened: it is where photographs wait, see issue #131.
+			// Neither a stored date nor a date in its folder name makes one of it, so it is sorted
+			// by nothing, filed by nothing and shown without a date.
+			return NONE;
+		}
 		if (sidecar instanceof AlbumInfo) {
 			AlbumDate explicit = ofMillis(((AlbumInfo) sidecar).getDate());
 			if (explicit.isSet()) {
@@ -203,6 +209,10 @@ public final class AlbumDate {
 	 *        The name of the album's folder on disk.
 	 */
 	public static AlbumDate ofAlbum(AlbumInfo album, String folderName) {
+		if (Inboxes.isInbox(album)) {
+			// Not even the earliest photograph in it dates an inbox, see issue #131.
+			return NONE;
+		}
 		AlbumDate byFolder = ofFolder(album, folderName);
 		if (byFolder.isSet()) {
 			return byFolder;

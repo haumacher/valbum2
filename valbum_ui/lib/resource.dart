@@ -259,8 +259,66 @@ class RightName extends _JsonObject {
 
 }
 
+///  What an {@link AlbumInfo} is: an ordinary album, or an inbox, see issue #131.
+/// 
+///  <p>
+///  An inbox is a <em>kind of album</em> and not a resource of its own: the same folder, the same
+///  <code>index.json</code>, the same parts, so that every mechanism an album has — upload, hashes,
+///  moving, deleting, thumbnails, attribution — works there unchanged. One stored flag says what it
+///  is, and everything an inbox does differently follows from that flag alone.
+///  </p>
+/// 
+///  <p>
+///  {@link #ALBUM} is the first constant and therefore what every sidecar written before this field
+///  existed reads as: an album, exactly as it always was. Switching an album to an inbox and back is
+///  an ordinary properties write and loses nothing — what an inbox derives (its order, its date) is
+///  derived on the way out and never stored, so the album is itself again the moment the flag is
+///  cleared.
+///  </p>
+enum AlbumKind {
+	///  An ordinary album: the author's order, the author's groups, the author's headings.
+	album,
+	///  An inbox: photographs waiting to be sorted into albums.
+	/// 
+	///  <p>
+	///  The server answers an inbox {@link AlbumInfo#parts flat and by date} whatever the sidecar
+	///  lists, gives it no {@link AlbumInfo#effectiveDate date} of its own, files it nowhere, and
+	///  never shows it to anybody but a caller who may {@link RightName edit} it — a contributor
+	///  sees their own contributions there and nobody else sees that it exists at all. It cannot be
+	///  shared by a link.
+	///  </p>
+	inbox,
+}
+
+/// Writes a value of AlbumKind to a JSON stream.
+void writeAlbumKind(JsonSink json, AlbumKind value) {
+	switch (value) {
+		case AlbumKind.album: json.addString("ALBUM"); break;
+		case AlbumKind.inbox: json.addString("INBOX"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of AlbumKind from a JSON stream.
+AlbumKind readAlbumKind(JsonReader json) {
+	switch (json.expectString()) {
+		case "ALBUM": return AlbumKind.album;
+		case "INBOX": return AlbumKind.inbox;
+		default: return AlbumKind.album;
+	}
+}
+
 ///  {@link Resource} describing a collection of {@link AlbumPart}s.
 class AlbumInfo extends FolderResource {
+	///  Whether this is an ordinary album or an inbox, see issue #131.
+	/// 
+	///  <p>
+	///  Stored in <code>index.json</code> like the title: it is a statement the author made about
+	///  this folder, not something the server derives. An absent value is {@link AlbumKind#ALBUM},
+	///  so every sidecar written before this field existed reads as the album it always was.
+	///  </p>
+	AlbumKind kind;
+
 	///  The title of this album.
 	String title;
 
@@ -312,6 +370,7 @@ class AlbumInfo extends FolderResource {
 	AlbumInfo({
 			super.path, 
 			super.rights, 
+			this.kind = AlbumKind.album, 
 			this.title = "", 
 			this.subTitle = "", 
 			this.date = 0, 
@@ -340,6 +399,10 @@ class AlbumInfo extends FolderResource {
 	@override
 	void _readProperty(String key, JsonReader json) {
 		switch (key) {
+			case "kind": {
+				kind = readAlbumKind(json);
+				break;
+			}
 			case "title": {
 				title = json.expectString();
 				break;
@@ -380,6 +443,9 @@ class AlbumInfo extends FolderResource {
 	@override
 	void _writeProperties(JsonSink json) {
 		super._writeProperties(json);
+
+		json.addKey("kind");
+		writeAlbumKind(json, kind);
 
 		json.addKey("title");
 		json.addString(title);
@@ -1220,6 +1286,15 @@ enum FolderKind {
 	///  sort key and not a day anything happened on, so nothing shows it as a date, see issue #133.
 	///  </p>
 	folder,
+	///  The entry is an inbox: an album (see {@link AlbumKind#INBOX}) holding photographs that wait
+	///  to be sorted.
+	/// 
+	///  <p>
+	///  It has no date, it stands first in its listing whatever else lies there, and it is only ever
+	///  an entry of a listing answered to a caller that may see it at all — to everybody else the
+	///  entry is simply not there, see issue #131.
+	///  </p>
+	inbox,
 }
 
 /// Writes a value of FolderKind to a JSON stream.
@@ -1227,6 +1302,7 @@ void writeFolderKind(JsonSink json, FolderKind value) {
 	switch (value) {
 		case FolderKind.album: json.addString("ALBUM"); break;
 		case FolderKind.folder: json.addString("FOLDER"); break;
+		case FolderKind.inbox: json.addString("INBOX"); break;
 		default: throw ("No such literal: " + value.name);
 	}
 }
@@ -1236,6 +1312,7 @@ FolderKind readFolderKind(JsonReader json) {
 	switch (json.expectString()) {
 		case "ALBUM": return FolderKind.album;
 		case "FOLDER": return FolderKind.folder;
+		case "INBOX": return FolderKind.inbox;
 		default: return FolderKind.album;
 	}
 }

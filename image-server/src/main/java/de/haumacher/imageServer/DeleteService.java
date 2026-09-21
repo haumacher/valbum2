@@ -14,6 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -34,6 +35,13 @@ import java.util.logging.Logger;
  * server does not delete originals, and this endpoint is no exception: what leaves the tree is
  * still on the disk, and emptying the trash is the owner's act, exactly as it is for the
  * {@link MoveService#DUPLICATES_FOLDER duplicates}.
+ * </p>
+ *
+ * <p>
+ * A single photograph is deleted the same way and by the same mechanism (issue #131): it is moved
+ * into <code>&lt;space&gt;/.valbum/trash/&lt;album&gt;/</code>, keeping its
+ * {@link de.haumacher.imageServer.shared.model.ImagePart} and its hash entry, so that what was
+ * thrown away lies in the trash beside the other photographs of the album it came from.
  * </p>
  *
  * <p>
@@ -92,9 +100,9 @@ public class DeleteService {
 		return "'" + name + "' does not exist in this folder.";
 	}
 
-	/** The message an entry is refused with that is neither an album nor a folder. */
+	/** The message an entry is refused with that is neither an album, a folder nor a photograph. */
 	public static String notAnEntry(String name) {
-		return "'" + name + "' is not an album and not a folder; it cannot be deleted.";
+		return "'" + name + "' is not an album, a folder or an image; it cannot be deleted.";
 	}
 
 	/** The message a name is refused with that the same request already asked to delete. */
@@ -164,29 +172,42 @@ public class DeleteService {
 			throw new MoveRefused(HttpServletResponse.SC_NOT_FOUND, FOLDER_MISSING);
 		}
 
-		MoveResult result = MoveResult.create();
+		MoveOutcome[] outcomes = new MoveOutcome[names.size()];
+		List<String> images = new ArrayList<>();
 		Set<String> seen = new HashSet<>();
 		boolean changed = false;
 		try {
-			for (String name : names) {
+			for (int n = 0, size = names.size(); n < size; n++) {
+				String name = names.get(n);
 				if (!seen.add(name)) {
-					result.addOutcome(outcome(name, "", namedTwice(name)));
+					outcomes[n] = outcome(name, "", namedTwice(name));
 					continue;
 				}
 				String refusal = refuse(dir, name);
 				if (refusal != null) {
-					result.addOutcome(outcome(name, "", refusal));
+					outcomes[n] = outcome(name, "", refusal);
 					continue;
 				}
 
 				File entry = new File(dir, name);
+				if (!entry.isDirectory()) {
+					// A single image: it is moved into the album this one has in the trash, by the
+					// move of issue #47, all of them in one go below.
+					images.add(name);
+					continue;
+				}
 				try {
-					result.addOutcome(delete(entry));
+					outcomes[n] = delete(entry);
 					changed = true;
 				} catch (IOException ex) {
 					LOG.log(Level.WARNING, "Cannot delete '" + entry.getAbsolutePath() + "': " + ex.getMessage(), ex);
-					result.addOutcome(outcome(name, "", failed(ex.getMessage())));
+					outcomes[n] = outcome(name, "", failed(ex.getMessage()));
 				}
+			}
+
+			if (!images.isEmpty()) {
+				changed = true;
+				fill(outcomes, names, deleteImages(folder, images));
 			}
 		} finally {
 			if (changed) {
@@ -195,7 +216,73 @@ public class DeleteService {
 				_cache.invalidateTree(folder);
 			}
 		}
+
+		MoveResult result = MoveResult.create();
+		for (int n = 0, size = names.size(); n < size; n++) {
+			// A name that reached neither branch cannot happen; saying so beats an empty slot.
+			result.addOutcome(outcomes[n] == null ? outcome(names.get(n), "", failed("not handled")) : outcomes[n]);
+		}
 		return result;
+	}
+
+	/**
+	 * Moves the named images of the given album into the album it has in the trash, see issue
+	 * #131.
+	 *
+	 * <p>
+	 * Deleting a single photograph is the move of issue #47 and nothing else: the file is renamed,
+	 * its {@link de.haumacher.imageServer.shared.model.ImagePart} leaves the album's sidecar and
+	 * lands in the one of the trash album, and its hash entry (with the contributor it names, see
+	 * issue #53) rides along. Nothing is unlinked, here as everywhere: what left the album is in
+	 * <code>{@value UserStore#DIRECTORY_NAME}/{@value #TRASH_FOLDER}/&lt;album&gt;/</code>, where
+	 * its owner can find it — and find it together with the other photographs of the album it came
+	 * from, which is why the trash holds an album per album and not one heap.
+	 * </p>
+	 *
+	 * <p>
+	 * The trash album is a folder like any other: the move writes its sidecar (the generic album a
+	 * folder without one is described by) and its hash cache, so that it reads as an album from
+	 * disk. A name it already holds is given a free one exactly as a colliding upload is, and
+	 * contents it already holds make the file a duplicate, which is set aside rather than
+	 * overwritten.
+	 * </p>
+	 */
+	private MoveResult deleteImages(PathInfo folder, List<String> names) throws IOException {
+		// The album keeps its name in the trash, so that what was thrown away is findable by where
+		// it came from. At the root of a space that is the name of the space folder itself.
+		String albumName = folder.getName();
+		File trashAlbum = _spaceRoot.resolve(UserStore.DIRECTORY_NAME).resolve(TRASH_FOLDER).resolve(albumName)
+			.toFile();
+		if (!trashAlbum.isDirectory() && !trashAlbum.mkdirs()) {
+			throw new IOException("Cannot create the trash folder: " + trashAlbum.getAbsolutePath());
+		}
+		PathInfo target = new PathInfo(_spaceRoot,
+			Paths.get(UserStore.DIRECTORY_NAME, TRASH_FOLDER, albumName));
+		try {
+			return new MoveService(_cache).move(folder, target, names);
+		} catch (MoveRefused ex) {
+			// The target is the server's own folder and the source has just been checked; a
+			// refusal here concerns the request as a whole and every named image alike.
+			MoveResult result = MoveResult.create();
+			for (String name : names) {
+				result.addOutcome(outcome(name, "", failed(ex.getMessage())));
+			}
+			return result;
+		}
+	}
+
+	/** Puts the outcomes of the image move back into the slots of the names that asked for them. */
+	private static void fill(MoveOutcome[] outcomes, List<String> names, MoveResult moved) {
+		for (MoveOutcome moveOutcome : moved.getOutcomes()) {
+			for (int n = 0, size = names.size(); n < size; n++) {
+				if (outcomes[n] == null && names.get(n).equals(moveOutcome.getName())) {
+					String message = moveOutcome.getMessage();
+					outcomes[n] = outcome(moveOutcome.getName(), moveOutcome.getNewName(),
+						message.isEmpty() ? trashed(moveOutcome.getNewName()) : message);
+					break;
+				}
+			}
+		}
 	}
 
 	/** Why the named entry cannot be deleted, <code>null</code> while it can. */
@@ -210,9 +297,13 @@ public class DeleteService {
 			return notFound(name);
 		}
 		if (!entry.isDirectory()) {
-			// An image is taken out of an album by moving it, see issue #47: this endpoint deletes
-			// albums and folders, and says so rather than doing something else.
-			return notAnEntry(name);
+			if (!ResourceCache.isImage(entry)) {
+				// A sidecar, a note, whatever else lies beside the photographs: this endpoint
+				// deletes albums, folders and photographs, and says so rather than doing
+				// something else.
+				return notAnEntry(name);
+			}
+			return null;
 		}
 		Path path = entry.getAbsoluteFile().toPath().normalize();
 		if (path.equals(_spaceRoot.toAbsolutePath().normalize())) {
@@ -369,6 +460,32 @@ public class DeleteService {
 			result = new File(trash, stamped + "-" + num);
 		}
 		return result;
+	}
+
+	/**
+	 * Whether every one of the given names is a photograph of the given folder, see issue #131.
+	 *
+	 * <p>
+	 * What decides whether the contributor exception of issue #53 can apply at all: it lets
+	 * somebody take their own photograph back out of an album, and never a whole album out of a
+	 * listing. One name that is not an image of this folder — a folder, or nothing at all — and
+	 * the request is an edit of the folder, refused as such.
+	 * </p>
+	 */
+	public static boolean onlyImages(File dir, List<String> names) {
+		if (names.isEmpty()) {
+			return false;
+		}
+		for (String name : names) {
+			if (!isPlainName(name)) {
+				return false;
+			}
+			File entry = new File(dir, name);
+			if (!entry.isFile() || !ResourceCache.isImage(entry)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/** Whether the given name addresses a single entry of a folder, see {@link MoveService}. */

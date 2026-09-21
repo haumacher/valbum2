@@ -34,6 +34,18 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 	 */
 	FOLDER("FOLDER"),
 
+	/**
+	 * The entry is an inbox: an album (see {@link AlbumKind#INBOX}) holding photographs that wait
+	 * to be sorted.
+	 *
+	 * <p>
+	 * It has no date, it stands first in its listing whatever else lies there, and it is only ever
+	 * an entry of a listing answered to a caller that may see it at all — to everybody else the
+	 * entry is simply not there, see issue #131.
+	 * </p>
+	 */
+	INBOX("INBOX"),
+
 	;
 
 	private final String _protocolName;
@@ -58,6 +70,7 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 		switch (protocolName) {
 			case "ALBUM": return ALBUM;
 			case "FOLDER": return FOLDER;
+			case "INBOX": return INBOX;
 		}
 		return ALBUM;
 	}
@@ -77,6 +90,7 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 		switch (this) {
 			case ALBUM: out.value(1); break;
 			case FOLDER: out.value(2); break;
+			case INBOX: out.value(3); break;
 			default: out.value(0);
 		}
 	}
@@ -86,6 +100,7 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 		switch (in.nextInt()) {
 			case 1: return ALBUM;
 			case 2: return FOLDER;
+			case 3: return INBOX;
 			default: return ALBUM;
 		}
 	}
