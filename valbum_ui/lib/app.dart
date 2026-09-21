@@ -1280,6 +1280,25 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// it asks the server again (the [reload] of a path not currently shown).
   void forget(List<String> path) => _resources.remove(_pathKey(path));
 
+  /// Forgets the resource at [path] and every resource below it, see #134.
+  ///
+  /// What a move changes on the server is a whole tree: the album lands in the
+  /// folder that was picked — or, where a placement rule files it, in a year
+  /// folder *inside* that folder — and the server invalidates the target and
+  /// everything under it. Forgetting the picked path alone would leave a year
+  /// folder visited earlier in the session showing a listing the move has
+  /// already changed.
+  ///
+  /// The root (an empty [path]) is the whole tree, which is exactly what it
+  /// means: a move into the top level changes the top level.
+  void forgetTree(List<String> path) {
+    var key = _pathKey(path);
+    var prefix = key.isEmpty ? "" : "$key/";
+    _resources.removeWhere(
+      (visited, _) => visited == key || visited.startsWith(prefix),
+    );
+  }
+
   /// Changes whenever [reload] dropped a resource, see [VAlbumNavigator].
   int get version => _version;
 
@@ -1915,6 +1934,9 @@ class VAlbumState extends State<VAlbumView>
         editPath: path,
         editing: navigator.delegate.editSession(path).editMode,
         onEdited: () => navigator.delegate.editSession(path).dirty = true,
+        // Where a photo taken back out of this album lands is forgotten, so
+        // that the target is fetched anew when it is next shown, see #134.
+        delegate: navigator.delegate,
       );
 
   /// Leaves a photo that was taken back out of this album, see issue #53.

@@ -139,6 +139,18 @@ String? albumDateLabel(int effectiveDate) => effectiveDate == 0
     : DateFormat.yMMMd()
         .format(DateTime.fromMillisecondsSinceEpoch(effectiveDate));
 
+/// Whether a listing entry is one a date is shown for, see issue #133.
+///
+/// Only an album happened on a day. A folder of folders carries an
+/// [FolderInfo.effectiveDate] all the same — it is what the listing is sorted
+/// by, and a folder named `2026` sorts with the year it names — but that is a
+/// sort key, not a date: showing it read "2026 - Jan 1 2026".
+///
+/// [FolderKind.album] is the value an entry from a server that does not know
+/// the field yet carries, so such a listing shows its dates exactly as before.
+bool folderHasDate(FolderInfo folder) =>
+    folder.kind == FolderKind.album && folder.effectiveDate != 0;
+
 /// The spelling of a date in a folder name, the naming convention `yyyy-MM-dd`.
 final DateFormat folderDateFormat = DateFormat("yyyy-MM-dd");
 

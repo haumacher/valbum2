@@ -1024,6 +1024,7 @@ class AlbumContentState extends State<AlbumContent>
       source: parent,
       names: [name],
       subject: EntrySubject(name),
+      delegate: delegate,
       onMoved: () {
         moved = true;
         // Neither the album nor the listing above is what was loaded: the
@@ -1123,6 +1124,7 @@ class AlbumContentState extends State<AlbumContent>
       source: widget.albumState.path,
       names: names,
       subject: ImageSubject(names.length),
+      delegate: widget.albumState.navigator.delegate,
       // An album created in the picker is dated by the photos that go into
       // it, see issue #114.
       albumDate: newAlbumDay(selected),

@@ -8,6 +8,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'album_date.dart';
+import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'listing_view.dart';
@@ -89,6 +90,13 @@ String targetPath(List<String> target) => target.join("/");
 /// bar when everything moved, a dialog when the server refused an entry, so a
 /// refusal is never missed.
 ///
+/// [delegate] is the router holding what the session has already loaded, and
+/// the *target* of the move is forgotten here, tree and all, see issue #134:
+/// the caller knows the folder it moved out of, but only this function knows
+/// where the move went — and a target visited earlier in the session would
+/// otherwise still be shown without the album that has just landed in it.
+/// `null` is a view built outside the router, which has nothing to forget.
+///
 /// The picker offers only targets of the kind [MoveSubject.livesInAlbum]
 /// names, see issue #113, and — for images — the album that does not exist
 /// yet: [albumDate] is the day such an album is proposed with, the earliest
@@ -102,6 +110,7 @@ Future<void> moveWithPicker({
   required List<String> source,
   required List<String> names,
   required MoveSubject subject,
+  required VAlbumRouterDelegate? delegate,
   required VoidCallback onMoved,
   DateTime? albumDate,
 }) async {
@@ -133,6 +142,9 @@ Future<void> moveWithPicker({
   }
 
   var target = picked.path;
+  // The folder the picker was confirmed on, which is what the move changed
+  // even when the album it created was filed into a year folder inside it.
+  var pickedPath = picked.path;
   var newAlbum = picked.newAlbum;
   var created = false;
   // Said with the summary when the new album was filed somewhere else than it
@@ -169,14 +181,16 @@ Future<void> moveWithPicker({
     );
     if (created) {
       // The tree changed although nothing moved: the new album is in it.
+      delegate?.forgetTree(pickedPath);
       onMoved();
     }
     return;
   }
 
-  // What moved is gone from where it was: the view has to be fetched again
-  // before the outcome is read out, so that the album on the screen is the one
-  // the server now holds.
+  // What moved is gone from where it was, and it is now in the target: both
+  // sides have to be fetched again before the outcome is read out. The source
+  // is the caller's own view, the target is the tree this function picked.
+  delegate?.forgetTree(pickedPath);
   onMoved();
 
   var movedCount = result.outcomes.length - refusedOutcomes(result).length;
@@ -452,7 +466,9 @@ class PickedTarget {
 /// the same thing twice.
 String folderLine(FolderInfo folder) {
   var title = folder.title.isEmpty ? folder.name : folder.title;
-  if (folder.effectiveDate == 0) {
+  // Only an album has a date, see issue #133: the sort key of a folder of
+  // folders is not a day anything happened on.
+  if (!folderHasDate(folder)) {
     return title;
   }
   // The one composition of `yyyy-MM-dd title`, shared with the create-album

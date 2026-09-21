@@ -16,6 +16,7 @@ import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
+import de.haumacher.imageServer.shared.model.FolderKind;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
@@ -355,6 +356,8 @@ public class ResourceCache {
 			if (folderResource != null) {
 				if (folderResource instanceof AlbumInfo) {
 					AlbumInfo albumInfo = (AlbumInfo) folderResource;
+					// The folder's own sidecar says what it is, see FolderInfo#getKind().
+					folderInfo.setKind(FolderKind.ALBUM);
 					folderInfo.setTitle(albumInfo.getTitle());
 					folderInfo.setSubTitle(albumInfo.getSubTitle());
 					folderInfo.setIndexPicture(albumInfo.getIndexPicture());
@@ -362,6 +365,7 @@ public class ResourceCache {
 				}
 				else if (folderResource instanceof ListingInfo) {
 					ListingInfo listingInfo = (ListingInfo) folderResource;
+					folderInfo.setKind(FolderKind.FOLDER);
 					folderInfo.setTitle(listingInfo.getTitle());
 					return folderInfo;
 				}
@@ -369,6 +373,10 @@ public class ResourceCache {
 
 			if (folderInfo.getIndexPicture() == null) {
 				File[] images = folder.listFiles(IMAGES);
+				// The very rule Loader#loadDir(PathInfo) answers this folder by when it is opened:
+				// without a sidecar, a folder holding images is an album and an empty one — or one
+				// holding only further folders — is a folder of folders. See issue #133.
+				folderInfo.setKind(images != null && images.length > 0 ? FolderKind.ALBUM : FolderKind.FOLDER);
 				File indexPicture;
 				ImageData imageData;
 				if (images != null && images.length > 0) {

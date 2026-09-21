@@ -6,6 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FolderInfo;
+import de.haumacher.imageServer.shared.model.FolderKind;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
@@ -259,10 +260,19 @@ public final class AlbumDate {
 			}
 		} else if (resource instanceof ListingInfo) {
 			// The folders of a stored listing are rebuilt from the disk on every read; a derived
-			// date among them would be stale the moment it was written.
+			// date among them -- or a derived statement of what the folder is -- would be stale
+			// the moment it was written.
 			for (FolderInfo folder : ((ListingInfo) resource).getFolders()) {
 				if (folder.getEffectiveDate() != 0L) {
 					folder.setEffectiveDate(0L);
+					changed = true;
+				}
+				if (folder.getKind() != FolderKind.ALBUM) {
+					// Whether a folder holds photographs or further folders is a question about
+					// the disk, answered on every read, see issue #133. ALBUM is the neutral value
+					// this field is written with: it is what a reader of a file written before it
+					// existed sees, and it says nothing that could go stale.
+					folder.setKind(FolderKind.ALBUM);
 					changed = true;
 				}
 			}

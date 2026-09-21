@@ -361,7 +361,13 @@ class ListingView extends StatelessWidget {
                   // the date the server derived, never one read off the
                   // folder name here, and no line at all where nothing says
                   // when the album happened, see issue #107.
-                  if (albumDateLabel(folder.effectiveDate) != null)
+                  //
+                  // Only an album has a date: a folder of folders carries an
+                  // `effectiveDate` too, but that is the key its listing is
+                  // sorted by -- a folder named `2026` sorts with the year it
+                  // names -- and showing it read "2026 - Jan 1 2026", see
+                  // issue #133.
+                  if (folderHasDate(folder))
                     Text(
                       albumDateLabel(folder.effectiveDate)!,
                       key: const Key("folder-date"),
@@ -501,6 +507,7 @@ class ListingView extends StatelessWidget {
       source: albumState.path,
       names: [folder.name],
       subject: EntrySubject(folder.name),
+      delegate: albumState.navigator.delegate,
       onMoved: albumState.reload,
     );
   }
@@ -568,6 +575,11 @@ class ListingView extends StatelessWidget {
       return;
     }
 
+    // The whole tree below this folder, not this folder alone: a placement
+    // rule files the new album into a year folder *inside* it, and a year
+    // folder visited earlier in the session still holds its old listing, see
+    // issue #134.
+    albumState.navigator.delegate.forgetTree(albumState.path);
     albumState.reload();
     // Where the album landed, not where it was asked for: a placement rule on
     // this folder files it into its year folder, see issue #48. The path the
@@ -628,7 +640,15 @@ class ListingView extends StatelessWidget {
     }
     // A changed title renames the folder, so the address on the screen has
     // just become a 404: the server says where the folder is now, and the app
-    // goes there and says the new name, see issue #130.
+    // goes there and says the new name, see issue #130. What the session holds
+    // under the old address -- this folder and everything below it -- is gone
+    // with the rename, and the listing above shows the old name (issue #134).
+    var self = albumState.path;
+    var delegate = albumState.navigator.delegate;
+    delegate.forgetTree(self);
+    if (self.isNotEmpty) {
+      delegate.forget(self.sublist(0, self.length - 1));
+    }
     albumState.showPath(splitPath(written.path));
     messenger.showSnackBar(
       SnackBar(
@@ -654,7 +674,9 @@ class ListingView extends StatelessWidget {
     }
 
     // What was filed is no longer where it was: the listing on the screen has
-    // to be fetched again before the outcome is read out.
+    // to be fetched again before the outcome is read out -- and so has every
+    // year folder below it, which is where the albums went (issue #134).
+    albumState.navigator.delegate.forgetTree(albumState.path);
     albumState.reload();
 
     var filed = result.outcomes.length - refusedOutcomes(result).length;

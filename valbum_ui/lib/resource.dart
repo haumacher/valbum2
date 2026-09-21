@@ -1195,6 +1195,51 @@ Placement readPlacement(JsonReader json) {
 	}
 }
 
+///  What a {@link FolderInfo} of a listing stands for, see {@link FolderInfo#kind} and issue #133.
+/// 
+///  <p>
+///  The kind is derived from the disk on every read, exactly like {@link FolderInfo#effectiveDate}:
+///  the folder's own sidecar says it ({@link AlbumInfo} or {@link ListingInfo}), and a folder without
+///  one is what the server would answer for it — an album as soon as it holds images.
+///  </p>
+/// 
+///  <p>
+///  {@link #ALBUM} is the first constant and therefore the value a listing from a server that does
+///  not know this field yet reads as: such a listing behaves exactly as it did before, every entry
+///  an album.
+///  </p>
+enum FolderKind {
+	///  The entry is an album: a folder of photographs, and the only kind that has a date.
+	album,
+	///  The entry is a folder of folders: it holds albums (and further folders), and it has no date
+	///  of its own.
+	/// 
+	///  <p>
+	///  Such a folder still carries an {@link FolderInfo#effectiveDate}, because that is what the
+	///  listing is sorted by — a folder named <code>2026</code> sorts with the year it names. It is a
+	///  sort key and not a day anything happened on, so nothing shows it as a date, see issue #133.
+	///  </p>
+	folder,
+}
+
+/// Writes a value of FolderKind to a JSON stream.
+void writeFolderKind(JsonSink json, FolderKind value) {
+	switch (value) {
+		case FolderKind.album: json.addString("ALBUM"); break;
+		case FolderKind.folder: json.addString("FOLDER"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of FolderKind from a JSON stream.
+FolderKind readFolderKind(JsonReader json) {
+	switch (json.expectString()) {
+		case "ALBUM": return FolderKind.album;
+		case "FOLDER": return FolderKind.folder;
+		default: return FolderKind.album;
+	}
+}
+
 ///  {@link Resource} describing collection {@link FolderInfo}s found in a directory.
 class ListingInfo extends FolderResource {
 	///  The title to display for this {@link ListingInfo}.
@@ -1311,6 +1356,19 @@ class FolderInfo extends _JsonObject {
 	///  </p>
 	int effectiveDate;
 
+	///  Whether this entry is an album or a folder of folders, see issue #133.
+	/// 
+	///  <p>
+	///  Derived on every read like {@link #effectiveDate} and never stored in a sidecar: what a
+	///  folder is, is a question about the disk, and the answer is rebuilt whenever the listing is.
+	///  </p>
+	/// 
+	///  <p>
+	///  The one thing that tells a reader whether {@link #effectiveDate} is a date to show or merely
+	///  the key this entry is sorted by: only an album happened on a day.
+	///  </p>
+	FolderKind kind;
+
 	///  The index picture of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
 	ThumbnailInfo? indexPicture;
 
@@ -1344,6 +1402,7 @@ class FolderInfo extends _JsonObject {
 			this.title = "", 
 			this.subTitle = "", 
 			this.effectiveDate = 0, 
+			this.kind = FolderKind.album, 
 			this.indexPicture, 
 			this.link = "", 
 	});
@@ -1382,6 +1441,10 @@ class FolderInfo extends _JsonObject {
 				effectiveDate = json.expectInt();
 				break;
 			}
+			case "kind": {
+				kind = readFolderKind(json);
+				break;
+			}
 			case "indexPicture": {
 				indexPicture = json.tryNull() ? null : ThumbnailInfo.read(json);
 				break;
@@ -1409,6 +1472,9 @@ class FolderInfo extends _JsonObject {
 
 		json.addKey("effectiveDate");
 		json.addNumber(effectiveDate);
+
+		json.addKey("kind");
+		writeFolderKind(json, kind);
 
 		var _indexPicture = indexPicture;
 		if (_indexPicture != null) {

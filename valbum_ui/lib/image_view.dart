@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'album_layout.dart' show Orientations, ToImage;
+import 'app.dart';
 import 'attribution.dart';
 import 'client.dart';
 import 'image_properties.dart';
@@ -205,6 +206,13 @@ class ImageView extends StatefulWidget {
   /// Called when a description was changed into the album's editing buffer.
   final VoidCallback? onEdited;
 
+  /// The router, so that a photo taken back out of this album is fetched anew
+  /// where it landed, see issue #134.
+  ///
+  /// `null` in a viewer built outside the router — a widget test, a session
+  /// that holds no navigation of its own: such a viewer has nothing to forget.
+  final VAlbumRouterDelegate? delegate;
+
   const ImageView({
     super.key,
     required this.client,
@@ -220,6 +228,7 @@ class ImageView extends StatefulWidget {
     this.editPath,
     this.editing = false,
     this.onEdited,
+    this.delegate,
   });
 
   @override
@@ -1122,6 +1131,7 @@ class ImageViewState extends State<ImageView>
       source: path,
       names: [part.name],
       subject: const ImageSubject(1),
+      delegate: widget.delegate,
       // An album created in the picker is dated by the photo that goes into
       // it, see issue #114.
       albumDate: newAlbumDay([part]),

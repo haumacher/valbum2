@@ -27,6 +27,9 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getEffectiveDate() */
 	private static final String EFFECTIVE_DATE__PROP = "effectiveDate";
 
+	/** @see #getKind() */
+	private static final String KIND__PROP = "kind";
+
 	/** @see #getIndexPicture() */
 	private static final String INDEX_PICTURE__PROP = "indexPicture";
 
@@ -40,6 +43,8 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _subTitle = "";
 
 	private long _effectiveDate = 0L;
+
+	private de.haumacher.imageServer.shared.model.FolderKind _kind = de.haumacher.imageServer.shared.model.FolderKind.ALBUM;
 
 	private de.haumacher.imageServer.shared.model.ThumbnailInfo _indexPicture = null;
 
@@ -144,6 +149,37 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
+	 * Whether this entry is an album or a folder of folders, see issue #133.
+	 *
+	 * <p>
+	 * Derived on every read like {@link #getEffectiveDate()} and never stored in a sidecar: what a
+	 * folder is, is a question about the disk, and the answer is rebuilt whenever the listing is.
+	 * </p>
+	 *
+	 * <p>
+	 * The one thing that tells a reader whether {@link #getEffectiveDate()} is a date to show or merely
+	 * the key this entry is sorted by: only an album happened on a day.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.FolderKind getKind() {
+		return _kind;
+	}
+
+	/**
+	 * @see #getKind()
+	 */
+	public de.haumacher.imageServer.shared.model.FolderInfo setKind(de.haumacher.imageServer.shared.model.FolderKind value) {
+		internalSetKind(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getKind()} without chain call utility. */
+	protected final void internalSetKind(de.haumacher.imageServer.shared.model.FolderKind value) {
+		if (value == null) throw new IllegalArgumentException("Property 'kind' cannot be null.");
+		_kind = value;
+	}
+
+	/**
 	 * The index picture of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
 	 */
 	public final de.haumacher.imageServer.shared.model.ThumbnailInfo getIndexPicture() {
@@ -234,6 +270,8 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getSubTitle());
 		out.name(EFFECTIVE_DATE__PROP);
 		out.value(getEffectiveDate());
+		out.name(KIND__PROP);
+		getKind().writeTo(out);
 		if (hasIndexPicture()) {
 			out.name(INDEX_PICTURE__PROP);
 			getIndexPicture().writeTo(out);
@@ -249,6 +287,7 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case TITLE__PROP: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SUB_TITLE__PROP: setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case EFFECTIVE_DATE__PROP: setEffectiveDate(in.nextLong()); break;
+			case KIND__PROP: setKind(de.haumacher.imageServer.shared.model.FolderKind.readFolderKind(in)); break;
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			case LINK__PROP: setLink(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
