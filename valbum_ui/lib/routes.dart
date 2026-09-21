@@ -45,6 +45,15 @@ import 'package:flutter/foundation.dart';
 /// The reserved path segment introducing the "alternatives" view of a group.
 const String alternativesSegment = "alternatives";
 
+/// The reserved path segment introducing the face editor of an album (#126).
+///
+/// Like [alternativesSegment]: an album of that name is not addressable. The
+/// editor is a level of its own rather than a dialog over the album, so that
+/// the album stays mounted beneath it (issue #93), the way back is the app
+/// bar's `leading` (issue #100) and the browser's back button leads out of it
+/// through the router's leave guard (issue #99).
+const String personsSegment = "persons";
+
 /// One addressable view of the app.
 ///
 /// Every route names the enclosing listing or album by its [albumPath] (the
@@ -229,6 +238,38 @@ class MemberRoute extends VAlbumRoute {
   String toString() => "MemberRoute($path)";
 }
 
+/// The face editor of an album, see issue #126.
+///
+/// One more level on the album, addressed with a trailing slash: the faces the
+/// server found in the album's photographs, grouped by the person they are —
+/// or by the cluster the server believes them to be — named and corrected
+/// here and written back as tags of the album.
+class PersonsRoute extends VAlbumRoute {
+  @override
+  final List<String> albumPath;
+
+  const PersonsRoute(this.albumPath);
+
+  @override
+  VAlbumRoute? get up => ListingOrAlbumRoute(albumPath);
+
+  @override
+  List<String> get segments => [...albumPath, personsSegment, ""];
+
+  @override
+  VAlbumRoute withAlbumPath(List<String> path) => PersonsRoute(path);
+
+  @override
+  bool operator ==(Object other) =>
+      other is PersonsRoute && listEquals(albumPath, other.albumPath);
+
+  @override
+  int get hashCode => Object.hash("persons", Object.hashAll(albumPath));
+
+  @override
+  String toString() => "PersonsRoute($path)";
+}
+
 /// The route the given location denotes.
 ///
 /// [basePath] is the app base the location is relative to (see the library
@@ -252,6 +293,10 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
   segments.removeWhere((segment) => segment.isEmpty);
 
   if (folder) {
+    // `.../<album>/persons/`
+    if (segments.isNotEmpty && segments.last == personsSegment) {
+      return PersonsRoute(segments.sublist(0, segments.length - 1));
+    }
     // `.../<image>/alternatives/`
     if (segments.length >= 2 && segments.last == alternativesSegment) {
       var name = segments[segments.length - 2];

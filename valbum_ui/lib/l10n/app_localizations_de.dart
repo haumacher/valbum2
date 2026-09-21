@@ -2219,4 +2219,125 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get retry => 'Erneut versuchen';
+
+  @override
+  String get personsMenuEntry => 'Personen in diesem Album';
+
+  @override
+  String get personsTitle => 'Personen';
+
+  @override
+  String get personsReadOnlyNotice =>
+      'Nur Redakteure dürfen Gesichter benennen';
+
+  @override
+  String get personsPendingNotice =>
+      'Es wird noch nach Gesichtern in diesem Album gesucht…';
+
+  @override
+  String get personsEmptyNotice =>
+      'In diesem Album wurde kein Gesicht gefunden.';
+
+  @override
+  String get personsUnknownGroup => 'Wer ist das?';
+
+  @override
+  String personsUnknownGroupNumbered(int number) {
+    return 'Wer ist das? (Gruppe $number)';
+  }
+
+  @override
+  String get personsNotAFaceGroup => 'Kein Gesicht';
+
+  @override
+  String get personsNewGroup => 'Neue Gruppe';
+
+  @override
+  String personsFaceCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Personen',
+      one: '1 Person',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String personsSelectedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ausgewählte Gesichter',
+      one: '1 Gesicht ausgewählt',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String personsSuggestedHeading(String name) {
+    return 'Ist das $name?';
+  }
+
+  @override
+  String get personsConfirmSuggestion => 'Bestätigen';
+
+  @override
+  String get personsChooseTitle => 'Benenne diese Gesichter';
+
+  @override
+  String get personsSearchLabel => 'Suche';
+
+  @override
+  String get personsNewPersonEntry => 'Neue Person…';
+
+  @override
+  String get personsNewPersonTitle => 'Neue Person';
+
+  @override
+  String get personsNameLabel => 'Name';
+
+  @override
+  String get personsNobodyYet => 'In diesem Bereich ist noch niemand benannt.';
+
+  @override
+  String get personsRenameEntry => 'Umbenennen…';
+
+  @override
+  String get personsRenameTitle => 'Person umbenennen';
+
+  @override
+  String get personsRenameNotice => 'Benennt diese Person überall um.';
+
+  @override
+  String get personsMergeEntry => 'Mit … zusammenführen…';
+
+  @override
+  String get personsMergeTitle => 'Mit einer anderen Person zusammenführen';
+
+  @override
+  String get personsMergeNotice =>
+      'Die Gesichter dieser Person werden zu denen der anderen Personen. Es wird nichts gelöscht.';
+
+  @override
+  String get personsDiscardTitle =>
+      'Sollen die Änderungen an den Personen in diesem Album verworfen werden?';
+
+  @override
+  String get personsDiscardMessage =>
+      'Die hier getroffenen Einstellungen wurden nicht gespeichert. Wenn Sie sie verwerfen, werden die Gesichter wieder so angezeigt, wie sie auf dem Server gespeichert sind.';
+
+  @override
+  String get personsSaveTitle =>
+      'Sollen die Änderungen an den Personen in diesem Album gespeichert werden?';
+
+  @override
+  String get personsSaveMessage =>
+      'Wenn Sie diese Seite verlassen, wird die Bearbeitung beendet. Nicht gespeicherte Änderungen gehen verloren, sofern sie nicht jetzt gespeichert werden.';
+
+  @override
+  String get personsDragToGroup => 'Auf eine Gruppe ziehen';
+
+  @override
+  String get personsShowPhoto => '„Foto anzeigen“';
 }

@@ -3595,6 +3595,192 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Retry'**
   String get retry;
+
+  /// The album menu entry opening the face editor
+  ///
+  /// In en, this message translates to:
+  /// **'Persons in this album'**
+  String get personsMenuEntry;
+
+  /// The title of the face editor page
+  ///
+  /// In en, this message translates to:
+  /// **'Persons'**
+  String get personsTitle;
+
+  /// Banner telling a caller without the edit right that the editor only shows
+  ///
+  /// In en, this message translates to:
+  /// **'Only editors may name faces'**
+  String get personsReadOnlyNotice;
+
+  /// Banner shown while the server is still detecting faces
+  ///
+  /// In en, this message translates to:
+  /// **'Still looking for faces in this album…'**
+  String get personsPendingNotice;
+
+  /// Shown instead of an empty face editor
+  ///
+  /// In en, this message translates to:
+  /// **'No face was found in this album.'**
+  String get personsEmptyNotice;
+
+  /// The heading of a group of faces nobody has named
+  ///
+  /// In en, this message translates to:
+  /// **'Who is this?'**
+  String get personsUnknownGroup;
+
+  /// The heading of one of several groups of faces nobody has named
+  ///
+  /// In en, this message translates to:
+  /// **'Who is this? (group {number})'**
+  String personsUnknownGroupNumbered(int number);
+
+  /// The heading of the group of boxes that show no face at all
+  ///
+  /// In en, this message translates to:
+  /// **'Not a face'**
+  String get personsNotAFaceGroup;
+
+  /// The target faces are dropped onto to make a group of their own
+  ///
+  /// In en, this message translates to:
+  /// **'New group'**
+  String get personsNewGroup;
+
+  /// How many faces stand in a group
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 face} other{{count} faces}}'**
+  String personsFaceCount(int count);
+
+  /// How many faces are selected, shown in the app bar
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 face selected} other{{count} faces selected}}'**
+  String personsSelectedCount(int count);
+
+  /// The heading of a group of faces the server believes to be somebody, unconfirmed
+  ///
+  /// In en, this message translates to:
+  /// **'Is this {name}?'**
+  String personsSuggestedHeading(String name);
+
+  /// The button accepting what the server suggested about a group of faces
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get personsConfirmSuggestion;
+
+  /// The title of the dialog picking the person a group of faces is
+  ///
+  /// In en, this message translates to:
+  /// **'Name these faces'**
+  String get personsChooseTitle;
+
+  /// The label of the field narrowing a list of people down
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get personsSearchLabel;
+
+  /// The entry of the person chooser adding somebody nobody has named yet
+  ///
+  /// In en, this message translates to:
+  /// **'New person…'**
+  String get personsNewPersonEntry;
+
+  /// The title of the dialog asking the name of a new person
+  ///
+  /// In en, this message translates to:
+  /// **'New person'**
+  String get personsNewPersonTitle;
+
+  /// The label of the field a person's name is typed into
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get personsNameLabel;
+
+  /// Shown in the person chooser while the register of the space is empty
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody is named in this space yet.'**
+  String get personsNobodyYet;
+
+  /// The menu entry renaming a person
+  ///
+  /// In en, this message translates to:
+  /// **'Rename…'**
+  String get personsRenameEntry;
+
+  /// The title of the dialog renaming a person
+  ///
+  /// In en, this message translates to:
+  /// **'Rename person'**
+  String get personsRenameTitle;
+
+  /// Warning that a rename reaches every album of the space
+  ///
+  /// In en, this message translates to:
+  /// **'Renames this person everywhere.'**
+  String get personsRenameNotice;
+
+  /// The menu entry merging a person into another one
+  ///
+  /// In en, this message translates to:
+  /// **'Merge into…'**
+  String get personsMergeEntry;
+
+  /// The title of the dialog merging a person into another one
+  ///
+  /// In en, this message translates to:
+  /// **'Merge into another person'**
+  String get personsMergeTitle;
+
+  /// What a merge does, said before it is done
+  ///
+  /// In en, this message translates to:
+  /// **'The faces of this person become the other person\'s. Nothing is deleted.'**
+  String get personsMergeNotice;
+
+  /// The title of the question asked when the face editor is cancelled with unsaved changes
+  ///
+  /// In en, this message translates to:
+  /// **'Discard the changes to this album\'s persons?'**
+  String get personsDiscardTitle;
+
+  /// What discarding the unsaved decisions of the face editor does
+  ///
+  /// In en, this message translates to:
+  /// **'The decisions made here have not been saved. Discarding them shows the faces again as the server has them.'**
+  String get personsDiscardMessage;
+
+  /// The title of the question asked when the face editor is left with unsaved changes
+  ///
+  /// In en, this message translates to:
+  /// **'Save the changes to this album\'s persons?'**
+  String get personsSaveTitle;
+
+  /// What leaving the face editor with unsaved decisions does
+  ///
+  /// In en, this message translates to:
+  /// **'Leaving this page ends the editing. Unsaved decisions are lost unless they are saved now.'**
+  String get personsSaveMessage;
+
+  /// The tooltip of the handle a face is picked up by
+  ///
+  /// In en, this message translates to:
+  /// **'Drag onto a group'**
+  String get personsDragToGroup;
+
+  /// The tooltip of the gesture showing the whole photograph a face was found in
+  ///
+  /// In en, this message translates to:
+  /// **'Show the photo'**
+  String get personsShowPhoto;
 }
 
 class _AppLocalizationsDelegate

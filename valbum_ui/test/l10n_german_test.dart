@@ -12,6 +12,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/photo_picker_view.dart';
@@ -32,6 +33,8 @@ import 'devices_test.dart'
     show authOfUser, json, signedIn, storeSignedIn, threeDevices;
 import 'inbox_view_test.dart' show inboxTree, pumpInbox;
 import 'move_test.dart' show recordingClient, treeAnswer;
+import 'persons_view_test.dart'
+    show albumOf, authOf, editorClient, pumpEditor;
 import 'photo_picker_test.dart' show twoAlbums;
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
@@ -337,6 +340,31 @@ Future<void> pumpListingIn(WidgetTester tester) async {
 /// same thing the settings screen holds above: a screen that was converted
 /// speaks the language of the device, all of it.
 void sliceTwo() {
+  group('the face editor speaks German', () {
+    testWidgets('its groups, its banners and its menu entry', (tester) async {
+      speakGerman(tester);
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(pending: true),
+        ),
+      );
+
+      expect(find.text(de.personsTitle), findsOneWidget);
+      expect(find.text(de.personsUnknownGroup), findsOneWidget);
+      expect(find.text(de.personsNotAFaceGroup), findsOneWidget);
+      expect(find.text(de.personsNewGroup), findsOneWidget);
+      expect(find.text(de.personsPendingNotice), findsOneWidget);
+      expect(find.text(de.personsFaceCount(2)), findsOneWidget);
+
+      var en = l10nOf(const Locale("en"));
+      expect(find.text(en.personsNotAFaceGroup), findsNothing);
+    });
+  });
+
   group('slice 2 speaks German', () {
     testWidgets('the upload dialog', (tester) async {
       var progress = ValueNotifier<UploadProgress>(

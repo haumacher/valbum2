@@ -297,6 +297,15 @@ class CallerInfo {
   /// Whether the caller may create share links, as the server said it.
   final bool mayShare;
 
+  /// Whether this space looks for faces in its photographs (issue #124).
+  ///
+  /// The space's own opt-in (`space.json` `faces: on`), answered by
+  /// `?type=auth` and false as well where the machine cannot load the
+  /// detector. What it gates in the app is the face editor of issue #126: an
+  /// album of a space that never looks for a face has none to show, so the
+  /// entry is not offered at all rather than opening an empty screen.
+  final bool faces;
+
   /// The URL template the space shows a position on a map with (issue #112).
   ///
   /// Never empty: [defaultMapUrl] where the server named none, which is what
@@ -310,6 +319,7 @@ class CallerInfo {
     this.space = "",
     this.clearance = "",
     this.mayShare = false,
+    this.faces = false,
     String mapUrl = "",
   }) : mapUrl = mapUrl == "" ? defaultMapUrl : mapUrl;
 
@@ -320,6 +330,7 @@ class CallerInfo {
         space: info.space,
         clearance: info.clearance,
         mayShare: info.mayShare,
+        faces: info.faces,
         mapUrl: info.mapUrl.trim(),
       );
 
@@ -349,11 +360,12 @@ class CallerInfo {
       other.space == space &&
       other.clearance == clearance &&
       other.mayShare == mayShare &&
+      other.faces == faces &&
       other.mapUrl == mapUrl;
 
   @override
   int get hashCode =>
-      Object.hash(userName, role, space, clearance, mayShare, mapUrl);
+      Object.hash(userName, role, space, clearance, mayShare, faces, mapUrl);
 
   @override
   String toString() => "CallerInfo($userName, $role, $space)";
@@ -396,6 +408,12 @@ class CallerInfo {
   /// always has a map to open.
   static String mapUrlOf(BuildContext context) =>
       maybeOf(context)?.mapUrl ?? defaultMapUrl;
+
+  /// Whether the space the enclosing app talks to looks for faces (issue #124).
+  ///
+  /// `false` where nobody said: a server that does not know the field answers
+  /// no face either, so the face editor has nothing to show.
+  static bool facesOf(BuildContext context) => maybeOf(context)?.faces ?? false;
 }
 
 /// Publishes the [CallerInfo] to the widget tree, see [CallerInfo.maybeOf].

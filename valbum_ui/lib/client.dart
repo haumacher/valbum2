@@ -650,6 +650,48 @@ class VAlbumClient {
   /// The URL of the three-second silent teaser of the video at [imageUrl].
   String teaserUrl(String imageUrl) => "$imageUrl?type=teaser";
 
+  /// The URL of the crop of one face of the image at [imageUrl] (issue #124).
+  ///
+  /// [index] is the [FaceInfo.index] of the answer this client read — the
+  /// position in the album's answer, stable for that answer alone. A face the
+  /// server has no detection for (a stored tag, issue #125) has no crop at
+  /// all: it is drawn from the picture and the box instead, see
+  /// `persons_view.dart`.
+  String faceUrl(String imageUrl, int index) =>
+      "$imageUrl?type=face&face=$index";
+
+  /// The bytes of the face crop at [imageUrl] / [index], see [faceUrl].
+  ///
+  /// The same transport the thumbnails take, and for the same two reasons:
+  /// the request carries the device token — a face is answered to signed-in
+  /// members alone (issue #124) — and what was fetched is kept in the
+  /// [cache], so an editor opened once still shows its crops while the server
+  /// is away.
+  Future<Uint8List> faceBytes(String imageUrl, int index) async {
+    var url = faceUrl(imageUrl, index);
+    http.Response response;
+    try {
+      response = await _http
+          .get(Uri.parse(url), headers: authHeaders)
+          .timeout(timeout);
+    } catch (error) {
+      if (!isTransportFailure(error)) {
+        rethrow;
+      }
+      var entry = await cache?.getThumbnail(url, user: cacheUser);
+      if (entry == null) {
+        rethrow;
+      }
+      return entry.bytes;
+    }
+    if (response.statusCode != 200) {
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingLoading("'$url'"));
+    }
+    await cache?.putThumbnail(url, response.bodyBytes, user: cacheUser);
+    return response.bodyBytes;
+  }
+
   /// Whether the rendition at [url] can be played, see [RenditionState].
   ///
   /// One lightweight request with the bearer this client carries: a `GET` of
@@ -1601,6 +1643,89 @@ class VAlbumClient {
       throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
     }
     return response.body;
+  }
+
+  /// The people of this space, the register of issue #125.
+  ///
+  /// Space-level, so it is asked of the data root and not of an album: a
+  /// person is the same person in every album, and the face editor of issue
+  /// #126 loads the list once and names its groups from it. A share link is
+  /// refused with a 403 and an anonymous caller with a 401, each carrying the
+  /// server's own sentence.
+  Future<PersonList> people() async {
+    var url = "${folderUrl(const [])}?type=people";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
+    }
+    return PersonList.read(JsonReader.fromString(response.body));
+  }
+
+  /// Adds a person of [name] to the register, answering them (issue #125).
+  ///
+  /// Immediate and space-level: naming a group of faces in the editor creates
+  /// the person at once — it is not a change to the album and is therefore
+  /// not part of what the album's Save writes back. A name somebody already
+  /// carries is refused with the server's own sentence (409).
+  Future<Person> createPerson(String name) async {
+    var url = "${folderUrl(const [])}?action=create-person";
+    var response =
+        await _postBody(url, _jsonOf(PersonCreate(name: name).writeContent));
+    return Person.read(JsonReader.fromString(response));
+  }
+
+  /// Renames the person of [id], answering them (issue #125).
+  ///
+  /// Everywhere at once: the name lives in the register and the albums carry
+  /// the id, so nothing of the library is rewritten and every album shows the
+  /// new name the next time it is read.
+  Future<Person> renamePerson(String id, String name) async {
+    var url = "${folderUrl(const [])}?action=rename-person";
+    var response = await _postBody(
+        url, _jsonOf(PersonRename(id: id, name: name).writeContent));
+    return Person.read(JsonReader.fromString(response));
+  }
+
+  /// Merges the person [from] into the person [into], answering the survivor.
+  ///
+  /// The merged-away id becomes an alias of the survivor, so a tag naming it
+  /// goes on resolving and no album is rewritten, see issue #125.
+  Future<Person> mergePersons(String into, String from) async {
+    var url = "${folderUrl(const [])}?action=merge-persons";
+    var response = await _postBody(
+        url, _jsonOf(PersonMerge(into: into, from: from).writeContent));
+    return Person.read(JsonReader.fromString(response));
+  }
+
+  /// Stores what somebody decided about the faces of the album at [path].
+  ///
+  /// The whole delta in one request, all or nothing (issue #125): the face
+  /// editor buffers what was dragged, named and rejected and posts it here
+  /// when Save is pressed. Every assignment names an image of this album and
+  /// the [FaceInfo.index] of the answer the editor read, never a box — so a
+  /// client can neither invent a face nor place one.
+  ///
+  /// The answer is the album as this caller is answered it, and it is read
+  /// here for what it is worth: `null` where it is not an album this build can
+  /// read. The editor fetches the album again anyway — a refusal is the thing
+  /// that has to arrive, and it arrives as the thrown [VAlbumException]
+  /// carrying the server's own message, like every other refused write.
+  Future<AlbumInfo?> tagFaces(
+    List<String> path,
+    List<FaceAssignment> assignments,
+  ) async {
+    var url = "${folderUrl(path)}?action=tag-faces";
+    var response = await _postBody(
+        url, _jsonOf(TagFaces(faces: assignments).writeContent));
+    try {
+      var resource = Resource.read(JsonReader.fromString(response));
+      return resource is AlbumInfo ? resource : null;
+    } catch (_) {
+      // Whatever came back, the decisions are stored: what this client does
+      // next is ask for the album, not argue about the answer's spelling.
+      return null;
+    }
   }
 
   /// The devices this caller is signed in on (issue #55).

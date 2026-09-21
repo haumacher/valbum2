@@ -27,6 +27,7 @@ import 'move_view.dart';
 import 'name_date.dart';
 import 'resource.dart';
 import 'offline.dart';
+import 'persons_view.dart';
 import 'oriented_thumbnail.dart';
 import 'routes.dart';
 import 'rights.dart';
@@ -980,6 +981,22 @@ class AlbumContentState extends State<AlbumContent>
     }
   }
 
+  /// Whether the face editor of issue #126 is offered for this album.
+  ///
+  /// Three conditions, and each of them says that there is nothing to open
+  /// otherwise: the space looks for faces at all (`?type=auth`), this album
+  /// carries one or is still being looked at, and the caller is not inside a
+  /// share link — a link is answered no face, so its editor would be empty by
+  /// construction.
+  bool mayOpenPersons(BuildContext context) =>
+      share == null &&
+      CallerInfo.facesOf(context) &&
+      (shownAlbum.facesPending || PersonsContentState.hasFaces(shownAlbum));
+
+  /// Opens the face editor of this album, see issue #126.
+  void showPersons() => widget.albumState.navigator
+      .go(PersonsRoute(widget.albumState.path));
+
   /// Whether this caller may change the album itself (issue #121).
   ///
   /// What the edit mode needs, without needing the edit mode: the album's
@@ -1469,6 +1486,18 @@ class AlbumContentState extends State<AlbumContent>
           ),
           const PopupMenuDivider(),
           menuItem(Icons.update, _l10n.reload, (_) => reloadShown()),
+          // Who is in this album, see issue #126. Offered to everybody who
+          // sees the menu — only the editing controls need `edit`, and the
+          // screen says so itself — but never in a share link, which the
+          // server answers no face at all (issue #124), and never where the
+          // space does not look for faces or this album has none.
+          if (mayOpenPersons(context))
+            keyedMenuItem(
+              const Key("persons"),
+              Icons.people_outline,
+              _l10n.personsMenuEntry,
+              (_) => showPersons(),
+            ),
           // Whoever may change this album may have the photos out of it that
           // the library already holds somewhere else, see issue #118.
           if (mayEditAlbum)

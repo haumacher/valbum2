@@ -27,6 +27,7 @@ export 'invitation.dart';
 export 'listing_view.dart';
 export 'move_view.dart';
 export 'offline.dart';
+export 'persons_view.dart';
 export 'photo_library.dart';
 export 'rights.dart';
 export 'routes.dart';

@@ -84,6 +84,84 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
   String toString() => "ThumbnailImage($url)";
 }
 
+/// The crop of one face of an image, fetched through [client] (issue #126).
+///
+/// The [ThumbnailImage] of a face: the same transport, the same token, the
+/// same offline cache — only the URL differs, `?type=face&face=<index>`. A
+/// provider of its own rather than a parameter of [ThumbnailImage], so that
+/// the two are two cache keys and a face crop never stands in for a thumbnail.
+///
+/// The [index] is the position in the answer the editor read and is stable
+/// for that answer alone (see `FaceInfo`), which is exactly the lifetime of
+/// this provider: a re-fetched album builds new ones.
+@immutable
+class FaceImage extends ImageProvider<FaceImage> {
+  /// The transport the bytes are fetched over.
+  final VAlbumClient client;
+
+  /// The URL of the *image* the face was found in.
+  final String imageUrl;
+
+  /// Which face of it, see [VAlbumClient.faceUrl].
+  final int index;
+
+  /// The scale to place in the [ImageInfo] of the decoded image.
+  final double scale;
+
+  const FaceImage(this.client, this.imageUrl, this.index, {this.scale = 1.0});
+
+  /// The URL the bytes are fetched from, the one a test looks for.
+  String get url => client.faceUrl(imageUrl, index);
+
+  @override
+  Future<FaceImage> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture<FaceImage>(this);
+
+  @override
+  ImageStreamCompleter loadImage(
+    FaceImage key,
+    ImageDecoderCallback decode,
+  ) =>
+      MultiFrameImageStreamCompleter(
+        codec: key._load(decode),
+        scale: key.scale,
+        debugLabel: key.url,
+        informationCollector: () => [ErrorDescription("Face: ${key.url}")],
+      );
+
+  Future<ui.Codec> _load(ImageDecoderCallback decode) async {
+    Uint8List bytes;
+    try {
+      bytes = await client.faceBytes(imageUrl, index);
+    } catch (error) {
+      // The stream must be told, or the image widget waits forever.
+      PaintingBinding.instance.imageCache.evict(this);
+      rethrow;
+    }
+    if (bytes.isEmpty) {
+      PaintingBinding.instance.imageCache.evict(this);
+      throw StateError("The face crop at $url is empty.");
+    }
+    return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is FaceImage &&
+      other.imageUrl == imageUrl &&
+      other.index == index &&
+      other.scale == scale &&
+      other.client.dataUrl == client.dataUrl &&
+      other.client.token == client.token;
+
+  @override
+  int get hashCode =>
+      Object.hash(imageUrl, index, scale, client.dataUrl, client.token);
+
+  @override
+  String toString() => "FaceImage($url)";
+}
+
 /// What a tile is painted with while its thumbnail is on its way (issue #111).
 ///
 /// A neutral grey, translucent so that it reads on the album's black page as

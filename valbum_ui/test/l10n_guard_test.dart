@@ -73,6 +73,7 @@ const List<String> convertedFiles = [
   "lib/oriented_thumbnail.dart",
   "lib/photo_library.dart",
   "lib/photo_library_manager.dart",
+  "lib/persons_view.dart",
   "lib/photo_picker_view.dart",
   "lib/platform.dart",
   "lib/platform_io.dart",
@@ -161,6 +162,8 @@ const Map<String, String> allowedLiterals = {
       "cache where the rebuild catches it",
   r"Thumbnail: ${}": "an ErrorDescription of the image stream, read in a "
       "flutter error report",
+  r"Face: ${}": "an ErrorDescription of the image stream, read in a "
+      "flutter error report",
   // Assertion messages, read by a developer.
   "No ServerSettingsScope found in the widget tree.":
       "assertion, never shown to a user",
@@ -172,6 +175,7 @@ const Map<String, String> allowedLiterals = {
   "Not an absolute server URL (expected e.g. 'http://host:8080/valbum/').":
       "thrown, see allowedThrownLiterals",
   r"The thumbnail at ${} is empty.": "thrown, see allowedThrownLiterals",
+  r"The face crop at ${} is empty.": "thrown, see allowedThrownLiterals",
   // What the connection test appends to its own, already localized, message.
   r"${} (${})": "punctuation around a localized message",
   // The countdown of a device code: digits and a colon.
@@ -234,6 +238,9 @@ const Map<String, String> allowedThrownLiterals = {
   r"The thumbnail at ${} is empty.":
       "thrown into the image stream, where a failed decode is shown as the "
           "viewer's own `testL10n.pictureFailedMessage` (issue #95)",
+  r"The face crop at ${} is empty.":
+      "thrown into the image stream of a face tile, which falls back to the "
+          "picture and the box instead of showing it (issue #126)",
   r"Invalid JPEG orientation code: ${}":
       "a programming error of the layout: the codes come from the model, and "
           "an unknown one is a bug, not something a reader is told",

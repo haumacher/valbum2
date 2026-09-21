@@ -3689,5 +3689,180 @@
   "@retry": {
     "description": "Button of the offline banner, fetching the view again",
     "x-translated": "ef217ee7"
+  },
+  "personsMenuEntry": "Persons in this album",
+  "@personsMenuEntry": {
+    "description": "The album menu entry opening the face editor",
+    "x-translated": "9f4888e4"
+  },
+  "personsTitle": "Persons",
+  "@personsTitle": {
+    "description": "The title of the face editor page",
+    "x-translated": "6de1fe4f"
+  },
+  "personsReadOnlyNotice": "Only editors may name faces",
+  "@personsReadOnlyNotice": {
+    "description": "Banner telling a caller without the edit right that the editor only shows",
+    "x-translated": "8a969e8a"
+  },
+  "personsPendingNotice": "Still looking for faces in this album…",
+  "@personsPendingNotice": {
+    "description": "Banner shown while the server is still detecting faces",
+    "x-translated": "cacbe75"
+  },
+  "personsEmptyNotice": "No face was found in this album.",
+  "@personsEmptyNotice": {
+    "description": "Shown instead of an empty face editor",
+    "x-translated": "399e9071"
+  },
+  "personsUnknownGroup": "Who is this?",
+  "@personsUnknownGroup": {
+    "description": "The heading of a group of faces nobody has named",
+    "x-translated": "6906c59b"
+  },
+  "personsUnknownGroupNumbered": "Who is this? (group {number})",
+  "@personsUnknownGroupNumbered": {
+    "description": "The heading of one of several groups of faces nobody has named",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    },
+    "x-translated": "b8469ab8"
+  },
+  "personsNotAFaceGroup": "Not a face",
+  "@personsNotAFaceGroup": {
+    "description": "The heading of the group of boxes that show no face at all",
+    "x-translated": "21bde066"
+  },
+  "personsNewGroup": "New group",
+  "@personsNewGroup": {
+    "description": "The target faces are dropped onto to make a group of their own",
+    "x-translated": "edd33aaf"
+  },
+  "personsFaceCount": "{count, plural, =1{1 face} other{{count} faces}}",
+  "@personsFaceCount": {
+    "description": "How many faces stand in a group",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "7ac93e9d"
+  },
+  "personsSelectedCount": "{count, plural, =1{1 face selected} other{{count} faces selected}}",
+  "@personsSelectedCount": {
+    "description": "How many faces are selected, shown in the app bar",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "560c2a1a"
+  },
+  "personsSuggestedHeading": "Is this {name}?",
+  "@personsSuggestedHeading": {
+    "description": "The heading of a group of faces the server believes to be somebody, unconfirmed",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "4dbf7501"
+  },
+  "personsConfirmSuggestion": "Confirm",
+  "@personsConfirmSuggestion": {
+    "description": "The button accepting what the server suggested about a group of faces",
+    "x-translated": "406e9ad8"
+  },
+  "personsChooseTitle": "Name these faces",
+  "@personsChooseTitle": {
+    "description": "The title of the dialog picking the person a group of faces is",
+    "x-translated": "41751147"
+  },
+  "personsSearchLabel": "Search",
+  "@personsSearchLabel": {
+    "description": "The label of the field narrowing a list of people down",
+    "x-translated": "b35cde91"
+  },
+  "personsNewPersonEntry": "New person…",
+  "@personsNewPersonEntry": {
+    "description": "The entry of the person chooser adding somebody nobody has named yet",
+    "x-translated": "9088adb2"
+  },
+  "personsNewPersonTitle": "New person",
+  "@personsNewPersonTitle": {
+    "description": "The title of the dialog asking the name of a new person",
+    "x-translated": "993b4a4e"
+  },
+  "personsNameLabel": "Name",
+  "@personsNameLabel": {
+    "description": "The label of the field a person's name is typed into",
+    "x-translated": "fe11d138"
+  },
+  "personsNobodyYet": "Nobody is named in this space yet.",
+  "@personsNobodyYet": {
+    "description": "Shown in the person chooser while the register of the space is empty",
+    "x-translated": "35ed31ad"
+  },
+  "personsRenameEntry": "Rename…",
+  "@personsRenameEntry": {
+    "description": "The menu entry renaming a person",
+    "x-translated": "f98d1653"
+  },
+  "personsRenameTitle": "Rename person",
+  "@personsRenameTitle": {
+    "description": "The title of the dialog renaming a person",
+    "x-translated": "95508cb5"
+  },
+  "personsRenameNotice": "Renames this person everywhere.",
+  "@personsRenameNotice": {
+    "description": "Warning that a rename reaches every album of the space",
+    "x-translated": "87aa3903"
+  },
+  "personsMergeEntry": "Merge into…",
+  "@personsMergeEntry": {
+    "description": "The menu entry merging a person into another one",
+    "x-translated": "d244a2d7"
+  },
+  "personsMergeTitle": "Merge into another person",
+  "@personsMergeTitle": {
+    "description": "The title of the dialog merging a person into another one",
+    "x-translated": "cad08618"
+  },
+  "personsMergeNotice": "The faces of this person become the other person's. Nothing is deleted.",
+  "@personsMergeNotice": {
+    "description": "What a merge does, said before it is done",
+    "x-translated": "8e9e9b2e"
+  },
+  "personsDiscardTitle": "Discard the changes to this album's persons?",
+  "@personsDiscardTitle": {
+    "description": "The title of the question asked when the face editor is cancelled with unsaved changes",
+    "x-translated": "ff8d7f44"
+  },
+  "personsDiscardMessage": "The decisions made here have not been saved. Discarding them shows the faces again as the server has them.",
+  "@personsDiscardMessage": {
+    "description": "What discarding the unsaved decisions of the face editor does",
+    "x-translated": "ab606e1e"
+  },
+  "personsSaveTitle": "Save the changes to this album's persons?",
+  "@personsSaveTitle": {
+    "description": "The title of the question asked when the face editor is left with unsaved changes",
+    "x-translated": "aaf814f4"
+  },
+  "personsSaveMessage": "Leaving this page ends the editing. Unsaved decisions are lost unless they are saved now.",
+  "@personsSaveMessage": {
+    "description": "What leaving the face editor with unsaved decisions does",
+    "x-translated": "246231c8"
+  },
+  "personsDragToGroup": "Drag onto a group",
+  "@personsDragToGroup": {
+    "description": "The tooltip of the handle a face is picked up by",
+    "x-translated": "422963d2"
+  },
+  "personsShowPhoto": "Show the photo",
+  "@personsShowPhoto": {
+    "description": "The tooltip of the gesture showing the whole photograph a face was found in",
+    "x-translated": "be5515cd"
   }
 }

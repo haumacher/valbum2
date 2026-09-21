@@ -31,6 +31,7 @@ import 'listing_view.dart';
 import 'locales.dart';
 import 'notices.dart';
 import 'offline.dart';
+import 'persons_view.dart';
 import 'photo_library.dart';
 import 'photo_picker_view.dart';
 import 'platform.dart';
@@ -1237,12 +1238,57 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     }
   }
 
+  /// The face editor a mounted view offers to end, see [leaveFaces].
+  final Map<String, Future<bool> Function()> _personsGuards = {};
+
+  /// The face editor of the album at [path] answers from now on what is to
+  /// become of its unsaved decisions when the app leaves it (issue #126).
+  ///
+  /// The counterpart of [registerLeaveGuard] for the `persons` level: that one
+  /// guards the album's own edit session, which lives with this delegate; this
+  /// one guards a buffer that lives with the screen, so there is nothing here
+  /// to drop when the answer is "discard" — the screen throws its own buffer
+  /// away and is disposed with the page.
+  void registerPersonsGuard(
+    List<String> path,
+    Future<bool> Function() guard,
+  ) =>
+      _personsGuards[_pathKey(path)] = guard;
+
+  /// Takes back what [registerPersonsGuard] registered, if it is still the one.
+  void unregisterPersonsGuard(
+    List<String> path,
+    Future<bool> Function() guard,
+  ) {
+    var key = _pathKey(path);
+    if (identical(_personsGuards[key], guard)) {
+      _personsGuards.remove(key);
+    }
+  }
+
   /// Whether the app may show [target] now, see [leaveAlbum].
   ///
   /// Staying within the album — descending into one of its images, into the
   /// alternatives of a group and back — is not leaving it: the edit goes on,
   /// as it always has, see [editSession].
+  ///
+  /// The face editor is a level *inside* the album and is therefore not
+  /// covered by that rule: leaving it for anything else — the album beneath
+  /// it, an image, another folder, the browser's back button — asks it first
+  /// (issue #126), and only then does the album's own guard have its say.
   FutureOr<bool> _mayLeaveFor(VAlbumRoute target) {
+    if (_route is PersonsRoute && target != _route) {
+      var guard = _personsGuards[_pathKey(_route.albumPath)];
+      if (guard != null) {
+        return guard().then(
+          (leaving) => leaving ? _mayLeaveAlbumFor(target) : false,
+        );
+      }
+    }
+    return _mayLeaveAlbumFor(target);
+  }
+
+  FutureOr<bool> _mayLeaveAlbumFor(VAlbumRoute target) {
     var path = _route.albumPath;
     if (listEquals(path, target.albumPath)) {
       return true;
@@ -1386,6 +1432,12 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
             AlternativesRoute(album, name),
             route,
           ],
+        // The face editor sits on its album exactly as the viewer does, so
+        // the album stays mounted beneath it, see issue #126.
+        PersonsRoute(albumPath: var album) => [
+            ListingOrAlbumRoute(album),
+            route,
+          ],
       };
 
   /// Watches what sits on top of the pages, see [popRoute].
@@ -1422,6 +1474,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       ImageRoute() => "valbum:image:$album",
       AlternativesRoute() => "valbum:alternatives:$album",
       MemberRoute() => "valbum:member:$album",
+      PersonsRoute() => "valbum:persons:$album",
     };
   }
 
@@ -1819,6 +1872,11 @@ class VAlbumState extends State<VAlbumView>
   @override
   Widget visitAlbumInfo(AlbumInfo self, BuildContext arg) {
     var current = route;
+    if (current is PersonsRoute) {
+      // The face editor of issue #126: the album's own faces, grouped by the
+      // person they are, on a level of its own above the album.
+      return PersonsContent(this, self, baseUrl);
+    }
     if (current is ListingOrAlbumRoute) {
       // An inbox is an album of another kind and is shown by a screen of its
       // own (issues #131, #136): always in the selection mode, nothing
@@ -1905,6 +1963,7 @@ class VAlbumState extends State<VAlbumView>
         AlternativesRoute(name: var name) => name,
         MemberRoute(name: var name) => name,
         ListingOrAlbumRoute() => "",
+        PersonsRoute() => "",
       };
 
   /// Every image of the album by its file name, group members included.

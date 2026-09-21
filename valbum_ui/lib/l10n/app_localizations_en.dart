@@ -2183,4 +2183,121 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get retry => 'Retry';
+
+  @override
+  String get personsMenuEntry => 'Persons in this album';
+
+  @override
+  String get personsTitle => 'Persons';
+
+  @override
+  String get personsReadOnlyNotice => 'Only editors may name faces';
+
+  @override
+  String get personsPendingNotice => 'Still looking for faces in this album…';
+
+  @override
+  String get personsEmptyNotice => 'No face was found in this album.';
+
+  @override
+  String get personsUnknownGroup => 'Who is this?';
+
+  @override
+  String personsUnknownGroupNumbered(int number) {
+    return 'Who is this? (group $number)';
+  }
+
+  @override
+  String get personsNotAFaceGroup => 'Not a face';
+
+  @override
+  String get personsNewGroup => 'New group';
+
+  @override
+  String personsFaceCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count faces',
+      one: '1 face',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String personsSelectedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count faces selected',
+      one: '1 face selected',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String personsSuggestedHeading(String name) {
+    return 'Is this $name?';
+  }
+
+  @override
+  String get personsConfirmSuggestion => 'Confirm';
+
+  @override
+  String get personsChooseTitle => 'Name these faces';
+
+  @override
+  String get personsSearchLabel => 'Search';
+
+  @override
+  String get personsNewPersonEntry => 'New person…';
+
+  @override
+  String get personsNewPersonTitle => 'New person';
+
+  @override
+  String get personsNameLabel => 'Name';
+
+  @override
+  String get personsNobodyYet => 'Nobody is named in this space yet.';
+
+  @override
+  String get personsRenameEntry => 'Rename…';
+
+  @override
+  String get personsRenameTitle => 'Rename person';
+
+  @override
+  String get personsRenameNotice => 'Renames this person everywhere.';
+
+  @override
+  String get personsMergeEntry => 'Merge into…';
+
+  @override
+  String get personsMergeTitle => 'Merge into another person';
+
+  @override
+  String get personsMergeNotice =>
+      'The faces of this person become the other person\'s. Nothing is deleted.';
+
+  @override
+  String get personsDiscardTitle =>
+      'Discard the changes to this album\'s persons?';
+
+  @override
+  String get personsDiscardMessage =>
+      'The decisions made here have not been saved. Discarding them shows the faces again as the server has them.';
+
+  @override
+  String get personsSaveTitle => 'Save the changes to this album\'s persons?';
+
+  @override
+  String get personsSaveMessage =>
+      'Leaving this page ends the editing. Unsaved decisions are lost unless they are saved now.';
+
+  @override
+  String get personsDragToGroup => 'Drag onto a group';
+
+  @override
+  String get personsShowPhoto => 'Show the photo';
 }
