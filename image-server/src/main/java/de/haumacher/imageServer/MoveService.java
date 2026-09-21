@@ -598,8 +598,48 @@ public class MoveService {
 			shares.rename(owner, ownerPath, siblingPath(ownerPath, newName));
 		}
 
+		// A folder above that is shown by this one names it, and the name has just changed.
+		followRename(parent, dir.getName(), newName);
+
 		// The folder is gone under its old name, and the listing above shows the new one.
 		_cache.invalidateTree(folder.parent());
+	}
+
+	/**
+	 * Carries a folder's rename into the choice the folder above it made, see issue #110.
+	 *
+	 * <p>
+	 * A folder of folders is shown by the picture of the child it named, and that name is the
+	 * child's name on disk. Issue #130 lets a folder be renamed by writing its properties, so the
+	 * name in the sidecar above would be left pointing at nothing — and nothing is what the tile
+	 * would then show. The choice is therefore rewritten in the same step, exactly as
+	 * {@link ShareStore#rename} rewrites the path of every link on the folder.
+	 * </p>
+	 *
+	 * <p>
+	 * Only the one folder directly above is asked, and only when it named exactly this child: a
+	 * name is a statement about a child, and a statement about somebody else's child is not this
+	 * server's to rewrite. A sidecar that cannot be written leaves the choice dangling, which is
+	 * the folder icon and no failure — the rename itself has happened and must not be undone.
+	 * </p>
+	 */
+	private static void followRename(File parent, String oldName, String newName) {
+		FolderResource sidecar = ResourceCache.sidecar(parent);
+		if (!(sidecar instanceof ListingInfo)) {
+			return;
+		}
+		ListingInfo listing = (ListingInfo) sidecar;
+		if (!oldName.equals(listing.getIndex())) {
+			return;
+		}
+		listing.setIndex(newName);
+		try {
+			ImageServlet.storeSidecar(parent, json(listing));
+			LOG.info("The folder '" + parent + "' is shown by '" + newName + "' now.");
+		} catch (IOException ex) {
+			LOG.log(Level.WARNING, "Cannot follow the rename of '" + oldName + "' to '" + newName
+				+ "' in the folder above it: " + ex.getMessage(), ex);
+		}
 	}
 
 	/** The path of the sibling of the given path that carries the given name. */

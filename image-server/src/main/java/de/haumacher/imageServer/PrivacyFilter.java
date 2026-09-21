@@ -326,6 +326,9 @@ public class PrivacyFilter {
 			// The folder's placement rule is not a secret, and a copy that lost it would tell the
 			// app that this folder files nothing, see issue #48.
 			.setPlacement(listing.getPlacement())
+			// Which child this folder is shown by is the author's statement and rides along with
+			// every copy, or the app would read it back as "none", see issue #110.
+			.setIndex(listing.getIndex())
 			.setFolders(filtered);
 	}
 
@@ -376,12 +379,17 @@ public class PrivacyFilter {
 			return folder;
 		}
 
-		FolderResource sidecar = ResourceCache.sidecar(child);
+		// The cover of a folder of folders is a photograph lying further down: the album that
+		// holds it is the one that says whether it may be shown, see issue #110.
+		PathInfo albumPath = FolderCover.albumOf(childPath, indexPicture.getImage());
+		boolean nested = albumPath != childPath;
+
+		FolderResource sidecar = ResourceCache.sidecar(albumPath.toFile());
 		if (!(sidecar instanceof AlbumInfo)) {
 			// No sidecar, no privacy: a folder the server described by itself holds public images.
 			return folder;
 		}
-		if (shown((AlbumInfo) sidecar, indexPicture.getImage(), clearance, minRating)) {
+		if (shown((AlbumInfo) sidecar, FolderCover.imageName(indexPicture.getImage()), clearance, minRating)) {
 			return folder;
 		}
 
@@ -395,6 +403,12 @@ public class PrivacyFilter {
 			.setLink(folder.getLink())
 			// The listing keeps its order whoever is looking at it.
 			.setEffectiveDate(folder.getEffectiveDate());
+		if (nested) {
+			// A folder is shown by the picture its author chose and by no other: where the caller
+			// may not see that one, the tile carries the folder icon. Falling back to some other
+			// photograph would answer a choice nobody made, see issue #110.
+			return result;
+		}
 		Resource album = _cache.lookup(childPath);
 		if (album instanceof AlbumInfo) {
 			ThumbnailInfo cover = filterAlbum((AlbumInfo) album, clearance, minRating).getIndexPicture();

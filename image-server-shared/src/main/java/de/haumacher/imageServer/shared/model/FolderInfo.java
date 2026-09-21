@@ -180,7 +180,22 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The index picture of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
+	 * The picture this entry is shown with, <code>null</code> where it is shown with none.
+	 *
+	 * <p>
+	 * For an album, the index picture of the {@link AlbumInfo} referenced by this
+	 * {@link FolderInfo}, and its {@link ThumbnailInfo#getImage() image} is the file name of a
+	 * photograph lying in that album.
+	 * </p>
+	 *
+	 * <p>
+	 * For a folder of folders, the picture of the child the folder
+	 * {@link ListingInfo#getIndex() chose}, and then the image is the <em>path</em> from this
+	 * entry down to the photograph (<code>A/a.jpg</code>), with the crop and the
+	 * {@link ThumbnailInfo#getOrientation() frame} of the album it comes from, see issue #110. The
+	 * address the client builds is the same either way — <code>&lt;listing&gt;/&lt;name&gt;/&lt;
+	 * image&gt;</code> — because the extra segments are part of the image.
+	 * </p>
 	 */
 	public final de.haumacher.imageServer.shared.model.ThumbnailInfo getIndexPicture() {
 		return _indexPicture;

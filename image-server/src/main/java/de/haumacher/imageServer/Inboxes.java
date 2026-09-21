@@ -201,7 +201,8 @@ public final class Inboxes {
 		for (int n = 0, size = folders.size(); n < size; n++) {
 			FolderInfo folder = folders.get(n);
 			FolderInfo visible = folder.getKind() == FolderKind.INBOX
-				? entry(folder, path.child(folder.getName()), visibility, subject) : folder;
+				? entry(folder, path.child(folder.getName()), visibility, subject)
+				: uncovered(folder, path.child(folder.getName()), visibility);
 			if (visible != folder && filtered == null) {
 				filtered = new ArrayList<>(folders.subList(0, n));
 			}
@@ -215,7 +216,47 @@ public final class Inboxes {
 		return ListingInfo.create()
 			.setTitle(listing.getTitle())
 			.setPlacement(listing.getPlacement())
+			// The choice of issue #110 rides along with every copy of a listing.
+			.setIndex(listing.getIndex())
 			.setFolders(filtered);
+	}
+
+	/**
+	 * The tile of a folder of folders whose cover reaches into an inbox, as the caller may see it.
+	 *
+	 * <p>
+	 * A folder is shown by the picture of the child it chose, and that child may be an inbox — or
+	 * a folder that chose one, see issue #110. The photograph then is one nobody has sorted yet,
+	 * and the rule of issue #135 holds wherever it is shown: whoever may edit the inbox sees it,
+	 * and to everybody else the folder carries the folder icon. Not even a contributor sees it:
+	 * the cover of a folder is one picture out of somebody else's unsorted pile, and a tile that
+	 * showed it would show it to them by accident.
+	 * </p>
+	 *
+	 * <p>
+	 * The tile itself stays, cover or no cover: only an inbox <em>entry</em> ever vanishes, and
+	 * this entry is an ordinary folder.
+	 * </p>
+	 */
+	private static FolderInfo uncovered(FolderInfo folder, PathInfo childPath, Visibility visibility) {
+		if (visibility == Visibility.FULL) {
+			return folder;
+		}
+		ThumbnailInfo cover = folder.getIndexPicture();
+		if (cover == null || cover.getImage().indexOf('/') < 0) {
+			// An album's own cover lies in the album; only a folder's reaches further down.
+			return folder;
+		}
+		if (!FolderCover.throughInbox(childPath, cover.getImage())) {
+			return folder;
+		}
+		return FolderInfo.create()
+			.setName(folder.getName())
+			.setKind(folder.getKind())
+			.setTitle(folder.getTitle())
+			.setSubTitle(folder.getSubTitle())
+			.setLink(folder.getLink())
+			.setEffectiveDate(folder.getEffectiveDate());
 	}
 
 	/**

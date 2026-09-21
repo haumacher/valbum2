@@ -12,6 +12,7 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import de.haumacher.imageServer.AlbumDate;
 import de.haumacher.imageServer.Contributors;
+import de.haumacher.imageServer.FolderCover;
 import de.haumacher.imageServer.Inboxes;
 import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -377,6 +378,12 @@ public class ResourceCache {
 					ListingInfo listingInfo = (ListingInfo) folderResource;
 					folderInfo.setKind(FolderKind.FOLDER);
 					folderInfo.setTitle(listingInfo.getTitle());
+					// A folder holds no photograph of its own; it is shown by the picture of the
+					// child it chose, resolved through the sidecars alone, see issue #110.
+					ThumbnailInfo cover = FolderCover.of(folder, listingInfo);
+					if (cover != null) {
+						folderInfo.setIndexPicture(cover);
+					}
 					return folderInfo;
 				}
 			}

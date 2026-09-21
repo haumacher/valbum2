@@ -279,6 +279,20 @@ public class TestSharePreview extends TestCase {
 			Arrays.equals(preview(HOLIDAYS + "/Alps", "alps.jpg"), cover.bodyBytes()));
 	}
 
+	/** A shared folder that chose a child is drawn with that child's picture, see issue #110. */
+	public void testAFolderIsDrawnWithTheChildItChose() throws Exception {
+		single();
+		Files.write(_base.resolve(HOLIDAYS).resolve("index.json"),
+			("[\"ListingInfo\",{\"title\":\"" + AWKWARD.replace("\"", "\\\"")
+				+ "\",\"index\":\"Rejected\"}]").getBytes(StandardCharsets.UTF_8));
+		String token = share("", HOLIDAYS, Privacy.MEMBERS, Ratings.MIN);
+
+		FakeResponse cover = get("/s/" + token + "/cover.jpg");
+		assertEquals(cover.body(), HttpServletResponse.SC_OK, cover.status());
+		assertTrue("Expected the picture of the chosen album, not the newest one.",
+			Arrays.equals(preview(HOLIDAYS + "/Rejected", "rejected.jpg"), cover.bodyBytes()));
+	}
+
 	/** A withdrawn link is gone at the cover, too, and its page carries no card. */
 	public void testAWithdrawnLinkIsGone() throws Exception {
 		single();

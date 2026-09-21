@@ -1332,6 +1332,28 @@ class ListingInfo extends FolderResource {
 	///  </p>
 	Placement placement;
 
+	///  The name of the child entry whose picture stands for this folder, see issue #110.
+	/// 
+	///  <p>
+	///  A folder of folders holds no photograph of its own, so it can only be shown by one that
+	///  lies below it. Which one is a statement of the author and nothing the server guesses: this
+	///  field names a direct child of this folder — an album, whose
+	///  {@link AlbumInfo#getIndexPicture() index picture} is taken, or a further folder, which is
+	///  asked the same question again. The empty string is the answer "none", and then the folder is
+	///  drawn with the folder icon as it always was.
+	///  </p>
+	/// 
+	///  <p>
+	///  Stored in this folder's own <code>index.json</code> beside the {@link #getPlacement()
+	///  placement rule}, and written by the ordinary sidecar <code>PUT</code>. What is derived from
+	///  it is the {@link FolderInfo#getIndexPicture() cover} of the tile this folder is shown with,
+	///  whose {@link ThumbnailInfo#getImage() image} then carries the path from this folder down to
+	///  the photograph (<code>A/a.jpg</code>). A choice that leads nowhere — a child that is gone,
+	///  one without a sidecar, one that shows no picture — is simply no picture; nothing fails and
+	///  nothing is rewritten.
+	///  </p>
+	String index;
+
 	///  Description of the folders within this {@link ListingInfo}.
 	List<FolderInfo> folders;
 
@@ -1341,6 +1363,7 @@ class ListingInfo extends FolderResource {
 			super.rights, 
 			this.title = "", 
 			this.placement = Placement.none, 
+			this.index = "", 
 			this.folders = const [], 
 	});
 
@@ -1370,6 +1393,10 @@ class ListingInfo extends FolderResource {
 				placement = readPlacement(json);
 				break;
 			}
+			case "index": {
+				index = json.expectString();
+				break;
+			}
 			case "folders": {
 				json.expectArray();
 				folders = [];
@@ -1396,6 +1423,9 @@ class ListingInfo extends FolderResource {
 
 		json.addKey("placement");
 		writePlacement(json, placement);
+
+		json.addKey("index");
+		json.addString(index);
 
 		json.addKey("folders");
 		json.startArray();
@@ -1446,7 +1476,22 @@ class FolderInfo extends _JsonObject {
 	///  </p>
 	FolderKind kind;
 
-	///  The index picture of the {@link AlbumInfo} referenced by this {@link FolderInfo}.
+	///  The picture this entry is shown with, <code>null</code> where it is shown with none.
+	/// 
+	///  <p>
+	///  For an album, the index picture of the {@link AlbumInfo} referenced by this
+	///  {@link FolderInfo}, and its {@link ThumbnailInfo#getImage() image} is the file name of a
+	///  photograph lying in that album.
+	///  </p>
+	/// 
+	///  <p>
+	///  For a folder of folders, the picture of the child the folder
+	///  {@link ListingInfo#getIndex() chose}, and then the image is the <em>path</em> from this
+	///  entry down to the photograph (<code>A/a.jpg</code>), with the crop and the
+	///  {@link ThumbnailInfo#getOrientation() frame} of the album it comes from, see issue #110. The
+	///  address the client builds is the same either way — <code>&lt;listing&gt;/&lt;name&gt;/&lt;
+	///  image&gt;</code> — because the extra segments are part of the image.
+	///  </p>
 	ThumbnailInfo? indexPicture;
 
 	///  The album this entry is a link to, in its owner's coordinates, see issue #50.

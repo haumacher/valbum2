@@ -2853,6 +2853,8 @@ public class ImageServlet extends HttpServlet {
 			copy = ListingInfo.create()
 				.setTitle(listing.getTitle())
 				.setPlacement(listing.getPlacement())
+				// The choice of issue #110 rides along with every copy of a listing.
+				.setIndex(listing.getIndex())
 				.setFolders(listing.getFolders());
 		} else {
 			return resource;

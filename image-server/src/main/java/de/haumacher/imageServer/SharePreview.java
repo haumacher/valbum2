@@ -437,7 +437,15 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 			return file.isFile() ? file : null;
 		}
 		if (shown instanceof ListingInfo) {
-			for (FolderInfo folder : ((ListingInfo) shown).getFolders()) {
+			ListingInfo listing = (ListingInfo) shown;
+			// The folder is shown by the child its author chose, exactly as its tile is, see
+			// issue #110; the card falls back to the first child that has a picture only where
+			// that choice leads nowhere -- or where the link may not show what it leads to.
+			File chosen = coverOf(path, listing, FolderCover.chosen(listing));
+			if (chosen != null) {
+				return chosen;
+			}
+			for (FolderInfo folder : listing.getFolders()) {
 				ThumbnailInfo indexPicture = folder.getIndexPicture();
 				if (indexPicture == null || indexPicture.getImage().isEmpty()) {
 					// A folder whose cover the link may not show, or one that holds no picture.
@@ -448,6 +456,33 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 					return file;
 				}
 			}
+		}
+		return null;
+	}
+
+	/**
+	 * The picture of the child the given folder chose, <code>null</code> where it chose none, the
+	 * choice leads nowhere, or the link may not show it.
+	 *
+	 * <p>
+	 * Read from the listing the link is answered — the filtered one — so a cover this link may not
+	 * show is simply not among the entries any more and the card falls back like any other.
+	 * </p>
+	 */
+	private static File coverOf(PathInfo path, ListingInfo listing, String name) {
+		if (name == null) {
+			return null;
+		}
+		for (FolderInfo folder : listing.getFolders()) {
+			if (!name.equals(folder.getName())) {
+				continue;
+			}
+			ThumbnailInfo indexPicture = folder.getIndexPicture();
+			if (indexPicture == null || indexPicture.getImage().isEmpty()) {
+				return null;
+			}
+			File file = path.child(folder.getName()).child(indexPicture.getImage()).toFile();
+			return file.isFile() ? file : null;
 		}
 		return null;
 	}

@@ -21,12 +21,17 @@ public class ListingInfo extends FolderResource {
 	/** @see #getPlacement() */
 	private static final String PLACEMENT__PROP = "placement";
 
+	/** @see #getIndex() */
+	private static final String INDEX__PROP = "index";
+
 	/** @see #getFolders() */
 	private static final String FOLDERS__PROP = "folders";
 
 	private String _title = "";
 
 	private de.haumacher.imageServer.shared.model.Placement _placement = de.haumacher.imageServer.shared.model.Placement.NONE;
+
+	private String _index = "";
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.FolderInfo> _folders = new java.util.ArrayList<>();
 
@@ -90,6 +95,45 @@ public class ListingInfo extends FolderResource {
 	protected final void internalSetPlacement(de.haumacher.imageServer.shared.model.Placement value) {
 		if (value == null) throw new IllegalArgumentException("Property 'placement' cannot be null.");
 		_placement = value;
+	}
+
+	/**
+	 * The name of the child entry whose picture stands for this folder, see issue #110.
+	 *
+	 * <p>
+	 * A folder of folders holds no photograph of its own, so it can only be shown by one that
+	 * lies below it. Which one is a statement of the author and nothing the server guesses: this
+	 * field names a direct child of this folder — an album, whose
+	 * {@link AlbumInfo#getIndexPicture() index picture} is taken, or a further folder, which is
+	 * asked the same question again. The empty string is the answer "none", and then the folder is
+	 * drawn with the folder icon as it always was.
+	 * </p>
+	 *
+	 * <p>
+	 * Stored in this folder's own <code>index.json</code> beside the {@link #getPlacement()
+	 * placement rule}, and written by the ordinary sidecar <code>PUT</code>. What is derived from
+	 * it is the {@link FolderInfo#getIndexPicture() cover} of the tile this folder is shown with,
+	 * whose {@link ThumbnailInfo#getImage() image} then carries the path from this folder down to
+	 * the photograph (<code>A/a.jpg</code>). A choice that leads nowhere — a child that is gone,
+	 * one without a sidecar, one that shows no picture — is simply no picture; nothing fails and
+	 * nothing is rewritten.
+	 * </p>
+	 */
+	public final String getIndex() {
+		return _index;
+	}
+
+	/**
+	 * @see #getIndex()
+	 */
+	public de.haumacher.imageServer.shared.model.ListingInfo setIndex(String value) {
+		internalSetIndex(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getIndex()} without chain call utility. */
+	protected final void internalSetIndex(String value) {
+		_index = value;
 	}
 
 	/**
@@ -171,6 +215,8 @@ public class ListingInfo extends FolderResource {
 		out.value(getTitle());
 		out.name(PLACEMENT__PROP);
 		getPlacement().writeTo(out);
+		out.name(INDEX__PROP);
+		out.value(getIndex());
 		out.name(FOLDERS__PROP);
 		out.beginArray();
 		for (de.haumacher.imageServer.shared.model.FolderInfo x : getFolders()) {
@@ -184,6 +230,7 @@ public class ListingInfo extends FolderResource {
 		switch (field) {
 			case TITLE__PROP: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case PLACEMENT__PROP: setPlacement(de.haumacher.imageServer.shared.model.Placement.readPlacement(in)); break;
+			case INDEX__PROP: setIndex(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case FOLDERS__PROP: {
 				in.beginArray();
 				while (in.hasNext()) {
