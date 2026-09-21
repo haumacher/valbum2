@@ -397,6 +397,8 @@ public class PrivacyFilter {
 			.setName(folder.getName())
 			// What the folder is does not depend on who is looking at it, see issue #133.
 			.setKind(folder.getKind())
+			// Nor how much lies in it, see issue #137.
+			.setImageCount(folder.getImageCount())
 			.setTitle(folder.getTitle())
 			.setSubTitle(folder.getSubTitle())
 			// A shared tile stays a shared tile when its cover is hidden, see issue #50.

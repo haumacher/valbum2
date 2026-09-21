@@ -157,6 +157,84 @@ public class TestInbox extends TestCase {
 		assertEquals("Not even the album itself derives one.", 0L, album("/Inbox/").getEffectiveDate());
 	}
 
+	public void testTheListingEntryOfAnInboxSaysHowMuchIsWaiting() throws Exception {
+		image("2026-05-01 Trip/a.jpg", Color.RED);
+		image("2026-05-01 Trip/b.jpg", Color.GREEN);
+		sidecar("2026-05-01 Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":["
+			+ part("a.jpg", 0) + "," + part("b.jpg", 0) + "]}]");
+		image("Inbox/a.jpg", Color.RED);
+		image("Inbox/b.jpg", Color.GREEN);
+		image("Inbox/c.jpg", Color.BLUE);
+		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
+			+ part("a.jpg", 0) + "," + part("b.jpg", 0) + "," + part("c.jpg", 0) + "]}]");
+
+		ListingInfo listing = listing("/");
+		assertEquals("The tile of an inbox says how much is waiting, see issue #137.",
+			3, entry(listing, "Inbox").getImageCount());
+		assertEquals("An album counts nothing: how many pictures it holds is no part of what it is.",
+			0, entry(listing, "2026-05-01 Trip").getImageCount());
+	}
+
+	public void testAnInboxCountsTheMembersOfAGroup() throws Exception {
+		image("Inbox/a.jpg", Color.RED);
+		image("Inbox/b1.jpg", Color.GREEN);
+		image("Inbox/b2.jpg", Color.BLUE);
+		// An inbox stores no group, but an album that was turned into one may hold some.
+		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
+			+ part("a.jpg", day("2026-03-01")) + ","
+			+ group(image("b1.jpg", day("2026-02-01")), image("b2.jpg", day("2026-03-03"))) + "]}]");
+
+		assertEquals("Three pictures are waiting, not two bundles.",
+			3, entry(listing("/"), "Inbox").getImageCount());
+	}
+
+	public void testAFolderOfFoldersCountsNothing() throws Exception {
+		image("2026/Trip/a.jpg", Color.RED);
+		sidecar("2026/Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("a.jpg", 0) + "]}]");
+
+		FolderInfo year = entry(listing("/"), "2026");
+		assertEquals(FolderKind.FOLDER, year.getKind());
+		assertEquals("A listing never walks a folder to count what lies below it.", 0, year.getImageCount());
+	}
+
+	public void testTheCountIsDerivedAndNeverStored() throws Exception {
+		image("Inbox/a.jpg", Color.RED);
+		image("Inbox/b.jpg", Color.GREEN);
+		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
+			+ part("a.jpg", 0) + "," + part("b.jpg", 0) + "]}]");
+		// A listing of its own, so that there is a listing sidecar to write back.
+		sidecar("", "[\"ListingInfo\",{\"title\":\"Everything\"}]");
+
+		ListingInfo listing = listing("/");
+		assertEquals(2, entry(listing, "Inbox").getImageCount());
+
+		// The way the application writes a folder back: read, write, read again.
+		assertEquals(HttpServletResponse.SC_OK, put("/", write(listing)).status());
+		assertFalse("A derived count is never stored: " + read("index.json"),
+			read("index.json").contains("imageCount"));
+
+		image("Inbox/c.jpg", Color.BLUE);
+		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
+			+ part("a.jpg", 0) + "," + part("b.jpg", 0) + "," + part("c.jpg", 0) + "]}]");
+		assertEquals("And is answered afresh, so nothing froze it.",
+			3, entry(listing("/"), "Inbox").getImageCount());
+	}
+
+	public void testEverybodyWhoSeesTheInboxIsAnsweredTheWholeCount() throws Exception {
+		sharedInbox();
+
+		ImageServlet servlet = servlet(AuthMode.WRITES);
+		assertEquals(4, entry(listing(servlet, "/", ALICE_TOKEN), "Inbox").getImageCount());
+		assertEquals("A contributor is told how much is waiting there, not how much of it is theirs:"
+			+ " the sidecar knows no contributor, and a count of one's own would cost a second file"
+			+ " per entry of every listing, see issue #137.",
+			4, entry(listing(servlet, "/", BOB_TOKEN), "Inbox").getImageCount());
+
+		// And whoever does not see the inbox at all is not told a number either.
+		assertEquals(Arrays.asList("2026-05-01 Trip"), names(listing(servlet, "/", DAVE_TOKEN)));
+		assertEquals(Arrays.asList("2026-05-01 Trip"), names(listing(servlet, "/", shareToken(servlet, "/"))));
+	}
+
 	public void testAnInboxIsNamedByItsTitleAlone() throws Exception {
 		AlbumInfo properties = AlbumInfo.create().setKind(AlbumKind.INBOX).setTitle("Inbox").setDate(1700000000000L);
 		assertEquals("An inbox has no date, so its folder name carries none.",

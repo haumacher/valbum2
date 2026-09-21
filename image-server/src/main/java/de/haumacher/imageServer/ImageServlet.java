@@ -54,6 +54,7 @@ import de.haumacher.imageServer.shared.model.MoveResult;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.PersonCreate;
+import de.haumacher.imageServer.shared.model.PersonLink;
 import de.haumacher.imageServer.shared.model.PersonMerge;
 import de.haumacher.imageServer.shared.model.PersonRename;
 import de.haumacher.imageServer.shared.model.PresentFile;
@@ -245,6 +246,10 @@ public class ImageServlet extends HttpServlet {
 	 */
 	public static final String PEOPLE_REFUSED = "The people of this space are its members' business.";
 
+	/** What linking somebody else's account to a person is refused with, see issue #128. */
+	public static final String LINK_REFUSED =
+		"Only an administrator says who somebody else is; you may say who you are.";
+
 	/**
 	 * What a tagging request without the edit right is refused with, see issue #125.
 	 *
@@ -270,9 +275,6 @@ public class ImageServlet extends HttpServlet {
 	/** What a "this is not a face" that names somebody is refused with. */
 	public static final String TAG_PERSON_REFUSED =
 		"A false detection is about nobody; the request names a person.";
-
-	/** What a tag that decides nothing is refused with. */
-	public static final String TAG_UNDECIDED = "A tag is a decision, and 'undecided' is none.";
 
 	/** What a tagging request naming something that is not an album is refused with. */
 	public static final String TAG_NOT_AN_ALBUM = "There are no photographs to tag here.";
@@ -2390,7 +2392,15 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		try {
-			int revoked = _auth.removeUser(request.getName());
+			String name = request.getName() == null ? "" : request.getName().trim();
+			int revoked = _auth.removeUser(name);
+			// The account goes; the person stays, tags and all -- the photographs of a former
+			// member are still photographs of that person, see issue #128. Nothing in the answer
+			// says so: the user is simply gone from the list, and the person is gone from
+			// ?type=people's "user", which is where the link was.
+			if (_people.unlinkUser(name)) {
+				LOG.info("Unlinked the person of the removed user '" + name + "'.");
+			}
 			serveJsonObject(context.response(), userList().setRevokedLinks(revoked));
 		} catch (AuthService.Refused ex) {
 			LOG.warning("Refusing to remove a user: " + ex.getMessage());
@@ -2432,8 +2442,8 @@ public class ImageServlet extends HttpServlet {
 	 * what those devices are called is answered to their owner alone, see {@link DeviceList}.
 	 * </p>
 	 */
-	private static UserEntry onTheWire(UserStore.User user) {
-		return UserEntry.create()
+	private UserEntry onTheWire(UserStore.User user) {
+		UserEntry result = UserEntry.create()
 			.setName(user.getName())
 			.setRole(user.getRole())
 			.setSpace(user.getSpace())
@@ -2447,6 +2457,13 @@ public class ImageServlet extends HttpServlet {
 			.setRecipient(user.getRecipient())
 			.setInvitedBy(user.getInvitedBy())
 			.setInvitation(user.getInvitation());
+		// Who this user is in the photographs, looked up from the register, which is where the
+		// link is stored; an id and the name to show, and nothing else of that person, see #128.
+		PeopleStore.Entry person = _people.byUser(user.getName());
+		if (person != null) {
+			result.setPerson(person.getId()).setPersonName(person.getName());
+		}
+		return result;
 	}
 
 
@@ -2491,6 +2508,10 @@ public class ImageServlet extends HttpServlet {
 		if ("create-person".equals(action) || "rename-person".equals(action)
 			|| "merge-persons".equals(action)) {
 			editPeople(context, action);
+			return;
+		}
+		if ("link-person".equals(action)) {
+			linkPerson(context);
 			return;
 		}
 		if ("tag-faces".equals(action)) {
@@ -3161,6 +3182,101 @@ public class ImageServlet extends HttpServlet {
 		serveJsonObject(context.response(), entry.toWire());
 	}
 
+	/**
+	 * Says that a person of the register <em>is</em> a member of this space, see issue #128.
+	 *
+	 * <p>
+	 * <b>Who may say it is the whole of this endpoint.</b> An administrator links anybody to
+	 * anybody: they manage the accounts of the space anyway. Everybody else may say
+	 * &quot;this is me&quot; and nothing more &mdash; a member with {@link Rights#EDIT} links a
+	 * person to their own account and unlinks the person that carries it, and naming somebody
+	 * else's account is refused {@link #LINK_REFUSED}. Putting a name to a face of somebody else's
+	 * family is one thing; putting their <em>account</em> to it is a statement about them.
+	 * </p>
+	 *
+	 * <p>
+	 * The link is written on the person and nowhere else (see
+	 * {@link PeopleStore#link(String, String)}), so unlinking is the same request with an empty
+	 * name and there is no second place to keep in step. A member is at most one person
+	 * (<code>409</code>), and merging two people who are both a member is refused rather than
+	 * guessed at (see {@link PeopleStore#MERGE_LINKED}).
+	 * </p>
+	 */
+	private void linkPerson(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo path = location.getPath();
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing 'link-person' to the share link '" + caller.getShareLabel() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, PEOPLE_REFUSED);
+			return;
+		}
+
+		PersonLink request;
+		try {
+			request = PersonLink.readPersonLink(json(readBody(context.request())));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unreadable 'link-person' request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PERSON_UNREADABLE);
+			return;
+		}
+		String name = request.getUser() == null ? "" : request.getUser().trim();
+
+		if (!_auth.mayAdminister(caller)) {
+			if (!caller.isPaired()) {
+				unauthorized(context, caller, true);
+				return;
+			}
+			if (!_auth.mayEdit(caller, path)) {
+				LOG.warning("Refusing 'link-person' to '" + caller.getUserName() + "'.");
+				errorInfo(context, HttpServletResponse.SC_FORBIDDEN, LINK_REFUSED);
+				return;
+			}
+			// "This is me", and nothing else: linking one's own account, or taking one's own
+			// account off the person that carries it.
+			String own = caller.getUserName();
+			String subject = name.isEmpty() ? linkedUserOf(request.getId()) : name;
+			if (own.isEmpty() || !own.equals(subject)) {
+				LOG.warning("Refusing 'link-person' of '" + subject + "' to '" + own + "'.");
+				errorInfo(context, HttpServletResponse.SC_FORBIDDEN, LINK_REFUSED);
+				return;
+			}
+		}
+
+		if (!name.isEmpty()) {
+			UserStore users = _auth.getUsers();
+			UserStore.User user = users == null ? null : users.getUser(name);
+			if (user == null || user.getName().isEmpty() || user.isPending()) {
+				// A pending user is nobody yet (issue #89): they have no name of their own, so
+				// there is nothing to link a person to.
+				LOG.warning("Refusing 'link-person' with the unknown member '" + name + "'.");
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.unknownUser(name));
+				return;
+			}
+		}
+
+		PeopleStore.Entry entry;
+		try {
+			entry = _people.link(request.getId(), name);
+		} catch (PeopleStore.PersonRefused ex) {
+			LOG.warning("Refusing 'link-person': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+		LOG.info("The person '" + entry.getName() + "' is "
+			+ (name.isEmpty() ? "nobody in particular." : "the member '" + name + "'."));
+		serveJsonObject(context.response(), entry.toWire());
+	}
+
+	/** Which member the person of the given id carries, the empty string for nobody. */
+	private String linkedUserOf(String id) {
+		PeopleStore.Entry entry = _people.resolve(id);
+		return entry == null ? "" : entry.getUser();
+	}
+
 	/** A reader over the given request body. */
 	private static JsonReader json(byte[] contents) {
 		return new JsonReader(new ReaderAdapter(
@@ -3191,6 +3307,14 @@ public class ImageServlet extends HttpServlet {
 	 * A second decision about a face <em>replaces</em> the first: a tag whose box the new one
 	 * overlaps by more than {@link FaceTags#IOU_MATCH} is rewritten instead of being left beside it,
 	 * so a face never carries two decisions at once.
+	 * </p>
+	 *
+	 * <p>
+	 * {@link FaceState#UNDECIDED} is the way back out (issue #138): it <em>removes</em> the tag on
+	 * that box by the same overlap rule, so the face is answered as the plain detection it was and
+	 * the recogniser of issue #127 may offer a suggestion for it again. It is idempotent &mdash; a
+	 * box that carries no tag is left alone and nothing is refused &mdash; and a request that
+	 * changes nothing writes nothing at all, so a sidecar is never touched for a no-op.
 	 * </p>
 	 *
 	 * <p>
@@ -3281,10 +3405,10 @@ public class ImageServlet extends HttpServlet {
 			FaceState state = assignment.getState();
 			String person = assignment.getPerson() == null ? "" : assignment.getPerson().trim();
 			if (state == FaceState.UNDECIDED) {
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, TAG_UNDECIDED);
-				return;
-			}
-			if (state == FaceState.NOT_A_FACE) {
+				// "Forget this decision", see issue #138. Whom it was about is none of the
+				// request's business: what is taken back is the decision itself.
+				person = "";
+			} else if (state == FaceState.NOT_A_FACE) {
 				if (!person.isEmpty()) {
 					errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, TAG_PERSON_REFUSED);
 					return;
@@ -3315,27 +3439,38 @@ public class ImageServlet extends HttpServlet {
 				.setState(state));
 		}
 
+		boolean changed = false;
 		for (int n = 0; n < targets.size(); n++) {
 			ImagePart image = targets.get(n);
 			FaceTag tag = tags.get(n);
 			List<FaceTag> stored = new ArrayList<>(image.getTags());
 			int existing = FaceTags.indexOf(stored, tag.getX(), tag.getY(), tag.getW(), tag.getH());
-			if (existing >= 0) {
+			if (tag.getState() == FaceState.UNDECIDED) {
+				// Taking a decision back, see issue #138. A box nobody decided anything about is
+				// already undecided, so there is nothing to do and nothing to refuse.
+				if (existing < 0) {
+					continue;
+				}
+				stored.remove(existing);
+			} else if (existing >= 0) {
 				stored.set(existing, tag);
 			} else {
 				stored.add(tag);
 			}
 			image.setTags(stored);
+			changed = true;
 		}
 
-		storeSidecar(folder, sidecarOf(album));
-		// The next read must see what was just written.
-		_cache.invalidate(folderPath);
-		// And so must the next listing of every *other* album: a confirmation joins the prototypes
-		// of issue #127 here, where the decision is made, and not when some walk next comes past.
-		_faces.recognition().observe(folder, album);
-
-		LOG.info("Tagged " + tags.size() + " face(s) in '" + folder.getAbsolutePath() + "'.");
+		if (changed) {
+			storeSidecar(folder, sidecarOf(album));
+			// The next read must see what was just written.
+			_cache.invalidate(folderPath);
+			// And so must the next listing of every *other* album: a decision joins the prototypes
+			// of issue #127 here, where it is made, and not when some walk next comes past -- and
+			// one taken back leaves them here too, because an album is always described afresh.
+			_faces.recognition().observe(folder, album);
+			LOG.info("Tagged " + tags.size() + " face(s) in '" + folder.getAbsolutePath() + "'.");
+		}
 		answerAlbum(context, folderPath, caller);
 	}
 

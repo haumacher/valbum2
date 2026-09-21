@@ -16,10 +16,12 @@ import de.haumacher.imageServer.FolderCover;
 import de.haumacher.imageServer.Inboxes;
 import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.FolderKind;
 import de.haumacher.imageServer.shared.model.FolderResource;
+import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Orientation;
@@ -367,8 +369,14 @@ public class ResourceCache {
 					// The folder's own sidecar says what it is, see FolderInfo#getKind(). An inbox
 					// is a kind of album and says so, so that the tile can stand first and show no
 					// date, see issue #131.
-					folderInfo.setKind(
-						Inboxes.isInbox(albumInfo) ? FolderKind.INBOX : FolderKind.ALBUM);
+					boolean inbox = Inboxes.isInbox(albumInfo);
+					folderInfo.setKind(inbox ? FolderKind.INBOX : FolderKind.ALBUM);
+					if (inbox) {
+						// The pile of work an inbox tile says how much of is left, see issue #137.
+						// Counted out of the sidecar that was read a line ago, so a listing pays
+						// nothing for it and no image is opened.
+						folderInfo.setImageCount(imageCount(albumInfo));
+					}
 					folderInfo.setTitle(albumInfo.getTitle());
 					folderInfo.setSubTitle(albumInfo.getSubTitle());
 					folderInfo.setIndexPicture(albumInfo.getIndexPicture());
@@ -453,6 +461,27 @@ public class ResourceCache {
 				folderInfo.setTitle(fromTechnicalName(folderName));
 			}
 			return folderInfo;
+		}
+
+		/**
+		 * How many photographs the given sidecar lists, the members of a group counted one by one.
+		 *
+		 * <p>
+		 * An inbox stores no group &mdash; it is answered flat and by date, see issue #131 &mdash;
+		 * but an album that was turned into one may hold some, and then the tile has to say how
+		 * many pictures are waiting there and not how many bundles.
+		 * </p>
+		 */
+		private static int imageCount(AlbumInfo album) {
+			int result = 0;
+			for (AlbumPart part : album.getParts()) {
+				if (part instanceof ImagePart) {
+					result++;
+				} else if (part instanceof ImageGroup) {
+					result += ((ImageGroup) part).getImages().size();
+				}
+			}
+			return result;
 		}
 
 		private static String dateString(int year, int month, int day) {

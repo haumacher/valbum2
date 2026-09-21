@@ -185,6 +185,32 @@ public class TestFaceRecognition extends FacesTestCase {
 			suggestion(face(ELSEWHERE, A_TWO)));
 	}
 
+	/** A decision forgotten leaves the prototypes, and the face may be suggested again (issue #138). */
+	public void testADecisionForgottenIsSuggestedAgain() throws Exception {
+		createSpace(A_ONE);
+		addAlbum(ELSEWHERE, A_TWO);
+		index();
+		Person anna = created("Anna");
+		confirm(ALBUM, A_ONE, anna);
+		assertEquals(anna.getId(), suggestion(face(ELSEWHERE, A_TWO)));
+
+		// The face elsewhere is confirmed too; a confirmation is not a guess any more.
+		confirm(ELSEWHERE, A_TWO, anna);
+		assertEquals("", suggestion(face(ELSEWHERE, A_TWO)));
+		assertEquals(FaceState.CONFIRMED, face(ELSEWHERE, A_TWO).getState());
+
+		// And taken back: the face is undecided again and the confirmation in the other album
+		// suggests for it once more.
+		tag(ELSEWHERE, assignment(A_TWO, 0, "", "UNDECIDED"));
+		assertEquals(FaceState.UNDECIDED, face(ELSEWHERE, A_TWO).getState());
+		assertEquals(anna.getId(), suggestion(face(ELSEWHERE, A_TWO)));
+
+		// The only decision Anna was ever described by is the one in the first album; forgetting
+		// that one leaves nothing to recognise her by.
+		tag(ALBUM, assignment(A_ONE, 0, "", "UNDECIDED"));
+		assertEquals("", suggestion(face(ELSEWHERE, A_TWO)));
+	}
+
 	// --- Across a restart and across a merge. ---
 
 	/** The prototypes are rebuilt from the sidecars and the album caches, and say the same. */

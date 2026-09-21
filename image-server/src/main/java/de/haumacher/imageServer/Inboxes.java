@@ -253,6 +253,9 @@ public final class Inboxes {
 		return FolderInfo.create()
 			.setName(folder.getName())
 			.setKind(folder.getKind())
+			// How much is waiting in the inbox is not a question of whose cover may be shown,
+			// see issue #137.
+			.setImageCount(folder.getImageCount())
 			.setTitle(folder.getTitle())
 			.setSubTitle(folder.getSubTitle())
 			.setLink(folder.getLink())
@@ -283,6 +286,9 @@ public final class Inboxes {
 		return FolderInfo.create()
 			.setName(folder.getName())
 			.setKind(folder.getKind())
+			// How much is waiting in the inbox is not a question of whose cover may be shown,
+			// see issue #137.
+			.setImageCount(folder.getImageCount())
 			.setTitle(folder.getTitle())
 			.setSubTitle(folder.getSubTitle())
 			.setLink(folder.getLink())

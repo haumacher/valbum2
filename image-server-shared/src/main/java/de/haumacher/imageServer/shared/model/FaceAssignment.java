@@ -110,7 +110,13 @@ public class FaceAssignment extends de.haumacher.msgbuf.data.AbstractDataObject 
 	}
 
 	/**
-	 * What is decided; {@link FaceState#UNDECIDED} is not a decision and is refused.
+	 * What is decided; {@link FaceState#UNDECIDED} takes the decision on this box back (issue #138).
+	 *
+	 * <p>
+	 * Forgetting is idempotent: an <code>UNDECIDED</code> for a box that carries no tag changes
+	 * nothing and is no error. The {@link #getPerson()} is ignored for it &mdash; what is forgotten is
+	 * the decision, whoever it was about.
+	 * </p>
 	 */
 	public final de.haumacher.imageServer.shared.model.FaceState getState() {
 		return _state;

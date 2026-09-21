@@ -61,9 +61,11 @@ import java.util.logging.Logger;
  * </p>
  *
  * <p>
- * {@link Person#getUser() user} is opaque here: issue #128 writes it, this build stores it and
- * answers it and draws no conclusion from it. {@link Person#getCover() cover} is the same &mdash;
- * issue #126 sets it, and nothing here resolves the path it names.
+ * {@link Person#getUser() user} is the member of the space this person is (issue #128), written by
+ * {@link #link(String, String)} and read by {@link #byUser(String)}; it is a name and not a user
+ * object, because this register knows the people of the space and deliberately not its accounts.
+ * {@link Person#getCover() cover} is opaque here &mdash; issue #126 sets it, and nothing here
+ * resolves the path it names.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -117,6 +119,15 @@ public class PeopleStore {
 	/** Why an id names nobody of this space. */
 	public static String unknownPerson(String id) {
 		return "There is nobody with the id '" + id + "' here.";
+	}
+
+	/** Why two people who are both a member of the space are not merged, see issue #128. */
+	public static final String MERGE_LINKED =
+		"Both of these people are a member of this space; unlink one of them first.";
+
+	/** Why a member cannot be a second person. */
+	public static String userAlreadyLinked(String name) {
+		return "'" + name + "' is already linked to somebody else here.";
 	}
 
 	/** One person, as this register keeps them. */
@@ -179,6 +190,11 @@ public class PeopleStore {
 		/** The member of the space this person is, empty when they are nobody in particular. */
 		public String getUser() {
 			return _user;
+		}
+
+		/** Sets the member of the space this person is; see {@link PeopleStore#link(String, String)}. */
+		void setUser(String user) {
+			_user = user == null ? "" : user;
 		}
 
 		/** When this person was created, an ISO-8601 instant. */
@@ -359,6 +375,11 @@ public class PeopleStore {
 		if (survivor.getId().equals(merged.getId())) {
 			throw new PersonRefused(400, MERGE_SELF);
 		}
+		if (!survivor.getUser().isEmpty() && !merged.getUser().isEmpty()) {
+			// Two members are two people, whatever they look like: one of the two links is wrong,
+			// and which one is not for this server to guess, see issue #128.
+			throw new PersonRefused(409, MERGE_LINKED);
+		}
 		_people.remove(merged.getId());
 		survivor._aliases.add(merged.getId());
 		_aliases.put(merged.getId(), survivor.getId());
@@ -369,8 +390,88 @@ public class PeopleStore {
 		if (survivor.getCoverPath().isEmpty() && !merged.getCoverPath().isEmpty()) {
 			survivor.setCover(merged.getCoverPath(), merged.getCoverFace());
 		}
+		if (survivor.getUser().isEmpty()) {
+			// At most one of the two carried a member (see above), so this either takes the one
+			// the other had or changes nothing.
+			survivor.setUser(merged.getUser());
+		}
 		store();
 		return survivor;
+	}
+
+	/**
+	 * Links the person the given id names to the given member of the space, or unlinks them, and
+	 * writes the register, see issue #128.
+	 *
+	 * <p>
+	 * The link lives here and nowhere else: <code>?type=users</code> answers it by looking it up
+	 * from the other end, so there is one thing to write and nothing to keep in step. An empty
+	 * name unlinks, and unlinking somebody who was not linked is no error.
+	 * </p>
+	 *
+	 * <p>
+	 * <b>One member is at most one person.</b> Two people who are both "the same member" would
+	 * make "photos of me" mean two different things, so a name another person already holds is
+	 * refused rather than moved.
+	 * </p>
+	 *
+	 * <p>
+	 * Whether the name is a member of this space at all is decided by the caller: this register
+	 * knows the people of the space and deliberately not its users, see {@link Person#getUser()}.
+	 * </p>
+	 */
+	public synchronized Entry link(String id, String user) throws PersonRefused, IOException {
+		Entry entry = resolve(id);
+		if (entry == null) {
+			throw new PersonRefused(404, unknownPerson(id == null ? "" : id));
+		}
+		String name = user == null ? "" : user.trim();
+		if (name.equals(entry.getUser())) {
+			// Already so; nothing is written for a statement that is already on disk.
+			return entry;
+		}
+		if (!name.isEmpty()) {
+			Entry other = byUser(name);
+			if (other != null) {
+				throw new PersonRefused(409, userAlreadyLinked(name));
+			}
+		}
+		entry.setUser(name);
+		store();
+		return entry;
+	}
+
+	/** The person linked to the given member, <code>null</code> when nobody is (issue #128). */
+	public synchronized Entry byUser(String user) {
+		if (user == null || user.isEmpty()) {
+			return null;
+		}
+		for (Entry entry : _people.values()) {
+			if (entry.getUser().equals(user)) {
+				return entry;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Takes the given member off whichever person carries them, see issue #128.
+	 *
+	 * <p>
+	 * What <code>?action=remove-user</code> does: the account goes and the person stays, tags and
+	 * all &mdash; the photographs of a former member are still photographs of that person.
+	 * </p>
+	 *
+	 * @return Whether anything was linked at all.
+	 */
+	public synchronized boolean unlinkUser(String user) throws IOException {
+		Entry entry = byUser(user);
+		if (entry == null) {
+			return false;
+		}
+		entry.setUser("");
+		store();
+		return true;
 	}
 
 	/** An identifier nobody of this space holds, see {@link Person#getId()}. */

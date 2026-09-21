@@ -55,6 +55,12 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getInvitation() */
 	private static final String INVITATION__PROP = "invitation";
 
+	/** @see #getPerson() */
+	private static final String PERSON__PROP = "person";
+
+	/** @see #getPersonName() */
+	private static final String PERSON_NAME__PROP = "personName";
+
 	private String _name = "";
 
 	private String _role = "";
@@ -76,6 +82,10 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _invitedBy = "";
 
 	private String _invitation = "";
+
+	private String _person = "";
+
+	private String _personName = "";
 
 	/**
 	 * Creates a {@link UserEntry} instance.
@@ -330,6 +340,60 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_invitation = value;
 	}
 
+	/**
+	 * The {@link Person#getId()} of the person of the register this user is, empty for nobody (issue #128).
+	 *
+	 * <p>
+	 * Derived on every read from the register, where the link is stored as {@link Person#getUser()}:
+	 * the two ends of one link, answered from whichever end was asked. An id and not a
+	 * {@link Person}, because the client that shows this list has the register already &mdash;
+	 * copying name, cover and aliases into every user would say the same thing twice and go stale
+	 * the moment somebody is renamed.
+	 * </p>
+	 */
+	public final String getPerson() {
+		return _person;
+	}
+
+	/**
+	 * @see #getPerson()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setPerson(String value) {
+		internalSetPerson(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPerson()} without chain call utility. */
+	protected final void internalSetPerson(String value) {
+		_person = value;
+	}
+
+	/**
+	 * What that person is called, empty where {@link #getPerson()} is (issue #128).
+	 *
+	 * <p>
+	 * The one thing a management screen needs beside the id &mdash; "Appears in photos as Anna"
+	 * &mdash; so that the users list reads without fetching the register as well. Everything else
+	 * about that person is asked of <code>?type=people</code>.
+	 * </p>
+	 */
+	public final String getPersonName() {
+		return _personName;
+	}
+
+	/**
+	 * @see #getPersonName()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setPersonName(String value) {
+		internalSetPersonName(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPersonName()} without chain call utility. */
+	protected final void internalSetPersonName(String value) {
+		_personName = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.UserEntry readUserEntry(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.UserEntry result = new de.haumacher.imageServer.shared.model.UserEntry();
@@ -367,6 +431,10 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getInvitedBy());
 		out.name(INVITATION__PROP);
 		out.value(getInvitation());
+		out.name(PERSON__PROP);
+		out.value(getPerson());
+		out.name(PERSON_NAME__PROP);
+		out.value(getPersonName());
 	}
 
 	@Override
@@ -383,6 +451,8 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case RECIPIENT__PROP: setRecipient(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case INVITED_BY__PROP: setInvitedBy(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case INVITATION__PROP: setInvitation(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case PERSON__PROP: setPerson(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case PERSON_NAME__PROP: setPersonName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

@@ -1428,7 +1428,14 @@ enum FaceState {
 	///  <p>
 	///  The first constant and therefore what a {@link FaceInfo} of an untouched detection answers,
 	///  and what a client that does not know a value reads. It is never stored: a {@link FaceTag}
-	///  <em>is</em> a decision, so an assignment carrying this state is refused.
+	///  <em>is</em> a decision, and this is the absence of one.
+	///  </p>
+	/// 
+	///  <p>
+	///  In a {@link FaceAssignment} it therefore means <em>forget the decision on this box</em>
+	///  (issue #138): the stored tag is removed and the face goes back to being a plain detection
+	///  nobody has said anything about, which issue #127 may suggest for again. It is the one way
+	///  back out of a decision &mdash; every other state replaces one.
 	///  </p>
 	undecided,
 	///  This face is {@link FaceTag#person}: somebody said so.
@@ -1935,6 +1942,32 @@ class FolderInfo extends _JsonObject {
 	///  </p>
 	FolderKind kind;
 
+	///  How many photographs an inbox holds, <code>0</code> for everything else, see issue #137.
+	/// 
+	///  <p>
+	///  The number of {@link ImagePart}s the folder's own sidecar lists, the members of an
+	///  {@link ImageGroup} counted one by one. Derived on every read like {@link #kind} and read from
+	///  the very sidecar the listing opens anyway, so it costs a listing nothing: not one image file
+	///  is opened for it, which is the rule {@link #effectiveDate} is bound by too.
+	///  </p>
+	/// 
+	///  <p>
+	///  <b>Only an inbox carries it.</b> An album and a folder of folders answer <code>0</code>, and
+	///  deliberately so: an inbox is a pile of work and its tile says how much is left, while the
+	///  count of an album is no part of what an album is. A folder of folders would have to be walked
+	///  for one, which a listing never does.
+	///  </p>
+	/// 
+	///  <p>
+	///  It is what the folder holds, not what the caller may see: a member who may only
+	///  {@link #kind contribute} is answered the whole inbox's count although they are shown their
+	///  own contributions inside it (issue #135). The sidecar knows no contributors &mdash; the hash
+	///  sidecar does &mdash; so a count of one's own would cost a second file per entry of every
+	///  listing, and the number the tile shows is "this much is waiting here", which is true for
+	///  everybody.
+	///  </p>
+	int imageCount;
+
 	///  The picture this entry is shown with, <code>null</code> where it is shown with none.
 	/// 
 	///  <p>
@@ -1984,6 +2017,7 @@ class FolderInfo extends _JsonObject {
 			this.subTitle = "", 
 			this.effectiveDate = 0, 
 			this.kind = FolderKind.album, 
+			this.imageCount = 0, 
 			this.indexPicture, 
 			this.link = "", 
 	});
@@ -2026,6 +2060,10 @@ class FolderInfo extends _JsonObject {
 				kind = readFolderKind(json);
 				break;
 			}
+			case "imageCount": {
+				imageCount = json.expectInt();
+				break;
+			}
 			case "indexPicture": {
 				indexPicture = json.tryNull() ? null : ThumbnailInfo.read(json);
 				break;
@@ -2056,6 +2094,9 @@ class FolderInfo extends _JsonObject {
 
 		json.addKey("kind");
 		writeFolderKind(json, kind);
+
+		json.addKey("imageCount");
+		json.addNumber(imageCount);
 
 		var _indexPicture = indexPicture;
 		if (_indexPicture != null) {
@@ -4217,6 +4258,26 @@ class UserEntry extends _JsonObject {
 	///  </p>
 	String invitation;
 
+	///  The {@link Person#id} of the person of the register this user is, empty for nobody (issue #128).
+	/// 
+	///  <p>
+	///  Derived on every read from the register, where the link is stored as {@link Person#user}:
+	///  the two ends of one link, answered from whichever end was asked. An id and not a
+	///  {@link Person}, because the client that shows this list has the register already &mdash;
+	///  copying name, cover and aliases into every user would say the same thing twice and go stale
+	///  the moment somebody is renamed.
+	///  </p>
+	String person;
+
+	///  What that person is called, empty where {@link #person} is (issue #128).
+	/// 
+	///  <p>
+	///  The one thing a management screen needs beside the id &mdash; "Appears in photos as Anna"
+	///  &mdash; so that the users list reads without fetching the register as well. Everything else
+	///  about that person is asked of <code>?type=people</code>.
+	///  </p>
+	String personName;
+
 	/// Creates a UserEntry.
 	UserEntry({
 			this.name = "", 
@@ -4230,6 +4291,8 @@ class UserEntry extends _JsonObject {
 			this.recipient = "", 
 			this.invitedBy = "", 
 			this.invitation = "", 
+			this.person = "", 
+			this.personName = "", 
 	});
 
 	/// Parses a UserEntry from a string source.
@@ -4294,6 +4357,14 @@ class UserEntry extends _JsonObject {
 				invitation = json.expectString();
 				break;
 			}
+			case "person": {
+				person = json.expectString();
+				break;
+			}
+			case "personName": {
+				personName = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -4334,6 +4405,12 @@ class UserEntry extends _JsonObject {
 
 		json.addKey("invitation");
 		json.addString(invitation);
+
+		json.addKey("person");
+		json.addString(person);
+
+		json.addKey("personName");
+		json.addString(personName);
 	}
 
 }
@@ -6020,6 +6097,81 @@ class PersonMerge extends _JsonObject {
 
 }
 
+///  What <code>?action=link-person</code> asks for: that a person of the register <em>is</em> a
+///  member of the space, see issue #128.
+/// 
+///  <p>
+///  The link is stored on the person ({@link Person#user}) and nowhere else, so there is one place
+///  to write and one to read; {@link UserEntry#person} is the same link answered from the other end.
+///  </p>
+/// 
+///  <p>
+///  An administrator links anybody to anybody. A member who may edit links a person to
+///  <em>themselves</em> and to nobody else: saying "this is me" is a statement about oneself, and
+///  saying "this is Anna" about somebody else's account is not.
+///  </p>
+class PersonLink extends _JsonObject {
+	///  The {@link Person#id} to link; an alias of a person names that person.
+	String id;
+
+	///  The {@link UserEntry#name} of the member this person is; the empty string unlinks.
+	/// 
+	///  <p>
+	///  One member is at most one person: linking a member that another person already claims is
+	///  refused, and so is merging two people who are both linked &mdash; whoever wants that says
+	///  first which of the two links is the wrong one.
+	///  </p>
+	String user;
+
+	/// Creates a PersonLink.
+	PersonLink({
+			this.id = "", 
+			this.user = "", 
+	});
+
+	/// Parses a PersonLink from a string source.
+	static PersonLink? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PersonLink instance from the given reader.
+	static PersonLink read(JsonReader json) {
+		PersonLink result = PersonLink();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PersonLink";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "user": {
+				user = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("user");
+		json.addString(user);
+	}
+
+}
+
 ///  What <code>?action=tag-faces</code> asks for: decisions about the faces of one album.
 /// 
 ///  <p>
@@ -6101,7 +6253,13 @@ class FaceAssignment extends _JsonObject {
 	///  The {@link Person#id} the decision is about; empty exactly for {@link FaceState#NOT_A_FACE}.
 	String person;
 
-	///  What is decided; {@link FaceState#UNDECIDED} is not a decision and is refused.
+	///  What is decided; {@link FaceState#UNDECIDED} takes the decision on this box back (issue #138).
+	/// 
+	///  <p>
+	///  Forgetting is idempotent: an <code>UNDECIDED</code> for a box that carries no tag changes
+	///  nothing and is no error. The {@link #person} is ignored for it &mdash; what is forgotten is
+	///  the decision, whoever it was about.
+	///  </p>
 	FaceState state;
 
 	/// Creates a FaceAssignment.

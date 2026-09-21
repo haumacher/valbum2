@@ -317,11 +317,6 @@ public class TestFaceTags extends FacesTestCase {
 		assertEquals(400, named.status());
 		assertEquals(ImageServlet.TAG_PERSON_REFUSED, errorMessage(named));
 
-		FakeResponse undecided = post("/" + ALBUM + "/", "tag-faces",
-			body(assignment(A_ONE, 0, anna.getId(), "UNDECIDED")), _adminToken);
-		assertEquals(400, undecided.status());
-		assertEquals(ImageServlet.TAG_UNDECIDED, errorMessage(undecided));
-
 		FakeResponse unreadable = post("/" + ALBUM + "/", "tag-faces", "{{{", _adminToken);
 		assertEquals(400, unreadable.status());
 		assertEquals(ImageServlet.TAG_UNREADABLE, errorMessage(unreadable));
@@ -343,6 +338,102 @@ public class TestFaceTags extends FacesTestCase {
 			_adminToken);
 		assertEquals(400, response.status());
 		assertEquals(0, stored(A_ONE).getTags().size());
+	}
+
+	// --- Taking a decision back (issue #138). ---
+
+	/** "Undecided" forgets: the tag goes, and the face is the plain detection it was. */
+	public void testADecisionIsTakenBack() throws Exception {
+		createSpace(A_ONE, B);
+		if (!detectorAvailable()) {
+			return;
+		}
+		index();
+		Person anna = created("Anna");
+
+		tag(assignment(A_ONE, 0, anna.getId(), "CONFIRMED"));
+		assertEquals(1, stored(A_ONE).getTags().size());
+
+		AlbumInfo forgotten = tag(assignment(A_ONE, 0, "", "UNDECIDED"));
+		assertEquals("The decision is gone from the sidecar.", 0, stored(A_ONE).getTags().size());
+		assertFalse("And out of the album file: " + sidecar(), sidecar().contains("\"state\""));
+
+		FaceInfo face = image(forgotten, A_ONE).getFaces().get(0);
+		assertEquals("The face is a detection again.", FaceState.UNDECIDED, face.getState());
+		assertEquals("", face.getPerson());
+		assertFalse(face.isConfirmed());
+		assertFalse("It is still the detected face, group and all.", face.getCluster().isEmpty());
+	}
+
+	/** A rejection and a false detection are taken back the same way. */
+	public void testARejectionAndAFalseDetectionAreTakenBackToo() throws Exception {
+		createSpace(A_ONE, B);
+		if (!detectorAvailable()) {
+			return;
+		}
+		index();
+		Person anna = created("Anna");
+
+		tag(assignment(A_ONE, 0, anna.getId(), "REJECTED"), assignment(B, 0, "", "NOT_A_FACE"));
+		assertEquals(1, stored(A_ONE).getTags().size());
+		assertEquals(1, stored(B).getTags().size());
+
+		AlbumInfo forgotten = tag(assignment(A_ONE, 0, "", "UNDECIDED"), assignment(B, 0, "", "UNDECIDED"));
+		assertEquals(0, stored(A_ONE).getTags().size());
+		assertEquals(0, stored(B).getTags().size());
+		assertEquals(FaceState.UNDECIDED, image(forgotten, B).getFaces().get(0).getState());
+	}
+
+	/** Forgetting what nobody decided is no error, and writes nothing at all. */
+	public void testForgettingAnUndecidedFaceWritesNothing() throws Exception {
+		createSpace(A_ONE);
+		if (!detectorAvailable()) {
+			return;
+		}
+		index();
+		Person anna = created("Anna");
+		// A sidecar to watch: written by a decision that is then taken back.
+		tag(assignment(A_ONE, 0, anna.getId(), "CONFIRMED"));
+		tag(assignment(A_ONE, 0, "", "UNDECIDED"));
+
+		File file = new File(album(), "index.json");
+		long modified = file.lastModified();
+		String before = sidecar();
+		// A whole second, so that a file system of one-second resolution can tell.
+		Thread.sleep(1100);
+
+		FakeResponse response = post("/" + ALBUM + "/", "tag-faces",
+			body(assignment(A_ONE, 0, "", "UNDECIDED")), _adminToken);
+		assertEquals(response.body(), 200, response.status());
+		assertEquals("A no-op writes nothing.", modified, file.lastModified());
+		assertEquals(before, sidecar());
+	}
+
+	/** Taking a decision back is deciding, so it needs the very rights a decision needs. */
+	public void testTakingBackNeedsTheEditRight() throws Exception {
+		createSpace(A_ONE);
+		if (!detectorAvailable()) {
+			return;
+		}
+		index();
+		Person anna = created("Anna");
+		tag(assignment(A_ONE, 0, anna.getId(), "CONFIRMED"));
+
+		FakeResponse contributor = post("/" + ALBUM + "/", "tag-faces",
+			body(assignment(A_ONE, 0, "", "UNDECIDED")), BOB_TOKEN);
+		assertEquals(contributor.body(), 403, contributor.status());
+		assertEquals(ImageServlet.TAGGING_REFUSED, errorMessage(contributor));
+
+		FakeResponse viewer = post("/" + ALBUM + "/", "tag-faces",
+			body(assignment(A_ONE, 0, "", "UNDECIDED")), DAVE_TOKEN);
+		assertEquals(403, viewer.status());
+
+		FakeResponse shared = post("/" + ALBUM + "/", "tag-faces",
+			body(assignment(A_ONE, 0, "", "UNDECIDED")), shareToken());
+		assertEquals(403, shared.status());
+		assertEquals(ImageServlet.TAGGING_REFUSED, errorMessage(shared));
+
+		assertEquals("Nobody took it back.", 1, stored(A_ONE).getTags().size());
 	}
 
 	// --- Travelling. ---
