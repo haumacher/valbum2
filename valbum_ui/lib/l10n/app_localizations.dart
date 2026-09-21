@@ -1297,6 +1297,738 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This is a link to a shared album, not a sign-in. Open it in a browser to see what was shared with you.'**
   String get shareLinkRefusal;
+
+  /// Button closing a dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get close;
+
+  /// Button creating what the dialog asked for
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get create;
+
+  /// Tooltip of the way back out of a screen
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get back;
+
+  /// Button asking a running transfer to stop
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get stop;
+
+  /// How a share link with no label of its own and no album name is called
+  ///
+  /// In en, this message translates to:
+  /// **'Shared album'**
+  String get sharedAlbumFallback;
+
+  /// The best of the five rating levels
+  ///
+  /// In en, this message translates to:
+  /// **'Very good'**
+  String get ratingVeryGood;
+
+  /// The second of the five rating levels
+  ///
+  /// In en, this message translates to:
+  /// **'Good'**
+  String get ratingGood;
+
+  /// The middle rating level: no rating given
+  ///
+  /// In en, this message translates to:
+  /// **'Unrated'**
+  String get ratingUnrated;
+
+  /// The fourth of the five rating levels
+  ///
+  /// In en, this message translates to:
+  /// **'Poor'**
+  String get ratingPoor;
+
+  /// The lowest rating level, the waste basket
+  ///
+  /// In en, this message translates to:
+  /// **'Trash'**
+  String get ratingTrash;
+
+  /// Says that a share link shows the photos of every rating
+  ///
+  /// In en, this message translates to:
+  /// **'every photo'**
+  String get ratingFloorEveryPhoto;
+
+  /// Says which rating a share link shows from upwards
+  ///
+  /// In en, this message translates to:
+  /// **'at least {rating}'**
+  String ratingFloorAtLeast(String rating);
+
+  /// Button leaving a dead invitation page for the ordinary start
+  ///
+  /// In en, this message translates to:
+  /// **'Continue to the start page'**
+  String get shareContinueToStart;
+
+  /// Button leading back to the root of what a share link opens
+  ///
+  /// In en, this message translates to:
+  /// **'Back to the shared album'**
+  String get shareBackToAlbum;
+
+  /// Choice: the link never expires
+  ///
+  /// In en, this message translates to:
+  /// **'Never'**
+  String get expiryNever;
+
+  /// Choice: expires after one day
+  ///
+  /// In en, this message translates to:
+  /// **'1 day'**
+  String get expiryOneDay;
+
+  /// Choice: expires after one week
+  ///
+  /// In en, this message translates to:
+  /// **'1 week'**
+  String get expiryOneWeek;
+
+  /// Choice: expires after one month
+  ///
+  /// In en, this message translates to:
+  /// **'1 month'**
+  String get expiryOneMonth;
+
+  /// Choice opening a date picker for the day a link expires
+  ///
+  /// In en, this message translates to:
+  /// **'A date…'**
+  String get expiryPickDate;
+
+  /// Title of the dialog listing and making the links of one folder
+  ///
+  /// In en, this message translates to:
+  /// **'Share {name} by link'**
+  String shareDialogTitle(String name);
+
+  /// How the root folder is named in the share dialog's title
+  ///
+  /// In en, this message translates to:
+  /// **'the top level'**
+  String get shareTargetTopLevel;
+
+  /// Heading above the share links covering a folder
+  ///
+  /// In en, this message translates to:
+  /// **'Links'**
+  String get linksHeading;
+
+  /// Shown where no share link covers this folder
+  ///
+  /// In en, this message translates to:
+  /// **'No links yet.'**
+  String get noLinksYet;
+
+  /// Stands in the list for a share link its author gave no label
+  ///
+  /// In en, this message translates to:
+  /// **'(no label)'**
+  String get linkNoLabel;
+
+  /// Tooltip of the button taking a share link back
+  ///
+  /// In en, this message translates to:
+  /// **'Withdraw…'**
+  String get withdrawTooltip;
+
+  /// Part of a link's description: it has no expiry
+  ///
+  /// In en, this message translates to:
+  /// **'never expires'**
+  String get linkNeverExpires;
+
+  /// Part of a link's description: it shows what members see
+  ///
+  /// In en, this message translates to:
+  /// **'up to members'**
+  String get linkUpToMembers;
+
+  /// Part of a link's description: it shows only public photos
+  ///
+  /// In en, this message translates to:
+  /// **'public only'**
+  String get linkPublicOnly;
+
+  /// Says on which day a share link was taken back
+  ///
+  /// In en, this message translates to:
+  /// **'withdrawn {day}'**
+  String linkWithdrawnOn(String day);
+
+  /// Says that a link was made on a folder further up
+  ///
+  /// In en, this message translates to:
+  /// **'inherited from {folder}, withdraw it there'**
+  String linkInheritedFrom(String folder);
+
+  /// How a link covering the root of a space names its folder
+  ///
+  /// In en, this message translates to:
+  /// **'the whole space'**
+  String get shareWholeSpace;
+
+  /// Entry opening the form of a new share link
+  ///
+  /// In en, this message translates to:
+  /// **'New link…'**
+  String get newLinkTile;
+
+  /// Heading above the form of a new share link
+  ///
+  /// In en, this message translates to:
+  /// **'New link'**
+  String get newLinkHeading;
+
+  /// Field naming a share link in its author's own list
+  ///
+  /// In en, this message translates to:
+  /// **'Label'**
+  String get linkLabelLabel;
+
+  /// Explains the label field of a new share link
+  ///
+  /// In en, this message translates to:
+  /// **'What this link is, for your own list.'**
+  String get linkLabelHelp;
+
+  /// Heading above the choices of how long a link or invitation lives
+  ///
+  /// In en, this message translates to:
+  /// **'Expires'**
+  String get expiresHeading;
+
+  /// Heading above the choices of what a share link shows
+  ///
+  /// In en, this message translates to:
+  /// **'Shows'**
+  String get showsHeading;
+
+  /// Choice: the link shows only the photos marked public
+  ///
+  /// In en, this message translates to:
+  /// **'Public photos only'**
+  String get privacyPublicOnly;
+
+  /// Choice: the link shows what a member of the space sees
+  ///
+  /// In en, this message translates to:
+  /// **'Up to what members see'**
+  String get privacyUpToMembers;
+
+  /// Explains the ceiling of what any share link can show
+  ///
+  /// In en, this message translates to:
+  /// **'A private photo is never shown through a link.'**
+  String get privacyMembersNote;
+
+  /// Heading above the rating floor of a new share link
+  ///
+  /// In en, this message translates to:
+  /// **'Lowest rating'**
+  String get lowestRatingHeading;
+
+  /// Says that a share link can never carry the right to edit
+  ///
+  /// In en, this message translates to:
+  /// **'A link never allows editing.'**
+  String get linkNeverEdits;
+
+  /// Button making the share link the form describes
+  ///
+  /// In en, this message translates to:
+  /// **'Create link'**
+  String get createLink;
+
+  /// Heading above the URL of a share link that was just made
+  ///
+  /// In en, this message translates to:
+  /// **'The link'**
+  String get theLinkHeading;
+
+  /// Warns that the share link URL is shown exactly once
+  ///
+  /// In en, this message translates to:
+  /// **'Copy it now: the server keeps only its fingerprint and can never show it again. A lost link is withdrawn and made anew.'**
+  String get shareLinkOnce;
+
+  /// Said after the share link URL went to the clipboard
+  ///
+  /// In en, this message translates to:
+  /// **'The link was copied.'**
+  String get linkCopied;
+
+  /// Title of the dialog confirming that a share link is taken back
+  ///
+  /// In en, this message translates to:
+  /// **'Withdraw the link?'**
+  String get withdrawLinkTitle;
+
+  /// Explains what taking a share link back does
+  ///
+  /// In en, this message translates to:
+  /// **'Anybody holding {link} stops seeing the album at once. This cannot be undone; a new link can be made instead.'**
+  String withdrawLinkMessage(String link);
+
+  /// How a share link with no label is named in the withdraw question
+  ///
+  /// In en, this message translates to:
+  /// **'this link'**
+  String get withdrawLinkThisLink;
+
+  /// Explains the retired guest role on the welcome screen of an invitation
+  ///
+  /// In en, this message translates to:
+  /// **'A guest has no albums of their own: their library is what others share with them.'**
+  String get invitationGuestNote;
+
+  /// Explains the device name field
+  ///
+  /// In en, this message translates to:
+  /// **'Which of your devices this is.'**
+  String get deviceNameHelp;
+
+  /// Shown while the invitation is being accepted
+  ///
+  /// In en, this message translates to:
+  /// **'Joining...'**
+  String get joining;
+
+  /// Button accepting an invitation
+  ///
+  /// In en, this message translates to:
+  /// **'Join'**
+  String get joinAction;
+
+  /// Said after an invitation was accepted
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re in as {user}.'**
+  String invitationJoinedAs(String user);
+
+  /// Said below the welcome after an invitation was accepted
+  ///
+  /// In en, this message translates to:
+  /// **'This device is signed in; your albums are yours from now on.'**
+  String get invitationSignedInNote;
+
+  /// Button leaving the invitation page for the album
+  ///
+  /// In en, this message translates to:
+  /// **'Open your albums'**
+  String get openYourAlbums;
+
+  /// Refusal shown where the invited person named nobody
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the name you want to be known by.'**
+  String get invitationChooseName;
+
+  /// Title of the dialog issuing an invitation
+  ///
+  /// In en, this message translates to:
+  /// **'Invite somebody'**
+  String get inviteDialogTitle;
+
+  /// Field holding the inviter's own note about whom an invitation is for
+  ///
+  /// In en, this message translates to:
+  /// **'For whom'**
+  String get inviteRecipientLabel;
+
+  /// Explains the recipient field of an invitation
+  ///
+  /// In en, this message translates to:
+  /// **'A note to yourself: whom this invitation is for. Optional.'**
+  String get inviteRecipientHelp;
+
+  /// Field holding what the invited person reads
+  ///
+  /// In en, this message translates to:
+  /// **'Note'**
+  String get inviteNoteLabel;
+
+  /// Explains the note field of an invitation
+  ///
+  /// In en, this message translates to:
+  /// **'What the invited person reads when they open the link.'**
+  String get inviteNoteHelp;
+
+  /// Button issuing the invitation the form describes
+  ///
+  /// In en, this message translates to:
+  /// **'Create invitation'**
+  String get createInvitation;
+
+  /// Heading above the URL of an invitation that was just issued
+  ///
+  /// In en, this message translates to:
+  /// **'The invitation'**
+  String get theInvitationHeading;
+
+  /// Says how long an invitation lives
+  ///
+  /// In en, this message translates to:
+  /// **'Valid until {day}, and for one person.'**
+  String invitationValidUntil(String day);
+
+  /// Warns that the invitation URL is shown exactly once
+  ///
+  /// In en, this message translates to:
+  /// **'Send it now: the server keeps only its fingerprint and can never show it again. A lost invitation is withdrawn and made anew.'**
+  String get invitationOnce;
+
+  /// Said after the invitation URL went to the clipboard
+  ///
+  /// In en, this message translates to:
+  /// **'The invitation was copied.'**
+  String get invitationCopied;
+
+  /// Says where the camera roll uploads while no album was chosen
+  ///
+  /// In en, this message translates to:
+  /// **'No album chosen - new photos go into \'{name}\''**
+  String inboxNotChosen(String name);
+
+  /// Heading of the camera-roll section of the server settings
+  ///
+  /// In en, this message translates to:
+  /// **'Camera roll'**
+  String get cameraRollHeading;
+
+  /// Explains what the camera-roll sync does
+  ///
+  /// In en, this message translates to:
+  /// **'New photos taken on this device are uploaded into an album of the library. Nothing is uploaded twice: the server is asked for the content of every photo before it is transferred.'**
+  String get cameraRollExplanation;
+
+  /// Switch enabling the camera-roll sync
+  ///
+  /// In en, this message translates to:
+  /// **'Upload new photos'**
+  String get cameraRollUploadNew;
+
+  /// Said where the device has no photo library at all
+  ///
+  /// In en, this message translates to:
+  /// **'No photo library on this platform'**
+  String get noPhotoLibrary;
+
+  /// Switch limiting the camera-roll sync to Wi-Fi
+  ///
+  /// In en, this message translates to:
+  /// **'Only over Wi-Fi'**
+  String get onlyOverWifi;
+
+  /// Explains the Wi-Fi-only switch
+  ///
+  /// In en, this message translates to:
+  /// **'New photos wait for a Wi-Fi or a wired connection, so that the upload does not eat into a mobile data plan.'**
+  String get onlyOverWifiExplanation;
+
+  /// Button opening the picker of the album new photos go into
+  ///
+  /// In en, this message translates to:
+  /// **'Choose...'**
+  String get chooseAction;
+
+  /// Button starting a camera-roll sync at once
+  ///
+  /// In en, this message translates to:
+  /// **'Sync now'**
+  String get syncNow;
+
+  /// Button starting a sync although the server is still indexing
+  ///
+  /// In en, this message translates to:
+  /// **'Sync anyway'**
+  String get syncAnyway;
+
+  /// Heading above the device albums the sync watches
+  ///
+  /// In en, this message translates to:
+  /// **'Albums to sync'**
+  String get albumsToSync;
+
+  /// How many photos an album of the device holds
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo} other{{count} photos}}'**
+  String photoCount(int count);
+
+  /// Refusal shown where an album is chosen before a server is known
+  ///
+  /// In en, this message translates to:
+  /// **'Save the server URL first, then choose an album on it.'**
+  String get saveServerFirst;
+
+  /// Title of the dialog choosing the album new photos go into
+  ///
+  /// In en, this message translates to:
+  /// **'Inbox album'**
+  String get inboxAlbumTitle;
+
+  /// Said where the folders of a server cannot be read
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot list: {problem}'**
+  String cannotList(String problem);
+
+  /// Button creating an album in the folder shown
+  ///
+  /// In en, this message translates to:
+  /// **'New album...'**
+  String get newAlbumAction;
+
+  /// Button choosing the folder shown as the inbox
+  ///
+  /// In en, this message translates to:
+  /// **'Use this album'**
+  String get useThisAlbum;
+
+  /// The root of the library in the breadcrumb of the inbox picker
+  ///
+  /// In en, this message translates to:
+  /// **'Library'**
+  String get libraryBreadcrumb;
+
+  /// Said where a folder of the library holds no folders
+  ///
+  /// In en, this message translates to:
+  /// **'No folders here yet - create one below.'**
+  String get noFoldersHere;
+
+  /// Said where the inbox picker stands in an album
+  ///
+  /// In en, this message translates to:
+  /// **'This is the album \'{title}\'. New photos land here.'**
+  String folderIsAlbum(String title);
+
+  /// Said where the server answered something the picker cannot show
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to show here.'**
+  String get nothingToShow;
+
+  /// Title of the dialog asking for the name of a new album
+  ///
+  /// In en, this message translates to:
+  /// **'New album'**
+  String get newAlbumTitle;
+
+  /// Field holding the name of the folder an album is written to
+  ///
+  /// In en, this message translates to:
+  /// **'Folder name'**
+  String get folderNameLabel;
+
+  /// Said where an album could not be created
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot create \'{name}\': {problem}'**
+  String cannotCreateFolder(String problem, String name);
+
+  /// Tooltip of the way out of the alternatives view
+  ///
+  /// In en, this message translates to:
+  /// **'Back to the album'**
+  String get backToAlbum;
+
+  /// Tooltip of the image representing a group in the album
+  ///
+  /// In en, this message translates to:
+  /// **'Group picture'**
+  String get groupPicture;
+
+  /// Tooltip of the button while the image shown represents its group
+  ///
+  /// In en, this message translates to:
+  /// **'This image is the group picture'**
+  String get groupPictureIsThis;
+
+  /// Button making the image shown represent its group
+  ///
+  /// In en, this message translates to:
+  /// **'Use as group picture'**
+  String get useAsGroupPicture;
+
+  /// Said while the server is still making the video rendition
+  ///
+  /// In en, this message translates to:
+  /// **'The video is being prepared…'**
+  String get videoPreparing;
+
+  /// Button playing the original file instead of waiting
+  ///
+  /// In en, this message translates to:
+  /// **'Play the original'**
+  String get videoPlayOriginal;
+
+  /// Headline shown where a video cannot be played
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot play this video.'**
+  String get videoCannotPlay;
+
+  /// Hint below the video refusal where the video never arrived
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not be reached, or it refused the video.'**
+  String get videoNetworkHint;
+
+  /// Hint below the video refusal where the format cannot be decoded
+  ///
+  /// In en, this message translates to:
+  /// **'This device cannot play the format of this video.'**
+  String get videoFormatHint;
+
+  /// Says where the raw failure of a video can be read
+  ///
+  /// In en, this message translates to:
+  /// **'The technical details are in the diagnostics log of the server settings.'**
+  String get videoDiagnosticsHint;
+
+  /// Tooltip of the button pausing a video
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get pause;
+
+  /// Tooltip of the button playing a video
+  ///
+  /// In en, this message translates to:
+  /// **'Play'**
+  String get play;
+
+  /// Menu entry opening the app's own picker over the photo library
+  ///
+  /// In en, this message translates to:
+  /// **'From the phone\'s photo library...'**
+  String get photoPickerEntry;
+
+  /// Menu entry opening the system's file picker
+  ///
+  /// In en, this message translates to:
+  /// **'Choose files... (max. 100)'**
+  String get systemPickerEntry;
+
+  /// Title of the screen picking photos off the device
+  ///
+  /// In en, this message translates to:
+  /// **'Photo library'**
+  String get photoLibraryTitle;
+
+  /// Tooltip leading back to the list of the device's albums
+  ///
+  /// In en, this message translates to:
+  /// **'All albums'**
+  String get allAlbums;
+
+  /// Button selecting every photo shown
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get selectAll;
+
+  /// Button clearing the selection
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get selectNone;
+
+  /// Said where the device refused access to its photos
+  ///
+  /// In en, this message translates to:
+  /// **'No access to the photo library of this device.'**
+  String get photoLibraryNoAccess;
+
+  /// Said where the photo library answered with a failure
+  ///
+  /// In en, this message translates to:
+  /// **'The photo library cannot be read: {problem}'**
+  String photoLibraryUnreadable(String problem);
+
+  /// Said where one album of the device answered with a failure
+  ///
+  /// In en, this message translates to:
+  /// **'The album cannot be read: {problem}'**
+  String photoAlbumUnreadable(String problem);
+
+  /// Said where the device names no album at all
+  ///
+  /// In en, this message translates to:
+  /// **'The photo library of this device holds no albums.'**
+  String get photoLibraryNoAlbums;
+
+  /// Said where an album of the device holds nothing
+  ///
+  /// In en, this message translates to:
+  /// **'This album holds no photos.'**
+  String get photoAlbumEmpty;
+
+  /// Says how many photos of the device are selected
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Nothing selected} =1{1 selected} other{{count} selected}}'**
+  String photoPickerSelected(int count);
+
+  /// Button uploading the photos selected on the device
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Upload 1 photo} other{Upload {count} photos}}'**
+  String photoPickerUpload(int count);
+
+  /// Title of the dialog an upload runs behind
+  ///
+  /// In en, this message translates to:
+  /// **'Upload photos'**
+  String get uploadProgressTitle;
+
+  /// Title of the camera page reading a device code
+  ///
+  /// In en, this message translates to:
+  /// **'Scan a device code'**
+  String get scanCodeTitle;
+
+  /// Says what to point the camera at while scanning a device code
+  ///
+  /// In en, this message translates to:
+  /// **'Point the camera at the code shown under My devices on the device you are already signed in on.'**
+  String get scanCodeAdvice;
+
+  /// Said where the camera permission was refused
+  ///
+  /// In en, this message translates to:
+  /// **'This app is not allowed to use the camera. Allow it in the system settings, or type the code instead.'**
+  String get cameraNotAllowed;
+
+  /// Said where the device has no camera to scan with
+  ///
+  /// In en, this message translates to:
+  /// **'This device cannot scan a code. Type it instead.'**
+  String get cameraUnsupported;
+
+  /// Said where the camera failed for a reason the plugin does not name
+  ///
+  /// In en, this message translates to:
+  /// **'The camera could not be opened. Type the code instead.'**
+  String get cameraNotOpened;
 }
 
 class _AppLocalizationsDelegate

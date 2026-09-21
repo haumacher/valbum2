@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 
 import 'client.dart';
 import 'diagnostics.dart';
+import 'l10n/app_localizations.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
 
@@ -22,38 +23,6 @@ typedef Wait = Future<void> Function(Duration delay);
 
 /// The wait of a running app.
 Future<void> realWait(Duration delay) => Future<void>.delayed(delay);
-
-/// What the view says while the server is still making the rendition
-/// (issues #74/#75).
-const String videoPreparingMessage = "The video is being prepared…";
-
-/// The way past the wait, for whoever does not want to sit it out.
-///
-/// The original is always there — it is what the app played before the
-/// renditions existed, and it stays the download.
-const String videoPlayOriginalLabel = "Play the original";
-
-/// The headline shown when a video cannot be played (issue #73).
-///
-/// English, like the rest of this file and of the image viewer: a refusal
-/// speaks in the language of the screen it appears on.
-const String videoErrorHeadline = "Cannot play this video.";
-
-/// What the person is told when the video could not be fetched at all.
-///
-/// Both halves in one sentence on purpose: from here the two cannot be told
-/// apart — a server that is not on this network and a server that refused the
-/// request look the same to the player.
-const String videoNetworkHint =
-    "The server could not be reached, or it refused the video.";
-
-/// What the person is told when the video arrived but cannot be decoded.
-const String videoFormatHint =
-    "This device cannot play the format of this video.";
-
-/// Where the raw failure is, for a bug report.
-const String videoErrorDiagnosticsHint =
-    "The technical details are in the diagnostics log of the server settings.";
 
 /// Words in a player failure that mean the *contents* cannot be decoded.
 ///
@@ -92,24 +61,27 @@ const List<String> _networkWords = [
   "not permitted",
 ];
 
-/// The one hint the person gets besides [videoErrorHeadline], or `null` where
+/// The one hint the person gets besides `videoCannotPlay`, or `null` where
 /// the failure cannot be classified (issue #73).
 ///
 /// The classification is deliberately a keyword match on the platform's own
 /// message and deliberately allowed to answer nothing: the player's failures
 /// are strings from three different platforms, and a wrong hint is worse than
 /// none — what is certain is in the log either way, see
-/// [videoErrorDiagnosticsHint].
-String? videoErrorHint(Object problem) {
+/// `videoDiagnosticsHint`.
+///
+/// It takes the [AppLocalizations] rather than keeping English of its own
+/// (issue #108): the classification is the app's, the words are the ARB's.
+String? videoErrorHint(AppLocalizations l10n, Object problem) {
   var text = problem.toString().toLowerCase();
   for (var word in _formatWords) {
     if (text.contains(word)) {
-      return videoFormatHint;
+      return l10n.videoFormatHint;
     }
   }
   for (var word in _networkWords) {
     if (text.contains(word)) {
-      return videoNetworkHint;
+      return l10n.videoNetworkHint;
     }
   }
   return null;
@@ -493,7 +465,9 @@ class VideoViewState extends State<VideoView> {
                 controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
               ),
               color: Colors.white,
-              tooltip: controller.value.isPlaying ? "Pause" : "Play",
+              tooltip: controller.value.isPlaying
+                  ? AppLocalizations.of(context)!.pause
+                  : AppLocalizations.of(context)!.play,
               onPressed: togglePlay,
             ),
             Expanded(
@@ -513,42 +487,45 @@ class VideoViewState extends State<VideoView> {
   /// The poster stays behind it, the line says what is happening, and the
   /// button plays the original for whoever does not want to wait. It scrolls
   /// inside its slot for the same reason the error box does.
-  Widget buildPreparing() => Container(
-        key: const Key("video-preparing"),
-        color: Colors.black87,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white70,
-                ),
+  Widget buildPreparing() {
+    var l10n = AppLocalizations.of(context)!;
+    return Container(
+      key: const Key("video-preparing"),
+      color: Colors.black87,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white70,
               ),
-              const SizedBox(height: 12),
-              const Text(
-                videoPreparingMessage,
-                key: Key("video-preparing-line"),
-                style: TextStyle(color: Colors.white),
-                textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              l10n.videoPreparing,
+              key: const Key("video-preparing-line"),
+              style: const TextStyle(color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              key: const Key("video-play-original"),
+              onPressed: playOriginal,
+              child: Text(
+                l10n.videoPlayOriginal,
+                style: const TextStyle(color: Colors.white),
               ),
-              const SizedBox(height: 12),
-              TextButton(
-                key: const Key("video-play-original"),
-                onPressed: playOriginal,
-                child: const Text(
-                  videoPlayOriginalLabel,
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 
   /// The message shown when the video cannot be played at all (issue #73).
   ///
@@ -566,7 +543,8 @@ class VideoViewState extends State<VideoView> {
   /// that hands it the slot loosely. Nothing here is ever truncated: a refusal
   /// that cannot be read to its end is the bug of issue #73 all over again.
   Widget buildError(Object problem) {
-    var hint = videoErrorHint(problem);
+    var l10n = AppLocalizations.of(context)!;
+    var hint = videoErrorHint(l10n, problem);
     return Container(
       key: const Key("video-error"),
       color: Colors.black87,
@@ -577,10 +555,10 @@ class VideoViewState extends State<VideoView> {
           children: [
             const Icon(Icons.videocam_off, color: Colors.white, size: 32),
             const SizedBox(height: 8),
-            const Text(
-              videoErrorHeadline,
-              key: Key("video-error-headline"),
-              style: TextStyle(
+            Text(
+              l10n.videoCannotPlay,
+              key: const Key("video-error-headline"),
+              style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
@@ -603,10 +581,10 @@ class VideoViewState extends State<VideoView> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
-            const Text(
-              videoErrorDiagnosticsHint,
-              key: Key("video-error-diagnostics"),
-              style: TextStyle(color: Colors.white54, fontSize: 12),
+            Text(
+              l10n.videoDiagnosticsHint,
+              key: const Key("video-error-diagnostics"),
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
               textAlign: TextAlign.center,
             ),
           ],

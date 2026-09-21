@@ -19,6 +19,7 @@ import 'package:intl/intl.dart';
 import 'album_edit.dart' show privacyMembers, privacyPublic;
 import 'caller.dart';
 import 'client.dart';
+import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show dayOf;
 import 'offline.dart';
 import 'resource.dart';
@@ -51,16 +52,20 @@ bool mayShareFolder(
 
 /// How long a new share link lives, as the dialog offers it.
 enum LinkExpiry {
-  never("Never"),
-  day("1 day"),
-  week("1 week"),
-  month("1 month"),
-  date("A date…");
+  never,
+  day,
+  week,
+  month,
+  date;
 
   /// How the choice is named on the screen.
-  final String label;
-
-  const LinkExpiry(this.label);
+  String labelOf(AppLocalizations l10n) => switch (this) {
+        LinkExpiry.never => l10n.expiryNever,
+        LinkExpiry.day => l10n.expiryOneDay,
+        LinkExpiry.week => l10n.expiryOneWeek,
+        LinkExpiry.month => l10n.expiryOneMonth,
+        LinkExpiry.date => l10n.expiryPickDate,
+      };
 
   /// The instant a link created now expires at, `null` if it never does.
   ///
@@ -198,11 +203,14 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var name = widget.label ??
-        (widget.path.isEmpty ? "the top level" : "'${widget.path.last}'");
+        (widget.path.isEmpty
+            ? l10n.shareTargetTopLevel
+            : "'${widget.path.last}'");
     return AlertDialog(
       key: const Key("share-link-dialog"),
-      title: Text("Share $name by link"),
+      title: Text(l10n.shareDialogTitle(name)),
       content: SizedBox(
         width: 460,
         height: 440,
@@ -228,7 +236,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
         TextButton(
           key: const Key("share-link-close"),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text("Close"),
+          child: Text(l10n.close),
         ),
       ],
     );
@@ -236,11 +244,12 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
 
   /// The links covering this folder, the inherited ones marked.
   List<Widget> _linkSection(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var links = _links ?? const <ShareLink>[];
     var error = _error;
     var refusal = _refusal;
     return [
-      Text("Links", style: Theme.of(context).textTheme.titleSmall),
+      Text(l10n.linksHeading, style: Theme.of(context).textTheme.titleSmall),
       if (error != null)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -256,9 +265,9 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           ),
         ),
       if (error == null && links.isEmpty)
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
-          child: Text("No links yet.", key: Key("share-link-none")),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(l10n.noLinksYet, key: const Key("share-link-none")),
         ),
       for (var link in links)
         ListTile(
@@ -267,14 +276,14 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           dense: true,
           isThreeLine: true,
           leading: Icon(_inherited(link) ? Icons.arrow_upward : Icons.link),
-          title: Text(link.label.isEmpty ? "(no label)" : link.label),
-          subtitle: Text(_describe(link)),
+          title: Text(link.label.isEmpty ? l10n.linkNoLabel : link.label),
+          subtitle: Text(_describe(l10n, link)),
           trailing: _inherited(link) || link.revoked.isNotEmpty
               ? null
               : IconButton(
                   key: Key("withdraw-${link.id}"),
                   icon: const Icon(Icons.link_off),
-                  tooltip: "Withdraw…",
+                  tooltip: l10n.withdrawTooltip,
                   onPressed: _busy ? null : () => _withdraw(link),
                 ),
         ),
@@ -286,32 +295,40 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   bool _inherited(ShareLink link) => link.path != ownerPath;
 
   /// What a link shows and how long it lives, in one paragraph.
-  String _describe(ShareLink link) {
+  String _describe(AppLocalizations l10n, ShareLink link) {
     var parts = [
       _rightsOf(link),
-      link.expires.isEmpty ? "never expires" : "expires ${_day(link.expires)}",
-      link.maxPrivacy >= privacyMembers ? "up to members" : "public only",
-      ratingFloorLabel(link.minRating),
+      link.expires.isEmpty
+          ? l10n.linkNeverExpires
+          : l10n.expiresOnDay(_day(link.expires)),
+      link.maxPrivacy >= privacyMembers
+          ? l10n.linkUpToMembers
+          : l10n.linkPublicOnly,
+      ratingFloorLabel(l10n, link.minRating),
     ];
     var text = parts.join(" · ");
     if (link.revoked.isNotEmpty) {
-      return "$text\nwithdrawn ${_day(link.revoked)}";
+      return "$text\n${l10n.linkWithdrawnOn(_day(link.revoked))}";
     }
     if (_inherited(link)) {
-      return "$text\ninherited from ${_pathLabel(link.path)}, "
-          "withdraw it there";
+      return "$text\n${l10n.linkInheritedFrom(_pathLabel(l10n, link.path))}";
     }
     return text;
   }
 
   /// The rights of a link, as the list shows them.
+  ///
+  /// The words are `rights.dart`'s own: a right is named there once, for
+  /// every screen that shows one.
   String _rightsOf(ShareLink link) {
     var names = [
       for (var right in allRights)
         if (link.rights.any((held) => held.name == right))
           rightLabels[right] ?? right,
     ];
-    return names.isEmpty ? "View" : names.join(", ");
+    return names.isEmpty
+        ? (rightLabels[rightView] ?? rightView)
+        : names.join(", ");
   }
 
   /// The day of an ISO-8601 instant, in the viewer's own time zone.
@@ -327,62 +344,63 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           contentPadding: EdgeInsets.zero,
           dense: true,
           leading: const Icon(Icons.add_link),
-          title: const Text("New link…"),
+          title: Text(AppLocalizations.of(context)!.newLinkTile),
           onTap: _busy ? null : () => setState(() => _creating = true),
         ),
       ];
 
   /// The five questions a new link asks.
   List<Widget> _formSection(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var titles = Theme.of(context).textTheme.titleSmall;
     return [
-      Text("New link", style: titles),
+      Text(l10n.newLinkHeading, style: titles),
       TextField(
         key: const Key("link-label"),
         controller: _label,
         autofocus: true,
-        decoration: const InputDecoration(
-          label: Text("Label"),
-          helperText: "What this link is, for your own list.",
+        decoration: InputDecoration(
+          label: Text(l10n.linkLabelLabel),
+          helperText: l10n.linkLabelHelp,
         ),
       ),
       const SizedBox(height: 8),
-      Text("Expires", style: titles),
+      Text(l10n.expiresHeading, style: titles),
       for (var choice in LinkExpiry.values)
         _choiceTile(
           key: "expiry-${choice.name}",
           chosen: _expiry == choice,
           title: choice == LinkExpiry.date && _expiryDate != null
               ? DateFormat.yMMMd().format(_expiryDate!)
-              : choice.label,
+              : choice.labelOf(l10n),
           onTap: () => _chooseExpiry(choice),
         ),
       const SizedBox(height: 8),
-      Text("Shows", style: titles),
+      Text(l10n.showsHeading, style: titles),
       _choiceTile(
         key: "privacy-public",
         chosen: _maxPrivacy == privacyPublic,
-        title: "Public photos only",
+        title: l10n.privacyPublicOnly,
         onTap: () => setState(() => _maxPrivacy = privacyPublic),
       ),
       _choiceTile(
         key: "privacy-members",
         chosen: _maxPrivacy == privacyMembers,
-        title: "Up to what members see",
-        subtitle: "A private photo is never shown through a link.",
+        title: l10n.privacyUpToMembers,
+        subtitle: l10n.privacyMembersNote,
         onTap: () => setState(() => _maxPrivacy = privacyMembers),
       ),
       const SizedBox(height: 8),
-      Text("Lowest rating", style: titles),
+      Text(l10n.lowestRatingHeading, style: titles),
       for (var rating in const [-2, -1, 0, 1, 2])
         _choiceTile(
           key: "rating-$rating",
           chosen: _minRating == rating,
-          title: ratingFloorLabel(rating),
+          title: ratingFloorLabel(l10n, rating),
           onTap: () => setState(() => _minRating = rating),
         ),
       const SizedBox(height: 8),
-      Text("May", style: titles),
+      Text(l10n.permissionMayHeading, style: titles),
       CheckboxListTile(
         key: const Key("link-right-view"),
         contentPadding: EdgeInsets.zero,
@@ -414,12 +432,12 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
         ),
       // Never `edit`: a link is not an account, and the server refuses one
       // that would allow it.
-      const Padding(
-        padding: EdgeInsets.only(top: 8),
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
         child: Text(
-          "A link never allows editing.",
-          key: Key("link-no-edit"),
-          style: TextStyle(fontSize: 12),
+          l10n.linkNeverEdits,
+          key: const Key("link-no-edit"),
+          style: const TextStyle(fontSize: 12),
         ),
       ),
       const SizedBox(height: 8),
@@ -429,13 +447,13 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           TextButton(
             key: const Key("link-cancel"),
             onPressed: _busy ? null : () => setState(() => _creating = false),
-            child: const Text("Cancel"),
+            child: Text(l10n.cancel),
           ),
           const SizedBox(width: 8),
           ElevatedButton(
             key: const Key("link-create"),
             onPressed: _busy ? null : _create,
-            child: const Text("Create link"),
+            child: Text(l10n.createLink),
           ),
         ],
       ),
@@ -468,8 +486,8 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
       );
 
   /// How a link's own folder is named, the whole space having no name.
-  String _pathLabel(String path) =>
-      path.isEmpty ? "the whole space" : "'$path'";
+  String _pathLabel(AppLocalizations l10n, String path) =>
+      path.isEmpty ? l10n.shareWholeSpace : "'$path'";
 
   Future<void> _chooseExpiry(LinkExpiry choice) async {
     if (choice != LinkExpiry.date) {
@@ -555,10 +573,11 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
 
   /// The URL of a link that was just made, shown exactly once.
   List<Widget> _createdSection(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var created = _created!;
     var url = absoluteServerUrl(widget.client.dataUrl, created.url);
     return [
-      Text("The link", style: Theme.of(context).textTheme.titleSmall),
+      Text(l10n.theLinkHeading, style: Theme.of(context).textTheme.titleSmall),
       const SizedBox(height: 8),
       Row(
         children: [
@@ -568,17 +587,13 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           IconButton(
             key: const Key("copy-link"),
             icon: const Icon(Icons.copy),
-            tooltip: "Copy",
+            tooltip: l10n.copy,
             onPressed: () => _copy(url),
           ),
         ],
       ),
       const SizedBox(height: 16),
-      const Text(
-        "Copy it now: the server keeps only its fingerprint and can never "
-        "show it again. A lost link is withdrawn and made anew.",
-        key: Key("share-link-once"),
-      ),
+      Text(l10n.shareLinkOnce, key: const Key("share-link-once")),
       const SizedBox(height: 16),
       Align(
         alignment: Alignment.centerRight,
@@ -591,7 +606,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
             });
             _load();
           },
-          child: const Text("Done"),
+          child: Text(l10n.done),
         ),
       ),
     ];
@@ -599,37 +614,39 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
 
   Future<void> _copy(String url) async {
     var messenger = ScaffoldMessenger.of(context);
+    var said = AppLocalizations.of(context)!.linkCopied;
     await Clipboard.setData(ClipboardData(text: url));
-    messenger.showSnackBar(
-      const SnackBar(content: Text("The link was copied.")),
-    );
+    messenger.showSnackBar(SnackBar(content: Text(said)));
   }
 
   /// Withdraws a link, after asking: a link somebody already has stops
   /// working the moment this is done.
   Future<void> _withdraw(ShareLink link) async {
-    var name = link.label.isEmpty ? "this link" : "'${link.label}'";
+    var outer = AppLocalizations.of(context)!;
+    var name = link.label.isEmpty
+        ? outer.withdrawLinkThisLink
+        : "'${link.label}'";
     var confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        key: const Key("withdraw-confirm"),
-        title: const Text("Withdraw the link?"),
-        content: Text(
-          "Anybody holding $name stops seeing the album at once. "
-          "This cannot be undone; a new link can be made instead.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            key: const Key("withdraw-confirm-ok"),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text("Withdraw"),
-          ),
-        ],
-      ),
+      builder: (context) {
+        var l10n = AppLocalizations.of(context)!;
+        return AlertDialog(
+          key: const Key("withdraw-confirm"),
+          title: Text(l10n.withdrawLinkTitle),
+          content: Text(l10n.withdrawLinkMessage(name)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.cancel),
+            ),
+            ElevatedButton(
+              key: const Key("withdraw-confirm-ok"),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(l10n.withdraw),
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true || !mounted) {
       return;

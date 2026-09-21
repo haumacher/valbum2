@@ -9,7 +9,7 @@
 ///  * a determinate [CircularProgressIndicator] with the percentage inside it
 ///    while the images are being transferred, spinning in the phases that have
 ///    no measure (preparing, asking, waiting for the answer),
-///  * below it exactly one line, `12 von 48 Bildern`, wrapping if it must and
+///  * below it exactly one line, `12 of 48 images`, wrapping if it must and
 ///    never truncated — no `TextOverflow.ellipsis` anywhere in this dialog,
 ///  * a Cancel button, which asks the upload to stop, see [UploadHandle].
 ///
@@ -23,6 +23,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'client.dart';
+import 'l10n/app_localizations.dart';
 
 /// The key of the dialog, so that a test can address it.
 const Key uploadProgressDialogKey = Key("upload.progress.dialog");
@@ -38,12 +39,6 @@ const Key uploadProgressCountKey = Key("upload.progress.count");
 
 /// The key of the button asking the upload to stop.
 const Key uploadProgressCancelKey = Key("upload.progress.cancel");
-
-/// The heading of the dialog.
-const String uploadProgressTitle = "Fotos hochladen";
-
-/// What the button asking the upload to stop is called.
-const String uploadProgressCancelLabel = "Abbrechen";
 
 /// How large the wheel is drawn.
 const double uploadProgressWheelSize = 88;
@@ -68,7 +63,7 @@ class UploadProgressDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AlertDialog(
         key: uploadProgressDialogKey,
-        title: const Text(uploadProgressTitle),
+        title: Text(AppLocalizations.of(context)!.uploadProgressTitle),
         content: ValueListenableBuilder<UploadProgress>(
           valueListenable: progress,
           builder: (context, value, _) => Column(
@@ -114,7 +109,7 @@ class UploadProgressDialog extends StatelessWidget {
           TextButton(
             key: uploadProgressCancelKey,
             onPressed: onCancel,
-            child: const Text(uploadProgressCancelLabel),
+            child: Text(AppLocalizations.of(context)!.cancel),
           ),
         ],
       );

@@ -752,4 +752,443 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get shareLinkRefusal =>
       'Dies ist ein Link zu einem freigegebenen Album, keine Anmeldung. Öffne ihn in einem Browser, um zu sehen, was für dich freigegeben wurde.';
+
+  @override
+  String get close => 'Schließen';
+
+  @override
+  String get create => 'Erstellen';
+
+  @override
+  String get back => 'Zurück';
+
+  @override
+  String get stop => 'Stopp';
+
+  @override
+  String get sharedAlbumFallback => 'Geteiltes Album';
+
+  @override
+  String get ratingVeryGood => 'Sehr gut';
+
+  @override
+  String get ratingGood => 'Gut';
+
+  @override
+  String get ratingUnrated => 'Nicht bewertet';
+
+  @override
+  String get ratingPoor => 'Mangelhaft';
+
+  @override
+  String get ratingTrash => 'Müll';
+
+  @override
+  String get ratingFloorEveryPhoto => 'jedes Foto';
+
+  @override
+  String ratingFloorAtLeast(String rating) {
+    return 'mindestens $rating';
+  }
+
+  @override
+  String get shareContinueToStart => 'Weiter zur Startseite';
+
+  @override
+  String get shareBackToAlbum => 'Zurück zum geteilten Album';
+
+  @override
+  String get expiryNever => 'Nie';
+
+  @override
+  String get expiryOneDay => '1 Tag';
+
+  @override
+  String get expiryOneWeek => '1 Woche';
+
+  @override
+  String get expiryOneMonth => '1 Monat';
+
+  @override
+  String get expiryPickDate => 'Ein Datum…';
+
+  @override
+  String shareDialogTitle(String name) {
+    return '$name per Link freigeben';
+  }
+
+  @override
+  String get shareTargetTopLevel => 'die oberste Ebene';
+
+  @override
+  String get linksHeading => 'Links';
+
+  @override
+  String get noLinksYet => 'Noch keine Links.';
+
+  @override
+  String get linkNoLabel => '(keine Bezeichnung)';
+
+  @override
+  String get withdrawTooltip => 'Abheben…';
+
+  @override
+  String get linkNeverExpires => 'läuft nie ab';
+
+  @override
+  String get linkUpToMembers => 'für Mitglieder';
+
+  @override
+  String get linkPublicOnly => 'nur öffentlich';
+
+  @override
+  String linkWithdrawnOn(String day) {
+    return 'zurückgezogen vor $day';
+  }
+
+  @override
+  String linkInheritedFrom(String folder) {
+    return 'der von $folder geerbt wurde; heben Sie ihn dort auf';
+  }
+
+  @override
+  String get shareWholeSpace => 'der gesamte Bereich';
+
+  @override
+  String get newLinkTile => 'Neuer Link…';
+
+  @override
+  String get newLinkHeading => 'Neuer Link';
+
+  @override
+  String get linkLabelLabel => 'Bezeichnung';
+
+  @override
+  String get linkLabelHelp => 'Was dieser Link ist, für Ihre eigene Liste.';
+
+  @override
+  String get expiresHeading => 'Ablaufdatum';
+
+  @override
+  String get showsHeading => 'Anzeigen';
+
+  @override
+  String get privacyPublicOnly => 'Nur öffentliche Fotos';
+
+  @override
+  String get privacyUpToMembers => 'Was die Mitglieder sehen';
+
+  @override
+  String get privacyMembersNote =>
+      'Ein privates Foto wird niemals über einen Link angezeigt.';
+
+  @override
+  String get lowestRatingHeading => 'Niedrigste Bewertung';
+
+  @override
+  String get linkNeverEdits => 'Ein Link erlaubt niemals eine Bearbeitung.';
+
+  @override
+  String get createLink => 'Link erstellen';
+
+  @override
+  String get theLinkHeading => 'Der Link';
+
+  @override
+  String get shareLinkOnce =>
+      'Kopieren Sie sie jetzt: Der Server speichert nur ihren Fingerabdruck und kann sie nie wieder anzeigen. Ein verlorener Link wird zurückgezogen und neu erstellt.';
+
+  @override
+  String get linkCopied => 'Der Link wurde kopiert.';
+
+  @override
+  String get withdrawLinkTitle => 'Link zurückziehen?';
+
+  @override
+  String withdrawLinkMessage(String link) {
+    return 'Jeder, der den $link hat, kann das Album sofort nicht mehr sehen. Dies lässt sich nicht rückgängig machen; stattdessen kann ein neuer Link erstellt werden.';
+  }
+
+  @override
+  String get withdrawLinkThisLink => 'dieser Link';
+
+  @override
+  String get invitationGuestNote =>
+      'Ein Gast hat keine eigenen Alben: Seine Bibliothek besteht aus den Inhalten, die andere mit ihm teilen.';
+
+  @override
+  String get deviceNameHelp => 'Um welches Ihrer Geräte es sich handelt.';
+
+  @override
+  String get joining => 'Beitritt...';
+
+  @override
+  String get joinAction => 'Beitreten';
+
+  @override
+  String invitationJoinedAs(String user) {
+    return 'Du bist als $user dabei.';
+  }
+
+  @override
+  String get invitationSignedInNote =>
+      'Dieses Gerät ist angemeldet; deine Alben gehören ab sofort dir.';
+
+  @override
+  String get openYourAlbums => 'Öffne deine Alben';
+
+  @override
+  String get invitationChooseName =>
+      'Wählen Sie den Namen, unter dem Sie bekannt sein möchten.';
+
+  @override
+  String get inviteDialogTitle => 'Jemanden einladen';
+
+  @override
+  String get inviteRecipientLabel => 'Für wen';
+
+  @override
+  String get inviteRecipientHelp =>
+      'Ein Hinweis für Sie selbst: An wen diese Einladung gerichtet ist. Optional.';
+
+  @override
+  String get inviteNoteLabel => 'Anmerkung';
+
+  @override
+  String get inviteNoteHelp =>
+      'Was die eingeladene Person sieht, wenn sie den Link öffnet.';
+
+  @override
+  String get createInvitation => 'Einladung erstellen';
+
+  @override
+  String get theInvitationHeading => 'Die Einladung';
+
+  @override
+  String invitationValidUntil(String day) {
+    return 'Gültig bis $day und für eine Person.';
+  }
+
+  @override
+  String get invitationOnce =>
+      'Jetzt senden: Der Server speichert nur ihren Fingerabdruck und kann sie niemals wieder anzeigen. Eine verlorene Einladung wird zurückgezogen und neu erstellt.';
+
+  @override
+  String get invitationCopied => 'Die Einladung wurde kopiert.';
+
+  @override
+  String inboxNotChosen(String name) {
+    return 'Kein Album ausgewählt – neue Fotos werden in $name gespeichert';
+  }
+
+  @override
+  String get cameraRollHeading => 'Kamera-Rolle';
+
+  @override
+  String get cameraRollExplanation =>
+      'Neue Fotos, die auf diesem Gerät aufgenommen werden, werden in ein Album der Bibliothek hochgeladen. Es wird nichts doppelt hochgeladen: Vor der Übertragung wird der Server nach dem Inhalt jedes Fotos abgefragt.';
+
+  @override
+  String get cameraRollUploadNew => 'Neue Fotos hochladen';
+
+  @override
+  String get noPhotoLibrary =>
+      'Auf dieser Plattform gibt es keine Fotobibliothek';
+
+  @override
+  String get onlyOverWifi => 'Nur über WLAN';
+
+  @override
+  String get onlyOverWifiExplanation =>
+      'Neue Fotos warten auf eine WLAN- oder Kabelverbindung, damit der Upload nicht das mobiles Datenvolumen belastet.';
+
+  @override
+  String get chooseAction => 'Auswählen...';
+
+  @override
+  String get syncNow => 'Jetzt synchronisieren';
+
+  @override
+  String get syncAnyway => 'Trotzdem synchronisieren';
+
+  @override
+  String get albumsToSync => 'Zu synchronisierende Alben';
+
+  @override
+  String photoCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos',
+      one: '1 Foto',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get saveServerFirst =>
+      'Speichern Sie zuerst die Server-URL und wählen Sie dann ein Album auf diesem Server aus.';
+
+  @override
+  String get inboxAlbumTitle => 'Album „Posteingang“';
+
+  @override
+  String cannotList(String problem) {
+    return 'Kann nicht aufgelistet werden: $problem';
+  }
+
+  @override
+  String get newAlbumAction => 'Neues Album...';
+
+  @override
+  String get useThisAlbum => 'Dieses Album verwenden';
+
+  @override
+  String get libraryBreadcrumb => 'Bibliothek';
+
+  @override
+  String get noFoldersHere =>
+      'Hier gibt es noch keine Ordner – erstelle unten einen.';
+
+  @override
+  String folderIsAlbum(String title) {
+    return 'Dies ist das Album $title. Neue Fotos landen hier.';
+  }
+
+  @override
+  String get nothingToShow => 'Hier gibt es nichts anzuzeigen.';
+
+  @override
+  String get newAlbumTitle => 'Neues Album';
+
+  @override
+  String get folderNameLabel => 'Ordnername';
+
+  @override
+  String cannotCreateFolder(String problem, String name) {
+    return '$name kann nicht erstellt werden: $problem';
+  }
+
+  @override
+  String get backToAlbum => 'Zurück zum Album';
+
+  @override
+  String get groupPicture => 'Gruppenfoto';
+
+  @override
+  String get groupPictureIsThis => 'Dieses Bild ist das Gruppenbild';
+
+  @override
+  String get useAsGroupPicture => 'Als Gruppenbild verwenden';
+
+  @override
+  String get videoPreparing => 'Das Video wird gerade vorbereitet…';
+
+  @override
+  String get videoPlayOriginal => 'Die Originaldatei abspielen';
+
+  @override
+  String get videoCannotPlay => 'Dieses Video kann nicht abgespielt werden.';
+
+  @override
+  String get videoNetworkHint =>
+      'Der Server war nicht erreichbar oder hat das Video abgelehnt.';
+
+  @override
+  String get videoFormatHint =>
+      'Dieses Gerät kann das Format dieses Videos nicht wiedergeben.';
+
+  @override
+  String get videoDiagnosticsHint =>
+      'Die technischen Details finden sich im Diagnoseprotokoll der Servereinstellungen.';
+
+  @override
+  String get pause => 'Pause';
+
+  @override
+  String get play => 'Abspielen';
+
+  @override
+  String get photoPickerEntry => 'Aus der Fotobibliothek des Smartphones...';
+
+  @override
+  String get systemPickerEntry => 'Dateien auswählen... (max. 100)';
+
+  @override
+  String get photoLibraryTitle => 'Fotogalerie';
+
+  @override
+  String get allAlbums => 'Alle Alben';
+
+  @override
+  String get selectAll => 'Alle';
+
+  @override
+  String get selectNone => 'Keine';
+
+  @override
+  String get photoLibraryNoAccess =>
+      'Kein Zugriff auf die Fotobibliothek dieses Geräts.';
+
+  @override
+  String photoLibraryUnreadable(String problem) {
+    return 'Die Fotobibliothek kann nicht gelesen werden: $problem';
+  }
+
+  @override
+  String photoAlbumUnreadable(String problem) {
+    return 'Das Album kann nicht gelesen werden: $problem';
+  }
+
+  @override
+  String get photoLibraryNoAlbums =>
+      'Die Fotobibliothek dieses Geräts enthält keine Alben.';
+
+  @override
+  String get photoAlbumEmpty => 'Dieses Album enthält keine Fotos.';
+
+  @override
+  String photoPickerSelected(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ausgewählt',
+      one: '1 ausgewählt',
+      zero: 'Nichts ausgewählt',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String photoPickerUpload(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos hochladen',
+      one: '1 Foto hochladen',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get uploadProgressTitle => 'Fotos hochladen';
+
+  @override
+  String get scanCodeTitle => 'Gerätecode scannen';
+
+  @override
+  String get scanCodeAdvice =>
+      'Richten Sie die Kamera auf den Code, der unter „Meine Geräte“ auf dem Gerät angezeigt wird, auf dem Sie bereits angemeldet sind.';
+
+  @override
+  String get cameraNotAllowed =>
+      'Diese App darf die Kamera nicht verwenden. Erlaube dies in den Systemeinstellungen oder gib stattdessen den Code ein.';
+
+  @override
+  String get cameraUnsupported =>
+      'Dieses Gerät kann keinen Code scannen. Geben Sie ihn stattdessen ein.';
+
+  @override
+  String get cameraNotOpened =>
+      'Die Kamera konnte nicht geöffnet werden. Geben Sie stattdessen den Code ein.';
 }

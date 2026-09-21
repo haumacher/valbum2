@@ -738,4 +738,440 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get shareLinkRefusal =>
       'This is a link to a shared album, not a sign-in. Open it in a browser to see what was shared with you.';
+
+  @override
+  String get close => 'Close';
+
+  @override
+  String get create => 'Create';
+
+  @override
+  String get back => 'Back';
+
+  @override
+  String get stop => 'Stop';
+
+  @override
+  String get sharedAlbumFallback => 'Shared album';
+
+  @override
+  String get ratingVeryGood => 'Very good';
+
+  @override
+  String get ratingGood => 'Good';
+
+  @override
+  String get ratingUnrated => 'Unrated';
+
+  @override
+  String get ratingPoor => 'Poor';
+
+  @override
+  String get ratingTrash => 'Trash';
+
+  @override
+  String get ratingFloorEveryPhoto => 'every photo';
+
+  @override
+  String ratingFloorAtLeast(String rating) {
+    return 'at least $rating';
+  }
+
+  @override
+  String get shareContinueToStart => 'Continue to the start page';
+
+  @override
+  String get shareBackToAlbum => 'Back to the shared album';
+
+  @override
+  String get expiryNever => 'Never';
+
+  @override
+  String get expiryOneDay => '1 day';
+
+  @override
+  String get expiryOneWeek => '1 week';
+
+  @override
+  String get expiryOneMonth => '1 month';
+
+  @override
+  String get expiryPickDate => 'A date…';
+
+  @override
+  String shareDialogTitle(String name) {
+    return 'Share $name by link';
+  }
+
+  @override
+  String get shareTargetTopLevel => 'the top level';
+
+  @override
+  String get linksHeading => 'Links';
+
+  @override
+  String get noLinksYet => 'No links yet.';
+
+  @override
+  String get linkNoLabel => '(no label)';
+
+  @override
+  String get withdrawTooltip => 'Withdraw…';
+
+  @override
+  String get linkNeverExpires => 'never expires';
+
+  @override
+  String get linkUpToMembers => 'up to members';
+
+  @override
+  String get linkPublicOnly => 'public only';
+
+  @override
+  String linkWithdrawnOn(String day) {
+    return 'withdrawn $day';
+  }
+
+  @override
+  String linkInheritedFrom(String folder) {
+    return 'inherited from $folder, withdraw it there';
+  }
+
+  @override
+  String get shareWholeSpace => 'the whole space';
+
+  @override
+  String get newLinkTile => 'New link…';
+
+  @override
+  String get newLinkHeading => 'New link';
+
+  @override
+  String get linkLabelLabel => 'Label';
+
+  @override
+  String get linkLabelHelp => 'What this link is, for your own list.';
+
+  @override
+  String get expiresHeading => 'Expires';
+
+  @override
+  String get showsHeading => 'Shows';
+
+  @override
+  String get privacyPublicOnly => 'Public photos only';
+
+  @override
+  String get privacyUpToMembers => 'Up to what members see';
+
+  @override
+  String get privacyMembersNote =>
+      'A private photo is never shown through a link.';
+
+  @override
+  String get lowestRatingHeading => 'Lowest rating';
+
+  @override
+  String get linkNeverEdits => 'A link never allows editing.';
+
+  @override
+  String get createLink => 'Create link';
+
+  @override
+  String get theLinkHeading => 'The link';
+
+  @override
+  String get shareLinkOnce =>
+      'Copy it now: the server keeps only its fingerprint and can never show it again. A lost link is withdrawn and made anew.';
+
+  @override
+  String get linkCopied => 'The link was copied.';
+
+  @override
+  String get withdrawLinkTitle => 'Withdraw the link?';
+
+  @override
+  String withdrawLinkMessage(String link) {
+    return 'Anybody holding $link stops seeing the album at once. This cannot be undone; a new link can be made instead.';
+  }
+
+  @override
+  String get withdrawLinkThisLink => 'this link';
+
+  @override
+  String get invitationGuestNote =>
+      'A guest has no albums of their own: their library is what others share with them.';
+
+  @override
+  String get deviceNameHelp => 'Which of your devices this is.';
+
+  @override
+  String get joining => 'Joining...';
+
+  @override
+  String get joinAction => 'Join';
+
+  @override
+  String invitationJoinedAs(String user) {
+    return 'You\'re in as $user.';
+  }
+
+  @override
+  String get invitationSignedInNote =>
+      'This device is signed in; your albums are yours from now on.';
+
+  @override
+  String get openYourAlbums => 'Open your albums';
+
+  @override
+  String get invitationChooseName => 'Choose the name you want to be known by.';
+
+  @override
+  String get inviteDialogTitle => 'Invite somebody';
+
+  @override
+  String get inviteRecipientLabel => 'For whom';
+
+  @override
+  String get inviteRecipientHelp =>
+      'A note to yourself: whom this invitation is for. Optional.';
+
+  @override
+  String get inviteNoteLabel => 'Note';
+
+  @override
+  String get inviteNoteHelp =>
+      'What the invited person reads when they open the link.';
+
+  @override
+  String get createInvitation => 'Create invitation';
+
+  @override
+  String get theInvitationHeading => 'The invitation';
+
+  @override
+  String invitationValidUntil(String day) {
+    return 'Valid until $day, and for one person.';
+  }
+
+  @override
+  String get invitationOnce =>
+      'Send it now: the server keeps only its fingerprint and can never show it again. A lost invitation is withdrawn and made anew.';
+
+  @override
+  String get invitationCopied => 'The invitation was copied.';
+
+  @override
+  String inboxNotChosen(String name) {
+    return 'No album chosen - new photos go into \'$name\'';
+  }
+
+  @override
+  String get cameraRollHeading => 'Camera roll';
+
+  @override
+  String get cameraRollExplanation =>
+      'New photos taken on this device are uploaded into an album of the library. Nothing is uploaded twice: the server is asked for the content of every photo before it is transferred.';
+
+  @override
+  String get cameraRollUploadNew => 'Upload new photos';
+
+  @override
+  String get noPhotoLibrary => 'No photo library on this platform';
+
+  @override
+  String get onlyOverWifi => 'Only over Wi-Fi';
+
+  @override
+  String get onlyOverWifiExplanation =>
+      'New photos wait for a Wi-Fi or a wired connection, so that the upload does not eat into a mobile data plan.';
+
+  @override
+  String get chooseAction => 'Choose...';
+
+  @override
+  String get syncNow => 'Sync now';
+
+  @override
+  String get syncAnyway => 'Sync anyway';
+
+  @override
+  String get albumsToSync => 'Albums to sync';
+
+  @override
+  String photoCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photos',
+      one: '1 photo',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get saveServerFirst =>
+      'Save the server URL first, then choose an album on it.';
+
+  @override
+  String get inboxAlbumTitle => 'Inbox album';
+
+  @override
+  String cannotList(String problem) {
+    return 'Cannot list: $problem';
+  }
+
+  @override
+  String get newAlbumAction => 'New album...';
+
+  @override
+  String get useThisAlbum => 'Use this album';
+
+  @override
+  String get libraryBreadcrumb => 'Library';
+
+  @override
+  String get noFoldersHere => 'No folders here yet - create one below.';
+
+  @override
+  String folderIsAlbum(String title) {
+    return 'This is the album \'$title\'. New photos land here.';
+  }
+
+  @override
+  String get nothingToShow => 'Nothing to show here.';
+
+  @override
+  String get newAlbumTitle => 'New album';
+
+  @override
+  String get folderNameLabel => 'Folder name';
+
+  @override
+  String cannotCreateFolder(String problem, String name) {
+    return 'Cannot create \'$name\': $problem';
+  }
+
+  @override
+  String get backToAlbum => 'Back to the album';
+
+  @override
+  String get groupPicture => 'Group picture';
+
+  @override
+  String get groupPictureIsThis => 'This image is the group picture';
+
+  @override
+  String get useAsGroupPicture => 'Use as group picture';
+
+  @override
+  String get videoPreparing => 'The video is being prepared…';
+
+  @override
+  String get videoPlayOriginal => 'Play the original';
+
+  @override
+  String get videoCannotPlay => 'Cannot play this video.';
+
+  @override
+  String get videoNetworkHint =>
+      'The server could not be reached, or it refused the video.';
+
+  @override
+  String get videoFormatHint =>
+      'This device cannot play the format of this video.';
+
+  @override
+  String get videoDiagnosticsHint =>
+      'The technical details are in the diagnostics log of the server settings.';
+
+  @override
+  String get pause => 'Pause';
+
+  @override
+  String get play => 'Play';
+
+  @override
+  String get photoPickerEntry => 'From the phone\'s photo library...';
+
+  @override
+  String get systemPickerEntry => 'Choose files... (max. 100)';
+
+  @override
+  String get photoLibraryTitle => 'Photo library';
+
+  @override
+  String get allAlbums => 'All albums';
+
+  @override
+  String get selectAll => 'All';
+
+  @override
+  String get selectNone => 'None';
+
+  @override
+  String get photoLibraryNoAccess =>
+      'No access to the photo library of this device.';
+
+  @override
+  String photoLibraryUnreadable(String problem) {
+    return 'The photo library cannot be read: $problem';
+  }
+
+  @override
+  String photoAlbumUnreadable(String problem) {
+    return 'The album cannot be read: $problem';
+  }
+
+  @override
+  String get photoLibraryNoAlbums =>
+      'The photo library of this device holds no albums.';
+
+  @override
+  String get photoAlbumEmpty => 'This album holds no photos.';
+
+  @override
+  String photoPickerSelected(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count selected',
+      one: '1 selected',
+      zero: 'Nothing selected',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String photoPickerUpload(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Upload $count photos',
+      one: 'Upload 1 photo',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get uploadProgressTitle => 'Upload photos';
+
+  @override
+  String get scanCodeTitle => 'Scan a device code';
+
+  @override
+  String get scanCodeAdvice =>
+      'Point the camera at the code shown under My devices on the device you are already signed in on.';
+
+  @override
+  String get cameraNotAllowed =>
+      'This app is not allowed to use the camera. Allow it in the system settings, or type the code instead.';
+
+  @override
+  String get cameraUnsupported =>
+      'This device cannot scan a code. Type it instead.';
+
+  @override
+  String get cameraNotOpened =>
+      'The camera could not be opened. Type the code instead.';
 }

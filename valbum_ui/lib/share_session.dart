@@ -25,6 +25,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'rights.dart';
 import 'urls.dart';
@@ -57,13 +58,13 @@ class ShareSession {
   /// the album it opens — the last segment of the canonical
   /// `~<owner>/<path>` of [ShareInfo.path]. A link to the root of a space has
   /// neither, and is named by what it is.
-  String get label {
+  String labelOf(AppLocalizations l10n) {
     var given = info.label.trim();
     if (given.isNotEmpty) {
       return given;
     }
     var target = targetName;
-    return target.isEmpty ? "Shared album" : target;
+    return target.isEmpty ? l10n.sharedAlbumFallback : target;
   }
 
   /// The name of the album the link opens, empty if the link opens a whole
@@ -121,18 +122,20 @@ bool inShareSession(BuildContext context) => ShareSession.of(context) != null;
 ///
 /// The names the tile toolbar gives the levels, so that a link's rating floor
 /// is spelled in the vocabulary the album already uses.
-const Map<int, String> ratingNames = {
-  2: "Sehr gut",
-  1: "Gut",
-  0: "Ohne Bewertung",
-  -1: "Schlecht",
-  -2: "Papierkorb",
-};
+String ratingName(AppLocalizations l10n, int rating) => switch (rating) {
+      2 => l10n.ratingVeryGood,
+      1 => l10n.ratingGood,
+      0 => l10n.ratingUnrated,
+      -1 => l10n.ratingPoor,
+      -2 => l10n.ratingTrash,
+      _ => "$rating",
+    };
 
 /// The rating floor of a share link, in one phrase.
-String ratingFloorLabel(int minRating) => minRating <= -2
-    ? "every photo"
-    : "${ratingNames[minRating] ?? "$minRating"} and better";
+String ratingFloorLabel(AppLocalizations l10n, int minRating) =>
+    minRating <= -2
+        ? l10n.ratingFloorEveryPhoto
+        : l10n.ratingFloorAtLeast(ratingName(l10n, minRating));
 
 /// A page of a link session that says one thing and offers one way on.
 ///
@@ -221,7 +224,7 @@ class ShareGoneScreen extends StatelessWidget {
                 key: const Key("invitation-continue"),
                 onPressed: onContinue,
                 icon: const Icon(Icons.home),
-                label: const Text("Continue to the start page"),
+                label: Text(AppLocalizations.of(context)!.shareContinueToStart),
               ),
       );
 }
@@ -252,7 +255,7 @@ class ShareConfinedScreen extends StatelessWidget {
           key: const Key("share-home"),
           onPressed: onHome,
           icon: const Icon(Icons.home),
-          label: const Text("Back to the shared album"),
+          label: Text(AppLocalizations.of(context)!.shareBackToAlbum),
         ),
       );
 }

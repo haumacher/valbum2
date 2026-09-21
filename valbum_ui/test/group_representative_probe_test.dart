@@ -7,6 +7,7 @@ import 'package:valbum_ui/routes.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 Finder memberTile(String name) => find.byKey(ValueKey("group-tile-$name"));
 
@@ -42,7 +43,7 @@ void main() {
     await tap(tester, find.byTooltip("Gruppenbild wählen"));
     expect(routeOf(tester), const AlternativesRoute([], "group-a.jpg"));
     await tap(tester, memberTile("group-b.jpg"));
-    await tap(tester, find.byTooltip("Als Gruppenbild verwenden"));
+    await tap(tester, find.byTooltip(testL10n.useAsGroupPicture));
     // One step out of the group and into the album: the alternatives view is
     // no longer a stop on the way out, see issue #79.
     await press(tester, LogicalKeyboardKey.arrowUp);
@@ -67,7 +68,7 @@ void main() {
     await tap(tester, memberTile("group-a.jpg"));
     expect(routeOf(tester),
         const MemberRoute([], "group-b.jpg", "group-a.jpg"));
-    expect(find.byTooltip("Als Gruppenbild verwenden"), findsOneWidget);
+    expect(find.byTooltip(testL10n.useAsGroupPicture), findsOneWidget);
 
     // Dissolving the group afterwards is still possible: the edit session
     // holds a selection that names the (possibly re-represented) group.

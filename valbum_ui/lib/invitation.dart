@@ -61,14 +61,6 @@ String invitationHeadline(
       : l10n.invitationHeadlineWithRole(who, may);
 }
 
-/// What being invited as a guest means, in one line.
-///
-/// Kept for the welcome screen of an invitation that a pre-#83 server issued
-/// with the retired `guest` role; a guest is a `view` user now, see issue #85.
-const String guestRoleExplanation =
-    "A guest has no albums of their own: their library is what others share "
-    "with them.";
-
 /// The role a new invitation offers unless another is chosen (issue #85).
 ///
 /// The least that still lets somebody see the family's pictures: whoever
@@ -265,17 +257,14 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
 
   /// The invitation itself, and the form that accepts it.
   List<Widget> _invitation(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var info = widget.info;
     var refusal = _refusal;
     return [
       const Icon(Icons.mail_outline, size: 48),
       const SizedBox(height: 16),
       Text(
-        invitationHeadline(
-          AppLocalizations.of(context)!,
-          info.invitedBy,
-          info.role,
-        ),
+        invitationHeadline(l10n, info.invitedBy, info.role),
         key: const Key("invitation-headline"),
         style: Theme.of(context).textTheme.titleMedium,
       ),
@@ -285,7 +274,7 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
       ],
       if (info.role == roleGuest) ...[
         const SizedBox(height: 8),
-        const Text(guestRoleExplanation, key: Key("invitation-guest-note")),
+        Text(l10n.invitationGuestNote, key: const Key("invitation-guest-note")),
       ],
       const SizedBox(height: 24),
       TextField(
@@ -294,8 +283,8 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
         autocorrect: false,
         autofocus: true,
         decoration: InputDecoration(
-          labelText: "Your name",
-          helperText: "How the others on this server see you.",
+          labelText: l10n.yourName,
+          helperText: l10n.yourNameHelp,
           border: const OutlineInputBorder(),
           errorText: refusal,
         ),
@@ -307,23 +296,23 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
         key: invitationDeviceFieldKey,
         controller: _device,
         autocorrect: false,
-        decoration: const InputDecoration(
-          labelText: "Device name",
-          helperText: "Which of your devices this is.",
-          border: OutlineInputBorder(),
+        decoration: InputDecoration(
+          labelText: l10n.deviceNameLabel,
+          helperText: l10n.deviceNameHelp,
+          border: const OutlineInputBorder(),
         ),
       ),
       const SizedBox(height: 24),
       if (_joining)
-        const Row(
+        Row(
           children: [
-            SizedBox(
+            const SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            SizedBox(width: 8),
-            Text("Joining..."),
+            const SizedBox(width: 8),
+            Text(l10n.joining),
           ],
         )
       else
@@ -331,27 +320,28 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
           key: const Key("invitation-join"),
           onPressed: _join,
           icon: const Icon(Icons.login),
-          label: const Text("Join"),
+          label: Text(l10n.joinAction),
         ),
     ];
   }
 
   /// The one screen after the invitation was accepted.
   List<Widget> _welcome(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var joined = _joined!;
     return [
       const Icon(Icons.verified_user, size: 48, color: Colors.green),
       const SizedBox(height: 16),
       Text(
-        "You're in as ${userDisplayName(AppLocalizations.of(context)!, joined.userName)}.",
+        l10n.invitationJoinedAs(userDisplayName(l10n, joined.userName)),
         key: const Key("invitation-joined"),
         style: Theme.of(context).textTheme.titleMedium,
       ),
       const SizedBox(height: 8),
       Text(
         joined.role == roleGuest
-            ? guestLibraryNotice(AppLocalizations.of(context)!)
-            : "This device is signed in; your albums are yours from now on.",
+            ? guestLibraryNotice(l10n)
+            : l10n.invitationSignedInNote,
         key: const Key("invitation-joined-note"),
       ),
       const SizedBox(height: 24),
@@ -359,7 +349,7 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
         key: const Key("invitation-open"),
         onPressed: () => widget.openUrl(widget.appBase),
         icon: const Icon(Icons.photo_library),
-        label: const Text("Open your albums"),
+        label: Text(l10n.openYourAlbums),
       ),
     ];
   }
@@ -369,7 +359,8 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
   Future<void> _join() async {
     var name = _user.text.trim();
     if (name.isEmpty) {
-      setState(() => _refusal = "Choose the name you want to be known by.");
+      var said = AppLocalizations.of(context)!.invitationChooseName;
+      setState(() => _refusal = said);
       return;
     }
     setState(() {
@@ -430,17 +421,21 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
 /// no instant, and an invitation that lived forever would be a password
 /// somebody forgot they handed out.
 enum InviteExpiry {
-  day("1 day", Duration(days: 1)),
-  week("1 week", Duration(days: 7)),
-  month("1 month", Duration(days: 30));
-
-  /// How the choice is named on the screen.
-  final String label;
+  day(Duration(days: 1)),
+  week(Duration(days: 7)),
+  month(Duration(days: 30));
 
   /// How long from now the invitation lives.
   final Duration duration;
 
-  const InviteExpiry(this.label, this.duration);
+  const InviteExpiry(this.duration);
+
+  /// How the choice is named on the screen.
+  String labelOf(AppLocalizations l10n) => switch (this) {
+        InviteExpiry.day => l10n.expiryOneDay,
+        InviteExpiry.week => l10n.expiryOneWeek,
+        InviteExpiry.month => l10n.expiryOneMonth,
+      };
 }
 
 /// Opens the dialog issuing an invitation, see [InviteDialog].
@@ -496,30 +491,34 @@ class InviteDialogState extends State<InviteDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-        key: const Key("invite-dialog"),
-        title: const Text("Invite somebody"),
-        content: SizedBox(
-          width: 460,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children:
-                  _created == null ? _form(context) : _createdSection(context),
-            ),
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return AlertDialog(
+      key: const Key("invite-dialog"),
+      title: Text(l10n.inviteDialogTitle),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children:
+                _created == null ? _form(context) : _createdSection(context),
           ),
         ),
-        actions: [
-          TextButton(
-            key: const Key("invite-close"),
-            onPressed: _busy ? null : () => Navigator.of(context).pop(),
-            child: const Text("Close"),
-          ),
-        ],
-      );
+      ),
+      actions: [
+        TextButton(
+          key: const Key("invite-close"),
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: Text(l10n.close),
+        ),
+      ],
+    );
+  }
 
   List<Widget> _form(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var titles = Theme.of(context).textTheme.titleSmall;
     var refusal = _refusal;
     return [
@@ -544,28 +543,27 @@ class InviteDialogState extends State<InviteDialog> {
       TextField(
         key: invitationRecipientFieldKey,
         controller: _recipient,
-        decoration: const InputDecoration(
-          label: Text("For whom"),
-          helperText: "A note to yourself: whom this invitation is for. "
-              "Optional.",
+        decoration: InputDecoration(
+          label: Text(l10n.inviteRecipientLabel),
+          helperText: l10n.inviteRecipientHelp,
         ),
       ),
       const SizedBox(height: 8),
       TextField(
         key: const Key("invite-note"),
         controller: _note,
-        decoration: const InputDecoration(
-          label: Text("Note"),
-          helperText: "What the invited person reads when they open the link.",
+        decoration: InputDecoration(
+          label: Text(l10n.inviteNoteLabel),
+          helperText: l10n.inviteNoteHelp,
         ),
       ),
       const SizedBox(height: 8),
-      Text("Expires", style: titles),
+      Text(l10n.expiresHeading, style: titles),
       for (var choice in InviteExpiry.values)
         _choiceTile(
           key: "invite-expiry-${choice.name}",
           chosen: _expiry == choice,
-          title: choice.label,
+          title: choice.labelOf(l10n),
           onTap: () => setState(() => _expiry = choice),
         ),
       if (refusal != null)
@@ -583,7 +581,7 @@ class InviteDialogState extends State<InviteDialog> {
         child: ElevatedButton(
           key: const Key("invite-create"),
           onPressed: _busy ? null : _create,
-          child: const Text("Create invitation"),
+          child: Text(l10n.createInvitation),
         ),
       ),
     ];
@@ -664,11 +662,15 @@ class InviteDialogState extends State<InviteDialog> {
 
   /// The URL of the invitation that was just issued, shown exactly once.
   List<Widget> _createdSection(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var created = _created!;
     var url = absoluteServerUrl(widget.client.dataUrl, created.url);
     var invitation = created.invitation;
     return [
-      Text("The invitation", style: Theme.of(context).textTheme.titleSmall),
+      Text(
+        l10n.theInvitationHeading,
+        style: Theme.of(context).textTheme.titleSmall,
+      ),
       const SizedBox(height: 8),
       Row(
         children: [
@@ -678,7 +680,7 @@ class InviteDialogState extends State<InviteDialog> {
           IconButton(
             key: const Key("invite-copy"),
             icon: const Icon(Icons.copy),
-            tooltip: "Copy",
+            tooltip: l10n.copy,
             onPressed: () => _copy(url),
           ),
         ],
@@ -686,16 +688,12 @@ class InviteDialogState extends State<InviteDialog> {
       if (invitation != null && invitation.expires.isNotEmpty) ...[
         const SizedBox(height: 8),
         Text(
-          "Valid until ${_day(invitation.expires)}, and for one person.",
+          l10n.invitationValidUntil(_day(invitation.expires)),
           key: const Key("invite-expiry"),
         ),
       ],
       const SizedBox(height: 16),
-      const Text(
-        "Send it now: the server keeps only its fingerprint and can never "
-        "show it again. A lost invitation is withdrawn and made anew.",
-        key: Key("invite-once"),
-      ),
+      Text(l10n.invitationOnce, key: const Key("invite-once")),
       const SizedBox(height: 16),
       Align(
         alignment: Alignment.centerRight,
@@ -706,7 +704,7 @@ class InviteDialogState extends State<InviteDialog> {
             _note.clear();
             _recipient.clear();
           }),
-          child: const Text("Done"),
+          child: Text(l10n.done),
         ),
       ),
     ];
@@ -717,9 +715,8 @@ class InviteDialogState extends State<InviteDialog> {
 
   Future<void> _copy(String url) async {
     var messenger = ScaffoldMessenger.of(context);
+    var said = AppLocalizations.of(context)!.invitationCopied;
     await Clipboard.setData(ClipboardData(text: url));
-    messenger.showSnackBar(
-      const SnackBar(content: Text("The invitation was copied.")),
-    );
+    messenger.showSnackBar(SnackBar(content: Text(said)));
   }
 }

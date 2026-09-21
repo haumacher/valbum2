@@ -56,8 +56,8 @@ void main() {
 
       expect(find.byKey(photoAlbumKey("Camera")), findsOneWidget);
       expect(find.byKey(photoAlbumKey("Screenshots")), findsOneWidget);
-      expect(find.text("3 Fotos"), findsOneWidget);
-      expect(find.text("1 Fotos"), findsOneWidget);
+      expect(find.text(testL10n.photoCount(3)), findsOneWidget);
+      expect(find.text(testL10n.photoCount(1)), findsOneWidget);
     });
 
     testWidgets('open on a tap and show their items by month',
@@ -70,8 +70,8 @@ void main() {
       // Newest first, so April stands above March.
       expect(find.byKey(photoMonthKey("2024-04")), findsOneWidget);
       expect(find.byKey(photoMonthKey("2024-03")), findsOneWidget);
-      expect(find.text("April 2024 (1)"), findsOneWidget);
-      expect(find.text("März 2024 (2)"), findsOneWidget);
+      expect(find.text("${monthLabel("2024-04", "en")} (1)"), findsOneWidget);
+      expect(find.text("${monthLabel("2024-03", "en")} (2)"), findsOneWidget);
       expect(find.byKey(photoItemKey("march-1.jpg")), findsOneWidget);
       expect(find.byKey(photoItemKey("april-1.jpg")), findsOneWidget);
       expect(
@@ -86,7 +86,7 @@ void main() {
 
       await tester.tap(find.byKey(photoAlbumKey("Camera")));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip("Alle Alben"));
+      await tester.tap(find.byTooltip(testL10n.allAlbums));
       await tester.pumpAndSettle();
 
       expect(find.byKey(photoAlbumKey("Screenshots")), findsOneWidget);
@@ -99,15 +99,15 @@ void main() {
       await tester.tap(find.byKey(photoAlbumKey("Camera")));
       await tester.pumpAndSettle();
 
-      expect(find.text("0 ausgewählt"), findsOneWidget);
+      expect(find.text(testL10n.photoPickerSelected(0)), findsOneWidget);
 
       await tester.tap(find.byKey(photoItemKey("march-1.jpg")));
       await tester.pumpAndSettle();
-      expect(find.text("1 ausgewählt"), findsOneWidget);
+      expect(find.text(testL10n.photoPickerSelected(1)), findsOneWidget);
 
       await tester.tap(find.byKey(photoItemKey("march-1.jpg")));
       await tester.pumpAndSettle();
-      expect(find.text("0 ausgewählt"), findsOneWidget);
+      expect(find.text(testL10n.photoPickerSelected(0)), findsOneWidget);
     });
 
     testWidgets('a month selects exactly its own items',
@@ -119,13 +119,13 @@ void main() {
       await tester.tap(find.byKey(photoMonthAllKey("2024-03")));
       await tester.pumpAndSettle();
 
-      expect(find.text("2 ausgewählt"), findsOneWidget);
-      expect(find.text("2 Fotos hochladen"), findsOneWidget);
+      expect(find.text(testL10n.photoPickerSelected(2)), findsOneWidget);
+      expect(find.text(testL10n.photoPickerUpload(2)), findsOneWidget);
 
-      // And unselects them again, the button having become "Keine".
+      // And unselects them again, the button having become "None".
       await tester.tap(find.byKey(photoMonthAllKey("2024-03")));
       await tester.pumpAndSettle();
-      expect(find.text("0 ausgewählt"), findsOneWidget);
+      expect(find.text(testL10n.photoPickerSelected(0)), findsOneWidget);
     });
 
     testWidgets('the whole album is one tap', (WidgetTester tester) async {
@@ -136,7 +136,7 @@ void main() {
       await tester.tap(find.byKey(photoPickerAllKey));
       await tester.pumpAndSettle();
 
-      expect(find.text("3 ausgewählt"), findsOneWidget);
+      expect(find.text(testL10n.photoPickerSelected(3)), findsOneWidget);
     });
 
     testWidgets('survives a look into another album',
@@ -147,12 +147,12 @@ void main() {
       await tester.tap(find.byKey(photoMonthAllKey("2024-04")));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip("Alle Alben"));
+      await tester.tap(find.byTooltip(testL10n.allAlbums));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(photoAlbumKey("Screenshots")));
       await tester.pumpAndSettle();
 
-      expect(find.text("1 ausgewählt"), findsOneWidget);
+      expect(find.text(testL10n.photoPickerSelected(1)), findsOneWidget);
     });
   });
 
@@ -165,7 +165,7 @@ void main() {
         find.byKey(photoPickerUploadKey),
       );
       expect(button.onPressed, isNull);
-      expect(find.text("0 Fotos hochladen"), findsOneWidget);
+      expect(find.text(testL10n.photoPickerUpload(0)), findsOneWidget);
     });
 
     testWidgets('answers the selected items', (WidgetTester tester) async {
@@ -228,7 +228,7 @@ void main() {
       );
       await tester.tap(find.text("pick"));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip("Zurück"));
+      await tester.tap(find.byTooltip(testL10n.back));
       await tester.pumpAndSettle();
 
       expect(picked, isEmpty);
@@ -257,7 +257,7 @@ void main() {
 
       expect(find.byKey(photoPickerProblemKey), findsOneWidget);
       expect(
-        find.textContaining("Kein Zugriff auf die Fotomediathek"),
+        find.textContaining(testL10n.photoLibraryNoAccess),
         findsOneWidget,
       );
     });
@@ -290,8 +290,8 @@ void main() {
 
       expect(find.byKey(uploadFromLibraryKey), findsOneWidget);
       expect(find.byKey(uploadFromFilesKey), findsOneWidget);
-      expect(find.text(photoPickerEntry), findsOneWidget);
-      expect(find.text(systemPickerEntry), findsOneWidget);
+      expect(find.text(testL10n.photoPickerEntry), findsOneWidget);
+      expect(find.text(testL10n.systemPickerEntry), findsOneWidget);
     });
 
     testWidgets('opens the picker on the library entry',
@@ -348,8 +348,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      expect(find.text("3 ausgewählt"), findsOneWidget);
-      expect(find.text("3 Fotos hochladen"), findsOneWidget);
+      expect(find.text(testL10n.photoPickerSelected(3)), findsOneWidget);
+      expect(find.text(testL10n.photoPickerUpload(3)), findsOneWidget);
     });
   });
 }

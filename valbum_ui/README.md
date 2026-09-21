@@ -144,6 +144,25 @@ to that list. `test/util/l10n.dart` is what a widget test pumps with —
 locales by the app's own rule. `test/l10n_probe_test.dart` is the review probe,
 kept as a test.
 
+Converted so far: slice 1 the server settings screen and what it is made of
+(`settings.dart`, `sign_in_form.dart`, `first_screen.dart`, `manage_view.dart`,
+`caller.dart`, `urls.dart`, `device_code_scanner.dart`); slice 2 the share link
+and the share session (`share_view.dart`, `share_session.dart`), the
+camera-roll section with its inbox picker (`camera_roll_view.dart`), the
+alternatives view (`group_view.dart`), the video player (`video_view.dart`),
+the in-app photo picker (`photo_picker_view.dart`), the upload dialog
+(`upload_progress.dart`) and the code scanner of a phone
+(`device_code_scanner_plugin.dart`). `test/l10n_german_test.dart` carries one
+German assertion block per converted screen.
+
+Still English, and why: `invitation.dart` is converted but for
+`invitationNoticeText`, whose sentences `app.dart` composes without an
+`AppLocalizations` at hand; `attribution.dart` ("Added by …") is asked by
+`image_properties.dart` through `attributionShown(image)`, which has no
+context either; `cache_refresh.dart` throws its transport sentence where
+`client.dart` throws its own. All three are one call-site change away and
+belong to the slice that converts the album.
+
 ## Editing an album
 
 Edit mode is entered by long-pressing an image tile. Its app bar carries the

@@ -15,7 +15,9 @@ library;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import 'l10n/app_localizations.dart';
 import 'photo_library.dart';
 
 /// The key of the screen itself.
@@ -45,41 +47,23 @@ Key photoMonthAllKey(String month) => Key("photoPicker.monthAll:$month");
 /// The key of the tile of one item.
 Key photoItemKey(String id) => Key("photoPicker.item:$id");
 
-/// What the entry of the in-app picker is called in the upload menu.
-const String photoPickerEntry = "Aus der Fotomediathek des Telefons...";
-
-/// What the entry of the system picker is called in the upload menu.
-const String systemPickerEntry = "Dateien auswählen... (max. 100)";
-
-/// The German month names, so that a header reads like a date and not like a
-/// number, without pulling a locale database into the app.
-const List<String> monthNames = [
-  "Januar",
-  "Februar",
-  "März",
-  "April",
-  "Mai",
-  "Juni",
-  "Juli",
-  "August",
-  "September",
-  "Oktober",
-  "November",
-  "Dezember",
-];
-
 /// The month [when] falls into, as the grouping key `yyyy-MM`.
 String monthOf(DateTime when) =>
     "${when.year.toString().padLeft(4, "0")}-${when.month.toString().padLeft(2, "0")}";
 
-/// The header a month is shown under, e.g. `März 2024`.
-String monthLabel(String month) {
+/// The header a month is shown under, e.g. `March 2024`.
+///
+/// The month name is the locale's own (issue #108): [DateFormat.yMMMM] of
+/// [locale], which is the language the screen is drawn in — never a table of
+/// names typed into this file.
+String monthLabel(String month, [String? locale]) {
   var parts = month.split("-");
   var index = int.tryParse(parts.length > 1 ? parts[1] : "") ?? 0;
-  if (index < 1 || index > 12) {
+  var year = int.tryParse(parts.isNotEmpty ? parts[0] : "") ?? 0;
+  if (index < 1 || index > 12 || year <= 0) {
     return month;
   }
-  return "${monthNames[index - 1]} ${parts[0]}";
+  return DateFormat.yMMMM(locale).format(DateTime(year, index));
 }
 
 /// Picks photos from the device's library, see [PhotoPickerScreen].
@@ -110,6 +94,9 @@ class PhotoPickerScreen extends StatefulWidget {
 }
 
 class PhotoPickerScreenState extends State<PhotoPickerScreen> {
+  /// The words of the screen, see issue #108.
+  AppLocalizations get _l10n => AppLocalizations.of(context)!;
+
   /// Whether the library is being asked right now.
   bool _loading = true;
 
@@ -143,8 +130,7 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
         _loading = false;
         // Refusals speak: the library's own reason, and a plain sentence
         // where it gave none.
-        _problem = widget.library.accessProblem ??
-            "Kein Zugriff auf die Fotomediathek dieses Geräts.";
+        _problem = widget.library.accessProblem ?? _l10n.photoLibraryNoAccess;
       });
       return;
     }
@@ -154,7 +140,7 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
     } catch (error) {
       _publish(() {
         _loading = false;
-        _problem = "Die Fotomediathek kann nicht gelesen werden: $error";
+        _problem = _l10n.photoLibraryUnreadable("$error");
       });
       return;
     }
@@ -178,7 +164,7 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
     } catch (error) {
       _publish(() {
         _loading = false;
-        _problem = "Das Album kann nicht gelesen werden: $error";
+        _problem = _l10n.photoAlbumUnreadable("$error");
       });
       return;
     }
@@ -234,13 +220,14 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
   @override
   Widget build(BuildContext context) {
     var album = _album;
+    var l10n = _l10n;
     return Scaffold(
       key: photoPickerKey,
       appBar: AppBar(
-        title: Text(album?.name ?? "Fotomediathek"),
+        title: Text(album?.name ?? l10n.photoLibraryTitle),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          tooltip: album == null ? "Zurück" : "Alle Alben",
+          tooltip: album == null ? l10n.back : l10n.allAlbums,
           onPressed:
               album == null ? () => Navigator.of(context).pop() : _leaveAlbum,
         ),
@@ -249,7 +236,9 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
             TextButton(
               key: photoPickerAllKey,
               onPressed: () => _select(_items, !_allSelected(_items)),
-              child: Text(_allSelected(_items) ? "Keine" : "Alle"),
+              child: Text(
+                _allSelected(_items) ? l10n.selectNone : l10n.selectAll,
+              ),
             ),
         ],
       ),
@@ -284,11 +273,11 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
   /// The albums of the device.
   Widget _albumList() {
     if (_albums.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
+      return Padding(
+        padding: const EdgeInsets.all(24),
         child: Center(
           child: Text(
-            "Die Fotomediathek dieses Geräts enthält keine Alben.",
+            _l10n.photoLibraryNoAlbums,
             key: photoPickerProblemKey,
             textAlign: TextAlign.center,
           ),
@@ -302,7 +291,7 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
             key: photoAlbumKey(album.id),
             leading: const Icon(Icons.photo_album),
             title: Text(album.name),
-            subtitle: Text("${album.count} Fotos"),
+            subtitle: Text(_l10n.photoCount(album.count)),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _enter(album),
           ),
@@ -314,9 +303,9 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
   Widget _itemGrid() {
     var months = _months;
     if (months.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
-        child: Center(child: Text("Dieses Album enthält keine Fotos.")),
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Center(child: Text(_l10n.photoAlbumEmpty)),
       );
     }
     return ListView(
@@ -335,7 +324,8 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
             children: [
               Expanded(
                 child: Text(
-                  "${monthLabel(month)} (${items.length})",
+                  "${monthLabel(month, Localizations.localeOf(context)
+                      .toLanguageTag())} (${items.length})",
                   style: Theme.of(context).textTheme.titleMedium,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -343,7 +333,9 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
               TextButton(
                 key: photoMonthAllKey(month),
                 onPressed: () => _select(items, !_allSelected(items)),
-                child: Text(_allSelected(items) ? "Keine" : "Alle"),
+                child: Text(
+                  _allSelected(items) ? _l10n.selectNone : _l10n.selectAll,
+                ),
               ),
             ],
           ),
@@ -394,7 +386,7 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
           children: [
             Expanded(
               child: Text(
-                "$count ausgewählt",
+                _l10n.photoPickerSelected(count),
                 key: photoPickerSelectionKey,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -406,7 +398,7 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
                   ? null
                   : () => Navigator.of(context).pop(_selected.values.toList()),
               icon: const Icon(Icons.cloud_upload),
-              label: Text("$count Fotos hochladen"),
+              label: Text(_l10n.photoPickerUpload(count)),
             ),
           ],
         ),
@@ -493,23 +485,26 @@ const Key uploadFromFilesKey = Key("upload.fromFiles");
 Future<UploadSource?> askUploadSource(BuildContext context) =>
     showModalBottomSheet<UploadSource>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              key: uploadFromLibraryKey,
-              leading: const Icon(Icons.photo_library),
-              title: const Text(photoPickerEntry),
-              onTap: () => Navigator.of(context).pop(UploadSource.library),
-            ),
-            ListTile(
-              key: uploadFromFilesKey,
-              leading: const Icon(Icons.folder_open),
-              title: const Text(systemPickerEntry),
-              onTap: () => Navigator.of(context).pop(UploadSource.files),
-            ),
-          ],
-        ),
-      ),
+      builder: (context) {
+        var l10n = AppLocalizations.of(context)!;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                key: uploadFromLibraryKey,
+                leading: const Icon(Icons.photo_library),
+                title: Text(l10n.photoPickerEntry),
+                onTap: () => Navigator.of(context).pop(UploadSource.library),
+              ),
+              ListTile(
+                key: uploadFromFilesKey,
+                leading: const Icon(Icons.folder_open),
+                title: Text(l10n.systemPickerEntry),
+                onTap: () => Navigator.of(context).pop(UploadSource.files),
+              ),
+            ],
+          ),
+        );
+      },
     );
