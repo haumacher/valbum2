@@ -3331,6 +3331,9 @@ public class ImageServlet extends HttpServlet {
 		storeSidecar(folder, sidecarOf(album));
 		// The next read must see what was just written.
 		_cache.invalidate(folderPath);
+		// And so must the next listing of every *other* album: a confirmation joins the prototypes
+		// of issue #127 here, where the decision is made, and not when some walk next comes past.
+		_faces.recognition().observe(folder, album);
 
 		LOG.info("Tagged " + tags.size() + " face(s) in '" + folder.getAbsolutePath() + "'.");
 		answerAlbum(context, folderPath, caller);

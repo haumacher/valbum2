@@ -10,6 +10,7 @@ import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FaceInfo;
+import de.haumacher.imageServer.shared.model.FaceState;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImageKind;
@@ -130,6 +131,22 @@ public class FaceIndex {
 	 * </p>
 	 */
 	private final ConcurrentHashMap<String, String> _failed = new ConcurrentHashMap<>();
+
+	/**
+	 * Who the people of this space look like, see issue #127.
+	 *
+	 * <p>
+	 * It lives here because it lives on this walk: the prototypes are read from the very album
+	 * caches this index writes, on the very thread that writes them, and there is one of each per
+	 * space.
+	 * </p>
+	 */
+	private final Recognition _recognition = new Recognition();
+
+	/** Who the people of this space look like, see issue #127. */
+	public Recognition recognition() {
+		return _recognition;
+	}
 
 	private ExecutorService _indexer;
 
@@ -365,6 +382,10 @@ public class FaceIndex {
 			LOG.log(Level.WARNING,
 				"Cannot write the face cache of '" + folder.getAbsolutePath() + "': " + ex.getMessage(), ex);
 		}
+
+		// The one walk of issue #127 as well: whoever was confirmed in this album is now described
+		// by numbers this pass has just made sure are there.
+		_recognition.observe(folder);
 	}
 
 	/** The faces of one photograph, in the raw raster of its file, see {@link Faces}. */
@@ -523,11 +544,19 @@ public class FaceIndex {
 		FaceCache cache = enabled ? new FaceCache(folder) : null;
 		Map<String, String> hashByName =
 			enabled ? new HashCache(folder).storedHashByName() : Collections.emptyMap();
-		Map<String, List<FaceInfo>> detected =
-			enabled ? facesByName(cache, hashByName) : Collections.<String, List<FaceInfo>> emptyMap();
+		Map<String, List<FaceCache.Face>> cached = enabled
+			? cachedByName(cache, hashByName) : Collections.<String, List<FaceCache.Face>> emptyMap();
+		Map<String, List<FaceInfo>> detected = facesByName(cached);
 		boolean pending = enabled && pending(album, folder, cache, hashByName);
 		// What was found and what was decided about it, in one list per photograph.
 		Map<String, List<FaceInfo>> byName = merged(album, detected, people);
+		if (enabled) {
+			// The two sidecars are open anyway, so keeping the prototypes of issue #127 current
+			// costs no file access at all: an album that was moved, renamed or written behind the
+			// server's back is described afresh the moment somebody looks at it.
+			_recognition.put(folder, Recognition.collect(album, cache, hashByName));
+			suggest(byName, cached, people);
+		}
 		if (byName.isEmpty() && !pending) {
 			return album;
 		}
@@ -597,8 +626,10 @@ public class FaceIndex {
 	 * </p>
 	 */
 	public Map<String, List<FaceInfo>> answered(AlbumInfo album, File folder, PeopleStore people) {
+		// Deliberately without the suggestions of issue #127: this is the numbering a tagging
+		// request names a face by, and a guess neither adds a face nor moves one.
 		Map<String, List<FaceInfo>> detected = isEnabled()
-			? facesByName(new FaceCache(folder), new HashCache(folder).storedHashByName())
+			? facesByName(cachedByName(new FaceCache(folder), new HashCache(folder).storedHashByName()))
 			: Collections.<String, List<FaceInfo>> emptyMap();
 		return merged(album, detected, people);
 	}
@@ -669,17 +700,31 @@ public class FaceIndex {
 		}
 	}
 
-	/** The faces of every photograph of the given album, by file name. */
-	private static Map<String, List<FaceInfo>> facesByName(FaceCache cache, Map<String, String> hashByName) {
+	/** What the detector found in every photograph of the given album, by file name. */
+	private static Map<String, List<FaceCache.Face>> cachedByName(FaceCache cache,
+			Map<String, String> hashByName) {
 		if (cache.isEmpty()) {
 			return Collections.emptyMap();
 		}
-		Map<String, List<FaceInfo>> result = new LinkedHashMap<>();
+		Map<String, List<FaceCache.Face>> result = new LinkedHashMap<>();
 		for (Map.Entry<String, String> entry : hashByName.entrySet()) {
 			List<FaceCache.Face> faces = cache.facesOf(entry.getValue());
 			if (faces.isEmpty()) {
 				continue;
 			}
+			result.put(entry.getKey(), faces);
+		}
+		return result;
+	}
+
+	/** The faces of every photograph of the given album, by file name. */
+	private static Map<String, List<FaceInfo>> facesByName(Map<String, List<FaceCache.Face>> cached) {
+		if (cached.isEmpty()) {
+			return Collections.emptyMap();
+		}
+		Map<String, List<FaceInfo>> result = new LinkedHashMap<>();
+		for (Map.Entry<String, List<FaceCache.Face>> entry : cached.entrySet()) {
+			List<FaceCache.Face> faces = entry.getValue();
 			List<FaceInfo> wire = new ArrayList<>(faces.size());
 			for (int n = 0; n < faces.size(); n++) {
 				FaceCache.Face face = faces.get(n);
@@ -694,6 +739,48 @@ public class FaceIndex {
 			result.put(entry.getKey(), wire);
 		}
 		return result;
+	}
+
+	/**
+	 * Writes a suggestion onto every face nobody has decided anything about, see issue #127.
+	 *
+	 * <p>
+	 * Derived here and written nowhere: a suggestion is
+	 * {@link FaceInfo#getPerson() somebody} with {@link FaceInfo#isConfirmed() confirmed} false and
+	 * the state still {@link FaceState#UNDECIDED}, which is exactly the field pair issue #125 left
+	 * free for it. Only the detected faces are looked at — they stand first and in their own order,
+	 * see {@link FaceTags#merge} — and among those only the ones no decision reached: a face that
+	 * is confirmed is that person rather than a guess, and one that was rejected or called no face
+	 * at all keeps what somebody said about it, see {@link Recognition}.
+	 * </p>
+	 */
+	private void suggest(Map<String, List<FaceInfo>> byName, Map<String, List<FaceCache.Face>> cached,
+			PeopleStore people) {
+		if (byName.isEmpty() || _recognition.isEmpty()) {
+			return;
+		}
+		Recognition.Match match = _recognition.matcher(people);
+		if (match.isEmpty()) {
+			return;
+		}
+		for (Map.Entry<String, List<FaceInfo>> entry : byName.entrySet()) {
+			List<FaceCache.Face> faces = cached.get(entry.getKey());
+			if (faces == null || faces.isEmpty()) {
+				continue;
+			}
+			List<FaceInfo> answered = entry.getValue();
+			for (int n = 0, size = Math.min(faces.size(), answered.size()); n < size; n++) {
+				FaceInfo face = answered.get(n);
+				if (face.getState() != FaceState.UNDECIDED || !face.getPerson().isEmpty()) {
+					continue;
+				}
+				String person = match.personOf(faces.get(n).getEmbedding());
+				if (!person.isEmpty()) {
+					face.setPerson(person);
+					face.setConfirmed(false);
+				}
+			}
+		}
 	}
 
 	/**
@@ -879,8 +966,18 @@ public class FaceIndex {
 		}
 	}
 
-	/** Forgets that a photograph of the given folder ever failed, see issue #98. */
+	/**
+	 * Forgets that a photograph of the given folder ever failed, see issue #98.
+	 *
+	 * <p>
+	 * And with it what that album contributed to the recognition of issue #127: the cache the
+	 * embeddings were read from has just been thrown away, so the people confirmed there stop being
+	 * recognised elsewhere until the album is indexed again. The decisions themselves are untouched
+	 * — they are the album's, not the cache's.
+	 * </p>
+	 */
 	public int forget(File folder) {
+		_recognition.forget(folder);
 		String prefix = folder.getAbsolutePath() + File.separator;
 		int forgotten = 0;
 		for (String key : new ArrayList<>(_failed.keySet())) {
