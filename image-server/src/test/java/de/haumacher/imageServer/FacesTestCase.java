@@ -166,6 +166,41 @@ public abstract class FacesTestCase extends TestCase {
 		// Nobody but the administrator, unless a test says otherwise.
 	}
 
+	/**
+	 * Adds a second album to the space, after it was created (issue #127).
+	 *
+	 * <p>
+	 * The space already runs; nothing is indexed by this, the next {@link #index()} walks it like
+	 * every other folder.
+	 * </p>
+	 */
+	protected File addAlbum(String name, String... images) throws Exception {
+		Path folder = _base.resolve(name);
+		Files.createDirectories(folder);
+		for (String image : images) {
+			Files.copy(new File(PORTRAITS, image).toPath(), folder.resolve(image),
+				StandardCopyOption.REPLACE_EXISTING);
+		}
+		return folder.toFile();
+	}
+
+	/**
+	 * Throws the servlet away and builds a new one over the same library, as a restart does.
+	 *
+	 * <p>
+	 * Everything in memory is gone and everything on disk stays: the users and their devices, the
+	 * decisions in the sidecars and the detections in the album caches. The administrator's token
+	 * goes on working, because the device that holds it is written in
+	 * {@value de.haumacher.imageServer.auth.UserStore#DIRECTORY_NAME}.
+	 * </p>
+	 */
+	protected void restart() throws Exception {
+		_servlet.destroy();
+		_auth = new AuthService(AuthMode.WRITES, _base);
+		_servlet = new ImageServlet(_base.toFile(), _auth, "", SpaceStore.load(_base, ""));
+		_servlet.init();
+	}
+
 	/** The album folder of the test space. */
 	protected File album() {
 		return _base.resolve(ALBUM).toFile();
