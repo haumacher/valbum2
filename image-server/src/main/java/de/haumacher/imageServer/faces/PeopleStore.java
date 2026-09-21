@@ -289,6 +289,43 @@ public class PeopleStore {
 		return survivor == null ? null : _people.get(survivor);
 	}
 
+	/**
+	 * The person of the given name, <code>null</code> when nobody carries it.
+	 *
+	 * <p>
+	 * Ignoring case and outer blanks, which is the same rule {@link #nameTaken(String, String)}
+	 * refuses a second person of one name by: a register never holds two people whose names differ
+	 * only in their case, so this answer is unambiguous. Only survivors are looked at &mdash; a
+	 * person merged away is nobody, and an id of theirs is resolved by {@link #resolve(String)}.
+	 * </p>
+	 */
+	public synchronized Entry byName(String name) {
+		String trimmed = name == null ? "" : name.trim();
+		if (trimmed.isEmpty()) {
+			return null;
+		}
+		for (Entry entry : _people.values()) {
+			if (entry.getName().equalsIgnoreCase(trimmed)) {
+				return entry;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The person of the given name, created with the given creator where the register has none.
+	 *
+	 * <p>
+	 * The one step {@link de.haumacher.imageServer.faces.FaceImport} takes a name out of a file
+	 * with: looking up and creating are one atomic act here, so a name that occurs twice arrives
+	 * as one person, see issue #129.
+	 * </p>
+	 */
+	public synchronized Entry named(String name, String createdBy) throws PersonRefused, IOException {
+		Entry existing = byName(name);
+		return existing != null ? existing : create(name, createdBy);
+	}
+
 	/** Whether anybody but the given person carries the given name, ignoring case. */
 	private boolean nameTaken(String name, String exceptId) {
 		for (Entry entry : _people.values()) {

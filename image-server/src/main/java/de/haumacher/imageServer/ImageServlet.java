@@ -22,6 +22,7 @@ import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.faces.FaceImport;
 import de.haumacher.imageServer.faces.FaceIndex;
 import de.haumacher.imageServer.faces.FaceTags;
 import de.haumacher.imageServer.faces.Faces;
@@ -510,12 +511,15 @@ public class ImageServlet extends HttpServlet {
 		_space = space == null ? "" : space;
 		_mapUrl = config == null ? SpaceStore.DEFAULT_MAP_URL : config.getMapUrl();
 		_basePath = basePath.toPath();
-		_cache = new ResourceCache();
+		boolean facesEnabled = config != null && config.isFacesEnabled();
+		_people = new PeopleStore(_basePath);
+		// The register has to exist before the cache does: a photograph that is analysed for the
+		// first time may name people, see FaceImport and issue #129.
+		_cache = new ResourceCache(new FaceImport(_people, facesEnabled)::read);
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
 		_index = new HashIndex(_basePath);
-		_people = new PeopleStore(_basePath);
-		_faces = new FaceIndex(_basePath, config != null && config.isFacesEnabled());
+		_faces = new FaceIndex(_basePath, facesEnabled);
 		String noFaces = _faces.unavailability();
 		if (noFaces != null) {
 			LOG.warning("The space '" + (_space.isEmpty() ? basePath.getName() : _space)

@@ -67,9 +67,58 @@ public class ImageData extends ImagePart {
 	}
 
 	/**
+	 * What else is read out of a photograph at the moment it is first analysed.
+	 *
+	 * <p>
+	 * The one hook of this class, and the one place the analysis of a file meets something that is
+	 * not a property of the file alone: taking over the named faces an older tool wrote into it
+	 * needs the people register of the space, see {@link
+	 * de.haumacher.imageServer.faces.FaceImport} and issue #129. Everything else here &mdash; the
+	 * date, the camera, the position &mdash; is read out of the file and nothing else, and stays
+	 * where it is.
+	 * </p>
+	 *
+	 * <p>
+	 * It is asked for a photograph and never for a video, and it is asked exactly where the
+	 * {@link ImagePart} is created: once per file, before the album's sidecar lists it.
+	 * </p>
+	 */
+	public interface Analysis {
+
+		/** Reads nothing at all, for every caller that has no register. */
+		Analysis NONE = (image, metadata, rawWidth, rawHeight) -> {
+			// Nothing to take over.
+		};
+
+		/**
+		 * Writes onto the given part what the given metadata says beyond the file's own
+		 * properties.
+		 *
+		 * @param image
+		 *        The part being built for the file.
+		 * @param metadata
+		 *        What was read out of the file.
+		 * @param rawWidth
+		 *        The width of the file's own raster, before the EXIF orientation.
+		 * @param rawHeight
+		 *        The height of the file's own raster, before the EXIF orientation.
+		 */
+		void read(ImagePart image, Metadata metadata, int rawWidth, int rawHeight);
+	}
+
+	/**
 	 * Loads {@link ImageData} from the given image file.
 	 */
-	public static ImageData analyze(AlbumInfo album, File file) throws ImageProcessingException, IOException, MetadataException {
+	public static ImageData analyze(AlbumInfo album, File file)
+			throws ImageProcessingException, IOException, MetadataException {
+		return analyze(album, file, Analysis.NONE);
+	}
+
+	/**
+	 * Loads {@link ImageData} from the given image file, taking over what the given
+	 * {@link Analysis} finds in a photograph.
+	 */
+	public static ImageData analyze(AlbumInfo album, File file, Analysis more) throws ImageProcessingException, IOException, MetadataException {
 		ImageData result = new ImageData(album, file, file.getName());
 
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
@@ -95,6 +144,7 @@ public class ImageData extends ImagePart {
 				result.setComment(jpegCommentDirectory.getString(JpegCommentDirectory.TAG_COMMENT));
 			}
 
+			more.read(result, metadata, rawWidth, rawHeight);
 			return result;
 		}
 
@@ -112,6 +162,8 @@ public class ImageData extends ImagePart {
 			Orientation tx = Orientation.IDENTITY;
 			result.setWidth(Orientations.width(tx, rawWidth, rawHeight));
 			result.setHeight(Orientations.height(tx, rawWidth, rawHeight));
+
+			more.read(result, metadata, rawWidth, rawHeight);
 			return result;
 		}
 

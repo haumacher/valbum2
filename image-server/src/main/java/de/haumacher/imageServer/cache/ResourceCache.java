@@ -80,10 +80,22 @@ public class ResourceCache {
 	private LoadingCache<PathInfo, Resource> _cache;
 
 	/**
-	 * Creates a {@link ResourceCache}.
+	 * Creates a {@link ResourceCache} that takes nothing over out of a photograph.
 	 */
 	public ResourceCache() throws IOException {
-		_loader = new Loader();
+		this(ImageData.Analysis.NONE);
+	}
+
+	/**
+	 * Creates a {@link ResourceCache}.
+	 *
+	 * @param analysis
+	 *        What is read out of a photograph beyond its own properties, the first time it is
+	 *        looked at: the named faces an older tool wrote into it, see
+	 *        {@link de.haumacher.imageServer.faces.FaceImport} and issue #129.
+	 */
+	public ResourceCache(ImageData.Analysis analysis) throws IOException {
+		_loader = new Loader(analysis);
 		_cache = CacheBuilder.newBuilder().maximumSize(1000).build(_loader);
 	}
 
@@ -240,10 +252,14 @@ public class ResourceCache {
 
 		private final Map<WatchKey, PathInfo> _watchedDirs = new HashMap<>();
 
+		/** What is taken over out of a photograph that is analysed here, see issue #129. */
+		private final ImageData.Analysis _analysis;
+
 		/**
 		 * Creates a {@link ResourceCache.Loader}.
 		 */
-		public Loader() throws IOException {
+		public Loader(ImageData.Analysis analysis) throws IOException {
+			_analysis = analysis == null ? ImageData.Analysis.NONE : analysis;
 			_watcher = FileSystems.getDefault().newWatchService();
 		}
 
@@ -302,7 +318,7 @@ public class ResourceCache {
 			if (resource instanceof AlbumInfo || images.length > 0) {
 				AlbumInfo album = resource == null ? createGenericAlbumInfo(path) : (AlbumInfo) resource;
 
-				loadAlbum(album, images);
+				loadAlbum(album, images, _analysis);
 
 				// Derived on every read and never stored, see AlbumDate#clearDerived(FolderResource).
 				album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
@@ -525,7 +541,7 @@ public class ResourceCache {
 			return Character.toUpperCase(expanded.charAt(0)) + expanded.substring(1);
 		}
 
-		private static AlbumInfo loadAlbum(AlbumInfo album, File[] files) {
+		private static AlbumInfo loadAlbum(AlbumInfo album, File[] files, ImageData.Analysis analysis) {
 			// Update early to be able to match new images against existing image.
 			UpdateTransient.updateTransient(album);
 
@@ -541,7 +557,9 @@ public class ResourceCache {
 
 				ImageData image;
 				try {
-					image = ImageData.analyze(album, file);
+					// Only a file the sidecar does not list gets here, which is what makes the
+					// face import of issue #129 run exactly once per photograph.
+					image = ImageData.analyze(album, file, analysis);
 				} catch (IOException | ImageProcessingException | MetadataException ex) {
 					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
 					continue;
