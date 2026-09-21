@@ -35,6 +35,8 @@ import 'package:http/http.dart' as http;
 
 import 'caller.dart';
 import 'camera_roll.dart';
+import 'locales.dart';
+import 'notices.dart';
 import 'client.dart';
 import 'connectivity.dart';
 import 'photo_library.dart';
@@ -86,8 +88,11 @@ abstract class BackgroundScheduler {
   bool get available;
 
   /// Why there is no background sync, shown to the user while [available] is
-  /// `false`; empty where there is nothing to explain.
-  String get unavailableReason;
+  /// `false`; `null` where there is nothing to explain.
+  ///
+  /// The reason as data, never as words: the section showing it turns it into
+  /// a sentence in the language of the device, see [noticeText] (issue #108).
+  AppNotice? get unavailableReason;
 
   /// Registers the periodic task, updating the one that is there.
   ///
@@ -113,11 +118,10 @@ abstract class BackgroundScheduler {
 /// so plainly is better than a promise nothing keeps.
 class UnavailableBackgroundScheduler extends BackgroundScheduler {
   @override
-  final String unavailableReason;
+  final AppNotice? unavailableReason;
 
   const UnavailableBackgroundScheduler([
-    this.unavailableReason = "Background sync is not available on this "
-        "platform; the camera roll syncs while the app is open.",
+    this.unavailableReason = const NoBackgroundSyncHere(),
   ]);
 
   @override
@@ -139,7 +143,7 @@ class FakeBackgroundScheduler extends BackgroundScheduler {
   final bool available;
 
   @override
-  final String unavailableReason;
+  final AppNotice? unavailableReason;
 
   /// The network requirement of every [schedule] call, in order.
   final List<BackgroundNetwork> requests = [];
@@ -158,7 +162,7 @@ class FakeBackgroundScheduler extends BackgroundScheduler {
 
   FakeBackgroundScheduler({
     this.available = true,
-    this.unavailableReason = "No background sync in this test.",
+    this.unavailableReason = const NoBackgroundSyncInTest(),
     this.problem,
   });
 
@@ -255,19 +259,9 @@ class BackgroundRunRecord {
     }
   }
 
-  /// The one line the settings section shows.
-  String get line {
-    var when = _stamp(at);
-    if (!ok) {
-      return "Last background sync at $when failed: "
-          "${message ?? "unknown reason"}";
-    }
-    return "Last background sync at $when: $stored uploaded, "
-        "$present already present";
-  }
-
-  static String _stamp(DateTime when) {
-    var local = when.toLocal();
+  /// The time of day this run happened, as the settings section shows it.
+  String get stamp {
+    var local = at.toLocal();
     String two(int value) => value.toString().padLeft(2, "0");
     return "${two(local.hour)}:${two(local.minute)}";
   }
@@ -309,6 +303,10 @@ class BackgroundRunResult {
   final BackgroundRunRecord? record;
 
   /// Why nothing ran, `null` when a run was attempted.
+  ///
+  /// A plain sentence, because it is written into the persisted report the
+  /// settings screen reads back: a background run has no widget tree, so it
+  /// words its own reasons with [platformMessages].
   final String? skipped;
 
   const BackgroundRunResult({this.record, this.skipped});
@@ -320,7 +318,7 @@ class BackgroundRunResult {
   bool get ok => record?.ok ?? false;
 
   @override
-  String toString() => skipped ?? "${record?.line}";
+  String toString() => skipped ?? "$record";
 }
 
 /// Runs one camera-roll sync from nothing but the persisted store.
@@ -350,8 +348,8 @@ Future<BackgroundRunResult> runBackgroundSync({
   if (!config.enabled) {
     // Not a failure and not a report: the user switched the sync off, and the
     // task is on its way out (see [BackgroundScheduler.cancel]).
-    return const BackgroundRunResult(
-      skipped: "The camera-roll sync is switched off.",
+    return BackgroundRunResult(
+      skipped: platformMessages.backgroundSyncOff,
     );
   }
 
@@ -365,7 +363,10 @@ Future<BackgroundRunResult> runBackgroundSync({
   var dataUrl = settings.dataUrl;
   if (dataUrl == null) {
     return record(
-      BackgroundRunRecord.failed(now(), "No album server is configured."),
+      BackgroundRunRecord.failed(
+        now(),
+        noticeText(const NoServerConfigured(), platformMessages),
+      ),
     );
   }
 
@@ -417,10 +418,7 @@ Future<BackgroundRunResult> runBackgroundSync({
           stored: status.lastStored,
           present: status.lastPresent,
         ),
-      _ => BackgroundRunRecord.failed(
-          now(),
-          status.message ?? "The sync did not run.",
-        ),
+      _ => BackgroundRunRecord.failed(now(), reasonOfStatus(status)),
     });
   } catch (error) {
     return await record(BackgroundRunRecord.failed(now(), "$error"));
@@ -451,9 +449,25 @@ void backgroundSyncDispatcher() {
       return true;
     } catch (error) {
       if (kDebugMode) {
-        print("The background sync task failed: $error");
+        print("background sync task !! $error");
       }
       return false;
     }
   });
+}
+
+/// Why a background run did not finish, in words the persisted report keeps.
+///
+/// The server's own sentence where the server spoke, the app's own reason
+/// worded with [platformMessages] otherwise — a background run has no widget
+/// tree to read a translation from, see [AppNotice] and issue #108.
+String reasonOfStatus(CameraRollStatus status) {
+  var said = status.message;
+  if (said != null) {
+    return said;
+  }
+  var notice = status.notice;
+  return notice == null
+      ? platformMessages.backgroundSyncDidNotRun
+      : noticeText(notice, platformMessages);
 }

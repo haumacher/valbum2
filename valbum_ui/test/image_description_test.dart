@@ -145,7 +145,7 @@ Future<void> confirm(WidgetTester tester, String text) async {
   await withFakeImageHttp(() async {
     await tester.enterText(find.byType(TextField), text);
     await tester.pumpAndSettle();
-    await tester.tap(find.text("Übernehmen"));
+    await tester.tap(find.text(testL10n.apply));
     await tester.pumpAndSettle();
   });
 }
@@ -363,7 +363,7 @@ void main() {
     await pumpViewer(tester, image, server: server);
     await longPressImage(tester);
     await withFakeImageHttp(() async {
-      await tester.tap(find.text("Abbrechen"));
+      await tester.tap(find.text(testL10n.cancel));
       await tester.pumpAndSettle();
     });
 

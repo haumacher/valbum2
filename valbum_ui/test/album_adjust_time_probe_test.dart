@@ -6,6 +6,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/album_edit.dart';
 import 'package:valbum_ui/resource.dart';
+import 'util/l10n.dart';
 
 const int h = 3600 * 1000;
 const int d = 24 * h;
@@ -67,8 +68,8 @@ void main() {
   });
 
   test('the offset in words for odd durations', () {
-    expect(offsetInWords(const Duration(seconds: 59)), "+59 s");
-    expect(offsetInWords(const Duration(days: 1, seconds: 1)), "+1 d 0 h 0 min 1 s");
-    expect(offsetInWords(const Duration(days: 1, seconds: 1) * -1), "−1 d 0 h 0 min 1 s");
+    expect(offsetInWords(testL10n, const Duration(seconds: 59)), "+59 s");
+    expect(offsetInWords(testL10n, const Duration(days: 1, seconds: 1)), "+1 d 0 h 0 min 1 s");
+    expect(offsetInWords(testL10n, const Duration(days: 1, seconds: 1) * -1), "−1 d 0 h 0 min 1 s");
   });
 }

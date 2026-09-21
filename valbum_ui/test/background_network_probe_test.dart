@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fake_timers.dart';
+import 'package:valbum_ui/notices.dart';
 
 const List<String> inbox = ["Inbox"];
 
@@ -120,7 +121,7 @@ void main() {
 
     scheduler.problem = StateError("no WorkManager");
     await sync.setWifiOnly(false);
-    expect(sync.backgroundProblem, contains("could not be scheduled"));
+    expect(sync.backgroundProblem, isA<BackgroundScheduleFailed>());
 
     scheduler.problem = null;
     await sync.setWifiOnly(true);

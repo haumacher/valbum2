@@ -106,6 +106,7 @@ const String invitationUnknown = "unknown";
 /// An unknown reason says nothing rather than something wrong; the parameter
 /// is removed from the location either way.
 String? invitationNoticeText(
+  AppLocalizations l10n,
   String reason, {
   required bool signedIn,
   String? userName,
@@ -113,23 +114,19 @@ String? invitationNoticeText(
   switch (reason) {
     case invitationUsed:
       if (!signedIn) {
-        return "This invitation was already used. If you accepted it on "
-            "another device, sign in here with a device code from that "
-            "device; otherwise ask for a new invitation.";
+        return l10n.invitationUsedNotSignedIn;
       }
       var name = userName ?? "";
       if (name.isEmpty) {
-        return "This invitation was already used \u2014 you are already "
-            "signed in here.";
+        return l10n.invitationUsedSignedIn;
       }
-      return "This invitation was already used \u2014 you are signed in here "
-          "as $name.";
+      return l10n.invitationUsedSignedInAs(name);
     case invitationExpired:
-      return "This invitation has expired. Ask for a new one.";
+      return l10n.invitationExpiredNotice;
     case invitationWithdrawn:
-      return "This invitation was withdrawn.";
+      return l10n.invitationWithdrawnNotice;
     case invitationUnknown:
-      return "This is not an invitation of this server.";
+      return l10n.invitationNotOfThisServer;
     default:
       return null;
   }

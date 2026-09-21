@@ -1174,4 +1174,1013 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get cameraNotOpened =>
       'The camera could not be opened. Type the code instead.';
+
+  @override
+  String get ok => 'OK';
+
+  @override
+  String get delete => 'Delete';
+
+  @override
+  String get deleteEllipsis => 'Delete…';
+
+  @override
+  String get reload => 'Reload';
+
+  @override
+  String get up => 'Up';
+
+  @override
+  String get home => 'Home';
+
+  @override
+  String get upload => 'Upload';
+
+  @override
+  String get apply => 'Apply';
+
+  @override
+  String get discard => 'Discard';
+
+  @override
+  String get stay => 'Stay';
+
+  @override
+  String get keepEditing => 'Keep editing';
+
+  @override
+  String get refresh => 'Refresh';
+
+  @override
+  String get open => 'Open';
+
+  @override
+  String get select => 'Select';
+
+  @override
+  String get group => 'Group';
+
+  @override
+  String get loading => 'Loading...';
+
+  @override
+  String get serverMenuEntry => 'Server...';
+
+  @override
+  String get titleLabel => 'Title';
+
+  @override
+  String get subtitleLabel => 'Subtitle';
+
+  @override
+  String get nameLabel => 'Name';
+
+  @override
+  String get dateLabel => 'Date';
+
+  @override
+  String get commentLabel => 'Comment';
+
+  @override
+  String get headingLabel => 'Heading';
+
+  @override
+  String get mustNotBeEmpty => 'Must not be empty';
+
+  @override
+  String get viewAsYourself => 'Yourself';
+
+  @override
+  String get viewAsMembers => 'Members';
+
+  @override
+  String get viewAsPublic => 'Public';
+
+  @override
+  String get viewAsStateYourself => 'yourself';
+
+  @override
+  String get viewAsStateMembers => 'members';
+
+  @override
+  String get viewAsStatePublic => 'public';
+
+  @override
+  String get viewAsLabel => 'View as';
+
+  @override
+  String get previewAsMembers =>
+      'Viewing as members - this is what members see';
+
+  @override
+  String get previewAsPublic =>
+      'Viewing as public - this is what the public sees';
+
+  @override
+  String get editHeadingTitle => 'Edit heading';
+
+  @override
+  String get insertHeading => 'Insert heading';
+
+  @override
+  String get deleteHeadingTooltip => 'Delete heading';
+
+  @override
+  String get alreadyInOrder => 'Already in order';
+
+  @override
+  String get noOtherImageFromCamera => 'No other image from this camera';
+
+  @override
+  String get nothingToAdjust => 'Nothing to adjust';
+
+  @override
+  String saveFailed(String problem) {
+    return 'Saving failed: $problem';
+  }
+
+  @override
+  String get discardChangesTitle => 'Discard the changes to this album?';
+
+  @override
+  String get discardChangesMessage =>
+      'The changes made here have not been saved. Discarding them shows the album again as the server has it.';
+
+  @override
+  String get saveChangesTitle => 'Save the changes to this album?';
+
+  @override
+  String get saveChangesMessage =>
+      'Leaving the album ends the edit. Unsaved changes are lost unless they are saved now.';
+
+  @override
+  String get saveOrDiscardFirst => 'Save or discard your changes first';
+
+  @override
+  String get headingCannotMove => 'A heading cannot be moved.';
+
+  @override
+  String get shareLinkAction => 'Share link…';
+
+  @override
+  String get albumProperties => 'Album properties';
+
+  @override
+  String get folderProperties => 'Folder properties';
+
+  @override
+  String moveSubjectTo(String subject) {
+    return 'Move $subject to…';
+  }
+
+  @override
+  String get moveAlbumTo => 'Move album to…';
+
+  @override
+  String get deleteAlbumAction => 'Delete album…';
+
+  @override
+  String deleteSubjectAction(String subject) {
+    return 'Delete $subject…';
+  }
+
+  @override
+  String get sortByDate => 'Sort by date';
+
+  @override
+  String get minRatingLabel => 'Minimum rating';
+
+  @override
+  String get showMoreImages => 'Show more images';
+
+  @override
+  String get showFewerImages => 'Show fewer images';
+
+  @override
+  String get findDuplicatesAction => 'Find duplicates...';
+
+  @override
+  String get findDuplicatesTitle => 'Find duplicates';
+
+  @override
+  String get findDuplicatesMessage =>
+      'Every photo of this album that the library already holds somewhere else is taken out of the album and kept aside in the library\'s own folder. Nothing is deleted, and the other copy stays where it is.';
+
+  @override
+  String get noDuplicatesFound =>
+      'No photo of this album is anywhere else in the library.';
+
+  @override
+  String duplicatesSetAside(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count photos were set aside; the copies that stay are elsewhere in the library.',
+      one:
+          '1 photo was set aside; the copy that stays is elsewhere in the library.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get refreshPreviews => 'Refresh previews';
+
+  @override
+  String get refreshPreviewsMessage =>
+      'The thumbnails and video renditions of this album are thrown away and made anew when they are next shown. The photos themselves are not touched.';
+
+  @override
+  String previewsRefreshed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count cached files thrown away; the previews are made anew.',
+      one: '1 cached file thrown away; the previews are made anew.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get notAnAlbumAnswer => 'The server did not answer with an album.';
+
+  @override
+  String ratingFilterHidesAll(int rating) {
+    return 'No image is rated $rating or better - press + (or the + button) to show more.';
+  }
+
+  @override
+  String get turnRight => 'Turn right';
+
+  @override
+  String get turnLeft => 'Turn left';
+
+  @override
+  String get flipVertically => 'Flip vertically';
+
+  @override
+  String get ungroupAction => 'Ungroup';
+
+  @override
+  String get chooseGroupPicture => 'Choose the group picture';
+
+  @override
+  String get selectAllFromCamera => 'Select all from this camera';
+
+  @override
+  String get adjustRecordingTimeAction => 'Adjust recording time…';
+
+  @override
+  String get imageProperties => 'Image properties';
+
+  @override
+  String get useAsAlbumPicture => 'Use as album picture';
+
+  @override
+  String get albumPictureTooltip => 'Album picture';
+
+  @override
+  String privacyControlTooltip(String next, String level) {
+    return 'Privacy: $level (tap for $next)';
+  }
+
+  @override
+  String get groupNeedsTwo => 'Select at least two images to group them';
+
+  @override
+  String get dragToReorder => 'Drag to reorder';
+
+  @override
+  String partCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count parts',
+      one: '1 part',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get notATime => 'Not a time (yyyy-MM-dd HH:mm:ss)';
+
+  @override
+  String appliesToImages(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Applies to $count images',
+      one: 'Applies to 1 image',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String useNameDateOne(String time) {
+    return 'Use the time in the file name: $time';
+  }
+
+  @override
+  String useNameDateMany(int count) {
+    return 'Use the time in the file name ($count images)';
+  }
+
+  @override
+  String get adjustRecordingTimeTitle => 'Adjust recording time';
+
+  @override
+  String get correctTime => 'Correct time';
+
+  @override
+  String get pickDateAndTime => 'Pick date and time';
+
+  @override
+  String get adjustRecordingTimeHelp =>
+      'The original recording time stays in the photo; the album keeps its own.';
+
+  @override
+  String get makeThisAnAlbum => 'Make this an album';
+
+  @override
+  String get makeThisAnInbox => 'Make this an inbox';
+
+  @override
+  String get inboxExplanation =>
+      'Photographs waiting to be sorted, shown by the day they were taken.';
+
+  @override
+  String get dateNone => 'Date: none';
+
+  @override
+  String dateIs(String date) {
+    return 'Date: $date';
+  }
+
+  @override
+  String get pickDate => 'Pick a date';
+
+  @override
+  String get clearDate => 'Remove the date';
+
+  @override
+  String get dateFromFolderName => 'Taken from the folder name.';
+
+  @override
+  String get dateFromPhotos => 'Taken from the photos.';
+
+  @override
+  String get noAlbumPictureHint =>
+      'No album picture chosen - choose one on a tile in the edit mode.';
+
+  @override
+  String get zoomIn => 'Zoom in';
+
+  @override
+  String get zoomOut => 'Zoom out';
+
+  @override
+  String get resetCrop => 'Reset the crop';
+
+  @override
+  String get privacyPublicName => 'Public';
+
+  @override
+  String get privacyMembersName => 'Members';
+
+  @override
+  String get privacyPrivateName => 'Private';
+
+  @override
+  String get unitDays => 'd';
+
+  @override
+  String get unitHours => 'h';
+
+  @override
+  String get unitMinutes => 'min';
+
+  @override
+  String get unitSeconds => 's';
+
+  @override
+  String get useAsFolderPicture => 'Use as folder picture';
+
+  @override
+  String get useNoFolderPicture => 'Use no folder picture';
+
+  @override
+  String get libraryEmptyNotice => 'There are no albums here yet.';
+
+  @override
+  String get libraryEmptyHint =>
+      'Create the first one from the menu at the top right.';
+
+  @override
+  String get folderEmptyNotice => 'This folder has no albums yet.';
+
+  @override
+  String get createAlbum => 'Create album';
+
+  @override
+  String get createFolder => 'Create folder';
+
+  @override
+  String get applyRule => 'Apply rule';
+
+  @override
+  String get moveToAction => 'Move to…';
+
+  @override
+  String get nothingToFile => 'Nothing to file.';
+
+  @override
+  String filedAlbums(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Filed $count albums.',
+      one: 'Filed 1 album.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get placementNone => 'no rule';
+
+  @override
+  String get placementByYear => 'by year';
+
+  @override
+  String get placementByYearMonth => 'by year and month';
+
+  @override
+  String get placementHeading => 'Filing rule';
+
+  @override
+  String get placementExplanation =>
+      'What arrives here is filed into its year folder. What is already here stays until the filing rule is applied from the menu.';
+
+  @override
+  String get createAlbumUndatedHint =>
+      'Without a date the album stays in this folder.';
+
+  @override
+  String get createInboxLabel => 'Inbox';
+
+  @override
+  String get createInboxHint =>
+      'Photographs waiting to be sorted: shown by the day they were taken, no date and no order of their own.';
+
+  @override
+  String get newFolderTitle => 'New folder';
+
+  @override
+  String imageCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count images',
+      one: '1 image',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get targetTopLevel => 'the top level';
+
+  @override
+  String get pickerTopLevel => 'Top level';
+
+  @override
+  String get nothingToMove => 'Nothing to move.';
+
+  @override
+  String moveConfirm(String subject, String target) {
+    return 'Move $subject to $target';
+  }
+
+  @override
+  String nothingMovedTo(String target) {
+    return 'Nothing moved to $target.';
+  }
+
+  @override
+  String movedToTarget(String subject, String target) {
+    return 'Moved $subject to $target.';
+  }
+
+  @override
+  String get deleteExplanation =>
+      'An album without any image is removed; one with images is moved to the trash folder of the space (nothing is deleted from disk).';
+
+  @override
+  String deleteQuestion(String what) {
+    return 'Delete $what?';
+  }
+
+  @override
+  String deletedWhat(String what) {
+    return 'Deleted $what.';
+  }
+
+  @override
+  String newAlbumCreatedEmpty(String target) {
+    return 'The new album $target was created and is empty.';
+  }
+
+  @override
+  String get imagesLiveInAlbums => 'Images live in albums - open one.';
+
+  @override
+  String get albumHoldsNoFolders => 'An album holds no folders.';
+
+  @override
+  String get folderCannotBeShown => 'This folder cannot be shown.';
+
+  @override
+  String get createNewAlbum => 'Create new album…';
+
+  @override
+  String get moveTitle => 'Move';
+
+  @override
+  String get inboxEmptyNotice => 'Nothing is waiting here.';
+
+  @override
+  String get inboxUndatedHeading => 'Undated';
+
+  @override
+  String get inboxDeleteExplanation =>
+      'The photographs are moved to the trash folder of the space. Nothing is deleted from disk.';
+
+  @override
+  String get clearSelection => 'Clear the selection';
+
+  @override
+  String selectedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count images selected',
+      one: '1 image selected',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get selectEverythingBelow => 'Select everything below';
+
+  @override
+  String get nothingSelected => 'Nothing is selected.';
+
+  @override
+  String get notEditableMessage => 'You may not edit this album.';
+
+  @override
+  String get pictureFailedMessage => 'This picture could not be loaded.';
+
+  @override
+  String get takeBack => 'Take back…';
+
+  @override
+  String get previousImage => 'Previous image';
+
+  @override
+  String get nextImage => 'Next image';
+
+  @override
+  String get showAlternatives => 'Show the alternatives';
+
+  @override
+  String propertyFile(String name) {
+    return 'File: $name';
+  }
+
+  @override
+  String propertyTaken(String time) {
+    return 'Taken: $time';
+  }
+
+  @override
+  String propertyCamera(String camera) {
+    return 'Camera: $camera';
+  }
+
+  @override
+  String propertyLocation(String latitude, String longitude) {
+    return 'Location: $latitude, $longitude';
+  }
+
+  @override
+  String get showOnMap => 'Show on a map';
+
+  @override
+  String addedBy(String user) {
+    return 'Added by $user';
+  }
+
+  @override
+  String get rightLabelView => 'View';
+
+  @override
+  String get rightLabelDownload => 'Download';
+
+  @override
+  String get rightLabelContribute => 'Contribute';
+
+  @override
+  String get rightLabelEdit => 'Edit';
+
+  @override
+  String get rightExplanationView => 'See the album and its thumbnails';
+
+  @override
+  String get rightExplanationDownload => 'Take copies of the originals';
+
+  @override
+  String get rightExplanationContribute => 'Add photos';
+
+  @override
+  String get rightExplanationEdit => 'Change the album and everything in it';
+
+  @override
+  String get rightsPhraseEdit => 'you may change it';
+
+  @override
+  String get rightsPhraseContribute => 'you may add photos';
+
+  @override
+  String get rightsPhraseDownload => 'you may look and download';
+
+  @override
+  String get rightsPhraseView => 'you may look';
+
+  @override
+  String get rightsPhraseNone => 'you may do nothing here';
+
+  @override
+  String get sharedWithYou => 'Shared with you';
+
+  @override
+  String sharedByOwner(String owner) {
+    return 'Shared by $owner';
+  }
+
+  @override
+  String serverNotReached(String problem) {
+    return 'The server could not be reached: $problem';
+  }
+
+  @override
+  String httpFailure(String doing, int status) {
+    return 'HTTP $status while $doing.';
+  }
+
+  @override
+  String doingLoading(String url) {
+    return 'loading $url';
+  }
+
+  @override
+  String get doingLoadingImage => 'loading the image';
+
+  @override
+  String doingStoring(String url) {
+    return 'storing $url';
+  }
+
+  @override
+  String doingCreating(String url) {
+    return 'creating $url';
+  }
+
+  @override
+  String doingUploading(String url) {
+    return 'uploading to $url';
+  }
+
+  @override
+  String doingAsking(String url) {
+    return 'asking $url';
+  }
+
+  @override
+  String doingMoving(String target) {
+    return 'moving to $target';
+  }
+
+  @override
+  String doingDeleting(String folder) {
+    return 'deleting in $folder';
+  }
+
+  @override
+  String doingFiling(String folder) {
+    return 'filing in $folder';
+  }
+
+  @override
+  String doingFindingDuplicates(String folder) {
+    return 'looking for duplicates in $folder';
+  }
+
+  @override
+  String doingSigningIn(String url) {
+    return 'signing in at $url';
+  }
+
+  @override
+  String doingRefreshingPreviews(String folder) {
+    return 'refreshing the previews of $folder';
+  }
+
+  @override
+  String serverUnreachableNoPreview(String problem) {
+    return 'The server cannot be reached ($problem), so there is nothing to preview.';
+  }
+
+  @override
+  String serverUnreachableNoCache(String problem) {
+    return 'The server cannot be reached ($problem), and nothing is cached for this view.';
+  }
+
+  @override
+  String notVAlbumServer(String server) {
+    return 'The server at $server did not answer with album data - not a VAlbum server, or is the server URL in the settings wrong?';
+  }
+
+  @override
+  String get noAnswerInTime => 'no answer in time';
+
+  @override
+  String get uploadConnectionLost => 'Connection lost';
+
+  @override
+  String uploadInterruptedCounts(int total, int onServer, int remaining) {
+    return 'Of $total photos, $onServer are on the server; the remaining $remaining can be sent again.';
+  }
+
+  @override
+  String get uploadCancelled => 'The upload was cancelled.';
+
+  @override
+  String get uploadAsking => 'The server is being asked...';
+
+  @override
+  String get uploadWaiting => 'Waiting for the server...';
+
+  @override
+  String uploadPreparing(int total, int done) {
+    return 'Preparing: $done of $total...';
+  }
+
+  @override
+  String uploadImageCount(int total, int done) {
+    return '$done of $total images';
+  }
+
+  @override
+  String uploadSummary(int stored, int present) {
+    return '$stored uploaded, $present already present.';
+  }
+
+  @override
+  String alreadyInLibrary(String where) {
+    return 'Already in the library: $where.';
+  }
+
+  @override
+  String get noticeGuestNoSpace => 'Ask the admin to give you an album space.';
+
+  @override
+  String get noticeNoServerConfigured => 'No album server is configured.';
+
+  @override
+  String get noticeOffline => 'Offline: the album server cannot be reached.';
+
+  @override
+  String noticeServerUnreachable(String problem) {
+    return 'The server cannot be reached ($problem).';
+  }
+
+  @override
+  String get noticePhotoLibraryUnreadable =>
+      'The photo library cannot be read.';
+
+  @override
+  String noticePhotoLibraryFailed(String problem) {
+    return 'The photo library could not be read: $problem';
+  }
+
+  @override
+  String get noticePhotoAccessDenied =>
+      'Access to the photo library was denied. Allow photo access for VAlbum in the system settings, then try again.';
+
+  @override
+  String noticePhotoLibraryOpenFailed(String problem) {
+    return 'The photo library cannot be opened: $problem';
+  }
+
+  @override
+  String noticeAlbumNotOnDevice(String name) {
+    return 'The contents of $name are not on this device yet (still in the cloud?).';
+  }
+
+  @override
+  String noticeBackgroundScheduleFailed(String problem) {
+    return 'Background sync could not be scheduled: $problem';
+  }
+
+  @override
+  String noticeBackgroundUnscheduleFailed(String problem) {
+    return 'Background sync could not be switched off: $problem';
+  }
+
+  @override
+  String get noticeNoNetwork =>
+      'No network: the sync waits for a Wi-Fi connection.';
+
+  @override
+  String get noticeNoWifiMobile =>
+      'No Wi-Fi: the sync is limited to Wi-Fi, and this device is on a mobile connection.';
+
+  @override
+  String get noticeNoWifiOther =>
+      'No Wi-Fi: the sync is limited to Wi-Fi, and this device is on another network.';
+
+  @override
+  String get noticeNoBackgroundSyncHere =>
+      'Background sync is not available on this platform; the camera roll syncs while the app is open.';
+
+  @override
+  String get noticeNoBackgroundSyncInBrowser =>
+      'Background sync is not available in a browser; the camera roll syncs while the app is open.';
+
+  @override
+  String get noticeNoBackgroundSyncInApp =>
+      'Background sync is not available in this app.';
+
+  @override
+  String get noticeNoBackgroundSyncInTest => 'No background sync in this test.';
+
+  @override
+  String get noticeNoPhotoLibraryPlatform =>
+      'No photo library on this platform - camera-roll sync runs on Android and iOS.';
+
+  @override
+  String get noticeNoPhotoLibraryBrowser =>
+      'No photo library in a browser - camera-roll sync runs on Android and iOS.';
+
+  @override
+  String get cameraRollOff => 'Camera-roll sync is off.';
+
+  @override
+  String cameraRollUploading(int total, int done) {
+    return 'Uploading $done of $total...';
+  }
+
+  @override
+  String cameraRollWaitingUntil(String time) {
+    return 'Waiting until $time.';
+  }
+
+  @override
+  String get cameraRollNextAttempt => 'the next attempt';
+
+  @override
+  String cameraRollFailedRetrying(String reason, String time) {
+    return 'Failed: $reason - retrying at $time';
+  }
+
+  @override
+  String cameraRollFailed(String reason) {
+    return 'Failed: $reason';
+  }
+
+  @override
+  String get cameraRollUnknownReason => 'unknown reason';
+
+  @override
+  String get cameraRollWaitingForPhotos => 'Waiting for new photos.';
+
+  @override
+  String cameraRollNothingNew(String time) {
+    return 'Nothing new, checked at $time.';
+  }
+
+  @override
+  String cameraRollSynced(int stored, int count, String time, int present) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Synced $count photos at $time ($stored uploaded, $present already there).',
+      one:
+          'Synced 1 photo at $time ($stored uploaded, $present already there).',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cameraRollIndexing(int total, int done) {
+    return 'The library is still being indexed ($done of $total folders); photos already in an unindexed album may be uploaded again.';
+  }
+
+  @override
+  String cameraRollInboxGone(String name) {
+    return 'The chosen inbox is gone; using \'$name\'.';
+  }
+
+  @override
+  String get cameraRollNoSources => 'Choose the albums to sync.';
+
+  @override
+  String get cameraRollNewSource =>
+      'Photos of a newly chosen album are fetched from the beginning.';
+
+  @override
+  String backgroundLastRunFailed(String problem, String time) {
+    return 'Last background sync at $time failed: $problem';
+  }
+
+  @override
+  String backgroundLastRun(int stored, String time, int present) {
+    return 'Last background sync at $time: $stored uploaded, $present already present';
+  }
+
+  @override
+  String get backgroundSyncOff => 'The camera-roll sync is switched off.';
+
+  @override
+  String get backgroundSyncDidNotRun => 'The sync did not run.';
+
+  @override
+  String backgroundTaskFailed(String problem) {
+    return 'The background sync task failed: $problem';
+  }
+
+  @override
+  String get offlineRefusal =>
+      'Offline: changes need the server. Retry when it is reachable again.';
+
+  @override
+  String get offlineNoServer => 'Offline - the server cannot be reached.';
+
+  @override
+  String offlineShowingCopy(String time) {
+    return 'Offline - showing the copy from $time';
+  }
+
+  @override
+  String get invitationUsedNotSignedIn =>
+      'This invitation was already used. If you accepted it on another device, sign in here with a device code from that device; otherwise ask for a new invitation.';
+
+  @override
+  String get invitationUsedSignedIn =>
+      'This invitation was already used — you are already signed in here.';
+
+  @override
+  String invitationUsedSignedInAs(String user) {
+    return 'This invitation was already used — you are signed in here as $user.';
+  }
+
+  @override
+  String get invitationExpiredNotice =>
+      'This invitation has expired. Ask for a new one.';
+
+  @override
+  String get invitationWithdrawnNotice => 'This invitation was withdrawn.';
+
+  @override
+  String get invitationNotOfThisServer =>
+      'This is not an invitation of this server.';
+
+  @override
+  String loadingFailed(String problem) {
+    return 'Loading failed: $problem';
+  }
+
+  @override
+  String get noDataLoaded => 'No data loaded';
+
+  @override
+  String get tryAgain => 'Try again';
+
+  @override
+  String noSuchImage(String name) {
+    return 'No such image: $name';
+  }
+
+  @override
+  String noAlternatives(String name) {
+    return 'No alternatives for image: $name';
+  }
+
+  @override
+  String uploadFailed(String problem) {
+    return 'Upload failed: $problem';
+  }
+
+  @override
+  String get retry => 'Retry';
 }

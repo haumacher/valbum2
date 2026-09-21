@@ -378,7 +378,7 @@ void main() {
 
       expect(state.offline, isTrue);
       expect(
-        find.textContaining(offlineMessage(state.lastUpdated)),
+        find.textContaining(offlineMessage(testL10n, state.lastUpdated)),
         findsOneWidget,
       );
       // What is shown is the copy: the listing is still there.
@@ -436,7 +436,7 @@ void main() {
 
       // The edit mode is refused, with the reason on the screen, and the
       // "Save" the edit mode offers never appears.
-      expect(find.text(offlineRefusal), findsOneWidget);
+      expect(find.text(testL10n.offlineRefusal), findsOneWidget);
       expect(find.byTooltip("Save"), findsNothing);
       expect(
         requests.where((request) => request.method != "GET"),

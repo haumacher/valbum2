@@ -18,6 +18,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The data root the tests speak to.
 const String dataUrl = "http://server/valbum/data";
@@ -178,7 +179,7 @@ void main() {
       await tapEntry(tester, "album-properties");
       await withFakeImageHttp(() async {
         await tester.enterText(find.byType(TextField).first, "Zoo");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
       });
 
@@ -213,7 +214,7 @@ void main() {
       await tapEntry(tester, "album-properties");
       await withFakeImageHttp(() async {
         await tester.enterText(find.byType(TextField).last, "A subtitle");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
       });
 
@@ -255,7 +256,7 @@ void main() {
       await tapEntry(tester, "album-properties");
       await withFakeImageHttp(() async {
         await tester.enterText(find.byType(TextField).first, "Zoo");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
         await tester.tap(find.byIcon(Icons.save));
         await tester.pumpAndSettle();
@@ -301,7 +302,7 @@ void main() {
       await tapEntryText(tester, "Folder properties");
       await withFakeImageHttp(() async {
         await tester.enterText(find.byType(TextField).first, "Travels");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
       });
 

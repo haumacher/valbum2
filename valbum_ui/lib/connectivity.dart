@@ -18,6 +18,8 @@ library;
 
 import 'dart:async';
 
+import 'notices.dart';
+
 /// The kind of network the device is on.
 ///
 /// One value per thing the sync has to tell apart, not one per transport the
@@ -54,15 +56,12 @@ enum NetworkKind {
   /// Why a Wi-Fi-only sync cannot run on this kind of network.
   ///
   /// Refusals speak: this is what the settings screen shows instead of a sync
-  /// that quietly does not happen.
-  String get refusal => switch (this) {
-        NetworkKind.none =>
-          "No network: the sync waits for a Wi-Fi connection.",
-        NetworkKind.mobile =>
-          "No Wi-Fi: the sync is limited to Wi-Fi, and this device is on a "
-              "mobile connection.",
-        _ => "No Wi-Fi: the sync is limited to Wi-Fi, and this device is on "
-            "another network.",
+  /// that quietly does not happen. The reason as data, never as words: what
+  /// it reads is decided where it is shown, see [noticeText] (issue #108).
+  AppNotice get refusal => switch (this) {
+        NetworkKind.none => const NoNetworkForSync(),
+        NetworkKind.mobile => const NoWifiMobile(),
+        _ => const NoWifiOther(),
       };
 }
 

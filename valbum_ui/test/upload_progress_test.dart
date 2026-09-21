@@ -26,6 +26,7 @@ import 'package:valbum_ui/upload_progress.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// An upload of [size] bytes under the given name, every file distinct.
 UploadFile sizedFile(String name, int size, int fill) => UploadFile(
@@ -216,7 +217,7 @@ void main() {
         ),
         throwsA(
           isA<VAlbumException>()
-              .having((e) => e.message, 'message', uploadCancelledMessage),
+              .having((e) => e.message, 'message', uploadCancelledMessage(testL10n)),
         ),
       );
       expect(
@@ -307,7 +308,7 @@ void main() {
         // issue #70 spins while an answer is outstanding.
         expect(
           tester.widget<Text>(find.byKey(uploadProgressCountKey)).data,
-          uploadWaitingMessage,
+          testL10n.uploadWaiting,
         );
 
         // Now the server answers.
@@ -319,7 +320,7 @@ void main() {
       });
 
       expect(find.byKey(uploadProgressDialogKey), findsNothing);
-      expect(find.text("1 hochgeladen, 0 bereits vorhanden."), findsOneWidget);
+      expect(find.text("1 uploaded, 0 already present."), findsOneWidget);
       expect(listings, 2, reason: "the album was fetched again");
     });
   });

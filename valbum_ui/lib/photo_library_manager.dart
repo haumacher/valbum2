@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import 'photo_library.dart';
+import 'notices.dart';
 
 /// The number of items one scan looks at.
 ///
@@ -26,7 +27,7 @@ const int _pageSize = 100;
 /// The device's photo library on Android and iOS.
 class PhotoManagerLibrary extends PhotoLibrary {
   @override
-  String? accessProblem;
+  AppNotice? accessProblem;
 
   /// The album paths the last [albums] answered, by their id.
   final Map<String, AssetPathEntity> _paths = {};
@@ -45,7 +46,7 @@ class PhotoManagerLibrary extends PhotoLibrary {
     try {
       state = await PhotoManager.requestPermissionExtend();
     } catch (error) {
-      accessProblem = "The photo library cannot be opened: $error";
+      accessProblem = PhotoLibraryOpenFailed("$error");
       return false;
     }
     if (state.isAuth || state == PermissionState.limited) {
@@ -54,9 +55,7 @@ class PhotoManagerLibrary extends PhotoLibrary {
       accessProblem = null;
       return true;
     }
-    accessProblem =
-        "Access to the photo library was denied. Allow photo access for "
-        "VAlbum in the system settings, then try again.";
+    accessProblem = const PhotoAccessDenied();
     return false;
   }
 
@@ -169,7 +168,7 @@ class PhotoManagerLibrary extends PhotoLibrary {
         ),
       );
     } catch (error) {
-      accessProblem = "The photo library cannot be read: $error";
+      accessProblem = PhotoLibraryFailed("$error");
       return const [];
     }
     var albums = <PhotoAlbum>[];
@@ -276,9 +275,8 @@ class PhotoManagerLibrary extends PhotoLibrary {
     if (file == null) {
       // Not a reason to skip it: skipping would advance the watermark past a
       // photo that was never uploaded. The run fails, says so, and retries.
-      throw StateError(
-        "The contents of '${asset.title ?? asset.id}' are not on this device "
-        "yet (still in the cloud?).",
+      throw PhotoLibraryException(
+        PhotoNotOnDevice("'${asset.title ?? asset.id}'"),
       );
     }
     yield* file.openRead();

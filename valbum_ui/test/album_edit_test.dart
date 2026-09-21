@@ -7,6 +7,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// Parses an album from its JSON representation (including the type tag).
 AlbumInfo readAlbum(String json) =>
@@ -124,10 +125,10 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key("album-properties")));
         await tester.pumpAndSettle();
-        expect(find.text("Titel"), findsOneWidget);
-        expect(find.text("Subtitel"), findsOneWidget);
+        expect(find.text(testL10n.titleLabel), findsOneWidget);
+        expect(find.text(testL10n.subtitleLabel), findsOneWidget);
         await tester.enterText(find.byType(TextField).first, "Neu");
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         // The header shows the new title.

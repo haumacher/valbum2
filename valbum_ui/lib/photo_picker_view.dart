@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'l10n/app_localizations.dart';
+import 'notices.dart';
 import 'photo_library.dart';
 
 /// The key of the screen itself.
@@ -130,7 +131,10 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
         _loading = false;
         // Refusals speak: the library's own reason, and a plain sentence
         // where it gave none.
-        _problem = widget.library.accessProblem ?? _l10n.photoLibraryNoAccess;
+        var refused = widget.library.accessProblem;
+        _problem = refused == null
+            ? _l10n.photoLibraryNoAccess
+            : noticeText(refused, _l10n);
       });
       return;
     }

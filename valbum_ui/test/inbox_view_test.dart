@@ -16,6 +16,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'move_test.dart' hide main;
 import 'util/fake_image_http.dart';
+import 'util/l10n.dart';
 
 /// A photograph of the inbox, taken at noon of the given day.
 String part(String name, DateTime taken) =>
@@ -121,7 +122,7 @@ void main() {
         ["z.jpg"],
       ]);
       expect(days.last.undated, isTrue);
-      expect(days.last.heading, inboxUndatedHeading);
+      expect(days.last.heading(testL10n), inboxUndatedHeading(testL10n));
       expect(days.first.month, DateTime(2026, 3));
       expect(days.last.month, isNull);
     });
@@ -138,7 +139,7 @@ void main() {
       expect(find.byKey(const Key("inbox-day-2026-03-02")), findsOneWidget);
       // Written out in the locale's own words, never as a stored heading.
       expect(
-        find.text(inboxDayFormat.format(DateTime(2026, 3, 1))),
+        find.text(inboxDayFormat(testL10n).format(DateTime(2026, 3, 1))),
         findsOneWidget,
       );
 
@@ -148,7 +149,7 @@ void main() {
       expect(find.byKey(inboxMonthKey(DateTime(2026, 4))), findsOneWidget);
       expect(find.byKey(const Key("inbox-day-2026-04-05")), findsOneWidget);
       expect(
-        find.text(inboxMonthFormat.format(DateTime(2026, 4))),
+        find.text(inboxMonthFormat(testL10n).format(DateTime(2026, 4))),
         findsOneWidget,
       );
     });
@@ -215,7 +216,7 @@ void main() {
       await tester.tap(find.byKey(const Key("delete-selection")));
       await tester.pumpAndSettle();
       // Nothing is deleted from disk, and the question says so.
-      expect(find.text(inboxDeleteExplanation), findsOneWidget);
+      expect(find.text(testL10n.inboxDeleteExplanation), findsOneWidget);
       await tester.tap(find.byKey(const Key("inbox-delete-confirm")));
       await tester.pumpAndSettle();
 
@@ -249,7 +250,7 @@ void main() {
       await tester.tap(find.byKey(const Key("delete-selection")));
       await tester.pumpAndSettle();
 
-      expect(find.text(offlineRefusal), findsOneWidget);
+      expect(find.text(testL10n.offlineRefusal), findsOneWidget);
       expect(find.byKey(const Key("inbox-delete-dialog")), findsNothing);
       expect(requests.where((r) => r.method != "GET"), isEmpty);
     });
@@ -350,7 +351,7 @@ void main() {
 
       await tapHeading(tester, "inbox-day-2026-03-01");
       await openMenu(tester);
-      expect(find.text(inboxMoveLabel(2)), findsOneWidget);
+      expect(find.text(inboxMoveLabel(testL10n, 2)), findsOneWidget);
       await tester.tap(find.byKey(const Key("move-to")));
       await tester.pumpAndSettle();
       // An image lives in an album, so a folder of folders cannot be picked

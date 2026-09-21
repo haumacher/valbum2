@@ -13,7 +13,11 @@
 /// file, and nothing here has to change.
 library;
 
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/widgets.dart';
+
+import 'l10n/app_localizations.dart';
 
 /// The language the app is written in, and the fallback of every other.
 const Locale sourceLocale = Locale("en");
@@ -54,4 +58,57 @@ Locale resolveAppLocale(
     }
   }
   return supported.first;
+}
+
+/// The words of the app, for the layers that have no widget tree to ask.
+///
+/// Everything a screen shows is read through `AppLocalizations.of(context)`;
+/// the transport, the offline cache and the background run have no context —
+/// and a sentence they compose is shown all the same (a refused request
+/// travels as `VAlbumException.message`, a background report is persisted and
+/// read back by the settings screen). They read the strings here instead: the
+/// very same [resolveAppLocale] rule the app applies, asked of the platform's
+/// own preference list rather than of a widget. So the transport speaks the
+/// language the app speaks, and no layer keeps an English fallback of its own.
+///
+/// Which platform is asked matters, see [appPlatformDispatcher]: there are two
+/// dispatchers, and only one of them is the one the app renders from.
+AppLocalizations get platformMessages => lookupAppLocalizations(
+      resolveAppLocale(
+        appPlatformDispatcher.locales,
+        AppLocalizations.supportedLocales,
+      ),
+    );
+
+/// The platform the app reads its language from.
+///
+/// There are two [PlatformDispatcher]s to be had, and in a running app they
+/// are one and the same object, so the difference is invisible:
+///
+///  * [WidgetsBinding.instance.platformDispatcher] — what the binding hands
+///    the framework, and therefore what [WidgetsApp] resolves its locale from
+///    and what every widget of the app is drawn in;
+///  * [PlatformDispatcher.instance] — the engine's own singleton.
+///
+/// Under `flutter_test` they are **not** the same: the binding's dispatcher is
+/// a `TestPlatformDispatcher` wrapping the engine's, and that wrapper is what
+/// a test writes to (`tester.platformDispatcher.localesTestValue`, which is
+/// how a widget test puts the app into another language). Reading the engine's
+/// singleton here would mean an app showing German widgets beside an English
+/// transport sentence — and no test could ever check the transport's language.
+///
+/// So the binding decides wherever there is one, which is every screen, every
+/// widget test and every plain unit test of this suite. The engine's singleton
+/// answers only where no binding has been initialized at all: the background
+/// isolate the platform starts for a camera-roll run (see `background.dart`),
+/// which words its persisted report without ever building a widget.
+PlatformDispatcher get appPlatformDispatcher {
+  try {
+    return WidgetsBinding.instance.platformDispatcher;
+  } catch (_) {
+    // No binding: `WidgetsBinding.instance` asserts in a debug build and
+    // fails the null cast in a release one, and both are answered the same
+    // way — there is no app here, so the engine is all there is to ask.
+    return PlatformDispatcher.instance;
+  }
 }

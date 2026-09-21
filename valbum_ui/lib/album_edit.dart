@@ -8,6 +8,7 @@ library;
 
 import 'album_layout.dart' show ToImage;
 import 'album_model.dart';
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
 
 /// A rigid transformation of the image plane — the dihedral group `D4`.
@@ -223,10 +224,10 @@ const List<int> privacyLevels = [privacyPublic, privacyMembers, privacyPrivate];
 ///
 /// An unknown level (a server newer than this app) reads as [privacyPrivate]:
 /// a level the app does not know is never claimed to be public.
-String privacyName(int level) => switch (level) {
-      privacyPublic => "Public",
-      privacyMembers => "Members",
-      _ => "Private",
+String privacyName(AppLocalizations l10n, int level) => switch (level) {
+      privacyPublic => l10n.privacyPublicName,
+      privacyMembers => l10n.privacyMembersName,
+      _ => l10n.privacyPrivateName,
     };
 
 /// The privacy level of the image representing the given album part.
@@ -838,18 +839,18 @@ Duration? offsetFor(ImagePart reference, DateTime? corrected) {
 /// one that is not zero — a zero in between is kept, so that the reading is
 /// unambiguous, a zero at either end is left out. The zero offset reads
 /// `"0 s"`; the dialog says "Nothing to adjust" instead.
-String offsetInWords(Duration offset) {
+String offsetInWords(AppLocalizations l10n, Duration offset) {
   var millis = offset.inMilliseconds;
   if (millis == 0) {
-    return "0 s";
+    return "0 ${l10n.unitSeconds}";
   }
   var sign = millis < 0 ? "−" : "+";
   var rest = millis.abs();
   var units = [
-    ("d", Duration.millisecondsPerDay),
-    ("h", Duration.millisecondsPerHour),
-    ("min", Duration.millisecondsPerMinute),
-    ("s", Duration.millisecondsPerSecond),
+    (l10n.unitDays, Duration.millisecondsPerDay),
+    (l10n.unitHours, Duration.millisecondsPerHour),
+    (l10n.unitMinutes, Duration.millisecondsPerMinute),
+    (l10n.unitSeconds, Duration.millisecondsPerSecond),
   ];
   var values = <(String, int)>[];
   for (var (name, size) in units) {
@@ -861,7 +862,8 @@ String offsetInWords(Duration offset) {
   if (first < 0) {
     // Less than a second, but not nothing: say it in seconds rather than
     // claiming there is no offset.
-    return "$sign${(offset.inMilliseconds.abs() / 1000).toStringAsFixed(3)} s";
+    return "$sign${(offset.inMilliseconds.abs() / 1000).toStringAsFixed(3)} "
+        "${l10n.unitSeconds}";
   }
   var words = [
     for (var i = first; i <= last; i++) "${values[i].$2} ${values[i].$1}",

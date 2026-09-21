@@ -15,6 +15,7 @@ import 'diagnostics.dart';
 import 'offline.dart';
 import 'offline_file.dart';
 import 'photo_library.dart';
+import 'notices.dart';
 import 'photo_library_manager.dart';
 import 'wakelock.dart';
 import 'wakelock_plugin.dart';
@@ -37,10 +38,7 @@ bool isSocketError(Object error) => error is SocketException;
 /// would never do anything (issue #30).
 PhotoLibrary defaultPhotoLibrary() => Platform.isAndroid || Platform.isIOS
     ? PhotoManagerLibrary()
-    : const UnavailablePhotoLibrary(
-        "No photo library on this platform - camera-roll sync runs on "
-        "Android and iOS.",
-      );
+    : const UnavailablePhotoLibrary(NoPhotoLibraryPlatform());
 
 /// What keeps the screen awake while an upload runs, see [Wakelock].
 ///
@@ -93,10 +91,7 @@ BackgroundScheduler defaultBackgroundScheduler() =>
     defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS
         ? WorkmanagerScheduler()
-        : const UnavailableBackgroundScheduler(
-            "Background sync is not available on this platform; the camera "
-            "roll syncs while the app is open.",
-          );
+        : const UnavailableBackgroundScheduler(NoBackgroundSyncHere());
 
 /// Runs [task] as the platform's background task, see
 /// [backgroundSyncDispatcher].

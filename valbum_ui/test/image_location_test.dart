@@ -53,7 +53,7 @@ void main() {
       // different number to every map there is, see [mapCoordinate].
       Intl.withLocale("de", () {
         expect(mapCoordinate(48.123456), "48.123456");
-        expect(mapLocationText(atHome), "Location: 48.123456, 8.654321");
+        expect(mapLocationText(testL10n, atHome), "Location: 48.123456, 8.654321");
         expect(
           mapUrlFor("https://www.google.com/maps?q={lat},{lon}", atHome),
           "https://www.google.com/maps?q=48.123456,8.654321",
@@ -62,8 +62,8 @@ void main() {
     });
 
     test('read as the line spells them', () {
-      expect(mapLocationText(atHome), "Location: 48.123456, 8.654321");
-      expect(mapLocationText(capeTown), "Location: -33.918861, 18.423300");
+      expect(mapLocationText(testL10n, atHome), "Location: 48.123456, 8.654321");
+      expect(mapLocationText(testL10n, capeTown), "Location: -33.918861, 18.423300");
     });
   });
 

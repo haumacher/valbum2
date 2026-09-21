@@ -11,6 +11,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 const List<String> inbox = ["2026-03-01 Inbox"];
 
@@ -81,7 +82,7 @@ void main() {
         reason: "nothing may be uploaded to a server that refused");
     // A refusal is retried with back-off; the reason is on display meanwhile.
     expect(sync.status.phase, CameraRollPhase.waiting);
-    expect(sync.status.line, contains("paired device"));
+    expect(cameraRollLine(sync.status, testL10n), contains("paired device"));
     expect(sync.config.since, watermark, reason: "the watermark stays");
 
     // Offline: the sync waits rather than failing.
@@ -89,6 +90,6 @@ void main() {
     sync.trigger();
     await withFakeImageHttp(() => tester.pumpAndSettle());
     expect(sync.status.phase, CameraRollPhase.waiting);
-    expect(sync.status.line.toLowerCase(), contains("offline"));
+    expect(cameraRollLine(sync.status, testL10n).toLowerCase(), contains("offline"));
   });
 }

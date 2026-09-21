@@ -1191,4 +1191,1032 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get cameraNotOpened =>
       'Die Kamera konnte nicht geöffnet werden. Geben Sie stattdessen den Code ein.';
+
+  @override
+  String get ok => 'OK';
+
+  @override
+  String get delete => 'Löschen';
+
+  @override
+  String get deleteEllipsis => 'Löschen…';
+
+  @override
+  String get reload => 'Neu laden';
+
+  @override
+  String get up => 'Nach oben';
+
+  @override
+  String get home => 'Startseite';
+
+  @override
+  String get upload => 'Hochladen';
+
+  @override
+  String get apply => 'Übernehmen';
+
+  @override
+  String get discard => 'Verwerfen';
+
+  @override
+  String get stay => 'Bleiben';
+
+  @override
+  String get keepEditing => 'Weiter bearbeiten';
+
+  @override
+  String get refresh => 'Aktualisieren';
+
+  @override
+  String get open => 'Öffnen';
+
+  @override
+  String get select => 'Auswählen';
+
+  @override
+  String get group => 'Gruppieren';
+
+  @override
+  String get loading => 'Wird geladen...';
+
+  @override
+  String get serverMenuEntry => 'Server...';
+
+  @override
+  String get titleLabel => 'Titel';
+
+  @override
+  String get subtitleLabel => 'Untertitel';
+
+  @override
+  String get nameLabel => 'Name';
+
+  @override
+  String get dateLabel => 'Datum';
+
+  @override
+  String get commentLabel => 'Kommentar';
+
+  @override
+  String get headingLabel => 'Überschrift';
+
+  @override
+  String get mustNotBeEmpty => 'Darf nicht leer sein';
+
+  @override
+  String get viewAsYourself => 'Du selbst';
+
+  @override
+  String get viewAsMembers => 'Mitglieder';
+
+  @override
+  String get viewAsPublic => 'Öffentlich';
+
+  @override
+  String get viewAsStateYourself => 'Sie selbst';
+
+  @override
+  String get viewAsStateMembers => 'Mitglieder';
+
+  @override
+  String get viewAsStatePublic => 'public';
+
+  @override
+  String get viewAsLabel => 'Anzeigen als';
+
+  @override
+  String get previewAsMembers =>
+      'Ansicht als Mitglied – das sehen die Mitglieder';
+
+  @override
+  String get previewAsPublic =>
+      'Ansicht als „öffentlich“ – das sieht die Öffentlichkeit';
+
+  @override
+  String get editHeadingTitle => 'Überschrift bearbeiten';
+
+  @override
+  String get insertHeading => 'Überschrift einfügen';
+
+  @override
+  String get deleteHeadingTooltip => 'Überschrift löschen';
+
+  @override
+  String get alreadyInOrder => 'Ist bereits sortiert';
+
+  @override
+  String get noOtherImageFromCamera =>
+      'Es gibt kein weiteres Bild von dieser Kamera';
+
+  @override
+  String get nothingToAdjust => 'Es gibt nichts anzupassen';
+
+  @override
+  String saveFailed(String problem) {
+    return 'Speichern fehlgeschlagen: $problem';
+  }
+
+  @override
+  String get discardChangesTitle => 'Die Änderungen an diesem Album verwerfen?';
+
+  @override
+  String get discardChangesMessage =>
+      'Die hier vorgenommenen Änderungen wurden nicht gespeichert. Wenn Sie sie verwerfen, wird das Album wieder so angezeigt, wie es auf dem Server vorliegt.';
+
+  @override
+  String get saveChangesTitle =>
+      'Sollen die Änderungen an diesem Album gespeichert werden?';
+
+  @override
+  String get saveChangesMessage =>
+      'Wenn Sie das Album verlassen, wird der Bearbeitungsvorgang beendet. Nicht gespeicherte Änderungen gehen verloren, sofern sie nicht jetzt gespeichert werden.';
+
+  @override
+  String get saveOrDiscardFirst =>
+      'Speichern oder verwerfen Sie Ihre Änderungen zuerst';
+
+  @override
+  String get headingCannotMove =>
+      'Eine Überschrift kann nicht verschoben werden.';
+
+  @override
+  String get shareLinkAction => 'Link freigeben…';
+
+  @override
+  String get albumProperties => 'Albumeigenschaften';
+
+  @override
+  String get folderProperties => 'Ordnereigenschaften';
+
+  @override
+  String moveSubjectTo(String subject) {
+    return '$subject verschieben nach…';
+  }
+
+  @override
+  String get moveAlbumTo => 'Album verschieben nach…';
+
+  @override
+  String get deleteAlbumAction => 'Album löschen…';
+
+  @override
+  String deleteSubjectAction(String subject) {
+    return '$subject löschen…';
+  }
+
+  @override
+  String get sortByDate => 'Nach Datum sortieren';
+
+  @override
+  String get minRatingLabel => 'Mindestbewertung';
+
+  @override
+  String get showMoreImages => 'Weitere Bilder anzeigen';
+
+  @override
+  String get showFewerImages => 'Weniger Bilder anzeigen';
+
+  @override
+  String get findDuplicatesAction => 'Duplikate suchen...';
+
+  @override
+  String get findDuplicatesTitle => 'Duplikate finden';
+
+  @override
+  String get findDuplicatesMessage =>
+      'Jedes Foto dieses Albums, das die Bibliothek bereits an anderer Stelle besitzt, wird aus dem Album entfernt und in einem eigenen Ordner der Bibliothek abgelegt. Es wird nichts gelöscht, und die andere Kopie bleibt an ihrem Platz.';
+
+  @override
+  String get noDuplicatesFound =>
+      'Es gibt nirgendwo sonst in der Bibliothek ein Foto dieses Albums.';
+
+  @override
+  String duplicatesSetAside(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Fotos wurden aussortiert; die verbleibenden Kopien befinden sich an anderer Stelle in der Bibliothek.',
+      one:
+          '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get refreshPreviews => 'Vorschauen aktualisieren';
+
+  @override
+  String get refreshPreviewsMessage =>
+      'Die Miniaturansichten und Videodarstellungen dieses Albums werden gelöscht und bei der nächsten Anzeige neu erstellt. Die Fotos selbst bleiben davon unberührt.';
+
+  @override
+  String previewsRefreshed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count zwischengespeicherte Dateien wurden verworfen; die Vorschauen werden neu erstellt.',
+      one:
+          '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get notAnAlbumAnswer => 'Der Server hat kein Album zurückgegeben.';
+
+  @override
+  String ratingFilterHidesAll(int rating) {
+    return 'Kein Bild wurde mit $rating oder besser bewertet – drücke + (oder die +-Taste), um weitere anzuzeigen.';
+  }
+
+  @override
+  String get turnRight => 'Nach rechts drehen';
+
+  @override
+  String get turnLeft => 'Nach links drehen';
+
+  @override
+  String get flipVertically => 'Vertikal spiegeln';
+
+  @override
+  String get ungroupAction => 'Gruppierung aufheben';
+
+  @override
+  String get chooseGroupPicture => 'Wählen Sie das Gruppenbild aus';
+
+  @override
+  String get selectAllFromCamera => 'Alle Bilder dieser Kamera auswählen';
+
+  @override
+  String get adjustRecordingTimeAction => 'Aufnahmedauer anpassen…';
+
+  @override
+  String get imageProperties => 'Bildeigenschaften';
+
+  @override
+  String get useAsAlbumPicture => 'Als Albumbild verwenden';
+
+  @override
+  String get albumPictureTooltip => 'Albumbild';
+
+  @override
+  String privacyControlTooltip(String next, String level) {
+    return 'Datenschutzstufe: $level (tippen Sie für $next)';
+  }
+
+  @override
+  String get groupNeedsTwo =>
+      'Wählen Sie mindestens zwei Bilder aus, um sie zu gruppieren';
+
+  @override
+  String get dragToReorder => 'Zum Neuanordnen ziehen';
+
+  @override
+  String partCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Teile',
+      one: '1 Teil',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get notATime => 'Keine Zeitangabe (JJJJ-MM-TT HH:mm:ss)';
+
+  @override
+  String appliesToImages(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Gilt für $count Bilder',
+      one: 'Gilt für 1 Bild',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String useNameDateOne(String time) {
+    return 'Verwende die Zeitangabe im Dateinamen: $time';
+  }
+
+  @override
+  String useNameDateMany(int count) {
+    return 'Verwende die Zeitangabe im Dateinamen ($count Bilder)';
+  }
+
+  @override
+  String get adjustRecordingTimeTitle => 'Aufnahmezeit anpassen';
+
+  @override
+  String get correctTime => 'Korrekte Zeit';
+
+  @override
+  String get pickDateAndTime => 'Datum und Uhrzeit auswählen';
+
+  @override
+  String get adjustRecordingTimeHelp =>
+      'Die ursprüngliche Aufnahmezeit bleibt im Foto erhalten; das Album behält seine eigene bei.';
+
+  @override
+  String get makeThisAnAlbum => 'Als Album speichern';
+
+  @override
+  String get makeThisAnInbox => 'Als Posteingang festlegen';
+
+  @override
+  String get inboxExplanation =>
+      'Fotos, die darauf warten, sortiert zu werden, sortiert nach dem Aufnahmedatum.';
+
+  @override
+  String get dateNone => 'Datum: keine Angabe';
+
+  @override
+  String dateIs(String date) {
+    return 'Datum: $date';
+  }
+
+  @override
+  String get pickDate => 'Wähle ein Datum aus';
+
+  @override
+  String get clearDate => 'Datum entfernen';
+
+  @override
+  String get dateFromFolderName => 'Es wird aus dem Ordnernamen übernommen.';
+
+  @override
+  String get dateFromPhotos => 'Aus den Fotos übernommen.';
+
+  @override
+  String get noAlbumPictureHint =>
+      'Es wurde kein Albumbild ausgewählt – wählen Sie im Bearbeitungsmodus eines auf einer Kachel aus.';
+
+  @override
+  String get zoomIn => 'Vergrößern';
+
+  @override
+  String get zoomOut => 'Verkleinern';
+
+  @override
+  String get resetCrop => 'Zuschneidebereich zurücksetzen';
+
+  @override
+  String get privacyPublicName => 'Öffentlich';
+
+  @override
+  String get privacyMembersName => 'Mitglieder';
+
+  @override
+  String get privacyPrivateName => 'Privat';
+
+  @override
+  String get unitDays => 'd';
+
+  @override
+  String get unitHours => 'h';
+
+  @override
+  String get unitMinutes => 'min';
+
+  @override
+  String get unitSeconds => 's';
+
+  @override
+  String get useAsFolderPicture => 'Als Ordnerbild verwenden';
+
+  @override
+  String get useNoFolderPicture => 'Kein Ordnerbild verwenden';
+
+  @override
+  String get libraryEmptyNotice => 'Hier gibt es noch keine Alben.';
+
+  @override
+  String get libraryEmptyHint =>
+      'Erstellen Sie die erste über das Menü oben rechts.';
+
+  @override
+  String get folderEmptyNotice => 'Dieser Ordner enthält noch keine Alben.';
+
+  @override
+  String get createAlbum => 'Album erstellen';
+
+  @override
+  String get createFolder => 'Ordner erstellen';
+
+  @override
+  String get applyRule => 'Regel anwenden';
+
+  @override
+  String get moveToAction => 'Verschieben nach…';
+
+  @override
+  String get nothingToFile => 'Es gibt nichts einzureichen.';
+
+  @override
+  String filedAlbums(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Alben wurden verschoben.',
+      one: '1 Album abgelegt.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get placementNone => 'keine Regel';
+
+  @override
+  String get placementByYear => 'nach Jahr';
+
+  @override
+  String get placementByYearMonth => 'nach Jahr und Monat';
+
+  @override
+  String get placementHeading => 'Ablageregel';
+
+  @override
+  String get placementExplanation =>
+      'Was hier eintrifft, wird im entsprechenden Jahresordner abgelegt. Was bereits hier ist, bleibt so lange dort, bis die Ablageregel über das Menü angewendet wird.';
+
+  @override
+  String get createAlbumUndatedHint =>
+      'Ohne Datum bleibt das Album in diesem Ordner.';
+
+  @override
+  String get createInboxLabel => 'Posteingang';
+
+  @override
+  String get createInboxHint =>
+      'Fotos, die darauf warten, sortiert zu werden: sortiert nach dem Tag, an dem sie aufgenommen wurden, ohne Datum und ohne eigene Reihenfolge.';
+
+  @override
+  String get newFolderTitle => 'Neuer Ordner';
+
+  @override
+  String imageCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Bilder',
+      one: '1 Bild',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get targetTopLevel => 'die oberste Ebene';
+
+  @override
+  String get pickerTopLevel => 'Oberste Ebene';
+
+  @override
+  String get nothingToMove => 'Es gibt nichts zu verschieben.';
+
+  @override
+  String moveConfirm(String subject, String target) {
+    return '$subject nach $target verschieben';
+  }
+
+  @override
+  String nothingMovedTo(String target) {
+    return 'Es wurde nichts an $target verschoben.';
+  }
+
+  @override
+  String movedToTarget(String subject, String target) {
+    return '$subject wurde nach $target verschoben.';
+  }
+
+  @override
+  String get deleteExplanation =>
+      'Ein Album ohne Bilder wird entfernt; ein Album mit Bildern wird in den Papierkorb des Speicherbereichs verschoben (es wird nichts von der Festplatte gelöscht).';
+
+  @override
+  String deleteQuestion(String what) {
+    return '$what löschen?';
+  }
+
+  @override
+  String deletedWhat(String what) {
+    return 'Gelöscht: $what.';
+  }
+
+  @override
+  String newAlbumCreatedEmpty(String target) {
+    return 'Das neue Album $target wurde erstellt und ist leer.';
+  }
+
+  @override
+  String get imagesLiveInAlbums =>
+      'Bilder befinden sich in Alben – öffne eines.';
+
+  @override
+  String get albumHoldsNoFolders => 'Ein Album enthält keine Ordner.';
+
+  @override
+  String get folderCannotBeShown =>
+      'Dieser Ordner kann nicht angezeigt werden.';
+
+  @override
+  String get createNewAlbum => 'Neues Album erstellen…';
+
+  @override
+  String get moveTitle => 'Zug';
+
+  @override
+  String get inboxEmptyNotice => 'Hier wartet nichts.';
+
+  @override
+  String get inboxUndatedHeading => 'Ohne Datum';
+
+  @override
+  String get inboxDeleteExplanation =>
+      'Die Fotos werden in den Papierkorb des Speicherbereichs verschoben. Es wird nichts von der Festplatte gelöscht.';
+
+  @override
+  String get clearSelection => 'Auswahl aufheben';
+
+  @override
+  String selectedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ausgewählte Bilder',
+      one: '1 Bild ausgewählt',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get selectEverythingBelow => 'Alles darunter auswählen';
+
+  @override
+  String get nothingSelected => 'Es ist nichts ausgewählt.';
+
+  @override
+  String get notEditableMessage => 'Du darfst dieses Album nicht bearbeiten.';
+
+  @override
+  String get pictureFailedMessage => 'Dieses Bild konnte nicht geladen werden.';
+
+  @override
+  String get takeBack => 'Zurücknehmen…';
+
+  @override
+  String get previousImage => 'Vorheriges Bild';
+
+  @override
+  String get nextImage => 'Nächstes Bild';
+
+  @override
+  String get showAlternatives => 'Alternativen anzeigen';
+
+  @override
+  String propertyFile(String name) {
+    return 'Datei: $name';
+  }
+
+  @override
+  String propertyTaken(String time) {
+    return 'Aufgenommen: $time';
+  }
+
+  @override
+  String propertyCamera(String camera) {
+    return 'Kamera: $camera';
+  }
+
+  @override
+  String propertyLocation(String latitude, String longitude) {
+    return 'Standort: $latitude, $longitude';
+  }
+
+  @override
+  String get showOnMap => 'Auf der Karte anzeigen';
+
+  @override
+  String addedBy(String user) {
+    return 'Hinzugefügt von $user';
+  }
+
+  @override
+  String get rightLabelView => 'Anzeigen';
+
+  @override
+  String get rightLabelDownload => 'Herunterladen';
+
+  @override
+  String get rightLabelContribute => 'Beitrag leisten';
+
+  @override
+  String get rightLabelEdit => 'Bearbeiten';
+
+  @override
+  String get rightExplanationView =>
+      'Das Album und seine Vorschaubilder anzeigen';
+
+  @override
+  String get rightExplanationDownload => 'Kopien der Originale anfertigen';
+
+  @override
+  String get rightExplanationContribute => 'Fotos hinzufügen';
+
+  @override
+  String get rightExplanationEdit =>
+      'Das Album und seinen gesamten Inhalt ändern';
+
+  @override
+  String get rightsPhraseEdit => 'Du kannst das ändern';
+
+  @override
+  String get rightsPhraseContribute => 'Du kannst Fotos hinzufügen';
+
+  @override
+  String get rightsPhraseDownload => 'Sie können ihn ansehen und herunterladen';
+
+  @override
+  String get rightsPhraseView => 'Sie können einen Blick hineinwerfen';
+
+  @override
+  String get rightsPhraseNone => 'Hier können Sie nichts tun';
+
+  @override
+  String get sharedWithYou => 'Wurde für dich freigegeben';
+
+  @override
+  String sharedByOwner(String owner) {
+    return 'Freigegeben von $owner';
+  }
+
+  @override
+  String serverNotReached(String problem) {
+    return 'Der Server konnte nicht erreicht werden: $problem';
+  }
+
+  @override
+  String httpFailure(String doing, int status) {
+    return 'HTTP-$status während $doing.';
+  }
+
+  @override
+  String doingLoading(String url) {
+    return 'Laden von $url';
+  }
+
+  @override
+  String get doingLoadingImage => 'das Bild wurde geladen';
+
+  @override
+  String doingStoring(String url) {
+    return 'Speichern von $url';
+  }
+
+  @override
+  String doingCreating(String url) {
+    return 'Erstellen von $url';
+  }
+
+  @override
+  String doingUploading(String url) {
+    return 'Hochladen an $url';
+  }
+
+  @override
+  String doingAsking(String url) {
+    return 'Abfrage von $url';
+  }
+
+  @override
+  String doingMoving(String target) {
+    return 'Wechsel zu $target';
+  }
+
+  @override
+  String doingDeleting(String folder) {
+    return 'Löschen im $folder';
+  }
+
+  @override
+  String doingFiling(String folder) {
+    return 'Ablage im $folder';
+  }
+
+  @override
+  String doingFindingDuplicates(String folder) {
+    return 'Suche nach Duplikaten im $folder';
+  }
+
+  @override
+  String doingSigningIn(String url) {
+    return 'Anmeldung unter $url';
+  }
+
+  @override
+  String doingRefreshingPreviews(String folder) {
+    return 'Aktualisierung der Vorschauen von $folder';
+  }
+
+  @override
+  String serverUnreachableNoPreview(String problem) {
+    return 'Der Server ist nicht erreichbar ($problem), daher kann keine Vorschau angezeigt werden.';
+  }
+
+  @override
+  String serverUnreachableNoCache(String problem) {
+    return 'Der Server ist nicht erreichbar ($problem), und für diese Ansicht ist nichts im Cache gespeichert.';
+  }
+
+  @override
+  String notVAlbumServer(String server) {
+    return 'Der Server unter $server hat keine Albumdaten zurückgegeben – es handelt sich also nicht um einen VAlbum-Server, oder ist die Server-URL in den Einstellungen falsch?';
+  }
+
+  @override
+  String get noAnswerInTime => 'keine Antwort innerhalb der vorgegebenen Zeit';
+
+  @override
+  String get uploadConnectionLost => 'Verbindung unterbrochen';
+
+  @override
+  String uploadInterruptedCounts(int total, int onServer, int remaining) {
+    return 'Von $total Fotos befinden sich $onServer auf dem Server; die verbleibenden $remaining können erneut gesendet werden.';
+  }
+
+  @override
+  String get uploadCancelled => 'Der Upload wurde abgebrochen.';
+
+  @override
+  String get uploadAsking => 'Der Server wird gerade abgefragt...';
+
+  @override
+  String get uploadWaiting => 'Warten auf den Server...';
+
+  @override
+  String uploadPreparing(int total, int done) {
+    return 'Vorbereitung: $done von $total...';
+  }
+
+  @override
+  String uploadImageCount(int total, int done) {
+    return '$done von $total Bildern';
+  }
+
+  @override
+  String uploadSummary(int stored, int present) {
+    return '$stored hochgeladen, $present bereits vorhanden.';
+  }
+
+  @override
+  String alreadyInLibrary(String where) {
+    return 'Bereits in der Bibliothek vorhanden: $where.';
+  }
+
+  @override
+  String get noticeGuestNoSpace =>
+      'Bitte den Administrator, dir Speicherplatz für ein Album zuzuweisen.';
+
+  @override
+  String get noticeNoServerConfigured =>
+      'Es ist kein Album-Server konfiguriert.';
+
+  @override
+  String get noticeOffline => 'Offline: Der Album-Server ist nicht erreichbar.';
+
+  @override
+  String noticeServerUnreachable(String problem) {
+    return 'Der Server ist nicht erreichbar ($problem).';
+  }
+
+  @override
+  String get noticePhotoLibraryUnreadable =>
+      'Die Fotobibliothek kann nicht gelesen werden.';
+
+  @override
+  String noticePhotoLibraryFailed(String problem) {
+    return 'Die Fotobibliothek konnte nicht gelesen werden: $problem';
+  }
+
+  @override
+  String get noticePhotoAccessDenied =>
+      'Der Zugriff auf die Fotobibliothek wurde verweigert. Erlauben Sie VAlbum in den Systemeinstellungen den Zugriff auf Fotos und versuchen Sie es dann erneut.';
+
+  @override
+  String noticePhotoLibraryOpenFailed(String problem) {
+    return 'Die Fotobibliothek kann nicht geöffnet werden: $problem';
+  }
+
+  @override
+  String noticeAlbumNotOnDevice(String name) {
+    return 'Der Inhalt von $name befindet sich noch nicht auf diesem Gerät (noch in der Cloud?).';
+  }
+
+  @override
+  String noticeBackgroundScheduleFailed(String problem) {
+    return 'Die Hintergrundsynchronisierung konnte nicht geplant werden: $problem';
+  }
+
+  @override
+  String noticeBackgroundUnscheduleFailed(String problem) {
+    return 'Die Hintergrundsynchronisierung konnte nicht deaktiviert werden: $problem';
+  }
+
+  @override
+  String get noticeNoNetwork =>
+      'Kein Netzwerk: Die Synchronisierung wartet auf eine WLAN-Verbindung.';
+
+  @override
+  String get noticeNoWifiMobile =>
+      'Kein WLAN: Die Synchronisierung ist auf WLAN beschränkt, und dieses Gerät nutzt eine Mobilfunkverbindung.';
+
+  @override
+  String get noticeNoWifiOther =>
+      'Kein WLAN: Die Synchronisierung ist auf WLAN beschränkt, und dieses Gerät befindet sich in einem anderen Netzwerk.';
+
+  @override
+  String get noticeNoBackgroundSyncHere =>
+      'Die Hintergrundsynchronisierung ist auf dieser Plattform nicht verfügbar; die Fotos werden synchronisiert, solange die App geöffnet ist.';
+
+  @override
+  String get noticeNoBackgroundSyncInBrowser =>
+      'Die Hintergrundsynchronisierung ist in einem Browser nicht verfügbar; die Fotos werden synchronisiert, solange die App geöffnet ist.';
+
+  @override
+  String get noticeNoBackgroundSyncInApp =>
+      'Die Hintergrundsynchronisierung ist in dieser App nicht verfügbar.';
+
+  @override
+  String get noticeNoBackgroundSyncInTest =>
+      'In diesem Test findet keine Synchronisierung im Hintergrund statt.';
+
+  @override
+  String get noticeNoPhotoLibraryPlatform =>
+      'Auf dieser Plattform gibt es keine Fotobibliothek – die Synchronisierung der Kamerarolle funktioniert unter Android und iOS.';
+
+  @override
+  String get noticeNoPhotoLibraryBrowser =>
+      'In einem Browser gibt es keine Fotobibliothek – die Synchronisierung der Kamerarolle funktioniert unter Android und iOS.';
+
+  @override
+  String get cameraRollOff =>
+      'Die Synchronisierung der Kamerarolle ist deaktiviert.';
+
+  @override
+  String cameraRollUploading(int total, int done) {
+    return 'Hochladen von $done von $total...';
+  }
+
+  @override
+  String cameraRollWaitingUntil(String time) {
+    return 'Warten bis $time.';
+  }
+
+  @override
+  String get cameraRollNextAttempt => 'beim nächsten Versuch';
+
+  @override
+  String cameraRollFailedRetrying(String reason, String time) {
+    return 'Fehlgeschlagen: $reason – erneuter Versuch um $time';
+  }
+
+  @override
+  String cameraRollFailed(String reason) {
+    return 'Fehlgeschlagen: $reason';
+  }
+
+  @override
+  String get cameraRollUnknownReason => 'unbekannter Grund';
+
+  @override
+  String get cameraRollWaitingForPhotos => 'Warten auf neue Fotos.';
+
+  @override
+  String cameraRollNothingNew(String time) {
+    return 'Nichts Neues, überprüft um $time.';
+  }
+
+  @override
+  String cameraRollSynced(int stored, int count, String time, int present) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Fotos wurden um $time synchronisiert ($stored hochgeladen, $present bereits vorhanden).',
+      one:
+          '1 Foto wurde um $time synchronisiert ($stored hochgeladen, $present bereits vorhanden).',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cameraRollIndexing(int total, int done) {
+    return 'Die Bibliothek wird noch indiziert ($done von $total Ordnern); Fotos, die sich bereits in einem nicht indizierten Album befinden, werden möglicherweise erneut hochgeladen.';
+  }
+
+  @override
+  String cameraRollInboxGone(String name) {
+    return 'Der ausgewählte Posteingang ist nicht mehr vorhanden; es wird $name verwendet.';
+  }
+
+  @override
+  String get cameraRollNoSources =>
+      'Wählen Sie die Alben aus, die synchronisiert werden sollen.';
+
+  @override
+  String get cameraRollNewSource =>
+      'Fotos eines neu ausgewählten Albums werden von Anfang an abgerufen.';
+
+  @override
+  String backgroundLastRunFailed(String problem, String time) {
+    return 'Die letzte Hintergrundsynchronisierung um $time ist fehlgeschlagen: $problem';
+  }
+
+  @override
+  String backgroundLastRun(int stored, String time, int present) {
+    return 'Letzte Hintergrundsynchronisierung um $time: $stored hochgeladen, $present bereits vorhanden';
+  }
+
+  @override
+  String get backgroundSyncOff =>
+      'Die Synchronisierung der Kamerarolle ist deaktiviert.';
+
+  @override
+  String get backgroundSyncDidNotRun =>
+      'Die Synchronisierung wurde nicht ausgeführt.';
+
+  @override
+  String backgroundTaskFailed(String problem) {
+    return 'Die Hintergrund-Synchronisierungsaufgabe ist fehlgeschlagen: $problem';
+  }
+
+  @override
+  String get offlineRefusal =>
+      'Offline: Für Änderungen ist der Server erforderlich. Versuchen Sie es erneut, sobald er wieder erreichbar ist.';
+
+  @override
+  String get offlineNoServer => 'Offline – der Server ist nicht erreichbar.';
+
+  @override
+  String offlineShowingCopy(String time) {
+    return 'Offline – Anzeige der Kopie vom $time';
+  }
+
+  @override
+  String get invitationUsedNotSignedIn =>
+      'Diese Einladung wurde bereits verwendet. Wenn Sie sie auf einem anderen Gerät angenommen haben, melden Sie sich hier mit einem Gerätecode von diesem Gerät an; andernfalls fordern Sie eine neue Einladung an.';
+
+  @override
+  String get invitationUsedSignedIn =>
+      'Diese Einladung wurde bereits verwendet – Sie sind hier bereits angemeldet.';
+
+  @override
+  String invitationUsedSignedInAs(String user) {
+    return 'Diese Einladung wurde bereits verwendet – Sie sind hier als $user angemeldet.';
+  }
+
+  @override
+  String get invitationExpiredNotice =>
+      'Diese Einladung ist abgelaufen. Fordern Sie eine neue an.';
+
+  @override
+  String get invitationWithdrawnNotice =>
+      'Diese Einladung wurde zurückgezogen.';
+
+  @override
+  String get invitationNotOfThisServer =>
+      'Dies ist keine Einladung dieses Servers.';
+
+  @override
+  String loadingFailed(String problem) {
+    return 'Ladefehler: $problem';
+  }
+
+  @override
+  String get noDataLoaded => 'Es wurden keine Daten geladen';
+
+  @override
+  String get tryAgain => 'Erneut versuchen';
+
+  @override
+  String noSuchImage(String name) {
+    return 'Kein solches Bild: $name';
+  }
+
+  @override
+  String noAlternatives(String name) {
+    return 'Keine Alternativen für das Bild: $name';
+  }
+
+  @override
+  String uploadFailed(String problem) {
+    return 'Upload fehlgeschlagen: $problem';
+  }
+
+  @override
+  String get retry => 'Erneut versuchen';
 }

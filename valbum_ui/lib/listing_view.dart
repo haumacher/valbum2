@@ -9,6 +9,7 @@ import 'app.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'l10n/app_localizations.dart';
 import 'move_view.dart';
 import 'resource.dart';
 import 'offline.dart';
@@ -104,21 +105,6 @@ Widget indexPictureTile(
       ),
     );
 
-/// What the entry choosing this folder's own picture reads, see issue #110.
-const String useAsFolderPicture = "Use as folder picture";
-
-/// What the entry taking that choice away reads, see issue #110.
-const String useNoFolderPicture = "Use no folder picture";
-
-/// What an empty library says.
-const String libraryEmptyNotice = "There are no albums here yet.";
-
-/// How an empty library is filled, said where the caller may fill it.
-const String libraryEmptyHint =
-    "Create the first one from the menu at the top right.";
-
-/// What an empty folder below the root says.
-const String folderEmptyNotice = "This folder has no albums yet.";
 
 /// Displays a [ListingInfo] as a grid of folder tiles.
 class ListingView extends StatelessWidget {
@@ -143,8 +129,11 @@ class ListingView extends StatelessWidget {
 
   /// The line saying that this folder belongs to somebody else, `null` while
   /// the caller is its owner.
-  String? sharedLineIn(BuildContext context) =>
-      sharingNotice(albumState.path, rightsIn(context));
+  String? sharedLineIn(BuildContext context) => sharingNotice(
+        AppLocalizations.of(context)!,
+        albumState.path,
+        rightsIn(context),
+      );
 
   /// Whether the caller may hand out a link to the folder at [path].
   ///
@@ -167,6 +156,7 @@ class ListingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var self = listing;
     // Inside a share link nothing that changes anything is offered, and
     // neither is the way to the settings. The folder is named by the folder,
@@ -188,7 +178,7 @@ class ListingView extends StatelessWidget {
             ? null
             : IconButton(
                 icon: const Icon(Icons.arrow_back),
-                tooltip: 'Up',
+                tooltip: l10n.up,
                 onPressed: albumState.showParent,
               ),
         automaticallyImplyLeading: false,
@@ -200,7 +190,7 @@ class ListingView extends StatelessWidget {
           if (albumState.path.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.home),
-              tooltip: 'Home',
+              tooltip: l10n.home,
               onPressed: albumState.showRoot,
             ),
           // The three-dots menu is the last control at the right, here as on
@@ -218,30 +208,30 @@ class ListingView extends StatelessWidget {
             // Only with `edit`: what the caller may not do is not offered,
             // never offered and then refused, see issue #49.
             if (mayChange)
-              menuItem(Icons.create_new_folder, 'Create album', createAlbum),
+              menuItem(Icons.create_new_folder, l10n.createAlbum, createAlbum),
             if (mayChange)
               menuItem(
                 Icons.create_new_folder_outlined,
-                'Create folder',
+                l10n.createFolder,
                 createFolder,
               ),
             if (mayChange)
-              menuItem(Icons.tune, 'Folder properties', editFolder),
+              menuItem(Icons.tune, l10n.folderProperties, editFolder),
             // Only where there is a rule to apply: a folder without one has
             // nothing to file, see issue #48.
             if (mayChange && self.placement != Placement.none)
-              menuItem(Icons.auto_awesome_motion, 'Apply rule', applyRule),
+              menuItem(Icons.auto_awesome_motion, l10n.applyRule, applyRule),
             if (mayShare(context, albumState.path))
               menuItem(
                 Icons.link,
-                'Share link…',
+                l10n.shareLinkAction,
                 (context) =>
                     shareFolderLink(context, albumState.path, self.title),
               ),
-            menuItem(Icons.update, "Reload", (_) => albumState.reload()),
+            menuItem(Icons.update, l10n.reload, (_) => albumState.reload()),
             // A visitor of a link has no server of their own to configure.
             if (link == null)
-              menuItem(Icons.settings, "Server...", openServerSettings),
+              menuItem(Icons.settings, l10n.serverMenuEntry, openServerSettings),
           ]),
         ],
       ),
@@ -305,14 +295,15 @@ class ListingView extends StatelessWidget {
   /// any other folder. Inside a share link the shared folder is the root, but
   /// it is somebody else's folder, so it reads as a folder.
   Widget emptyNotice(BuildContext context, bool inLink, bool mayChange) {
+    var l10n = AppLocalizations.of(context)!;
     var atRoot = albumState.path.isEmpty && !inLink;
     String sentence;
     if (atRoot) {
       sentence = mayChange
-          ? "$libraryEmptyNotice $libraryEmptyHint"
-          : libraryEmptyNotice;
+          ? "${l10n.libraryEmptyNotice} ${l10n.libraryEmptyHint}"
+          : l10n.libraryEmptyNotice;
     } else {
-      sentence = folderEmptyNotice;
+      sentence = l10n.folderEmptyNotice;
     }
     return Center(
       child: Padding(
@@ -449,6 +440,7 @@ class ListingView extends StatelessWidget {
     FolderInfo folder,
     Offset position,
   ) async {
+    var l10n = AppLocalizations.of(context)!;
     var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     var childPath = [...albumState.path, folder.name];
     // Moving an entry out of this folder is an edit *of this folder*; sharing
@@ -472,19 +464,19 @@ class ListingView extends StatelessWidget {
       ),
       items: [
         if (mayMove)
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: "move",
             child: ListTile(
-              leading: Icon(Icons.drive_file_move),
-              title: Text("Move to…"),
+              leading: const Icon(Icons.drive_file_move),
+              title: Text(l10n.moveToAction),
             ),
           ),
         if (mayShareChild)
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: "share-link",
             child: ListTile(
-              leading: Icon(Icons.link),
-              title: Text("Share link…"),
+              leading: const Icon(Icons.link),
+              title: Text(l10n.shareLinkAction),
             ),
           ),
         // Which entry stands for this folder in the listing above it, see
@@ -493,34 +485,34 @@ class ListingView extends StatelessWidget {
         // It is offered on every entry, an album and a folder alike — the
         // server resolves a folder's own picture through the sidecars.
         if (mayMove)
-          const PopupMenuItem<String>(
-            key: Key("use-as-folder-picture"),
+          PopupMenuItem<String>(
+            key: const Key("use-as-folder-picture"),
             value: "folder-picture",
             child: ListTile(
-              leading: Icon(Icons.photo_size_select_large),
-              title: Text(useAsFolderPicture),
+              leading: const Icon(Icons.photo_size_select_large),
+              title: Text(l10n.useAsFolderPicture),
             ),
           ),
         // Only where there is one to take away: a folder without a choice
         // shows the folder icon already, see issue #110.
         if (mayMove && listing.index.isNotEmpty)
-          const PopupMenuItem<String>(
-            key: Key("clear-folder-picture"),
+          PopupMenuItem<String>(
+            key: const Key("clear-folder-picture"),
             value: "no-folder-picture",
             child: ListTile(
-              leading: Icon(Icons.hide_image_outlined),
-              title: Text(useNoFolderPicture),
+              leading: const Icon(Icons.hide_image_outlined),
+              title: Text(l10n.useNoFolderPicture),
             ),
           ),
         // Deleting an entry is an edit of *this* folder, exactly as moving one
         // out of it is, and it is offered under the same condition (#109).
         if (mayMove)
-          const PopupMenuItem<String>(
-            key: Key("delete-entry"),
+          PopupMenuItem<String>(
+            key: const Key("delete-entry"),
             value: "delete",
             child: ListTile(
-              leading: Icon(Icons.delete_outline),
-              title: Text("Delete…"),
+              leading: const Icon(Icons.delete_outline),
+              title: Text(l10n.deleteEllipsis),
             ),
           ),
       ],
@@ -753,6 +745,7 @@ class ListingView extends StatelessWidget {
     if (refuseWhileOffline(context)) {
       return;
     }
+    var l10n = AppLocalizations.of(context)!;
     var messenger = ScaffoldMessenger.of(context);
 
     MoveResult result;
@@ -776,10 +769,8 @@ class ListingView extends StatelessWidget {
     await reportOutcomes(
       context: context,
       messenger: messenger,
-      title: "Apply rule",
-      summary: filed == 0
-          ? "Nothing to file."
-          : "Filed $filed album${filed == 1 ? "" : "s"}.",
+      title: l10n.applyRule,
+      summary: filed == 0 ? l10n.nothingToFile : l10n.filedAlbums(filed),
       result: result,
     );
   }
@@ -817,11 +808,11 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
   late Placement placement = widget.properties.placement;
 
   /// How the three rules are named, in the order they are offered.
-  static const Map<Placement, String> placementLabels = {
-    Placement.none: "keine Regel",
-    Placement.byYear: "nach Jahr",
-    Placement.byYearMonth: "nach Jahr und Monat",
-  };
+  static Map<Placement, String> placementLabels(AppLocalizations l10n) => {
+        Placement.none: l10n.placementNone,
+        Placement.byYear: l10n.placementByYear,
+        Placement.byYearMonth: l10n.placementByYearMonth,
+      };
 
   @override
   void dispose() {
@@ -830,7 +821,9 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => Dialog(
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return Dialog(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           child: SingleChildScrollView(
@@ -845,30 +838,28 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
                     namesRoute:
                         Theme.of(context).platform != TargetPlatform.iOS,
                     container: true,
-                    child: const Text("Ordnereigenschaften"),
+                    child: Text(l10n.folderProperties),
                   ),
                 ),
                 TextField(
                   controller: titleController,
                   autofocus: true,
-                  decoration: const InputDecoration(label: Text("Titel")),
+                  decoration: InputDecoration(label: Text(l10n.titleLabel)),
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 16),
                   child: Text(
-                    "Ablageregel",
+                    l10n.placementHeading,
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                 ),
                 // What the rule does, plainly: it places what arrives, it
                 // does not tidy up behind itself.
-                const Padding(
-                  padding: EdgeInsets.only(top: 4, bottom: 4),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 4),
                   child: Text(
-                    "Was hier ankommt, wird in seinen Jahresordner abgelegt. "
-                    "Was schon hier liegt, bleibt liegen, bis „Apply rule“ "
-                    "aufgerufen wird.",
-                    key: Key("placement-explanation"),
+                    l10n.placementExplanation,
+                    key: const Key("placement-explanation"),
                   ),
                 ),
                 RadioGroup<Placement>(
@@ -879,7 +870,7 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      for (var entry in placementLabels.entries)
+                      for (var entry in placementLabels(l10n).entries)
                         RadioListTile<Placement>(
                           key: Key("placement-${entry.key.name}"),
                           contentPadding: EdgeInsets.zero,
@@ -896,12 +887,12 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
                     children: [
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        child: const Text("Abbrechen"),
+                        child: Text(l10n.cancel),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         icon: const Icon(Icons.check),
-                        label: const Text("Übernehmen"),
+                        label: Text(l10n.apply),
                         onPressed: () => Navigator.of(context).pop(
                           FolderProperties(
                             title: titleController.text,
@@ -917,20 +908,9 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
           ),
         ),
       );
+  }
 }
 
-/// What an album without a date means, said in the create dialog where the
-/// date may be left empty, see issue #119.
-const String createAlbumUndatedHint =
-    "Without a date the album stays in this folder.";
-
-/// What the kind choice of the create dialog reads, see issue #136.
-const String createInboxLabel = "Inbox";
-
-/// What choosing it means, said beside it.
-const String createInboxHint =
-    "Photographs waiting to be sorted: shown by the day they were taken, "
-    "no date and no order of their own.";
 
 class CreateAlbumDialog extends StatefulWidget {
   /// The day the album is proposed with, `null` for none — the field is then
@@ -962,6 +942,7 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var now = DateTime.now();
 
     return Dialog(
@@ -982,7 +963,7 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
                   // Set nameRoute to false to avoid title being announced twice.
                   namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
                   container: true,
-                  child: const Text("Neues Album"),
+                  child: Text(l10n.newAlbumTitle),
                 ),
               ),
               // What is being made, before anything is typed: an inbox has no
@@ -992,11 +973,11 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
                 contentPadding: EdgeInsets.zero,
                 controlAffinity: ListTileControlAffinity.leading,
                 value: inbox,
-                title: const Text(createInboxLabel),
-                subtitle: const Text(
-                  createInboxHint,
-                  key: Key("create-kind-inbox-hint"),
-                  style: TextStyle(fontSize: 12),
+                title: Text(l10n.createInboxLabel),
+                subtitle: Text(
+                  l10n.createInboxHint,
+                  key: const Key("create-kind-inbox-hint"),
+                  style: const TextStyle(fontSize: 12),
                 ),
                 onChanged: (value) => setState(() => inbox = value == true),
               ),
@@ -1020,31 +1001,31 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
                   // No validator: an album without a date is one the server
                   // leaves in the folder it was made in, which is how an
                   // `Inbox` is made by hand, see issue #119.
-                  decoration: const InputDecoration(
-                    label: Text("Datum"),
-                    suffixIcon: Icon(Icons.date_range),
+                  decoration: InputDecoration(
+                    label: Text(l10n.dateLabel),
+                    suffixIcon: const Icon(Icons.date_range),
                   ),
                 ),
               if (!inbox)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    createAlbumUndatedHint,
-                    key: Key("create-album-date-hint"),
-                    style: TextStyle(fontSize: 12),
+                    l10n.createAlbumUndatedHint,
+                    key: const Key("create-album-date-hint"),
+                    style: const TextStyle(fontSize: 12),
                   ),
                 ),
               TextFormField(
-                decoration: const InputDecoration(label: Text("Titel")),
+                decoration: InputDecoration(label: Text(l10n.titleLabel)),
                 onSaved: (value) => albumTitle = value,
                 validator: (String? value) {
                   return value == null || value.isEmpty
-                      ? "Darf nicht leer sein"
+                      ? l10n.mustNotBeEmpty
                       : null;
                 },
               ),
               TextFormField(
-                decoration: const InputDecoration(label: Text("Untertitel")),
+                decoration: InputDecoration(label: Text(l10n.subtitleLabel)),
                 onSaved: (value) => albumSubTitle = value,
               ),
               Padding(
@@ -1054,12 +1035,12 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
                   children: [
                     TextButton(
                       onPressed: cancelPressed,
-                      child: const Text("Abbrechen"),
+                      child: Text(l10n.cancel),
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton.icon(
                       icon: const Icon(Icons.check),
-                      label: const Text("Anlegen"),
+                      label: Text(l10n.create),
                       onPressed: createPressed,
                     ),
                   ],
@@ -1119,6 +1100,7 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     return Dialog(
       child: Form(
         key: formKey,
@@ -1137,15 +1119,15 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
                   // Set nameRoute to false to avoid title being announced twice.
                   namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
                   container: true,
-                  child: const Text("Neuer Ordner"),
+                  child: Text(l10n.newFolderTitle),
                 ),
               ),
               TextFormField(
-                decoration: const InputDecoration(label: Text("Name")),
+                decoration: InputDecoration(label: Text(l10n.nameLabel)),
                 onSaved: (value) => folderName = value,
                 validator: (String? value) {
                   return value == null || value.isEmpty
-                      ? "Darf nicht leer sein"
+                      ? l10n.mustNotBeEmpty
                       : null;
                 },
               ),
@@ -1156,12 +1138,12 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
                   children: [
                     TextButton(
                       onPressed: cancelPressed,
-                      child: const Text("Abbrechen"),
+                      child: Text(l10n.cancel),
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton.icon(
                       icon: const Icon(Icons.check),
-                      label: const Text("Anlegen"),
+                      label: Text(l10n.create),
                       onPressed: createPressed,
                     ),
                   ],

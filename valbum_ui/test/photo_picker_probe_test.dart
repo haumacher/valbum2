@@ -81,7 +81,7 @@ void main() {
     var text = tester.widget<Text>(
       find.descendant(of: bar, matching: find.byType(Text)),
     );
-    expect(text.data, contains("25 von 30"));
+    expect(text.data, contains("25 are on the server"));
     expect(text.data, contains("5"));
     expect(text.data, isNot(contains("ClientException")));
     expect(wakelock.requests, [true, false]);

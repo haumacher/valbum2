@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/client.dart';
+import 'util/l10n.dart';
 
 /// An upload of [size] bytes, handed out in 1 KiB chunks so that the transport
 /// can drain it slowly.
@@ -208,9 +209,9 @@ void main() {
       ),
       throwsA(
         isA<UploadInterrupted>()
-            .having((e) => e.message, "message", contains("4 von 12"))
-            .having((e) => e.message, "message", contains("übrigen 8"))
-            .having((e) => e.message, "message", contains("Verbindung"))
+            .having((e) => e.message, "message", contains("4 are on the server"))
+            .having((e) => e.message, "message", contains("remaining 8"))
+            .having((e) => e.message, "message", contains("Connection lost"))
             .having((e) => e.summary.onServer, "on the server", 4)
             .having((e) => e.summary.remaining, "remaining", 8),
       ),
@@ -234,14 +235,14 @@ void main() {
       const ["album"],
       twelveImages(),
       batching: fourToABatch,
-      onProgress: (report) => lines.add(report.line),
+      onProgress: (report) => lines.add(report.lineOf(testL10n)),
     );
 
-    expect(lines.first, "Wird vorbereitet: 1 von 12...");
-    expect(lines, contains(uploadAskingMessage));
-    expect(lines, contains("4 von 12 Bildern"));
-    expect(lines, contains(uploadWaitingMessage));
-    expect(lines.last, "12 von 12 Bildern");
+    expect(lines.first, "Preparing: 1 of 12...");
+    expect(lines, contains(uploadAskingMessage(testL10n)));
+    expect(lines, contains("4 of 12 images"));
+    expect(lines, contains(testL10n.uploadWaiting));
+    expect(lines.last, "12 of 12 images");
     for (var line in lines) {
       expect(line, isNot(contains("Paket")));
     }

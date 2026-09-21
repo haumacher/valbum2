@@ -12,6 +12,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_timers.dart';
 import 'util/l10n.dart';
+import 'package:valbum_ui/notices.dart';
 
 /// The app base of the server the tests talk to, as a user would type it.
 const String serverUrl = "http://server/valbum/";
@@ -213,7 +214,10 @@ void main() {
       );
 
       expect(await store.loadBackgroundRunRecord(), result.record);
-      expect(result.record?.line, contains("1 uploaded, 0 already present"));
+      expect(
+        backgroundRunLine(result.record!, testL10n),
+        contains("1 uploaded, 0 already present"),
+      );
     });
 
     test('does nothing and records nothing while the sync is off', () async {
@@ -509,9 +513,16 @@ void main() {
       expect(sync.config.enabled, isTrue);
       expect(
         sync.backgroundProblem,
+        isA<BackgroundScheduleFailed>().having(
+          (problem) => problem.problem,
+          "problem",
+          contains("no WorkManager here"),
+        ),
+      );
+      expect(
+        noticeText(sync.backgroundProblem!, testL10n),
         contains("Background sync could not be scheduled"),
       );
-      expect(sync.backgroundProblem, contains("no WorkManager here"));
     });
   });
 
@@ -575,8 +586,7 @@ void main() {
         clientOf: () => null,
         scheduler: FakeBackgroundScheduler(
           available: false,
-          unavailableReason: "Background sync is not available on this "
-              "platform; the camera roll syncs while the app is open.",
+          unavailableReason: const NoBackgroundSyncHere(),
         ),
       );
       addTearDown(sync.dispose);

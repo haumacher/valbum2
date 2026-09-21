@@ -41,6 +41,7 @@ import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
 import 'image_properties.dart';
+import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
 import 'move_view.dart';
 import 'offline.dart';
@@ -59,52 +60,58 @@ import 'share_session.dart';
 // ---------------------------------------------------------------------------
 
 /// What an inbox holding nothing says.
-const String inboxEmptyNotice = "Nothing is waiting here.";
+String inboxEmptyNotice(AppLocalizations l10n) => l10n.inboxEmptyNotice;
 
 /// The heading of the photographs whose date nobody knows.
-const String inboxUndatedHeading = "Undated";
+String inboxUndatedHeading(AppLocalizations l10n) => l10n.inboxUndatedHeading;
 
 /// The entry moving the selection into an album.
-String inboxMoveLabel(int count) => "Move ${ImageSubject(count).asked} to…";
+String inboxMoveLabel(AppLocalizations l10n, int count) =>
+    l10n.moveSubjectTo(ImageSubject(count).asked(l10n));
 
 /// The entry putting the selection into the trash of the space.
-String inboxDeleteLabel(int count) => "Delete ${ImageSubject(count).asked}…";
+String inboxDeleteLabel(AppLocalizations l10n, int count) =>
+    l10n.deleteSubjectAction(ImageSubject(count).asked(l10n));
 
 /// The title of the question asked before a delete.
-String inboxDeleteTitle(int count) => "Delete ${ImageSubject(count).asked}?";
+String inboxDeleteTitle(AppLocalizations l10n, int count) =>
+    l10n.deleteQuestion(ImageSubject(count).asked(l10n));
 
 /// What deleting photographs of an inbox does, said before it is done.
 ///
 /// The counterpart of `deleteExplanation` (issue #109), which speaks of an
 /// album: here it is the photographs themselves that travel, and the sentence
 /// that matters most is the last one — nothing is deleted from disk.
-const String inboxDeleteExplanation =
-    "The photographs are moved to the trash folder of the space. Nothing is "
-    "deleted from disk.";
+String inboxDeleteExplanation(AppLocalizations l10n) =>
+    l10n.inboxDeleteExplanation;
 
 /// The entry clearing the selection.
-const String inboxClearSelection = "Clear the selection";
+String inboxClearSelection(AppLocalizations l10n) => l10n.clearSelection;
 
 /// What the app bar says under the title while something is selected.
-String inboxSelectionLine(int count) => "${ImageSubject(count).asked} selected";
+String inboxSelectionLine(AppLocalizations l10n, int count) =>
+    l10n.selectedCount(count);
 
 /// The tooltip of the tool opening a photograph in the viewer.
-const String inboxOpenTooltip = "Open";
+String inboxOpenTooltip(AppLocalizations l10n) => l10n.open;
 
 /// The tooltip of the selection box of a tile.
-const String inboxSelectTooltip = "Select";
+String inboxSelectTooltip(AppLocalizations l10n) => l10n.select;
 
 /// The tooltip of the heading that selects everything under it.
-const String inboxHeadingTooltip = "Select everything below";
+String inboxHeadingTooltip(AppLocalizations l10n) =>
+    l10n.selectEverythingBelow;
 
 /// What is said when a selection was asked to do something it cannot.
-const String inboxNothingSelected = "Nothing is selected.";
+String inboxNothingSelected(AppLocalizations l10n) => l10n.nothingSelected;
 
 /// How a day heading is written out.
-final DateFormat inboxDayFormat = DateFormat.yMMMEd();
+DateFormat inboxDayFormat(AppLocalizations l10n) =>
+    DateFormat.yMMMEd(l10n.localeName);
 
 /// How a month line is written out.
-final DateFormat inboxMonthFormat = DateFormat.yMMMM();
+DateFormat inboxMonthFormat(AppLocalizations l10n) =>
+    DateFormat.yMMMM(l10n.localeName);
 
 // ---------------------------------------------------------------------------
 // The derived headings.
@@ -141,8 +148,9 @@ class InboxDay {
       : Key("inbox-day-${_dayKeyFormat.format(day!)}");
 
   /// What the heading reads.
-  String get heading =>
-      day == null ? inboxUndatedHeading : inboxDayFormat.format(day!);
+  String heading(AppLocalizations l10n) => day == null
+      ? inboxUndatedHeading(l10n)
+      : inboxDayFormat(l10n).format(day!);
 }
 
 final DateFormat _dayKeyFormat = DateFormat("yyyy-MM-dd");
@@ -245,6 +253,9 @@ class InboxContentState extends State<InboxContent> {
   AlbumInfo get album => widget.album;
 
   String get albumUrl => "${widget.baseUrl}/${album.path}";
+
+  /// The words this screen reads in.
+  AppLocalizations get _l10n => AppLocalizations.of(context)!;
 
   @override
   void didChangeDependencies() {
@@ -405,7 +416,7 @@ class InboxContentState extends State<InboxContent> {
     var chosen = selectedImages(album, selection);
     var reference = referenceImage(album, selection, invokedOn);
     if (reference == null) {
-      showMessage("Nothing to adjust");
+      showMessage(_l10n.nothingToAdjust);
       return;
     }
 
@@ -449,7 +460,7 @@ class InboxContentState extends State<InboxContent> {
             offset != null && adjustRecordingTime(album, selection, offset);
     }
     if (!changed) {
-      showMessage("Nothing to adjust");
+      showMessage(_l10n.nothingToAdjust);
       return;
     }
     // Already applied to the model by [adjustRecordingTime]: what is left is
@@ -474,7 +485,7 @@ class InboxContentState extends State<InboxContent> {
   Future<void> moveSelection() async {
     var chosen = selected;
     if (chosen.isEmpty) {
-      showMessage(inboxNothingSelected);
+      showMessage(inboxNothingSelected(_l10n));
       return;
     }
     await moveWithPicker(
@@ -511,7 +522,7 @@ class InboxContentState extends State<InboxContent> {
   Future<void> deleteSelection() async {
     var chosen = selected;
     if (chosen.isEmpty) {
-      showMessage(inboxNothingSelected);
+      showMessage(inboxNothingSelected(_l10n));
       return;
     }
     if (refuseWhileOffline(context)) {
@@ -522,17 +533,17 @@ class InboxContentState extends State<InboxContent> {
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("inbox-delete-dialog"),
-        title: Text(inboxDeleteTitle(chosen.length)),
-        content: const Text(inboxDeleteExplanation),
+        title: Text(inboxDeleteTitle(_l10n, chosen.length)),
+        content: Text(inboxDeleteExplanation(_l10n)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
+            child: Text(_l10n.cancel),
           ),
           ElevatedButton(
             key: const Key("inbox-delete-confirm"),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text("Delete"),
+            child: Text(_l10n.delete),
           ),
         ],
       ),
@@ -569,7 +580,7 @@ class InboxContentState extends State<InboxContent> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(said.isEmpty
-            ? "Deleted ${ImageSubject(chosen.length).asked}."
+            ? _l10n.deletedWhat(ImageSubject(chosen.length).asked(_l10n))
             : said.join(" ")),
         duration: const Duration(seconds: 8),
       ),
@@ -676,7 +687,7 @@ class InboxContentState extends State<InboxContent> {
             ? null
             : IconButton(
                 icon: const Icon(Icons.arrow_back),
-                tooltip: "Up",
+                tooltip: _l10n.up,
                 onPressed: widget.albumState.showParent,
               ),
         automaticallyImplyLeading: false,
@@ -685,7 +696,7 @@ class InboxContentState extends State<InboxContent> {
             Text(album.title),
             if (count > 0)
               Text(
-                inboxSelectionLine(count),
+                inboxSelectionLine(_l10n, count),
                 key: const Key("inbox-selection"),
                 style: const TextStyle(fontSize: 12),
               ),
@@ -704,13 +715,16 @@ class InboxContentState extends State<InboxContent> {
           OfflineBanner(onRetry: widget.albumState.reload),
           Expanded(
             child: sections.isEmpty
-                ? const Center(
+                ? Center(
                     child: Padding(
-                      padding: EdgeInsets.all(32),
+                      padding: const EdgeInsets.all(32),
                       child: Text(
-                        inboxEmptyNotice,
-                        key: Key("inbox-empty"),
-                        style: TextStyle(color: Colors.white70, fontSize: 16),
+                        inboxEmptyNotice(_l10n),
+                        key: const Key("inbox-empty"),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                   )
@@ -735,7 +749,7 @@ class InboxContentState extends State<InboxContent> {
       floatingActionButton: rights.mayContribute && share == null
           ? FloatingActionButton(
               onPressed: widget.albumState.uploadImages,
-              tooltip: 'Upload',
+              tooltip: _l10n.upload,
               child: const Icon(Icons.cloud_upload),
             )
           : null,
@@ -753,13 +767,13 @@ class InboxContentState extends State<InboxContent> {
           keyedMenuItem(
             const Key("move-to"),
             Icons.drive_file_move,
-            inboxMoveLabel(count),
+            inboxMoveLabel(_l10n, count),
             (_) => moveSelection(),
           ),
           keyedMenuItem(
             const Key("delete-selection"),
             Icons.delete_outline,
-            inboxDeleteLabel(count),
+            inboxDeleteLabel(_l10n, count),
             (_) => deleteSelection(),
           ),
         ],
@@ -767,7 +781,7 @@ class InboxContentState extends State<InboxContent> {
           keyedMenuItem(
             const Key("clear-selection"),
             Icons.deselect,
-            inboxClearSelection,
+            inboxClearSelection(_l10n),
             (_) => clearSelection(),
           ),
         // The one thing the properties of an inbox are for: saying that it is
@@ -776,12 +790,12 @@ class InboxContentState extends State<InboxContent> {
           keyedMenuItem(
             const Key("album-properties"),
             Icons.tune,
-            "Album properties",
+            _l10n.albumProperties,
             (_) => editProperties(),
           ),
-        menuItem(Icons.update, "Reload", (_) => widget.albumState.reload()),
+        menuItem(Icons.update, _l10n.reload, (_) => widget.albumState.reload()),
         if (share == null)
-          menuItem(Icons.settings, "Server...", openServerSettings),
+          menuItem(Icons.settings, _l10n.serverMenuEntry, openServerSettings),
       ];
 
   /// The inbox as the slivers of its scroll view: a month line where the
@@ -807,7 +821,7 @@ class InboxContentState extends State<InboxContent> {
         result.add(SliverToBoxAdapter(
           child: sectionHeading(
             key: inboxMonthKey(month),
-            text: inboxMonthFormat.format(month),
+            text: inboxMonthFormat(_l10n).format(month),
             images: ofMonth,
             fontSize: 26,
           ),
@@ -816,7 +830,7 @@ class InboxContentState extends State<InboxContent> {
       result.add(SliverToBoxAdapter(
         child: sectionHeading(
           key: section.headingKey,
-          text: section.heading,
+          text: section.heading(_l10n),
           images: section.images,
           fontSize: 20,
         ),
@@ -851,7 +865,7 @@ class InboxContentState extends State<InboxContent> {
             const SizedBox(width: 8),
             Flexible(
               child: Tooltip(
-                message: inboxHeadingTooltip,
+                message: inboxHeadingTooltip(_l10n),
                 child: Text(
                   text,
                   style: TextStyle(fontSize: fontSize, color: Colors.white),
@@ -941,7 +955,7 @@ class InboxContentState extends State<InboxContent> {
               left: 4,
               child: IgnorePointer(
                 child: Tooltip(
-                  message: privacyName(image.privacy),
+                  message: privacyName(_l10n, image.privacy),
                   child: Icon(
                     marker,
                     key: const Key("privacy-marker"),
@@ -991,6 +1005,9 @@ class InboxTile extends StatefulWidget {
 }
 
 class InboxTileState extends State<InboxTile> {
+  /// The words this tile reads in.
+  AppLocalizations get _l10n => AppLocalizations.of(context)!;
+
   bool _hovered = false;
 
   InboxContentState get inbox => widget.inbox;
@@ -1043,7 +1060,7 @@ class InboxTileState extends State<InboxTile> {
   Widget topBar() => toolbar([
         toolButton(
           selected ? Icons.check_box : Icons.check_box_outline_blank,
-          inboxSelectTooltip,
+          inboxSelectTooltip(_l10n),
           () => inbox.toggleSelection(image),
           active: selected,
           key: const Key("inbox-select"),
@@ -1051,18 +1068,18 @@ class InboxTileState extends State<InboxTile> {
         if (inbox.mayWrite) ...[
           toolButton(
             Icons.rotate_right,
-            "Turn right",
+            _l10n.turnRight,
             () => inbox.turn(image, OrientationOps.rotR),
             key: const Key("inbox-rotate-right"),
           ),
           toolButton(
             Icons.swap_vert,
-            "Flip vertically",
+            _l10n.flipVertically,
             () => inbox.turn(image, OrientationOps.flipV),
           ),
           toolButton(
             Icons.rotate_left,
-            "Turn left",
+            _l10n.turnLeft,
             () => inbox.turn(image, OrientationOps.rotL),
             key: const Key("inbox-rotate-left"),
           ),
@@ -1077,27 +1094,32 @@ class InboxTileState extends State<InboxTile> {
     return toolbar([
       toolButton(
         Icons.open_in_full,
-        inboxOpenTooltip,
+        inboxOpenTooltip(_l10n),
         () => inbox.widget.pushPart(image, image.name),
         key: const Key("inbox-open"),
       ),
       if (inbox.mayWrite)
         toolButton(
           Icons.more_time,
-          "Adjust recording time…",
+          _l10n.adjustRecordingTimeAction,
           () => inbox.adjustRecordingTimeOf(image),
           key: const Key("inbox-adjust-time"),
         ),
       toolButton(
         Icons.notes,
-        imagePropertiesTitle,
+        _l10n.imageProperties,
         () => inbox.showProperties(image),
         key: const Key("inbox-properties"),
       ),
       if (inbox.mayWrite)
         toolButton(
           privacyControlIcon(level),
-          "Privacy: ${privacyName(level)} (tap for ${privacyName(next)})",
+          // The generated signature names the next level first, see
+          // `app_localizations.dart`.
+          _l10n.privacyControlTooltip(
+            privacyName(_l10n, next),
+            privacyName(_l10n, level),
+          ),
           () => inbox.setPrivacy(image, next),
           active: level != privacyPublic,
           key: const Key("privacy-control"),

@@ -13,6 +13,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The path of a request, with the percent-encoding of the wire undone.
 String pathOf(http.BaseRequest request) => Uri.decodeFull(request.url.path);
@@ -79,13 +80,13 @@ Future<void> createAlbum(WidgetTester tester, String title) async {
   await openMenu(tester, "Create album");
   await withFakeImageHttp(() async {
     // The date field: the picker opens on today, and today is taken.
-    await tester.tap(find.text("Datum"));
+    await tester.tap(find.text(testL10n.dateLabel));
     await tester.pumpAndSettle();
     await tester.tap(find.text("OK"));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField).first, title);
-    await tester.tap(find.text("Anlegen"));
+    await tester.tap(find.text(testL10n.create));
     await tester.pumpAndSettle();
   });
 }
@@ -251,7 +252,7 @@ void main() {
       expect(find.text("Muss angegeben werden."), findsNothing);
       await withFakeImageHttp(() async {
         await tester.enterText(find.byType(TextFormField).first, "Inbox");
-        await tester.tap(find.text("Anlegen"));
+        await tester.tap(find.text(testL10n.create));
         await tester.pumpAndSettle();
       });
 
@@ -302,7 +303,7 @@ void main() {
       await pumpRoot(tester, client);
 
       await openMenu(tester, "Folder properties");
-      expect(find.text("Ordnereigenschaften"), findsOneWidget);
+      expect(find.text(testL10n.folderProperties), findsOneWidget);
       // What the rule does is said, not guessed.
       expect(find.byKey(const Key("placement-explanation")), findsOneWidget);
 
@@ -310,7 +311,7 @@ void main() {
         await tester.enterText(find.byType(TextField).first, "My library");
         await tester.tap(find.byKey(const Key("placement-byYear")));
         await tester.pumpAndSettle();
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
       });
 
@@ -338,7 +339,7 @@ void main() {
       await withFakeImageHttp(() async {
         await tester.tap(find.byKey(const Key("placement-byYearMonth")));
         await tester.pumpAndSettle();
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
       });
 

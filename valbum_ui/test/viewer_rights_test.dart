@@ -16,6 +16,7 @@ import 'package:valbum_ui/resource.dart';
 import 'package:valbum_ui/video_view.dart';
 
 import 'util/viewer_harness.dart';
+import 'util/l10n.dart';
 
 /// The requests the app's own transport made — the thumbnails among them.
 List<http.Request> requests = [];
@@ -95,7 +96,7 @@ void main() {
     // One message, and it goes away by itself; nothing painted over the
     // picture for good.
     expect(find.byKey(const Key("image-failed")), findsOneWidget);
-    expect(find.text(pictureFailedMessage), findsOneWidget);
+    expect(find.text(testL10n.pictureFailedMessage), findsOneWidget);
     expect(find.byKey(const Key("image-refusal")), findsNothing);
     // And what the album already showed is still on the screen.
     expect(find.byKey(const Key("image-thumbnail")), findsOneWidget);

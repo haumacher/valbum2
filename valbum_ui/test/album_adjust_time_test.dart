@@ -7,6 +7,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 // Issue #77: the clock of a real camera is off by seconds, minutes or days.
 // "Adjust recording time…" shifts the date of every selected image in the
@@ -98,16 +99,16 @@ void main() {
 
     test('is put into words with its sign and the units that matter', () {
       expect(
-        offsetInWords(const Duration(hours: 2, minutes: 13, seconds: 5)),
+        offsetInWords(testL10n, const Duration(hours: 2, minutes: 13, seconds: 5)),
         "+2 h 13 min 5 s",
       );
       // A zero in the middle is kept, so the reading stays unambiguous.
       expect(
-        offsetInWords(const Duration(days: -1, minutes: -4)),
+        offsetInWords(testL10n, const Duration(days: -1, minutes: -4)),
         "−1 d 0 h 4 min",
       );
-      expect(offsetInWords(const Duration(seconds: -30)), "−30 s");
-      expect(offsetInWords(Duration.zero), "0 s");
+      expect(offsetInWords(testL10n, const Duration(seconds: -30)), "−30 s");
+      expect(offsetInWords(testL10n, Duration.zero), "0 s");
     });
   });
 
@@ -451,7 +452,7 @@ void main() {
           "+5 h 2 min",
         );
 
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         // The image moved behind the one it now follows.
@@ -486,7 +487,7 @@ void main() {
         await tester.tap(tool("late.jpg", Icons.more_time));
         await tester.pumpAndSettle();
         // Confirming the time that is already there.
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
 
         expect(find.text("Nothing to adjust"), findsOneWidget);

@@ -263,7 +263,7 @@ void main() {
           tile("e.jpg"),
           onCursor: () async {
             expect(feedbackCount, findsOneWidget);
-            expect(tester.widget<Text>(feedbackCount).data, "2 Teile");
+            expect(tester.widget<Text>(feedbackCount).data, "2 parts");
             expect(
               find.descendant(of: tile("e.jpg"), matching: insertCursor),
               findsOneWidget,

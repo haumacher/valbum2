@@ -11,6 +11,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// Pumps the app showing the resource at [path].
 Future<void> pumpListing(
@@ -294,14 +295,14 @@ void main() {
       await pumpListing(tester, client);
 
       await openMenu(tester, "Create album");
-      expect(find.text("Neues Album"), findsOneWidget);
+      expect(find.text(testL10n.newAlbumTitle), findsOneWidget);
 
       await withFakeImageHttp(() async {
-        await tester.tap(find.text("Abbrechen"));
+        await tester.tap(find.text(testL10n.cancel));
         await tester.pumpAndSettle();
       });
 
-      expect(find.text("Neues Album"), findsNothing);
+      expect(find.text(testL10n.newAlbumTitle), findsNothing);
       expect(
         requests.where((request) => request.method != "GET"),
         isEmpty,
@@ -315,14 +316,14 @@ void main() {
       await pumpListing(tester, client);
 
       await openMenu(tester, "Create folder");
-      expect(find.text("Neuer Ordner"), findsOneWidget);
+      expect(find.text(testL10n.newFolderTitle), findsOneWidget);
 
       await withFakeImageHttp(() async {
-        await tester.tap(find.text("Abbrechen"));
+        await tester.tap(find.text(testL10n.cancel));
         await tester.pumpAndSettle();
       });
 
-      expect(find.text("Neuer Ordner"), findsNothing);
+      expect(find.text(testL10n.newFolderTitle), findsNothing);
       expect(requests.where((request) => request.method != "GET"), isEmpty);
     });
 
@@ -331,14 +332,14 @@ void main() {
       await pumpListing(tester, client);
 
       await openMenu(tester, "Create folder");
-      expect(find.text("Neuer Ordner"), findsOneWidget);
+      expect(find.text(testL10n.newFolderTitle), findsOneWidget);
 
       await withFakeImageHttp(() async {
         await tester.sendKeyEvent(LogicalKeyboardKey.escape);
         await tester.pumpAndSettle();
       });
 
-      expect(find.text("Neuer Ordner"), findsNothing);
+      expect(find.text(testL10n.newFolderTitle), findsNothing);
     });
   });
 }

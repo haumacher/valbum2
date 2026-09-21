@@ -11,6 +11,7 @@ import 'album_date.dart';
 import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
 import 'offline.dart';
 import 'resource.dart';
@@ -23,10 +24,10 @@ import 'rights.dart';
 /// '2020 Trip' to '2021'" — so the sentence is built from this.
 abstract class MoveSubject {
   /// Names everything the move was asked for, e.g. `3 images`.
-  String get asked;
+  String asked(AppLocalizations l10n);
 
   /// Names the [count] entries that actually moved.
-  String moved(int count);
+  String moved(AppLocalizations l10n, int count);
 
   /// Whether what moves lives *in* an album, see issue #113.
   ///
@@ -45,10 +46,10 @@ class ImageSubject implements MoveSubject {
   const ImageSubject(this.count);
 
   @override
-  String get asked => moved(count);
+  String asked(AppLocalizations l10n) => moved(l10n, count);
 
   @override
-  String moved(int count) => count == 1 ? "1 image" : "$count images";
+  String moved(AppLocalizations l10n, int count) => l10n.imageCount(count);
 
   @override
   bool get livesInAlbum => true;
@@ -61,10 +62,10 @@ class EntrySubject implements MoveSubject {
   const EntrySubject(this.name);
 
   @override
-  String get asked => "'$name'";
+  String asked(AppLocalizations l10n) => "'$name'";
 
   @override
-  String moved(int count) => "'$name'";
+  String moved(AppLocalizations l10n, int count) => "'$name'";
 
   @override
   bool get livesInAlbum => false;
@@ -75,8 +76,8 @@ class EntrySubject implements MoveSubject {
 /// The wire target is a path relative to the root of the caller's space, the
 /// empty string being the root itself — which has no name, so it is called
 /// what the app calls it everywhere else.
-String targetLabel(List<String> target) =>
-    target.isEmpty ? "the top level" : "'${target.join("/")}'";
+String targetLabel(AppLocalizations l10n, List<String> target) =>
+    target.isEmpty ? l10n.targetTopLevel : "'${target.join("/")}'";
 
 /// The wire form of a target folder path: the segments, the root empty.
 String targetPath(List<String> target) => target.join("/");
@@ -117,8 +118,9 @@ Future<void> moveWithPicker({
   if (refuseWhileOffline(context)) {
     return;
   }
+  var l10n = AppLocalizations.of(context)!;
   if (names.isEmpty) {
-    _say(context, "Nothing to move.");
+    _say(context, l10n.nothingToMove);
     return;
   }
 
@@ -129,7 +131,8 @@ Future<void> moveWithPicker({
       client: client,
       initialPath:
           source.isEmpty ? const [] : source.sublist(0, source.length - 1),
-      confirmLabel: (path) => "Move ${subject.asked} to ${targetLabel(path)}",
+      confirmLabel: (path) =>
+          l10n.moveConfirm(subject.asked(l10n), targetLabel(l10n, path)),
       targetIsAlbum: subject.livesInAlbum,
       // An album is created where an album may stand, and only for the images
       // that are to go into it, see issue #114.
@@ -177,7 +180,7 @@ Future<void> moveWithPicker({
     // there and empty.
     showRefusal(
       messenger,
-      created ? albumKept(target, reasonOf(error)) : error,
+      created ? albumKept(l10n, target, reasonOf(error)) : error,
     );
     if (created) {
       // The tree changed although nothing moved: the new album is in it.
@@ -195,8 +198,11 @@ Future<void> moveWithPicker({
 
   var movedCount = result.outcomes.length - refusedOutcomes(result).length;
   var summary = movedCount == 0
-      ? "Nothing moved to ${targetLabel(target)}."
-      : "Moved ${subject.moved(movedCount)} to ${targetLabel(target)}.";
+      ? l10n.nothingMovedTo(targetLabel(l10n, target))
+      : l10n.movedToTarget(
+          subject.moved(l10n, movedCount),
+          targetLabel(l10n, target),
+        );
   if (placement.isNotEmpty) {
     // An album that was filed away says so, here as in the listing.
     summary = "$summary $placement";
@@ -213,7 +219,7 @@ Future<void> moveWithPicker({
   await reportOutcomes(
     context: context,
     messenger: messenger,
-    title: "Move",
+    title: l10n.moveTitle,
     summary: summary,
     result: result,
   );
@@ -226,9 +232,7 @@ Future<void> moveWithPicker({
 /// the one looking at it. So both are said, in the order they are decided —
 /// and the sentence that matters most is said last: nothing is deleted from
 /// the disk.
-const String deleteExplanation =
-    "An album without any image is removed; one with images is moved to the "
-    "trash folder of the space (nothing is deleted from disk).";
+String deleteExplanation(AppLocalizations l10n) => l10n.deleteExplanation;
 
 /// Asks whether [what] is really to be deleted, and deletes it, see #109.
 ///
@@ -255,22 +259,23 @@ Future<bool> deleteWithConfirmation({
   if (refuseWhileOffline(context)) {
     return false;
   }
+  var l10n = AppLocalizations.of(context)!;
   var messenger = ScaffoldMessenger.of(context);
   var confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       key: const Key("delete-dialog"),
-      title: Text("Delete $what?"),
-      content: const Text(deleteExplanation),
+      title: Text(l10n.deleteQuestion(what)),
+      content: Text(l10n.deleteExplanation),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text("Cancel"),
+          child: Text(l10n.cancel),
         ),
         ElevatedButton(
           key: const Key("delete-confirm"),
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text("Delete"),
+          child: Text(l10n.delete),
         ),
       ],
     ),
@@ -301,7 +306,7 @@ Future<bool> deleteWithConfirmation({
   ];
   messenger.showSnackBar(
     SnackBar(
-      content: Text(said.isEmpty ? "Deleted $what." : said.join(" ")),
+      content: Text(said.isEmpty ? l10n.deletedWhat(what) : said.join(" ")),
       duration: const Duration(seconds: 8),
     ),
   );
@@ -368,7 +373,7 @@ Future<void> reportOutcomes({
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text("OK"),
+          child: Text(AppLocalizations.of(context)!.ok),
         ),
       ],
     ),
@@ -395,8 +400,8 @@ String reasonOf(Object error) =>
 ///
 /// The album is on the server and it is empty; saying only why the move failed
 /// would leave the user looking for a folder they were never told about.
-String albumKept(List<String> target, String reason) =>
-    "$reason The new album ${targetLabel(target)} was created and is empty.";
+String albumKept(AppLocalizations l10n, List<String> target, String reason) =>
+    "$reason ${l10n.newAlbumCreatedEmpty(targetLabel(l10n, target))}";
 
 void _say(BuildContext context, String message) =>
     ScaffoldMessenger.of(context).showSnackBar(
@@ -435,10 +440,10 @@ Iterable<int> _datesOf(AlbumPart part) sync* {
 }
 
 /// The line that says why an image cannot be left in a folder of folders.
-const String imagesLiveInAlbums = "Images live in albums — open one.";
+String imagesLiveInAlbums(AppLocalizations l10n) => l10n.imagesLiveInAlbums;
 
 /// The line an album shows in the picker, which holds no folders.
-const String albumHoldsNoFolders = "An album holds no folders.";
+String albumHoldsNoFolders(AppLocalizations l10n) => l10n.albumHoldsNoFolders;
 
 /// What the picker was left with, see [FolderPicker].
 ///
@@ -587,7 +592,7 @@ class FolderPickerState extends State<FolderPicker> {
       } else if (resource is AlbumInfo) {
         _leaf = true;
       } else {
-        _error = "This folder cannot be shown.";
+        _error = AppLocalizations.of(context)!.folderCannotBeShown;
       }
     });
   }
@@ -627,9 +632,11 @@ class FolderPickerState extends State<FolderPicker> {
       ).mayContribute;
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return AlertDialog(
         key: const Key("folder-picker"),
-        title: const Text("Move to…"),
+        title: Text(l10n.moveToAction),
         content: SizedBox(
           width: 400,
           height: 360,
@@ -637,7 +644,7 @@ class FolderPickerState extends State<FolderPicker> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _path.isEmpty ? "Top level" : _path.join(" / "),
+                _path.isEmpty ? l10n.pickerTopLevel : _path.join(" / "),
                 key: const Key("picker-path"),
                 style: Theme.of(context).textTheme.titleSmall,
               ),
@@ -648,7 +655,7 @@ class FolderPickerState extends State<FolderPicker> {
                 ListTile(
                   key: const Key("picker-up"),
                   leading: const Icon(Icons.arrow_upward),
-                  title: const Text("Up"),
+                  title: Text(l10n.up),
                   onTap: _up,
                 ),
               Expanded(child: _body(context)),
@@ -658,7 +665,7 @@ class FolderPickerState extends State<FolderPicker> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Cancel"),
+            child: Text(l10n.cancel),
           ),
           ElevatedButton(
             key: const Key("picker-confirm"),
@@ -671,8 +678,10 @@ class FolderPickerState extends State<FolderPicker> {
           ),
         ],
       );
+  }
 
   Widget _body(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -688,24 +697,24 @@ class FolderPickerState extends State<FolderPicker> {
       shrinkWrap: true,
       children: [
         if (_leaf)
-          const ListTile(
-            key: Key("picker-leaf"),
-            leading: Icon(Icons.photo_album),
-            title: Text(albumHoldsNoFolders),
+          ListTile(
+            key: const Key("picker-leaf"),
+            leading: const Icon(Icons.photo_album),
+            title: Text(albumHoldsNoFolders(l10n)),
           ),
         // Why this folder cannot be confirmed: an image belongs in an album,
         // and this is a folder of folders, see issue #113.
         if (!_leaf && widget.targetIsAlbum)
-          const ListTile(
-            key: Key("picker-needs-album"),
-            leading: Icon(Icons.photo_library_outlined),
-            title: Text(imagesLiveInAlbums),
+          ListTile(
+            key: const Key("picker-needs-album"),
+            leading: const Icon(Icons.photo_library_outlined),
+            title: Text(imagesLiveInAlbums(l10n)),
           ),
         if (_mayCreateAlbumHere(context))
           ListTile(
             key: const Key("picker-create-album"),
             leading: const Icon(Icons.create_new_folder),
-            title: const Text("Create new album…"),
+            title: Text(l10n.createNewAlbum),
             onTap: _createAlbum,
           ),
         for (var folder in _folders)

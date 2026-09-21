@@ -14,6 +14,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The folder the album lives in.
 const List<String> albumPath = ["Zoo"];
@@ -113,7 +114,7 @@ Future<void> openFromTile(WidgetTester tester, String name) async {
 
 /// Closes the open dialog without changing anything.
 Future<void> cancel(WidgetTester tester) async {
-  await tester.tap(find.text("Abbrechen"));
+  await tester.tap(find.text(testL10n.cancel));
   await tester.pumpAndSettle();
 }
 

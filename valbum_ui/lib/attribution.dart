@@ -20,6 +20,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'caller.dart';
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'rights.dart';
 import 'share_session.dart';
@@ -28,7 +29,8 @@ import 'share_session.dart';
 const String subjectUserPrefix = "user:";
 
 /// How an attribution is worded.
-String attributionLine(String label) => "Added by $label";
+String attributionLine(AppLocalizations l10n, String label) =>
+    l10n.addedBy(label);
 
 /// The subject the server would name this caller by, `null` where the app
 /// cannot know it.
@@ -66,6 +68,7 @@ String? attributionOf(BuildContext context, ImagePart image) {
   if (ShareSession.of(context) != null) {
     return null;
   }
+  var l10n = AppLocalizations.of(context)!;
   var label = image.contributorLabel.trim();
   if (label.isEmpty) {
     return null;
@@ -74,7 +77,7 @@ String? attributionOf(BuildContext context, ImagePart image) {
   if (subject.isNotEmpty && subject == callerSubject(context)) {
     return null;
   }
-  return attributionLine(label);
+  return attributionLine(l10n, label);
 }
 
 /// The line naming who added [image] wherever it is shown to the editor as
@@ -83,9 +86,9 @@ String? attributionOf(BuildContext context, ImagePart image) {
 /// The tile properties of the album's edit mode show the attribution of every
 /// image, the editor's own included: this is the screen that says what an
 /// image *is*, and who added it is part of that.
-String? attributionShown(ImagePart image) {
+String? attributionShown(AppLocalizations l10n, ImagePart image) {
   var label = image.contributorLabel.trim();
-  return label.isEmpty ? null : attributionLine(label);
+  return label.isEmpty ? null : attributionLine(l10n, label);
 }
 
 /// Whether the caller may take [image] back out of the album it is in.

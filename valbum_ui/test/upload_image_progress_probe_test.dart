@@ -84,7 +84,7 @@ void main() {
         reason: "the total is what will arrive, not what was picked");
     expect(transfer.last.imagesDone, 8);
     expect(transfer.last.fraction, 1.0);
-    expect(transfer.last.line, "8 von 8 Bildern");
+    expect(transfer.last.lineOf(testL10n), "8 of 8 images");
     expect(transfer.where((r) => r.fraction >= 1.0).length, 1,
         reason: "1.0 exactly once, when the last batch has answered");
     for (var i = 1; i < transfer.length; i++) {
@@ -110,7 +110,7 @@ void main() {
     for (var r in reports) {
       expect(r.fraction.isNaN, isFalse, reason: r.toString());
       expect(r.percent, inInclusiveRange(0, 100), reason: r.toString());
-      expect(r.line, isNot(contains("NaN")));
+      expect(r.lineOf(testL10n), isNot(contains("NaN")));
     }
   });
 
@@ -148,7 +148,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text("1234 von 5678 Bildern"), findsOneWidget);
+    expect(find.text("1234 of 5678 images"), findsOneWidget);
     expect(find.text("22 %"), findsOneWidget);
     var wheel = tester.widget<CircularProgressIndicator>(find.byKey(uploadProgressWheelKey));
     expect(wheel.value, closeTo(0.2173, 1e-9));
@@ -157,7 +157,7 @@ void main() {
     // An indeterminate wheel animates forever: one frame, not a settle.
     await tester.pump();
     expect(tester.widget<CircularProgressIndicator>(find.byKey(uploadProgressWheelKey)).value, isNull);
-    expect(find.text(uploadWaitingMessage), findsOneWidget);
+    expect(find.text(testL10n.uploadWaiting), findsOneWidget);
 
     await tester.tap(find.byKey(uploadProgressCancelKey));
     await tester.pump();

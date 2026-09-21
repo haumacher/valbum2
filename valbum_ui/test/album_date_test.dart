@@ -12,6 +12,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// Local midnight of the given day, the way the app stores a picked date.
 int millis(int year, int month, int day) =>
@@ -196,11 +197,11 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(const Key("album-date"))).data,
-        "Datum: 2026-09-06",
+        testL10n.dateIs("2026-09-06"),
       );
       expect(
         tester.widget<Text>(find.byKey(const Key("album-date-source"))).data,
-        "Aus dem Ordnernamen übernommen.",
+        testL10n.dateFromFolderName,
       );
       // Nothing to clear while nothing explicit is set.
       expect(
@@ -219,7 +220,7 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(const Key("album-date-source"))).data,
-        "Aus den Fotos übernommen.",
+        testL10n.dateFromPhotos,
       );
     });
 
@@ -234,7 +235,7 @@ void main() {
 
       await withFakeImageHttp(() async {
         // The picker opens on the date the album is shown with.
-        await tester.tap(find.byTooltip("Datum wählen"));
+        await tester.tap(find.byTooltip(testL10n.pickDate));
         await tester.pumpAndSettle();
         await tester.tap(find.text("15"));
         await tester.pumpAndSettle();
@@ -244,13 +245,13 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(const Key("album-date"))).data,
-        "Datum: 2026-09-15",
+        testL10n.dateIs("2026-09-15"),
       );
       // The explicit date silences the hint: it is no longer derived.
       expect(find.byKey(const Key("album-date-source")), findsNothing);
 
       await withFakeImageHttp(() async {
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
       });
 
@@ -292,11 +293,11 @@ void main() {
       // Nothing is claimed about what the server will derive instead.
       expect(
         tester.widget<Text>(find.byKey(const Key("album-date"))).data,
-        "Datum: keines",
+        testL10n.dateNone,
       );
 
       await withFakeImageHttp(() async {
-        await tester.tap(find.text("Übernehmen"));
+        await tester.tap(find.text(testL10n.apply));
         await tester.pumpAndSettle();
       });
 

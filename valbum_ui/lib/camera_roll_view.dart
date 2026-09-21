@@ -8,11 +8,14 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import 'background.dart';
 import 'caller.dart';
 import 'camera_roll.dart';
 import 'client.dart';
 import 'l10n/app_localizations.dart';
+import 'notices.dart';
 import 'photo_library.dart';
 import 'resource.dart';
 import 'settings.dart';
@@ -178,7 +181,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
           // about their space below, not about a camera they do have.
           subtitle: hasLibrary
               ? null
-              : Text(sync.library.accessProblem ?? l10n.noPhotoLibrary),
+              : Text(noticeOr(sync.library.accessProblem, l10n.noPhotoLibrary, l10n)),
           value: config.enabled,
           onChanged: available ? _toggle : null,
         ),
@@ -186,7 +189,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              guestNoSpaceNotice,
+              noticeText(guestNoSpaceNotice, l10n),
               key: cameraRollNoSpaceKey,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
@@ -219,7 +222,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
           ],
         ),
         const SizedBox(height: 16),
-        Text(status.line),
+        Text(cameraRollLine(status, l10n)),
         _backgroundLine(sync),
         if (status.running)
           Padding(
@@ -300,7 +303,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
             return Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                problem,
+                noticeText(problem, AppLocalizations.of(context)!),
                 key: cameraRollSourcesProblemKey,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
@@ -319,14 +322,14 @@ class _CameraRollSectionState extends State<CameraRollSection> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  newSourceNotice,
+                  AppLocalizations.of(context)!.cameraRollNewSource,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 if (watched.isEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      noSourcesNotice,
+                      AppLocalizations.of(context)!.cameraRollNoSources,
                       key: cameraRollNoSourcesKey,
                       style:
                           TextStyle(color: Theme.of(context).colorScheme.error),
@@ -388,14 +391,16 @@ class _CameraRollSectionState extends State<CameraRollSection> {
   /// What the sync does while the app is closed (issue #32): the report of the
   /// last background run, or the reason this platform has none.
   Widget _backgroundLine(CameraRollSync sync) {
+    var l10n = AppLocalizations.of(context)!;
     var scheduler = sync.scheduler;
     var problem = sync.backgroundProblem;
     var record = sync.lastBackgroundRun;
     String? text;
     if (!scheduler.available) {
-      text = scheduler.unavailableReason;
+      var reason = scheduler.unavailableReason;
+      text = reason == null ? null : noticeText(reason, l10n);
     } else if (record != null) {
-      text = record.line;
+      text = backgroundRunLine(record, l10n);
     }
     if (text == null && problem == null) {
       return const SizedBox.shrink();
@@ -415,7 +420,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                problem,
+                noticeText(problem, l10n),
                 style: const TextStyle(color: Colors.red),
               ),
             ),
@@ -433,7 +438,8 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     if (!mounted) {
       return;
     }
-    setState(() => refusal = problem);
+    setState(() => refusal =
+        problem == null ? null : noticeText(problem, AppLocalizations.of(context)!));
     // Switching the sync on is where the library is asked for access; the
     // albums it refused to name a moment ago can be named now.
     _reloadAlbums();
@@ -729,8 +735,91 @@ class CameraRollIndicator extends StatelessWidget {
     return IconButton(
       key: cameraRollIndicatorKey,
       icon: const Icon(Icons.cloud_upload),
-      tooltip: sync.status.line,
+      tooltip: cameraRollLine(sync.status, AppLocalizations.of(context)!),
       onPressed: () => openServerSettings(context),
     );
   }
 }
+
+/// The sentence [notice] reads, [fallback] where there is no notice.
+String noticeOr(AppNotice? notice, String fallback, AppLocalizations l10n) =>
+    notice == null ? fallback : noticeText(notice, l10n);
+
+/// A time of day as the camera-roll lines write it, in the locale's own form.
+String cameraRollTime(DateTime when, AppLocalizations l10n) =>
+    DateFormat.Hm(l10n.localeName).format(when.toLocal());
+
+/// The one line the settings section and the app-bar tooltip show (issue #108).
+///
+/// The engine answers what happened as data ([CameraRollStatus]) and says
+/// nothing in words; this is where the words are, so that a run reads in the
+/// language of the device. What the **server** said travels verbatim through
+/// [CameraRollStatus.message] and is never re-worded here.
+String cameraRollLine(CameraRollStatus status, AppLocalizations l10n) {
+  String reason() =>
+      status.message ??
+      (status.notice == null
+          ? l10n.cameraRollUnknownReason
+          : noticeText(status.notice!, l10n));
+  String when() => status.nextAttempt == null
+      ? l10n.cameraRollNextAttempt
+      : cameraRollTime(status.nextAttempt!, l10n);
+
+  switch (status.phase) {
+    case CameraRollPhase.disabled:
+      return l10n.cameraRollOff;
+    case CameraRollPhase.unavailable:
+      return noticeOr(status.notice, status.message ?? l10n.noPhotoLibrary, l10n);
+    case CameraRollPhase.running:
+      return l10n.cameraRollUploading(status.total, status.done + 1);
+    case CameraRollPhase.waiting:
+      // A run that waits for the index has not failed: it is postponed, and
+      // the sentence says what the server is doing (issue #118).
+      if (status.indexing) {
+        var indexing =
+            l10n.cameraRollIndexing(status.indexingTotal!, status.indexingDone!);
+        return "$indexing ${l10n.cameraRollWaitingUntil(when())}";
+      }
+      return l10n.cameraRollFailedRetrying(reason(), when());
+    case CameraRollPhase.failed:
+      return l10n.cameraRollFailed(reason());
+    case CameraRollPhase.idle:
+      var fallback = status.inboxGoneUsing;
+      var line = _lastRunLine(status, l10n);
+      return fallback == null
+          ? line
+          : "${l10n.cameraRollInboxGone(fallback)} $line";
+  }
+}
+
+String _lastRunLine(CameraRollStatus status, AppLocalizations l10n) {
+  var when = status.lastSuccess;
+  if (when == null) {
+    return l10n.cameraRollWaitingForPhotos;
+  }
+  var count = status.lastStored + status.lastPresent;
+  if (count == 0) {
+    return l10n.cameraRollNothingNew(cameraRollTime(when, l10n));
+  }
+  var line = l10n.cameraRollSynced(
+    status.lastStored,
+    count,
+    cameraRollTime(when, l10n),
+    status.lastPresent,
+  );
+  var where = status.lastPresentIn;
+  if (where.isEmpty) {
+    return line;
+  }
+  var named = where.take(3).join(", ") + (where.length > 3 ? ", ..." : "");
+  return "$line ${l10n.alreadyInLibrary(named)}";
+}
+
+/// What the last background run did, as the settings section says it.
+String backgroundRunLine(BackgroundRunRecord record, AppLocalizations l10n) =>
+    record.ok
+        ? l10n.backgroundLastRun(record.stored, record.stamp, record.present)
+        : l10n.backgroundLastRunFailed(
+            record.message ?? l10n.cameraRollUnknownReason,
+            record.stamp,
+          );

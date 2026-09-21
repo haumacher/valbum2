@@ -63,7 +63,7 @@ void main() {
 
     expect(
       tester.widget<Text>(find.byKey(uploadProgressCountKey)).data,
-      "12 von 48 Bildern",
+      "12 of 48 images",
     );
     expect(wheelOf(tester).value, 0.25);
     expect(
@@ -95,7 +95,7 @@ void main() {
 
     expect(
       tester.widget<Text>(find.byKey(uploadProgressCountKey)).data,
-      "8 von 12 Bildern",
+      "8 of 12 images",
     );
     expect(wheelOf(tester).value, 0.75);
     expect(
@@ -129,7 +129,7 @@ void main() {
     expect(count, findsOneWidget);
     expect(
       tester.widget<Text>(count).data,
-      "128 von 256 Bildern",
+      "128 of 256 images",
     );
     var box = tester.getRect(count);
     expect(box.left, greaterThanOrEqualTo(0));
@@ -152,7 +152,7 @@ void main() {
     expect(find.byKey(uploadProgressPercentKey), findsNothing);
     expect(
       tester.widget<Text>(find.byKey(uploadProgressCountKey)).data,
-      "Wird vorbereitet: 3 von 48...",
+      "Preparing: 3 of 48...",
     );
 
     notifier.value = const UploadProgress(
@@ -164,7 +164,7 @@ void main() {
     expect(wheelOf(tester).value, isNull);
     expect(
       tester.widget<Text>(find.byKey(uploadProgressCountKey)).data,
-      uploadAskingMessage,
+      uploadAskingMessage(testL10n),
     );
 
     // The last phase: the body is out and the server has not answered yet,
@@ -179,7 +179,7 @@ void main() {
     expect(wheelOf(tester).value, isNull);
     expect(
       tester.widget<Text>(find.byKey(uploadProgressCountKey)).data,
-      uploadWaitingMessage,
+      testL10n.uploadWaiting,
     );
   });
 

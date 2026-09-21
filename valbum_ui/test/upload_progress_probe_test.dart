@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'util/l10n.dart';
 
 UploadFile sizedFile(String name, int size, int fill) => UploadFile(
       name: name,
@@ -93,11 +94,11 @@ void main() {
     expect(summary.present, 2);
     // The lines the person reads, in order: the preparing counts images, and
     // there is nothing to transfer, so the wheel is simply full (issue #70).
-    expect([for (var report in progress) report.line], [
-      "Wird vorbereitet: 1 von 2...",
-      "Wird vorbereitet: 2 von 2...",
-      uploadAskingMessage,
-      "0 von 0 Bildern",
+    expect([for (var report in progress) report.lineOf(testL10n)], [
+      "Preparing: 1 of 2...",
+      "Preparing: 2 of 2...",
+      uploadAskingMessage(testL10n),
+      "0 of 0 images",
     ]);
     expect(progress.last.fraction, 1);
     var text = messagesOf(log);
@@ -196,7 +197,7 @@ void main() {
     await expectLater(
       client.uploadNew(path, files, handle: handle),
       throwsA(isA<VAlbumException>()
-          .having((e) => e.message, "message", uploadCancelledMessage)),
+          .having((e) => e.message, "message", uploadCancelledMessage(testL10n))),
     );
   });
 
@@ -219,7 +220,7 @@ void main() {
     await expectLater(
       client.uploadNew(path, files, handle: handle),
       throwsA(isA<VAlbumException>()
-          .having((e) => e.message, "message", uploadCancelledMessage)),
+          .having((e) => e.message, "message", uploadCancelledMessage(testL10n))),
     );
   });
 }

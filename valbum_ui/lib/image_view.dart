@@ -17,17 +17,12 @@ import 'image_properties.dart';
 import 'image_transform.dart';
 import 'move_view.dart';
 import 'offline.dart';
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'rights.dart';
 import 'share_session.dart';
 import 'thumbnails.dart';
 import 'video_view.dart';
-
-/// What a caller who may not change this album is told (issue #80).
-///
-/// Refusals speak: a long press that does nothing at all would look like a
-/// broken gesture. English, like the rest of this view.
-const String notEditableMessage = "You may not edit this album.";
 
 /// The velocity (in pixels per second) a drag must reach to count as a swipe.
 const double _swipeVelocity = 400;
@@ -46,14 +41,6 @@ const double _rubberBandFraction = 1 / 5;
 
 /// How long a drag that did not navigate takes to slide back (issue #61).
 const Duration _snapBackDuration = Duration(milliseconds: 150);
-
-/// What is said when a picture could not be delivered at all (issue #95).
-///
-/// A *right* the caller does not hold is never mentioned here: what they may
-/// not do is not offered, so the viewer never asks for it and the server never
-/// refuses it. This is the other case — a server error, a broken connection —
-/// and that one speaks, once, the way every other failure of this app speaks.
-const String pictureFailedMessage = "This picture could not be loaded.";
 
 /// The picture the viewer shows for the image at [imageUrl] (issue #95).
 ///
@@ -357,9 +344,12 @@ class ImageViewState extends State<ImageView>
     }
     if (!mayEditDescription) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(notEditableMessage, key: Key("image-not-editable")),
-          duration: Duration(seconds: 4),
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.notEditableMessage,
+            key: const Key("image-not-editable"),
+          ),
+          duration: const Duration(seconds: 4),
         ),
       );
       return;
@@ -513,9 +503,12 @@ class ImageViewState extends State<ImageView>
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(pictureFailedMessage, key: Key("image-failed")),
-          duration: Duration(seconds: 6),
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.pictureFailedMessage,
+            key: const Key("image-failed"),
+          ),
+          duration: const Duration(seconds: 6),
         ),
       );
     });
@@ -967,6 +960,7 @@ class ImageViewState extends State<ImageView>
 
   /// The navigation chevrons and the caption shown on top of the image.
   List<Widget> buildOverlay(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var self = part;
     var attribution = attributionOf(context, self);
     // The controls stay clear of the system bars (issue #60): the viewer runs
@@ -979,7 +973,7 @@ class ImageViewState extends State<ImageView>
       if (widget.albumPath != null && mayTakeBack(context, self))
         overlayButton(
           Icons.undo,
-          "Take back…",
+          l10n.takeBack,
           takeBack,
           key: const Key("image-take-back"),
         ),
@@ -988,7 +982,8 @@ class ImageViewState extends State<ImageView>
       Positioned(
         left: insets.left + 8,
         top: insets.top + 8,
-        child: overlayButton(Icons.arrow_back, "Back to the album", showParent),
+        child:
+            overlayButton(Icons.arrow_back, l10n.backToAlbum, showParent),
       ),
       if (previous != null)
         Positioned(
@@ -998,7 +993,7 @@ class ImageViewState extends State<ImageView>
           child: Center(
             child: overlayButton(
               Icons.chevron_left,
-              "Previous image",
+              l10n.previousImage,
               showPrevious,
             ),
           ),
@@ -1011,7 +1006,7 @@ class ImageViewState extends State<ImageView>
           child: Center(
             child: overlayButton(
               Icons.chevron_right,
-              "Next image",
+              l10n.nextImage,
               showNext,
             ),
           ),
@@ -1030,7 +1025,7 @@ class ImageViewState extends State<ImageView>
           child: Center(
             child: overlayButton(
               Icons.expand_more,
-              "Show the alternatives",
+              l10n.showAlternatives,
               showGroup,
             ),
           ),

@@ -19,6 +19,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'l10n/app_localizations.dart';
+
 /// One entry of an [OfflineCache]: the bytes and when they were stored.
 @immutable
 class CacheEntry {
@@ -379,8 +381,7 @@ class OfflineState extends ChangeNotifier {
 /// Changes need the server; while it cannot be reached there is nothing to
 /// write to, and an edit that silently did nothing would be worse than a
 /// refusal, see the "refusals speak" rule.
-const String offlineRefusal =
-    "Offline: changes need the server. Retry when it is reachable again.";
+String offlineRefusal(AppLocalizations l10n) => l10n.offlineRefusal;
 
 /// Publishes the [OfflineCache] and the [OfflineState] to the widget tree.
 class OfflineScope extends InheritedNotifier<OfflineState> {
@@ -397,7 +398,7 @@ class OfflineScope extends InheritedNotifier<OfflineState> {
   /// The offline state and cache of the enclosing app.
   static OfflineScope of(BuildContext context) {
     var scope = maybeOf(context);
-    assert(scope != null, "No OfflineScope found in the widget tree.");
+    assert(scope != null, "no OfflineScope in the widget tree");
     return scope!;
   }
 
@@ -427,7 +428,7 @@ bool refuseWhileOffline(BuildContext context) {
   }
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: const Text(offlineRefusal),
+      content: Text(AppLocalizations.of(context)!.offlineRefusal),
       backgroundColor: Colors.red.shade700,
       duration: const Duration(seconds: 6),
     ),
@@ -461,14 +462,17 @@ class OfflineBanner extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                offlineMessage(scope.state.lastUpdated),
+                offlineMessage(
+                  AppLocalizations.of(context)!,
+                  scope.state.lastUpdated,
+                ),
                 style: const TextStyle(color: Colors.white),
               ),
             ),
             TextButton(
               onPressed: onRetry,
               style: TextButton.styleFrom(foregroundColor: Colors.white),
-              child: const Text("Retry"),
+              child: Text(AppLocalizations.of(context)!.retry),
             ),
           ],
         ),
@@ -478,9 +482,10 @@ class OfflineBanner extends StatelessWidget {
 }
 
 /// What the [OfflineBanner] says for data fetched at [lastUpdated].
-String offlineMessage(DateTime? lastUpdated) => lastUpdated == null
-    ? "Offline - the server cannot be reached."
-    : "Offline - showing the copy from ${formatStamp(lastUpdated)}";
+String offlineMessage(AppLocalizations l10n, DateTime? lastUpdated) =>
+    lastUpdated == null
+        ? l10n.offlineNoServer
+        : l10n.offlineShowingCopy(formatStamp(lastUpdated));
 
 /// A date and time in the form the banner shows, without a locale dependency.
 String formatStamp(DateTime when) {
