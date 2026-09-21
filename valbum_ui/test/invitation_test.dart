@@ -12,6 +12,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String dataUrl = "http://server/valbum/data";
@@ -155,6 +156,8 @@ Future<void> pumpSettings(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: settings,
         clientFor: (dataUrl) =>
@@ -467,7 +470,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(shareLinkRefusalKey), findsOneWidget);
-      expect(find.text(shareLinkRefusal), findsOneWidget);
+      expect(find.text(shareLinkRefusal(testL10n)), findsOneWidget);
       expect(find.byKey(userNameFieldKey), findsNothing);
       expect(find.byKey(deviceCodeFieldKey), findsNothing);
       expect(signInButton, findsNothing);
@@ -597,7 +600,7 @@ void main() {
       );
 
       expect(find.byKey(inviteButtonKey), findsNothing);
-      expect(find.text(guestLibraryNotice), findsOneWidget);
+      expect(find.text(guestLibraryNotice(testL10n)), findsOneWidget);
     });
   });
 

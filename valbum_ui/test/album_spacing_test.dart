@@ -14,6 +14,7 @@ import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/resource.dart';
 
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// Maximum accepted deviation of a measured coordinate, in logical pixels.
 const double tolerance = 0.5;
@@ -169,6 +170,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: GroupView(
           client: clientReturning("{}"),
           baseUrl: "http://server/valbum/data",

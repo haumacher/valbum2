@@ -888,7 +888,12 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
                 // album's date without anything further being done — and the
                 // calendar opens on it when it is changed, see issue #114.
                 initialValue: widget.initialDate,
-                initialDate: widget.initialDate ?? now,
+                initialPickerDateTime: widget.initialDate ?? now,
+                // The field is cleared by the dialog, not by an icon of the
+                // package's own: `date_field` 7 would otherwise replace the
+                // calendar icon below with a cross as soon as a day stands in
+                // the field (issue #108 upgraded the package for `intl`).
+                canClear: false,
                 onSaved: (value) => albumDate = value,
                 dateFormat: folderDateFormat,
                 // No validator: an album without a date is one the server

@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:valbum_ui/caller.dart';
 import 'package:valbum_ui/image_properties.dart';
 import 'package:valbum_ui/resource.dart';
+import 'util/l10n.dart';
 
 /// A place in the Black Forest, as the acceptance of issue #112 spells it.
 GeoLocation get atHome => GeoLocation(latitude: 48.123456, longitude: 8.654321);
@@ -32,7 +33,10 @@ ImagePart imageAt(GeoLocation? location) => ImagePart(
 /// The dialog on [image], with [mapUrl] as the map of the space.
 Widget dialogOn(ImagePart image, {String? mapUrl}) => CallerScope(
       caller: mapUrl == null ? null : CallerInfo(mapUrl: mapUrl),
-      child: MaterialApp(home: ImagePropertiesDialog(image)),
+      child: MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
+      home: ImagePropertiesDialog(image)),
     );
 
 void main() {

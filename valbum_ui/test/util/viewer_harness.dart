@@ -15,6 +15,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'fake_image_http.dart';
 import 'fixtures.dart';
+import 'l10n.dart';
 
 export 'fake_image_http.dart' show fakeImageRequests, withFakeImageHttp;
 
@@ -184,6 +185,8 @@ Future<void> pumpViewerHarness(
           child: ShareSessionScope(
             session: share,
             child: MaterialApp(
+              localizationsDelegates: testLocalizationsDelegates,
+              supportedLocales: testSupportedLocales,
               home: Builder(
                 builder: (context) => Scaffold(
                   body: TextButton(

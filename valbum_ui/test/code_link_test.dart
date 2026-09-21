@@ -13,6 +13,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/device_code_payload.dart';
 import 'package:valbum_ui/manage_view.dart';
+import 'util/l10n.dart';
 
 const String dataUrl = "http://server/valbum/data";
 
@@ -41,6 +42,8 @@ Future<void> pumpDialog(
   });
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: Scaffold(
         body: DeviceCodeDialog(
           client: VAlbumClient(dataUrl: dataUrl, httpClient: transport),

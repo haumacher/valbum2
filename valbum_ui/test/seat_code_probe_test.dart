@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'util/l10n.dart';
 
 const String serverUrl = "http://server/valbum/";
 
@@ -27,6 +28,8 @@ Future<void> pumpSettings(WidgetTester tester, http.Client transport) async {
   var settings = ServerSettings(store: InMemorySettingsStore(serverUrl));
   await settings.load();
   await tester.pumpWidget(MaterialApp(
+    localizationsDelegates: testLocalizationsDelegates,
+    supportedLocales: testSupportedLocales,
     home: ServerSettingsScreen(
       settings: settings,
       clientFor: (dataUrl) => VAlbumClient(dataUrl: dataUrl, httpClient: transport),

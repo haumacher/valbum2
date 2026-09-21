@@ -16,6 +16,7 @@ import 'package:valbum_ui/diagnostics.dart';
 import 'package:valbum_ui/video_view.dart';
 
 import 'util/fake_image_http.dart';
+import 'util/l10n.dart';
 
 /// The URL of the video the tests fail to play.
 const String videoUrl = "http://192.168.1.9:8080/valbum/data/album/clip.mp4";
@@ -46,6 +47,8 @@ Future<DiagnosticsLog> pumpFailing(
   await withFakeImageHttp(() async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: VideoView(
           videoUrl: videoUrl,
           posterUrl: "$videoUrl?type=tn",
@@ -161,6 +164,8 @@ void main() {
       await withFakeImageHttp(() async {
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: testLocalizationsDelegates,
+            supportedLocales: testSupportedLocales,
             home: VideoView(
               videoUrl: videoUrl,
               posterUrl: "$videoUrl?type=tn",
@@ -195,6 +200,8 @@ void main() {
       await withFakeImageHttp(() async {
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: testLocalizationsDelegates,
+            supportedLocales: testSupportedLocales,
             home: VideoView(
               videoUrl: longUrl,
               posterUrl: "$longUrl?type=tn",

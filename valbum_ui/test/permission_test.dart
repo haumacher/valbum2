@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/caller.dart';
 import 'package:valbum_ui/resource.dart';
 import 'package:valbum_ui/rights.dart';
+import 'util/l10n.dart';
 
 /// The answer of `?type=auth`, as the server writes it.
 AuthInfo auth({
@@ -164,23 +165,23 @@ void main() {
         () {
       expect(
         CallerPermission.of(auth(role: "edit", clearance: "all", mayShare: true))
-            .sentence,
+            .sentence(testL10n),
         "You may edit every album of this space; you see all images; "
         "you may share links.",
       );
       expect(
         CallerPermission.of(auth(role: "contribute", clearance: "nonPrivate"))
-            .sentence,
+            .sentence(testL10n),
         "You may add photos to this space; you see all but the private "
         "images; you may not share links.",
       );
       expect(
-        CallerPermission.of(auth(role: "view", clearance: "public")).sentence,
+        CallerPermission.of(auth(role: "view", clearance: "public")).sentence(testL10n),
         "You may look at this space; you see the public images; you may not "
         "share links.",
       );
       expect(
-        CallerPermission.of(auth(role: "admin")).sentence,
+        CallerPermission.of(auth(role: "admin")).sentence(testL10n),
         "You manage this server; you see all images; you may share links.",
       );
     });

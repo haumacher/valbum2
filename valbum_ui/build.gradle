@@ -1,0 +1,18 @@
+// Translating `lib/l10n/app_en.arb` into the other languages (issue #108).
+//
+// English is the source and the only file edited by hand; `./gradlew
+// translateArb` (or `android/gradlew -p . translateArb`) fills in the targets
+// through DeepL, keeping ICU placeholders and plurals and translating only the
+// entries that changed. The key is read from `deepl.apiKey` in
+// `~/.gradle/gradle.properties` or from `DEEPL_API_KEY` in the environment.
+//
+// Afterwards `flutter gen-l10n` regenerates `lib/l10n/app_localizations*.dart`.
+plugins {
+    id 'de.haumacher.auto-translate-arb' version '1.1.4'
+}
+
+translateArb {
+    serverId = 'deepl'
+    sourceFile = file('lib/l10n/app_en.arb')
+    targetLangs = ['de']
+}

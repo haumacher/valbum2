@@ -17,6 +17,7 @@ import 'package:valbum_ui/settings.dart';
 
 import 'devices_test.dart'
     show authOfUser, json, pumpSettings, serverUrl, signedIn;
+import 'util/l10n.dart';
 
 /// The users of the server the tests talk to, one of them never signed in.
 const String someUsers = '{"users": ['
@@ -103,7 +104,7 @@ void main() {
     );
     // Whose code it is, said where it is shown; never "signs that device in
     // as you", which is what the own device code says.
-    expect(find.text(recoveryCodeAdvice("carol")), findsOneWidget);
+    expect(find.text(recoveryCodeAdvice(testL10n, "carol")), findsOneWidget);
   });
 
   testWidgets('a refusal is shown in the server\'s own words', (tester) async {

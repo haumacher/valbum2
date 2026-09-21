@@ -1,0 +1,8 @@
+# The localization of the app, see issue #108.
+#
+# `app_en.arb` is the only file edited by hand; every other `app_<lang>.arb` is
+# written by the Gradle task `translateArb` (see `build.gradle`) and every
+# `app_localizations*.dart` by `flutter gen-l10n`.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart

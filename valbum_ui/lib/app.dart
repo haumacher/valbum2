@@ -25,7 +25,9 @@ import 'first_screen.dart';
 import 'group_view.dart';
 import 'image_view.dart';
 import 'invitation.dart';
+import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
+import 'locales.dart';
 import 'offline.dart';
 import 'photo_library.dart';
 import 'photo_picker_view.dart';
@@ -613,7 +615,7 @@ class VAlbumAppState extends State<VAlbumApp> {
               TextButton(
                 key: const Key("invitation-notice-dismiss"),
                 onPressed: () => setState(() => _invitationNotice = null),
-                child: const Text("Dismiss"),
+                child: Text(AppLocalizations.of(context)!.dismiss),
               ),
             ],
           ),
@@ -875,7 +877,10 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// [Navigator] the settings screen lives in, and re-creating that would
   /// throw away what the user has typed.
   Widget _beforeTheRouter() => MaterialApp.router(
-        title: 'Virtual Photo Album',
+        onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localeListResolutionCallback: resolveAppLocale,
         theme: ThemeData(primarySwatch: Colors.blue),
         builder: _withInvitationNotice,
         routerDelegate: _preRouter ??= SilentRouterDelegate(_startupScreen),
@@ -996,7 +1001,10 @@ class VAlbumAppState extends State<VAlbumApp> {
   Widget _albumApp(VAlbumClient client) => VAlbumScope(
         client: client,
         child: MaterialApp.router(
-          title: 'Virtual Photo Album',
+          onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localeListResolutionCallback: resolveAppLocale,
           theme: ThemeData(primarySwatch: Colors.blue),
           builder: _withInvitationNotice,
           routerDelegate: router,
@@ -1716,10 +1724,11 @@ class VAlbumState extends State<VAlbumView>
   /// issue #45), not a failure of the app, so it says what to do instead of
   /// quoting an error.
   Widget buildSignInRequired(VAlbumException refusal) {
+    var l10n = AppLocalizations.of(context)!;
     var scope = ServerSettingsScope.of(context);
     var dataUrl = scope.settings.dataUrl;
     return Scaffold(
-      appBar: AppBar(title: const Text("Sign-in required")),
+      appBar: AppBar(title: Text(l10n.signInRequiredTitle)),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
@@ -1731,7 +1740,7 @@ class VAlbumState extends State<VAlbumView>
                 const Icon(Icons.lock_outline, size: 48),
                 const SizedBox(height: 16),
                 Text(
-                  "Sign-in required",
+                  l10n.signInRequiredTitle,
                   style: Theme.of(context).textTheme.headlineSmall,
                   textAlign: TextAlign.center,
                 ),
@@ -1754,15 +1763,15 @@ class VAlbumState extends State<VAlbumView>
                     onSignedIn: (_, __) => reload(),
                   )
                 else
-                  const Text(
-                    "This app talks to no server yet.",
+                  Text(
+                    l10n.signInRequiredNoServer,
                     textAlign: TextAlign.center,
                   ),
                 const SizedBox(height: 24),
                 TextButton.icon(
                   onPressed: () => openServerSettings(context),
                   icon: const Icon(Icons.settings),
-                  label: const Text("Server settings..."),
+                  label: Text(l10n.serverSettingsAction),
                 ),
               ],
             ),

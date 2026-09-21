@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String serverUrl = "http://server/valbum/";
@@ -33,6 +34,8 @@ Future<void> pumpSettings(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: settings,
         clientFor: (dataUrl) =>
@@ -158,7 +161,7 @@ void main() {
 
     expect(
       tester.widget<Text>(find.byKey(signInErrorKey)).data,
-      codeRequiredRefusal,
+      codeRequiredRefusal(testL10n),
     );
     expect(
       requests.where((request) => request.url.query == "action=pair"),

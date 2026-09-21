@@ -10,6 +10,7 @@ import 'package:valbum_ui/diagnostics.dart';
 import 'package:valbum_ui/video_view.dart';
 
 import 'util/fake_image_http.dart';
+import 'util/l10n.dart';
 
 const String tokenUrl =
     "http://nas.local:8080/valbum/s/SECRETTOKEN123/data/album/clip.mp4";
@@ -24,6 +25,8 @@ Future<void> pumpFailing(WidgetTester tester, Object problem,
     {DiagnosticsLog? log, String url = tokenUrl}) async {
   await withFakeImageHttp(() async {
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: VideoView(
         videoUrl: url,
         posterUrl: "$url?type=tn",

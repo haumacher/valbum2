@@ -7,6 +7,7 @@ import 'package:valbum_ui/video_view.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 // Probe review for issue #22: a video composed with the viewer's chrome and
 // keyboard navigation to and from a neighbouring image.
@@ -34,6 +35,8 @@ void main() {
     late StateSetter rebuild;
     await withFakeImageHttp(() async {
       await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: StatefulBuilder(builder: (context, setState) {
           rebuild = setState;
           return ImageView(

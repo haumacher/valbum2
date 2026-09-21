@@ -17,6 +17,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String serverDataUrl = "http://server/valbum/data";
@@ -463,6 +464,8 @@ void main() {
           state: OfflineState(),
           cache: cache,
           child: MaterialApp(
+            localizationsDelegates: testLocalizationsDelegates,
+            supportedLocales: testSupportedLocales,
             home: ServerSettingsScreen(
               settings: settings,
               clientFor: (dataUrl) => VAlbumClient(

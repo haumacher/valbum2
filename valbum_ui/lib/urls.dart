@@ -24,6 +24,8 @@
 /// that reads a path rather than deriving from it.
 library;
 
+import 'l10n/app_localizations.dart';
+
 /// The data URL used on platforms that cannot derive it from their own origin.
 ///
 /// A settings screen replacing this default is planned (ROADMAP phase 2).
@@ -119,18 +121,26 @@ String dataUrlOf(String serverUrl) {
 /// is refused with [shareLinkRefusal] rather than turned into a data URL that
 /// answers nothing. An invitation link *is* usable — it names a server and
 /// signs the device in, see [serverLocationOf].
-String? serverUrlError(String serverUrl) {
+///
+/// Every reason is a localized sentence of this app's own. An address that
+/// cannot be read is refused with `serverUrlInvalid`, never with the message
+/// of the [FormatException] behind it — that one is English whatever the app
+/// speaks, and where `Uri.parse` threw it, it is English *and* a parser's
+/// wording ("Invalid empty scheme"). [serverLocationOf] goes on throwing what
+/// it likes; what it throws is for a caller, not for a reader.
+String? serverUrlError(AppLocalizations l10n, String serverUrl) {
   if (serverUrl.trim().isEmpty) {
-    return "Enter the URL of the album server, e.g. "
-        "'http://nas.local:8080/valbum/'.";
+    return l10n.serverUrlEmpty;
   }
   try {
     if (serverLocationOf(serverUrl).isShare) {
-      return shareLinkRefusal;
+      return shareLinkRefusal(l10n);
     }
     return null;
-  } on FormatException catch (error) {
-    return error.message;
+  } on FormatException {
+    // The parser's own sentence is for whoever *catches* it; what is shown
+    // here is this app's sentence, in this app's language (issue #108).
+    return l10n.serverUrlInvalid;
   }
 }
 
@@ -391,9 +401,7 @@ bool sameServer(String one, String other) {
 /// A share link opens one album in a browser and signs nothing in; pasting it
 /// where a server is named would store a URL that works for nobody, so it is
 /// said rather than silently stripped.
-const String shareLinkRefusal =
-    "This is a link to a shared album, not a sign-in. Open it in a browser to "
-    "see what was shared with you.";
+String shareLinkRefusal(AppLocalizations l10n) => l10n.shareLinkRefusal;
 
 /// What the URL [entered] in the server field names: the server, and the token
 /// it carried, if any.

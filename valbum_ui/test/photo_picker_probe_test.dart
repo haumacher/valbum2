@@ -16,6 +16,7 @@ import 'package:valbum_ui/wakelock.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 UploadFile sizedFile(String name, int size) => UploadFile(
       name: name,
@@ -143,7 +144,10 @@ void main() {
       photo("x-1.jpg", DateTime(2024, 6, 1)),
     ]);
     await tester.pumpWidget(
-      MaterialApp(home: PhotoPickerScreen(library: library)),
+      MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
+      home: PhotoPickerScreen(library: library)),
     );
     await tester.pumpAndSettle();
 

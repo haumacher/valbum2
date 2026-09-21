@@ -1,0 +1,1269 @@
+{
+  "@@locale": "en",
+  "appTitle": "Virtual Photo Album",
+  "@appTitle": {
+    "description": "The name of the application, shown as the window or browser tab title",
+    "x-translated": "409f1133"
+  },
+  "dismiss": "Dismiss",
+  "@dismiss": {
+    "description": "Button dismissing a banner",
+    "x-translated": "fff59f5b"
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Button leaving a dialog without doing anything",
+    "x-translated": "51bac044"
+  },
+  "save": "Save",
+  "@save": {
+    "description": "Button storing what was entered",
+    "x-translated": "f55495e0"
+  },
+  "remove": "Remove",
+  "@remove": {
+    "description": "Button or tooltip taking an entry away",
+    "x-translated": "6f2c1806"
+  },
+  "withdraw": "Withdraw",
+  "@withdraw": {
+    "description": "Button or tooltip taking an invitation or a code back",
+    "x-translated": "4ca83dc8"
+  },
+  "done": "Done",
+  "@done": {
+    "description": "Button closing a dialog that only showed something",
+    "x-translated": "b01f4f95"
+  },
+  "askingServer": "Asking the server...",
+  "@askingServer": {
+    "description": "Shown while a section waits for the server to answer",
+    "x-translated": "3987b2de"
+  },
+  "serverSettingsAction": "Server settings...",
+  "@serverSettingsAction": {
+    "description": "Button opening the server settings screen",
+    "x-translated": "666eb4cd"
+  },
+  "signInRequiredTitle": "Sign-in required",
+  "@signInRequiredTitle": {
+    "description": "Title of the page a server shows when it refuses an anonymous caller",
+    "x-translated": "410228e3"
+  },
+  "signInRequiredNoServer": "This app talks to no server yet.",
+  "@signInRequiredNoServer": {
+    "description": "Shown on the sign-in page when no server is configured",
+    "x-translated": "bc54f003"
+  },
+  "serverScreenTitle": "Album server",
+  "@serverScreenTitle": {
+    "description": "Title of the server settings screen",
+    "x-translated": "8a07937b"
+  },
+  "serverUrlHelp": "The address the album server is reached at, as you would open it in a browser, e.g. 'http://nas.local:8080/valbum/'. Where the server holds several spaces, the address carries the space: 'https://host/valbum/<space>/'.",
+  "@serverUrlHelp": {
+    "description": "Explains what belongs in the server address field",
+    "x-translated": "b2344914"
+  },
+  "serverLineNoServer": "This browser talks to no server yet.",
+  "@serverLineNoServer": {
+    "description": "Shown in the web build when no server is known",
+    "x-translated": "95dab1f3"
+  },
+  "serverLineTalksTo": "This browser talks to {server}",
+  "@serverLineTalksTo": {
+    "description": "Names the server the web build talks to",
+    "placeholders": {
+      "server": {
+        "type": "String",
+        "example": "http://nas.local:8080/valbum/"
+      }
+    },
+    "x-translated": "d33a3da2"
+  },
+  "serverUrlLabel": "Server URL",
+  "@serverUrlLabel": {
+    "description": "Label of the server address field",
+    "x-translated": "2019be64"
+  },
+  "testConnection": "Test connection",
+  "@testConnection": {
+    "description": "Button asking the entered server whether it answers",
+    "x-translated": "b7db5df4"
+  },
+  "forgetThisServer": "Forget this server",
+  "@forgetThisServer": {
+    "description": "Button dropping the stored server address",
+    "x-translated": "f7b01eee"
+  },
+  "useLoadedServer": "Use the server this app was loaded from",
+  "@useLoadedServer": {
+    "description": "Button going back to the server the app came from",
+    "x-translated": "f31ee60"
+  },
+  "contactingServer": "Contacting the server...",
+  "@contactingServer": {
+    "description": "Shown while the connection test runs",
+    "x-translated": "f84b5e45"
+  },
+  "signInHeading": "Sign in",
+  "@signInHeading": {
+    "description": "Heading of the sign-in section",
+    "x-translated": "763983fa"
+  },
+  "signInCodeExplanation": "Enter the code the server printed at start-up, or a code from one of your devices, or a recovery code your administrator gave you.",
+  "@signInCodeExplanation": {
+    "description": "Explains where a sign-in code comes from",
+    "x-translated": "a3afd08"
+  },
+  "signInNoServer": "Name a server above before signing in.",
+  "@signInNoServer": {
+    "description": "Shown instead of the sign-in form while no server is named",
+    "x-translated": "a424f669"
+  },
+  "signOut": "Sign out",
+  "@signOut": {
+    "description": "Button making this device forget its sign-in",
+    "x-translated": "75cfcf01"
+  },
+  "signedOutMessage": "This device no longer identifies itself to the server.",
+  "@signedOutMessage": {
+    "description": "Shown after a sign-out",
+    "x-translated": "e07c0866"
+  },
+  "userNameHelp": "Your name in this space; it is what the others see and what your photos are attributed to.",
+  "@userNameHelp": {
+    "description": "Explains what the user name field is for",
+    "x-translated": "d4dac003"
+  },
+  "codeRequiredRefusal": "Enter the code that signs this device in.",
+  "@codeRequiredRefusal": {
+    "description": "Shown when the sign-in button is pressed with an empty code field",
+    "x-translated": "ca30fc89"
+  },
+  "signInSucceeded": "Sign-in succeeded.",
+  "@signInSucceeded": {
+    "description": "Shown after the server accepted a sign-in",
+    "x-translated": "b996c812"
+  },
+  "signingIn": "Signing in...",
+  "@signingIn": {
+    "description": "Shown while the sign-in request runs",
+    "x-translated": "6ecbf4f2"
+  },
+  "yourName": "Your name",
+  "@yourName": {
+    "description": "Label of the name field while an invitation is being accepted",
+    "x-translated": "772f8ccc"
+  },
+  "yourNameHelp": "How the others on this server see you.",
+  "@yourNameHelp": {
+    "description": "Explains the name field of an invitation",
+    "x-translated": "ef811f62"
+  },
+  "userNameLabel": "User name",
+  "@userNameLabel": {
+    "description": "Label of the name field when a code signs in a user who has no name yet",
+    "x-translated": "ddd1c772"
+  },
+  "deviceNameLabel": "Device name",
+  "@deviceNameLabel": {
+    "description": "Label of the field naming this device at the server",
+    "x-translated": "2a0453f5"
+  },
+  "signInCodeLabel": "Sign-in code",
+  "@signInCodeLabel": {
+    "description": "Label of the code field",
+    "x-translated": "6500730a"
+  },
+  "signInCodeHelp": "From the server's start-up, from My devices on a device you are already signed in on, from your administrator, or your backup code.",
+  "@signInCodeHelp": {
+    "description": "Explains where the code in the code field comes from",
+    "x-translated": "1f035180"
+  },
+  "scanCode": "Scan code",
+  "@scanCode": {
+    "description": "Tooltip of the button opening the camera to read a code",
+    "x-translated": "7b1d27be"
+  },
+  "otherServerRefusal": "This code is for {server}, not for the server this page came from. Open that server and sign in there.",
+  "@otherServerRefusal": {
+    "description": "Shown when a scanned code names a different server than this page talks to",
+    "placeholders": {
+      "server": {
+        "type": "String",
+        "example": "http://nas.local:8080/valbum/"
+      }
+    },
+    "x-translated": "6b9ea77c"
+  },
+  "notADeviceCode": "This is not a device code.",
+  "@notADeviceCode": {
+    "description": "Shown when something scanned is no device code",
+    "x-translated": "fdff9afe"
+  },
+  "invitationMasked": "Invitation {token}",
+  "@invitationMasked": {
+    "description": "Names the invitation the entered address carries; the token is masked",
+    "placeholders": {
+      "token": {
+        "type": "String",
+        "example": "ab••••cd"
+      }
+    },
+    "x-translated": "dce8d3fc"
+  },
+  "notThisOne": "Not this one",
+  "@notThisOne": {
+    "description": "Button dropping the invitation of the entered address",
+    "x-translated": "382dce86"
+  },
+  "askingAboutInvitation": "Asking the server about this invitation...",
+  "@askingAboutInvitation": {
+    "description": "Shown while the server is asked what an invitation offers",
+    "x-translated": "86fd4055"
+  },
+  "invitationUnknown": "This server does not know this invitation. Ask for a new one.",
+  "@invitationUnknown": {
+    "description": "Shown when the server does not know the pasted invitation",
+    "x-translated": "b353123a"
+  },
+  "invitationUnknownHere": "This server does not know this invitation. Ask for a new one, or type the plain server address.",
+  "@invitationUnknownHere": {
+    "description": "The same, on the first screen, where a plain address is the alternative",
+    "x-translated": "58b9cf0d"
+  },
+  "invitationHeadlineWithRole": "{invitedBy} invited you to this album server: {may}.",
+  "@invitationHeadlineWithRole": {
+    "description": "Who invited, and what the invitation offers",
+    "placeholders": {
+      "invitedBy": {
+        "type": "String",
+        "example": "alice"
+      },
+      "may": {
+        "type": "String",
+        "example": "you may edit the albums"
+      }
+    },
+    "x-translated": "a49d9bb8"
+  },
+  "invitationHeadlinePlain": "{invitedBy} invited you to this album server.",
+  "@invitationHeadlinePlain": {
+    "description": "Who invited, where the offered role says nothing the app knows",
+    "placeholders": {
+      "invitedBy": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "8959dfbf"
+  },
+  "peopleHeading": "People",
+  "@peopleHeading": {
+    "description": "Heading of the section inviting people",
+    "x-translated": "2fba6f10"
+  },
+  "inviteExplanation": "An invitation is a single-use link that creates one account on this server. Send it to the person it is for, and to nobody else.",
+  "@inviteExplanation": {
+    "description": "Explains what an invitation is",
+    "x-translated": "7e2c5d52"
+  },
+  "inviteAction": "Invite…",
+  "@inviteAction": {
+    "description": "Button opening the invitation dialog",
+    "x-translated": "5fe0739e"
+  },
+  "signedInOnThisDevice": "Signed in on this device",
+  "@signedInOnThisDevice": {
+    "description": "Shown where the signed-in user has no name yet",
+    "x-translated": "eef3f48b"
+  },
+  "signedInAsUser": "Signed in as {user}",
+  "@signedInAsUser": {
+    "description": "Names the user this device is signed in as",
+    "placeholders": {
+      "user": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "2f5cf811"
+  },
+  "roleLine": "Role: {role}",
+  "@roleLine": {
+    "description": "Names the role the server reports",
+    "placeholders": {
+      "role": {
+        "type": "String",
+        "example": "admin"
+      }
+    },
+    "x-translated": "98673fe1"
+  },
+  "deviceLine": "Device: {device}",
+  "@deviceLine": {
+    "description": "Names this device at the server",
+    "placeholders": {
+      "device": {
+        "type": "String",
+        "example": "Android phone"
+      }
+    },
+    "x-translated": "e50007f0"
+  },
+  "spaceLine": "Space: {space}",
+  "@spaceLine": {
+    "description": "Names the space this device's requests are resolved against",
+    "placeholders": {
+      "space": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "5a7db078"
+  },
+  "notSignedIn": "Not signed in",
+  "@notSignedIn": {
+    "description": "Shown while this device holds no token",
+    "x-translated": "aaf410b8"
+  },
+  "deviceUnknownToServer": "This server does not know this device. Sign in again.",
+  "@deviceUnknownToServer": {
+    "description": "Shown when the server answers this device as an anonymous caller",
+    "x-translated": "e6f1d4db"
+  },
+  "identityUnknown": "The server did not say who this device is: {problem}",
+  "@identityUnknown": {
+    "description": "Shown when the server could not be asked who this device is",
+    "placeholders": {
+      "problem": {
+        "type": "String",
+        "example": "Connection refused"
+      }
+    },
+    "x-translated": "f2b26c9d"
+  },
+  "libraryOwner": "the library owner",
+  "@libraryOwner": {
+    "description": "How a user without a name is named on screen",
+    "x-translated": "211944bc"
+  },
+  "wholeLibrary": "the whole library",
+  "@wholeLibrary": {
+    "description": "How the space of a user without a space of their own is named",
+    "x-translated": "1a9c8e2c"
+  },
+  "guestLibraryNotice": "Guest: your library is what others share with you.",
+  "@guestLibraryNotice": {
+    "description": "Tells a guest what their own root holds",
+    "x-translated": "19a8a0f6"
+  },
+  "cacheHeading": "Cache",
+  "@cacheHeading": {
+    "description": "Heading of the offline cache section",
+    "x-translated": "808644e3"
+  },
+  "cacheExplanation": "Albums and thumbnails already seen are kept on this device, so that the library can be browsed while the server is away.",
+  "@cacheExplanation": {
+    "description": "Explains what the offline cache is",
+    "x-translated": "3660a374"
+  },
+  "currentlyCached": "Currently cached: {size}",
+  "@currentlyCached": {
+    "description": "How much the offline cache holds",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "12.3 MB"
+      }
+    },
+    "x-translated": "9186f2eb"
+  },
+  "currentlyCachedUnknown": "Currently cached: ...",
+  "@currentlyCachedUnknown": {
+    "description": "Shown while the cache size is being read",
+    "x-translated": "e1cc245"
+  },
+  "clearCache": "Clear cache",
+  "@clearCache": {
+    "description": "Button emptying the offline cache",
+    "x-translated": "1e7d16fc"
+  },
+  "clearCacheTitle": "Clear the cache?",
+  "@clearCacheTitle": {
+    "description": "Title of the question before the cache is emptied",
+    "x-translated": "dd1655c7"
+  },
+  "clearCacheQuestion": "Everything kept for offline browsing is forgotten. It is fetched again the next time the server is reached.",
+  "@clearCacheQuestion": {
+    "description": "What emptying the cache does",
+    "x-translated": "b9001109"
+  },
+  "clear": "Clear",
+  "@clear": {
+    "description": "Button confirming that the cache is emptied",
+    "x-translated": "2470de02"
+  },
+  "cacheCleared": "Cache cleared, {size} freed.",
+  "@cacheCleared": {
+    "description": "Says how much emptying the cache freed",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "12.3 MB"
+      }
+    },
+    "x-translated": "ea28d10d"
+  },
+  "diagnosticsHeading": "Diagnostics",
+  "@diagnosticsHeading": {
+    "description": "Heading of the diagnostics section",
+    "x-translated": "90c07d0"
+  },
+  "diagnosticsLead": "What this app did on the network - copy it into a bug report.",
+  "@diagnosticsLead": {
+    "description": "Explains what the diagnostics log is for",
+    "x-translated": "ef531e"
+  },
+  "diagnosticsEmpty": "Nothing logged yet. Test the connection, or browse the album, and what the app asked the server appears here.",
+  "@diagnosticsEmpty": {
+    "description": "Shown while the diagnostics log holds nothing",
+    "x-translated": "673823a2"
+  },
+  "diagnosticsCopied": "The diagnostics log is on the clipboard.",
+  "@diagnosticsCopied": {
+    "description": "Shown after the log was copied",
+    "x-translated": "48bcd8ed"
+  },
+  "copy": "Copy",
+  "@copy": {
+    "description": "Button putting the diagnostics log on the clipboard",
+    "x-translated": "ed8814bc"
+  },
+  "connectionSignedInAsOn": "Signed in as {user} on {device}",
+  "@connectionSignedInAsOn": {
+    "description": "What the connection test says about a signed-in device",
+    "placeholders": {
+      "user": {
+        "type": "String",
+        "example": "alice"
+      },
+      "device": {
+        "type": "String",
+        "example": "Android phone"
+      }
+    },
+    "x-translated": "2d23f422"
+  },
+  "connectionNoSignInNeeded": "Not signed in - this server needs no sign-in",
+  "@connectionNoSignInNeeded": {
+    "description": "What the connection test says about a server running without authentication",
+    "x-translated": "7218d439"
+  },
+  "connectionSignInForEverything": "Not signed in - this server shows nothing without a sign-in",
+  "@connectionSignInForEverything": {
+    "description": "What the connection test says about a server that refuses anonymous callers",
+    "x-translated": "b49f096e"
+  },
+  "connectionSignInForChanges": "Not signed in - changes need a sign-in",
+  "@connectionSignInForChanges": {
+    "description": "What the connection test says about a server that lets anonymous callers read",
+    "x-translated": "763bc822"
+  },
+  "notAlbumData": "The answer is not album data — not a VAlbum server?",
+  "@notAlbumData": {
+    "description": "What the connection test says when the answer is no album resource",
+    "x-translated": "1059e659"
+  },
+  "albumServerReached": "Album server reached",
+  "@albumServerReached": {
+    "description": "What the connection test says about a server whose root has no title",
+    "x-translated": "ef833d13"
+  },
+  "albumServerNeedsSignIn": "Album server reached - it needs a sign-in before it shows anything",
+  "@albumServerNeedsSignIn": {
+    "description": "What the connection test says about a server answering 401",
+    "x-translated": "7e760b2a"
+  },
+  "albumServerRefusesThisDevice": "Album server reached - it refuses what this device is signed in as",
+  "@albumServerRefusesThisDevice": {
+    "description": "What the connection test says about a server answering 403",
+    "x-translated": "f66353e4"
+  },
+  "deviceNameThisBrowser": "This browser",
+  "@deviceNameThisBrowser": {
+    "description": "Suggested device name in a browser",
+    "x-translated": "f46ab2d9"
+  },
+  "deviceNameAndroid": "Android phone",
+  "@deviceNameAndroid": {
+    "description": "Suggested device name on Android",
+    "x-translated": "afbf940"
+  },
+  "deviceNameIPhone": "iPhone",
+  "@deviceNameIPhone": {
+    "description": "Suggested device name on iOS",
+    "x-translated": "dd95b0f5"
+  },
+  "deviceNameMac": "Mac",
+  "@deviceNameMac": {
+    "description": "Suggested device name on macOS",
+    "x-translated": "2f5ead85"
+  },
+  "deviceNameWindows": "Windows PC",
+  "@deviceNameWindows": {
+    "description": "Suggested device name on Windows",
+    "x-translated": "54e39d7b"
+  },
+  "deviceNameLinux": "Linux PC",
+  "@deviceNameLinux": {
+    "description": "Suggested device name on Linux",
+    "x-translated": "c55a8385"
+  },
+  "deviceNameOther": "My device",
+  "@deviceNameOther": {
+    "description": "Suggested device name on any other platform",
+    "x-translated": "d9b54f4"
+  },
+  "firstScreenTitle": "Where is your album?",
+  "@firstScreenTitle": {
+    "description": "Heading of the first screen off the web",
+    "x-translated": "18576274"
+  },
+  "firstScreenLead": "Type the address of your album server, or paste the invitation link you were sent. If somebody showed you a QR code, scan it.",
+  "@firstScreenLead": {
+    "description": "Explains the one field of the first screen",
+    "x-translated": "9f8bf1be"
+  },
+  "firstScreenNoServer": "That is not a server address. It looks like 'http://nas.local:8080/valbum/'.",
+  "@firstScreenNoServer": {
+    "description": "Shown when what was entered is no server address",
+    "x-translated": "fcf0b477"
+  },
+  "serverAddressOrLink": "Server address or link",
+  "@serverAddressOrLink": {
+    "description": "Label of the one field of the first screen",
+    "x-translated": "d16dc0d7"
+  },
+  "continueAction": "Continue",
+  "@continueAction": {
+    "description": "Button accepting what was entered on the first screen",
+    "x-translated": "ea954889"
+  },
+  "albumServerLine": "Album server: {server}",
+  "@albumServerLine": {
+    "description": "Names the server the first screen settled on",
+    "placeholders": {
+      "server": {
+        "type": "String",
+        "example": "http://nas.local:8080/valbum/"
+      }
+    },
+    "x-translated": "1dcce5d"
+  },
+  "anotherServer": "Another server",
+  "@anotherServer": {
+    "description": "Button going back to the address field",
+    "x-translated": "f38630ed"
+  },
+  "openWithoutSigningIn": "Open without signing in",
+  "@openWithoutSigningIn": {
+    "description": "Button opening a server that shows its albums to anonymous callers",
+    "x-translated": "11e0d0e1"
+  },
+  "devicesHeading": "My devices",
+  "@devicesHeading": {
+    "description": "Heading of the devices section",
+    "x-translated": "a1d3625a"
+  },
+  "devicesLead": "Every device you signed in on holds a token of its own. Removing one here makes that token worthless; the device has to sign in again.",
+  "@devicesLead": {
+    "description": "Explains what the devices section lists",
+    "x-translated": "8098e6a0"
+  },
+  "noDeviceSignedIn": "No device is signed in.",
+  "@noDeviceSignedIn": {
+    "description": "Shown when the device list is empty",
+    "x-translated": "9a460da5"
+  },
+  "thisDeviceNamed": "{name} (this device)",
+  "@thisDeviceNamed": {
+    "description": "Marks the device the app runs on",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Android phone"
+      }
+    },
+    "x-translated": "2e2113bf"
+  },
+  "pairedAtUnknownTime": "Paired at an unknown time",
+  "@pairedAtUnknownTime": {
+    "description": "Shown for a device whose pairing day the server does not name",
+    "x-translated": "3acf88ba"
+  },
+  "pairedOn": "Paired on {day}",
+  "@pairedOn": {
+    "description": "The day a device was paired",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Mar 3, 2026"
+      }
+    },
+    "x-translated": "40505be"
+  },
+  "signOutHere": "Sign out here",
+  "@signOutHere": {
+    "description": "Tooltip of the button signing this very device out",
+    "x-translated": "4c490bb3"
+  },
+  "addDevice": "Add a device…",
+  "@addDevice": {
+    "description": "Button showing a code for a further device of one's own",
+    "x-translated": "7c23d758"
+  },
+  "noBackupCode": "Backup code: none. Without one, signing out of your last device leaves you dependent on your administrator.",
+  "@noBackupCode": {
+    "description": "Shown while the caller has no backup code",
+    "x-translated": "9528c493"
+  },
+  "backupCodeMade": "Backup code: made on {day}. Keep it safe; making a new one withdraws it.",
+  "@backupCodeMade": {
+    "description": "Shown once a backup code exists",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Mar 3, 2026"
+      }
+    },
+    "x-translated": "95b4ddb5"
+  },
+  "createBackupCode": "Create backup code…",
+  "@createBackupCode": {
+    "description": "Button making the first backup code",
+    "x-translated": "4cb5663e"
+  },
+  "createNewBackupCode": "Create a new backup code…",
+  "@createNewBackupCode": {
+    "description": "Button replacing an existing backup code",
+    "x-translated": "d27d2ac2"
+  },
+  "withdrawBackupCodeTitle": "Withdraw the backup code?",
+  "@withdrawBackupCodeTitle": {
+    "description": "Title of the question before a backup code is withdrawn",
+    "x-translated": "a3e7f72d"
+  },
+  "withdrawBackupCodeMessage": "The code you wrote down stops working. Signing out of your last device then leaves you dependent on a recovery code from your administrator.",
+  "@withdrawBackupCodeMessage": {
+    "description": "What withdrawing the backup code means",
+    "x-translated": "23f39d31"
+  },
+  "backupCodeTitle": "Backup code",
+  "@backupCodeTitle": {
+    "description": "Title of the dialog showing a freshly made backup code",
+    "x-translated": "110b4dcd"
+  },
+  "backupCodeAdvice": "Write this down and keep it somewhere safe — a password manager, a drawer. It never expires, it works once, and it signs a device in as you, so give it to nobody. This is the only time it is shown.",
+  "@backupCodeAdvice": {
+    "description": "What a backup code is, said where it is shown",
+    "x-translated": "6258f1bd"
+  },
+  "backupCodeNoExpiry": "This code does not expire. It works once.",
+  "@backupCodeNoExpiry": {
+    "description": "Shown in place of the countdown for a backup code",
+    "x-translated": "b51f582f"
+  },
+  "addDeviceTitle": "Add a device",
+  "@addDeviceTitle": {
+    "description": "Title of the dialog showing a device code",
+    "x-translated": "1f27077"
+  },
+  "recoveryCodeTitle": "Recovery code for {user}",
+  "@recoveryCodeTitle": {
+    "description": "Title of the dialog showing a recovery code",
+    "placeholders": {
+      "user": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "70841ef8"
+  },
+  "deviceCodeAdvice": "Type this on the other device within 10 minutes. It signs that device in as you — never give it to anyone else.",
+  "@deviceCodeAdvice": {
+    "description": "What a device code is, said where it is shown",
+    "x-translated": "409231f"
+  },
+  "recoveryCodeAdvice": "Give this to {user} within 10 minutes; it signs one of their devices in as them. It works once — give it to nobody else.",
+  "@recoveryCodeAdvice": {
+    "description": "What a recovery code is, said where it is shown",
+    "placeholders": {
+      "user": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "9467e486"
+  },
+  "deviceCodeQrAdvice": "Or scan this on the other device, at Sign in.",
+  "@deviceCodeQrAdvice": {
+    "description": "What the QR code beside a device code is for",
+    "x-translated": "a7b13aa5"
+  },
+  "deviceCodeLinkAdvice": "Or send this link to the other device and open it in the app:",
+  "@deviceCodeLinkAdvice": {
+    "description": "What the copyable link beside a device code is for",
+    "x-translated": "b5ed6201"
+  },
+  "deviceCodeQrSemantics": "Device code as a QR code",
+  "@deviceCodeQrSemantics": {
+    "description": "Screen-reader label of the QR code",
+    "x-translated": "26c6a6cd"
+  },
+  "copyTheLink": "Copy the link",
+  "@copyTheLink": {
+    "description": "Tooltip of the button copying the device-code link",
+    "x-translated": "3d295c74"
+  },
+  "linkOnClipboard": "The link is on the clipboard.",
+  "@linkOnClipboard": {
+    "description": "Shown after the device-code link was copied",
+    "x-translated": "9c732a7c"
+  },
+  "codeExpired": "This code has expired.",
+  "@codeExpired": {
+    "description": "Shown once a device code has run out",
+    "x-translated": "ce70c191"
+  },
+  "codeExpiresIn": "Expires in {time}",
+  "@codeExpiresIn": {
+    "description": "How long a device code still works",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "9:58"
+      }
+    },
+    "x-translated": "dd56edd"
+  },
+  "newCode": "New code",
+  "@newCode": {
+    "description": "Button asking for a fresh code",
+    "x-translated": "10c910d"
+  },
+  "deviceJoined": "{name} joined.",
+  "@deviceJoined": {
+    "description": "Shown when a device paired while the code was on screen",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Android phone"
+      }
+    },
+    "x-translated": "6dfec4b6"
+  },
+  "signOutThisDeviceTitle": "Sign out this device?",
+  "@signOutThisDeviceTitle": {
+    "description": "Title of the question before this device is signed out",
+    "x-translated": "426de6ac"
+  },
+  "signOutThisDeviceMessage": "This device forgets its sign-in and talks to the server anonymously again. You can sign in again at any time.",
+  "@signOutThisDeviceMessage": {
+    "description": "What signing this device out does while another device stays",
+    "x-translated": "85117380"
+  },
+  "removeDeviceTitle": "Remove the device '{name}'?",
+  "@removeDeviceTitle": {
+    "description": "Title of the question before another device is removed",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Android phone"
+      }
+    },
+    "x-translated": "20cef2de"
+  },
+  "removeDeviceMessage": "'{name}' stops being signed in. It has to sign in again before it can change anything.",
+  "@removeDeviceMessage": {
+    "description": "What removing another device does",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Android phone"
+      }
+    },
+    "x-translated": "23e9237a"
+  },
+  "lastDeviceWarning": "This is your only signed-in device. To sign in again you need {ways}.",
+  "@lastDeviceWarning": {
+    "description": "Warns before the last signed-in device is signed out",
+    "placeholders": {
+      "ways": {
+        "type": "String",
+        "example": "your backup code, or a recovery code from your administrator"
+      }
+    },
+    "x-translated": "31632503"
+  },
+  "waysOrLast": "{rest}, or {last}",
+  "@waysOrLast": {
+    "description": "Joins the last of several ways back with the ones before it",
+    "placeholders": {
+      "rest": {
+        "type": "String",
+        "example": "your backup code"
+      },
+      "last": {
+        "type": "String",
+        "example": "a recovery code from your administrator"
+      }
+    },
+    "x-translated": "8b2c29c6"
+  },
+  "wayBackupCode": "your backup code",
+  "@wayBackupCode": {
+    "description": "One way back into an account",
+    "x-translated": "a855cc05"
+  },
+  "wayRecoveryFromAdmin": "a recovery code from your administrator",
+  "@wayRecoveryFromAdmin": {
+    "description": "One way back into an account",
+    "x-translated": "dc11aa45"
+  },
+  "wayRecoveryFromOtherAdmin": "a recovery code from another administrator",
+  "@wayRecoveryFromOtherAdmin": {
+    "description": "One way back into an administrator's account",
+    "x-translated": "2efbc9c5"
+  },
+  "wayServerRestart": "a restart of the server, which prints a new sign-in code",
+  "@wayServerRestart": {
+    "description": "One way back into an administrator's account",
+    "x-translated": "4f5531c8"
+  },
+  "maybeLastDeviceWarning": "This may be your only signed-in device, and the server could not be asked. If it is, you need a recovery code from your administrator, your backup code, or a restart of the server to get back in.",
+  "@maybeLastDeviceWarning": {
+    "description": "Warns before a sign-out when the device list could not be read",
+    "x-translated": "f334a19"
+  },
+  "permissionMayHeading": "May",
+  "@permissionMayHeading": {
+    "description": "Heading of the role choices",
+    "x-translated": "d23c54ff"
+  },
+  "permissionSeesHeading": "Sees",
+  "@permissionSeesHeading": {
+    "description": "Heading of the clearance choices",
+    "x-translated": "6766c9ff"
+  },
+  "mayShareLinksSwitch": "May share links",
+  "@mayShareLinksSwitch": {
+    "description": "Label of the switch allowing share links",
+    "x-translated": "1cbb8a50"
+  },
+  "mayShareLinksExplanation": "May hand out links that open an album for whoever holds them.",
+  "@mayShareLinksExplanation": {
+    "description": "What allowing share links means",
+    "x-translated": "b942dbf2"
+  },
+  "roleExplanationEdit": "May create albums, change them and add photos.",
+  "@roleExplanationEdit": {
+    "description": "What the edit role allows",
+    "x-translated": "9921e76a"
+  },
+  "roleExplanationContribute": "May add photos to the albums, but change nothing.",
+  "@roleExplanationContribute": {
+    "description": "What the contribute role allows",
+    "x-translated": "2ea46b7c"
+  },
+  "roleExplanationView": "May look at the albums, and nothing more.",
+  "@roleExplanationView": {
+    "description": "What the view role allows",
+    "x-translated": "95f7409d"
+  },
+  "clearanceExplanationAll": "Sees every image, the private ones included.",
+  "@clearanceExplanationAll": {
+    "description": "What the widest clearance shows",
+    "x-translated": "1b70c402"
+  },
+  "clearanceExplanationNonPrivate": "Sees every image that is not marked private.",
+  "@clearanceExplanationNonPrivate": {
+    "description": "What the middle clearance shows",
+    "x-translated": "384148c1"
+  },
+  "clearanceExplanationPublic": "Sees only the images marked public.",
+  "@clearanceExplanationPublic": {
+    "description": "What the narrowest clearance shows",
+    "x-translated": "8b3c0386"
+  },
+  "permissionDialogTitle": "What {user} may do",
+  "@permissionDialogTitle": {
+    "description": "Title of the dialog changing a user's permission",
+    "placeholders": {
+      "user": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "243a8bae"
+  },
+  "usersHeading": "Users",
+  "@usersHeading": {
+    "description": "Heading of the users section",
+    "x-translated": "d5428aed"
+  },
+  "usersLead": "Everybody who has an account on this server, and what they may do and see in it.",
+  "@usersLead": {
+    "description": "Explains what the users section lists",
+    "x-translated": "45b322e6"
+  },
+  "recoveryCodeTooltip": "Recovery code",
+  "@recoveryCodeTooltip": {
+    "description": "Tooltip of the button making a recovery code",
+    "x-translated": "e471396f"
+  },
+  "changePermissionTooltip": "Change what they may do",
+  "@changePermissionTooltip": {
+    "description": "Tooltip of the button opening the permission dialog",
+    "x-translated": "e4f703db"
+  },
+  "removeUserTitle": "Remove {user}?",
+  "@removeUserTitle": {
+    "description": "Title of the question before a user is removed",
+    "placeholders": {
+      "user": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "198e50f5"
+  },
+  "removeUserMessage": "Their devices are signed out; their photos and their name on them stay.",
+  "@removeUserMessage": {
+    "description": "What removing a user does",
+    "x-translated": "44d0d702"
+  },
+  "invitedPending": "Invited (pending)",
+  "@invitedPending": {
+    "description": "Names a pending user the inviter wrote no memento for",
+    "x-translated": "f1cfa88e"
+  },
+  "invitedForPending": "Invited for {recipient} (pending)",
+  "@invitedForPending": {
+    "description": "Names a pending user by the inviter's memento",
+    "placeholders": {
+      "recipient": {
+        "type": "String",
+        "example": "Grandma"
+      }
+    },
+    "x-translated": "c1858d52"
+  },
+  "withdrawInvitationTitle": "Withdraw this invitation?",
+  "@withdrawInvitationTitle": {
+    "description": "Title of the question before an invitation is withdrawn",
+    "x-translated": "f0ed20d9"
+  },
+  "withdrawPendingUserMessage": "The link stops working, and the seat it was holding goes.",
+  "@withdrawPendingUserMessage": {
+    "description": "What withdrawing a pending user's invitation does",
+    "x-translated": "85c741f0"
+  },
+  "withdrawInvitationMessage": "The link stops working. Somebody who already accepted it keeps their account.",
+  "@withdrawInvitationMessage": {
+    "description": "What withdrawing an invitation does",
+    "x-translated": "6dabfe09"
+  },
+  "invitedByUser": "invited by {user}",
+  "@invitedByUser": {
+    "description": "Who invited a pending user",
+    "placeholders": {
+      "user": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "fb7554e1"
+  },
+  "sinceDay": "since {day}",
+  "@sinceDay": {
+    "description": "Since when a user is on this server",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Mar 3, 2026"
+      }
+    },
+    "x-translated": "9648ee1d"
+  },
+  "librarySpace": "library: {space}",
+  "@librarySpace": {
+    "description": "Where a user's library lies",
+    "placeholders": {
+      "space": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "c93de4cd"
+  },
+  "deviceCount": "{count, plural, =1{1 device} other{{count} devices}}",
+  "@deviceCount": {
+    "description": "How many devices a user is signed in on",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    },
+    "x-translated": "924144c3"
+  },
+  "invitedForRecipient": "invited for {recipient}",
+  "@invitedForRecipient": {
+    "description": "The inviter's memento beside a user's name",
+    "placeholders": {
+      "recipient": {
+        "type": "String",
+        "example": "Grandma"
+      }
+    },
+    "x-translated": "5e682354"
+  },
+  "openInvitationsHeading": "Open invitations",
+  "@openInvitationsHeading": {
+    "description": "Heading of the open invitations list",
+    "x-translated": "e6894d29"
+  },
+  "noOpenInvitations": "No invitation is waiting to be accepted.",
+  "@noOpenInvitations": {
+    "description": "Shown when no invitation is open",
+    "x-translated": "24476456"
+  },
+  "invitationPermissionBy": "{permission} — invited by {user}",
+  "@invitationPermissionBy": {
+    "description": "What an invitation offers, and who handed it out",
+    "placeholders": {
+      "permission": {
+        "type": "String",
+        "example": "may look — sees all images — no links"
+      },
+      "user": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "c17e1779"
+  },
+  "forRecipient": "for {recipient}",
+  "@forRecipient": {
+    "description": "Who an invitation was written for",
+    "placeholders": {
+      "recipient": {
+        "type": "String",
+        "example": "Grandma"
+      }
+    },
+    "x-translated": "6290191c"
+  },
+  "expiresNever": "expires: never",
+  "@expiresNever": {
+    "description": "Shown for an invitation without an expiry",
+    "x-translated": "27ceb339"
+  },
+  "expiredOnDay": "expired on {day}",
+  "@expiredOnDay": {
+    "description": "When an invitation ran out",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Mar 3, 2026"
+      }
+    },
+    "x-translated": "c084329e"
+  },
+  "expiresOnDay": "expires {day}",
+  "@expiresOnDay": {
+    "description": "When an invitation runs out",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Mar 3, 2026"
+      }
+    },
+    "x-translated": "d256f023"
+  },
+  "permissionSentence": "{doing}; {seeing}; {sharing}.",
+  "@permissionSentence": {
+    "description": "What a permission allows, in one sentence of three clauses",
+    "placeholders": {
+      "doing": {
+        "type": "String",
+        "example": "You may look at this space"
+      },
+      "seeing": {
+        "type": "String",
+        "example": "you see all images"
+      },
+      "sharing": {
+        "type": "String",
+        "example": "you may share links"
+      }
+    },
+    "x-translated": "77d58d20"
+  },
+  "permissionDoingAdmin": "You manage this server",
+  "@permissionDoingAdmin": {
+    "description": "First clause of the permission sentence",
+    "x-translated": "1215e0af"
+  },
+  "permissionDoingEdit": "You may edit every album of this space",
+  "@permissionDoingEdit": {
+    "description": "First clause of the permission sentence",
+    "x-translated": "63b08e96"
+  },
+  "permissionDoingContribute": "You may add photos to this space",
+  "@permissionDoingContribute": {
+    "description": "First clause of the permission sentence",
+    "x-translated": "31a5a5c3"
+  },
+  "permissionDoingView": "You may look at this space",
+  "@permissionDoingView": {
+    "description": "First clause of the permission sentence",
+    "x-translated": "b299a2d6"
+  },
+  "permissionDoingNone": "You are not signed in",
+  "@permissionDoingNone": {
+    "description": "First clause of the permission sentence",
+    "x-translated": "a1690b6"
+  },
+  "permissionSeeingAll": "you see all images",
+  "@permissionSeeingAll": {
+    "description": "Second clause of the permission sentence",
+    "x-translated": "e00492e1"
+  },
+  "permissionSeeingNonPrivate": "you see all but the private images",
+  "@permissionSeeingNonPrivate": {
+    "description": "Second clause of the permission sentence",
+    "x-translated": "be33502c"
+  },
+  "permissionSeeingPublic": "you see the public images",
+  "@permissionSeeingPublic": {
+    "description": "Second clause of the permission sentence",
+    "x-translated": "563d42d8"
+  },
+  "permissionSharingMay": "you may share links",
+  "@permissionSharingMay": {
+    "description": "Third clause of the permission sentence",
+    "x-translated": "a9b97717"
+  },
+  "permissionSharingMayNot": "you may not share links",
+  "@permissionSharingMayNot": {
+    "description": "Third clause of the permission sentence",
+    "x-translated": "560ab732"
+  },
+  "permissionPhrase": "{role} — {clearance} — {sharing}",
+  "@permissionPhrase": {
+    "description": "What somebody else's permission allows, in three clauses",
+    "placeholders": {
+      "role": {
+        "type": "String",
+        "example": "may look"
+      },
+      "clearance": {
+        "type": "String",
+        "example": "sees all images"
+      },
+      "sharing": {
+        "type": "String",
+        "example": "no links"
+      }
+    },
+    "x-translated": "e8a608df"
+  },
+  "permissionPhraseMayShare": "may share links",
+  "@permissionPhraseMayShare": {
+    "description": "Third clause about somebody else",
+    "x-translated": "947eb4ce"
+  },
+  "permissionPhraseNoLinks": "no links",
+  "@permissionPhraseNoLinks": {
+    "description": "Third clause about somebody else",
+    "x-translated": "cdb102df"
+  },
+  "roleWordAdmin": "manages this server",
+  "@roleWordAdmin": {
+    "description": "What the admin role allows, about somebody else",
+    "x-translated": "9f56e7ec"
+  },
+  "roleWordEdit": "may edit the albums",
+  "@roleWordEdit": {
+    "description": "What the edit role allows, about somebody else",
+    "x-translated": "5afae54f"
+  },
+  "roleWordContribute": "may add photos",
+  "@roleWordContribute": {
+    "description": "What the contribute role allows, about somebody else",
+    "x-translated": "1b84d89d"
+  },
+  "roleWordView": "may look",
+  "@roleWordView": {
+    "description": "What the view role allows, about somebody else",
+    "x-translated": "e49f5541"
+  },
+  "roleWordUnknown": "unknown role",
+  "@roleWordUnknown": {
+    "description": "Shown for a role the app does not know",
+    "x-translated": "dd2e60ee"
+  },
+  "roleWordYouAdmin": "you manage this server",
+  "@roleWordYouAdmin": {
+    "description": "What the admin role allows, said to the person",
+    "x-translated": "9a8a726c"
+  },
+  "roleWordYouEdit": "you may edit the albums",
+  "@roleWordYouEdit": {
+    "description": "What the edit role allows, said to the person",
+    "x-translated": "4e9c36dd"
+  },
+  "roleWordYouContribute": "you may add photos",
+  "@roleWordYouContribute": {
+    "description": "What the contribute role allows, said to the person",
+    "x-translated": "4d2d6f8"
+  },
+  "roleWordYouView": "you may look at the albums",
+  "@roleWordYouView": {
+    "description": "What the view role allows, said to the person",
+    "x-translated": "d50221ff"
+  },
+  "clearanceWordAll": "sees all images",
+  "@clearanceWordAll": {
+    "description": "What the widest clearance shows, about somebody else",
+    "x-translated": "934e69b7"
+  },
+  "clearanceWordNonPrivate": "sees all but the private images",
+  "@clearanceWordNonPrivate": {
+    "description": "What the middle clearance shows, about somebody else",
+    "x-translated": "27644065"
+  },
+  "clearanceWordPublic": "sees the public images",
+  "@clearanceWordPublic": {
+    "description": "What the narrowest clearance shows, about somebody else",
+    "x-translated": "2a43815"
+  },
+  "serverUrlEmpty": "Enter the URL of the album server, e.g. 'http://nas.local:8080/valbum/'.",
+  "@serverUrlEmpty": {
+    "description": "Shown when the server address field is empty",
+    "x-translated": "5fd972cd"
+  },
+  "serverUrlInvalid": "That is not a server address. It looks like 'http://nas.local:8080/valbum/'.",
+  "@serverUrlInvalid": {
+    "description": "Shown when what was entered cannot be read as a server address",
+    "x-translated": "fcf0b477"
+  },
+  "shareLinkRefusal": "This is a link to a shared album, not a sign-in. Open it in a browser to see what was shared with you.",
+  "@shareLinkRefusal": {
+    "description": "Shown when a share link is pasted where a server is asked for",
+    "x-translated": "d415a5ec"
+  }
+}

@@ -17,6 +17,7 @@ import 'package:valbum_ui/video_view.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 import 'util/fake_video_player.dart';
+import 'util/l10n.dart';
 
 /// The teaser of the video of this test.
 const String teaserUrl = "http://server/valbum/data/album/clip.mp4?type=teaser";
@@ -43,6 +44,8 @@ Future<void> pumpTile(
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: Scaffold(
         body: Center(
           child: SizedBox(
@@ -219,6 +222,8 @@ void main() {
   testWidgets('shows only the tile where nobody can be asked', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: VideoTeaser(
           teaserUrl: teaserUrl,
           child: SizedBox.expand(key: Key("the-poster")),

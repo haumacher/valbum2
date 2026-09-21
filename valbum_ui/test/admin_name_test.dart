@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String serverUrl = "http://server/valbum/";
@@ -73,6 +74,8 @@ Future<void> pumpSettings(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: settings,
         clientFor: (dataUrl) =>
@@ -185,7 +188,7 @@ void main() {
       );
 
       // The paragraph above the fields is about the code now.
-      expect(find.text(signInCodeExplanation), findsOneWidget);
+      expect(find.text(signInCodeExplanation(testL10n)), findsOneWidget);
       expect(find.textContaining("Leave empty"), findsNothing);
       expect(find.textContaining("pairing secret"), findsNothing);
 
@@ -196,7 +199,7 @@ void main() {
       expect(
         tester.widget<TextField>(find.byKey(userNameFieldKey)).decoration
             ?.helperText,
-        userNameHelp,
+        userNameHelp(testL10n),
       );
     });
 

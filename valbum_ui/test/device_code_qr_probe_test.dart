@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/device_code_payload.dart';
 import 'package:valbum_ui/device_code_scanner.dart';
 import 'package:valbum_ui/main.dart';
+import 'util/l10n.dart';
 
 final Finder signInButton = find.widgetWithText(FilledButton, "Sign in");
 
@@ -69,6 +70,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: DeviceCodeScannerScope(
           scanner: FakeDeviceCodeScanner(payload),
           child: ServerSettingsScreen(

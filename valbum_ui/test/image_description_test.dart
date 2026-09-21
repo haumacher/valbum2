@@ -26,6 +26,7 @@ import 'package:video_player_platform_interface/video_player_platform_interface.
 import 'util/fake_image_http.dart';
 import 'util/fake_video_player.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The album the tests edit.
 const List<String> albumPath = ["album"];
@@ -119,7 +120,10 @@ Future<void> pumpViewer(
     viewer = ShareSessionScope(session: share, child: viewer);
   }
   await withFakeImageHttp(() async {
-    await tester.pumpWidget(MaterialApp(home: viewer));
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
+      home: viewer));
     await tester.pumpAndSettle();
   });
 }

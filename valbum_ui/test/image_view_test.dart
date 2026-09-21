@@ -8,6 +8,7 @@ import 'package:valbum_ui/video_view.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// Links the given images into an album, as loading an album does.
 AlbumInfo linkedAlbum(List<AbstractImage> images, {int minRating = 0}) {
@@ -68,6 +69,8 @@ Future<void> pumpViewer(
   await withFakeImageHttp(() async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: Builder(
           builder: (context) => Scaffold(
             body: TextButton(

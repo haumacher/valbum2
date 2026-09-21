@@ -93,6 +93,57 @@ flutter run -d chrome      # against the demo server on http://localhost:9090/va
 flutter build web          # output is bundled into the server jar by `mvn install`
 ```
 
+## The words the app says (issue #108)
+
+Every user-facing string lives in an ARB file below `lib/l10n/` and is read
+through `AppLocalizations`; the platform locale decides which language is
+shown, and there is no switch in the app. A device asking for a language the
+app does not carry reads **English**, the language the strings are written in
+— `resolveAppLocale` in `lib/locales.dart`, installed as the
+`localeListResolutionCallback` of both `MaterialApp`s, because Flutter's own
+resolution would answer whatever `gen-l10n` listed first, which is an accident
+of the alphabet. English is the source and
+**`lib/l10n/app_en.arb` is the only file edited by hand** — the same doctrine
+as `lib/resource.dart`:
+
+| file | written by |
+| --- | --- |
+| `lib/l10n/app_en.arb` | **you** |
+| `lib/l10n/app_de.arb` (and every further language) | `gradle translateArb` |
+| `lib/l10n/app_localizations*.dart` | `flutter gen-l10n` |
+
+Adding a string:
+
+1. put the key, the text and a `description` into `lib/l10n/app_en.arb`
+   (a count or a name is an ICU placeholder, and a count is an ICU plural);
+2. `gradle -p . translateArb` from this directory — the Gradle plugin
+   `de.haumacher.auto-translate-arb` (see `build.gradle`) translates only what
+   changed through DeepL, keeping the placeholders and the plurals, and reads
+   its key from `deepl.apiKey` in `~/.gradle/gradle.properties` or from
+   `DEEPL_API_KEY`;
+3. `flutter gen-l10n` to regenerate the Dart;
+4. read it as `AppLocalizations.of(context)!.myKey`.
+
+The generated Dart **is** checked in, so a clone builds and CI runs without a
+DeepL key and without a `gen-l10n` step of their own.
+
+What the *server* says is shown as it arrives, and so is a transport failure:
+the protocol carries an `ErrorInfo.code` beside its message, and mapping those
+to localized texts is a follow-up (see `refusalMessage` in `manage_view.dart`).
+What the app itself authors is never thrown to be read — an exception message
+is for whoever catches it, and the catch answers a localized sentence of its
+own, see `serverUrlError` in `lib/urls.dart`.
+
+`test/l10n_guard_test.dart` holds the line: every language carries the keys and
+the placeholders of `app_en.arb`, the fallback language is English, the files
+listed in its `convertedFiles` carry no user-facing literal any more, and none
+of them throws a sentence that is not named in `allowedThrownLiterals` with the
+reason nothing shows it. A slice that converts a further screen adds its files
+to that list. `test/util/l10n.dart` is what a widget test pumps with —
+`localizedApp(widget, locale: …)` and `l10nOf(locale)` — and it resolves
+locales by the app's own rule. `test/l10n_probe_test.dart` is the review probe,
+kept as a test.
+
 ## Editing an album
 
 Edit mode is entered by long-pressing an image tile. Its app bar carries the

@@ -13,6 +13,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/device_code_payload.dart';
 import 'package:valbum_ui/device_code_scanner.dart';
 import 'package:valbum_ui/main.dart';
+import 'util/l10n.dart';
 
 /// The server the screen starts at, and the one the QR code names.
 const String serverUrl = "http://server/valbum/";
@@ -36,6 +37,8 @@ Future<void> pumpSettings(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: DeviceCodeScannerScope(
         scanner: scanner,
         child: ServerSettingsScreen(

@@ -11,6 +11,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 Future<void> settle(WidgetTester tester, Future<void> Function() body) =>
     withFakeImageHttp(() async {
@@ -98,6 +99,6 @@ void main() {
     expect(store.value, isNull);
     expect(store.token, isNull);
     // A device that knows no server is asked where its album is (issue #91).
-    expect(find.text(firstScreenTitle), findsOneWidget);
+    expect(find.text(firstScreenTitle(testL10n)), findsOneWidget);
   });
 }

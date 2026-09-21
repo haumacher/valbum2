@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/upload_progress.dart';
+import 'util/l10n.dart';
 
 UploadFile distinctFile(String name, int size, int fill) => UploadFile(
       name: name,
@@ -139,6 +140,8 @@ void main() {
     ));
     var cancelled = 0;
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: Scaffold(
         body: UploadProgressDialog(progress: progress, onCancel: () => cancelled++),
       ),

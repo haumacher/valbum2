@@ -20,6 +20,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'device_code_payload.dart';
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'settings.dart';
 import 'urls.dart';
@@ -29,6 +30,15 @@ import 'urls.dart';
 /// A [VAlbumException] carries the server's own sentence (the `ErrorInfo` of
 /// the refusal); anything else — a transport failure — is said as it is, so
 /// that nothing ever fails silently.
+///
+/// **Neither is translated, and that is the rule of issue #108**: what the
+/// *server* said is the server's word and is shown as it arrives (the protocol
+/// carries an `ErrorInfo.code` beside the message, which a later issue maps to
+/// localized texts), and what a transport failure says is an OS message that
+/// no wording of this app improves. What this app itself authors is a
+/// different matter: a sentence it writes is never thrown to be read, it is
+/// answered from `AppLocalizations` at the place that shows it, see
+/// `serverUrlError` and `test/l10n_guard_test.dart`.
 String refusalMessage(Object error) =>
     error is VAlbumException ? error.message : "$error";
 
@@ -53,7 +63,7 @@ Future<bool?> confirmHere({
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
+            child: Text(AppLocalizations.of(context)!.cancel),
           ),
           FilledButton(
             key: Key(confirmKey),
@@ -115,8 +125,7 @@ const Key deviceCodeQrKey = Key("settings.deviceCode.qr");
 const double deviceCodeQrSize = 200;
 
 /// What the QR code is for, said beside it.
-const String deviceCodeQrAdvice =
-    "Or scan this on the other device, at Sign in.";
+String deviceCodeQrAdvice(AppLocalizations l10n) => l10n.deviceCodeQrAdvice;
 
 /// The key of the "Recovery code" action beside a user (issue #89).
 const Key recoveryCodeKey = Key("settings.users.recovery");
@@ -126,17 +135,14 @@ const Key recoveryCodeKey = Key("settings.users.recovery");
 /// The one difference from [deviceCodeAdvice]: this code signs a device in as
 /// *somebody else*, so the sentence says whose and says to hand it to them and
 /// nobody in between.
-String recoveryCodeAdvice(String userName) =>
-    "Give this to $userName within 10 minutes; it signs one of their devices "
-    "in as them. It works once \u2014 give it to nobody else.";
+String recoveryCodeAdvice(AppLocalizations l10n, String userName) =>
+    l10n.recoveryCodeAdvice(userName);
 
 /// What a device code is, said where it is shown (issue #65).
 ///
 /// The whole point in one sentence: this is a credential for a device of
 /// *one's own*, and handing it to somebody else hands them one's library.
-const String deviceCodeAdvice =
-    "Type this on the other device within 10 minutes. It signs that device in "
-    "as you \u2014 never give it to anyone else.";
+String deviceCodeAdvice(AppLocalizations l10n) => l10n.deviceCodeAdvice;
 
 /// The key of the copyable link carrying the same credential as the QR code
 /// above it (issue #91).
@@ -151,8 +157,8 @@ const Key deviceCodeLinkKey = Key("settings.deviceCode.link");
 const Key deviceCodeCopyKey = Key("settings.deviceCode.copy");
 
 /// What the link is for, said beside it.
-const String deviceCodeLinkAdvice =
-    "Or send this link to the other device and open it in the app:";
+String deviceCodeLinkAdvice(AppLocalizations l10n) =>
+    l10n.deviceCodeLinkAdvice;
 
 /// The key of the "Backup code" line of the devices section (issue #92).
 const Key backupCodeStateKey = Key("settings.backupCode.state");
@@ -171,19 +177,14 @@ const Key backupCodeDialogKey = Key("settings.backupCode.dialog");
 /// The whole point in one sentence: it is the way back into one's own account
 /// on a day when no device of one's own is signed in any more — which is also
 /// why it must be written down now, and why nobody else may ever read it.
-const String backupCodeAdvice =
-    "Write this down and keep it somewhere safe \u2014 a password manager, a "
-    "drawer. It never expires, it works once, and it signs a device in as you, "
-    "so give it to nobody. This is the only time it is shown.";
+String backupCodeAdvice(AppLocalizations l10n) => l10n.backupCodeAdvice;
 
 /// What the devices section says while there is no backup code.
-const String noBackupCode =
-    "Backup code: none. Without one, signing out of your last device leaves "
-    "you dependent on your administrator.";
+String noBackupCode(AppLocalizations l10n) => l10n.noBackupCode;
 
 /// What it says once there is one; [made] is the day it was made.
-String backupCodeMade(String made) =>
-    "Backup code: made on $made. Keep it safe; making a new one withdraws it.";
+String backupCodeMade(AppLocalizations l10n, String made) =>
+    l10n.backupCodeMade(made);
 
 /// The question a sign-out that has no way back asks (issue #92).
 ///
@@ -191,25 +192,24 @@ String backupCodeMade(String made) =>
 /// the code is still signed in. The danger is one's **last** device, and the
 /// question names the ways back there are, in words, rather than letting the
 /// door fall shut in silence.
-String lastDeviceWarning({required bool isAdmin, required bool hasBackupCode}) {
+String lastDeviceWarning(
+  AppLocalizations l10n, {
+  required bool isAdmin,
+  required bool hasBackupCode,
+}) {
   var ways = <String>[
-    if (hasBackupCode) "your backup code",
-    isAdmin
-        ? "a recovery code from another administrator"
-        : "a recovery code from your administrator",
-    if (isAdmin) "a restart of the server, which prints a new sign-in code",
+    if (hasBackupCode) l10n.wayBackupCode,
+    isAdmin ? l10n.wayRecoveryFromOtherAdmin : l10n.wayRecoveryFromAdmin,
+    if (isAdmin) l10n.wayServerRestart,
   ];
   var last = ways.removeLast();
-  var spelled = ways.isEmpty ? last : "${ways.join(", ")}, or $last";
-  return "This is your only signed-in device. To sign in again you need "
-      "$spelled.";
+  var spelled = ways.isEmpty ? last : l10n.waysOrLast(ways.join(", "), last);
+  return l10n.lastDeviceWarning(spelled);
 }
 
 /// What the warning says when the devices could not even be read.
-const String maybeLastDeviceWarning =
-    "This may be your only signed-in device, and the server could not be "
-    "asked. If it is, you need a recovery code from your administrator, your "
-    "backup code, or a restart of the server to get back in.";
+String maybeLastDeviceWarning(AppLocalizations l10n) =>
+    l10n.maybeLastDeviceWarning;
 
 /// Asks before a sign-out that may have no way back, see issue #92.
 ///
@@ -231,18 +231,20 @@ Future<bool> confirmLastSignOut({
     // Nothing to sign out of; the token this app holds proves nothing anyway.
     return true;
   }
+  var l10n = AppLocalizations.of(context)!;
   var message = known == null
-      ? maybeLastDeviceWarning
+      ? maybeLastDeviceWarning(l10n)
       : lastDeviceWarning(
+          l10n,
           isAdmin: role == roleAdmin,
           hasBackupCode: (devices?.backupCodeCreated ?? "").isNotEmpty,
         );
   var confirmed = await confirmHere(
     context: context,
     dialogKey: "sign-out-confirm",
-    title: "Sign out this device?",
+    title: l10n.signOutThisDeviceTitle,
     message: message,
-    confirmLabel: "Sign out",
+    confirmLabel: l10n.signOut,
     confirmKey: "sign-out-confirmed",
   );
   return confirmed == true;
@@ -398,42 +400,39 @@ class DevicesSectionState extends State<DevicesSection> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var devices = _devices;
     var problem = _problem;
     return Column(
       key: devicesSectionKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ...sectionHead(
-          context,
-          "My devices",
-          "Every device you signed in on holds a token of its own. Removing "
-              "one here makes that token worthless; the device has to sign in "
-              "again.",
-        ),
-        if (devices == null) sectionProgress("Asking the server..."),
+        ...sectionHead(context, l10n.devicesHeading, l10n.devicesLead),
+        if (devices == null) sectionProgress(l10n.askingServer),
         if (problem != null)
           sectionProblem(context, problem, const Key("settings.devices.error")),
         if (devices != null && problem == null && devices.isEmpty)
-          const Text("No device is signed in.",
-              key: Key("settings.devices.empty")),
+          Text(l10n.noDeviceSignedIn,
+              key: const Key("settings.devices.empty")),
         for (var device in devices ?? const <DeviceEntry>[])
           ListTile(
             key: Key("device-${device.id}"),
             contentPadding: EdgeInsets.zero,
             leading: Icon(device.current ? Icons.smartphone : Icons.devices),
             title: Text(
-              device.current ? "${device.name} (this device)" : device.name,
+              device.current
+                  ? l10n.thisDeviceNamed(device.name)
+                  : device.name,
             ),
             subtitle: Text(
               device.created.isEmpty
-                  ? "Paired at an unknown time"
-                  : "Paired on ${dayOf(device.created)}",
+                  ? l10n.pairedAtUnknownTime
+                  : l10n.pairedOn(dayOf(device.created)),
             ),
             trailing: IconButton(
               key: Key("device-remove-${device.id}"),
               icon: Icon(device.current ? Icons.logout : Icons.delete_outline),
-              tooltip: device.current ? "Sign out here" : "Remove",
+              tooltip: device.current ? l10n.signOutHere : l10n.remove,
               onPressed: _busy ? null : () => _remove(device),
             ),
           ),
@@ -444,10 +443,10 @@ class DevicesSectionState extends State<DevicesSection> {
             key: addDeviceButtonKey,
             onPressed: _busy ? null : _addDevice,
             icon: const Icon(Icons.phonelink_setup),
-            label: const Text("Add a device\u2026"),
+            label: Text(l10n.addDevice),
           ),
         ),
-        ..._backupCodeLines(),
+        ..._backupCodeLines(l10n),
       ],
     );
   }
@@ -458,12 +457,14 @@ class DevicesSectionState extends State<DevicesSection> {
   /// Never the code itself — that is shown once, when it is made, and the
   /// server keeps only its hash. What stands here is that there is one and
   /// since when, which is exactly what the sign-out warning needs.
-  List<Widget> _backupCodeLines() {
+  List<Widget> _backupCodeLines(AppLocalizations l10n) {
     var made = _backupCodeCreated;
     return [
       const SizedBox(height: 16),
       Text(
-        made.isEmpty ? noBackupCode : backupCodeMade(dayOf(made)),
+        made.isEmpty
+            ? noBackupCode(l10n)
+            : backupCodeMade(l10n, dayOf(made)),
         key: backupCodeStateKey,
       ),
       const SizedBox(height: 8),
@@ -476,15 +477,15 @@ class DevicesSectionState extends State<DevicesSection> {
             onPressed: _busy ? null : _createBackupCode,
             icon: const Icon(Icons.vpn_key),
             label: Text(made.isEmpty
-                ? "Create backup code\u2026"
-                : "Create a new backup code\u2026"),
+                ? l10n.createBackupCode
+                : l10n.createNewBackupCode),
           ),
           if (made.isNotEmpty)
             TextButton.icon(
               key: backupCodeRevokeKey,
               onPressed: _busy ? null : _revokeBackupCode,
               icon: const Icon(Icons.delete_outline),
-              label: const Text("Withdraw"),
+              label: Text(l10n.withdraw),
             ),
         ],
       ),
@@ -516,14 +517,13 @@ class DevicesSectionState extends State<DevicesSection> {
 
   /// Withdraws the backup code, after asking.
   Future<void> _revokeBackupCode() async {
+    var l10n = AppLocalizations.of(context)!;
     var confirmed = await confirmHere(
       context: context,
       dialogKey: "backup-code-confirm",
-      title: "Withdraw the backup code?",
-      message: "The code you wrote down stops working. Signing out of your "
-          "last device then leaves you dependent on a recovery code from your "
-          "administrator.",
-      confirmLabel: "Withdraw",
+      title: l10n.withdrawBackupCodeTitle,
+      message: l10n.withdrawBackupCodeMessage,
+      confirmLabel: l10n.withdraw,
       confirmKey: "backup-code-confirmed",
     );
     if (confirmed != true || !mounted) {
@@ -590,26 +590,27 @@ class DevicesSectionState extends State<DevicesSection> {
   /// away and this app drops the token it was talking with, exactly as the
   /// sign-out button does — the section goes with it.
   Future<void> _remove(DeviceEntry device) async {
+    var l10n = AppLocalizations.of(context)!;
     var lastOne = device.current && (_devices ?? const []).length <= 1;
     var confirmed = await confirmHere(
       context: context,
       dialogKey: "device-confirm",
-      title:
-          device.current ? "Sign out this device?" : "Remove '${device.name}'?",
+      title: device.current
+          ? l10n.signOutThisDeviceTitle
+          : l10n.removeDeviceTitle(device.name),
       message: device.current
           // The last one is a door that locks behind you, so it says what the
           // way back is instead of "you can sign in again at any time", which
           // would then be a lie (issue #92).
           ? (lastOne
               ? lastDeviceWarning(
+                  l10n,
                   isAdmin: widget.role == roleAdmin,
                   hasBackupCode: _backupCodeCreated.isNotEmpty,
                 )
-              : "This device forgets its sign-in and talks to the server "
-                  "anonymously again. You can sign in again at any time.")
-          : "'${device.name}' stops being signed in. It has to sign in again "
-              "before it can change anything.",
-      confirmLabel: device.current ? "Sign out" : "Remove",
+              : l10n.signOutThisDeviceMessage)
+          : l10n.removeDeviceMessage(device.name),
+      confirmLabel: device.current ? l10n.signOut : l10n.remove,
       confirmKey: "device-confirmed",
     );
     if (confirmed != true || !mounted) {
@@ -795,8 +796,11 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
         if (!_known.contains(device.id)) device,
     ];
     if (arrived.isNotEmpty) {
+      var joined = AppLocalizations.of(context)!.deviceJoined(
+        arrived.first.name,
+      );
       setState(() {
-        _joined = "${arrived.first.name} joined.";
+        _joined = joined;
         _known = {for (var device in devices) device.id};
       });
     }
@@ -825,14 +829,15 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
 
   /// Puts the link on the clipboard and says so (issue #91).
   Future<void> _copy(String payload) async {
+    var copied = AppLocalizations.of(context)!.linkOnClipboard;
     await Clipboard.setData(ClipboardData(text: payload));
     if (!mounted) {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("The link is on the clipboard."),
-        duration: Duration(seconds: 3),
+      SnackBar(
+        content: Text(copied),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -845,6 +850,7 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var code = _code;
     var problem = _problem;
     var left = remaining;
@@ -854,10 +860,10 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
     return AlertDialog(
       key: deviceCodeDialogKey,
       title: Text(widget.backup
-          ? "Backup code"
+          ? l10n.backupCodeTitle
           : widget.forUser.isEmpty
-              ? "Add a device"
-              : "Recovery code for ${widget.forUser}"),
+              ? l10n.addDeviceTitle
+              : l10n.recoveryCodeTitle(widget.forUser)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -866,7 +872,7 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
             if (problem != null)
               sectionProblem(context, problem, deviceCodeErrorKey),
             if (problem == null && code == null)
-              sectionProgress("Asking the server..."),
+              sectionProgress(l10n.askingServer),
             if (code != null) ...[
               SelectableText(
                 code.code,
@@ -882,11 +888,12 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
               Text(
                 widget.backup
                     // It has no expiry at all, and that is the whole point.
-                    ? "This code does not expire. It works once."
+                    ? l10n.backupCodeNoExpiry
                     : expired
-                        ? "This code has expired."
-                        : "Expires in "
-                            "${minutesAndSeconds(left ?? Duration.zero)}",
+                        ? l10n.codeExpired
+                        : l10n.codeExpiresIn(
+                            minutesAndSeconds(left ?? Duration.zero),
+                          ),
                 key: deviceCodeRemainingKey,
               ),
               // The same credential in a form a camera reads, so that
@@ -904,13 +911,13 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(deviceCodeQrAdvice),
+                Text(deviceCodeQrAdvice(l10n)),
                 // The same payload as text, for the other device that is not
                 // in the room (issue #91). Copyable, because it is long, and
                 // shown in full, because nothing is hidden from the person
                 // the code belongs to.
                 const SizedBox(height: 12),
-                const Text(deviceCodeLinkAdvice),
+                Text(deviceCodeLinkAdvice(l10n)),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -927,7 +934,7 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
                     IconButton(
                       key: deviceCodeCopyKey,
                       icon: const Icon(Icons.copy),
-                      tooltip: "Copy the link",
+                      tooltip: l10n.copyTheLink,
                       onPressed: () => _copy(payload),
                     ),
                   ],
@@ -935,10 +942,10 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
               ],
               const SizedBox(height: 12),
               Text(widget.backup
-                  ? backupCodeAdvice
+                  ? backupCodeAdvice(l10n)
                   : widget.forUser.isEmpty
-                      ? deviceCodeAdvice
-                      : recoveryCodeAdvice(widget.forUser)),
+                      ? deviceCodeAdvice(l10n)
+                      : recoveryCodeAdvice(l10n, widget.forUser)),
             ],
             if (_joined != null) ...[
               const SizedBox(height: 12),
@@ -956,11 +963,11 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
           TextButton(
             key: deviceCodeRenewKey,
             onPressed: _ask,
-            child: const Text("New code"),
+            child: Text(l10n.newCode),
           ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text("Done"),
+          child: Text(l10n.done),
         ),
       ],
     );
@@ -1007,7 +1014,8 @@ class DeviceCodeQr extends StatelessWidget {
             // level tolerates a reflection without making the modules small.
             errorCorrectionLevel: QrErrorCorrectLevel.M,
             version: QrVersions.auto,
-            semanticsLabel: "Device code as a QR code",
+            semanticsLabel: AppLocalizations.of(context)!
+                .deviceCodeQrSemantics,
           ),
         ),
       );
@@ -1061,43 +1069,46 @@ class PermissionChoices extends StatelessWidget {
   ];
 
   /// What each role means, in one line.
-  static const Map<String, String> roleExplanations = {
-    roleEdit: "May create albums, change them and add photos.",
-    roleContribute: "May add photos to the albums, but change nothing.",
-    roleView: "May look at the albums, and nothing more.",
-  };
+  static Map<String, String> roleExplanations(AppLocalizations l10n) => {
+        roleEdit: l10n.roleExplanationEdit,
+        roleContribute: l10n.roleExplanationContribute,
+        roleView: l10n.roleExplanationView,
+      };
 
   /// What each clearance means, in one line.
-  static const Map<String, String> clearanceExplanations = {
-    clearanceAll: "Sees every image, the private ones included.",
-    clearanceNonPrivate: "Sees every image that is not marked private.",
-    clearancePublic: "Sees only the images marked public.",
-  };
+  static Map<String, String> clearanceExplanations(AppLocalizations l10n) => {
+        clearanceAll: l10n.clearanceExplanationAll,
+        clearanceNonPrivate: l10n.clearanceExplanationNonPrivate,
+        clearancePublic: l10n.clearanceExplanationPublic,
+      };
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var titles = Theme.of(context).textTheme.titleSmall;
+    var roleWords = roleExplanations(l10n);
+    var clearanceWords = clearanceExplanations(l10n);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text("May", style: titles),
+        Text(l10n.permissionMayHeading, style: titles),
         for (var choice in roles)
           _tile(
             key: "$keyPrefix-role-$choice",
             chosen: role == choice,
-            title: CallerPermission.roleWord(choice),
-            subtitle: roleExplanations[choice],
+            title: CallerPermission.roleWord(l10n, choice),
+            subtitle: roleWords[choice],
             onTap: () => onRole(choice),
           ),
         const SizedBox(height: 8),
-        Text("Sees", style: titles),
+        Text(l10n.permissionSeesHeading, style: titles),
         for (var choice in clearances)
           _tile(
             key: "$keyPrefix-clearance-$choice",
             chosen: clearance == choice,
-            title: CallerPermission.clearanceWord(choice),
-            subtitle: clearanceExplanations[choice],
+            title: CallerPermission.clearanceWord(l10n, choice),
+            subtitle: clearanceWords[choice],
             onTap: () => onClearance(choice),
           ),
         const SizedBox(height: 8),
@@ -1106,10 +1117,8 @@ class PermissionChoices extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           dense: true,
           value: mayShare,
-          title: const Text("May share links"),
-          subtitle: const Text(
-            "May hand out links that open an album for whoever holds them.",
-          ),
+          title: Text(l10n.mayShareLinksSwitch),
+          subtitle: Text(l10n.mayShareLinksExplanation),
           onChanged: enabled ? onMayShare : null,
         ),
       ],
@@ -1175,10 +1184,13 @@ class PermissionDialogState extends State<PermissionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var refusal = _refusal;
     return AlertDialog(
       key: const Key("permission-dialog"),
-      title: Text("What ${userDisplayName(widget.user.name)} may do"),
+      title: Text(
+        l10n.permissionDialogTitle(userDisplayName(l10n, widget.user.name)),
+      ),
       content: SizedBox(
         width: 460,
         child: SingleChildScrollView(
@@ -1215,12 +1227,12 @@ class PermissionDialogState extends State<PermissionDialog> {
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
-          child: const Text("Cancel"),
+          child: Text(l10n.cancel),
         ),
         FilledButton(
           key: const Key("permission-save"),
           onPressed: _busy ? null : _save,
-          child: const Text("Save"),
+          child: Text(l10n.save),
         ),
       ],
     );
@@ -1327,19 +1339,15 @@ class UsersSectionState extends State<UsersSection> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var users = _users;
     var problem = _problem;
     return Column(
       key: usersSectionKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ...sectionHead(
-          context,
-          "Users",
-          "Everybody who has an account on this server, and what they may do "
-              "and see in it.",
-        ),
-        if (users == null) sectionProgress("Asking the server..."),
+        ...sectionHead(context, l10n.usersHeading, l10n.usersLead),
+        if (users == null) sectionProgress(l10n.askingServer),
         if (problem != null)
           sectionProblem(context, problem, const Key("settings.users.error")),
         for (var user in users ?? const <UserEntry>[])
@@ -1353,9 +1361,9 @@ class UsersSectionState extends State<UsersSection> {
                       ? Icons.admin_panel_settings
                       : Icons.person,
             ),
-            title: Text(_headline(user)),
+            title: Text(_headline(l10n, user)),
             subtitle: Text(
-              _describe(user),
+              _describe(l10n, user),
               key: Key("user-permission-${_idOf(user)}"),
             ),
             trailing: Row(
@@ -1368,7 +1376,7 @@ class UsersSectionState extends State<UsersSection> {
                   IconButton(
                     key: Key("user-withdraw-${_idOf(user)}"),
                     icon: const Icon(Icons.cancel_outlined),
-                    tooltip: "Withdraw",
+                    tooltip: l10n.withdraw,
                     onPressed: _busy ? null : () => _withdraw(user),
                   ),
                 // Somebody who lost every device they had gets the same code
@@ -1379,20 +1387,20 @@ class UsersSectionState extends State<UsersSection> {
                   IconButton(
                     key: Key("user-recovery-${user.name}"),
                     icon: const Icon(Icons.key_outlined),
-                    tooltip: "Recovery code",
+                    tooltip: l10n.recoveryCodeTooltip,
                     onPressed: _busy ? null : () => _recoveryCode(user),
                   ),
                 if (!user.pending) ...[
                   IconButton(
                     key: Key("user-edit-${user.name}"),
                     icon: const Icon(Icons.tune),
-                    tooltip: "Change what they may do",
+                    tooltip: l10n.changePermissionTooltip,
                     onPressed: _busy ? null : () => _edit(user),
                   ),
                   IconButton(
                     key: Key("user-remove-${user.name}"),
                     icon: const Icon(Icons.person_remove_outlined),
-                    tooltip: "Remove",
+                    tooltip: l10n.remove,
                     onPressed: _busy ? null : () => _remove(user),
                   ),
                 ],
@@ -1441,13 +1449,13 @@ class UsersSectionState extends State<UsersSection> {
   /// What it does is said before it is done: their devices are signed out,
   /// and what they put into the space stays there with their name on it.
   Future<void> _remove(UserEntry user) async {
+    var l10n = AppLocalizations.of(context)!;
     var confirmed = await confirmHere(
       context: context,
       dialogKey: "remove-user-confirm",
-      title: "Remove ${userDisplayName(user.name)}?",
-      message: "Their devices are signed out; their photos and their name on "
-          "them stay.",
-      confirmLabel: "Remove",
+      title: l10n.removeUserTitle(userDisplayName(l10n, user.name)),
+      message: l10n.removeUserMessage,
+      confirmLabel: l10n.remove,
       confirmKey: "remove-user-confirmed",
     );
     if (confirmed != true || !mounted) {
@@ -1491,13 +1499,13 @@ class UsersSectionState extends State<UsersSection> {
   /// A pending user has no name yet, so they are named by the inviter's own
   /// memento — "Invited for Grandma" — or, where the inviter wrote none, by
   /// the plain fact that somebody was invited (issue #89).
-  static String _headline(UserEntry user) {
+  static String _headline(AppLocalizations l10n, UserEntry user) {
     if (!user.pending) {
-      return userDisplayName(user.name);
+      return userDisplayName(l10n, user.name);
     }
     return user.recipient.trim().isEmpty
-        ? "Invited (pending)"
-        : "Invited for ${user.recipient.trim()} (pending)";
+        ? l10n.invitedPending
+        : l10n.invitedForPending(user.recipient.trim());
   }
 
   /// Withdraws the invitation of a pending [user], after asking (issue #89).
@@ -1505,12 +1513,13 @@ class UsersSectionState extends State<UsersSection> {
   /// Withdrawing it removes them: an invitation nobody accepted is a user
   /// nobody is.
   Future<void> _withdraw(UserEntry user) async {
+    var l10n = AppLocalizations.of(context)!;
     var confirmed = await confirmHere(
       context: context,
       dialogKey: "withdraw-user-confirm",
-      title: "Withdraw this invitation?",
-      message: "The link stops working, and the seat it was holding goes.",
-      confirmLabel: "Withdraw",
+      title: l10n.withdrawInvitationTitle,
+      message: l10n.withdrawPendingUserMessage,
+      confirmLabel: l10n.withdraw,
       confirmKey: "withdraw-user-confirmed",
     );
     if (confirmed != true || !mounted) {
@@ -1546,32 +1555,32 @@ class UsersSectionState extends State<UsersSection> {
   /// Words, not field names: the three answers of the permission model read as
   /// a sentence about that person, see [CallerPermission.phrase]. Changing
   /// them is the administrator's own business, see [PermissionDialog].
-  String _describe(UserEntry user) {
+  String _describe(AppLocalizations l10n, UserEntry user) {
     var permission = CallerPermission.ofFields(
       role: user.role,
       clearance: user.clearance,
       mayShare: user.mayShare,
     );
-    var parts = <String>[permission.phrase];
+    var parts = <String>[permission.phrase(l10n)];
     if (user.pending) {
       // Nothing to say about a library or devices: they have neither until
       // somebody redeems the invitation (issue #89).
       if (user.invitedBy.isNotEmpty) {
-        parts.add("invited by ${userDisplayName(user.invitedBy)}");
+        parts.add(l10n.invitedByUser(userDisplayName(l10n, user.invitedBy)));
       }
       if (user.created.isNotEmpty) {
-        parts.add("since ${dayOf(user.created)}");
+        parts.add(l10n.sinceDay(dayOf(user.created)));
       }
       return parts.join(" — ");
     }
-    parts.add("library: ${spaceDisplayName(user.space)}");
-    parts.add("${user.devices} device${user.devices == 1 ? "" : "s"}");
+    parts.add(l10n.librarySpace(spaceDisplayName(l10n, user.space)));
+    parts.add(l10n.deviceCount(user.devices));
     if (user.recipient.trim().isNotEmpty) {
       // The inviter's memento stays beside the name: "who is 'bob42' again?"
-      parts.add("invited for ${user.recipient.trim()}");
+      parts.add(l10n.invitedForRecipient(user.recipient.trim()));
     }
     if (user.created.isNotEmpty) {
-      parts.add("since ${dayOf(user.created)}");
+      parts.add(l10n.sinceDay(dayOf(user.created)));
     }
     return parts.join(" — ");
   }
@@ -1668,6 +1677,7 @@ class InvitationsSectionState extends State<InvitationsSection> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var all = _invitations;
     var problem = _problem;
     var open = [
@@ -1679,26 +1689,27 @@ class InvitationsSectionState extends State<InvitationsSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
-        Text("Open invitations", style: Theme.of(context).textTheme.titleSmall),
+        Text(l10n.openInvitationsHeading,
+            style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 8),
-        if (all == null) sectionProgress("Asking the server..."),
+        if (all == null) sectionProgress(l10n.askingServer),
         if (problem != null)
           sectionProblem(
               context, problem, const Key("settings.invitations.error")),
         if (all != null && problem == null && open.isEmpty)
-          const Text("No invitation is waiting to be accepted.",
-              key: Key("settings.invitations.empty")),
+          Text(l10n.noOpenInvitations,
+              key: const Key("settings.invitations.empty")),
         for (var invitation in open)
           ListTile(
             key: Key("invitation-${invitation.id}"),
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.mail_outline),
-            title: Text(_headline(invitation)),
-            subtitle: Text(_describe(invitation)),
+            title: Text(_headline(l10n, invitation)),
+            subtitle: Text(_describe(l10n, invitation)),
             trailing: IconButton(
               key: Key("invitation-revoke-${invitation.id}"),
               icon: const Icon(Icons.cancel_outlined),
-              tooltip: "Withdraw",
+              tooltip: l10n.withdraw,
               onPressed: _busy ? null : () => _revoke(invitation),
             ),
           ),
@@ -1710,47 +1721,51 @@ class InvitationsSectionState extends State<InvitationsSection> {
   ///
   /// The same words the users list uses, because it is the same thing: the
   /// permission this person will have, see [CallerPermission.phrase].
-  String _headline(Invitation invitation) {
+  String _headline(AppLocalizations l10n, Invitation invitation) {
     var permission = CallerPermission.ofFields(
       role: invitation.role,
       clearance: invitation.clearance,
       mayShare: invitation.mayShare,
     );
-    var by = invitation.invitedBy.isEmpty
-        ? ""
-        : " — invited by ${userDisplayName(invitation.invitedBy)}";
-    return "${permission.phrase}$by";
+    var phrase = permission.phrase(l10n);
+    if (invitation.invitedBy.isEmpty) {
+      return phrase;
+    }
+    return l10n.invitationPermissionBy(
+      phrase,
+      userDisplayName(l10n, invitation.invitedBy),
+    );
   }
 
   /// The line under an invitation: the note it carries and how long it lives.
-  String _describe(Invitation invitation) {
+  String _describe(AppLocalizations l10n, Invitation invitation) {
     var parts = <String>[];
     if (invitation.recipient.trim().isNotEmpty) {
       // The inviter's own memento, see issue #89.
-      parts.add("for ${invitation.recipient.trim()}");
+      parts.add(l10n.forRecipient(invitation.recipient.trim()));
     }
     if (invitation.note.trim().isNotEmpty) {
       parts.add(invitation.note.trim());
     }
     if (invitation.expires.isEmpty) {
-      parts.add("expires: never");
+      parts.add(l10n.expiresNever);
     } else if (expired(invitation)) {
-      parts.add("expired on ${dayOf(invitation.expires)}");
+      parts.add(l10n.expiredOnDay(dayOf(invitation.expires)));
     } else {
-      parts.add("expires ${dayOf(invitation.expires)}");
+      parts.add(l10n.expiresOnDay(dayOf(invitation.expires)));
     }
     return parts.join(" — ");
   }
 
   /// Withdraws [invitation], after asking.
   Future<void> _revoke(Invitation invitation) async {
+    var l10n = AppLocalizations.of(context)!;
     var confirmed = await confirmHere(
       context: context,
       dialogKey: "uninvite-confirm",
-      title: "Withdraw this invitation?",
-      message: "The link stops working. Somebody who already accepted it keeps "
-          "their account.",
-      confirmLabel: "Withdraw",
+      title: l10n.withdrawInvitationTitle,
+      message: l10n.withdrawInvitationMessage,
+      confirmLabel: l10n.withdraw,
       confirmKey: "uninvite-confirmed",
     );
     if (confirmed != true || !mounted) {

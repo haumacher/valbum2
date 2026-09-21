@@ -10,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String dataUrl = "http://server/valbum/data";
@@ -216,6 +217,8 @@ http.Response ownerAnswers(http.Request request) {
 /// Shows the share-link dialog on `2024/Zoo` of the caller's own space.
 Future<void> pumpLinkDialog(WidgetTester tester, VAlbumClient client) async {
   await tester.pumpWidget(MaterialApp(
+    localizationsDelegates: testLocalizationsDelegates,
+    supportedLocales: testSupportedLocales,
     home: Scaffold(
       body: ShareLinkDialog(client: client, path: const ["2024", "Zoo"]),
     ),

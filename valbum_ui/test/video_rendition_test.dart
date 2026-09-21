@@ -20,6 +20,7 @@ import 'package:video_player_platform_interface/video_player_platform_interface.
 
 import 'util/fake_image_http.dart';
 import 'util/fake_video_player.dart';
+import 'util/l10n.dart';
 
 /// The video of the tests, as the album addresses it.
 const String imageUrl = "http://server/valbum/data/album/clip.mp4";
@@ -57,6 +58,8 @@ Future<List<Duration>> pumpViewer(
   await withFakeImageHttp(() async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: VideoView(
           videoUrl: imageUrl,
           renditionUrl: renditionUrl,
@@ -236,6 +239,8 @@ void main() {
       await withFakeImageHttp(() async {
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: testLocalizationsDelegates,
+            supportedLocales: testSupportedLocales,
             home: VideoView(
               videoUrl: imageUrl,
               renditionUrl: renditionUrl,
@@ -275,6 +280,8 @@ void main() {
       await withFakeImageHttp(() async {
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: testLocalizationsDelegates,
+            supportedLocales: testSupportedLocales,
             home: VideoView(
               videoUrl: imageUrl,
               renditionUrl: renditionUrl,
@@ -318,6 +325,8 @@ void main() {
       await withFakeImageHttp(() async {
         await tester.pumpWidget(
           const MaterialApp(
+            localizationsDelegates: testLocalizationsDelegates,
+            supportedLocales: testSupportedLocales,
             home: VideoView(
               videoUrl: imageUrl,
               posterUrl: "$imageUrl?type=tn",
@@ -336,6 +345,8 @@ void main() {
       await withFakeImageHttp(() async {
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: testLocalizationsDelegates,
+            supportedLocales: testSupportedLocales,
             home: VideoView(
               videoUrl: imageUrl,
               renditionUrl: renditionUrl,

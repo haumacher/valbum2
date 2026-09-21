@@ -15,6 +15,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/device_code_payload.dart';
 import 'package:valbum_ui/manage_view.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to, and the app base derived from it.
 const String dataUrl = "http://server/valbum/data";
@@ -56,6 +57,8 @@ Future<StreamController<void>> pumpDevices(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: Scaffold(
         body: SingleChildScrollView(
           child: DevicesSection(

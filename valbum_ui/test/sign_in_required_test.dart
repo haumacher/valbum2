@@ -15,6 +15,7 @@ import 'package:valbum_ui/sign_in_form.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The body a refusing server answers with.
 String refusal(String message) => '["ErrorInfo",{"message":"$message"}]';
@@ -168,7 +169,7 @@ void main() {
 
     await tapVisible(tester, find.byKey(signInButtonKey));
 
-    expect(find.text(codeRequiredRefusal), findsOneWidget);
+    expect(find.text(codeRequiredRefusal(testL10n)), findsOneWidget);
     expect(
       requests.where((r) => r.url.queryParameters["action"] == "pair"),
       isEmpty,

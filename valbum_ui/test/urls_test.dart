@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/urls.dart';
+import 'util/l10n.dart';
 
 void main() {
   group('deriveDataUrl', () {
@@ -106,12 +107,12 @@ void main() {
 
   group('serverUrlError', () {
     test('accepts a usable server URL', () {
-      expect(serverUrlError("http://nas.local:8080/valbum/"), isNull);
+      expect(serverUrlError(testL10n, "http://nas.local:8080/valbum/"), isNull);
     });
 
     test('names the problem of an empty or relative URL', () {
-      expect(serverUrlError("   "), isNotNull);
-      expect(serverUrlError("nas.local"), isNotNull);
+      expect(serverUrlError(testL10n, "   "), isNotNull);
+      expect(serverUrlError(testL10n, "nas.local"), isNotNull);
     });
   });
 
@@ -234,7 +235,7 @@ void main() {
       var location = serverLocationOf("http://h/valbum/s/tok/");
       expect(location.share, "tok");
       expect(location.isShare, isTrue);
-      expect(serverUrlError("http://h/valbum/s/tok/"), shareLinkRefusal);
+      expect(serverUrlError(testL10n, "http://h/valbum/s/tok/"), shareLinkRefusal(testL10n));
     });
 
     test('a plain URL is read exactly as it always was', () {
@@ -243,7 +244,7 @@ void main() {
       expect(location.dataUrl, dataUrlOf("http://h/valbum/"));
       expect(location.invitation, "");
       expect(location.share, "");
-      expect(serverUrlError("http://h/valbum/"), isNull);
+      expect(serverUrlError(testL10n, "http://h/valbum/"), isNull);
       // And a URL without a trailing slash, and an index page.
       expect(serverLocationOf("http://h/valbum").dataUrl, "http://h/valbum/data");
       expect(

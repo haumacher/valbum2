@@ -13,6 +13,7 @@ import 'package:valbum_ui/caller.dart';
 import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/manage_view.dart';
 import 'package:valbum_ui/settings.dart';
+import 'util/l10n.dart';
 
 const String serverUrl = "http://server/valbum/";
 
@@ -74,6 +75,8 @@ Future<void> pumpSettings(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: settings,
         clientFor: (dataUrl) =>
@@ -197,12 +200,12 @@ void main() {
 
   testWidgets('the words of the warning', (tester) async {
     expect(
-      lastDeviceWarning(isAdmin: false, hasBackupCode: false),
+      lastDeviceWarning(testL10n, isAdmin: false, hasBackupCode: false),
       "This is your only signed-in device. To sign in again you need a "
       "recovery code from your administrator.",
     );
     expect(
-      lastDeviceWarning(isAdmin: true, hasBackupCode: true),
+      lastDeviceWarning(testL10n, isAdmin: true, hasBackupCode: true),
       "This is your only signed-in device. To sign in again you need your "
       "backup code, a recovery code from another administrator, or a restart "
       "of the server, which prints a new sign-in code.",

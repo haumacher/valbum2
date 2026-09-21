@@ -34,6 +34,10 @@ dependencies:
   # (see `lib/main.dart`) lives here.
   flutter_web_plugins:
     sdk: flutter
+  # The localizations of Material/Cupertino/Widgets themselves (issue #108);
+  # the app's own strings come from `lib/l10n/` through `flutter gen-l10n`.
+  flutter_localizations:
+    sdk: flutter
 
 
   # The following adds the Cupertino Icons font to your application.
@@ -47,8 +51,8 @@ dependencies:
   convert: ^3.1.1
   jsontool: 1.1.0
   image_picker: ^1.0.4
-  intl: ^0.18.1
-  date_field: ^3.0.5
+  intl: ^0.20.3
+  date_field: ^6.0.0
   video_player: ^2.14.0
   shared_preferences: ^2.2.2
   path_provider: ^2.1.6
@@ -95,6 +99,10 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Generate `lib/l10n/app_localizations*.dart` from the ARB files, see
+  # `l10n.yaml` (issue #108).
+  generate: true
 
   # To add assets to your application, add an assets section, like this:
   # assets:
