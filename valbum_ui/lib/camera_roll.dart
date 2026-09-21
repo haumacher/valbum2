@@ -388,6 +388,16 @@ String indexingNotice(int done, int total) =>
     "The library is still being indexed ($done of $total folders); photos "
     "already in an unindexed album may be uploaded again.";
 
+/// What a run says after it found the chosen inbox gone (issue #132).
+///
+/// Since issue #130 a properties write renames an album's directory, so the
+/// path the sync stored can simply stop existing — the server then answers
+/// 404 for the one album this sync uploads into. The run does not stop for
+/// that: it falls back to the default inbox rule, uploads there, and says so,
+/// because a user whose photos land somewhere else must be told where.
+String inboxGoneNotice(String name) =>
+    "The chosen inbox is gone; using '$name'.";
+
 /// Where a photo the server already had is, for the line of a finished run.
 String presentInNotice(List<String> where) => where.isEmpty
     ? ""
@@ -455,6 +465,14 @@ class CameraRollStatus {
   final int? indexingDone;
   final int? indexingTotal;
 
+  /// What a run had to say about the inbox itself, `null` while there is
+  /// nothing to say (issue #132).
+  ///
+  /// Set by the run that found the stored inbox gone and fell back to
+  /// [defaultInboxName], see [inboxGoneNotice]; it belongs to that run, so the
+  /// next successful one clears it, and so does choosing an inbox.
+  final String? inboxNotice;
+
   const CameraRollStatus({
     this.phase = CameraRollPhase.disabled,
     this.done = 0,
@@ -467,6 +485,7 @@ class CameraRollStatus {
     this.lastPresentIn = const [],
     this.indexingDone,
     this.indexingTotal,
+    this.inboxNotice,
   });
 
   /// Whether the run is waiting for the server to finish indexing (issue #118).
@@ -496,6 +515,7 @@ class CameraRollStatus {
     List<String>? lastPresentIn,
     int? indexingDone,
     int? indexingTotal,
+    String? inboxNotice,
   }) =>
       CameraRollStatus(
         phase: phase ?? this.phase,
@@ -511,6 +531,9 @@ class CameraRollStatus {
         // next transition clears it unless it says otherwise.
         indexingDone: indexingDone,
         indexingTotal: indexingTotal,
+        // Like [message]: what one run found out about the inbox is that
+        // run's, so the next transition clears it unless it says otherwise.
+        inboxNotice: inboxNotice,
       );
 
   /// The one line the settings screen and the app-bar tooltip show.
@@ -532,6 +555,11 @@ class CameraRollStatus {
       };
 
   String get _idleLine {
+    var notice = inboxNotice;
+    return notice == null ? _lastRunLine : "$notice $_lastRunLine";
+  }
+
+  String get _lastRunLine {
     var when = lastSuccess;
     if (when == null) {
       return "Waiting for new photos.";
@@ -648,6 +676,16 @@ class CameraRollSync extends ChangeNotifier {
   /// returns, so a timer there would either die unfired or hold the isolate
   /// open. The platform runs the task again anyway, see [runOnce].
   bool _armRetries = true;
+
+  /// What a run found out about the inbox and has not said yet (issue #132),
+  /// `null` while there is nothing to say.
+  ///
+  /// Not a local of the run that found it: a run that falls back and then
+  /// defers for the index (issue #118) or fails must not swallow the sentence
+  /// — the notice belongs to the *next line the user reads about a run that
+  /// worked*, so it is kept until [_succeed] says it, or until the user
+  /// chooses an inbox themselves.
+  String? _inboxNotice;
 
   bool _running = false;
   bool _pending = false;
@@ -910,6 +948,9 @@ class CameraRollSync extends ChangeNotifier {
   /// Changing the inbox does not re-upload anything: the watermark stays, and
   /// the server answers `present` for contents the new album already holds.
   Future<void> chooseInbox(List<String> path) async {
+    // The user has decided where the photos go; a run's sentence about an
+    // inbox they just replaced would only confuse (issue #132).
+    _inboxNotice = null;
     await _store(_config.copyWith(inbox: [...path]));
     _publish(_restingStatus());
   }
@@ -1070,6 +1111,10 @@ class CameraRollSync extends ChangeNotifier {
     var present = 0;
     var presentIn = <String>[];
     var transferred = 0;
+    // Whether this run already had to replace the inbox (issue #132): once
+    // per run, so a server that answers 404 for the freshly created album
+    // fails like any other refusal instead of looping.
+    var inboxReplaced = false;
     // An item that lies in two watched albums is uploaded once; the mark of
     // both albums still moves past it, see below.
     var uploaded = <String>{};
@@ -1134,17 +1179,43 @@ class CameraRollSync extends ChangeNotifier {
               if (!uploaded.contains(item.id)) item
           ];
           if (fresh.isNotEmpty) {
+            // Every request this makes is addressed at the inbox and at
+            // nothing else -- the `?action=check` of issue #118 and the
+            // transfer itself -- so a 404 out of it is that album saying it is
+            // not there, see below.
+            Future<UploadSummary> transfer() => client.uploadNew(
+                  _config.inbox,
+                  [for (var item in fresh) item.upload],
+                  // While the server is still reading the library it cannot
+                  // say that a photo is already in some album, and a first
+                  // sync over an existing library would upload what is there.
+                  // The run waits -- unless the user said otherwise, see
+                  // issue #118.
+                  waitForIndex: !_config.syncWhileIndexing,
+                );
+
             UploadSummary summary;
             try {
-              summary = await client.uploadNew(
-                _config.inbox,
-                [for (var item in fresh) item.upload],
-                // While the server is still reading the library it cannot say
-                // that a photo is already in some album, and a first sync over
-                // an existing library would upload what is there. The run
-                // waits -- unless the user said otherwise, see issue #118.
-                waitForIndex: !_config.syncWhileIndexing,
-              );
+              try {
+                summary = await transfer();
+              } on VAlbumException catch (error) {
+                // The chosen inbox is gone -- renamed by a properties write
+                // since issue #130, or moved away. Only a 404 is that, and
+                // only the first one of a run: any other refusal is the
+                // server speaking and is told as it was told (issue #132).
+                if (error.status != 404 || inboxReplaced) {
+                  rethrow;
+                }
+                inboxReplaced = true;
+                if (!await _ensureInbox(client, replace: true)) {
+                  // The fallback itself was refused; it has said why, and the
+                  // inbox that was stored stays stored -- a server that is
+                  // restarting must not cost the user their choice.
+                  return;
+                }
+                _inboxNotice = inboxGoneNotice(defaultInboxName);
+                summary = await transfer();
+              }
             } on VAlbumException catch (error) {
               _fail(error.message);
               return;
@@ -1219,10 +1290,15 @@ class CameraRollSync extends ChangeNotifier {
   /// one mechanism, and the album the server refused to overwrite is read to
   /// make sure it is an album and not something else of that name.
   ///
+  /// With [replace], the inbox that is stored is not believed: the run found
+  /// it gone (issue #132) and asks for the default one again, by exactly this
+  /// rule. Nothing but the path changes -- the watermarks stay, so nothing is
+  /// uploaded a second time.
+  ///
   /// Answers whether the run may go on; a run that may not has already said
   /// why, see [_fail].
-  Future<bool> _ensureInbox(VAlbumClient client) async {
-    if (_config.hasInbox) {
+  Future<bool> _ensureInbox(VAlbumClient client, {bool replace = false}) async {
+    if (_config.hasInbox && !replace) {
       return true;
     }
     CreateResult created;
@@ -1312,6 +1388,10 @@ class CameraRollSync extends ChangeNotifier {
   }
 
   void _succeed(int stored, int present, List<String> presentIn) {
+    var notice = _inboxNotice;
+    // Said once: this run is the line the user reads, and the next one is
+    // about the inbox they now have.
+    _inboxNotice = null;
     _attempt = 0;
     _retryTimer?.cancel();
     _retryTimer = null;
@@ -1321,6 +1401,7 @@ class CameraRollSync extends ChangeNotifier {
       lastStored: stored,
       lastPresent: present,
       lastPresentIn: presentIn,
+      inboxNotice: notice,
     ));
   }
 
