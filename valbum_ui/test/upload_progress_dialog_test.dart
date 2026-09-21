@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/upload_progress.dart';
+import 'util/l10n.dart';
 
 /// Pumps the dialog with the given progress on a surface of [width].
 ///
@@ -29,6 +30,8 @@ Future<ValueNotifier<UploadProgress>> pumpDialog(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: UploadProgressDialog(
         progress: notifier,
         onCancel: onCancel ?? () {},

@@ -29,6 +29,7 @@ import 'device_code_payload.dart';
 import 'device_code_scanner.dart';
 import 'diagnostics.dart';
 import 'invitation.dart';
+import 'l10n/app_localizations.dart';
 import 'manage_view.dart';
 import 'offline.dart';
 import 'platform.dart';
@@ -519,18 +520,21 @@ Widget outcomeRow(BuildContext context, ConnectionTestResult outcome) => Row(
 /// address family, what the root listing answered and what `?type=auth` said —
 /// because a connection that fails on one network and works on another is
 /// settled by data, not by the headline of an exception.
-Future<ConnectionTestResult> testServerConnection(VAlbumClient client) async {
+Future<ConnectionTestResult> testServerConnection(
+  AppLocalizations l10n,
+  VAlbumClient client,
+) async {
   var log = client.log;
   log?.add("connection test: data URL ${maskUrl(client.dataUrl)}");
   if (log != null) {
     await _logResolution(log, client.dataUrl);
   }
-  var reached = await _reachServer(client);
+  var reached = await _reachServer(l10n, client);
   log?.add(
     "connection test: root ${reached.ok ? "reached" : "failed"} - "
     "${reached.message}",
   );
-  var status = await _authStatus(client);
+  var status = await _authStatus(l10n, client);
   log?.add("connection test: auth ${status ?? "no answer"}");
   return reached.withAuthStatus(status);
 }
@@ -557,7 +561,7 @@ Future<void> _logResolution(DiagnosticsLog log, String dataUrl) async {
 
 /// What the server says about this client's sign-in, `null` if it says
 /// nothing at all — a server from before issue #28 does not know the endpoint.
-Future<String?> _authStatus(VAlbumClient client) async {
+Future<String?> _authStatus(AppLocalizations l10n, VAlbumClient client) async {
   AuthInfo info;
   try {
     info = await client.authInfo();
@@ -565,13 +569,15 @@ Future<String?> _authStatus(VAlbumClient client) async {
     return null;
   }
   if (info.deviceName.isNotEmpty) {
-    return "Signed in as ${userDisplayName(info.userName)} "
-        "on ${info.deviceName}";
+    return l10n.connectionSignedInAsOn(
+      userDisplayName(l10n, info.userName),
+      info.deviceName,
+    );
   }
   return switch (info.mode) {
-    "off" => "Not signed in - this server needs no sign-in",
-    "all" => "Not signed in - this server shows nothing without a sign-in",
-    _ => "Not signed in - changes need a sign-in",
+    "off" => l10n.connectionNoSignInNeeded,
+    "all" => l10n.connectionSignInForEverything,
+    _ => l10n.connectionSignInForChanges,
   };
 }
 
@@ -580,16 +586,16 @@ Future<String?> _authStatus(VAlbumClient client) async {
 /// The server leaves the name empty for the administrator of a space nobody
 /// has signed into yet: the seat is there from the start, and the sign-in that
 /// redeems its code gives them their name (issues #45, #89).
-String userDisplayName(String userName) =>
-    userName.isEmpty ? "the library owner" : userName;
+String userDisplayName(AppLocalizations l10n, String userName) =>
+    userName.isEmpty ? l10n.libraryOwner : userName;
 
 /// How the space of the given name is named on the screen.
 ///
 /// A user's space is the folder under the server's base folder their requests
 /// are resolved against; the owner of an unmigrated library has none, which
 /// means the whole base folder.
-String spaceDisplayName(String space) =>
-    space.isEmpty ? "the whole library" : space;
+String spaceDisplayName(AppLocalizations l10n, String space) =>
+    space.isEmpty ? l10n.wholeLibrary : space;
 
 /// A token as the screen shows it: enough to recognise it, not enough to use.
 ///
@@ -647,19 +653,19 @@ class SignedInUser {
       );
 }
 
-Future<ConnectionTestResult> _reachServer(VAlbumClient client) async {
+Future<ConnectionTestResult> _reachServer(
+  AppLocalizations l10n,
+  VAlbumClient client,
+) async {
   try {
     var resource = await client.loadResource([]);
     var title = _titleOf(resource);
     if (title == null) {
-      return const ConnectionTestResult(
-        false,
-        "The answer is not album data — not a VAlbum server?",
-      );
+      return ConnectionTestResult(false, l10n.notAlbumData);
     }
     return ConnectionTestResult(
       true,
-      title.isEmpty ? "Album server reached" : title,
+      title.isEmpty ? l10n.albumServerReached : title,
     );
   } on VAlbumException catch (error) {
     // A refusal is a server: it answered, it just will not show this caller
@@ -670,20 +676,16 @@ Future<ConnectionTestResult> _reachServer(VAlbumClient client) async {
       return ConnectionTestResult(
         true,
         error.status == 401
-            ? "Album server reached - it needs a sign-in before it shows "
-                "anything"
-            : "Album server reached - it refuses what this device is signed "
-                "in as",
+            ? l10n.albumServerNeedsSignIn
+            : l10n.albumServerRefusesThisDevice,
       ).withDetail(error.message);
     }
     return ConnectionTestResult(false, error.message);
   } on http.ClientException catch (error) {
     return ConnectionTestResult(false, error.message);
   } on FormatException catch (error) {
-    return const ConnectionTestResult(
-      false,
-      "The answer is not album data — not a VAlbum server?",
-    ).withDetail(error.message);
+    return ConnectionTestResult(false, l10n.notAlbumData)
+        .withDetail(error.message);
   } catch (error) {
     return ConnectionTestResult(false, error.toString());
   }
@@ -711,17 +713,17 @@ String? _titleOf(Resource? resource) => switch (resource) {
 ///
 /// Only a suggestion in the field; the user names the device, and the server
 /// stores whatever it is given.
-String defaultDeviceName() {
+String defaultDeviceName(AppLocalizations l10n) {
   if (kIsWeb) {
-    return "This browser";
+    return l10n.deviceNameThisBrowser;
   }
   return switch (defaultTargetPlatform) {
-    TargetPlatform.android => "Android phone",
-    TargetPlatform.iOS => "iPhone",
-    TargetPlatform.macOS => "Mac",
-    TargetPlatform.windows => "Windows PC",
-    TargetPlatform.linux => "Linux PC",
-    TargetPlatform.fuchsia => "My device",
+    TargetPlatform.android => l10n.deviceNameAndroid,
+    TargetPlatform.iOS => l10n.deviceNameIPhone,
+    TargetPlatform.macOS => l10n.deviceNameMac,
+    TargetPlatform.windows => l10n.deviceNameWindows,
+    TargetPlatform.linux => l10n.deviceNameLinux,
+    TargetPlatform.fuchsia => l10n.deviceNameOther,
   };
 }
 
@@ -737,11 +739,7 @@ const Key serverUrlHelpKey = Key("settings.serverUrl.help");
 /// one library is reached at its context path, and a server with several
 /// spaces puts each of them below a segment of its own — and the space is
 /// simply part of the address, see `urls.dart`.
-const String serverUrlHelp =
-    "The address the album server is reached at, as you would open it in a "
-    "browser, e.g. 'http://nas.local:8080/valbum/'. Where the server holds "
-    "several spaces, the address carries the space: "
-    "'https://host/valbum/<space>/'.";
+String serverUrlHelp(AppLocalizations l10n) => l10n.serverUrlHelp;
 
 /// The key of the line naming the server, shown in place of the address
 /// section on the web (issue #90).
@@ -824,14 +822,11 @@ final TextInputFormatter deviceCodeFormatter =
 /// where the administrator is one user among several: a nameless user has no
 /// attribution, shows as an empty row in the users list, and cannot be
 /// addressed by `set-permission` or `remove-user`.
-const String userNameHelp =
-    "Your name in this space; it is what the others see and what your photos "
-    "are attributed to.";
+String userNameHelp(AppLocalizations l10n) => l10n.userNameHelp;
 
 /// What the sign-in section says about the code (issue #89).
-const String signInCodeExplanation =
-    "Enter the code the server printed at start-up, or a code from one of your "
-    "devices, or a recovery code your administrator gave you.";
+String signInCodeExplanation(AppLocalizations l10n) =>
+    l10n.signInCodeExplanation;
 
 /// What the server answers a sign-in that needs a name it was not given.
 ///
@@ -844,7 +839,7 @@ const String nameRequiredMessage =
     "to be known by in this space.";
 
 /// What a sign-in without any code is refused with, before anything is sent.
-const String codeRequiredRefusal = "Enter the code that signs this device in.";
+String codeRequiredRefusal(AppLocalizations l10n) => l10n.codeRequiredRefusal;
 
 /// Whether the given failure is the server asking for a name (issue #89).
 ///
@@ -1052,6 +1047,10 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
   /// Asks the invited server who invited, and as what.
   ///
+  /// A refusal is shown as it arrives — the server's own sentence, a
+  /// transport failure's own message — which is the rule of issue #108, see
+  /// `refusalMessage` in `manage_view.dart`.
+  ///
   /// The invitation token is the bearer of this one request and of the sign-in
   /// below, and of nothing else: on every other endpoint it is anonymous, see
   /// issue #52.
@@ -1076,7 +1075,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     if (offered == null) {
       _invitationUnusable(
         token,
-        "This server does not know this invitation. Ask for a new one.",
+        AppLocalizations.of(context)!.invitationUnknown,
       );
       return;
     }
@@ -1138,7 +1137,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       // A token the server does not know is answered as an anonymous caller:
       // the device is still holding a token, but it proves nothing any more.
       setState(() => identityProblem =
-          "This server does not know this device. Sign in again.");
+          AppLocalizations.of(context)!.deviceUnknownToServer);
       return;
     }
     setState(() {
@@ -1159,7 +1158,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       return;
     }
     setState(() => identityProblem =
-        "The server did not say who this device is: $problem");
+        AppLocalizations.of(context)!.identityUnknown(problem));
   }
 
   @override
@@ -1184,9 +1183,10 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     var settings = widget.settings;
+    var l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Album server"),
+        title: Text(l10n.serverScreenTitle),
         automaticallyImplyLeading: widget.closable,
       ),
       body: Center(
@@ -1196,15 +1196,15 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               if (widget.isWeb)
-                ..._serverLine(settings)
+                ..._serverLine(l10n, settings)
               else
-                ..._addressSection(settings),
+                ..._addressSection(l10n, settings),
               const SizedBox(height: 24),
               const Divider(),
-              ..._signInSection(settings),
+              ..._signInSection(l10n, settings),
               if (!widget.isWeb) const CameraRollSection(),
-              ..._cacheSection(),
-              ..._diagnosticsSection(settings),
+              ..._cacheSection(l10n),
+              ..._diagnosticsSection(l10n, settings),
             ],
           ),
         ),
@@ -1220,13 +1220,13 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// was loaded from, and a stored address where an accepted invitation wrote
   /// one. The data URL is spelled back as the app base, which is the address
   /// the browser itself shows.
-  List<Widget> _serverLine(ServerSettings settings) {
+  List<Widget> _serverLine(AppLocalizations l10n, ServerSettings settings) {
     var dataUrl = settings.dataUrl;
     return [
       Text(
         dataUrl == null
-            ? "This browser talks to no server yet."
-            : "This browser talks to ${appBaseOf(dataUrl)}",
+            ? l10n.serverLineNoServer
+            : l10n.serverLineTalksTo(appBaseOf(dataUrl)),
         key: serverLineKey,
       ),
     ];
@@ -1234,74 +1234,78 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
   /// The address section: what the server URL is, the field it is entered in
   /// and what can be done with it. Built off the web only (issue #90).
-  List<Widget> _addressSection(ServerSettings settings) => [
-              const Text(
-                serverUrlHelp,
-                key: serverUrlHelpKey,
+  List<Widget> _addressSection(
+    AppLocalizations l10n,
+    ServerSettings settings,
+  ) =>
+      [
+        Text(
+          serverUrlHelp(l10n),
+          key: serverUrlHelpKey,
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          key: serverUrlFieldKey,
+          controller: controller,
+          autocorrect: false,
+          keyboardType: TextInputType.url,
+          decoration: InputDecoration(
+            labelText: l10n.serverUrlLabel,
+            border: const OutlineInputBorder(),
+            errorText: error,
+          ),
+          onChanged: (_) => setState(() {
+            error = null;
+            result = null;
+            _enteredChanged();
+          }),
+          onSubmitted: (_) => _save(),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: _save,
+              icon: const Icon(Icons.save),
+              label: Text(l10n.save),
+            ),
+            OutlinedButton.icon(
+              onPressed: testing ? null : _test,
+              icon: const Icon(Icons.network_check),
+              label: Text(l10n.testConnection),
+            ),
+            TextButton.icon(
+              onPressed: settings.serverUrl == null ? null : _reset,
+              icon: const Icon(Icons.settings_backup_restore),
+              label: Text(
+                settings.platformDefault() == null
+                    ? l10n.forgetThisServer
+                    : l10n.useLoadedServer,
               ),
-              const SizedBox(height: 16),
-              TextField(
-                key: serverUrlFieldKey,
-                controller: controller,
-                autocorrect: false,
-                keyboardType: TextInputType.url,
-                decoration: InputDecoration(
-                  labelText: "Server URL",
-                  border: const OutlineInputBorder(),
-                  errorText: error,
-                ),
-                onChanged: (_) => setState(() {
-                  error = null;
-                  result = null;
-                  _enteredChanged();
-                }),
-                onSubmitted: (_) => _save(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (testing)
+          Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilledButton.icon(
-                    onPressed: _save,
-                    icon: const Icon(Icons.save),
-                    label: const Text("Save"),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: testing ? null : _test,
-                    icon: const Icon(Icons.network_check),
-                    label: const Text("Test connection"),
-                  ),
-                  TextButton.icon(
-                    onPressed: settings.serverUrl == null ? null : _reset,
-                    icon: const Icon(Icons.settings_backup_restore),
-                    label: Text(
-                      settings.platformDefault() == null
-                          ? "Forget this server"
-                          : "Use the server this app was loaded from",
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (testing)
-                const Row(
-                  children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    SizedBox(width: 8),
-                    Text("Contacting the server..."),
-                  ],
-                ),
-              if (!testing && result != null) _outcome(result!),
-              if (!testing && result?.authStatus != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8, left: 32),
-                  child: Text(result!.authStatus!),
-                ),
+              const SizedBox(width: 8),
+              Text(l10n.contactingServer),
+            ],
+          ),
+        if (!testing && result != null) _outcome(result!),
+        if (!testing && result?.authStatus != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 32),
+            child: Text(result!.authStatus!),
+          ),
       ];
 
   /// The icon and message of a connection test or pairing attempt.
@@ -1319,32 +1323,33 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// server that shows nothing to anonymous callers is built from (issue #91):
   /// what this screen adds around it is who this device is signed in as, the
   /// way out, and the management sections below.
-  List<Widget> _signInSection(ServerSettings settings) {
+  List<Widget> _signInSection(AppLocalizations l10n, ServerSettings settings) {
     // A share link is no sign-in and names no server: it is said, not stored,
     // see [shareLinkRefusal].
     if (entered?.isShare ?? false) {
       return [
         const SizedBox(height: 8),
-        Text("Sign in", style: Theme.of(context).textTheme.titleMedium),
+        Text(l10n.signInHeading,
+            style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
-        const Text(shareLinkRefusal, key: shareLinkRefusalKey),
+        Text(shareLinkRefusal(l10n), key: shareLinkRefusalKey),
       ];
     }
     var location = entered;
     var inviting = invitationToken.isNotEmpty;
     return [
       const SizedBox(height: 8),
-      Text("Sign in", style: Theme.of(context).textTheme.titleMedium),
+      Text(l10n.signInHeading, style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
-      if (!inviting) const Text(signInCodeExplanation),
+      if (!inviting) Text(signInCodeExplanation(l10n)),
       const SizedBox(height: 16),
-      ..._identityDisplay(settings),
+      ..._identityDisplay(l10n, settings),
       const SizedBox(height: 16),
-      if (inviting) ..._invitationDisplay(),
+      if (inviting) ..._invitationDisplay(l10n),
       if (location == null)
-        const Text(
-          "Name a server above before signing in.",
-          key: Key("settings.signIn.noServer"),
+        Text(
+          l10n.signInNoServer,
+          key: const Key("settings.signIn.noServer"),
         )
       else
         SignInForm(
@@ -1359,7 +1364,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
               key: signOutButtonKey,
               onPressed: settings.signedIn ? _signOut : null,
               icon: const Icon(Icons.logout),
-              label: const Text("Sign out"),
+              label: Text(l10n.signOut),
             ),
           ],
         ),
@@ -1369,7 +1374,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
           child: Text(signOutMessage!, key: signOutMessageKey),
         ),
       ..._devicesSection(),
-      ..._inviteSection(),
+      ..._inviteSection(l10n),
     ];
   }
 
@@ -1411,7 +1416,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// The token itself is shown masked and cannot be edited — it is not a thing
   /// to type, it is a thing that was pasted — and dropping it leaves the plain
   /// server URL behind, so the field stays usable for an ordinary sign-in.
-  List<Widget> _invitationDisplay() {
+  List<Widget> _invitationDisplay(AppLocalizations l10n) {
     var offer = invitationOffer;
     var problem = invitationProblem;
     return [
@@ -1428,19 +1433,21 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
                   const Icon(Icons.mail_outline),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text("Invitation ${maskedToken(invitationToken)}"),
+                    child: Text(
+                      l10n.invitationMasked(maskedToken(invitationToken)),
+                    ),
                   ),
                   TextButton(
                     key: invitationDropKey,
                     onPressed: _dropInvitation,
-                    child: const Text("Not this one"),
+                    child: Text(l10n.notThisOne),
                   ),
                 ],
               ),
               if (offer != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  invitationHeadline(offer.invitedBy, offer.role),
+                  invitationHeadline(l10n, offer.invitedBy, offer.role),
                   key: const Key("settings.invitation.offer"),
                 ),
                 if (offer.note.trim().isNotEmpty)
@@ -1453,7 +1460,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
               ],
               if (offer == null && problem == null) ...[
                 const SizedBox(height: 8),
-                const Text("Asking the server about this invitation..."),
+                Text(l10n.askingAboutInvitation),
               ],
             ],
           ),
@@ -1474,7 +1481,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// out, withdrawing them and turning a guest into a member are the
   /// management screens of issue #55; the calls they need are in
   /// [VAlbumClient] already.
-  List<Widget> _inviteSection() {
+  List<Widget> _inviteSection(AppLocalizations l10n) {
     var role = identity?.role ?? "";
     if (!CallerInfo(role: role).mayInvite) {
       return const [];
@@ -1484,12 +1491,10 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       const SizedBox(height: 24),
       const Divider(),
       const SizedBox(height: 8),
-      Text("People", style: Theme.of(context).textTheme.titleMedium),
+      Text(l10n.peopleHeading,
+          style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
-      const Text(
-        "An invitation is a single-use link that creates one account on this "
-        "server. Send it to the person it is for, and to nobody else.",
-      ),
+      Text(l10n.inviteExplanation),
       const SizedBox(height: 16),
       Wrap(
         spacing: 8,
@@ -1499,7 +1504,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
             key: inviteButtonKey,
             onPressed: _invite,
             icon: const Icon(Icons.person_add),
-            label: const Text("Invite…"),
+            label: Text(l10n.inviteAction),
           ),
         ],
       ),
@@ -1592,34 +1597,37 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// server is asked and stay there while it cannot be reached; the role and
   /// the space are only shown once the server has said them, see
   /// [_askWhoThisDeviceIs].
-  List<Widget> _identityDisplay(ServerSettings settings) {
+  List<Widget> _identityDisplay(
+    AppLocalizations l10n,
+    ServerSettings settings,
+  ) {
     var user = settings.signedIn ? identity : null;
     var lines = <String>[];
     if (user != null) {
       var userName = user.userName;
       lines.add(userName == null
-          ? "Signed in on this device"
-          : "Signed in as ${userDisplayName(userName)}");
+          ? l10n.signedInOnThisDevice
+          : l10n.signedInAsUser(userDisplayName(l10n, userName)));
       var role = user.role;
       if (role != null && role.isNotEmpty) {
-        lines.add("Role: $role");
+        lines.add(l10n.roleLine(role));
       }
       if (user.deviceName.isNotEmpty) {
-        lines.add("Device: ${user.deviceName}");
+        lines.add(l10n.deviceLine(user.deviceName));
       }
       // The space of the address this device talks to (issue #85); empty on
       // a server with a single library, which then says nothing about it.
       var space = user.space;
       if (space != null && space.isNotEmpty) {
-        lines.add("Space: $space");
+        lines.add(l10n.spaceLine(space));
       }
       // A guest's space is not a library of their own, so it is said in words
       // rather than shown as a folder, see issue #52.
       if (role == roleGuest) {
-        lines.add(guestLibraryNotice);
+        lines.add(guestLibraryNotice(l10n));
       }
     } else {
-      lines.add("Not signed in");
+      lines.add(l10n.notSignedIn);
     }
     var problem = user == null ? null : identityProblem;
     // What this caller may do and see, in plain words (issue #85): the role,
@@ -1645,7 +1653,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
-                      permission.sentence,
+                      permission.sentence(l10n),
                       key: permissionLineKey,
                     ),
                   ),
@@ -1666,7 +1674,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   ///
   /// Empty where there is no cache to speak of — a view pumped on its own in a
   /// test; the app always has one, see [VAlbumApp].
-  List<Widget> _cacheSection() {
+  List<Widget> _cacheSection(AppLocalizations l10n) {
     var cache = OfflineScope.maybeOf(context)?.cache;
     if (cache == null) {
       return const [];
@@ -1675,12 +1683,9 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       const SizedBox(height: 24),
       const Divider(),
       const SizedBox(height: 8),
-      Text("Cache", style: Theme.of(context).textTheme.titleMedium),
+      Text(l10n.cacheHeading, style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
-      const Text(
-        "Albums and thumbnails already seen are kept on this device, so that "
-        "the library can be browsed while the server is away.",
-      ),
+      Text(l10n.cacheExplanation),
       const SizedBox(height: 16),
       FutureBuilder<int>(
         // Re-read whenever the screen rebuilds, so that clearing shows.
@@ -1688,8 +1693,8 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         future: cache.size(),
         builder: (context, snapshot) => Text(
           snapshot.hasData
-              ? "Currently cached: ${formatBytes(snapshot.data!)}"
-              : "Currently cached: ...",
+              ? l10n.currentlyCached(formatBytes(snapshot.data!))
+              : l10n.currentlyCachedUnknown,
         ),
       ),
       const SizedBox(height: 16),
@@ -1701,7 +1706,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
             key: clearCacheButtonKey,
             onPressed: () => _clearCache(cache),
             icon: const Icon(Icons.delete_sweep),
-            label: const Text("Clear cache"),
+            label: Text(l10n.clearCache),
           ),
         ],
       ),
@@ -1715,22 +1720,20 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
   /// Empties the cache, after asking; what happened is shown on the screen.
   Future<void> _clearCache(OfflineCache cache) async {
+    var l10n = AppLocalizations.of(context)!;
     var confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Clear the cache?"),
-        content: const Text(
-          "Everything kept for offline browsing is forgotten. It is fetched "
-          "again the next time the server is reached.",
-        ),
+        title: Text(l10n.clearCacheTitle),
+        content: Text(l10n.clearCacheQuestion),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text("Clear"),
+            child: Text(l10n.clear),
           ),
         ],
       ),
@@ -1745,7 +1748,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     }
     setState(() {
       _cacheGeneration++;
-      cacheMessage = "Cache cleared, ${formatBytes(freed)} freed.";
+      cacheMessage = l10n.cacheCleared(formatBytes(freed));
     });
   }
 
@@ -1754,7 +1757,11 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// Collapsed by default — the settings screen keeps its shape for everyone
   /// who never needs it — and monospaced, newest last, because what is pasted
   /// into a bug report is read line by line.
-  List<Widget> _diagnosticsSection(ServerSettings settings) => [
+  List<Widget> _diagnosticsSection(
+    AppLocalizations l10n,
+    ServerSettings settings,
+  ) =>
+      [
         const SizedBox(height: 8),
         const Divider(),
         ExpansionTile(
@@ -1762,12 +1769,10 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
           tilePadding: EdgeInsets.zero,
           childrenPadding: const EdgeInsets.only(bottom: 16),
           title: Text(
-            "Diagnostics",
+            l10n.diagnosticsHeading,
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          subtitle: const Text(
-            "What this app did on the network - copy it into a bug report.",
-          ),
+          subtitle: Text(l10n.diagnosticsLead),
           children: [
             AnimatedBuilder(
               animation: log,
@@ -1787,7 +1792,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
                       // person came here to read.
                       reverse: true,
                       child: SelectableText(
-                        _logText(),
+                        _logText(l10n),
                         style: const TextStyle(
                           fontFamily: "monospace",
                           fontSize: 11,
@@ -1804,13 +1809,13 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
                         key: diagnosticsCopyKey,
                         onPressed: () => _copyDiagnostics(settings),
                         icon: const Icon(Icons.copy_all),
-                        label: const Text("Copy"),
+                        label: Text(l10n.copy),
                       ),
                       TextButton.icon(
                         key: diagnosticsClearKey,
                         onPressed: log.isEmpty ? null : log.clear,
                         icon: const Icon(Icons.delete_outline),
-                        label: const Text("Clear"),
+                        label: Text(l10n.clear),
                       ),
                     ],
                   ),
@@ -1822,17 +1827,17 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       ];
 
   /// The log as the box shows it, oldest first.
-  String _logText() {
+  String _logText(AppLocalizations l10n) {
     var entries = log.entries;
     if (entries.isEmpty) {
-      return "Nothing logged yet. Test the connection, or browse the album, "
-          "and what the app asked the server appears here.";
+      return l10n.diagnosticsEmpty;
     }
     return entries.join("\n");
   }
 
   /// Puts the whole log, header and all, on the clipboard and says so.
   Future<void> _copyDiagnostics(ServerSettings settings) async {
+    var copied = AppLocalizations.of(context)!.diagnosticsCopied;
     var text = log.copyText(
       serverUrl: settings.serverUrl ?? settings.dataUrl,
       platform: platformDescription(),
@@ -1842,9 +1847,9 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("The diagnostics log is on the clipboard."),
-        duration: Duration(seconds: 4),
+      SnackBar(
+        content: Text(copied),
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -1857,6 +1862,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// and it is asked even when the device list could not be read, because
   /// "probably fine" is no answer to a door that locks behind one.
   Future<void> _signOut() async {
+    var l10n = AppLocalizations.of(context)!;
     var known = await _knownDevices();
     if (!mounted) {
       return;
@@ -1875,7 +1881,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     setState(() {
       identity = null;
       identityProblem = null;
-      signOutMessage = "This device no longer identifies itself to the server.";
+      signOutMessage = l10n.signedOutMessage;
     });
   }
 
@@ -1885,6 +1891,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// question was asked there, and asking it twice would be asking about a
   /// door that is already shut.
   Future<void> _forgetToken() async {
+    var l10n = AppLocalizations.of(context)!;
     await widget.settings.signOut();
     if (!mounted) {
       return;
@@ -1893,7 +1900,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       identity = null;
       identityProblem = null;
       deviceList = null;
-      signOutMessage = "This device no longer identifies itself to the server.";
+      signOutMessage = l10n.signedOutMessage;
     });
   }
 
@@ -1920,8 +1927,9 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
   /// Fetches the root resource of the *entered* server, without saving it.
   Future<void> _test() async {
+    var l10n = AppLocalizations.of(context)!;
     var entered = controller.text;
-    var problem = serverUrlError(entered);
+    var problem = serverUrlError(l10n, entered);
     if (problem != null) {
       setState(() {
         error = problem;
@@ -1937,6 +1945,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     });
 
     var outcome = await testServerConnection(
+      l10n,
       widget
           .clientFor(serverLocationOf(entered).dataUrl)
           .withToken(widget.settings.token),
@@ -1953,7 +1962,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
   Future<void> _save() async {
     var entered = controller.text;
-    var problem = serverUrlError(entered);
+    var problem = serverUrlError(AppLocalizations.of(context)!, entered);
     if (problem != null) {
       setState(() => error = problem);
       return;

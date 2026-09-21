@@ -21,6 +21,7 @@ import 'package:http/http.dart' as http;
 import 'client.dart';
 import 'device_code_payload.dart';
 import 'device_code_scanner.dart';
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'settings.dart';
 import 'urls.dart';
@@ -31,9 +32,8 @@ import 'urls.dart';
 /// The refusal page of a browser is the case: it talks to the server it was
 /// loaded from and to no other, so a code for a different server is said out
 /// loud rather than sent to the wrong place.
-String otherServerRefusal(String scanned) =>
-    "This code is for $scanned, not for the server this page came from. Open "
-    "that server and sign in there.";
+String otherServerRefusal(AppLocalizations l10n, String scanned) =>
+    l10n.otherServerRefusal(scanned);
 
 /// The key of the sign-in form on a server's refusal page (issue #91).
 const Key signInRequiredFormKey = Key("signInRequired.form");
@@ -109,9 +109,25 @@ class SignInFormState extends State<SignInForm> {
       TextEditingController(text: widget.initialCode);
 
   /// The name this device announces itself with.
-  late final TextEditingController deviceController = TextEditingController(
-    text: widget.settings.deviceName ?? defaultDeviceName(),
-  );
+  ///
+  /// Filled in [didChangeDependencies]: the suggested name is a localized one
+  /// (issue #108), and the localizations are only reachable once this state is
+  /// in the tree.
+  final TextEditingController deviceController = TextEditingController();
+
+  /// Whether [deviceController] has been filled with its suggestion.
+  bool _deviceNameFilled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_deviceNameFilled) {
+      return;
+    }
+    _deviceNameFilled = true;
+    deviceController.text = widget.settings.deviceName ??
+        defaultDeviceName(AppLocalizations.of(context)!);
+  }
 
   /// The name the user signs in under, asked for only where it is a choice.
   late final TextEditingController userController = TextEditingController(
@@ -153,12 +169,13 @@ class SignInFormState extends State<SignInForm> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var inviting = widget.location.isInvitation;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (widget.explain && !inviting) ...[
-          const Text(signInCodeExplanation),
+          Text(signInCodeExplanation(l10n)),
           const SizedBox(height: 16),
         ],
         // The name is asked for where it is a choice — an invitation, and a
@@ -170,10 +187,8 @@ class SignInFormState extends State<SignInForm> {
             autofocus: nameRequired,
             autocorrect: false,
             decoration: InputDecoration(
-              labelText: inviting ? "Your name" : "User name",
-              helperText: inviting
-                  ? "How the others on this server see you."
-                  : userNameHelp,
+              labelText: inviting ? l10n.yourName : l10n.userNameLabel,
+              helperText: inviting ? l10n.yourNameHelp : userNameHelp(l10n),
               helperMaxLines: 3,
               border: const OutlineInputBorder(),
             ),
@@ -182,16 +197,16 @@ class SignInFormState extends State<SignInForm> {
           const SizedBox(height: 16),
         ],
         if (!inviting) ...[
-          _codeField(),
+          _codeField(l10n),
           const SizedBox(height: 16),
         ],
         TextField(
           key: deviceNameFieldKey,
           controller: deviceController,
           autocorrect: false,
-          decoration: const InputDecoration(
-            labelText: "Device name",
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: l10n.deviceNameLabel,
+            border: const OutlineInputBorder(),
           ),
         ),
         const SizedBox(height: 16),
@@ -203,22 +218,22 @@ class SignInFormState extends State<SignInForm> {
               key: signInButtonKey,
               onPressed: pairingRunning ? null : signIn,
               icon: const Icon(Icons.login),
-              label: const Text("Sign in"),
+              label: Text(l10n.signInHeading),
             ),
             ...widget.actions,
           ],
         ),
         const SizedBox(height: 16),
         if (pairingRunning)
-          const Row(
+          Row(
             children: [
-              SizedBox(
+              const SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
-              SizedBox(width: 8),
-              Text("Signing in..."),
+              const SizedBox(width: 8),
+              Text(l10n.signingIn),
             ],
           ),
         if (signInError != null)
@@ -239,7 +254,7 @@ class SignInFormState extends State<SignInForm> {
   ///
   /// The scan is an addition to the typing and never a replacement: the field
   /// is the same field, and a platform without a camera simply has no button.
-  Widget _codeField() {
+  Widget _codeField(AppLocalizations l10n) {
     var scanner = DeviceCodeScannerScope.of(context);
     var field = TextField(
       key: deviceCodeFieldKey,
@@ -247,13 +262,11 @@ class SignInFormState extends State<SignInForm> {
       autocorrect: false,
       textCapitalization: TextCapitalization.characters,
       inputFormatters: [deviceCodeFormatter],
-      decoration: const InputDecoration(
-        labelText: "Sign-in code",
-        helperText: "From the server's start-up, from My devices on a device "
-            "you are already signed in on, from your administrator, or your "
-            "backup code.",
+      decoration: InputDecoration(
+        labelText: l10n.signInCodeLabel,
+        helperText: l10n.signInCodeHelp,
         helperMaxLines: 3,
-        border: OutlineInputBorder(),
+        border: const OutlineInputBorder(),
       ),
       onSubmitted: (_) => signIn(),
     );
@@ -268,7 +281,7 @@ class SignInFormState extends State<SignInForm> {
         IconButton(
           key: deviceCodeScanKey,
           icon: const Icon(Icons.qr_code_scanner),
-          tooltip: "Scan code",
+          tooltip: l10n.scanCode,
           onPressed: () => _scan(scanner),
         ),
       ],
@@ -288,6 +301,7 @@ class SignInFormState extends State<SignInForm> {
   /// another server where this screen cannot go with
   /// [otherServerRefusal]; the fields are left exactly as they were.
   Future<void> _scan(DeviceCodeScanner scanner) async {
+    var l10n = AppLocalizations.of(context)!;
     var scanned = await scanner.scan(context);
     if (scanned == null || !mounted) {
       return;
@@ -295,7 +309,7 @@ class SignInFormState extends State<SignInForm> {
     var payload = parseDeviceCodePayload(scanned);
     if (payload == null) {
       setState(() {
-        signInError = notADeviceCodeRefusal;
+        signInError = notADeviceCodeRefusal(l10n);
         pairing = null;
       });
       return;
@@ -308,7 +322,7 @@ class SignInFormState extends State<SignInForm> {
     }
     if (!sameServer(payload.serverUrl, widget.location.serverUrl)) {
       setState(() {
-        signInError = otherServerRefusal(payload.serverUrl);
+        signInError = otherServerRefusal(l10n, payload.serverUrl);
         pairing = null;
       });
       return;
@@ -326,6 +340,7 @@ class SignInFormState extends State<SignInForm> {
   /// is then the name the new user chooses for themselves. The server tells
   /// the kinds apart, this form does not.
   Future<void> signIn() async {
+    var l10n = AppLocalizations.of(context)!;
     var location = widget.location;
     var code = location.isInvitation
         ? location.invitation
@@ -334,7 +349,7 @@ class SignInFormState extends State<SignInForm> {
       // There is one way in and it is a code (issue #89); an empty field is
       // said here rather than sent to be refused.
       setState(() {
-        signInError = codeRequiredRefusal;
+        signInError = codeRequiredRefusal(l10n);
         pairing = null;
       });
       return;
@@ -357,7 +372,7 @@ class SignInFormState extends State<SignInForm> {
       var response = await client.pair(
         deviceCode: code,
         deviceName: deviceController.text.trim().isEmpty
-            ? defaultDeviceName()
+            ? defaultDeviceName(l10n)
             : deviceController.text.trim(),
         userName: userName,
       );
@@ -378,7 +393,7 @@ class SignInFormState extends State<SignInForm> {
         location.dataUrl,
         response,
       );
-      outcome = const ConnectionTestResult(true, "Sign-in succeeded.");
+      outcome = ConnectionTestResult(true, l10n.signInSucceeded);
     } on VAlbumException catch (failure) {
       if (needsAName(failure)) {
         // The code signs in a user who has no name yet: the server says so,

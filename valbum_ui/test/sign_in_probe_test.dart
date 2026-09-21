@@ -10,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
+import 'util/l10n.dart';
 
 String refusal(String message) => '["ErrorInfo",{"message":"$message"}]';
 
@@ -31,6 +32,8 @@ Future<void> pumpSettings(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: settings,
         clientFor: (dataUrl) =>

@@ -12,6 +12,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 const String dataUrl = "http://server/valbum/data";
 
@@ -262,6 +263,8 @@ void main() {
       }, requests: requests);
 
       await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: Scaffold(
           body: ShareLinkDialog(client: client, path: const ["2024", "Zoo"]),
         ),

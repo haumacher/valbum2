@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fake_timers.dart';
+import 'util/l10n.dart';
 
 /// The album new photos go into.
 const List<String> inbox = ["Inbox"];
@@ -42,6 +43,8 @@ CameraRollSync engine(
 Future<void> pumpSection(WidgetTester tester, CameraRollSync sync) async {
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: CameraRollScope(
         sync: sync,
         child: const Scaffold(

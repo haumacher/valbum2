@@ -11,6 +11,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The body a refusing server answers with, see `ErrorInfo` in `model.proto`.
 String refusal(String message) => '["ErrorInfo",{"message":"$message"}]';
@@ -30,6 +31,8 @@ Future<void> pumpSettings(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: settings,
         clientFor: (dataUrl) =>
@@ -124,7 +127,7 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(signInErrorKey)).data,
-        codeRequiredRefusal,
+        codeRequiredRefusal(testL10n),
       );
       expect(requests, isEmpty, reason: "nothing is sent without a code");
       expect(store.token, isNull);

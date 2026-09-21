@@ -12,6 +12,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The data URL the injected clients of these tests talk to.
 const String serverDataUrl = "http://server/valbum/data";
@@ -43,6 +44,8 @@ Future<void> pumpScreen(
 ) async {
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: settings,
         clientFor: (dataUrl) =>
@@ -157,7 +160,9 @@ void main() {
       await enter(tester, "nas.local");
       await tapButton(tester, "Save");
 
-      expect(find.textContaining("absolute server URL"), findsOneWidget);
+      // The app's own sentence, in the app's own language — never the
+      // parser's, see issue #108 and `serverUrlError`.
+      expect(find.text(testL10n.serverUrlInvalid), findsOneWidget);
       expect(store.value, isNull);
     });
   });
@@ -302,7 +307,7 @@ void main() {
       );
 
       // One screen and one field, off the web, see issue #91.
-      expect(find.text(firstScreenTitle), findsOneWidget);
+      expect(find.text(firstScreenTitle(testL10n)), findsOneWidget);
       expect(find.byKey(firstScreenFieldKey), findsOneWidget);
       // Nothing to go back to: the screen is the app.
       expect(find.byType(BackButton), findsNothing);
@@ -319,7 +324,7 @@ void main() {
           platformDefault: null,
         ),
       );
-      expect(find.text(firstScreenTitle), findsOneWidget);
+      expect(find.text(firstScreenTitle(testL10n)), findsOneWidget);
 
       await tester.enterText(
         find.byKey(firstScreenFieldKey),
@@ -333,7 +338,7 @@ void main() {
       await tapButton(tester, "Open without signing in");
       await withFakeImageHttp(() => tester.pumpAndSettle());
 
-      expect(find.text(firstScreenTitle), findsNothing);
+      expect(find.text(firstScreenTitle(testL10n)), findsNothing);
       expect(find.text("Test-album"), findsOneWidget);
     });
 

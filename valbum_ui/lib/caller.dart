@@ -17,6 +17,7 @@ library;
 
 import 'package:flutter/widgets.dart';
 
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
 
 /// The role of the owner of a library, who invites and manages.
@@ -188,59 +189,73 @@ class CallerPermission {
   /// One sentence of three clauses — what may be done, what is seen, whether
   /// links may be handed out — because that is how somebody checks whether the
   /// server thinks of them what they think it does.
-  String get sentence => "${_doing()}; ${_seeing()}; ${_sharing()}.";
+  String sentence(AppLocalizations l10n) => l10n.permissionSentence(
+        _doing(l10n),
+        _seeing(l10n),
+        _sharing(l10n),
+      );
 
-  String _doing() => switch (role) {
-        roleAdmin => "You manage this server",
-        roleEdit => "You may edit every album of this space",
-        roleContribute => "You may add photos to this space",
-        roleView => "You may look at this space",
-        _ => "You are not signed in",
+  String _doing(AppLocalizations l10n) => switch (role) {
+        roleAdmin => l10n.permissionDoingAdmin,
+        roleEdit => l10n.permissionDoingEdit,
+        roleContribute => l10n.permissionDoingContribute,
+        roleView => l10n.permissionDoingView,
+        _ => l10n.permissionDoingNone,
       };
 
-  String _seeing() => switch (clearance) {
-        clearanceAll => "you see all images",
-        clearanceNonPrivate => "you see all but the private images",
-        _ => "you see the public images",
+  String _seeing(AppLocalizations l10n) => switch (clearance) {
+        clearanceAll => l10n.permissionSeeingAll,
+        clearanceNonPrivate => l10n.permissionSeeingNonPrivate,
+        _ => l10n.permissionSeeingPublic,
       };
 
-  String _sharing() =>
-      mayShare ? "you may share links" : "you may not share links";
+  String _sharing(AppLocalizations l10n) => mayShare
+      ? l10n.permissionSharingMay
+      : l10n.permissionSharingMayNot;
 
   /// What this permission allows, in the same three clauses but about
   /// somebody else — for a row of the users or invitations list (issue #85).
-  String get phrase => "${roleWord(role)} — ${clearanceWord(clearance)} — "
-      "${mayShare ? "may share links" : "no links"}";
+  String phrase(AppLocalizations l10n) => l10n.permissionPhrase(
+        roleWord(l10n, role),
+        clearanceWord(l10n, clearance),
+        mayShare ? l10n.permissionPhraseMayShare : l10n.permissionPhraseNoLinks,
+      );
 
   /// What the role [name] allows, in words.
-  static String roleWord(String name) => switch (normalizeRole(name)) {
-        roleAdmin => "manages this server",
-        roleEdit => "may edit the albums",
-        roleContribute => "may add photos",
-        roleView => "may look",
-        _ => "unknown role",
+  static String roleWord(AppLocalizations l10n, String name) =>
+      switch (normalizeRole(name)) {
+        roleAdmin => l10n.roleWordAdmin,
+        roleEdit => l10n.roleWordEdit,
+        roleContribute => l10n.roleWordContribute,
+        roleView => l10n.roleWordView,
+        _ => l10n.roleWordUnknown,
       };
 
   /// What the role [name] allows, said to the person it is about.
   ///
   /// Empty for a role the app does not know: a sentence that names nothing is
   /// better than one that promises the wrong thing, see [invitationRoleName].
-  static String roleWordYou(String name) => switch (normalizeRole(name)) {
-        roleAdmin => "you manage this server",
-        roleEdit => "you may edit the albums",
-        roleContribute => "you may add photos",
-        roleView => "you may look at the albums",
+  static String roleWordYou(AppLocalizations l10n, String name) =>
+      switch (normalizeRole(name)) {
+        roleAdmin => l10n.roleWordYouAdmin,
+        roleEdit => l10n.roleWordYouEdit,
+        roleContribute => l10n.roleWordYouContribute,
+        roleView => l10n.roleWordYouView,
         _ => "",
       };
 
   /// What the clearance [name] shows, in words.
   ///
   /// [role] is what an empty clearance is read as, see [normalizeClearance].
-  static String clearanceWord(String name, {String role = ""}) =>
+  static String clearanceWord(
+    AppLocalizations l10n,
+    String name, {
+    String role = "",
+  }) =>
       switch (normalizeClearance(name, normalizeRole(role))) {
-        clearanceAll => "sees all images",
-        clearanceNonPrivate => "sees all but the private images",
-        _ => "sees the public images",
+        clearanceAll => l10n.clearanceWordAll,
+        clearanceNonPrivate => l10n.clearanceWordNonPrivate,
+        _ => l10n.clearanceWordPublic,
       };
 
   @override
@@ -258,8 +273,7 @@ class CallerPermission {
 }
 
 /// The sentence a guest is told what their library is with.
-const String guestLibraryNotice =
-    "Guest: your library is what others share with you.";
+String guestLibraryNotice(AppLocalizations l10n) => l10n.guestLibraryNotice;
 
 /// Who the app talks to the server as, as the server itself says it.
 @immutable

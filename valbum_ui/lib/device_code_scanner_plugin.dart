@@ -13,6 +13,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'device_code_payload.dart';
 import 'device_code_scanner.dart';
+import 'l10n/app_localizations.dart';
 
 /// The key of the page showing the camera.
 const Key deviceCodeScannerPageKey = Key("settings.deviceCode.scanner");
@@ -97,7 +98,9 @@ class DeviceCodeScannerPageState extends State<DeviceCodeScannerPage> {
       }
     }
     if (mounted && _refusal == null) {
-      setState(() => _refusal = notADeviceCodeRefusal);
+      setState(
+        () => _refusal = notADeviceCodeRefusal(AppLocalizations.of(context)!),
+      );
     }
   }
 

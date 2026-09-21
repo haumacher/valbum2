@@ -23,6 +23,7 @@ import 'package:video_player_platform_interface/video_player_platform_interface.
 import 'util/fake_image_http.dart';
 import 'util/fake_video_player.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// A landscape video carrying the given stored orientation.
 ImagePart videoPart(Orientation orientation) => ImagePart(
@@ -49,6 +50,8 @@ Future<void> pumpViewer(WidgetTester tester, AbstractImage image) async {
   await withFakeImageHttp(() async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: ImageView(
           client: clientReturning("{}"),
           baseUrl: "http://server/valbum/data/album",

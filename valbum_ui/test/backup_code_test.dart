@@ -14,6 +14,7 @@ import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/device_code_payload.dart';
 import 'package:valbum_ui/manage_view.dart';
 import 'package:valbum_ui/settings.dart';
+import 'util/l10n.dart';
 
 const String serverUrl = "http://server/valbum/";
 
@@ -75,6 +76,8 @@ Future<void> pumpSettings(WidgetTester tester, http.Client transport) async {
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: await signedIn(),
         clientFor: (dataUrl) =>
@@ -98,7 +101,7 @@ void main() {
     await pumpSettings(tester, backupServer());
 
     expect(find.byKey(backupCodeStateKey), findsOneWidget);
-    expect(find.text(noBackupCode), findsOneWidget);
+    expect(find.text(noBackupCode(testL10n)), findsOneWidget);
     expect(find.byKey(backupCodeCreateKey), findsOneWidget);
     // Nothing to withdraw yet.
     expect(find.byKey(backupCodeRevokeKey), findsNothing);
@@ -120,7 +123,7 @@ void main() {
     expect(find.byKey(deviceCodeRemainingKey), findsOneWidget);
     expect(find.text("This code does not expire. It works once."),
         findsOneWidget);
-    expect(find.text(backupCodeAdvice), findsOneWidget);
+    expect(find.text(backupCodeAdvice(testL10n)), findsOneWidget);
 
     await tapVisible(tester, find.text("Done"));
 
@@ -150,7 +153,7 @@ void main() {
     expect(find.byKey(const Key("backup-code-confirm")), findsOneWidget);
     await tapVisible(tester, find.byKey(const Key("backup-code-confirmed")));
 
-    expect(find.text(noBackupCode), findsOneWidget);
+    expect(find.text(noBackupCode(testL10n)), findsOneWidget);
     expect(find.byKey(backupCodeRevokeKey), findsNothing);
     expect(
       requests.any(

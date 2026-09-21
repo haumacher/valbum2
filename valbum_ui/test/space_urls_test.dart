@@ -15,6 +15,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/urls.dart';
+import 'util/l10n.dart';
 
 /// The session URL as the server would spell it again from what was read.
 ///
@@ -193,7 +194,7 @@ void main() {
       expect(entered.dataUrl, "https://host/valbum/alice/data");
       expect(entered.invitation, "");
       expect(entered.share, "");
-      expect(serverUrlError("https://host/valbum/alice/"), isNull);
+      expect(serverUrlError(testL10n, "https://host/valbum/alice/"), isNull);
     });
 
     test('takes a pasted invitation into a space, storing the space', () {
@@ -204,7 +205,7 @@ void main() {
       // Stored is the server — the space included, the token never.
       expect(entered.serverUrl, "https://host/valbum/alice/");
       expect(entered.dataUrl, "https://host/valbum/alice/data");
-      expect(serverUrlError("https://host/valbum/alice/i/t0ken/"), isNull);
+      expect(serverUrlError(testL10n, "https://host/valbum/alice/i/t0ken/"), isNull);
     });
 
     test('takes a pasted invitation without a space, as it always did', () {
@@ -226,13 +227,13 @@ void main() {
         expect(entered.isShare, isTrue, reason: link);
         expect(entered.share, "t0ken", reason: link);
         // A link opens one album and signs nothing in: it is said, not stored.
-        expect(serverUrlError(link), shareLinkRefusal, reason: link);
+        expect(serverUrlError(testL10n, link), shareLinkRefusal(testL10n), reason: link);
       }
     });
 
     test('refuses what is no absolute URL at all, space or not', () {
       expect(() => serverLocationOf("alice/i/t0ken/"), throwsFormatException);
-      expect(serverUrlError(""), isNotNull);
+      expect(serverUrlError(testL10n, ""), isNotNull);
     });
   });
 }

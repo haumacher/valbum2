@@ -15,6 +15,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String serverDataUrl = "http://server/valbum/data";
@@ -115,6 +116,8 @@ Future<void> pumpSection(
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: CallerScope(
         caller: caller,
         child: CameraRollScope(
@@ -289,7 +292,10 @@ void main() {
         '{"name":"Zoo","title":"Zoo","link":"~alice/2024/Zoo"}]}]',
       );
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: InboxPickerDialog(client: client))),
+        MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
+      home: Scaffold(body: InboxPickerDialog(client: client))),
       );
       await tester.pumpAndSettle();
 

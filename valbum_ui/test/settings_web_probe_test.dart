@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'util/l10n.dart';
 
 Future<void> pumpWeb(
   WidgetTester tester, {
@@ -28,6 +29,8 @@ Future<void> pumpWeb(
   );
   addTearDown(sync.dispose);
   await tester.pumpWidget(MaterialApp(
+    localizationsDelegates: testLocalizationsDelegates,
+    supportedLocales: testSupportedLocales,
     home: OfflineScope(
       state: OfflineState(),
       cache: MemoryOfflineCache(),

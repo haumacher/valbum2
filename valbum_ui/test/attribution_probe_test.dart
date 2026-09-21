@@ -14,6 +14,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 const String dataUrl = "http://server/valbum/data";
 
@@ -209,6 +210,8 @@ void main() {
           CallerScope(
             caller: CallerInfo(userName: "carol", role: roleMember, space: "carol"),
             child: MaterialApp(
+              localizationsDelegates: testLocalizationsDelegates,
+              supportedLocales: testSupportedLocales,
               home: GroupDetailView(
                 client: clientReturning("{}"),
                 baseUrl: "$dataUrl/album",

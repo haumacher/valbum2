@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/manage_view.dart';
+import 'util/l10n.dart';
 
 const String dataUrl = "http://server/valbum/data";
 const String deviceToken = "dev-token";
@@ -42,6 +43,8 @@ Future<StreamController<void>> pumpDevices(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: Scaffold(
         body: SingleChildScrollView(
           child: DevicesSection(

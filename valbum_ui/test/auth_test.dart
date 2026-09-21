@@ -13,6 +13,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The body a refusing server answers with, see `ErrorInfo` in `model.proto`.
 String refusal(String message) => '["ErrorInfo",{"message":"$message"}]';
@@ -54,6 +55,8 @@ Future<void> pumpSettings(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: settings,
         clientFor: (dataUrl) =>

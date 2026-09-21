@@ -16,6 +16,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String serverDataUrl = "http://server/valbum/data";
@@ -265,6 +266,8 @@ void main() {
       await harness.sync.syncNow();
 
       await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: CallerScope(
           caller: const CallerInfo(role: roleMember, space: "carol"),
           child: CameraRollScope(

@@ -6,6 +6,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The tile of the group member with the given file name.
 Finder memberTile(String name) => find.byKey(ValueKey("group-tile-$name"));
@@ -160,6 +161,8 @@ void main() {
     await withFakeImageHttp(() async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: testLocalizationsDelegates,
+          supportedLocales: testSupportedLocales,
           home: _GroupHarness(
             client: clientReturning("{}"),
             baseUrl: "http://server/valbum/data/album",

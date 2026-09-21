@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/manage_view.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String dataUrl = "http://server/valbum/data";
@@ -70,6 +71,8 @@ Future<StreamController<void>> pumpDevices(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: Scaffold(
         body: SingleChildScrollView(
           child: DevicesSection(
@@ -139,9 +142,9 @@ void main() {
       tester.widget<Text>(find.byKey(deviceCodeRemainingKey)).data,
       "Expires in 10:00",
     );
-    expect(find.text(deviceCodeAdvice), findsOneWidget);
+    expect(find.text(deviceCodeAdvice(testL10n)), findsOneWidget);
     expect(
-      deviceCodeAdvice,
+      deviceCodeAdvice(testL10n),
       "Type this on the other device within 10 minutes. It signs that device "
       "in as you — never give it to anyone else.",
     );

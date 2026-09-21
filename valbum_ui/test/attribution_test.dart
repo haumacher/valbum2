@@ -11,6 +11,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String dataUrl = "http://server/valbum/data";
@@ -123,6 +124,8 @@ Future<void> pumpViewer(
         child: ShareSessionScope(
           session: share,
           child: MaterialApp(
+            localizationsDelegates: testLocalizationsDelegates,
+            supportedLocales: testSupportedLocales,
             home: Builder(
               builder: (context) => Scaffold(
                 body: TextButton(

@@ -15,6 +15,7 @@ import 'package:valbum_ui/main.dart';
 import 'util/fake_image_http.dart';
 import 'util/fake_timers.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String serverDataUrl = "http://server/valbum/data";
@@ -162,6 +163,8 @@ class Harness {
 Future<void> pumpSection(WidgetTester tester, CameraRollSync sync) async {
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: CameraRollScope(
         sync: sync,
         child: const Scaffold(
@@ -880,6 +883,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: testLocalizationsDelegates,
+          supportedLocales: testSupportedLocales,
           home: CameraRollScope(
             sync: harness.sync,
             child: Scaffold(

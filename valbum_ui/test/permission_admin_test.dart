@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String serverUrl = "http://server/valbum/";
@@ -78,6 +79,8 @@ Future<List<http.Request>> pumpSettings(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: settings,
         clientFor: (url) => VAlbumClient(
@@ -315,6 +318,8 @@ void main() {
       await settings.load();
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: testLocalizationsDelegates,
+          supportedLocales: testSupportedLocales,
           home: ServerSettingsScreen(
             settings: settings,
             clientFor: (url) => VAlbumClient(

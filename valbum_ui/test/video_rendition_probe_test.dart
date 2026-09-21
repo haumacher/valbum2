@@ -13,6 +13,7 @@ import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/video_view.dart';
 
 import 'util/fake_image_http.dart';
+import 'util/l10n.dart';
 
 const String imageUrl = "http://server/valbum/data/album/clip.mp4";
 const String renditionUrl = "$imageUrl?type=video";
@@ -60,6 +61,8 @@ void main() {
     var waits = <Duration>[];
     await withFakeImageHttp(() async {
       await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: VideoView(
           videoUrl: imageUrl,
           renditionUrl: renditionUrl,
@@ -91,6 +94,8 @@ void main() {
     ]);
     await withFakeImageHttp(() async {
       await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: VideoView(
           videoUrl: imageUrl,
           renditionUrl: renditionUrl,

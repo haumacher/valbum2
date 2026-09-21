@@ -5,6 +5,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fake_timers.dart';
+import 'util/l10n.dart';
 
 const List<String> inbox = ["2026-03-01 Inbox"];
 
@@ -97,6 +98,8 @@ void main() {
     await harness.sync.load();
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: CameraRollScope(
           sync: harness.sync,
           child: const Scaffold(

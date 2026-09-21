@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'util/l10n.dart';
 
 /// The body a refusing server answers with, see `ErrorInfo` in `model.proto`.
 String refusal(String message) => '["ErrorInfo",{"message":"$message"}]';
@@ -192,6 +193,8 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: testLocalizationsDelegates,
+          supportedLocales: testSupportedLocales,
           home: ServerSettingsScreen(
             settings: settings,
             diagnostics: log,
@@ -253,7 +256,7 @@ void main() {
         }),
       );
 
-      var result = await testServerConnection(client);
+      var result = await testServerConnection(testL10n, client);
 
       expect(result.ok, isTrue);
       var messages = messagesOf(log);

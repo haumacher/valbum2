@@ -10,6 +10,7 @@ import 'package:video_player_platform_interface/video_player_platform_interface.
 import 'util/fake_image_http.dart';
 import 'util/fake_video_player.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// A [VideoControllerFactory] that cannot even create a controller.
 VideoPlayerController failingFactory(
@@ -43,6 +44,8 @@ Future<void> pumpViewer(WidgetTester tester, AbstractImage image) async {
   await withFakeImageHttp(() async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: ImageView(
           client: clientReturning("{}"),
           baseUrl: "http://server/valbum/data/album",
@@ -66,6 +69,8 @@ Future<void> pumpVideo(
   await withFakeImageHttp(() async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: VideoView(
           videoUrl: videoUrl,
           posterUrl: "$videoUrl?type=tn",
@@ -229,7 +234,10 @@ void main() {
   testWidgets('leaving the video disposes the player', (tester) async {
     await pumpVideo(tester, autoPlay: false);
 
-    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.pumpWidget(const MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
+      home: SizedBox()));
 
     // The controller disposes asynchronously, off the fake clock.
     await tester.runAsync(() async {});

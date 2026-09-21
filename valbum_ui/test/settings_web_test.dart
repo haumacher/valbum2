@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'util/l10n.dart';
 
 /// The server the pumped screen talks to.
 const String serverDataUrl = "http://server/valbum/data";
@@ -48,6 +49,8 @@ Future<void> pumpSettings(
   addTearDown(sync.dispose);
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: OfflineScope(
         state: OfflineState(),
         cache: MemoryOfflineCache(),

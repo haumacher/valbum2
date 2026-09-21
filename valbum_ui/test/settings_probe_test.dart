@@ -12,6 +12,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 Future<void> pump(WidgetTester tester, Widget app) async {
   await withFakeImageHttp(() async {
@@ -122,7 +123,7 @@ void main() {
       ),
     );
     // No server: the app asks where the album is, see issue #91.
-    expect(find.text(firstScreenTitle), findsOneWidget);
+    expect(find.text(firstScreenTitle(testL10n)), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -131,6 +132,8 @@ void main() {
     await pump(
       tester,
       MaterialApp(
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
         home: ServerSettingsScreen(
           settings: ServerSettings(
             store: InMemorySettingsStore(),

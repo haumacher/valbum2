@@ -16,13 +16,15 @@ library;
 
 import 'package:flutter/widgets.dart';
 
+import 'l10n/app_localizations.dart';
+
 /// What a QR code that is not a device code is answered with.
 ///
 /// Said wherever such a code turns up: on the scanner, which keeps looking —
 /// a poster, a Wi-Fi code or a link simply is not what that screen is for —
 /// and on the sign-in screen, should a scanner ever answer something the app
 /// cannot read. Nothing is filled in and nothing is sent either way.
-const String notADeviceCodeRefusal = "This is not a device code.";
+String notADeviceCodeRefusal(AppLocalizations l10n) => l10n.notADeviceCode;
 
 /// Something that can read a QR code with the camera of the device.
 abstract class DeviceCodeScanner {

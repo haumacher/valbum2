@@ -11,6 +11,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fake_timers.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to, as a user would type it.
 const String serverUrl = "http://server/valbum/";
@@ -85,6 +86,8 @@ class Harness {
 Future<void> pumpSection(WidgetTester tester, CameraRollSync sync) async {
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: CameraRollScope(
         sync: sync,
         child: const Scaffold(

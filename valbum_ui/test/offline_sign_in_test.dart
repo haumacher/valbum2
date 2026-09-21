@@ -14,6 +14,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The body a refusing server answers with, see `ErrorInfo` in `model.proto`.
 String refusal(String message) => '["ErrorInfo",{"message":"$message"}]';
@@ -124,7 +125,7 @@ void main() {
         }),
       );
 
-      var result = await testServerConnection(client);
+      var result = await testServerConnection(testL10n, client);
 
       expect(result.ok, isTrue, reason: "The server answered, so it is there.");
       expect(result.message, contains("Album server reached"));

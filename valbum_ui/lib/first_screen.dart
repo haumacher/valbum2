@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'client.dart';
 import 'device_code_payload.dart';
 import 'device_code_scanner.dart';
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'settings.dart';
 import 'sign_in_form.dart';
@@ -48,17 +49,13 @@ const Key firstScreenChangeKey = Key("first.change");
 const Key firstScreenSkipKey = Key("first.skip");
 
 /// What the field asks for, above it.
-const String firstScreenLead =
-    "Type the address of your album server, or paste the invitation link you "
-    "were sent. If somebody showed you a QR code, scan it.";
+String firstScreenLead(AppLocalizations l10n) => l10n.firstScreenLead;
 
 /// The heading of the screen.
-const String firstScreenTitle = "Where is your album?";
+String firstScreenTitle(AppLocalizations l10n) => l10n.firstScreenTitle;
 
 /// What a server that cannot be read is refused with.
-const String firstScreenNoServer =
-    "That is not a server address. It looks like "
-    "'http://nas.local:8080/valbum/'.";
+String firstScreenNoServer(AppLocalizations l10n) => l10n.firstScreenNoServer;
 
 /// Asks for the album server, and then signs in at it, see the library
 /// comment.
@@ -111,10 +108,11 @@ class FirstScreenState extends State<FirstScreen> {
 
   @override
   Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var server = accepted;
     return Scaffold(
       key: firstScreenKey,
-      appBar: AppBar(title: const Text(firstScreenTitle)),
+      appBar: AppBar(title: Text(firstScreenTitle(l10n))),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
@@ -133,21 +131,22 @@ class FirstScreenState extends State<FirstScreen> {
 
   /// Step one: the one field, the scanner, and the way on.
   List<Widget> _asking(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
     var scanner = DeviceCodeScannerScope.of(context);
     var field = TextField(
       key: firstScreenFieldKey,
       controller: controller,
       autocorrect: false,
       keyboardType: TextInputType.url,
-      decoration: const InputDecoration(
-        labelText: "Server address or link",
-        border: OutlineInputBorder(),
+      decoration: InputDecoration(
+        labelText: l10n.serverAddressOrLink,
+        border: const OutlineInputBorder(),
       ),
       onChanged: (_) => setState(() => problem = null),
       onSubmitted: (_) => accept(),
     );
     return [
-      const Text(firstScreenLead),
+      Text(firstScreenLead(l10n)),
       const SizedBox(height: 24),
       if (!scanner.available)
         field
@@ -160,7 +159,7 @@ class FirstScreenState extends State<FirstScreen> {
             IconButton(
               key: firstScreenScanKey,
               icon: const Icon(Icons.qr_code_scanner),
-              tooltip: "Scan code",
+              tooltip: l10n.scanCode,
               onPressed: () => _scan(scanner),
             ),
           ],
@@ -176,15 +175,15 @@ class FirstScreenState extends State<FirstScreen> {
           ),
         ),
       if (asking)
-        const Row(
+        Row(
           children: [
-            SizedBox(
+            const SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            SizedBox(width: 8),
-            Text("Asking the server..."),
+            const SizedBox(width: 8),
+            Text(l10n.askingServer),
           ],
         )
       else
@@ -192,7 +191,7 @@ class FirstScreenState extends State<FirstScreen> {
           key: firstScreenContinueKey,
           onPressed: accept,
           icon: const Icon(Icons.arrow_forward),
-          label: const Text("Continue"),
+          label: Text(l10n.continueAction),
         ),
     ];
   }
@@ -206,38 +205,41 @@ class FirstScreenState extends State<FirstScreen> {
   ///
   /// A server that shows its albums to anonymous callers needs no sign-in at
   /// all, and the way past is offered rather than hidden.
-  List<Widget> _signingIn(BuildContext context, ServerLocation server) => [
-        Text("Album server: ${server.serverUrl}", key: firstScreenServerKey),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            key: firstScreenChangeKey,
-            onPressed: () => setState(() {
-              accepted = null;
-              scannedCode = "";
-            }),
-            icon: const Icon(Icons.edit),
-            label: const Text("Another server"),
-          ),
+  List<Widget> _signingIn(BuildContext context, ServerLocation server) {
+    var l10n = AppLocalizations.of(context)!;
+    return [
+      Text(l10n.albumServerLine(server.serverUrl), key: firstScreenServerKey),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: firstScreenChangeKey,
+          onPressed: () => setState(() {
+            accepted = null;
+            scannedCode = "";
+          }),
+          icon: const Icon(Icons.edit),
+          label: Text(l10n.anotherServer),
         ),
-        const SizedBox(height: 16),
-        SignInForm(
-          key: const Key("first.signIn"),
-          settings: widget.settings,
-          clientFor: widget.clientFor,
-          location: server,
-          initialCode: scannedCode,
-          saveServer: true,
-          explain: true,
-        ),
-        const SizedBox(height: 8),
-        TextButton(
-          key: firstScreenSkipKey,
-          onPressed: () => widget.settings.save(server.serverUrl),
-          child: const Text("Open without signing in"),
-        ),
-      ];
+      ),
+      const SizedBox(height: 16),
+      SignInForm(
+        key: const Key("first.signIn"),
+        settings: widget.settings,
+        clientFor: widget.clientFor,
+        location: server,
+        initialCode: scannedCode,
+        saveServer: true,
+        explain: true,
+      ),
+      const SizedBox(height: 8),
+      TextButton(
+        key: firstScreenSkipKey,
+        onPressed: () => widget.settings.save(server.serverUrl),
+        child: Text(l10n.openWithoutSigningIn),
+      ),
+    ];
+  }
 
   /// Reads a payload off the camera: the server into the field, the code into
   /// the sign-in below (issues #66, #91).
@@ -245,13 +247,14 @@ class FirstScreenState extends State<FirstScreen> {
   /// Nothing else happens — the same rule as everywhere a code is scanned: it
   /// is shown to the person who scanned it, and they press the button.
   Future<void> _scan(DeviceCodeScanner scanner) async {
+    var l10n = AppLocalizations.of(context)!;
     var scanned = await scanner.scan(context);
     if (scanned == null || !mounted) {
       return;
     }
     var payload = parseDeviceCodePayload(scanned);
     if (payload == null) {
-      setState(() => problem = notADeviceCodeRefusal);
+      setState(() => problem = notADeviceCodeRefusal(l10n));
       return;
     }
     controller.text = payload.serverUrl;
@@ -263,17 +266,18 @@ class FirstScreenState extends State<FirstScreen> {
 
   /// Takes what was entered: a server, an invitation link, or nothing usable.
   Future<void> accept() async {
+    var l10n = AppLocalizations.of(context)!;
     ServerLocation location;
     try {
       location = serverLocationOf(controller.text);
     } on FormatException {
-      setState(() => problem = firstScreenNoServer);
+      setState(() => problem = firstScreenNoServer(l10n));
       return;
     }
     if (location.isShare) {
       // A share link opens one album in a browser and signs nothing in; it is
       // said rather than silently turned into a server address.
-      setState(() => problem = shareLinkRefusal);
+      setState(() => problem = shareLinkRefusal(l10n));
       return;
     }
     if (!location.isInvitation) {
@@ -313,8 +317,7 @@ class FirstScreenState extends State<FirstScreen> {
     if (offered == null) {
       setState(() {
         asking = false;
-        problem = "This server does not know this invitation. Ask for a new "
-            "one, or type the plain server address.";
+        problem = l10n.invitationUnknownHere;
       });
       return;
     }

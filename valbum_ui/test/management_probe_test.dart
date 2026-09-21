@@ -12,6 +12,7 @@ import 'package:http/testing.dart';
 import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/manage_view.dart';
 import 'package:valbum_ui/settings.dart';
+import 'util/l10n.dart';
 
 const String serverUrl = "http://server/valbum/";
 
@@ -39,6 +40,8 @@ Future<void> pumpSettings(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: ServerSettingsScreen(
         settings: settings,
         clientFor: (dataUrl) =>

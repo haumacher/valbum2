@@ -30,6 +30,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import 'caller.dart';
+import 'l10n/app_localizations.dart';
 import 'client.dart';
 import 'manage_view.dart';
 import 'platform.dart';
@@ -44,13 +45,20 @@ import 'urls.dart';
 /// [CallerPermission.roleWordYou]. A role the app does not know promises
 /// nothing rather than the wrong thing, and the sentence then simply ends
 /// after the invitation, see [invitationHeadline].
-String invitationRoleName(String role) => CallerPermission.roleWordYou(role);
+String invitationRoleName(AppLocalizations l10n, String role) =>
+    CallerPermission.roleWordYou(l10n, role);
 
 /// Who invited, and what they offered.
-String invitationHeadline(String invitedBy, String role) {
-  var may = invitationRoleName(role);
-  return "${userDisplayName(invitedBy)} invited you to this album server"
-      "${may.isEmpty ? "." : ": $may."}";
+String invitationHeadline(
+  AppLocalizations l10n,
+  String invitedBy,
+  String role,
+) {
+  var may = invitationRoleName(l10n, role);
+  var who = userDisplayName(l10n, invitedBy);
+  return may.isEmpty
+      ? l10n.invitationHeadlinePlain(who)
+      : l10n.invitationHeadlineWithRole(who, may);
 }
 
 /// What being invited as a guest means, in one line.
@@ -205,8 +213,20 @@ class InvitationWelcomeScreen extends StatefulWidget {
 class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
   final TextEditingController _user = TextEditingController();
 
-  late final TextEditingController _device =
-      TextEditingController(text: defaultDeviceName());
+  final TextEditingController _device = TextEditingController();
+
+  /// Whether [_device] was filled with its suggested name.
+  bool _deviceNameFilled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_deviceNameFilled) {
+      return;
+    }
+    _deviceNameFilled = true;
+    _device.text = defaultDeviceName(AppLocalizations.of(context)!);
+  }
 
   /// The server's reason for refusing the last attempt, shown at the field.
   String? _refusal;
@@ -251,7 +271,11 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
       const Icon(Icons.mail_outline, size: 48),
       const SizedBox(height: 16),
       Text(
-        invitationHeadline(info.invitedBy, info.role),
+        invitationHeadline(
+          AppLocalizations.of(context)!,
+          info.invitedBy,
+          info.role,
+        ),
         key: const Key("invitation-headline"),
         style: Theme.of(context).textTheme.titleMedium,
       ),
@@ -319,14 +343,14 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
       const Icon(Icons.verified_user, size: 48, color: Colors.green),
       const SizedBox(height: 16),
       Text(
-        "You're in as ${userDisplayName(joined.userName)}.",
+        "You're in as ${userDisplayName(AppLocalizations.of(context)!, joined.userName)}.",
         key: const Key("invitation-joined"),
         style: Theme.of(context).textTheme.titleMedium,
       ),
       const SizedBox(height: 8),
       Text(
         joined.role == roleGuest
-            ? guestLibraryNotice
+            ? guestLibraryNotice(AppLocalizations.of(context)!)
             : "This device is signed in; your albums are yours from now on.",
         key: const Key("invitation-joined-note"),
       ),
@@ -359,7 +383,9 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
         // every other code travels in.
         deviceCode: widget.token,
         deviceName:
-            _device.text.trim().isEmpty ? defaultDeviceName() : _device.text.trim(),
+            _device.text.trim().isEmpty
+                ? defaultDeviceName(AppLocalizations.of(context)!)
+                : _device.text.trim(),
         userName: name,
       );
     } on VAlbumException catch (failure) {

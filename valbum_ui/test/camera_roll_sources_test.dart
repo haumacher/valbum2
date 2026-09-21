@@ -17,6 +17,7 @@ import 'package:http/testing.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/photo_library_manager.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String serverDataUrl = "http://server/valbum/data";
@@ -93,6 +94,8 @@ class Harness {
 Future<void> pumpSection(WidgetTester tester, CameraRollSync sync) async {
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
       home: CameraRollScope(
         sync: sync,
         child: const Scaffold(

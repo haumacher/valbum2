@@ -16,6 +16,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// What a server answers a pairing it accepted.
 const String paired = '{"token":"tok-2","deviceName":"Tablet",'
@@ -103,7 +104,7 @@ void main() {
   testWidgets('one field takes a plain server address', (tester) async {
     var store = await pumpFirst(tester, plainServer());
 
-    expect(find.text(firstScreenTitle), findsOneWidget);
+    expect(find.text(firstScreenTitle(testL10n)), findsOneWidget);
     expect(find.byKey(firstScreenFieldKey), findsOneWidget);
 
     await enter(tester, "http://server/valbum/");
@@ -163,7 +164,7 @@ void main() {
     await tapVisible(tester, find.byKey(firstScreenContinueKey));
 
     expect(find.byKey(firstScreenProblemKey), findsOneWidget);
-    expect(find.text(shareLinkRefusal), findsOneWidget);
+    expect(find.text(shareLinkRefusal(testL10n)), findsOneWidget);
     expect(find.byKey(deviceCodeFieldKey), findsNothing);
   });
 
@@ -175,7 +176,7 @@ void main() {
     await enter(tester, "not a url");
     await tapVisible(tester, find.byKey(firstScreenContinueKey));
 
-    expect(find.text(firstScreenNoServer), findsOneWidget);
+    expect(find.text(firstScreenNoServer(testL10n)), findsOneWidget);
     expect(requests, isEmpty);
   });
 
@@ -212,7 +213,7 @@ void main() {
 
     await tapVisible(tester, find.byKey(firstScreenScanKey));
 
-    expect(find.text(notADeviceCodeRefusal), findsOneWidget);
+    expect(find.text(notADeviceCodeRefusal(testL10n)), findsOneWidget);
   });
 
   testWidgets('"Another server" goes back to the field', (tester) async {

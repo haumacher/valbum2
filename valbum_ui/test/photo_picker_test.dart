@@ -17,6 +17,7 @@ import 'package:valbum_ui/photo_picker_view.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// A photo of the fake library, its contents a 1x1 PNG so that the tile of the
 /// picker really decodes a picture.
@@ -40,7 +41,10 @@ FakePhotoLibrary twoAlbums() {
 /// Pumps the picker on its own, as a screen of a plain app.
 Future<void> pumpPicker(WidgetTester tester, PhotoLibrary library) async {
   await tester.pumpWidget(
-    MaterialApp(home: PhotoPickerScreen(library: library)),
+    MaterialApp(
+      localizationsDelegates: testLocalizationsDelegates,
+      supportedLocales: testSupportedLocales,
+      home: PhotoPickerScreen(library: library)),
   );
   await tester.pumpAndSettle();
 }
@@ -170,6 +174,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: testLocalizationsDelegates,
+          supportedLocales: testSupportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => TextButton(
@@ -207,6 +213,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: testLocalizationsDelegates,
+          supportedLocales: testSupportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => TextButton(
