@@ -12,6 +12,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
@@ -295,7 +296,9 @@ void sliceThree() {
         lastStored: 2,
         lastPresent: 1,
       );
-      expect(cameraRollLine(status, de), de.cameraRollSynced(2, 3, "13:00", 1));
+      // The hour is the reader's local one, whatever zone the test runs in.
+      var hour = DateFormat.Hm(de.localeName).format(status.lastSuccess!.toLocal());
+      expect(cameraRollLine(status, de), de.cameraRollSynced(2, 3, hour, 1));
       expect(
         cameraRollLine(const CameraRollStatus(), de),
         de.cameraRollOff,
