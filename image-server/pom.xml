@@ -313,6 +313,14 @@
 			<version>2.18.0</version>
 		</dependency>
 
+		<!-- The XMP reader metadata-extractor hands its packets out through; used directly to
+		     read the face regions of issue #129, so it is declared here and not left to chance. -->
+		<dependency>
+			<groupId>com.adobe.xmp</groupId>
+			<artifactId>xmpcore</artifactId>
+			<version>6.1.11</version>
+		</dependency>
+
 		<dependency>
 		    <groupId>org.apache.commons</groupId>
 		    <artifactId>commons-fileupload2-jakarta</artifactId>
