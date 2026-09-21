@@ -216,7 +216,29 @@ The model:
 - **The endpoints do not change their questions.** Every endpoint keeps asking one method for
   rights and one for clearance; this phase changes what those two methods consult.
 
+## Phase 7 — People: who is in a photo
+
+Design record: issue #123 (2026-09-20). The server detects the faces of every photograph of a space
+that opted in (`space.json` `faces: on`, default off), embeds and clusters them per album, and
+serves face crops; detection and embeddings are cache in the album's `.vacache`, keyed by the content
+hash and the model version, and never leave the server. A confirmed name is a human decision stored
+on the `ImagePart` in `index.json` as a normalised box in the raw raster plus a person of the
+space-level register (`<space>/.valbum/people.json`); a rejection is a confirmation too. Suggestions
+are derived at request time and never auto-confirmed. Naming needs `edit`; faces are answered to
+signed-in members only, never to a share link or an anonymous caller. The app's editor is per album
+first ("Persons in this album"). Packages in delivery order: #124 (detection, clustering, crops),
+#125 (register, confirmed tags, the tagging action), #126 (the face editor), #127 (recognition and
+suggestions across the space), #128 (a person linked to a member), #129 (XMP face regions imported).
+
 ## Decisions log
+
+- **2026-09-21** — Phase 7 (People) opened with #124. Also this day: 2.4.0 released the evening
+  before and master opened 2.5.0; a folder of folders has no date (#133) and may be shown by a chosen
+  child's picture (#110); a moved-into folder is fetched again (#134); the camera-roll sync falls back
+  to the default inbox when its chosen one is renamed away (#132); an inbox is a kind of album with a
+  screen of its own, dated order on read, visible to editors and own contributors only, single-image
+  delete to the trash (#131, #135, #136); the app speaks the user's language, English the source and
+  German the first DeepL translation, the platform locale deciding (#108, two slices of three).
 
 - **2026-09-19** — An invitation is a pending user carrying a code (#89, step two). The author,
   finishing the unification of #89: "When creating an invitation, allow adding a name to have a
