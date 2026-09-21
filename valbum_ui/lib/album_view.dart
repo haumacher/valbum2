@@ -1171,7 +1171,11 @@ class AlbumContentState extends State<AlbumContent>
           subTitle: album.subTitle,
           date: album.date,
           indexPicture: album.indexPicture,
+          kind: album.kind,
         ),
+        // Whoever may write the album may say what it is, see issue #136:
+        // the entry opening this dialog is offered to an editor alone.
+        mayChangeKind: true,
         client: client,
         baseUrl: widget.baseUrl,
         indexImage: indexImageOf(album),
@@ -1192,6 +1196,7 @@ class AlbumContentState extends State<AlbumContent>
       subTitle: album.subTitle,
       date: album.date,
       indexPicture: album.indexPicture,
+      kind: album.kind,
     );
 
     void apply(AlbumProperties values) {
@@ -1201,6 +1206,10 @@ class AlbumContentState extends State<AlbumContent>
       // by the server on every read and is never written by the app.
       album.date = values.date;
       album.indexPicture = values.indexPicture;
+      // What the folder is, see issue #136: an ordinary field of the sidecar,
+      // written by this very PUT, and the screen that shows the answer is the
+      // inbox screen or the album page accordingly.
+      album.kind = values.kind;
     }
 
     setState(() {
@@ -2720,8 +2729,7 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   /// An image that is the album's picture takes its crop along into the new
   /// frame, so that the listing tile keeps showing what the crop editor shows,
   /// see [syncIndexPictureOrientation] and issue #115.
-  void turn(Orientation Function(Orientation) operation) =>
-      album.editImage(() {
+  void turn(Orientation Function(Orientation) operation) => album.editImage(() {
         image.orientation = operation(image.orientation);
         syncIndexPictureOrientation(album.widget.album, image);
       });
@@ -3687,13 +3695,33 @@ class AlbumProperties {
   /// The picture standing for the album in the listing above, with its crop.
   final ThumbnailInfo? indexPicture;
 
+  /// What this folder is: an ordinary album or an inbox, see issue #136.
+  ///
+  /// Stored on the album ([AlbumInfo.kind]) and written by the ordinary
+  /// properties write — turning an album into an inbox and back is one field
+  /// of one sidecar, which is why it is edited here and nowhere else.
+  final AlbumKind kind;
+
   const AlbumProperties({
     required this.title,
     required this.subTitle,
     this.date = 0,
     this.indexPicture,
+    this.kind = AlbumKind.album,
   });
 }
+
+/// What the kind switch of the album properties reads, see issue #136.
+///
+/// The label names what the tap *does*, which is the only thing that is not
+/// already visible: the dialog of an inbox shows no date and no album picture,
+/// so what the box is ticked for is said by the box itself.
+String albumKindActionLabel(AlbumKind kind) =>
+    kind == AlbumKind.inbox ? "Make this an album" : "Make this an inbox";
+
+/// What an inbox is, said beside the switch that makes one.
+const String albumKindExplanation =
+    "Photographs waiting to be sorted, shown by the day they were taken.";
 
 /// The size of the crop editor's preview of the index picture.
 const double indexPictureEditorSize = 200;
@@ -3731,6 +3759,13 @@ class AlbumPropertiesDialog extends StatefulWidget {
   /// Where [effectiveDate] comes from, so the dialog can say it.
   final DateSource dateSource;
 
+  /// Whether the switch turning this folder into an inbox is offered (#136).
+  ///
+  /// Only where the caller may change the album at all — which is everywhere
+  /// this dialog is opened from today, the entry being offered to an editor
+  /// alone; the flag is what lets a view open the dialog without it.
+  final bool mayChangeKind;
+
   const AlbumPropertiesDialog(
     this.properties, {
     super.key,
@@ -3739,6 +3774,7 @@ class AlbumPropertiesDialog extends StatefulWidget {
     this.indexImage,
     this.effectiveDate = 0,
     this.dateSource = DateSource.none,
+    this.mayChangeKind = false,
   });
 
   @override
@@ -3756,6 +3792,16 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
 
   /// The crop being edited, a copy: the album's own is replaced on apply.
   late ThumbnailInfo? indexPicture = copyOf(widget.properties.indexPicture);
+
+  /// What the folder is to become, see [albumKindActionLabel] (issue #136).
+  late AlbumKind kind = widget.properties.kind;
+
+  /// Whether the dialog is editing an inbox right now.
+  ///
+  /// An inbox has no date and no album picture — the server derives neither
+  /// for one — so those two rows are not shown while the switch is on: a
+  /// field that is written and then ignored is worse than no field.
+  bool get isInbox => kind == AlbumKind.inbox;
 
   /// The crop when the current gesture started, see [onScaleUpdate].
   ThumbnailInfo? _gestureStart;
@@ -3784,11 +3830,12 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
     return Dialog(
       child: Padding(
         // Tight, so that the whole dialog still fits a short screen: the
-        // album date moved in with issue #48.
+        // album date moved in with issue #48. Scrollable since issue #136,
+        // which added the kind switch: a dialog that is one row too tall for
+        // the screen must scroll, not overflow.
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             DefaultTextStyle(
@@ -3809,15 +3856,14 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
               controller: subTitleController,
               decoration: const InputDecoration(label: Text("Subtitel")),
             ),
-            buildDateRow(context),
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                "Albumbild",
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
-            ),
-            buildIndexPictureEditor(context),
+            if (!isInbox) buildDateRow(context),
+            // The kind switch stands where the "Albumbild" label stood: the
+            // dialog is not scrollable — the crop editor below takes the pan
+            // gesture a scroll view would fight it for — so a row that is
+            // added has to be a row that is taken away, and the crop editor
+            // says what it is without a label over it, see issue #136.
+            if (widget.mayChangeKind) buildKindRow(context),
+            if (!isInbox) buildIndexPictureEditor(context),
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Row(
@@ -3843,6 +3889,40 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
       ),
     );
   }
+
+  /// The switch turning this folder into an inbox and back, see issue #136.
+  ///
+  /// One box, whose label names what ticking it does: reversible, because an
+  /// inbox stores nothing an album does not — the order and the groups of an
+  /// album turned inbox stay in the sidecar and are the album's again the
+  /// moment the box is cleared (`Inboxes.restoreArrangement` on the server).
+  Widget buildKindRow(BuildContext context) => InkWell(
+        key: const Key("album-kind"),
+        onTap: () => setKind(!isInbox),
+        child: Row(
+          children: [
+            Checkbox(
+              visualDensity: VisualDensity.compact,
+              value: isInbox,
+              onChanged: (value) => setKind(value == true),
+            ),
+            // What the tap does, which is the only thing that is not already
+            // on the screen: the dialog of an inbox shows no date and no
+            // album picture, so the box says what it is ticked for.
+            Flexible(
+              child: Text(
+                albumKindActionLabel(kind),
+                key: const Key("album-kind-label"),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  /// Makes the folder an inbox, or an album again.
+  void setKind(bool inbox) => setState(
+        () => kind = inbox ? AlbumKind.inbox : AlbumKind.album,
+      );
 
   /// The date of the album: the explicit one when it is set, else the date
   /// the server derived and where it derived it from.
@@ -4054,6 +4134,7 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
         subTitle: subTitleController.text,
         date: date,
         indexPicture: indexPicture,
+        kind: kind,
       ),
     );
   }

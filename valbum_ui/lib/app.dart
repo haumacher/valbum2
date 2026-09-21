@@ -24,6 +24,7 @@ import 'diagnostics.dart';
 import 'first_screen.dart';
 import 'group_view.dart';
 import 'image_view.dart';
+import 'inbox_view.dart';
 import 'invitation.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
@@ -1813,6 +1814,16 @@ class VAlbumState extends State<VAlbumView>
   Widget visitAlbumInfo(AlbumInfo self, BuildContext arg) {
     var current = route;
     if (current is ListingOrAlbumRoute) {
+      // An inbox is an album of another kind and is shown by a screen of its
+      // own (issues #131, #136): always in the selection mode, nothing
+      // buffered, its headings derived from the dates. Everything below this
+      // level — the viewer, the group views — is the same for both, an inbox
+      // simply never has a group.
+      if (self.kind == AlbumKind.inbox) {
+        return _remembersScrollOffset(
+          InboxContent(this, self, baseUrl, pushPart),
+        );
+      }
       return _remembersScrollOffset(
         AlbumContent(this, self, baseUrl, pushPart),
       );

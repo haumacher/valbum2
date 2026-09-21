@@ -195,6 +195,10 @@ void main() {
       // The name is in the URL the creation is addressed to; the body is the
       // sidecar of the new album.
       expect((sent as AlbumInfo).title, "Inbox");
+      // And it is an *inbox*, not an ordinary album (issues #131, #136): what
+      // the sync uploads is exactly what waits to be sorted.
+      expect(sent.kind, AlbumKind.inbox);
+      expect(sent.date, 0);
       // The placement rule of the root filed it away; the sync believes the
       // server, not the path it asked for.
       expect(harness.sync.config.inbox, ["2026", "Inbox"]);
@@ -293,9 +297,9 @@ void main() {
       );
       await tester.pumpWidget(
         MaterialApp(
-      localizationsDelegates: testLocalizationsDelegates,
-      supportedLocales: testSupportedLocales,
-      home: Scaffold(body: InboxPickerDialog(client: client))),
+            localizationsDelegates: testLocalizationsDelegates,
+            supportedLocales: testSupportedLocales,
+            home: Scaffold(body: InboxPickerDialog(client: client))),
       );
       await tester.pumpAndSettle();
 

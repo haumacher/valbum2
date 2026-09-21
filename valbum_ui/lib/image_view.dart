@@ -348,6 +348,13 @@ class ImageViewState extends State<ImageView>
       // view could say that would help.
       return;
     }
+    if (self.kind == AlbumKind.inbox) {
+      // A photograph in an inbox carries no description, see issue #136: the
+      // dialog says what the image is and offers nothing to type in — the
+      // description belongs to the album the photograph ends up in.
+      await showImageProperties(context, part, editable: false);
+      return;
+    }
     if (!mayEditDescription) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

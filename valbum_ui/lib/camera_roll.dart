@@ -1305,7 +1305,16 @@ class CameraRollSync extends ChangeNotifier {
     try {
       created = await client.createAlbum(
         const [],
-        AlbumInfo(title: defaultInboxName, path: defaultInboxName),
+        // An inbox, not an ordinary album (issues #131, #136): what the sync
+        // uploads is exactly what waits to be sorted, and the inbox screen is
+        // what sorts it. An album of that name that is already there keeps
+        // the kind it has — see [_existingInbox], which adopts it untouched:
+        // whoever made it decided what it is.
+        AlbumInfo(
+          title: defaultInboxName,
+          path: defaultInboxName,
+          kind: AlbumKind.inbox,
+        ),
       );
     } on VAlbumException catch (error) {
       var existing = await _existingInbox(client, error);

@@ -104,6 +104,12 @@ Widget indexPictureTile(
       ),
     );
 
+/// What the entry choosing this folder's own picture reads, see issue #110.
+const String useAsFolderPicture = "Use as folder picture";
+
+/// What the entry taking that choice away reads, see issue #110.
+const String useNoFolderPicture = "Use no folder picture";
+
 /// What an empty library says.
 const String libraryEmptyNotice = "There are no albums here yet.";
 
@@ -407,6 +413,10 @@ class ListingView extends StatelessWidget {
   Widget buildFolderPicture(FolderInfo folder, double width) {
     var indexPicture = folder.indexPicture;
     if (indexPicture == null) {
+      // An inbox says what it is (issues #131, #136): it is undated and it
+      // stands first, and the icon is what makes that read as "this wants
+      // doing" rather than as a folder that lost its date.
+      var inbox = folderIsInbox(folder);
       return Container(
         width: width,
         height: width,
@@ -415,7 +425,12 @@ class ListingView extends StatelessWidget {
           border: Border.all(color: Colors.blue, width: 3),
         ),
         child: Center(
-          child: Icon(Icons.folder, size: width / 2, color: Colors.blue),
+          child: Icon(
+            inbox ? Icons.inbox : Icons.folder,
+            key: inbox ? const Key("inbox-icon") : null,
+            size: width / 2,
+            color: Colors.blue,
+          ),
         ),
       );
     }
@@ -440,7 +455,9 @@ class ListingView extends StatelessWidget {
     // the entry is a question about the entry itself, so the two are asked
     var link = ShareSession.of(context);
     var mayMove = rightsIn(context).mayEdit && link == null;
-    var mayShareChild = mayShare(context, childPath);
+    // An inbox is never handed out: the server refuses `?action=share` on one
+    // with `INBOX_NOT_SHARED`, so the entry is not offered, see issue #135.
+    var mayShareChild = mayShare(context, childPath) && !folderIsInbox(folder);
     if (!context.mounted || (!mayMove && !mayShareChild)) {
       // Nothing this caller may do here: no menu rather than an empty one.
       return;
@@ -470,6 +487,31 @@ class ListingView extends StatelessWidget {
               title: Text("Share link…"),
             ),
           ),
+        // Which entry stands for this folder in the listing above it, see
+        // issue #110: the choice is a field of *this* folder's sidecar, so it
+        // is an edit of this folder exactly as the move and the delete are.
+        // It is offered on every entry, an album and a folder alike — the
+        // server resolves a folder's own picture through the sidecars.
+        if (mayMove)
+          const PopupMenuItem<String>(
+            key: Key("use-as-folder-picture"),
+            value: "folder-picture",
+            child: ListTile(
+              leading: Icon(Icons.photo_size_select_large),
+              title: Text(useAsFolderPicture),
+            ),
+          ),
+        // Only where there is one to take away: a folder without a choice
+        // shows the folder icon already, see issue #110.
+        if (mayMove && listing.index.isNotEmpty)
+          const PopupMenuItem<String>(
+            key: Key("clear-folder-picture"),
+            value: "no-folder-picture",
+            child: ListTile(
+              leading: Icon(Icons.hide_image_outlined),
+              title: Text(useNoFolderPicture),
+            ),
+          ),
         // Deleting an entry is an edit of *this* folder, exactly as moving one
         // out of it is, and it is offered under the same condition (#109).
         if (mayMove)
@@ -488,6 +530,14 @@ class ListingView extends StatelessWidget {
     }
     if (chosen == "share-link") {
       await shareFolderLink(context, childPath, folder.title);
+      return;
+    }
+    if (chosen == "folder-picture") {
+      await setFolderPicture(context, folder.name);
+      return;
+    }
+    if (chosen == "no-folder-picture") {
+      await setFolderPicture(context, "");
       return;
     }
     if (chosen == "delete") {
@@ -510,6 +560,43 @@ class ListingView extends StatelessWidget {
       delegate: albumState.navigator.delegate,
       onMoved: albumState.reload,
     );
+  }
+
+  /// Makes [name] the entry whose picture stands for this folder, the empty
+  /// name taking the choice away, see issue #110.
+  ///
+  /// The choice is a field of *this* folder's sidecar ([ListingInfo.index]),
+  /// written by the ordinary listing PUT — what was loaded, with the one
+  /// field changed; the server drops the derived `folders` before it writes.
+  /// Nothing is resolved here: the server answers the *parent's*
+  /// [FolderInfo.indexPicture] with the path from the chosen child down to
+  /// the photograph, so both this listing and the one above it are asked
+  /// again — the tile of this folder up there is what has just changed
+  /// (issue #134).
+  Future<void> setFolderPicture(BuildContext context, String name) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+    var stored = ListingInfo(
+      path: listing.path,
+      title: listing.title,
+      placement: listing.placement,
+      index: name,
+      folders: listing.folders,
+    );
+    try {
+      await client.saveListing(albumState.path, stored);
+    } catch (error) {
+      // The server's own reason, as every other refused write shows it.
+      showRefusal(messenger, error);
+      return;
+    }
+    var self = albumState.path;
+    if (self.isNotEmpty) {
+      albumState.navigator.delegate.forget(self.sublist(0, self.length - 1));
+    }
+    albumState.reload();
   }
 
   /// Opens the share-link dialog on the folder at [path], see issue #51.
@@ -623,6 +710,9 @@ class ListingView extends StatelessWidget {
       path: listing.path,
       title: edited.title,
       placement: edited.placement,
+      // Carried along untouched: the folder's own picture is chosen on a tile
+      // (issue #110), and writing the title must not take it away.
+      index: listing.index,
       folders: listing.folders,
     );
 
@@ -834,6 +924,14 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
 const String createAlbumUndatedHint =
     "Without a date the album stays in this folder.";
 
+/// What the kind choice of the create dialog reads, see issue #136.
+const String createInboxLabel = "Inbox";
+
+/// What choosing it means, said beside it.
+const String createInboxHint =
+    "Photographs waiting to be sorted: shown by the day they were taken, "
+    "no date and no order of their own.";
+
 class CreateAlbumDialog extends StatefulWidget {
   /// The day the album is proposed with, `null` for none — the field is then
   /// empty, and it may stay empty: an album without a date is left where it
@@ -854,6 +952,13 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
   String? albumTitle;
   String? albumSubTitle;
   DateTime? albumDate;
+
+  /// Whether the folder being made is an inbox, see issue #136.
+  ///
+  /// An inbox has no date — the server derives none for one and files it
+  /// nowhere — so the date field goes while the box is ticked, and the folder
+  /// is named by its title alone.
+  bool inbox = false;
 
   @override
   Widget build(BuildContext context) {
@@ -880,38 +985,55 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
                   child: const Text("Neues Album"),
                 ),
               ),
-              DateTimeFormField(
-                mode: DateTimeFieldPickerMode.date,
-                firstDate: DateTime(1900),
-                lastDate: now,
-                // The day proposed stands in the field, so that it is the
-                // album's date without anything further being done — and the
-                // calendar opens on it when it is changed, see issue #114.
-                initialValue: widget.initialDate,
-                initialPickerDateTime: widget.initialDate ?? now,
-                // The field is cleared by the dialog, not by an icon of the
-                // package's own: `date_field` 7 would otherwise replace the
-                // calendar icon below with a cross as soon as a day stands in
-                // the field (issue #108 upgraded the package for `intl`).
-                canClear: false,
-                onSaved: (value) => albumDate = value,
-                dateFormat: folderDateFormat,
-                // No validator: an album without a date is one the server
-                // leaves in the folder it was made in, which is how an
-                // `Inbox` is made by hand, see issue #119.
-                decoration: const InputDecoration(
-                  label: Text("Datum"),
-                  suffixIcon: Icon(Icons.date_range),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Text(
-                  createAlbumUndatedHint,
-                  key: Key("create-album-date-hint"),
+              // What is being made, before anything is typed: an inbox has no
+              // date, so the choice stands above the field it takes away.
+              CheckboxListTile(
+                key: const Key("create-kind-inbox"),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: inbox,
+                title: const Text(createInboxLabel),
+                subtitle: const Text(
+                  createInboxHint,
+                  key: Key("create-kind-inbox-hint"),
                   style: TextStyle(fontSize: 12),
                 ),
+                onChanged: (value) => setState(() => inbox = value == true),
               ),
+              if (!inbox)
+                DateTimeFormField(
+                  mode: DateTimeFieldPickerMode.date,
+                  firstDate: DateTime(1900),
+                  lastDate: now,
+                  // The day proposed stands in the field, so that it is the
+                  // album's date without anything further being done — and the
+                  // calendar opens on it when it is changed, see issue #114.
+                  initialValue: widget.initialDate,
+                  initialPickerDateTime: widget.initialDate ?? now,
+                  // The field is cleared by the dialog, not by an icon of the
+                  // package's own: `date_field` 7 would otherwise replace the
+                  // calendar icon below with a cross as soon as a day stands in
+                  // the field (issue #108 upgraded the package for `intl`).
+                  canClear: false,
+                  onSaved: (value) => albumDate = value,
+                  dateFormat: folderDateFormat,
+                  // No validator: an album without a date is one the server
+                  // leaves in the folder it was made in, which is how an
+                  // `Inbox` is made by hand, see issue #119.
+                  decoration: const InputDecoration(
+                    label: Text("Datum"),
+                    suffixIcon: Icon(Icons.date_range),
+                  ),
+                ),
+              if (!inbox)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text(
+                    createAlbumUndatedHint,
+                    key: Key("create-album-date-hint"),
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
               TextFormField(
                 decoration: const InputDecoration(label: Text("Titel")),
                 onSaved: (value) => albumTitle = value,
@@ -962,7 +1084,9 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
     formState.save();
 
     var title = albumTitle!;
-    var date = albumDate;
+    // An inbox has no date, whatever the field held before the box was
+    // ticked: the server derives none for one, see issue #136.
+    var date = inbox ? null : albumDate;
 
     var info = AlbumInfo(
       title: title,
@@ -975,6 +1099,7 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
       // `yyyy-MM-dd title`, the title alone without a date -- the one
       // composition, shared with the move picker, see [albumFolderName].
       path: albumFolderName(date, title),
+      kind: inbox ? AlbumKind.inbox : AlbumKind.album,
     );
 
     Navigator.of(context).pop(info);

@@ -153,15 +153,69 @@ class ImagePropertiesDialog extends StatelessWidget {
   /// costs no typing.
   final String? initial;
 
-  const ImagePropertiesDialog(this.image, {super.key, this.initial});
+  /// Whether the description may be edited here at all, see issue #136.
+  ///
+  /// An image lying in an **inbox** has no description: an inbox is a heap of
+  /// photographs waiting to be sorted, and what is written about a photograph
+  /// is written in the album it ends up in. The dialog then shows what the
+  /// image *is* — the details block and the attribution — and nothing to type
+  /// in, rather than offering a field whose content would be refused.
+  final bool editable;
+
+  const ImagePropertiesDialog(
+    this.image, {
+    super.key,
+    this.initial,
+    this.editable = true,
+  });
 
   @override
-  Widget build(BuildContext context) => TextInputDialog(
+  Widget build(BuildContext context) =>
+      editable ? _editor(context) : _reader(context);
+
+  /// What the dialog shows where nothing is edited: the same lines, no field.
+  Widget _reader(BuildContext context) => AlertDialog(
+        key: const Key("image-properties-read-only"),
+        title: const Text(imagePropertiesTitle),
+        content: SingleChildScrollView(
+          child: DefaultTextStyle.merge(
+            style: Theme.of(context).textTheme.bodySmall,
+            child: Column(
+              key: const Key("properties-details"),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ...imagePropertyLines(
+                  image,
+                  mapUrl: CallerInfo.mapUrlOf(context),
+                ),
+                if (attributionShown(image) != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      attributionShown(image)!,
+                      key: const Key("properties-contributor"),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("OK"),
+          ),
+        ],
+      );
+
+  Widget _editor(BuildContext context) => TextInputDialog(
         title: imagePropertiesTitle,
         label: imagePropertiesLabel,
         text: initial ?? image.comment,
         multiLine: true,
-        details: imagePropertyLines(image, mapUrl: CallerInfo.mapUrlOf(context)),
+        details:
+            imagePropertyLines(image, mapUrl: CallerInfo.mapUrlOf(context)),
         // Who added this photo, the editor's own contributions included: the
         // screen saying what an image is says where it came from, see #53.
         note: attributionShown(image),
@@ -169,13 +223,20 @@ class ImagePropertiesDialog extends StatelessWidget {
 }
 
 /// Opens the [ImagePropertiesDialog] on [image] and answers what was typed.
+///
+/// With [editable] `false` the dialog shows what the image is and edits
+/// nothing, and the answer is always `null`, see [ImagePropertiesDialog].
 Future<String?> showImageProperties(
   BuildContext context,
   ImagePart image, {
   String? initialDescription,
+  bool editable = true,
 }) =>
     showDialog<String>(
       context: context,
-      builder: (context) =>
-          ImagePropertiesDialog(image, initial: initialDescription),
+      builder: (context) => ImagePropertiesDialog(
+        image,
+        initial: initialDescription,
+        editable: editable,
+      ),
     );
