@@ -2300,4 +2300,50 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get personsShowPhoto => 'Show the photo';
+
+  @override
+  String get personsForgetEntry => 'Forget the decision';
+
+  @override
+  String get personsForgetTarget => 'Forget';
+
+  @override
+  String personsMemberBadge(String name) {
+    return 'Member $name';
+  }
+
+  @override
+  String get personsLinkMeEntry => 'This is me';
+
+  @override
+  String get personsLinkMemberEntry => 'Link to a member…';
+
+  @override
+  String get personsUnlinkEntry => 'Unlink';
+
+  @override
+  String get personsLinkChooseTitle => 'Which member is this?';
+
+  @override
+  String get personsLinkChooseNotice => 'A member is at most one person.';
+
+  @override
+  String get personsLinkNobodyFree =>
+      'Every member of this space is somebody already.';
+
+  @override
+  String appearsInPhotosAs(String name) {
+    return 'Appears in photos as $name';
+  }
+
+  @override
+  String inboxPhotoCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photographs',
+      one: '1 photograph',
+    );
+    return '$_temp0';
+  }
 }

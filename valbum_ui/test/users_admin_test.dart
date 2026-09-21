@@ -87,6 +87,26 @@ void main() {
     );
   });
 
+  testWidgets('says which person of the register a member is', (tester) async {
+    // Issue #128: the link is stored once and answered from both ends, so the
+    // users list needs no second fetch to say it — and it says it only, the
+    // editing being where the people are.
+    await pumpSettings(
+      tester,
+      await adminSettings(),
+      MockClient((request) async => serverFor(
+            "admin",
+            users: (_) => json('{"users": ['
+                '{"name": "haui", "role": "admin", "devices": 1, '
+                '"person": "p-anna", "personName": "Anna"}, '
+                '{"name": "bob", "role": "edit", "devices": 1}]}'),
+          )(request)),
+    );
+
+    expect(find.byKey(const Key("user-person")), findsOneWidget);
+    expect(find.text("Appears in photos as Anna"), findsOneWidget);
+  });
+
   testWidgets('a refused list shows why, instead of nothing', (tester) async {
     await pumpSettings(
       tester,

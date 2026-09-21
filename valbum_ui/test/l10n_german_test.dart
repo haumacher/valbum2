@@ -24,6 +24,7 @@ import 'package:valbum_ui/camera_roll.dart';
 import 'package:valbum_ui/camera_roll_view.dart';
 import 'package:valbum_ui/image_properties.dart';
 import 'package:valbum_ui/inbox_view.dart';
+import 'package:valbum_ui/manage_view.dart';
 import 'package:valbum_ui/move_view.dart';
 import 'package:valbum_ui/notices.dart';
 
@@ -31,6 +32,7 @@ import 'album_menu_actions_test.dart' show pumpAlbum;
 import 'camera_roll_test.dart' show Harness;
 import 'devices_test.dart'
     show authOfUser, json, signedIn, storeSignedIn, threeDevices;
+import 'inbox_listing_test.dart' show listingWithCount;
 import 'inbox_view_test.dart' show inboxTree, pumpInbox;
 import 'move_test.dart' show recordingClient, treeAnswer;
 import 'persons_view_test.dart'
@@ -359,9 +361,67 @@ void sliceTwo() {
       expect(find.text(de.personsNewGroup), findsOneWidget);
       expect(find.text(de.personsPendingNotice), findsOneWidget);
       expect(find.text(de.personsFaceCount(2)), findsOneWidget);
+      // The way back out of a decision, issue #138.
+      expect(find.text(de.personsForgetTarget), findsOneWidget);
 
       var en = l10nOf(const Locale("en"));
       expect(find.text(en.personsNotAFaceGroup), findsNothing);
+      expect(find.text(en.personsForgetTarget), findsNothing);
+    });
+
+    testWidgets('the entries linking a person to a member', (tester) async {
+      speakGerman(tester);
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(requests, auth: authOf(), album: albumOf()),
+      );
+
+      await tester.tap(find.byKey(const Key("persons-menu-p-anna")));
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.personsLinkMeEntry), findsOneWidget);
+      expect(find.text(de.personsRenameEntry), findsOneWidget);
+      var en = l10nOf(const Locale("en"));
+      expect(find.text(en.personsLinkMeEntry), findsNothing);
+    });
+
+    testWidgets('the count of an inbox on its listing tile', (tester) async {
+      speakGerman(tester);
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(VAlbumApp(
+          client: recordingClient((_) => json(listingWithCount), []),
+          initialRoute: const ListingOrAlbumRoute([]),
+        ));
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.text(de.inboxPhotoCount(12)), findsOneWidget);
+      var en = l10nOf(const Locale("en"));
+      expect(find.text(en.inboxPhotoCount(12)), findsNothing);
+    });
+
+    testWidgets('the person a member is, in the users list', (tester) async {
+      await tester.pumpWidget(localizedApp(
+        Scaffold(
+          body: UsersSection(
+            client: VAlbumClient(
+              dataUrl: "http://server/valbum/data",
+              httpClient: MockClient((request) async => json(
+                    '{"users": [{"name": "haui", "role": "admin", '
+                    '"devices": 1, "person": "p-anna", '
+                    '"personName": "Anna"}]}',
+                  )),
+            ),
+          ),
+        ),
+        locale: const Locale("de"),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.appearsInPhotosAs("Anna")), findsOneWidget);
+      var en = l10nOf(const Locale("en"));
+      expect(find.text(en.appearsInPhotosAs("Anna")), findsNothing);
     });
   });
 

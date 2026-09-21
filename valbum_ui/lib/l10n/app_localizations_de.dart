@@ -2340,4 +2340,51 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get personsShowPhoto => '„Foto anzeigen“';
+
+  @override
+  String get personsForgetEntry => 'Entscheidung rückgängig machen';
+
+  @override
+  String get personsForgetTarget => 'Vergessen';
+
+  @override
+  String personsMemberBadge(String name) {
+    return 'Mitglied $name';
+  }
+
+  @override
+  String get personsLinkMeEntry => 'Das bin ich';
+
+  @override
+  String get personsLinkMemberEntry => 'Mit einem Mitglied verknüpfen…';
+
+  @override
+  String get personsUnlinkEntry => 'Verknüpfung aufheben';
+
+  @override
+  String get personsLinkChooseTitle => 'Welches Mitglied ist das?';
+
+  @override
+  String get personsLinkChooseNotice =>
+      'Ein Mitglied ist höchstens eine Person.';
+
+  @override
+  String get personsLinkNobodyFree =>
+      'Jedes Element dieses Raums ist bereits jemand.';
+
+  @override
+  String appearsInPhotosAs(String name) {
+    return 'Erscheint auf Fotos als $name';
+  }
+
+  @override
+  String inboxPhotoCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos',
+      one: '1 Foto',
+    );
+    return '$_temp0';
+  }
 }

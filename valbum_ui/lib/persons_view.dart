@@ -87,6 +87,23 @@ const String newGroupPrefix = "new:";
 /// The group of everything somebody said is no face at all.
 const String notAFaceGroup = "notAFace";
 
+/// The prefix of the placement of a face whose decision was taken back.
+///
+/// "Forget" is issue #138: a stored decision — confirmed, rejected, no face at
+/// all — can be removed again, and the face is then the plain detection it was
+/// before anybody said anything about it. On the screen it simply falls back
+/// into the group it would stand in without that decision, and *that* group
+/// stands behind this prefix, so the buffer can tell "taken back" from "put
+/// here" — a rejected face falls back into the very cluster group it already
+/// stands in, and without the mark the difference would be invisible.
+const String forgottenGroupPrefix = "forget:";
+
+/// The group the given placement is shown in, [forgottenGroupPrefix] stripped.
+String shownGroupOf(String placement) =>
+    placement.startsWith(forgottenGroupPrefix)
+        ? placement.substring(forgottenGroupPrefix.length)
+        : placement;
+
 /// One face of the album: the photograph it was found in, and what the server
 /// says about it.
 ///
@@ -106,6 +123,23 @@ class AlbumFace {
 
   /// What identifies this face while the editor is open.
   String get key => "${image.name}#${face.index}";
+
+  /// Whether somebody decided about this face, which is what "Forget" undoes.
+  ///
+  /// The state the *server* answered: a suggestion of issue #127 carries a
+  /// person and no decision, so it is `UNDECIDED` and there is nothing here to
+  /// take back. Only a stored tag — confirmed, rejected, no face at all — is.
+  bool get decided => face.state != FaceState.undecided;
+
+  /// Where this face stands when nothing is decided about it (issue #138).
+  ///
+  /// Its own cluster, or the plain "Who is this?" of a face the server never
+  /// clustered — which is what the answer itself would put it in.
+  String get undecidedGroup => "$clusterGroupPrefix${face.cluster}";
+
+  /// Where this face stands when its decision is taken back, see
+  /// [forgottenGroupPrefix].
+  String get forgottenGroup => "$forgottenGroupPrefix$undecidedGroup";
 }
 
 /// What a drag of the face editor carries.
@@ -359,6 +393,9 @@ class PersonsContentState extends State<PersonsContent> {
       return;
     }
     setState(() {
+      // Replaced and not merged: a link is answered from both ends and can be
+      // taken away elsewhere, so what is shown is the register as it *is*.
+      people.clear();
       for (var person in list.people) {
         people[person.id] = person;
       }
@@ -391,6 +428,21 @@ class PersonsContentState extends State<PersonsContent> {
   Rights get rights =>
       offeredRights(Rights.of(widget.album), CallerInfo.permissionOf(context));
 
+  /// The name the caller is signed in under, empty for an anonymous one.
+  String get callerName => CallerInfo.maybeOf(context)?.userName ?? "";
+
+  /// Whether this caller administers the space, who links anybody to anybody.
+  bool get isAdmin => CallerInfo.permissionOf(context).role == roleAdmin;
+
+  /// Whether some person of the register already is the caller (issue #128).
+  ///
+  /// One member is at most one person, so "This is me" is offered only while
+  /// nobody carries that name — the server would refuse the second link with
+  /// a 409, and an entry that is always refused is no entry.
+  bool get callerLinked =>
+      callerName.isNotEmpty &&
+      people.values.any((person) => person.user == callerName);
+
   /// Whether this caller may name and correct faces.
   ///
   /// Never inside a share link: a link is not an account, and the server
@@ -405,19 +457,40 @@ class PersonsContentState extends State<PersonsContent> {
   // The groups.
   // -------------------------------------------------------------------------
 
+  /// The group the given face stands in on the screen.
+  ///
+  /// The placement of the buffer, the mark of a taken-back decision stripped
+  /// off it (issue #138): "forgotten" is a statement about what will be
+  /// *written*, and on the screen such a face is simply back among the
+  /// undecided ones.
+  String groupShown(AlbumFace face) =>
+      shownGroupOf(placement[face.key] ?? stored[face.key] ?? "");
+
   /// The groups as they are shown: the people, the suggestions under them, the
   /// unknown groups, and "Not a face" last.
   List<FaceGroup> get groups {
     var faces = facesOf(widget.album);
     var byGroup = <String, List<AlbumFace>>{};
     for (var face in faces) {
-      byGroup.putIfAbsent(placement[face.key] ?? stored[face.key] ?? "", () => [])
-          .add(face);
+      byGroup.putIfAbsent(groupShown(face), () => []).add(face);
     }
     // An empty group this editor made stays on the screen: it was made to be
     // filled, and it is filled by the very drop that made it.
+    var heldOpen = <String>{};
     for (var n = 1; n <= _newGroups; n++) {
-      byGroup.putIfAbsent("$newGroupPrefix$n", () => []);
+      heldOpen.add("$newGroupPrefix$n");
+    }
+    // And so does a person the buffer emptied: everything of theirs may have
+    // been dragged away or forgotten (issue #138), and putting one face back
+    // needs the heading to still be there to put it onto.
+    for (var face in faces) {
+      var was = stored[face.key] ?? "";
+      if (was.startsWith(personGroupPrefix)) {
+        heldOpen.add(was);
+      }
+    }
+    for (var key in heldOpen) {
+      byGroup.putIfAbsent(key, () => []);
     }
 
     var result = <FaceGroup>[];
@@ -430,16 +503,20 @@ class PersonsContentState extends State<PersonsContent> {
       result.add(FaceGroup(key, byGroup[key] ?? const []));
     }
 
-    // The people, each followed by what is only suggested to be them.
+    // The people, each followed by what is only suggested to be them; the
+    // ones the buffer emptied stand where they stood.
     for (var face in faces) {
-      var group = placement[face.key] ?? "";
-      if (group.startsWith(personGroupPrefix)) {
-        take(group);
-        take("$suggestedGroupPrefix${group.substring(personGroupPrefix.length)}");
+      for (var group in [groupShown(face), stored[face.key] ?? ""]) {
+        if (group.startsWith(personGroupPrefix)) {
+          take(group);
+          take(
+            "$suggestedGroupPrefix${group.substring(personGroupPrefix.length)}",
+          );
+        }
       }
     }
     for (var face in faces) {
-      var group = placement[face.key] ?? "";
+      var group = groupShown(face);
       if (group.startsWith(suggestedGroupPrefix)) {
         take("$personGroupPrefix${group.substring(suggestedGroupPrefix.length)}");
         take(group);
@@ -464,8 +541,7 @@ class PersonsContentState extends State<PersonsContent> {
     }
     return [
       for (var group in result)
-        if (group.faces.isNotEmpty || group.key.startsWith(newGroupPrefix))
-          group
+        if (group.faces.isNotEmpty || heldOpen.contains(group.key)) group
     ];
   }
 
@@ -542,6 +618,36 @@ class PersonsContentState extends State<PersonsContent> {
     setState(() => _newGroups++);
     drop(dragged, "$newGroupPrefix$_newGroups");
   }
+
+  /// Takes back what was decided about the given faces (issue #138).
+  ///
+  /// A face nobody decided about is passed over: there is nothing to forget,
+  /// and an `UNDECIDED` for it would be a request the server does nothing
+  /// with. What is forgotten falls back into the group it would stand in
+  /// without the decision — its cluster, or the plain "Who is this?".
+  void forgetDecision(Iterable<AlbumFace> faces) {
+    if (!mayEdit) {
+      return;
+    }
+    setState(() {
+      for (var face in faces) {
+        if (!face.decided) {
+          continue;
+        }
+        placement[face.key] = face.forgottenGroup;
+      }
+      selection.clear();
+    });
+  }
+
+  /// The selected faces, in the order the album answers them.
+  List<AlbumFace> get selected => [
+        for (var face in facesOf(widget.album))
+          if (selection.contains(face.key)) face
+      ];
+
+  /// Whether anything selected carries a decision that could be forgotten.
+  bool get mayForget => mayEdit && selected.any((face) => face.decided);
 
   // -------------------------------------------------------------------------
   // The people of the space: created, renamed and merged at once.
@@ -661,6 +767,65 @@ class PersonsContentState extends State<PersonsContent> {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // The member a person is (issue #128): posted at once, like a rename.
+  // -------------------------------------------------------------------------
+
+  /// Says that the person of the given group is the caller themselves.
+  Future<void> linkToMe(FaceGroup group) => linkTo(group.person, callerName);
+
+  /// Links the person of the given group to a member, for an administrator.
+  ///
+  /// The members are asked of the server here rather than kept: this editor
+  /// is about faces, and the one moment it needs to know who is in the space
+  /// is the moment somebody opens this chooser.
+  Future<void> linkToMember(FaceGroup group) async {
+    List<UserEntry> members;
+    try {
+      members = (await client.users()).users;
+    } catch (error) {
+      if (mounted) {
+        _refused(error);
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    var chosen = await showDialog<UserEntry>(
+      context: context,
+      builder: (context) => MemberChooser(members: linkableMembers(members)),
+    );
+    if (chosen == null || !mounted) {
+      return;
+    }
+    await linkTo(group.person, chosen.name);
+  }
+
+  /// Takes the link of the person of the given group back.
+  Future<void> unlinkPerson(FaceGroup group) => linkTo(group.person, "");
+
+  /// Posts the link and shows the register as the server then has it.
+  Future<void> linkTo(String id, String user) async {
+    Person linked;
+    try {
+      linked = await client.linkPerson(id, user);
+    } catch (error) {
+      if (mounted) {
+        _refused(error);
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() => people[linked.id] = linked);
+    await _loadPeople();
+  }
+
+  /// The member the person of [id] is, empty where they are nobody.
+  String memberOf(String id) => people[id]?.user ?? "";
+
   static void _rename(Map<String, String> groups, String from, String into) {
     for (var entry in groups.entries.toList()) {
       if (entry.value == "$personGroupPrefix$from") {
@@ -684,7 +849,20 @@ class PersonsContentState extends State<PersonsContent> {
       if (now == null || now == before) {
         continue;
       }
-      if (now.startsWith(personGroupPrefix)) {
+      if (now.startsWith(forgottenGroupPrefix)) {
+        // Taken back (issue #138): the tag on that box is removed and the
+        // face is a plain detection again. Only where there *was* a decision
+        // — a face the server never stored anything about has nothing to
+        // forget, and the request would say nothing.
+        if (face.decided) {
+          result.add(FaceAssignment(
+            image: face.image.name,
+            face: face.face.index,
+            person: "",
+            state: FaceState.undecided,
+          ));
+        }
+      } else if (now.startsWith(personGroupPrefix)) {
         result.add(FaceAssignment(
           image: face.image.name,
           face: face.face.index,
@@ -894,6 +1072,22 @@ class PersonsContentState extends State<PersonsContent> {
           ),
           centerTitle: true,
           actions: [
+            // What can be done to the faces standing selected. Only "Forget"
+            // so far (issue #138), and only where something selected carries
+            // a decision: a face nobody decided about has nothing to take
+            // back, so it is not offered one.
+            if (mayForget)
+              PopupMenuButton<void Function()>(
+                key: const Key("persons-selection-menu"),
+                onSelected: (action) => action(),
+                itemBuilder: (context) => [
+                  PopupMenuItem<void Function()>(
+                    key: const Key("persons-forget"),
+                    value: () => forgetDecision(selected),
+                    child: Text(_l10n.personsForgetEntry),
+                  ),
+                ],
+              ),
             if (mayEdit)
               IconButton(
                 key: const Key("persons-save"),
@@ -941,7 +1135,7 @@ class PersonsContentState extends State<PersonsContent> {
                                 : 0,
                             unknownCount,
                           ),
-                        if (mayEdit) _newGroupTarget(),
+                        if (mayEdit) _dropTargets(),
                       ],
                     ),
             ),
@@ -994,6 +1188,7 @@ class PersonsContentState extends State<PersonsContent> {
     bool folded,
   ) {
     var text = headingOf(group, unknownNumber, unknownCount);
+    var member = group.named ? memberOf(group.person) : "";
     var row = Row(
       children: [
         if (group.key == notAFaceGroup)
@@ -1005,6 +1200,18 @@ class PersonsContentState extends State<PersonsContent> {
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
+        // Who of the space this person is (issue #128), said where the person
+        // is named: a badge and not a line, because it belongs to the name.
+        if (member.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Chip(
+              key: const Key("persons-member-badge"),
+              avatar: const Icon(Icons.account_circle, size: 18),
+              label: Text(_l10n.personsMemberBadge(member)),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
         Text(
           _l10n.personsFaceCount(group.faces.length),
           key: Key("persons-count-${group.key}"),
@@ -1034,6 +1241,28 @@ class PersonsContentState extends State<PersonsContent> {
                 value: () => mergePerson(group),
                 child: Text(_l10n.personsMergeEntry),
               ),
+              // Who this person is in the space (issue #128). A member says
+              // it of themselves, an administrator of anybody; what is
+              // already said is taken back by whoever may — the
+              // administrator, and the member it is about.
+              if (member.isEmpty && callerName.isNotEmpty && !callerLinked)
+                PopupMenuItem<void Function()>(
+                  key: const Key("persons-link-me"),
+                  value: () => linkToMe(group),
+                  child: Text(_l10n.personsLinkMeEntry),
+                ),
+              if (member.isEmpty && isAdmin)
+                PopupMenuItem<void Function()>(
+                  key: const Key("persons-link-member"),
+                  value: () => linkToMember(group),
+                  child: Text(_l10n.personsLinkMemberEntry),
+                ),
+              if (member.isNotEmpty && (isAdmin || member == callerName))
+                PopupMenuItem<void Function()>(
+                  key: const Key("persons-unlink"),
+                  value: () => unlinkPerson(group),
+                  child: Text(_l10n.personsUnlinkEntry),
+                ),
             ],
           ),
       ],
@@ -1069,28 +1298,55 @@ class PersonsContentState extends State<PersonsContent> {
     );
   }
 
+  /// The two targets at the foot of the page: a new group, and "Forget".
+  ///
+  /// Side by side because they are the two answers to "this face does not
+  /// belong where it stands": it is somebody else (a group of its own), or
+  /// nobody said anything about it after all (issue #138).
+  Widget _dropTargets() => Row(
+        children: [
+          Expanded(child: _newGroupTarget()),
+          Expanded(child: _forgetTarget()),
+        ],
+      );
+
   /// The target that makes a group of what is dropped onto it.
   Widget _newGroupTarget() => DragTarget<DraggedFaces>(
         onWillAcceptWithDetails: (details) => true,
         onAcceptWithDetails: (details) => dropIntoNewGroup(details.data),
-        builder: (context, candidate, rejected) => Padding(
-          padding: const EdgeInsets.all(12),
-          child: Material(
-            color: candidate.isEmpty
-                ? Colors.transparent
-                : Theme.of(context).colorScheme.primaryContainer,
-            shape: RoundedRectangleBorder(
-              side: BorderSide(color: Theme.of(context).dividerColor),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Text(
-                _l10n.personsNewGroup,
-                key: const Key("persons-new-group"),
-                textAlign: TextAlign.center,
-              ),
-            ),
+        builder: (context, candidate, rejected) => _target(
+          candidate,
+          _l10n.personsNewGroup,
+          const Key("persons-new-group"),
+        ),
+      );
+
+  /// The target that takes back what was decided about what is dropped onto
+  /// it (issue #138).
+  Widget _forgetTarget() => DragTarget<DraggedFaces>(
+        onWillAcceptWithDetails: (details) => true,
+        onAcceptWithDetails: (details) => forgetDecision(details.data.faces),
+        builder: (context, candidate, rejected) => _target(
+          candidate,
+          _l10n.personsForgetTarget,
+          const Key("persons-forget-target"),
+        ),
+      );
+
+  /// The frame both foot targets are drawn in.
+  Widget _target(List<Object?> candidate, String label, Key key) => Padding(
+        padding: const EdgeInsets.all(12),
+        child: Material(
+          color: candidate.isEmpty
+              ? Colors.transparent
+              : Theme.of(context).colorScheme.primaryContainer,
+          shape: RoundedRectangleBorder(
+            side: BorderSide(color: Theme.of(context).dividerColor),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(label, key: key, textAlign: TextAlign.center),
           ),
         ),
       );
@@ -1330,6 +1586,70 @@ class FaceTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The members an administrator may link a person to (issue #128).
+///
+/// A named member who has joined and whom no person claims yet: a pending
+/// invitation is nobody yet, and one member is at most one person, so a member
+/// the register already holds is not offered a second time.
+List<UserEntry> linkableMembers(List<UserEntry> users) => [
+      for (var user in users)
+        if (!user.pending && user.name.trim().isNotEmpty && user.person.isEmpty)
+          user
+    ];
+
+/// Which member a person is: the administrator's chooser of issue #128.
+class MemberChooser extends StatelessWidget {
+  /// The members offered, see [linkableMembers].
+  final List<UserEntry> members;
+
+  const MemberChooser({super.key, required this.members});
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return AlertDialog(
+      key: const Key("persons-member-chooser"),
+      title: Text(l10n.personsLinkChooseTitle),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(l10n.personsLinkChooseNotice),
+            const SizedBox(height: 8),
+            if (members.isEmpty)
+              Text(
+                l10n.personsLinkNobodyFree,
+                key: const Key("persons-link-nobody"),
+              ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (var member in members)
+                    ListTile(
+                      key: Key("persons-member-${member.name}"),
+                      title: Text(member.name),
+                      onTap: () => Navigator.of(context).pop(member),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key("persons-member-chooser-cancel"),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+      ],
     );
   }
 }

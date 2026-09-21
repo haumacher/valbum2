@@ -83,6 +83,13 @@ final List<String> defaultImages = [
 /// The register of the space: one person, Anna.
 const String annaOnly = '{"people": [{"id": "p-anna", "name": "Anna"}]}';
 
+/// The register a test does not describe, see [editorClient].
+String annaRegister() => annaOnly;
+
+/// The register holding Anna as the member she is linked to (issue #128).
+String annaLinkedTo(String user) =>
+    '{"people": [{"id": "p-anna", "name": "Anna", "user": "$user"}]}';
+
 /// What the server answers a request the test does not describe.
 typedef Answer = http.Response Function(http.Request request);
 
@@ -96,7 +103,8 @@ VAlbumClient editorClient(
   List<http.Request> requests, {
   required String auth,
   required String album,
-  String people = annaOnly,
+  String Function() people = annaRegister,
+  String Function()? users,
   Answer? post,
 }) =>
     VAlbumClient(
@@ -110,7 +118,12 @@ VAlbumClient editorClient(
           return json(auth);
         }
         if (query["type"] == "people") {
-          return json(people);
+          return json(people());
+        }
+        // Who is in the space, which the member chooser of issue #128 asks
+        // for; a test that says nothing about it is answered nobody.
+        if (query["type"] == "users") {
+          return json(users == null ? '{"users": []}' : users());
         }
         if (query["type"] == "face") {
           return http.Response.bytes(
@@ -204,6 +217,32 @@ Future<void> dragFaceTo(
     await gesture.moveTo(box.center);
     await tester.pump();
     await gesture.up();
+    await tester.pumpAndSettle();
+  });
+}
+
+/// Taps the tile of the given face, which selects it.
+Future<void> selectFace(WidgetTester tester, String face) async {
+  await withFakeImageHttp(() async {
+    await tester.tap(faceTile(face));
+    await tester.pumpAndSettle();
+  });
+}
+
+/// Takes back what was decided about the selected faces (issue #138).
+Future<void> forgetSelection(WidgetTester tester) async {
+  await withFakeImageHttp(() async {
+    await tester.tap(find.byKey(const Key("persons-selection-menu")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key("persons-forget")));
+    await tester.pumpAndSettle();
+  });
+}
+
+/// Opens the header menu of Anna's group.
+Future<void> openPersonMenu(WidgetTester tester, [String id = "p-anna"]) async {
+  await withFakeImageHttp(() async {
+    await tester.tap(find.byKey(Key("persons-menu-$id")));
     await tester.pumpAndSettle();
   });
 }
@@ -721,5 +760,337 @@ void main() {
     var state = tester.state<PersonsContentState>(find.byType(PersonsContent));
     expect(state.dirty, isTrue);
     expect(state.delta().length, 1);
+  });
+
+  group("forgetting a decision (issue #138)", () {
+    testWidgets("posts UNDECIDED for a face somebody confirmed",
+        (tester) async {
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(),
+          post: (request) => json(albumOf()),
+        ),
+      );
+
+      await selectFace(tester, "b.jpg#0");
+      await forgetSelection(tester);
+
+      // It fell back into the cluster the detector put it in; Anna's group
+      // stands there empty, so that it could be put back.
+      expect(faceTile("b.jpg#0"), findsOneWidget);
+      expect(header("person:p-anna"), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key("persons-count-person:p-anna")))
+            .data,
+        testL10n.personsFaceCount(0),
+      );
+
+      await saveEditor(tester);
+
+      expect(posted(requests, "tag-faces"), [
+        {
+          "faces": [
+            {
+              "image": "b.jpg",
+              "face": 0,
+              "person": "",
+              "state": "UNDECIDED"
+            },
+          ]
+        }
+      ]);
+    });
+
+    testWidgets("takes a face out of \"Not a face\" as well", (tester) async {
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(),
+          post: (request) => json(albumOf()),
+        ),
+      );
+
+      // It is folded away until it is opened, which is where its faces are
+      // reached at all.
+      await tester.tap(header(notAFaceGroup));
+      await tester.pumpAndSettle();
+      await selectFace(tester, "c.jpg#0");
+      await forgetSelection(tester);
+      await saveEditor(tester);
+
+      expect(posted(requests, "tag-faces"), [
+        {
+          "faces": [
+            {
+              "image": "c.jpg",
+              "face": 0,
+              "person": "",
+              "state": "UNDECIDED"
+            },
+          ]
+        }
+      ]);
+    });
+
+    testWidgets("posts nothing when the face is put back where it stood",
+        (tester) async {
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(),
+          post: (request) => json(albumOf()),
+        ),
+      );
+
+      await selectFace(tester, "b.jpg#0");
+      await forgetSelection(tester);
+      await dragFaceTo(tester, "b.jpg#0", header("person:p-anna"));
+      await saveEditor(tester);
+
+      // Back where the server has it: there is nothing to tell it.
+      expect(posted(requests, "tag-faces"), isEmpty);
+      var state =
+          tester.state<PersonsContentState>(find.byType(PersonsContent));
+      expect(state.dirty, isFalse);
+    });
+
+    testWidgets("is not offered for a face nobody decided about",
+        (tester) async {
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(),
+          post: (request) => json(albumOf()),
+        ),
+      );
+
+      // A face of a cluster: the server's own guess, and nothing to forget.
+      await selectFace(tester, "a.jpg#0");
+      expect(find.byKey(const Key("persons-selection-menu")), findsNothing);
+
+      // Dropped on the target it still says nothing, so Save sends nothing.
+      await dragFaceTo(
+        tester,
+        "a.jpg#0",
+        find.byKey(const Key("persons-forget-target")),
+      );
+      await saveEditor(tester);
+      expect(posted(requests, "tag-faces"), isEmpty);
+    });
+
+    testWidgets("the drop target forgets what is dropped onto it",
+        (tester) async {
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(),
+          post: (request) => json(albumOf()),
+        ),
+      );
+
+      await dragFaceTo(
+        tester,
+        "b.jpg#0",
+        find.byKey(const Key("persons-forget-target")),
+      );
+      await saveEditor(tester);
+
+      expect(posted(requests, "tag-faces"), [
+        {
+          "faces": [
+            {
+              "image": "b.jpg",
+              "face": 0,
+              "person": "",
+              "state": "UNDECIDED"
+            },
+          ]
+        }
+      ]);
+    });
+  });
+
+  group("the member a person is (issue #128)", () {
+    testWidgets("a member says \"This is me\" and wears the badge",
+        (tester) async {
+      var register = annaOnly;
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(),
+          people: () => register,
+          post: (request) {
+            register = annaLinkedTo("carol");
+            return json('{"id": "p-anna", "name": "Anna", "user": "carol"}');
+          },
+        ),
+      );
+
+      await openPersonMenu(tester);
+      expect(find.byKey(const Key("persons-link-me")), findsOneWidget);
+      // Linking somebody else is the administrator's, and there is no link
+      // to take back yet.
+      expect(find.byKey(const Key("persons-link-member")), findsNothing);
+      expect(find.byKey(const Key("persons-unlink")), findsNothing);
+
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-link-me")));
+        await tester.pumpAndSettle();
+      });
+
+      expect(posted(requests, "link-person"), [
+        {"id": "p-anna", "user": "carol"}
+      ]);
+      expect(find.byKey(const Key("persons-member-badge")), findsOneWidget);
+      expect(
+        find.text(testL10n.personsMemberBadge("carol")),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets("is not offered to a member who may only contribute",
+        (tester) async {
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(role: "contribute"),
+          album: albumOf(rights: const ["contribute"]),
+        ),
+      );
+
+      // No header menu at all, so nothing of the linking either.
+      expect(find.byKey(const Key("persons-menu-p-anna")), findsNothing);
+      expect(find.byKey(const Key("persons-link-me")), findsNothing);
+    });
+
+    testWidgets("an administrator picks among the members nobody claims",
+        (tester) async {
+      var register = annaOnly;
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(role: "admin"),
+          album: albumOf(),
+          people: () => register,
+          users: () => '{"users": ['
+              '{"name": "carol", "role": "admin", "devices": 1}, '
+              '{"name": "bob", "role": "edit", "devices": 1}, '
+              '{"name": "dora", "role": "edit", "devices": 1, '
+              '"person": "p-x", "personName": "Dora"}, '
+              '{"name": "", "role": "view", "pending": true}]}',
+          post: (request) {
+            register = annaLinkedTo("bob");
+            return json('{"id": "p-anna", "name": "Anna", "user": "bob"}');
+          },
+        ),
+      );
+
+      await openPersonMenu(tester);
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-link-member")));
+        await tester.pumpAndSettle();
+      });
+
+      // Everybody who has joined and is nobody yet, and only them.
+      expect(find.byKey(const Key("persons-member-carol")), findsOneWidget);
+      expect(find.byKey(const Key("persons-member-bob")), findsOneWidget);
+      expect(find.byKey(const Key("persons-member-dora")), findsNothing);
+      expect(find.byKey(const Key("persons-member-")), findsNothing);
+
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-member-bob")));
+        await tester.pumpAndSettle();
+      });
+
+      expect(posted(requests, "link-person"), [
+        {"id": "p-anna", "user": "bob"}
+      ]);
+      expect(
+        find.text(testL10n.personsMemberBadge("bob")),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets("is taken back by the member it is about", (tester) async {
+      var register = annaLinkedTo("carol");
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(),
+          people: () => register,
+          post: (request) {
+            register = annaOnly;
+            return json('{"id": "p-anna", "name": "Anna"}');
+          },
+        ),
+      );
+
+      expect(find.byKey(const Key("persons-member-badge")), findsOneWidget);
+      await openPersonMenu(tester);
+      // Already somebody: there is nothing to claim, only something to undo.
+      expect(find.byKey(const Key("persons-link-me")), findsNothing);
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-unlink")));
+        await tester.pumpAndSettle();
+      });
+
+      expect(posted(requests, "link-person"), [
+        {"id": "p-anna", "user": ""}
+      ]);
+      expect(find.byKey(const Key("persons-member-badge")), findsNothing);
+    });
+
+    testWidgets("a refused link says what the server said", (tester) async {
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(),
+          post: (request) => http.Response(
+            '["ErrorInfo", {"message": "carol is already Bert."}]',
+            409,
+            headers: {"content-type": "application/json; charset=utf-8"},
+          ),
+        ),
+      );
+
+      await openPersonMenu(tester);
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-link-me")));
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.text("carol is already Bert."), findsOneWidget);
+      expect(find.byKey(const Key("persons-member-badge")), findsNothing);
+    });
   });
 }

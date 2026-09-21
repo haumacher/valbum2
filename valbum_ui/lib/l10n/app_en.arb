@@ -3864,5 +3864,75 @@
   "@personsShowPhoto": {
     "description": "The tooltip of the gesture showing the whole photograph a face was found in",
     "x-translated": "be5515cd"
+  },
+  "personsForgetEntry": "Forget the decision",
+  "@personsForgetEntry": {
+    "description": "The menu entry taking back what was decided about the selected faces",
+    "x-translated": "c7b604a9"
+  },
+  "personsForgetTarget": "Forget",
+  "@personsForgetTarget": {
+    "description": "The drop target that takes back what was decided about a face",
+    "x-translated": "b0ed373b"
+  },
+  "personsMemberBadge": "Member {name}",
+  "@personsMemberBadge": {
+    "description": "The badge saying which member of the space a person is",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "8e06a6ff"
+  },
+  "personsLinkMeEntry": "This is me",
+  "@personsLinkMeEntry": {
+    "description": "The menu entry saying that this person is the signed-in member themselves",
+    "x-translated": "9928c57b"
+  },
+  "personsLinkMemberEntry": "Link to a member…",
+  "@personsLinkMemberEntry": {
+    "description": "The menu entry an administrator links a person to a member with",
+    "x-translated": "927316e"
+  },
+  "personsUnlinkEntry": "Unlink",
+  "@personsUnlinkEntry": {
+    "description": "The menu entry taking back the link between a person and a member",
+    "x-translated": "dc6bb726"
+  },
+  "personsLinkChooseTitle": "Which member is this?",
+  "@personsLinkChooseTitle": {
+    "description": "The title of the dialog choosing the member a person is",
+    "x-translated": "677d226b"
+  },
+  "personsLinkChooseNotice": "A member is at most one person.",
+  "@personsLinkChooseNotice": {
+    "description": "The line under the title of the dialog choosing the member a person is",
+    "x-translated": "a59f2115"
+  },
+  "personsLinkNobodyFree": "Every member of this space is somebody already.",
+  "@personsLinkNobodyFree": {
+    "description": "What the member chooser says when no member is left to link",
+    "x-translated": "4c2182e4"
+  },
+  "appearsInPhotosAs": "Appears in photos as {name}",
+  "@appearsInPhotosAs": {
+    "description": "The line of the users list naming the person of the register a member is",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "b5026e1c"
+  },
+  "inboxPhotoCount": "{count, plural, =1{1 photograph} other{{count} photographs}}",
+  "@inboxPhotoCount": {
+    "description": "How many photographs are waiting in an inbox, shown on its listing tile",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "8fc26a99"
   }
 }

@@ -613,5 +613,16 @@
   "personsSaveTitle": "Sollen die Änderungen an den Personen in diesem Album gespeichert werden?",
   "personsSaveMessage": "Wenn Sie diese Seite verlassen, wird die Bearbeitung beendet. Nicht gespeicherte Änderungen gehen verloren, sofern sie nicht jetzt gespeichert werden.",
   "personsDragToGroup": "Auf eine Gruppe ziehen",
-  "personsShowPhoto": "„Foto anzeigen“"
+  "personsShowPhoto": "„Foto anzeigen“",
+  "personsForgetEntry": "Entscheidung rückgängig machen",
+  "personsForgetTarget": "Vergessen",
+  "personsMemberBadge": "Mitglied {name}",
+  "personsLinkMeEntry": "Das bin ich",
+  "personsLinkMemberEntry": "Mit einem Mitglied verknüpfen…",
+  "personsUnlinkEntry": "Verknüpfung aufheben",
+  "personsLinkChooseTitle": "Welches Mitglied ist das?",
+  "personsLinkChooseNotice": "Ein Mitglied ist höchstens eine Person.",
+  "personsLinkNobodyFree": "Jedes Element dieses Raums ist bereits jemand.",
+  "appearsInPhotosAs": "Erscheint auf Fotos als {name}",
+  "inboxPhotoCount": "{count, plural, =1{1 Foto} other{{count} Fotos}}"
 }

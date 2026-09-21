@@ -1698,6 +1698,25 @@ class VAlbumClient {
     return Person.read(JsonReader.fromString(response));
   }
 
+  /// Links the person of [id] to the member [user], answering them (#128).
+  ///
+  /// The empty [user] unlinks. The link is stored in one place — `Person.user`
+  /// — and answered from both ends, so nothing of it is buffered here: it is
+  /// not a change to an album, and this build posts it the moment it is asked
+  /// for, exactly as a rename is posted.
+  ///
+  /// Who may: an administrator links anybody to anybody, a member with `edit`
+  /// links a person to themselves alone and unlinks only the person carrying
+  /// their own name. Every refusal — 403 for somebody else's link, 409 for a
+  /// member another person already claims — arrives as a [VAlbumException]
+  /// carrying the server's own sentence.
+  Future<Person> linkPerson(String id, String user) async {
+    var url = "${folderUrl(const [])}?action=link-person";
+    var response = await _postBody(
+        url, _jsonOf(PersonLink(id: id, user: user).writeContent));
+    return Person.read(JsonReader.fromString(response));
+  }
+
   /// Stores what somebody decided about the faces of the album at [path].
   ///
   /// The whole delta in one request, all or nothing (issue #125): the face

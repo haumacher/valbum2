@@ -25,6 +25,15 @@ const String listingWithInbox = '["ListingInfo", {"path": "", '
     '{"name": "Inbox", "title": "Inbox", "kind": "INBOX"}'
     ']}]';
 
+/// The same listing with the counts of issue #137 on it: the inbox says how
+/// much is waiting, the album carries a number nobody shows.
+const String listingWithCount = '["ListingInfo", {"path": "", '
+    '"title": "Library", "folders": ['
+    '{"name": "2026-05-01 Trip", "title": "Trip", "kind": "ALBUM", '
+    '"effectiveDate": 1777593600000, "imageCount": 7}, '
+    '{"name": "Inbox", "title": "Inbox", "kind": "INBOX", "imageCount": 12}'
+    ']}]';
+
 /// An ordinary album, which the kind switch turns into an inbox.
 const String plainAlbum = '["AlbumInfo", {"path": "Album", '
     '"title": "Album", "subTitle": "", "parts": ['
@@ -65,6 +74,25 @@ void main() {
       // One date line, and it belongs to the album — an inbox has no date.
       expect(find.byKey(const Key("folder-date")), findsOneWidget);
       expect(find.text("May 1, 2026"), findsOneWidget);
+    });
+
+    testWidgets('says how much is waiting, and only for an inbox',
+        (tester) async {
+      await pumpAt(tester, (_) => json(listingWithCount));
+
+      expect(find.byKey(const Key("inbox-count")), findsOneWidget);
+      expect(find.text(testL10n.inboxPhotoCount(12)), findsOneWidget);
+      // The album beside it carries a count too — an older server answers one
+      // for everything — and no tile of an album ever shows it.
+      expect(find.text(testL10n.inboxPhotoCount(7)), findsNothing);
+    });
+
+    testWidgets('says nothing where nothing is waiting', (tester) async {
+      // A count of nothing, which is also what a server built before the
+      // field answers: an empty inbox says nothing rather than "0".
+      await pumpAt(tester, (_) => json(listingWithInbox));
+
+      expect(find.byKey(const Key("inbox-count")), findsNothing);
     });
 
     testWidgets('is never offered a share link', (tester) async {

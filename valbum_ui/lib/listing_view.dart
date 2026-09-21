@@ -374,6 +374,22 @@ class ListingView extends StatelessWidget {
                       ),
                       textAlign: TextAlign.center,
                     ),
+                  // How much is waiting in an inbox (issue #137), in the
+                  // line an album's date stands in -- an inbox has none.
+                  // Only an inbox is counted: everything else answers `0`,
+                  // and so does a server built before the field existed,
+                  // which is why nothing is shown for a count of nothing.
+                  if (folderIsInbox(folder) && folder.imageCount > 0)
+                    Text(
+                      AppLocalizations.of(context)!
+                          .inboxPhotoCount(folder.imageCount),
+                      key: const Key("inbox-count"),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white60,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   if (folder.subTitle.isNotEmpty)
                     Text(
                       folder.subTitle,

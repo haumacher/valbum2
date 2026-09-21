@@ -3781,6 +3781,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show the photo'**
   String get personsShowPhoto;
+
+  /// The menu entry taking back what was decided about the selected faces
+  ///
+  /// In en, this message translates to:
+  /// **'Forget the decision'**
+  String get personsForgetEntry;
+
+  /// The drop target that takes back what was decided about a face
+  ///
+  /// In en, this message translates to:
+  /// **'Forget'**
+  String get personsForgetTarget;
+
+  /// The badge saying which member of the space a person is
+  ///
+  /// In en, this message translates to:
+  /// **'Member {name}'**
+  String personsMemberBadge(String name);
+
+  /// The menu entry saying that this person is the signed-in member themselves
+  ///
+  /// In en, this message translates to:
+  /// **'This is me'**
+  String get personsLinkMeEntry;
+
+  /// The menu entry an administrator links a person to a member with
+  ///
+  /// In en, this message translates to:
+  /// **'Link to a member…'**
+  String get personsLinkMemberEntry;
+
+  /// The menu entry taking back the link between a person and a member
+  ///
+  /// In en, this message translates to:
+  /// **'Unlink'**
+  String get personsUnlinkEntry;
+
+  /// The title of the dialog choosing the member a person is
+  ///
+  /// In en, this message translates to:
+  /// **'Which member is this?'**
+  String get personsLinkChooseTitle;
+
+  /// The line under the title of the dialog choosing the member a person is
+  ///
+  /// In en, this message translates to:
+  /// **'A member is at most one person.'**
+  String get personsLinkChooseNotice;
+
+  /// What the member chooser says when no member is left to link
+  ///
+  /// In en, this message translates to:
+  /// **'Every member of this space is somebody already.'**
+  String get personsLinkNobodyFree;
+
+  /// The line of the users list naming the person of the register a member is
+  ///
+  /// In en, this message translates to:
+  /// **'Appears in photos as {name}'**
+  String appearsInPhotosAs(String name);
+
+  /// How many photographs are waiting in an inbox, shown on its listing tile
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photograph} other{{count} photographs}}'**
+  String inboxPhotoCount(int count);
 }
 
 class _AppLocalizationsDelegate

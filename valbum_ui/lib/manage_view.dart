@@ -1362,9 +1362,23 @@ class UsersSectionState extends State<UsersSection> {
                       : Icons.person,
             ),
             title: Text(_headline(l10n, user)),
-            subtitle: Text(
-              _describe(l10n, user),
-              key: Key("user-permission-${_idOf(user)}"),
+            subtitle: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _describe(l10n, user),
+                  key: Key("user-permission-${_idOf(user)}"),
+                ),
+                // Which person of the register this member is (issue #128),
+                // read here and edited in the face editor, where the people
+                // are: this list says who is here, not who is in a photograph.
+                if (user.personName.trim().isNotEmpty)
+                  Text(
+                    l10n.appearsInPhotosAs(user.personName.trim()),
+                    key: const Key("user-person"),
+                  ),
+              ],
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
