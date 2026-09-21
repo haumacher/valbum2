@@ -138,6 +138,26 @@ message AlbumInfo extends FolderResource {
 	 */
 	long effectiveDate;
 	
+	/**
+	 * Whether the server is still looking for faces in this album, see issue #124.
+	 *
+	 * <p>
+	 * <code>true</code> while the space has the face index switched on
+	 * (<code>space.json</code> <code>faces: on</code>) and not every photograph of this album is
+	 * indexed yet, so that the application can say &quot;still looking&quot; and come back, exactly
+	 * as it comes back for a video rendition that is not ready (issue #74). The
+	 * {@link ImagePart#faces} that are already known are answered meanwhile.
+	 * </p>
+	 *
+	 * <p>
+	 * On the album and not on a listing entry, because the album is what the face editor of issue
+	 * #126 stands in: a listing shows folders, and a folder tile has nothing to do with a face.
+	 * Derived on every read and never stored, exactly like {@link #effectiveDate}, and answered
+	 * only to a caller that is answered faces at all.
+	 * </p>
+	 */
+	bool facesPending;
+	
 	/** Description of the image used to display this whole album in a listing. */
 	ThumbnailInfo indexPicture;
 
@@ -361,6 +381,71 @@ message ImagePart extends AbstractImage {
 	 * </p>
 	 */
 	string contributorLabel;
+
+	/**
+	 * The faces the server found in this photograph, see issue #124.
+	 *
+	 * <p>
+	 * Empty for a video (videos are never looked at), for a space whose face index is switched off,
+	 * and for every caller that is not a signed-in member: an anonymous visitor of an open space and
+	 * a share link are answered no face at all, in the spirit of issue #96.
+	 * </p>
+	 *
+	 * <p>
+	 * Derived on every read from the album's <code>.vacache/faces.json</code> and never stored: the
+	 * server clears this field before an <code>index.json</code> is written, exactly like
+	 * {@link #contributor}, so a round trip through a client can neither freeze a detection into the
+	 * album nor lose one. The embeddings the detection produced never leave the server.
+	 * </p>
+	 */
+	repeated FaceInfo faces;
+}
+
+/** One face found in an {@link ImagePart}, see issue #124. */
+message FaceInfo {
+	/**
+	 * The position of this face among the faces of its image, counting from zero.
+	 *
+	 * <p>
+	 * What <code>?type=face&amp;face=&lt;index&gt;</code> asks the crop of. It is the position in
+	 * {@link ImagePart#faces} as the server found them and is stable while the image and the model
+	 * are; a re-detection may renumber them, which is why it is never a name.
+	 * </p>
+	 */
+	int index;
+
+	/**
+	 * The left edge of the face, as a fraction of the image width.
+	 *
+	 * <p>
+	 * The box is normalised to <code>0..1</code> in the <em>raw raster of the file</em> — the pixels
+	 * as they are stored, before the EXIF orientation and before
+	 * {@link ImagePart#orientation}. So a rotation the user applies changes nothing stored, and a
+	 * client draws the box by applying to it the very transform it applies to the picture.
+	 * </p>
+	 */
+	double x;
+
+	/** The top edge of the face, as a fraction of the image height, see {@link #x}. */
+	double y;
+
+	/** The width of the face, as a fraction of the image width, see {@link #x}. */
+	double w;
+
+	/** The height of the face, as a fraction of the image height, see {@link #x}. */
+	double h;
+
+	/**
+	 * Which group of faces of this album the server believes this face belongs to.
+	 *
+	 * <p>
+	 * An identifier of the album's clustering, not of a person: it says &quot;these faces are most
+	 * likely the same person&quot; and nothing about who that is. It is stable only as far as the
+	 * set of faces of the album is; naming a person is issue #125. Empty while the album is not
+	 * clustered yet.
+	 * </p>
+	 */
+	string cluster;
 }
 
 /**
@@ -857,6 +942,20 @@ message AuthInfo {
 	 * </p>
 	 */
 	string mapUrl;
+
+	/**
+	 * Whether this space has the face index switched on, see issue #124.
+	 *
+	 * <p>
+	 * A property of the <em>space</em>, read from its <code>.valbum/space.json</code>
+	 * (<code>faces: off|on</code>, missing means off) and answered here because
+	 * <code>?type=auth</code> is the one request the application makes anyway. Processing the
+	 * biometrics of one's family is the administrator's decision, so nothing is detected and nothing
+	 * is offered until they made it. <code>false</code> also where the space asked for it but the
+	 * machine cannot load the detector at all.
+	 * </p>
+	 */
+	bool faces;
 
 	/**
 	 * The share link this caller opened, <code>null</code> for everybody else (issue #51).

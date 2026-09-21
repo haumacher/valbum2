@@ -54,6 +54,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getContributorLabel() */
 	private static final String CONTRIBUTOR_LABEL__PROP = "contributorLabel";
 
+	/** @see #getFaces() */
+	private static final String FACES__PROP = "faces";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -81,6 +84,8 @@ public class ImagePart extends AbstractImage {
 	private String _contributor = "";
 
 	private String _contributorLabel = "";
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.FaceInfo> _faces = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -464,6 +469,61 @@ public class ImagePart extends AbstractImage {
 		_contributorLabel = value;
 	}
 
+	/**
+	 * The faces the server found in this photograph, see issue #124.
+	 *
+	 * <p>
+	 * Empty for a video (videos are never looked at), for a space whose face index is switched off,
+	 * and for every caller that is not a signed-in member: an anonymous visitor of an open space and
+	 * a share link are answered no face at all, in the spirit of issue #96.
+	 * </p>
+	 *
+	 * <p>
+	 * Derived on every read from the album's <code>.vacache/faces.json</code> and never stored: the
+	 * server clears this field before an <code>index.json</code> is written, exactly like
+	 * {@link #getContributor()}, so a round trip through a client can neither freeze a detection into the
+	 * album nor lose one. The embeddings the detection produced never leave the server.
+	 * </p>
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.FaceInfo> getFaces() {
+		return _faces;
+	}
+
+	/**
+	 * @see #getFaces()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setFaces(java.util.List<? extends de.haumacher.imageServer.shared.model.FaceInfo> value) {
+		internalSetFaces(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getFaces()} without chain call utility. */
+	protected final void internalSetFaces(java.util.List<? extends de.haumacher.imageServer.shared.model.FaceInfo> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'faces' cannot be null.");
+		_faces.clear();
+		_faces.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getFaces()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart addFace(de.haumacher.imageServer.shared.model.FaceInfo value) {
+		internalAddFace(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addFace(de.haumacher.imageServer.shared.model.FaceInfo)} without chain call utility. */
+	protected final void internalAddFace(de.haumacher.imageServer.shared.model.FaceInfo value) {
+		_faces.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getFaces()} list.
+	 */
+	public final void removeFace(de.haumacher.imageServer.shared.model.FaceInfo value) {
+		_faces.remove(value);
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -537,6 +597,12 @@ public class ImagePart extends AbstractImage {
 		out.value(getContributor());
 		out.name(CONTRIBUTOR_LABEL__PROP);
 		out.value(getContributorLabel());
+		out.name(FACES__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.FaceInfo x : getFaces()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -555,6 +621,14 @@ public class ImagePart extends AbstractImage {
 			case LOCATION__PROP: setLocation(de.haumacher.imageServer.shared.model.GeoLocation.readGeoLocation(in)); break;
 			case CONTRIBUTOR__PROP: setContributor(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CONTRIBUTOR_LABEL__PROP: setContributorLabel(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case FACES__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addFace(de.haumacher.imageServer.shared.model.FaceInfo.readFaceInfo(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

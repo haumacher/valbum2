@@ -15,6 +15,17 @@
 	<properties>
 		<jetty.version>11.0.18</jetty.version>
 
+		<!-- The JavaCPP presets the bundled FFmpeg (#74) and OpenCV (#124) come from. -->
+		<javacpp.presets.version>1.5.8</javacpp.presets.version>
+
+		<!--
+			The OpenCV of those presets. 4.6.0 is the first this project needs: it carries
+			FaceDetectorYN (YuNet) and FaceRecognizerSF (SFace) in 'objdetect'. The bundled YuNet
+			model is the 2022mar revision, because the newer 2023mar graph needs an OpenCV DNN of
+			4.8 or later, see the NOTICE beside the models.
+		-->
+		<opencv.version>4.6.0-${javacpp.presets.version}</opencv.version>
+
 		<!--
 			The name of the executable JAR with all dependencies. The 'platform-jar' profile below
 			appends the JavaCPP platform, if the build was restricted to a single platform.
@@ -326,10 +337,28 @@
 			<version>${jetty.version}</version>
 		</dependency>
 
+		<!--
+			The bundled FFmpeg of issue #74 (the video renditions) and, through the same JavaCPP
+			presets, the bundled OpenCV of issue #124 (the face index).
+		-->
 		<dependency>
 			<groupId>org.bytedeco</groupId>
 			<artifactId>javacv-platform</artifactId>
-			<version>1.5.8</version>
+			<version>${javacpp.presets.version}</version>
+		</dependency>
+
+		<!--
+			OpenCV, for the face detection of issue #124. Declared although 'javacv-platform'
+			already brings it in: this server uses it directly (FaceDetectorYN and FaceRecognizerSF
+			of the official OpenCV Java bindings, which the very same artifact carries), and a
+			dependency that is used is a dependency that is written down. It costs the build
+			nothing - it is the version 'javacv-platform' resolves to anyway, so no further native
+			artifact is downloaded and the packages grow by nothing but the two ONNX models.
+		-->
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>opencv-platform</artifactId>
+			<version>${opencv.version}</version>
 		</dependency>
 
 		<dependency>

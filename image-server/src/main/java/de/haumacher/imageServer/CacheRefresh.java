@@ -51,6 +51,9 @@ public class CacheRefresh {
 	 * {@link PreviewCache#createPreview(File)}.</li>
 	 * <li>A playback rendition, <code>video-&lt;name&gt;.mp4</code>, and a teaser,
 	 * <code>teaser-&lt;name&gt;.mp4</code>, see {@link VideoRenditions}.</li>
+	 * <li>The faces found in the photographs of this folder,
+	 * {@value de.haumacher.imageServer.faces.FaceCache#FILE_NAME}, and the crop of one of them,
+	 * <code>face-&lt;name&gt;-&lt;index&gt;.jpg</code>, see issue #124.</li>
 	 * <li>Anything of those under its {@value PreviewCache#TMP_SUFFIX} name — a leftover of a
 	 * server that was killed between writing and moving.</li>
 	 * </ul>
@@ -66,6 +69,14 @@ public class CacheRefresh {
 			: name;
 		if (plain.startsWith(PreviewCache.PREVIEW_PREFIX)) {
 			return plain.length() > PreviewCache.PREVIEW_PREFIX.length();
+		}
+		if (plain.equals(de.haumacher.imageServer.faces.FaceCache.FILE_NAME)) {
+			return true;
+		}
+		if (plain.startsWith(de.haumacher.imageServer.faces.FaceIndex.CROP_PREFIX)
+			&& plain.toLowerCase(Locale.ROOT)
+				.endsWith("." + de.haumacher.imageServer.faces.FaceIndex.CROP_EXTENSION)) {
+			return true;
 		}
 		for (VideoRenditions.Kind kind : VideoRenditions.Kind.values()) {
 			if (plain.startsWith(kind.prefix())

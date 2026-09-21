@@ -1,0 +1,82 @@
+Third-party models bundled with VAlbum (issue #124)
+===================================================
+
+The two ONNX models in this directory are redistributed unchanged, byte for byte,
+from the OpenCV Model Zoo (https://github.com/opencv/opencv_zoo).  Both carry a
+permissive licence that allows redistribution; the licence texts are reproduced
+below.  Neither model was trained, modified or re-exported by this project.
+
+
+1. face_detection_yunet_2022mar.onnx  -- YuNet, the face detector
+----------------------------------------------------------------
+
+  Model     : YuNet (face_detection_yunet_2022mar)
+  Size      : 345 478 bytes
+  SHA-256   : 50ef07f702a31741ca46a4c0d947773b64143b9362780237bf0d427d6c79bab7
+  Source    : https://github.com/opencv/opencv_zoo
+              models/face_detection_yunet/face_detection_yunet_2022mar.onnx
+              at commit b1b4df493f77451851ae03dd4c8fa374f3ec3ea6
+  Authors   : Shiqi Yu, Wei Wu (Shenzhen Institute of Artificial Intelligence and
+              Robotics for Society)
+  Licence   : MIT
+
+  Why the 2022mar revision and not the newer 2023mar one: the newer graph needs
+  an OpenCV DNN of 4.8 or later, and the bundled org.bytedeco:opencv of the
+  JavaCPP presets 1.5.8 this server builds against is OpenCV 4.6.0, which
+  refuses to load it ("eltwise_layer.cpp:251: inputs[vecIdx][j] ==
+  inputs[i][j]").  When the JavaCPP presets are upgraded, exchanging the file and
+  the model stamp in FaceDetection is all that is needed -- every album is
+  re-indexed by itself, because the stamp is part of what .vacache/faces.json is
+  keyed by.
+
+  MIT License
+
+  Copyright (c) 2021 Shiqi Yu
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+
+2. face_recognition_sface_2021dec.onnx  -- SFace, the face recogniser
+---------------------------------------------------------------------
+
+  Model     : SFace (face_recognition_sface_2021dec)
+  Size      : 38 696 353 bytes
+  SHA-256   : 0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79
+  Source    : https://github.com/opencv/opencv_zoo
+              models/face_recognition_sface/face_recognition_sface_2021dec.onnx
+  Authors   : Zhong Yaoyao, Deng Weihong et al., "SFace: Sigmoid-Constrained
+              Hypersphere Loss for Robust Face Recognition"
+  Licence   : Apache License 2.0
+
+  The full text of the Apache License 2.0 is at
+  https://www.apache.org/licenses/LICENSE-2.0 ; the model is redistributed under
+  its terms, unmodified, with this notice as the required attribution.
+
+  A quantised revision of the same model (int8, about 9.9 MB) is published beside
+  it and loads on OpenCV 4.6.0 as well; it is not used here, because the
+  unquantised weights are what the accuracy of a family library should rest on.
+
+
+What the models are used for
+----------------------------
+
+Detection and the embedding of a detected face, on the server, on the preview
+rendition of a photograph and never on the original.  The embeddings are a cache
+in the album's .vacache and never leave the server: what goes on the wire is a
+box and a cluster identifier, see de.haumacher.imageServer.faces.FaceIndex.
