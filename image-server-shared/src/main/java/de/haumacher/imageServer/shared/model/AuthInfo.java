@@ -42,6 +42,9 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getMapUrl() */
 	private static final String MAP_URL__PROP = "mapUrl";
 
+	/** @see #isFaces() */
+	private static final String FACES__PROP = "faces";
+
 	/** @see #getShare() */
 	private static final String SHARE__PROP = "share";
 
@@ -65,6 +68,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private boolean _mayShare = false;
 
 	private String _mapUrl = "";
+
+	private boolean _faces = false;
 
 	private de.haumacher.imageServer.shared.model.ShareInfo _share = null;
 
@@ -289,6 +294,35 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
+	 * Whether this space has the face index switched on, see issue #124.
+	 *
+	 * <p>
+	 * A property of the <em>space</em>, read from its <code>.valbum/space.json</code>
+	 * (<code>faces: off|on</code>, missing means off) and answered here because
+	 * <code>?type=auth</code> is the one request the application makes anyway. Processing the
+	 * biometrics of one's family is the administrator's decision, so nothing is detected and nothing
+	 * is offered until they made it. <code>false</code> also where the space asked for it but the
+	 * machine cannot load the detector at all.
+	 * </p>
+	 */
+	public final boolean isFaces() {
+		return _faces;
+	}
+
+	/**
+	 * @see #isFaces()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setFaces(boolean value) {
+		internalSetFaces(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isFaces()} without chain call utility. */
+	protected final void internalSetFaces(boolean value) {
+		_faces = value;
+	}
+
+	/**
 	 * The share link this caller opened, <code>null</code> for everybody else (issue #51).
 	 *
 	 * <p>
@@ -388,6 +422,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(isMayShare());
 		out.name(MAP_URL__PROP);
 		out.value(getMapUrl());
+		out.name(FACES__PROP);
+		out.value(isFaces());
 		if (hasShare()) {
 			out.name(SHARE__PROP);
 			getShare().writeTo(out);
@@ -410,6 +446,7 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case CLEARANCE__PROP: setClearance(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case MAY_SHARE__PROP: setMayShare(in.nextBoolean()); break;
 			case MAP_URL__PROP: setMapUrl(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case FACES__PROP: setFaces(in.nextBoolean()); break;
 			case SHARE__PROP: setShare(de.haumacher.imageServer.shared.model.ShareInfo.readShareInfo(in)); break;
 			case INVITATION__PROP: setInvitation(de.haumacher.imageServer.shared.model.InvitationInfo.readInvitationInfo(in)); break;
 			default: super.readField(in, field);

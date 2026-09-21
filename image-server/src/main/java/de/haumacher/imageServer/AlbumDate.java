@@ -254,6 +254,8 @@ public final class AlbumDate {
 	public static boolean clearDerived(FolderResource resource) {
 		// Who contributed a photo is answered from the hash sidecar on every read, see issue #53.
 		boolean changed = Contributors.clear(resource);
+		// Who is in a photo is answered from the album's cache on every read, see issue #124.
+		changed |= de.haumacher.imageServer.faces.FaceIndex.clear(resource);
 		if (!resource.getRights().isEmpty()) {
 			// What the caller may do here is answered on every read and is nobody's statement
 			// about the album; a stored copy would outlive the grant it came from, see issue #49.

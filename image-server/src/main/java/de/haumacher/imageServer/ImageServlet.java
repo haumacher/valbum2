@@ -22,6 +22,8 @@ import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.faces.FaceIndex;
+import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.CacheRefreshed;
 import de.haumacher.imageServer.shared.model.ContentHash;
@@ -209,6 +211,24 @@ public class ImageServlet extends HttpServlet {
 	 */
 	public static final String RENDITION_PENDING = "This video is being prepared; please try again shortly.";
 
+	/**
+	 * The message a request for a face crop that this caller is answered no faces of is refused
+	 * with, see issue #124.
+	 *
+	 * <p>
+	 * A <code>404</code> and not a <code>403</code>: a caller that is answered no face must not be
+	 * told that there is one to be refused, exactly as an inbox they may not see is not there for
+	 * them (issue #131).
+	 * </p>
+	 */
+	public static final String FACE_NOT_FOUND = "There is no such face.";
+
+	/** The <code>type</code> a face crop is asked for with, see issue #124. */
+	public static final String FACE_TYPE = "face";
+
+	/** The parameter naming which face of an image is asked for, see issue #124. */
+	public static final String FACE_PARAMETER = "face";
+
 	/** The message a request for a video rendition that cannot be made is answered with. */
 	public static final String RENDITION_FAILED = "This video cannot be prepared for playback.";
 
@@ -305,6 +325,22 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Who is in the photographs of this space, see issue #124.
+	 *
+	 * <p>
+	 * One per space like everything else here, and switched on by the space's own
+	 * <code>space.json</code>. A space that did not ask for it holds an index that does nothing at
+	 * all: no thread, no model, no file.
+	 * </p>
+	 */
+	private final FaceIndex _faces;
+
+	/** The face index of this space, for the tests. */
+	public FaceIndex faces() {
+		return _faces;
+	}
+
+	/**
 	 * Starts building the hash index of this space in the background, see {@link HashIndex}.
 	 *
 	 * <p>
@@ -316,6 +352,9 @@ public class ImageServlet extends HttpServlet {
 	 */
 	public void startIndexing() {
 		_index.start();
+		// Whoever switched faces on for this space gets them looked for, on a thread of its own,
+		// see issue #124.
+		_faces.start();
 	}
 
 	/** The video renditions of this server, for the tests that wait for a transcode. */
@@ -401,6 +440,12 @@ public class ImageServlet extends HttpServlet {
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
 		_index = new HashIndex(_basePath);
+		_faces = new FaceIndex(_basePath, config != null && config.isFacesEnabled());
+		String noFaces = _faces.unavailability();
+		if (noFaces != null) {
+			LOG.warning("The space '" + (_space.isEmpty() ? basePath.getName() : _space)
+				+ "' asked for face detection, which this machine cannot do: " + noFaces);
+		}
 	}
 
 	@Override
@@ -425,6 +470,7 @@ public class ImageServlet extends HttpServlet {
 	public void destroy() {
 		_videos.shutdown();
 		_index.shutdown();
+		_faces.shutdown();
 		try {
 			_cache.close();
 		} catch (IOException ex) {
@@ -455,7 +501,7 @@ public class ImageServlet extends HttpServlet {
 			// Always answerable: this is how an unpaired app learns that it must pair. The map
 			// template of the space rides along, see issue #112.
 			serveJsonObject(response,
-				_auth.authInfo(caller, _basePath, _space).setMapUrl(_mapUrl));
+				_auth.authInfo(caller, _basePath, _space).setMapUrl(_mapUrl).setFaces(_faces.isEnabled()));
 			return;
 		}
 		if ("invitations".equals(type)) {
@@ -554,14 +600,17 @@ public class ImageServlet extends HttpServlet {
 
 			// The description and the thumbnail are looking; the original file is taking a copy.
 			// A rendition is looking, exactly as the thumbnail is; only the original is taking a copy.
-			String right = jsonRequested(context) || "tn".equals(type) || VideoRenditions.Kind.PLAYBACK.parameter().equals(type)
+			// A face crop is looking at a piece of the thumbnail, so it asks for what the
+			// thumbnail asks for, see issue #124.
+			String right = jsonRequested(context) || "tn".equals(type) || FACE_TYPE.equals(type)
+				|| VideoRenditions.Kind.PLAYBACK.parameter().equals(type)
 				|| VideoRenditions.Kind.TEASER.parameter().equals(type) ? Rights.VIEW : Rights.DOWNLOAD;
 			if (!_auth.rights(caller, resourcePath).contains(right)) {
 				refuse(context, caller, resourcePath, right, false);
 				return;
 			}
 			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
-			serveImage(context, resourcePath, caller, clearance, _auth.minRating(caller));
+			serveImage(context, resourcePath, caller, clearance, _auth.minRating(caller), viewAs);
 		} else {
 			error404(context);
 		}
@@ -1230,6 +1279,8 @@ public class ImageServlet extends HttpServlet {
 		// A rendition that failed once is never tried again while the server runs; the whole point
 		// of throwing it away is that it is made afresh, see issue #74.
 		_videos.forget(CacheRefresh.cacheDir(folder));
+		// The same for a photograph the detector refused, see issue #124.
+		_faces.forget(folder);
 
 		serveJsonObject(context.response(), CacheRefreshed.create().setRemoved(removed));
 	}
@@ -2806,6 +2857,7 @@ public class ImageServlet extends HttpServlet {
 
 		if (jsonRequested(context)) {
 			Resource answer = _privacy.filter(resource, pathInfo, clearance, _auth.minRating(caller));
+			answer = withFaces(answer, pathInfo, caller, viewAs);
 			if (answer instanceof ListingInfo) {
 				// The shared albums of this folder, shown as what they point at, see issue #50.
 				// After the privacy filter: a link is filtered by the clearance on its own target,
@@ -2843,6 +2895,9 @@ public class ImageServlet extends HttpServlet {
 				.setSubTitle(album.getSubTitle())
 				.setDate(album.getDate())
 				.setEffectiveDate(album.getEffectiveDate())
+				// How far the face index has got is not a question of who is asking either, and
+				// this copy is made after it was answered, see issue #124.
+				.setFacesPending(album.isFacesPending())
 				.setParts(album.getParts());
 			if (album.getIndexPicture() != null) {
 				result.setIndexPicture(album.getIndexPicture());
@@ -2872,8 +2927,8 @@ public class ImageServlet extends HttpServlet {
 	 * {@link #imageRefused(Context, Caller, String)}.
 	 * </p>
 	 */
-	private void serveImage(Context context, PathInfo pathInfo, Caller caller, int clearance, int minRating)
-			throws IOException {
+	private void serveImage(Context context, PathInfo pathInfo, Caller caller, int clearance, int minRating,
+			int viewAs) throws IOException {
 		String refusal = hidden(pathInfo, clearance, minRating);
 		if (refusal != null) {
 			imageRefused(context, caller, refusal);
@@ -2897,6 +2952,8 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			serveData(context, data, "image/jpeg");
+		} else if (FACE_TYPE.equals(type)) {
+			serveFace(context, pathInfo, caller, viewAs);
 		} else if (VideoRenditions.Kind.PLAYBACK.parameter().equals(type)) {
 			serveRendition(context, pathInfo, VideoRenditions.Kind.PLAYBACK);
 		} else if (VideoRenditions.Kind.TEASER.parameter().equals(type)) {
@@ -2909,6 +2966,72 @@ public class ImageServlet extends HttpServlet {
 				serveData(context, pathInfo.toFile(), mimeType);
 			}
 		}
+	}
+
+	/**
+	 * The given answer with the faces of its photographs, for a caller that is answered any.
+	 *
+	 * <p>
+	 * The one place a face reaches the wire, and the one place it is decided who is answered one,
+	 * see {@link Faces#maySee(AuthService, Caller, int)}: an anonymous visitor and a share link are
+	 * answered the album exactly as before, faces and all left out, and so is everybody when the
+	 * space did not switch the index on, and so is the author previewing their own album as the
+	 * public sees it (<code>?viewAs=public</code>, issue #46). Nothing is dropped from an answer
+	 * here — the faces are <em>added</em> to a copy, so a path that forgets to ask answers none.
+	 * </p>
+	 *
+	 * <p>
+	 * A listing is untouched: faces belong to photographs and a listing shows folders.
+	 * </p>
+	 */
+	private Resource withFaces(Resource answer, PathInfo pathInfo, Caller caller, int viewAs) {
+		if (!(answer instanceof AlbumInfo) || !_faces.isEnabled() || !Faces.maySee(_auth, caller, viewAs)) {
+			return answer;
+		}
+		AlbumInfo album = (AlbumInfo) answer;
+		File folder = pathInfo.toFile();
+		AlbumInfo result = _faces.derive(album, folder);
+		if (result.isFacesPending()) {
+			// Whatever is not looked at yet is queued -- after the answer was built, so that what
+			// the answer says about itself is what it was built from. It never waits for the work,
+			// exactly as a request for a video rendition does not, see issue #74.
+			_faces.queue(folder);
+		}
+		return result;
+	}
+
+	/**
+	 * Delivers the crop of one face of a photograph, see issue #124.
+	 *
+	 * <p>
+	 * Cut out of the preview and cached beside it, exactly like every other generated file. A
+	 * request that is answered no faces at all is answered <code>404</code> here too — never the
+	 * crop, and never a refusal that would say that there is a face to refuse. The same
+	 * <code>viewAs</code> the album answer reads decides here (issue #46), so the author's preview
+	 * of the public view has no crops either.
+	 * </p>
+	 */
+	private void serveFace(Context context, PathInfo pathInfo, Caller caller, int viewAs) throws IOException {
+		if (!_faces.isEnabled() || !Faces.maySee(_auth, caller, viewAs)) {
+			LOG.warning("Refusing the face of '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, FACE_NOT_FOUND);
+			return;
+		}
+		int index;
+		try {
+			index = Integer.parseInt(context.getParameter(FACE_PARAMETER));
+		} catch (NumberFormatException | NullPointerException ex) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, FACE_NOT_FOUND);
+			return;
+		}
+		FaceIndex.Crop crop = _faces.crop(pathInfo.toFile(), index);
+		if (crop.getFile() == null) {
+			LOG.warning("Refusing the face " + index + " of '" + context.request().getPathInfo()
+				+ "': " + crop.getReason());
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, FACE_NOT_FOUND);
+			return;
+		}
+		serveData(context, crop.getFile(), "image/jpeg");
 	}
 
 	/**

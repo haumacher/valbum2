@@ -352,6 +352,24 @@ class AlbumInfo extends FolderResource {
 	///  </p>
 	int effectiveDate;
 
+	///  Whether the server is still looking for faces in this album, see issue #124.
+	/// 
+	///  <p>
+	///  <code>true</code> while the space has the face index switched on
+	///  (<code>space.json</code> <code>faces: on</code>) and not every photograph of this album is
+	///  indexed yet, so that the application can say &quot;still looking&quot; and come back, exactly
+	///  as it comes back for a video rendition that is not ready (issue #74). The
+	///  {@link ImagePart#faces} that are already known are answered meanwhile.
+	///  </p>
+	/// 
+	///  <p>
+	///  On the album and not on a listing entry, because the album is what the face editor of issue
+	///  #126 stands in: a listing shows folders, and a folder tile has nothing to do with a face.
+	///  Derived on every read and never stored, exactly like {@link #effectiveDate}, and answered
+	///  only to a caller that is answered faces at all.
+	///  </p>
+	bool facesPending;
+
 	///  Description of the image used to display this whole album in a listing.
 	ThumbnailInfo? indexPicture;
 
@@ -375,6 +393,7 @@ class AlbumInfo extends FolderResource {
 			this.subTitle = "", 
 			this.date = 0, 
 			this.effectiveDate = 0, 
+			this.facesPending = false, 
 			this.indexPicture, 
 			this.parts = const [], 
 			this.imageByName = const {}, 
@@ -419,6 +438,10 @@ class AlbumInfo extends FolderResource {
 				effectiveDate = json.expectInt();
 				break;
 			}
+			case "facesPending": {
+				facesPending = json.expectBool();
+				break;
+			}
 			case "indexPicture": {
 				indexPicture = json.tryNull() ? null : ThumbnailInfo.read(json);
 				break;
@@ -458,6 +481,9 @@ class AlbumInfo extends FolderResource {
 
 		json.addKey("effectiveDate");
 		json.addNumber(effectiveDate);
+
+		json.addKey("facesPending");
+		json.addBool(facesPending);
 
 		var _indexPicture = indexPicture;
 		if (_indexPicture != null) {
@@ -975,6 +1001,22 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	String contributorLabel;
 
+	///  The faces the server found in this photograph, see issue #124.
+	/// 
+	///  <p>
+	///  Empty for a video (videos are never looked at), for a space whose face index is switched off,
+	///  and for every caller that is not a signed-in member: an anonymous visitor of an open space and
+	///  a share link are answered no face at all, in the spirit of issue #96.
+	///  </p>
+	/// 
+	///  <p>
+	///  Derived on every read from the album's <code>.vacache/faces.json</code> and never stored: the
+	///  server clears this field before an <code>index.json</code> is written, exactly like
+	///  {@link #contributor}, so a round trip through a client can neither freeze a detection into the
+	///  album nor lose one. The embeddings the detection produced never leave the server.
+	///  </p>
+	List<FaceInfo> faces;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -996,6 +1038,7 @@ class ImagePart extends AbstractImage {
 			this.group, 
 			this.contributor = "", 
 			this.contributorLabel = "", 
+			this.faces = const [], 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1068,6 +1111,19 @@ class ImagePart extends AbstractImage {
 				contributorLabel = json.expectString();
 				break;
 			}
+			case "faces": {
+				json.expectArray();
+				faces = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = FaceInfo.read(json);
+						if (value != null) {
+							faces.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1117,10 +1173,138 @@ class ImagePart extends AbstractImage {
 
 		json.addKey("contributorLabel");
 		json.addString(contributorLabel);
+
+		json.addKey("faces");
+		json.startArray();
+		for (var _element in faces) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 	@override
 	R visitAbstractImage<R, A>(AbstractImageVisitor<R, A> v, A arg) => v.visitImagePart(this, arg);
+
+}
+
+///  One face found in an {@link ImagePart}, see issue #124.
+class FaceInfo extends _JsonObject {
+	///  The position of this face among the faces of its image, counting from zero.
+	/// 
+	///  <p>
+	///  What <code>?type=face&amp;face=&lt;index&gt;</code> asks the crop of. It is the position in
+	///  {@link ImagePart#faces} as the server found them and is stable while the image and the model
+	///  are; a re-detection may renumber them, which is why it is never a name.
+	///  </p>
+	int index;
+
+	///  The left edge of the face, as a fraction of the image width.
+	/// 
+	///  <p>
+	///  The box is normalised to <code>0..1</code> in the <em>raw raster of the file</em> — the pixels
+	///  as they are stored, before the EXIF orientation and before
+	///  {@link ImagePart#orientation}. So a rotation the user applies changes nothing stored, and a
+	///  client draws the box by applying to it the very transform it applies to the picture.
+	///  </p>
+	double x;
+
+	///  The top edge of the face, as a fraction of the image height, see {@link #x}.
+	double y;
+
+	///  The width of the face, as a fraction of the image width, see {@link #x}.
+	double w;
+
+	///  The height of the face, as a fraction of the image height, see {@link #x}.
+	double h;
+
+	///  Which group of faces of this album the server believes this face belongs to.
+	/// 
+	///  <p>
+	///  An identifier of the album's clustering, not of a person: it says &quot;these faces are most
+	///  likely the same person&quot; and nothing about who that is. It is stable only as far as the
+	///  set of faces of the album is; naming a person is issue #125. Empty while the album is not
+	///  clustered yet.
+	///  </p>
+	String cluster;
+
+	/// Creates a FaceInfo.
+	FaceInfo({
+			this.index = 0, 
+			this.x = 0.0, 
+			this.y = 0.0, 
+			this.w = 0.0, 
+			this.h = 0.0, 
+			this.cluster = "", 
+	});
+
+	/// Parses a FaceInfo from a string source.
+	static FaceInfo? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a FaceInfo instance from the given reader.
+	static FaceInfo read(JsonReader json) {
+		FaceInfo result = FaceInfo();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "FaceInfo";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "index": {
+				index = json.expectInt();
+				break;
+			}
+			case "x": {
+				x = json.expectDouble();
+				break;
+			}
+			case "y": {
+				y = json.expectDouble();
+				break;
+			}
+			case "w": {
+				w = json.expectDouble();
+				break;
+			}
+			case "h": {
+				h = json.expectDouble();
+				break;
+			}
+			case "cluster": {
+				cluster = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("index");
+		json.addNumber(index);
+
+		json.addKey("x");
+		json.addNumber(x);
+
+		json.addKey("y");
+		json.addNumber(y);
+
+		json.addKey("w");
+		json.addNumber(w);
+
+		json.addKey("h");
+		json.addNumber(h);
+
+		json.addKey("cluster");
+		json.addString(cluster);
+	}
 
 }
 
@@ -2053,6 +2237,18 @@ class AuthInfo extends _JsonObject {
 	///  </p>
 	String mapUrl;
 
+	///  Whether this space has the face index switched on, see issue #124.
+	/// 
+	///  <p>
+	///  A property of the <em>space</em>, read from its <code>.valbum/space.json</code>
+	///  (<code>faces: off|on</code>, missing means off) and answered here because
+	///  <code>?type=auth</code> is the one request the application makes anyway. Processing the
+	///  biometrics of one's family is the administrator's decision, so nothing is detected and nothing
+	///  is offered until they made it. <code>false</code> also where the space asked for it but the
+	///  machine cannot load the detector at all.
+	///  </p>
+	bool faces;
+
 	///  The share link this caller opened, <code>null</code> for everybody else (issue #51).
 	/// 
 	///  <p>
@@ -2083,6 +2279,7 @@ class AuthInfo extends _JsonObject {
 			this.clearance = "", 
 			this.mayShare = false, 
 			this.mapUrl = "", 
+			this.faces = false, 
 			this.share, 
 			this.invitation, 
 	});
@@ -2141,6 +2338,10 @@ class AuthInfo extends _JsonObject {
 				mapUrl = json.expectString();
 				break;
 			}
+			case "faces": {
+				faces = json.expectBool();
+				break;
+			}
 			case "share": {
 				share = json.tryNull() ? null : ShareInfo.read(json);
 				break;
@@ -2183,6 +2384,9 @@ class AuthInfo extends _JsonObject {
 
 		json.addKey("mapUrl");
 		json.addString(mapUrl);
+
+		json.addKey("faces");
+		json.addBool(faces);
 
 		var _share = share;
 		if (_share != null) {

@@ -164,6 +164,39 @@ and exits. It is refused, with nothing moved, if the owner already has a space, 
 is not empty, or the name is not a valid folder name. Once the library is migrated, anonymous
 callers are refused in every mode but `off`, because the base folder then holds only user spaces.
 
+### Faces (opt-in, off by default)
+
+The server can look for faces in the photographs of a space, group the faces of an album into the
+people they most likely are, and answer a crop of each of them. It does **nothing of the sort until
+you switch it on**, per space, by hand:
+
+```json
+{ "version": 1, "faces": "on" }
+```
+
+in `<space>/.valbum/space.json` (any other value, and a missing one, means off). Processing the
+biometrics of one's own family is the administrator's decision, not a default somebody is surprised
+by.
+
+With it on, one low-priority thread per space walks the library once and then keeps out of the way,
+looking at each photograph's **preview** — never the original, never a video, not even its poster
+frame. What it finds goes into the album's own `.vacache/faces.json`: a box for each face, the
+numbers the recogniser describes it by, and which group of the album's faces it was put into. That
+file is **cache** — recomputable from the pixels plus the model version it is stamped with — so
+`POST <folder>/?action=refresh-cache` throws it away like any preview, and nothing about faces is
+ever written into an album's `index.json`.
+
+What leaves the server is a box and a group, `ImagePart.faces`, and a JPEG crop at
+`GET <image>?type=face&face=<n>`. **The embeddings never leave the server**, and faces are answered
+to **signed-in members only**: an anonymous visitor of an open space and a share link are answered
+the album exactly as before, without a single face. `?type=auth` says whether a space has this
+switched on at all.
+
+The detector is YuNet and the recogniser SFace, two small ONNX models bundled with the server (their
+sources and licences are in `image-server/src/main/resources/de/haumacher/imageServer/faces/NOTICE.txt`),
+run through the OpenCV that already comes with the video renditions. A machine whose OpenCV does not
+load says so in one line at start-up and serves albums without faces.
+
 ### Moving images and albums
 
 In edit mode, a selection of images can be moved to another album, and an album or folder to

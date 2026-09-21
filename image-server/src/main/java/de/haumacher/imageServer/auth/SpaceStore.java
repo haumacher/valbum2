@@ -31,14 +31,16 @@ import java.nio.file.StandardCopyOption;
  * </p>
  *
  * <pre>
- * {"version":1,"name":"Alice","anonymous":"public","mapUrl":"https://www.google.com/maps?q={lat},{lon}"}
+ * {"version":1,"name":"Alice","anonymous":"public","mapUrl":"https://www.google.com/maps?q={lat},{lon}",
+ *  "faces":"on"}
  * </pre>
  *
  * <p>
  * Everything is optional: a file holding nothing but <code>{}</code> is a space with the folder's
- * own name, no anonymous access and the default map (issue #112). An unknown
- * <code>anonymous</code> value is read as {@link #ANONYMOUS_NONE}, the closed one — a space is
- * never opened by a typo.
+ * own name, no anonymous access, the default map (issue #112) and no face index (issue #124). An
+ * unknown <code>anonymous</code> value is read as {@link #ANONYMOUS_NONE}, the closed one, and an
+ * unknown <code>faces</code> value as {@link #FACES_OFF} — a space is never opened and never made
+ * to process biometrics by a typo.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -53,6 +55,19 @@ public class SpaceStore {
 
 	/** An anonymous caller may look at the public images of this space. */
 	public static final String ANONYMOUS_PUBLIC = "public";
+
+	/** Nothing in this space is ever looked at for faces, see issue #124. */
+	public static final String FACES_OFF = "off";
+
+	/**
+	 * The server detects the faces in the photographs of this space, see issue #124.
+	 *
+	 * <p>
+	 * Opt-in, and off wherever the file does not say this word: processing the biometrics of one's
+	 * family is the administrator's decision, never a default somebody is surprised by.
+	 * </p>
+	 */
+	public static final String FACES_ON = "on";
 
 	/**
 	 * Where a position is shown when the space names no map of its own, see issue #112.
@@ -77,6 +92,8 @@ public class SpaceStore {
 
 	private static final String MAP_URL__PROP = "mapUrl";
 
+	private static final String FACES__PROP = "faces";
+
 	/** What a space says about itself. */
 	public static final class Config {
 
@@ -86,21 +103,51 @@ public class SpaceStore {
 
 		private final String _mapUrl;
 
+		private final String _faces;
+
 		/** Creates a {@link Config} with the default map, see {@link SpaceStore#DEFAULT_MAP_URL}. */
 		public Config(String name, String anonymous) {
 			this(name, anonymous, "");
 		}
 
 		/**
-		 * Creates a {@link Config}.
+		 * Creates a {@link Config} without a face index, see {@link SpaceStore#FACES_OFF}.
 		 *
 		 * @param mapUrl
 		 *        The map template of this space; the empty string for {@link #DEFAULT_MAP_URL}.
 		 */
 		public Config(String name, String anonymous, String mapUrl) {
+			this(name, anonymous, mapUrl, FACES_OFF);
+		}
+
+		/**
+		 * Creates a {@link Config}.
+		 *
+		 * @param faces
+		 *        {@link SpaceStore#FACES_ON} or {@link SpaceStore#FACES_OFF}; anything else is off.
+		 */
+		public Config(String name, String anonymous, String mapUrl, String faces) {
 			_name = name;
 			_anonymous = anonymous;
 			_mapUrl = mapUrl == null || mapUrl.trim().isEmpty() ? DEFAULT_MAP_URL : mapUrl.trim();
+			_faces = FACES_ON.equals(faces) ? FACES_ON : FACES_OFF;
+		}
+
+		/** {@link SpaceStore#FACES_OFF} or {@link SpaceStore#FACES_ON}, see issue #124. */
+		public String getFaces() {
+			return _faces;
+		}
+
+		/**
+		 * Whether the server looks for faces in the photographs of this space, see issue #124.
+		 *
+		 * <p>
+		 * <code>false</code> unless the file says <code>"faces":"on"</code>: an unknown value, a
+		 * missing one and a file that is not there at all all mean no.
+		 * </p>
+		 */
+		public boolean isFacesEnabled() {
+			return FACES_ON.equals(_faces);
 		}
 
 		/** The name to show for this space; the folder name when the file gives none. */
@@ -132,7 +179,8 @@ public class SpaceStore {
 
 		@Override
 		public String toString() {
-			return "Space[" + _name + ", anonymous=" + _anonymous + ", map=" + _mapUrl + "]";
+			return "Space[" + _name + ", anonymous=" + _anonymous + ", map=" + _mapUrl + ", faces="
+				+ _faces + "]";
 		}
 	}
 
@@ -163,6 +211,7 @@ public class SpaceStore {
 		String name = "";
 		String anonymous = "";
 		String mapUrl = "";
+		String faces = "";
 		try (Reader reader = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8);
 				JsonReader in = new JsonReader(new ReaderAdapter(reader))) {
 			in.beginObject();
@@ -178,6 +227,9 @@ public class SpaceStore {
 					case MAP_URL__PROP:
 						mapUrl = in.nextString();
 						break;
+					case FACES__PROP:
+						faces = in.nextString();
+						break;
 					default:
 						in.skipValue();
 						break;
@@ -188,7 +240,7 @@ public class SpaceStore {
 			throw new IOException("Cannot read '" + file + "': " + ex.getMessage(), ex);
 		}
 		return new Config(name.trim().isEmpty() ? folderName : name.trim(),
-			ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE, mapUrl);
+			ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE, mapUrl, faces.trim());
 	}
 
 	/**
@@ -215,6 +267,8 @@ public class SpaceStore {
 			out.value(config.getAnonymous());
 			out.name(MAP_URL__PROP);
 			out.value(config.getMapUrl());
+			out.name(FACES__PROP);
+			out.value(config.getFaces());
 			out.endObject();
 		}
 		Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);

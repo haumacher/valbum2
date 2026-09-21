@@ -30,6 +30,9 @@ public class AlbumInfo extends FolderResource {
 	/** @see #getEffectiveDate() */
 	private static final String EFFECTIVE_DATE__PROP = "effectiveDate";
 
+	/** @see #isFacesPending() */
+	private static final String FACES_PENDING__PROP = "facesPending";
+
 	/** @see #getIndexPicture() */
 	private static final String INDEX_PICTURE__PROP = "indexPicture";
 
@@ -45,6 +48,8 @@ public class AlbumInfo extends FolderResource {
 	private long _date = 0L;
 
 	private long _effectiveDate = 0L;
+
+	private boolean _facesPending = false;
 
 	private de.haumacher.imageServer.shared.model.ThumbnailInfo _indexPicture = null;
 
@@ -194,6 +199,41 @@ public class AlbumInfo extends FolderResource {
 	/** Internal setter for {@link #getEffectiveDate()} without chain call utility. */
 	protected final void internalSetEffectiveDate(long value) {
 		_effectiveDate = value;
+	}
+
+	/**
+	 * Whether the server is still looking for faces in this album, see issue #124.
+	 *
+	 * <p>
+	 * <code>true</code> while the space has the face index switched on
+	 * (<code>space.json</code> <code>faces: on</code>) and not every photograph of this album is
+	 * indexed yet, so that the application can say &quot;still looking&quot; and come back, exactly
+	 * as it comes back for a video rendition that is not ready (issue #74). The
+	 * {@link ImagePart#getFaces()} that are already known are answered meanwhile.
+	 * </p>
+	 *
+	 * <p>
+	 * On the album and not on a listing entry, because the album is what the face editor of issue
+	 * #126 stands in: a listing shows folders, and a folder tile has nothing to do with a face.
+	 * Derived on every read and never stored, exactly like {@link #getEffectiveDate()}, and answered
+	 * only to a caller that is answered faces at all.
+	 * </p>
+	 */
+	public final boolean isFacesPending() {
+		return _facesPending;
+	}
+
+	/**
+	 * @see #isFacesPending()
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo setFacesPending(boolean value) {
+		internalSetFacesPending(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isFacesPending()} without chain call utility. */
+	protected final void internalSetFacesPending(boolean value) {
+		_facesPending = value;
 	}
 
 	/**
@@ -375,6 +415,8 @@ public class AlbumInfo extends FolderResource {
 		out.value(getDate());
 		out.name(EFFECTIVE_DATE__PROP);
 		out.value(getEffectiveDate());
+		out.name(FACES_PENDING__PROP);
+		out.value(isFacesPending());
 		if (hasIndexPicture()) {
 			out.name(INDEX_PICTURE__PROP);
 			getIndexPicture().writeTo(out);
@@ -395,6 +437,7 @@ public class AlbumInfo extends FolderResource {
 			case SUB_TITLE__PROP: setSubTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case DATE__PROP: setDate(in.nextLong()); break;
 			case EFFECTIVE_DATE__PROP: setEffectiveDate(in.nextLong()); break;
+			case FACES_PENDING__PROP: setFacesPending(in.nextBoolean()); break;
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			case PARTS__PROP: {
 				in.beginArray();
