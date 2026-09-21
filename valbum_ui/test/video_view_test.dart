@@ -206,7 +206,7 @@ void main() {
       find.text("http://server/valbum/data/album/clip.mp4"),
       findsOneWidget,
     );
-    expect(find.text(videoErrorHeadline), findsOneWidget);
+    expect(find.text(testL10n.videoCannotPlay), findsOneWidget);
     expect(find.textContaining("No player for"), findsNothing);
 
     // The poster stays visible behind the message.
@@ -223,7 +223,7 @@ void main() {
     await pumpVideo(tester);
 
     expect(find.byKey(const Key("video-error")), findsOneWidget);
-    expect(find.text(videoErrorHeadline), findsOneWidget);
+    expect(find.text(testL10n.videoCannotPlay), findsOneWidget);
     expect(find.textContaining("PlatformException"), findsNothing);
     expect(
       shownUrls(tester),

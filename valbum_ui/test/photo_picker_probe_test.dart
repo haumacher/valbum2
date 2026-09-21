@@ -158,20 +158,20 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(photoItemKey("jan-2.jpg")));
     await tester.pumpAndSettle();
-    expect(find.text("2 ausgewählt"), findsOneWidget);
+    expect(find.text(testL10n.photoPickerSelected(2)), findsOneWidget);
 
     // Into the other album and back: the two are still selected, and the
     // other album's photo adds a third.
-    await tester.tap(find.byTooltip("Alle Alben"));
+    await tester.tap(find.byTooltip(testL10n.allAlbums));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(photoAlbumKey("Sonstiges")));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(photoItemKey("x-1.jpg")));
     await tester.pumpAndSettle();
-    expect(find.text("3 ausgewählt"), findsOneWidget);
+    expect(find.text(testL10n.photoPickerSelected(3)), findsOneWidget);
 
     var button = tester.widget<FilledButton>(find.byKey(photoPickerUploadKey));
     expect(button.onPressed, isNotNull);
-    expect(find.text("3 Fotos hochladen"), findsOneWidget);
+    expect(find.text(testL10n.photoPickerUpload(3)), findsOneWidget);
   });
 }

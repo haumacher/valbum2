@@ -8,6 +8,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The tile of the group member with the given file name.
 Finder memberTile(String name) => find.byKey(ValueKey("group-tile-$name"));
@@ -70,14 +71,14 @@ void main() {
     expect(find.byIcon(Icons.chevron_right), findsNothing);
     await tap(tester, find.byIcon(Icons.chevron_left));
     expect(shownUrl(tester), endsWith("/group-a.jpg"));
-    expect(find.byTooltip("Dieses Bild ist das Gruppenbild"), findsOneWidget);
+    expect(find.byTooltip(testL10n.groupPictureIsThis), findsOneWidget);
     await tap(tester, find.byIcon(Icons.chevron_right));
     expect(shownUrl(tester), endsWith("/group-b.jpg"));
 
     // ... and offers to make the shown image the representative.
-    expect(find.byTooltip("Als Gruppenbild verwenden"), findsOneWidget);
-    await tap(tester, find.byTooltip("Als Gruppenbild verwenden"));
-    expect(find.byTooltip("Dieses Bild ist das Gruppenbild"), findsOneWidget);
+    expect(find.byTooltip(testL10n.useAsGroupPicture), findsOneWidget);
+    await tap(tester, find.byTooltip(testL10n.useAsGroupPicture));
+    expect(find.byTooltip(testL10n.groupPictureIsThis), findsOneWidget);
 
     // Up: out of the group and straight back to the album, in one step — the
     // alternatives view is reached from the tile, not on the way out
@@ -116,7 +117,7 @@ void main() {
 
     expect(shownUrl(tester), endsWith("/group-b.jpg"));
     expect(find.byIcon(Icons.chevron_left), findsOneWidget);
-    expect(find.byTooltip("Als Gruppenbild verwenden"), findsNothing);
-    expect(find.byTooltip("Dieses Bild ist das Gruppenbild"), findsNothing);
+    expect(find.byTooltip(testL10n.useAsGroupPicture), findsNothing);
+    expect(find.byTooltip(testL10n.groupPictureIsThis), findsNothing);
   });
 }

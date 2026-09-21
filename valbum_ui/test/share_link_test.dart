@@ -412,7 +412,10 @@ void main() {
       expect(find.text("Party"), findsOneWidget);
       expect(find.textContaining("View, Download"), findsOneWidget);
       expect(find.textContaining("up to members"), findsOneWidget);
-      expect(find.textContaining("Schlecht and better"), findsOneWidget);
+      expect(
+        find.textContaining(testL10n.ratingFloorAtLeast(testL10n.ratingPoor)),
+        findsOneWidget,
+      );
       expect(find.textContaining("never expires"), findsOneWidget);
       expect(find.textContaining("public only"), findsOneWidget);
       // The inherited one says where it was made, and offers no withdrawal.

@@ -115,7 +115,7 @@ void main() {
         tester
             .widget<Text>(find.byKey(const Key("video-error-diagnostics")))
             .data,
-        videoErrorDiagnosticsHint,
+        testL10n.videoDiagnosticsHint,
       );
     });
 
@@ -125,7 +125,7 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(const Key("video-error-hint"))).data,
-        videoNetworkHint,
+        testL10n.videoNetworkHint,
       );
     });
 
@@ -143,7 +143,7 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(const Key("video-error-hint"))).data,
-        videoFormatHint,
+        testL10n.videoFormatHint,
       );
     });
 
@@ -303,8 +303,11 @@ void main() {
         "Response code: 401",
       ]) {
         expect(
-          videoErrorHint(PlatformException(code: "VideoError", message: message)),
-          videoNetworkHint,
+          videoErrorHint(
+            testL10n,
+            PlatformException(code: "VideoError", message: message),
+          ),
+          testL10n.videoNetworkHint,
           reason: message,
         );
       }
@@ -323,22 +326,28 @@ void main() {
         "MediaCodecVideoRenderer: format unsupported",
       ]) {
         expect(
-          videoErrorHint(PlatformException(code: "VideoError", message: message)),
-          videoFormatHint,
+          videoErrorHint(
+            testL10n,
+            PlatformException(code: "VideoError", message: message),
+          ),
+          testL10n.videoFormatHint,
           reason: message,
         );
       }
     });
 
     test('answers nothing where the message says nothing it knows', () {
-      expect(videoErrorHint(StateError("no player for this URL")), isNull);
       expect(
-        videoErrorHint(
+        videoErrorHint(testL10n, StateError("no player for this URL")),
+        isNull,
+      );
+      expect(
+        videoErrorHint(testL10n, 
           PlatformException(code: "VideoError", message: "Video player had error"),
         ),
         isNull,
       );
-      expect(videoErrorHint("42"), isNull);
+      expect(videoErrorHint(testL10n, "42"), isNull);
     });
   });
 }

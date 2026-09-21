@@ -1265,5 +1265,712 @@
   "@shareLinkRefusal": {
     "description": "Shown when a share link is pasted where a server is asked for",
     "x-translated": "d415a5ec"
+  },
+  "close": "Close",
+  "@close": {
+    "description": "Button closing a dialog",
+    "x-translated": "d2c0aec0"
+  },
+  "create": "Create",
+  "@create": {
+    "description": "Button creating what the dialog asked for",
+    "x-translated": "887ae5cd"
+  },
+  "back": "Back",
+  "@back": {
+    "description": "Tooltip of the way back out of a screen",
+    "x-translated": "cdfc6e09"
+  },
+  "stop": "Stop",
+  "@stop": {
+    "description": "Button asking a running transfer to stop",
+    "x-translated": "1964b988"
+  },
+  "sharedAlbumFallback": "Shared album",
+  "@sharedAlbumFallback": {
+    "description": "How a share link with no label of its own and no album name is called",
+    "x-translated": "25b3e7b2"
+  },
+  "ratingVeryGood": "Very good",
+  "@ratingVeryGood": {
+    "description": "The best of the five rating levels",
+    "x-translated": "a491a10c"
+  },
+  "ratingGood": "Good",
+  "@ratingGood": {
+    "description": "The second of the five rating levels",
+    "x-translated": "ccb6e1ac"
+  },
+  "ratingUnrated": "Unrated",
+  "@ratingUnrated": {
+    "description": "The middle rating level: no rating given",
+    "x-translated": "df5aaea2"
+  },
+  "ratingPoor": "Poor",
+  "@ratingPoor": {
+    "description": "The fourth of the five rating levels",
+    "x-translated": "f5ac3bdb"
+  },
+  "ratingTrash": "Trash",
+  "@ratingTrash": {
+    "description": "The lowest rating level, the waste basket",
+    "x-translated": "c4e99449"
+  },
+  "ratingFloorEveryPhoto": "every photo",
+  "@ratingFloorEveryPhoto": {
+    "description": "Says that a share link shows the photos of every rating",
+    "x-translated": "e51bcf84"
+  },
+  "ratingFloorAtLeast": "at least {rating}",
+  "@ratingFloorAtLeast": {
+    "description": "Says which rating a share link shows from upwards",
+    "placeholders": {
+      "rating": {
+        "type": "String",
+        "example": "Good"
+      }
+    },
+    "x-translated": "e7f6101b"
+  },
+  "shareContinueToStart": "Continue to the start page",
+  "@shareContinueToStart": {
+    "description": "Button leaving a dead invitation page for the ordinary start",
+    "x-translated": "76613dfe"
+  },
+  "shareBackToAlbum": "Back to the shared album",
+  "@shareBackToAlbum": {
+    "description": "Button leading back to the root of what a share link opens",
+    "x-translated": "49ec786d"
+  },
+  "expiryNever": "Never",
+  "@expiryNever": {
+    "description": "Choice: the link never expires",
+    "x-translated": "dbe48d14"
+  },
+  "expiryOneDay": "1 day",
+  "@expiryOneDay": {
+    "description": "Choice: expires after one day",
+    "x-translated": "e0b03997"
+  },
+  "expiryOneWeek": "1 week",
+  "@expiryOneWeek": {
+    "description": "Choice: expires after one week",
+    "x-translated": "c53bec73"
+  },
+  "expiryOneMonth": "1 month",
+  "@expiryOneMonth": {
+    "description": "Choice: expires after one month",
+    "x-translated": "dc4093b5"
+  },
+  "expiryPickDate": "A date…",
+  "@expiryPickDate": {
+    "description": "Choice opening a date picker for the day a link expires",
+    "x-translated": "c43d0ed3"
+  },
+  "shareDialogTitle": "Share {name} by link",
+  "@shareDialogTitle": {
+    "description": "Title of the dialog listing and making the links of one folder",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "'Holiday 2024'"
+      }
+    },
+    "x-translated": "342f5015"
+  },
+  "shareTargetTopLevel": "the top level",
+  "@shareTargetTopLevel": {
+    "description": "How the root folder is named in the share dialog's title",
+    "x-translated": "2631bd11"
+  },
+  "linksHeading": "Links",
+  "@linksHeading": {
+    "description": "Heading above the share links covering a folder",
+    "x-translated": "10438e1c"
+  },
+  "noLinksYet": "No links yet.",
+  "@noLinksYet": {
+    "description": "Shown where no share link covers this folder",
+    "x-translated": "6057d92b"
+  },
+  "linkNoLabel": "(no label)",
+  "@linkNoLabel": {
+    "description": "Stands in the list for a share link its author gave no label",
+    "x-translated": "627ae1b7"
+  },
+  "withdrawTooltip": "Withdraw…",
+  "@withdrawTooltip": {
+    "description": "Tooltip of the button taking a share link back",
+    "x-translated": "7c48e79a"
+  },
+  "linkNeverExpires": "never expires",
+  "@linkNeverExpires": {
+    "description": "Part of a link's description: it has no expiry",
+    "x-translated": "4a1ae207"
+  },
+  "linkUpToMembers": "up to members",
+  "@linkUpToMembers": {
+    "description": "Part of a link's description: it shows what members see",
+    "x-translated": "57bb8376"
+  },
+  "linkPublicOnly": "public only",
+  "@linkPublicOnly": {
+    "description": "Part of a link's description: it shows only public photos",
+    "x-translated": "e006069f"
+  },
+  "linkWithdrawnOn": "withdrawn {day}",
+  "@linkWithdrawnOn": {
+    "description": "Says on which day a share link was taken back",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "12 Mar 2024"
+      }
+    },
+    "x-translated": "bc15fa80"
+  },
+  "linkInheritedFrom": "inherited from {folder}, withdraw it there",
+  "@linkInheritedFrom": {
+    "description": "Says that a link was made on a folder further up",
+    "placeholders": {
+      "folder": {
+        "type": "String",
+        "example": "'Holidays'"
+      }
+    },
+    "x-translated": "d145e9ed"
+  },
+  "shareWholeSpace": "the whole space",
+  "@shareWholeSpace": {
+    "description": "How a link covering the root of a space names its folder",
+    "x-translated": "cf5f37a4"
+  },
+  "newLinkTile": "New link…",
+  "@newLinkTile": {
+    "description": "Entry opening the form of a new share link",
+    "x-translated": "b25bdb0e"
+  },
+  "newLinkHeading": "New link",
+  "@newLinkHeading": {
+    "description": "Heading above the form of a new share link",
+    "x-translated": "40b53864"
+  },
+  "linkLabelLabel": "Label",
+  "@linkLabelLabel": {
+    "description": "Field naming a share link in its author's own list",
+    "x-translated": "cf667fec"
+  },
+  "linkLabelHelp": "What this link is, for your own list.",
+  "@linkLabelHelp": {
+    "description": "Explains the label field of a new share link",
+    "x-translated": "47e6d295"
+  },
+  "expiresHeading": "Expires",
+  "@expiresHeading": {
+    "description": "Heading above the choices of how long a link or invitation lives",
+    "x-translated": "55215110"
+  },
+  "showsHeading": "Shows",
+  "@showsHeading": {
+    "description": "Heading above the choices of what a share link shows",
+    "x-translated": "adfade40"
+  },
+  "privacyPublicOnly": "Public photos only",
+  "@privacyPublicOnly": {
+    "description": "Choice: the link shows only the photos marked public",
+    "x-translated": "3440df6b"
+  },
+  "privacyUpToMembers": "Up to what members see",
+  "@privacyUpToMembers": {
+    "description": "Choice: the link shows what a member of the space sees",
+    "x-translated": "a1b26568"
+  },
+  "privacyMembersNote": "A private photo is never shown through a link.",
+  "@privacyMembersNote": {
+    "description": "Explains the ceiling of what any share link can show",
+    "x-translated": "648455b4"
+  },
+  "lowestRatingHeading": "Lowest rating",
+  "@lowestRatingHeading": {
+    "description": "Heading above the rating floor of a new share link",
+    "x-translated": "d590cb88"
+  },
+  "linkNeverEdits": "A link never allows editing.",
+  "@linkNeverEdits": {
+    "description": "Says that a share link can never carry the right to edit",
+    "x-translated": "bdea4fc0"
+  },
+  "createLink": "Create link",
+  "@createLink": {
+    "description": "Button making the share link the form describes",
+    "x-translated": "4a13fc51"
+  },
+  "theLinkHeading": "The link",
+  "@theLinkHeading": {
+    "description": "Heading above the URL of a share link that was just made",
+    "x-translated": "8207d7d7"
+  },
+  "shareLinkOnce": "Copy it now: the server keeps only its fingerprint and can never show it again. A lost link is withdrawn and made anew.",
+  "@shareLinkOnce": {
+    "description": "Warns that the share link URL is shown exactly once",
+    "x-translated": "ce285204"
+  },
+  "linkCopied": "The link was copied.",
+  "@linkCopied": {
+    "description": "Said after the share link URL went to the clipboard",
+    "x-translated": "71e4a312"
+  },
+  "withdrawLinkTitle": "Withdraw the link?",
+  "@withdrawLinkTitle": {
+    "description": "Title of the dialog confirming that a share link is taken back",
+    "x-translated": "fa6bf55f"
+  },
+  "withdrawLinkMessage": "Anybody holding {link} stops seeing the album at once. This cannot be undone; a new link can be made instead.",
+  "@withdrawLinkMessage": {
+    "description": "Explains what taking a share link back does",
+    "placeholders": {
+      "link": {
+        "type": "String",
+        "example": "'For grandma'"
+      }
+    },
+    "x-translated": "ffa9ad1b"
+  },
+  "withdrawLinkThisLink": "this link",
+  "@withdrawLinkThisLink": {
+    "description": "How a share link with no label is named in the withdraw question",
+    "x-translated": "df922c9"
+  },
+  "invitationGuestNote": "A guest has no albums of their own: their library is what others share with them.",
+  "@invitationGuestNote": {
+    "description": "Explains the retired guest role on the welcome screen of an invitation",
+    "x-translated": "b5799c90"
+  },
+  "deviceNameHelp": "Which of your devices this is.",
+  "@deviceNameHelp": {
+    "description": "Explains the device name field",
+    "x-translated": "63324f41"
+  },
+  "joining": "Joining...",
+  "@joining": {
+    "description": "Shown while the invitation is being accepted",
+    "x-translated": "b7ef0a4f"
+  },
+  "joinAction": "Join",
+  "@joinAction": {
+    "description": "Button accepting an invitation",
+    "x-translated": "885377e9"
+  },
+  "invitationJoinedAs": "You're in as {user}.",
+  "@invitationJoinedAs": {
+    "description": "Said after an invitation was accepted",
+    "placeholders": {
+      "user": {
+        "type": "String",
+        "example": "Alice"
+      }
+    },
+    "x-translated": "1b20fed4"
+  },
+  "invitationSignedInNote": "This device is signed in; your albums are yours from now on.",
+  "@invitationSignedInNote": {
+    "description": "Said below the welcome after an invitation was accepted",
+    "x-translated": "d36e47bd"
+  },
+  "openYourAlbums": "Open your albums",
+  "@openYourAlbums": {
+    "description": "Button leaving the invitation page for the album",
+    "x-translated": "d57610e7"
+  },
+  "invitationChooseName": "Choose the name you want to be known by.",
+  "@invitationChooseName": {
+    "description": "Refusal shown where the invited person named nobody",
+    "x-translated": "feeb0a27"
+  },
+  "inviteDialogTitle": "Invite somebody",
+  "@inviteDialogTitle": {
+    "description": "Title of the dialog issuing an invitation",
+    "x-translated": "3847b612"
+  },
+  "inviteRecipientLabel": "For whom",
+  "@inviteRecipientLabel": {
+    "description": "Field holding the inviter's own note about whom an invitation is for",
+    "x-translated": "114fc3f1"
+  },
+  "inviteRecipientHelp": "A note to yourself: whom this invitation is for. Optional.",
+  "@inviteRecipientHelp": {
+    "description": "Explains the recipient field of an invitation",
+    "x-translated": "98fa5790"
+  },
+  "inviteNoteLabel": "Note",
+  "@inviteNoteLabel": {
+    "description": "Field holding what the invited person reads",
+    "x-translated": "6f8f552a"
+  },
+  "inviteNoteHelp": "What the invited person reads when they open the link.",
+  "@inviteNoteHelp": {
+    "description": "Explains the note field of an invitation",
+    "x-translated": "1c633612"
+  },
+  "createInvitation": "Create invitation",
+  "@createInvitation": {
+    "description": "Button issuing the invitation the form describes",
+    "x-translated": "a1294789"
+  },
+  "theInvitationHeading": "The invitation",
+  "@theInvitationHeading": {
+    "description": "Heading above the URL of an invitation that was just issued",
+    "x-translated": "9f16a969"
+  },
+  "invitationValidUntil": "Valid until {day}, and for one person.",
+  "@invitationValidUntil": {
+    "description": "Says how long an invitation lives",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "12 Mar 2024"
+      }
+    },
+    "x-translated": "669827fc"
+  },
+  "invitationOnce": "Send it now: the server keeps only its fingerprint and can never show it again. A lost invitation is withdrawn and made anew.",
+  "@invitationOnce": {
+    "description": "Warns that the invitation URL is shown exactly once",
+    "x-translated": "3168843a"
+  },
+  "invitationCopied": "The invitation was copied.",
+  "@invitationCopied": {
+    "description": "Said after the invitation URL went to the clipboard",
+    "x-translated": "d58c1fed"
+  },
+  "inboxNotChosen": "No album chosen - new photos go into '{name}'",
+  "@inboxNotChosen": {
+    "description": "Says where the camera roll uploads while no album was chosen",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Inbox"
+      }
+    },
+    "x-translated": "8d048d6e"
+  },
+  "cameraRollHeading": "Camera roll",
+  "@cameraRollHeading": {
+    "description": "Heading of the camera-roll section of the server settings",
+    "x-translated": "5940b64b"
+  },
+  "cameraRollExplanation": "New photos taken on this device are uploaded into an album of the library. Nothing is uploaded twice: the server is asked for the content of every photo before it is transferred.",
+  "@cameraRollExplanation": {
+    "description": "Explains what the camera-roll sync does",
+    "x-translated": "68ff4f22"
+  },
+  "cameraRollUploadNew": "Upload new photos",
+  "@cameraRollUploadNew": {
+    "description": "Switch enabling the camera-roll sync",
+    "x-translated": "2594e45"
+  },
+  "noPhotoLibrary": "No photo library on this platform",
+  "@noPhotoLibrary": {
+    "description": "Said where the device has no photo library at all",
+    "x-translated": "8f42cc08"
+  },
+  "onlyOverWifi": "Only over Wi-Fi",
+  "@onlyOverWifi": {
+    "description": "Switch limiting the camera-roll sync to Wi-Fi",
+    "x-translated": "8c10f66e"
+  },
+  "onlyOverWifiExplanation": "New photos wait for a Wi-Fi or a wired connection, so that the upload does not eat into a mobile data plan.",
+  "@onlyOverWifiExplanation": {
+    "description": "Explains the Wi-Fi-only switch",
+    "x-translated": "c6b3c229"
+  },
+  "chooseAction": "Choose...",
+  "@chooseAction": {
+    "description": "Button opening the picker of the album new photos go into",
+    "x-translated": "d1cce3c6"
+  },
+  "syncNow": "Sync now",
+  "@syncNow": {
+    "description": "Button starting a camera-roll sync at once",
+    "x-translated": "e56807e0"
+  },
+  "syncAnyway": "Sync anyway",
+  "@syncAnyway": {
+    "description": "Button starting a sync although the server is still indexing",
+    "x-translated": "72e37707"
+  },
+  "albumsToSync": "Albums to sync",
+  "@albumsToSync": {
+    "description": "Heading above the device albums the sync watches",
+    "x-translated": "eb325e90"
+  },
+  "photoCount": "{count, plural, =1{1 photo} other{{count} photos}}",
+  "@photoCount": {
+    "description": "How many photos an album of the device holds",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "85cbe1ac"
+  },
+  "saveServerFirst": "Save the server URL first, then choose an album on it.",
+  "@saveServerFirst": {
+    "description": "Refusal shown where an album is chosen before a server is known",
+    "x-translated": "4e52220c"
+  },
+  "inboxAlbumTitle": "Inbox album",
+  "@inboxAlbumTitle": {
+    "description": "Title of the dialog choosing the album new photos go into",
+    "x-translated": "5563bb54"
+  },
+  "cannotList": "Cannot list: {problem}",
+  "@cannotList": {
+    "description": "Said where the folders of a server cannot be read",
+    "placeholders": {
+      "problem": {
+        "type": "String",
+        "example": "Connection refused"
+      }
+    },
+    "x-translated": "8176f63d"
+  },
+  "newAlbumAction": "New album...",
+  "@newAlbumAction": {
+    "description": "Button creating an album in the folder shown",
+    "x-translated": "1d778334"
+  },
+  "useThisAlbum": "Use this album",
+  "@useThisAlbum": {
+    "description": "Button choosing the folder shown as the inbox",
+    "x-translated": "b16bb3a2"
+  },
+  "libraryBreadcrumb": "Library",
+  "@libraryBreadcrumb": {
+    "description": "The root of the library in the breadcrumb of the inbox picker",
+    "x-translated": "6e3da120"
+  },
+  "noFoldersHere": "No folders here yet - create one below.",
+  "@noFoldersHere": {
+    "description": "Said where a folder of the library holds no folders",
+    "x-translated": "24e0dae7"
+  },
+  "folderIsAlbum": "This is the album '{title}'. New photos land here.",
+  "@folderIsAlbum": {
+    "description": "Said where the inbox picker stands in an album",
+    "placeholders": {
+      "title": {
+        "type": "String",
+        "example": "Inbox"
+      }
+    },
+    "x-translated": "e237e541"
+  },
+  "nothingToShow": "Nothing to show here.",
+  "@nothingToShow": {
+    "description": "Said where the server answered something the picker cannot show",
+    "x-translated": "6af6f11"
+  },
+  "newAlbumTitle": "New album",
+  "@newAlbumTitle": {
+    "description": "Title of the dialog asking for the name of a new album",
+    "x-translated": "b98b1029"
+  },
+  "folderNameLabel": "Folder name",
+  "@folderNameLabel": {
+    "description": "Field holding the name of the folder an album is written to",
+    "x-translated": "baa2a0da"
+  },
+  "cannotCreateFolder": "Cannot create '{name}': {problem}",
+  "@cannotCreateFolder": {
+    "description": "Said where an album could not be created",
+    "placeholders": {
+      "problem": {
+        "type": "String",
+        "example": "Connection refused"
+      },
+      "name": {
+        "type": "String",
+        "example": "Inbox"
+      }
+    },
+    "x-translated": "ed5aec9d"
+  },
+  "backToAlbum": "Back to the album",
+  "@backToAlbum": {
+    "description": "Tooltip of the way out of the alternatives view",
+    "x-translated": "d080c56b"
+  },
+  "groupPicture": "Group picture",
+  "@groupPicture": {
+    "description": "Tooltip of the image representing a group in the album",
+    "x-translated": "56d5d34c"
+  },
+  "groupPictureIsThis": "This image is the group picture",
+  "@groupPictureIsThis": {
+    "description": "Tooltip of the button while the image shown represents its group",
+    "x-translated": "8d1b1b58"
+  },
+  "useAsGroupPicture": "Use as group picture",
+  "@useAsGroupPicture": {
+    "description": "Button making the image shown represent its group",
+    "x-translated": "a0d8f653"
+  },
+  "videoPreparing": "The video is being prepared…",
+  "@videoPreparing": {
+    "description": "Said while the server is still making the video rendition",
+    "x-translated": "3428caa5"
+  },
+  "videoPlayOriginal": "Play the original",
+  "@videoPlayOriginal": {
+    "description": "Button playing the original file instead of waiting",
+    "x-translated": "232de50d"
+  },
+  "videoCannotPlay": "Cannot play this video.",
+  "@videoCannotPlay": {
+    "description": "Headline shown where a video cannot be played",
+    "x-translated": "e6e8fac0"
+  },
+  "videoNetworkHint": "The server could not be reached, or it refused the video.",
+  "@videoNetworkHint": {
+    "description": "Hint below the video refusal where the video never arrived",
+    "x-translated": "6f3cd07e"
+  },
+  "videoFormatHint": "This device cannot play the format of this video.",
+  "@videoFormatHint": {
+    "description": "Hint below the video refusal where the format cannot be decoded",
+    "x-translated": "5b0fe9c4"
+  },
+  "videoDiagnosticsHint": "The technical details are in the diagnostics log of the server settings.",
+  "@videoDiagnosticsHint": {
+    "description": "Says where the raw failure of a video can be read",
+    "x-translated": "e172920f"
+  },
+  "pause": "Pause",
+  "@pause": {
+    "description": "Tooltip of the button pausing a video",
+    "x-translated": "165bbde9"
+  },
+  "play": "Play",
+  "@play": {
+    "description": "Tooltip of the button playing a video",
+    "x-translated": "febb7184"
+  },
+  "photoPickerEntry": "From the phone's photo library...",
+  "@photoPickerEntry": {
+    "description": "Menu entry opening the app's own picker over the photo library",
+    "x-translated": "f28f709a"
+  },
+  "systemPickerEntry": "Choose files... (max. 100)",
+  "@systemPickerEntry": {
+    "description": "Menu entry opening the system's file picker",
+    "x-translated": "8e59adcd"
+  },
+  "photoLibraryTitle": "Photo library",
+  "@photoLibraryTitle": {
+    "description": "Title of the screen picking photos off the device",
+    "x-translated": "526e47f8"
+  },
+  "allAlbums": "All albums",
+  "@allAlbums": {
+    "description": "Tooltip leading back to the list of the device's albums",
+    "x-translated": "257c1cdc"
+  },
+  "selectAll": "All",
+  "@selectAll": {
+    "description": "Button selecting every photo shown",
+    "x-translated": "355373d"
+  },
+  "selectNone": "None",
+  "@selectNone": {
+    "description": "Button clearing the selection",
+    "x-translated": "dfa2aff1"
+  },
+  "photoLibraryNoAccess": "No access to the photo library of this device.",
+  "@photoLibraryNoAccess": {
+    "description": "Said where the device refused access to its photos",
+    "x-translated": "b6b85c7a"
+  },
+  "photoLibraryUnreadable": "The photo library cannot be read: {problem}",
+  "@photoLibraryUnreadable": {
+    "description": "Said where the photo library answered with a failure",
+    "placeholders": {
+      "problem": {
+        "type": "String",
+        "example": "PlatformException"
+      }
+    },
+    "x-translated": "a64ec25c"
+  },
+  "photoAlbumUnreadable": "The album cannot be read: {problem}",
+  "@photoAlbumUnreadable": {
+    "description": "Said where one album of the device answered with a failure",
+    "placeholders": {
+      "problem": {
+        "type": "String",
+        "example": "PlatformException"
+      }
+    },
+    "x-translated": "769dbd17"
+  },
+  "photoLibraryNoAlbums": "The photo library of this device holds no albums.",
+  "@photoLibraryNoAlbums": {
+    "description": "Said where the device names no album at all",
+    "x-translated": "61b44d12"
+  },
+  "photoAlbumEmpty": "This album holds no photos.",
+  "@photoAlbumEmpty": {
+    "description": "Said where an album of the device holds nothing",
+    "x-translated": "46b63bdf"
+  },
+  "photoPickerSelected": "{count, plural, =0{Nothing selected} =1{1 selected} other{{count} selected}}",
+  "@photoPickerSelected": {
+    "description": "Says how many photos of the device are selected",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "3a642ced"
+  },
+  "photoPickerUpload": "{count, plural, =1{Upload 1 photo} other{Upload {count} photos}}",
+  "@photoPickerUpload": {
+    "description": "Button uploading the photos selected on the device",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "7de92580"
+  },
+  "uploadProgressTitle": "Upload photos",
+  "@uploadProgressTitle": {
+    "description": "Title of the dialog an upload runs behind",
+    "x-translated": "2c095b56"
+  },
+  "scanCodeTitle": "Scan a device code",
+  "@scanCodeTitle": {
+    "description": "Title of the camera page reading a device code",
+    "x-translated": "e9b1f0f6"
+  },
+  "scanCodeAdvice": "Point the camera at the code shown under My devices on the device you are already signed in on.",
+  "@scanCodeAdvice": {
+    "description": "Says what to point the camera at while scanning a device code",
+    "x-translated": "acc463d4"
+  },
+  "cameraNotAllowed": "This app is not allowed to use the camera. Allow it in the system settings, or type the code instead.",
+  "@cameraNotAllowed": {
+    "description": "Said where the camera permission was refused",
+    "x-translated": "bb93360e"
+  },
+  "cameraUnsupported": "This device cannot scan a code. Type it instead.",
+  "@cameraUnsupported": {
+    "description": "Said where the device has no camera to scan with",
+    "x-translated": "f7dc7b5a"
+  },
+  "cameraNotOpened": "The camera could not be opened. Type the code instead.",
+  "@cameraNotOpened": {
+    "description": "Said where the camera failed for a reason the plugin does not name",
+    "x-translated": "c08fd863"
   }
 }

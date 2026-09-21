@@ -25,11 +25,6 @@ const Key deviceCodeScannerRefusalKey =
 /// The key of the line saying why the camera cannot be used at all.
 const Key deviceCodeScannerErrorKey = Key("settings.deviceCode.scanner.error");
 
-/// What the scanner says while nothing has been read yet.
-const String deviceCodeScanAdvice =
-    "Point the camera at the code shown under My devices on the device you "
-    "are already signed in on.";
-
 /// Reads a device code off the camera of the device.
 class PluginDeviceCodeScanner extends DeviceCodeScanner {
   const PluginDeviceCodeScanner();
@@ -105,47 +100,50 @@ class DeviceCodeScannerPageState extends State<DeviceCodeScannerPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        key: deviceCodeScannerPageKey,
-        appBar: AppBar(
-          title: const Text("Scan a device code"),
-          leading: IconButton(
-            icon: const Icon(Icons.close),
-            tooltip: "Close",
-            onPressed: () => Navigator.of(context).pop(),
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return Scaffold(
+      key: deviceCodeScannerPageKey,
+      appBar: AppBar(
+        title: Text(l10n.scanCodeTitle),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          tooltip: l10n.close,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: MobileScanner(
+              controller: controller,
+              onDetect: _detected,
+              errorBuilder: (context, error) => _cameraProblem(error),
+            ),
           ),
-        ),
-        body: Stack(
-          children: [
-            Positioned.fill(
-              child: MobileScanner(
-                controller: controller,
-                onDetect: _detected,
-                errorBuilder: (context, error) => _cameraProblem(error),
-              ),
-            ),
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 24,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _banner(context, deviceCodeScanAdvice, null),
-                  if (_refusal != null) ...[
-                    const SizedBox(height: 8),
-                    _banner(
-                      context,
-                      _refusal!,
-                      deviceCodeScannerRefusalKey,
-                    ),
-                  ],
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 24,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _banner(context, l10n.scanCodeAdvice, null),
+                if (_refusal != null) ...[
+                  const SizedBox(height: 8),
+                  _banner(
+                    context,
+                    _refusal!,
+                    deviceCodeScannerRefusalKey,
+                  ),
                 ],
-              ),
+              ],
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
+  }
 
   /// A line of text readable over a camera preview.
   Widget _banner(BuildContext context, String message, Key? key) =>
@@ -168,14 +166,11 @@ class DeviceCodeScannerPageState extends State<DeviceCodeScannerPage> {
   /// Why the camera cannot be used, in the plugin's own words where it has
   /// any.
   Widget _cameraProblem(MobileScannerException error) {
+    var l10n = AppLocalizations.of(context)!;
     var reason = switch (error.errorCode) {
-      MobileScannerErrorCode.permissionDenied =>
-        "This app is not allowed to use the camera. Allow it in the system "
-            "settings, or type the code instead.",
-      MobileScannerErrorCode.unsupported =>
-        "This device cannot scan a code. Type it instead.",
-      _ => error.errorDetails?.message ??
-          "The camera could not be opened. Type the code instead.",
+      MobileScannerErrorCode.permissionDenied => l10n.cameraNotAllowed,
+      MobileScannerErrorCode.unsupported => l10n.cameraUnsupported,
+      _ => error.errorDetails?.message ?? l10n.cameraNotOpened,
     };
     return ColoredBox(
       color: Colors.black,

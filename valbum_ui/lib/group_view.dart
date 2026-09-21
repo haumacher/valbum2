@@ -18,6 +18,7 @@ import 'album_model.dart';
 import 'album_view.dart';
 import 'client.dart';
 import 'image_view.dart';
+import 'l10n/app_localizations.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
 
@@ -61,7 +62,7 @@ class GroupView extends StatelessWidget {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          tooltip: "Zurück zum Album",
+          tooltip: AppLocalizations.of(context)!.backToAlbum,
           onPressed: onUp,
         ),
       ),
@@ -111,12 +112,12 @@ class GroupView extends StatelessWidget {
           // The representative stands out, so that the choice can be checked
           // here, where all alternatives are seen side by side.
           if (identical(group.images[group.representative], self))
-            const Positioned(
+            Positioned(
               right: 8,
               top: 8,
               child: Tooltip(
-                message: "Gruppenbild",
-                child: Icon(
+                message: AppLocalizations.of(context)!.groupPicture,
+                child: const Icon(
                   Icons.check_circle,
                   key: Key("group-representative"),
                   color: Colors.amberAccent,
@@ -190,6 +191,7 @@ class GroupDetailView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var onSetRepresentative = this.onSetRepresentative;
+    var l10n = AppLocalizations.of(context)!;
     return ImageView(
       client: client,
       baseUrl: baseUrl,
@@ -207,8 +209,8 @@ class GroupDetailView extends StatelessWidget {
           imageOverlayButton(
             isRepresentative ? Icons.check_circle : Icons.check_circle_outline,
             isRepresentative
-                ? "Dieses Bild ist das Gruppenbild"
-                : "Als Gruppenbild verwenden",
+                ? l10n.groupPictureIsThis
+                : l10n.useAsGroupPicture,
             onSetRepresentative,
             color: isRepresentative ? Colors.amberAccent : Colors.white,
           ),

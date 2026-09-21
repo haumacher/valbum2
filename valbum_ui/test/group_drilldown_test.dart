@@ -20,6 +20,7 @@ import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// An album of four plain images, so that three of them can be grouped.
 const String fourImages = '''
@@ -142,12 +143,12 @@ void main() {
     await tap(tester, tool("b.jpg", Icons.join_left));
 
     // The created-from image is the representative already ...
-    expect(find.byTooltip("Dieses Bild ist das Gruppenbild"), findsOneWidget);
+    expect(find.byTooltip(testL10n.groupPictureIsThis), findsOneWidget);
     // ... until another of the shots is chosen.
     await press(tester, LogicalKeyboardKey.arrowRight);
-    expect(find.byTooltip("Als Gruppenbild verwenden"), findsOneWidget);
-    await tap(tester, find.byTooltip("Als Gruppenbild verwenden"));
-    expect(find.byTooltip("Dieses Bild ist das Gruppenbild"), findsOneWidget);
+    expect(find.byTooltip(testL10n.useAsGroupPicture), findsOneWidget);
+    await tap(tester, find.byTooltip(testL10n.useAsGroupPicture));
+    expect(find.byTooltip(testL10n.groupPictureIsThis), findsOneWidget);
 
     // Nothing was written yet: this is the album's editing buffer.
     expect(requests.where((r) => r.method == "PUT"), isEmpty);

@@ -30,16 +30,27 @@ const List<String> generatedArbs = ["lib/l10n/app_de.arb"];
 /// The files whose every user-facing word comes from `AppLocalizations`.
 ///
 /// Slice 1 of issue #108: the server settings screen and everything it is
-/// made of. A later slice adds its own files here, and the test below then
-/// holds them to the same rule.
+/// made of. Slice 2: the share link, the share session, the camera-roll
+/// section with its inbox picker, the alternatives view, the video player,
+/// the in-app photo picker, the upload dialog and the code scanner. A later
+/// slice adds its own files here, and the test below then holds them to the
+/// same rule.
 const List<String> convertedFiles = [
   "lib/caller.dart",
+  "lib/camera_roll_view.dart",
   "lib/device_code_scanner.dart",
+  "lib/device_code_scanner_plugin.dart",
   "lib/first_screen.dart",
+  "lib/group_view.dart",
   "lib/manage_view.dart",
+  "lib/photo_picker_view.dart",
   "lib/settings.dart",
+  "lib/share_session.dart",
+  "lib/share_view.dart",
   "lib/sign_in_form.dart",
+  "lib/upload_progress.dart",
   "lib/urls.dart",
+  "lib/video_view.dart",
 ];
 
 /// The literals a converted file may still hold, and why.
@@ -68,6 +79,23 @@ const Map<String, String> allowedLiterals = {
   r"${} (${})": "punctuation around a localized message",
   // The countdown of a device code: digits and a colon.
   r"${}:${}": "a duration, not a sentence",
+  // The diagnostics log of the video renditions, issues #73/#74: English in
+  // a bug report, like every other line of `diagnostics.dart`.
+  r"video rendition ${} !! ${}": "diagnostics log",
+  r"video rendition ${} unavailable${}": "diagnostics log",
+  r"video ${} !! ${}": "diagnostics log",
+  // The words a player's own failure is classified by, see `videoErrorHint`:
+  // they are matched against the platform's English message, which no
+  // translation of this app ever changes, and none of them is ever shown.
+  "renderer error": "keyword of the video failure classification",
+  "no suitable": "keyword of the video failure classification",
+  "source error": "keyword of the video failure classification",
+  "unable to connect": "keyword of the video failure classification",
+  "failed to connect": "keyword of the video failure classification",
+  "connect timed out": "keyword of the video failure classification",
+  "response code": "keyword of the video failure classification",
+  "unknown host": "keyword of the video failure classification",
+  "not permitted": "keyword of the video failure classification",
 };
 
 /// The message of an exception a converted file throws, and why it may be
@@ -103,8 +131,16 @@ List<String> keysOf(Map<String, dynamic> arb) => [
     ];
 
 /// The placeholders an ICU message names.
+///
+/// A placeholder is `{name}` or the argument of a plural, `{name, plural,
+/// …}` — the name is followed by a `}` or a `,` and by nothing else. The
+/// branches of a plural open a brace of their own (`=1{1 photo}`,
+/// `other{{count} photos}`), and the first word of such a branch is text,
+/// not a placeholder: reading it as one would make two languages that say
+/// the same thing differently look like a renamed placeholder.
 Set<String> placeholdersOf(String message) => {
-      for (var match in RegExp(r"\{(\w+)").allMatches(message)) match.group(1)!,
+      for (var match in RegExp(r"\{(\w+)\s*[},]").allMatches(message))
+        match.group(1)!,
     };
 
 /// [source] without its comments.

@@ -48,27 +48,30 @@ String shown(WidgetTester tester) => tester
 void main() {
   test('classifies the messages Android really produces', () {
     expect(
-      videoErrorHint(PlatformException(
+      videoErrorHint(testL10n, PlatformException(
           code: "VideoError",
           message:
               "Video player had error com.google.android.exoplayer2.ExoPlaybackException: Source error")),
       "The server could not be reached, or it refused the video.",
     );
     expect(
-      videoErrorHint("java.io.IOException: Cleartext HTTP traffic to 192.168.1.5 not permitted"),
+      videoErrorHint(testL10n, "java.io.IOException: Cleartext HTTP traffic to 192.168.1.5 not permitted"),
       "The server could not be reached, or it refused the video.",
     );
     expect(
-      videoErrorHint("ExoPlaybackException: Source error ... UnrecognizedInputFormatException: None of the available extractors could read the stream"),
+      videoErrorHint(testL10n, "ExoPlaybackException: Source error ... UnrecognizedInputFormatException: None of the available extractors could read the stream"),
       "This device cannot play the format of this video.",
       reason: "an unreadable container is a format problem even though ExoPlayer calls it a source error",
     );
     expect(
-      videoErrorHint("MediaCodecVideoRenderer error, index=0, format=Format(...)"),
+      videoErrorHint(testL10n, "MediaCodecVideoRenderer error, index=0, format=Format(...)"),
       "This device cannot play the format of this video.",
     );
-    expect(videoErrorHint("boom"), isNull);
-    expect(videoErrorHint(StateError("something else entirely")), isNull);
+    expect(videoErrorHint(testL10n, "boom"), isNull);
+    expect(
+      videoErrorHint(testL10n, StateError("something else entirely")),
+      isNull,
+    );
   });
 
   testWidgets('a share token in the video URL never reaches the log or the screen raw',
