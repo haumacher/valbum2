@@ -269,6 +269,7 @@ class ImageViewState extends State<ImageView>
   @override
   void dispose() {
     _snapBack.dispose();
+    _releasePictures();
     if (_immersive) {
       _leaveImmersive();
     }
@@ -465,28 +466,74 @@ class ImageViewState extends State<ImageView>
         mayDownload: rights.mayDownload,
       );
 
-  /// Fetches and decodes the pictures of [previous] and [next] (issue #101).
+  /// The pictures held decoded for this viewer, by image name (issue #148).
+  ///
+  /// The shown one and its two neighbours, each kept alive by a listener on
+  /// its own [ImageStream], see [prefetchNeighbours].
+  final Map<String, _PinnedPicture> _pinned = {};
+
+  /// Fetches, decodes and **pins** the pictures around the shown one (#101).
   ///
   /// Paging then paints the neighbour from the [ImageCache] in the very frame
   /// the route changes, instead of leaving the screen empty for as long as an
-  /// original takes to arrive. Exactly two — the memory of a phone is not an
-  /// album — and the same provider the display would use, so that the picture
-  /// really is a cache hit and not a second download.
+  /// original takes to arrive. Exactly three — the shown picture and its two
+  /// neighbours, because the memory of a phone is not an album — and the same
+  /// provider the display would use ([pictureOf]), so that the picture really
+  /// is a cache hit and not a second download.
+  ///
+  /// Caching alone was not enough (issue #148): the [ImageCache] drops a
+  /// decoded picture that does not fit into `maximumSizeBytes`, and a decoded
+  /// 24 MP original is 96 MB of the 100 MB budget, so the second prefetch
+  /// evicted the first and paging showed the underlay while the original was
+  /// fetched and decoded again. A completer with a **live listener** is held
+  /// regardless of that budget and is handed out by `putIfAbsent`
+  /// synchronously, so the [Image] of [buildContent] finds it in its very
+  /// first build (`wasSynchronouslyLoaded`) and paints the sharp picture at
+  /// once. Raising the budget instead would cost the memory on every device,
+  /// and decoding at display size would take the detail zooming needs.
   ///
   /// A video is left alone: what the viewer shows of one is the player, whose
-  /// poster is the thumbnail the album has anyway. A prefetch that fails is
-  /// simply not cached and never reported — nobody asked for it.
+  /// poster is the thumbnail the album has anyway. A pin that fails is
+  /// released and never reported — nobody asked for it.
   void prefetchNeighbours() {
-    for (var neighbour in [previous, next]) {
-      if (neighbour == null) {
+    var wanted = <String, ImagePart>{};
+    for (var image in [widget.image, previous, next]) {
+      if (image == null) {
         continue;
       }
-      var image = ToImage.toImage(neighbour);
-      if (image.kind != ImageKind.image) {
+      var picture = ToImage.toImage(image);
+      if (picture.kind != ImageKind.image) {
         continue;
       }
-      precacheImage(pictureOf(image), context, onError: (error, stack) {});
+      wanted[picture.name] = picture;
     }
+    // What has paged out of reach lets go of its memory.
+    for (var name in _pinned.keys.toList()) {
+      if (!wanted.containsKey(name)) {
+        _pinned.remove(name)!.release();
+      }
+    }
+    var configuration = createLocalImageConfiguration(context);
+    for (var entry in wanted.entries) {
+      _pinned.putIfAbsent(
+        entry.key,
+        () => _PinnedPicture(
+          pictureOf(entry.value).resolve(configuration),
+          // A picture that never arrives is simply not held, see above. The
+          // pin lets go of itself, so a failure that is answered before the
+          // entry is even stored leaves nothing behind.
+          onFailed: () => _pinned.remove(entry.key),
+        ),
+      );
+    }
+  }
+
+  /// Lets go of every picture this viewer held, see [prefetchNeighbours].
+  void _releasePictures() {
+    for (var pin in _pinned.values) {
+      pin.release();
+    }
+    _pinned.clear();
   }
 
   /// Says once that the picture could not be delivered, see
@@ -1392,5 +1439,42 @@ class _FaceRegionsState extends State<FaceRegions> {
             : const SizedBox.expand(),
       ),
     );
+  }
+}
+
+/// One decoded picture the viewer holds in memory, see
+/// [ImageViewState.prefetchNeighbours] and issue #148.
+///
+/// A listener on the [ImageStream] is the whole mechanism: the [ImageCache]
+/// keeps a completer that has one in its live map whatever its size budget
+/// says, and hands it to the next [Image] naming the same key without a round
+/// trip. Removing the listener gives the picture back to the budget.
+class _PinnedPicture {
+  final ImageStream _stream;
+  late final ImageStreamListener _listener;
+
+  /// Whether the listener was already taken off, so that [release] may be
+  /// called from both ends — a failure and the page change — exactly once.
+  bool _released = false;
+
+  _PinnedPicture(this._stream, {required void Function() onFailed}) {
+    _listener = ImageStreamListener(
+      // Nothing to do: holding the picture *is* the purpose.
+      (image, synchronousCall) {},
+      onError: (error, stackTrace) {
+        release();
+        onFailed();
+      },
+    );
+    _stream.addListener(_listener);
+  }
+
+  /// Lets the [ImageCache] have the picture back.
+  void release() {
+    if (_released) {
+      return;
+    }
+    _released = true;
+    _stream.removeListener(_listener);
   }
 }
