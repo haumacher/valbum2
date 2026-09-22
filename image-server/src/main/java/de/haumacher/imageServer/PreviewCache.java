@@ -443,14 +443,9 @@ public class PreviewCache {
 				int origWidth = dimension.getWidth();
 				int origHeight = dimension.getHeight();
 
-				int previewHeight;
-				double unitWidth = ((double) origWidth) / origHeight;
-				if (unitWidth <= MAX_PORTRAIT_UNIT_WIDTH) {
-					previewHeight = PREVIEW_HEIGHT_PORTRAIT;
-				} else {
-					previewHeight = PREVIEW_HEIGHT;
-				}
-				int previewWidth = ((int) Math.round(previewHeight / dimension.getRatio()));
+				int[] box = previewBox(origWidth, origHeight);
+				int previewWidth = box[0];
+				int previewHeight = box[1];
 
 				BufferedImage orig =
 					read(reader, subsampling(origWidth, origHeight, previewWidth, previewHeight));
@@ -481,6 +476,33 @@ public class PreviewCache {
 				reader.dispose();
 			}
 		}
+	}
+
+	/**
+	 * The size of the canvas the preview of a picture of the given display size is drawn into, as
+	 * <code>{width, height}</code> in pixels.
+	 *
+	 * <p>
+	 * The one rule that says how large a preview is: {@value #PREVIEW_HEIGHT} pixels high, twice
+	 * that for a portrait, and as wide as the picture's own aspect makes it. It is a method rather
+	 * than arithmetic inside the generator because the face index of issue #140 has to know how
+	 * large a face lands on the preview <em>before</em> deciding whether to look at the original,
+	 * and a second copy of this rule would be a second answer to that question.
+	 * </p>
+	 *
+	 * @param displayWidth
+	 *        The width of the picture as the viewer sees it, the EXIF orientation applied.
+	 * @param displayHeight
+	 *        Its height, likewise.
+	 */
+	public static int[] previewBox(int displayWidth, int displayHeight) {
+		if (displayWidth <= 0 || displayHeight <= 0) {
+			return new int[] { PREVIEW_HEIGHT, PREVIEW_HEIGHT };
+		}
+		double unitWidth = ((double) displayWidth) / displayHeight;
+		int previewHeight = unitWidth <= MAX_PORTRAIT_UNIT_WIDTH ? PREVIEW_HEIGHT_PORTRAIT : PREVIEW_HEIGHT;
+		int previewWidth = Math.max(1, (int) Math.round(previewHeight * unitWidth));
+		return new int[] { previewWidth, previewHeight };
 	}
 
 	/**

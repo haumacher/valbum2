@@ -45,7 +45,8 @@ import java.util.logging.Logger;
  * <pre>
  * {"version":1,"model":"yunet-2022mar+sface-2021dec/1","files":{
  *   "&lt;sha256&gt;":{"faces":[{"box":{"x":0.31,"y":0.12,"w":0.2,"h":0.27},"score":0.99,
- *                            "embedding":"&lt;base64 of 128 little-endian float32&gt;"}],
+ *                            "embedding":"&lt;base64 of 128 little-endian float32&gt;",
+ *                            "refined":true}],
  *                 "cluster":["c1"]}}}
  * </pre>
  *
@@ -97,6 +98,8 @@ public class FaceCache {
 
 	private static final String EMBEDDING__PROP = "embedding";
 
+	private static final String REFINED__PROP = "refined";
+
 	private static final String X__PROP = "x";
 
 	private static final String Y__PROP = "y";
@@ -120,16 +123,28 @@ public class FaceCache {
 
 		private final float[] _embedding;
 
+		private final boolean _refined;
+
 		private String _cluster = "";
 
 		/** Creates a {@link Face} from a box in the raw raster of the file, see {@link Faces}. */
 		public Face(double x, double y, double w, double h, double score, float[] embedding) {
+			this(x, y, w, h, score, embedding, false);
+		}
+
+		/**
+		 * Creates a {@link Face} that says whether it was described at the best resolution this
+		 * build knows, see issue #140.
+		 */
+		public Face(double x, double y, double w, double h, double score, float[] embedding,
+				boolean refined) {
 			_x = x;
 			_y = y;
 			_w = w;
 			_h = h;
 			_score = score;
 			_embedding = embedding == null ? new float[0] : embedding;
+			_refined = refined;
 		}
 
 		/** The left edge, as a fraction of the raw file width. */
@@ -160,6 +175,21 @@ public class FaceCache {
 		/** The numbers the recogniser describes this face with; never answered on the wire. */
 		public float[] getEmbedding() {
 			return _embedding;
+		}
+
+		/**
+		 * Whether this face was described at the best resolution this build knows, see issue #140.
+		 *
+		 * <p>
+		 * True for a face that was looked up in the original because it was smaller than
+		 * {@link FaceDetection#REFINE_PIXELS} on the preview, and for one that was large enough on
+		 * the preview to need no such look. False — which is what an entry written before issue #140
+		 * reads as, the field being absent there — means that a pass may still have something to
+		 * gain here, see {@link FaceIndex}.
+		 * </p>
+		 */
+		public boolean isRefined() {
+			return _refined;
 		}
 
 		/** Which group of the album's faces this one was put into; empty before clustering. */
@@ -341,6 +371,7 @@ public class FaceCache {
 		double h = 0;
 		double score = 0;
 		float[] embedding = new float[0];
+		boolean refined = false;
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -366,13 +397,16 @@ public class FaceCache {
 				case EMBEDDING__PROP:
 					embedding = decode(in.nextString());
 					break;
+				case REFINED__PROP:
+					refined = in.nextBoolean();
+					break;
 				default:
 					in.skipValue();
 					break;
 			}
 		}
 		in.endObject();
-		return new Face(x, y, w, h, score, embedding);
+		return new Face(x, y, w, h, score, embedding, refined);
 	}
 
 	private void store() throws IOException {
@@ -410,6 +444,11 @@ public class FaceCache {
 					out.value(face.getScore());
 					out.name(EMBEDDING__PROP);
 					out.value(encode(face.getEmbedding()));
+					if (face.isRefined()) {
+						// Absent is false, so a file this build writes is read by an older one.
+						out.name(REFINED__PROP);
+						out.value(true);
+					}
 					out.endObject();
 				}
 				out.endArray();
