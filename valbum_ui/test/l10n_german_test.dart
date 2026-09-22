@@ -389,10 +389,20 @@ void sliceTwo() {
 
       expect(find.text(de.personsNameEntry), findsOneWidget);
       expect(find.text(de.personsDeferEntry), findsOneWidget);
+      // "Kein Gesicht" (issue #144) is also the heading of the group behind
+      // the menu, so this one is asked for by its key.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key("persons-not-a-face")),
+          matching: find.text(de.personsNotAFaceEntry),
+        ),
+        findsOneWidget,
+      );
 
       var en = l10nOf(const Locale("en"));
       expect(find.text(en.personsNameEntry), findsNothing);
       expect(find.text(en.personsDeferEntry), findsNothing);
+      expect(find.text(en.personsNotAFaceEntry), findsNothing);
     });
 
     testWidgets('the entries linking a person to a member', (tester) async {
