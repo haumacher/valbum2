@@ -465,9 +465,9 @@ public class PreviewCache {
 				double scaleY = Math.min(1.0, ((double) previewHeight) / decodedHeight);
 
 				AffineTransform tx = new AffineTransform();
-				tx.translate((previewWidth - rawWidth * scaleX) / 2, (previewHeight - rawHeight * scaleY) / 2);
+				tx.translate((previewWidth - decodedWidth * scaleX) / 2, (previewHeight - decodedHeight * scaleY) / 2);
 				tx.scale(scaleX, scaleY);
-				applyOrientation(tx, orientation, rawWidth / 2, rawHeight / 2);
+				tx.concatenate(orientationTransform(orientation, rawWidth, rawHeight));
 				g.setTransform(tx);
 
 				g.drawImage(orig, null, 0, 0);
@@ -571,43 +571,48 @@ public class PreviewCache {
 		return type == BufferedImage.TYPE_CUSTOM ? BufferedImage.TYPE_INT_RGB : type;
 	}
 
-	private static void applyOrientation(AffineTransform tx, Orientation orientation, int centerX, int centerY) {
-		int rotation = 0;
-		boolean flip = false;
+	/**
+	 * The transform that brings the raw raster of a file with the given EXIF orientation upright,
+	 * see issue #143.
+	 *
+	 * <p>
+	 * It maps the raw rectangle <code>[0,rawWidth] x [0,rawHeight]</code> onto the shown rectangle
+	 * <code>[0,displayWidth] x [0,displayHeight]</code> — one entry per orientation and no special
+	 * case, the pixel form of the very table {@link de.haumacher.imageServer.faces.Faces} states for
+	 * the normalised box of a face. Both have to say the same thing: a face is found on this
+	 * preview and its box written back into the raw raster by that table, so a preview drawn by
+	 * another rule would put every face in the wrong place.
+	 * </p>
+	 *
+	 * <p>
+	 * It replaces the former {@code scale(-1, 1)}, which mirrored about the axis <code>x = 0</code>
+	 * rather than about the middle of the picture and therefore drew the four mirrored orientations
+	 * (the codes 2, 4, 5 and 7) entirely <em>beside</em> the canvas: their preview was an empty
+	 * rectangle, which is why the face index of issue #124 was answered no face at all for such a
+	 * file.
+	 * </p>
+	 */
+	static AffineTransform orientationTransform(Orientation orientation, double rawWidth, double rawHeight) {
+		// u = m00 * s + m01 * t + m02, v = m10 * s + m11 * t + m12, with (s,t) the raw pixel.
 		switch (orientation) {
-			case IDENTITY:
-				break;
 			case FLIP_H:
-				flip = true;
-				break;
+				return new AffineTransform(-1, 0, 0, 1, rawWidth, 0);
 			case ROT_180:
-				rotation = 180;
-				break;
+				return new AffineTransform(-1, 0, 0, -1, rawWidth, rawHeight);
 			case FLIP_V:
-				rotation = 180;
-				flip = true;
-				break;
+				return new AffineTransform(1, 0, 0, -1, 0, rawHeight);
 			case ROT_L_FLIP_V:
-				rotation = -90;
-				flip = true;
-				break;
+				return new AffineTransform(0, 1, 1, 0, 0, 0);
 			case ROT_L:
-				rotation = 90;
-				break;
+				return new AffineTransform(0, 1, -1, 0, rawHeight, 0);
 			case ROT_L_FLIP_H:
-				rotation = 90;
-				flip = true;
-				break;
+				return new AffineTransform(0, -1, -1, 0, rawHeight, rawWidth);
 			case ROT_R:
-				rotation = -90;
-				break;
+				return new AffineTransform(0, -1, 1, 0, 0, rawWidth);
+			case IDENTITY:
 			default:
-				break;
+				return new AffineTransform();
 		}
-		if (flip) {
-			tx.scale(-1, 1);
-		}
-		tx.rotate(Math.toRadians(rotation), centerX, centerY);
 	}
 
 	private static ImageDimension getImageDimension(Metadata metadata) throws MetadataException {
