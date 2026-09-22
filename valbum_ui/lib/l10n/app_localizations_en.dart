@@ -2308,6 +2308,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get personsDeferEntry => 'Defer (new group)';
 
   @override
+  String get personsNotAFaceEntry => 'Not a face';
+
+  @override
   String get personsSomeoneElse => 'Someone else…';
 
   @override

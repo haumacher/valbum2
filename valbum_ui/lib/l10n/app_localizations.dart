@@ -3794,6 +3794,12 @@ abstract class AppLocalizations {
   /// **'Defer (new group)'**
   String get personsDeferEntry;
 
+  /// The menu entry saying that the selected boxes show no face at all
+  ///
+  /// In en, this message translates to:
+  /// **'Not a face'**
+  String get personsNotAFaceEntry;
+
   /// The button naming a different person for the faces the server only suggested
   ///
   /// In en, this message translates to:

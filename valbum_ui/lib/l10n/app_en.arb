@@ -3875,6 +3875,11 @@
     "description": "The menu entry putting the selected faces into a group of their own, to be named later",
     "x-translated": "48269ee3"
   },
+  "personsNotAFaceEntry": "Not a face",
+  "@personsNotAFaceEntry": {
+    "description": "The menu entry saying that the selected boxes show no face at all",
+    "x-translated": "21bde066"
+  },
   "personsSomeoneElse": "Someone else…",
   "@personsSomeoneElse": {
     "description": "The button naming a different person for the faces the server only suggested",

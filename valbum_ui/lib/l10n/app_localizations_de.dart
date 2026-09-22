@@ -2348,6 +2348,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get personsDeferEntry => 'Zurückstellen (neue Gruppe)';
 
   @override
+  String get personsNotAFaceEntry => 'Kein Gesicht';
+
+  @override
   String get personsSomeoneElse => 'Jemand anderes…';
 
   @override

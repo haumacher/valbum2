@@ -44,6 +44,7 @@ library;
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/scheduler.dart';
@@ -90,6 +91,40 @@ const String newGroupPrefix = "new:";
 
 /// The group of everything somebody said is no face at all.
 const String notAFaceGroup = "notAFace";
+
+/// The browser's own context menu, which must not open over a face tile
+/// (issue #144).
+///
+/// On the web a secondary click shows the browser's menu unless the app takes
+/// it away, and it would cover the tile's own menu of issue #139. It is taken
+/// away while the face editor stands open and given back when it leaves, so
+/// that the rest of the app — a text field, a link of the settings — keeps
+/// it. Off the web and where the menu is already in the wanted state, both
+/// calls are nothing at all.
+class BrowserMenu {
+  const BrowserMenu();
+
+  /// Takes the browser's context menu away, if there is one.
+  Future<void> disable() async {
+    if (kIsWeb && BrowserContextMenu.enabled) {
+      await BrowserContextMenu.disableContextMenu();
+    }
+  }
+
+  /// Gives the browser's context menu back, if there is one.
+  Future<void> enable() async {
+    if (kIsWeb && !BrowserContextMenu.enabled) {
+      await BrowserContextMenu.enableContextMenu();
+    }
+  }
+}
+
+/// The browser's context menu as this app reaches it (issue #144).
+///
+/// A seam, because `kIsWeb` is false under the test binding: a test replaces
+/// this with a double and asserts that the editor takes the menu away while
+/// it is mounted and gives it back afterwards.
+BrowserMenu browserMenu = const BrowserMenu();
 
 /// The prefix of the placement of a face whose decision was taken back.
 ///
@@ -360,6 +395,9 @@ class PersonsContentState extends State<PersonsContent>
   @override
   void initState() {
     super.initState();
+    // A right click belongs to the tile here, not to the browser (issue
+    // #144); the menu is given back in [dispose].
+    browserMenu.disable();
     _dragScroller = DragEdgeScroller(this, onScrolled: _followScrolledContent);
     _read(widget.album);
     widget.albumState.navigator.delegate
@@ -385,6 +423,7 @@ class PersonsContentState extends State<PersonsContent>
 
   @override
   void dispose() {
+    browserMenu.enable();
     _poll?.cancel();
     widget.albumState.navigator.delegate
         .unregisterPersonsGuard(path, _leaveGuard);
@@ -864,9 +903,16 @@ class PersonsContentState extends State<PersonsContent>
   }
 
   /// Puts the carried faces into the given group.
-  void drop(DraggedFaces dragged, String group) {
+  void drop(DraggedFaces dragged, String group) =>
+      putInto(dragged.faces, group);
+
+  /// Puts the given faces into the given group, clearing the selection.
+  ///
+  /// What a drop does, and what a menu entry acting on the selection does
+  /// (issue #144) — one place, so the two can never mean different things.
+  void putInto(Iterable<AlbumFace> faces, String group) {
     setState(() {
-      for (var face in dragged.faces) {
+      for (var face in faces) {
         placement[face.key] = group;
       }
       selection.clear();
@@ -892,6 +938,18 @@ class PersonsContentState extends State<PersonsContent>
       }
       selection.clear();
     });
+  }
+
+  /// Puts the given faces into "Not a face" (issue #144).
+  ///
+  /// Exactly what dropping them on that heading does — [drop] into
+  /// [notAFaceGroup] — reachable without a drag: Save posts `NOT_A_FACE` for
+  /// every one of them, see [delta].
+  void markAsNoFace(Iterable<AlbumFace> faces) {
+    if (!mayEdit) {
+      return;
+    }
+    putInto(faces, notAFaceGroup);
   }
 
   /// Takes back what was decided about the given faces (issue #138).
@@ -1383,7 +1441,12 @@ class PersonsContentState extends State<PersonsContent>
                 key: const Key("persons-selection-menu"),
                 onSelected: (action) => action(),
                 itemBuilder: (context) => selectionActions(
-                  const ["persons-name", "persons-defer", "persons-forget"],
+                  const [
+                    "persons-name",
+                    "persons-defer",
+                    "persons-not-a-face",
+                    "persons-forget",
+                  ],
                 ),
               ),
             if (mayEdit)
@@ -1456,7 +1519,7 @@ class PersonsContentState extends State<PersonsContent>
     );
   }
 
-  /// The three things that can be done to a selection (issue #139).
+  /// The things that can be done to a selection (issue #139, issue #144).
   ///
   /// One list, two places: the app bar's menu and the context menu of a tile,
   /// which must not drift apart — what a right click offers is what the menu
@@ -1472,9 +1535,14 @@ class PersonsContentState extends State<PersonsContent>
           value: () => putIntoNewGroup(selected),
           child: Text(_l10n.personsDeferEntry),
         ),
+        PopupMenuItem<void Function()>(
+          key: Key(keys[2]),
+          value: () => markAsNoFace(selected),
+          child: Text(_l10n.personsNotAFaceEntry),
+        ),
         if (mayForget)
           PopupMenuItem<void Function()>(
-            key: Key(keys[2]),
+            key: Key(keys[3]),
             value: () => forgetDecision(selected),
             child: Text(_l10n.personsForgetEntry),
           ),
@@ -1514,6 +1582,7 @@ class PersonsContentState extends State<PersonsContent>
         ...selectionActions(const [
           "persons-context-name",
           "persons-context-defer",
+          "persons-context-not-a-face",
           "persons-context-forget",
         ]),
       ],
