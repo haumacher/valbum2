@@ -91,6 +91,35 @@ public final class FaceDetection {
 	 */
 	static final double MIN_FACE_PIXELS = 40.0;
 
+	/**
+	 * How small a face may be on the preview and still be kept when the original confirms it, see
+	 * issue #140.
+	 *
+	 * <p>
+	 * Below {@link #MIN_FACE_PIXELS} the preview says almost nothing — but the file usually says a
+	 * great deal, because a face 24&nbsp;px across on a 600&nbsp;px preview of a 24&nbsp;megapixel
+	 * photograph is 240&nbsp;px in the file. Such a candidate is therefore kept <em>only</em> when
+	 * a second look at the original finds a face where the preview said one is; one that is not
+	 * confirmed is dropped, so looking further down does not mean believing more.
+	 * </p>
+	 */
+	static final double MIN_FACE_PIXELS_REFINABLE = 24.0;
+
+	/**
+	 * Below how many pixels on the preview a face is described from the original instead, see issue
+	 * #140.
+	 *
+	 * <p>
+	 * The input size of SFace: a face smaller than this reaches the recogniser upscaled, which is
+	 * exactly the loss issue #140 is about. A face at or above it is described from the preview as
+	 * before — there is nothing to gain, and the original is not opened at all.
+	 * </p>
+	 */
+	static final double REFINE_PIXELS = 112.0;
+
+	/** How well a face found in the original must meet the box the preview named. */
+	static final double REFINE_IOU = 0.3;
+
 	/** How sure the detector must be. */
 	static final float SCORE_THRESHOLD = 0.9f;
 
@@ -147,14 +176,34 @@ public final class FaceDetection {
 
 		private final float[] _embedding;
 
+		private final boolean _refined;
+
 		/** Creates a {@link Detected} face, in the pixels of the preview it was found on. */
 		public Detected(double x, double y, double w, double h, double score, float[] embedding) {
+			this(x, y, w, h, score, embedding, false);
+		}
+
+		/**
+		 * Creates a {@link Detected} face that says whether it was described from the original, see
+		 * issue #140.
+		 */
+		public Detected(double x, double y, double w, double h, double score, float[] embedding,
+				boolean refined) {
 			_x = x;
 			_y = y;
 			_w = w;
 			_h = h;
 			_score = score;
 			_embedding = embedding;
+			_refined = refined;
+		}
+
+		/**
+		 * Whether this face was looked at in the original because the preview was too small for it,
+		 * see issue #140.
+		 */
+		public boolean isRefined() {
+			return _refined;
 		}
 
 		/** The left edge of the face, in pixels of the preview. */
@@ -188,11 +237,105 @@ public final class FaceDetection {
 		}
 	}
 
+	/** What a second look at the original said about one face, in the pixels of the preview. */
+	public static final class Refined {
+
+		private final double _x;
+
+		private final double _y;
+
+		private final double _w;
+
+		private final double _h;
+
+		private final float[] _embedding;
+
+		/**
+		 * Creates a {@link Refined} face.
+		 *
+		 * <p>
+		 * The box is answered in the pixels of the <em>preview</em>, although it was measured in the
+		 * original: the refiner owns the mapping between the two frames (it had to build the region
+		 * from it), and everything in this class speaks preview pixels, so there is exactly one
+		 * place where the two frames meet, see {@link FaceIndex}.
+		 * </p>
+		 */
+		public Refined(double x, double y, double w, double h, float[] embedding) {
+			_x = x;
+			_y = y;
+			_w = w;
+			_h = h;
+			_embedding = embedding == null ? new float[0] : embedding;
+		}
+
+		/** The left edge of the face, in pixels of the preview. */
+		public double getX() {
+			return _x;
+		}
+
+		/** The top edge of the face, in pixels of the preview. */
+		public double getY() {
+			return _y;
+		}
+
+		/** The width of the face, in pixels of the preview. */
+		public double getW() {
+			return _w;
+		}
+
+		/** The height of the face, in pixels of the preview. */
+		public double getH() {
+			return _h;
+		}
+
+		/** The numbers the recogniser computed from the original; never answered on the wire. */
+		public float[] getEmbedding() {
+			return _embedding;
+		}
+	}
+
+	/**
+	 * A second look at one candidate in the original it was found in, see issue #140.
+	 *
+	 * <p>
+	 * The seam between the detector, which knows nothing but a raster, and {@link FaceIndex}, which
+	 * knows which file the preview was made from and how the two frames map onto each other. A test
+	 * stubs it to say what a refinement would have found — or that it found nothing, which is how
+	 * the rule about a candidate below {@link #MIN_FACE_PIXELS} is asked.
+	 * </p>
+	 */
+	public interface Refiner {
+
+		/**
+		 * A better description of the given candidate, or <code>null</code> when the original holds
+		 * no face where the preview said one is.
+		 *
+		 * @throws IOException
+		 *         When the original could not be looked at at all — which is not the same as
+		 *         finding nothing: the candidate keeps what the preview said and is looked at again
+		 *         on a later pass.
+		 */
+		Refined refine(Detected candidate) throws IOException;
+	}
+
 	/** What one photograph is handed to, so that a test can count calls without a model. */
 	public interface Detector {
 
 		/** The faces of the given preview image, in the pixels of that preview. */
 		Result detect(File preview) throws IOException;
+
+		/**
+		 * The same, with a way of looking at the original where the preview is too small, see issue
+		 * #140.
+		 *
+		 * <p>
+		 * A detector of a test's own answers what it always answered: it decides the boxes itself
+		 * and there is nothing about them that a second look could improve.
+		 * </p>
+		 */
+		default Result detect(File preview, Refiner refiner) throws IOException {
+			return detect(preview);
+		}
 	}
 
 	private FaceDetection() {
@@ -267,15 +410,26 @@ public final class FaceDetection {
 
 	/** The faces of the given preview image, in the pixels of that preview. */
 	public static Result detect(File preview) throws IOException {
+		return detect(preview, null);
+	}
+
+	/**
+	 * The faces of the given preview image, in the pixels of that preview, every one of them too
+	 * small on it looked up in the original, see issue #140.
+	 *
+	 * @param refiner
+	 *        How to look at the original, <code>null</code> to stay on the preview as before.
+	 */
+	public static Result detect(File preview, Refiner refiner) throws IOException {
 		Detector detector = _detector;
 		if (detector != null) {
-			return detector.detect(preview);
+			return detector.detect(preview, refiner);
 		}
 		String unavailable = unavailability();
 		if (unavailable != null) {
 			throw new IOException("Face detection is not available: " + unavailable);
 		}
-		return detectWithOpenCv(preview);
+		return detectWithOpenCv(preview, refiner);
 	}
 
 	/**
@@ -304,21 +458,21 @@ public final class FaceDetection {
 	 * index hands them one image at a time anyway.
 	 * </p>
 	 */
-	private static Result detectWithOpenCv(File preview) throws IOException {
+	private static Result detectWithOpenCv(File preview, Refiner refiner) throws IOException {
 		synchronized (LOCK) {
 			org.opencv.core.Mat image = org.opencv.imgcodecs.Imgcodecs.imread(preview.getAbsolutePath());
 			if (image == null || image.empty()) {
 				throw new IOException("Cannot read the preview '" + preview.getAbsolutePath() + "'.");
 			}
 			try {
-				return detect(image);
+				return detect(image, refiner);
 			} finally {
 				image.release();
 			}
 		}
 	}
 
-	private static Result detect(org.opencv.core.Mat image) throws IOException {
+	private static Result detect(org.opencv.core.Mat image, Refiner refiner) throws IOException {
 		org.opencv.objdetect.FaceDetectorYN yunet = (org.opencv.objdetect.FaceDetectorYN) _yunet;
 		org.opencv.objdetect.FaceRecognizerSF sface = (org.opencv.objdetect.FaceRecognizerSF) _sface;
 
@@ -343,14 +497,43 @@ public final class FaceDetection {
 					found.get(row, 0, values);
 					double w = values[2];
 					double h = values[3];
-					if (Math.min(w, h) / scale < MIN_FACE_PIXELS) {
-						// Too small on the preview to say anything about; see MIN_FACE_PIXELS.
+					double side = Math.min(w, h) / scale;
+					if (side < MIN_FACE_PIXELS_REFINABLE) {
+						// Too small on the preview for even the original to be asked about.
+						continue;
+					}
+					double score = values[found.cols() - 1];
+					// Back into the pixels of the preview itself, whatever the network was fed.
+					Detected candidate =
+						new Detected(values[0] / scale, values[1] / scale, w / scale, h / scale, score, null);
+					Refined better = null;
+					boolean looked = false;
+					if (refiner != null && side < REFINE_PIXELS) {
+						try {
+							better = refiner.refine(candidate);
+							// Looked at the original: whether it found a better face or nothing at
+							// all, there is nothing more this build can say about this one.
+							looked = true;
+						} catch (IOException | RuntimeException ex) {
+							// The original could not be read; the preview's word stands and a later
+							// pass asks again.
+							LOG.log(Level.INFO, "Cannot look at the original of '" + preview(image)
+								+ "': " + reason(ex));
+						}
+					}
+					if (better != null) {
+						faces.add(new Detected(better.getX(), better.getY(), better.getW(), better.getH(),
+							score, better.getEmbedding(), true));
+						continue;
+					}
+					if (side < MIN_FACE_PIXELS) {
+						// Small, and the original did not confirm it: no face, see
+						// MIN_FACE_PIXELS_REFINABLE.
 						continue;
 					}
 					float[] embedding = embed(sface, scaled, found.row(row));
-					// Back into the pixels of the preview itself, whatever the network was fed.
-					faces.add(new Detected(values[0] / scale, values[1] / scale, w / scale, h / scale,
-						values[found.cols() - 1], embedding));
+					faces.add(new Detected(candidate.getX(), candidate.getY(), candidate.getW(),
+						candidate.getH(), score, embedding, looked || side >= REFINE_PIXELS));
 				}
 				return new Result(image.width(), image.height(), faces);
 			} finally {
@@ -363,6 +546,132 @@ public final class FaceDetection {
 				scaled.release();
 			}
 		}
+	}
+
+	/**
+	 * The face of the given region of an original that best meets the given box, see issue #140.
+	 *
+	 * <p>
+	 * The second pass: the region was cut around a face the preview reported, so the detector is
+	 * asked the same question again on pixels ten times as many, and the answer that overlaps the
+	 * box the preview named by more than {@link #REFINE_IOU} is that face at full resolution — box,
+	 * landmarks and, through the landmarks, an embedding computed from an aligned crop that no
+	 * longer has to be scaled up. Anything else in the region is somebody else and is left to the
+	 * pass over their own preview.
+	 * </p>
+	 *
+	 * @param region
+	 *        The piece of the original, see {@link Originals}.
+	 * @param x
+	 *        The left edge of the face the preview named, in the pixels of that region.
+	 * @param y
+	 *        Its top edge, likewise.
+	 * @param w
+	 *        Its width, likewise.
+	 * @param h
+	 *        Its height, likewise.
+	 * @return The face as the region shows it, in the pixels of the region, or <code>null</code>
+	 *         when the region holds no such face.
+	 */
+	public static Refined refine(java.awt.image.BufferedImage region, double x, double y, double w, double h)
+			throws IOException {
+		String unavailable = unavailability();
+		if (unavailable != null) {
+			throw new IOException("Face detection is not available: " + unavailable);
+		}
+		synchronized (LOCK) {
+			org.opencv.objdetect.FaceDetectorYN yunet = (org.opencv.objdetect.FaceDetectorYN) _yunet;
+			org.opencv.objdetect.FaceRecognizerSF sface = (org.opencv.objdetect.FaceRecognizerSF) _sface;
+			org.opencv.core.Mat image = toMat(region);
+			org.opencv.core.Mat scaled = image;
+			try {
+				double scale = 1.0;
+				int longSide = Math.max(image.width(), image.height());
+				if (longSide > MAX_INPUT) {
+					scale = ((double) MAX_INPUT) / longSide;
+					scaled = new org.opencv.core.Mat();
+					org.opencv.imgproc.Imgproc.resize(image, scaled, new org.opencv.core.Size(
+						Math.max(1, (int) Math.round(image.width() * scale)),
+						Math.max(1, (int) Math.round(image.height() * scale))));
+				}
+				yunet.setInputSize(new org.opencv.core.Size(scaled.width(), scaled.height()));
+				org.opencv.core.Mat found = new org.opencv.core.Mat();
+				try {
+					yunet.detect(scaled, found);
+					int best = -1;
+					double bestOverlap = REFINE_IOU;
+					float[] bestValues = null;
+					for (int row = 0; row < found.rows(); row++) {
+						float[] values = new float[found.cols()];
+						found.get(row, 0, values);
+						double overlap = iou(x * scale, y * scale, w * scale, h * scale,
+							values[0], values[1], values[2], values[3]);
+						if (overlap > bestOverlap) {
+							bestOverlap = overlap;
+							best = row;
+							bestValues = values;
+						}
+					}
+					if (best < 0) {
+						return null;
+					}
+					float[] embedding = embed(sface, scaled, found.row(best));
+					return new Refined(bestValues[0] / scale, bestValues[1] / scale, bestValues[2] / scale,
+						bestValues[3] / scale, embedding);
+				} finally {
+					found.release();
+				}
+			} catch (RuntimeException ex) {
+				throw new IOException("Cannot look at the original: " + ex.getMessage(), ex);
+			} finally {
+				if (scaled != image) {
+					scaled.release();
+				}
+				image.release();
+			}
+		}
+	}
+
+	/** How much the two boxes overlap, between zero and one. */
+	static double iou(double ax, double ay, double aw, double ah, double bx, double by, double bw,
+			double bh) {
+		double left = Math.max(ax, bx);
+		double top = Math.max(ay, by);
+		double right = Math.min(ax + aw, bx + bw);
+		double bottom = Math.min(ay + ah, by + bh);
+		if (right <= left || bottom <= top) {
+			return 0;
+		}
+		double intersection = (right - left) * (bottom - top);
+		double union = aw * ah + bw * bh - intersection;
+		return union <= 0 ? 0 : intersection / union;
+	}
+
+	/** The given raster as OpenCV wants it: three bytes per pixel, blue first. */
+	private static org.opencv.core.Mat toMat(java.awt.image.BufferedImage image) {
+		int width = image.getWidth();
+		int height = image.getHeight();
+		byte[] data = new byte[width * height * 3];
+		int[] row = new int[width];
+		int offset = 0;
+		for (int y = 0; y < height; y++) {
+			image.getRGB(0, y, width, 1, row, 0, width);
+			for (int x = 0; x < width; x++) {
+				int rgb = row[x];
+				data[offset++] = (byte) (rgb & 0xFF);
+				data[offset++] = (byte) ((rgb >> 8) & 0xFF);
+				data[offset++] = (byte) ((rgb >> 16) & 0xFF);
+			}
+		}
+		org.opencv.core.Mat result =
+			new org.opencv.core.Mat(height, width, org.opencv.core.CvType.CV_8UC3);
+		result.put(0, 0, data);
+		return result;
+	}
+
+	/** What to call the picture in a log line; the detector only ever sees a raster. */
+	private static String preview(org.opencv.core.Mat image) {
+		return image.width() + "x" + image.height();
 	}
 
 	private static float[] embed(org.opencv.objdetect.FaceRecognizerSF sface, org.opencv.core.Mat image,

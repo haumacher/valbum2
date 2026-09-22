@@ -114,6 +114,28 @@ public class FaceIndex {
 	 */
 	static final double CROP_MARGIN = 0.25;
 
+	/**
+	 * How small a crop cut from the preview may be before it is cut from the original instead, in
+	 * pixels of its shorter side, see issue #140.
+	 *
+	 * <p>
+	 * The editor of issue #126 draws a crop on a tile of 96&nbsp;logical pixels, which on a phone
+	 * is two to three hundred device pixels; below this a crop from the 600&nbsp;px preview is
+	 * shown upscaled and blurred, of a face the file itself describes perfectly well.
+	 * </p>
+	 */
+	static final int CROP_MIN_PIXELS = 256;
+
+	/**
+	 * How large a crop cut from the original is kept, in pixels of its shorter side.
+	 *
+	 * <p>
+	 * A face 4000&nbsp;px across must not become a 4000&nbsp;px crop: this is a thumbnail of a
+	 * face, cached beside the album, and twice what any tile shows is as much as it can need.
+	 * </p>
+	 */
+	static final int CROP_MAX_PIXELS = 512;
+
 	private final Path _root;
 
 	private final boolean _enabled;
@@ -353,7 +375,12 @@ public class FaceIndex {
 				continue;
 			}
 			present.add(hash);
-			if (cache.knows(hash) || _failed.containsKey(image.getAbsolutePath())) {
+			if (_failed.containsKey(image.getAbsolutePath())) {
+				continue;
+			}
+			if (cache.knows(hash) && !unrefined(image, cache.facesOf(hash))) {
+				// Looked at, and nothing a second look could improve; a photograph whose faces were
+				// described from the preview alone is looked at again, see issue #140.
 				continue;
 			}
 			try {
@@ -398,7 +425,12 @@ public class FaceIndex {
 			throw new IOException("No preview of '" + image.getName() + "': " + ex.getMessage(), ex);
 		}
 		Orientation exif = exifOrientation(image);
-		FaceDetection.Result found = FaceDetection.detect(preview);
+		int[] raster = rasterOf(image);
+		// A face too small on the preview is looked up in the file itself — but only where the file
+		// really holds more than the preview shows, see issue #140.
+		boolean detailed = downscaled(exif, raster);
+		FaceDetection.Result found = FaceDetection.detect(preview,
+			detailed ? candidate -> refine(image, preview, exif, raster, candidate) : null);
 		double[] content = content(image, exif, found.getWidth(), found.getHeight());
 		List<FaceCache.Face> result = new ArrayList<>();
 		for (FaceDetection.Detected face : found.getFaces()) {
@@ -414,10 +446,161 @@ public class FaceIndex {
 			}
 			// The preview is upright; the box is written in the raster of the file itself.
 			double[] raw = Faces.toRaw(exif, left, top, right - left, bottom - top);
+			// Described as well as this build can: looked up in the original, or large enough on the
+			// preview for there to be nothing to look up (issue #140). A detector of a test's own says
+			// nothing about it, so the size on the preview decides for it too.
+			boolean refined = face.isRefined() || !detailed
+				|| Math.min(face.getW(), face.getH()) >= FaceDetection.REFINE_PIXELS;
 			result.add(new FaceCache.Face(raw[0], raw[1], raw[2], raw[3], face.getScore(),
-				face.getEmbedding()));
+				face.getEmbedding(), refined));
 		}
 		return result;
+	}
+
+	/**
+	 * Looks at the original where the preview is too small for a face, see issue #140.
+	 *
+	 * <p>
+	 * The one place the two frames meet. The candidate arrives in the pixels of the preview; the
+	 * region is cut from the raw raster of the file, because that is the frame a box is stored in and
+	 * the frame {@link Originals} reads in; and what comes back is answered in the pixels of the
+	 * preview again, so that the conversion of {@link #detect(File)} stays the only one there is.
+	 * </p>
+	 *
+	 * <p>
+	 * The region is the box grown by its own size on every side — a face the preview placed a little
+	 * off must still lie inside it, and the detector wants the head around the face to find one at
+	 * all — subsampled so that it reaches the network at most {@link FaceDetection#MAX_INPUT} across,
+	 * which is what bounds the memory of this: never the whole raster, see {@link Originals}.
+	 * </p>
+	 */
+	private FaceDetection.Refined refine(File image, File preview, Orientation exif, int[] raster,
+			FaceDetection.Detected candidate) throws IOException {
+		int[] previewSize = rasterOf(preview);
+		double[] content = content(image, exif, previewSize[0], previewSize[1]);
+
+		// The preview's box, in the raw raster of the file.
+		double[] raw = Faces.toRaw(exif,
+			(candidate.getX() - content[0]) / content[2],
+			(candidate.getY() - content[1]) / content[3],
+			candidate.getW() / content[2],
+			candidate.getH() / content[3]);
+		double left = raw[0] * raster[0];
+		double top = raw[1] * raster[1];
+		double width = raw[2] * raster[0];
+		double height = raw[3] * raster[1];
+
+		Originals.Region region = Originals.decodeLongSide(image, left - width, top - height,
+			left + 2 * width, top + 2 * height, FaceDetection.MAX_INPUT);
+		int sampling = region.getSampling();
+		FaceDetection.Refined better = FaceDetection.refine(region.getImage(),
+			(left - region.getLeft()) / sampling, (top - region.getTop()) / sampling,
+			width / sampling, height / sampling);
+		if (better == null) {
+			return null;
+		}
+
+		// Back out: the region's pixels are raw pixels, and the answer speaks preview pixels.
+		double foundLeft = region.rawX(better.getX());
+		double foundTop = region.rawY(better.getY());
+		double foundWidth = better.getW() * sampling;
+		double foundHeight = better.getH() * sampling;
+		double[] upright = Faces.toUpright(exif, foundLeft / raster[0], foundTop / raster[1],
+			foundWidth / raster[0], foundHeight / raster[1]);
+		return new FaceDetection.Refined(
+			content[0] + upright[0] * content[2],
+			content[1] + upright[1] * content[3],
+			upright[2] * content[2],
+			upright[3] * content[3],
+			better.getEmbedding());
+	}
+
+	/**
+	 * Whether a pass has something to gain in the given photograph, see issue #140.
+	 *
+	 * <p>
+	 * A cache entry written before that issue says nothing about the resolution its faces were
+	 * described at, and one written since says it per face. What is looked at again is a photograph
+	 * holding a face that was <em>not</em> described at the best resolution this build knows and that
+	 * is small enough on the preview for the original to know better — so a library of portraits is
+	 * never re-detected, and a group photograph is, once.
+	 * </p>
+	 *
+	 * <p>
+	 * A file that cannot be read says nothing here and is left exactly as it is, which is what
+	 * happens to a photograph whose original is gone.
+	 * </p>
+	 */
+	private static boolean unrefined(File image, List<FaceCache.Face> faces) {
+		boolean any = false;
+		for (FaceCache.Face face : faces) {
+			if (!face.isRefined()) {
+				any = true;
+				break;
+			}
+		}
+		if (!any) {
+			return false;
+		}
+		try {
+			Orientation exif = exifOrientation(image);
+			int[] raster = rasterOf(image);
+			if (!downscaled(exif, raster)) {
+				// The preview shows every pixel this file has; there is nothing to come back for.
+				return false;
+			}
+			double[] content = previewContent(exif, raster);
+			for (FaceCache.Face face : faces) {
+				if (face.isRefined()) {
+					continue;
+				}
+				double[] upright = Faces.toUpright(exif, face.getX(), face.getY(), face.getW(), face.getH());
+				if (Math.min(upright[2] * content[0], upright[3] * content[1]) < FaceDetection.REFINE_PIXELS) {
+					return true;
+				}
+			}
+		} catch (IOException | RuntimeException ex) {
+			LOG.log(Level.FINE, "Cannot measure the faces of '" + image.getAbsolutePath() + "'.", ex);
+			return false;
+		}
+		return false;
+	}
+
+	/**
+	 * How large the picture itself is drawn on its preview, as <code>{width, height}</code> in pixels,
+	 * without reading the preview at all.
+	 *
+	 * <p>
+	 * The size rule is {@link PreviewCache#previewBox(int, int)}'s, and nothing is ever scaled up, so
+	 * the picture covers <code>min(preview, display)</code> on each axis — the very numbers
+	 * {@link #content(File, Orientation, int, int)} measures on a preview that is there. This one is
+	 * asked <em>before</em> deciding whether that preview is worth making at all.
+	 * </p>
+	 */
+	private static double[] previewContent(Orientation exif, int[] raster) {
+		double displayWidth = Orientations.width(exif, raster[0], raster[1]);
+		double displayHeight = Orientations.height(exif, raster[0], raster[1]);
+		int[] box = PreviewCache.previewBox((int) displayWidth, (int) displayHeight);
+		return new double[] { Math.min(box[0], displayWidth), Math.min(box[1], displayHeight) };
+	}
+
+	/**
+	 * Whether the preview shows the given photograph smaller than it is, see issue #140.
+	 *
+	 * <p>
+	 * The condition of the whole second look: {@link PreviewCache} never scales a picture <em>up</em>,
+	 * so a photograph that is no larger than the preview box is drawn pixel for pixel and the file has
+	 * nothing more to say than the preview already says. Asking the detector again there would only
+	 * mean asking it a differently framed question and getting a differently rounded answer for no
+	 * gain, so such a face is described from the preview — and counts as described as well as this
+	 * build can, which is what keeps a pass from coming back to it forever.
+	 * </p>
+	 */
+	private static boolean downscaled(Orientation exif, int[] raster) {
+		double displayWidth = Orientations.width(exif, raster[0], raster[1]);
+		double displayHeight = Orientations.height(exif, raster[0], raster[1]);
+		double[] content = previewContent(exif, raster);
+		return content[0] < displayWidth - 0.5 || content[1] < displayHeight - 0.5;
 	}
 
 	/**
@@ -896,12 +1079,91 @@ public class FaceIndex {
 	}
 
 	private void write(File image, FaceCache.Face face, File target) throws IOException, PreviewException {
+		Orientation exif = exifOrientation(image);
+		BufferedImage crop = fromOriginal(image, face, exif);
+		if (crop == null) {
+			crop = fromPreview(image, face, exif);
+		}
+		store(crop, target);
+	}
+
+	/**
+	 * The crop cut from the original, or <code>null</code> where the preview is good enough or the
+	 * file cannot be region-decoded, see issue #140.
+	 *
+	 * <p>
+	 * The box is stored in the raw raster of the file, so the region is the box plus its margin as it
+	 * stands, and what is read is turned upright afterwards — the crop from the preview is upright
+	 * and this one shows the same face at the same framing, only sharper.
+	 * </p>
+	 *
+	 * <p>
+	 * A file no reader can decode a region of (an exotic format, a reader that refuses a source
+	 * region) is not a failure: it falls back to the preview with one line in the log, exactly as a
+	 * machine without a detector serves albums without faces.
+	 * </p>
+	 */
+	private BufferedImage fromOriginal(File image, FaceCache.Face face, Orientation exif) {
+		try {
+			int[] raster = rasterOf(image);
+			if (!downscaled(exif, raster)) {
+				// The preview is this photograph, pixel for pixel; cutting from the file gains nothing.
+				return null;
+			}
+			double[] content = previewContent(exif, raster);
+			double[] upright = Faces.toUpright(exif, face.getX(), face.getY(), face.getW(), face.getH());
+			double previewWidth = upright[2] * (1 + 2 * CROP_MARGIN) * content[0];
+			double previewHeight = upright[3] * (1 + 2 * CROP_MARGIN) * content[1];
+			if (Math.min(previewWidth, previewHeight) >= CROP_MIN_PIXELS) {
+				// The preview carries this face at a size the editor can show; issue #124's way.
+				return null;
+			}
+
+			double left = face.getX() * raster[0];
+			double top = face.getY() * raster[1];
+			double width = face.getW() * raster[0];
+			double height = face.getH() * raster[1];
+			double marginX = width * CROP_MARGIN;
+			double marginY = height * CROP_MARGIN;
+			Originals.Region region = Originals.decodeShortSide(image, left - marginX, top - marginY,
+				left + width + marginX, top + height + marginY, CROP_MAX_PIXELS);
+			return bounded(Originals.upright(region.getImage(), exif));
+		} catch (IOException | RuntimeException ex) {
+			LOG.info("Cutting the face out of the preview of '" + image.getAbsolutePath()
+				+ "': the original cannot be read in pieces (" + FaceDetection.reason(ex) + ").");
+			return null;
+		}
+	}
+
+	/** The given raster, brought down to {@link #CROP_MAX_PIXELS} on its shorter side. */
+	private static BufferedImage bounded(BufferedImage crop) {
+		int side = Math.min(crop.getWidth(), crop.getHeight());
+		if (side <= CROP_MAX_PIXELS) {
+			return crop;
+		}
+		double scale = ((double) CROP_MAX_PIXELS) / side;
+		int width = Math.max(1, (int) Math.round(crop.getWidth() * scale));
+		int height = Math.max(1, (int) Math.round(crop.getHeight() * scale));
+		BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+		java.awt.Graphics2D graphics = result.createGraphics();
+		try {
+			graphics.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+				java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			graphics.drawImage(crop, 0, 0, width, height, null);
+		} finally {
+			graphics.dispose();
+		}
+		return result;
+	}
+
+	/** The crop cut from the preview, which is issue #124's way and the fallback of issue #140. */
+	private static BufferedImage fromPreview(File image, FaceCache.Face face, Orientation exif)
+			throws IOException, PreviewException {
 		File preview = PreviewCache.createPreview(image);
 		BufferedImage source = ImageIO.read(preview);
 		if (source == null) {
 			throw new IOException("Cannot read the preview of '" + image.getName() + "'.");
 		}
-		Orientation exif = exifOrientation(image);
 		// Back into the frame the preview is drawn in; the box is kept in the file's own raster.
 		double[] box = Faces.toUpright(exif, face.getX(), face.getY(), face.getW(), face.getH());
 		double[] content = content(image, exif, source.getWidth(), source.getHeight());
@@ -916,7 +1178,11 @@ public class FaceIndex {
 		int bottom = clamp((int) Math.ceil(content[1] + (box[1] + box[3] + marginY) * content[3]),
 			top + 1, source.getHeight());
 
-		BufferedImage crop = source.getSubimage(left, top, right - left, bottom - top);
+		return source.getSubimage(left, top, right - left, bottom - top);
+	}
+
+	/** Writes the given crop, through a temporary name, so that nothing serves a half-written file. */
+	private static void store(BufferedImage crop, File target) throws IOException {
 		File cacheDir = target.getParentFile();
 		if (!cacheDir.exists()) {
 			cacheDir.mkdirs();
