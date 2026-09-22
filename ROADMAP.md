@@ -232,6 +232,20 @@ suggestions across the space), #128 (a person linked to a member), #129 (XMP fac
 
 ## Decisions log
 
+- **2026-09-22 (evening)** — 2.6.0 broke the face editor on a real library and the same evening fixed it:
+  2.6.1 (#141, #142) and 2.6.2 (#146, #148). Two doctrines came out of it. **A cache entry is bound to
+  what it was made from, never to a position in a list** (#141: the face crop is named by the
+  photograph's hash and the face's box, and a crop older than the album's face cache is stale, so a
+  re-described photograph can never serve another face's crop). **The wire speaks the frame of the
+  picture the app shows** (#142: face boxes are stored in the raw raster of the file and answered
+  EXIF-upright, before `ImagePart.orientation`; the app never sees the file's own turn and does not
+  need to). Also: a person may carry a nickname beside the canonical name, entered as
+  `Berta Müller (Tante Berta)` and parsed on the server (#146); the viewer names a confirmed face on
+  hover for members only (#145), keeps its browser menu out of the face editor (#144) and pins its
+  prefetched neighbours with a live listener because Flutter's 100 MiB image cache can never hold
+  three decoded originals (#148). Open: the mirrored EXIF codes find no face (#143), the viewer's
+  edit-persons mode (#147) and a harness gap around late prefetches (#149).
+
 - **2026-09-22** — Two follow-ups of Phase 7 from using 2.5.0. The face editor is worked like a file
   manager (#139): a mouse click replaces the selection, ctrl toggles, shift takes the range in display
   order, a finger keeps toggling; the page scrolls while a face is carried; "Name person…", "Defer" and
