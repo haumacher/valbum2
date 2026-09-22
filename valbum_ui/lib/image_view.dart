@@ -17,6 +17,7 @@ import 'image_properties.dart';
 import 'image_transform.dart';
 import 'move_view.dart';
 import 'offline.dart';
+import 'people_registry.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'rights.dart';
@@ -692,7 +693,48 @@ class ImageViewState extends State<ImageView>
     );
     // The same layer either way: what the caller may have differs, where it
     // is drawn does not, see [pictureLayer] and issue #106.
-    return pictureLayer(tx, image);
+    var named = namedFaces;
+    if (named.isEmpty) {
+      return pictureLayer(tx, image);
+    }
+    // The faces hang *in* the picture's own layer (issue #145): the layer is
+    // the raw rectangle of the file and [ImageTransform.matrix] turns, scales
+    // and pans it, so a box given as a fraction of that rectangle is turned by
+    // exactly the transform the picture is turned by — there is no second
+    // place the two could drift apart in — and the regions follow every zoom
+    // and every pan for free.
+    return pictureLayer(
+      tx,
+      FaceRegions(
+        client: widget.client,
+        faces: named,
+        rawWidth: tx.rawWidth,
+        rawHeight: tx.rawHeight,
+        scale: tx.scale,
+        child: image,
+      ),
+    );
+  }
+
+  /// The faces of the displayed image that name somebody (issue #145).
+  ///
+  /// A confirmation and nothing else: a suggestion of issue #127 is what a
+  /// recogniser believes, and believing is not knowing — the face editor is
+  /// where a suggestion is answered. A face nobody decided about, one that was
+  /// rejected and one somebody said is no face at all carry no person either.
+  ///
+  /// Never inside a share link. The server already answers a link caller no
+  /// face at all (`Faces.maySee`), so this is the second lock on the same
+  /// door: who somebody is, is bookkeeping among the members of a space, like
+  /// the attribution of issue #96.
+  List<FaceInfo> get namedFaces {
+    if (ShareSession.of(context) != null) {
+      return const [];
+    }
+    return [
+      for (var face in part.faces)
+        if (face.confirmed && face.person.isNotEmpty) face,
+    ];
   }
 
   /// The layer every picture of this viewer is drawn in.
@@ -982,8 +1024,7 @@ class ImageViewState extends State<ImageView>
       Positioned(
         left: insets.left + 8,
         top: insets.top + 8,
-        child:
-            overlayButton(Icons.arrow_back, l10n.backToAlbum, showParent),
+        child: overlayButton(Icons.arrow_back, l10n.backToAlbum, showParent),
       ),
       if (previous != null)
         Positioned(
@@ -1196,3 +1237,160 @@ Widget imageOverlayButton(
       style: IconButton.styleFrom(backgroundColor: Colors.black38),
       onPressed: onPressed,
     );
+
+/// How long the mouse has to rest on a face before it is named (issue #145).
+///
+/// Short, because the name is the answer to a question the pointer already
+/// asked; long enough that sweeping the mouse across a group photo does not
+/// flash a name per face.
+const Duration _faceHoverWait = Duration(milliseconds: 300);
+
+/// How wide the outline of a hovered face is drawn, in pixels of the screen.
+const double _faceOutlineWidth = 1.5;
+
+/// The [child] picture with a hover region over every named face (issue #145).
+///
+/// The regions are laid out in the *raw* rectangle of the file — the box of
+/// [FaceInfo] is a fraction of it — and this whole widget hangs in the layer
+/// [ImageViewState.pictureLayer] builds, so the orientation, the zoom and the
+/// pan of [ImageTransform.matrix] reach the boxes and the picture as one
+/// thing. Nothing here turns anything: a box that was turned twice, or turned
+/// by a rule of its own, would sit beside the face it names.
+///
+/// What a region does is hover and nothing else: a [MouseRegion] that is
+/// translucent to the hit test, so the tap, the double tap, the drag, the
+/// pinch and the long press of the viewer pass through it untouched. The
+/// [Tooltip] is triggered manually — by the mouse entering it — and never by
+/// a long press, which belongs to the image properties (issue #80); a touch
+/// device has no hover and therefore sees nothing, which is the whole
+/// feature: it names what the pointer points at.
+class FaceRegions extends StatefulWidget {
+  /// The transport the register is loaded with, see [PeopleRegistry].
+  final VAlbumClient client;
+
+  /// The faces to name, all of them confirmed as somebody.
+  final List<FaceInfo> faces;
+
+  /// The width of the raw rectangle the boxes are fractions of.
+  final double rawWidth;
+
+  /// The height of the raw rectangle the boxes are fractions of.
+  final double rawHeight;
+
+  /// The scale the layer is drawn at, so that the outline keeps its width.
+  final double scale;
+
+  /// The picture the regions lie over.
+  final Widget child;
+
+  const FaceRegions({
+    super.key,
+    required this.client,
+    required this.faces,
+    required this.rawWidth,
+    required this.rawHeight,
+    required this.scale,
+    required this.child,
+  });
+
+  @override
+  State<FaceRegions> createState() => _FaceRegionsState();
+}
+
+class _FaceRegionsState extends State<FaceRegions> {
+  /// The register, empty while it is being loaded and after a refusal.
+  Map<String, Person> _people = const {};
+
+  /// The [FaceInfo.index] the mouse is resting on, `null` while it is nowhere.
+  int? _hovered;
+
+  @override
+  void initState() {
+    super.initState();
+    // Lazily, and exactly once per client: this widget only exists where the
+    // picture really shows a confirmed face, see [ImageViewState.namedFaces].
+    var registry = PeopleRegistry.of(widget.client);
+    _people = registry.people;
+    registry.load().then((people) {
+      if (mounted && !identical(people, _people)) {
+        setState(() => _people = people);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var regions = <Widget>[];
+    for (var face in widget.faces) {
+      var person = _people[face.person];
+      var name = person?.name.trim() ?? "";
+      if (name.isEmpty) {
+        // A face whose person the register does not know names nobody, and a
+        // region that names nobody is not a region: it would outline a face
+        // and then have nothing to say.
+        continue;
+      }
+      regions.add(
+        Positioned(
+          left: face.x * widget.rawWidth,
+          top: face.y * widget.rawHeight,
+          width: face.w * widget.rawWidth,
+          height: face.h * widget.rawHeight,
+          child: _region(face, name),
+        ),
+      );
+    }
+    return Stack(
+      fit: StackFit.expand,
+      clipBehavior: Clip.none,
+      children: [widget.child, ...regions],
+    );
+  }
+
+  /// One face: the tooltip naming it, and the outline while it is hovered.
+  Widget _region(FaceInfo face, String name) {
+    var hovered = _hovered == face.index;
+    // The layer is scaled by [ImageTransform.scale], so a constant width here
+    // would be a hairline on a fitted photograph and a fat band on a zoomed
+    // one. Divided by the scale it is the same line on the screen at every
+    // zoom.
+    var width =
+        widget.scale > 0 ? _faceOutlineWidth / widget.scale : _faceOutlineWidth;
+    return Tooltip(
+      message: name,
+      waitDuration: _faceHoverWait,
+      // The viewer's own long press opens the image properties (issue #80).
+      // A tooltip that answered it too would take that gesture away on every
+      // face; the mouse entering the region is what shows this one.
+      triggerMode: TooltipTriggerMode.manual,
+      preferBelow: false,
+      child: MouseRegion(
+        key: Key("face-hover-${face.index}"),
+        // Not opaque: the [Tooltip]'s own region is the parent of this one and
+        // has to be entered as well, and nothing behind the picture may be cut
+        // off from the mouse either.
+        opaque: false,
+        // Added to the hit test without answering it, so the gestures of the
+        // viewer keep passing through, see the class doc.
+        hitTestBehavior: HitTestBehavior.translucent,
+        onEnter: (_) => setState(() => _hovered = face.index),
+        onExit: (_) => setState(() {
+          if (_hovered == face.index) {
+            _hovered = null;
+          }
+        }),
+        child: hovered
+            ? DecoratedBox(
+                decoration: BoxDecoration(
+                  // Faint, and white because the viewer is black: the picture
+                  // is what is being looked at, the box only says where the
+                  // name belongs.
+                  border: Border.all(color: Colors.white70, width: width),
+                ),
+                child: const SizedBox.expand(),
+              )
+            : const SizedBox.expand(),
+      ),
+    );
+  }
+}
