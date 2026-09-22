@@ -153,6 +153,12 @@ delivery:
   them in the generator or ignore them, never by hand. The bar is **zero errors**, and no *new*
   warnings in hand-written files.
 
+- **A decoded image frame never arrives under the fake clock.** `ui.Codec.getNextFrame()` completes
+  over the engine's real event queue, which a widget test's `FakeAsync` zone does not run; the bytes
+  are all there, the `Image` has no frame, and `pumpAndSettle` waits for ever. Only a
+  `tester.runAsync` round lets it land — the viewer harness's `letImagesDecode`/`pageViewer` do that
+  (#149). A probe that pages twice with `sendKeyEvent` + `pumpAndSettle` and reads "never sharp" is
+  probing the clock, not the viewer.
 - **Request paths in a `MockClient` handler are percent-encoded.** A fixture folder named
   `2002-03-03 Schlosspark Karlsruhe` arrives as `.../2002-03-03%20Schlosspark%20Karlsruhe/`; a
   handler matching on the name with spaces never hits and serves its fallback (usually the
