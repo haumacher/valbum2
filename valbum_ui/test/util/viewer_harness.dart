@@ -7,6 +7,7 @@
 library;
 
 import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -252,13 +253,46 @@ Future<void> settleViewer(
 }
 
 /// Alternates the real event loop and the test clock, see [settleViewer].
+///
+/// The bytes of a picture arrive under the test clock — the fake `HttpClient`
+/// of `fake_image_http.dart` answers from a microtask, which `pumpAndSettle`
+/// drives — but the **decode** does not: `ui.Codec.getNextFrame()` is
+/// answered by the engine over the real event queue, which the `FakeAsync`
+/// zone of a widget test never runs. A picture whose fetch begins inside a
+/// pump therefore holds all of its bytes and still has no frame, so the
+/// `frameBuilder` of the viewer keeps building the empty box and the picture
+/// reads as "never sharp" however long the test settles (issue #149). Only
+/// [WidgetTester.runAsync] lets that frame arrive.
 Future<void> letImagesDecode(WidgetTester tester) async {
   for (var round = 0; round < 5; round++) {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await withFakeImageHttp(() => tester.pumpAndSettle());
+    // Everything that was on its way has arrived and been laid out.
+    var cache = PaintingBinding.instance.imageCache;
+    if (round > 0 && cache.pendingImageCount == 0) {
+      return;
+    }
   }
+}
+
+/// Turns one page of the viewer and stops on the **first frame** of the new one.
+///
+/// This is what a test asserting the prefetch of issues #101 and #148 needs:
+/// whether the picture of the page one arrives at is painted sharp *at once*
+/// rather than after a second download. It is also the only way to page twice
+/// — the picture the viewer prefetches while standing on the second page has
+/// to be decoded before that page is left, and a decode needs the real event
+/// loop, see [letImagesDecode]. So this lets the standing page's prefetch
+/// finish first and only then sends the key, with a single [WidgetTester.pump]
+/// behind it.
+Future<void> pageViewer(WidgetTester tester, LogicalKeyboardKey key) async {
+  await letImagesDecode(tester);
+  await withFakeImageHttp(() async {
+    await tester.sendKeyEvent(key);
+    await tester.pump();
+  });
 }
 
 /// The provider of the picture the viewer shows, see `viewerPicture`.
