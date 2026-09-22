@@ -194,6 +194,127 @@ public class TestFaceWireFrame extends FacesTestCase {
 		assertEquals(UPRIGHT_FACE[1], face.getY(), 0.02);
 	}
 
+	// --- What is marked by hand, see issue #147. ---
+
+	/** A box drawn on the picture is stored in the raw raster and answered where it was drawn. */
+	public void testAHandMarkedBoxOfARotatedFileComesBackWhereItWasDrawn() throws Exception {
+		FaceDetection.setDetector(new Fixed());
+		createSpace();
+		turned(name(6), 6);
+		index();
+
+		String person = createPerson("Anna");
+		// Far away from the one detection, so that this is a face of its own.
+		double[] drawn = { 0.60, 0.55, 0.15, 0.20 };
+		mark(name(6), drawn, person, "CONFIRMED", 200);
+
+		FaceTag tag = onlyTag(name(6));
+		assertFalse("A stored box that already were the drawn one would say nothing about the turn.",
+			Math.abs(tag.getX() - drawn[0]) < 0.01 && Math.abs(tag.getY() - drawn[1]) < 0.01);
+		// A quarter turn swaps the axes: what is wide on screen is tall in the file.
+		assertEquals(drawn[3], tag.getW(), 0.02);
+		assertEquals(drawn[2], tag.getH(), 0.02);
+
+		AlbumInfo album = album("/" + ALBUM + "/", _adminToken);
+		ImagePart image = image(album, name(6));
+		assertEquals("The detection and the hand-marked face: " + image.getFaces(),
+			2, image.getFaces().size());
+		FaceInfo marked = image.getFaces().get(1);
+		assertEquals(person, marked.getPerson());
+		assertTrue(marked.isConfirmed());
+		assertEquals("A tag no detection matches has no cluster.", "", marked.getCluster());
+		assertEquals(drawn[0], marked.getX(), 0.02);
+		assertEquals(drawn[1], marked.getY(), 0.02);
+		assertEquals(drawn[2], marked.getW(), 0.02);
+		assertEquals(drawn[3], marked.getH(), 0.02);
+	}
+
+	/** A box drawn over a face the detector did find is that face's decision, not a second one. */
+	public void testAHandMarkedBoxOverADetectionIsThatFacesDecision() throws Exception {
+		FaceDetection.setDetector(new Fixed());
+		createSpace();
+		turned(name(6), 6);
+		index();
+
+		String anna = createPerson("Anna");
+		tag(name(6), 0, anna);
+		String berta = createPerson("Berta");
+		// Almost the detection's own box: what somebody draws by hand never matches to the pixel.
+		mark(name(6), new double[] { UPRIGHT_FACE[0] + 0.01, UPRIGHT_FACE[1] + 0.01,
+			UPRIGHT_FACE[2], UPRIGHT_FACE[3] }, berta, "CONFIRMED", 200);
+
+		FaceTag tag = onlyTag(name(6));
+		assertEquals("The decision moved to the new person instead of standing beside the old one.",
+			berta, tag.getPerson());
+		FaceCache.Face detection = stored(name(6));
+		assertEquals("The face's own box is kept, not the drawn one.",
+			detection.getX(), tag.getX(), 0.001);
+		assertEquals(detection.getY(), tag.getY(), 0.001);
+
+		FaceInfo face = only(album("/" + ALBUM + "/", _adminToken), name(6));
+		assertEquals(berta, face.getPerson());
+	}
+
+	/** And the way back out of a hand-marked face is the take-back of issue #138. */
+	public void testAHandMarkedBoxIsForgottenByTheSameBox() throws Exception {
+		FaceDetection.setDetector(new Fixed());
+		createSpace();
+		turned(name(6), 6);
+		index();
+
+		String person = createPerson("Anna");
+		double[] drawn = { 0.60, 0.55, 0.15, 0.20 };
+		mark(name(6), drawn, person, "CONFIRMED", 200);
+		assertEquals(1, image(album("/" + ALBUM + "/", _adminToken), name(6)).getTags().size());
+
+		// The box as the app draws it again: near enough is the same face.
+		mark(name(6), new double[] { drawn[0] + 0.01, drawn[1], drawn[2], drawn[3] }, "",
+			"UNDECIDED", 200);
+
+		ImagePart image = image(album("/" + ALBUM + "/", _adminToken), name(6));
+		assertEquals("Nothing is decided about this photograph any more.", 0, image.getTags().size());
+		assertEquals("And the detection is all that is left.", 1, image.getFaces().size());
+	}
+
+	/** A box that is not a place on the photograph is refused, and nothing is written. */
+	public void testABoxThatIsNoPlaceIsRefused() throws Exception {
+		FaceDetection.setDetector(new Fixed());
+		createSpace();
+		turned(name(6), 6);
+		index();
+		String person = createPerson("Anna");
+
+		double[][] impossible = {
+			{ 0.9, 0.1, 0.2, 0.1 },
+			{ -0.1, 0.1, 0.2, 0.1 },
+			{ 0.1, 0.9, 0.1, 0.2 },
+			{ 0.1, 0.1, 0.0, 0.2 },
+			{ 0.1, 0.1, 0.2, -0.3 },
+		};
+		for (double[] box : impossible) {
+			FakeResponse refused = mark(name(6), box, person, "CONFIRMED", 400);
+			assertEquals(ImageServlet.faceBoxInvalid(name(6)), errorMessage(refused));
+		}
+		assertEquals("Nothing was written.", 0,
+			image(album("/" + ALBUM + "/", _adminToken), name(6)).getTags().size());
+	}
+
+	/** A request that carries no box is what it always was: the face of the answer, by its index. */
+	public void testAnAssignmentWithoutABoxNamesTheAnsweredFace() throws Exception {
+		FaceDetection.setDetector(new Fixed());
+		createSpace();
+		turned(name(6), 6);
+		index();
+		String person = createPerson("Anna");
+
+		tag(name(6), 0, person);
+
+		FaceCache.Face detection = stored(name(6));
+		FaceTag tag = onlyTag(name(6));
+		assertEquals(detection.getX(), tag.getX(), 0.001);
+		assertEquals(detection.getY(), tag.getY(), 0.001);
+	}
+
 	// --- The real detector. ---
 
 	/** A real face, pasted into a file that lies on its side, is named where it is shown. */
@@ -265,6 +386,17 @@ public class TestFaceWireFrame extends FacesTestCase {
 		de.haumacher.imageServer.shared.model.Person person =
 			de.haumacher.imageServer.shared.model.Person.readPerson(reader(response.body()));
 		return person.getId();
+	}
+
+	/** Marks a face by hand, the box being a fraction of the picture as it is shown. */
+	private FakeResponse mark(String image, double[] box, String person, String state, int expected)
+			throws Exception {
+		String body = "{\"faces\":[{\"image\":\"" + image + "\",\"x\":" + box[0] + ",\"y\":" + box[1]
+			+ ",\"w\":" + box[2] + ",\"h\":" + box[3] + ",\"person\":\"" + person
+			+ "\",\"state\":\"" + state + "\"}]}";
+		FakeResponse response = post("/" + ALBUM + "/", "tag-faces", body, _adminToken);
+		assertEquals(response.body(), expected, response.status());
+		return response;
 	}
 
 	private void tag(String image, int face, String person) throws Exception {

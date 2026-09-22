@@ -47,6 +47,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/widgets.dart' as widgets show Action;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
@@ -1021,6 +1022,16 @@ class PersonsContentState extends State<PersonsContent>
   // The people of the space: created, renamed and merged at once.
   // -------------------------------------------------------------------------
 
+  /// Who already carries a face of this album, see issue #150.
+  ///
+  /// A confirmation and a suggestion of issue #127 alike: both put a name on
+  /// the screen here, and both make that person one of the few this album is
+  /// about.
+  Set<String> get personsOfAlbum => {
+        for (var face in facesOf(widget.album))
+          if (face.face.person.isNotEmpty) face.face.person,
+      };
+
   /// Names the faces of the given group, asking who they are.
   ///
   /// Also what "Someone else…" does on a suggestion (issue #139): the guess
@@ -1041,6 +1052,8 @@ class PersonsContentState extends State<PersonsContent>
       builder: (context) => PersonChooser(
         people: people.values.toList(),
         onCreate: createPerson,
+        // Who already has a face here stands at the top, see issue #150.
+        inAlbum: personsOfAlbum,
       ),
     );
     if (chosen == null || !mounted) {
@@ -1126,6 +1139,7 @@ class PersonsContentState extends State<PersonsContent>
         ],
         title: _l10n.personsMergeTitle,
         notice: _l10n.personsMergeNotice,
+        inAlbum: personsOfAlbum,
       ),
     );
     if (into == null || !mounted) {
@@ -2231,6 +2245,39 @@ class MemberChooser extends StatelessWidget {
 }
 
 /// Who a group of faces is: one of the people of the space, or a new one.
+/// The given people in the order a chooser shows them, see issue #150.
+///
+/// By what is written on the line — the display name of issue #146, the
+/// nickname where there is one — compared ignoring case, because a reader
+/// looking for a name does not know how it is capitalised. The canonical name
+/// breaks a tie, so two people called the same keep a fixed order (and are
+/// shown by their full label anyway, see [disambiguate]).
+List<Person> byDisplayName(List<Person> people) {
+  var result = [...people];
+  result.sort((one, other) {
+    var byShown = displayName(one)
+        .toLowerCase()
+        .compareTo(displayName(other).toLowerCase());
+    return byShown != 0 ? byShown : one.name.compareTo(other.name);
+  });
+  return result;
+}
+
+/// Moves the chooser's highlight one entry down, see issue #150.
+class _NextPerson extends Intent {
+  const _NextPerson();
+}
+
+/// Moves the chooser's highlight one entry up, see issue #150.
+class _PreviousPerson extends Intent {
+  const _PreviousPerson();
+}
+
+/// Picks what the chooser's highlight stands on, see issue #150.
+class _PickPerson extends Intent {
+  const _PickPerson();
+}
+
 class PersonChooser extends StatefulWidget {
   /// The people offered.
   final List<Person> people;
@@ -2245,12 +2292,22 @@ class PersonChooser extends StatefulWidget {
   /// absent where a new person is not offered (the merge).
   final Future<Person?> Function(String name)? onCreate;
 
+  /// Who of them is already in the album being named, see issue #150.
+  ///
+  /// The ids of the people who carry a confirmed face or a suggestion of issue
+  /// #127 in the album at hand. They stand in a section of their own at the
+  /// top, because naming a face of a family album means one of the handful of
+  /// people that album is about far more often than it means one of the
+  /// hundreds the space knows.
+  final Set<String> inAlbum;
+
   const PersonChooser({
     super.key,
     required this.people,
     this.title,
     this.notice,
     this.onCreate,
+    this.inAlbum = const {},
   });
 
   @override
@@ -2260,10 +2317,64 @@ class PersonChooser extends StatefulWidget {
 class _PersonChooserState extends State<PersonChooser> {
   final TextEditingController _search = TextEditingController();
 
+  /// Which of the remaining entries the keyboard stands on, `-1` for none.
+  ///
+  /// Counted over both sections in the order they are shown (issue #150): the
+  /// keyboard walks what is on the screen, not what the register holds. It
+  /// starts on nothing — a chooser that opened with somebody highlighted would
+  /// pick that person on a stray `Enter` — and it is **reset by every change
+  /// of the filter**, because a highlight left on an entry the filter removed
+  /// would pick somebody nobody can see.
+  int _highlighted = -1;
+
+  /// Where each shown row is, so that the highlighted one can be scrolled to.
+  final Map<String, GlobalKey> _rows = {};
+
+  /// The entries as they stand on the screen, filled by every build.
+  List<Person> _shown = const [];
+
   @override
   void dispose() {
     _search.dispose();
     super.dispose();
+  }
+
+  /// Moves the highlight by [step], never past either end (issue #150).
+  void _move(int step) {
+    if (_shown.isEmpty) {
+      return;
+    }
+    var next = _highlighted < 0
+        ? (step > 0 ? 0 : _shown.length - 1)
+        : (_highlighted + step).clamp(0, _shown.length - 1);
+    setState(() => _highlighted = next);
+    // After the frame that marks it: the row may not be laid out before.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _highlighted < 0 || _highlighted >= _shown.length) {
+        return;
+      }
+      var row = _rows[_shown[_highlighted].id]?.currentContext;
+      if (row != null) {
+        Scrollable.ensureVisible(row, alignment: 0.5, duration:
+            const Duration(milliseconds: 100));
+      }
+    });
+  }
+
+  /// What `Enter` does: pick the highlighted person, or create the typed one.
+  ///
+  /// Where nothing is highlighted and the typed text matches nobody, typing a
+  /// name and pressing `Enter` is the "New person…" entry with that name —
+  /// which is what somebody who has just typed a name nobody carries means.
+  void _enter() {
+    if (_highlighted >= 0 && _highlighted < _shown.length) {
+      Navigator.of(context).pop(_shown[_highlighted]);
+      return;
+    }
+    if (_shown.isEmpty && widget.onCreate != null &&
+        _search.text.trim().isNotEmpty) {
+      _create();
+    }
   }
 
   @override
@@ -2282,6 +2393,59 @@ class _PersonChooserState extends State<PersonChooser> {
     // two people called the same are told apart by the first line already
     // (issue #146).
     var labels = disambiguate(shown);
+    // In this album first, everybody else behind them, each section in the
+    // order of what is written on it (issue #150).
+    var here = byDisplayName(
+      [for (var person in shown) if (widget.inAlbum.contains(person.id)) person],
+    );
+    var elsewhere = byDisplayName(
+      [for (var person in shown) if (!widget.inAlbum.contains(person.id)) person],
+    );
+    // What the keyboard walks: the two sections, in the order they are drawn.
+    _shown = [...here, ...elsewhere];
+    // The arrows and `Enter` while the typing goes on: the idiom of Flutter's
+    // own autocomplete, because a single-line field answers neither (issue
+    // #150). `Escape` is the dialog's own and is not taken away here.
+    return Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.arrowDown): _NextPerson(),
+        SingleActivator(LogicalKeyboardKey.arrowUp): _PreviousPerson(),
+        SingleActivator(LogicalKeyboardKey.enter): _PickPerson(),
+        SingleActivator(LogicalKeyboardKey.numpadEnter): _PickPerson(),
+      },
+      child: Actions(
+        actions: <Type, widgets.Action<Intent>>{
+          _NextPerson: CallbackAction<_NextPerson>(
+            onInvoke: (_) {
+              _move(1);
+              return null;
+            },
+          ),
+          _PreviousPerson: CallbackAction<_PreviousPerson>(
+            onInvoke: (_) {
+              _move(-1);
+              return null;
+            },
+          ),
+          _PickPerson: CallbackAction<_PickPerson>(
+            onInvoke: (_) {
+              _enter();
+              return null;
+            },
+          ),
+        },
+        child: _dialog(context, l10n, labels, here, elsewhere),
+      ),
+    );
+  }
+
+  Widget _dialog(
+    BuildContext context,
+    AppLocalizations l10n,
+    Map<String, String> labels,
+    List<Person> here,
+    List<Person> elsewhere,
+  ) {
     return AlertDialog(
       key: const Key("persons-chooser"),
       title: Text(widget.title ?? l10n.personsChooseTitle),
@@ -2296,28 +2460,34 @@ class _PersonChooserState extends State<PersonChooser> {
               key: const Key("persons-search"),
               controller: _search,
               decoration: InputDecoration(labelText: l10n.personsSearchLabel),
-              onChanged: (_) => setState(() {}),
+              // A changed filter leaves the highlight nowhere, see [_highlighted].
+              onChanged: (_) => setState(() => _highlighted = -1),
+              autofocus: true,
+              onSubmitted: (_) => _enter(),
             ),
             const SizedBox(height: 8),
-            if (shown.isEmpty && widget.people.isEmpty)
+            if (_shown.isEmpty && widget.people.isEmpty)
               Text(l10n.personsNobodyYet, key: const Key("persons-nobody")),
             Flexible(
               child: ListView(
                 shrinkWrap: true,
                 children: [
-                  for (var person in shown)
-                    ListTile(
-                      key: Key("persons-pick-${person.id}"),
-                      title: Text(labels[person.id] ?? displayName(person)),
-                      subtitle: person.nickname.trim().isEmpty
-                          ? null
-                          : Text(
-                              person.name,
-                              key: Key("persons-pick-name-${person.id}"),
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                      onTap: () => Navigator.of(context).pop(person),
+                  // A section with nobody in it is no section: a heading over
+                  // an empty list says there is something there.
+                  if (here.isNotEmpty && elsewhere.isNotEmpty)
+                    _heading(
+                      context,
+                      l10n.personsChooserInAlbum,
+                      const Key("persons-chooser-in-album"),
                     ),
+                  for (var person in here) _pick(context, person, labels),
+                  if (here.isNotEmpty && elsewhere.isNotEmpty)
+                    _heading(
+                      context,
+                      l10n.personsChooserAll,
+                      const Key("persons-chooser-all"),
+                    ),
+                  for (var person in elsewhere) _pick(context, person, labels),
                 ],
               ),
             ),
@@ -2340,6 +2510,44 @@ class _PersonChooserState extends State<PersonChooser> {
       ],
     );
   }
+
+  /// One person to pick, see issue #146 for the two names.
+  Widget _pick(BuildContext context, Person person, Map<String, String> labels) {
+    var highlighted = _highlighted >= 0 &&
+        _highlighted < _shown.length &&
+        _shown[_highlighted].id == person.id;
+    return KeyedSubtree(
+      // Only so that the highlighted row can be scrolled to; the marking
+      // itself is the tile's own, which paints it on the Material it stands
+      // on rather than behind a box of its own.
+      key: _rows.putIfAbsent(person.id, () => GlobalKey()),
+      child: ListTile(
+        selected: highlighted,
+        selectedTileColor:
+            Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+        key: Key("persons-pick-${person.id}"),
+        title: Text(labels[person.id] ?? displayName(person)),
+        subtitle: person.nickname.trim().isEmpty
+            ? null
+            : Text(
+                person.name,
+                key: Key("persons-pick-name-${person.id}"),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+        onTap: () => Navigator.of(context).pop(person),
+      ),
+    );
+  }
+
+  /// What a section of the chooser is called, see issue #150.
+  Widget _heading(BuildContext context, String text, Key key) => Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 4),
+        child: Text(
+          text,
+          key: key,
+          style: Theme.of(context).textTheme.labelMedium,
+        ),
+      );
 
   Future<void> _create() async {
     var l10n = AppLocalizations.of(context)!;

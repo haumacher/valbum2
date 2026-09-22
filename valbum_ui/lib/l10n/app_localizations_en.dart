@@ -2358,4 +2358,25 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get viewerEditPersons => 'Edit persons';
+
+  @override
+  String get viewerEditPersonsDone => 'Done naming faces';
+
+  @override
+  String get viewerMarkFace => 'Mark a face';
+
+  @override
+  String get viewerMarkFaceHint => 'Draw a rectangle around a face.';
+
+  @override
+  String get viewerFaceDecision => 'This face';
+
+  @override
+  String get personsChooserInAlbum => 'In this album';
+
+  @override
+  String get personsChooserAll => 'All persons';
 }

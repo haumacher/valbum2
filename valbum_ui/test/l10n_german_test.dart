@@ -683,6 +683,16 @@ void sliceTwo() {
     });
   });
 
+  test('the viewer names its faces in German too (issues #147 and #150)', () {
+    var en = l10nOf(const Locale("en"));
+    expect(de.viewerEditPersons, "Personen bearbeiten");
+    expect(de.viewerMarkFace, isNot(en.viewerMarkFace));
+    expect(de.viewerFaceDecision, isNot(en.viewerFaceDecision));
+    expect(de.viewerEditPersonsDone, isNot(en.viewerEditPersonsDone));
+    expect(de.personsChooserInAlbum, "In diesem Album");
+    expect(de.personsChooserAll, isNot(en.personsChooserAll));
+  });
+
   test('the German words of slice 2 are not the English ones', () {
     var en = l10nOf(const Locale("en"));
     expect(de.cameraRollHeading, isNot(en.cameraRollHeading));

@@ -65,6 +65,24 @@ class PeopleRegistry {
   /// caller waits for, and a refusal is memoised with it.
   Future<Map<String, Person>> load() => _loading ??= _fetch();
 
+  /// Writes a person the register does not know yet into it (issue #147).
+  ///
+  /// A person created while a face is being named is a person of the space
+  /// from that moment on, and the label under the face has to be written at
+  /// once; asking the whole register again for one name it just handed out
+  /// would be a second request for something this client already holds.
+  void remember(Person person) {
+    if (_people.isEmpty) {
+      // Nothing was loaded (or a refusal was): a map of its own rather than
+      // the constant empty one, which cannot be written into.
+      _people = <String, Person>{};
+    }
+    _people[person.id] = person;
+    for (var alias in person.aliases) {
+      _people[alias.id] = person;
+    }
+  }
+
   Future<Map<String, Person>> _fetch() async {
     Map<String, Person> loaded;
     try {

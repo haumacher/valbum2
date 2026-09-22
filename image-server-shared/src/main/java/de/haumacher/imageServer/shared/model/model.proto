@@ -2291,10 +2291,57 @@ message FaceAssignment {
 	 *
 	 * <p>
 	 * The box is copied from that {@link FaceInfo} into the stored {@link FaceTag}, so a client
-	 * never sends coordinates and can never invent a face that was not answered to it.
+	 * that decides about a face the server found never sends coordinates at all.
+	 * </p>
+	 *
+	 * <p>
+	 * Ignored where a box is given, see {@link #x}: a hand-marked face is <em>not</em> one of the
+	 * answered faces, so there is no index that could name it.
 	 * </p>
 	 */
 	int face;
+
+	/**
+	 * The left edge of a hand-marked face, as a fraction of the width of the picture as it is
+	 * shown; issue #147.
+	 *
+	 * <p>
+	 * <b>A box is given exactly when any of {@link #x}, {@link #y}, {@link #w} and {@link #h} is
+	 * not zero</b>, and it is then read instead of {@link #face}. That is how somebody marks a face
+	 * the detector missed: the viewer's edit-persons mode draws a rectangle on the photograph and
+	 * names it, and what arrives here is that rectangle.
+	 * </p>
+	 *
+	 * <p>
+	 * The frame is the one the client draws in and the one every {@link FaceInfo} is answered in
+	 * (issue #142): normalised to <code>0..1</code> of the picture <em>upright</em> — the EXIF
+	 * orientation of the file applied, {@link ImagePart#orientation} not. The server turns it into
+	 * the raw raster of the file, which is the one frame a {@link FaceTag} is ever stored in.
+	 * </p>
+	 *
+	 * <p>
+	 * A box that meets one of the answered faces by the overlap that makes two boxes the same face
+	 * is that face's decision and carries that face's own box, so marking a face that was found
+	 * after all is the very same thing as naming it. A box nothing meets becomes a tag of its own,
+	 * which is answered as a {@link FaceInfo} without a cluster and without a crop, and which a
+	 * {@link FaceState#UNDECIDED} on the same box takes away again.
+	 * </p>
+	 *
+	 * <p>
+	 * A box outside <code>0..1</code>, or one with a width or a height that is not positive, is
+	 * refused: a face is somewhere on the photograph or it is nowhere.
+	 * </p>
+	 */
+	double x;
+
+	/** The top edge of a hand-marked face, as a fraction of the height, see {@link #x}. */
+	double y;
+
+	/** The width of a hand-marked face, as a fraction of the width, see {@link #x}. */
+	double w;
+
+	/** The height of a hand-marked face, as a fraction of the height, see {@link #x}. */
+	double h;
 
 	/** The {@link Person#id} the decision is about; empty exactly for {@link FaceState#NOT_A_FACE}. */
 	string person;

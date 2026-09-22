@@ -3871,6 +3871,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 photograph} other{{count} photographs}}'**
   String inboxPhotoCount(int count);
+
+  /// The viewer's menu entry opening the mode in which every recognised face is marked with its name and can be corrected (issue #147).
+  ///
+  /// In en, this message translates to:
+  /// **'Edit persons'**
+  String get viewerEditPersons;
+
+  /// The tooltip of the control that leaves the viewer's edit-persons mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Done naming faces'**
+  String get viewerEditPersonsDone;
+
+  /// The tooltip of the tool with which a rectangle is drawn around a face the detector missed.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark a face'**
+  String get viewerMarkFace;
+
+  /// The line shown while the tool for marking a face by hand is switched on.
+  ///
+  /// In en, this message translates to:
+  /// **'Draw a rectangle around a face.'**
+  String get viewerMarkFaceHint;
+
+  /// The heading of the sheet that opens when a face is tapped in the viewer's edit-persons mode.
+  ///
+  /// In en, this message translates to:
+  /// **'This face'**
+  String get viewerFaceDecision;
+
+  /// The heading of the person chooser's first section, holding the people who already have a face in the album being named (issue #150).
+  ///
+  /// In en, this message translates to:
+  /// **'In this album'**
+  String get personsChooserInAlbum;
+
+  /// The heading of the person chooser's second section, holding everybody else of the space (issue #150).
+  ///
+  /// In en, this message translates to:
+  /// **'All persons'**
+  String get personsChooserAll;
 }
 
 class _AppLocalizationsDelegate

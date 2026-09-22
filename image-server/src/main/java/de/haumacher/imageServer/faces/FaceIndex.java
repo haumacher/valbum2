@@ -33,6 +33,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.LinkedHashMap;
@@ -853,6 +854,27 @@ public class FaceIndex {
 			? facesByName(cachedByName(new FaceCache(folder), new HashCache(folder).storedHashByName()))
 			: Collections.<String, List<FaceInfo>> emptyMap();
 		return merged(album, detected, people);
+	}
+
+	/**
+	 * How each of the given photographs of the given album is turned for display, see issue #142.
+	 *
+	 * <p>
+	 * The frame a client speaks in: it draws on the picture the EXIF orientation of the file was
+	 * already applied to, so a box it hands back (issue #147) is turned into the raw raster of the
+	 * file by exactly this, and by nothing else. Read out of the album's own {@link FaceCache}
+	 * where it was written down when the photograph was described, and out of the file's header at
+	 * most once per name otherwise.
+	 * </p>
+	 */
+	public static Map<String, Orientation> displayOrientations(File folder, Collection<String> names) {
+		FaceCache cache = new FaceCache(folder);
+		Map<String, String> hashByName = new HashCache(folder).storedHashByName();
+		Map<String, Orientation> result = new LinkedHashMap<>();
+		for (String name : names) {
+			result.put(name, exifOf(folder, name, cache, hashByName));
+		}
+		return result;
 	}
 
 	private static Map<String, List<FaceInfo>> merged(AlbumInfo album, Map<String, List<FaceInfo>> detected,

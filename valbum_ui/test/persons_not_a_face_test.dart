@@ -78,8 +78,8 @@ void main() {
 
       await saveEditor(tester);
       expect(assignments(requests), [
-        {"image": "t.jpg", "face": 0, "person": "", "state": "NOT_A_FACE"},
-        {"image": "t.jpg", "face": 1, "person": "", "state": "NOT_A_FACE"},
+        {"image": "t.jpg", "face": 0, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "", "state": "NOT_A_FACE"},
+        {"image": "t.jpg", "face": 1, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "", "state": "NOT_A_FACE"},
       ]);
     });
 
@@ -105,7 +105,7 @@ void main() {
 
       await saveEditor(tester);
       expect(assignments(requests), [
-        {"image": "t.jpg", "face": 1, "person": "", "state": "NOT_A_FACE"},
+        {"image": "t.jpg", "face": 1, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "", "state": "NOT_A_FACE"},
       ]);
     });
   });

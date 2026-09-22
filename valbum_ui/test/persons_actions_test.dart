@@ -139,8 +139,8 @@ void main() {
 
       await saveEditor(tester);
       expect(assignments(requests), [
-        {"image": "t.jpg", "face": 0, "person": "p-bob", "state": "CONFIRMED"},
-        {"image": "t.jpg", "face": 1, "person": "p-bob", "state": "CONFIRMED"},
+        {"image": "t.jpg", "face": 0, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "p-bob", "state": "CONFIRMED"},
+        {"image": "t.jpg", "face": 1, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "p-bob", "state": "CONFIRMED"},
       ]);
     });
 
@@ -261,8 +261,8 @@ void main() {
       // Two confirmations for Bob — and no rejection of Anna: naming the
       // right person is the whole statement.
       expect(assignments(requests), [
-        {"image": "s.jpg", "face": 0, "person": "p-bob", "state": "CONFIRMED"},
-        {"image": "s.jpg", "face": 1, "person": "p-bob", "state": "CONFIRMED"},
+        {"image": "s.jpg", "face": 0, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "p-bob", "state": "CONFIRMED"},
+        {"image": "s.jpg", "face": 1, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "p-bob", "state": "CONFIRMED"},
       ]);
     });
 
@@ -279,8 +279,8 @@ void main() {
       await saveEditor(tester);
 
       expect(assignments(requests), [
-        {"image": "s.jpg", "face": 0, "person": "p-anna", "state": "CONFIRMED"},
-        {"image": "s.jpg", "face": 1, "person": "p-anna", "state": "CONFIRMED"},
+        {"image": "s.jpg", "face": 0, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "p-anna", "state": "CONFIRMED"},
+        {"image": "s.jpg", "face": 1, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "p-anna", "state": "CONFIRMED"},
       ]);
     });
   });
