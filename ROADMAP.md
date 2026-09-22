@@ -232,6 +232,20 @@ suggestions across the space), #128 (a person linked to a member), #129 (XMP fac
 
 ## Decisions log
 
+- **2026-09-22 (night)** — The round after 2.6.2, for 2.7.0: the viewer gets an **edit-persons mode**
+  (#147) — every face marked with its name, a tap decides, a "Mark a face" tool draws a box for a face
+  the detector missed, every decision written at once; the one protocol change is a box on the
+  tagging request, given in the frame of the shown picture and snapped by the server onto a
+  detection or a tag it overlaps, so one face keeps one frame. The person chooser lists the people
+  already in the album first, sorts alphabetically, opens in its search field and takes the arrows
+  and Enter (#150). Two things learned the hard way: **dirty means "Save would write something"**,
+  never "the buffer differs from what was read" (#151 — a deferred group and a taken-back mark live
+  in the buffer alone); and the probe written for the orientation fixes found that **the preview
+  generator had mirrored about the picture's edge, not its centre**, so a mirrored EXIF orientation
+  had been served a blank preview since the generator was written (#143) — the preview and the face
+  geometry now share one orientation table, pinned to agree. The viewer test harness can page more
+  than once and look at the first frame (#149: a decoded frame never arrives under the fake clock).
+
 - **2026-09-22 (evening)** — 2.6.0 broke the face editor on a real library and the same evening fixed it:
   2.6.1 (#141, #142) and 2.6.2 (#146, #148). Two doctrines came out of it. **A cache entry is bound to
   what it was made from, never to a position in a list** (#141: the face crop is named by the
