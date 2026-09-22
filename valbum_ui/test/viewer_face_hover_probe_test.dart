@@ -7,12 +7,10 @@ library;
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/main.dart';
-import 'package:valbum_ui/resource.dart';
 
-import 'util/fake_image_http.dart';
 import 'util/viewer_harness.dart';
 import 'viewer_face_hover_test.dart'
-    show faceOf, hover, peopleClient, pumpFaces, regionOf;
+    show faceOf, hover, peopleClient, regionOf;
 
 const String mergedRegister =
     '{"people": [{"id": "p-anna", "name": "Anna", "user": "", '
