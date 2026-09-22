@@ -59,6 +59,7 @@ import 'drag_scroll.dart';
 import 'l10n/app_localizations.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
+import 'person_names.dart';
 import 'resource.dart';
 import 'rights.dart';
 import 'share_session.dart';
@@ -694,10 +695,10 @@ class PersonsContentState extends State<PersonsContent>
       return _l10n.personsNotAFaceGroup;
     }
     if (group.named) {
-      return nameOf(group.person);
+      return labelOf(group.person);
     }
     if (group.suggested) {
-      return _l10n.personsSuggestedHeading(nameOf(group.person));
+      return _l10n.personsSuggestedHeading(labelOf(group.person));
     }
     return unknownCount > 1
         ? _l10n.personsUnknownGroupNumbered(unknownNumber)
@@ -706,7 +707,27 @@ class PersonsContentState extends State<PersonsContent>
 
   /// What the person of the given id is called, the id itself where the
   /// register does not name them.
-  String nameOf(String id) => people[id]?.name ?? id;
+  ///
+  /// The nickname where they have one (issue #146): a heading of this editor
+  /// stands over photographs, and that is where a person is *called*
+  /// something rather than identified.
+  String nameOf(String id) {
+    var person = people[id];
+    return person == null ? id : displayName(person);
+  }
+
+  /// What the person of the given id is called among the people shown here.
+  ///
+  /// [nameOf], except where somebody else on this page is called the same: a
+  /// nickname need not be unique, and two headings reading "Oma" would name
+  /// nobody, so both of them name the person in full (issue #146).
+  String labelOf(String id) => _labels[id] ?? nameOf(id);
+
+  /// What each person shown is called, see [labelOf] and [disambiguate].
+  ///
+  /// Rebuilt from the groups on the screen at every build, because which
+  /// people stand side by side is exactly what changes while faces are moved.
+  Map<String, String> _labels = const {};
 
   // -------------------------------------------------------------------------
   // Selecting and dragging.
@@ -1066,7 +1087,11 @@ class PersonsContentState extends State<PersonsContent>
       builder: (context) => PersonNameDialog(
         title: _l10n.personsRenameTitle,
         notice: _l10n.personsRenameNotice,
-        initial: nameOf(group.person),
+        // Both halves, in the one field the server parses them out of: a round
+        // trip keeps the nickname and deleting the bracket clears it (#146).
+        initial: people[group.person] == null
+            ? group.person
+            : fullLabel(people[group.person]!),
       ),
     );
     if (name == null || !mounted) {
@@ -1391,6 +1416,11 @@ class PersonsContentState extends State<PersonsContent>
   @override
   Widget build(BuildContext context) {
     var shown = groups;
+    _labels = disambiguate([
+      for (var group in shown)
+        if (group.named || group.suggested)
+          if (people[group.person] != null) people[group.person]!,
+    ]);
     var unknownCount = shown
             .where((group) => group.key.startsWith(clusterGroupPrefix))
             .length +
@@ -2242,8 +2272,16 @@ class _PersonChooserState extends State<PersonChooser> {
     var needle = _search.text.trim().toLowerCase();
     var shown = [
       for (var person in widget.people)
-        if (needle.isEmpty || person.name.toLowerCase().contains(needle)) person
+        if (needle.isEmpty ||
+            person.name.toLowerCase().contains(needle) ||
+            person.nickname.toLowerCase().contains(needle))
+          person
     ];
+    // Here a person is *chosen*, so both names are said: the one they are
+    // called by as the line, the one they are identified by beneath it, and
+    // two people called the same are told apart by the first line already
+    // (issue #146).
+    var labels = disambiguate(shown);
     return AlertDialog(
       key: const Key("persons-chooser"),
       title: Text(widget.title ?? l10n.personsChooseTitle),
@@ -2270,7 +2308,14 @@ class _PersonChooserState extends State<PersonChooser> {
                   for (var person in shown)
                     ListTile(
                       key: Key("persons-pick-${person.id}"),
-                      title: Text(person.name),
+                      title: Text(labels[person.id] ?? displayName(person)),
+                      subtitle: person.nickname.trim().isEmpty
+                          ? null
+                          : Text(
+                              person.name,
+                              key: Key("persons-pick-name-${person.id}"),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                       onTap: () => Navigator.of(context).pop(person),
                     ),
                 ],

@@ -105,6 +105,42 @@ public class TestXmpFaceImport extends FacesTestCase {
 		assertEquals("ALICE", people().get(0).getName());
 	}
 
+	/** A name a tool wrote is a name, brackets and all: no nickname is split off (issue #146). */
+	public void testAnImportedNameIsNeverSplit() throws Exception {
+		createSpace();
+		write("bracketed.jpg", Xmp.FIXTURE_WIDTH, Xmp.FIXTURE_HEIGHT,
+			Xmp.Region.corners("Berta Müller (Tante Berta)", 0.2, 0.2, 0.2, 0.2));
+
+		assertEquals(1, tagsOf("bracketed.jpg").size());
+		List<Person> people = people();
+		assertEquals(1, people.size());
+		assertEquals("Nobody typed a convention here.",
+			"Berta Müller (Tante Berta)", people.get(0).getName());
+		assertEquals("", people.get(0).getNickname());
+	}
+
+	/** And a nickname of the register never swallows an imported name (issue #146). */
+	public void testAnImportedNameIsLookedUpCanonically() throws Exception {
+		createSpace();
+		FakeResponse created = post("/", "create-person",
+			"{\"name\":\"Berta Müller (Oma)\"}", _adminToken);
+		assertEquals(created.body(), 200, created.status());
+		String berta = Person.readPerson(reader(created.body())).getId();
+
+		write("oma.jpg", Xmp.FIXTURE_WIDTH, Xmp.FIXTURE_HEIGHT,
+			Xmp.Region.corners("Oma", 0.2, 0.2, 0.2, 0.2),
+			Xmp.Region.corners("berta müller", 0.6, 0.2, 0.2, 0.2));
+
+		List<FaceTag> tags = tagsOf("oma.jpg");
+		assertEquals(2, tags.size());
+		assertFalse("'Oma' is a nickname here, and a guess is not a decision.",
+			berta.equals(tags.get(0).getPerson()));
+		assertEquals("The canonical name is hers, whatever the spelling.", berta,
+			tags.get(1).getPerson());
+		assertEquals("So exactly one person arrived with the picture.", 2, people().size());
+		assertEquals("Oma", people().get(1).getName());
+	}
+
 	/** A raster that is not this file's is no raster at all: the whole list is dropped. */
 	public void testAppliedToDimensionsMustMatch() throws Exception {
 		createSpace();

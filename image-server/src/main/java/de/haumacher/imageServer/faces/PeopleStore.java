@@ -47,7 +47,7 @@ import java.util.logging.Logger;
  * <h2>The file</h2>
  *
  * <pre>
- * {"version":1,"people":[{"id":"&lt;22 chars&gt;","name":"Anna","cover":{"path":"2024/Trip/IMG_1.jpg","face":0},
+ * {"version":1,"people":[{"id":"&lt;22 chars&gt;","name":"Anna","nickname":"Anni","cover":{"path":"2024/Trip/IMG_1.jpg","face":0},
  *                         "aliases":["&lt;id&gt;"],"user":"anna","created":"2026-09-21T10:11:12Z",
  *                         "createdBy":"user:haui"}]}
  * </pre>
@@ -91,6 +91,8 @@ public class PeopleStore {
 
 	private static final String NAME__PROP = "name";
 
+	private static final String NICKNAME__PROP = "nickname";
+
 	private static final String COVER__PROP = "cover";
 
 	private static final String PATH__PROP = "path";
@@ -107,6 +109,113 @@ public class PeopleStore {
 
 	/** Why a person cannot be created or renamed without a name. */
 	public static final String NAME_REQUIRED = "A person needs a name.";
+
+	/**
+	 * A typed name, split into what a person is called officially and what they are called on a
+	 * photograph, see {@link PeopleStore#parseName(String)}.
+	 */
+	public static final class Name {
+
+		private final String _canonical;
+
+		private final String _nickname;
+
+		Name(String canonical, String nickname) {
+			_canonical = canonical;
+			_nickname = nickname;
+		}
+
+		/** The full name, unique within the space, see {@link Person#getName()}. */
+		public String getCanonical() {
+			return _canonical;
+		}
+
+		/** What to call them on a photograph, empty where that is the canonical name. */
+		public String getNickname() {
+			return _nickname;
+		}
+
+		@Override
+		public String toString() {
+			return _nickname.isEmpty() ? _canonical : _canonical + " (" + _nickname + ")";
+		}
+	}
+
+	/**
+	 * Splits a typed name into a canonical name and a nickname, see issue #146.
+	 *
+	 * <p>
+	 * <b>The one place the convention lives.</b> A person has a full name and may be called
+	 * something else on a photograph, and both are typed into one field:
+	 * <code>Berta M&uuml;ller (Tante Berta)</code> is <em>Berta M&uuml;ller</em>, shown as
+	 * <em>Tante Berta</em>. Every way into the register goes through here &mdash;
+	 * <code>?action=create-person</code> and <code>?action=rename-person</code> &mdash; so there is
+	 * one rule for every client and a request carries one string, as it always did.
+	 * </p>
+	 *
+	 * <p>
+	 * The rule: the typed string is trimmed, and where it <b>ends</b> with <code>)</code> and the
+	 * <code>(</code> matching that closing bracket has non-blank text before it, what is in the
+	 * bracket is the nickname and what stands before it the canonical name, both trimmed. Anything
+	 * else is a canonical name with no nickname, exactly as typed &mdash; <code>Berta (Tante
+	 * Berta) M&uuml;ller</code> is somebody's name and not a convention. Nesting is counted, so
+	 * <code>A (B (C))</code> is <em>A</em> called <em>B (C)</em>, and an empty bracket
+	 * (<code>Berta ()</code>) is simply no nickname, which is how one is cleared by editing.
+	 * </p>
+	 *
+	 * <p>
+	 * Composed back for editing by the client ({@code fullLabel}), so that a round trip through
+	 * the rename dialog keeps both.
+	 * </p>
+	 *
+	 * @throws PersonRefused
+	 *         With {@link #NAME_REQUIRED} where nothing but a nickname was typed
+	 *         (<code>(Oma)</code>) or nothing at all: a person is identified by their canonical
+	 *         name, and a register of nicknames alone would have nothing to be unique about.
+	 */
+	public static Name parseName(String typed) throws PersonRefused {
+		String trimmed = typed == null ? "" : typed.trim();
+		if (trimmed.isEmpty()) {
+			throw new PersonRefused(400, NAME_REQUIRED);
+		}
+		if (trimmed.charAt(trimmed.length() - 1) == ')') {
+			int open = matchingBracket(trimmed);
+			if (open >= 0) {
+				String canonical = trimmed.substring(0, open).trim();
+				String nickname = trimmed.substring(open + 1, trimmed.length() - 1).trim();
+				if (!canonical.isEmpty()) {
+					return new Name(canonical, nickname);
+				}
+				if (nickname.isEmpty()) {
+					// "()" and nothing else: no name at all.
+					throw new PersonRefused(400, NAME_REQUIRED);
+				}
+				// "(Oma)": a nickname without anybody to be the nickname of.
+				throw new PersonRefused(400, NAME_REQUIRED);
+			}
+		}
+		return new Name(trimmed, "");
+	}
+
+	/**
+	 * The index of the <code>(</code> matching the <code>)</code> the given string ends with,
+	 * <code>-1</code> where the brackets do not balance out.
+	 */
+	private static int matchingBracket(String text) {
+		int depth = 0;
+		for (int n = text.length() - 1; n >= 0; n--) {
+			char c = text.charAt(n);
+			if (c == ')') {
+				depth++;
+			} else if (c == '(') {
+				depth--;
+				if (depth == 0) {
+					return n;
+				}
+			}
+		}
+		return -1;
+	}
 
 	/** Why a person cannot be merged into themselves. */
 	public static final String MERGE_SELF = "A person cannot be merged into themselves.";
@@ -137,6 +246,8 @@ public class PeopleStore {
 
 		private String _name;
 
+		private String _nickname = "";
+
 		private String _coverPath = "";
 
 		private int _coverFace;
@@ -161,9 +272,17 @@ public class PeopleStore {
 			return _id;
 		}
 
-		/** What to call this person. */
+		/** The canonical name of this person, see {@link Person#getName()}. */
 		public String getName() {
 			return _name;
+		}
+
+		/**
+		 * What to call this person on a photograph, empty where the {@link #getName() name} is
+		 * what they are called, see issue #146.
+		 */
+		public String getNickname() {
+			return _nickname;
 		}
 
 		/** The photograph this person is shown by, empty when nobody chose one. */
@@ -209,7 +328,8 @@ public class PeopleStore {
 
 		/** This person on the wire, see {@link Person}. */
 		public Person toWire() {
-			Person result = Person.create().setId(_id).setName(_name).setUser(_user);
+			Person result =
+				Person.create().setId(_id).setName(_name).setNickname(_nickname).setUser(_user);
 			if (!_coverPath.isEmpty()) {
 				result.setCover(PersonCover.create().setPath(_coverPath).setFace(_coverFace));
 			}
@@ -298,8 +418,35 @@ public class PeopleStore {
 	 * only in their case, so this answer is unambiguous. Only survivors are looked at &mdash; a
 	 * person merged away is nobody, and an id of theirs is resolved by {@link #resolve(String)}.
 	 * </p>
+	 *
+	 * <p>
+	 * A typed name is looked for, so a {@link Entry#getNickname() nickname} answers too (issue
+	 * #146): whoever types &quot;Tante Berta&quot; means her. The canonical name is looked at
+	 * first, because that one is unique and a nickname is not &mdash; of two grandmothers both
+	 * called &quot;Oma&quot; this answers the first, which is why nothing that <em>decides</em>
+	 * anything uses this: {@link #nameTaken(String, String)} and the import go by the canonical
+	 * name alone.
+	 * </p>
 	 */
 	public synchronized Entry byName(String name) {
+		String trimmed = name == null ? "" : name.trim();
+		if (trimmed.isEmpty()) {
+			return null;
+		}
+		Entry canonical = byCanonicalName(trimmed);
+		if (canonical != null) {
+			return canonical;
+		}
+		for (Entry entry : _people.values()) {
+			if (entry.getNickname().equalsIgnoreCase(trimmed)) {
+				return entry;
+			}
+		}
+		return null;
+	}
+
+	/** The person of the given canonical name, <code>null</code> when nobody carries it. */
+	public synchronized Entry byCanonicalName(String name) {
 		String trimmed = name == null ? "" : name.trim();
 		if (trimmed.isEmpty()) {
 			return null;
@@ -320,10 +467,22 @@ public class PeopleStore {
 	 * with: looking up and creating are one atomic act here, so a name that occurs twice arrives
 	 * as one person, see issue #129.
 	 * </p>
+	 *
+	 * <p>
+	 * <b>Canonical, both ways</b> (issue #146): a tool wrote this name, nobody typed a convention,
+	 * so a bracket in it is part of the name and is neither split off nor matched against a
+	 * nickname. Were a nickname matched here, a register holding &quot;Oma&quot; as the nickname
+	 * of somebody would swallow an imported &quot;Oma M&uuml;ller&quot;&#x2014;no, worse: an
+	 * imported &quot;Oma&quot; would silently become that person, which is a guess and not a
+	 * decision anybody made.
+	 * </p>
 	 */
 	public synchronized Entry named(String name, String createdBy) throws PersonRefused, IOException {
-		Entry existing = byName(name);
-		return existing != null ? existing : create(name, createdBy);
+		Entry existing = byCanonicalName(name);
+		if (existing != null) {
+			return existing;
+		}
+		return addPerson(name == null ? "" : name.trim(), "", createdBy);
 	}
 
 	/** Whether anybody but the given person carries the given name, ignoring case. */
@@ -359,33 +518,46 @@ public class PeopleStore {
 	 *        The {@code Caller.subject()} of whoever asked.
 	 */
 	public synchronized Entry create(String name, String createdBy) throws PersonRefused, IOException {
-		String trimmed = name == null ? "" : name.trim();
-		if (trimmed.isEmpty()) {
+		Name parsed = parseName(name);
+		return addPerson(parsed.getCanonical(), parsed.getNickname(), createdBy);
+	}
+
+	/** Creates a person of the given canonical name and nickname; the one place one is added. */
+	private Entry addPerson(String canonical, String nickname, String createdBy)
+			throws PersonRefused, IOException {
+		if (canonical.isEmpty()) {
 			throw new PersonRefused(400, NAME_REQUIRED);
 		}
-		if (nameTaken(trimmed, null)) {
-			throw new PersonRefused(409, personExists(trimmed));
+		if (nameTaken(canonical, null)) {
+			throw new PersonRefused(409, personExists(canonical));
 		}
-		Entry entry = new Entry(newId(), trimmed, Instant.now().toString(), createdBy);
+		Entry entry = new Entry(newId(), canonical, Instant.now().toString(), createdBy);
+		entry._nickname = nickname;
 		_people.put(entry.getId(), entry);
 		store();
 		return entry;
 	}
 
-	/** Renames the person the given id names and writes the register. */
+	/**
+	 * Renames the person the given id names and writes the register.
+	 *
+	 * <p>
+	 * The typed name says both things (issue #146): it is split by {@link #parseName(String)}, so
+	 * a name without a bracket <b>clears</b> the nickname the person had &mdash; the field holds
+	 * the whole statement, and deleting the bracket is how one takes a nickname back.
+	 * </p>
+	 */
 	public synchronized Entry rename(String id, String name) throws PersonRefused, IOException {
 		Entry entry = resolve(id);
 		if (entry == null) {
 			throw new PersonRefused(404, unknownPerson(id == null ? "" : id));
 		}
-		String trimmed = name == null ? "" : name.trim();
-		if (trimmed.isEmpty()) {
-			throw new PersonRefused(400, NAME_REQUIRED);
+		Name parsed = parseName(name);
+		if (nameTaken(parsed.getCanonical(), entry.getId())) {
+			throw new PersonRefused(409, personExists(parsed.getCanonical()));
 		}
-		if (nameTaken(trimmed, entry.getId())) {
-			throw new PersonRefused(409, personExists(trimmed));
-		}
-		entry._name = trimmed;
+		entry._name = parsed.getCanonical();
+		entry._nickname = parsed.getNickname();
 		store();
 		return entry;
 	}
@@ -394,9 +566,10 @@ public class PeopleStore {
 	 * Makes the second person an alias of the first and writes the register.
 	 *
 	 * <p>
-	 * The survivor keeps their id, their name and their cover; the other one's aliases are carried
-	 * along, so a chain of merges stays one lookup deep, and their cover is taken over only where
-	 * the survivor has none. Not one album is touched: what an album says goes on being an id, and
+	 * The survivor keeps their id, their name, their nickname and their cover; the other one's
+	 * aliases are carried along, so a chain of merges stays one lookup deep, and their cover
+	 * &mdash; like their nickname (issue #146) &mdash; is taken over only where the survivor has
+	 * none. Not one album is touched: what an album says goes on being an id, and
 	 * the id it says goes on resolving, see {@link #resolve(String)}.
 	 * </p>
 	 */
@@ -423,6 +596,11 @@ public class PeopleStore {
 		for (String alias : merged.getAliases()) {
 			survivor._aliases.add(alias);
 			_aliases.put(alias, survivor.getId());
+		}
+		if (survivor.getNickname().isEmpty()) {
+			// What the survivor is called stands; where they are called nothing in particular,
+			// what the other one was called is better than nothing, see issue #146.
+			survivor._nickname = merged.getNickname();
 		}
 		if (survivor.getCoverPath().isEmpty() && !merged.getCoverPath().isEmpty()) {
 			survivor.setCover(merged.getCoverPath(), merged.getCoverFace());
@@ -572,6 +750,7 @@ public class PeopleStore {
 	private static Entry readPerson(JsonReader in) throws IOException {
 		String id = "";
 		String name = "";
+		String nickname = "";
 		String created = "";
 		String createdBy = "";
 		String user = "";
@@ -587,6 +766,10 @@ public class PeopleStore {
 					break;
 				case NAME__PROP:
 					name = in.nextString();
+					break;
+				case NICKNAME__PROP:
+					// Absent in a register written before issue #146, which reads as "no nickname".
+					nickname = in.nextString();
 					break;
 				case USER__PROP:
 					user = in.nextString();
@@ -625,6 +808,7 @@ public class PeopleStore {
 		}
 		in.endObject();
 		Entry result = new Entry(id, name, created, createdBy);
+		result._nickname = nickname;
 		result._user = user;
 		result.setCover(coverPath, coverFace);
 		result._aliases.addAll(aliases);
@@ -661,6 +845,12 @@ public class PeopleStore {
 		out.value(entry.getId());
 		out.name(NAME__PROP);
 		out.value(entry.getName());
+		if (!entry.getNickname().isEmpty()) {
+			// Written only where there is one, so a register of people without nicknames stays
+			// the file it was before issue #146.
+			out.name(NICKNAME__PROP);
+			out.value(entry.getNickname());
+		}
 		if (!entry.getCoverPath().isEmpty()) {
 			out.name(COVER__PROP);
 			out.beginObject();

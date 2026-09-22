@@ -18,6 +18,7 @@ import 'image_transform.dart';
 import 'move_view.dart';
 import 'offline.dart';
 import 'people_registry.dart';
+import 'person_names.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'rights.dart';
@@ -1323,7 +1324,8 @@ class _FaceRegionsState extends State<FaceRegions> {
     var regions = <Widget>[];
     for (var face in widget.faces) {
       var person = _people[face.person];
-      var name = person?.name.trim() ?? "";
+      // What they are called on a photograph, and this is one (issue #146).
+      var name = person == null ? "" : displayName(person);
       if (name.isEmpty) {
         // A face whose person the register does not know names nobody, and a
         // region that names nobody is not a region: it would outline a face

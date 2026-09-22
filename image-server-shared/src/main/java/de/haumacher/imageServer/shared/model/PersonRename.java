@@ -56,6 +56,11 @@ public class PersonRename extends de.haumacher.msgbuf.data.AbstractDataObject {
 
 	/**
 	 * The new name; blanks are trimmed and an empty name is refused.
+	 *
+	 * <p>
+	 * The typed string, split like {@link PersonCreate#getName()}: a name without a parenthesis
+	 * clears the {@link Person#getNickname()} the person had, see issue #146.
+	 * </p>
 	 */
 	public final String getName() {
 		return _name;

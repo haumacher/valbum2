@@ -31,6 +31,11 @@ public class PersonCreate extends de.haumacher.msgbuf.data.AbstractDataObject {
 
 	/**
 	 * The name of the new person; blanks are trimmed and an empty name is refused.
+	 *
+	 * <p>
+	 * The typed string, which may carry the {@link Person#getNickname()} in the convention
+	 * <code>&lt;name&gt; (&lt;nickname&gt;)</code>; the server splits it, see issue #146.
+	 * </p>
 	 */
 	public final String getName() {
 		return _name;

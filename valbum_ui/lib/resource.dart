@@ -5654,8 +5654,32 @@ class Person extends _JsonObject {
 	///  </p>
 	String id;
 
-	///  What to call this person; editable, and unique within the space ignoring case.
+	///  The canonical name of this person; editable, and unique within the space ignoring case.
+	/// 
+	///  <p>
+	///  The full name, the one a person is <em>identified</em> by &mdash; it is what
+	///  {@link UserEntry#personName} answers and what a chooser shows beside the
+	///  {@link #nickname}. What is written under a face in an album is {@link #nickname} where there
+	///  is one and this otherwise, see issue #146.
+	///  </p>
 	String name;
+
+	///  What to call this person on a photograph, empty where they are called by their
+	///  {@link #name} (issue #146).
+	/// 
+	///  <p>
+	///  Typed with the {@link #name} in one field &mdash; <code>Berta M&uuml;ller (Tante
+	///  Berta)</code> &mdash; and split by the server, which is the one place the convention lives
+	///  (<code>PeopleStore.parseName</code>); <code>?action=create-person</code> and
+	///  <code>?action=rename-person</code> therefore go on carrying one string.
+	///  </p>
+	/// 
+	///  <p>
+	///  Unlike the {@link #name} a nickname need <b>not</b> be unique &mdash; two grandmothers are
+	///  both &quot;Oma&quot; &mdash; so a client that shows two such people side by side names them
+	///  by both.
+	///  </p>
+	String nickname;
 
 	///  The face to show this person by, <code>null</code> while nobody chose one (issue #126).
 	PersonCover? cover;
@@ -5680,6 +5704,7 @@ class Person extends _JsonObject {
 	Person({
 			this.id = "", 
 			this.name = "", 
+			this.nickname = "", 
 			this.cover, 
 			this.user = "", 
 			this.aliases = const [], 
@@ -5709,6 +5734,10 @@ class Person extends _JsonObject {
 			}
 			case "name": {
 				name = json.expectString();
+				break;
+			}
+			case "nickname": {
+				nickname = json.expectString();
 				break;
 			}
 			case "cover": {
@@ -5745,6 +5774,9 @@ class Person extends _JsonObject {
 
 		json.addKey("name");
 		json.addString(name);
+
+		json.addKey("nickname");
+		json.addString(nickname);
 
 		var _cover = cover;
 		if (_cover != null) {
@@ -5935,6 +5967,11 @@ class PersonList extends _JsonObject {
 ///  What <code>?action=create-person</code> asks for.
 class PersonCreate extends _JsonObject {
 	///  The name of the new person; blanks are trimmed and an empty name is refused.
+	/// 
+	///  <p>
+	///  The typed string, which may carry the {@link Person#nickname} in the convention
+	///  <code>&lt;name&gt; (&lt;nickname&gt;)</code>; the server splits it, see issue #146.
+	///  </p>
 	String name;
 
 	/// Creates a PersonCreate.
@@ -5984,6 +6021,11 @@ class PersonRename extends _JsonObject {
 	String id;
 
 	///  The new name; blanks are trimmed and an empty name is refused.
+	/// 
+	///  <p>
+	///  The typed string, split like {@link PersonCreate#name}: a name without a parenthesis
+	///  clears the {@link Person#nickname} the person had, see issue #146.
+	///  </p>
 	String name;
 
 	/// Creates a PersonRename.

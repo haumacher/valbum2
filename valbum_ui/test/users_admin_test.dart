@@ -107,6 +107,23 @@ void main() {
     expect(find.text("Appears in photos as Anna"), findsOneWidget);
   });
 
+  testWidgets('names that person canonically, nickname or not', (tester) async {
+    // Issue #146: a nickname is what stands under a face; identifying a member
+    // is the full name's job, and the server answers exactly that here.
+    await pumpSettings(
+      tester,
+      await adminSettings(),
+      MockClient((request) async => serverFor(
+            "admin",
+            users: (_) => json('{"users": ['
+                '{"name": "haui", "role": "admin", "devices": 1, '
+                '"person": "p-berta", "personName": "Berta Müller"}]}'),
+          )(request)),
+    );
+
+    expect(find.text("Appears in photos as Berta Müller"), findsOneWidget);
+  });
+
   testWidgets('a refused list shows why, instead of nothing', (tester) async {
     await pumpSettings(
       tester,

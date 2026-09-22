@@ -160,6 +160,8 @@ public class FaceImport {
 	 */
 	private String person(String name, String file) {
 		try {
+			// Unsplit: a tool wrote this name, so a bracket in it belongs to the name and the
+			// nickname convention of issue #146 does not apply, see PeopleStore.named(...).
 			PeopleStore.Entry entry = _people.named(name, CREATED_BY);
 			return entry == null ? null : entry.getId();
 		} catch (PeopleStore.PersonRefused | java.io.IOException ex) {

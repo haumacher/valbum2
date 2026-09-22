@@ -164,6 +164,25 @@ void main() {
     expect(find.text("Anna"), findsNothing);
   });
 
+  testWidgets('calls them what they are called on a photograph',
+      (tester) async {
+    // Issue #146: the canonical name identifies, the nickname is what stands
+    // under a face — and this is a face.
+    await pumpFaces(
+      tester,
+      facesImage(),
+      client: peopleClient(
+        <String>[],
+        body: '{"people": [{"id": "p-anna", "name": "Berta Müller", '
+            '"nickname": "Tante Berta", "user": "", "aliases": []}]}',
+      ),
+    );
+
+    await hover(tester, tester.getRect(regionOf(0)).center);
+    expect(find.text("Tante Berta"), findsOneWidget);
+    expect(find.text("Berta Müller"), findsNothing);
+  });
+
   testWidgets('outlines the box only while it is hovered', (tester) async {
     var asked = <String>[];
     await pumpFaces(tester, facesImage(), client: peopleClient(asked));

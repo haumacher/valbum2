@@ -2108,8 +2108,36 @@ message Person {
 	 */
 	string id;
 
-	/** What to call this person; editable, and unique within the space ignoring case. */
+	/**
+	 * The canonical name of this person; editable, and unique within the space ignoring case.
+	 *
+	 * <p>
+	 * The full name, the one a person is <em>identified</em> by &mdash; it is what
+	 * {@link UserEntry#personName} answers and what a chooser shows beside the
+	 * {@link #nickname}. What is written under a face in an album is {@link #nickname} where there
+	 * is one and this otherwise, see issue #146.
+	 * </p>
+	 */
 	string name;
+
+	/**
+	 * What to call this person on a photograph, empty where they are called by their
+	 * {@link #name} (issue #146).
+	 *
+	 * <p>
+	 * Typed with the {@link #name} in one field &mdash; <code>Berta M&uuml;ller (Tante
+	 * Berta)</code> &mdash; and split by the server, which is the one place the convention lives
+	 * (<code>PeopleStore.parseName</code>); <code>?action=create-person</code> and
+	 * <code>?action=rename-person</code> therefore go on carrying one string.
+	 * </p>
+	 *
+	 * <p>
+	 * Unlike the {@link #name} a nickname need <b>not</b> be unique &mdash; two grandmothers are
+	 * both &quot;Oma&quot; &mdash; so a client that shows two such people side by side names them
+	 * by both.
+	 * </p>
+	 */
+	string nickname;
 
 	/** The face to show this person by, <code>null</code> while nobody chose one (issue #126). */
 	PersonCover cover;
@@ -2165,7 +2193,14 @@ message PersonList {
 
 /** What <code>?action=create-person</code> asks for. */
 message PersonCreate {
-	/** The name of the new person; blanks are trimmed and an empty name is refused. */
+	/**
+	 * The name of the new person; blanks are trimmed and an empty name is refused.
+	 *
+	 * <p>
+	 * The typed string, which may carry the {@link Person#nickname} in the convention
+	 * <code>&lt;name&gt; (&lt;nickname&gt;)</code>; the server splits it, see issue #146.
+	 * </p>
+	 */
 	string name;
 }
 
@@ -2174,7 +2209,14 @@ message PersonRename {
 	/** The {@link Person#id} to rename; an alias of a person names that person. */
 	string id;
 
-	/** The new name; blanks are trimmed and an empty name is refused. */
+	/**
+	 * The new name; blanks are trimmed and an empty name is refused.
+	 *
+	 * <p>
+	 * The typed string, split like {@link PersonCreate#name}: a name without a parenthesis
+	 * clears the {@link Person#nickname} the person had, see issue #146.
+	 * </p>
+	 */
 	string name;
 }
 

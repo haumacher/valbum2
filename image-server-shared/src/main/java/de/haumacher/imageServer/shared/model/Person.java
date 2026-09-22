@@ -27,6 +27,9 @@ public class Person extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getName() */
 	private static final String NAME__PROP = "name";
 
+	/** @see #getNickname() */
+	private static final String NICKNAME__PROP = "nickname";
+
 	/** @see #getCover() */
 	private static final String COVER__PROP = "cover";
 
@@ -39,6 +42,8 @@ public class Person extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _id = "";
 
 	private String _name = "";
+
+	private String _nickname = "";
 
 	private de.haumacher.imageServer.shared.model.PersonCover _cover = null;
 
@@ -83,7 +88,14 @@ public class Person extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * What to call this person; editable, and unique within the space ignoring case.
+	 * The canonical name of this person; editable, and unique within the space ignoring case.
+	 *
+	 * <p>
+	 * The full name, the one a person is <em>identified</em> by &mdash; it is what
+	 * {@link UserEntry#getPersonName()} answers and what a chooser shows beside the
+	 * {@link #getNickname()}. What is written under a face in an album is {@link #getNickname()} where there
+	 * is one and this otherwise, see issue #146.
+	 * </p>
 	 */
 	public final String getName() {
 		return _name;
@@ -100,6 +112,40 @@ public class Person extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** Internal setter for {@link #getName()} without chain call utility. */
 	protected final void internalSetName(String value) {
 		_name = value;
+	}
+
+	/**
+	 * What to call this person on a photograph, empty where they are called by their
+	 * {@link #getName()} (issue #146).
+	 *
+	 * <p>
+	 * Typed with the {@link #getName()} in one field &mdash; <code>Berta M&uuml;ller (Tante
+	 * Berta)</code> &mdash; and split by the server, which is the one place the convention lives
+	 * (<code>PeopleStore.parseName</code>); <code>?action=create-person</code> and
+	 * <code>?action=rename-person</code> therefore go on carrying one string.
+	 * </p>
+	 *
+	 * <p>
+	 * Unlike the {@link #getName()} a nickname need <b>not</b> be unique &mdash; two grandmothers are
+	 * both &quot;Oma&quot; &mdash; so a client that shows two such people side by side names them
+	 * by both.
+	 * </p>
+	 */
+	public final String getNickname() {
+		return _nickname;
+	}
+
+	/**
+	 * @see #getNickname()
+	 */
+	public de.haumacher.imageServer.shared.model.Person setNickname(String value) {
+		internalSetNickname(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getNickname()} without chain call utility. */
+	protected final void internalSetNickname(String value) {
+		_nickname = value;
 	}
 
 	/**
@@ -220,6 +266,8 @@ public class Person extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getId());
 		out.name(NAME__PROP);
 		out.value(getName());
+		out.name(NICKNAME__PROP);
+		out.value(getNickname());
 		if (hasCover()) {
 			out.name(COVER__PROP);
 			getCover().writeTo(out);
@@ -239,6 +287,7 @@ public class Person extends de.haumacher.msgbuf.data.AbstractDataObject {
 		switch (field) {
 			case ID__PROP: setId(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case NAME__PROP: setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case NICKNAME__PROP: setNickname(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case COVER__PROP: setCover(de.haumacher.imageServer.shared.model.PersonCover.readPersonCover(in)); break;
 			case USER__PROP: setUser(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case ALIASES__PROP: {
