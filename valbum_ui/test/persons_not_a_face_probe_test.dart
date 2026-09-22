@@ -3,7 +3,6 @@
 /// server already stored as no face.
 library;
 
-import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
