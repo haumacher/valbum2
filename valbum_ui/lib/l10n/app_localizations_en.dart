@@ -2302,6 +2302,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get personsShowPhoto => 'Show the photo';
 
   @override
+  String get personsNameEntry => 'Name person…';
+
+  @override
+  String get personsDeferEntry => 'Defer (new group)';
+
+  @override
+  String get personsSomeoneElse => 'Someone else…';
+
+  @override
   String get personsForgetEntry => 'Forget the decision';
 
   @override

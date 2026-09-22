@@ -37,7 +37,7 @@ import 'inbox_listing_test.dart' show listingWithCount;
 import 'inbox_view_test.dart' show inboxTree, pumpInbox;
 import 'move_test.dart' show recordingClient, treeAnswer;
 import 'persons_view_test.dart'
-    show albumOf, authOf, editorClient, pumpEditor;
+    show albumOf, authOf, editorClient, pumpEditor, selectFace;
 import 'photo_picker_test.dart' show twoAlbums;
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
@@ -370,6 +370,29 @@ void sliceTwo() {
       var en = l10nOf(const Locale("en"));
       expect(find.text(en.personsNotAFaceGroup), findsNothing);
       expect(find.text(en.personsForgetTarget), findsNothing);
+    });
+
+    testWidgets('the actions offered on a selection (issue #139)',
+        (tester) async {
+      speakGerman(tester);
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(requests, auth: authOf(), album: albumOf()),
+      );
+
+      await selectFace(tester, "a.jpg#0");
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-selection-menu")));
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.text(de.personsNameEntry), findsOneWidget);
+      expect(find.text(de.personsDeferEntry), findsOneWidget);
+
+      var en = l10nOf(const Locale("en"));
+      expect(find.text(en.personsNameEntry), findsNothing);
+      expect(find.text(en.personsDeferEntry), findsNothing);
     });
 
     testWidgets('the entries linking a person to a member', (tester) async {

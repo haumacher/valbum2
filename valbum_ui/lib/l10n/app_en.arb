@@ -3865,6 +3865,21 @@
     "description": "The tooltip of the gesture showing the whole photograph a face was found in",
     "x-translated": "be5515cd"
   },
+  "personsNameEntry": "Name person…",
+  "@personsNameEntry": {
+    "description": "The menu entry naming the selected faces as one person",
+    "x-translated": "a0fda5b2"
+  },
+  "personsDeferEntry": "Defer (new group)",
+  "@personsDeferEntry": {
+    "description": "The menu entry putting the selected faces into a group of their own, to be named later",
+    "x-translated": "48269ee3"
+  },
+  "personsSomeoneElse": "Someone else…",
+  "@personsSomeoneElse": {
+    "description": "The button naming a different person for the faces the server only suggested",
+    "x-translated": "32b24cde"
+  },
   "personsForgetEntry": "Forget the decision",
   "@personsForgetEntry": {
     "description": "The menu entry taking back what was decided about the selected faces",

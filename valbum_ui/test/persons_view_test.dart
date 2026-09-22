@@ -879,8 +879,17 @@ void main() {
       );
 
       // A face of a cluster: the server's own guess, and nothing to forget.
+      // The menu is there since issue #139 — a selection can be named and
+      // deferred whatever the server said about it — but "Forget" is not.
       await selectFace(tester, "a.jpg#0");
-      expect(find.byKey(const Key("persons-selection-menu")), findsNothing);
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-selection-menu")));
+        await tester.pumpAndSettle();
+      });
+      expect(find.byKey(const Key("persons-forget")), findsNothing);
+      expect(find.byKey(const Key("persons-name")), findsOneWidget);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
 
       // Dropped on the target it still says nothing, so Save sends nothing.
       await dragFaceTo(

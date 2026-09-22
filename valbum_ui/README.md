@@ -32,6 +32,9 @@ albums (with the row layout in `lib/album_layout.dart`) and single images.
   privacy level, comment, heading), the privacy marker on restricted tiles and the "view as"
   preview switch of the edit mode (a read-only look at the album as members or the public see it).
   "Move to…" in the edit app bar moves the selection to another album (`lib/move_view.dart`).
+- `lib/drag_scroll.dart` — `DragEdgeScroller` (issue #42): the view scrolls while something
+  carried rests near the top or the bottom edge of its viewport. Shared by the album's edit
+  mode and by the face editor (issue #139).
 - `lib/image_view.dart` — `ImageView`, the full-screen single image viewer
   (zoom, pan, swipe and keyboard navigation).
 - `lib/group_view.dart` — the "alternatives" view of an `ImageGroup`

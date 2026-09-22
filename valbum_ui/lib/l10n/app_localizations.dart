@@ -3782,6 +3782,24 @@ abstract class AppLocalizations {
   /// **'Show the photo'**
   String get personsShowPhoto;
 
+  /// The menu entry naming the selected faces as one person
+  ///
+  /// In en, this message translates to:
+  /// **'Name person…'**
+  String get personsNameEntry;
+
+  /// The menu entry putting the selected faces into a group of their own, to be named later
+  ///
+  /// In en, this message translates to:
+  /// **'Defer (new group)'**
+  String get personsDeferEntry;
+
+  /// The button naming a different person for the faces the server only suggested
+  ///
+  /// In en, this message translates to:
+  /// **'Someone else…'**
+  String get personsSomeoneElse;
+
   /// The menu entry taking back what was decided about the selected faces
   ///
   /// In en, this message translates to:

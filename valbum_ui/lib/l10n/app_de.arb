@@ -624,5 +624,8 @@
   "personsLinkChooseNotice": "Ein Mitglied ist höchstens eine Person.",
   "personsLinkNobodyFree": "Jedes Element dieses Raums ist bereits jemand.",
   "appearsInPhotosAs": "Erscheint auf Fotos als {name}",
-  "inboxPhotoCount": "{count, plural, =1{1 Foto} other{{count} Fotos}}"
+  "inboxPhotoCount": "{count, plural, =1{1 Foto} other{{count} Fotos}}",
+  "personsNameEntry": "Person benennen…",
+  "personsDeferEntry": "Zurückstellen (neue Gruppe)",
+  "personsSomeoneElse": "Jemand anderes…"
 }

@@ -44,13 +44,17 @@ library;
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+import 'album_edit.dart' show PlaneTransform;
 import 'album_view.dart' show LeaveEdit, dragFeedbackScale, dragHandleSize;
 import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'drag_scroll.dart';
 import 'l10n/app_localizations.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
@@ -193,6 +197,76 @@ class FaceGroup {
 /// nothing is dropped *into* a belief — it is confirmed or it is left.
 bool takesDrops(String group) => !group.startsWith(suggestedGroupPrefix);
 
+/// What a click left behind: the faces selected, and where the next range
+/// starts from.
+class FaceSelection {
+  /// The selected faces, by [AlbumFace.key].
+  final Set<String> keys;
+
+  /// The face a following shift-click measures its range from, `null` where
+  /// there is none.
+  final String? anchor;
+
+  const FaceSelection(this.keys, this.anchor);
+}
+
+/// What a click on a face does to the selection (issue #139).
+///
+/// The selection semantics every file manager has, written as a function of
+/// what is on the screen so that it can be checked without a screen: [order]
+/// is the display order of the page — every face as it is drawn, groups in
+/// their order, so a range may span a group boundary — [clicked] the face the
+/// click landed on, [anchor] the face of the last plain or toggling click.
+///
+///  * plain: the clicked face alone, whatever stood selected before;
+///  * [toggle] (ctrl, and meta on a Mac): the clicked face joins or leaves
+///    the selection, the rest untouched, and it becomes the new anchor;
+///  * [range] (shift): everything from the anchor to the clicked face takes
+///    **the anchor's own state** — selected from a selected anchor, and
+///    deselected from one that was just toggled off — and the anchor stays
+///    where it is, so the range can be redrawn from it.
+///
+/// A range without an anchor, or whose anchor is gone (the album was read
+/// anew), is a plain click: there is nothing to measure from.
+FaceSelection faceSelectionAfterClick({
+  required List<String> order,
+  required String clicked,
+  required Set<String> selection,
+  String? anchor,
+  bool toggle = false,
+  bool range = false,
+}) {
+  var from = anchor == null ? -1 : order.indexOf(anchor);
+  var to = order.indexOf(clicked);
+  if (range && from >= 0 && to >= 0) {
+    var select = selection.contains(anchor);
+    var result = Set<String>.from(selection);
+    for (var i = min(from, to); i <= max(from, to); i++) {
+      if (select) {
+        result.add(order[i]);
+      } else {
+        result.remove(order[i]);
+      }
+    }
+    return FaceSelection(result, anchor);
+  }
+  if (toggle) {
+    var result = Set<String>.from(selection);
+    if (!result.remove(clicked)) {
+      result.add(clicked);
+    }
+    return FaceSelection(result, clicked);
+  }
+  return FaceSelection({clicked}, clicked);
+}
+
+/// Whether a click of the given pointer kind carries modifiers at all.
+///
+/// A phone has no ctrl and no shift, and a tap there keeps toggling as it did
+/// before issue #139; a mouse and a trackpad get the regular semantics.
+bool pointerSelects(PointerDeviceKind kind) =>
+    kind == PointerDeviceKind.mouse || kind == PointerDeviceKind.trackpad;
+
 /// The face editor of one album.
 class PersonsContent extends StatefulWidget {
   /// The page this screen stands in, see [VAlbumState].
@@ -219,7 +293,8 @@ class PersonsContent extends StatefulWidget {
   State<StatefulWidget> createState() => PersonsContentState();
 }
 
-class PersonsContentState extends State<PersonsContent> {
+class PersonsContentState extends State<PersonsContent>
+    with TickerProviderStateMixin {
   /// Where every face stands now, by [AlbumFace.key].
   final Map<String, String> placement = {};
 
@@ -234,6 +309,29 @@ class PersonsContentState extends State<PersonsContent> {
 
   /// The faces a drag in progress carries, by [AlbumFace.key].
   final Set<String> carried = {};
+
+  /// The face a shift-click measures its range from (issue #139), `null`
+  /// before the first click and after the album was read anew.
+  String? anchor;
+
+  /// The face the last click landed on and when, so that the next one can be
+  /// recognised as the second half of a double click, see [handleTap].
+  String? _lastClickKey;
+  DateTime _lastClickAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// The scroll view of the page, which the edge scrolling drives.
+  final ScrollController _scroll = ScrollController();
+
+  /// Scrolls the page while a carried face rests near the top or the bottom
+  /// edge of the view, see [DragEdgeScroller] (issue #42, brought here by
+  /// issue #139: a group heading below the fold used to be a dead end).
+  late final DragEdgeScroller _dragScroller;
+
+  /// The pointer of the gesture that is currently down on the page, and where
+  /// it was seen last, see [_trackPointer].
+  int? _pointerId;
+  PointerDeviceKind _pointerKind = PointerDeviceKind.touch;
+  Offset? _pointerPosition;
 
   /// How many groups this editor made, so the next one gets a fresh key.
   int _newGroups = 0;
@@ -262,8 +360,10 @@ class PersonsContentState extends State<PersonsContent> {
   @override
   void initState() {
     super.initState();
+    _dragScroller = DragEdgeScroller(this, onScrolled: _followScrolledContent);
     _read(widget.album);
-    widget.albumState.navigator.delegate.registerPersonsGuard(path, _leaveGuard);
+    widget.albumState.navigator.delegate
+        .registerPersonsGuard(path, _leaveGuard);
     _loadPeople();
     _schedulePoll();
   }
@@ -288,6 +388,8 @@ class PersonsContentState extends State<PersonsContent> {
     _poll?.cancel();
     widget.albumState.navigator.delegate
         .unregisterPersonsGuard(path, _leaveGuard);
+    _dragScroller.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -303,6 +405,7 @@ class PersonsContentState extends State<PersonsContent> {
     stored.clear();
     placement.clear();
     selection.clear();
+    anchor = null;
     for (var face in facesOf(album)) {
       var where = storedGroupOf(face.face);
       stored[face.key] = where;
@@ -518,7 +621,8 @@ class PersonsContentState extends State<PersonsContent> {
     for (var face in faces) {
       var group = groupShown(face);
       if (group.startsWith(suggestedGroupPrefix)) {
-        take("$personGroupPrefix${group.substring(suggestedGroupPrefix.length)}");
+        take(
+            "$personGroupPrefix${group.substring(suggestedGroupPrefix.length)}");
         take(group);
       }
     }
@@ -579,6 +683,85 @@ class PersonsContentState extends State<PersonsContent> {
       if (!selection.remove(face.key)) {
         selection.add(face.key);
       }
+      anchor = face.key;
+    });
+  }
+
+  /// Forgets the click a double click would be counted from, see [handleTap].
+  ///
+  /// Called wherever something opens over the page — a context menu, the
+  /// photograph — so that the click which dismisses it, or the one that comes
+  /// after it, is a first click again and never the second half of something
+  /// the reader has long stopped doing.
+  void _forgetClick() => _lastClickKey = null;
+
+  /// Every face of the page in the order it is drawn (issue #139).
+  ///
+  /// What a shift-click measures its range in: the groups as they stand, the
+  /// faces inside a group in their own order — so a range runs across a group
+  /// boundary as naturally as it runs inside one. "Not a face" counts only
+  /// while it is open, because a face nobody can see is a face nobody meant
+  /// to sweep over.
+  List<AlbumFace> get displayOrder => [
+        for (var group in groups)
+          if (group.key != notAFaceGroup || _notAFaceOpen) ...group.faces,
+      ];
+
+  /// Handles a click on the tile of the given face.
+  ///
+  /// A finger has no modifiers, so a tap keeps toggling as it always did; a
+  /// mouse gets the regular semantics of [faceSelectionAfterClick].
+  void handleTap(AlbumFace face, PointerDeviceKind kind) {
+    if (!mayEdit) {
+      return;
+    }
+    if (!pointerSelects(kind)) {
+      toggle(face);
+      return;
+    }
+    var keyboard = HardwareKeyboard.instance;
+    var toggles = keyboard.isControlPressed || keyboard.isMetaPressed;
+    var ranges = keyboard.isShiftPressed;
+    // The second click of a double click, counted here instead of through a
+    // [GestureDetector.onDoubleTap] (issue #139): that one holds the gesture
+    // arena open for [kDoubleTapTimeout] and would make *every* selecting
+    // click of this page wait a third of a second — in the one editor where
+    // clicking is the whole work. Selecting is idempotent for a plain click,
+    // so acting at once and opening the photograph on the second click costs
+    // nothing and delays nothing. A finger keeps its long press: there a
+    // second tap means "deselect", which must not open anything.
+    //
+    // **Only a plain click counts**, on either side: a ctrl-click adds a face
+    // and a shift-click draws a range, and neither is half of "show me this
+    // photograph" — a modified click is therefore neither the first half nor
+    // the second, and it forgets what stood before it, so the plain click
+    // that follows selects rather than opening a dialog over the page.
+    if (toggles || ranges) {
+      _forgetClick();
+    } else {
+      var now = DateTime.now();
+      var again = _lastClickKey == face.key &&
+          now.difference(_lastClickAt) < kDoubleTapTimeout;
+      _lastClickKey = again ? null : face.key;
+      _lastClickAt = now;
+      if (again) {
+        showPhoto(face);
+        return;
+      }
+    }
+    var next = faceSelectionAfterClick(
+      order: [for (var one in displayOrder) one.key],
+      clicked: face.key,
+      selection: selection,
+      anchor: anchor,
+      toggle: toggles,
+      range: ranges,
+    );
+    setState(() {
+      selection
+        ..clear()
+        ..addAll(next.keys);
+      anchor = next.anchor;
     });
   }
 
@@ -593,15 +776,92 @@ class PersonsContentState extends State<PersonsContent> {
     return DraggedFaces(faces, face);
   }
 
-  void startCarry(DraggedFaces dragged) => setState(() {
-        carried
-          ..clear()
-          ..addAll(dragged.faces.map((face) => face.key));
-      });
+  void startCarry(DraggedFaces dragged) {
+    // The page scrolls while the carried face rests near an edge, issue #42.
+    _dragScroller.begin(
+      _scroll.hasClients ? _scroll.position : null,
+      _pointerPosition,
+    );
+    setState(() {
+      carried
+        ..clear()
+        ..addAll(dragged.faces.map((face) => face.key));
+    });
+  }
 
-  void endCarry() => setState(() => carried.clear());
+  void endCarry() {
+    _dragScroller.end();
+    if (carried.isNotEmpty) {
+      setState(carried.clear);
+    }
+  }
 
   bool isCarried(AlbumFace face) => carried.contains(face.key);
+
+  /// Whether the page is scrolling under a carried face right now.
+  ///
+  /// Only the tests look at this: it is the proof that the scroller stops
+  /// when the pointer leaves the edge band and when the drag ends.
+  bool get dragScrolling => _dragScroller.scrolling;
+
+  /// Remembers the pointer that is down on the page and where it is.
+  ///
+  /// The album does the same for the same reason: the drag machinery reports
+  /// the pointer to the drop targets but not to the page, and the edge
+  /// scrolling needs both its identity and its place.
+  void _trackPointer(PointerEvent event) {
+    if (event is PointerDownEvent && carried.isEmpty) {
+      _pointerId = event.pointer;
+    }
+    if (event.pointer != _pointerId) {
+      return;
+    }
+    _pointerKind = event.kind;
+    _pointerPosition = event.position;
+    if (carried.isNotEmpty) {
+      _dragScroller.update(event.position);
+    }
+  }
+
+  /// Ends the gesture the page was watching, see [_trackPointer].
+  void _endGesture(PointerEvent event) {
+    if (event.pointer != _pointerId) {
+      return;
+    }
+    _pointerId = null;
+    _pointerPosition = null;
+    endCarry();
+  }
+
+  /// Lets the drop targets follow the page scrolling under a resting pointer.
+  ///
+  /// A [Draggable] hit tests for its targets only when the pointer moves, so
+  /// a heading scrolling under a pointer that rests would neither take the
+  /// highlight nor take the drop. A synthesized move of zero length, routed
+  /// to the drag after the frame the new offset was laid out in, makes the
+  /// drag look again — which is exactly what is needed and nothing more.
+  void _followScrolledContent() {
+    var pointer = _pointerId;
+    var position = _pointerPosition;
+    if (pointer == null || position == null) {
+      return;
+    }
+    var kind = _pointerKind;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || carried.isEmpty) {
+        return;
+      }
+      GestureBinding.instance.pointerRouter.route(
+        PointerMoveEvent(
+          pointer: pointer,
+          kind: kind,
+          position: position,
+          delta: Offset.zero,
+          synthesized: true,
+        ),
+      );
+    });
+  }
 
   /// Puts the carried faces into the given group.
   void drop(DraggedFaces dragged, String group) {
@@ -614,31 +874,60 @@ class PersonsContentState extends State<PersonsContent> {
   }
 
   /// Makes a group of the carried faces, to be named later.
-  void dropIntoNewGroup(DraggedFaces dragged) {
-    setState(() => _newGroups++);
-    drop(dragged, "$newGroupPrefix$_newGroups");
+  void dropIntoNewGroup(DraggedFaces dragged) => putIntoNewGroup(dragged.faces);
+
+  /// Makes a group of the given faces, to be named later ("Defer").
+  ///
+  /// What dropping on "New group" does, reachable without a drag since issue
+  /// #139: these faces belong together and who they are is a question for
+  /// later.
+  void putIntoNewGroup(Iterable<AlbumFace> faces) {
+    if (!mayEdit) {
+      return;
+    }
+    setState(() {
+      _newGroups++;
+      for (var face in faces) {
+        placement[face.key] = "$newGroupPrefix$_newGroups";
+      }
+      selection.clear();
+    });
   }
 
   /// Takes back what was decided about the given faces (issue #138).
   ///
-  /// A face nobody decided about is passed over: there is nothing to forget,
-  /// and an `UNDECIDED` for it would be a request the server does nothing
-  /// with. What is forgotten falls back into the group it would stand in
-  /// without the decision — its cluster, or the plain "Who is this?".
+  /// There are two things to take back, and this takes back both (issue
+  /// #139):
+  ///
+  ///  * a **stored** decision — confirmed, rejected, no face at all — is
+  ///    marked as forgotten, so that Save writes the `UNDECIDED` that removes
+  ///    the tag; the face falls back into the group it would stand in without
+  ///    it, its cluster or the plain "Who is this?";
+  ///  * a placement that is only **in the buffer** — dragged somewhere, named
+  ///    by a menu, deferred — is simply dropped, and the face stands where the
+  ///    server put it again. Nothing is written for it, because nothing was.
+  ///
+  /// A face with neither is passed over: there is nothing to forget, and an
+  /// `UNDECIDED` for it would be a request the server does nothing with.
   void forgetDecision(Iterable<AlbumFace> faces) {
     if (!mayEdit) {
       return;
     }
     setState(() {
       for (var face in faces) {
-        if (!face.decided) {
-          continue;
+        if (face.decided) {
+          placement[face.key] = face.forgottenGroup;
+        } else if (canForget(face)) {
+          placement[face.key] = stored[face.key] ?? face.undecidedGroup;
         }
-        placement[face.key] = face.forgottenGroup;
       }
       selection.clear();
     });
   }
+
+  /// Whether there is anything to take back about the given face.
+  bool canForget(AlbumFace face) =>
+      face.decided || placement[face.key] != stored[face.key];
 
   /// The selected faces, in the order the album answers them.
   List<AlbumFace> get selected => [
@@ -646,15 +935,25 @@ class PersonsContentState extends State<PersonsContent> {
           if (selection.contains(face.key)) face
       ];
 
-  /// Whether anything selected carries a decision that could be forgotten.
-  bool get mayForget => mayEdit && selected.any((face) => face.decided);
+  /// Whether anything selected carries something that could be taken back.
+  bool get mayForget => mayEdit && selected.any(canForget);
 
   // -------------------------------------------------------------------------
   // The people of the space: created, renamed and merged at once.
   // -------------------------------------------------------------------------
 
   /// Names the faces of the given group, asking who they are.
-  Future<void> nameGroup(FaceGroup group) async {
+  ///
+  /// Also what "Someone else…" does on a suggestion (issue #139): the guess
+  /// is simply not confirmed and the chosen person is, which is one
+  /// `CONFIRMED` and nothing else, see [delta].
+  Future<void> nameGroup(FaceGroup group) => nameFaces(group.faces);
+
+  /// Names the selected faces, asking who they are (issue #139).
+  Future<void> nameSelection() => nameFaces(selected);
+
+  /// Asks who the given faces are and puts them into that person's group.
+  Future<void> nameFaces(List<AlbumFace> faces) async {
     if (!mayEdit) {
       return;
     }
@@ -670,7 +969,7 @@ class PersonsContentState extends State<PersonsContent> {
     }
     setState(() {
       people[chosen.id] = chosen;
-      for (var face in group.faces) {
+      for (var face in faces) {
         placement[face.key] = "$personGroupPrefix${chosen.id}";
       }
       selection.clear();
@@ -1034,9 +1333,10 @@ class PersonsContentState extends State<PersonsContent> {
   @override
   Widget build(BuildContext context) {
     var shown = groups;
-    var unknownCount =
-        shown.where((group) => group.key.startsWith(clusterGroupPrefix)).length +
-            shown.where((group) => group.key.startsWith(newGroupPrefix)).length;
+    var unknownCount = shown
+            .where((group) => group.key.startsWith(clusterGroupPrefix))
+            .length +
+        shown.where((group) => group.key.startsWith(newGroupPrefix)).length;
     var unknown = 0;
 
     return Focus(
@@ -1072,21 +1372,19 @@ class PersonsContentState extends State<PersonsContent> {
           ),
           centerTitle: true,
           actions: [
-            // What can be done to the faces standing selected. Only "Forget"
-            // so far (issue #138), and only where something selected carries
-            // a decision: a face nobody decided about has nothing to take
-            // back, so it is not offered one.
-            if (mayForget)
+            // What can be done to the faces standing selected, without
+            // dragging any of them anywhere (issue #139): who they are, that
+            // they belong together and are somebody yet to be named, and the
+            // take-back of issue #138. "Forget" only where something selected
+            // has anything to take back — a face nobody decided about and
+            // nobody moved is not offered one.
+            if (mayEdit && selection.isNotEmpty)
               PopupMenuButton<void Function()>(
                 key: const Key("persons-selection-menu"),
                 onSelected: (action) => action(),
-                itemBuilder: (context) => [
-                  PopupMenuItem<void Function()>(
-                    key: const Key("persons-forget"),
-                    value: () => forgetDecision(selected),
-                    child: Text(_l10n.personsForgetEntry),
-                  ),
-                ],
+                itemBuilder: (context) => selectionActions(
+                  const ["persons-name", "persons-defer", "persons-forget"],
+                ),
               ),
             if (mayEdit)
               IconButton(
@@ -1104,45 +1402,126 @@ class PersonsContentState extends State<PersonsContent> {
               ),
           ],
         ),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            OfflineBanner(onRetry: widget.albumState.reload),
-            if (pending) _banner(_l10n.personsPendingNotice, "persons-pending"),
-            if (!mayEdit)
-              _banner(_l10n.personsReadOnlyNotice, "persons-read-only"),
-            Expanded(
-              child: shown.isEmpty && !pending
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          _l10n.personsEmptyNotice,
-                          key: const Key("persons-empty"),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    )
-                  : ListView(
-                      padding: const EdgeInsets.only(bottom: 32),
-                      children: [
-                        for (var group in shown)
-                          _group(
-                            group,
-                            group.key.startsWith(clusterGroupPrefix) ||
-                                    group.key.startsWith(newGroupPrefix)
-                                ? ++unknown
-                                : 0,
-                            unknownCount,
+        // Where the pointer of a drag is, and which one it is, see
+        // [_trackPointer]: what the edge scrolling of issue #42 runs on.
+        body: Listener(
+          onPointerDown: _trackPointer,
+          onPointerMove: _trackPointer,
+          // The end of the gesture, whatever became of it: a [Draggable] whose
+          // tile was disposed on the way no longer reports its own end, the
+          // pointer does.
+          onPointerUp: _endGesture,
+          onPointerCancel: _endGesture,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              OfflineBanner(onRetry: widget.albumState.reload),
+              if (pending)
+                _banner(_l10n.personsPendingNotice, "persons-pending"),
+              if (!mayEdit)
+                _banner(_l10n.personsReadOnlyNotice, "persons-read-only"),
+              Expanded(
+                child: shown.isEmpty && !pending
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            _l10n.personsEmptyNotice,
+                            key: const Key("persons-empty"),
+                            textAlign: TextAlign.center,
                           ),
-                        if (mayEdit) _dropTargets(),
-                      ],
-                    ),
-            ),
-          ],
+                        ),
+                      )
+                    : ListView(
+                        controller: _scroll,
+                        padding: const EdgeInsets.only(bottom: 32),
+                        children: [
+                          for (var group in shown)
+                            _group(
+                              group,
+                              group.key.startsWith(clusterGroupPrefix) ||
+                                      group.key.startsWith(newGroupPrefix)
+                                  ? ++unknown
+                                  : 0,
+                              unknownCount,
+                            ),
+                          if (mayEdit) _dropTargets(),
+                        ],
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  /// The three things that can be done to a selection (issue #139).
+  ///
+  /// One list, two places: the app bar's menu and the context menu of a tile,
+  /// which must not drift apart — what a right click offers is what the menu
+  /// offers, and both act on the very same faces.
+  List<PopupMenuEntry<void Function()>> selectionActions(List<String> keys) => [
+        PopupMenuItem<void Function()>(
+          key: Key(keys[0]),
+          value: nameSelection,
+          child: Text(_l10n.personsNameEntry),
+        ),
+        PopupMenuItem<void Function()>(
+          key: Key(keys[1]),
+          value: () => putIntoNewGroup(selected),
+          child: Text(_l10n.personsDeferEntry),
+        ),
+        if (mayForget)
+          PopupMenuItem<void Function()>(
+            key: Key(keys[2]),
+            value: () => forgetDecision(selected),
+            child: Text(_l10n.personsForgetEntry),
+          ),
+      ];
+
+  /// The context menu of a tile, opened by a secondary click (issue #139).
+  ///
+  /// It acts on the selection the face is part of; a face standing outside it
+  /// *becomes* the selection first, which is what a right click does
+  /// everywhere — nothing is ever done to something the pointer is not on.
+  Future<void> showFaceMenu(AlbumFace face, Offset position) async {
+    if (!mayEdit) {
+      return;
+    }
+    _forgetClick();
+    if (!isSelected(face)) {
+      setState(() {
+        selection
+          ..clear()
+          ..add(face.key);
+        anchor = face.key;
+      });
+    }
+    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    var action = await showMenu<void Function()>(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & Size.zero,
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem<void Function()>(
+          key: const Key("persons-context-show"),
+          value: () => showPhoto(face),
+          child: Text(_l10n.personsShowPhoto),
+        ),
+        ...selectionActions(const [
+          "persons-context-name",
+          "persons-context-defer",
+          "persons-context-forget",
+        ]),
+      ],
+    );
+    if (!mounted) {
+      return;
+    }
+    action?.call();
   }
 
   Widget _banner(String text, String key) => Material(
@@ -1224,6 +1603,19 @@ class PersonsContentState extends State<PersonsContent> {
               key: Key("persons-confirm-${group.person}"),
               onPressed: () => confirmSuggestion(group),
               child: Text(_l10n.personsConfirmSuggestion),
+            ),
+          ),
+        // The other answer to "is this Anna?" (issue #139): it is somebody
+        // else, and saying who is one step instead of a drag per face. The
+        // wrong guess is simply not confirmed — nothing rejects it, because
+        // naming the right person is the whole statement.
+        if (mayEdit && group.suggested)
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: TextButton(
+              key: Key("persons-someone-else-${group.person}"),
+              onPressed: () => nameGroup(group),
+              child: Text(_l10n.personsSomeoneElse),
             ),
           ),
         if (mayEdit && group.named)
@@ -1376,8 +1768,16 @@ class PersonsContentState extends State<PersonsContent> {
       message: _l10n.personsShowPhoto,
       child: GestureDetector(
         key: Key("face-${face.key}"),
-        onTap: () => toggle(face),
+        // The pointer kind decides what a click means (issue #139): a finger
+        // toggles, a mouse selects, adds and ranges — and a second click of a
+        // mouse on the same face opens the photograph, see [handleTap].
+        onTapUp: (details) => handleTap(face, details.kind),
+        // Three ways to the photograph the crop was cut from, and one of them
+        // a mouse finds: the double click above, the long press a finger
+        // makes, and the first entry of the context menu.
         onLongPress: () => showPhoto(face),
+        onSecondaryTapUp: (details) =>
+            showFaceMenu(face, details.globalPosition),
         child: box,
       ),
     );
@@ -1457,25 +1857,37 @@ class PersonsContentState extends State<PersonsContent> {
         ),
       );
 
-  /// Shows the whole photograph a face was found in.
+  /// Shows the whole photograph a face was found in, the face marked on it.
   ///
   /// A dialog and not the viewer route: the viewer is a page level of the
   /// *album*, so opening it would take this page off the stack and the buffer
-  /// with it. What is wanted here is only "let me see the whole picture".
-  void showPhoto(AlbumFace face) => showDialog<void>(
-        context: context,
-        builder: (context) => Dialog(
-          key: const Key("persons-photo"),
+  /// with it. What is wanted here is only "let me see the whole picture" —
+  /// and, since issue #139, *where in it*: the crop of a tile is a hundred
+  /// pixels of a face and says nothing about the scene it was cut from, so
+  /// the picture fills the screen and carries the very box the tile shows.
+  ///
+  /// Three gestures lead here (issue #139): a double click, the long press a
+  /// finger makes, and the first entry of the tile's context menu — the
+  /// tooltip promised the photograph long before anything but a long press
+  /// delivered it.
+  void showPhoto(AlbumFace face) {
+    _forgetClick();
+    showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        key: const Key("persons-photo"),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Flexible(
-                child: orientedImageThumbnail(
-                  client,
-                  "${widget.baseUrl}/${face.image.name}",
-                  face.image,
-                  width: 480,
-                  height: 480,
+              Flexible(child: markedPhoto(context, face)),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  face.image.name,
+                  key: const Key("persons-photo-name"),
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
               TextButton(
@@ -1485,7 +1897,72 @@ class PersonsContentState extends State<PersonsContent> {
             ],
           ),
         ),
-      );
+      ),
+    );
+  }
+
+  /// The photograph as large as the screen allows, with [face] marked on it.
+  ///
+  /// The box of a face is normalised in the **raw raster of the file** — the
+  /// frame before every turn, see issue #124 — which is exactly the frame the
+  /// picture is drawn in here: the rendition at the file's own aspect ratio,
+  /// the marker placed on it by the plain fractions it carries, and the two of
+  /// them turned together by [ImagePart.orientation] through [orientedBox].
+  /// That is the rule [FaceTile.clipped] follows for a tag without a crop, so
+  /// what is marked here is the very area a tile shows.
+  Widget markedPhoto(BuildContext context, AlbumFace face) {
+    var info = face.face;
+    var screen = MediaQuery.sizeOf(context);
+    // What is left of the screen for the picture: the dialog's own margins,
+    // the file name and the Close button stand beside it.
+    var availableWidth = max(screen.width * 0.9 - 48, 120.0);
+    var availableHeight = max(screen.height * 0.9 - 140, 120.0);
+
+    var fileWidth = face.image.width > 0 ? face.image.width.toDouble() : 1.0;
+    var fileHeight = face.image.height > 0 ? face.image.height.toDouble() : 1.0;
+    var transform = PlaneTransform.of(face.image.orientation);
+    var turnedWidth = transform.swapsDimensions ? fileHeight : fileWidth;
+    var turnedHeight = transform.swapsDimensions ? fileWidth : fileHeight;
+    var scale =
+        min(availableWidth / turnedWidth, availableHeight / turnedHeight);
+    var drawnWidth = fileWidth * scale;
+    var drawnHeight = fileHeight * scale;
+
+    return orientedBox(
+      face.image.orientation,
+      SizedBox(
+        key: const Key("persons-photo-picture"),
+        width: drawnWidth,
+        height: drawnHeight,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: thumbnail(
+                client,
+                "${widget.baseUrl}/${face.image.name}",
+                width: drawnWidth,
+                height: drawnHeight,
+                displayHeight: drawnHeight,
+                fit: BoxFit.fill,
+              ),
+            ),
+            Positioned(
+              left: info.x * drawnWidth,
+              top: info.y * drawnHeight,
+              width: max(info.w * drawnWidth, 2.0),
+              height: max(info.h * drawnHeight, 2.0),
+              child: Container(
+                key: const Key("persons-photo-box"),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.blueAccent, width: 3),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// The picture of one face: the server's crop, or the photograph's own

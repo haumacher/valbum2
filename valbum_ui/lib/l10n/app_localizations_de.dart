@@ -2342,6 +2342,15 @@ class AppLocalizationsDe extends AppLocalizations {
   String get personsShowPhoto => '„Foto anzeigen“';
 
   @override
+  String get personsNameEntry => 'Person benennen…';
+
+  @override
+  String get personsDeferEntry => 'Zurückstellen (neue Gruppe)';
+
+  @override
+  String get personsSomeoneElse => 'Jemand anderes…';
+
+  @override
   String get personsForgetEntry => 'Entscheidung rückgängig machen';
 
   @override
