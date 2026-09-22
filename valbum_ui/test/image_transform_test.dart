@@ -302,4 +302,54 @@ void main() {
       expect(commentParagraphs(""), isEmpty);
     });
   });
+
+  group('a face box drawn on the page (issue #147)', () {
+    ImageTransform fitted(Orientation orientation) => ImageTransform.fit(
+          orientation: orientation,
+          rawWidth: 2000,
+          rawHeight: 1000,
+          pageWidth: 800,
+          pageHeight: 600,
+        );
+
+    test('is the inverse of where a box of the picture is drawn', () {
+      // Every orientation, because the one thing this arithmetic exists for is
+      // the turn: the box goes out in the frame of the picture as it is shown,
+      // and comes back from a rectangle drawn on a picture the app has turned.
+      for (var orientation in Orientation.values) {
+        var tx = fitted(orientation);
+        var box = pageRectOfBox(tx, 0.5, 0.4, 0.2, 0.3);
+        var back = markedBox(tx, box.topLeft, box.bottomRight);
+        expect(back, isNotNull, reason: "$orientation");
+        expect(back!.x, closeTo(0.5, 0.001), reason: "$orientation");
+        expect(back.y, closeTo(0.4, 0.001), reason: "$orientation");
+        expect(back.w, closeTo(0.2, 0.001), reason: "$orientation");
+        expect(back.h, closeTo(0.3, 0.001), reason: "$orientation");
+      }
+    });
+
+    test('survives the zoom and the pan', () {
+      var tx = fitted(Orientation.rotR);
+      tx.setCustom(-120, -260, 0.9);
+      var box = pageRectOfBox(tx, 0.1, 0.2, 0.3, 0.4);
+      var back = markedBox(tx, box.topLeft, box.bottomRight)!;
+      expect(back.x, closeTo(0.1, 0.001));
+      expect(back.y, closeTo(0.2, 0.001));
+      expect(back.w, closeTo(0.3, 0.001));
+      expect(back.h, closeTo(0.4, 0.001));
+    });
+
+    test('is clamped to the picture, and is nothing beside it', () {
+      var tx = fitted(Orientation.identity);
+      // The picture covers (0, 100) to (800, 500) in a page of 800 x 600.
+      var over = markedBox(tx, const Offset(-200, 0), const Offset(400, 300))!;
+      expect(over.x, 0);
+      expect(over.y, 0);
+      expect(over.w, closeTo(0.5, 0.001));
+      expect(over.h, closeTo(0.5, 0.001));
+
+      expect(markedBox(tx, const Offset(0, 520), const Offset(400, 560)),
+          isNull);
+    });
+  });
 }

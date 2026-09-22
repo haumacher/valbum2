@@ -3954,5 +3954,40 @@
       }
     },
     "x-translated": "8fc26a99"
+  },
+  "viewerEditPersons": "Edit persons",
+  "@viewerEditPersons": {
+    "description": "The viewer's menu entry opening the mode in which every recognised face is marked with its name and can be corrected (issue #147).",
+    "x-translated": "75e324ad"
+  },
+  "viewerEditPersonsDone": "Done naming faces",
+  "@viewerEditPersonsDone": {
+    "description": "The tooltip of the control that leaves the viewer's edit-persons mode.",
+    "x-translated": "4284fd8f"
+  },
+  "viewerMarkFace": "Mark a face",
+  "@viewerMarkFace": {
+    "description": "The tooltip of the tool with which a rectangle is drawn around a face the detector missed.",
+    "x-translated": "f22eb3e8"
+  },
+  "viewerMarkFaceHint": "Draw a rectangle around a face.",
+  "@viewerMarkFaceHint": {
+    "description": "The line shown while the tool for marking a face by hand is switched on.",
+    "x-translated": "ae69d3a1"
+  },
+  "viewerFaceDecision": "This face",
+  "@viewerFaceDecision": {
+    "description": "The heading of the sheet that opens when a face is tapped in the viewer's edit-persons mode.",
+    "x-translated": "bcb042fc"
+  },
+  "personsChooserInAlbum": "In this album",
+  "@personsChooserInAlbum": {
+    "description": "The heading of the person chooser's first section, holding the people who already have a face in the album being named (issue #150).",
+    "x-translated": "80b80610"
+  },
+  "personsChooserAll": "All persons",
+  "@personsChooserAll": {
+    "description": "The heading of the person chooser's second section, holding everybody else of the space (issue #150).",
+    "x-translated": "cb8b9b76"
   }
 }

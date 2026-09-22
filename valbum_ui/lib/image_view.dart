@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
@@ -12,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'album_layout.dart' show Orientations, ToImage;
 import 'app.dart';
 import 'attribution.dart';
+import 'caller.dart';
 import 'client.dart';
 import 'image_properties.dart';
 import 'image_transform.dart';
@@ -19,6 +21,7 @@ import 'move_view.dart';
 import 'offline.dart';
 import 'people_registry.dart';
 import 'person_names.dart';
+import 'persons_view.dart' show PersonChooser;
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'rights.dart';
@@ -70,6 +73,15 @@ ImageProvider viewerPicture(
   }
   return ThumbnailImage(client, imageUrl);
 }
+
+/// How small a hand-drawn rectangle may be and still mean a face (issue #147).
+///
+/// In pixels of the screen on both sides: below that it is a tap that slipped,
+/// and a face nobody can see the outline of is not a face somebody marked.
+const double _minMarkedFace = 8;
+
+/// How tall the name chip over a face box is drawn, in pixels of the screen.
+const double _faceLabelHeight = 22;
 
 /// The axis a drag of the fitted image was locked to, see issue #61.
 ///
@@ -258,6 +270,23 @@ class ImageViewState extends State<ImageView>
   /// Whether this viewer hid the system bars, see [_enterImmersive].
   bool _immersive = false;
 
+  /// Whether the faces of the picture are being named, see issue #147.
+  ///
+  /// A state of the page and not a route level: the mode is entered from the
+  /// viewer's menu and left by its own control (or by `Escape`), and it
+  /// **survives paging** — this state outlives the picture it shows, so a
+  /// whole album is named without entering the mode once per photograph.
+  bool _editPersons = false;
+
+  /// Whether a drag on the picture draws a face box instead of panning (#147).
+  bool _markingFaces = false;
+
+  /// The rectangle being drawn, in page coordinates; `null` while none is.
+  Rect? _marked;
+
+  /// The register, as far as this viewer has loaded it, see [PeopleRegistry].
+  Map<String, Person> _people = const {};
+
   @override
   void initState() {
     super.initState();
@@ -422,6 +451,358 @@ class ImageViewState extends State<ImageView>
       // holding it, so that a retry costs no typing.
       await _askForDescription(owner, image, text);
     }
+  }
+
+  // --- Naming the faces of the picture, see issue #147. ---
+
+  /// Whether this picture's faces may be named here at all.
+  ///
+  /// The `edit` right, a space that looks for faces, an album to post to, and
+  /// never inside a share link — a link is answered no face at all and is not
+  /// an account (issues #124 and #51). A video is left out because the
+  /// detector never looks at one (issue #123): there is nothing to name and
+  /// nothing to draw on.
+  bool get mayEditPersons =>
+      !isVideo &&
+      album != null &&
+      widget.editPath != null &&
+      rights.mayEdit &&
+      CallerInfo.facesOf(context) &&
+      ShareSession.of(context) == null;
+
+  /// Whether the mode is on, see [_editPersons].
+  bool get editPersons => _editPersons && mayEditPersons;
+
+  /// Enters the mode in which every face is marked and can be decided about.
+  void enterEditPersons() {
+    if (!mayEditPersons) {
+      return;
+    }
+    setState(() => _editPersons = true);
+    _loadPeople();
+  }
+
+  /// Leaves the mode, by the Done control and by `Escape`.
+  void leaveEditPersons() {
+    if (!_editPersons) {
+      return;
+    }
+    setState(() {
+      _editPersons = false;
+      _markingFaces = false;
+      _marked = null;
+    });
+  }
+
+  /// The register, loaded once per client and held, see [PeopleRegistry].
+  Future<Map<String, Person>> _loadPeople() async {
+    var registry = PeopleRegistry.of(widget.client);
+    var loaded = await registry.load();
+    if (mounted && !identical(loaded, _people)) {
+      setState(() => _people = loaded);
+    }
+    return loaded;
+  }
+
+  /// Every face of the picture, which is what the mode shows.
+  ///
+  /// All of them, not only the confirmed ones of issue #145: the mode is where
+  /// a suggestion is answered, an unknown face is named and a false detection
+  /// is said to be one, so a face that is not drawn is a face nobody can
+  /// correct.
+  List<FaceInfo> get editableFaces =>
+      ShareSession.of(context) != null ? const [] : part.faces;
+
+  /// What stands over a face box, `null` where there is nothing to say.
+  ///
+  /// The person for a confirmation, the question of issue #127 for a
+  /// suggestion, and nothing for a face nobody has said anything about — and
+  /// nothing for a decision *against* somebody either: a rejected face and a
+  /// false detection are drawn dimmed, which is the statement.
+  String? faceLabel(FaceInfo face, AppLocalizations l10n) {
+    var person = _people[face.person];
+    if (person == null) {
+      return null;
+    }
+    if (face.confirmed) {
+      // What they are called on a photograph, and this is one (issue #146).
+      return displayName(person);
+    }
+    if (face.state == FaceState.undecided) {
+      return l10n.personsSuggestedHeading(displayName(person));
+    }
+    return null;
+  }
+
+  /// Asks what is to happen to the given face, and does it (issue #147).
+  ///
+  /// One sheet with the four decisions the face editor of issue #126 knows,
+  /// each of which posts at once: there is no buffer beside the editor's and
+  /// no Save here, the doctrine of the inbox and of issue #121's properties.
+  Future<void> decideFace(FaceInfo face) async {
+    var l10n = AppLocalizations.of(context)!;
+    var suggested = !face.confirmed &&
+        face.state == FaceState.undecided &&
+        _people[face.person] != null;
+    var decided = face.state != FaceState.undecided;
+    var chosen = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        key: const Key("face-decision"),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              dense: true,
+              title: Text(
+                l10n.viewerFaceDecision,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            ListTile(
+              key: const Key("face-decision-name"),
+              leading: const Icon(Icons.person_outline),
+              title: Text(l10n.personsNameEntry),
+              onTap: () => Navigator.of(context).pop("name"),
+            ),
+            if (suggested)
+              ListTile(
+                key: const Key("face-decision-confirm"),
+                leading: const Icon(Icons.check),
+                title: Text(l10n.personsConfirmSuggestion),
+                onTap: () => Navigator.of(context).pop("confirm"),
+              ),
+            ListTile(
+              key: const Key("face-decision-not-a-face"),
+              leading: const Icon(Icons.block),
+              title: Text(l10n.personsNotAFaceEntry),
+              onTap: () => Navigator.of(context).pop("not-a-face"),
+            ),
+            if (decided)
+              ListTile(
+                key: const Key("face-decision-forget"),
+                leading: const Icon(Icons.undo),
+                title: Text(l10n.personsForgetEntry),
+                onTap: () => Navigator.of(context).pop("forget"),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null || !mounted) {
+      return;
+    }
+    switch (chosen) {
+      case "name":
+        var person = await choosePerson();
+        if (person == null || !mounted) {
+          return;
+        }
+        await tagFace(
+          face: face.index,
+          person: person.id,
+          state: FaceState.confirmed,
+        );
+        break;
+      case "confirm":
+        await tagFace(
+          face: face.index,
+          person: face.person,
+          state: FaceState.confirmed,
+        );
+        break;
+      case "not-a-face":
+        await tagFace(
+          face: face.index,
+          person: "",
+          state: FaceState.notAFace,
+        );
+        break;
+      case "forget":
+        // The way back out of a decision, see issue #138: whom it was about is
+        // none of the request's business.
+        await tagFace(
+          face: face.index,
+          person: "",
+          state: FaceState.undecided,
+        );
+        break;
+    }
+  }
+
+  /// Asks who somebody is, offering the register and a new person (issue #125).
+  ///
+  /// The very chooser of the face editor, so that naming a face is the same
+  /// thing wherever it is done; a person created here is remembered in the
+  /// register, so the label under the face can be written at once.
+  Future<Person?> choosePerson() async {
+    var l10n = AppLocalizations.of(context)!;
+    var people = await _loadPeople();
+    if (!mounted) {
+      return null;
+    }
+    var chosen = await showDialog<Person>(
+      context: context,
+      builder: (context) => PersonChooser(
+        people: _distinct(people),
+        title: l10n.personsUnknownGroup,
+        // Who already carries a face in this album stands at the top, see
+        // issue #150 — the people of the shown album, not of this picture.
+        inAlbum: _personsOfAlbum,
+        onCreate: (name) async {
+          try {
+            return await widget.client.createPerson(name);
+          } catch (error) {
+            _refused(error);
+            return null;
+          }
+        },
+      ),
+    );
+    if (chosen == null) {
+      return null;
+    }
+    PeopleRegistry.of(widget.client).remember(chosen);
+    if (mounted) {
+      setState(() => _people = PeopleRegistry.of(widget.client).people);
+    }
+    return chosen;
+  }
+
+  /// Who already carries a face of the album this picture belongs to (#150).
+  ///
+  /// A confirmation and a suggestion of issue #127 alike: both put a name on
+  /// the screen, and both make that person one of the few this album is about.
+  Set<String> get _personsOfAlbum {
+    var self = album;
+    if (self == null) {
+      return const {};
+    }
+    return {
+      for (var image in _imagesOf(self))
+        for (var face in image.faces)
+          if (face.person.isNotEmpty) face.person,
+    };
+  }
+
+  /// The people of the register, each of them once.
+  ///
+  /// The register is keyed by every id a face may name, the ids merged away
+  /// among them (see [PeopleRegistry]), so the same person stands in it
+  /// several times; a chooser that offered them twice would ask which of two
+  /// identical lines is meant.
+  static List<Person> _distinct(Map<String, Person> people) {
+    var byId = <String, Person>{};
+    for (var person in people.values) {
+      byId[person.id] = person;
+    }
+    return byId.values.toList();
+  }
+
+  /// Stores one decision about one face, at once (issue #147).
+  ///
+  /// Refused offline with the usual reason and nothing else attempted; a
+  /// refusal of the server is said in the server's own words and changes
+  /// nothing, because nothing was changed here before the answer came back.
+  /// What the answer carries is adopted, see [_adopt]: the faces of this
+  /// photograph as the server now has them, so the labels say what is stored.
+  Future<void> tagFace({
+    int face = 0,
+    MarkedBox? box,
+    required String person,
+    required FaceState state,
+  }) async {
+    var path = widget.editPath;
+    if (path == null || refuseWhileOffline(context)) {
+      return;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+    var assignment = FaceAssignment(
+      image: part.name,
+      face: face,
+      person: person,
+      state: state,
+      // Where a box is given the index is ignored, and the box is the frame
+      // the picture is shown in, see `FaceAssignment.x` and issue #142.
+      x: box?.x ?? 0,
+      y: box?.y ?? 0,
+      w: box?.w ?? 0,
+      h: box?.h ?? 0,
+    );
+    try {
+      var answer = await widget.client.tagFaces(path, [assignment]);
+      if (!mounted) {
+        return;
+      }
+      _adopt(answer);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            error is VAlbumException ? error.message : "$error",
+            key: const Key("face-tag-failed"),
+          ),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    }
+  }
+
+  /// Takes the faces of the answered album over onto the picture shown.
+  ///
+  /// The answer is the album as this caller is answered it, so its copy of
+  /// this photograph carries the decisions *and* what issue #127 makes of them
+  /// now. Only the faces and the decisions travel: the part on the screen is
+  /// the one the album view holds, linked to its neighbours, and replacing it
+  /// would cut the picture out of the album it is being paged through.
+  void _adopt(AlbumInfo? answer) {
+    if (answer == null) {
+      return;
+    }
+    for (var image in _imagesOf(answer)) {
+      if (image.name != part.name) {
+        continue;
+      }
+      setState(() {
+        part.faces = image.faces;
+        part.tags = image.tags;
+      });
+      return;
+    }
+  }
+
+  /// Every photograph of the given album, the members of a group included.
+  static List<ImagePart> _imagesOf(AlbumInfo album) {
+    var result = <ImagePart>[];
+    for (var entry in album.parts) {
+      if (entry is ImagePart) {
+        result.add(entry);
+      } else if (entry is ImageGroup) {
+        result.addAll(entry.images);
+      }
+    }
+    return result;
+  }
+
+  /// Says what the server said about a refused request about a person.
+  void _refused(Object error) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error is VAlbumException ? error.message : "$error",
+          key: const Key("face-person-failed"),
+        ),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 8),
+      ),
+    );
   }
 
   /// The group the displayed image belongs to, `null` if it is a single image.
@@ -593,6 +974,8 @@ class ImageViewState extends State<ImageView>
           // Not a touch-only feature: a long press is what a phone has, `e`
           // is what a keyboard has (issue #80).
           const SingleActivator(LogicalKeyboardKey.keyE): editDescription,
+          // The way out of the edit-persons mode a keyboard has (issue #147).
+          const SingleActivator(LogicalKeyboardKey.escape): leaveEditPersons,
         },
         child: Focus(
           autofocus: true,
@@ -603,6 +986,8 @@ class ImageViewState extends State<ImageView>
                 fit: StackFit.expand,
                 children: [
                   isVideo ? buildVideoViewer() : buildViewer(page),
+                  // The faces, in the coordinates of the page (issue #147).
+                  if (editPersons) ...buildFaceEditing(transform(page)),
                   ...buildOverlay(context),
                 ],
               );
@@ -683,6 +1068,151 @@ class ImageViewState extends State<ImageView>
         ),
       ),
     );
+  }
+
+  /// The faces of the picture, drawn in the coordinates of the page (#147).
+  ///
+  /// Deliberately *not* in the picture's own layer, where the hover regions of
+  /// issue #145 hang: that layer is turned by [ImageTransform.matrix], and a
+  /// name drawn in it would stand on its head on a photograph turned upside
+  /// down. The boxes are therefore mapped through the very same matrix
+  /// ([pageRectOfBox]) and laid out here, upright, where a chip is a chip and
+  /// a tap is a tap — and they follow every zoom and every pan all the same,
+  /// because the matrix is asked again in every build.
+  ///
+  /// The order is: the boxes, then the rectangle being drawn, then — while the
+  /// marking tool is on — the surface that takes the drag. So a tap reaches a
+  /// face while the tool is off, and the drawing takes the whole picture while
+  /// it is on; the viewer's own pan is suspended for as long as that, which is
+  /// what the tool is.
+  List<Widget> buildFaceEditing(ImageTransform tx) {
+    var l10n = AppLocalizations.of(context)!;
+    var faces = editableFaces;
+    var drawn = _marked;
+    return [
+      for (var face in faces) ...buildFaceBox(tx, face, l10n),
+      if (drawn != null)
+        Positioned.fromRect(
+          // Keyed like everything in this layer: the list grows and shrinks
+          // while a face is being drawn, and an element that moved to another
+          // slot would be built anew — which would take the very gesture
+          // recogniser away that is drawing the rectangle.
+          key: const Key("face-marking-slot"),
+          rect: drawn,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              key: const Key("face-marking"),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.lightBlueAccent, width: 2),
+                color: Colors.lightBlueAccent.withValues(alpha: 0.15),
+              ),
+            ),
+          ),
+        ),
+      if (_markingFaces)
+        Positioned.fill(
+          key: const Key("face-marking-slot-surface"),
+          child: GestureDetector(
+            key: const Key("face-marking-surface"),
+            // The whole picture, and nothing under it: while a face is being
+            // drawn the picture does not pan, which is what makes the drawing
+            // possible at all.
+            behavior: HitTestBehavior.opaque,
+            onPanStart: (details) =>
+                setState(() => _marked = details.localPosition & Size.zero),
+            onPanUpdate: (details) => setState(() {
+              var start = _marked;
+              if (start != null) {
+                _marked = Rect.fromPoints(start.topLeft, details.localPosition);
+              }
+            }),
+            onPanEnd: (details) => markFace(tx),
+            onPanCancel: () => setState(() => _marked = null),
+          ),
+        ),
+    ];
+  }
+
+  /// One face: its box, and the chip naming it where there is a name.
+  List<Widget> buildFaceBox(
+    ImageTransform tx,
+    FaceInfo face,
+    AppLocalizations l10n,
+  ) {
+    var rect = pageRectOfBox(tx, face.x, face.y, face.w, face.h);
+    var label = faceLabel(face, l10n);
+    // A decision *against* somebody is drawn dimmed rather than written out:
+    // "not this person" and "no face at all" are statements about what is not
+    // there, and a name is what a chip is for.
+    var refused = face.state == FaceState.rejected ||
+        face.state == FaceState.notAFace;
+    var colour = refused
+        ? Colors.white30
+        : face.confirmed
+            ? Colors.white
+            : Colors.white70;
+    return [
+      Positioned.fromRect(
+        key: Key("face-box-slot-${face.index}"),
+        rect: rect,
+        child: GestureDetector(
+          key: Key("face-box-${face.index}"),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => decideFace(face),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: colour,
+                width: face.confirmed ? 2 : 1.5,
+              ),
+            ),
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ),
+      if (label != null)
+        Positioned(
+          key: Key("face-label-slot-${face.index}"),
+          left: rect.left,
+          // Over the box, and inside the page where the box touches the top.
+          top: math.max(0, rect.top - _faceLabelHeight),
+          child: IgnorePointer(
+            child: Container(
+              key: Key("face-label-${face.index}"),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              color: Colors.black54,
+              child: Text(
+                label,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  /// What a rectangle drawn on the picture becomes: a face of somebody (#147).
+  ///
+  /// A rectangle too small to see is a tap that slipped and draws nothing. The
+  /// chooser decides whether anything is posted at all — cancelling it leaves
+  /// the picture as it was, because nothing was written anywhere.
+  Future<void> markFace(ImageTransform tx) async {
+    var drawn = _marked;
+    setState(() => _marked = null);
+    if (drawn == null ||
+        drawn.width < _minMarkedFace ||
+        drawn.height < _minMarkedFace) {
+      return;
+    }
+    var box = markedBox(tx, drawn.topLeft, drawn.bottomRight);
+    if (box == null) {
+      return;
+    }
+    var person = await choosePerson();
+    if (person == null || !mounted) {
+      return;
+    }
+    await tagFace(box: box, person: person.id, state: FaceState.confirmed);
   }
 
   /// What is drawn into the viewport: the thumbnail, and the picture over it.
@@ -776,7 +1306,10 @@ class ImageViewState extends State<ImageView>
   /// door: who somebody is, is bookkeeping among the members of a space, like
   /// the attribution of issue #96.
   List<FaceInfo> get namedFaces {
-    if (ShareSession.of(context) != null) {
+    if (ShareSession.of(context) != null || editPersons) {
+      // In the mode of issue #147 every face is drawn, named and tappable, in
+      // the coordinates of the page: the hover regions would be a second box
+      // over the same face, saying the same thing.
       return const [];
     }
     return [
@@ -1067,6 +1600,49 @@ class ImageViewState extends State<ImageView>
           takeBack,
           key: const Key("image-take-back"),
         ),
+      // The controls of the edit-persons mode stand where the viewer's other
+      // controls do (issue #147): the tool that draws a face, and the way out.
+      if (editPersons) ...[
+        overlayButton(
+          Icons.crop_free,
+          l10n.viewerMarkFace,
+          () => setState(() {
+            _markingFaces = !_markingFaces;
+            _marked = null;
+          }),
+          key: const Key("viewer-mark-face"),
+          color: _markingFaces ? Colors.lightBlueAccent : Colors.white,
+        ),
+        overlayButton(
+          Icons.done,
+          l10n.viewerEditPersonsDone,
+          leaveEditPersons,
+          key: const Key("viewer-edit-persons-done"),
+        ),
+      ] else if (mayEditPersons)
+        // The viewer's own menu, the last control at the right (issue #100).
+        Container(
+          key: const Key("viewer-menu"),
+          decoration: const BoxDecoration(
+            color: Colors.black38,
+            shape: BoxShape.circle,
+          ),
+          child: menu(context, [
+            PopupMenuItem<void Function(BuildContext)>(
+              key: const Key("viewer-edit-persons"),
+              value: (_) => enterEditPersons(),
+              child: Row(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(right: 16),
+                    child: Icon(Icons.people_outline, color: Colors.blueAccent),
+                  ),
+                  Flexible(child: Text(l10n.viewerEditPersons)),
+                ],
+              ),
+            ),
+          ]),
+        ),
     ];
     return [
       Positioned(
@@ -1119,7 +1695,24 @@ class ImageViewState extends State<ImageView>
             ),
           ),
         ),
-      if (self.comment.isNotEmpty || attribution != null)
+      if (editPersons && _markingFaces)
+        Positioned(
+          left: insets.left,
+          right: insets.right,
+          bottom: insets.bottom + 8,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              color: Colors.black54,
+              child: Text(
+                l10n.viewerMarkFaceHint,
+                key: const Key("viewer-mark-face-hint"),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+        )
+      else if (self.comment.isNotEmpty || attribution != null)
         Positioned(
           left: 0,
           right: 0,
@@ -1134,8 +1727,9 @@ class ImageViewState extends State<ImageView>
     String tooltip,
     VoidCallback onPressed, {
     Key? key,
+    Color color = Colors.white,
   }) =>
-      imageOverlayButton(icon, tooltip, onPressed, key: key);
+      imageOverlayButton(icon, tooltip, onPressed, key: key, color: color);
 
   /// What is written under the image: who added it, and what was said about
   /// it.

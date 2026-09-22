@@ -475,12 +475,20 @@ void main() {
             {
               "image": "a.jpg",
               "face": 0,
+              "x": 0.0,
+              "y": 0.0,
+              "w": 0.0,
+              "h": 0.0,
               "person": "p-bob",
               "state": "CONFIRMED"
             },
             {
               "image": "a.jpg",
               "face": 1,
+              "x": 0.0,
+              "y": 0.0,
+              "w": 0.0,
+              "h": 0.0,
               "person": "p-bob",
               "state": "CONFIRMED"
             },
@@ -516,6 +524,10 @@ void main() {
             {
               "image": "a.jpg",
               "face": 0,
+              "x": 0.0,
+              "y": 0.0,
+              "w": 0.0,
+              "h": 0.0,
               "person": "p-anna",
               "state": "CONFIRMED"
             },
@@ -550,6 +562,10 @@ void main() {
             {
               "image": "b.jpg",
               "face": 0,
+              "x": 0.0,
+              "y": 0.0,
+              "w": 0.0,
+              "h": 0.0,
               "person": "p-anna",
               "state": "REJECTED"
             },
@@ -595,6 +611,10 @@ void main() {
             {
               "image": "a.jpg",
               "face": 0,
+              "x": 0.0,
+              "y": 0.0,
+              "w": 0.0,
+              "h": 0.0,
               "person": "p-anna",
               "state": "CONFIRMED"
             },
@@ -801,6 +821,10 @@ void main() {
             {
               "image": "b.jpg",
               "face": 0,
+              "x": 0.0,
+              "y": 0.0,
+              "w": 0.0,
+              "h": 0.0,
               "person": "",
               "state": "UNDECIDED"
             },
@@ -835,6 +859,10 @@ void main() {
             {
               "image": "c.jpg",
               "face": 0,
+              "x": 0.0,
+              "y": 0.0,
+              "w": 0.0,
+              "h": 0.0,
               "person": "",
               "state": "UNDECIDED"
             },
@@ -930,6 +958,10 @@ void main() {
             {
               "image": "b.jpg",
               "face": 0,
+              "x": 0.0,
+              "y": 0.0,
+              "w": 0.0,
+              "h": 0.0,
               "person": "",
               "state": "UNDECIDED"
             },

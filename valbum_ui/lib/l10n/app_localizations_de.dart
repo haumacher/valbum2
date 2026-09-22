@@ -2399,4 +2399,25 @@ class AppLocalizationsDe extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get viewerEditPersons => 'Personen bearbeiten';
+
+  @override
+  String get viewerEditPersonsDone => 'Benennen der Gesichter beenden';
+
+  @override
+  String get viewerMarkFace => 'Ein Gesicht markieren';
+
+  @override
+  String get viewerMarkFaceHint => 'Zeichnen Sie ein Rechteck um ein Gesicht.';
+
+  @override
+  String get viewerFaceDecision => 'Dieses Gesicht';
+
+  @override
+  String get personsChooserInAlbum => 'In diesem Album';
+
+  @override
+  String get personsChooserAll => 'Alle Personen';
 }

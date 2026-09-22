@@ -9,7 +9,7 @@ library;
 
 import 'dart:math';
 
-import 'package:flutter/widgets.dart' show Matrix4;
+import 'package:flutter/widgets.dart' show Matrix4, Offset, Rect;
 
 import 'album_layout.dart' show Orientations, ToImage;
 import 'resource.dart';
@@ -335,6 +335,85 @@ class ImageTransform {
     result.setEntry(1, 3, f);
     return result;
   }
+}
+
+/// A face box as the wire speaks it, see issue #147 and `FaceAssignment`.
+///
+/// Normalised to `0..1` of the picture *as it is shown*: the file's EXIF
+/// orientation applied (which every rendition the server delivers carries),
+/// [ImagePart.orientation] not — the frame [ImageTransform.matrix] maps onto
+/// the viewport, and therefore the frame every [FaceInfo] is answered in.
+class MarkedBox {
+  final double x;
+  final double y;
+  final double w;
+  final double h;
+
+  const MarkedBox(this.x, this.y, this.w, this.h);
+}
+
+/// Where the given box of the picture lies on the page, see [ImageTransform].
+///
+/// The forward direction: the four corners through [ImageTransform.matrix],
+/// which is the very transform the picture itself is drawn with, so a box is
+/// turned, scaled and panned exactly as the face it names. The eight
+/// orientations are permutations of the two axes, so the bounding rectangle of
+/// the turned corners *is* the turned box and nothing is lost by taking it.
+Rect pageRectOfBox(ImageTransform tx, double x, double y, double w, double h) {
+  var m = tx.matrix;
+  var a = m.entry(0, 0), b = m.entry(0, 1), e = m.entry(0, 3);
+  var c = m.entry(1, 0), d = m.entry(1, 1), f = m.entry(1, 3);
+  var x1 = x * tx.rawWidth, y1 = y * tx.rawHeight;
+  var x2 = (x + w) * tx.rawWidth, y2 = (y + h) * tx.rawHeight;
+  var px1 = a * x1 + b * y1 + e, py1 = c * x1 + d * y1 + f;
+  var px2 = a * x2 + b * y2 + e, py2 = c * x2 + d * y2 + f;
+  return Rect.fromLTRB(
+    min(px1, px2),
+    min(py1, py2),
+    max(px1, px2),
+    max(py1, py2),
+  );
+}
+
+/// The rectangle drawn between [one] and [two] on the page, as a box of the
+/// picture (issue #147); `null` where it is no rectangle on the picture.
+///
+/// The inverse of [pageRectOfBox], and the one place the app turns a gesture
+/// back into the coordinates the wire speaks: whatever [ImageTransform.matrix]
+/// did — the [ImagePart.orientation], the zoom, the pan — is undone here, so a
+/// rectangle drawn around a face on a picture turned a quarter arrives at the
+/// server as the place of that face on the picture as it is *shown*.
+///
+/// The rectangle is clamped to the picture, because a drag that started or
+/// ended beside it still means the part of it that lies on it; what is left of
+/// it after the clamping must still have a width and a height.
+MarkedBox? markedBox(ImageTransform tx, Offset one, Offset two) {
+  var m = tx.matrix;
+  var a = m.entry(0, 0), b = m.entry(0, 1), e = m.entry(0, 3);
+  var c = m.entry(1, 0), d = m.entry(1, 1), f = m.entry(1, 3);
+  var det = a * d - b * c;
+  if (det == 0 || tx.rawWidth <= 0 || tx.rawHeight <= 0) {
+    return null;
+  }
+  List<double> back(Offset page) {
+    var px = page.dx - e, py = page.dy - f;
+    return [
+      (d * px - b * py) / det / tx.rawWidth,
+      (-c * px + a * py) / det / tx.rawHeight,
+    ];
+  }
+
+  var p1 = back(one);
+  var p2 = back(two);
+  var left = min(p1[0], p2[0]).clamp(0.0, 1.0);
+  var top = min(p1[1], p2[1]).clamp(0.0, 1.0);
+  var right = max(p1[0], p2[0]).clamp(0.0, 1.0);
+  var bottom = max(p1[1], p2[1]).clamp(0.0, 1.0);
+  if (right <= left || bottom <= top) {
+    // Drawn entirely beside the picture: that is no face of it.
+    return null;
+  }
+  return MarkedBox(left, top, right - left, bottom - top);
 }
 
 /// The rating of the given image, that of its representative for a group.

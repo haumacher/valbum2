@@ -409,6 +409,34 @@ public class TestFaceTags extends FacesTestCase {
 		assertEquals(before, sidecar());
 	}
 
+	/** Marking a face by hand is deciding too, so it needs the very same rights (issue #147). */
+	public void testMarkingAFaceNeedsTheEditRight() throws Exception {
+		createSpace(A_ONE);
+		if (!detectorAvailable()) {
+			return;
+		}
+		index();
+		Person anna = created("Anna");
+		String marked = "{\"image\":\"" + A_ONE + "\",\"x\":0.6,\"y\":0.55,\"w\":0.15,\"h\":0.2,"
+			+ "\"person\":\"" + anna.getId() + "\",\"state\":\"CONFIRMED\"}";
+
+		FakeResponse contributor = post("/" + ALBUM + "/", "tag-faces", body(marked), BOB_TOKEN);
+		assertEquals(contributor.body(), 403, contributor.status());
+		assertEquals(ImageServlet.TAGGING_REFUSED, errorMessage(contributor));
+
+		FakeResponse viewer = post("/" + ALBUM + "/", "tag-faces", body(marked), DAVE_TOKEN);
+		assertEquals(403, viewer.status());
+
+		FakeResponse shared = post("/" + ALBUM + "/", "tag-faces", body(marked), shareToken());
+		assertEquals(403, shared.status());
+		assertEquals(ImageServlet.TAGGING_REFUSED, errorMessage(shared));
+
+		FakeResponse anonymous = post("/" + ALBUM + "/", "tag-faces", body(marked), null);
+		assertEquals(401, anonymous.status());
+
+		assertEquals("Nobody marked anything.", 0, stored(A_ONE).getTags().size());
+	}
+
 	/** Taking a decision back is deciding, so it needs the very rights a decision needs. */
 	public void testTakingBackNeedsTheEditRight() throws Exception {
 		createSpace(A_ONE);

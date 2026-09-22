@@ -616,6 +616,7 @@
   "personsShowPhoto": "„Foto anzeigen“",
   "personsNameEntry": "Person benennen…",
   "personsDeferEntry": "Zurückstellen (neue Gruppe)",
+  "personsNotAFaceEntry": "Kein Gesicht",
   "personsSomeoneElse": "Jemand anderes…",
   "personsForgetEntry": "Entscheidung rückgängig machen",
   "personsForgetTarget": "Vergessen",
@@ -628,5 +629,11 @@
   "personsLinkNobodyFree": "Jedes Element dieses Raums ist bereits jemand.",
   "appearsInPhotosAs": "Erscheint auf Fotos als {name}",
   "inboxPhotoCount": "{count, plural, =1{1 Foto} other{{count} Fotos}}",
-  "personsNotAFaceEntry": "Kein Gesicht"
+  "viewerEditPersons": "Personen bearbeiten",
+  "viewerEditPersonsDone": "Benennen der Gesichter beenden",
+  "viewerMarkFace": "Ein Gesicht markieren",
+  "viewerMarkFaceHint": "Zeichnen Sie ein Rechteck um ein Gesicht.",
+  "viewerFaceDecision": "Dieses Gesicht",
+  "personsChooserInAlbum": "In diesem Album",
+  "personsChooserAll": "Alle Personen"
 }

@@ -52,6 +52,7 @@ import de.haumacher.imageServer.shared.model.MoveName;
 import de.haumacher.imageServer.shared.model.MoveOutcome;
 import de.haumacher.imageServer.shared.model.MoveRequest;
 import de.haumacher.imageServer.shared.model.MoveResult;
+import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.PersonCreate;
@@ -288,6 +289,19 @@ public class ImageServlet extends HttpServlet {
 	/** Why a face of a tagging request is not one of the faces answered for its image. */
 	static String unknownFace(String image, int index) {
 		return "There is no face " + index + " in '" + image + "'.";
+	}
+
+	/**
+	 * Why a hand-marked face of a tagging request is nowhere on its photograph, see issue #147.
+	 *
+	 * <p>
+	 * The box is a fraction of the picture as it is shown, so it lies inside <code>0..1</code> and
+	 * has a width and a height. Anything else is not a place on this photograph, and a face is
+	 * somewhere or it is nowhere.
+	 * </p>
+	 */
+	static String faceBoxInvalid(String image) {
+		return "The marked face is not a place on '" + image + "'.";
 	}
 
 	/** The <code>type</code> a face crop is asked for with, see issue #124. */
@@ -3390,6 +3404,9 @@ public class ImageServlet extends HttpServlet {
 		// Everything is checked before anything is written.
 		List<ImagePart> targets = new ArrayList<>();
 		List<FaceTag> tags = new ArrayList<>();
+		// How the photographs of this album are turned for display, read at most once and only
+		// where a request really hands a box over, see issue #147.
+		Map<String, Orientation> orientations = null;
 		for (FaceAssignment assignment : request.getFaces()) {
 			ImagePart image = images.get(assignment.getImage());
 			if (image == null) {
@@ -3398,12 +3415,20 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			List<FaceInfo> faces = answered.get(image.getName());
+			boolean marked = marksABox(assignment);
 			int index = assignment.getFace();
-			if (faces == null || index < 0 || index >= faces.size()) {
+			if (!marked && (faces == null || index < 0 || index >= faces.size())) {
 				LOG.warning("Refusing the tagging of '" + assignment.getImage() + "': unknown face "
 					+ index + ".");
 				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST,
 					unknownFace(assignment.getImage(), index));
+				return;
+			}
+			if (marked && !isOnThePicture(assignment)) {
+				LOG.warning("Refusing the tagging of '" + assignment.getImage() + "': the marked box is "
+					+ assignment.getX() + "," + assignment.getY() + " " + assignment.getW() + "x"
+					+ assignment.getH() + ".");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, faceBoxInvalid(assignment.getImage()));
 				return;
 			}
 			FaceState state = assignment.getState();
@@ -3432,13 +3457,33 @@ public class ImageServlet extends HttpServlet {
 				// resolving through the register's aliases.
 				person = entry.getId();
 			}
-			FaceInfo face = faces.get(index);
+			double[] box;
+			if (marked) {
+				// What the client drew, in the frame it drew in: the picture upright, see issue
+				// #142. The one frame a decision is stored in is the raw raster of the file.
+				if (orientations == null) {
+					orientations = FaceIndex.displayOrientations(folder, images.keySet());
+				}
+				Orientation exif = orientations.getOrDefault(image.getName(), Orientation.IDENTITY);
+				box = Faces.toRaw(exif, assignment.getX(), assignment.getY(),
+					assignment.getW(), assignment.getH());
+				FaceInfo met = meets(faces, box);
+				if (met != null) {
+					// The detector found this face after all (or somebody has already decided about
+					// it): then this is that face's decision, carrying that face's own box, and
+					// marking it by hand is the very same thing as naming it.
+					box = new double[] { met.getX(), met.getY(), met.getW(), met.getH() };
+				}
+			} else {
+				FaceInfo face = faces.get(index);
+				box = new double[] { face.getX(), face.getY(), face.getW(), face.getH() };
+			}
 			targets.add(image);
 			tags.add(FaceTag.create()
-				.setX(face.getX())
-				.setY(face.getY())
-				.setW(face.getW())
-				.setH(face.getH())
+				.setX(box[0])
+				.setY(box[1])
+				.setW(box[2])
+				.setH(box[3])
 				.setPerson(person)
 				.setState(state));
 		}
@@ -3476,6 +3521,55 @@ public class ImageServlet extends HttpServlet {
 			LOG.info("Tagged " + tags.size() + " face(s) in '" + folder.getAbsolutePath() + "'.");
 		}
 		answerAlbum(context, folderPath, caller);
+	}
+
+	/**
+	 * Whether the given assignment marks a face by hand instead of naming one, see issue #147.
+	 *
+	 * <p>
+	 * A box is given exactly when any of its four numbers is not zero. An assignment that carries
+	 * none is what every client before issue #147 sent, and it names a face by its index as it
+	 * always did.
+	 * </p>
+	 */
+	private static boolean marksABox(FaceAssignment assignment) {
+		return assignment.getX() != 0 || assignment.getY() != 0
+			|| assignment.getW() != 0 || assignment.getH() != 0;
+	}
+
+	/** Whether the box of the given assignment is a place on the photograph, see issue #147. */
+	private static boolean isOnThePicture(FaceAssignment assignment) {
+		double x = assignment.getX();
+		double y = assignment.getY();
+		double w = assignment.getW();
+		double h = assignment.getH();
+		return w > 0 && h > 0 && x >= 0 && y >= 0 && x + w <= 1 && y + h <= 1;
+	}
+
+	/**
+	 * Which of the answered faces the given raw box is, <code>null</code> where it is a new one.
+	 *
+	 * <p>
+	 * The overlap rule of {@link FaceTags#IOU_MATCH}, asked of what this caller was answered:
+	 * a hand-marked box over a face the detector found, or over one somebody already decided
+	 * about, is that face and not a second one.
+	 * </p>
+	 */
+	private static FaceInfo meets(List<FaceInfo> faces, double[] box) {
+		if (faces == null) {
+			return null;
+		}
+		FaceInfo best = null;
+		double bestOverlap = FaceTags.IOU_MATCH;
+		for (FaceInfo face : faces) {
+			double overlap = FaceTags.iou(box[0], box[1], box[2], box[3],
+				face.getX(), face.getY(), face.getW(), face.getH());
+			if (overlap > bestOverlap) {
+				bestOverlap = overlap;
+				best = face;
+			}
+		}
+		return best;
 	}
 
 	/**

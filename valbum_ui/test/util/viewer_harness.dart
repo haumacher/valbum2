@@ -143,7 +143,15 @@ class ViewerHarness extends StatefulWidget {
   final AbstractImage initial;
   final VAlbumClient client;
 
-  const ViewerHarness(this.initial, {super.key, required this.client});
+  /// The album a write of the viewer is posted to, see issue #147.
+  final List<String>? editPath;
+
+  const ViewerHarness(
+    this.initial, {
+    super.key,
+    required this.client,
+    this.editPath,
+  });
 
   @override
   State<ViewerHarness> createState() => ViewerHarnessState();
@@ -163,6 +171,7 @@ class ViewerHarnessState extends State<ViewerHarness> {
             : null,
         onShowImage: (next) => setState(() => image = next),
         onUp: () => Navigator.maybePop(context),
+        editPath: widget.editPath,
       );
 }
 
@@ -176,6 +185,9 @@ Future<void> pumpViewerHarness(
   required VAlbumClient client,
   CallerInfo? caller,
   ShareSession? share,
+  List<String>? editPath,
+  Locale? locale,
+  bool offline = false,
 }) async {
   await withFakeImageHttp(
     () async {
@@ -184,18 +196,28 @@ Future<void> pumpViewerHarness(
           caller: caller,
           child: ShareSessionScope(
             session: share,
-            child: MaterialApp(
-              localizationsDelegates: testLocalizationsDelegates,
-              supportedLocales: testSupportedLocales,
-              home: Builder(
-                builder: (context) => Scaffold(
-                  body: TextButton(
-                    child: const Text("open"),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (context) =>
-                            ViewerHarness(initial, client: client),
+            child: OfflineScope(
+              state: offline
+                  ? (OfflineState()..goneOffline(DateTime.now()))
+                  : OfflineState(),
+              cache: MemoryOfflineCache(),
+              child: MaterialApp(
+                locale: locale,
+                localizationsDelegates: testLocalizationsDelegates,
+                supportedLocales: testSupportedLocales,
+                home: Builder(
+                  builder: (context) => Scaffold(
+                    body: TextButton(
+                      child: const Text("open"),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (context) => ViewerHarness(
+                            initial,
+                            client: client,
+                            editPath: editPath,
+                          ),
+                        ),
                       ),
                     ),
                   ),
