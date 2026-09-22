@@ -593,8 +593,13 @@ class PersonsContentState extends State<PersonsContent>
   bool get mayEdit => rights.mayEdit && share == null;
 
   /// Whether anything was changed that is not on the server yet.
-  bool get dirty =>
-      placement.entries.any((entry) => stored[entry.key] != entry.value);
+  ///
+  /// Exactly what Save would write, see [delta] — not whether the buffer
+  /// differs from what was read (issue #151): a deferred group and the mark of
+  /// a taken-back decision live in the buffer alone, the server stores neither,
+  /// so after a Save they still differ from the stored state and the guard
+  /// used to ask about changes that had nothing left to save.
+  bool get dirty => delta().isNotEmpty;
 
   // -------------------------------------------------------------------------
   // The groups.

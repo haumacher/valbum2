@@ -106,6 +106,7 @@ VAlbumClient editorClient(
   String Function() people = annaRegister,
   String Function()? users,
   Answer? post,
+  String Function()? albumNow,
 }) =>
     VAlbumClient(
       dataUrl: dataUrl,
@@ -137,7 +138,9 @@ VAlbumClient editorClient(
               http.Response("Unexpected: ${request.url}", 500);
         }
         if (query["type"] == "json" || pathOf(request) == "/valbum/data/") {
-          return json(album);
+          // What the album says *now*: a test that saves lets the server's
+          // answer change under the editor, as the real one does.
+          return json(albumNow?.call() ?? album);
         }
         return http.Response("No such resource: ${pathOf(request)}", 404);
       })),
