@@ -232,6 +232,17 @@ suggestions across the space), #128 (a person linked to a member), #129 (XMP fac
 
 ## Decisions log
 
+- **2026-09-22** — Two follow-ups of Phase 7 from using 2.5.0. The face editor is worked like a file
+  manager (#139): a mouse click replaces the selection, ctrl toggles, shift takes the range in display
+  order, a finger keeps toggling; the page scrolls while a face is carried; "Name person…", "Defer" and
+  "Forget" act on the selection from the app bar and from a right-click menu; a suggestion offers
+  "Someone else…"; and the photograph behind a crop opens on a double click, shown large with the box
+  marked. And the face pipeline **finds on the preview and describes from the original** (#140): where
+  the 600 px preview shows a photograph smaller than it is, a face under 112 px on it is looked up in
+  the file by a region decode — box, embedding and the `?type=face` crop at full resolution, never the
+  whole raster in memory, a per-face `refined` flag instead of a bumped model stamp so nothing is
+  re-detected wholesale. A full-resolution detection was rejected as quadratic in cost for no gain.
+
 - **2026-09-22** — 2.5.0 released (tag `valbum-2.5.0` on 3d5d7df; Debian packages for amd64, arm64 and
   armhf, the signed APK, the APT site), master opened 2.6.0. Phase 7 (People) delivered in one day:
   face detection and clustering per album with crops (#124), the people register and confirmed tags
