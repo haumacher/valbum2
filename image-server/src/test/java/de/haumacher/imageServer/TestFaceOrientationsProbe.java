@@ -20,9 +20,15 @@ import java.util.List;
 import javax.imageio.ImageIO;
 
 /**
- * Probe of issues #140, #141 and #142 over the four EXIF orientations a camera writes and both aspect
+ * Probe of issues #140, #141, #142 and #143 over all eight EXIF orientations and both aspect
  * ratios: the stored box brought upright, the box the wire answers (already upright, #142) and the
- * crop must all show the pasted portrait. The mirrored codes are issue #143.
+ * crop must all show the pasted portrait.
+ *
+ * <p>
+ * The four mirrored codes (2, 4, 5, 7) were issue #143: their preview was drawn beside the canvas
+ * and was empty, so the detector was handed nothing and the photograph carried no face at all. The
+ * pipeline treats all eight alike, so this probe runs all eight.
+ * </p>
  */
 @SuppressWarnings("javadoc")
 public class TestFaceOrientationsProbe extends FacesTestCase {
@@ -45,7 +51,7 @@ public class TestFaceOrientationsProbe extends FacesTestCase {
 			return;
 		}
 		int pasteX = 1500, pasteY = 300;
-		int[] codes = { 1, 3, 6, 8 };
+		int[] codes = { 1, 2, 3, 4, 5, 6, 7, 8 };
 		for (int code : codes) {
 			paste("o" + code + ".jpg", width, height, A_ONE, SMALL, pasteX, pasteY, code);
 		}

@@ -6,6 +6,8 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.util.Orientations;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.Point2D;
 import junit.framework.TestCase;
 
 /**
@@ -88,6 +90,39 @@ public class TestFaceGeometry extends TestCase {
 			Orientation exif = Orientations.fromCode(code);
 			double[] raw = Faces.toRaw(exif, 0.0, 0.0, 1.0, 1.0);
 			assertBox("Orientation " + code, new double[] { 0, 0, 1, 1 }, raw);
+		}
+	}
+
+	/**
+	 * The preview generator turns a picture by exactly the table {@link Faces} writes a box back
+	 * with, see issue #143.
+	 *
+	 * <p>
+	 * Two representations of one permutation — a normalised point map here, an
+	 * {@link java.awt.geom.AffineTransform} over pixels there — and the whole face pipeline rests
+	 * on their being the same: a face is found on the preview and its box written into the raw
+	 * raster by {@link Faces#toRaw(Orientation, double, double, double, double)}. When the preview
+	 * mirrored a picture about the wrong axis nothing here noticed, because nothing here asked.
+	 * </p>
+	 */
+	public void testThePreviewIsTurnedByTheSameTable() {
+		double rawWidth = 400, rawHeight = 300;
+		for (int code = 1; code <= 8; code++) {
+			Orientation exif = Orientations.fromCode(code);
+			AffineTransform tx = PreviewCache.orientationTransform(exif, rawWidth, rawHeight);
+			double displayWidth = Orientations.width(exif, rawWidth, rawHeight);
+			double displayHeight = Orientations.height(exif, rawWidth, rawHeight);
+			for (double s : new double[] { 0, 0.17, 0.5, 0.83, 1 }) {
+				for (double t : new double[] { 0, 0.29, 0.5, 0.71, 1 }) {
+					// The upright box of a point-sized box at (s,t) is where that point is shown.
+					double[] upright = Faces.toUpright(exif, s, t, 0, 0);
+					Point2D shown = tx.transform(new Point2D.Double(s * rawWidth, t * rawHeight), null);
+					assertEquals("Orientation " + code + " maps (" + s + "," + t + ") horizontally",
+						upright[0] * displayWidth, shown.getX(), 1e-6);
+					assertEquals("Orientation " + code + " maps (" + s + "," + t + ") vertically",
+						upright[1] * displayHeight, shown.getY(), 1e-6);
+				}
+			}
 		}
 	}
 
