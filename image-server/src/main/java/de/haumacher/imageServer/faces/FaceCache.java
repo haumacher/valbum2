@@ -47,7 +47,7 @@ import java.util.logging.Logger;
  *   "&lt;sha256&gt;":{"faces":[{"box":{"x":0.31,"y":0.12,"w":0.2,"h":0.27},"score":0.99,
  *                            "embedding":"&lt;base64 of 128 little-endian float32&gt;",
  *                            "refined":true}],
- *                 "cluster":["c1"]}}}
+ *                 "cluster":["c1"],"exif":6}}}
  * </pre>
  *
  * <p>
@@ -91,6 +91,8 @@ public class FaceCache {
 	private static final String FACES__PROP = "faces";
 
 	private static final String CLUSTER__PROP = "cluster";
+
+	private static final String EXIF__PROP = "exif";
 
 	private static final String BOX__PROP = "box";
 
@@ -210,6 +212,21 @@ public class FaceCache {
 	/** The faces by content hash, in the order they were read or added. */
 	private Map<String, List<Face>> _byHash = new LinkedHashMap<>();
 
+	/**
+	 * How the file with the given contents says its pixels are to be turned, as an EXIF code, see
+	 * issue #142.
+	 *
+	 * <p>
+	 * Cache like everything else here, and keyed by the contents like everything else here — the
+	 * orientation is part of what was read out of the file, so the two can never disagree. It is
+	 * kept because the box of a face is stored in the raw raster and answered upright: without it
+	 * every album read would have to open the header of every photograph again. A hash this map
+	 * does not name is a photograph described before issue #142; it is read from the file once and
+	 * filled in by the next walk.
+	 * </p>
+	 */
+	private Map<String, Integer> _exifByHash = new LinkedHashMap<>();
+
 	private boolean _dirty;
 
 	/** Loads the faces of the given album folder; nothing is detected and nothing is written. */
@@ -256,11 +273,28 @@ public class FaceCache {
 		_dirty = true;
 	}
 
+	/**
+	 * How the file with the given contents is turned for display, as an EXIF code, see issue #142;
+	 * <code>null</code> when nobody wrote it down yet.
+	 */
+	public Integer exifOf(String hash) {
+		return _exifByHash.get(hash);
+	}
+
+	/** Records the EXIF orientation of the file with the given contents, see issue #142. */
+	public void putExif(String hash, int code) {
+		Integer before = _exifByHash.put(hash, Integer.valueOf(code));
+		if (before == null || before.intValue() != code) {
+			_dirty = true;
+		}
+	}
+
 	/** Forgets every hash that is not among the given ones, after the album changed. */
 	public void retain(java.util.Set<String> hashes) {
 		if (_byHash.keySet().retainAll(hashes)) {
 			_dirty = true;
 		}
+		_exifByHash.keySet().retainAll(hashes);
 	}
 
 	/** Says that a cluster was assigned; the file has to be written again. */
@@ -303,6 +337,7 @@ public class FaceCache {
 	private void read(JsonReader in) throws IOException {
 		String model = "";
 		Map<String, List<Face>> files = new LinkedHashMap<>();
+		Map<String, Integer> exif = new LinkedHashMap<>();
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -314,7 +349,7 @@ public class FaceCache {
 					in.beginObject();
 					while (in.hasNext()) {
 						String hash = in.nextName();
-						files.put(hash, readEntry(in));
+						files.put(hash, readEntry(in, hash, exif));
 					}
 					in.endObject();
 					break;
@@ -329,9 +364,11 @@ public class FaceCache {
 			return;
 		}
 		_byHash = files;
+		_exifByHash = exif;
 	}
 
-	private static List<Face> readEntry(JsonReader in) throws IOException {
+	private static List<Face> readEntry(JsonReader in, String hash, Map<String, Integer> exif)
+			throws IOException {
 		List<Face> faces = new ArrayList<>();
 		List<String> clusters = new ArrayList<>();
 		in.beginObject();
@@ -351,6 +388,9 @@ public class FaceCache {
 						clusters.add(in.nextString());
 					}
 					in.endArray();
+					break;
+				case EXIF__PROP:
+					exif.put(hash, Integer.valueOf(in.nextInt()));
 					break;
 				default:
 					in.skipValue();
@@ -458,6 +498,13 @@ public class FaceCache {
 					out.value(face.getCluster());
 				}
 				out.endArray();
+				Integer exif = _exifByHash.get(entry.getKey());
+				if (exif != null) {
+					// Absent is "nobody looked yet", so a file written before issue #142 reads as
+					// it always did and an older build simply skips this.
+					out.name(EXIF__PROP);
+					out.value(exif.intValue());
+				}
 				out.endObject();
 			}
 			out.endObject();

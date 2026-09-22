@@ -24,6 +24,14 @@ import javax.imageio.ImageIO;
  * box has to say.
  * </p>
  *
+ * <p>
+ * What is <em>stored</em> is asked here; since issue #142 the wire speaks another frame — a box is
+ * answered upright, in the frame of the rendition the client draws it on — which is asked in
+ * {@link TestFaceWireFrame}. The two must not be confused: the cache and the album's own
+ * {@link de.haumacher.imageServer.shared.model.FaceTag decisions} stay in the raw raster, and only
+ * the answer is turned.
+ * </p>
+ *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 @SuppressWarnings("javadoc")
@@ -64,6 +72,23 @@ public class TestFaceOrientation extends FacesTestCase {
 		assertFalse("A turned picture is not the same picture to the box.",
 			Math.abs(upright.getX() - sideways.getX()) < 0.01
 				&& Math.abs(upright.getY() - sideways.getY()) < 0.01);
+
+		// And on the wire the two are the same picture again, see issue #142.
+		de.haumacher.imageServer.shared.model.AlbumInfo album = album("/" + ALBUM + "/", _adminToken);
+		de.haumacher.imageServer.shared.model.FaceInfo shown = wire(album, A_ONE);
+		de.haumacher.imageServer.shared.model.FaceInfo turned = wire(album, SIDEWAYS);
+		assertEquals("The answer is upright, whatever the file does.", shown.getX(), turned.getX(), 0.04);
+		assertEquals(shown.getY(), turned.getY(), 0.04);
+		assertEquals(shown.getW(), turned.getW(), 0.04);
+		assertEquals(shown.getH(), turned.getH(), 0.04);
+	}
+
+	/** The one face of the given photograph, as the album answers it. */
+	private static de.haumacher.imageServer.shared.model.FaceInfo wire(
+			de.haumacher.imageServer.shared.model.AlbumInfo album, String name) {
+		de.haumacher.imageServer.shared.model.ImagePart image = image(album, name);
+		assertEquals("Expected one face in '" + name + "'.", 1, image.getFaces().size());
+		return image.getFaces().get(0);
 	}
 
 	/** And the same person is still the same person, however the file lies. */

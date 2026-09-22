@@ -104,6 +104,19 @@ public class FaceIndex {
 	public static final String CROP_EXTENSION = "jpg";
 
 	/**
+	 * What every crop name of issue #141 begins with, behind the photograph's own name.
+	 *
+	 * <p>
+	 * Not a digit, so that such a name can never be read as one of issue #124's indices, and
+	 * itself a hexadecimal digit, so that the whole token is one alphabet.
+	 * </p>
+	 */
+	static final char CROP_TOKEN_MARK = 'f';
+
+	/** How long a crop token is, the {@link #CROP_TOKEN_MARK} included. */
+	static final int CROP_TOKEN_LENGTH = 13;
+
+	/**
 	 * How much space is left around a face in a crop, as a fraction of the box.
 	 *
 	 * <p>
@@ -381,10 +394,15 @@ public class FaceIndex {
 			if (cache.knows(hash) && !unrefined(image, cache.facesOf(hash))) {
 				// Looked at, and nothing a second look could improve; a photograph whose faces were
 				// described from the preview alone is looked at again, see issue #140.
+				rememberExif(cache, image, hash);
 				continue;
 			}
 			try {
 				cache.put(hash, detect(image));
+				// The faces of this photograph are new ones: what was cut from the old ones names
+				// nobody any more, see issue #141.
+				dropCrops(image);
+				rememberExif(cache, image, hash);
 				changed = true;
 			} catch (IOException | RuntimeException ex) {
 				String reason = FaceDetection.reason(ex);
@@ -413,6 +431,23 @@ public class FaceIndex {
 		// The one walk of issue #127 as well: whoever was confirmed in this album is now described
 		// by numbers this pass has just made sure are there.
 		_recognition.observe(folder);
+	}
+
+	/**
+	 * Writes down how the given photograph is turned for display, see issue #142.
+	 *
+	 * <p>
+	 * The header is read only where nobody wrote it down yet, so an album that was indexed by this
+	 * build costs nothing here and a library indexed before issue #142 heals on the one walk: the
+	 * answer is built from the raw box turned upright, and that turn must not mean opening every
+	 * file of an album on every read.
+	 * </p>
+	 */
+	private static void rememberExif(FaceCache cache, File image, String hash) {
+		if (cache.exifOf(hash) != null) {
+			return;
+		}
+		cache.putExif(hash, Orientations.toCode(exifOrientation(image)));
 	}
 
 	/** The faces of one photograph, in the raw raster of its file, see {@link Faces}. */
@@ -740,6 +775,9 @@ public class FaceIndex {
 			_recognition.put(folder, Recognition.collect(album, cache, hashByName));
 			suggest(byName, cached, people);
 		}
+		// Last of all, and only on the way out: the wire speaks the frame of the picture the app
+		// draws on, see issue #142.
+		upright(byName, folder, cache, hashByName);
 		if (byName.isEmpty() && !pending) {
 			return album;
 		}
@@ -831,6 +869,66 @@ public class FaceIndex {
 			result.put(image.getName(), FaceTags.merge(faces, image.getTags(), people));
 		}
 		return result;
+	}
+
+	/**
+	 * Turns every answered box into the frame the picture is shown in, see issue #142.
+	 *
+	 * <p>
+	 * A box is <em>stored</em> in the raw raster of the file (see {@link Faces}) — the one frame
+	 * nothing can move — and the two things a box is stored in, the {@link FaceCache} and the
+	 * {@link de.haumacher.imageServer.shared.model.FaceTag} of the album, are matched against each
+	 * other there. What goes on the wire is another question: the client draws the box on the
+	 * rendition of <code>?type=tn</code>, which is the picture <em>upright</em>, the EXIF
+	 * orientation of the file already applied, and it turns it by nothing but
+	 * {@link ImagePart#getOrientation()}. The file's own orientation is not on the wire and the
+	 * client cannot know it, so a box of a portrait shot (EXIF&nbsp;6 or 8) landed nowhere near the
+	 * face. It is applied here, once, in the one place an answer is built.
+	 * </p>
+	 *
+	 * <p>
+	 * Only here: {@link #answered(AlbumInfo, File, PeopleStore)} — the numbering
+	 * <code>?action=tag-faces</code> names a face by, and the boxes it copies into the album's own
+	 * statements — stays in the raw frame, and so does the crop of <code>?type=face</code>.
+	 * </p>
+	 */
+	private static void upright(Map<String, List<FaceInfo>> byName, File folder, FaceCache cache,
+			Map<String, String> hashByName) {
+		for (Map.Entry<String, List<FaceInfo>> entry : byName.entrySet()) {
+			Orientation exif = exifOf(folder, entry.getKey(), cache, hashByName);
+			if (exif == Orientation.IDENTITY) {
+				continue;
+			}
+			for (FaceInfo face : entry.getValue()) {
+				double[] box = Faces.toUpright(exif, face.getX(), face.getY(), face.getW(), face.getH());
+				face.setX(box[0]).setY(box[1]).setW(box[2]).setH(box[3]);
+			}
+		}
+	}
+
+	/**
+	 * How the given photograph of the given album is turned for display, see issue #142.
+	 *
+	 * <p>
+	 * Out of the album's {@link FaceCache}, where it was written down when the photograph was
+	 * described, so that describing an album costs no file access here. A photograph the cache says
+	 * nothing about — one described before issue #142, or one that carries a decision in an album
+	 * this server never looked for faces in — is read from its header, once per answer, and the next
+	 * walk writes it down.
+	 * </p>
+	 */
+	private static Orientation exifOf(File folder, String name, FaceCache cache,
+			Map<String, String> hashByName) {
+		if (cache != null) {
+			String hash = hashByName.get(name);
+			if (hash != null) {
+				Integer code = cache.exifOf(hash);
+				if (code != null) {
+					return Orientations.fromCode(code.intValue());
+				}
+			}
+		}
+		return exifOrientation(new File(folder, name));
 	}
 
 	/** Whether any photograph of the given album carries a decision about a face (issue #125). */
@@ -1057,13 +1155,13 @@ public class FaceIndex {
 		if (index < 0 || index >= faces.size()) {
 			return new Crop(null, "There is no such face in this image.");
 		}
-		File target = cropFile(image, index);
-		if (target.isFile() && target.lastModified() >= image.lastModified()
-			&& target.lastModified() >= PreviewCache.lastUpdate()) {
+		FaceCache.Face face = faces.get(index);
+		File target = cropFile(image, hash, face);
+		if (fresh(target, image, folder)) {
 			return new Crop(target, null);
 		}
 		try {
-			write(image, faces.get(index), target);
+			write(image, face, target);
 			return new Crop(target, null);
 		} catch (IOException | PreviewException | RuntimeException ex) {
 			LOG.log(Level.WARNING, "Cannot cut the face out of '" + image.getAbsolutePath() + "': "
@@ -1072,10 +1170,183 @@ public class FaceIndex {
 		}
 	}
 
-	/** Where the crop of one face of the given photograph is cached. */
-	public static File cropFile(File image, int index) {
+	/**
+	 * Whether the given cached crop may still be served, see issue #141.
+	 *
+	 * <p>
+	 * Its name already says which face it was cut for, so what is left to ask is whether anything it
+	 * was cut <em>from</em> has moved on: the photograph itself, the preview rule
+	 * ({@link PreviewCache#lastUpdate()}) — and the album's {@link FaceCache}, which is rewritten
+	 * exactly when the faces of this album change. The last one is belt and braces for a library
+	 * whose crops were cut under the naming of issue #124: those crops carry an index and are never
+	 * addressed again, but a crop that happens to be spelled like one of ours would be, and a
+	 * re-described album must never serve anything older than its own detections.
+	 * </p>
+	 */
+	private static boolean fresh(File target, File image, File folder) {
+		if (!target.isFile()) {
+			return false;
+		}
+		long written = target.lastModified();
+		return written >= image.lastModified() && written >= PreviewCache.lastUpdate()
+			&& written >= FaceCache.file(folder).lastModified();
+	}
+
+	/**
+	 * Where the crop of the given face of the given photograph is cached, see issue #141.
+	 *
+	 * <p>
+	 * <b>A crop is named after the face it shows, never after a position in a list.</b> The name
+	 * carries the photograph (so that the crops of one file can be found and thrown away together)
+	 * and a {@link #cropToken(String, FaceCache.Face) token} of what identifies the face: the
+	 * contents the detections are keyed by and the box that was cut out. Re-describing a photograph
+	 * renumbers its faces — which is what issue #140's walk did to every library — and under a name
+	 * built from an index the crop of the old face would go on being served under the new number,
+	 * showing the wrong person beside a correct box. Under this name a renumbering simply misses the
+	 * cache and the crop is cut anew; a photograph that is renamed or moved (issue #47, which
+	 * abandons the cache directory) needs nothing at all.
+	 * </p>
+	 */
+	public static File cropFile(File image, String hash, FaceCache.Face face) {
 		return new File(CacheRefresh.cacheDir(image.getParentFile()),
-			CROP_PREFIX + image.getName() + "-" + index + "." + CROP_EXTENSION);
+			CROP_PREFIX + image.getName() + "-" + cropToken(hash, face) + "." + CROP_EXTENSION);
+	}
+
+	/**
+	 * Where the crop of the <code>index</code>-th face of the given photograph is cached, looked up
+	 * through the album's caches; <code>null</code> when there is no such face.
+	 */
+	public static File cropFile(File image, int index) {
+		File folder = image.getParentFile();
+		String hash = new HashCache(folder).storedHashByName().get(image.getName());
+		if (hash == null) {
+			return null;
+		}
+		List<FaceCache.Face> faces = new FaceCache(folder).facesOf(hash);
+		if (index < 0 || index >= faces.size()) {
+			return null;
+		}
+		return cropFile(image, hash, faces.get(index));
+	}
+
+	/**
+	 * What tells one face of a photograph from another in a file name, see issue #141.
+	 *
+	 * <p>
+	 * The contents of the file (the SHA-256 the {@link HashCache} beside the photographs knows and
+	 * the {@link FaceCache} is keyed by) and the box in the raw raster, spelled to four decimals —
+	 * a ten-thousandth of the picture, far below a pixel of anything shown, so that a box that is
+	 * really the same face found again keeps its crop. Hexadecimal behind a leading
+	 * <code>f</code>: no dash, so the photograph's own name stays readable in front of it, and
+	 * never a number, so such a name can never be one issue #124 wrote.
+	 * </p>
+	 */
+	static String cropToken(String hash, FaceCache.Face face) {
+		String identity = hash + '|' + box(face.getX()) + ',' + box(face.getY()) + ','
+			+ box(face.getW()) + ',' + box(face.getH());
+		byte[] digest;
+		try {
+			digest = java.security.MessageDigest.getInstance("SHA-256")
+				.digest(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		} catch (java.security.NoSuchAlgorithmException ex) {
+			throw new IllegalStateException("No SHA-256 here.", ex);
+		}
+		StringBuilder result = new StringBuilder(CROP_TOKEN_LENGTH);
+		result.append(CROP_TOKEN_MARK);
+		for (int n = 0; result.length() < CROP_TOKEN_LENGTH; n++) {
+			result.append(Character.forDigit((digest[n] >> 4) & 0xF, 16));
+			result.append(Character.forDigit(digest[n] & 0xF, 16));
+		}
+		return result.toString();
+	}
+
+	/** One coordinate of a box, as it goes into a {@link #cropToken(String, FaceCache.Face)}. */
+	private static String box(double value) {
+		return String.format(java.util.Locale.ROOT, "%.4f", Double.valueOf(value));
+	}
+
+	/**
+	 * Throws away every cached crop of the given photograph, see issue #141.
+	 *
+	 * <p>
+	 * Called where a photograph is described again: its faces are renumbered and its boxes have
+	 * moved, so what was cut from it says nothing any more. The crops of the old naming
+	 * (<code>face-&lt;name&gt;-&lt;n&gt;.jpg</code>, which a library written before this build is
+	 * full of) go in the same sweep — they would never be addressed again and must not lie there
+	 * forever.
+	 * </p>
+	 *
+	 * <p>
+	 * Only names this server itself writes are ever touched: the prefix is this photograph's, what
+	 * follows is an index or a token of ours, and {@link CacheRefresh#isGenerated(String)} — the one
+	 * rule that says what the cache directory holds of the server's — has to name it too. A file
+	 * somebody else put there stays, whatever it is called.
+	 * </p>
+	 *
+	 * @return How many files were thrown away.
+	 */
+	static int dropCrops(File image) {
+		File cacheDir = CacheRefresh.cacheDir(image.getParentFile());
+		File[] files = cacheDir.listFiles();
+		if (files == null) {
+			return 0;
+		}
+		String prefix = CROP_PREFIX + image.getName() + "-";
+		int dropped = 0;
+		for (File file : files) {
+			String name = file.getName();
+			if (!file.isFile() || !name.startsWith(prefix) || !CacheRefresh.isGenerated(name)) {
+				continue;
+			}
+			if (!isCropName(name.substring(prefix.length()))) {
+				continue;
+			}
+			if (file.delete()) {
+				dropped++;
+			} else {
+				LOG.log(Level.WARNING, "Cannot delete the stale crop '" + file.getAbsolutePath() + "'.");
+			}
+		}
+		return dropped;
+	}
+
+	/**
+	 * Whether what follows a photograph's name in a cache directory is a crop this server wrote.
+	 *
+	 * @param suffix
+	 *        Everything behind <code>face-&lt;name&gt;-</code>, the extension included.
+	 */
+	private static boolean isCropName(String suffix) {
+		String plain = suffix.endsWith(PreviewCache.TMP_SUFFIX)
+			? suffix.substring(0, suffix.length() - PreviewCache.TMP_SUFFIX.length())
+			: suffix;
+		String dot = "." + CROP_EXTENSION;
+		if (!plain.toLowerCase(java.util.Locale.ROOT).endsWith(dot)) {
+			return false;
+		}
+		String key = plain.substring(0, plain.length() - dot.length());
+		if (key.isEmpty()) {
+			return false;
+		}
+		if (key.charAt(0) == CROP_TOKEN_MARK) {
+			// A token of issue #141: the mark and hexadecimal.
+			if (key.length() != CROP_TOKEN_LENGTH) {
+				return false;
+			}
+			for (int n = 1; n < key.length(); n++) {
+				if (Character.digit(key.charAt(n), 16) < 0) {
+					return false;
+				}
+			}
+			return true;
+		}
+		// An index of issue #124.
+		for (int n = 0; n < key.length(); n++) {
+			if (key.charAt(n) < '0' || key.charAt(n) > '9') {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private void write(File image, FaceCache.Face face, File target) throws IOException, PreviewException {
