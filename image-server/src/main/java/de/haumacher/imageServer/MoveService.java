@@ -8,6 +8,7 @@ import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
@@ -31,7 +32,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -382,6 +385,11 @@ public class MoveService {
 		List<Entry> entries = classify(sourceFolder, targetFolder, sourceAlbum, targetTakesImages,
 			targetTakesFolders, rule, target.isRoot(), groupsTravel, names);
 
+		// What the target held before, so that what lands there is told apart afterwards: a target
+		// without a cover is covered by one of those, see issue #153.
+		Set<AlbumPart> heldBefore = Collections.newSetFromMap(new IdentityHashMap<>());
+		heldBefore.addAll(targetAlbum.getParts());
+
 		MoveResult result = MoveResult.create();
 		HashCache sourceHashes = new HashCache(sourceFolder);
 		HashCache targetHashes = new HashCache(targetFolder);
@@ -436,6 +444,7 @@ public class MoveService {
 					sourceHashes.flush();
 				}
 				if (targetChanged) {
+					coverLanded(targetAlbum, heldBefore);
 					UpdateTransient.updateTransient(targetAlbum);
 					ImageServlet.storeSidecar(targetFolder, json(targetAlbum));
 					targetHashes.flush();
@@ -960,8 +969,9 @@ public class MoveService {
 	 * Points the album's index picture at an image that is still there.
 	 *
 	 * <p>
-	 * The cover of an album whose cover was moved away is the album's first image, computed
-	 * exactly as a listing computes the cover of a folder without a sidecar; an album with no
+	 * The cover of an album whose cover was moved away is the album's first best-rated image (see
+	 * {@link PrivacyFilter#bestImage(Iterable)}), the rule a cover is chosen by for an album that
+	 * receives images too (issue #153, {@link #coverLanded(AlbumInfo, Set)}); an album with no
 	 * image left has no cover. The new cover is framed in the frame its image is displayed in and
 	 * says so, see {@link ThumbnailInfo#getOrientation()} and issue #115.
 	 * </p>
@@ -975,8 +985,45 @@ public class MoveService {
 		if (album.getImageByName().containsKey(indexPicture.getImage())) {
 			return;
 		}
-		ImagePart first = PrivacyFilter.firstImage(album);
-		album.setIndexPicture(first == null ? null : PrivacyFilter.thumbnail(first));
+		ImagePart best = PrivacyFilter.bestImage(album.getParts());
+		album.setIndexPicture(best == null ? null : PrivacyFilter.thumbnail(best));
+	}
+
+	/**
+	 * Gives an album that has just received images a cover, if it has none, see issue #153.
+	 *
+	 * <p>
+	 * The cover becomes the first best-rated image among the parts that landed (every part of the
+	 * album not in <code>heldBefore</code>, in the album's order, a group counting as its
+	 * representative), named by the name it landed under and framed by
+	 * {@link PrivacyFilter#thumbnail(ImagePart)} — the frame of issue #115, its orientation written
+	 * on it. This is what makes an album the move picker has just created (#114) show a picture in
+	 * the listing, whose tile shows a sidecar album's cover verbatim. An album whose cover names an
+	 * image it holds is left alone; a cover naming an image the album no longer holds counts as
+	 * none.
+	 * </p>
+	 *
+	 * @param heldBefore
+	 *        The parts the album held before the move, compared by identity.
+	 */
+	private static void coverLanded(AlbumInfo album, Set<AlbumPart> heldBefore) {
+		ThumbnailInfo indexPicture = album.getIndexPicture();
+		if (indexPicture != null) {
+			UpdateTransient.updateTransient(album);
+			if (album.getImageByName().containsKey(indexPicture.getImage())) {
+				return;
+			}
+		}
+		List<AlbumPart> landed = new ArrayList<>();
+		for (AlbumPart part : album.getParts()) {
+			if (!heldBefore.contains(part)) {
+				landed.add(part);
+			}
+		}
+		ImagePart best = PrivacyFilter.bestImage(landed);
+		if (best != null) {
+			album.setIndexPicture(PrivacyFilter.thumbnail(best));
+		}
 	}
 
 	/** The image an {@link ImageGroup} is shown by, <code>null</code> if it has none. */

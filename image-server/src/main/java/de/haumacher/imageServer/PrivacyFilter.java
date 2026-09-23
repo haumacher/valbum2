@@ -246,18 +246,55 @@ public class PrivacyFilter {
 	/** The image shown first in the given album, <code>null</code> if it shows none. */
 	static ImagePart firstImage(AlbumInfo album) {
 		for (AlbumPart part : album.getParts()) {
-			if (part instanceof ImagePart) {
-				return (ImagePart) part;
+			ImagePart image = shownImage(part);
+			if (image != null) {
+				return image;
 			}
-			if (part instanceof ImageGroup) {
-				ImageGroup group = (ImageGroup) part;
-				List<ImagePart> images = group.getImages();
-				if (images.isEmpty()) {
-					continue;
-				}
-				int representative = group.getRepresentative();
-				return images.get(representative >= 0 && representative < images.size() ? representative : 0);
+		}
+		return null;
+	}
+
+	/**
+	 * The first best-rated image among the given parts, <code>null</code> if they show none.
+	 *
+	 * <p>
+	 * The rule an album's cover is chosen by where the server chooses one, see issue #153: the
+	 * highest {@link ImagePart#getRating() rating} wins and the earlier part breaks a tie, so that
+	 * among equally rated images the first one stands for the album as before. A group counts as
+	 * the image it is shown by, its representative, and a {@link de.haumacher.imageServer.shared.model.Heading}
+	 * counts as nothing.
+	 * </p>
+	 *
+	 * @param parts
+	 *        The parts to choose among, in the album's order.
+	 */
+	static ImagePart bestImage(Iterable<? extends AlbumPart> parts) {
+		ImagePart best = null;
+		for (AlbumPart part : parts) {
+			ImagePart image = shownImage(part);
+			if (image != null && (best == null || image.getRating() > best.getRating())) {
+				best = image;
 			}
+		}
+		return best;
+	}
+
+	/**
+	 * The image the given part is shown by: an image itself, the representative of a group,
+	 * <code>null</code> for anything else and for a group without members.
+	 */
+	private static ImagePart shownImage(AlbumPart part) {
+		if (part instanceof ImagePart) {
+			return (ImagePart) part;
+		}
+		if (part instanceof ImageGroup) {
+			ImageGroup group = (ImageGroup) part;
+			List<ImagePart> images = group.getImages();
+			if (images.isEmpty()) {
+				return null;
+			}
+			int representative = group.getRepresentative();
+			return images.get(representative >= 0 && representative < images.size() ? representative : 0);
 		}
 		return null;
 	}
