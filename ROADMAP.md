@@ -232,6 +232,27 @@ suggestions across the space), #128 (a person linked to a member), #129 (XMP fac
 
 ## Decisions log
 
+- **2026-09-23 (evening)** — Five reports from using 2.7.0, all in one round. **The trash of an album**
+  (#152): a photograph rated −2 is answered to editors only from now on (a share link's "every photo"
+  means every photo of the album, not its trash), "Show trash" lists them with Restore, and **purge
+  deletes from disk** — the author's decision when asked whether purge should move to the trash folder
+  instead ("There will be a time you *finally* want to delete"), which amends "the server never deletes
+  an original" by exactly one act: an administrator's purge of the photographs rated −2, pinned by a
+  test that every other file is untouched. What still goes into `.valbum/trash/` — the album delete of
+  #109 and a contributor's inbox delete — is #159's question. An album that receives images is covered by
+  the first best-rated one that landed, and never by a trashed one (#153, a probe's finding); the crop of
+  an album picture covers the square (#154); the edit-mode tile has a context menu (#156). **Faces**
+  (#155): a face is marked by a drag in any direction or by a click, the server looks for it in the
+  original and stores what it finds as a detection with its embedding, so a marked face gets a crop, a
+  cluster and a suggestion — shown on the box, confirmed by one tap, never written unasked (the Phase 7
+  rule held) — and a detected region and a hand-marked one behave alike: Forget keeps the region, Not a
+  face removes it from every answer; the name on hover stands outside the box (#162). Also: an inbox is
+  answered newest first and runs each day chronologically (the day decided in the app, the device's
+  day), its headings left-aligned. Open from the same evening: the inbox takes the album's selection
+  semantics, rating buttons and "delete = −2" (#160), 0/0 is no geolocation and existing albums can be
+  re-read (#161), a second look for faces in the centre of the picture at the preview's resolution
+  (#163), two heading levels in an album (#158), moving and resizing a face region (#157).
+
 - **2026-09-22 (night)** — The round after 2.6.2, for 2.7.0: the viewer gets an **edit-persons mode**
   (#147) — every face marked with its name, a tap decides, a "Mark a face" tool draws a box for a face
   the detector missed, every decision written at once; the one protocol change is a box on the
