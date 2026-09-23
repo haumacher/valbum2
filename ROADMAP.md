@@ -232,6 +232,24 @@ suggestions across the space), #128 (a person linked to a member), #129 (XMP fac
 
 ## Decisions log
 
+- **2026-09-23 (night)** — The second round of the evening, from using the first. The inbox is worked like
+  the album's edit mode (#160): the tap has the album's semantics (a plain click replaces — "a simple
+  click lets the last clicked image selected" was dangerous), an editor's tile carries the rating
+  buttons, and **"Delete" in an inbox is the −2 rating**, hidden and found again on the album's trash
+  page; a contributor keeps the move into the trash folder until #159 decides. **0/0 is no position**
+  (#161: a camera without a fix writes zeros; the author's "showing 0,0 makes no sense either"), a
+  position the GPS directory does not carry is read from XMP, and `?action=reanalyze` fills what the
+  albums described before positions existed lack — camera and position, never a stored date — from the
+  sidecar as stored; a sample photograph is still wanted to see where that camera puts its position.
+  The face detector **looks a second time in the centre** where the preview shows no face (#163, the
+  author's design: another scaled-down version of the same size, made from the middle half of the
+  source), once per photograph for the existing library. **Downloading exists** (#164): the right was
+  enforced and named but the app had no button; the viewer downloads the original and a selection
+  downloads as one streamed archive, each name checked as its own original would be. And two things
+  the probes and the demo taught: a photograph rated −2 never covers an album, and the preview of a
+  picture smaller than the preview box carried black margins into every tile (#165) — "a real album"
+  never showed it because a photograph is always taller than 600 px.
+
 - **2026-09-23 (evening)** — Five reports from using 2.7.0, all in one round. **The trash of an album**
   (#152): a photograph rated −2 is answered to editors only from now on (a share link's "every photo"
   means every photo of the album, not its trash), "Show trash" lists them with Restore, and **purge
