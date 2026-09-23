@@ -26,15 +26,16 @@ String part(String name, DateTime taken) =>
 
 DateTime noon(int year, int month, int day) => DateTime(year, month, day, 12);
 
-/// Three days across two months, the order the server answers them in.
+/// Three days across two months, the order the server answers them in: the
+/// newest day first, a tie broken by name.
 const List<(String, int, int, int)> inboxPhotos = [
+  ("d.jpg", 2026, 4, 5),
+  ("c.jpg", 2026, 3, 2),
   ("a.jpg", 2026, 3, 1),
   ("b.jpg", 2026, 3, 1),
-  ("c.jpg", 2026, 3, 2),
-  ("d.jpg", 2026, 4, 5),
 ];
 
-/// The inbox as the server answers it, flat and sorted by date.
+/// The inbox as the server answers it, flat and sorted by date, newest first.
 String inboxJson({
   List<String> rights = const [],
   bool undated = false,
@@ -88,14 +89,25 @@ InboxContentState inboxState(WidgetTester tester) =>
 List<String> selectedNames(WidgetTester tester) =>
     [for (var image in inboxState(tester).selected) image.name];
 
+/// Scrolls the inbox until [finder] is built and visible: the rows are built
+/// on demand (issue #111), and since the newest day stands at the top an
+/// older day may lie below the test viewport.
+Future<void> reveal(WidgetTester tester, Finder finder) async {
+  await tester.dragUntilVisible(
+      finder, find.byType(CustomScrollView), const Offset(0, -300));
+  await tester.pumpAndSettle();
+}
+
 /// Taps the heading with the given key.
 Future<void> tapHeading(WidgetTester tester, String key) async {
+  await reveal(tester, find.byKey(Key(key)));
   await tester.tap(find.byKey(Key(key)));
   await tester.pumpAndSettle();
 }
 
 /// Taps the middle of the tile of [name], which selects it.
 Future<void> tapTileOf(WidgetTester tester, String name) async {
+  await reveal(tester, tile(name));
   await tester.tapAt(tester.getRect(tile(name)).center);
   await tester.pumpAndSettle();
 }
@@ -113,18 +125,45 @@ void main() {
       var days = inboxDays(album.parts);
 
       expect(days, hasLength(4));
+      // The server's order is kept: the newest day first, the undated last.
       expect([
         for (var day in days) day.images.map((i) => i.name).toList()
       ], [
-        ["a.jpg", "b.jpg"],
-        ["c.jpg"],
         ["d.jpg"],
+        ["c.jpg"],
+        ["a.jpg", "b.jpg"],
         ["z.jpg"],
       ]);
       expect(days.last.undated, isTrue);
       expect(days.last.heading(testL10n), inboxUndatedHeading(testL10n));
-      expect(days.first.month, DateTime(2026, 3));
+      expect(days.first.month, DateTime(2026, 4));
       expect(days.last.month, isNull);
+    });
+
+    test('run the days newest first and a day chronologically', () {
+      // The server answers newest first throughout; the screen turns the
+      // order inside a day around, so a day reads as it happened while the
+      // latest day still stands at the top.
+      var json = '["AlbumInfo", {"path": "Inbox", "title": "Inbox", '
+          '"kind": "INBOX", "parts": [${[
+        part("evening.jpg", DateTime(2026, 3, 2, 21)),
+        part("noon.jpg", DateTime(2026, 3, 2, 12)),
+        part("morning.jpg", DateTime(2026, 3, 2, 7)),
+        part("late.jpg", DateTime(2026, 3, 1, 23)),
+        part("early.jpg", DateTime(2026, 3, 1, 6)),
+      ].join(", ")}]}]';
+      var days = inboxDays((Resource.fromString(json) as AlbumInfo).parts);
+
+      expect([for (var day in days) day.day], [
+        DateTime(2026, 3, 2),
+        DateTime(2026, 3, 1),
+      ]);
+      expect([
+        for (var day in days) day.images.map((i) => i.name).toList()
+      ], [
+        ["morning.jpg", "noon.jpg", "evening.jpg"],
+        ["early.jpg", "late.jpg"],
+      ]);
     });
   });
 
@@ -132,24 +171,33 @@ void main() {
     testWidgets('draws a month line and a heading per day', (tester) async {
       await pumpInbox(tester, inboxTree);
 
-      // Two months, three days. The rows of an inbox are built on demand
-      // like an album's (issue #111), so the far end is scrolled to.
-      expect(find.byKey(inboxMonthKey(DateTime(2026, 3))), findsOneWidget);
-      expect(find.byKey(const Key("inbox-day-2026-03-01")), findsOneWidget);
-      expect(find.byKey(const Key("inbox-day-2026-03-02")), findsOneWidget);
+      // Two months, three days, the newest at the top so nothing has to be
+      // scrolled past to reach what arrived last. The rows of an inbox are
+      // built on demand like an album's (issue #111), so the far end — the
+      // oldest month — is scrolled to.
+      expect(find.byKey(inboxMonthKey(DateTime(2026, 4))), findsOneWidget);
+      expect(find.byKey(const Key("inbox-day-2026-04-05")), findsOneWidget);
       // Written out in the locale's own words, never as a stored heading.
       expect(
-        find.text(inboxDayFormat(testL10n).format(DateTime(2026, 3, 1))),
+        find.text(inboxMonthFormat(testL10n).format(DateTime(2026, 4))),
         findsOneWidget,
       );
 
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -1200));
+      var scrollView = find.byType(CustomScrollView);
+      var march = inboxMonthKey(DateTime(2026, 3));
+      await tester.dragUntilVisible(
+          find.byKey(march), scrollView, const Offset(0, -300));
       await tester.pumpAndSettle();
-
-      expect(find.byKey(inboxMonthKey(DateTime(2026, 4))), findsOneWidget);
-      expect(find.byKey(const Key("inbox-day-2026-04-05")), findsOneWidget);
+      expect(find.byKey(march), findsOneWidget);
+      // The later day of the month first, its earlier day further down.
+      expect(find.byKey(const Key("inbox-day-2026-03-02")), findsOneWidget);
+      var firstOfMarch = find.byKey(const Key("inbox-day-2026-03-01"));
+      await tester.dragUntilVisible(
+          firstOfMarch, scrollView, const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(firstOfMarch, findsOneWidget);
       expect(
-        find.text(inboxMonthFormat(testL10n).format(DateTime(2026, 4))),
+        find.text(inboxDayFormat(testL10n).format(DateTime(2026, 3, 1))),
         findsOneWidget,
       );
     });
@@ -157,13 +205,13 @@ void main() {
     testWidgets('left-aligns the headings, check box first', (tester) async {
       await pumpInbox(tester, inboxTree);
 
-      var heading = find.byKey(const Key("inbox-day-2026-03-01"));
+      var heading = find.byKey(const Key("inbox-day-2026-04-05"));
       var box = find.descendant(
           of: heading, matching: find.byIcon(Icons.check_box_outline_blank));
       var text = find.descendant(
           of: heading,
           matching:
-              find.text(inboxDayFormat(testL10n).format(DateTime(2026, 3, 1))));
+              find.text(inboxDayFormat(testL10n).format(DateTime(2026, 4, 5))));
       var row = tester.widget<Row>(
           find.descendant(of: heading, matching: find.byType(Row)));
 
@@ -192,8 +240,9 @@ void main() {
       await tester.tap(find.byKey(inboxMonthKey(DateTime(2026, 3))));
       await tester.pumpAndSettle();
 
-      // March, and nothing of April.
-      expect(selectedNames(tester), ["a.jpg", "b.jpg", "c.jpg"]);
+      // March, and nothing of April — in the order the screen shows it: the
+      // later day first, the photographs of a day as they were taken.
+      expect(selectedNames(tester), ["c.jpg", "a.jpg", "b.jpg"]);
     });
 
     testWidgets('offers nothing an album offers and an inbox has not',

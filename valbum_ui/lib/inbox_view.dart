@@ -10,7 +10,8 @@
 ///    (issue #99): every action writes at once, and leaving the screen asks
 ///    nothing because there is nothing unsaved to ask about;
 ///  * the headings are **derived**: the server answers the parts flat and
-///    sorted by date (`Inboxes.flatten`), and this screen draws a heading per
+///    sorted by date, the newest first (`Inboxes.flatten` — the latest
+///    arrivals are what one comes to sort), and this screen draws a heading per
 ///    day with a month line where the month changes. Nothing of that is
 ///    stored, exactly as `effectiveDate` is derived and never stored;
 ///  * tapping a heading selects everything under it, which is how a day (or a
@@ -153,6 +154,15 @@ class InboxDay {
       : inboxDayFormat(l10n).format(day!);
 }
 
+/// Chronological inside a day, the name breaking a tie so that the order is
+/// the same on every build — the reverse of the server's order between days.
+int _byTimeTaken(ImagePart a, ImagePart b) {
+  var byDate = a.date.compareTo(b.date);
+  return byDate != 0
+      ? byDate
+      : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+}
+
 final DateFormat _dayKeyFormat = DateFormat("yyyy-MM-dd");
 final DateFormat _monthKeyFormat = DateFormat("yyyy-MM");
 
@@ -162,12 +172,16 @@ Key inboxMonthKey(DateTime month) =>
 
 /// The parts of an inbox as the days the screen draws, see [InboxDay].
 ///
-/// The server answers the parts flat and sorted by date, the undated last
-/// (`Inboxes.flatten`), so the days come out in that very order: a day is
-/// opened when a photograph of a day not seen before arrives. A group cannot
-/// reach an inbox — the server dissolves one on the way out — but where one
-/// did, its images are taken one by one, which is what the inbox shows
-/// everywhere else.
+/// The server answers the parts flat and sorted by date, the newest first and
+/// the undated last (`Inboxes.flatten`), so the days come out in that very
+/// order — the latest day at the top, an older month further down: a day is
+/// opened when a photograph of a day not seen before arrives. **Inside a day
+/// the photographs run chronologically** (the author, 2026-09-23: the days in
+/// reverse, the pictures of a day in the order they were taken), which is
+/// decided here and not on the server, because the day is this device's day —
+/// the server knows no zone to cut one at. A group cannot reach an inbox — the
+/// server dissolves one on the way out — but where one did, its images are
+/// taken one by one, which is what the inbox shows everywhere else.
 List<InboxDay> inboxDays(List<AlbumPart> parts) {
   var order = <String>[];
   var byDay = <String, List<ImagePart>>{};
@@ -194,6 +208,9 @@ List<InboxDay> inboxDays(List<AlbumPart> parts) {
     } else if (part is ImageGroup) {
       part.images.forEach(add);
     }
+  }
+  for (var images in byDay.values) {
+    images.sort(_byTimeTaken);
   }
 
   // The undated section is the last one, whatever the server sent: it is the

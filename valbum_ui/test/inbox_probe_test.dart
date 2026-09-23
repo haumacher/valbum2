@@ -24,7 +24,7 @@ void main() {
         '${part("a.jpg", noon(2026, 1, 1))}]}');
     var days = inboxDays(album!.parts);
     expect(days.map((d) => d.images.map((i) => i.name).toList()).toList(),
-        [["g1.jpg"], ["g2.jpg", "a.jpg"]]);
+        [["g1.jpg"], ["a.jpg", "g2.jpg"]]);
   });
 
   testWidgets('a month line per month across a year boundary, and the way out asks nothing with a selection standing',

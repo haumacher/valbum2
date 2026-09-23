@@ -37,7 +37,7 @@ import java.util.Map;
  * happens on the way out, here:
  * </p>
  * <ul>
- * <li>its parts are answered {@link #flatten(AlbumInfo, String) flat and by date}, whatever order
+ * <li>its parts are answered {@link #flatten(AlbumInfo, String) flat and by date, newest first}, whatever order
  * and grouping the sidecar lists — derived on every read, exactly like
  * {@link AlbumInfo#getEffectiveDate()}, so the author's album is still there when the flag is
  * cleared again;</li>
@@ -367,17 +367,21 @@ public final class Inboxes {
 	}
 
 	/**
-	 * The order an inbox is answered in: by the day the photograph was taken, the oldest first.
+	 * The order an inbox is answered in: by the day the photograph was taken, the <b>newest
+	 * first</b>.
 	 *
 	 * <p>
-	 * A photograph nothing says a time about stands at the end rather than at the beginning of
-	 * 1970, where its epoch date would otherwise put it, and the file name breaks a tie so that
-	 * the answer is the same on every read.
+	 * An inbox is the source of albums, and what arrived last is what one comes to sort: the
+	 * newest photographs stand at the top without a scroll past everything left over (the
+	 * author, 2026-09-23), the opposite of an album, which tells its story from the beginning.
+	 * A photograph nothing says a time about stands at the end rather than at the top, where
+	 * its epoch date of 1970 would otherwise put it in this order, and the file name breaks a
+	 * tie so that the answer is the same on every read.
 	 * </p>
 	 */
 	static final Comparator<ImagePart> BY_DATE = Comparator
 		.comparingLong((ImagePart image) -> image.getDate() > 0L ? 0L : 1L)
-		.thenComparingLong(ImagePart::getDate)
+		.thenComparing(Comparator.comparingLong(ImagePart::getDate).reversed())
 		.thenComparing(ImagePart::getName, String.CASE_INSENSITIVE_ORDER);
 
 	/** Whether the named image of the given folder was contributed by the given subject. */

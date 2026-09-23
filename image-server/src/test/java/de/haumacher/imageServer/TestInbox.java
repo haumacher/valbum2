@@ -258,7 +258,10 @@ public class TestInbox extends TestCase {
 
 	// --- The order of an inbox is the date. ---
 
-	/** The acceptance example: a stored order and a group, answered flat and by date. */
+	/**
+	 * The acceptance example: a stored order and a group, answered flat and by date, the newest
+	 * first — the inbox is where the latest arrivals are sorted, so they stand at the top.
+	 */
 	public void testAnInboxIsAnsweredFlatAndByDate() throws Exception {
 		Color[] colors = { Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW };
 		List<String> names = Arrays.asList("a.jpg", "b1.jpg", "b2.jpg", "c.jpg");
@@ -272,8 +275,8 @@ public class TestInbox extends TestCase {
 			+ "]}]";
 		sidecar("Inbox", contents);
 
-		assertEquals("The group is dissolved and everything stands on its own date.",
-			Arrays.asList("b1.jpg", "a.jpg", "c.jpg", "b2.jpg"), imageNames(album("/Inbox/")));
+		assertEquals("The group is dissolved and everything stands on its own date, the newest first.",
+			Arrays.asList("b2.jpg", "c.jpg", "a.jpg", "b1.jpg"), imageNames(album("/Inbox/")));
 
 		assertEquals("The order is derived: the sidecar says what its author said.",
 			contents, read("Inbox/index.json"));
@@ -287,7 +290,7 @@ public class TestInbox extends TestCase {
 			+ part("undated2.jpg", 0) + "," + part("undated1.jpg", 0) + ","
 			+ part("dated.jpg", day("2026-03-01")) + "]}]");
 
-		assertEquals("Nothing is dated 1970; what says no time stands at the end, by name.",
+		assertEquals("Nothing is dated 1970; what says no time stands at the end even newest-first, by name.",
 			Arrays.asList("dated.jpg", "undated1.jpg", "undated2.jpg"), imageNames(album("/Inbox/")));
 	}
 
@@ -314,7 +317,7 @@ public class TestInbox extends TestCase {
 
 		// Exactly what the app does: read, change one property, write back.
 		AlbumInfo flat = album("/Inbox/");
-		assertEquals(Arrays.asList("b1.jpg", "a.jpg", "c.jpg", "b2.jpg"), imageNames(flat));
+		assertEquals(Arrays.asList("b2.jpg", "c.jpg", "a.jpg", "b1.jpg"), imageNames(flat));
 		assertEquals(HttpServletResponse.SC_OK, put("/Inbox/", write(flat.setKind(AlbumKind.ALBUM))).status());
 
 		AlbumInfo album = album("/Inbox/");
@@ -330,15 +333,15 @@ public class TestInbox extends TestCase {
 		image("Inbox/a.jpg", Color.RED);
 		image("Inbox/c.jpg", Color.GREEN);
 		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
-			+ part("c.jpg", day("2026-03-02")) + "," + part("a.jpg", day("2026-03-01")) + "]}]");
+			+ part("a.jpg", day("2026-03-01")) + "," + part("c.jpg", day("2026-03-02")) + "]}]");
 
 		AlbumInfo flat = album("/Inbox/");
-		assertEquals(Arrays.asList("a.jpg", "c.jpg"), imageNames(flat));
+		assertEquals("Newest first.", Arrays.asList("c.jpg", "a.jpg"), imageNames(flat));
 		((ImagePart) flat.getParts().get(0)).setRating(2);
 		assertEquals(HttpServletResponse.SC_OK, put("/Inbox/", write(flat)).status());
 
 		AlbumInfo stored = (AlbumInfo) Resource.readResource(reader(read("Inbox/index.json")));
-		assertEquals("The stored order is untouched.", Arrays.asList("c.jpg", "a.jpg"), imageNames(stored));
+		assertEquals("The stored order is untouched.", Arrays.asList("a.jpg", "c.jpg"), imageNames(stored));
 		assertEquals("The rating was written where it belongs.", 2,
 			((ImagePart) stored.getParts().get(1)).getRating());
 	}
@@ -351,11 +354,11 @@ public class TestInbox extends TestCase {
 			+ part("c.jpg", day("2026-03-02")) + "," + part("a.jpg", day("2026-03-01")) + "]}]");
 
 		AlbumInfo flat = album("/Inbox/");
-		flat.getParts().remove(1);
+		flat.getParts().remove(1); // a.jpg, the older one, answered second
 		assertEquals(HttpServletResponse.SC_OK, put("/Inbox/", write(flat)).status());
 
 		AlbumInfo stored = (AlbumInfo) Resource.readResource(reader(read("Inbox/index.json")));
-		assertEquals(Arrays.asList("a.jpg"), imageNames(stored));
+		assertEquals(Arrays.asList("c.jpg"), imageNames(stored));
 	}
 
 	// --- Who may see an inbox. ---
@@ -365,7 +368,8 @@ public class TestInbox extends TestCase {
 
 		ImageServlet servlet = servlet(AuthMode.WRITES);
 		AlbumInfo inbox = album(servlet, "/Inbox/", ALICE_TOKEN);
-		assertEquals(Arrays.asList("bob1.jpg", "bob2.jpg", "other1.jpg", "other2.jpg"), imageNames(inbox));
+		assertEquals("Newest first, whoever contributed.",
+			Arrays.asList("other2.jpg", "other1.jpg", "bob2.jpg", "bob1.jpg"), imageNames(inbox));
 		assertEquals(Arrays.asList("Inbox", "2026-05-01 Trip"), names(listing(servlet, "/", ALICE_TOKEN)));
 	}
 
@@ -375,7 +379,7 @@ public class TestInbox extends TestCase {
 		ImageServlet servlet = servlet(AuthMode.WRITES);
 		AlbumInfo inbox = album(servlet, "/Inbox/", BOB_TOKEN);
 		assertEquals("A device's owner sorts what that device uploaded, see issue #53.",
-			Arrays.asList("bob1.jpg", "bob2.jpg"), imageNames(inbox));
+			Arrays.asList("bob2.jpg", "bob1.jpg"), imageNames(inbox));
 		assertEquals("The tile is there: they may put something in it.",
 			Arrays.asList("Inbox", "2026-05-01 Trip"), names(listing(servlet, "/", BOB_TOKEN)));
 

@@ -77,7 +77,7 @@ public class TestInboxProbe extends TestCase {
 
 	public void testDeletingTheRepresentativeOfARememberedGroupDeletesThatPhotographOnly() throws Exception {
 		groupedInbox();
-		assertEquals(Arrays.asList("b1.jpg", "a.jpg", "b2.jpg"), imageNames(album("/Inbox/")));
+		assertEquals(Arrays.asList("b2.jpg", "a.jpg", "b1.jpg"), imageNames(album("/Inbox/")));
 
 		MoveResult result = delete("/Inbox/", "b1.jpg");
 
@@ -87,7 +87,7 @@ public class TestInboxProbe extends TestCase {
 		assertTrue(new File(trash(), "Inbox/b1.jpg").isFile());
 		assertFalse("The other member of the remembered group is nobody's business here.",
 			new File(trash(), "Inbox/b2.jpg").exists());
-		assertEquals(Arrays.asList("a.jpg", "b2.jpg"), imageNames(album("/Inbox/")));
+		assertEquals(Arrays.asList("b2.jpg", "a.jpg"), imageNames(album("/Inbox/")));
 	}
 
 	public void testMovingTheRepresentativeOfARememberedGroupMovesThatPhotographOnly() throws Exception {
@@ -104,7 +104,7 @@ public class TestInboxProbe extends TestCase {
 		assertFalse("The other member of the remembered group stays in the inbox.",
 			_base.resolve("Trip/b2.jpg").toFile().exists());
 		assertTrue(_base.resolve("Inbox/b2.jpg").toFile().isFile());
-		assertEquals(Arrays.asList("a.jpg", "b2.jpg"), imageNames(album("/Inbox/")));
+		assertEquals(Arrays.asList("b2.jpg", "a.jpg"), imageNames(album("/Inbox/")));
 		assertEquals("The target album lists what arrived, as one photograph.",
 			Arrays.asList("t.jpg", "b1.jpg"), imageNames(album("/Trip/")));
 		for (AlbumPart part : album("/Trip/").getParts()) {
