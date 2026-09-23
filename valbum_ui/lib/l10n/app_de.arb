@@ -647,5 +647,10 @@
   "viewerFaceDecision": "Dieses Gesicht",
   "viewerMarkFaceTooSmall": "Zeichnen Sie ein größeres Rechteck um das Gesicht der Person.",
   "personsChooserInAlbum": "In diesem Album",
-  "personsChooserAll": "Alle Personen"
+  "personsChooserAll": "Alle Personen",
+  "viewerDownload": "Original herunterladen",
+  "downloadSelection": "{count, plural, =1{1 Original herunterladen} other{{count} Originale herunterladen}}",
+  "downloadSaved": "{name} wurde gespeichert.",
+  "downloadSavedCount": "{count, plural, =1{1 Original gespeichert.} other{{count} Originale wurden gespeichert.}}",
+  "downloadFailed": "Der Download ist fehlgeschlagen: {reason}"
 }

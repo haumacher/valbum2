@@ -20,6 +20,7 @@ import 'cache_refresh.dart';
 import 'camera_roll_view.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'downloads.dart';
 import 'drag_scroll.dart';
 import 'image_properties.dart';
 import 'l10n/app_localizations.dart';
@@ -1039,8 +1040,8 @@ class AlbumContentState extends State<AlbumContent>
       (shownAlbum.facesPending || PersonsContentState.hasFaces(shownAlbum));
 
   /// Opens the face editor of this album, see issue #126.
-  void showPersons() => widget.albumState.navigator
-      .go(PersonsRoute(widget.albumState.path));
+  void showPersons() =>
+      widget.albumState.navigator.go(PersonsRoute(widget.albumState.path));
 
   /// Whether "Show trash" is offered for this album, see issue #152.
   ///
@@ -1078,6 +1079,41 @@ class AlbumContentState extends State<AlbumContent>
   /// Nothing at the root of the space: an album is an entry of the listing
   /// above it, and above the root there is no listing to move it into.
   bool get mayMoveAlbum => mayEditAlbum && widget.albumState.path.isNotEmpty;
+
+  /// The originals the menu's download takes, see issue #164.
+  ///
+  /// With the `download` right on the album only: the images of the selection
+  /// while the edit mode holds one, every image shown (at the rating filter
+  /// standing) inside a share link, which has no edit mode, and nothing
+  /// otherwise — the viewer takes a single original.
+  List<ImagePart> get downloadImages {
+    if (!rights.mayDownload || previewing) {
+      return const [];
+    }
+    if (editMode && selection.isNotEmpty) {
+      return selectedImages(widget.album, selection);
+    }
+    if (share != null) {
+      return selectedImages(shownAlbum, visibleParts(shownAlbum).toSet());
+    }
+    return const [];
+  }
+
+  /// Fetches [downloadImages] and hands them to the platform, see
+  /// `downloads.dart`: one archive named by the album's title where the
+  /// platform keeps files, one original after the other on a phone.
+  Future<void> downloadSelection() {
+    var names = [for (var image in downloadImages) image.name];
+    return runDownload(
+      context,
+      () => downloadOriginals(
+        client,
+        widget.albumState.path,
+        names,
+        archiveName: archiveNameOf(widget.album.title),
+      ),
+    );
+  }
 
   /// Moves this album itself into another folder, see issues #47 and #121.
   ///
@@ -1483,7 +1519,8 @@ class AlbumContentState extends State<AlbumContent>
           // filter below uses.
           if (session.editMode) ...viewAsEntries(),
           if (_mayShare)
-            menuItem(Icons.link, _l10n.shareLinkAction, (_) => shareAlbumLink()),
+            menuItem(
+                Icons.link, _l10n.shareLinkAction, (_) => shareAlbumLink()),
           // What is done *with* this album, offered in the view mode as well
           // as in the edit mode (issue #121): the properties were a toolbar
           // icon of the edit mode alone, so retitling an album meant entering
@@ -1511,6 +1548,16 @@ class AlbumContentState extends State<AlbumContent>
               Icons.drive_file_move,
               _l10n.moveAlbumTo,
               (_) => moveAlbum(),
+            ),
+          // The copy the `download` right promises (issue #164): the
+          // selection of the edit mode, and inside a share link — which has
+          // no edit mode — everything the link shows.
+          if (downloadImages.isNotEmpty)
+            keyedMenuItem(
+              const Key("download-selection"),
+              Icons.download,
+              _l10n.downloadSelection(downloadImages.length),
+              (_) => downloadSelection(),
             ),
           // The delete the listing above offers on this album's own tile,
           // asked from inside the album (#109) — and under the same condition
@@ -1832,9 +1879,8 @@ class AlbumContentState extends State<AlbumContent>
     }
 
     var count = answer.outcomes.length;
-    showMessage(count == 0
-        ? _l10n.noDuplicatesFound
-        : _l10n.duplicatesSetAside(count));
+    showMessage(
+        count == 0 ? _l10n.noDuplicatesFound : _l10n.duplicatesSetAside(count));
     if (count > 0) {
       widget.albumState.navigator.delegate.forget(widget.albumState.path);
       widget.albumState.reload();

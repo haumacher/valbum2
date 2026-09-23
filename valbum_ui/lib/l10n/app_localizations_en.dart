@@ -1857,6 +1857,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rightsPhraseDownload => 'you may look and download';
 
   @override
+  String get viewerDownload => 'Download original';
+
+  @override
+  String downloadSelection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Download $count originals',
+      one: 'Download 1 original',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String downloadSaved(String name) {
+    return 'Saved $name.';
+  }
+
+  @override
+  String downloadSavedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Saved $count originals.',
+      one: 'Saved 1 original.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String downloadFailed(String reason) {
+    return 'The download failed: $reason';
+  }
+
+  @override
   String get rightsPhraseView => 'you may look';
 
   @override

@@ -1885,6 +1885,41 @@ class AppLocalizationsDe extends AppLocalizations {
   String get rightsPhraseDownload => 'Sie können ihn ansehen und herunterladen';
 
   @override
+  String get viewerDownload => 'Original herunterladen';
+
+  @override
+  String downloadSelection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Originale herunterladen',
+      one: '1 Original herunterladen',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String downloadSaved(String name) {
+    return '$name wurde gespeichert.';
+  }
+
+  @override
+  String downloadSavedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Originale wurden gespeichert.',
+      one: '1 Original gespeichert.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String downloadFailed(String reason) {
+    return 'Der Download ist fehlgeschlagen: $reason';
+  }
+
+  @override
   String get rightsPhraseView => 'Sie können einen Blick hineinwerfen';
 
   @override

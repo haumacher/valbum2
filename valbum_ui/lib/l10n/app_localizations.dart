@@ -3146,6 +3146,36 @@ abstract class AppLocalizations {
   /// **'you may look and download'**
   String get rightsPhraseDownload;
 
+  /// Entry of the viewer's menu saving the original file of the photograph or video shown onto the device
+  ///
+  /// In en, this message translates to:
+  /// **'Download original'**
+  String get viewerDownload;
+
+  /// Entry of the album menu saving the original files of the selected photographs onto the device, as one zip archive where the device keeps files
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Download 1 original} other{Download {count} originals}}'**
+  String downloadSelection(int count);
+
+  /// Said after a downloaded file was handed to the device; the placeholder is the file name
+  ///
+  /// In en, this message translates to:
+  /// **'Saved {name}.'**
+  String downloadSaved(String name);
+
+  /// Said after the originals of a selection were saved one by one into the photo library of a phone
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Saved 1 original.} other{Saved {count} originals.}}'**
+  String downloadSavedCount(int count);
+
+  /// Said when an original could not be fetched or saved; the placeholder is the reason, often the server's own sentence
+  ///
+  /// In en, this message translates to:
+  /// **'The download failed: {reason}'**
+  String downloadFailed(String reason);
+
   /// Half a sentence saying what the caller may do with a folder
   ///
   /// In en, this message translates to:

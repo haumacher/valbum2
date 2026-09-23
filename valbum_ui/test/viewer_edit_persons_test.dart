@@ -194,6 +194,19 @@ Future<void> enterMode(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Asserts that the viewer offers no edit-persons mode.
+///
+/// The menu itself may stand for another entry — the download of issue #164,
+/// offered with `download` — so it is opened where it is there.
+Future<void> expectNoEditPersons(WidgetTester tester) async {
+  var menu = find.byKey(const Key("viewer-menu"));
+  if (menu.evaluate().isNotEmpty) {
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+  }
+  expect(find.byKey(const Key("viewer-edit-persons")), findsNothing);
+}
+
 /// Taps the box of the face of the given index.
 Future<void> tapFace(WidgetTester tester, int index) async {
   await tester.tap(find.byKey(Key("face-box-$index")));
@@ -231,13 +244,13 @@ void main() {
         client: facesClient([]),
         rights: const ["view", "download"],
       );
-      expect(find.byKey(const Key("viewer-menu")), findsNothing);
+      await expectNoEditPersons(tester);
     });
 
     testWidgets('is not offered where the space looks for no face',
         (tester) async {
       await pumpEditor(tester, client: facesClient([]), faces: false);
-      expect(find.byKey(const Key("viewer-menu")), findsNothing);
+      await expectNoEditPersons(tester);
     });
 
     testWidgets('is never offered in a share session', (tester) async {
@@ -246,7 +259,7 @@ void main() {
         client: facesClient([]),
         share: viewerShareSession(rights: const ["view", "edit"]),
       );
-      expect(find.byKey(const Key("viewer-menu")), findsNothing);
+      await expectNoEditPersons(tester);
     });
   });
 
