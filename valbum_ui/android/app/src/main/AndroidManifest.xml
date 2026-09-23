@@ -3,6 +3,9 @@
    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+   <!-- Without it Android 10+ hands the app a copy of every photograph with its GPS tags zeroed
+        (issue #166); with it photo_manager asks MediaStore for the original, position included. -->
+   <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION"/>
    <!-- Reading a device code off another screen as a QR code (issue #66).
         No intent filter and no URL handler goes with it: the payload of such a
         code is not a link, see `lib/device_code_payload.dart`. -->

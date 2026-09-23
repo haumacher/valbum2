@@ -15,6 +15,22 @@ import 'package:photo_manager/photo_manager.dart';
 import 'photo_library.dart';
 import 'notices.dart';
 
+/// The media permission asked for together with `ACCESS_MEDIA_LOCATION`.
+///
+/// Since Android 10 the media provider redacts the position out of every
+/// photograph an app reads — the GPS tags come back zero-filled, the
+/// hemisphere letters blank — unless the app holds that permission and asks
+/// for the original; `photo_manager` does the asking, but only when the
+/// permission is declared in the manifest **and** requested here (issue
+/// #166). Every photograph the sync uploaded before carried the redacted
+/// zeros as a faithful part of its bytes.
+const PermissionRequestOption withMediaLocation = PermissionRequestOption(
+  androidPermission: AndroidPermission(
+    type: RequestType.common,
+    mediaLocation: true,
+  ),
+);
+
 /// The number of items one scan looks at.
 ///
 /// A first run on a full phone must not build ten thousand upload descriptors
@@ -46,7 +62,9 @@ class PhotoManagerLibrary extends PhotoLibrary {
   Future<bool> requestAccess() async {
     PermissionState state;
     try {
-      state = await PhotoManager.requestPermissionExtend();
+      state = await PhotoManager.requestPermissionExtend(
+        requestOption: withMediaLocation,
+      );
     } catch (error) {
       accessProblem = PhotoLibraryOpenFailed("$error");
       return false;
@@ -327,7 +345,9 @@ Future<void> saveToPhotoLibrary(
 ) async {
   PermissionState state;
   try {
-    state = await PhotoManager.requestPermissionExtend();
+    state = await PhotoManager.requestPermissionExtend(
+      requestOption: withMediaLocation,
+    );
   } catch (error) {
     throw PhotoLibraryException(PhotoLibraryOpenFailed("$error"));
   }
