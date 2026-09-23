@@ -213,6 +213,7 @@
   "ratingFloorEveryPhoto": "jedes Foto",
   "ratingFloorAtLeast": "mindestens {rating}",
   "showTrash": "Papierkorb anzeigen",
+  "trashPageTitle": "Papierkorb",
   "trashRestore": "Wiederherstellen",
   "trashPurgeAction": "Löschen…",
   "trashPurgeTitle": "Papierkorb leeren",
@@ -644,7 +645,7 @@
   "viewerMarkFace": "Ein Gesicht markieren",
   "viewerMarkFaceHint": "Zeichnen Sie ein Rechteck um ein Gesicht.",
   "viewerFaceDecision": "Dieses Gesicht",
+  "viewerMarkFaceTooSmall": "Zeichnen Sie ein größeres Rechteck um das Gesicht der Person.",
   "personsChooserInAlbum": "In diesem Album",
-  "personsChooserAll": "Alle Personen",
-  "trashPageTitle": "Papierkorb"
+  "personsChooserAll": "Alle Personen"
 }

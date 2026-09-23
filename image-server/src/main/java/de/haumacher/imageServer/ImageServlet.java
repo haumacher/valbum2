@@ -22,6 +22,7 @@ import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.faces.FaceCache;
 import de.haumacher.imageServer.faces.FaceImport;
 import de.haumacher.imageServer.faces.FaceIndex;
 import de.haumacher.imageServer.faces.FaceTags;
@@ -104,6 +105,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -280,6 +282,16 @@ public class ImageServlet extends HttpServlet {
 
 	/** What a tagging request naming something that is not an album is refused with. */
 	public static final String TAG_NOT_AN_ALBUM = "There are no photographs to tag here.";
+
+	/**
+	 * What a face marked on a video is refused with, see issue #155.
+	 *
+	 * <p>
+	 * The detector never looks at a video (issue #123), so there is no face on one to mark, and no
+	 * region of one to look for a face in.
+	 * </p>
+	 */
+	public static final String TAG_VIDEO_REFUSED = "Faces are marked on photographs only, not on a video.";
 
 	/** Why an image of a tagging request is not in the album it names. */
 	static String unknownImage(String name) {
@@ -3387,11 +3399,23 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 *
 	 * <p>
-	 * {@link FaceState#UNDECIDED} is the way back out (issue #138): it <em>removes</em> the tag on
-	 * that box by the same overlap rule, so the face is answered as the plain detection it was and
-	 * the recogniser of issue #127 may offer a suggestion for it again. It is idempotent &mdash; a
-	 * box that carries no tag is left alone and nothing is refused &mdash; and a request that
-	 * changes nothing writes nothing at all, so a sidecar is never touched for a no-op.
+	 * {@link FaceState#UNDECIDED} is the way back out (issue #138): on a detection it
+	 * <em>removes</em> the tag on that box by the same overlap rule, so the face is answered as the
+	 * plain detection it was and the recogniser of issue #127 may offer a suggestion for it again;
+	 * on a face that is only a stored tag — one marked by hand — it keeps the region and takes the
+	 * decision off it, a tag <code>{box, "", UNDECIDED}</code> (issue #155). It is idempotent
+	 * &mdash; a face that carries no decision is left alone and nothing is refused &mdash; and a
+	 * request that changes nothing writes nothing at all, so a sidecar is never touched for a no-op.
+	 * </p>
+	 *
+	 * <p>
+	 * With a box that meets none of the answered faces, {@link FaceState#UNDECIDED} marks a region
+	 * (issue #155): {@link FaceIndex#mark(File, double, double, double, double)} looks for a face in
+	 * the original around it and keeps what it finds as a detection of its own, and where it finds
+	 * nothing the box is stored as an undecided tag. {@link FaceState#NOT_A_FACE} removes a region
+	 * from every answer: a detection keeps its tag and is no longer answered (see {@link FaceTags}),
+	 * a face that is only a tag loses it. A box marked again over a detection somebody called no
+	 * face meets that detection, so any decision about it replaces the tag and brings it back.
 	 * </p>
 	 *
 	 * <p>
@@ -3457,12 +3481,12 @@ public class ImageServlet extends HttpServlet {
 			images.put(image.getName(), image);
 		}
 		// The very numbering this caller was answered: the detections of the moment first, then
-		// every tag no detection matched, see FaceIndex#answered.
-		Map<String, List<FaceInfo>> answered = _faces.answered(album, folder, _people);
+		// every tag no detection matched, a face called no face keeping its number unanswered, see
+		// FaceTags#answer.
+		Map<String, FaceTags.Answer> answers = _faces.answers(album, folder, _people);
 
 		// Everything is checked before anything is written.
-		List<ImagePart> targets = new ArrayList<>();
-		List<FaceTag> tags = new ArrayList<>();
+		List<TagOperation> operations = new ArrayList<>();
 		// How the photographs of this album are turned for display, read at most once and only
 		// where a request really hands a box over, see issue #147.
 		Map<String, Orientation> orientations = null;
@@ -3473,14 +3497,20 @@ public class ImageServlet extends HttpServlet {
 				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(assignment.getImage()));
 				return;
 			}
-			List<FaceInfo> faces = answered.get(image.getName());
+			FaceTags.Answer answer = answers.get(image.getName());
 			boolean marked = marksABox(assignment);
 			int index = assignment.getFace();
-			if (!marked && (faces == null || index < 0 || index >= faces.size())) {
+			FaceInfo named = marked || answer == null ? null : answer.byIndex(index);
+			if (!marked && named == null) {
 				LOG.warning("Refusing the tagging of '" + assignment.getImage() + "': unknown face "
 					+ index + ".");
 				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST,
 					unknownFace(assignment.getImage(), index));
+				return;
+			}
+			if (marked && !FaceIndex.isPhotograph(image)) {
+				LOG.warning("Refusing the tagging of '" + assignment.getImage() + "': " + TAG_VIDEO_REFUSED);
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, TAG_VIDEO_REFUSED);
 				return;
 			}
 			if (marked && !isOnThePicture(assignment)) {
@@ -3517,6 +3547,7 @@ public class ImageServlet extends HttpServlet {
 				person = entry.getId();
 			}
 			double[] box;
+			FaceInfo target;
 			if (marked) {
 				// What the client drew, in the frame it drew in: the picture upright, see issue
 				// #142. The one frame a decision is stored in is the raw raster of the file.
@@ -3526,60 +3557,177 @@ public class ImageServlet extends HttpServlet {
 				Orientation exif = orientations.getOrDefault(image.getName(), Orientation.IDENTITY);
 				box = Faces.toRaw(exif, assignment.getX(), assignment.getY(),
 					assignment.getW(), assignment.getH());
-				FaceInfo met = meets(faces, box);
-				if (met != null) {
+				target = meets(answer, box);
+				if (target != null) {
 					// The detector found this face after all (or somebody has already decided about
-					// it): then this is that face's decision, carrying that face's own box, and
-					// marking it by hand is the very same thing as naming it.
-					box = new double[] { met.getX(), met.getY(), met.getW(), met.getH() };
+					// it, or called it no face): then this is that face's decision, carrying that
+					// face's own box, and marking it by hand is the very same thing as naming it.
+					box = new double[] { target.getX(), target.getY(), target.getW(), target.getH() };
 				}
 			} else {
-				FaceInfo face = faces.get(index);
-				box = new double[] { face.getX(), face.getY(), face.getW(), face.getH() };
+				target = named;
+				box = new double[] { named.getX(), named.getY(), named.getW(), named.getH() };
 			}
-			targets.add(image);
-			tags.add(FaceTag.create()
+			operations.add(new TagOperation(image, FaceTag.create()
 				.setX(box[0])
 				.setY(box[1])
 				.setW(box[2])
 				.setH(box[3])
 				.setPerson(person)
-				.setState(state));
+				.setState(state), target, target != null && answer.isDetection(target)));
 		}
 
 		boolean changed = false;
-		for (int n = 0; n < targets.size(); n++) {
-			ImagePart image = targets.get(n);
-			FaceTag tag = tags.get(n);
+		boolean described = false;
+		for (TagOperation operation : operations) {
+			ImagePart image = operation._image;
+			FaceTag tag = operation._tag;
 			List<FaceTag> stored = new ArrayList<>(image.getTags());
 			int existing = FaceTags.indexOf(stored, tag.getX(), tag.getY(), tag.getW(), tag.getH());
-			if (tag.getState() == FaceState.UNDECIDED) {
-				// Taking a decision back, see issue #138. A box nobody decided anything about is
-				// already undecided, so there is nothing to do and nothing to refuse.
-				if (existing < 0) {
-					continue;
-				}
-				stored.remove(existing);
-			} else if (existing >= 0) {
-				stored.set(existing, tag);
-			} else {
-				stored.add(tag);
+			boolean modified;
+			switch (tag.getState()) {
+				case UNDECIDED:
+					if (operation._target == null) {
+						// Nothing here yet: a region is marked, see issue #155.
+						FaceCache.Face found = _faces.mark(new File(folder, image.getName()),
+							tag.getX(), tag.getY(), tag.getW(), tag.getH());
+						if (found != null) {
+							described = true;
+							// The region is now what the detector found there; a tag that only said
+							// "a region" or "no face" about the same spot says nothing any more.
+							modified = removeUndecided(stored, found.getX(), found.getY(), found.getW(),
+								found.getH());
+							modified |= removeUndecided(stored, tag.getX(), tag.getY(), tag.getW(), tag.getH());
+						} else {
+							modified = putRegion(stored, existing, tag);
+						}
+					} else if (operation._detection) {
+						// Taking a decision back, see issue #138. A detection nobody decided anything
+						// about is already undecided, so there is nothing to do and nothing to refuse.
+						modified = existing >= 0;
+						if (modified) {
+							stored.remove(existing);
+						}
+					} else {
+						// A face marked by hand is a region like a detection: forgetting takes the
+						// decision off it and keeps the region, see issue #155.
+						modified = existing >= 0 && stored.get(existing).getState() != FaceState.UNDECIDED;
+						if (modified) {
+							stored.set(existing, tag);
+						}
+					}
+					break;
+				case NOT_A_FACE:
+					if (operation._detection) {
+						// The detection keeps the statement, and is answered no more (FaceTags).
+						modified = replaceOrAdd(stored, existing, tag);
+					} else {
+						// A face that is only a tag is gone with its tag: there is nothing left to
+						// keep a detection away from.
+						modified = existing >= 0;
+						if (modified) {
+							stored.remove(existing);
+						}
+					}
+					break;
+				default:
+					modified = replaceOrAdd(stored, existing, tag);
+					break;
 			}
-			image.setTags(stored);
-			changed = true;
+			if (modified) {
+				image.setTags(stored);
+				changed = true;
+			}
 		}
 
 		if (changed) {
 			storeSidecar(folder, sidecarOf(album));
 			// The next read must see what was just written.
 			_cache.invalidate(folderPath);
+			LOG.info("Tagged " + operations.size() + " face(s) in '" + folder.getAbsolutePath() + "'.");
+		}
+		if (changed || described) {
 			// And so must the next listing of every *other* album: a decision joins the prototypes
 			// of issue #127 here, where it is made, and not when some walk next comes past -- and
 			// one taken back leaves them here too, because an album is always described afresh.
 			_faces.recognition().observe(folder, album);
-			LOG.info("Tagged " + tags.size() + " face(s) in '" + folder.getAbsolutePath() + "'.");
 		}
 		answerAlbum(context, folderPath, caller);
+	}
+
+	/** One checked assignment of a tagging request, carried out once every one is checked. */
+	private static final class TagOperation {
+
+		final ImagePart _image;
+
+		final FaceTag _tag;
+
+		/** The answered (or hidden) face it is about, <code>null</code> for a new region. */
+		final FaceInfo _target;
+
+		/** Whether {@link #_target} is a detection rather than a stored tag alone. */
+		final boolean _detection;
+
+		TagOperation(ImagePart image, FaceTag tag, FaceInfo target, boolean detection) {
+			_image = image;
+			_tag = tag;
+			_target = target;
+			_detection = detection;
+		}
+	}
+
+	/** Puts the given tag where the one at <code>existing</code> was, or adds it; whether it changed. */
+	private static boolean replaceOrAdd(List<FaceTag> stored, int existing, FaceTag tag) {
+		if (existing >= 0) {
+			if (sameTag(stored.get(existing), tag)) {
+				return false;
+			}
+			stored.set(existing, tag);
+		} else {
+			stored.add(tag);
+		}
+		return true;
+	}
+
+	/**
+	 * Stores a marked region the detector found nothing in, see issue #155: an undecided tag, which
+	 * takes the place of a "no face" on the same spot and leaves a decision there alone.
+	 */
+	private static boolean putRegion(List<FaceTag> stored, int existing, FaceTag tag) {
+		if (existing < 0) {
+			stored.add(tag);
+			return true;
+		}
+		FaceTag before = stored.get(existing);
+		if (before.getState() == FaceState.NOT_A_FACE) {
+			stored.set(existing, tag);
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Removes a tag on the given box that decides nothing about a person — an undecided region or
+	 * a "no face" — because the detector has just found a face there; whether one was removed.
+	 */
+	private static boolean removeUndecided(List<FaceTag> stored, double x, double y, double w, double h) {
+		int existing = FaceTags.indexOf(stored, x, y, w, h);
+		if (existing < 0) {
+			return false;
+		}
+		FaceState state = stored.get(existing).getState();
+		if (state != FaceState.UNDECIDED && state != FaceState.NOT_A_FACE) {
+			return false;
+		}
+		stored.remove(existing);
+		return true;
+	}
+
+	/** Whether the two tags say the same thing about the same box. */
+	private static boolean sameTag(FaceTag one, FaceTag two) {
+		return one.getState() == two.getState() && one.getPerson().equals(two.getPerson())
+			&& one.getX() == two.getX() && one.getY() == two.getY() && one.getW() == two.getW()
+			&& one.getH() == two.getH();
 	}
 
 	/**
@@ -3614,10 +3762,14 @@ public class ImageServlet extends HttpServlet {
 	 * about, is that face and not a second one.
 	 * </p>
 	 */
-	private static FaceInfo meets(List<FaceInfo> faces, double[] box) {
-		if (faces == null) {
+	private static FaceInfo meets(FaceTags.Answer answer, double[] box) {
+		if (answer == null) {
 			return null;
 		}
+		List<FaceInfo> faces = new ArrayList<>(answer.getFaces());
+		// A detection somebody called no face is not answered, but a box marked over it again is
+		// that detection coming back, not a new face beside it (issue #155).
+		faces.addAll(answer.getHidden());
 		FaceInfo best = null;
 		double bestOverlap = FaceTags.IOU_MATCH;
 		for (FaceInfo face : faces) {
@@ -3735,7 +3887,11 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, FACE_NOT_FOUND);
 			return;
 		}
-		FaceIndex.Crop crop = _faces.crop(pathInfo.toFile(), index);
+		// The numbering of the answer, which counts the album's own tags too (issue #155).
+		Resource described = _cache.lookup(pathInfo);
+		List<FaceTag> tags = described instanceof ImagePart ? ((ImagePart) described).getTags()
+			: Collections.<FaceTag> emptyList();
+		FaceIndex.Crop crop = _faces.crop(pathInfo.toFile(), index, tags);
 		if (crop.getFile() == null) {
 			LOG.warning("Refusing the face " + index + " of '" + context.request().getPathInfo()
 				+ "': " + crop.getReason());

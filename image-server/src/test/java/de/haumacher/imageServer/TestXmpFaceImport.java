@@ -74,14 +74,16 @@ public class TestXmpFaceImport extends FacesTestCase {
 		assertEquals(tags.get(1).getPerson(), again.get(1).getPerson());
 		assertEquals(2, people().size());
 
-		// Somebody takes both names back; the sidecar now lists the photograph without them.
-		forget(NAMED);
-		assertEquals(1, stored(NAMED).getTags().size());
-		forget(NAMED);
-		assertEquals("Both decisions are gone.", 0, stored(NAMED).getTags().size());
+		// Somebody takes both names back; the regions stay, undecided (issue #155), and the names
+		// are gone from the sidecar.
+		forget(NAMED, 0);
+		assertEquals(1, decided(stored(NAMED).getTags()));
+		forget(NAMED, 1);
+		assertEquals("Both decisions are gone.", 0, decided(stored(NAMED).getTags()));
+		assertEquals("And both regions stay, a region being a region.", 2, stored(NAMED).getTags().size());
 
 		restart();
-		assertEquals("A name taken back never comes creeping back.", 0, tagsOf(NAMED).size());
+		assertEquals("A name taken back never comes creeping back.", 0, decided(tagsOf(NAMED)));
 		assertEquals("And nobody was created a second time.", 2, people().size());
 	}
 
@@ -280,12 +282,27 @@ public class TestXmpFaceImport extends FacesTestCase {
 	// --- Helpers. ---
 
 	/** Takes the first decision of the given photograph back, as the application does. */
-	private void forget(String name) throws Exception {
+	private void forget(String name, int face) throws Exception {
 		FakeResponse response = post("/" + ALBUM + "/", "tag-faces",
 			"{\"faces\":[{\"image\":\"" + name
-				+ "\",\"face\":0,\"person\":\"\",\"state\":\"UNDECIDED\"}]}",
+				+ "\",\"face\":" + face + ",\"person\":\"\",\"state\":\"UNDECIDED\"}]}",
 			_adminToken);
 		assertEquals(response.body(), 200, response.status());
+	}
+
+	/** How many of the given tags decide something, see issue #155: an undecided one is a region. */
+	private static int decided(List<FaceTag> tags) {
+		int result = 0;
+		for (FaceTag tag : tags) {
+			if (tag.getState() != FaceState.UNDECIDED) {
+				assertFalse("A decision is about somebody or about no face.", tag.getPerson().isEmpty()
+					&& tag.getState() != FaceState.NOT_A_FACE);
+				result++;
+			} else {
+				assertEquals("An undecided region names nobody.", "", tag.getPerson());
+			}
+		}
+		return result;
 	}
 
 	/** Writes a copy of the fixture picture carrying the given regions into the album. */

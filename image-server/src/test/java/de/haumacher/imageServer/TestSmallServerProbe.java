@@ -21,11 +21,17 @@ public class TestSmallServerProbe extends FacesTestCase {
 			return;
 		}
 		index();
+		de.haumacher.imageServer.shared.model.FaceInfo face =
+			image(album("/" + ALBUM + "/", _adminToken), A_ONE).getFaces().get(0);
 		AlbumInfo hidden = tag("{\"image\":\"" + A_ONE + "\",\"face\":0,\"person\":\"\",\"state\":\"NOT_A_FACE\"}");
-		assertEquals(FaceState.NOT_A_FACE, image(hidden, A_ONE).getFaces().get(0).getState());
+		// Since issue #155 a face called no face is answered no more; the statement is stored.
+		assertEquals(0, image(hidden, A_ONE).getFaces().size());
 		assertEquals(1, image(hidden, A_ONE).getTags().size());
+		assertEquals(FaceState.NOT_A_FACE, image(hidden, A_ONE).getTags().get(0).getState());
 
-		AlbumInfo back = tag("{\"image\":\"" + A_ONE + "\",\"face\":0,\"person\":\"\",\"state\":\"UNDECIDED\"}");
+		// Taken back by marking its box again, which meets the hidden detection.
+		AlbumInfo back = tag("{\"image\":\"" + A_ONE + "\",\"x\":" + face.getX() + ",\"y\":" + face.getY()
+			+ ",\"w\":" + face.getW() + ",\"h\":" + face.getH() + ",\"person\":\"\",\"state\":\"UNDECIDED\"}");
 
 		ImagePart one = image(back, A_ONE);
 		assertEquals("The decision is gone from the sidecar.", 0, one.getTags().size());

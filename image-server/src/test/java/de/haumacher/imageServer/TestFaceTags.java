@@ -149,10 +149,10 @@ public class TestFaceTags extends FacesTestCase {
 		assertEquals(FaceState.REJECTED, face.getState());
 
 		AlbumInfo none = tag(assignment(B, 0, "", "NOT_A_FACE"));
-		FaceInfo nothing = image(none, B).getFaces().get(0);
-		assertEquals(FaceState.NOT_A_FACE, nothing.getState());
-		assertEquals("", nothing.getPerson());
-		assertFalse(nothing.isConfirmed());
+		assertEquals("A face called no face is answered no more (issue #155).", 0,
+			image(none, B).getFaces().size());
+		assertEquals(FaceState.NOT_A_FACE, stored(B).getTags().get(0).getState());
+		assertEquals("", stored(B).getTags().get(0).getPerson());
 
 		// Somebody names the face after all: one face, one decision.
 		AlbumInfo confirmed = tag(assignment(A_ONE, 0, anna.getId(), "CONFIRMED"));
@@ -374,14 +374,24 @@ public class TestFaceTags extends FacesTestCase {
 		index();
 		Person anna = created("Anna");
 
+		FaceInfo detected = image(album("/" + ALBUM + "/", _adminToken), B).getFaces().get(0);
 		tag(assignment(A_ONE, 0, anna.getId(), "REJECTED"), assignment(B, 0, "", "NOT_A_FACE"));
 		assertEquals(1, stored(A_ONE).getTags().size());
 		assertEquals(1, stored(B).getTags().size());
 
-		AlbumInfo forgotten = tag(assignment(A_ONE, 0, "", "UNDECIDED"), assignment(B, 0, "", "UNDECIDED"));
+		// A face called no face is not answered any more (issue #155), so it cannot be named by its
+		// number; it is brought back by marking its box again, which meets the hidden detection.
+		FakeResponse hidden = post("/" + ALBUM + "/", "tag-faces", body(assignment(B, 0, "", "UNDECIDED")),
+			_adminToken);
+		assertEquals(hidden.body(), 400, hidden.status());
+		AlbumInfo forgotten = tag(assignment(A_ONE, 0, "", "UNDECIDED"),
+			"{\"image\":\"" + B + "\",\"x\":" + detected.getX() + ",\"y\":" + detected.getY()
+				+ ",\"w\":" + detected.getW() + ",\"h\":" + detected.getH()
+				+ ",\"person\":\"\",\"state\":\"UNDECIDED\"}");
 		assertEquals(0, stored(A_ONE).getTags().size());
 		assertEquals(0, stored(B).getTags().size());
 		assertEquals(FaceState.UNDECIDED, image(forgotten, B).getFaces().get(0).getState());
+		assertEquals("The very detection, number and all.", 0, image(forgotten, B).getFaces().get(0).getIndex());
 	}
 
 	/** Forgetting what nobody decided is no error, and writes nothing at all. */

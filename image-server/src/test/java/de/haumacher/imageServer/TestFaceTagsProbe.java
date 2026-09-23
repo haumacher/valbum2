@@ -75,9 +75,7 @@ public class TestFaceTagsProbe extends FacesTestCase {
 		ImagePart one = image(album, A_ONE);
 		assertEquals("One tag, the later one.", 1, one.getTags().size());
 		assertEquals(FaceState.NOT_A_FACE, one.getTags().get(0).getState());
-		assertEquals(FaceState.NOT_A_FACE, one.getFaces().get(0).getState());
-		assertEquals("", one.getFaces().get(0).getPerson());
-		assertFalse(one.getFaces().get(0).isConfirmed());
+		assertEquals("And the face is answered no more (issue #155).", 0, one.getFaces().size());
 	}
 
 	// --- Helpers. ---

@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('de'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// The name of the application, shown as the window or browser tab title
@@ -3959,7 +3959,7 @@ abstract class AppLocalizations {
   /// The line shown while the tool for marking a face by hand is switched on.
   ///
   /// In en, this message translates to:
-  /// **'Draw a rectangle around a face.'**
+  /// **'Draw a rectangle around a person\'s face, or tap on the face.'**
   String get viewerMarkFaceHint;
 
   /// The heading of the sheet that opens when a face is tapped in the viewer's edit-persons mode.
@@ -3967,6 +3967,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This face'**
   String get viewerFaceDecision;
+
+  /// Said when a rectangle drawn with the tool for marking a face is too small to mean a face (issue #155); a tap marks a face too, so this only follows a real drag.
+  ///
+  /// In en, this message translates to:
+  /// **'Draw a larger rectangle around the person\'s face.'**
+  String get viewerMarkFaceTooSmall;
 
   /// The heading of the person chooser's first section, holding the people who already have a face in the album being named (issue #150).
   ///
@@ -4008,9 +4014,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
 }

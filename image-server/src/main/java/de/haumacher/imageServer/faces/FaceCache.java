@@ -46,7 +46,7 @@ import java.util.logging.Logger;
  * {"version":1,"model":"yunet-2022mar+sface-2021dec/1","files":{
  *   "&lt;sha256&gt;":{"faces":[{"box":{"x":0.31,"y":0.12,"w":0.2,"h":0.27},"score":0.99,
  *                            "embedding":"&lt;base64 of 128 little-endian float32&gt;",
- *                            "refined":true}],
+ *                            "refined":true,"marked":true}],
  *                 "cluster":["c1"],"exif":6}}}
  * </pre>
  *
@@ -102,6 +102,8 @@ public class FaceCache {
 
 	private static final String REFINED__PROP = "refined";
 
+	private static final String MARKED__PROP = "marked";
+
 	private static final String X__PROP = "x";
 
 	private static final String Y__PROP = "y";
@@ -127,6 +129,8 @@ public class FaceCache {
 
 		private final boolean _refined;
 
+		private final boolean _marked;
+
 		private String _cluster = "";
 
 		/** Creates a {@link Face} from a box in the raw raster of the file, see {@link Faces}. */
@@ -140,6 +144,16 @@ public class FaceCache {
 		 */
 		public Face(double x, double y, double w, double h, double score, float[] embedding,
 				boolean refined) {
+			this(x, y, w, h, score, embedding, refined, false);
+		}
+
+		/**
+		 * Creates a {@link Face} that says whether it was found because somebody pointed at it, see
+		 * issue #155.
+		 */
+		public Face(double x, double y, double w, double h, double score, float[] embedding,
+				boolean refined, boolean marked) {
+			_marked = marked;
 			_x = x;
 			_y = y;
 			_w = w;
@@ -192,6 +206,21 @@ public class FaceCache {
 		 */
 		public boolean isRefined() {
 			return _refined;
+		}
+
+		/**
+		 * Whether this face was found where somebody marked one, see issue #155.
+		 *
+		 * <p>
+		 * The detector looked at a region of the original because somebody drew a box there or
+		 * clicked, and found this face; a pass over the preview would not have. Such a face is kept
+		 * when the photograph is described again, beside whatever the new description finds, unless
+		 * that description finds the same face itself. Absent is false, so every entry written before
+		 * issue #155 reads as a face of the ordinary pass.
+		 * </p>
+		 */
+		public boolean isMarked() {
+			return _marked;
 		}
 
 		/** Which group of the album's faces this one was put into; empty before clustering. */
@@ -412,6 +441,7 @@ public class FaceCache {
 		double score = 0;
 		float[] embedding = new float[0];
 		boolean refined = false;
+		boolean marked = false;
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -440,13 +470,16 @@ public class FaceCache {
 				case REFINED__PROP:
 					refined = in.nextBoolean();
 					break;
+				case MARKED__PROP:
+					marked = in.nextBoolean();
+					break;
 				default:
 					in.skipValue();
 					break;
 			}
 		}
 		in.endObject();
-		return new Face(x, y, w, h, score, embedding, refined);
+		return new Face(x, y, w, h, score, embedding, refined, marked);
 	}
 
 	private void store() throws IOException {
@@ -487,6 +520,11 @@ public class FaceCache {
 					if (face.isRefined()) {
 						// Absent is false, so a file this build writes is read by an older one.
 						out.name(REFINED__PROP);
+						out.value(true);
+					}
+					if (face.isMarked()) {
+						// Absent is false, likewise.
+						out.name(MARKED__PROP);
 						out.value(true);
 					}
 					out.endObject();
