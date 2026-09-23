@@ -10,6 +10,7 @@
 /// and a retranslation must not break this test.
 library;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
@@ -175,6 +176,27 @@ void sliceThree() {
 
       var en = l10nOf(const Locale("en"));
       expect(find.text(en.albumProperties), findsNothing);
+    });
+
+    testWidgets('the context menu of an edit-mode tile (issue #156)',
+        (tester) async {
+      speakGerman(tester);
+      await withFakeImageHttp(() async {
+        await pumpAlbum(tester, treeAnswer);
+        await tester.longPress(find.byType(Image).first);
+        await tester.pumpAndSettle();
+        var box = tester.getRect(find.byKey(const ValueKey("b.jpg")));
+        await tester.tapAt(
+          Offset(box.left + 8, box.center.dy),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.text(de.moveSubjectTo(const ImageSubject(1).asked(de))),
+          findsOneWidget);
+      expect(find.text(de.imageProperties), findsOneWidget);
     });
 
     testWidgets('the album properties dialog', (tester) async {

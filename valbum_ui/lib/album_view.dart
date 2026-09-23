@@ -511,7 +511,40 @@ class AlbumContentState extends State<AlbumContent>
     widget.albumState.navigator.delegate
         .unregisterLeaveGuard(widget.albumState.path, _leaveGuard);
     _dragScroller.dispose();
+    // A page left in the middle of an edit gives the browser its menu back:
+    // the edit session outlives this view, the menu must not (issue #156).
+    if (_browserMenuTaken) {
+      _browserMenuTaken = false;
+      browserMenu.enable();
+    }
     super.dispose();
+  }
+
+  /// Whether this view has taken the browser's own context menu away, see
+  /// [_syncBrowserMenu].
+  bool _browserMenuTaken = false;
+
+  /// Takes the browser's context menu away while the edit mode stands and
+  /// gives it back when it ends (issue #156), the [BrowserMenu] seam of the
+  /// persons editor (#144): on the web a secondary click on a tile would
+  /// otherwise open the browser's menu over the tile's own, see
+  /// [ThumbnailEditorState.showTileMenu].
+  ///
+  /// Asked on every build, because the edit mode is not one switch but a
+  /// derived state — the session's mode, a "view as" preview, the rights, a
+  /// share link — changed in many places, and the session outlives this view.
+  /// While editing, the menu is taken away on every build: the call is
+  /// nothing where it is already away, and it takes the menu away again after
+  /// a page above (the persons editor) gave it back on leaving.
+  void _syncBrowserMenu() {
+    var editing = editMode;
+    if (editing) {
+      browserMenu.disable();
+      _browserMenuTaken = true;
+    } else if (_browserMenuTaken) {
+      _browserMenuTaken = false;
+      browserMenu.enable();
+    }
   }
 
   /// Handles a click on the tile of the given part.
@@ -544,6 +577,16 @@ class AlbumContentState extends State<AlbumContent>
       lastClicked = part;
     });
   }
+
+  /// Makes the given part the whole selection, the anchor of a following
+  /// shift-click included — what a secondary click on a tile outside the
+  /// selection does before its menu opens (issue #156).
+  void selectOnly(AlbumPart part) => setState(() {
+        selection
+          ..clear()
+          ..add(part);
+        lastClicked = part;
+      });
 
   /// Adds or removes the given part from the selection.
   void toggleSelection(AlbumPart part) => setState(() {
@@ -1291,6 +1334,7 @@ class AlbumContentState extends State<AlbumContent>
 
   @override
   Widget build(BuildContext context) {
+    _syncBrowserMenu();
     var self = shownAlbum;
 
     // The album shows its photos, not its chrome: with something to show and
@@ -2570,6 +2614,11 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
                   behavior: HitTestBehavior.opaque,
                   onTap: () => album.handleTap(part),
                   onLongPress: () => album.toggleSelection(part),
+                  // A mouse's way to the move and the properties, at the
+                  // pointer (issue #156); a finger keeps the long press
+                  // and the album's menu.
+                  onSecondaryTapUp: (details) =>
+                      showTileMenu(details.globalPosition),
                   child: widget.builder.imageThumbnail(image),
                 ),
               ),
@@ -2824,6 +2873,51 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   ///
   /// The one image properties dialog, which the viewer opens as well, see
   /// `image_properties.dart` (issue #122).
+  /// The context menu of this tile, opened by a secondary click at
+  /// [position] (issue #156), following the persons editor's (#139/#144).
+  ///
+  /// It acts on the whole selection when this tile is part of it; otherwise
+  /// this tile first becomes the selection alone, so that what the menu says
+  /// is what it acts on. Its entries call exactly what the album's menu and
+  /// the tile's tool call: [AlbumContentState.moveSelection] under the label
+  /// of the menu's `move-to`, and [editImageProperties].
+  Future<void> showTileMenu(Offset position) async {
+    if (!selected) {
+      album.selectOnly(part);
+    }
+    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    var action = await showMenu<void Function()>(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & Size.zero,
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        if (album.mayMoveSelection)
+          PopupMenuItem<void Function()>(
+            key: const Key("tile-context-move"),
+            value: album.moveSelection,
+            child: Text(_l10n.moveSubjectTo(
+                ImageSubject(album.selection.length).asked(_l10n))),
+          ),
+        PopupMenuItem<void Function()>(
+          key: const Key("tile-context-properties"),
+          value: editImageProperties,
+          child: Text(_l10n.imageProperties),
+        ),
+      ],
+    );
+    // The move belongs to the album, which is still there; the properties
+    // write into this tile's image and need the tile.
+    if (action == null || !album.mounted) {
+      return;
+    }
+    if (action == editImageProperties && !mounted) {
+      return;
+    }
+    action();
+  }
+
   Future<void> editImageProperties() async {
     var text = await showImageProperties(context, image);
     if (text == null || !mounted) {
@@ -3922,14 +4016,21 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
             IconButton(
               icon: const Icon(Icons.zoom_in),
               tooltip: l10n.zoomIn,
-              onPressed: info.scale < maxIndexPictureScale
+              onPressed: info.scale <
+                      greatestIndexPictureScale(
+                          info, pictureWidth, pictureHeight)
                   ? () => zoom(indexPictureZoomStep)
                   : null,
             ),
             IconButton(
               icon: const Icon(Icons.zoom_out),
               tooltip: l10n.zoomOut,
-              onPressed: info.scale > minIndexPictureScale
+              // Disabled where the picture just covers the square: it
+              // may not be zoomed out any further (issue #154).
+              onPressed: info.scale >
+                      leastIndexPictureScale(
+                              info, pictureWidth, pictureHeight) +
+                          1e-6
                   ? () => zoom(1 / indexPictureZoomStep)
                   : null,
             ),
@@ -3942,6 +4043,21 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
         ),
       ],
     );
+  }
+
+  /// The size of the file the crop shows, `0` where it is not known — then
+  /// the crop is not held to covering the square, there being nothing to
+  /// measure it against (issue #154).
+  int get pictureWidth => _croppedImage?.width ?? 0;
+
+  /// See [pictureWidth].
+  int get pictureHeight => _croppedImage?.height ?? 0;
+
+  /// The image the crop shows, `null` unless it is the album's picture this
+  /// dialog was opened with.
+  ImagePart? get _croppedImage {
+    var image = widget.indexImage;
+    return image != null && image.name == indexPicture?.image ? image : null;
   }
 
   void onScaleStart(ScaleStartDetails details) {
@@ -3958,14 +4074,22 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
       return;
     }
     var shift = details.localFocalPoint - _gestureFocus;
-    var zoomed =
-        details.scale == 1 ? start : zoomIndexPicture(start, details.scale);
+    var zoomed = details.scale == 1
+        ? start
+        : zoomIndexPicture(
+            start,
+            details.scale,
+            width: pictureWidth,
+            height: pictureHeight,
+          );
     setState(() {
       indexPicture = panIndexPicture(
         zoomed,
         shift.dx,
         shift.dy,
         indexPictureEditorSize,
+        width: pictureWidth,
+        height: pictureHeight,
       );
     });
   }
@@ -3982,7 +4106,12 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
   void zoom(double factor) {
     var info = indexPicture;
     if (info != null) {
-      setState(() => indexPicture = zoomIndexPicture(info, factor));
+      setState(() => indexPicture = zoomIndexPicture(
+            info,
+            factor,
+            width: pictureWidth,
+            height: pictureHeight,
+          ));
     }
   }
 

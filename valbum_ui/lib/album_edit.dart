@@ -6,6 +6,8 @@
 /// depends on Flutter, so all of it is unit-testable without a widget tree.
 library;
 
+import 'dart:math' as math;
+
 import 'album_layout.dart' show ToImage;
 import 'album_model.dart';
 import 'l10n/app_localizations.dart';
@@ -1116,11 +1118,108 @@ void syncIndexPictureOrientation(AlbumInfo album, ImagePart image) {
 bool isIndexPicture(AlbumInfo album, ImagePart image) =>
     album.indexPicture?.image == image.name;
 
-/// The least an index picture is scaled by: the whole image inside the square.
+/// The least an index picture is scaled by where the picture's size is not
+/// known: the whole image inside the square.
+///
+/// A picture whose size is known may not be scaled below the scale at which
+/// it covers the square, see [leastIndexPictureScale] and issue #154.
 const double minIndexPictureScale = 1;
 
-/// The most an index picture is scaled by.
+/// The most an index picture is scaled by (unless the picture itself needs
+/// more to cover the square, see [greatestIndexPictureScale]).
 const double maxIndexPictureScale = 8;
+
+/// The slack by which a crop may miss the covering bounds and still count as
+/// covering: the server's default crop (`PrivacyFilter.thumbnail`) and
+/// [indexPictureOf] sit exactly on the bound, and a rounding error must not
+/// move them.
+const double _coverTolerance = 1e-6;
+
+/// The size of the picture as the crop [info] draws it: the file's
+/// [width] × [height] (as `ImagePart.width`/`height` say it), swapped when the
+/// frame the crop was made in ([ThumbnailInfo.orientation], issue #115) turns
+/// it a quarter. `null` when the size is not known.
+({double width, double height})? _croppedSize(
+  ThumbnailInfo info,
+  int width,
+  int height,
+) {
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+  var swapped = PlaneTransform.of(info.orientation).swapsDimensions;
+  return (
+    width: (swapped ? height : width).toDouble(),
+    height: (swapped ? width : height).toDouble(),
+  );
+}
+
+/// The least scale at which the picture of [width] × [height] covers the
+/// square tile (issue #154): the tile fits the picture into the square
+/// (`BoxFit.contain`), so its shorter side has to be scaled up by the aspect
+/// ratio. [minIndexPictureScale] where the size is not known.
+double leastIndexPictureScale(ThumbnailInfo info, int width, int height) {
+  var size = _croppedSize(info, width, height);
+  if (size == null) {
+    return minIndexPictureScale;
+  }
+  var longer = math.max(size.width, size.height);
+  var shorter = math.min(size.width, size.height);
+  return longer / shorter;
+}
+
+/// The greatest scale the crop editor zooms to: [maxIndexPictureScale], or
+/// the picture's own least scale for a panorama that needs more than that
+/// only to cover the square.
+double greatestIndexPictureScale(ThumbnailInfo info, int width, int height) =>
+    math.max(maxIndexPictureScale, leastIndexPictureScale(info, width, height));
+
+/// The crop [info] pulled back so that the picture of [width] × [height]
+/// (the file's size, see [_croppedSize]) covers the whole square tile, issue
+/// #154.
+///
+/// `thumbnailTransform` fits the picture centred into the square of side `s`
+/// (`s·w/M × s·h/M` with `M = max(w, h)`), shifts it by `(tx, ty)·s/300` and
+/// scales it by `k` about the centre. It covers the square exactly when
+/// `k ≥ M / min(w, h)` and `|tx| ≤ 150·(w/M − 1/k)`, `|ty| ≤ 150·(h/M − 1/k)`
+/// — the tile size cancels out. The scale is raised to its least and the
+/// offsets are clamped to those bounds; a crop that already covers (within a
+/// rounding tolerance, where the defaults sit) is answered unchanged. A
+/// picture whose size is not known is answered as it is: there is nothing to
+/// clamp against.
+ThumbnailInfo coverIndexPicture(ThumbnailInfo info, int width, int height) {
+  var size = _croppedSize(info, width, height);
+  if (size == null) {
+    return info;
+  }
+  var longer = math.max(size.width, size.height);
+  var least = longer / math.min(size.width, size.height);
+  var scale = info.scale > 0 ? info.scale : 1.0;
+  if (scale < least - _coverTolerance) {
+    scale = least;
+  }
+  double bound(double side) => math.max(
+        0.0,
+        indexPictureTileSize / 2 * (side / longer - 1 / scale),
+      );
+  double within(double value, double limit) => value > limit + _coverTolerance
+      ? limit
+      : value < -limit - _coverTolerance
+          ? -limit
+          : value;
+  var tx = within(info.tx, bound(size.width));
+  var ty = within(info.ty, bound(size.height));
+  if (scale == info.scale && tx == info.tx && ty == info.ty) {
+    return info;
+  }
+  return ThumbnailInfo(
+    image: info.image,
+    scale: scale,
+    tx: tx,
+    ty: ty,
+    orientation: info.orientation,
+  );
+}
 
 /// The index picture panned by ([dx], [dy]) pixels of a square tile of
 /// [tileSize], the way the crop editor drags it.
@@ -1129,38 +1228,62 @@ const double maxIndexPictureScale = 8;
 /// of the [indexPictureTileSize]) and then scaled about the centre, see
 /// `thumbnailTransform`: a displayed shift of `d` pixels is a shift of
 /// `d / (scale * tileSize / indexPictureTileSize)` in the stored offsets.
+///
+/// Where the size of the picture is known ([width] × [height], the file's
+/// size as `ImagePart` says it), the result is kept covering the square, see
+/// [coverIndexPicture]: the picture stops at its edge.
 ThumbnailInfo panIndexPicture(
   ThumbnailInfo info,
   double dx,
   double dy,
-  double tileSize,
-) {
+  double tileSize, {
+  int width = 0,
+  int height = 0,
+}) {
   var scale = info.scale > 0 ? info.scale : 1.0;
   var factor = scale * tileSize / indexPictureTileSize;
-  return ThumbnailInfo(
-    image: info.image,
-    scale: info.scale,
-    tx: info.tx + dx / factor,
-    ty: info.ty + dy / factor,
-    // The frame the crop is measured in does not change by panning it.
-    orientation: info.orientation,
+  return coverIndexPicture(
+    ThumbnailInfo(
+      image: info.image,
+      scale: info.scale,
+      tx: info.tx + dx / factor,
+      ty: info.ty + dy / factor,
+      // The frame the crop is measured in does not change by panning it.
+      orientation: info.orientation,
+    ),
+    width,
+    height,
   );
 }
 
 /// The index picture zoomed by [factor] about the centre of the tile, within
-/// [minIndexPictureScale] and [maxIndexPictureScale].
+/// [leastIndexPictureScale] and [greatestIndexPictureScale].
 ///
 /// The offsets are applied before the scale, so the point of the image at the
 /// centre of the tile does not depend on the scale: keeping the offsets keeps
-/// the centre where it is.
-ThumbnailInfo zoomIndexPicture(ThumbnailInfo info, double factor) {
+/// the centre where it is — except where a zoom-out would uncover the edge of
+/// the square, which pulls the picture back in ([coverIndexPicture]; only
+/// where the picture's size, [width] × [height], is known).
+ThumbnailInfo zoomIndexPicture(
+  ThumbnailInfo info,
+  double factor, {
+  int width = 0,
+  int height = 0,
+}) {
   var scale = info.scale > 0 ? info.scale : 1.0;
-  return ThumbnailInfo(
-    image: info.image,
-    scale: (scale * factor).clamp(minIndexPictureScale, maxIndexPictureScale),
-    tx: info.tx,
-    ty: info.ty,
-    orientation: info.orientation,
+  return coverIndexPicture(
+    ThumbnailInfo(
+      image: info.image,
+      scale: (scale * factor).clamp(
+        leastIndexPictureScale(info, width, height),
+        greatestIndexPictureScale(info, width, height),
+      ),
+      tx: info.tx,
+      ty: info.ty,
+      orientation: info.orientation,
+    ),
+    width,
+    height,
   );
 }
 
