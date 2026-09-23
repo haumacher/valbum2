@@ -2514,6 +2514,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get viewerMarkFaceHint => 'Zeichnen Sie ein Rechteck um ein Gesicht.';
 
   @override
+  String get viewerAdjustFaceHint =>
+      'Ziehen Sie das Feld, um es zu verschieben, oder eine Ecke, um die Größe anzupassen.';
+
+  @override
   String get viewerFaceDecision => 'Dieses Gesicht';
 
   @override

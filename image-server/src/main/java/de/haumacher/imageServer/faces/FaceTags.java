@@ -72,6 +72,28 @@ import java.util.List;
  * and for the crop of <code>?type=face</code> alike.
  * </p>
  *
+ * <h2>The human box wins (issue #157)</h2>
+ *
+ * <p>
+ * A detection a tag matches is answered with the <em>tag's</em> box, not the detector's. A tag
+ * copies the detection's box when it is made, so for every tag written before issue #157 the two
+ * are the same and nothing changes; but a box somebody moved or resized (<code>?action=adjust-faces</code>)
+ * is the human's statement about where the face is, and it is what the viewer draws and what the
+ * crop of <code>?type=face</code> is cut by. The detection keeps its number and its embedding —
+ * the pixels are still the same face — so recognition goes on learning from it.
+ * </p>
+ *
+ * <p>
+ * The match itself is unchanged: a tag is that detection's while the two overlap by more than
+ * {@link #IOU_MATCH}. A box moved so far that it no longer does is <em>no longer that
+ * detection's</em>: the detection is answered again as the bare face it is (undecided, open to a
+ * suggestion) and the tag as a face of its own behind the detections, with the next free number.
+ * That is deliberate — the overlap is the only thing that ties a statement to a detection, on
+ * every read, and a rule that remembered "this tag once belonged to detection 0" would have to be
+ * stored and would break with the next model. Somebody who drags a box that far has marked another
+ * spot, and the detection left behind can be called no face or named like any other.
+ * </p>
+ *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public final class FaceTags {
@@ -128,10 +150,27 @@ public final class FaceTags {
 
 		private final List<FaceInfo> _hidden;
 
-		Answer(List<FaceInfo> faces, int detections, List<FaceInfo> hidden) {
+		private final double[][] _detected;
+
+		Answer(List<FaceInfo> faces, int detections, List<FaceInfo> hidden, double[][] detected) {
 			_faces = faces;
 			_detections = detections;
 			_hidden = hidden;
+			_detected = detected;
+		}
+
+		/**
+		 * The detector's own box of the detection of the given number, in the raw raster;
+		 * <code>null</code> where the number is no detection's, see issue #157.
+		 *
+		 * <p>
+		 * An answered face carries the box of the tag that matched it, which may be one somebody
+		 * adjusted; this is the box the detector found, which tells an adjusted face from one whose
+		 * tag merely copied the detection.
+		 * </p>
+		 */
+		public double[] detectedBox(int index) {
+			return index >= 0 && index < _detected.length ? _detected[index].clone() : null;
 		}
 
 		/** The faces to answer, in their order; the index of each is its own number. */
@@ -184,8 +223,10 @@ public final class FaceTags {
 		List<FaceInfo> result = new ArrayList<>(detected.size() + tags.size());
 		List<FaceInfo> hidden = new ArrayList<>();
 		boolean[] used = new boolean[tags.size()];
+		double[][] boxes = new double[detected.size()][];
 		int slot = 0;
 		for (FaceInfo face : detected) {
+			boxes[slot] = new double[] { face.getX(), face.getY(), face.getW(), face.getH() };
 			int best = -1;
 			double bestOverlap = IOU_MATCH;
 			for (int n = 0; n < tags.size(); n++) {
@@ -200,7 +241,10 @@ public final class FaceTags {
 			face.setIndex(slot++);
 			if (best >= 0) {
 				used[best] = true;
-				apply(face, tags.get(best), people);
+				FaceTag tag = tags.get(best);
+				// The human box wins, see issue #157.
+				face.setX(tag.getX()).setY(tag.getY()).setW(tag.getW()).setH(tag.getH());
+				apply(face, tag, people);
 				if (tags.get(best).getState() == FaceState.NOT_A_FACE) {
 					// Somebody said this is no face: the region is gone from every answer, and the
 					// tag stays to keep the next detection of the same spot away.
@@ -231,7 +275,7 @@ public final class FaceTags {
 			apply(face, tag, people);
 			result.add(face);
 		}
-		return new Answer(result, detections, hidden);
+		return new Answer(result, detections, hidden, boxes);
 	}
 
 	/** Writes what the given tag decided onto the given answer. */
@@ -278,6 +322,21 @@ public final class FaceTags {
 		}
 		return best;
 	}
+
+	/**
+	 * Whether the two boxes are the same box, beyond what a double written to JSON and read back
+	 * may change, see issue #157.
+	 */
+	public static boolean sameBox(double[] one, double x, double y, double w, double h) {
+		return Math.abs(one[0] - x) < BOX_TOLERANCE && Math.abs(one[1] - y) < BOX_TOLERANCE
+			&& Math.abs(one[2] - w) < BOX_TOLERANCE && Math.abs(one[3] - h) < BOX_TOLERANCE;
+	}
+
+	/**
+	 * How far two coordinates may be apart and still be the same, a millionth of the picture: far
+	 * below a pixel of any photograph, far above the rounding of a double in a sidecar.
+	 */
+	public static final double BOX_TOLERANCE = 1e-6;
 
 	/** The intersection of the two boxes over their union, <code>0..1</code>. */
 	public static double iou(double x1, double y1, double w1, double h1,

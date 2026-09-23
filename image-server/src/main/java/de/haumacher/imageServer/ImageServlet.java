@@ -316,6 +316,12 @@ public class ImageServlet extends HttpServlet {
 		return "The marked face is not a place on '" + image + "'.";
 	}
 
+	/**
+	 * The <code>action</code> that moves or resizes the box of an answered face, see issue #157 and
+	 * {@link #tagFaces(Context, boolean)}.
+	 */
+	public static final String ADJUST_FACES_ACTION = "adjust-faces";
+
 	/** The <code>action</code> that answers a selection of originals as one archive, see issue #164. */
 	public static final String ZIP_ACTION = "zip";
 
@@ -2880,7 +2886,11 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		if ("tag-faces".equals(action)) {
-			tagFaces(context);
+			tagFaces(context, false);
+			return;
+		}
+		if (ADJUST_FACES_ACTION.equals(action)) {
+			tagFaces(context, true);
 			return;
 		}
 		if ("find-duplicates".equals(action)) {
@@ -3698,8 +3708,50 @@ public class ImageServlet extends HttpServlet {
 	 * All or nothing: every name, index and person is checked before anything is written, because
 	 * an album half tagged is a state nobody asked for.
 	 * </p>
+	 *
+	 * <h3>Adjusting a box: <code>?action=adjust-faces</code> (issue #157)</h3>
+	 *
+	 * <p>
+	 * The same {@link TagFaces} message, the same rights and the same checks, posted under a
+	 * separate action. There a {@link FaceAssignment} carries <b>both</b> a {@link FaceAssignment#getFace()
+	 * face} and a box, and means "this face, with this box": the face that was answered under that
+	 * number is given the new box, in the frame the wire speaks (the picture upright, issue #142),
+	 * turned into the raw raster by {@link Faces#toRaw}. The tag that face carried — found by the
+	 * face's answered box, the overlap rule of every other write — is removed, and a tag on the new
+	 * box is stored carrying the assignment's person and state: the client sends the decision the
+	 * face stands under (or a new one — one request may move a box and name the face in it), and
+	 * {@link FaceState#UNDECIDED} leaves the face undecided at the new box, a stored undecided tag
+	 * being a region nobody decided about since issue #155. The new box is <em>not</em> snapped onto
+	 * a detection it overlaps, as a mark is: a box somebody moved by hand is the human's statement
+	 * about where the face is, and in the answer it wins over the detector's (see {@link FaceTags}).
+	 * {@link FaceState#NOT_A_FACE} there means what it means here and ignores the box. An adjustment
+	 * without a box, or with one that is not a place on the photograph, is refused with
+	 * {@link #faceBoxInvalid(String)}; a number that names no answered face with
+	 * {@link #unknownFace(String, int)}.
+	 * </p>
+	 *
+	 * <p>
+	 * <b>Why a separate action and not a meaning of <code>tag-faces</code>.</b> The field
+	 * {@link FaceAssignment#getFace()} is a plain number whose default is <code>0</code>, and every
+	 * client writes it: the viewer of issue #147, released since 2.7.0, marks a face by sending
+	 * <code>face: 0</code> together with a box. Had "a face and a box" come to mean an adjustment
+	 * under <code>tag-faces</code>, every mark of such an app would have silently moved face 0 of the
+	 * photograph — its person and all — to the marked spot. An older client never calls
+	 * <code>adjust-faces</code>, so under this action nothing moves behind anybody's back, and
+	 * <code>tag-faces</code> keeps meaning exactly what it meant.
+	 * </p>
+	 *
+	 * <p>
+	 * A detection whose tag was adjusted keeps its region when its decision is forgotten: where the
+	 * tag's box is not the detector's own, {@link FaceState#UNDECIDED} leaves an undecided tag at the
+	 * adjusted box instead of removing the tag, so forgetting a name never throws away the box
+	 * somebody drew — exactly what it does for a face marked by hand.
+	 * </p>
+	 *
+	 * @param adjust
+	 *        Whether the request is an <code>adjust-faces</code>.
 	 */
-	private void tagFaces(Context context) throws IOException {
+	private void tagFaces(Context context, boolean adjust) throws IOException {
 		Caller caller = _auth.caller(context.request());
 		Location location = resolve(context, caller);
 		if (location == null) {
@@ -3774,7 +3826,14 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			FaceTags.Answer answer = answers.get(image.getName());
-			boolean marked = marksABox(assignment);
+			boolean hasBox = marksABox(assignment);
+			if (adjust && !hasBox) {
+				LOG.warning("Refusing the adjustment of '" + assignment.getImage() + "': no box.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, faceBoxInvalid(assignment.getImage()));
+				return;
+			}
+			// An adjustment names a face and a box; a mark only a box, see issue #157.
+			boolean marked = hasBox && !adjust;
 			int index = assignment.getFace();
 			FaceInfo named = marked || answer == null ? null : answer.byIndex(index);
 			if (!marked && named == null) {
@@ -3789,7 +3848,7 @@ public class ImageServlet extends HttpServlet {
 				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, TAG_VIDEO_REFUSED);
 				return;
 			}
-			if (marked && !isOnThePicture(assignment)) {
+			if (hasBox && !isOnThePicture(assignment)) {
 				LOG.warning("Refusing the tagging of '" + assignment.getImage() + "': the marked box is "
 					+ assignment.getX() + "," + assignment.getY() + " " + assignment.getW() + "x"
 					+ assignment.getH() + ".");
@@ -3824,7 +3883,21 @@ public class ImageServlet extends HttpServlet {
 			}
 			double[] box;
 			FaceInfo target;
-			if (marked) {
+			double[] adjusted = null;
+			if (adjust) {
+				// The new box of the named face, in the one frame a decision is stored in. Never
+				// snapped onto a detection: this box is what somebody said, see issue #157.
+				if (orientations == null) {
+					orientations = FaceIndex.displayOrientations(folder, images.keySet());
+				}
+				Orientation exif = orientations.getOrDefault(image.getName(), Orientation.IDENTITY);
+				adjusted = Faces.toRaw(exif, assignment.getX(), assignment.getY(),
+					assignment.getW(), assignment.getH());
+				target = named;
+				box = state == FaceState.NOT_A_FACE
+					? new double[] { named.getX(), named.getY(), named.getW(), named.getH() }
+					: adjusted;
+			} else if (marked) {
 				// What the client drew, in the frame it drew in: the picture upright, see issue
 				// #142. The one frame a decision is stored in is the raw raster of the file.
 				if (orientations == null) {
@@ -3850,7 +3923,10 @@ public class ImageServlet extends HttpServlet {
 				.setW(box[2])
 				.setH(box[3])
 				.setPerson(person)
-				.setState(state), target, target != null && answer.isDetection(target)));
+				.setState(state), target, target != null && answer.isDetection(target),
+				adjusted == null || state == FaceState.NOT_A_FACE ? null
+					: new double[] { named.getX(), named.getY(), named.getW(), named.getH() },
+				target != null && answer.isDetection(target) ? answer.detectedBox(target.getIndex()) : null));
 		}
 
 		boolean changed = false;
@@ -3861,6 +3937,14 @@ public class ImageServlet extends HttpServlet {
 			List<FaceTag> stored = new ArrayList<>(image.getTags());
 			int existing = FaceTags.indexOf(stored, tag.getX(), tag.getY(), tag.getW(), tag.getH());
 			boolean modified;
+			if (operation._before != null) {
+				modified = adjust(stored, operation);
+				if (modified) {
+					image.setTags(stored);
+					changed = true;
+				}
+				continue;
+			}
 			switch (tag.getState()) {
 				case UNDECIDED:
 					if (operation._target == null) {
@@ -3876,6 +3960,14 @@ public class ImageServlet extends HttpServlet {
 							modified |= removeUndecided(stored, tag.getX(), tag.getY(), tag.getW(), tag.getH());
 						} else {
 							modified = putRegion(stored, existing, tag);
+						}
+					} else if (operation._detection && existing >= 0 && operation._detected != null
+						&& !FaceTags.sameBox(operation._detected, tag.getX(), tag.getY(), tag.getW(), tag.getH())) {
+						// A detection whose box somebody adjusted (issue #157): forgetting takes the
+						// decision off it and keeps the box that was drawn, as for a face marked by hand.
+						modified = stored.get(existing).getState() != FaceState.UNDECIDED;
+						if (modified) {
+							stored.set(existing, tag);
 						}
 					} else if (operation._detection) {
 						// Taking a decision back, see issue #138. A detection nobody decided anything
@@ -3944,12 +4036,77 @@ public class ImageServlet extends HttpServlet {
 		/** Whether {@link #_target} is a detection rather than a stored tag alone. */
 		final boolean _detection;
 
-		TagOperation(ImagePart image, FaceTag tag, FaceInfo target, boolean detection) {
+		/**
+		 * For an adjustment (issue #157): the raw box the face was answered with before, by which
+		 * the tag it carried is found; <code>null</code> for every other operation.
+		 */
+		final double[] _before;
+
+		/** The detector's own raw box where {@link #_target} is a detection, else <code>null</code>. */
+		final double[] _detected;
+
+		TagOperation(ImagePart image, FaceTag tag, FaceInfo target, boolean detection, double[] before,
+				double[] detected) {
 			_image = image;
 			_tag = tag;
 			_target = target;
 			_detection = detection;
+			_before = before;
+			_detected = detected;
 		}
+	}
+
+	/**
+	 * Gives a face its new box, see issue #157; whether the stored tags changed.
+	 *
+	 * <p>
+	 * The tag the face carried goes, and the new one takes its place — or, where the new box lies on
+	 * another stored region, that one's place, so that no spot carries two statements. A detection
+	 * left undecided at exactly the detector's own box needs no tag at all.
+	 * </p>
+	 */
+	private static boolean adjust(List<FaceTag> stored, TagOperation operation) {
+		FaceTag tag = operation._tag;
+		double[] before = operation._before;
+		List<FaceTag> result = new ArrayList<>(stored);
+		int old = FaceTags.indexOf(result, before[0], before[1], before[2], before[3]);
+		int position = old;
+		if (old >= 0) {
+			result.remove(old);
+		}
+		int other = FaceTags.indexOf(result, tag.getX(), tag.getY(), tag.getW(), tag.getH());
+		if (other >= 0) {
+			result.remove(other);
+			position = other;
+		}
+		boolean bare = tag.getState() == FaceState.UNDECIDED && operation._detected != null
+			&& FaceTags.sameBox(operation._detected, tag.getX(), tag.getY(), tag.getW(), tag.getH());
+		if (!bare) {
+			if (position < 0 || position > result.size()) {
+				result.add(tag);
+			} else {
+				result.add(position, tag);
+			}
+		}
+		if (sameTags(stored, result)) {
+			return false;
+		}
+		stored.clear();
+		stored.addAll(result);
+		return true;
+	}
+
+	/** Whether the two lists say the same, tag for tag. */
+	private static boolean sameTags(List<FaceTag> one, List<FaceTag> two) {
+		if (one.size() != two.size()) {
+			return false;
+		}
+		for (int n = 0; n < one.size(); n++) {
+			if (!sameTag(one.get(n), two.get(n))) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/** Puts the given tag where the one at <code>existing</code> was, or adds it; whether it changed. */

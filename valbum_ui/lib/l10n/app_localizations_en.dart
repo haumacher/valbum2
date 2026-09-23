@@ -2474,6 +2474,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Draw a rectangle around a person\'s face, or tap on the face.';
 
   @override
+  String get viewerAdjustFaceHint =>
+      'Drag the box to move it, or a corner to resize it.';
+
+  @override
   String get viewerFaceDecision => 'This face';
 
   @override

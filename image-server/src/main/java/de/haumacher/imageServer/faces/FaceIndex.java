@@ -1627,7 +1627,8 @@ public class FaceIndex {
 	 * The numbering of the answer, see {@link FaceTags#answer(List, List, PeopleStore)}: a detection
 	 * is cut by the detector's box, a stored tag no detection matches — a face somebody marked by
 	 * hand, a decision the detector no longer finds — by the tag's own box, which is in the same raw
-	 * raster. Both are cut the same way, from the original where the preview is too small, and
+	 * raster. A detection a tag matches is cut by the tag's box, which is the one it is answered
+	 * with since issue #157. Both are cut the same way, from the original where the preview is too small, and
 	 * cached under the name of issue #141, which is built from the content hash and the box and so
 	 * knows nothing of which of the two a box came from. A face that is not answered — a detection
 	 * somebody called no face — has no crop either.
@@ -1651,9 +1652,11 @@ public class FaceIndex {
 		if (answered == null) {
 			return new Crop(null, "There is no such face in this image.");
 		}
-		FaceCache.Face face = answer.isDetection(answered)
-			? faces.get(index)
-			: new FaceCache.Face(answered.getX(), answered.getY(), answered.getW(), answered.getH(), 0, null);
+		// Cut by the answered box: a detection's own, or the box of the tag that matched it, which
+		// somebody may have moved or resized (issue #157). The name of issue #141 digests the box, so
+		// a crop of the box before the adjustment is simply never addressed again.
+		FaceCache.Face face = new FaceCache.Face(answered.getX(), answered.getY(), answered.getW(),
+			answered.getH(), 0, null);
 		File target = cropFile(image, hash, face);
 		if (fresh(target, image, folder)) {
 			return new Crop(target, null);
