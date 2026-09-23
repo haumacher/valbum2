@@ -154,6 +154,25 @@ void main() {
       );
     });
 
+    testWidgets('left-aligns the headings, check box first', (tester) async {
+      await pumpInbox(tester, inboxTree);
+
+      var heading = find.byKey(const Key("inbox-day-2026-03-01"));
+      var box = find.descendant(
+          of: heading, matching: find.byIcon(Icons.check_box_outline_blank));
+      var text = find.descendant(
+          of: heading,
+          matching:
+              find.text(inboxDayFormat(testL10n).format(DateTime(2026, 3, 1))));
+      var row = tester.widget<Row>(
+          find.descendant(of: heading, matching: find.byType(Row)));
+
+      expect(row.mainAxisAlignment, MainAxisAlignment.start);
+      // The check box starts at the 16 lp gutter, the text right behind it.
+      expect(tester.getTopLeft(box).dx, 16);
+      expect(tester.getTopLeft(text).dx, lessThan(80));
+    });
+
     testWidgets('selects a day by its heading, and unselects it again',
         (tester) async {
       await pumpInbox(tester, inboxTree);

@@ -854,8 +854,11 @@ class InboxContentState extends State<InboxContent> {
       onTap: () => toggleSection(images),
       child: Padding(
         padding: EdgeInsets.only(top: fontSize, bottom: 8, left: 16, right: 16),
+        // Left-aligned: a centred heading with a check box in front of it
+        // reads as a stray control (the author, 2026-09-23); the album's own
+        // headings follow with issue #158.
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.start,
           children: [
             Icon(
               all ? Icons.check_box : Icons.check_box_outline_blank,
