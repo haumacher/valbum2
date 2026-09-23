@@ -458,6 +458,14 @@ public class PreviewCache {
 				int decodedWidth = swapped ? rawHeight : rawWidth;
 				int decodedHeight = swapped ? rawWidth : rawHeight;
 
+				// A picture smaller than its box is never scaled up (below), so the box shrinks to the
+				// picture instead: a canvas larger than the picture would carry black margins into the
+				// rendition, and a tile drawing that rendition into its row would show the margins as a
+				// picture that does not fill its place (issue #165). The rectangle FaceIndex.content
+				// computes — min(preview, display), centred — is then the whole canvas.
+				previewWidth = Math.min(previewWidth, decodedWidth);
+				previewHeight = Math.min(previewHeight, decodedHeight);
+
 				BufferedImage copy = new BufferedImage(previewWidth, previewHeight, imageType(orig));
 				Graphics2D g = (Graphics2D) copy.getGraphics();
 
