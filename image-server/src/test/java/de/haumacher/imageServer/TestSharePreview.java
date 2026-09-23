@@ -268,6 +268,23 @@ public class TestSharePreview extends TestCase {
 			Arrays.equals(preview(HOLIDAYS + "/Rejected", "kept.jpg"), cover.bodyBytes()));
 	}
 
+	/**
+	 * A photograph in the trash is never a card's cover, not even for a link showing "every
+	 * photo", see issue #152.
+	 */
+	public void testATrashedPhotoIsNeverTheCover() throws Exception {
+		single();
+		Path sidecar = _base.resolve(HOLIDAYS + "/Rejected").resolve("index.json");
+		Files.write(sidecar, new String(Files.readAllBytes(sidecar), StandardCharsets.UTF_8)
+			.replace("\"rating\":-1", "\"rating\":-2").getBytes(StandardCharsets.UTF_8));
+		String token = share("", HOLIDAYS + "/Rejected", Privacy.MEMBERS, Ratings.MIN);
+
+		FakeResponse cover = get("/s/" + token + "/cover.jpg");
+		assertEquals(cover.body(), HttpServletResponse.SC_OK, cover.status());
+		assertTrue("The trashed index picture is the editors' alone.",
+			Arrays.equals(preview(HOLIDAYS + "/Rejected", "kept.jpg"), cover.bodyBytes()));
+	}
+
 	/** A shared folder is drawn with the picture of its first child that has one. */
 	public void testAFolderIsDrawnWithItsFirstChild() throws Exception {
 		single();

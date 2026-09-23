@@ -1937,16 +1937,42 @@ public class AuthService {
 
 	/**
 	 * The lowest {@link de.haumacher.imageServer.shared.model.ImagePart#getRating() rating} the
-	 * given caller is served, see issue #51.
+	 * given caller is served at the given path, see issues #51 and #152.
 	 *
 	 * <p>
-	 * {@link Ratings#MIN} for everybody but a share link, which is to say: no filtering at all. The
-	 * rating is what the viewer filters an album by; only a share link turns it into a limit the
-	 * server enforces on the way out, see {@link de.haumacher.imageServer.PrivacyFilter}.
+	 * Two limits meet here, and the higher one wins:
 	 * </p>
+	 * <ul>
+	 * <li>A share link's own {@link ShareStore.Link#getMinRating() floor}, the author's cut of the
+	 * album (issue #51). Everybody else has no floor of their own: the rating is what the viewer
+	 * filters an album by.</li>
+	 * <li>The trash (issue #152): a photograph rated {@link Ratings#TRASH} is the editor's, set aside
+	 * but not yet purged, and answered to a caller with {@link Rights#EDIT} alone — never to a
+	 * share link, an anonymous visitor, a <code>view</code> or <code>contribute</code> member, and
+	 * never to the author's own "view as" preview, which shows what the others see. So a link
+	 * created with the floor {@link Ratings#MIN}, "every photo", shows every photo <em>of the
+	 * album</em>, and the trash is not part of it.</li>
+	 * </ul>
+	 *
+	 * <p>
+	 * The one place the floor is computed; {@link de.haumacher.imageServer.PrivacyFilter} applies
+	 * it on the way out and knows nothing of either reason.
+	 * </p>
+	 *
+	 * @param caller
+	 *        Who sent the request.
+	 * @param path
+	 *        What is asked for: the album, or an image in it.
+	 * @param viewAs
+	 *        The request's "view as", see {@link Privacy#viewAs(String)}; anything below
+	 *        {@link Privacy#PRIVATE} is a preview.
 	 */
-	public int minRating(Caller caller) {
-		return caller.isShareLink() ? caller.getShare().getMinRating() : Ratings.MIN;
+	public int minRating(Caller caller, PathInfo path, int viewAs) {
+		int floor = caller.isShareLink() ? caller.getShare().getMinRating() : Ratings.MIN;
+		if (viewAs < Privacy.PRIVATE || caller.isShareLink() || !mayEdit(caller, path)) {
+			floor = Ratings.withoutTrash(floor);
+		}
+		return floor;
 	}
 
 	/**

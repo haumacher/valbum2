@@ -5,6 +5,7 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.Privacy;
+import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.Spaces;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -404,9 +405,10 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		if (shown == null) {
 			return null;
 		}
-		// A link never shows a private image, whoever made it, and never one below its rating.
+		// A link never shows a private image, whoever made it, never one below its rating, and
+		// never one in the trash, which is its editors' alone (issue #152).
 		return data.privacy().filter(shown, path, Math.min(Privacy.MEMBERS, link.getMaxPrivacy()),
-			link.getMinRating());
+			Ratings.withoutTrash(link.getMinRating()));
 	}
 
 	/**

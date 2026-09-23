@@ -4,15 +4,24 @@
 package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.MoveService.MoveRefused;
+import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AlbumPart;
+import de.haumacher.imageServer.shared.model.ImageGroup;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.MoveOutcome;
 import de.haumacher.imageServer.shared.model.MoveResult;
+import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.util.UpdateTransient;
 import de.haumacher.imageServer.upload.HashCache;
+import de.haumacher.util.servlet.Util;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.ZoneId;
@@ -24,6 +33,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 /**
  * Deleting albums and folders, see issue #109.
@@ -53,6 +63,12 @@ import java.util.logging.Logger;
  * directory": every file below it must be one the server itself wrote (see {@link #removable}), or
  * nothing is removed and the folder goes to the trash after all. A file the album's own tooling
  * left there survives — in the trash, where its owner can find it.
+ * </p>
+ *
+ * <p>
+ * The one exception to "the server deletes only what it wrote" (issue #152): the one act that
+ * removes a photograph from disk is an administrator's {@link #purge(PathInfo) purge} of the
+ * photographs of an album rated &minus;2.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -95,6 +111,21 @@ public class DeleteService {
 	 */
 	public static final String SHARE_DELETE_REFUSED = "A share link cannot delete an album.";
 
+	/**
+	 * The message a caller is refused with that may not purge the trash of an album, see issue #152.
+	 *
+	 * <p>
+	 * Purging deletes photographs from disk, so it is the administrator's act alone — a share link
+	 * included in the refusal, whatever it allows.
+	 * </p>
+	 */
+	public static final String PURGE_REFUSED = "Only an administrator may purge the trash of an album.";
+
+	/** The message a purge is refused with when a trashed photograph is not a file of the album. */
+	public static String purgeUnresolved(String name) {
+		return "'" + name + "' is not a file of this album; nothing was purged.";
+	}
+
 	/** The message an entry the folder does not hold is refused with. */
 	public static String notFound(String name) {
 		return "'" + name + "' does not exist in this folder.";
@@ -115,6 +146,12 @@ public class DeleteService {
 
 	/** What an entry that held no picture is reported with. */
 	public static final String REMOVED = "Removed: it held no image.";
+
+	/**
+	 * What a photograph deleted by a {@link #purge(PathInfo) purge} is reported with, see issue
+	 * #152: the "no new name" of {@link #REMOVED}, with a reason that is true of a photograph.
+	 */
+	public static final String PURGED = "Deleted from disk: it was rated as trash.";
 
 	/** What an entry that went to the trash is reported with. */
 	public static String trashed(String name) {
@@ -224,6 +261,189 @@ public class DeleteService {
 		}
 		return result;
 	}
+
+	/**
+	 * Deletes every photograph of the given album that is rated {@link Ratings#TRASH} from disk, see
+	 * issue #152.
+	 *
+	 * <p>
+	 * The purge of an album's trash, and the one act of this server that removes a photograph for
+	 * good. Per photograph: the original is unlinked, its
+	 * {@link de.haumacher.imageServer.shared.model.ImagePart} leaves the album's sidecar, its entry
+	 * leaves the {@value HashCache#FILE_NAME}, and the files the server generated from it in the
+	 * album's {@value PreviewCache#CACHE_DIRECTORY_NAME} — its preview, its playback rendition and
+	 * teaser, its face crops, each under its <code>.tmp</code> name too — are deleted with it (see
+	 * {@link #generatedOf(File, String)}). Nothing else is touched: no other photograph, no foreign
+	 * file, no other cache file; the <code>faces.json</code> entry, keyed by the content hash, may
+	 * stay, because it describes contents and not a file.
+	 * </p>
+	 *
+	 * <p>
+	 * The photographs go <em>one by one</em>, a group's members as much as a plain part: the
+	 * rating belongs to one photograph, and a trashed representative must not take the members
+	 * somebody kept with it. A group loses what was trashed of it, and a group left with one member
+	 * becomes that plain part.
+	 * </p>
+	 *
+	 * <p>
+	 * Like {@link #removable(File)}, the whole list of files is computed before anything is
+	 * touched: a photograph the sidecar names that is not a plain regular file of this very folder
+	 * — gone, a directory, a link, a name that is a path — refuses the whole request, and nothing
+	 * is deleted at all.
+	 * </p>
+	 *
+	 * @param folder
+	 *        The album to purge.
+	 * @return One outcome per photograph, {@link #PURGED} with no new name; empty where the album
+	 *         holds nothing rated {@link Ratings#TRASH} (or is no album at all).
+	 * @throws MoveRefused
+	 *         If the folder does not exist, or one of the photographs cannot be resolved to a file of
+	 *         it.
+	 */
+	public MoveResult purge(PathInfo folder) throws MoveRefused, IOException {
+		File dir = folder.toFile();
+		if (!dir.isDirectory()) {
+			throw new MoveRefused(HttpServletResponse.SC_NOT_FOUND, FOLDER_MISSING);
+		}
+		MoveResult result = MoveResult.create();
+		Resource resource = _cache.lookup(folder);
+		if (!(resource instanceof AlbumInfo)) {
+			return result;
+		}
+		AlbumInfo album = (AlbumInfo) resource;
+		List<ImagePart> trashed = trashed(album);
+		if (trashed.isEmpty()) {
+			return result;
+		}
+
+		// Everything that will be deleted, before anything is: one name that does not resolve and
+		// nothing happens.
+		Path dirPath = dir.getAbsoluteFile().toPath().normalize();
+		List<File> originals = new ArrayList<>();
+		List<List<File>> generated = new ArrayList<>();
+		for (ImagePart image : trashed) {
+			String name = image.getName();
+			File file = new File(dir, name);
+			Path path = file.getAbsoluteFile().toPath().normalize();
+			if (!isPlainName(name) || !dirPath.equals(path.getParent())
+				|| !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+				throw new MoveRefused(HttpServletResponse.SC_CONFLICT, purgeUnresolved(name));
+			}
+			originals.add(file);
+			generated.add(generatedOf(dir, name));
+		}
+
+		// Read before the files go, so that the refresh below sees them vanish.
+		HashCache hashes = new HashCache(dir);
+		boolean changed = false;
+		try {
+			for (int n = 0, size = trashed.size(); n < size; n++) {
+				ImagePart image = trashed.get(n);
+				File original = originals.get(n);
+				try {
+					Files.delete(original.toPath());
+				} catch (IOException ex) {
+					LOG.log(Level.WARNING, "Cannot delete '" + original.getAbsolutePath() + "': " + ex.getMessage(), ex);
+					result.addOutcome(outcome(image.getName(), "", failed(ex.getMessage())));
+					continue;
+				}
+				MoveService.detach(album, image);
+				changed = true;
+				for (File file : generated.get(n)) {
+					if (!file.delete() && file.exists()) {
+						// Derived data: what cannot be deleted is abandoned, the photograph is gone.
+						LOG.warning("Cannot delete the cached file '" + file.getAbsolutePath() + "'.");
+					}
+				}
+				LOG.info("Purged '" + original.getAbsolutePath() + "': it was rated as trash.");
+				result.addOutcome(outcome(image.getName(), "", PURGED));
+			}
+		} finally {
+			if (changed) {
+				try {
+					MoveService.repairIndexPicture(album);
+					UpdateTransient.updateTransient(album);
+					ImageServlet.storeSidecar(dir, MoveService.json(album));
+					// The hashes of the vanished files go with them: a refresh forgets what is gone.
+					hashes.refresh();
+					hashes.flush();
+				} finally {
+					_cache.invalidateTree(folder);
+				}
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * The photographs of the given album rated {@link Ratings#TRASH}, group members counted one by
+	 * one, in the order the album holds them.
+	 */
+	static List<ImagePart> trashed(AlbumInfo album) {
+		List<ImagePart> result = new ArrayList<>();
+		for (AlbumPart part : album.getParts()) {
+			if (part instanceof ImagePart) {
+				addTrashed(result, (ImagePart) part);
+			} else if (part instanceof ImageGroup) {
+				for (ImagePart member : ((ImageGroup) part).getImages()) {
+					addTrashed(result, member);
+				}
+			}
+		}
+		return result;
+	}
+
+	private static void addTrashed(List<ImagePart> result, ImagePart image) {
+		if (image.getRating() <= Ratings.TRASH) {
+			result.add(image);
+		}
+	}
+
+	/**
+	 * The files of the given folder's {@value PreviewCache#CACHE_DIRECTORY_NAME} the server generated
+	 * from the photograph of the given name, see {@link #purge(PathInfo)}.
+	 *
+	 * <p>
+	 * A name rule, exact per kind, and {@link CacheRefresh#isGenerated(String)} has to name the file
+	 * too: the preview (named as {@link PreviewCache#createPreview(File)} names it), the two video
+	 * renditions ({@link VideoRenditions.Kind#fileName(String)}) and the face crops of either naming
+	 * (<code>face-&lt;name&gt;-f&lt;12 hex&gt;.jpg</code>, <code>face-&lt;name&gt;-&lt;n&gt;.jpg</code>),
+	 * each also under its {@value PreviewCache#TMP_SUFFIX} name. A file of another photograph whose
+	 * name merely begins with this one's is never matched.
+	 * </p>
+	 */
+	static List<File> generatedOf(File dir, String name) {
+		List<File> result = new ArrayList<>();
+		File[] files = CacheRefresh.cacheDir(dir).listFiles();
+		if (files == null) {
+			return result;
+		}
+		String suffix = Util.suffix(name);
+		String previewType = "png".equals(suffix) ? "png" : "jpg";
+		Set<String> exact = new HashSet<>();
+		exact.add(PreviewCache.PREVIEW_PREFIX + name + (previewType.equals(suffix) ? "" : "." + previewType));
+		for (VideoRenditions.Kind kind : VideoRenditions.Kind.values()) {
+			exact.add(kind.fileName(name));
+		}
+		String cropPrefix = de.haumacher.imageServer.faces.FaceIndex.CROP_PREFIX + name + "-";
+		for (File file : files) {
+			String fileName = file.getName();
+			if (!file.isFile() || Files.isSymbolicLink(file.toPath()) || !CacheRefresh.isGenerated(fileName)) {
+				continue;
+			}
+			String plain = fileName.endsWith(PreviewCache.TMP_SUFFIX)
+				? fileName.substring(0, fileName.length() - PreviewCache.TMP_SUFFIX.length())
+				: fileName;
+			if (exact.contains(plain)
+				|| (plain.startsWith(cropPrefix) && CROP_KEY.matcher(plain.substring(cropPrefix.length())).matches())) {
+				result.add(file);
+			}
+		}
+		return result;
+	}
+
+	/** What follows <code>face-&lt;name&gt;-</code> in the name of a crop, see issues #124 and #141. */
+	private static final Pattern CROP_KEY = Pattern.compile("(f[0-9a-fA-F]{12}|[0-9]+)\\.[jJ][pP][gG]");
 
 	/**
 	 * Moves the named images of the given album into the album it has in the trash, see issue

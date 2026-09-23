@@ -35,6 +35,7 @@ import 'rights.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
+import 'trash_view.dart' show hasTrashedImages;
 import 'video_view.dart';
 
 /// The clearance an album is shown with in the edit mode, see issue #46.
@@ -1041,6 +1042,21 @@ class AlbumContentState extends State<AlbumContent>
   void showPersons() => widget.albumState.navigator
       .go(PersonsRoute(widget.albumState.path));
 
+  /// Whether "Show trash" is offered for this album, see issue #152.
+  ///
+  /// To whoever may change the album ([mayEditAlbum]: `edit`, no share link,
+  /// no "view as" preview — the server answers a trashed photograph to
+  /// editors alone), outside the edit mode — the trash page writes at once,
+  /// and a write of the album under an edit session's unsaved buffer would
+  /// save that buffer with it — and only where the album holds a photograph
+  /// rated as trash, group members counted one by one.
+  bool get mayShowTrash =>
+      mayEditAlbum && !editMode && hasTrashedImages(widget.album);
+
+  /// Opens the trash of this album, see issue #152.
+  void showTrash() =>
+      widget.albumState.navigator.go(TrashRoute(widget.albumState.path));
+
   /// Whether this caller may change the album itself (issue #121).
   ///
   /// What the edit mode needs, without needing the edit mode: the album's
@@ -1542,6 +1558,15 @@ class AlbumContentState extends State<AlbumContent>
               Icons.people_outline,
               _l10n.personsMenuEntry,
               (_) => showPersons(),
+            ),
+          // The photographs rated as trash, restored or purged on a page of
+          // their own, see issue #152.
+          if (mayShowTrash)
+            keyedMenuItem(
+              const Key("show-trash"),
+              Icons.delete_sweep_outlined,
+              _l10n.showTrash,
+              (_) => showTrash(),
             ),
           // Whoever may change this album may have the photos out of it that
           // the library already holds somewhere else, see issue #118.

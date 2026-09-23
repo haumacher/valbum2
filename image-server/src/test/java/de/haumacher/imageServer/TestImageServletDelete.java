@@ -273,6 +273,49 @@ public class TestImageServletDelete extends TestCase {
 			before, fingerprint(new File(trash(), "Tree").toPath()));
 	}
 
+	/**
+	 * The one amendment of the doctrine above, see issue #152: an administrator's purge deletes the
+	 * originals rated &minus;2 and the cache files generated from them — and not one byte of
+	 * anything else. The sidecar and the hash cache are rewritten (they lose the purged entries)
+	 * and are therefore the only other files allowed to change.
+	 */
+	public void testAPurgeDeletesOnlyTheTrashedOriginalsAndTheirCacheFiles() throws Exception {
+		image("A/Trip/gone.jpg", 8, 6, Color.RED);
+		image("A/Trip/also-gone.jpg", 8, 7, Color.GREEN);
+		image("A/Trip/kept.jpg", 8, 5, Color.BLUE);
+		image("A/Trip/rejected.jpg", 8, 4, Color.YELLOW);
+		image("A/Trip/unlisted.jpg", 9, 4, Color.PINK);
+		write("A/Trip/notes.txt", "notes".getBytes(StandardCharsets.UTF_8));
+		write("A/Trip/.vacache/stray.jpg", jpeg(4, 3, Color.CYAN));
+		write("A/Trip/.vacache/preview-gone.jpg", jpeg(4, 3, Color.RED));
+		write("A/Trip/.vacache/face-gone.jpg-f0123456789ab.jpg", jpeg(4, 3, Color.RED));
+		write("A/Trip/.vacache/preview-kept.jpg", jpeg(4, 3, Color.BLUE));
+		write("A/Trip/.vacache/face-kept.jpg-1.jpg", jpeg(4, 3, Color.BLUE));
+		image("A/Other/other.jpg", 8, 6, Color.RED);
+		sidecar("A/Other", "[\"AlbumInfo\",{\"title\":\"Other\",\"parts\":[" + part("other.jpg", "\"rating\":-2")
+			+ "]}]");
+		sidecar("A/Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("gone.jpg", "\"rating\":-2")
+			+ ",[\"ImageGroup\",{\"representative\":0,\"images\":[{\"name\":\"kept.jpg\",\"kind\":\"IMAGE\","
+			+ "\"width\":8,\"height\":6},{\"name\":\"also-gone.jpg\",\"kind\":\"IMAGE\",\"width\":8,"
+			+ "\"height\":6,\"rating\":-2}]}]," + part("rejected.jpg", "\"rating\":-1") + "]}]");
+		List<String> purged = Arrays.asList("Trip/gone.jpg", "Trip/also-gone.jpg", "Trip/.vacache/preview-gone.jpg",
+			"Trip/.vacache/face-gone.jpg-f0123456789ab.jpg");
+		String before = fingerprintExcept(_base.resolve("A"), purged);
+
+		FakeResponse response = new FakeResponse();
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", "purge");
+		_servlet.doPost(request("/A/Trip/", null, "", null, parameters), response.response());
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+
+		for (String path : purged) {
+			assertFalse("'" + path + "' must be gone.", _base.resolve("A").resolve(path).toFile().exists());
+		}
+		assertEquals("Every other byte of the library survived the purge, name for name.", before,
+			fingerprintExcept(_base.resolve("A"), purged));
+		assertFalse("A purge sets nothing aside.", trash().exists());
+	}
+
 	public void testTheRemovalBranchIsRefusedAtEveryDepth() throws Exception {
 		// The same tree, once per depth: one picture anywhere below is enough to save it all.
 		for (String where : Arrays.asList("A/Deep/a.jpg", "A/Deep/1/a.jpg", "A/Deep/1/2/a.jpg",
@@ -520,6 +563,33 @@ public class TestImageServletDelete extends TestCase {
 
 	private static String read(Path file) throws IOException {
 		return new String(Files.readAllBytes(file), StandardCharsets.ISO_8859_1);
+	}
+
+	/**
+	 * A fingerprint of every file below the given path but the purged ones and the sidecars a purge
+	 * rewrites (<code>index.json</code>, its backups, <code>.hashes.json</code>).
+	 */
+	private static String fingerprintExcept(Path root, List<String> purged) throws Exception {
+		MessageDigest digest = MessageDigest.getInstance("SHA-256");
+		List<Path> files = new ArrayList<>();
+		try (Stream<Path> walk = Files.walk(root)) {
+			walk.filter(Files::isRegularFile).forEach(files::add);
+		}
+		files.sort(Comparator.comparing(Path::toString));
+		for (Path file : files) {
+			String relative = root.relativize(file).toString();
+			String name = file.getFileName().toString();
+			if (purged.contains(relative) || name.startsWith("index.json") || name.equals(".hashes.json")) {
+				continue;
+			}
+			digest.update(relative.getBytes(StandardCharsets.UTF_8));
+			digest.update(Files.readAllBytes(file));
+		}
+		StringBuilder result = new StringBuilder();
+		for (byte b : digest.digest()) {
+			result.append(String.format("%02x", Byte.valueOf(b)));
+		}
+		return result.toString();
 	}
 
 	/** A fingerprint of every file below the given path: its name, and its bytes. */

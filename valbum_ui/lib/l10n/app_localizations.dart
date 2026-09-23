@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('de'),
-    Locale('en')
+    Locale('en'),
   ];
 
   /// The name of the application, shown as the window or browser tab title
@@ -1369,6 +1369,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'at least {rating}'**
   String ratingFloorAtLeast(String rating);
+
+  /// Album menu entry opening the photographs of the album rated as trash
+  ///
+  /// In en, this message translates to:
+  /// **'Show trash'**
+  String get showTrash;
+
+  /// Title of the page showing the photographs of an album rated as trash
+  ///
+  /// In en, this message translates to:
+  /// **'Trash bin'**
+  String get trashPageTitle;
+
+  /// Tooltip of the tool giving a photograph of the trash its rating back (unrated)
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get trashRestore;
+
+  /// Button of the trash page deleting its photographs from disk
+  ///
+  /// In en, this message translates to:
+  /// **'Purge…'**
+  String get trashPurgeAction;
+
+  /// Title of the question asked before the trash of an album is purged
+  ///
+  /// In en, this message translates to:
+  /// **'Purge trash'**
+  String get trashPurgeTitle;
+
+  /// Says what purging the trash of an album does
+  ///
+  /// In en, this message translates to:
+  /// **'The photographs are deleted from disk. This cannot be undone.'**
+  String get trashPurgeMessage;
+
+  /// Button confirming that the trash of an album is purged
+  ///
+  /// In en, this message translates to:
+  /// **'Delete permanently'**
+  String get trashPurgeConfirm;
+
+  /// Says how many photographs the purge deleted
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photograph was deleted from disk.} other{{count} photographs were deleted from disk.}}'**
+  String trashPurged(int count);
+
+  /// Said on the trash page when no photograph of the album is rated as trash
+  ///
+  /// In en, this message translates to:
+  /// **'There is nothing in the trash of this album.'**
+  String get trashEmptyNotice;
+
+  /// Button leaving the empty trash page for its album
+  ///
+  /// In en, this message translates to:
+  /// **'Back to the album'**
+  String get trashBackToAlbum;
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
+  /// **'purging the trash of {folder}'**
+  String doingPurgingTrash(String folder);
 
   /// Button leaving a dead invitation page for the ordinary start
   ///
@@ -3942,8 +4008,9 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }

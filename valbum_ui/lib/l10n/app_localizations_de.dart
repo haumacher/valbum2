@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -792,6 +793,50 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String get showTrash => 'Papierkorb anzeigen';
+
+  @override
+  String get trashPageTitle => 'Papierkorb';
+
+  @override
+  String get trashRestore => 'Wiederherstellen';
+
+  @override
+  String get trashPurgeAction => 'Löschen…';
+
+  @override
+  String get trashPurgeTitle => 'Papierkorb leeren';
+
+  @override
+  String get trashPurgeMessage =>
+      'Die Fotos werden von der Festplatte gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden.';
+
+  @override
+  String get trashPurgeConfirm => 'Endgültig löschen';
+
+  @override
+  String trashPurged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos wurden von der Festplatte gelöscht.',
+      one: '1 Foto wurde von der Festplatte gelöscht.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get trashEmptyNotice => 'Der Papierkorb dieses Albums enthält nichts.';
+
+  @override
+  String get trashBackToAlbum => 'Zurück zum Album';
+
+  @override
+  String doingPurgingTrash(String folder) {
+    return 'Den Papierkorb des Ordners $folder leeren';
+  }
+
+  @override
   String get shareContinueToStart => 'Weiter zur Startseite';
 
   @override
@@ -1398,8 +1443,7 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count Fotos wurden aussortiert; die verbleibenden Kopien befinden sich an anderer Stelle in der Bibliothek.',
-      one:
-          '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
+      one: '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
     );
     return '$_temp0';
   }
@@ -1418,8 +1462,7 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count zwischengespeicherte Dateien wurden verworfen; die Vorschauen werden neu erstellt.',
-      one:
-          '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
+      one: '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
     );
     return '$_temp0';
   }

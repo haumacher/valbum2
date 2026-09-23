@@ -212,6 +212,16 @@
   "ratingTrash": "Müll",
   "ratingFloorEveryPhoto": "jedes Foto",
   "ratingFloorAtLeast": "mindestens {rating}",
+  "showTrash": "Papierkorb anzeigen",
+  "trashRestore": "Wiederherstellen",
+  "trashPurgeAction": "Löschen…",
+  "trashPurgeTitle": "Papierkorb leeren",
+  "trashPurgeMessage": "Die Fotos werden von der Festplatte gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden.",
+  "trashPurgeConfirm": "Endgültig löschen",
+  "trashPurged": "{count, plural, =1{1 Foto wurde von der Festplatte gelöscht.} other{{count} Fotos wurden von der Festplatte gelöscht.}}",
+  "trashEmptyNotice": "Der Papierkorb dieses Albums enthält nichts.",
+  "trashBackToAlbum": "Zurück zum Album",
+  "doingPurgingTrash": "Den Papierkorb des Ordners {folder} leeren",
   "shareContinueToStart": "Weiter zur Startseite",
   "shareBackToAlbum": "Zurück zum geteilten Album",
   "expiryNever": "Nie",
@@ -635,5 +645,6 @@
   "viewerMarkFaceHint": "Zeichnen Sie ein Rechteck um ein Gesicht.",
   "viewerFaceDecision": "Dieses Gesicht",
   "personsChooserInAlbum": "In diesem Album",
-  "personsChooserAll": "Alle Personen"
+  "personsChooserAll": "Alle Personen",
+  "trashPageTitle": "Papierkorb"
 }

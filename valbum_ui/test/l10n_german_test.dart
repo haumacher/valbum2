@@ -40,6 +40,7 @@ import 'move_test.dart' show recordingClient, treeAnswer;
 import 'persons_view_test.dart'
     show albumOf, authOf, editorClient, pumpEditor, selectFace;
 import 'photo_picker_test.dart' show twoAlbums;
+import 'trash_view_test.dart' as trash;
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
 import 'util/l10n.dart';
@@ -480,6 +481,43 @@ void sliceTwo() {
       expect(find.text(de.appearsInPhotosAs("Anna")), findsOneWidget);
       var en = l10nOf(const Locale("en"));
       expect(find.text(en.appearsInPhotosAs("Anna")), findsNothing);
+    });
+  });
+
+  group('the trash page speaks German (issue #152)', () {
+    testWidgets('its title, its tools and the purge question',
+        (tester) async {
+      speakGerman(tester);
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(VAlbumApp(
+          client: trash.server(requests: []),
+          initialRoute: const TrashRoute(["Zoo"]),
+          settings: ServerSettings(
+            store: InMemorySettingsStore(),
+            platformDefault: () => trash.dataUrl,
+            token: "dev-9",
+            userName: "carol",
+            loaded: true,
+          ),
+        ));
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.text(de.trashPageTitle), findsOneWidget);
+      expect(find.text(de.trashPurgeAction), findsOneWidget);
+      expect(find.byTooltip(de.trashRestore), findsNWidgets(2));
+
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("trash-purge")));
+        await tester.pumpAndSettle();
+      });
+      expect(find.text(de.trashPurgeTitle), findsOneWidget);
+      expect(find.text(de.trashPurgeMessage), findsOneWidget);
+      expect(find.text(de.trashPurgeConfirm), findsOneWidget);
+
+      var en = l10nOf(const Locale("en"));
+      expect(find.text(en.trashPageTitle), findsNothing);
+      expect(find.text(en.trashPurgeMessage), findsNothing);
     });
   });
 

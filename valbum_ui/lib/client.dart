@@ -1529,6 +1529,29 @@ class VAlbumClient {
     return MoveResult.read(JsonReader.fromString(response.body));
   }
 
+  /// Deletes the photographs of the album at [path] that are rated as trash
+  /// from disk, see issue #152.
+  ///
+  /// An administrator's act: every photograph rated −2, group members one by
+  /// one, is unlinked and leaves the album's sidecar. The answer has one
+  /// outcome per photograph, and none where there was nothing to purge.
+  Future<MoveResult> purge(List<String> path) async {
+    var url = "${folderUrl(path)}?action=purge";
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingPurgingTrash("'${path.join("/")}'"),
+      );
+    }
+    return MoveResult.read(JsonReader.fromString(response.body));
+  }
+
   /// What an upload failure is called in [interruptedUploadMessage].
   ///
   /// A transport failure is a lost connection, whatever the socket layer calls

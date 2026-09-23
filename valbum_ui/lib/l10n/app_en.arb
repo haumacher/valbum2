@@ -1332,6 +1332,71 @@
     },
     "x-translated": "e7f6101b"
   },
+  "showTrash": "Show trash",
+  "@showTrash": {
+    "description": "Album menu entry opening the photographs of the album rated as trash",
+    "x-translated": "b2b06355"
+  },
+  "trashPageTitle": "Trash bin",
+  "@trashPageTitle": {
+    "description": "Title of the page showing the photographs of an album rated as trash",
+    "x-translated": "dba3ba4a"
+  },
+  "trashRestore": "Restore",
+  "@trashRestore": {
+    "description": "Tooltip of the tool giving a photograph of the trash its rating back (unrated)",
+    "x-translated": "486a1663"
+  },
+  "trashPurgeAction": "Purge…",
+  "@trashPurgeAction": {
+    "description": "Button of the trash page deleting its photographs from disk",
+    "x-translated": "410449dd"
+  },
+  "trashPurgeTitle": "Purge trash",
+  "@trashPurgeTitle": {
+    "description": "Title of the question asked before the trash of an album is purged",
+    "x-translated": "1a0a4ac1"
+  },
+  "trashPurgeMessage": "The photographs are deleted from disk. This cannot be undone.",
+  "@trashPurgeMessage": {
+    "description": "Says what purging the trash of an album does",
+    "x-translated": "4e2661a3"
+  },
+  "trashPurgeConfirm": "Delete permanently",
+  "@trashPurgeConfirm": {
+    "description": "Button confirming that the trash of an album is purged",
+    "x-translated": "3cab4752"
+  },
+  "trashPurged": "{count, plural, =1{1 photograph was deleted from disk.} other{{count} photographs were deleted from disk.}}",
+  "@trashPurged": {
+    "description": "Says how many photographs the purge deleted",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "98db01f5"
+  },
+  "trashEmptyNotice": "There is nothing in the trash of this album.",
+  "@trashEmptyNotice": {
+    "description": "Said on the trash page when no photograph of the album is rated as trash",
+    "x-translated": "8cc951f5"
+  },
+  "trashBackToAlbum": "Back to the album",
+  "@trashBackToAlbum": {
+    "description": "Button leaving the empty trash page for its album",
+    "x-translated": "d080c56b"
+  },
+  "doingPurgingTrash": "purging the trash of {folder}",
+  "@doingPurgingTrash": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    },
+    "x-translated": "a34c5367"
+  },
   "shareContinueToStart": "Continue to the start page",
   "@shareContinueToStart": {
     "description": "Button leaving a dead invitation page for the ordinary start",
