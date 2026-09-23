@@ -251,7 +251,13 @@ suggestions across the space), #128 (a person linked to a member), #129 (XMP fac
   never showed it because a photograph is always taller than 600 px. Decided the same night (#159):
   the trash folder **stays** for the album/folder delete of #109 and for a contributor's delete of their
   own photographs in an inbox — the larger, unrated losses keep their safety net on disk — and only the
-  purge of trash-rated photographs deletes.
+  purge of trash-rated photographs deletes. Later the same night: an album's headings carry **two
+  levels** and select the images under them (#158, the inbox's structure for stored headings); a face
+  region is **moved and resized** in the viewer, as its own `adjust-faces` action because the released
+  app's marks send `face: 0` with a box and must never be read as adjustments (#157); and the sample of
+  #161 turned out to carry a **GPS block Android had zero-filled** — the camera-roll sync never held
+  `ACCESS_MEDIA_LOCATION`, so every photograph it uploaded came redacted (#166, fixed; the uploads so
+  far keep their zeros, which #167's repair command replaces from the originals by file name).
 
 - **2026-09-23 (evening)** — Five reports from using 2.7.0, all in one round. **The trash of an album**
   (#152): a photograph rated −2 is answered to editors only from now on (a share link's "every photo"
