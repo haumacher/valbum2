@@ -93,6 +93,112 @@ const double _clickedFace = 24;
 /// How tall the name chip over a face box is drawn, in pixels of the screen.
 const double _faceLabelHeight = 22;
 
+/// How far a face box must be dragged to be moved or resized (issue #157).
+///
+/// In pixels of the screen, in either direction: a drag shorter than that is
+/// a click whose hand shook, and it opens the face's sheet like a tap.
+const double _adjustSlop = 4;
+
+/// How large a corner handle of a face box takes the pointer, in pixels of the
+/// screen (issue #157); the square drawn in it is smaller.
+const double _handleSize = 24;
+
+/// The four corners of a face box a handle resizes it by (issue #157).
+enum FaceCorner {
+  topLeft("top-left"),
+  topRight("top-right"),
+  bottomLeft("bottom-left"),
+  bottomRight("bottom-right");
+
+  /// How the corner is spelled in the key of its handle.
+  final String keyName;
+
+  const FaceCorner(this.keyName);
+
+  /// Where the corner lies on the given rectangle.
+  Offset of(Rect rect) => switch (this) {
+        FaceCorner.topLeft => rect.topLeft,
+        FaceCorner.topRight => rect.topRight,
+        FaceCorner.bottomLeft => rect.bottomLeft,
+        FaceCorner.bottomRight => rect.bottomRight,
+      };
+}
+
+/// A face box being moved or resized in the viewer, see issue #157.
+///
+/// Everything in page coordinates: the box as it was when the drag began, and
+/// the box as the pointer has made it since. The picture it belongs to is
+/// remembered, so that a drag that outlives a page turn adjusts nothing.
+class _FaceAdjustment {
+  final String image;
+  final FaceInfo face;
+
+  /// The corner being dragged, `null` where the whole box is moved.
+  final FaceCorner? corner;
+
+  final Rect start;
+  Rect rect;
+
+  /// Where the pointer went down, in global coordinates.
+  final Offset origin;
+
+  /// The longest the pointer has been away from where it went down, per axis.
+  double moved = 0;
+
+  /// Whether the new box has been posted and the answer is awaited: the box
+  /// stays where it was dragged to until the answer says where it is.
+  bool posting = false;
+
+  _FaceAdjustment(this.image, this.face, this.corner, this.start, this.origin)
+      : rect = start;
+}
+
+/// The box [start] dragged by [delta], kept inside [bounds] (issue #157).
+///
+/// Moving keeps the size and stops at the edges of the picture; a corner moves
+/// alone, the opposite corner standing still, and never nearer to it than
+/// [minSide], so a box can be made small but not turned inside out. Pure, so
+/// that the geometry is checked without a screen.
+Rect adjustedRect(
+  Rect start,
+  FaceCorner? corner,
+  Offset delta,
+  Rect bounds, {
+  double minSide = _minMarkedFace,
+}) {
+  if (corner == null) {
+    var dx = delta.dx;
+    var dy = delta.dy;
+    if (start.width <= bounds.width) {
+      dx = dx.clamp(bounds.left - start.left, bounds.right - start.right);
+    }
+    if (start.height <= bounds.height) {
+      dy = dy.clamp(bounds.top - start.top, bounds.bottom - start.bottom);
+    }
+    return start.shift(Offset(dx, dy));
+  }
+  var point = corner.of(start) + delta;
+  var x = point.dx.clamp(bounds.left, bounds.right);
+  var y = point.dy.clamp(bounds.top, bounds.bottom);
+  var left = start.left, top = start.top;
+  var right = start.right, bottom = start.bottom;
+  switch (corner) {
+    case FaceCorner.topLeft:
+      left = math.min(x, right - minSide);
+      top = math.min(y, bottom - minSide);
+    case FaceCorner.topRight:
+      right = math.max(x, left + minSide);
+      top = math.min(y, bottom - minSide);
+    case FaceCorner.bottomLeft:
+      left = math.min(x, right - minSide);
+      bottom = math.max(y, top + minSide);
+    case FaceCorner.bottomRight:
+      right = math.max(x, left + minSide);
+      bottom = math.max(y, top + minSide);
+  }
+  return Rect.fromLTRB(left, top, right, bottom);
+}
+
 /// The axis a drag of the fitted image was locked to, see issue #61.
 ///
 /// A drag of the fitted image follows the finger along one axis only: the
@@ -300,6 +406,9 @@ class ImageViewState extends State<ImageView>
   /// wherever the pointer is now — in every direction. Anchoring it on the
   /// last frame's corner instead collapsed every drag that went left or up.
   Offset? _markStart;
+
+  /// The face box being moved or resized, `null` while none is (#157).
+  _FaceAdjustment? _adjusting;
 
   /// The register, as far as this viewer has loaded it, see [PeopleRegistry].
   Map<String, Person> _people = const {};
@@ -531,6 +640,7 @@ class ImageViewState extends State<ImageView>
       _markingFaces = false;
       _marked = null;
       _markStart = null;
+      _adjusting = null;
     });
   }
 
@@ -780,18 +890,216 @@ class ImageViewState extends State<ImageView>
       if (!mounted) {
         return false;
       }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            error is VAlbumException ? error.message : "$error",
-            key: const Key("face-tag-failed"),
-          ),
-          backgroundColor: Colors.red.shade700,
-          duration: const Duration(seconds: 8),
-        ),
-      );
+      _tagFailed(messenger, error);
       return false;
     }
+  }
+
+  /// Says in the server's own words that a write about a face was refused.
+  void _tagFailed(ScaffoldMessengerState messenger, Object error) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          error is VAlbumException ? error.message : "$error",
+          key: const Key("face-tag-failed"),
+        ),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 8),
+      ),
+    );
+  }
+
+  /// Gives the given face the given box, at once (issue #157).
+  ///
+  /// `?action=adjust-faces`: the face by its index and the new box, in the
+  /// frame the faces are answered in, together with the decision the face
+  /// stands under — a confirmation or a rejection travels along with its
+  /// person, and anything else (a face nobody decided about, a suggestion of
+  /// issue #127, which is no decision) is sent undecided. Refused offline with
+  /// the usual reason; a refusal of the server is said in its own words and
+  /// changes nothing, so the box snaps back to where the server has it.
+  Future<bool> adjustFace(FaceInfo face, MarkedBox box) async {
+    var path = widget.editPath;
+    if (path == null || refuseWhileOffline(context)) {
+      return false;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+    var decided =
+        face.state == FaceState.confirmed || face.state == FaceState.rejected;
+    var assignment = FaceAssignment(
+      image: part.name,
+      face: face.index,
+      person: decided ? face.person : "",
+      state: decided ? face.state : FaceState.undecided,
+      x: box.x,
+      y: box.y,
+      w: box.w,
+      h: box.h,
+    );
+    try {
+      var answer =
+          await widget.client.adjustFaces(path, TagFaces(faces: [assignment]));
+      if (!mounted) {
+        return false;
+      }
+      _adopt(answer);
+      return true;
+    } catch (error) {
+      if (!mounted) {
+        return false;
+      }
+      _tagFailed(messenger, error);
+      return false;
+    }
+  }
+
+  /// Begins moving (without [corner]) or resizing the box of [face] (#157).
+  void _beginAdjusting(
+    ImageTransform tx,
+    FaceInfo face,
+    FaceCorner? corner,
+    Offset origin,
+  ) {
+    if (_adjusting?.posting ?? false) {
+      // One adjustment at a time: the answer to the last one is not in yet.
+      return;
+    }
+    setState(() {
+      _adjusting = _FaceAdjustment(
+        part.name,
+        face,
+        corner,
+        pageRectOfBox(tx, face.x, face.y, face.w, face.h),
+        origin,
+      );
+    });
+  }
+
+  /// Follows the pointer, [delta] away from where it went down (#157).
+  void _updateAdjusting(ImageTransform tx, Offset delta) {
+    var adjusting = _adjusting;
+    if (adjusting == null || adjusting.posting) {
+      return;
+    }
+    setState(() {
+      adjusting.moved = math.max(
+        adjusting.moved,
+        math.max(delta.dx.abs(), delta.dy.abs()),
+      );
+      adjusting.rect = adjustedRect(
+        adjusting.start,
+        adjusting.corner,
+        delta,
+        pageRectOfBox(tx, 0, 0, 1, 1),
+      );
+    });
+  }
+
+  /// Lets go of the box: a drag too short is a tap, anything else is posted.
+  Future<void> _endAdjusting(ImageTransform tx) async {
+    var adjusting = _adjusting;
+    if (adjusting == null || adjusting.posting) {
+      return;
+    }
+    if (adjusting.image != part.name || adjusting.moved < _adjustSlop) {
+      setState(() => _adjusting = null);
+      if (adjusting.image == part.name) {
+        await decideFace(adjusting.face);
+      }
+      return;
+    }
+    var box = markedBox(tx, adjusting.rect.topLeft, adjusting.rect.bottomRight);
+    if (box == null) {
+      setState(() => _adjusting = null);
+      return;
+    }
+    setState(() => adjusting.posting = true);
+    try {
+      await adjustFace(adjusting.face, box);
+    } finally {
+      if (mounted && identical(_adjusting, adjusting)) {
+        // Drawn from the faces again: where the answer put it, or — refused —
+        // where it was.
+        setState(() => _adjusting = null);
+      }
+    }
+  }
+
+  /// Drops a drag the gesture arena took away.
+  void _cancelAdjusting() {
+    var adjusting = _adjusting;
+    if (adjusting != null && !adjusting.posting) {
+      setState(() => _adjusting = null);
+    }
+  }
+
+  /// The gestures of a face box or of one of its handles (issue #157).
+  ///
+  /// Three recognisers share the arena, and the kind of pointer decides:
+  ///
+  /// * a **tap** opens the face's sheet, as it did before (#147);
+  /// * a **mouse** (or a pen) drags at once — the pan recogniser is offered
+  ///   those pointers only, and wins the arena as soon as the pointer has
+  ///   moved a precise pointer's slop; a drag that ends within [_adjustSlop]
+  ///   is still a tap, so a click whose hand shook opens the sheet;
+  /// * a **finger** drags after a long press: a plain swipe on a box is no
+  ///   move, because a finger swipes to page and to pan and a box is easily
+  ///   hit on the way; holding it first says "this box". A long press that
+  ///   does not move is a tap as well.
+  ///
+  /// A drag that starts on a box never reaches the picture beneath — the box
+  /// is the hit, the picture's own pan is not in the arena at all — so the
+  /// picture stands still while a box is dragged, as it does for the marking
+  /// tool.
+  Map<Type, GestureRecognizerFactory> _adjustGestures(
+    ImageTransform tx,
+    FaceInfo face,
+    FaceCorner? corner,
+  ) {
+    var adjustable = face.state != FaceState.notAFace;
+    return {
+      TapGestureRecognizer:
+          GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+        () => TapGestureRecognizer(),
+        (recognizer) => recognizer.onTap = () => decideFace(face),
+      ),
+      if (adjustable)
+        PanGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<PanGestureRecognizer>(
+          () => PanGestureRecognizer(supportedDevices: const {
+            PointerDeviceKind.mouse,
+            PointerDeviceKind.stylus,
+            PointerDeviceKind.invertedStylus,
+            PointerDeviceKind.trackpad,
+          }),
+          (recognizer) => recognizer
+            ..dragStartBehavior = DragStartBehavior.down
+            ..onStart = ((details) =>
+                _beginAdjusting(tx, face, corner, details.globalPosition))
+            ..onUpdate = ((details) {
+              var origin = _adjusting?.origin;
+              if (origin != null) {
+                _updateAdjusting(tx, details.globalPosition - origin);
+              }
+            })
+            ..onEnd = ((details) => _endAdjusting(tx))
+            ..onCancel = _cancelAdjusting,
+        ),
+      if (adjustable)
+        LongPressGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+          () => LongPressGestureRecognizer(),
+          (recognizer) => recognizer
+            ..onLongPressStart = ((details) {
+              HapticFeedback.selectionClick();
+              _beginAdjusting(tx, face, corner, details.globalPosition);
+            })
+            ..onLongPressMoveUpdate =
+                ((details) => _updateAdjusting(tx, details.offsetFromOrigin))
+            ..onLongPressEnd = ((details) => _endAdjusting(tx))
+            ..onLongPressCancel = _cancelAdjusting,
+        ),
+    };
   }
 
   /// Takes the faces of the answered album over onto the picture shown.
@@ -1195,8 +1503,15 @@ class ImageViewState extends State<ImageView>
     FaceInfo face,
     AppLocalizations l10n,
   ) {
-    var rect = pageRectOfBox(tx, face.x, face.y, face.w, face.h);
+    var adjusting = _adjusting;
+    var adjusted = adjusting != null &&
+        adjusting.image == part.name &&
+        adjusting.face.index == face.index;
+    var rect = adjusted
+        ? adjusting.rect
+        : pageRectOfBox(tx, face.x, face.y, face.w, face.h);
     var label = faceLabel(face, l10n);
+    var handles = face.state != FaceState.notAFace && !_markingFaces;
     // A decision *against* somebody is drawn dimmed rather than written out:
     // "not this person" and "no face at all" are statements about what is not
     // there, and a name is what a chip is for.
@@ -1211,21 +1526,54 @@ class ImageViewState extends State<ImageView>
       Positioned.fromRect(
         key: Key("face-box-slot-${face.index}"),
         rect: rect,
-        child: GestureDetector(
-          key: Key("face-box-${face.index}"),
-          behavior: HitTestBehavior.opaque,
-          onTap: () => decideFace(face),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: colour,
-                width: face.confirmed ? 2 : 1.5,
+        child: Semantics(
+          label: handles ? l10n.viewerAdjustFaceHint : null,
+          child: RawGestureDetector(
+            key: Key("face-box-${face.index}"),
+            behavior: HitTestBehavior.opaque,
+            gestures: _adjustGestures(tx, face, null),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: adjusted ? Colors.lightBlueAccent : colour,
+                  width: face.confirmed || adjusted ? 2 : 1.5,
+                ),
               ),
+              child: const SizedBox.expand(),
             ),
-            child: const SizedBox.expand(),
           ),
         ),
       ),
+      // The handles of issue #157, over the box's corners so that a corner is
+      // taken by its handle and the inside by the box.
+      if (handles)
+        for (var corner in FaceCorner.values)
+          Positioned.fromRect(
+            key: Key("face-handle-slot-${face.index}-${corner.keyName}"),
+            rect: Rect.fromCenter(
+              center: corner.of(rect),
+              width: _handleSize,
+              height: _handleSize,
+            ),
+            child: RawGestureDetector(
+              key: Key("face-handle-${face.index}-${corner.keyName}"),
+              behavior: HitTestBehavior.opaque,
+              gestures: _adjustGestures(tx, face, corner),
+              child: Center(
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    border: Border.all(
+                      color: adjusted ? Colors.lightBlueAccent : colour,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
       if (label != null)
         Positioned(
           key: Key("face-label-slot-${face.index}"),

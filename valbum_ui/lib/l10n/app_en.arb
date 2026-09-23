@@ -4151,6 +4151,11 @@
     "description": "The line shown while the tool for marking a face by hand is switched on.",
     "x-translated": "e8802ed5"
   },
+  "viewerAdjustFaceHint": "Drag the box to move it, or a corner to resize it.",
+  "@viewerAdjustFaceHint": {
+    "description": "What a face box in the viewer's edit-persons mode offers besides a tap (issue #157), read out by a screen reader: dragging its inside moves the box, dragging one of the four small squares at its corners resizes it. On a touch screen the box is held first, then dragged.",
+    "x-translated": "744800c0"
+  },
   "viewerFaceDecision": "This face",
   "@viewerFaceDecision": {
     "description": "The heading of the sheet that opens when a face is tapped in the viewer's edit-persons mode.",

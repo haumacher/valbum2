@@ -4046,6 +4046,12 @@ abstract class AppLocalizations {
   /// **'Draw a rectangle around a person\'s face, or tap on the face.'**
   String get viewerMarkFaceHint;
 
+  /// What a face box in the viewer's edit-persons mode offers besides a tap (issue #157), read out by a screen reader: dragging its inside moves the box, dragging one of the four small squares at its corners resizes it. On a touch screen the box is held first, then dragged.
+  ///
+  /// In en, this message translates to:
+  /// **'Drag the box to move it, or a corner to resize it.'**
+  String get viewerAdjustFaceHint;
+
   /// The heading of the sheet that opens when a face is tapped in the viewer's edit-persons mode.
   ///
   /// In en, this message translates to:

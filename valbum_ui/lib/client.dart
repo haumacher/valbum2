@@ -1892,6 +1892,27 @@ class VAlbumClient {
     }
   }
 
+  /// Moves or resizes the boxes of answered faces of the album at [path]
+  /// (issue #157).
+  ///
+  /// `?action=adjust-faces`, the same [TagFaces] message as [tagFaces] and the
+  /// same rights: here every assignment names a face by its [FaceInfo.index]
+  /// *and* carries its new box, in the frame the faces are answered in, with
+  /// the decision the face is to stand under at that box. A separate action,
+  /// because under `tag-faces` a box beside the default index `0` has meant
+  /// "mark a face here" since issue #147. The answer is read like the one of
+  /// [tagFaces]; a refusal arrives as the thrown [VAlbumException].
+  Future<AlbumInfo?> adjustFaces(List<String> path, TagFaces request) async {
+    var url = "${folderUrl(path)}?action=adjust-faces";
+    var response = await _postBody(url, _jsonOf(request.writeContent));
+    try {
+      var resource = Resource.read(JsonReader.fromString(response));
+      return resource is AlbumInfo ? resource : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// The devices this caller is signed in on (issue #55).
   ///
   /// Always the caller's *own* devices: the administrator manages the users of

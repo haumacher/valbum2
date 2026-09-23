@@ -789,6 +789,8 @@ void sliceTwo() {
     expect(de.viewerMarkFace, isNot(en.viewerMarkFace));
     expect(de.viewerFaceDecision, isNot(en.viewerFaceDecision));
     expect(de.viewerEditPersonsDone, isNot(en.viewerEditPersonsDone));
+    // Moving and resizing a face box, issue #157.
+    expect(de.viewerAdjustFaceHint, isNot(en.viewerAdjustFaceHint));
     expect(de.personsChooserInAlbum, "In diesem Album");
     expect(de.personsChooserAll, isNot(en.personsChooserAll));
   });

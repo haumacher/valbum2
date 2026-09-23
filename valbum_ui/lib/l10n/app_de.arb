@@ -661,5 +661,6 @@
   "viewerFaceDecision": "Dieses Gesicht",
   "viewerMarkFaceTooSmall": "Zeichnen Sie ein größeres Rechteck um das Gesicht der Person.",
   "personsChooserInAlbum": "In diesem Album",
-  "personsChooserAll": "Alle Personen"
+  "personsChooserAll": "Alle Personen",
+  "viewerAdjustFaceHint": "Ziehen Sie das Feld, um es zu verschieben, oder eine Ecke, um die Größe anzupassen."
 }
