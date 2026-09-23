@@ -136,7 +136,24 @@ public final class Originals {
 	 */
 	public static Region decodeLongSide(File file, double left, double top, double right, double bottom,
 			int maxLongSide) throws IOException {
-		return decode(file, left, top, right, bottom, maxLongSide, true);
+		return decode(file, left, top, right, bottom, maxLongSide, BY_LONG_SIDE);
+	}
+
+	/**
+	 * Reads the given rectangle of the given file's raw raster, subsampled so that the long side of
+	 * the result is at least the given number of pixels (and less than twice as much), see issue
+	 * #163.
+	 *
+	 * <p>
+	 * The partner of {@link #fitLongSide(BufferedImage, int)}: subsampling only knows whole numbers,
+	 * so a region that is to reach the detector at exactly the size the preview reaches it at is
+	 * read a little larger and scaled down afterwards — the memory stays bounded by four times the
+	 * pixels asked for, never the whole raster.
+	 * </p>
+	 */
+	public static Region decodeLongSideAtLeast(File file, double left, double top, double right, double bottom,
+			int minLongSide) throws IOException {
+		return decode(file, left, top, right, bottom, minLongSide, AT_LEAST_LONG_SIDE);
 	}
 
 	/**
@@ -145,11 +162,17 @@ public final class Originals {
 	 */
 	public static Region decodeShortSide(File file, double left, double top, double right, double bottom,
 			int minShortSide) throws IOException {
-		return decode(file, left, top, right, bottom, minShortSide, false);
+		return decode(file, left, top, right, bottom, minShortSide, BY_SHORT_SIDE);
 	}
 
+	private static final int BY_LONG_SIDE = 0;
+
+	private static final int BY_SHORT_SIDE = 1;
+
+	private static final int AT_LEAST_LONG_SIDE = 2;
+
 	private static Region decode(File file, double left, double top, double right, double bottom, int bound,
-			boolean byLongSide) throws IOException {
+			int mode) throws IOException {
 		try (ImageInputStream in = ImageIO.createImageInputStream(file)) {
 			if (in == null) {
 				throw new IOException("Cannot open '" + file.getName() + "'.");
@@ -169,9 +192,18 @@ public final class Originals {
 				int y1 = clamp((int) Math.ceil(bottom), y0 + 1, rawHeight);
 				int width = x1 - x0;
 				int height = y1 - y0;
-				int sampling = byLongSide
-					? samplingForLongSide(Math.max(width, height), bound)
-					: samplingForShortSide(Math.min(width, height), bound);
+				int sampling;
+				switch (mode) {
+					case BY_LONG_SIDE:
+						sampling = samplingForLongSide(Math.max(width, height), bound);
+						break;
+					case AT_LEAST_LONG_SIDE:
+						sampling = samplingForShortSide(Math.max(width, height), bound);
+						break;
+					default:
+						sampling = samplingForShortSide(Math.min(width, height), bound);
+						break;
+				}
 
 				ImageReadParam param = reader.getDefaultReadParam();
 				param.setSourceRegion(new Rectangle(x0, y0, width, height));
@@ -207,11 +239,44 @@ public final class Originals {
 	}
 
 	/**
+	 * The given raster scaled down so that its long side is at most the given number of pixels, the
+	 * raster itself where it already is, see issue #163.
+	 *
+	 * <p>
+	 * Bilinear: {@link #decodeLongSideAtLeast} leaves less than a factor of two to take away, which
+	 * is what bilinear interpolation does without dropping pixels. The aspect is kept, so a fraction
+	 * of the result is the same fraction of the raster that was read.
+	 * </p>
+	 */
+	public static BufferedImage fitLongSide(BufferedImage image, int maxLongSide) {
+		int width = image.getWidth();
+		int height = image.getHeight();
+		int longSide = Math.max(width, height);
+		if (maxLongSide <= 0 || longSide <= maxLongSide) {
+			return image;
+		}
+		double scale = ((double) maxLongSide) / longSide;
+		int scaledWidth = Math.max(1, (int) Math.round(width * scale));
+		int scaledHeight = Math.max(1, (int) Math.round(height * scale));
+		BufferedImage result = new BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_RGB);
+		java.awt.Graphics2D graphics = result.createGraphics();
+		try {
+			graphics.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+				java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			graphics.drawImage(image, 0, 0, scaledWidth, scaledHeight, null);
+		} finally {
+			graphics.dispose();
+		}
+		return result;
+	}
+
+	/**
 	 * The given raster of a file with the given EXIF orientation, turned the way it is shown.
 	 *
 	 * <p>
 	 * Pixel for pixel rather than through an {@link java.awt.geom.AffineTransform}: this is only
-	 * ever asked of a face crop of a few hundred pixels, and a permutation of two axes is exactly
+	 * ever asked of a face crop of a few hundred pixels or of the centre of issue #163 at the size of
+	 * a preview, and a permutation of two axes is exactly
 	 * what it is — nothing is interpolated and nothing is off by half a pixel.
 	 * </p>
 	 */

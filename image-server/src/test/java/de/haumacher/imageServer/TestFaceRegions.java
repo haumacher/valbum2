@@ -296,8 +296,10 @@ public class TestFaceRegions extends FacesTestCase {
 		}
 		int width = 4000;
 		int height = 3000;
-		int pasteX = 1500;
-		int pasteY = 1000;
+		// Outside the centre half of the picture, which the second look of issue #163 would search
+		// and find it in: this face is found by nothing but the click.
+		int pasteX = 300;
+		int pasteY = 300;
 		int pasted = 400;
 		BufferedImage source = ImageIO.read(new File(PORTRAITS, A_ONE));
 		int pastedHeight = (int) Math.round(((double) pasted) * source.getHeight() / source.getWidth());
