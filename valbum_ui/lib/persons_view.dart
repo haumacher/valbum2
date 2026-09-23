@@ -157,10 +157,7 @@ class AlbumFace {
   /// What the server answered about it.
   final FaceInfo face;
 
-  /// Whether the server has a crop of it, see [PersonsContentState.facesOf].
-  final bool detected;
-
-  const AlbumFace(this.image, this.face, {required this.detected});
+  const AlbumFace(this.image, this.face);
 
   /// What identifies this face while the editor is open.
   String get key => "${image.name}#${face.index}";
@@ -456,35 +453,13 @@ class PersonsContentState extends State<PersonsContent>
 
   /// Every face of the album, the photographs in their own order.
   ///
-  /// Whether the server has a **crop** of a face cannot be read off one
-  /// answer: the detections come first and a stored tag no detection matched
-  /// is appended behind them (issue #125), and the wire numbers both the same
-  /// way. What tells them apart is the cluster — a detection of a clustered
-  /// album carries one, an appended tag never does — so a face without a
-  /// cluster standing behind every clustered one is drawn from the picture
-  /// and its box instead of from a crop. The doubtful case (an album whose
-  /// faces are not clustered yet) falls to the picture as well, which is the
-  /// harmless direction: the box is right either way, and no request is made
-  /// for a crop that is not there.
-  static List<AlbumFace> facesOf(AlbumInfo album) {
-    var result = <AlbumFace>[];
-    for (var image in imagesOf(album)) {
-      var clustered = -1;
-      for (var face in image.faces) {
-        if (face.cluster.isNotEmpty) {
-          clustered = max(clustered, face.index);
-        }
-      }
-      for (var face in image.faces) {
-        result.add(AlbumFace(
-          image,
-          face,
-          detected: face.cluster.isNotEmpty || face.index < clustered,
-        ));
-      }
-    }
-    return result;
-  }
+  /// Every one of them has a crop since issue #155: a stored tag no detection
+  /// matched is cut from the original by its own box, exactly as a detection
+  /// is, so a tile no longer has to guess which of the two a face is.
+  static List<AlbumFace> facesOf(AlbumInfo album) => [
+        for (var image in imagesOf(album))
+          for (var face in image.faces) AlbumFace(image, face),
+      ];
 
   /// Every photograph of the album, the members of a group included.
   static List<ImagePart> imagesOf(AlbumInfo album) {
@@ -2122,9 +2097,9 @@ class FaceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!face.detected) {
-      return clipped();
-    }
+    // Every face has a crop since issue #155 — a tag without a detection is
+    // cut from the original by its own box — so the clipped thumbnail is only
+    // what stands in for a crop that cannot be had.
     return Image(
       image: FaceImage(client, imageUrl, face.face.index),
       width: size,

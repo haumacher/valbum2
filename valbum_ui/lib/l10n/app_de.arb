@@ -632,8 +632,9 @@
   "viewerEditPersons": "Personen bearbeiten",
   "viewerEditPersonsDone": "Benennen der Gesichter beenden",
   "viewerMarkFace": "Ein Gesicht markieren",
-  "viewerMarkFaceHint": "Zeichnen Sie ein Rechteck um ein Gesicht.",
   "viewerFaceDecision": "Dieses Gesicht",
   "personsChooserInAlbum": "In diesem Album",
-  "personsChooserAll": "Alle Personen"
+  "personsChooserAll": "Alle Personen",
+  "viewerMarkFaceHint": "Zeichnen Sie ein Rechteck um das Gesicht einer Person oder tippen Sie auf das Gesicht.",
+  "viewerMarkFaceTooSmall": "Zeichnen Sie ein größeres Rechteck um das Gesicht der Person."
 }

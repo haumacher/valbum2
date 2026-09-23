@@ -107,6 +107,7 @@ VAlbumClient editorClient(
   String Function()? users,
   Answer? post,
   String Function()? albumNow,
+  Answer? crop,
 }) =>
     VAlbumClient(
       dataUrl: dataUrl,
@@ -127,6 +128,9 @@ VAlbumClient editorClient(
           return json(users == null ? '{"users": []}' : users());
         }
         if (query["type"] == "face") {
+          if (crop != null) {
+            return crop(request);
+          }
           return http.Response.bytes(
             transparentPixelPng,
             200,
@@ -624,7 +628,7 @@ void main() {
     });
   });
 
-  testWidgets("a tag without a detection is drawn without asking for a crop",
+  testWidgets("a tag without a detection is shown by its crop too (#155)",
       (tester) async {
     // Flutter's image cache outlives one test, and a crop of the same URL
     // asked for by another one would be answered from it: what is counted
@@ -650,13 +654,46 @@ void main() {
     // It is shown, under Anna…
     expect(faceTile("a.jpg#1"), findsOneWidget);
     expect(find.text("Anna"), findsOneWidget);
-    // … and nothing was asked of `?type=face` for it.
-    var crops = [
+    // … by the crop the server cuts from the original by the tag's own box.
+    var crops = {
       for (var request in requests)
         if (request.url.queryParameters["type"] == "face")
           request.url.queryParameters["face"]
-    ];
-    expect(crops, ["0"]);
+    };
+    expect(crops, {"0", "1"});
+  });
+
+  testWidgets("a crop that cannot be had falls back to the picture",
+      (tester) async {
+    forgetDecodedThumbnails();
+    var requests = <http.Request>[];
+    await pumpEditor(
+      tester,
+      editorClient(
+        requests,
+        auth: authOf(),
+        album: albumOf(images: [
+          imageOf("a.jpg", [
+            faceOf(0, person: "p-anna", state: "CONFIRMED", y: 0.6),
+          ]),
+        ]),
+        crop: (request) => http.Response("No such face.", 404),
+      ),
+    );
+
+    expect(faceTile("a.jpg#0"), findsOneWidget);
+    expect(
+      requests.where((r) => r.url.queryParameters["type"] == "face"),
+      isNotEmpty,
+    );
+    // The photograph's own thumbnail, clipped to the box, stands in.
+    expect(
+      find.descendant(
+        of: faceTile("a.jpg#0"),
+        matching: find.byType(ClipRect),
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets("a contributor sees the groups and no control at all",

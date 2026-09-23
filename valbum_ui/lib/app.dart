@@ -2433,8 +2433,18 @@ class _ScrollMemoryState extends State<_ScrollMemory> {
       );
 }
 
-Widget menu(BuildContext context, List<PopupMenuEntry<Action>> entries) =>
+/// A popup menu of [entries], each an [Action] run on selection.
+///
+/// [icon] replaces the theme's three dots where the menu stands on a
+/// background of its own — the viewer's black, where every other control is a
+/// white overlay button (#155).
+Widget menu(
+  BuildContext context,
+  List<PopupMenuEntry<Action>> entries, {
+  Widget? icon,
+}) =>
     PopupMenuButton<Action>(
+      icon: icon,
       itemBuilder: (context) => entries,
       onSelected: (action) => action(context),
     );

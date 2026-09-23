@@ -336,6 +336,21 @@ public final class FaceDetection {
 		default Result detect(File preview, Refiner refiner) throws IOException {
 			return detect(preview);
 		}
+
+		/**
+		 * The face of a region of an original that somebody marked, see issue #155 and
+		 * {@link FaceDetection#search(java.awt.image.BufferedImage, double, double, double, double)}.
+		 *
+		 * <p>
+		 * A detector of a test's own finds nothing there unless it says otherwise, so that a test
+		 * which never thought about marking sees a marked region stored as a region, which is what a
+		 * detector that finds nothing makes of it.
+		 * </p>
+		 */
+		default Refined search(java.awt.image.BufferedImage region, double x, double y, double w, double h)
+				throws IOException {
+			return null;
+		}
 	}
 
 	private FaceDetection() {
@@ -575,6 +590,50 @@ public final class FaceDetection {
 	 */
 	public static Refined refine(java.awt.image.BufferedImage region, double x, double y, double w, double h)
 			throws IOException {
+		return inRegion(region, x, y, w, h, false);
+	}
+
+	/**
+	 * The face somebody pointed at in the given region of an original, see issue #155.
+	 *
+	 * <p>
+	 * The question of a hand-marked box, which is not the question of {@link #refine}: a box drawn
+	 * by hand is rarely the detector's own box and a click is no box at all, only a point with a
+	 * little room around it. So a face <em>containing the centre</em> of the given box is the face
+	 * that was meant — of several such, the one the box overlaps most, and of equal ones the
+	 * smallest, which is the face and not the head behind it — and only where no face contains
+	 * the centre does a face overlapping the box by more than {@link #REFINE_IOU} count.
+	 * </p>
+	 *
+	 * <p>
+	 * Asked of the {@link Detector} a test installed, where there is one; the bundled models are
+	 * never loaded for it then.
+	 * </p>
+	 *
+	 * @param region
+	 *        The piece of the original, see {@link Originals}.
+	 * @param x
+	 *        The left edge of the marked box, in the pixels of that region.
+	 * @param y
+	 *        Its top edge, likewise.
+	 * @param w
+	 *        Its width, likewise.
+	 * @param h
+	 *        Its height, likewise.
+	 * @return The face, in the pixels of the region and with its embedding, or <code>null</code>
+	 *         when the region holds no face there.
+	 */
+	public static Refined search(java.awt.image.BufferedImage region, double x, double y, double w, double h)
+			throws IOException {
+		Detector detector = _detector;
+		if (detector != null) {
+			return detector.search(region, x, y, w, h);
+		}
+		return inRegion(region, x, y, w, h, true);
+	}
+
+	private static Refined inRegion(java.awt.image.BufferedImage region, double x, double y, double w,
+			double h, boolean aroundCentre) throws IOException {
 		String unavailable = unavailability();
 		if (unavailable != null) {
 			throw new IOException("Face detection is not available: " + unavailable);
@@ -601,15 +660,30 @@ public final class FaceDetection {
 					int best = -1;
 					double bestOverlap = REFINE_IOU;
 					float[] bestValues = null;
+					double centreX = (x + w / 2) * scale;
+					double centreY = (y + h / 2) * scale;
+					boolean bestContains = false;
 					for (int row = 0; row < found.rows(); row++) {
 						float[] values = new float[found.cols()];
 						found.get(row, 0, values);
 						double overlap = iou(x * scale, y * scale, w * scale, h * scale,
 							values[0], values[1], values[2], values[3]);
-						if (overlap > bestOverlap) {
+						boolean contains = aroundCentre && centreX >= values[0]
+							&& centreX <= values[0] + values[2] && centreY >= values[1]
+							&& centreY <= values[1] + values[3];
+						boolean better;
+						if (contains) {
+							better = !bestContains || overlap > bestOverlap
+								|| (overlap == bestOverlap && bestValues != null
+									&& values[2] * values[3] < bestValues[2] * bestValues[3]);
+						} else {
+							better = !bestContains && overlap > bestOverlap;
+						}
+						if (better) {
 							bestOverlap = overlap;
 							best = row;
 							bestValues = values;
+							bestContains = contains;
 						}
 					}
 					if (best < 0) {

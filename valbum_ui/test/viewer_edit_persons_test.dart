@@ -9,6 +9,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -78,11 +79,35 @@ const String confirmedAlbum = '["AlbumInfo", {"path": "album", '
     '"person": "p-anna", "confirmed": true, "state": "CONFIRMED"}, '
     '{"index": 2, "x": 0.8, "y": 0.6, "w": 0.1, "h": 0.2}]}]]}]';
 
+/// The album the server answers, `a.jpg` carrying the given faces (JSON).
+String albumWithFaces(List<String> faces) => '["AlbumInfo", {"path": "album", '
+    '"title": "Album", "subTitle": "", "parts": [["ImagePart", '
+    '{"name": "a.jpg", "width": 2000, "height": 1000, "faces": ['
+    '${faces.join(", ")}]}]]}]';
+
+/// One face as the server answers it (JSON).
+String faceJson(
+  int index,
+  List<double> box, {
+  String person = "",
+  bool confirmed = false,
+  String state = "UNDECIDED",
+  String cluster = "",
+}) =>
+    '{"index": $index, "x": ${box[0]}, "y": ${box[1]}, "w": ${box[2]}, '
+    '"h": ${box[3]}, "person": "$person", "confirmed": $confirmed, '
+    '"state": "$state", "cluster": "$cluster"}';
+
 /// A client answering the register and every tagging, recording both.
+///
+/// [answerFor] decides the answer to a tagging by what was posted, where a
+/// test needs the server to answer a marked face; [answer] is the answer
+/// otherwise.
 VAlbumClient facesClient(
   List<Map<String, dynamic>> posted, {
   String people = register,
   String answer = confirmedAlbum,
+  String Function(Map<String, dynamic> body)? answerFor,
   int tagStatus = 200,
   String tagBody = "",
 }) =>
@@ -97,12 +122,13 @@ VAlbumClient facesClient(
           );
         }
         if (request.url.query.contains("action=tag-faces")) {
-          posted.add(jsonDecode(request.body) as Map<String, dynamic>);
+          var body = jsonDecode(request.body) as Map<String, dynamic>;
+          posted.add(body);
           if (tagStatus >= 300) {
             return http.Response(tagBody, tagStatus);
           }
           return http.Response(
-            answer,
+            answerFor?.call(body) ?? answer,
             200,
             headers: {"content-type": "application/json; charset=utf-8"},
           );
@@ -184,6 +210,19 @@ void main() {
       expect(find.byKey(const Key("viewer-menu")), findsOneWidget);
       await enterMode(tester);
       expect(find.byKey(const Key("viewer-edit-persons-done")), findsOneWidget);
+    });
+
+    testWidgets('its menu button is drawn like every control over the picture',
+        (tester) async {
+      await pumpEditor(tester, client: facesClient([]));
+      var icon = tester.widget<Icon>(find.descendant(
+        of: find.byKey(const Key("viewer-menu")),
+        matching: find.byType(Icon),
+      ));
+      // White and as large as the viewer's overlay buttons (#155), not the
+      // theme's dark three dots on the black viewer.
+      expect(icon.color, Colors.white);
+      expect(icon.size, 32);
     });
 
     testWidgets('is not offered without the edit right', (tester) async {
@@ -352,44 +391,108 @@ void main() {
   });
 
   group('marking a face by hand', () {
-    /// Draws a rectangle on the picture and names it [person].
-    Future<void> draw(
-      WidgetTester tester,
-      Offset from,
-      Offset to, {
-      String person = "p-bob",
-    }) async {
+    /// Switches the marking tool on.
+    Future<void> markingTool(WidgetTester tester) async {
       await tester.tap(find.byKey(const Key("viewer-mark-face")));
-      await tester.pumpAndSettle();
-      var gesture = await tester.startGesture(from);
-      await gesture.moveTo(Offset(from.dx + 4, from.dy + 4));
-      await tester.pump();
-      await gesture.moveTo(to);
-      await tester.pump();
-      await gesture.up();
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(Key("persons-pick-$person")));
       await tester.pumpAndSettle();
     }
 
-    testWidgets('sends the rectangle as a fraction of the picture',
+    /// Draws a rectangle on the picture from [from] to [to].
+    Future<void> drag(WidgetTester tester, Offset from, Offset to) async {
+      var gesture = await tester.startGesture(from);
+      var step = (to - from) / 10;
+      for (var n = 1; n <= 10; n++) {
+        await gesture.moveTo(from + step * n.toDouble());
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    /// The box of the first posted assignment.
+    List<double> firstBox(List<Map<String, dynamic>> posted) {
+      var first = (posted.first["faces"] as List<dynamic>).first
+          as Map<String, dynamic>;
+      return [
+        (first["x"] as num).toDouble(),
+        (first["y"] as num).toDouble(),
+        (first["w"] as num).toDouble(),
+        (first["h"] as num).toDouble(),
+      ];
+    }
+
+    /// The picture covers (0, 100) to (800, 500): (400, 260) to (560, 380) is
+    /// (0.5, 0.4, 0.2, 0.3) of it.
+    const drawn = [0.5, 0.4, 0.2, 0.3];
+
+    testWidgets('posts the rectangle at once, undecided, then names the face',
         (tester) async {
       var posted = <Map<String, dynamic>>[];
-      await pumpEditor(tester, client: facesClient(posted));
+      await pumpEditor(
+        tester,
+        client: facesClient(
+          posted,
+          // Nothing found around it: the server keeps the box as a region.
+          answerFor: (_) => albumWithFaces([faceJson(3, drawn)]),
+        ),
+      );
       await enterMode(tester);
+      await markingTool(tester);
 
-      // The picture covers (0, 100) to (800, 500): (400, 260) to (560, 380) is
-      // (0.5, 0.4, 0.2, 0.3) of it.
-      await draw(tester, const Offset(400, 260), const Offset(560, 380));
+      await drag(tester, const Offset(400, 260), const Offset(560, 380));
 
-      var only = assignmentsOf(posted).first as Map<String, dynamic>;
-      expect(only["x"], closeTo(0.5, 0.01));
-      expect(only["y"], closeTo(0.4, 0.01));
-      expect(only["w"], closeTo(0.2, 0.01));
-      expect(only["h"], closeTo(0.3, 0.01));
-      expect(only["person"], "p-bob");
-      expect(only["state"], "CONFIRMED");
+      expect(posted, hasLength(1));
+      var marked =
+          (posted.first["faces"] as List<dynamic>).first as Map<String, dynamic>;
+      expect(marked["person"], "");
+      expect(marked["state"], "UNDECIDED");
+      var box = firstBox(posted);
+      expect(box[0], closeTo(0.5, 0.01));
+      expect(box[1], closeTo(0.4, 0.01));
+      expect(box[2], closeTo(0.2, 0.01));
+      expect(box[3], closeTo(0.3, 0.01));
+
+      // Nobody is suggested for the face the server answered: who is it?
+      expect(find.byKey(const Key("persons-chooser")), findsOneWidget);
+      await tester.tap(find.byKey(const Key("persons-pick-p-bob")));
+      await tester.pumpAndSettle();
+
+      expect(posted, hasLength(2));
+      expect((posted[1]["faces"] as List<dynamic>).single, {
+        "image": "a.jpg",
+        "face": 3,
+        "x": 0.0,
+        "y": 0.0,
+        "w": 0.0,
+        "h": 0.0,
+        "person": "p-bob",
+        "state": "CONFIRMED",
+      });
     });
+
+    // The same rectangle, drawn from each of its four corners (#155).
+    for (var corners in [
+      (const Offset(400, 260), const Offset(560, 380), "down and right"),
+      (const Offset(560, 380), const Offset(400, 260), "up and left"),
+      (const Offset(560, 260), const Offset(400, 380), "down and left"),
+      (const Offset(400, 380), const Offset(560, 260), "up and right"),
+    ]) {
+      testWidgets('draws the same box dragged ${corners.$3}', (tester) async {
+        var posted = <Map<String, dynamic>>[];
+        await pumpEditor(tester, client: facesClient(posted));
+        await enterMode(tester);
+        await markingTool(tester);
+
+        await drag(tester, corners.$1, corners.$2);
+
+        expect(posted, hasLength(1));
+        var box = firstBox(posted);
+        expect(box[0], closeTo(0.5, 0.01));
+        expect(box[1], closeTo(0.4, 0.01));
+        expect(box[2], closeTo(0.2, 0.01));
+        expect(box[3], closeTo(0.3, 0.01));
+      });
+    }
 
     // The 2000 x 1000 file turned a quarter occupies 1000 x 2000, fitted at
     // 0.3 and centred horizontally: the picture covers (250, 0) to (550, 600).
@@ -409,51 +512,226 @@ void main() {
           image: facesImage(orientation: turned.$1),
         );
         await enterMode(tester);
+        await markingTool(tester);
 
-        await draw(tester, turned.$2, turned.$3);
+        await drag(tester, turned.$2, turned.$3);
 
-        var only = assignmentsOf(posted).first as Map<String, dynamic>;
-        expect(only["x"], closeTo(0.5, 0.01));
-        expect(only["y"], closeTo(0.4, 0.01));
-        expect(only["w"], closeTo(0.2, 0.01));
-        expect(only["h"], closeTo(0.3, 0.01));
+        var box = firstBox(posted);
+        expect(box[0], closeTo(0.5, 0.01));
+        expect(box[1], closeTo(0.4, 0.01));
+        expect(box[2], closeTo(0.2, 0.01));
+        expect(box[3], closeTo(0.3, 0.01));
       });
     }
 
-    testWidgets('a cancelled chooser posts nothing', (tester) async {
+    testWidgets('a face the server recognises is suggested, and no chooser',
+        (tester) async {
       var posted = <Map<String, dynamic>>[];
-      await pumpEditor(tester, client: facesClient(posted));
+      await pumpEditor(
+        tester,
+        client: facesClient(
+          posted,
+          // The detector found a face around the box, and recognition knows
+          // it: a suggestion of #127, never a decision.
+          answerFor: (body) => posted.length == 1
+              ? albumWithFaces([
+                  faceJson(3, const [0.52, 0.38, 0.15, 0.32],
+                      person: "p-anna", cluster: "c2"),
+                ])
+              : albumWithFaces([
+                  faceJson(3, const [0.52, 0.38, 0.15, 0.32],
+                      person: "p-anna",
+                      confirmed: true,
+                      state: "CONFIRMED",
+                      cluster: "c2"),
+                ]),
+        ),
+      );
       await enterMode(tester);
+      await markingTool(tester);
 
+      await drag(tester, const Offset(400, 260), const Offset(560, 380));
+
+      expect(find.byKey(const Key("persons-chooser")), findsNothing);
+      expect(find.byKey(const Key("face-label-3")), findsOneWidget);
+      expect(find.text(testL10n.personsSuggestedHeading("Anna")),
+          findsOneWidget);
+
+      // One tap on the box, one on Confirm.
       await tester.tap(find.byKey(const Key("viewer-mark-face")));
       await tester.pumpAndSettle();
-      var gesture = await tester.startGesture(const Offset(400, 260));
-      await gesture.moveTo(const Offset(560, 380));
-      await tester.pump();
-      await gesture.up();
+      await tapFace(tester, 3);
+      await tester.tap(find.byKey(const Key("face-decision-confirm")));
       await tester.pumpAndSettle();
+
+      expect(posted, hasLength(2));
+      var confirmed =
+          (posted[1]["faces"] as List<dynamic>).single as Map<String, dynamic>;
+      expect(confirmed["face"], 3);
+      expect(confirmed["person"], "p-anna");
+      expect(confirmed["state"], "CONFIRMED");
+      expect(find.text("Anna"), findsOneWidget);
+    });
+
+    testWidgets('a cancelled chooser leaves the region undecided',
+        (tester) async {
+      var posted = <Map<String, dynamic>>[];
+      await pumpEditor(
+        tester,
+        client: facesClient(
+          posted,
+          answerFor: (_) => albumWithFaces([faceJson(3, drawn)]),
+        ),
+      );
+      await enterMode(tester);
+      await markingTool(tester);
+
+      await drag(tester, const Offset(400, 260), const Offset(560, 380));
       await tester.tap(find.byKey(const Key("persons-chooser-cancel")));
       await tester.pumpAndSettle();
 
-      expect(posted, isEmpty);
+      // The marking itself, and nothing more.
+      expect(posted, hasLength(1));
+      expect(find.byKey(const Key("face-box-3")), findsOneWidget);
     });
 
-    testWidgets('a rectangle too small to see is a tap that slipped',
+    testWidgets('a click beside every face marks a face there',
         (tester) async {
       var posted = <Map<String, dynamic>>[];
       await pumpEditor(tester, client: facesClient(posted));
       await enterMode(tester);
+      await markingTool(tester);
 
-      await tester.tap(find.byKey(const Key("viewer-mark-face")));
+      // Below every face: the click is sent as a square of 24 around it,
+      // (288, 438) to (312, 462) on the page.
+      await tester.tapAt(const Offset(300, 450));
       await tester.pumpAndSettle();
-      var gesture = await tester.startGesture(const Offset(400, 260));
-      await gesture.moveTo(const Offset(403, 262));
+
+      expect(posted, hasLength(1));
+      var marked =
+          (posted.first["faces"] as List<dynamic>).first as Map<String, dynamic>;
+      expect(marked["state"], "UNDECIDED");
+      var box = firstBox(posted);
+      expect(box[0], closeTo(288 / 800, 0.001));
+      expect(box[1], closeTo((438 - 100) / 400, 0.001));
+      expect(box[2], closeTo(24 / 800, 0.001));
+      expect(box[3], closeTo(24 / 400, 0.001));
+    });
+
+    testWidgets('a tap on a face while the tool is on opens its sheet',
+        (tester) async {
+      var posted = <Map<String, dynamic>>[];
+      await pumpEditor(tester, client: facesClient(posted));
+      await enterMode(tester);
+      await markingTool(tester);
+
+      // Inside face 1, (400, 180) to (560, 300).
+      await tester.tapAt(const Offset(480, 240));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key("face-decision")), findsOneWidget);
+      expect(posted, isEmpty);
+      await tester.tap(find.byKey(const Key("face-decision-confirm")));
+      await tester.pumpAndSettle();
+      expect(
+          ((posted.single["faces"] as List<dynamic>).single
+              as Map<String, dynamic>)["face"],
+          1);
+    });
+
+    testWidgets('a rectangle too small is said, never dropped silently',
+        (tester) async {
+      var posted = <Map<String, dynamic>>[];
+      await pumpEditor(tester, client: facesClient(posted));
+      await enterMode(tester);
+      await markingTool(tester);
+
+      // A drag, long enough to be one, and three pixels high.
+      await drag(tester, const Offset(300, 440), const Offset(360, 443));
+
+      expect(posted, isEmpty);
+      expect(find.byKey(const Key("face-marking-too-small")), findsOneWidget);
+      expect(find.text(testL10n.viewerMarkFaceTooSmall), findsOneWidget);
+      expect(find.byKey(const Key("persons-chooser")), findsNothing);
+    });
+
+    testWidgets('a mouse drag too small is said as well', (tester) async {
+      var posted = <Map<String, dynamic>>[];
+      await pumpEditor(tester, client: facesClient(posted));
+      await enterMode(tester);
+      await markingTool(tester);
+
+      var gesture = await tester.startGesture(
+        const Offset(300, 440),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveTo(const Offset(303, 443));
+      await tester.pump();
+      await gesture.moveTo(const Offset(305, 445));
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key("persons-chooser")), findsNothing);
       expect(posted, isEmpty);
+      expect(find.byKey(const Key("face-marking-too-small")), findsOneWidget);
+    });
+  });
+
+  group('a region is a region (#155)', () {
+    /// The photograph with a face marked by hand and confirmed: a tag no
+    /// detection matches, answered without a cluster.
+    ImagePart handMarked({bool confirmed = true}) {
+      var image = facesImage();
+      image.faces = [
+        ...image.faces,
+        faceOf(3,
+            x: 0.3,
+            y: 0.7,
+            w: 0.1,
+            h: 0.2,
+            person: confirmed ? "p-bob" : "",
+            confirmed: confirmed),
+      ];
+      return image;
+    }
+
+    testWidgets('a hand-marked face offers forget and not-a-face',
+        (tester) async {
+      var posted = <Map<String, dynamic>>[];
+      await pumpEditor(tester, client: facesClient(posted), image: handMarked());
+      await enterMode(tester);
+
+      await tapFace(tester, 3);
+      expect(find.byKey(const Key("face-decision-forget")), findsOneWidget);
+      expect(find.byKey(const Key("face-decision-not-a-face")), findsOneWidget);
+      await tester.tap(find.byKey(const Key("face-decision-forget")));
+      await tester.pumpAndSettle();
+
+      var only = assignmentsOf(posted).first as Map<String, dynamic>;
+      expect(only["face"], 3);
+      expect(only["state"], "UNDECIDED");
+    });
+
+    testWidgets('an undecided region is decided about like a detection',
+        (tester) async {
+      var posted = <Map<String, dynamic>>[];
+      await pumpEditor(
+        tester,
+        client: facesClient(posted),
+        image: handMarked(confirmed: false),
+      );
+      await enterMode(tester);
+
+      await tapFace(tester, 3);
+      // As on face 2, the detection nobody decided about.
+      expect(find.byKey(const Key("face-decision-forget")), findsNothing);
+      expect(find.byKey(const Key("face-decision-name")), findsOneWidget);
+      await tester.tap(find.byKey(const Key("face-decision-not-a-face")));
+      await tester.pumpAndSettle();
+
+      var only = assignmentsOf(posted).first as Map<String, dynamic>;
+      expect(only["face"], 3);
+      expect(only["state"], "NOT_A_FACE");
     });
   });
 

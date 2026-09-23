@@ -3893,7 +3893,7 @@ abstract class AppLocalizations {
   /// The line shown while the tool for marking a face by hand is switched on.
   ///
   /// In en, this message translates to:
-  /// **'Draw a rectangle around a face.'**
+  /// **'Draw a rectangle around a person\'s face, or tap on the face.'**
   String get viewerMarkFaceHint;
 
   /// The heading of the sheet that opens when a face is tapped in the viewer's edit-persons mode.
@@ -3901,6 +3901,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This face'**
   String get viewerFaceDecision;
+
+  /// Said when a rectangle drawn with the tool for marking a face is too small to mean a face (issue #155); a tap marks a face too, so this only follows a real drag.
+  ///
+  /// In en, this message translates to:
+  /// **'Draw a larger rectangle around the person\'s face.'**
+  String get viewerMarkFaceTooSmall;
 
   /// The heading of the person chooser's first section, holding the people who already have a face in the album being named (issue #150).
   ///

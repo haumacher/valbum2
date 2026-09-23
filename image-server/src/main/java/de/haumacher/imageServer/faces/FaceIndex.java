@@ -11,6 +11,7 @@ import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FaceInfo;
 import de.haumacher.imageServer.shared.model.FaceState;
+import de.haumacher.imageServer.shared.model.FaceTag;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImageKind;
@@ -150,6 +151,20 @@ public class FaceIndex {
 	 */
 	static final int CROP_MAX_PIXELS = 512;
 
+	/**
+	 * How large the region is that a marked face is looked for in, at least, as a fraction of the
+	 * picture's long side, see issue #155.
+	 *
+	 * <p>
+	 * A square of a fifth of the long side, centred on what was marked: on a 6000&nbsp;px photograph
+	 * 1200&nbsp;px, which holds a whole head of anybody not standing in a crowd, so that a click in
+	 * the middle of a face — which the app sends as a small box — gives the detector the face
+	 * <em>and</em> the room around it that it needs to find one at all. A box drawn larger than that
+	 * is looked at with its own size around it on every side, as a candidate of issue #140 is.
+	 * </p>
+	 */
+	static final double SEARCH_MIN_FRACTION = 0.2;
+
 	private final Path _root;
 
 	private final boolean _enabled;
@@ -167,6 +182,22 @@ public class FaceIndex {
 	 * </p>
 	 */
 	private final ConcurrentHashMap<String, String> _failed = new ConcurrentHashMap<>();
+
+	/**
+	 * One lock per album folder, for the two writers of its {@link FaceCache}, see issue #155.
+	 *
+	 * <p>
+	 * The walk reads an album's cache, describes photograph after photograph and writes it back at
+	 * the end; a marked region is added on the request path in between. The walk therefore reads
+	 * the file again under this lock before it writes, and keeps what was marked meanwhile, see
+	 * {@link #keepMarked(List, List)}.
+	 * </p>
+	 */
+	private final ConcurrentHashMap<String, Object> _locks = new ConcurrentHashMap<>();
+
+	private Object lockOf(File folder) {
+		return _locks.computeIfAbsent(folder.getAbsolutePath(), key -> new Object());
+	}
 
 	/**
 	 * Who the people of this space look like, see issue #127.
@@ -399,7 +430,8 @@ public class FaceIndex {
 				continue;
 			}
 			try {
-				cache.put(hash, detect(image));
+				// A face somebody pointed at is kept beside the new description, see issue #155.
+				cache.put(hash, keepMarked(detect(image), cache.facesOf(hash)));
 				// The faces of this photograph are new ones: what was cut from the old ones names
 				// nobody any more, see issue #141.
 				dropCrops(image);
@@ -417,21 +449,211 @@ public class FaceIndex {
 		// faces again, which is why the entries are keyed by contents and not by name.
 		cache.retain(present);
 
-		if (changed) {
-			List<FaceCache.Face> faces = cache.allFaces();
-			Clustering.cluster(faces);
-			cache.clustered();
-		}
-		try {
-			cache.flush();
-		} catch (IOException ex) {
-			LOG.log(Level.WARNING,
-				"Cannot write the face cache of '" + folder.getAbsolutePath() + "': " + ex.getMessage(), ex);
+		synchronized (lockOf(folder)) {
+			// What was marked on the request path while this pass ran is in the file, not in what
+			// this pass read at its start, see issue #155.
+			FaceCache now = new FaceCache(folder);
+			for (String hash : new ArrayList<>(cache.hashes())) {
+				List<FaceCache.Face> ours = cache.facesOf(hash);
+				List<FaceCache.Face> merged = keepMarked(ours, now.facesOf(hash));
+				if (merged.size() != ours.size()) {
+					cache.put(hash, merged);
+					changed = true;
+				}
+			}
+			if (changed) {
+				List<FaceCache.Face> faces = cache.allFaces();
+				Clustering.cluster(faces);
+				cache.clustered();
+			}
+			try {
+				cache.flush();
+			} catch (IOException ex) {
+				LOG.log(Level.WARNING,
+					"Cannot write the face cache of '" + folder.getAbsolutePath() + "': " + ex.getMessage(), ex);
+			}
 		}
 
 		// The one walk of issue #127 as well: whoever was confirmed in this album is now described
 		// by numbers this pass has just made sure are there.
 		_recognition.observe(folder);
+	}
+
+	/**
+	 * The given faces, and behind them every face of the other list that somebody pointed at and
+	 * that none of them is, see issue #155.
+	 *
+	 * <p>
+	 * A face found in a marked region is not something a pass over the preview finds again, so it
+	 * must not be lost when the photograph is described anew (the walk of issue #140 does that) or
+	 * when a pass writes back a cache it read before the region was marked. Where the new
+	 * description finds the same face itself — the overlap of {@link FaceTags#IOU_MATCH} — the new
+	 * description stands.
+	 * </p>
+	 */
+	static List<FaceCache.Face> keepMarked(List<FaceCache.Face> faces, List<FaceCache.Face> before) {
+		List<FaceCache.Face> result = new ArrayList<>(faces);
+		for (FaceCache.Face old : before) {
+			if (!old.isMarked() || indexOfBox(result, old.getX(), old.getY(), old.getW(), old.getH()) >= 0) {
+				continue;
+			}
+			result.add(old);
+		}
+		return result;
+	}
+
+	/** Which of the given faces is the given raw box, <code>-1</code> where none is. */
+	static int indexOfBox(List<FaceCache.Face> faces, double x, double y, double w, double h) {
+		int best = -1;
+		double bestOverlap = FaceTags.IOU_MATCH;
+		for (int n = 0; n < faces.size(); n++) {
+			FaceCache.Face face = faces.get(n);
+			double overlap = FaceTags.iou(x, y, w, h, face.getX(), face.getY(), face.getW(), face.getH());
+			if (overlap > bestOverlap) {
+				bestOverlap = overlap;
+				best = n;
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * Looks for a face where somebody marked one, and keeps what it finds, see issue #155.
+	 *
+	 * <p>
+	 * What <code>?action=tag-faces</code> does with a box nobody decided about that meets none of
+	 * the answered faces: a region of the <em>original</em> around the box is decoded — at least a
+	 * square of {@link #SEARCH_MIN_FRACTION} of the long side, the box grown by its own size on every
+	 * side where that is more, subsampled to {@link FaceDetection#MAX_INPUT} and never the whole
+	 * raster (the memory rule of {@link Originals}) — turned upright, and handed to the detector,
+	 * which answers the face containing the box's centre (see
+	 * {@link FaceDetection#search(BufferedImage, double, double, double, double)}). That face, box
+	 * and embedding, is stored in the album's {@link FaceCache} as a detection of this photograph
+	 * like any other, {@link FaceCache.Face#isRefined() refined} and
+	 * {@link FaceCache.Face#isMarked() marked}, and the album is clustered again: it has an index,
+	 * a crop cut from the original, a suggestion of issue #127 and, once confirmed, is a prototype.
+	 * </p>
+	 *
+	 * <p>
+	 * A face the cache already holds — the detection somebody called no face and now marks again —
+	 * is answered as it is, and nothing is added. A photograph nothing is known about yet is
+	 * described first, exactly as the walk would describe it, so that the marked face is not the
+	 * only one the walk would then believe it holds.
+	 * </p>
+	 *
+	 * @param image
+	 *        The photograph.
+	 * @param x
+	 *        The left edge of the marked box, a fraction of the raw raster, see {@link Faces}.
+	 * @param y
+	 *        Its top edge, likewise.
+	 * @param w
+	 *        Its width, likewise.
+	 * @param h
+	 *        Its height, likewise.
+	 * @return The face that is now in the cache for this box, in the raw raster, or
+	 *         <code>null</code> where nothing was found, this space looks for no faces or the
+	 *         original cannot be looked at; the caller then keeps the box as it was marked.
+	 */
+	public FaceCache.Face mark(File image, double x, double y, double w, double h) {
+		if (!isEnabled() || !isPhotograph(image) || _failed.containsKey(image.getAbsolutePath())) {
+			return null;
+		}
+		File folder = image.getParentFile();
+		synchronized (lockOf(folder)) {
+			try {
+				HashCache hashes = new HashCache(folder);
+				String hash = hashes.hashByName().get(image.getName());
+				hashes.flush();
+				if (hash == null) {
+					return null;
+				}
+				FaceCache cache = new FaceCache(folder);
+				boolean changed = false;
+				if (!cache.knows(hash)) {
+					cache.put(hash, detect(image));
+					dropCrops(image);
+					rememberExif(cache, image, hash);
+					changed = true;
+				}
+				FaceCache.Face result = null;
+				FaceCache.Face found = search(image, x, y, w, h);
+				if (found != null) {
+					List<FaceCache.Face> faces = new ArrayList<>(cache.facesOf(hash));
+					int existing = indexOfBox(faces, found.getX(), found.getY(), found.getW(), found.getH());
+					if (existing >= 0) {
+						result = faces.get(existing);
+					} else {
+						faces.add(found);
+						cache.put(hash, faces);
+						result = found;
+						changed = true;
+					}
+				}
+				if (changed) {
+					Clustering.cluster(cache.allFaces());
+					cache.clustered();
+					cache.flush();
+				}
+				return result;
+			} catch (IOException | RuntimeException ex) {
+				LOG.log(Level.WARNING, "Cannot look for the marked face in '" + image.getAbsolutePath() + "': "
+					+ FaceDetection.reason(ex), ex);
+				return null;
+			}
+		}
+	}
+
+	/** The face in the region of the original around the given raw box, see {@link #mark}. */
+	private static FaceCache.Face search(File image, double x, double y, double w, double h)
+			throws IOException {
+		int[] raster = rasterOf(image);
+		Orientation exif = exifOrientation(image);
+		double rawWidth = raster[0];
+		double rawHeight = raster[1];
+		double left = x * rawWidth;
+		double top = y * rawHeight;
+		double width = w * rawWidth;
+		double height = h * rawHeight;
+		double centreX = left + width / 2;
+		double centreY = top + height / 2;
+		double least = Math.max(rawWidth, rawHeight) * SEARCH_MIN_FRACTION;
+		double regionWidth = Math.max(3 * width, least);
+		double regionHeight = Math.max(3 * height, least);
+		Originals.Region region = Originals.decodeLongSide(image, centreX - regionWidth / 2,
+			centreY - regionHeight / 2, centreX + regionWidth / 2, centreY + regionHeight / 2,
+			FaceDetection.MAX_INPUT);
+		BufferedImage raw = region.getImage();
+		double pixelsX = raw.getWidth();
+		double pixelsY = raw.getHeight();
+		int sampling = region.getSampling();
+
+		// The marked box as a fraction of the region, which is turned upright for the detector like
+		// the preview is: a face lying on its side in the file is not what a detector is made for.
+		double[] upright = Faces.toUpright(exif, (left - region.getLeft()) / sampling / pixelsX,
+			(top - region.getTop()) / sampling / pixelsY, width / sampling / pixelsX,
+			height / sampling / pixelsY);
+		BufferedImage shown = Originals.upright(raw, exif);
+		double shownX = shown.getWidth();
+		double shownY = shown.getHeight();
+		FaceDetection.Refined found = FaceDetection.search(shown, upright[0] * shownX, upright[1] * shownY,
+			upright[2] * shownX, upright[3] * shownY);
+		if (found == null) {
+			return null;
+		}
+
+		// Back into the raw raster of the file, the one frame a box is stored in.
+		double[] back = Faces.toRaw(exif, found.getX() / shownX, found.getY() / shownY,
+			found.getW() / shownX, found.getH() / shownY);
+		double foundLeft = unit(region.rawX(back[0] * pixelsX) / rawWidth);
+		double foundTop = unit(region.rawY(back[1] * pixelsY) / rawHeight);
+		double foundRight = unit(region.rawX((back[0] + back[2]) * pixelsX) / rawWidth);
+		double foundBottom = unit(region.rawY((back[1] + back[3]) * pixelsY) / rawHeight);
+		if (foundRight <= foundLeft || foundBottom <= foundTop) {
+			return null;
+		}
+		return new FaceCache.Face(foundLeft, foundTop, foundRight - foundLeft, foundBottom - foundTop,
+			FaceDetection.SCORE_THRESHOLD, found.getEmbedding(), true, true);
 	}
 
 	/**
@@ -718,7 +940,7 @@ public class FaceIndex {
 	}
 
 	/** Whether the given part is a photograph the detector would look at. */
-	static boolean isPhotograph(ImagePart image) {
+	public static boolean isPhotograph(ImagePart image) {
 		return image.getKind() == ImageKind.IMAGE;
 	}
 
@@ -848,12 +1070,35 @@ public class FaceIndex {
 	 * </p>
 	 */
 	public Map<String, List<FaceInfo>> answered(AlbumInfo album, File folder, PeopleStore people) {
+		Map<String, List<FaceInfo>> result = new LinkedHashMap<>();
+		for (Map.Entry<String, FaceTags.Answer> entry : answers(album, folder, people).entrySet()) {
+			result.put(entry.getKey(), entry.getValue().getFaces());
+		}
+		return result;
+	}
+
+	/**
+	 * The same, with what a tagging request needs to know besides the answered faces: which of
+	 * them the detector found and which detections are hidden, see {@link FaceTags.Answer}.
+	 */
+	public Map<String, FaceTags.Answer> answers(AlbumInfo album, File folder, PeopleStore people) {
 		// Deliberately without the suggestions of issue #127: this is the numbering a tagging
 		// request names a face by, and a guess neither adds a face nor moves one.
 		Map<String, List<FaceInfo>> detected = isEnabled()
 			? facesByName(cachedByName(new FaceCache(folder), new HashCache(folder).storedHashByName()))
 			: Collections.<String, List<FaceInfo>> emptyMap();
-		return merged(album, detected, people);
+		Map<String, FaceTags.Answer> result = new LinkedHashMap<>();
+		for (ImagePart image : imagesOf(album)) {
+			List<FaceInfo> faces = detected.get(image.getName());
+			if (faces == null) {
+				faces = Collections.emptyList();
+			}
+			if (faces.isEmpty() && image.getTags().isEmpty()) {
+				continue;
+			}
+			result.put(image.getName(), FaceTags.answer(faces, image.getTags(), people));
+		}
+		return result;
 	}
 
 	/**
@@ -1027,21 +1272,25 @@ public class FaceIndex {
 		}
 		Map<String, List<FaceInfo>> result = new LinkedHashMap<>();
 		for (Map.Entry<String, List<FaceCache.Face>> entry : cached.entrySet()) {
-			List<FaceCache.Face> faces = entry.getValue();
-			List<FaceInfo> wire = new ArrayList<>(faces.size());
-			for (int n = 0; n < faces.size(); n++) {
-				FaceCache.Face face = faces.get(n);
-				wire.add(FaceInfo.create()
-					.setIndex(n)
-					.setX(face.getX())
-					.setY(face.getY())
-					.setW(face.getW())
-					.setH(face.getH())
-					.setCluster(face.getCluster()));
-			}
-			result.put(entry.getKey(), wire);
+			result.put(entry.getKey(), infos(entry.getValue()));
 		}
 		return result;
+	}
+
+	/** The given detections as the wire numbers them, still in the raw raster. */
+	private static List<FaceInfo> infos(List<FaceCache.Face> faces) {
+		List<FaceInfo> wire = new ArrayList<>(faces.size());
+		for (int n = 0; n < faces.size(); n++) {
+			FaceCache.Face face = faces.get(n);
+			wire.add(FaceInfo.create()
+				.setIndex(n)
+				.setX(face.getX())
+				.setY(face.getY())
+				.setW(face.getW())
+				.setH(face.getH())
+				.setCluster(face.getCluster()));
+		}
+		return wire;
 	}
 
 	/**
@@ -1071,9 +1320,14 @@ public class FaceIndex {
 			if (faces == null || faces.isEmpty()) {
 				continue;
 			}
-			List<FaceInfo> answered = entry.getValue();
-			for (int n = 0, size = Math.min(faces.size(), answered.size()); n < size; n++) {
-				FaceInfo face = answered.get(n);
+			for (FaceInfo face : entry.getValue()) {
+				// By its number, which is its position in the cache for a detection: a hidden
+				// detection is not answered, so the answered list is not the cache's (issue #155).
+				int n = face.getIndex();
+				if (n < 0 || n >= faces.size()) {
+					// A stored tag no detection matched: no embedding, no guess.
+					continue;
+				}
 				if (face.getState() != FaceState.UNDECIDED || !face.getPerson().isEmpty()) {
 					continue;
 				}
@@ -1165,6 +1419,26 @@ public class FaceIndex {
 	 *        Which of its faces, see {@link FaceInfo#getIndex()}.
 	 */
 	public Crop crop(File image, int index) {
+		return crop(image, index, Collections.<FaceTag> emptyList());
+	}
+
+	/**
+	 * The crop of one answered face of one photograph, see issue #155.
+	 *
+	 * <p>
+	 * The numbering of the answer, see {@link FaceTags#answer(List, List, PeopleStore)}: a detection
+	 * is cut by the detector's box, a stored tag no detection matches — a face somebody marked by
+	 * hand, a decision the detector no longer finds — by the tag's own box, which is in the same raw
+	 * raster. Both are cut the same way, from the original where the preview is too small, and
+	 * cached under the name of issue #141, which is built from the content hash and the box and so
+	 * knows nothing of which of the two a box came from. A face that is not answered — a detection
+	 * somebody called no face — has no crop either.
+	 * </p>
+	 *
+	 * @param tags
+	 *        What the album stores about this photograph, see {@link ImagePart#getTags()}.
+	 */
+	public Crop crop(File image, int index, List<FaceTag> tags) {
 		if (!isEnabled()) {
 			return new Crop(null, "This library does not look for faces.");
 		}
@@ -1174,10 +1448,14 @@ public class FaceIndex {
 			return new Crop(null, "Nothing is known about this image.");
 		}
 		List<FaceCache.Face> faces = new FaceCache(folder).facesOf(hash);
-		if (index < 0 || index >= faces.size()) {
+		FaceTags.Answer answer = FaceTags.answer(infos(faces), tags, null);
+		FaceInfo answered = answer.byIndex(index);
+		if (answered == null) {
 			return new Crop(null, "There is no such face in this image.");
 		}
-		FaceCache.Face face = faces.get(index);
+		FaceCache.Face face = answer.isDetection(answered)
+			? faces.get(index)
+			: new FaceCache.Face(answered.getX(), answered.getY(), answered.getW(), answered.getH(), 0, null);
 		File target = cropFile(image, hash, face);
 		if (fresh(target, image, folder)) {
 			return new Crop(target, null);

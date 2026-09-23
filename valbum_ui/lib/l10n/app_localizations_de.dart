@@ -2410,10 +2410,15 @@ class AppLocalizationsDe extends AppLocalizations {
   String get viewerMarkFace => 'Ein Gesicht markieren';
 
   @override
-  String get viewerMarkFaceHint => 'Zeichnen Sie ein Rechteck um ein Gesicht.';
+  String get viewerMarkFaceHint =>
+      'Zeichnen Sie ein Rechteck um das Gesicht einer Person oder tippen Sie auf das Gesicht.';
 
   @override
   String get viewerFaceDecision => 'Dieses Gesicht';
+
+  @override
+  String get viewerMarkFaceTooSmall =>
+      'Zeichnen Sie ein größeres Rechteck um das Gesicht der Person.';
 
   @override
   String get personsChooserInAlbum => 'In diesem Album';

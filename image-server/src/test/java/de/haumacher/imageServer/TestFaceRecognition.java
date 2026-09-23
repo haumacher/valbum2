@@ -145,10 +145,11 @@ public class TestFaceRecognition extends FacesTestCase {
 		tag(ELSEWHERE, assignment(A_TWO, 0, "", "NOT_A_FACE"));
 		confirm(ALBUM, A_ONE, anna);
 
-		FaceInfo none = face(ELSEWHERE, A_TWO);
-		assertEquals(FaceState.NOT_A_FACE, none.getState());
-		assertEquals("", none.getPerson());
-		assertEquals("", suggestion(none));
+		// Since issue #155 such a face is not answered at all, so there is nothing to suggest for.
+		ImagePart none = image(album("/" + ELSEWHERE + "/", _adminToken), A_TWO);
+		assertEquals("A face called no face is gone from the answer: " + none.getFaces(), 0,
+			none.getFaces().size());
+		assertEquals("And the statement is stored.", FaceState.NOT_A_FACE, none.getTags().get(0).getState());
 	}
 
 	/** A confirmation taken back takes its prototype with it. */

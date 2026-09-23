@@ -3970,15 +3970,20 @@
     "description": "The tooltip of the tool with which a rectangle is drawn around a face the detector missed.",
     "x-translated": "f22eb3e8"
   },
-  "viewerMarkFaceHint": "Draw a rectangle around a face.",
+  "viewerMarkFaceHint": "Draw a rectangle around a person's face, or tap on the face.",
   "@viewerMarkFaceHint": {
     "description": "The line shown while the tool for marking a face by hand is switched on.",
-    "x-translated": "ae69d3a1"
+    "x-translated": "e8802ed5"
   },
   "viewerFaceDecision": "This face",
   "@viewerFaceDecision": {
     "description": "The heading of the sheet that opens when a face is tapped in the viewer's edit-persons mode.",
     "x-translated": "bcb042fc"
+  },
+  "viewerMarkFaceTooSmall": "Draw a larger rectangle around the person's face.",
+  "@viewerMarkFaceTooSmall": {
+    "description": "Said when a rectangle drawn with the tool for marking a face is too small to mean a face (issue #155); a tap marks a face too, so this only follows a real drag.",
+    "x-translated": "7dc01b4a"
   },
   "personsChooserInAlbum": "In this album",
   "@personsChooserInAlbum": {

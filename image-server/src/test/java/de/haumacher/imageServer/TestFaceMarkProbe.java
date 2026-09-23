@@ -102,7 +102,10 @@ public class TestFaceMarkProbe extends FacesTestCase {
 		assertEquals(bob, image(there, PHOTO).getFaces().get(image(there, PHOTO).getFaces().size() - 1).getPerson());
 		mark("/" + ELSEWHERE + "/", PHOTO, REDRAWN, "", "UNDECIDED", 200);
 		there = album("/" + ELSEWHERE + "/", _adminToken);
-		assertEquals(0, image(there, PHOTO).getTags().size());
+		// Forgetting keeps the region, undecided (issue #155).
+		assertEquals(1, image(there, PHOTO).getTags().size());
+		assertEquals(de.haumacher.imageServer.shared.model.FaceState.UNDECIDED,
+			image(there, PHOTO).getTags().get(0).getState());
 	}
 
 	private void mark(String pathInfo, String image, double[] box, String person, int expected) throws Exception {

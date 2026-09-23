@@ -278,8 +278,9 @@ public class FaceInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	 * <p>
 	 * {@link FaceState#REJECTED} says that this face is <em>not</em> {@link #getPerson()} &mdash; the
 	 * person stands in the answer so that the application can go on hiding the suggestion and issue
-	 * #127 never offers it again. {@link FaceState#NOT_A_FACE} says that there is no face here at
-	 * all, so the application hides the box.
+	 * #127 never offers it again. {@link FaceState#NOT_A_FACE} is not answered since issue #155:
+	 * a face somebody called no face is left out of every answer, so a client only ever sees this
+	 * state on a face it has just decided about itself, before it reads the album again.
 	 * </p>
 	 */
 	public final de.haumacher.imageServer.shared.model.FaceState getState() {

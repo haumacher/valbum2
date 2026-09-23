@@ -2369,10 +2369,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get viewerMarkFace => 'Mark a face';
 
   @override
-  String get viewerMarkFaceHint => 'Draw a rectangle around a face.';
+  String get viewerMarkFaceHint =>
+      'Draw a rectangle around a person\'s face, or tap on the face.';
 
   @override
   String get viewerFaceDecision => 'This face';
+
+  @override
+  String get viewerMarkFaceTooSmall =>
+      'Draw a larger rectangle around the person\'s face.';
 
   @override
   String get personsChooserInAlbum => 'In this album';

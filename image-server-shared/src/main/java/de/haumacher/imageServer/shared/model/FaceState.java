@@ -15,15 +15,25 @@ public enum FaceState implements de.haumacher.msgbuf.data.ProtocolEnum {
 	 *
 	 * <p>
 	 * The first constant and therefore what a {@link FaceInfo} of an untouched detection answers,
-	 * and what a client that does not know a value reads. It is never stored: a {@link FaceTag}
-	 * <em>is</em> a decision, and this is the absence of one.
+	 * and what a client that does not know a value reads.
 	 * </p>
 	 *
 	 * <p>
-	 * In a {@link FaceAssignment} it therefore means <em>forget the decision on this box</em>
-	 * (issue #138): the stored tag is removed and the face goes back to being a plain detection
-	 * nobody has said anything about, which issue #127 may suggest for again. It is the one way
-	 * back out of a decision &mdash; every other state replaces one.
+	 * Stored since issue #155, and then only on a region somebody marked by hand: a stored
+	 * tag ({@link FaceTag}) in this state says "there is a face here and nobody has said who it is" &mdash;
+	 * what a hand-marked face falls back to when its decision is forgotten, and what a marked region
+	 * the detector finds nothing in is stored as. An album written before issue #155 holds no such
+	 * tag.
+	 * </p>
+	 *
+	 * <p>
+	 * In a {@link FaceAssignment} it means <em>forget the decision on this face</em> (issue #138):
+	 * on a detection the stored tag is removed and the face goes back to being a plain detection,
+	 * which issue #127 may suggest for again; on a hand-marked face the region stays, undecided. It
+	 * is the one way back out of a decision &mdash; every other state replaces one. With a box that
+	 * meets none of the answered faces it means <em>mark a region here</em> (issue #155): the server
+	 * looks for a face in the original around the box and stores what it finds, or the box itself
+	 * as an undecided region where it finds nothing.
 	 * </p>
 	 */
 	UNDECIDED("UNDECIDED"),
@@ -46,6 +56,13 @@ public enum FaceState implements de.haumacher.msgbuf.data.ProtocolEnum {
 
 	/**
 	 * There is no face here at all: what the detector found is a false positive.
+	 *
+	 * <p>
+	 * Since issue #155 this removes the region from every answer: a detection carrying such a tag
+	 * is stored as that statement and no longer answered, and a hand-marked region called no face
+	 * is removed from the album outright. Marking the spot again replaces the tag and brings the
+	 * region back.
+	 * </p>
 	 */
 	NOT_A_FACE("NOT_A_FACE"),
 

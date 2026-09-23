@@ -170,7 +170,12 @@ public class FaceTag extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * What was decided; never {@link FaceState#UNDECIDED}, which is not a decision.
+	 * What was decided.
+	 *
+	 * <p>
+	 * Undecided ({@link FaceState#UNDECIDED}) only on a region somebody marked by hand and nobody
+	 * decided about (issue #155), see there; before that issue a stored tag was never undecided.
+	 * </p>
 	 */
 	public final de.haumacher.imageServer.shared.model.FaceState getState() {
 		return _state;

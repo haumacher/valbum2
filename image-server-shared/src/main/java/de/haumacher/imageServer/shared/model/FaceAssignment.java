@@ -136,8 +136,16 @@ public class FaceAssignment extends de.haumacher.msgbuf.data.AbstractDataObject 
 	 * A box that meets one of the answered faces by the overlap that makes two boxes the same face
 	 * is that face's decision and carries that face's own box, so marking a face that was found
 	 * after all is the very same thing as naming it. A box nothing meets becomes a tag of its own,
-	 * which is answered as a {@link FaceInfo} without a cluster and without a crop, and which a
-	 * {@link FaceState#UNDECIDED} on the same box takes away again.
+	 * which is answered as a {@link FaceInfo} without a cluster, with a crop cut from the original
+	 * (issue #155).
+	 * </p>
+	 *
+	 * <p>
+	 * With {@link FaceState#UNDECIDED} a box nothing meets is <em>mark a region here</em> (issue
+	 * #155): the server looks for a face in a region of the original around the box &mdash; at least
+	 * a square of a fifth of the picture's long side, so that a click sent as a small box will do
+	 * &mdash; and stores the face it finds there as a detection of its own, or the box itself as an
+	 * undecided region where it finds none. Either way the answer carries the region as a face.
 	 * </p>
 	 *
 	 * <p>

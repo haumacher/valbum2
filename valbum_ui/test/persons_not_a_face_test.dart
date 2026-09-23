@@ -9,14 +9,18 @@ import 'package:valbum_ui/main.dart';
 
 import 'persons_actions_test.dart'
     show
+        album,
+        annaAndBob,
         chooseInSelectionMenu,
         pumpActions,
         rightClickFace,
         saveEditor,
         tapFace,
         assignments;
-import 'persons_selection_test.dart' show editorState, selectionOf;
-import 'persons_view_test.dart' show faceTile, header;
+import 'persons_selection_test.dart'
+    show albumOf, editorState, imageOf, selectionOf;
+import 'persons_view_test.dart'
+    show authOf, editorClient, faceOf, faceTile, header, json, pumpEditor;
 import 'util/fake_image_http.dart';
 
 /// Unfolds the "Not a face" group, which is folded away until it is opened.
@@ -81,6 +85,41 @@ void main() {
         {"image": "t.jpg", "face": 0, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "", "state": "NOT_A_FACE"},
         {"image": "t.jpg", "face": 1, "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0, "person": "", "state": "NOT_A_FACE"},
       ]);
+    });
+
+    testWidgets("holds only this session's faces, gone after Save (#155)",
+        (tester) async {
+      // The server answers a face called no face no more: after Save the
+      // album comes back without it.
+      var saved = false;
+      var after = albumOf([
+        imageOf("t.jpg", [faceOf(1, cluster: "c2", y: 0.5)]),
+      ]);
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: album,
+          people: annaAndBob,
+          post: (request) {
+            saved = true;
+            return json(after);
+          },
+          albumNow: () => saved ? after : album,
+        ),
+      );
+      expect(header(notAFaceGroup), findsNothing);
+
+      await tapFace(tester, "t.jpg#0");
+      await chooseInSelectionMenu(tester, "persons-not-a-face");
+      expect(header(notAFaceGroup), findsOneWidget);
+
+      await saveEditor(tester);
+      expect(assignments(requests).single["state"], "NOT_A_FACE");
+      expect(header(notAFaceGroup), findsNothing);
+      expect(faceTile("t.jpg#0"), findsNothing);
     });
 
     testWidgets("acts on the one face a right click lands on", (tester) async {

@@ -512,8 +512,9 @@ message FaceInfo {
 	 * <p>
 	 * {@link FaceState#REJECTED} says that this face is <em>not</em> {@link #person} &mdash; the
 	 * person stands in the answer so that the application can go on hiding the suggestion and issue
-	 * #127 never offers it again. {@link FaceState#NOT_A_FACE} says that there is no face here at
-	 * all, so the application hides the box.
+	 * #127 never offers it again. {@link FaceState#NOT_A_FACE} is not answered since issue #155:
+	 * a face somebody called no face is left out of every answer, so a client only ever sees this
+	 * state on a face it has just decided about itself, before it reads the album again.
 	 * </p>
 	 */
 	FaceState state;
@@ -533,15 +534,25 @@ enum FaceState {
 	 *
 	 * <p>
 	 * The first constant and therefore what a {@link FaceInfo} of an untouched detection answers,
-	 * and what a client that does not know a value reads. It is never stored: a {@link FaceTag}
-	 * <em>is</em> a decision, and this is the absence of one.
+	 * and what a client that does not know a value reads.
 	 * </p>
 	 *
 	 * <p>
-	 * In a {@link FaceAssignment} it therefore means <em>forget the decision on this box</em>
-	 * (issue #138): the stored tag is removed and the face goes back to being a plain detection
-	 * nobody has said anything about, which issue #127 may suggest for again. It is the one way
-	 * back out of a decision &mdash; every other state replaces one.
+	 * Stored since issue #155, and then only on a region somebody marked by hand: a stored
+	 * tag ({@link FaceTag}) in this state says "there is a face here and nobody has said who it is" &mdash;
+	 * what a hand-marked face falls back to when its decision is forgotten, and what a marked region
+	 * the detector finds nothing in is stored as. An album written before issue #155 holds no such
+	 * tag.
+	 * </p>
+	 *
+	 * <p>
+	 * In a {@link FaceAssignment} it means <em>forget the decision on this face</em> (issue #138):
+	 * on a detection the stored tag is removed and the face goes back to being a plain detection,
+	 * which issue #127 may suggest for again; on a hand-marked face the region stays, undecided. It
+	 * is the one way back out of a decision &mdash; every other state replaces one. With a box that
+	 * meets none of the answered faces it means <em>mark a region here</em> (issue #155): the server
+	 * looks for a face in the original around the box and stores what it finds, or the box itself
+	 * as an undecided region where it finds nothing.
 	 * </p>
 	 */
 	UNDECIDED;
@@ -560,7 +571,16 @@ enum FaceState {
 	 */
 	REJECTED;
 
-	/** There is no face here at all: what the detector found is a false positive. */
+	/**
+	 * There is no face here at all: what the detector found is a false positive.
+	 *
+	 * <p>
+	 * Since issue #155 this removes the region from every answer: a detection carrying such a tag
+	 * is stored as that statement and no longer answered, and a hand-marked region called no face
+	 * is removed from the album outright. Marking the spot again replaces the tag and brings the
+	 * region back.
+	 * </p>
+	 */
 	NOT_A_FACE;
 }
 
@@ -600,7 +620,14 @@ message FaceTag {
 	 */
 	string person;
 
-	/** What was decided; never {@link FaceState#UNDECIDED}, which is not a decision. */
+	/**
+	 * What was decided.
+	 *
+	 * <p>
+	 * Undecided ({@link FaceState#UNDECIDED}) only on a region somebody marked by hand and nobody
+	 * decided about (issue #155), see there; before that issue a stored tag was never undecided.
+	 * </p>
+	 */
 	FaceState state;
 }
 
@@ -2323,8 +2350,16 @@ message FaceAssignment {
 	 * A box that meets one of the answered faces by the overlap that makes two boxes the same face
 	 * is that face's decision and carries that face's own box, so marking a face that was found
 	 * after all is the very same thing as naming it. A box nothing meets becomes a tag of its own,
-	 * which is answered as a {@link FaceInfo} without a cluster and without a crop, and which a
-	 * {@link FaceState#UNDECIDED} on the same box takes away again.
+	 * which is answered as a {@link FaceInfo} without a cluster, with a crop cut from the original
+	 * (issue #155).
+	 * </p>
+	 *
+	 * <p>
+	 * With {@link FaceState#UNDECIDED} a box nothing meets is <em>mark a region here</em> (issue
+	 * #155): the server looks for a face in a region of the original around the box &mdash; at least
+	 * a square of a fifth of the picture's long side, so that a click sent as a small box will do
+	 * &mdash; and stores the face it finds there as a detection of its own, or the box itself as an
+	 * undecided region where it finds none. Either way the answer carries the region as a face.
 	 * </p>
 	 *
 	 * <p>

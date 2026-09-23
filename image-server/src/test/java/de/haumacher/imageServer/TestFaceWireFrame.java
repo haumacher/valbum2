@@ -10,6 +10,7 @@ import de.haumacher.imageServer.faces.FaceIndex;
 import de.haumacher.imageServer.faces.FaceTags;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.FaceInfo;
+import de.haumacher.imageServer.shared.model.FaceState;
 import de.haumacher.imageServer.shared.model.FaceTag;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.upload.HashCache;
@@ -272,8 +273,13 @@ public class TestFaceWireFrame extends FacesTestCase {
 			"UNDECIDED", 200);
 
 		ImagePart image = image(album("/" + ALBUM + "/", _adminToken), name(6));
-		assertEquals("Nothing is decided about this photograph any more.", 0, image.getTags().size());
-		assertEquals("And the detection is all that is left.", 1, image.getFaces().size());
+		// A region is a region (issue #155): the decision goes, the hand-marked box stays.
+		assertEquals("The region is kept, undecided.", 1, image.getTags().size());
+		assertEquals(FaceState.UNDECIDED, image.getTags().get(0).getState());
+		assertEquals("", image.getTags().get(0).getPerson());
+		assertEquals("The detection and the region.", 2, image.getFaces().size());
+		assertEquals(FaceState.UNDECIDED, image.getFaces().get(1).getState());
+		assertEquals("", image.getFaces().get(1).getPerson());
 	}
 
 	/** A box that is not a place on the photograph is refused, and nothing is written. */

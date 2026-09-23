@@ -16,6 +16,7 @@ import 'attribution.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'image_properties.dart';
+import 'album_edit.dart' show PlaneTransform;
 import 'image_transform.dart';
 import 'move_view.dart';
 import 'offline.dart';
@@ -79,6 +80,14 @@ ImageProvider viewerPicture(
 /// In pixels of the screen on both sides: below that it is a tap that slipped,
 /// and a face nobody can see the outline of is not a face somebody marked.
 const double _minMarkedFace = 8;
+
+/// How large a click on the picture is sent, in pixels of the screen (#155).
+///
+/// A click with the marking tool is a small box centred on the click: the
+/// server looks for a face in a region of the original around it that is at
+/// least a fifth of the picture's long side, so the box only has to say
+/// *where*, and a square of this size says so at any zoom.
+const double _clickedFace = 24;
 
 /// How tall the name chip over a face box is drawn, in pixels of the screen.
 const double _faceLabelHeight = 22;
@@ -283,6 +292,13 @@ class ImageViewState extends State<ImageView>
 
   /// The rectangle being drawn, in page coordinates; `null` while none is.
   Rect? _marked;
+
+  /// Where the drag drawing [_marked] started, in page coordinates (#155).
+  ///
+  /// Kept on its own, because the rectangle is spanned between this point and
+  /// wherever the pointer is now — in every direction. Anchoring it on the
+  /// last frame's corner instead collapsed every drag that went left or up.
+  Offset? _markStart;
 
   /// The register, as far as this viewer has loaded it, see [PeopleRegistry].
   Map<String, Person> _people = const {};
@@ -491,6 +507,7 @@ class ImageViewState extends State<ImageView>
       _editPersons = false;
       _markingFaces = false;
       _marked = null;
+      _markStart = null;
     });
   }
 
@@ -706,7 +723,7 @@ class ImageViewState extends State<ImageView>
   /// nothing, because nothing was changed here before the answer came back.
   /// What the answer carries is adopted, see [_adopt]: the faces of this
   /// photograph as the server now has them, so the labels say what is stored.
-  Future<void> tagFace({
+  Future<bool> tagFace({
     int face = 0,
     MarkedBox? box,
     required String person,
@@ -714,7 +731,7 @@ class ImageViewState extends State<ImageView>
   }) async {
     var path = widget.editPath;
     if (path == null || refuseWhileOffline(context)) {
-      return;
+      return false;
     }
     var messenger = ScaffoldMessenger.of(context);
     var assignment = FaceAssignment(
@@ -732,12 +749,13 @@ class ImageViewState extends State<ImageView>
     try {
       var answer = await widget.client.tagFaces(path, [assignment]);
       if (!mounted) {
-        return;
+        return false;
       }
       _adopt(answer);
+      return true;
     } catch (error) {
       if (!mounted) {
-        return;
+        return false;
       }
       messenger.showSnackBar(
         SnackBar(
@@ -749,6 +767,7 @@ class ImageViewState extends State<ImageView>
           duration: const Duration(seconds: 8),
         ),
       );
+      return false;
     }
   }
 
@@ -1118,16 +1137,30 @@ class ImageViewState extends State<ImageView>
             // drawn the picture does not pan, which is what makes the drawing
             // possible at all.
             behavior: HitTestBehavior.opaque,
-            onPanStart: (details) =>
-                setState(() => _marked = details.localPosition & Size.zero),
+            // The rectangle starts where the finger went down, not where the
+            // drag was recognised.
+            dragStartBehavior: DragStartBehavior.down,
+            onPanStart: (details) => setState(() {
+              _markStart = details.localPosition;
+              _marked = details.localPosition & Size.zero;
+            }),
             onPanUpdate: (details) => setState(() {
-              var start = _marked;
+              var start = _markStart;
               if (start != null) {
-                _marked = Rect.fromPoints(start.topLeft, details.localPosition);
+                // Spanned between the start and the pointer, whichever way
+                // the drag goes (#155).
+                _marked = Rect.fromPoints(start, details.localPosition);
               }
             }),
             onPanEnd: (details) => markFace(tx),
-            onPanCancel: () => setState(() => _marked = null),
+            onPanCancel: () => setState(() {
+              _marked = null;
+              _markStart = null;
+            }),
+            // A tap is not a slipped drag: on a face it opens that face's
+            // sheet, as it does with the tool off, and anywhere else it is a
+            // click that marks a face (#155).
+            onTapUp: (details) => tapWhileMarking(tx, details.localPosition),
           ),
         ),
     ];
@@ -1144,8 +1177,8 @@ class ImageViewState extends State<ImageView>
     // A decision *against* somebody is drawn dimmed rather than written out:
     // "not this person" and "no face at all" are statements about what is not
     // there, and a name is what a chip is for.
-    var refused = face.state == FaceState.rejected ||
-        face.state == FaceState.notAFace;
+    var refused =
+        face.state == FaceState.rejected || face.state == FaceState.notAFace;
     var colour = refused
         ? Colors.white30
         : face.confirmed
@@ -1198,21 +1231,109 @@ class ImageViewState extends State<ImageView>
   /// the picture as it was, because nothing was written anywhere.
   Future<void> markFace(ImageTransform tx) async {
     var drawn = _marked;
-    setState(() => _marked = null);
-    if (drawn == null ||
-        drawn.width < _minMarkedFace ||
-        drawn.height < _minMarkedFace) {
+    setState(() {
+      _marked = null;
+      _markStart = null;
+    });
+    if (drawn == null) {
+      return;
+    }
+    if (drawn.width < _minMarkedFace || drawn.height < _minMarkedFace) {
+      // Never dropped silently (#155): a box that vanished without a word
+      // looks like a tool that does not work.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.viewerMarkFaceTooSmall,
+            key: const Key("face-marking-too-small"),
+          ),
+        ),
+      );
       return;
     }
     var box = markedBox(tx, drawn.topLeft, drawn.bottomRight);
     if (box == null) {
       return;
     }
+    await markRegion(box);
+  }
+
+  /// What a tap does while the marking tool is on (#155).
+  ///
+  /// On a face it opens that face's sheet — a new face inside a face is never
+  /// what was meant, and the tool must not take the faces away from the tap —
+  /// the smallest box under the point winning, which is the face and not the
+  /// group around it. Anywhere else it marks a face by a click: a small box
+  /// centred on the point, which the server widens into the region it looks
+  /// for a face in.
+  Future<void> tapWhileMarking(ImageTransform tx, Offset point) async {
+    FaceInfo? hit;
+    double hitArea = double.infinity;
+    for (var face in editableFaces) {
+      var rect = pageRectOfBox(tx, face.x, face.y, face.w, face.h);
+      if (!rect.contains(point)) {
+        continue;
+      }
+      var area = rect.width * rect.height;
+      if (area < hitArea) {
+        hit = face;
+        hitArea = area;
+      }
+    }
+    if (hit != null) {
+      await decideFace(hit);
+      return;
+    }
+    var half = const Offset(_clickedFace / 2, _clickedFace / 2);
+    var box = markedBox(tx, point - half, point + half);
+    if (box == null) {
+      return;
+    }
+    await markRegion(box);
+  }
+
+  /// Marks a region of the picture as a face and names it (#155).
+  ///
+  /// The box is posted at once, undecided: the server looks for a face in the
+  /// original around it and answers what it found there — the detector's own
+  /// box, with a suggestion of issue #127 where it recognises somebody — or
+  /// the box itself as a region nobody decided about. A suggestion is shown on
+  /// the box and asks nothing more: one tap on the box confirms it. Where
+  /// there is none the chooser asks who it is, and the choice is posted for
+  /// that face; cancelling it leaves the region, undecided.
+  Future<void> markRegion(MarkedBox box) async {
+    var posted = await tagFace(
+      box: box,
+      person: "",
+      state: FaceState.undecided,
+    );
+    if (!posted || !mounted) {
+      return;
+    }
+    var face = faceAtBox(part.faces, box);
+    if (face == null) {
+      return;
+    }
+    if (!face.confirmed &&
+        face.state == FaceState.undecided &&
+        face.person.isNotEmpty) {
+      // A suggestion: the chip on the box says whom, and the box confirms.
+      await _loadPeople();
+      return;
+    }
+    if (face.state != FaceState.undecided) {
+      // Somebody decided about this face already; its sheet is one tap away.
+      return;
+    }
     var person = await choosePerson();
     if (person == null || !mounted) {
       return;
     }
-    await tagFace(box: box, person: person.id, state: FaceState.confirmed);
+    await tagFace(
+      face: face.index,
+      person: person.id,
+      state: FaceState.confirmed,
+    );
   }
 
   /// What is drawn into the viewport: the thumbnail, and the picture over it.
@@ -1289,6 +1410,7 @@ class ImageViewState extends State<ImageView>
         rawWidth: tx.rawWidth,
         rawHeight: tx.rawHeight,
         scale: tx.scale,
+        swapsDimensions: PlaneTransform.of(tx.orientation).swapsDimensions,
         child: image,
       ),
     );
@@ -1627,7 +1749,9 @@ class ImageViewState extends State<ImageView>
             color: Colors.black38,
             shape: BoxShape.circle,
           ),
-          child: menu(context, [
+          // The look of every other control over the picture: white, and as
+          // large (#155) — the theme's dark icon was all but invisible here.
+          child: menu(context, icon: imageOverlayIcon(Icons.more_vert), [
             PopupMenuItem<void Function(BuildContext)>(
               key: const Key("viewer-edit-persons"),
               value: (_) => enterEditPersons(),
@@ -1862,6 +1986,58 @@ class ImageViewState extends State<ImageView>
   }
 }
 
+/// The face of [faces] a marked [box] became on the server (#155).
+///
+/// The server answers the detector's own box where it found a face around
+/// the marked one — larger than a click, and never exactly what a hand drew —
+/// or the marked box itself where it found none. So the face meant is one that
+/// contains the centre of the box, or one that overlaps it by more than half;
+/// of several, the one overlapping it most, and of equal ones the smallest.
+FaceInfo? faceAtBox(List<FaceInfo> faces, MarkedBox box) {
+  var centreX = box.x + box.w / 2;
+  var centreY = box.y + box.h / 2;
+  FaceInfo? best;
+  var bestOverlap = -1.0;
+  var bestArea = double.infinity;
+  for (var face in faces) {
+    var contains = centreX >= face.x &&
+        centreX <= face.x + face.w &&
+        centreY >= face.y &&
+        centreY <= face.y + face.h;
+    var overlap = _overlap(box, face);
+    if (!contains && overlap <= 0.5) {
+      continue;
+    }
+    var area = face.w * face.h;
+    if (overlap > bestOverlap || (overlap == bestOverlap && area < bestArea)) {
+      best = face;
+      bestOverlap = overlap;
+      bestArea = area;
+    }
+  }
+  return best;
+}
+
+/// The intersection of the two boxes over their union, `0..1`.
+double _overlap(MarkedBox box, FaceInfo face) {
+  var left = math.max(box.x, face.x);
+  var top = math.max(box.y, face.y);
+  var right = math.min(box.x + box.w, face.x + face.w);
+  var bottom = math.min(box.y + box.h, face.y + face.h);
+  if (right <= left || bottom <= top) {
+    return 0;
+  }
+  var intersection = (right - left) * (bottom - top);
+  var union = box.w * box.h + face.w * face.h - intersection;
+  return union <= 0 ? 0 : intersection / union;
+}
+
+/// The icon of a control floating over the image of an [ImageView]: white and
+/// as large as [imageOverlayButton]'s, for a control that is not one of those
+/// buttons (the viewer's menu, #155).
+Widget imageOverlayIcon(IconData icon, {Color color = Colors.white}) =>
+    Icon(icon, color: color, size: 32);
+
 /// A button floating over the image of an [ImageView].
 Widget imageOverlayButton(
   IconData icon,
@@ -1889,6 +2065,9 @@ const Duration _faceHoverWait = Duration(milliseconds: 300);
 
 /// How wide the outline of a hovered face is drawn, in pixels of the screen.
 const double _faceOutlineWidth = 1.5;
+
+/// The room between a face box and the name standing outside it (issue #162).
+const double _nameMargin = 6;
 
 /// The [child] picture with a hover region over every named face (issue #145).
 ///
@@ -1922,6 +2101,11 @@ class FaceRegions extends StatefulWidget {
   /// The scale the layer is drawn at, so that the outline keeps its width.
   final double scale;
 
+  /// Whether the stored turn of the picture ([ImagePart.orientation]) is a
+  /// quarter turn, which swaps the side of a box that stands upright on the
+  /// screen — the side the name has to clear (issue #162).
+  final bool swapsDimensions;
+
   /// The picture the regions lie over.
   final Widget child;
 
@@ -1932,6 +2116,7 @@ class FaceRegions extends StatefulWidget {
     required this.rawWidth,
     required this.rawHeight,
     required this.scale,
+    this.swapsDimensions = false,
     required this.child,
   });
 
@@ -1990,6 +2175,14 @@ class _FaceRegionsState extends State<FaceRegions> {
     );
   }
 
+  /// How far from the centre of [face] its name stands: just outside the box.
+  double _nameOffset(FaceInfo face) {
+    var upright = widget.swapsDimensions
+        ? face.w * widget.rawWidth
+        : face.h * widget.rawHeight;
+    return upright * widget.scale / 2 + _nameMargin;
+  }
+
   /// One face: the tooltip naming it, and the outline while it is hovered.
   Widget _region(FaceInfo face, String name) {
     var hovered = _hovered == face.index;
@@ -2002,6 +2195,12 @@ class _FaceRegionsState extends State<FaceRegions> {
     return Tooltip(
       message: name,
       waitDuration: _faceHoverWait,
+      // A [Tooltip] stands a fixed distance from the *centre* of its child, so
+      // on any box taller than that distance the name lay over the face it
+      // named (issue #162). Half the box's height on the screen — the side
+      // that stands upright once the picture is turned — plus a margin puts
+      // it just outside the box, at every zoom.
+      verticalOffset: _nameOffset(face),
       // The viewer's own long press opens the image properties (issue #80).
       // A tooltip that answered it too would take that gesture away on every
       // face; the mouse entering the region is what shows this one.
