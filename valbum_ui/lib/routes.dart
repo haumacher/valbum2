@@ -54,6 +54,14 @@ const String alternativesSegment = "alternatives";
 /// through the router's leave guard (issue #99).
 const String personsSegment = "persons";
 
+/// The reserved path segment introducing the trash of an album (#152).
+///
+/// Like [personsSegment]: an album of that name is not addressable, and the
+/// page is a level of its own on the album (issue #93), left by the app bar's
+/// `leading` (issue #100). It buffers nothing — every restore is written at
+/// once — so no leave guard is registered for it.
+const String trashSegment = "trash";
+
 /// One addressable view of the app.
 ///
 /// Every route names the enclosing listing or album by its [albumPath] (the
@@ -270,6 +278,37 @@ class PersonsRoute extends VAlbumRoute {
   String toString() => "PersonsRoute($path)";
 }
 
+/// The trash of an album, see issue #152.
+///
+/// One more level on the album, addressed with a trailing slash: the
+/// photographs of the album rated as trash (−2), to be restored one by one or
+/// purged into the trash folder of the space all at once.
+class TrashRoute extends VAlbumRoute {
+  @override
+  final List<String> albumPath;
+
+  const TrashRoute(this.albumPath);
+
+  @override
+  VAlbumRoute? get up => ListingOrAlbumRoute(albumPath);
+
+  @override
+  List<String> get segments => [...albumPath, trashSegment, ""];
+
+  @override
+  VAlbumRoute withAlbumPath(List<String> path) => TrashRoute(path);
+
+  @override
+  bool operator ==(Object other) =>
+      other is TrashRoute && listEquals(albumPath, other.albumPath);
+
+  @override
+  int get hashCode => Object.hash("trash", Object.hashAll(albumPath));
+
+  @override
+  String toString() => "TrashRoute($path)";
+}
+
 /// The route the given location denotes.
 ///
 /// [basePath] is the app base the location is relative to (see the library
@@ -296,6 +335,10 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
     // `.../<album>/persons/`
     if (segments.isNotEmpty && segments.last == personsSegment) {
       return PersonsRoute(segments.sublist(0, segments.length - 1));
+    }
+    // `.../<album>/trash/`
+    if (segments.isNotEmpty && segments.last == trashSegment) {
+      return TrashRoute(segments.sublist(0, segments.length - 1));
     }
     // `.../<image>/alternatives/`
     if (segments.length >= 2 && segments.last == alternativesSegment) {

@@ -88,6 +88,7 @@ const List<String> convertedFiles = [
   "lib/share_view.dart",
   "lib/sign_in_form.dart",
   "lib/thumbnails.dart",
+  "lib/trash_view.dart",
   "lib/upload_progress.dart",
   "lib/urls.dart",
   "lib/video_view.dart",

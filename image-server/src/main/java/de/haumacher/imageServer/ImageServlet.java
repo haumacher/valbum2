@@ -707,7 +707,7 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
-			serveImage(context, resourcePath, caller, clearance, _auth.minRating(caller), viewAs);
+			serveImage(context, resourcePath, caller, clearance, _auth.minRating(caller, resourcePath, viewAs), viewAs);
 		} else {
 			error404(context);
 		}
@@ -1285,6 +1285,61 @@ public class ImageServlet extends HttpServlet {
 		// What went into the trash is gone from the album; the index reads the folder again, see
 		// issue #118.
 		_index.treeChanged(folder.toFile());
+
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Deletes the photographs of the addressed album that are rated as trash from disk, see issue
+	 * #152.
+	 *
+	 * <p>
+	 * The purge of an album: every photograph rated
+	 * {@link de.haumacher.imageServer.auth.Ratings#TRASH}, group members one by one, is unlinked,
+	 * leaves the sidecar and the hash cache, and takes its generated cache files with it, see
+	 * {@link DeleteService#purge(PathInfo)}. The request carries no body; the answer is a
+	 * {@link MoveResult} with one outcome per photograph, empty where there was nothing to purge.
+	 * </p>
+	 *
+	 * <p>
+	 * It is the administrator's act alone ({@link AuthService#mayAdminister(Caller)}): the one path
+	 * of this server that removes a photograph from disk. Trashing and restoring are ratings and
+	 * need {@link Rights#EDIT}; making it final does not. A share link is refused whatever it
+	 * allows, an anonymous caller is told how to sign in.
+	 * </p>
+	 */
+	private void purgeTrash(Context context) throws IOException {
+		// Who the caller is, before where they are pointing, like every management request.
+		Caller caller = _auth.caller(context.request());
+		if (!_auth.mayAdminister(caller)) {
+			if (!caller.isPaired() && !caller.isShareLink()) {
+				unauthorized(context, caller, true);
+				return;
+			}
+			LOG.warning("Refusing the purge at '" + context.request().getPathInfo() + "': "
+				+ DeleteService.PURGE_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, DeleteService.PURGE_REFUSED);
+			return;
+		}
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo folder = location.getPath();
+
+		MoveResult result;
+		try {
+			result = new DeleteService(folder.getBasePath(), _cache).purge(folder);
+		} catch (MoveRefused ex) {
+			LOG.warning("Refusing to purge '" + context.request().getPathInfo() + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+
+		if (!result.getOutcomes().isEmpty()) {
+			// What was purged is gone from the album; the index reads the folder again, see #118.
+			_index.treeChanged(folder.toFile());
+		}
 
 		serveJsonObject(context.response(), result);
 	}
@@ -2515,6 +2570,10 @@ public class ImageServlet extends HttpServlet {
 			deleteEntries(context);
 			return;
 		}
+		if ("purge".equals(action)) {
+			purgeTrash(context);
+			return;
+		}
 		if ("place".equals(action)) {
 			placeEntries(context);
 			return;
@@ -2981,7 +3040,7 @@ public class ImageServlet extends HttpServlet {
 		resource = shown;
 
 		if (jsonRequested(context)) {
-			Resource answer = _privacy.filter(resource, pathInfo, clearance, _auth.minRating(caller));
+			Resource answer = _privacy.filter(resource, pathInfo, clearance, _auth.minRating(caller, pathInfo, viewAs));
 			answer = withFaces(answer, pathInfo, caller, viewAs);
 			if (answer instanceof ListingInfo) {
 				// The shared albums of this folder, shown as what they point at, see issue #50.
@@ -3607,7 +3666,7 @@ public class ImageServlet extends HttpServlet {
 		Resource stored = _cache.lookup(folderPath);
 		int viewAs = Privacy.PRIVATE;
 		int clearance = Math.min(_auth.clearance(caller, folderPath), viewAs);
-		Resource answer = _privacy.filter(stored, folderPath, clearance, _auth.minRating(caller));
+		Resource answer = _privacy.filter(stored, folderPath, clearance, _auth.minRating(caller, folderPath, viewAs));
 		answer = withFaces(answer, folderPath, caller, viewAs);
 		serveJson(context.response(), withRights(answer, _auth.rights(caller, folderPath)));
 	}

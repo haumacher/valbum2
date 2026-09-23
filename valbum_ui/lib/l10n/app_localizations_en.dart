@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -778,6 +779,50 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get showTrash => 'Show trash';
+
+  @override
+  String get trashPageTitle => 'Trash bin';
+
+  @override
+  String get trashRestore => 'Restore';
+
+  @override
+  String get trashPurgeAction => 'Purge…';
+
+  @override
+  String get trashPurgeTitle => 'Purge trash';
+
+  @override
+  String get trashPurgeMessage =>
+      'The photographs are deleted from disk. This cannot be undone.';
+
+  @override
+  String get trashPurgeConfirm => 'Delete permanently';
+
+  @override
+  String trashPurged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photographs were deleted from disk.',
+      one: '1 photograph was deleted from disk.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get trashEmptyNotice => 'There is nothing in the trash of this album.';
+
+  @override
+  String get trashBackToAlbum => 'Back to the album';
+
+  @override
+  String doingPurgingTrash(String folder) {
+    return 'purging the trash of $folder';
+  }
+
+  @override
   String get shareContinueToStart => 'Continue to the start page';
 
   @override
@@ -1377,8 +1422,7 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           '$count photos were set aside; the copies that stay are elsewhere in the library.',
-      one:
-          '1 photo was set aside; the copy that stays is elsewhere in the library.',
+      one: '1 photo was set aside; the copy that stays is elsewhere in the library.',
     );
     return '$_temp0';
   }

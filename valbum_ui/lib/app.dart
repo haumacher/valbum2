@@ -40,6 +40,7 @@ import 'routes.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'sign_in_form.dart';
+import 'trash_view.dart';
 import 'upload_progress.dart';
 import 'urls.dart';
 import 'wakelock.dart';
@@ -1438,6 +1439,11 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
             ListingOrAlbumRoute(album),
             route,
           ],
+        // The trash of an album sits on it the same way, see issue #152.
+        TrashRoute(albumPath: var album) => [
+            ListingOrAlbumRoute(album),
+            route,
+          ],
       };
 
   /// Watches what sits on top of the pages, see [popRoute].
@@ -1475,6 +1481,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       AlternativesRoute() => "valbum:alternatives:$album",
       MemberRoute() => "valbum:member:$album",
       PersonsRoute() => "valbum:persons:$album",
+      TrashRoute() => "valbum:trash:$album",
     };
   }
 
@@ -1877,6 +1884,11 @@ class VAlbumState extends State<VAlbumView>
       // person they are, on a level of its own above the album.
       return PersonsContent(this, self, baseUrl);
     }
+    if (current is TrashRoute) {
+      // The trash of issue #152: the album's photographs rated as trash, on a
+      // level of its own above the album, restored or purged at once.
+      return TrashContent(this, self, baseUrl);
+    }
     if (current is ListingOrAlbumRoute) {
       // An inbox is an album of another kind and is shown by a screen of its
       // own (issues #131, #136): always in the selection mode, nothing
@@ -1964,6 +1976,7 @@ class VAlbumState extends State<VAlbumView>
         MemberRoute(name: var name) => name,
         ListingOrAlbumRoute() => "",
         PersonsRoute() => "",
+        TrashRoute() => "",
       };
 
   /// Every image of the album by its file name, group members included.

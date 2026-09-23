@@ -933,7 +933,7 @@ public class MoveService {
 	 * replaced by that image, since a group of one is not a group.
 	 * </p>
 	 */
-	private static void detach(AlbumInfo album, ImagePart image) {
+	static void detach(AlbumInfo album, ImagePart image) {
 		ImageGroup group = image.getGroup();
 		if (group == null) {
 			album.removePart(image);
@@ -966,7 +966,7 @@ public class MoveService {
 	 * says so, see {@link ThumbnailInfo#getOrientation()} and issue #115.
 	 * </p>
 	 */
-	private static void repairIndexPicture(AlbumInfo album) {
+	static void repairIndexPicture(AlbumInfo album) {
 		ThumbnailInfo indexPicture = album.getIndexPicture();
 		if (indexPicture == null) {
 			return;
@@ -1192,7 +1192,7 @@ public class MoveService {
 	 * {@link AlbumDate#clearDerived(FolderResource)}.
 	 * </p>
 	 */
-	private static byte[] json(FolderResource resource) throws IOException {
+	static byte[] json(FolderResource resource) throws IOException {
 		AlbumDate.clearDerived(resource);
 		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(buffer,
