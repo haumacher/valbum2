@@ -404,6 +404,82 @@ List<AbstractImage> imageRange(
   return result;
 }
 
+/// What a click on a tile leaves selected, and the anchor of the next
+/// shift-click: [TapSelection.selection] and [TapSelection.anchor].
+class TapSelection<T> {
+  /// The selection after the click, a set of its own (by identity).
+  final Set<T> selection;
+
+  /// The part clicked last, the anchor of the next shift-click.
+  final T anchor;
+
+  const TapSelection(this.selection, this.anchor);
+}
+
+/// The selection after a click on [tapped], the regular semantics of a file
+/// manager — the one decision the album's edit mode and the inbox (issue
+/// #160) both take their clicks from, pure so that it is checked without a
+/// screen.
+///
+///  * a **plain** click selects exactly [tapped]; a plain click on the only
+///    selected part clears the selection;
+///  * a **ctrl** (or meta) click toggles [tapped];
+///  * a **shift** click extends from [anchor] to [tapped] along [ordered] —
+///    the parts as they are shown, so a range runs over whatever the screen
+///    draws between them (the inbox's day and month boundaries included). The
+///    range takes the anchor's own state: it selects from a selected anchor
+///    and deselects from one that was just clicked off. The anchor itself is
+///    not touched, [tapped] is. Without an anchor, or with one that is not
+///    shown any more, a shift-click is a plain click — there is nothing to
+///    extend from, and a range from a guessed start would change what the
+///    reader never pointed at.
+///
+/// Every click, a shift-click included, makes [tapped] the next anchor, as the
+/// GWT client did. [current] is never changed.
+TapSelection<T> selectionAfterTap<T>({
+  required List<T> ordered,
+  required T tapped,
+  required Set<T> current,
+  T? anchor,
+  bool shift = false,
+  bool ctrl = false,
+}) {
+  var result = Set<T>.identity()..addAll(current);
+  var from = anchor == null ? -1 : _indexOfIdentical(ordered, anchor);
+  var to = _indexOfIdentical(ordered, tapped);
+  if (shift && from >= 0 && to >= 0) {
+    var select = current.contains(anchor);
+    var delta = from < to ? 1 : -1;
+    for (var index = from + delta; index != to + delta; index += delta) {
+      if (select) {
+        result.add(ordered[index]);
+      } else {
+        result.remove(ordered[index]);
+      }
+    }
+  } else if (ctrl && !shift) {
+    if (!result.remove(tapped)) {
+      result.add(tapped);
+    }
+  } else {
+    var wasOnlySelection = current.length == 1 && current.contains(tapped);
+    result.clear();
+    if (!wasOnlySelection) {
+      result.add(tapped);
+    }
+  }
+  return TapSelection(result, tapped);
+}
+
+int _indexOfIdentical<T>(List<T> list, T element) {
+  for (var index = 0; index < list.length; index++) {
+    if (identical(list[index], element)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 /// A rating filter letting every image through.
 ///
 /// The "alternatives" view of an [ImageGroup] shows all of its images, no

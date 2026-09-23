@@ -8,21 +8,23 @@
 library;
 
 import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:valbum_ui/inbox_view.dart';
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/resource.dart';
+import 'package:valbum_ui/trash_view.dart';
 
 import 'move_test.dart' hide main;
 import 'util/fake_image_http.dart';
 import 'util/l10n.dart';
 
 /// A photograph of the inbox, taken at noon of the given day.
-String part(String name, DateTime taken) =>
+String part(String name, DateTime taken, {int rating = 0}) =>
     '["ImagePart", {"kind": "IMAGE", "name": "$name", '
     '"date": ${taken.millisecondsSinceEpoch}, "width": 2048, '
-    '"height": 1536, "orientation": "IDENTITY", "rating": 0}]';
+    '"height": 1536, "orientation": "IDENTITY", "rating": $rating}]';
 
 DateTime noon(int year, int month, int day) => DateTime(year, month, day, 12);
 
@@ -40,13 +42,15 @@ String inboxJson({
   List<String> rights = const [],
   bool undated = false,
   List<(String, int, int, int)> photos = inboxPhotos,
+  Set<String> trashed = const {},
 }) =>
     '["AlbumInfo", {"path": "Inbox", "title": "Inbox", "subTitle": "", '
     '"kind": "INBOX", '
     '${rights.isEmpty ? "" : '"rights": ['
         '${rights.map((r) => '{"name": "$r"}').join(", ")}], '}'
     '"parts": [${[
-      for (var (name, y, m, d) in photos) part(name, noon(y, m, d)),
+      for (var (name, y, m, d) in photos)
+        part(name, noon(y, m, d), rating: trashed.contains(name) ? -2 : 0),
       if (undated)
         '["ImagePart", {"kind": "IMAGE", "name": "z.jpg", "date": 0, '
             '"width": 2048, "height": 1536, "orientation": "IDENTITY"}]',
@@ -93,6 +97,13 @@ List<String> selectedNames(WidgetTester tester) =>
 /// on demand (issue #111), and since the newest day stands at the top an
 /// older day may lie below the test viewport.
 Future<void> reveal(WidgetTester tester, Finder finder) async {
+  if (finder.evaluate().isEmpty) {
+    // Scrolled past already, above the viewport: start from the top again.
+    var scrollable = tester.state<ScrollableState>(find.descendant(
+        of: find.byType(CustomScrollView), matching: find.byType(Scrollable)));
+    scrollable.position.jumpTo(0);
+    await tester.pumpAndSettle();
+  }
   await tester.dragUntilVisible(
       finder, find.byType(CustomScrollView), const Offset(0, -300));
   await tester.pumpAndSettle();
@@ -109,6 +120,16 @@ Future<void> tapHeading(WidgetTester tester, String key) async {
 Future<void> tapTileOf(WidgetTester tester, String name) async {
   await reveal(tester, tile(name));
   await tester.tapAt(tester.getRect(tile(name)).center);
+  await tester.pumpAndSettle();
+}
+
+/// Clicks the tile of [name] while [key] is held down, the way a mouse with a
+/// modifier does.
+Future<void> tapTileWith(
+    WidgetTester tester, String name, LogicalKeyboardKey key) async {
+  await tester.sendKeyDownEvent(key);
+  await tapTileOf(tester, name);
+  await tester.sendKeyUpEvent(key);
   await tester.pumpAndSettle();
 }
 
@@ -154,7 +175,9 @@ void main() {
       ].join(", ")}]}]';
       var days = inboxDays((Resource.fromString(json) as AlbumInfo).parts);
 
-      expect([for (var day in days) day.day], [
+      expect([
+        for (var day in days) day.day
+      ], [
         DateTime(2026, 3, 2),
         DateTime(2026, 3, 1),
       ]);
@@ -266,8 +289,12 @@ void main() {
   });
 
   group('deleting photographs of the inbox', () {
-    testWidgets('posts the selected names and reads the outcome out',
-        (tester) async {
+    // A member with `contribute` alone (#135) cannot write the sidecar, so
+    // their delete stays the #131 move into the trash folder of the space,
+    // until issue #159 decides otherwise.
+    testWidgets(
+        'as a contributor posts the selected names and reads the '
+        'outcome out', (tester) async {
       var requests = <http.Request>[];
       await pumpInbox(
         tester,
@@ -275,7 +302,9 @@ void main() {
             ? json('{"outcomes":[{"name":"a.jpg","newName":"a.jpg",'
                 '"message":"Moved to the trash of the space."},'
                 '{"name":"b.jpg","newName":"b.jpg","message":""}]}')
-            : inboxTree(request),
+            : inboxTree(request,
+                album: inboxJson(
+                    rights: const ["view", "download", "contribute"])),
         requests: requests,
       );
 
@@ -448,6 +477,236 @@ void main() {
       expect(find.byKey(const Key("move-to")), findsNothing);
       expect(find.byKey(const Key("delete-selection")), findsNothing);
       expect(find.byKey(const Key("album-properties")), findsNothing);
+    });
+  });
+
+  group('a click on a tile', () {
+    testWidgets('has the album\'s semantics: plain, ctrl and shift',
+        (tester) async {
+      await pumpInbox(tester, inboxTree);
+
+      // A plain click selects exactly one photograph ...
+      await tapTileOf(tester, "d.jpg");
+      expect(selectedNames(tester), ["d.jpg"]);
+      await tapTileOf(tester, "c.jpg");
+      expect(selectedNames(tester), ["c.jpg"]);
+      // ... and a second one on the only selected clears the selection:
+      // a simple click never leaves the last photograph selected by accident.
+      await tapTileOf(tester, "c.jpg");
+      expect(selectedNames(tester), isEmpty);
+
+      // Ctrl toggles.
+      await tapTileWith(tester, "d.jpg", LogicalKeyboardKey.controlLeft);
+      await tapTileWith(tester, "a.jpg", LogicalKeyboardKey.controlLeft);
+      expect(selectedNames(tester), ["d.jpg", "a.jpg"]);
+      await tapTileWith(tester, "d.jpg", LogicalKeyboardKey.controlLeft);
+      expect(selectedNames(tester), ["a.jpg"]);
+
+      // Shift takes the range in the order drawn, across a month line and a
+      // day heading: April 5th down to the first photograph of March 1st.
+      await tapTileOf(tester, "d.jpg");
+      await tapTileWith(tester, "a.jpg", LogicalKeyboardKey.shiftLeft);
+      expect(selectedNames(tester), ["d.jpg", "c.jpg", "a.jpg"]);
+
+      // And backwards, from the last photograph of March 1st up to March 2nd.
+      await tapTileOf(tester, "b.jpg");
+      await tapTileWith(tester, "c.jpg", LogicalKeyboardKey.shiftLeft);
+      expect(selectedNames(tester), ["c.jpg", "a.jpg", "b.jpg"]);
+    });
+
+    testWidgets('a long press toggles, the finger\'s multiple selection',
+        (tester) async {
+      await pumpInbox(tester, inboxTree);
+
+      await reveal(tester, tile("d.jpg"));
+      await tester.longPressAt(tester.getRect(tile("d.jpg")).center);
+      await tester.pumpAndSettle();
+      await reveal(tester, tile("c.jpg"));
+      await tester.longPressAt(tester.getRect(tile("c.jpg")).center);
+      await tester.pumpAndSettle();
+      expect(selectedNames(tester), ["d.jpg", "c.jpg"]);
+    });
+  });
+
+  group('the rating buttons of a tile', () {
+    testWidgets('write the rating at once', (tester) async {
+      var requests = <http.Request>[];
+      await pumpInbox(
+        tester,
+        (request) => request.method == "PUT" ? json("") : inboxTree(request),
+        requests: requests,
+      );
+
+      await tapTileOf(tester, "a.jpg");
+      // The four buttons of the album tile, with the album tile's words.
+      for (var name in ["very-good", "good", "poor", "trash"]) {
+        expect(find.byKey(Key("rating-$name")), findsOneWidget);
+      }
+      expect(find.byTooltip(testL10n.ratingVeryGood), findsOneWidget);
+      await tester.tap(find.byKey(const Key("rating-very-good")));
+      await tester.pumpAndSettle();
+
+      var put = requests.singleWhere((r) => r.method == "PUT");
+      expect(pathOf(put), "/valbum/data/Inbox/");
+      expect(put.body, contains('"name":"a.jpg"'));
+      var shown =
+          inboxState(tester).images.singleWhere((i) => i.name == "a.jpg");
+      expect(shown.rating, 2);
+    });
+
+    testWidgets('are refused while the app is offline, and write nothing',
+        (tester) async {
+      var requests = <http.Request>[];
+      var state = OfflineState();
+      await pumpInbox(tester, inboxTree,
+          requests: requests, offlineState: state);
+      state.goneOffline(null);
+      await tester.pumpAndSettle();
+
+      await tapTileOf(tester, "a.jpg");
+      await tester.tap(find.byKey(const Key("rating-good")));
+      await tester.pumpAndSettle();
+
+      expect(find.text(testL10n.offlineRefusal), findsOneWidget);
+      expect(requests.where((r) => r.method != "GET"), isEmpty);
+      var shown =
+          inboxState(tester).images.singleWhere((i) => i.name == "a.jpg");
+      expect(shown.rating, 0);
+    });
+
+    testWidgets('take a refused rating back with the server\'s reason',
+        (tester) async {
+      await pumpInbox(
+        tester,
+        (request) => request.method == "PUT"
+            ? http.Response(
+                '["ErrorInfo", {"message": "Not your inbox."}]',
+                403,
+                headers: {"content-type": "application/json"},
+              )
+            : inboxTree(request),
+      );
+
+      await tapTileOf(tester, "a.jpg");
+      await tester.tap(find.byKey(const Key("rating-trash")));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Not your inbox."), findsOneWidget);
+      // Back on the screen, and selected as it was.
+      expect(tile("a.jpg"), findsOneWidget);
+      expect(selectedNames(tester), ["a.jpg"]);
+    });
+
+    testWidgets('are not offered to a contributor', (tester) async {
+      await pumpInbox(
+        tester,
+        (request) => inboxTree(request,
+            album: inboxJson(rights: const ["view", "download", "contribute"])),
+      );
+
+      await tapTileOf(tester, "a.jpg");
+      expect(find.byKey(const Key("rating-trash")), findsNothing);
+      expect(find.byKey(const Key("rating-very-good")), findsNothing);
+    });
+  });
+
+  group('deleting as an editor', () {
+    testWidgets(
+        'rates the selection -2 at once, asks nothing, posts no '
+        'delete, and the photographs vanish', (tester) async {
+      var requests = <http.Request>[];
+      await pumpInbox(
+        tester,
+        (request) => request.method == "PUT" ? json("") : inboxTree(request),
+        requests: requests,
+      );
+
+      await openMenu(tester);
+      expect(find.byKey(const Key("show-trash")), findsNothing,
+          reason: "nothing is in the trash yet");
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      await tapHeading(tester, "inbox-day-2026-03-01");
+      await openMenu(tester);
+      await tester.tap(find.byKey(const Key("delete-selection")));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key("inbox-delete-dialog")), findsNothing);
+      expect(requests.where((r) => r.method == "POST"), isEmpty);
+      var put = requests.singleWhere((r) => r.method == "PUT");
+      var sent = Resource.fromString(put.body) as AlbumInfo;
+      var ratings = {
+        for (var p in sent.parts.whereType<ImagePart>()) p.name: p.rating,
+      };
+      expect(ratings, {"d.jpg": 0, "c.jpg": 0, "a.jpg": -2, "b.jpg": -2});
+
+      // Gone from the screen, the day with them; nothing stays selected.
+      expect(tile("a.jpg"), findsNothing);
+      expect(tile("b.jpg"), findsNothing);
+      expect(find.byKey(const Key("inbox-day-2026-03-01")), findsNothing);
+      expect(selectedNames(tester), isEmpty);
+
+      // And now the trash is offered.
+      await openMenu(tester);
+      expect(find.byKey(const Key("show-trash")), findsOneWidget);
+      expect(find.text(testL10n.showTrash), findsOneWidget);
+    });
+
+    testWidgets('is refused while offline and changes nothing', (tester) async {
+      var requests = <http.Request>[];
+      var state = OfflineState();
+      await pumpInbox(tester, inboxTree,
+          requests: requests, offlineState: state);
+      state.goneOffline(null);
+      await tester.pumpAndSettle();
+
+      await tapHeading(tester, "inbox-day-2026-03-01");
+      await openMenu(tester);
+      await tester.tap(find.byKey(const Key("delete-selection")));
+      await tester.pumpAndSettle();
+
+      expect(find.text(testL10n.offlineRefusal), findsOneWidget);
+      expect(requests.where((r) => r.method != "GET"), isEmpty);
+      expect(selectedNames(tester), ["a.jpg", "b.jpg"]);
+    });
+  });
+
+  group('the trash of an inbox', () {
+    testWidgets('hides what is rated -2 and opens the trash page on it',
+        (tester) async {
+      var requests = <http.Request>[];
+      await pumpInbox(
+        tester,
+        (request) => request.method == "PUT"
+            ? json("")
+            : inboxTree(request, album: inboxJson(trashed: const {"c.jpg"})),
+        requests: requests,
+      );
+
+      expect(inboxState(tester).images.map((i) => i.name),
+          ["d.jpg", "a.jpg", "b.jpg"]);
+      expect(find.byKey(const Key("inbox-day-2026-03-02")), findsNothing);
+
+      await openMenu(tester);
+      await tester.tap(find.byKey(const Key("show-trash")));
+      await tester.pumpAndSettle();
+
+      // The album's own trash page, on the inbox's path.
+      expect(find.byType(TrashContent), findsOneWidget);
+      expect(find.byKey(const ValueKey("trash-tile-c.jpg")), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key("trash-restore")));
+      await tester.pumpAndSettle();
+      var put = requests.singleWhere((r) => r.method == "PUT");
+      expect(pathOf(put), "/valbum/data/Inbox/");
+
+      // Back in the inbox, the photograph stands under its day again.
+      await tester.tap(find.byKey(const Key("trash-up")));
+      await tester.pumpAndSettle();
+      expect(find.byType(InboxContent), findsOneWidget);
+      await reveal(tester, tile("c.jpg"));
+      expect(tile("c.jpg"), findsOneWidget);
     });
   });
 }

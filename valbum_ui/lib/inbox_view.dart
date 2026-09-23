@@ -14,11 +14,26 @@
 ///    arrivals are what one comes to sort), and this screen draws a heading per
 ///    day with a month line where the month changes. Nothing of that is
 ///    stored, exactly as `effectiveDate` is derived and never stored;
+///  * a click on a tile has the album's selection semantics (issue #160, the
+///    one decision [selectionAfterTap]): a plain click selects exactly that
+///    photograph (a second one on the only selected clears), ctrl/meta
+///    toggles, shift takes the range from the photograph clicked last in the
+///    order drawn — across day and month headings — and a finger toggles by
+///    a long press;
 ///  * tapping a heading selects everything under it, which is how a day (or a
 ///    month) is moved into an album in one gesture;
+///  * an editor rates a photograph with the album tile's four buttons
+///    ([ratingButtons]), written at once, and **"Delete" is the −2 rating**
+///    (#160): no question and no move — the photograph is hidden from the
+///    inbox like a trashed one from the album grid ([isVisiblePart] at
+///    [minMinRating]) and is restored or purged on the trash page of #152,
+///    which the menu offers ("Show trash") while one exists. A member with
+///    `contribute` alone cannot write the sidecar, sees no rating and deletes
+///    their own photographs into the trash folder of the space as #131 made
+///    it, until #159 decides otherwise;
 ///  * what an inbox has no use for is not there: no reorder, no drag handles,
-///    no headings of its own, no description, no album picture, no rating, no
-///    groups, no "view as".
+///    no headings of its own, no description, no album picture, no groups, no
+///    "view as".
 ///
 /// It is a screen of its own rather than a mode of `album_view.dart` for one
 /// reason: the album page is built around its edit session — the buffer, the
@@ -31,6 +46,7 @@ library;
 
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter/services.dart' show HardwareKeyboard;
 import 'package:intl/intl.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 
@@ -49,8 +65,10 @@ import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
 import 'rights.dart';
+import 'routes.dart' show TrashRoute;
 import 'settings.dart';
 import 'share_session.dart';
+import 'trash_view.dart' show hasTrashedImages, trashRating;
 
 // ---------------------------------------------------------------------------
 // The words of the inbox screen.
@@ -100,8 +118,7 @@ String inboxOpenTooltip(AppLocalizations l10n) => l10n.open;
 String inboxSelectTooltip(AppLocalizations l10n) => l10n.select;
 
 /// The tooltip of the heading that selects everything under it.
-String inboxHeadingTooltip(AppLocalizations l10n) =>
-    l10n.selectEverythingBelow;
+String inboxHeadingTooltip(AppLocalizations l10n) => l10n.selectEverythingBelow;
 
 /// What is said when a selection was asked to do something it cannot.
 String inboxNothingSelected(AppLocalizations l10n) => l10n.nothingSelected;
@@ -182,12 +199,23 @@ Key inboxMonthKey(DateTime month) =>
 /// the server knows no zone to cut one at. A group cannot reach an inbox — the
 /// server dissolves one on the way out — but where one did, its images are
 /// taken one by one, which is what the inbox shows everywhere else.
-List<InboxDay> inboxDays(List<AlbumPart> parts) {
+///
+/// A photograph rated below [minRating] is not shown at all (issue #160): the
+/// album grid's floor [minMinRating], so what was deleted here — rated −2 —
+/// vanishes from its day on the write and is found again in the trash page of
+/// issue #152. An inbox has no rating filter of its own; the floor is fixed.
+List<InboxDay> inboxDays(
+  List<AlbumPart> parts, {
+  int minRating = minMinRating,
+}) {
   var order = <String>[];
   var byDay = <String, List<ImagePart>>{};
   var days = <String, DateTime?>{};
 
   void add(ImagePart image) {
+    if (!isVisiblePart(image, minRating)) {
+      return;
+    }
     DateTime? day;
     if (image.date != 0) {
       var taken = DateTime.fromMillisecondsSinceEpoch(image.date);
@@ -257,6 +285,10 @@ class InboxContentState extends State<InboxContent> {
   /// trip costs, which is the price of having no buffer at all.
   final Set<ImagePart> _selection = Set.identity();
 
+  /// The photograph clicked last, the anchor of a shift-click range, see
+  /// [handleTap].
+  ImagePart? _anchor;
+
   /// The share link this inbox is being looked at through, always `null` in
   /// practice: the server answers `404` for an inbox to a link (issue #135),
   /// so the app never gets here. Read all the same, so that nothing this
@@ -285,6 +317,7 @@ class InboxContentState extends State<InboxContent> {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.album, widget.album)) {
       _selection.clear();
+      _anchor = null;
     }
   }
 
@@ -311,18 +344,46 @@ class InboxContentState extends State<InboxContent> {
   bool get mayTakeOut =>
       (rights.mayEdit || rights.mayContribute) && share == null;
 
-  /// Every photograph of the inbox, in the order the server answered it.
+  /// Every photograph the inbox shows, in the order it shows them: the days
+  /// newest first, a day chronologically, the trashed left out ([inboxDays]).
   List<ImagePart> get images => [
         for (var section in inboxDays(album.parts)) ...section.images,
       ];
 
   bool isSelected(ImagePart image) => _selection.contains(image);
 
+  /// Adds or removes [image] — the long press and the tile's check box, the
+  /// finger's way to a multiple selection, as in the album.
   void toggleSelection(ImagePart image) => setState(() {
         if (!_selection.remove(image)) {
           _selection.add(image);
         }
+        _anchor = image;
       });
+
+  /// Handles a click on the tile of [image] with the album's semantics
+  /// (issue #160, [selectionAfterTap]): a plain click selects exactly this
+  /// photograph and clears the selection when it was the only one selected,
+  /// ctrl/meta toggles, shift takes the range from the photograph clicked last
+  /// in the order the screen shows them — so a range runs across day and month
+  /// headings as they are drawn.
+  void handleTap(ImagePart image) {
+    var keyboard = HardwareKeyboard.instance;
+    setState(() {
+      var outcome = selectionAfterTap<ImagePart>(
+        ordered: images,
+        tapped: image,
+        current: _selection,
+        anchor: _anchor,
+        shift: keyboard.isShiftPressed,
+        ctrl: keyboard.isControlPressed || keyboard.isMetaPressed,
+      );
+      _selection
+        ..clear()
+        ..addAll(outcome.selection);
+      _anchor = outcome.anchor;
+    });
+  }
 
   /// Selects everything of [section], or takes all of it out again.
   ///
@@ -338,7 +399,10 @@ class InboxContentState extends State<InboxContent> {
         }
       });
 
-  void clearSelection() => setState(_selection.clear);
+  void clearSelection() => setState(() {
+        _selection.clear();
+        _anchor = null;
+      });
 
   /// The selected photographs, in the order the inbox shows them.
   List<ImagePart> get selected => [
@@ -393,6 +457,42 @@ class InboxContentState extends State<InboxContent> {
     return writeNow(
       () => image.orientation = operation(image.orientation),
       () => image.orientation = before,
+    );
+  }
+
+  /// Rates [image] by its rating button for [value] and writes it at once,
+  /// see [writeNow] and [toggleRating] — the album tile's buttons (#160).
+  ///
+  /// A photograph rated as trash leaves the screen with the write (see
+  /// [inboxDays]) and therefore the selection; a refused write brings back
+  /// both.
+  Future<void> rate(ImagePart image, int value) =>
+      rateAll([image], toggleRating(image.rating, value));
+
+  /// Gives every one of [chosen] the rating [rating] in one write.
+  Future<void> rateAll(List<ImagePart> chosen, int rating) {
+    var before = {for (var image in chosen) image: image.rating};
+    var selected = {for (var image in chosen) image: isSelected(image)};
+    return writeNow(
+      () {
+        for (var image in chosen) {
+          image.rating = rating;
+          if (!isVisiblePart(image, minMinRating)) {
+            _selection.remove(image);
+            if (identical(_anchor, image)) {
+              _anchor = null;
+            }
+          }
+        }
+      },
+      () {
+        before.forEach((image, rating) => image.rating = rating);
+        selected.forEach((image, was) {
+          if (was) {
+            _selection.add(image);
+          }
+        });
+      },
     );
   }
 
@@ -529,19 +629,46 @@ class InboxContentState extends State<InboxContent> {
     );
   }
 
-  /// Puts the selection into the trash of the space, see issues #109 and #135.
+  /// Deletes the selection.
   ///
-  /// The same `?action=delete` an album is deleted with, naming photographs
-  /// instead of folders: the server moves each of them into
-  /// `<space>/.valbum/trash/<album folder>/` by the move mechanism, sidecar
-  /// part and hash entry carried. Nothing is deleted from disk, and the
-  /// question says so.
+  /// For an editor ([mayWrite]) exactly what "delete" is in an album (issue
+  /// #160): every selected photograph is rated −2 and written at once, no
+  /// question asked — it vanishes from the inbox and is restored or purged in
+  /// the trash page of issue #152, which the menu offers from then on
+  /// ([mayShowTrash]).
+  ///
+  /// A member with `contribute` alone (issue #135) cannot write the sidecar
+  /// and so cannot rate; for them the delete stays what #131 made it — see
+  /// [takeOutIntoTrashFolder] — until issue #159 decides otherwise.
   Future<void> deleteSelection() async {
     var chosen = selected;
     if (chosen.isEmpty) {
       showMessage(inboxNothingSelected(_l10n));
       return;
     }
+    if (mayWrite) {
+      await rateAll(chosen, trashRating);
+      return;
+    }
+    await takeOutIntoTrashFolder(chosen);
+  }
+
+  /// Whether the menu offers the trash page of issue #152: to an editor, where
+  /// a photograph of this inbox is rated as trash.
+  bool get mayShowTrash => mayWrite && hasTrashedImages(album);
+
+  /// Opens the trash of this inbox, the album's own page (#152).
+  void showTrash() => widget.albumState.navigator.go(TrashRoute(path));
+
+  /// Puts [chosen] into the trash folder of the space, see issues #109 and
+  /// #135 — the delete of a contributor, see [deleteSelection].
+  ///
+  /// The same `?action=delete` an album is deleted with, naming photographs
+  /// instead of folders: the server moves each of them into
+  /// `<space>/.valbum/trash/<album folder>/` by the move mechanism, sidecar
+  /// part and hash entry carried. Nothing is deleted from disk, and the
+  /// question says so.
+  Future<void> takeOutIntoTrashFolder(List<ImagePart> chosen) async {
     if (refuseWhileOffline(context)) {
       return;
     }
@@ -776,8 +903,8 @@ class InboxContentState extends State<InboxContent> {
   /// The menu of the inbox: what is done with the selection, and with the
   /// folder itself.
   ///
-  /// No "view as" (an inbox is shown to nobody else), no rating filter (an
-  /// inbox has no ratings), no share link (the server refuses one), no sort
+  /// No "view as" (an inbox is shown to nobody else), no rating filter (the
+  /// trashed are hidden, the rest is all shown), no share link (the server refuses one), no sort
   /// (the order *is* the date) — what is left is what an inbox is for.
   List<PopupMenuEntry<void Function(BuildContext)>> inboxMenu(int count) => [
         if (mayTakeOut && count > 0) ...[
@@ -794,6 +921,15 @@ class InboxContentState extends State<InboxContent> {
             (_) => deleteSelection(),
           ),
         ],
+        // What was deleted here, restored or purged where an album's is
+        // (issues #152, #160).
+        if (mayShowTrash)
+          keyedMenuItem(
+            const Key("show-trash"),
+            Icons.delete_sweep_outlined,
+            _l10n.showTrash,
+            (_) => showTrash(),
+          ),
         if (count > 0)
           keyedMenuItem(
             const Key("clear-selection"),
@@ -998,14 +1134,15 @@ class InboxContentState extends State<InboxContent> {
 /// write at once.
 ///
 /// The tile of the album's edit mode without what an inbox has no use for: no
-/// drag handle and no reordering (the order is the date), no rating, no
-/// grouping, no heading, no album picture, no description. What is left acts
-/// immediately — a rotation is a sidecar PUT, not an entry in a buffer.
+/// drag handle and no reordering (the order is the date), no grouping, no
+/// heading, no album picture, no description. What is left acts immediately —
+/// a rotation or a rating is a sidecar PUT, not an entry in a buffer.
 ///
-/// A tap **selects**: the inbox is always in the selection mode, which is
-/// what it is for. The viewer is one tool away ([inboxOpenTooltip]), because
-/// a screen whose tap selects needs a way to look at a photograph closely,
-/// and the long press is the second selection gesture the album uses.
+/// A tap **selects**, with the album's semantics
+/// ([InboxContentState.handleTap]): the inbox is always in the selection
+/// mode, which is what it is for. The viewer is one tool away ([inboxOpenTooltip]), because a screen
+/// whose tap selects needs a way to look at a photograph closely, and the
+/// long press toggles, the second selection gesture the album uses.
 class InboxTile extends StatefulWidget {
   final InboxContentState inbox;
   final ImagePart image;
@@ -1052,7 +1189,7 @@ class InboxTileState extends State<InboxTile> {
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => inbox.toggleSelection(image),
+                  onTap: () => inbox.handleTap(image),
                   onLongPress: () => inbox.toggleSelection(image),
                   child: inbox.pictureOf(image, widget.width, widget.height),
                 ),
@@ -1106,8 +1243,8 @@ class InboxTileState extends State<InboxTile> {
         ],
       ]);
 
-  /// The viewer, the recording time, what the photograph is, and its privacy
-  /// level.
+  /// The viewer, the recording time, what the photograph is, its rating and
+  /// its privacy level.
   Widget bottomBar() {
     var level = image.privacy;
     var next = nextPrivacy(level);
@@ -1131,6 +1268,17 @@ class InboxTileState extends State<InboxTile> {
         () => inbox.showProperties(image),
         key: const Key("inbox-properties"),
       ),
+      // The album tile's rating buttons, written at once (issue #160). Only
+      // an editor: a `contribute` member sorting their own photographs cannot
+      // write the sidecar a rating lives in (#135) — whether they should be
+      // able to is issue #159.
+      if (inbox.mayWrite)
+        ...ratingButtons(
+          _l10n,
+          rating: image.rating,
+          onRate: (value) => inbox.rate(image, value),
+          button: toolButton,
+        ),
       if (inbox.mayWrite)
         toolButton(
           privacyControlIcon(level),
