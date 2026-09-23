@@ -75,6 +75,8 @@ Options:
 | `--migrate-to-spaces` | One-time: turn a library migrated per user into a multi-space server, every user folder a space with that user as its admin, and report what could not be carried; the server does not start afterwards | none |
 | `--preview-threads <n>` | How many thumbnails are generated at the same time; serving an already cached thumbnail is never throttled (the system property `valbum.previewThreads` does the same) | number of processors |
 | `--migrate-to-user <name>` | One-time: move the albums at the base folder into a folder `<name>` and make it the library owner's space (see below); the server does not start afterwards | none |
+| `--replace-originals <dir>` | Put the originals you downloaded into `<dir>` in the place of the copies a phone uploaded with the position stripped (issue #167): a file whose name the library holds exactly once and whose picture (JPEG scan data) or video (media data) is the same replaces it, the uploaded copy is set aside in `<space>/.valbum/replaced/<yyyyMMdd-HHmmss>/`, never deleted, and the missing position and camera are filled in — every other file is reported and skipped. Run it with the server stopped; the server does not start afterwards | none |
+| `--dry-run` | With `--replace-originals`: print what would be replaced and skipped, and change nothing | off |
 
 ### Signing in a device
 
