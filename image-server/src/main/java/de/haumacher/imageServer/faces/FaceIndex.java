@@ -73,6 +73,12 @@ import javax.imageio.ImageIO;
  * outrun the machine.
  * </p>
  *
+ * <p>
+ * Where the preview shows a photograph smaller than it is, the original is asked twice more, in
+ * pieces and never as a whole: around a face too small on the preview (issue #140), and — where the
+ * preview shows no face at all — in its centre half at the preview's own size (issue #163).
+ * </p>
+ *
  * <h2>When it happens</h2>
  *
  * <p>
@@ -164,6 +170,20 @@ public class FaceIndex {
 	 * </p>
 	 */
 	static final double SEARCH_MIN_FRACTION = 0.2;
+
+	/**
+	 * Where the second look of issue #163 looks, as a fraction of the picture: its centre half, from
+	 * a quarter to three quarters on each axis.
+	 *
+	 * <p>
+	 * Symmetric about the middle, so it is the same box in the raw raster of the file and in the
+	 * picture as it is shown, whatever the EXIF orientation says.
+	 * </p>
+	 */
+	static final double CENTRE_FROM = 0.25;
+
+	/** The far edge of {@link #CENTRE_FROM}'s box. */
+	static final double CENTRE_TO = 0.75;
 
 	private final Path _root;
 
@@ -407,8 +427,10 @@ public class FaceIndex {
 		FaceCache cache = new FaceCache(folder);
 		Set<String> present = new LinkedHashSet<>();
 		boolean changed = false;
+		boolean complete = true;
 		for (File image : images) {
 			if (Thread.currentThread().isInterrupted() || _stopped) {
+				complete = false;
 				break;
 			}
 			if (!isPhotograph(image)) {
@@ -423,19 +445,17 @@ public class FaceIndex {
 			if (_failed.containsKey(image.getAbsolutePath())) {
 				continue;
 			}
-			if (cache.knows(hash) && !unrefined(image, cache.facesOf(hash))) {
+			if (cache.knows(hash) && !unrefined(image, cache.facesOf(hash))
+				&& !unsearched(cache, image, hash)) {
 				// Looked at, and nothing a second look could improve; a photograph whose faces were
-				// described from the preview alone is looked at again, see issue #140.
+				// described from the preview alone is looked at again, see issue #140, and so is one
+				// in which nothing was found before the centre was looked at, see issue #163.
 				rememberExif(cache, image, hash);
 				continue;
 			}
 			try {
 				// A face somebody pointed at is kept beside the new description, see issue #155.
-				cache.put(hash, keepMarked(detect(image), cache.facesOf(hash)));
-				// The faces of this photograph are new ones: what was cut from the old ones names
-				// nobody any more, see issue #141.
-				dropCrops(image);
-				rememberExif(cache, image, hash);
+				describe(cache, hash, image, cache.facesOf(hash));
 				changed = true;
 			} catch (IOException | RuntimeException ex) {
 				String reason = FaceDetection.reason(ex);
@@ -446,8 +466,12 @@ public class FaceIndex {
 		}
 
 		// What the album no longer holds is nobody's business; a hash that came back finds its
-		// faces again, which is why the entries are keyed by contents and not by name.
-		cache.retain(present);
+		// faces again, which is why the entries are keyed by contents and not by name. Only after a
+		// pass that saw every photograph: a pass stopped half-way knows nothing of the rest, and
+		// forgetting what it did not reach would make the next pass start the album over.
+		if (complete) {
+			cache.retain(present);
+		}
 
 		synchronized (lockOf(folder)) {
 			// What was marked on the request path while this pass ran is in the file, not in what
@@ -571,9 +595,7 @@ public class FaceIndex {
 				FaceCache cache = new FaceCache(folder);
 				boolean changed = false;
 				if (!cache.knows(hash)) {
-					cache.put(hash, detect(image));
-					dropCrops(image);
-					rememberExif(cache, image, hash);
+					describe(cache, hash, image, Collections.emptyList());
 					changed = true;
 				}
 				FaceCache.Face result = null;
@@ -657,6 +679,54 @@ public class FaceIndex {
 	}
 
 	/**
+	 * Describes the given photograph anew and records it in the given cache.
+	 *
+	 * <p>
+	 * The one place a description is written: the faces, every face somebody pointed at before and
+	 * that the new description does not find again (issue #155), the orientation (issue #142), and
+	 * the marker of issue #163 — whatever the centre gave, because this description is as good as
+	 * this build can make it and the walk must not come back for the centre again. The crops of the
+	 * old faces name nobody any more, see issue #141.
+	 * </p>
+	 */
+	private void describe(FaceCache cache, String hash, File image, List<FaceCache.Face> before)
+			throws IOException {
+		cache.put(hash, keepMarked(detect(image), before));
+		cache.putSearched(hash);
+		dropCrops(image);
+		rememberExif(cache, image, hash);
+	}
+
+	/**
+	 * Whether the given photograph was described without the second look of issue #163 and is worth
+	 * that look now.
+	 *
+	 * <p>
+	 * An entry holding a face is never looked at again for this — the centre is only ever asked where
+	 * the preview found nobody — and neither is one that carries the marker. What is left is an entry
+	 * without any face that a build before issue #163 wrote. Where the preview shows that photograph
+	 * pixel for pixel, the centre has nothing to add: the marker is written straight away and the
+	 * photograph is not described again. A file whose header cannot be read is left as it is, like
+	 * {@link #unrefined(File, List)} leaves one.
+	 * </p>
+	 */
+	private static boolean unsearched(FaceCache cache, File image, String hash) {
+		if (!cache.facesOf(hash).isEmpty() || cache.isSearched(hash)) {
+			return false;
+		}
+		try {
+			if (downscaled(exifOrientation(image), rasterOf(image))) {
+				return true;
+			}
+		} catch (IOException | RuntimeException ex) {
+			LOG.log(Level.FINE, "Cannot measure '" + image.getAbsolutePath() + "'.", ex);
+			return false;
+		}
+		cache.putSearched(hash);
+		return false;
+	}
+
+	/**
 	 * Writes down how the given photograph is turned for display, see issue #142.
 	 *
 	 * <p>
@@ -690,8 +760,14 @@ public class FaceIndex {
 		FaceDetection.Result found = FaceDetection.detect(preview,
 			detailed ? candidate -> refine(image, preview, exif, raster, candidate) : null);
 		double[] content = content(image, exif, found.getWidth(), found.getHeight());
+		List<FaceDetection.Detected> faces = found.getFaces();
+		if (faces.isEmpty() && detailed) {
+			// Nobody on the preview, and the file holds more than it shows: its centre is asked
+			// again at the same size, see issue #163.
+			faces = centre(image, exif, raster, content);
+		}
 		List<FaceCache.Face> result = new ArrayList<>();
-		for (FaceDetection.Detected face : found.getFaces()) {
+		for (FaceDetection.Detected face : faces) {
 			// A face at the edge of the picture is reported reaching over it, and the picture may
 			// not fill the whole preview; what is kept is the part that is really there.
 			double left = unit((face.getX() - content[0]) / content[2]);
@@ -743,11 +819,30 @@ public class FaceIndex {
 			(candidate.getY() - content[1]) / content[3],
 			candidate.getW() / content[2],
 			candidate.getH() / content[3]);
-		double left = raw[0] * raster[0];
-		double top = raw[1] * raster[1];
-		double width = raw[2] * raster[0];
-		double height = raw[3] * raster[1];
+		FaceDetection.Refined better = refineRaw(image, raw[0] * raster[0], raw[1] * raster[1],
+			raw[2] * raster[0], raw[3] * raster[1]);
+		if (better == null) {
+			return null;
+		}
 
+		// Back out: the answer speaks preview pixels.
+		double[] upright = Faces.toUpright(exif, better.getX() / raster[0], better.getY() / raster[1],
+			better.getW() / raster[0], better.getH() / raster[1]);
+		return new FaceDetection.Refined(
+			content[0] + upright[0] * content[2],
+			content[1] + upright[1] * content[3],
+			upright[2] * content[2],
+			upright[3] * content[3],
+			better.getEmbedding());
+	}
+
+	/**
+	 * Looks at the original around the given box of its raw raster, see issue #140.
+	 *
+	 * @return The face found there, its box in the pixels of the raw raster, or <code>null</code>.
+	 */
+	private static FaceDetection.Refined refineRaw(File image, double left, double top, double width,
+			double height) throws IOException {
 		Originals.Region region = Originals.decodeLongSide(image, left - width, top - height,
 			left + 2 * width, top + 2 * height, FaceDetection.MAX_INPUT);
 		int sampling = region.getSampling();
@@ -757,20 +852,123 @@ public class FaceIndex {
 		if (better == null) {
 			return null;
 		}
+		// The region's pixels are raw pixels, subsampled.
+		return new FaceDetection.Refined(region.rawX(better.getX()), region.rawY(better.getY()),
+			better.getW() * sampling, better.getH() * sampling, better.getEmbedding());
+	}
 
-		// Back out: the region's pixels are raw pixels, and the answer speaks preview pixels.
-		double foundLeft = region.rawX(better.getX());
-		double foundTop = region.rawY(better.getY());
-		double foundWidth = better.getW() * sampling;
-		double foundHeight = better.getH() * sampling;
-		double[] upright = Faces.toUpright(exif, foundLeft / raster[0], foundTop / raster[1],
-			foundWidth / raster[0], foundHeight / raster[1]);
-		return new FaceDetection.Refined(
-			content[0] + upright[0] * content[2],
-			content[1] + upright[1] * content[3],
-			upright[2] * content[2],
-			upright[3] * content[3],
-			better.getEmbedding());
+	/**
+	 * The second look at a photograph whose preview showed no face, see issue #163.
+	 *
+	 * <p>
+	 * Faces are mostly near the middle of a photograph, and a face too small for the preview is still
+	 * a face of the file. So the centre half of the picture ({@link #CENTRE_FROM} to
+	 * {@link #CENTRE_TO} on each axis) is read out of the original and handed to the detector <em>at
+	 * the size the preview reached it at</em> — the long side of the picture on the preview, capped at
+	 * {@link FaceDetection#MAX_INPUT} as the preview is — which shows the middle twice as fine for
+	 * exactly the cost of the first pass: not a full-resolution pass, whose cost grows with the
+	 * square of the file. Integer subsampling alone cannot hit that size, so the piece is read at
+	 * least that large and scaled down ({@link Originals#decodeLongSideAtLeast},
+	 * {@link Originals#fitLongSide}); the memory is bounded by four times a preview, never the whole
+	 * raster (issue #68).
+	 * </p>
+	 *
+	 * <p>
+	 * The rules of the first pass hold on the centre as they stand, measured in its pixels: a
+	 * candidate of fewer than {@link FaceDetection#MIN_FACE_PIXELS_REFINABLE} is dropped, one smaller
+	 * than {@link FaceDetection#REFINE_PIXELS} is looked up in the original around its box exactly as
+	 * issue #140 looks up a candidate of the preview (and one below
+	 * {@link FaceDetection#MIN_FACE_PIXELS} kept only where that confirms it), and one of
+	 * {@link FaceDetection#REFINE_PIXELS} or more is described from the centre itself — SFace's input
+	 * is that large, so the file has nothing more to say about it, and it counts as
+	 * {@link FaceCache.Face#isRefined() refined}.
+	 * </p>
+	 *
+	 * <p>
+	 * What comes back is answered in the pixels of the preview, so that {@link #detect(File)} goes on
+	 * being the one place a box is converted into the raw raster it is stored in.
+	 * </p>
+	 *
+	 * @return The faces of the centre, in preview pixels; empty where there are none or the original
+	 *         cannot be read in pieces — the marker is written all the same, because a file no reader
+	 *         can decode a region of today decodes none tomorrow either.
+	 */
+	private List<FaceDetection.Detected> centre(File image, Orientation exif, int[] raster, double[] content)
+			throws IOException {
+		int size = detectorSize(content);
+		double rawWidth = raster[0];
+		double rawHeight = raster[1];
+		Originals.Region region;
+		try {
+			region = Originals.decodeLongSideAtLeast(image, CENTRE_FROM * rawWidth, CENTRE_FROM * rawHeight,
+				CENTRE_TO * rawWidth, CENTRE_TO * rawHeight, size);
+		} catch (IOException | RuntimeException ex) {
+			LOG.log(Level.INFO, "Cannot look at the centre of '" + image.getAbsolutePath() + "': "
+				+ FaceDetection.reason(ex));
+			return Collections.emptyList();
+		}
+		BufferedImage raw = region.getImage();
+		double pixelsX = raw.getWidth();
+		double pixelsY = raw.getHeight();
+		BufferedImage shown = Originals.upright(Originals.fitLongSide(raw, size), exif);
+		double shownX = shown.getWidth();
+		double shownY = shown.getHeight();
+
+		// The region's frame and the raw raster, both ways: a fraction of what the detector was shown
+		// is the same fraction of what was read, scaled or not.
+		java.util.function.Function<double[], double[]> toRaw = box -> {
+			double[] back = Faces.toRaw(exif, box[0] / shownX, box[1] / shownY, box[2] / shownX, box[3] / shownY);
+			double left = region.rawX(back[0] * pixelsX);
+			double top = region.rawY(back[1] * pixelsY);
+			return new double[] { left, top, region.rawX((back[0] + back[2]) * pixelsX) - left,
+				region.rawY((back[1] + back[3]) * pixelsY) - top };
+		};
+		java.util.function.Function<double[], double[]> fromRaw = box -> {
+			double sampling = region.getSampling();
+			double[] there = Faces.toUpright(exif, (box[0] - region.getLeft()) / sampling / pixelsX,
+				(box[1] - region.getTop()) / sampling / pixelsY, box[2] / sampling / pixelsX,
+				box[3] / sampling / pixelsY);
+			return new double[] { there[0] * shownX, there[1] * shownY, there[2] * shownX, there[3] * shownY };
+		};
+
+		FaceDetection.Result found = FaceDetection.detectIn(shown, candidate -> {
+			double[] box = toRaw.apply(
+				new double[] { candidate.getX(), candidate.getY(), candidate.getW(), candidate.getH() });
+			FaceDetection.Refined better = refineRaw(image, box[0], box[1], box[2], box[3]);
+			if (better == null) {
+				return null;
+			}
+			double[] back = fromRaw.apply(new double[] { better.getX(), better.getY(), better.getW(), better.getH() });
+			return new FaceDetection.Refined(back[0], back[1], back[2], back[3], better.getEmbedding());
+		});
+
+		List<FaceDetection.Detected> result = new ArrayList<>();
+		for (FaceDetection.Detected face : found.getFaces()) {
+			double[] box = toRaw.apply(new double[] { face.getX(), face.getY(), face.getW(), face.getH() });
+			double[] upright = Faces.toUpright(exif, box[0] / rawWidth, box[1] / rawHeight, box[2] / rawWidth,
+				box[3] / rawHeight);
+			result.add(new FaceDetection.Detected(
+				content[0] + upright[0] * content[2],
+				content[1] + upright[1] * content[3],
+				upright[2] * content[2],
+				upright[3] * content[3],
+				face.getScore(), face.getEmbedding(), face.isRefined()));
+		}
+		return result;
+	}
+
+	/**
+	 * The long side of the raster the detector is handed for a preview whose picture covers the given
+	 * content box, see {@link #content(File, Orientation, int, int)} and issue #163.
+	 *
+	 * <p>
+	 * The detector takes a preview as it stands, 900&nbsp;&times;&nbsp;600 for a photograph of three
+	 * by two, and scales only a raster longer than {@link FaceDetection#MAX_INPUT} (a panorama) down
+	 * to that; so that is the size the centre is shown at too.
+	 * </p>
+	 */
+	static int detectorSize(double[] content) {
+		return (int) Math.min(FaceDetection.MAX_INPUT, Math.round(Math.max(content[2], content[3])));
 	}
 
 	/**

@@ -237,7 +237,10 @@ public final class FaceDetection {
 		}
 	}
 
-	/** What a second look at the original said about one face, in the pixels of the preview. */
+	/**
+	 * What a second look at the original said about one face, in the pixels of the picture the
+	 * detector was handed — the preview, or the centre of issue #163.
+	 */
 	public static final class Refined {
 
 		private final double _x;
@@ -303,6 +306,11 @@ public final class FaceDetection {
 	 * stubs it to say what a refinement would have found — or that it found nothing, which is how
 	 * the rule about a candidate below {@link #MIN_FACE_PIXELS} is asked.
 	 * </p>
+	 *
+	 * <p>
+	 * The candidate and the answer speak the pixels of the picture the detector was handed: the
+	 * preview, or the centre of an original of issue #163.
+	 * </p>
 	 */
 	public interface Refiner {
 
@@ -350,6 +358,27 @@ public final class FaceDetection {
 		default Refined search(java.awt.image.BufferedImage region, double x, double y, double w, double h)
 				throws IOException {
 			return null;
+		}
+
+		/**
+		 * The faces of a picture that is not a preview file — the centre of an original the preview
+		 * showed no face in, see issue #163 and
+		 * {@link FaceDetection#detectIn(java.awt.image.BufferedImage, Refiner)}.
+		 *
+		 * <p>
+		 * A detector of a test's own finds nothing there unless it says otherwise, so that a test
+		 * which never thought about the second look sees what it always saw.
+		 * </p>
+		 *
+		 * @param picture
+		 *        The raster, upright.
+		 * @param refiner
+		 *        How to look at the original around a face too small in this raster, likewise in
+		 *        the pixels of this raster; <code>null</code> to stay on it.
+		 * @return The faces in the pixels of the given raster.
+		 */
+		default Result detectIn(java.awt.image.BufferedImage picture, Refiner refiner) throws IOException {
+			return new Result(picture.getWidth(), picture.getHeight(), new ArrayList<>());
 		}
 	}
 
@@ -445,6 +474,41 @@ public final class FaceDetection {
 			throw new IOException("Face detection is not available: " + unavailable);
 		}
 		return detectWithOpenCv(preview, refiner);
+	}
+
+	/**
+	 * The faces of the given raster, in its pixels, with the very rules a preview is looked at by —
+	 * the sizes of {@link #MIN_FACE_PIXELS_REFINABLE}, {@link #MIN_FACE_PIXELS} and
+	 * {@link #REFINE_PIXELS} measured in the pixels of this raster — see issue #163.
+	 *
+	 * <p>
+	 * What the second look at a photograph whose preview showed no face runs on: the centre half of
+	 * the original, read at the size the preview reached the detector at, see {@link FaceIndex}.
+	 * </p>
+	 *
+	 * @param picture
+	 *        The raster, upright.
+	 * @param refiner
+	 *        How to look at the original around a candidate that is small in this raster; it speaks
+	 *        the pixels of this raster. <code>null</code> to stay on the raster.
+	 */
+	public static Result detectIn(java.awt.image.BufferedImage picture, Refiner refiner) throws IOException {
+		Detector detector = _detector;
+		if (detector != null) {
+			return detector.detectIn(picture, refiner);
+		}
+		String unavailable = unavailability();
+		if (unavailable != null) {
+			throw new IOException("Face detection is not available: " + unavailable);
+		}
+		synchronized (LOCK) {
+			org.opencv.core.Mat image = toMat(picture);
+			try {
+				return detect(image, refiner);
+			} finally {
+				image.release();
+			}
+		}
 	}
 
 	/**

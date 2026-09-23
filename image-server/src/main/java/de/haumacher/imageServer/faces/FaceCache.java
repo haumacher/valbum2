@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -47,8 +48,14 @@ import java.util.logging.Logger;
  *   "&lt;sha256&gt;":{"faces":[{"box":{"x":0.31,"y":0.12,"w":0.2,"h":0.27},"score":0.99,
  *                            "embedding":"&lt;base64 of 128 little-endian float32&gt;",
  *                            "refined":true,"marked":true}],
- *                 "cluster":["c1"],"exif":6}}}
+ *                 "cluster":["c1"],"exif":6,"searched":"centre"}}}
  * </pre>
+ *
+ * <p>
+ * <code>searched</code> (issue #163) says that the photograph was described by a build that looks
+ * at the centre of the original where the preview shows no face; absent in a file written before,
+ * which is how the walk finds the photographs without a face that deserve that second look once.
+ * </p>
  *
  * <p>
  * Keyed by the SHA-256 of the file's contents, the very hash the {@value
@@ -93,6 +100,15 @@ public class FaceCache {
 	private static final String CLUSTER__PROP = "cluster";
 
 	private static final String EXIF__PROP = "exif";
+
+	private static final String SEARCHED__PROP = "searched";
+
+	/**
+	 * What {@value #SEARCHED__PROP} says of a photograph described with the second look of issue
+	 * #163: its centre was looked at wherever the preview showed nobody and the file held more than
+	 * the preview shows.
+	 */
+	public static final String SEARCHED_CENTRE = "centre";
 
 	private static final String BOX__PROP = "box";
 
@@ -256,6 +272,9 @@ public class FaceCache {
 	 */
 	private Map<String, Integer> _exifByHash = new LinkedHashMap<>();
 
+	/** The hashes described with the second look of issue #163, see {@link #isSearched(String)}. */
+	private Set<String> _searched = new java.util.LinkedHashSet<>();
+
 	private boolean _dirty;
 
 	/** Loads the faces of the given album folder; nothing is detected and nothing is written. */
@@ -318,12 +337,28 @@ public class FaceCache {
 		}
 	}
 
+	/**
+	 * Whether the contents with the given hash were described by a build that looks at the centre of
+	 * the original where the preview shows no face, see issue #163.
+	 */
+	public boolean isSearched(String hash) {
+		return _searched.contains(hash);
+	}
+
+	/** Records that the contents with the given hash were described with that second look. */
+	public void putSearched(String hash) {
+		if (_searched.add(hash)) {
+			_dirty = true;
+		}
+	}
+
 	/** Forgets every hash that is not among the given ones, after the album changed. */
 	public void retain(java.util.Set<String> hashes) {
 		if (_byHash.keySet().retainAll(hashes)) {
 			_dirty = true;
 		}
 		_exifByHash.keySet().retainAll(hashes);
+		_searched.retainAll(hashes);
 	}
 
 	/** Says that a cluster was assigned; the file has to be written again. */
@@ -367,6 +402,7 @@ public class FaceCache {
 		String model = "";
 		Map<String, List<Face>> files = new LinkedHashMap<>();
 		Map<String, Integer> exif = new LinkedHashMap<>();
+		Set<String> searched = new java.util.LinkedHashSet<>();
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -378,7 +414,7 @@ public class FaceCache {
 					in.beginObject();
 					while (in.hasNext()) {
 						String hash = in.nextName();
-						files.put(hash, readEntry(in, hash, exif));
+						files.put(hash, readEntry(in, hash, exif, searched));
 					}
 					in.endObject();
 					break;
@@ -394,10 +430,11 @@ public class FaceCache {
 		}
 		_byHash = files;
 		_exifByHash = exif;
+		_searched = searched;
 	}
 
-	private static List<Face> readEntry(JsonReader in, String hash, Map<String, Integer> exif)
-			throws IOException {
+	private static List<Face> readEntry(JsonReader in, String hash, Map<String, Integer> exif,
+			Set<String> searched) throws IOException {
 		List<Face> faces = new ArrayList<>();
 		List<String> clusters = new ArrayList<>();
 		in.beginObject();
@@ -420,6 +457,12 @@ public class FaceCache {
 					break;
 				case EXIF__PROP:
 					exif.put(hash, Integer.valueOf(in.nextInt()));
+					break;
+				case SEARCHED__PROP:
+					if (SEARCHED_CENTRE.equals(in.nextString())) {
+						// Anything else is a look this build does not know, and the walk looks again.
+						searched.add(hash);
+					}
 					break;
 				default:
 					in.skipValue();
@@ -542,6 +585,11 @@ public class FaceCache {
 					// it always did and an older build simply skips this.
 					out.name(EXIF__PROP);
 					out.value(exif.intValue());
+				}
+				if (_searched.contains(entry.getKey())) {
+					// Absent is "described before issue #163", likewise.
+					out.name(SEARCHED__PROP);
+					out.value(SEARCHED_CENTRE);
 				}
 				out.endObject();
 			}
