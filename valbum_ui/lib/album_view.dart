@@ -1040,8 +1040,8 @@ class AlbumContentState extends State<AlbumContent>
       (shownAlbum.facesPending || PersonsContentState.hasFaces(shownAlbum));
 
   /// Opens the face editor of this album, see issue #126.
-  void showPersons() => widget.albumState.navigator
-      .go(PersonsRoute(widget.albumState.path));
+  void showPersons() =>
+      widget.albumState.navigator.go(PersonsRoute(widget.albumState.path));
 
   /// Whether "Show trash" is offered for this album, see issue #152.
   ///
@@ -1484,7 +1484,8 @@ class AlbumContentState extends State<AlbumContent>
           // filter below uses.
           if (session.editMode) ...viewAsEntries(),
           if (_mayShare)
-            menuItem(Icons.link, _l10n.shareLinkAction, (_) => shareAlbumLink()),
+            menuItem(
+                Icons.link, _l10n.shareLinkAction, (_) => shareAlbumLink()),
           // What is done *with* this album, offered in the view mode as well
           // as in the edit mode (issue #121): the properties were a toolbar
           // icon of the edit mode alone, so retitling an album meant entering
@@ -1577,6 +1578,16 @@ class AlbumContentState extends State<AlbumContent>
               Icons.copy_all,
               _l10n.findDuplicatesAction,
               (_) => findDuplicates(),
+            ),
+          // The same editors may have the camera and the position read out of
+          // the files again, which an album described before they existed
+          // lacks, see issue #161.
+          if (mayEditAlbum)
+            keyedMenuItem(
+              const Key("reanalyze"),
+              Icons.manage_search,
+              _l10n.reanalyze,
+              (_) => reanalyze(),
             ),
           // Only the administrator, who owns the server's own files: the
           // entry a non-admin may not use is not offered at all, see #98.
@@ -1833,11 +1844,65 @@ class AlbumContentState extends State<AlbumContent>
     }
 
     var count = answer.outcomes.length;
-    showMessage(count == 0
-        ? _l10n.noDuplicatesFound
-        : _l10n.duplicatesSetAside(count));
+    showMessage(
+        count == 0 ? _l10n.noDuplicatesFound : _l10n.duplicatesSetAside(count));
     if (count > 0) {
       widget.albumState.navigator.delegate.forget(widget.albumState.path);
+      widget.albumState.reload();
+    }
+  }
+
+  /// Reads the camera and the position of the album's photographs from the
+  /// files again, the app half of `?action=reanalyze` (issue #161).
+  ///
+  /// Asked first, although nothing already stored is changed: it writes the
+  /// album's sidecar, and the question says what it touches and what not.
+  Future<void> reanalyze() async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key("reanalyze-dialog"),
+        title: Text(_l10n.reanalyze),
+        content: Text(_l10n.reanalyzeExplanation),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(_l10n.cancel),
+          ),
+          ElevatedButton(
+            key: const Key("reanalyze-confirm"),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(_l10n.reanalyze),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    ReanalyzeResult answer;
+    try {
+      answer = await client.reanalyze(widget.albumState.path);
+    } catch (error) {
+      if (mounted) {
+        // The server's own reason -- a refusal speaks, see issue #49.
+        showMessage(error is VAlbumException ? error.message : "$error");
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    showMessage(answer.running
+        ? _l10n.reanalyzeRunning(answer.examined, answer.filled)
+        : _l10n.reanalyzeDone(answer.examined, answer.filled));
+    if (answer.albums > 0) {
+      widget.albumState.navigator.delegate.forgetTree(widget.albumState.path);
       widget.albumState.reload();
     }
   }

@@ -107,18 +107,109 @@ public class TestGeoLocation extends TestCase {
 	}
 
 	/**
-	 * A position at the origin is a place like any other, not "no position".
+	 * A position at the origin is no position, see issue #161.
 	 *
 	 * <p>
-	 * Which is the whole reason the model carries a nested message rather than two numbers, see
-	 * {@link ImagePart#getLocation()}.
+	 * A camera with geotagging switched on and no fix writes a GPS IFD of zeroes; taken for a place,
+	 * that put every such photograph into the Gulf of Guinea.
 	 * </p>
 	 */
-	public void testTheOriginIsAPlace() throws Exception {
-		GeoLocation origin = analyzed("origin.jpg", gps("N", 0, 0, 0, "E", 0, 0, 0));
-		assertNotNull("0/0 in the Gulf of Guinea is a place, not an absent position.", origin);
-		assertEquals(0.0, origin.getLatitude(), PRECISION);
-		assertEquals(0.0, origin.getLongitude(), PRECISION);
+	public void testTheOriginIsNoPlace() throws Exception {
+		assertNull("0/0 is what a camera without a fix writes.",
+			analyzed("origin.jpg", gps("N", 0, 0, 0, "E", 0, 0, 0)));
+	}
+
+	/** A zero GPS IFD does not hide the position the XMP of the same file states. */
+	public void testAZeroGpsIfdFallsBackToTheXmp() throws Exception {
+		File plain = new File(_album, "plain.jpg");
+		writeJpeg(plain, gps("N", 0, 0, 0, "E", 0, 0, 0));
+		File file = new File(_album, "xmp.jpg");
+		Xmp.writePacket(plain, file, xmpGps("48,7.40736N", "8,39.25926E"));
+
+		GeoLocation position = ImageData.analyze(AlbumInfo.create(), file).getLocation();
+		assertNotNull(position);
+		assertEquals(48.123456, position.getLatitude(), PRECISION);
+		assertEquals(8.654321, position.getLongitude(), PRECISION);
+	}
+
+	/** A file whose GPS IFD says nothing is asked for its XMP position, see issue #161. */
+	public void testAnalyzeReadsTheXmpPosition() throws Exception {
+		File plain = new File(_album, "plain.jpg");
+		writeJpeg(plain, null);
+		File file = new File(_album, "xmp.jpg");
+		Xmp.writePacket(plain, file, xmpGps("33,55,4.8S", "18,25,26.4W"));
+
+		GeoLocation position = ImageData.analyze(AlbumInfo.create(), file).getLocation();
+		assertNotNull(position);
+		assertEquals(-33.918, position.getLatitude(), PRECISION);
+		assertEquals(-18.424, position.getLongitude(), PRECISION);
+	}
+
+	/** The GPS IFD wins where both say something. */
+	public void testTheGpsIfdWinsOverTheXmp() throws Exception {
+		File plain = new File(_album, "plain.jpg");
+		writeJpeg(plain, gps("N", 48, 7, 24.4416, "E", 8, 39, 15.5556));
+		File file = new File(_album, "xmp.jpg");
+		Xmp.writePacket(plain, file, xmpGps("10,0.0S", "20,0.0W"));
+
+		assertEquals(48.123456, ImageData.analyze(AlbumInfo.create(), file).getLocation().getLatitude(), PRECISION);
+	}
+
+	/** A malformed XMP position is no position, and the analysis does not fail over it. */
+	public void testAMalformedXmpPositionIsNone() throws Exception {
+		File plain = new File(_album, "plain.jpg");
+		writeJpeg(plain, null);
+		File file = new File(_album, "xmp.jpg");
+		Xmp.writePacket(plain, file, xmpGps("somewhere", "8,39.25926E"));
+		assertNull(ImageData.analyze(AlbumInfo.create(), file).getLocation());
+
+		File broken = new File(_album, "broken.jpg");
+		Xmp.writePacket(plain, broken, "<x:xmpmeta this is not XML");
+		ImagePart analysed = ImageData.analyze(AlbumInfo.create(), broken);
+		assertNull("A broken packet is no position.", analysed.getLocation());
+	}
+
+	/** The two XMP spellings of a coordinate, and what is refused. */
+	public void testXmpCoordinates() throws Exception {
+		GeoLocation minutes = ImageData.xmpPosition("48,7.40736N", "8,39.25926E");
+		assertEquals(48.123456, minutes.getLatitude(), PRECISION);
+		assertEquals(8.654321, minutes.getLongitude(), PRECISION);
+
+		GeoLocation seconds = ImageData.xmpPosition("33,55,4.8S", "18,25,26.4W");
+		assertEquals(-33.918, seconds.getLatitude(), PRECISION);
+		assertEquals(-18.424, seconds.getLongitude(), PRECISION);
+
+		assertNotNull("Lower case letters are read too.", ImageData.xmpPosition("1,0.5n", "2,0.5e"));
+		assertNull("Zeroes are no position.", ImageData.xmpPosition("0,0.0N", "0,0.0E"));
+		assertNull("A swapped pair.", ImageData.xmpPosition("8,39.25926E", "48,7.40736N"));
+		assertNull("Beyond the pole.", ImageData.xmpPosition("91,0.0N", "8,0.0E"));
+		assertNull("Sixty minutes.", ImageData.xmpPosition("48,60.0N", "8,0.0E"));
+		assertNull("No letter.", ImageData.xmpPosition("48,7.4", "8,39.2E"));
+		assertNull("Decimal degrees are not the XMP form.", ImageData.xmpPosition("48.123N", "8.654E"));
+		assertNull(ImageData.xmpPosition(null, "8,39.2E"));
+	}
+
+	/**
+	 * A <code>0/0</code> an older build stored is read as no position, and the next ordinary write
+	 * omits it, see issue #161.
+	 */
+	public void testAStoredZeroIsReadAsNone() throws Exception {
+		writeJpeg(new File(_album, "north.jpg"), null);
+		String index = "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[[\"ImagePart\",{\"name\":\"north.jpg\","
+			+ "\"kind\":\"IMAGE\",\"width\":40,\"height\":30,\"date\":1124884800000,"
+			+ "\"location\":{\"latitude\":0.0,\"longitude\":0.0}}]]}]";
+		Path sidecar = _album.toPath().resolve("index.json");
+		Files.write(sidecar, index.getBytes(StandardCharsets.UTF_8));
+
+		AlbumInfo album = album();
+		assertNull("The zeroes of an older build are no position.", location(album, "north.jpg"));
+		assertEquals("Reading must not rewrite a sidecar.", index,
+			new String(Files.readAllBytes(sidecar), StandardCharsets.UTF_8));
+
+		assertEquals(HttpServletResponse.SC_OK, put(json(album)).status());
+		String written = new String(Files.readAllBytes(sidecar), StandardCharsets.UTF_8);
+		assertFalse("The next write omits it: " + written, written.contains("\"location\""));
+		assertNull(location(album(), "north.jpg"));
 	}
 
 	/** A photo whose EXIF data says nowhere carries no position. */
@@ -148,7 +239,7 @@ public class TestGeoLocation extends TestCase {
 		assertEquals(18.4233, south.getLongitude(), PRECISION);
 
 		GeoLocation origin = ImageData.iso6709("+00.0000+000.0000/");
-		assertNotNull("The origin is a place here too.", origin);
+		assertNotNull("The parser reads the origin; the analysis drops it (issue #161).", origin);
 		assertEquals(0.0, origin.getLatitude(), PRECISION);
 	}
 
@@ -277,6 +368,15 @@ public class TestGeoLocation extends TestCase {
 
 	// --- Helpers. ---
 
+	/** An XMP packet stating the given GPS coordinates, see issue #161. */
+	private static String xmpGps(String latitude, String longitude) throws Exception {
+		com.adobe.internal.xmp.XMPMeta meta = com.adobe.internal.xmp.XMPMetaFactory.create();
+		meta.setProperty(ImageData.XMP_EXIF, "GPSLatitude", latitude);
+		meta.setProperty(ImageData.XMP_EXIF, "GPSLongitude", longitude);
+		return com.adobe.internal.xmp.XMPMetaFactory.serializeToString(meta,
+			new com.adobe.internal.xmp.options.SerializeOptions().setUseCompactFormat(true));
+	}
+
 	/** The position of the given image in the given album. */
 	private static GeoLocation location(AlbumInfo album, String name) {
 		for (AlbumPart part : album.getParts()) {
@@ -347,7 +447,7 @@ public class TestGeoLocation extends TestCase {
 	}
 
 	/** A tiny JPEG carrying the given EXIF data, or none at all. */
-	private static void writeJpeg(File file, byte[] tiff) throws Exception {
+	static void writeJpeg(File file, byte[] tiff) throws Exception {
 		BufferedImage image = new BufferedImage(40, 30, BufferedImage.TYPE_3BYTE_BGR);
 		Graphics2D g = image.createGraphics();
 		g.setColor(new Color(200, 40, 40));

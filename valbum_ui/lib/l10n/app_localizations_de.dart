@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1442,10 +1443,26 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count Fotos wurden aussortiert; die verbleibenden Kopien befinden sich an anderer Stelle in der Bibliothek.',
-      one:
-          '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
+      one: '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
     );
     return '$_temp0';
+  }
+
+  @override
+  String get reanalyze => 'Fotodetails erneut einlesen';
+
+  @override
+  String get reanalyzeExplanation =>
+      'Liest die Kamera- und Positionsdaten erneut aus den Dateien aus und ergänzt fehlende Angaben. Bereits gespeicherte Daten werden nicht verändert.';
+
+  @override
+  String reanalyzeDone(int examined, int filled) {
+    return '$examined Fotos überprüft; bei $filled davon wurde eine Kamera oder eine Position hinzugefügt.';
+  }
+
+  @override
+  String reanalyzeRunning(int examined, int filled) {
+    return 'Wird im Hintergrund noch gelesen: Bisher wurden $examined Fotos überprüft, $filled davon haben eine Kamera oder eine Position erhalten.';
   }
 
   @override
@@ -1462,8 +1479,7 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count zwischengespeicherte Dateien wurden verworfen; die Vorschauen werden neu erstellt.',
-      one:
-          '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
+      one: '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
     );
     return '$_temp0';
   }
@@ -1954,6 +1970,11 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String doingFindingDuplicates(String folder) {
     return 'Suche nach Duplikaten im $folder';
+  }
+
+  @override
+  String doingReanalyzing(String folder) {
+    return 'erneutes Einlesen der Fotodaten im $folder';
   }
 
   @override

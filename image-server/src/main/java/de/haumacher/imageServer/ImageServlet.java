@@ -372,6 +372,23 @@ public class ImageServlet extends HttpServlet {
 	public static final String DUPLICATES_REFUSED =
 		"You may not change this album, so nothing can be set aside from it.";
 
+	/** The message a share link asking to re-read the photo details is refused with, see issue #161. */
+	public static final String REANALYZE_SHARE_REFUSED =
+		"A share link cannot re-read the details of the photographs.";
+
+	/** The message a caller who may not change the folder is refused the re-reading with. */
+	public static final String REANALYZE_REFUSED =
+		"You may not change this album, so its photo details cannot be re-read.";
+
+	/** The message a folder nobody re-read yet answers <code>?type=reanalyze</code> with. */
+	public static final String NO_REANALYSIS = "The details of this folder were not re-read since the server started.";
+
+	/**
+	 * How long a request to re-read a folder of folders waits for the background run before it is
+	 * answered <code>202</code> with the counts so far, see {@link Reanalysis}.
+	 */
+	public static final long REANALYZE_WAIT_MILLIS = 10_000;
+
 	/** The message a cache refresh from somebody who is not an administrator is refused with. */
 	public static final String CACHE_REFRESH_REFUSED =
 		"Only an administrator may throw an album's previews away.";
@@ -418,6 +435,22 @@ public class ImageServlet extends HttpServlet {
 	/** The hash index of this space, for the tests and for the sweep of issue #118. */
 	public HashIndex index() {
 		return _index;
+	}
+
+	/** Re-reading the photo details of a folder, see issue #161. */
+	private final Reanalysis _reanalysis;
+
+	/** How long a request waits for a tree to be re-read, see {@link #REANALYZE_WAIT_MILLIS}. */
+	private long _reanalyzeWait = REANALYZE_WAIT_MILLIS;
+
+	/** The re-reading of this space, for the tests. */
+	Reanalysis reanalysis() {
+		return _reanalysis;
+	}
+
+	/** Sets how long a request waits for a tree to be re-read, for the tests. */
+	void setReanalyzeWait(long millis) {
+		_reanalyzeWait = millis;
 	}
 
 	/** The people register of this space, see issue #125. */
@@ -546,6 +579,7 @@ public class ImageServlet extends HttpServlet {
 		_auth = auth;
 		_index = new HashIndex(_basePath);
 		_faces = new FaceIndex(_basePath, facesEnabled);
+		_reanalysis = new Reanalysis(_cache, _space.isEmpty() ? basePath.getName() : _space);
 		String noFaces = _faces.unavailability();
 		if (noFaces != null) {
 			LOG.warning("The space '" + (_space.isEmpty() ? basePath.getName() : _space)
@@ -576,6 +610,7 @@ public class ImageServlet extends HttpServlet {
 		_videos.shutdown();
 		_index.shutdown();
 		_faces.shutdown();
+		_reanalysis.shutdown();
 		try {
 			_cache.close();
 		} catch (IOException ex) {
@@ -655,6 +690,10 @@ public class ImageServlet extends HttpServlet {
 
 		if ("shares".equals(type)) {
 			serveShares(context, caller, location);
+			return;
+		}
+		if ("reanalyze".equals(type)) {
+			serveReanalysis(context, caller, resourcePath);
 			return;
 		}
 
@@ -1393,6 +1432,103 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Re-reads the photo details below the addressed folder and fills what the sidecars lack, see
+	 * issue #161 and {@link Reanalysis}.
+	 *
+	 * <p>
+	 * It changes the album's sidecar, so it needs {@link Rights#EDIT} on the folder, exactly as the
+	 * duplicate sweep does; a share link is refused with a message of its own before anything else,
+	 * because its rights may well allow contributing and re-reading is not contributing.
+	 * </p>
+	 *
+	 * <p>
+	 * An album is re-read while the request waits and answered <code>200</code>. A folder of
+	 * folders is walked on the space's low-priority thread; the request waits for it at most
+	 * {@link #REANALYZE_WAIT_MILLIS} and is otherwise answered <code>202</code> with the counts so
+	 * far, which <code>?type=reanalyze</code> reads back later.
+	 * </p>
+	 */
+	private void reanalyze(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		PathInfo folder = reanalysisFolder(context, caller);
+		if (folder == null) {
+			return;
+		}
+
+		Resource resource = _cache.lookup(folder);
+		if (resource instanceof AlbumInfo) {
+			serveJsonObject(context.response(), _reanalysis.now(folder));
+			return;
+		}
+
+		Reanalysis.Progress progress = _reanalysis.start(folder);
+		try {
+			progress.done().get(_reanalyzeWait, java.util.concurrent.TimeUnit.MILLISECONDS);
+		} catch (java.util.concurrent.TimeoutException ex) {
+			// Answered below with what there is so far.
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+		} catch (java.util.concurrent.ExecutionException ex) {
+			// The run logs its own failure.
+		}
+		if (!progress.isDone()) {
+			context.response().setStatus(HttpServletResponse.SC_ACCEPTED);
+		}
+		serveJsonObject(context.response(), progress.result());
+	}
+
+	/** Answers how far the latest re-reading of the addressed folder has got, see {@link Reanalysis}. */
+	private void serveReanalysis(Context context, Caller caller, PathInfo folder) throws IOException {
+		if (!checkReanalysis(context, caller, folder)) {
+			return;
+		}
+		Reanalysis.Progress progress = _reanalysis.progress(folder.toFile());
+		if (progress == null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, NO_REANALYSIS);
+			return;
+		}
+		serveJsonObject(context.response(), progress.result());
+	}
+
+	/** The folder a re-reading request addresses, <code>null</code> when it was answered. */
+	private PathInfo reanalysisFolder(Context context, Caller caller) throws IOException {
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return null;
+		}
+		PathInfo folder = location.getPath();
+		return checkReanalysis(context, caller, folder) ? folder : null;
+	}
+
+	/** Whether the given caller may re-read the given folder; answered when not. */
+	private boolean checkReanalysis(Context context, Caller caller, PathInfo folder) throws IOException {
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing the re-reading through a share link at '" + context.request().getPathInfo()
+				+ "': " + REANALYZE_SHARE_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, REANALYZE_SHARE_REFUSED);
+			return false;
+		}
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folder)) {
+			unauthorized(context, caller, true);
+			return false;
+		}
+		if (!_auth.mayEdit(caller, folder)) {
+			if (!identified(caller)) {
+				unauthorized(context, caller, true);
+				return false;
+			}
+			LOG.warning("Refusing the re-reading at '" + context.request().getPathInfo() + "': " + REANALYZE_REFUSED);
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, REANALYZE_REFUSED);
+			return false;
+		}
+		if (!folder.toFile().isDirectory()) {
+			error404(context);
+			return false;
+		}
+		return true;
 	}
 
 	/**
@@ -2592,6 +2728,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("refresh-cache".equals(action)) {
 			refreshCache(context);
+			return;
+		}
+		if ("reanalyze".equals(action)) {
+			reanalyze(context);
 			return;
 		}
 		if ("create-person".equals(action) || "rename-person".equals(action)
@@ -3794,7 +3934,7 @@ public class ImageServlet extends HttpServlet {
 	 * {@link AlbumDate#clearDerived(FolderResource)}.
 	 * </p>
 	 */
-	private static byte[] sidecarOf(FolderResource resource) throws IOException {
+	static byte[] sidecarOf(FolderResource resource) throws IOException {
 		AlbumDate.clearDerived(resource);
 		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(buffer,

@@ -780,7 +780,8 @@ class VAlbumClient {
       return _cachedResource(path, uri, error);
     }
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body, platformMessages.doingLoading("'$uri'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingLoading("'$uri'"));
     }
     // Parsed before it is cached: an answer that is not album data must not
     // become the cached copy of this album.
@@ -830,7 +831,8 @@ class VAlbumClient {
       );
     }
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body, platformMessages.doingLoading("'$uri'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingLoading("'$uri'"));
     }
     return parseResource(response.body, uri);
   }
@@ -909,7 +911,8 @@ class VAlbumClient {
       return entry.bytes;
     }
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body, platformMessages.doingLoading("'$url'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingLoading("'$url'"));
     }
     await cache?.putThumbnail(url, response.bodyBytes, user: cacheUser);
     return response.bodyBytes;
@@ -940,7 +943,8 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingStoring("'$url'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingStoring("'$url'"));
     }
   }
 
@@ -982,7 +986,8 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingStoring("'$asked'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingStoring("'$asked'"));
     }
     return _createResult(response.body, asked);
   }
@@ -1030,7 +1035,8 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingCreating("'$asked'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingCreating("'$asked'"));
     }
 
     return _createResult(response.body, asked);
@@ -1118,7 +1124,8 @@ class VAlbumClient {
       throw VAlbumException(uploadCancelledMessage(platformMessages));
     }
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, body, platformMessages.doingUploading("'$url'"));
+      throw failure(
+          response.statusCode, body, platformMessages.doingUploading("'$url'"));
     }
     return uploadResult(body, files);
   }
@@ -1170,7 +1177,8 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
     }
     return UploadCheckResult.read(JsonReader.fromString(response.body));
   }
@@ -1208,7 +1216,8 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingMoving("'$target'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingMoving("'$target'"));
     }
     return MoveResult.read(JsonReader.fromString(response.body));
   }
@@ -1529,6 +1538,29 @@ class VAlbumClient {
     return MoveResult.read(JsonReader.fromString(response.body));
   }
 
+  /// Reads the camera and the position of every photograph below [path] from
+  /// the files again and fills what the sidecars lack, see issue #161.
+  ///
+  /// Nothing already stored is changed. An album is answered complete; a
+  /// folder of folders may go on in the background, which the answer says
+  /// with [ReanalyzeResult.running] (`202`).
+  Future<ReanalyzeResult> reanalyze(List<String> path) async {
+    var url = "${folderUrl(path)}?action=reanalyze";
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingReanalyzing("'${path.join("/")}'"),
+      );
+    }
+    return ReanalyzeResult.read(JsonReader.fromString(response.body));
+  }
+
   /// Deletes the photographs of the album at [path] that are rated as trash
   /// from disk, see issue #152.
   ///
@@ -1593,7 +1625,8 @@ class VAlbumClient {
       if (response.statusCode < 300) {
         return null;
       }
-      return failure(response.statusCode, response.body, platformMessages.doingLoadingImage)
+      return failure(response.statusCode, response.body,
+              platformMessages.doingLoadingImage)
           .message;
     } catch (_) {
       return null;
@@ -1610,7 +1643,8 @@ class VAlbumClient {
     var url = "${folderUrl(path)}?type=shares";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
     }
     return ShareLinkList.read(JsonReader.fromString(response.body));
   }
@@ -1663,7 +1697,8 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
     }
     return response.body;
   }
@@ -1780,7 +1815,8 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=devices";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
     }
     return DeviceList.read(JsonReader.fromString(response.body));
   }
@@ -1866,7 +1902,8 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=users";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
     }
     return UserList.read(JsonReader.fromString(response.body));
   }
@@ -1928,7 +1965,8 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=invitations";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
     }
     return InvitationList.read(JsonReader.fromString(response.body));
   }
@@ -1994,7 +2032,8 @@ class VAlbumClient {
       headers: const {"Content-Type": "application/json"},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingSigningIn("'$url'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingSigningIn("'$url'"));
     }
     return PairResponse.read(JsonReader.fromString(response.body));
   }
@@ -2008,7 +2047,8 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=auth";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body, platformMessages.doingAsking("'$url'"));
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
     }
     // The answer an unknown path is served with is HTML, not auth data, see
     // [parseResource]: that is the wrong server URL speaking, not a bug.

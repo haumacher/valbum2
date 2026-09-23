@@ -824,10 +824,11 @@ ImageKind readImageKind(JsonReader json) {
 ///  </p>
 /// 
 ///  <p>
-///  A message of its own rather than two fields on {@link ImagePart}, because a position that is
-///  not there must be tellable from one at the origin: <code>0/0</code> in the Gulf of Guinea is a
-///  real place, so "no position" is the absent {@link ImagePart#getLocation() location}, never a
-///  pair of zeroes.
+///  "No position" is the absent {@link ImagePart#getLocation() location}. A pair of zeroes is no
+///  position either (issue #161): a camera with geotagging switched on and no fix yet writes a GPS
+///  IFD of zeroes, so <code>0/0</code> says "not filled in" far more often than it says "the Gulf of
+///  Guinea". The analysis never answers it, the loader drops it from an older sidecar, and the app
+///  shows nothing for it.
 ///  </p>
 class GeoLocation extends _JsonObject {
 	///  The latitude in decimal degrees, positive to the north of the equator.
@@ -941,15 +942,17 @@ class ImagePart extends AbstractImage {
 	/// 
 	///  <p>
 	///  Read from the EXIF GPS tags of the original when the image is analysed, and from the
-	///  container of a video where that carries a position. The absent message is what "the file
-	///  carries no position" means — see {@link GeoLocation}, where a pair of zeroes would be a real
-	///  place off the coast of Africa.
+	///  container of a video where that carries a position, and from the XMP
+	///  <code>exif:GPSLatitude</code>/<code>exif:GPSLongitude</code> of a file whose GPS IFD says
+	///  nothing (issue #161). The absent message is what "the file carries no position" means, and a
+	///  pair of zeroes means the same and is never stored, see {@link GeoLocation}.
 	///  </p>
 	/// 
 	///  <p>
 	///  <em>Stored</em> in the sidecar, exactly like {@link #getDate() date} and {@link #getCamera()
 	///  camera}: a part a sidecar already lists is never analysed again, so an album written before
-	///  this field existed keeps its parts without a position until they are analysed afresh. A
+	///  this field existed keeps its parts without a position until they are analysed afresh, which
+	///  <code>?action=reanalyze</code> does on request (issue #161, {@link ReanalyzeResult}). A
 	///  round trip read &rarr; write &rarr; read keeps it unchanged, so a client that stores an
 	///  album back never loses where its photos were taken.
 	///  </p>
@@ -3730,6 +3733,102 @@ class CacheRefreshed extends _JsonObject {
 
 		json.addKey("removed");
 		json.addNumber(removed);
+	}
+
+}
+
+///  Answer to <code>&lt;folder&gt;/?action=reanalyze</code>, see issue #161.
+/// 
+///  <p>
+///  A part a sidecar already lists is never analysed again (issue #78), so a library described
+///  before the camera (#78) or the position (#112) existed carries neither. On request the server
+///  reads the headers of every photograph and video below the folder once more &mdash; never a pixel
+///  &mdash; and fills in what the sidecar lacks: an empty {@link ImagePart#getCamera() camera} and an
+///  absent (or <code>0/0</code>) {@link ImagePart#getLocation() location}. Nothing that is stored is
+///  ever changed, least of all a date the author corrected.
+///  </p>
+/// 
+///  <p>
+///  An album is re-read while the request waits. A folder of folders is re-read one album after the
+///  other on a low-priority thread of the space; the request waits a few seconds for it and, where
+///  that is not enough, is answered <code>202</code> with the counts so far and {@link #running} set.
+///  The same counts are read back with <code>GET &lt;folder&gt;/?type=reanalyze</code>, and asking
+///  for the same folder again while it runs joins that run instead of starting a second one.
+///  </p>
+class ReanalyzeResult extends _JsonObject {
+	///  How many photographs and videos were looked at.
+	int examined;
+
+	///  How many of them gained a camera, a position or both.
+	int filled;
+
+	///  How many album sidecars were written; an album that gained nothing is not written.
+	int albums;
+
+	///  Whether the run goes on in the background, so the counts are the counts so far.
+	bool running;
+
+	/// Creates a ReanalyzeResult.
+	ReanalyzeResult({
+			this.examined = 0, 
+			this.filled = 0, 
+			this.albums = 0, 
+			this.running = false, 
+	});
+
+	/// Parses a ReanalyzeResult from a string source.
+	static ReanalyzeResult? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ReanalyzeResult instance from the given reader.
+	static ReanalyzeResult read(JsonReader json) {
+		ReanalyzeResult result = ReanalyzeResult();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ReanalyzeResult";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "examined": {
+				examined = json.expectInt();
+				break;
+			}
+			case "filled": {
+				filled = json.expectInt();
+				break;
+			}
+			case "albums": {
+				albums = json.expectInt();
+				break;
+			}
+			case "running": {
+				running = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("examined");
+		json.addNumber(examined);
+
+		json.addKey("filled");
+		json.addNumber(filled);
+
+		json.addKey("albums");
+		json.addNumber(albums);
+
+		json.addKey("running");
+		json.addBool(running);
 	}
 
 }

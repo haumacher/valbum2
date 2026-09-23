@@ -174,6 +174,8 @@ void sliceThree() {
       expect(find.text(de.showFewerImages), findsOneWidget);
       expect(find.text(de.reload), findsOneWidget);
       expect(find.text(de.serverMenuEntry), findsOneWidget);
+      // Re-reading the photo details, issue #161.
+      expect(find.text(de.reanalyze), findsOneWidget);
 
       var en = l10nOf(const Locale("en"));
       expect(find.text(en.albumProperties), findsNothing);
