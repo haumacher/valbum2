@@ -316,6 +316,15 @@ public class ImageServlet extends HttpServlet {
 		return "The marked face is not a place on '" + image + "'.";
 	}
 
+	/** The <code>action</code> that answers a selection of originals as one archive, see issue #164. */
+	public static final String ZIP_ACTION = "zip";
+
+	/** The message a download request is refused with whose body cannot be read, see issue #164. */
+	public static final String ZIP_UNREADABLE = "The download request could not be read.";
+
+	/** The message a download request naming nothing is refused with, see issue #164. */
+	public static final String ZIP_EMPTY = "Name at least one photograph to download.";
+
 	/** The <code>type</code> a face crop is asked for with, see issue #124. */
 	public static final String FACE_TYPE = "face";
 
@@ -1338,6 +1347,129 @@ public class ImageServlet extends HttpServlet {
 		_index.treeChanged(folder.toFile());
 
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Answers the originals named in the request body as one zip archive, see issue #164.
+	 *
+	 * <p>
+	 * <code>POST &lt;album&gt;/?action=zip</code> with a {@link MoveRequest} whose
+	 * <code>target</code> is ignored. A POST and not a <code>GET ?names=…</code>: a selection of a
+	 * few hundred camera names does not fit into the request line a server accepts, and the app
+	 * fetches the bytes through its client anyway (the bearer travels in the header, which no plain
+	 * link could carry), so nothing is lost by leaving the URL out of it.
+	 * </p>
+	 *
+	 * <p>
+	 * It needs {@link Rights#DOWNLOAD} on the album, which is what the original of each image asks
+	 * for as well, and every named photograph is asked exactly what its original would be asked:
+	 * a name that is no photograph of this album is <code>404</code>, one of an inbox the caller
+	 * may not see is not there for them (issue #131), one above the caller's clearance or below a
+	 * link's rating limit is refused as its original would be ({@link #hidden(PathInfo, int, int)}).
+	 * All of that is decided before the first byte of the archive is written: a refusal speaks,
+	 * and an archive never silently lacks what was asked for. The archive is streamed, never
+	 * written to disk, and the originals are only read, see {@link ZipDownload}.
+	 * </p>
+	 */
+	private void zipEntries(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		int viewAs;
+		try {
+			viewAs = Privacy.viewAs(context.getParameter(Privacy.VIEW_AS_PARAMETER));
+		} catch (IllegalArgumentException ex) {
+			LOG.warning("Rejecting the unknown 'viewAs' value '" + ex.getMessage() + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, VIEW_AS_REFUSED);
+			return;
+		}
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo folder = location.getPath();
+		if (!_auth.readAllowed(caller) && _auth.rights(caller, folder).isEmpty()) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		if (!folder.toFile().isDirectory()) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
+			return;
+		}
+		Inboxes.Visibility inbox = null;
+		if (Inboxes.isInbox(_cache.lookup(folder))) {
+			inbox = Inboxes.visibility(_auth, caller, folder, viewAs);
+			if (inbox == Inboxes.Visibility.NONE) {
+				LOG.warning("Hiding the inbox at '" + context.request().getPathInfo() + "'.");
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
+				return;
+			}
+		}
+		if (!_auth.rights(caller, folder).contains(Rights.DOWNLOAD)) {
+			refuse(context, caller, folder, Rights.DOWNLOAD, false);
+			return;
+		}
+
+		MoveRequest request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = MoveRequest.readMoveRequest(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable download request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, ZIP_UNREADABLE);
+			return;
+		}
+		// Each name once, in the order asked: a photograph named twice is not two entries.
+		Set<String> names = new LinkedHashSet<>();
+		for (MoveName name : request.getNames()) {
+			names.add(name.getName());
+		}
+		if (names.isEmpty()) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, ZIP_EMPTY);
+			return;
+		}
+
+		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
+		int minRating = _auth.minRating(caller, folder, viewAs);
+		List<File> files = new ArrayList<>();
+		for (String name : names) {
+			// A name is an entry of this folder, never an address: no separator, nothing hidden.
+			File file = name == null || name.isEmpty() || name.startsWith(".") || name.indexOf('/') >= 0
+				|| name.indexOf('\\') >= 0 ? null : new File(folder.toFile(), name);
+			if (file == null || !file.isFile() || !ResourceCache.isImage(file)) {
+				LOG.warning("Refusing the download in '" + context.request().getPathInfo() + "': no photograph '"
+					+ name + "'.");
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
+				return;
+			}
+			PathInfo image = folder.child(name);
+			if (inbox != null) {
+				Resource part = _cache.lookup(image);
+				if (!(part instanceof ImagePart) || !Inboxes.shows(inbox, (ImagePart) part, caller.subject())) {
+					LOG.warning("Hiding the image of an inbox at '" + context.request().getPathInfo() + name + "'.");
+					errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
+					return;
+				}
+			}
+			String refusal = hidden(image, clearance, minRating);
+			if (refusal != null) {
+				imageRefused(context, caller, refusal);
+				return;
+			}
+			files.add(file);
+		}
+
+		HttpServletResponse response = context.response();
+		allowCrossOrigin(response);
+		response.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+		response.setContentType(ZipDownload.CONTENT_TYPE);
+		response.setHeader("Content-Disposition", ZipDownload.contentDisposition(folder.toFile().getName()));
+		LOG.info("Delivering " + files.size() + " originals of '" + context.request().getPathInfo() + "' as a zip.");
+		ZipDownload.write(response.getOutputStream(), files);
+	}
+
+	/** The message a download naming something that is no photograph of the album is refused with. */
+	static String notInAlbum(String name) {
+		return "There is no photograph '" + name + "' in this album.";
 	}
 
 	/**
@@ -2716,6 +2848,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("delete".equals(action)) {
 			deleteEntries(context);
+			return;
+		}
+		if (ZIP_ACTION.equals(action)) {
+			zipEntries(context);
 			return;
 		}
 		if ("purge".equals(action)) {

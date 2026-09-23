@@ -54,6 +54,7 @@ const List<String> convertedFiles = [
   "lib/device_code_scanner.dart",
   "lib/device_code_scanner_plugin.dart",
   "lib/diagnostics.dart",
+  "lib/downloads.dart",
   "lib/drag_scroll.dart",
   "lib/first_screen.dart",
   "lib/group_view.dart",

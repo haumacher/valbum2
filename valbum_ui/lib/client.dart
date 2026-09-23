@@ -66,6 +66,25 @@ class UploadFile {
       );
 }
 
+/// A file fetched from the server to be kept on the device (issue #164).
+class DownloadedFile {
+  /// The name to keep it under: the image's own, or the archive's.
+  final String name;
+
+  /// The contents, exactly as the server answered them.
+  final Uint8List bytes;
+
+  /// The media type the server announced, `application/octet-stream` where it
+  /// announced none.
+  final String contentType;
+
+  const DownloadedFile({
+    required this.name,
+    required this.bytes,
+    required this.contentType,
+  });
+}
+
 /// The [UploadedFile.status] of contents that the server has written.
 const String uploadStored = "stored";
 
@@ -1631,6 +1650,74 @@ class VAlbumClient {
     } catch (_) {
       return null;
     }
+  }
+
+  /// The original of the image at [imageUrl], to be kept (issue #164).
+  ///
+  /// Through this client and not through a link the platform opens: the
+  /// bearer travels in the header, which no plain anchor could carry, so a
+  /// share link's `download` and a member's work alike. No [timeout] — an
+  /// original may be a video of a gigabyte — and no [cache]: a copy taken is
+  /// not something to be shown offline. A refusal is thrown as a
+  /// [VAlbumException] carrying the server's own sentence.
+  Future<DownloadedFile> downloadOriginal(String imageUrl) async {
+    var url = originalUrl(imageUrl);
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode != 200) {
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingLoading("'$url'"));
+    }
+    var name = Uri.decodeComponent(Uri.parse(url).pathSegments.last);
+    return DownloadedFile(
+      name: name,
+      bytes: response.bodyBytes,
+      contentType: _contentTypeOf(response),
+    );
+  }
+
+  /// The originals of the album at [path] named by [names], as one zip
+  /// archive called [archiveName] (issue #164).
+  ///
+  /// `POST <album>/?action=zip` with a [MoveRequest] whose `target` is empty:
+  /// a POST, because a selection of a few hundred camera names does not fit
+  /// into a request line. The server refuses the whole request, speaking,
+  /// before the first byte of the archive — thrown as a [VAlbumException].
+  Future<DownloadedFile> downloadArchive(
+    List<String> path,
+    List<String> names,
+    String archiveName,
+  ) async {
+    var url = "${folderUrl(path)}?action=zip";
+    var request = MoveRequest(
+      target: "",
+      names: [for (var name in names) MoveName(name: name)],
+    );
+    var body = StringBuffer();
+    request.writeContent(jsonStringWriter(body));
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode != 200) {
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingLoading("'$url'"));
+    }
+    return DownloadedFile(
+      name: archiveName,
+      bytes: response.bodyBytes,
+      contentType: _contentTypeOf(response),
+    );
+  }
+
+  /// The media type of [response] without its parameters.
+  static String _contentTypeOf(http.Response response) {
+    var type = response.headers["content-type"];
+    if (type == null || type.isEmpty) {
+      return "application/octet-stream";
+    }
+    return type.split(";").first.trim();
   }
 
   /// The share links covering the folder at [path], the nearest one first

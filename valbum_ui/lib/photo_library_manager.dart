@@ -7,6 +7,8 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 
@@ -306,5 +308,48 @@ class PhotoManagerLibrary extends PhotoLibrary {
       _watching = false;
     }
     _changes.close();
+  }
+}
+
+/// Puts a downloaded original into the photo library of the phone (#164).
+///
+/// Where a phone keeps its pictures, and the one place its gallery app and
+/// every other app looks. A video goes through a temporary file, which is
+/// what the platform's video import takes, and is removed afterwards; a
+/// photograph is handed over as bytes. Adding needs the library's permission
+/// on older Androids and on iOS — "limited" access may add as well — and a
+/// refusal is thrown as a [PhotoLibraryException] naming it, so the download
+/// says why nothing was saved.
+Future<void> saveToPhotoLibrary(
+  String name,
+  Uint8List bytes,
+  String contentType,
+) async {
+  PermissionState state;
+  try {
+    state = await PhotoManager.requestPermissionExtend();
+  } catch (error) {
+    throw PhotoLibraryException(PhotoLibraryOpenFailed("$error"));
+  }
+  if (!state.isAuth && state != PermissionState.limited) {
+    throw const PhotoLibraryException(PhotoAccessDenied());
+  }
+  try {
+    if (contentType.startsWith("video/")) {
+      var directory = await Directory.systemTemp.createTemp("valbum-download");
+      var file = File("${directory.path}/$name");
+      try {
+        await file.writeAsBytes(bytes, flush: true);
+        await PhotoManager.editor.saveVideo(file, title: name);
+      } finally {
+        await directory.delete(recursive: true);
+      }
+    } else {
+      await PhotoManager.editor.saveImage(bytes, filename: name, title: name);
+    }
+  } on PhotoLibraryException {
+    rethrow;
+  } catch (error) {
+    throw PhotoLibraryException(PhotoLibraryOpenFailed("$error"));
   }
 }

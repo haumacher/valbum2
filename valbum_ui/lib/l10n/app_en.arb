@@ -3091,6 +3091,51 @@
     "description": "Half a sentence saying what the caller may do with a folder",
     "x-translated": "a61259a5"
   },
+  "viewerDownload": "Download original",
+  "@viewerDownload": {
+    "description": "Entry of the viewer's menu saving the original file of the photograph or video shown onto the device",
+    "x-translated": "c5690645"
+  },
+  "downloadSelection": "{count, plural, =1{Download 1 original} other{Download {count} originals}}",
+  "@downloadSelection": {
+    "description": "Entry of the album menu saving the original files of the selected photographs onto the device, as one zip archive where the device keeps files",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "1344a705"
+  },
+  "downloadSaved": "Saved {name}.",
+  "@downloadSaved": {
+    "description": "Said after a downloaded file was handed to the device; the placeholder is the file name",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "68b74047"
+  },
+  "downloadSavedCount": "{count, plural, =1{Saved 1 original.} other{Saved {count} originals.}}",
+  "@downloadSavedCount": {
+    "description": "Said after the originals of a selection were saved one by one into the photo library of a phone",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "3da0677"
+  },
+  "downloadFailed": "The download failed: {reason}",
+  "@downloadFailed": {
+    "description": "Said when an original could not be fetched or saved; the placeholder is the reason, often the server's own sentence",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    },
+    "x-translated": "3c29e262"
+  },
   "rightsPhraseView": "you may look",
   "@rightsPhraseView": {
     "description": "Half a sentence saying what the caller may do with a folder",

@@ -397,6 +397,8 @@
   "duplicatesSetAside": "{count, plural, =1{1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.} other{{count} Fotos wurden aussortiert; die verbleibenden Kopien befinden sich an anderer Stelle in der Bibliothek.}}",
   "reanalyze": "Fotodetails erneut einlesen",
   "reanalyzeExplanation": "Liest die Kamera- und Positionsdaten erneut aus den Dateien aus und ergänzt fehlende Angaben. Bereits gespeicherte Daten werden nicht verändert.",
+  "reanalyzeDone": "{examined} Fotos überprüft; bei {filled} davon wurde eine Kamera oder eine Position hinzugefügt.",
+  "reanalyzeRunning": "Wird im Hintergrund noch gelesen: Bisher wurden {examined} Fotos überprüft, {filled} davon haben eine Kamera oder eine Position erhalten.",
   "refreshPreviews": "Vorschauen aktualisieren",
   "refreshPreviewsMessage": "Die Miniaturansichten und Videodarstellungen dieses Albums werden gelöscht und bei der nächsten Anzeige neu erstellt. Die Fotos selbst bleiben davon unberührt.",
   "previewsRefreshed": "{count, plural, =1{1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.} other{{count} zwischengespeicherte Dateien wurden verworfen; die Vorschauen werden neu erstellt.}}",
@@ -510,6 +512,11 @@
   "rightsPhraseEdit": "Du kannst das ändern",
   "rightsPhraseContribute": "Du kannst Fotos hinzufügen",
   "rightsPhraseDownload": "Sie können ihn ansehen und herunterladen",
+  "viewerDownload": "Original herunterladen",
+  "downloadSelection": "{count, plural, =1{1 Original herunterladen} other{{count} Originale herunterladen}}",
+  "downloadSaved": "{name} wurde gespeichert.",
+  "downloadSavedCount": "{count, plural, =1{1 Original gespeichert.} other{{count} Originale wurden gespeichert.}}",
+  "downloadFailed": "Der Download ist fehlgeschlagen: {reason}",
   "rightsPhraseView": "Sie können einen Blick hineinwerfen",
   "rightsPhraseNone": "Hier können Sie nichts tun",
   "sharedWithYou": "Wurde für dich freigegeben",
@@ -526,6 +533,7 @@
   "doingDeleting": "Löschen im {folder}",
   "doingFiling": "Ablage im {folder}",
   "doingFindingDuplicates": "Suche nach Duplikaten im {folder}",
+  "doingReanalyzing": "erneutes Einlesen der Fotodaten im {folder}",
   "doingSigningIn": "Anmeldung unter {url}",
   "doingRefreshingPreviews": "Aktualisierung der Vorschauen von {folder}",
   "serverUnreachableNoPreview": "Der Server ist nicht erreichbar ({problem}), daher kann keine Vorschau angezeigt werden.",
@@ -649,8 +657,5 @@
   "viewerFaceDecision": "Dieses Gesicht",
   "viewerMarkFaceTooSmall": "Zeichnen Sie ein größeres Rechteck um das Gesicht der Person.",
   "personsChooserInAlbum": "In diesem Album",
-  "personsChooserAll": "Alle Personen",
-  "reanalyzeDone": "{examined} Fotos überprüft; bei {filled} davon wurde eine Kamera oder eine Position hinzugefügt.",
-  "reanalyzeRunning": "Wird im Hintergrund noch gelesen: Bisher wurden {examined} Fotos überprüft, {filled} davon haben eine Kamera oder eine Position erhalten.",
-  "doingReanalyzing": "erneutes Einlesen der Fotodaten im {folder}"
+  "personsChooserAll": "Alle Personen"
 }

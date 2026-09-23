@@ -756,6 +756,17 @@ void sliceTwo() {
     expect(de.personsChooserAll, isNot(en.personsChooserAll));
   });
 
+  test('the download of an original speaks German too (issue #164)', () {
+    var en = l10nOf(const Locale("en"));
+    expect(de.viewerDownload, "Original herunterladen");
+    expect(de.downloadSelection(2), isNot(en.downloadSelection(2)));
+    expect(de.downloadSelection(1), isNot(de.downloadSelection(2)));
+    expect(de.downloadSaved("a.jpg"), contains("a.jpg"));
+    expect(de.downloadSaved("a.jpg"), isNot(en.downloadSaved("a.jpg")));
+    expect(de.downloadSavedCount(3), isNot(en.downloadSavedCount(3)));
+    expect(de.downloadFailed("x"), isNot(en.downloadFailed("x")));
+  });
+
   test('the German words of slice 2 are not the English ones', () {
     var en = l10nOf(const Locale("en"));
     expect(de.cameraRollHeading, isNot(en.cameraRollHeading));

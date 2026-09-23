@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1422,7 +1421,8 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           '$count photos were set aside; the copies that stay are elsewhere in the library.',
-      one: '1 photo was set aside; the copy that stays is elsewhere in the library.',
+      one:
+          '1 photo was set aside; the copy that stays is elsewhere in the library.',
     );
     return '$_temp0';
   }
@@ -1872,6 +1872,41 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get rightsPhraseDownload => 'you may look and download';
+
+  @override
+  String get viewerDownload => 'Download original';
+
+  @override
+  String downloadSelection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Download $count originals',
+      one: 'Download 1 original',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String downloadSaved(String name) {
+    return 'Saved $name.';
+  }
+
+  @override
+  String downloadSavedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Saved $count originals.',
+      one: 'Saved 1 original.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String downloadFailed(String reason) {
+    return 'The download failed: $reason';
+  }
 
   @override
   String get rightsPhraseView => 'you may look';

@@ -2,9 +2,13 @@
 /// navigation that leaves the Flutter app behind, see [leaveForUrl].
 library;
 
+import 'dart:async';
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 import 'background.dart';
+import 'client.dart';
+import 'downloads.dart';
 import 'connectivity.dart';
 import 'device_code_scanner.dart';
 import 'diagnostics.dart';
@@ -69,6 +73,48 @@ BackgroundScheduler defaultBackgroundScheduler() =>
 
 /// Runs [task] as the platform's background task: never, in a browser.
 void executeBackgroundTask(Future<bool> Function() task) {}
+
+/// Where a downloaded original goes in a browser: the browser's downloads,
+/// see [BlobDownloadSaver].
+DownloadSaver defaultDownloadSaver() => const BlobDownloadSaver();
+
+/// Hands a download to the browser as a blob, under the file's own name
+/// (issue #164).
+///
+/// The bytes were fetched through the client, bearer and all; the page then
+/// makes an object URL of them and clicks an anchor carrying `download`, which
+/// is the one way a page starts a download of what it already holds. The
+/// anchor is put into the document for the click (a browser that clicks only
+/// attached elements would otherwise ignore it) and taken out again, and the
+/// object URL is revoked a moment later — at once would cancel the download in
+/// a browser that reads the blob only after the click has returned.
+class BlobDownloadSaver extends DownloadSaver {
+  const BlobDownloadSaver();
+
+  @override
+  Future<SaveOutcome> save(DownloadedFile file) async {
+    // `dart:js_interop_unsafe` rather than extension types: the app's language
+    // version predates them, and these five calls do not justify raising it.
+    var options = JSObject()..["type"] = file.contentType.toJS;
+    var blob = (globalContext["Blob"] as JSFunction)
+        .callAsConstructor<JSObject>([file.bytes.toJS].toJS, options);
+    var urls = globalContext["URL"] as JSObject;
+    var url = urls.callMethod<JSString>("createObjectURL".toJS, blob);
+    var document = globalContext["document"] as JSObject;
+    var anchor = document.callMethod<JSObject>("createElement".toJS, "a".toJS);
+    anchor["href"] = url;
+    anchor["download"] = file.name.toJS;
+    var body = document["body"] as JSObject;
+    body.callMethod<JSAny?>("appendChild".toJS, anchor);
+    anchor.callMethod<JSAny?>("click".toJS);
+    body.callMethod<JSAny?>("removeChild".toJS, anchor);
+    Timer(
+      const Duration(minutes: 1),
+      () => urls.callMethod<JSAny?>("revokeObjectURL".toJS, url),
+    );
+    return SaveOutcome.saved;
+  }
+}
 
 /// Replaces the page the app runs in by [url], forgetting the page it leaves.
 ///

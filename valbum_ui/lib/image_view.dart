@@ -15,6 +15,7 @@ import 'app.dart';
 import 'attribution.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'downloads.dart';
 import 'image_properties.dart';
 import 'album_edit.dart' show PlaneTransform;
 import 'image_transform.dart';
@@ -468,6 +469,28 @@ class ImageViewState extends State<ImageView>
       await _askForDescription(owner, image, text);
     }
   }
+
+  // --- Taking a copy of the original, see issue #164. ---
+
+  /// Whether the original of this picture may be taken out of the album.
+  ///
+  /// The `download` right on the album, whoever holds it — a member, and a
+  /// share link made with it alike: the link's rights are what it was made
+  /// with, and the server answers them as the album's rights.
+  bool get mayDownloadOriginal => album != null && rights.mayDownload;
+
+  /// Fetches the original of the shown picture and hands it to the platform,
+  /// see `downloads.dart`.
+  Future<void> downloadOriginal() => runDownload(context, () async {
+        var file = await widget.client
+            .downloadOriginal("${widget.baseUrl}/${part.name}");
+        var outcome = await downloadSaver.save(file);
+        return DownloadResult(
+          count: outcome == SaveOutcome.saved ? 1 : 0,
+          name: file.name,
+          cancelled: outcome == SaveOutcome.cancelled,
+        );
+      });
 
   // --- Naming the faces of the picture, see issue #147. ---
 
@@ -1741,7 +1764,7 @@ class ImageViewState extends State<ImageView>
           leaveEditPersons,
           key: const Key("viewer-edit-persons-done"),
         ),
-      ] else if (mayEditPersons)
+      ] else if (mayEditPersons || mayDownloadOriginal)
         // The viewer's own menu, the last control at the right (issue #100).
         Container(
           key: const Key("viewer-menu"),
@@ -1752,19 +1775,36 @@ class ImageViewState extends State<ImageView>
           // The look of every other control over the picture: white, and as
           // large (#155) — the theme's dark icon was all but invisible here.
           child: menu(context, icon: imageOverlayIcon(Icons.more_vert), [
-            PopupMenuItem<void Function(BuildContext)>(
-              key: const Key("viewer-edit-persons"),
-              value: (_) => enterEditPersons(),
-              child: Row(
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(right: 16),
-                    child: Icon(Icons.people_outline, color: Colors.blueAccent),
-                  ),
-                  Flexible(child: Text(l10n.viewerEditPersons)),
-                ],
+            // The copy the `download` right promises, see issue #164.
+            if (mayDownloadOriginal)
+              PopupMenuItem<void Function(BuildContext)>(
+                key: const Key("viewer-download"),
+                value: (_) => downloadOriginal(),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(right: 16),
+                      child: Icon(Icons.download, color: Colors.blueAccent),
+                    ),
+                    Flexible(child: Text(l10n.viewerDownload)),
+                  ],
+                ),
               ),
-            ),
+            if (mayEditPersons)
+              PopupMenuItem<void Function(BuildContext)>(
+                key: const Key("viewer-edit-persons"),
+                value: (_) => enterEditPersons(),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(right: 16),
+                      child:
+                          Icon(Icons.people_outline, color: Colors.blueAccent),
+                    ),
+                    Flexible(child: Text(l10n.viewerEditPersons)),
+                  ],
+                ),
+              ),
           ]),
         ),
     ];

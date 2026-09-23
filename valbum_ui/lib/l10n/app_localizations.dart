@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('de'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// The name of the application, shown as the window or browser tab title
@@ -3170,6 +3170,36 @@ abstract class AppLocalizations {
   /// **'you may look and download'**
   String get rightsPhraseDownload;
 
+  /// Entry of the viewer's menu saving the original file of the photograph or video shown onto the device
+  ///
+  /// In en, this message translates to:
+  /// **'Download original'**
+  String get viewerDownload;
+
+  /// Entry of the album menu saving the original files of the selected photographs onto the device, as one zip archive where the device keeps files
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Download 1 original} other{Download {count} originals}}'**
+  String downloadSelection(int count);
+
+  /// Said after a downloaded file was handed to the device; the placeholder is the file name
+  ///
+  /// In en, this message translates to:
+  /// **'Saved {name}.'**
+  String downloadSaved(String name);
+
+  /// Said after the originals of a selection were saved one by one into the photo library of a phone
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Saved 1 original.} other{Saved {count} originals.}}'**
+  String downloadSavedCount(int count);
+
+  /// Said when an original could not be fetched or saved; the placeholder is the reason, often the server's own sentence
+  ///
+  /// In en, this message translates to:
+  /// **'The download failed: {reason}'**
+  String downloadFailed(String reason);
+
   /// Half a sentence saying what the caller may do with a folder
   ///
   /// In en, this message translates to:
@@ -4044,9 +4074,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
 }

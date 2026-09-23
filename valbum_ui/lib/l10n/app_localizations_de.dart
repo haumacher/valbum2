@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1443,7 +1442,8 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count Fotos wurden aussortiert; die verbleibenden Kopien befinden sich an anderer Stelle in der Bibliothek.',
-      one: '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
+      one:
+          '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
     );
     return '$_temp0';
   }
@@ -1479,7 +1479,8 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count zwischengespeicherte Dateien wurden verworfen; die Vorschauen werden neu erstellt.',
-      one: '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
+      one:
+          '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
     );
     return '$_temp0';
   }
@@ -1899,6 +1900,41 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get rightsPhraseDownload => 'Sie können ihn ansehen und herunterladen';
+
+  @override
+  String get viewerDownload => 'Original herunterladen';
+
+  @override
+  String downloadSelection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Originale herunterladen',
+      one: '1 Original herunterladen',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String downloadSaved(String name) {
+    return '$name wurde gespeichert.';
+  }
+
+  @override
+  String downloadSavedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Originale wurden gespeichert.',
+      one: '1 Original gespeichert.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String downloadFailed(String reason) {
+    return 'Der Download ist fehlgeschlagen: $reason';
+  }
 
   @override
   String get rightsPhraseView => 'Sie können einen Blick hineinwerfen';

@@ -3,9 +3,12 @@ library;
 
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
 import 'background.dart';
+import 'client.dart';
+import 'downloads.dart';
 import 'background_workmanager.dart';
 import 'connectivity.dart';
 import 'connectivity_plugin.dart';
@@ -100,6 +103,52 @@ BackgroundScheduler defaultBackgroundScheduler() =>
 /// web build never sees the plugin's Dart code.
 void executeBackgroundTask(Future<bool> Function() task) =>
     runWorkmanagerTask(task);
+
+/// Where a downloaded original goes off the web, see [DownloadSaver].
+///
+/// A phone keeps its pictures in its photo library, so that is where they go
+/// (issue #164); a desktop keeps files and is asked where. `Platform.isAndroid`
+/// rather than `defaultTargetPlatform`, exactly as [defaultPhotoLibrary]: this
+/// asks which machine the code runs on.
+DownloadSaver defaultDownloadSaver() => Platform.isAndroid || Platform.isIOS
+    ? const PhotoLibraryDownloadSaver()
+    : const FileDialogDownloadSaver();
+
+/// Saves a download into the photo library of a phone, see
+/// [saveToPhotoLibrary].
+///
+/// A zip is no picture and would be a dead file on a phone, so a selection is
+/// saved original by original instead ([keepsArchives]).
+class PhotoLibraryDownloadSaver extends DownloadSaver {
+  const PhotoLibraryDownloadSaver();
+
+  @override
+  bool get keepsArchives => false;
+
+  @override
+  Future<SaveOutcome> save(DownloadedFile file) async {
+    await saveToPhotoLibrary(file.name, file.bytes, file.contentType);
+    return SaveOutcome.saved;
+  }
+}
+
+/// Saves a download where the user says, on a desktop.
+///
+/// The platform's own save dialog, the file's name suggested; a dialog closed
+/// without a choice is [SaveOutcome.cancelled] and nothing is written.
+class FileDialogDownloadSaver extends DownloadSaver {
+  const FileDialogDownloadSaver();
+
+  @override
+  Future<SaveOutcome> save(DownloadedFile file) async {
+    var location = await getSaveLocation(suggestedName: file.name);
+    if (location == null) {
+      return SaveOutcome.cancelled;
+    }
+    await File(location.path).writeAsBytes(file.bytes, flush: true);
+    return SaveOutcome.saved;
+  }
+}
 
 /// Replaces the page the app runs in by [url]: nothing, off the web.
 ///
