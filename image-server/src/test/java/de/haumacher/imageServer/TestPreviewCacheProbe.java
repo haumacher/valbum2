@@ -58,7 +58,11 @@ public class TestPreviewCacheProbe extends TestCase {
 		assertTrue("Original changed.", java.util.Arrays.equals(before, Files.readAllBytes(file.toPath())));
 	}
 
-	/** An image smaller than the preview is not upscaled: it sits centred on the preview canvas as before. */
+	/**
+	 * An image smaller than the preview box is not upscaled — and since issue #165 not padded
+	 * either: the preview is the picture at its own size, so a tile that draws the rendition into
+	 * its row shows the picture, not a canvas with margins around it.
+	 */
 	public void testTinyImageIsNotUpscaled() throws Exception {
 		BufferedImage image = new BufferedImage(100, 75, BufferedImage.TYPE_INT_RGB);
 		Graphics2D g = image.createGraphics();
@@ -70,12 +74,12 @@ public class TestPreviewCacheProbe extends TestCase {
 		assertTrue(ImageIO.write(image, "jpg", file));
 
 		BufferedImage preview = ImageIO.read(PreviewCache.createPreview(file));
-		assertEquals(800, preview.getWidth());
-		assertEquals(600, preview.getHeight());
-		Color centre = new Color(preview.getRGB(400, 300));
+		assertEquals("The picture's own size: nothing upscaled, nothing padded (#165).", 100, preview.getWidth());
+		assertEquals(75, preview.getHeight());
+		Color centre = new Color(preview.getRGB(50, 37));
 		assertTrue("Centre carries the image.", centre.getGreen() > 150 && centre.getRed() < 80);
-		Color corner = new Color(preview.getRGB(10, 10));
-		assertTrue("Corner is canvas, not upscaled image.", corner.getGreen() < 80);
+		Color corner = new Color(preview.getRGB(2, 2));
+		assertTrue("The corner is the picture too: there is no canvas around it.", corner.getGreen() > 150 && corner.getRed() < 80);
 	}
 
 	/** A PNG with an alpha channel keeps the PNG path working under subsampling (factor 3). */
