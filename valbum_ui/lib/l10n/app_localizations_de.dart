@@ -1347,6 +1347,19 @@ class AppLocalizationsDe extends AppLocalizations {
   String get deleteHeadingTooltip => 'Überschrift löschen';
 
   @override
+  String get headingLevelSection => 'Abschnitt';
+
+  @override
+  String get headingLevelSubsection => 'Unterabschnitt';
+
+  @override
+  String get addHeading => 'Überschrift hinzufügen…';
+
+  @override
+  String get headingSelectTooltip =>
+      'Wählt die Bilder unter dieser Überschrift aus';
+
+  @override
   String get alreadyInOrder => 'Ist bereits sortiert';
 
   @override

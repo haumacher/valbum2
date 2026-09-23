@@ -2218,6 +2218,26 @@
     "description": "Tooltip of the tool removing a heading from an album",
     "x-translated": "19511073"
   },
+  "headingLevelSection": "Section",
+  "@headingLevelSection": {
+    "description": "Choice in the heading dialog of an album: the heading is a section, the upper of two heading levels (like h1 in HTML)",
+    "x-translated": "e2ce4373"
+  },
+  "headingLevelSubsection": "Subsection",
+  "@headingLevelSubsection": {
+    "description": "Choice in the heading dialog of an album: the heading is a subsection inside a section, the lower of two heading levels (like h2 in HTML)",
+    "x-translated": "294cd1f0"
+  },
+  "addHeading": "Add heading…",
+  "@addHeading": {
+    "description": "Menu entry of an album in the edit mode appending a new heading at the end of the album, so that sections can be laid out before any image arrives",
+    "x-translated": "d8ab8dc8"
+  },
+  "headingSelectTooltip": "Selects the images under this heading",
+  "@headingSelectTooltip": {
+    "description": "Tooltip of a heading in the edit mode of an album: tapping it selects every image under it up to the next heading of the same or a higher level, a second tap deselects them",
+    "x-translated": "f184138c"
+  },
   "alreadyInOrder": "Already in order",
   "@alreadyInOrder": {
     "description": "Said when sorting an album by date would change nothing",

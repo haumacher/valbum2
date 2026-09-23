@@ -285,8 +285,13 @@ bool isActiveRating(int rating, int value) {
 ///
 /// Returns the index the heading was inserted at, or `-1` if [part] is not a
 /// part of the album.
-int insertHeadingBefore(AlbumInfo album, AlbumPart part, String text) =>
-    insertHeadingBeforeDisplayed(album, part, const [], text);
+int insertHeadingBefore(
+  AlbumInfo album,
+  AlbumPart part,
+  String text, {
+  int level = headingSection,
+}) =>
+    insertHeadingBeforeDisplayed(album, part, const [], text, level: level);
 
 /// Inserts a heading with the given text before the *displayed* [part].
 ///
@@ -325,14 +330,18 @@ int insertHeadingBefore(AlbumInfo album, AlbumPart part, String text) =>
 /// belong to the album, the stored index of [part] is the anchor — the plain
 /// behaviour, never a refusal.
 ///
+/// The heading is a section or, with [level] [headingSubsection], a
+/// subsection (issue #158).
+///
 /// Returns the index the heading was inserted at, or `-1` if [part] is not a
 /// part of the album.
 int insertHeadingBeforeDisplayed(
   AlbumInfo album,
   AlbumPart part,
   List<AlbumPart> displayOrder,
-  String text,
-) {
+  String text, {
+  int level = headingSection,
+}) {
   var parts = album.parts;
   var stored = Map<AlbumPart, int>.identity();
   for (var i = 0; i < parts.length; i++) {
@@ -344,7 +353,7 @@ int insertHeadingBeforeDisplayed(
   }
 
   var at = _displayedHeadingAnchor(stored, part, index, displayOrder);
-  parts.insert(at, Heading(text: text));
+  parts.insert(at, Heading(text: text, level: level));
   return at;
 }
 
@@ -376,6 +385,51 @@ int _displayedHeadingAnchor(
     }
   }
   return anchor;
+}
+
+/// The level of a section, the upper of the two heading levels (issue #158).
+const int headingSection = 1;
+
+/// The level of a subsection, a heading inside a section (issue #158).
+const int headingSubsection = 2;
+
+/// The level the given heading is drawn and selects with, see [Heading.level].
+///
+/// A sidecar written before issue #158 carries no level, which reads as `0`
+/// and is a section, like every value that is not [headingSubsection]: an
+/// older heading keeps its look, and a level this app does not know is never
+/// taken for the smaller one.
+int headingLevel(Heading heading) =>
+    heading.level == headingSubsection ? headingSubsection : headingSection;
+
+/// The images a tap on [heading] selects in the edit mode (issue #158): every
+/// image of [parts] after it up to the next heading of the same or a higher
+/// level — a subsection reaches to the next section or subsection, a section
+/// to the next section, taking the subsections inside it along.
+///
+/// A group is one image here as everywhere, the [ImageGroup] itself. [parts]
+/// is what the album shows (the rating filter applied): what the tap selects
+/// is what the reader sees under the heading, never an image hidden from the
+/// screen that nothing would show as selected. Empty where [heading] is not
+/// among [parts] (compared by identity) or nothing stands under it.
+List<AbstractImage> imagesUnder(List<AlbumPart> parts, Heading heading) {
+  var start = _indexOfIdentical(parts, heading);
+  if (start < 0) {
+    return const [];
+  }
+  var level = headingLevel(heading);
+  var result = <AbstractImage>[];
+  for (var index = start + 1; index < parts.length; index++) {
+    var part = parts[index];
+    if (part is Heading) {
+      if (headingLevel(part) <= level) {
+        break;
+      }
+    } else if (part is AbstractImage) {
+      result.add(part);
+    }
+  }
+  return result;
 }
 
 /// The images between [from] and [to] in the album's part order, excluding

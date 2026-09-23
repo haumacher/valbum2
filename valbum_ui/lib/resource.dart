@@ -578,10 +578,23 @@ class Heading extends AlbumPart {
 	///  The text to display.
 	String text;
 
+	///  The level of this heading, see issue #158: <code>1</code> a section, <code>2</code> a
+	///  subsection below it.
+	/// 
+	///  <p>
+	///  Stored in the album's sidecar like {@link #text}. A sidecar written before the level existed
+	///  carries no value, which reads as <code>0</code> and means <code>1</code>, so every older
+	///  heading keeps its look; any value other than <code>2</code> is read as a section. In the edit
+	///  mode a heading selects the images below it up to the next heading of the same or a higher
+	///  level (a smaller number).
+	///  </p>
+	int level;
+
 	/// Creates a Heading.
 	Heading({
 			super.owner, 
 			this.text = "", 
+			this.level = 0, 
 	});
 
 	/// Parses a Heading from a string source.
@@ -606,6 +619,10 @@ class Heading extends AlbumPart {
 				text = json.expectString();
 				break;
 			}
+			case "level": {
+				level = json.expectInt();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -616,6 +633,9 @@ class Heading extends AlbumPart {
 
 		json.addKey("text");
 		json.addString(text);
+
+		json.addKey("level");
+		json.addNumber(level);
 	}
 
 	@override

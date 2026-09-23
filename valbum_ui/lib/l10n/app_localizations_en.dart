@@ -1330,6 +1330,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deleteHeadingTooltip => 'Delete heading';
 
   @override
+  String get headingLevelSection => 'Section';
+
+  @override
+  String get headingLevelSubsection => 'Subsection';
+
+  @override
+  String get addHeading => 'Add heading…';
+
+  @override
+  String get headingSelectTooltip => 'Selects the images under this heading';
+
+  @override
   String get alreadyInOrder => 'Already in order';
 
   @override

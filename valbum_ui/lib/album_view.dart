@@ -670,25 +670,103 @@ class AlbumContentState extends State<AlbumContent>
         selection.remove(heading);
       });
 
-  /// Opens the heading editor prefilled with the current text.
+  /// Opens the heading editor prefilled with the current text and level.
   ///
   /// An empty text is refused, as in the GWT client, which ignored the save.
+  /// The level is chosen in the same dialog (issue #158); a heading of an
+  /// older sidecar, which carries no level, is offered as the section it is
+  /// drawn as, and is written back with the level only once it is changed.
   Future<void> editHeading(Heading heading) async {
-    var text = await showDialog<String>(
+    var input = await showDialog<HeadingInput>(
       context: context,
-      builder: (context) => TextInputDialog(
+      builder: (context) => HeadingDialog(
         title: _l10n.editHeadingTitle,
-        label: _l10n.headingLabel,
         text: heading.text,
+        level: headingLevel(heading),
       ),
     );
-    if (text == null || text.trim().isEmpty || !mounted) {
+    if (input == null || input.text.trim().isEmpty || !mounted) {
       return;
     }
     setState(() {
-      heading.text = text;
+      heading.text = input.text;
+      if (input.level != headingLevel(heading)) {
+        heading.level = input.level;
+      }
       markDirty();
     });
+  }
+
+  /// Whether the album holds an image, a tile a long press opens the edit
+  /// mode on.
+  bool get holdsImages =>
+      widget.album.parts.any((part) => part is AbstractImage);
+
+  /// Whether the caller may open an edit session on this album — the
+  /// conditions of [setEditMode], without the offline check.
+  bool get mayEnterEditMode => rights.mayEdit && share == null && !previewing;
+
+  /// Appends a heading at the end of the album, the menu entry "Add heading…"
+  /// (issue #158).
+  ///
+  /// The way to lay out the sections of an album before any image arrives: a
+  /// heading is otherwise inserted before a tile, and an empty album has
+  /// none. An edit like every other one, written by Save. Because the edit
+  /// mode is otherwise entered by a long press on a tile, which an album
+  /// without images does not have, the entry is offered in the view mode of
+  /// such an album too, to a caller who may edit, and opens the edit session
+  /// with the heading in its buffer; a cancelled dialog leaves the album as it
+  /// was.
+  Future<void> addHeading() async {
+    if (!editMode) {
+      if (!mayEnterEditMode || refuseWhileOffline(context)) {
+        return;
+      }
+    }
+    var input = await showDialog<HeadingInput>(
+      context: context,
+      builder: (context) => HeadingDialog(
+        title: _l10n.insertHeading,
+        text: "",
+        level: headingSection,
+      ),
+    );
+    if (input == null || input.text.trim().isEmpty || !mounted) {
+      return;
+    }
+    editImage(() {
+      if (!editMode) {
+        editMode = true;
+        clearSelection();
+      }
+      // A new list: the parts of an album parsed without any are a constant.
+      widget.album.parts = [
+        ...widget.album.parts,
+        Heading(text: input.text, level: input.level),
+      ];
+    });
+  }
+
+  /// Selects every image under the given heading, or takes exactly those back
+  /// out where all of them are selected already — the check box of a heading
+  /// in the edit mode (issue #158), the gesture of the inbox's day and month
+  /// headings (#136). What stands under a heading is [imagesUnder]; a heading
+  /// tap is no click on an image, so the anchor of a shift-click stays where
+  /// it was.
+  void toggleHeading(Heading heading) => setState(() {
+        var images = imagesUnder(visibleParts(widget.album), heading);
+        if (images.every(selection.contains)) {
+          images.forEach(selection.remove);
+        } else {
+          selection.addAll(images);
+        }
+      });
+
+  /// Whether everything under the given heading is selected, which lights its
+  /// check box; a heading with nothing under it is never lit.
+  bool headingSelected(Heading heading) {
+    var images = imagesUnder(visibleParts(widget.album), heading);
+    return images.isNotEmpty && images.every(selection.contains);
   }
 
   /// Orders the parts of the album by date, section by section (issue #76).
@@ -1574,6 +1652,16 @@ class AlbumContentState extends State<AlbumContent>
           // An edit like every other one: offered inside the edit session, so
           // that the new order is reviewed and saved (or discarded) the way a
           // move or a heading is, see issue #76.
+          // Sections laid out before the images arrive, see issue #158 — in
+          // the view mode too where the album holds no image, since the edit
+          // mode is otherwise entered by a long press on a tile.
+          if (editMode || (mayEnterEditMode && !holdsImages))
+            keyedMenuItem(
+              const Key("add-heading"),
+              Icons.title,
+              _l10n.addHeading,
+              (_) => addHeading(),
+            ),
           if (editMode)
             menuItem(Icons.sort, _l10n.sortByDate, (_) => sortByDate()),
           menuLabel(
@@ -2322,42 +2410,88 @@ class AlbumContentState extends State<AlbumContent>
       part: heading,
       feedback: Text(
         heading.text,
-        style: const TextStyle(fontSize: 22, color: Colors.white),
+        style:
+            TextStyle(fontSize: headingFontSize(heading), color: Colors.white),
       ),
       child: view,
     );
   }
 
-  Widget headingRow(Heading heading) => Padding(
-        padding: const EdgeInsets.only(top: 24, bottom: 8),
-        child: Row(
-          key: ValueKey(heading),
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              heading.text,
-              style: const TextStyle(fontSize: 22, color: Colors.white),
-            ),
-            if (editMode)
-              IconButton(
-                icon: const Icon(Icons.edit),
-                iconSize: 20,
-                color: Colors.white,
-                tooltip: _l10n.editHeadingTitle,
-                onPressed: () => editHeading(heading),
-              ),
-            if (editMode)
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
-                iconSize: 20,
-                color: Colors.white,
-                tooltip: _l10n.deleteHeadingTooltip,
-                onPressed: () => deleteHeading(heading),
-              ),
-          ],
-        ),
-      );
+  /// The size a heading is written in: a section as ever, a subsection in the
+  /// proportion of the inbox's day heading to its month line (20 to 26, issue
+  /// #158).
+  static double headingFontSize(Heading heading) =>
+      headingLevel(heading) == headingSubsection ? 17 : 22;
+
+  /// The row of a heading, left-aligned in both modes (issue #158): in the
+  /// edit mode a check box stands at the gutter in front of the text, and a
+  /// centred heading with a check box in front of it reads as a stray control
+  /// — the look of the inbox's derived headings (#136). Tapping the check box
+  /// or the text selects what stands under the heading, see [toggleHeading].
+  Widget headingRow(Heading heading) {
+    var fontSize = headingFontSize(heading);
+    var text = Text(
+      heading.text,
+      style: TextStyle(fontSize: fontSize, color: Colors.white),
+    );
+    var row = Row(
+      key: ValueKey(heading),
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        if (editMode) ...[
+          Icon(
+            headingSelected(heading)
+                ? Icons.check_box
+                : Icons.check_box_outline_blank,
+            size: fontSize,
+            color:
+                headingSelected(heading) ? Colors.amberAccent : Colors.white54,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Tooltip(message: _l10n.headingSelectTooltip, child: text),
+          ),
+        ] else
+          Flexible(child: text),
+        if (editMode)
+          IconButton(
+            icon: const Icon(Icons.edit),
+            iconSize: 20,
+            color: Colors.white,
+            tooltip: _l10n.editHeadingTitle,
+            onPressed: () => editHeading(heading),
+          ),
+        if (editMode)
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            iconSize: 20,
+            color: Colors.white,
+            tooltip: _l10n.deleteHeadingTooltip,
+            onPressed: () => deleteHeading(heading),
+          ),
+        // The drag handle of the edit mode stands in the top right corner,
+        // see [ReorderablePart.handle]; the row keeps clear of it.
+        if (editMode) const SizedBox(width: dragHandleSize),
+      ],
+    );
+    var padded = Padding(
+      padding: EdgeInsets.only(
+        top: headingLevel(heading) == headingSubsection ? 16 : 24,
+        bottom: 8,
+        left: 16,
+        right: 16,
+      ),
+      child: row,
+    );
+    if (!editMode) {
+      return padded;
+    }
+    return InkWell(
+      key: ValueKey(("heading-select", heading)),
+      onTap: () => toggleHeading(heading),
+      child: padded,
+    );
+  }
 }
 
 /// The children of one block of rows, which knows the block's exact height.
@@ -3021,22 +3155,23 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   /// the tile's stored index — see [insertHeadingBeforeDisplayed] for why the
   /// two differ and why the display decides (issue #71).
   Future<void> createHeading() async {
-    var text = await showDialog<String>(
+    var input = await showDialog<HeadingInput>(
       context: context,
-      builder: (context) => TextInputDialog(
+      builder: (context) => HeadingDialog(
         title: _l10n.insertHeading,
-        label: _l10n.headingLabel,
         text: "",
+        level: headingSection,
       ),
     );
-    if (text == null || !mounted) {
+    if (input == null || !mounted) {
       return;
     }
     album.editImage(() => insertHeadingBeforeDisplayed(
           album.widget.album,
           part,
           album.displayOrder,
-          text,
+          input.text,
+          level: input.level,
         ));
   }
 
@@ -3389,7 +3524,98 @@ class ReorderablePartState extends State<ReorderablePart> {
   }
 }
 
-/// A dialog editing a single text, used for headings and image comments.
+/// What the heading dialog answers: the text and the level of the heading
+/// (issue #158), `null` from the dialog when it was cancelled.
+class HeadingInput {
+  final String text;
+
+  /// [headingSection] or [headingSubsection].
+  final int level;
+
+  const HeadingInput(this.text, this.level);
+}
+
+/// The dialog of a heading: its text and its level, a section or a
+/// subsection (issue #158), used to insert a heading before a tile, to append
+/// one at the end of the album and to edit one.
+class HeadingDialog extends StatefulWidget {
+  final String title;
+  final String text;
+  final int level;
+
+  const HeadingDialog({
+    super.key,
+    required this.title,
+    required this.text,
+    required this.level,
+  });
+
+  @override
+  State<StatefulWidget> createState() => HeadingDialogState();
+}
+
+class HeadingDialogState extends State<HeadingDialog> {
+  late final TextEditingController controller =
+      TextEditingController(text: widget.text);
+
+  late int level = widget.level;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  void apply() =>
+      Navigator.of(context).pop(HeadingInput(controller.text, level));
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    Widget choice(int value, String label) => ChoiceChip(
+          key: Key("heading-level-$value"),
+          label: Text(label),
+          selected: level == value,
+          onSelected: (_) => setState(() => level = value),
+        );
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(label: Text(l10n.headingLabel)),
+            onSubmitted: (_) => apply(),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            children: [
+              choice(headingSection, l10n.headingLevelSection),
+              choice(headingSubsection, l10n.headingLevelSubsection),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.check),
+          label: Text(l10n.apply),
+          onPressed: apply,
+        ),
+      ],
+    );
+  }
+}
+
+/// A dialog editing a single text, used for image comments.
 class TextInputDialog extends StatefulWidget {
   final String title;
   final String label;
