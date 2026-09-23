@@ -552,30 +552,31 @@ class AlbumContentState extends State<AlbumContent>
   ///
   /// Plain: select exactly this part, clicking the only selected one clears
   /// the selection. Ctrl/Meta: toggle. Shift: extend the selection to the
-  /// range between the part clicked last and this one, as the GWT client did.
+  /// range between the part clicked last and this one in the album's order,
+  /// as the GWT client did. The decision is [selectionAfterTap], which the
+  /// inbox takes its clicks from as well (issue #160).
   void handleTap(AlbumPart part) {
     var keyboard = HardwareKeyboard.instance;
     setState(() {
-      if (keyboard.isShiftPressed) {
-        var anchor = lastClicked ?? widget.album.parts.first;
-        var select = selection.contains(anchor);
-        for (var image in imageRange(widget.album.parts, anchor, part)) {
-          if (select) {
-            selection.add(image);
-          } else {
-            selection.remove(image);
-          }
-        }
-      } else if (keyboard.isControlPressed || keyboard.isMetaPressed) {
-        _toggle(part);
-      } else {
-        var wasOnlySelection = selection.length == 1 && isSelected(part);
-        selection.clear();
-        if (!wasOnlySelection) {
-          selection.add(part);
-        }
-      }
-      lastClicked = part;
+      var outcome = selectionAfterTap<AlbumPart>(
+        // The album's own order, as ever: the row layout may stack a
+        // portrait beside a landscape in a column, so the order its visitor
+        // reports is no more "left to right" than the stored one is, and the
+        // stored order is the one every reorder of this page speaks.
+        ordered: [
+          for (var stored in widget.album.parts)
+            if (stored is AbstractImage) stored,
+        ],
+        tapped: part,
+        current: selection,
+        anchor: lastClicked,
+        shift: keyboard.isShiftPressed,
+        ctrl: keyboard.isControlPressed || keyboard.isMetaPressed,
+      );
+      selection
+        ..clear()
+        ..addAll(outcome.selection);
+      lastClicked = outcome.anchor;
     });
   }
 
@@ -2571,6 +2572,45 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   }
 }
 
+/// How a tile draws one of its tool buttons: the icon, the tooltip, the
+/// action, whether the button is highlighted, and its key.
+typedef ToolButtonBuilder = Widget Function(
+  IconData icon,
+  String tooltip,
+  VoidCallback onPressed, {
+  bool active,
+  Key? key,
+});
+
+/// The four rating buttons of a tile — very good, good, poor and trash — for
+/// an image rated [rating], each calling [onRate] with its value.
+///
+/// One definition for the album's edit tile and the inbox tile (issue #160),
+/// each drawing the buttons in its own toolbar through [button]. Pressing the
+/// active button resets the rating, see [toggleRating], which is the caller's
+/// business: [onRate] is handed the button's value, not the new rating.
+List<Widget> ratingButtons(
+  AppLocalizations l10n, {
+  required int rating,
+  required void Function(int value) onRate,
+  required ToolButtonBuilder button,
+}) =>
+    [
+      for (var (icon, tooltip, value, name) in [
+        (Icons.star, l10n.ratingVeryGood, 2, "very-good"),
+        (Icons.add, l10n.ratingGood, 1, "good"),
+        (Icons.remove, l10n.ratingPoor, -1, "poor"),
+        (Icons.delete, l10n.ratingTrash, -2, "trash"),
+      ])
+        button(
+          icon,
+          tooltip,
+          () => onRate(value),
+          active: isActiveRating(rating, value),
+          key: Key("rating-$name"),
+        ),
+    ];
+
 /// The tile of an image in the album edit mode: selection and the three
 /// overlay toolbars.
 class ThumbnailEditor extends StatefulWidget {
@@ -2755,10 +2795,12 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
 
   /// The rating chooser and, beside it, the privacy level.
   Widget bottomBar() => toolbar([
-        ratingButton(Icons.star, _l10n.ratingVeryGood, 2),
-        ratingButton(Icons.add, _l10n.ratingGood, 1),
-        ratingButton(Icons.remove, _l10n.ratingPoor, -1),
-        ratingButton(Icons.delete, _l10n.ratingTrash, -2),
+        ...ratingButtons(
+          _l10n,
+          rating: image.rating,
+          onRate: setRating,
+          button: toolButton,
+        ),
         privacyButton(),
       ]);
 
@@ -2786,13 +2828,6 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
       key: const Key("privacy-control"),
     );
   }
-
-  Widget ratingButton(IconData icon, String tooltip, int value) => toolButton(
-        icon,
-        tooltip,
-        () => setRating(value),
-        active: isActiveRating(image.rating, value),
-      );
 
   Widget toolbar(List<Widget> buttons) => FittedBox(
         fit: BoxFit.scaleDown,
