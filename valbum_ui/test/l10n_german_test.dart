@@ -202,6 +202,43 @@ void sliceThree() {
       expect(find.text(de.imageProperties), findsOneWidget);
     });
 
+    testWidgets('the edit mode\'s menu appends a heading (issue #158)',
+        (tester) async {
+      speakGerman(tester);
+      await withFakeImageHttp(() async {
+        await pumpAlbum(tester, treeAnswer);
+        await tester.longPress(find.byType(Image).first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.more_vert).last);
+        await tester.pumpAndSettle();
+      });
+
+      expect(find.text(de.addHeading), findsOneWidget);
+      expect(find.text(l10nOf(const Locale("en")).addHeading), findsNothing);
+    });
+
+    testWidgets('the heading dialog and its two levels (issue #158)',
+        (tester) async {
+      speakGerman(tester);
+      await tester.pumpWidget(
+        localizedApp(
+          const HeadingDialog(
+            title: "Titel",
+            text: "Mai",
+            level: headingSection,
+          ),
+          locale: const Locale("de"),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.headingLabel), findsOneWidget);
+      expect(find.text(de.headingLevelSection), findsOneWidget);
+      expect(find.text(de.headingLevelSubsection), findsOneWidget);
+      expect(de.headingLevelSubsection,
+          isNot(l10nOf(const Locale("en")).headingLevelSubsection));
+    });
+
     testWidgets('the album properties dialog', (tester) async {
       speakGerman(tester);
       await tester.pumpWidget(
@@ -323,7 +360,8 @@ void sliceThree() {
         lastPresent: 1,
       );
       // The hour is the reader's local one, whatever zone the test runs in.
-      var hour = DateFormat.Hm(de.localeName).format(status.lastSuccess!.toLocal());
+      var hour =
+          DateFormat.Hm(de.localeName).format(status.lastSuccess!.toLocal());
       expect(cameraRollLine(status, de), de.cameraRollSynced(2, 3, hour, 1));
       expect(
         cameraRollLine(const CameraRollStatus(), de),
@@ -488,8 +526,7 @@ void sliceTwo() {
   });
 
   group('the trash page speaks German (issue #152)', () {
-    testWidgets('its title, its tools and the purge question',
-        (tester) async {
+    testWidgets('its title, its tools and the purge question', (tester) async {
       speakGerman(tester);
       await withFakeImageHttp(() async {
         await tester.pumpWidget(VAlbumApp(

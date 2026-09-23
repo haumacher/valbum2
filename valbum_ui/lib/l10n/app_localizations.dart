@@ -2312,6 +2312,30 @@ abstract class AppLocalizations {
   /// **'Delete heading'**
   String get deleteHeadingTooltip;
 
+  /// Choice in the heading dialog of an album: the heading is a section, the upper of two heading levels (like h1 in HTML)
+  ///
+  /// In en, this message translates to:
+  /// **'Section'**
+  String get headingLevelSection;
+
+  /// Choice in the heading dialog of an album: the heading is a subsection inside a section, the lower of two heading levels (like h2 in HTML)
+  ///
+  /// In en, this message translates to:
+  /// **'Subsection'**
+  String get headingLevelSubsection;
+
+  /// Menu entry of an album in the edit mode appending a new heading at the end of the album, so that sections can be laid out before any image arrives
+  ///
+  /// In en, this message translates to:
+  /// **'Add heading…'**
+  String get addHeading;
+
+  /// Tooltip of a heading in the edit mode of an album: tapping it selects every image under it up to the next heading of the same or a higher level, a second tap deselects them
+  ///
+  /// In en, this message translates to:
+  /// **'Selects the images under this heading'**
+  String get headingSelectTooltip;
+
   /// Said when sorting an album by date would change nothing
   ///
   /// In en, this message translates to:
