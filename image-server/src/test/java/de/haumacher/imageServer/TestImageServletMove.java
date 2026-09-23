@@ -464,6 +464,126 @@ public class TestImageServletMove extends TestCase {
 	}
 
 
+	// --- A cover for an album that receives images, issue #153. ---
+
+	/**
+	 * The picker's flow of #114: an album is created by the sidecar PUT, then the selection is
+	 * moved into it; the album is covered by the first best-rated image that landed.
+	 */
+	public void testAnAlbumCreatedForTheMoveIsCoveredByTheBestRatedLandedImage() throws Exception {
+		image("A/a.jpg", 8, 6, Color.RED);
+		image("A/b.jpg", 8, 6, Color.GREEN);
+		image("A/c.jpg", 8, 6, Color.BLUE);
+		image("A/d.jpg", 8, 6, Color.YELLOW);
+		sidecar("A", "[\"AlbumInfo\",{\"title\":\"A\",\"parts\":[" + part("a.jpg", "\"rating\":0") + ","
+			+ part("b.jpg", "\"rating\":2,\"orientation\":\"ROT_L\"") + "," + part("c.jpg", "\"rating\":2") + ","
+			+ part("d.jpg", "\"rating\":1") + "]}]");
+		FakeResponse created = put("/New/", "[\"AlbumInfo\",{\"title\":\"New\",\"parts\":[]}]");
+		assertTrue("Creating failed: " + created.body(), created.status() < 300);
+		assertNull("A new album has no cover.", album("New").getIndexPicture());
+
+		move("/A/", "New", "a.jpg", "b.jpg", "c.jpg");
+
+		ThumbnailInfo cover = album("New").getIndexPicture();
+		assertNotNull("The album that received images is covered.", cover);
+		assertEquals("The first of the best-rated landed images.", "b.jpg", cover.getImage());
+		assertEquals("Framed in the frame its image is displayed in (#115).", Orientation.ROT_L,
+			cover.getOrientation());
+		assertEquals("An 8x6 file turned a quarter is a portrait picture filling the square.", 4.0 / 3,
+			cover.getScale(), 1e-9);
+		assertEquals(37.5, cover.getTy(), 1e-9);
+		assertEquals(0.0, cover.getTx(), 1e-9);
+
+		// What the GET answers is what the sidecar says, and writing it back changes nothing.
+		String stored = read(_base.resolve("New/index.json"));
+		assertEquals(withoutRights(stored), withoutRights(getJson("/New/")));
+		FakeResponse written = put("/New/", withoutRights(getJson("/New/")));
+		assertTrue("Writing back failed: " + written.body(), written.status() < 300);
+		ThumbnailInfo reread = album("New").getIndexPicture();
+		assertEquals("b.jpg", reread.getImage());
+		assertEquals(Orientation.ROT_L, reread.getOrientation());
+		assertEquals(4.0 / 3, reread.getScale(), 1e-9);
+		assertEquals(37.5, reread.getTy(), 1e-9);
+	}
+
+	public void testATargetWithACoverKeepsIt() throws Exception {
+		image("A/a.jpg", 8, 6, Color.RED);
+		image("B/c.jpg", 8, 6, Color.BLUE);
+		sidecar("A", "[\"AlbumInfo\",{\"title\":\"A\",\"parts\":[" + part("a.jpg", "\"rating\":2") + "]}]");
+		sidecar("B", "[\"AlbumInfo\",{\"title\":\"B\","
+			+ "\"indexPicture\":{\"image\":\"c.jpg\",\"scale\":2.0,\"tx\":10.0,\"ty\":5.0},"
+			+ "\"parts\":[" + part("c.jpg", "\"rating\":-1") + "]}]");
+
+		move("/A/", "B", "a.jpg");
+
+		ThumbnailInfo cover = album("B").getIndexPicture();
+		assertEquals("A live cover is the author's choice and stays.", "c.jpg", cover.getImage());
+		assertEquals(2.0, cover.getScale(), 1e-9);
+		assertEquals(10.0, cover.getTx(), 1e-9);
+	}
+
+	public void testACoverNamingAnImageTheAlbumDoesNotHoldCountsAsNone() throws Exception {
+		image("A/a.jpg", 8, 6, Color.RED);
+		image("B/c.jpg", 8, 6, Color.BLUE);
+		sidecar("A", "[\"AlbumInfo\",{\"title\":\"A\",\"parts\":[" + part("a.jpg", "") + "]}]");
+		sidecar("B", "[\"AlbumInfo\",{\"title\":\"B\","
+			+ "\"indexPicture\":{\"image\":\"gone.jpg\",\"scale\":1.0},"
+			+ "\"parts\":[" + part("c.jpg", "\"rating\":2") + "]}]");
+
+		move("/A/", "B", "a.jpg");
+
+		assertEquals("Only the landed images are chosen among.", "a.jpg", album("B").getIndexPicture().getImage());
+	}
+
+	public void testALandedImageIsNamedByItsLandedName() throws Exception {
+		image("A/a.jpg", 8, 6, Color.RED);
+		image("B/a.jpg", 12, 9, Color.BLUE);
+		sidecar("A", "[\"AlbumInfo\",{\"title\":\"A\",\"parts\":[" + part("a.jpg", "\"rating\":1") + "]}]");
+		sidecar("B", "[\"AlbumInfo\",{\"title\":\"B\",\"parts\":[" + part("a.jpg", "\"rating\":2") + "]}]");
+
+		MoveResult result = move("/A/", "B", "a.jpg");
+
+		assertEquals(Collections.singletonList("a-2.jpg"), newNames(result));
+		assertEquals("The cover is the landed image under the name it landed as, not the better one that was there.",
+			"a-2.jpg", album("B").getIndexPicture().getImage());
+	}
+
+	public void testALandedGroupCountsAsItsRepresentative() throws Exception {
+		image("A/g1.jpg", 8, 6, Color.RED);
+		image("A/g2.jpg", 8, 6, Color.GREEN);
+		image("A/x.jpg", 8, 6, Color.BLUE);
+		sidecar("A", "[\"AlbumInfo\",{\"title\":\"A\",\"parts\":["
+			+ "[\"ImageGroup\",{\"representative\":0,\"images\":["
+			+ "{\"name\":\"g1.jpg\",\"kind\":\"IMAGE\",\"width\":8,\"height\":6,\"rating\":0},"
+			+ "{\"name\":\"g2.jpg\",\"kind\":\"IMAGE\",\"width\":8,\"height\":6,\"rating\":2}]}],"
+			+ part("x.jpg", "\"rating\":1") + "]}]");
+		Files.createDirectories(_base.resolve("B"));
+
+		move("/A/", "B", "g1.jpg", "x.jpg");
+
+		assertEquals("A group is its representative, not its best member.", "x.jpg",
+			album("B").getIndexPicture().getImage());
+	}
+
+	public void testTheRepairPrefersTheBestRatedRemainingImage() throws Exception {
+		image("A/a.jpg", 8, 6, Color.RED);
+		image("A/b.jpg", 8, 6, Color.GREEN);
+		image("A/c.jpg", 8, 6, Color.BLUE);
+		image("A/d.jpg", 8, 6, Color.YELLOW);
+		sidecar("A", "[\"AlbumInfo\",{\"title\":\"A\","
+			+ "\"indexPicture\":{\"image\":\"a.jpg\",\"scale\":1.0,\"tx\":0.0,\"ty\":0.0},"
+			+ "\"parts\":[" + part("a.jpg", "\"rating\":2") + "," + part("b.jpg", "") + ","
+			+ part("c.jpg", "\"rating\":2,\"orientation\":\"ROT_R\"") + "," + part("d.jpg", "\"rating\":2") + "]}]");
+		Files.createDirectories(_base.resolve("B"));
+
+		move("/A/", "B", "a.jpg");
+
+		ThumbnailInfo cover = album("A").getIndexPicture();
+		assertEquals("The first best-rated image that stayed.", "c.jpg", cover.getImage());
+		assertEquals(Orientation.ROT_R, cover.getOrientation());
+		assertEquals("Both ends of the move choose alike.", "a.jpg", album("B").getIndexPicture().getImage());
+	}
+
 	public void testATargetOutsideTheSpaceIsRefused() throws Exception {
 		member();
 		image("alice/A/a.jpg", 8, 6, Color.RED);
@@ -668,6 +788,14 @@ public class TestImageServletMove extends TestCase {
 		parameters.put("action", "move");
 		FakeResponse response = new FakeResponse();
 		servlet.doPost(request(pathInfo, "application/json", body, token, parameters), response.response());
+		return response;
+	}
+
+	/** Writes the given sidecar with the servlet's PUT, as the app creates and edits a folder. */
+	private FakeResponse put(String pathInfo, String body) throws Exception {
+		FakeResponse response = new FakeResponse();
+		_servlet.doPut(request(pathInfo, "application/json", body, null, Collections.emptyMap()),
+			response.response());
 		return response;
 	}
 
