@@ -34,9 +34,9 @@ ImagePart imageAt(GeoLocation? location) => ImagePart(
 Widget dialogOn(ImagePart image, {String? mapUrl}) => CallerScope(
       caller: mapUrl == null ? null : CallerInfo(mapUrl: mapUrl),
       child: MaterialApp(
-      localizationsDelegates: testLocalizationsDelegates,
-      supportedLocales: testSupportedLocales,
-      home: ImagePropertiesDialog(image)),
+          localizationsDelegates: testLocalizationsDelegates,
+          supportedLocales: testSupportedLocales,
+          home: ImagePropertiesDialog(image)),
     );
 
 void main() {
@@ -53,7 +53,8 @@ void main() {
       // different number to every map there is, see [mapCoordinate].
       Intl.withLocale("de", () {
         expect(mapCoordinate(48.123456), "48.123456");
-        expect(mapLocationText(testL10n, atHome), "Location: 48.123456, 8.654321");
+        expect(
+            mapLocationText(testL10n, atHome), "Location: 48.123456, 8.654321");
         expect(
           mapUrlFor("https://www.google.com/maps?q={lat},{lon}", atHome),
           "https://www.google.com/maps?q=48.123456,8.654321",
@@ -62,8 +63,10 @@ void main() {
     });
 
     test('read as the line spells them', () {
-      expect(mapLocationText(testL10n, atHome), "Location: 48.123456, 8.654321");
-      expect(mapLocationText(testL10n, capeTown), "Location: -33.918861, 18.423300");
+      expect(
+          mapLocationText(testL10n, atHome), "Location: 48.123456, 8.654321");
+      expect(mapLocationText(testL10n, capeTown),
+          "Location: -33.918861, 18.423300");
     });
   });
 
@@ -134,6 +137,25 @@ void main() {
       expect(find.byKey(const Key("property-location-map")), findsNothing);
     });
 
+    testWidgets('is absent for the zeroes of a camera without a fix',
+        (tester) async {
+      // An older server stored and answers 0/0, which is no place anybody
+      // was, see issue #161.
+      await tester.pumpWidget(
+          dialogOn(imageAt(GeoLocation(latitude: 0, longitude: 0))));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key("property-location")), findsNothing);
+      expect(find.byKey(const Key("property-location-map")), findsNothing);
+    });
+
+    test('a position on one axis only is still a place', () {
+      expect(hasPosition(GeoLocation(latitude: 0, longitude: 8.5)), isTrue);
+      expect(hasPosition(GeoLocation(latitude: 48.5, longitude: 0)), isTrue);
+      expect(hasPosition(GeoLocation(latitude: 0, longitude: 0)), isFalse);
+      expect(hasPosition(null), isFalse);
+    });
+
     testWidgets('opens the map of the space', (tester) async {
       await tester.pumpWidget(dialogOn(
         imageAt(atHome),
@@ -141,7 +163,8 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      var line = tester.widget<ImageLocationLine>(find.byType(ImageLocationLine));
+      var line =
+          tester.widget<ImageLocationLine>(find.byType(ImageLocationLine));
       expect(
         mapUrlFor(line.mapUrl, line.location),
         "https://www.openstreetmap.org/?mlat=48.123456&mlon=8.654321",
@@ -153,7 +176,8 @@ void main() {
       await tester.pumpWidget(dialogOn(imageAt(capeTown)));
       await tester.pumpAndSettle();
 
-      var line = tester.widget<ImageLocationLine>(find.byType(ImageLocationLine));
+      var line =
+          tester.widget<ImageLocationLine>(find.byType(ImageLocationLine));
       expect(
         mapUrlFor(line.mapUrl, line.location),
         "https://www.google.com/maps?q=-33.918861,18.423300",

@@ -395,6 +395,8 @@
   "findDuplicatesMessage": "Jedes Foto dieses Albums, das die Bibliothek bereits an anderer Stelle besitzt, wird aus dem Album entfernt und in einem eigenen Ordner der Bibliothek abgelegt. Es wird nichts gelöscht, und die andere Kopie bleibt an ihrem Platz.",
   "noDuplicatesFound": "Es gibt nirgendwo sonst in der Bibliothek ein Foto dieses Albums.",
   "duplicatesSetAside": "{count, plural, =1{1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.} other{{count} Fotos wurden aussortiert; die verbleibenden Kopien befinden sich an anderer Stelle in der Bibliothek.}}",
+  "reanalyze": "Fotodetails erneut einlesen",
+  "reanalyzeExplanation": "Liest die Kamera- und Positionsdaten erneut aus den Dateien aus und ergänzt fehlende Angaben. Bereits gespeicherte Daten werden nicht verändert.",
   "refreshPreviews": "Vorschauen aktualisieren",
   "refreshPreviewsMessage": "Die Miniaturansichten und Videodarstellungen dieses Albums werden gelöscht und bei der nächsten Anzeige neu erstellt. Die Fotos selbst bleiben davon unberührt.",
   "previewsRefreshed": "{count, plural, =1{1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.} other{{count} zwischengespeicherte Dateien wurden verworfen; die Vorschauen werden neu erstellt.}}",
@@ -647,5 +649,8 @@
   "viewerFaceDecision": "Dieses Gesicht",
   "viewerMarkFaceTooSmall": "Zeichnen Sie ein größeres Rechteck um das Gesicht der Person.",
   "personsChooserInAlbum": "In diesem Album",
-  "personsChooserAll": "Alle Personen"
+  "personsChooserAll": "Alle Personen",
+  "reanalyzeDone": "{examined} Fotos überprüft; bei {filled} davon wurde eine Kamera oder eine Position hinzugefügt.",
+  "reanalyzeRunning": "Wird im Hintergrund noch gelesen: Bisher wurden {examined} Fotos überprüft, {filled} davon haben eine Kamera oder eine Position erhalten.",
+  "doingReanalyzing": "erneutes Einlesen der Fotodaten im {folder}"
 }

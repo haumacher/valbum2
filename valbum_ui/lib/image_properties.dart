@@ -63,12 +63,20 @@ List<Widget> imagePropertyLines(
           const Key("property-camera"),
           l10n.propertyCamera(image.camera),
         ),
-      if (image.location != null)
+      if (hasPosition(image.location))
         ImageLocationLine(
           image.location!,
           mapUrl: mapUrl.isEmpty ? defaultMapUrl : mapUrl,
         ),
     ];
+
+/// Whether [location] names a place at all, see issue #161.
+///
+/// A pair of zeroes is what a camera with geotagging on and no fix writes;
+/// the server no longer answers it, but an older server stored and still
+/// answers it, and "0.000000, 0.000000" is no place anybody was.
+bool hasPosition(GeoLocation? location) =>
+    location != null && (location.latitude != 0 || location.longitude != 0);
 
 /// How many decimals a coordinate is spelled with.
 ///

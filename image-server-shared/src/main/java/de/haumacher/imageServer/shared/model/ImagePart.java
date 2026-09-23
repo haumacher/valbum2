@@ -333,15 +333,17 @@ public class ImagePart extends AbstractImage {
 	 *
 	 * <p>
 	 * Read from the EXIF GPS tags of the original when the image is analysed, and from the
-	 * container of a video where that carries a position. The absent message is what "the file
-	 * carries no position" means — see {@link GeoLocation}, where a pair of zeroes would be a real
-	 * place off the coast of Africa.
+	 * container of a video where that carries a position, and from the XMP
+	 * <code>exif:GPSLatitude</code>/<code>exif:GPSLongitude</code> of a file whose GPS IFD says
+	 * nothing (issue #161). The absent message is what "the file carries no position" means, and a
+	 * pair of zeroes means the same and is never stored, see {@link GeoLocation}.
 	 * </p>
 	 *
 	 * <p>
 	 * <em>Stored</em> in the sidecar, exactly like {@link #getDate() date} and {@link #getCamera()
 	 * camera}: a part a sidecar already lists is never analysed again, so an album written before
-	 * this field existed keeps its parts without a position until they are analysed afresh. A
+	 * this field existed keeps its parts without a position until they are analysed afresh, which
+	 * <code>?action=reanalyze</code> does on request (issue #161, {@link ReanalyzeResult}). A
 	 * round trip read &rarr; write &rarr; read keeps it unchanged, so a client that stores an
 	 * album back never loses where its photos were taken.
 	 * </p>

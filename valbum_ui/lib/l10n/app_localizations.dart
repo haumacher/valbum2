@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('de'),
-    Locale('en')
+    Locale('en'),
   ];
 
   /// The name of the application, shown as the window or browser tab title
@@ -2468,6 +2468,30 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 photo was set aside; the copy that stays is elsewhere in the library.} other{{count} photos were set aside; the copies that stay are elsewhere in the library.}}'**
   String duplicatesSetAside(int count);
 
+  /// Menu entry and dialog title of reading the camera and the position of an album's photos from the files again
+  ///
+  /// In en, this message translates to:
+  /// **'Re-read photo details'**
+  String get reanalyze;
+
+  /// Explains what re-reading the photo details of an album does
+  ///
+  /// In en, this message translates to:
+  /// **'Reads the camera and the position from the files again and fills what is missing. Nothing already stored is changed.'**
+  String get reanalyzeExplanation;
+
+  /// Says what re-reading the photo details did, with the number of photos looked at and the number that gained something
+  ///
+  /// In en, this message translates to:
+  /// **'Checked {examined} photos; {filled} of them gained a camera or a position.'**
+  String reanalyzeDone(int examined, int filled);
+
+  /// Says that re-reading the photo details goes on in the background, with the counts so far
+  ///
+  /// In en, this message translates to:
+  /// **'Still reading in the background: checked {examined} photos so far, {filled} of them gained a camera or a position.'**
+  String reanalyzeRunning(int examined, int filled);
+
   /// Menu entry and dialog title of throwing the generated previews away
   ///
   /// In en, this message translates to:
@@ -3245,6 +3269,12 @@ abstract class AppLocalizations {
   /// Names what the app was doing when a request failed
   ///
   /// In en, this message translates to:
+  /// **'re-reading the photo details in {folder}'**
+  String doingReanalyzing(String folder);
+
+  /// Names what the app was doing when a request failed
+  ///
+  /// In en, this message translates to:
   /// **'signing in at {url}'**
   String doingSigningIn(String url);
 
@@ -4014,8 +4044,9 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }

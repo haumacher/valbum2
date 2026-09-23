@@ -2368,6 +2368,42 @@
     },
     "x-translated": "4b29b612"
   },
+  "reanalyze": "Re-read photo details",
+  "@reanalyze": {
+    "description": "Menu entry and dialog title of reading the camera and the position of an album's photos from the files again",
+    "x-translated": "ebde847c"
+  },
+  "reanalyzeExplanation": "Reads the camera and the position from the files again and fills what is missing. Nothing already stored is changed.",
+  "@reanalyzeExplanation": {
+    "description": "Explains what re-reading the photo details of an album does",
+    "x-translated": "559343e6"
+  },
+  "reanalyzeDone": "Checked {examined} photos; {filled} of them gained a camera or a position.",
+  "@reanalyzeDone": {
+    "description": "Says what re-reading the photo details did, with the number of photos looked at and the number that gained something",
+    "placeholders": {
+      "examined": {
+        "type": "int"
+      },
+      "filled": {
+        "type": "int"
+      }
+    },
+    "x-translated": "17762ab9"
+  },
+  "reanalyzeRunning": "Still reading in the background: checked {examined} photos so far, {filled} of them gained a camera or a position.",
+  "@reanalyzeRunning": {
+    "description": "Says that re-reading the photo details goes on in the background, with the counts so far",
+    "placeholders": {
+      "examined": {
+        "type": "int"
+      },
+      "filled": {
+        "type": "int"
+      }
+    },
+    "x-translated": "926d387b"
+  },
   "refreshPreviews": "Refresh previews",
   "@refreshPreviews": {
     "description": "Menu entry and dialog title of throwing the generated previews away",
@@ -3197,6 +3233,16 @@
       }
     },
     "x-translated": "63d77e3d"
+  },
+  "doingReanalyzing": "re-reading the photo details in {folder}",
+  "@doingReanalyzing": {
+    "description": "Names what the app was doing when a request failed",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    },
+    "x-translated": "7666bb"
   },
   "doingSigningIn": "signing in at {url}",
   "@doingSigningIn": {

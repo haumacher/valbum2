@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1421,10 +1422,26 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           '$count photos were set aside; the copies that stay are elsewhere in the library.',
-      one:
-          '1 photo was set aside; the copy that stays is elsewhere in the library.',
+      one: '1 photo was set aside; the copy that stays is elsewhere in the library.',
     );
     return '$_temp0';
+  }
+
+  @override
+  String get reanalyze => 'Re-read photo details';
+
+  @override
+  String get reanalyzeExplanation =>
+      'Reads the camera and the position from the files again and fills what is missing. Nothing already stored is changed.';
+
+  @override
+  String reanalyzeDone(int examined, int filled) {
+    return 'Checked $examined photos; $filled of them gained a camera or a position.';
+  }
+
+  @override
+  String reanalyzeRunning(int examined, int filled) {
+    return 'Still reading in the background: checked $examined photos so far, $filled of them gained a camera or a position.';
   }
 
   @override
@@ -1926,6 +1943,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String doingFindingDuplicates(String folder) {
     return 'looking for duplicates in $folder';
+  }
+
+  @override
+  String doingReanalyzing(String folder) {
+    return 're-reading the photo details in $folder';
   }
 
   @override

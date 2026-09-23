@@ -10,10 +10,11 @@ package de.haumacher.imageServer.shared.model;
  * </p>
  *
  * <p>
- * A message of its own rather than two fields on {@link ImagePart}, because a position that is
- * not there must be tellable from one at the origin: <code>0/0</code> in the Gulf of Guinea is a
- * real place, so "no position" is the absent {@link ImagePart#getLocation() location}, never a
- * pair of zeroes.
+ * "No position" is the absent {@link ImagePart#getLocation() location}. A pair of zeroes is no
+ * position either (issue #161): a camera with geotagging switched on and no fix yet writes a GPS
+ * IFD of zeroes, so <code>0/0</code> says "not filled in" far more often than it says "the Gulf of
+ * Guinea". The analysis never answers it, the loader drops it from an older sidecar, and the app
+ * shows nothing for it.
  * </p>
  */
 public class GeoLocation extends de.haumacher.msgbuf.data.AbstractDataObject {

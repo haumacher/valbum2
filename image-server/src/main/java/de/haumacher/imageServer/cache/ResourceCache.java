@@ -339,6 +339,7 @@ public class ResourceCache {
 			if (indexFile.exists()) {
 				try {
 					resource = loadJSON(indexFile, FolderResource::readFolderResource);
+					dropZeroLocations(resource);
 				} catch (IOException ex) {
 					LOG.log(Level.WARNING, "Faild to directory index: " + indexFile.getAbsolutePath(), ex);
 					resource = null;
@@ -347,6 +348,38 @@ public class ResourceCache {
 				resource = null;
 			}
 			return resource;
+		}
+
+		/**
+		 * Forgets every <code>0/0</code> position a sidecar written before issue #161 stores.
+		 *
+		 * <p>
+		 * Such a pair of zeroes is what a camera without a GPS fix wrote, never where the photograph
+		 * was taken (see {@link ImageData#isZero(de.haumacher.imageServer.shared.model.GeoLocation)}),
+		 * so it is read as no position at all: nothing is answered, and the next ordinary write of
+		 * the album simply omits it. The sidecar itself is not rewritten here &mdash; reading never
+		 * writes.
+		 * </p>
+		 */
+		static void dropZeroLocations(FolderResource resource) {
+			if (!(resource instanceof AlbumInfo)) {
+				return;
+			}
+			for (AlbumPart part : ((AlbumInfo) resource).getParts()) {
+				if (part instanceof ImagePart) {
+					dropZeroLocation((ImagePart) part);
+				} else if (part instanceof ImageGroup) {
+					for (ImagePart member : ((ImageGroup) part).getImages()) {
+						dropZeroLocation(member);
+					}
+				}
+			}
+		}
+
+		private static void dropZeroLocation(ImagePart image) {
+			if (ImageData.isZero(image.getLocation())) {
+				image.setLocation(null);
+			}
 		}
 
 		private static Resource loadListing(PathInfo pathInfo, ListingInfo listing) {

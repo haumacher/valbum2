@@ -3,6 +3,8 @@
  */
 package de.haumacher.imageServer.cache;
 
+import com.adobe.internal.xmp.XMPException;
+import com.adobe.internal.xmp.XMPMeta;
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.imaging.ImageProcessingException;
 import com.drew.metadata.Metadata;
@@ -18,6 +20,7 @@ import com.drew.metadata.mov.metadata.QuickTimeMetadataDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 import com.drew.metadata.png.PngDirectory;
+import com.drew.metadata.xmp.XmpDirectory;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.GeoLocation;
 import de.haumacher.imageServer.shared.model.ImageKind;
@@ -352,24 +355,156 @@ public class ImageData extends ImagePart {
 	 * </p>
 	 *
 	 * <p>
-	 * A position at <code>0/0</code> is kept as what it is: a place in the Gulf of Guinea. "No
-	 * position" is this method's <code>null</code>, see {@link GeoLocation}.
+	 * Where the GPS IFD says nothing, the XMP of the file is asked, see {@link #xmpLocation} &mdash;
+	 * some cameras and most tools that geotag afterwards write the position there and nowhere else
+	 * (issue #161).
+	 * </p>
+	 *
+	 * <p>
+	 * A position at <code>0/0</code> is <em>no</em> position (issue #161, reversing #112): a camera
+	 * with geotagging switched on writes a GPS IFD even without a fix, and then it writes zeros.
+	 * Taken for a place, that put every such photograph into the Gulf of Guinea; the one real
+	 * photograph taken there is the smaller loss. So a zero position is skipped like a missing one
+	 * and the next source is asked, see {@link #isZero(GeoLocation)}.
 	 * </p>
 	 */
 	private static GeoLocation location(Metadata metadata) {
 		for (GpsDirectory gps : metadata.getDirectoriesOfType(GpsDirectory.class)) {
 			com.drew.lang.GeoLocation position = gps.getGeoLocation();
-			if (position == null) {
+			if (position == null || position.isZero()) {
 				continue;
 			}
 			return GeoLocation.create()
 				.setLatitude(position.getLatitude())
 				.setLongitude(position.getLongitude());
 		}
+		GeoLocation xmp = xmpLocation(metadata);
+		if (xmp != null) {
+			return xmp;
+		}
 		QuickTimeMetadataDirectory movMetadata =
 			metadata.getFirstDirectoryOfType(QuickTimeMetadataDirectory.class);
 		if (movMetadata != null) {
-			return iso6709(movMetadata.getString(QuickTimeMetadataDirectory.TAG_LOCATION_ISO6709));
+			GeoLocation position = iso6709(movMetadata.getString(QuickTimeMetadataDirectory.TAG_LOCATION_ISO6709));
+			return isZero(position) ? null : position;
+		}
+		return null;
+	}
+
+	/**
+	 * Whether the given position is the pair of zeroes that means "not filled in", see
+	 * {@link #location(Metadata)}.
+	 *
+	 * <p>
+	 * Public, because a sidecar written before issue #161 may store exactly that, and the loader
+	 * drops it on read with this same test.
+	 * </p>
+	 */
+	public static boolean isZero(GeoLocation position) {
+		return position != null && position.getLatitude() == 0.0 && position.getLongitude() == 0.0;
+	}
+
+	/** The EXIF namespace of XMP, where <code>exif:GPSLatitude</code> lives. */
+	public static final String XMP_EXIF = "http://ns.adobe.com/exif/1.0/";
+
+	/**
+	 * The position the XMP of the file states, <code>null</code> where it states none.
+	 *
+	 * <p>
+	 * <code>exif:GPSLatitude</code> and <code>exif:GPSLongitude</code>, the XMP mirror of the EXIF
+	 * GPS tags, in the form XMP defines for a GPS coordinate: degrees, a comma, minutes with a
+	 * decimal fraction or minutes and seconds, and the hemisphere letter behind it &mdash;
+	 * <code>48,7.40736N</code> or <code>48,7,24.4416N</code>, see {@link #xmpCoordinate}. Read
+	 * through metadata-extractor's {@link XmpDirectory} and Adobe's {@link XMPMeta}, the way the
+	 * face regions of issue #129 are. Nothing here throws: an unreadable packet or a coordinate of
+	 * another shape is one line in the log and no position.
+	 * </p>
+	 */
+	private static GeoLocation xmpLocation(Metadata metadata) {
+		for (XmpDirectory directory : metadata.getDirectoriesOfType(XmpDirectory.class)) {
+			XMPMeta meta = directory.getXMPMeta();
+			if (meta == null) {
+				continue;
+			}
+			String latitude;
+			String longitude;
+			try {
+				latitude = meta.getPropertyString(XMP_EXIF, "GPSLatitude");
+				longitude = meta.getPropertyString(XMP_EXIF, "GPSLongitude");
+			} catch (XMPException | RuntimeException ex) {
+				LOG.warning("Cannot read the XMP position, ignoring it: " + ex.getMessage());
+				continue;
+			}
+			if (latitude == null || longitude == null) {
+				continue;
+			}
+			GeoLocation position = xmpPosition(latitude, longitude);
+			if (position != null) {
+				return position;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The position the two XMP coordinates spell, <code>null</code> where they spell none.
+	 *
+	 * <p>
+	 * The latitude must name <code>N</code> or <code>S</code> and lie within 90 degrees, the
+	 * longitude <code>E</code> or <code>W</code> and lie within 180 &mdash; a coordinate carrying
+	 * the other axis' letter is a swapped pair, and a wrong place on a map is worse than none. A
+	 * pair of zeroes is no position, see {@link #location(Metadata)}.
+	 * </p>
+	 */
+	public static GeoLocation xmpPosition(String latitude, String longitude) {
+		Double lat = xmpCoordinate(latitude, 'N', 'S', 90.0);
+		Double lon = xmpCoordinate(longitude, 'E', 'W', 180.0);
+		if (lat == null || lon == null) {
+			LOG.warning("Not an XMP position, ignoring it: " + latitude + " " + longitude);
+			return null;
+		}
+		GeoLocation result = GeoLocation.create().setLatitude(lat.doubleValue()).setLongitude(lon.doubleValue());
+		return isZero(result) ? null : result;
+	}
+
+	/** One XMP GPS coordinate: <code>DDD,MM.mmmK</code> or <code>DDD,MM,SS.sK</code>. */
+	private static final Pattern XMP_COORDINATE =
+		Pattern.compile("^(\\d{1,3}),(\\d{1,2}(?:\\.\\d+)?)(?:,(\\d{1,2}(?:\\.\\d+)?))?([NSEWnsew])$");
+
+	/**
+	 * The signed decimal degrees of one XMP GPS coordinate, <code>null</code> where it is none.
+	 *
+	 * @param positive
+	 *        The hemisphere letter of a positive value.
+	 * @param negative
+	 *        The hemisphere letter of a negative value.
+	 * @param limit
+	 *        The largest number of degrees the axis has.
+	 */
+	private static Double xmpCoordinate(String value, char positive, char negative, double limit) {
+		if (value == null) {
+			return null;
+		}
+		Matcher matcher = XMP_COORDINATE.matcher(value.trim());
+		if (!matcher.matches()) {
+			return null;
+		}
+		double degrees = Double.parseDouble(matcher.group(1));
+		double minutes = Double.parseDouble(matcher.group(2));
+		double seconds = matcher.group(3) == null ? 0.0 : Double.parseDouble(matcher.group(3));
+		if (minutes >= 60.0 || seconds >= 60.0 || (matcher.group(3) != null && minutes != Math.floor(minutes))) {
+			return null;
+		}
+		double result = degrees + minutes / 60.0 + seconds / 3600.0;
+		if (result > limit) {
+			return null;
+		}
+		char letter = Character.toUpperCase(matcher.group(4).charAt(0));
+		if (letter == positive) {
+			return Double.valueOf(result);
+		}
+		if (letter == negative) {
+			return Double.valueOf(-result);
 		}
 		return null;
 	}
