@@ -80,6 +80,15 @@ public class Main {
 				+ "every user folder becomes a space with that user as its admin, and what the space "
 				+ "model cannot represent is moved aside and reported. A one-time, explicit, "
 				+ "rename-only step; the server is not started afterwards");
+		parser.addArgument("--replace-originals").type(new FileArgumentType()).help(
+			"Put the originals in the given folder in the place of the redacted copies a phone "
+				+ "uploaded (issue #167): every file whose name the library holds exactly once and "
+				+ "whose picture (JPEG scan data) or video (media data) is the same is moved into its "
+				+ "album, the redacted copy set aside in <space>/.valbum/replaced/<timestamp>/, and "
+				+ "the missing position and camera filled in. Run it with the server stopped; the "
+				+ "server is not started afterwards");
+		parser.addArgument("--dry-run").action(net.sourceforge.argparse4j.impl.Arguments.storeTrue())
+			.help("With --replace-originals: print what would be replaced and skipped, and touch nothing");
 		parser.addArgument("--preview-threads").type(type).help(
 			"How many thumbnails are generated at the same time (issue #69); the default is the "
 				+ "number of processors, and the system property 'valbum.previewThreads' does the "
@@ -136,7 +145,48 @@ public class Main {
 			return;
 		}
 
+		File replaceFrom = ns.get("replace_originals");
+		boolean dryRun = Boolean.TRUE.equals(ns.getBoolean("dry_run"));
+		if (replaceFrom != null || dryRun) {
+			if (replaceFrom == null) {
+				System.err.println("--dry-run only applies to --replace-originals <folder>.");
+				System.exit(1);
+				return;
+			}
+			File basePath = ns.get("basepath");
+			System.exit(replaceOriginals(basePath.toPath(), replaceFrom.toPath(),
+				SpaceMode.parse(ns.getString("spaces")), dryRun));
+			return;
+		}
+
 		new Main(ns).start();
+	}
+
+	/**
+	 * Replaces the redacted copies of the library by their originals, see {@link ReplaceOriginals}.
+	 *
+	 * @return The process exit code: <code>0</code> if the run went through (a skipped file is
+	 *         reported, not a failure), <code>1</code> if it was refused (nothing was touched then).
+	 */
+	static int replaceOriginals(Path basePath, Path folder, SpaceMode spaces, boolean dryRun) {
+		try {
+			ReplaceOriginals.Report report = ReplaceOriginals.run(basePath, folder, spaces, dryRun);
+			System.out.println((dryRun ? "Dry run: replacing" : "Replacing") + " the redacted copies in '"
+				+ basePath + "' by the originals in '" + folder + "':");
+			for (String line : report.getLines()) {
+				System.out.println("  " + line);
+			}
+			for (String line : report.getSummary()) {
+				System.out.println(line);
+			}
+			return 0;
+		} catch (ReplaceOriginals.Refused ex) {
+			System.err.println("Cannot replace the originals: " + ex.getMessage());
+			return 1;
+		} catch (IOException ex) {
+			System.err.println("Cannot replace the originals: " + ex.getMessage());
+			return 1;
+		}
 	}
 
 	/**
