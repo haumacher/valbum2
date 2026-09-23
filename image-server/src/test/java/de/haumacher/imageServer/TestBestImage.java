@@ -42,9 +42,10 @@ public class TestBestImage extends TestCase {
 		assertEquals("a", PrivacyFilter.bestImage(parts).getName());
 	}
 
-	public void testATrashedImageStandsOnlyWhereThereIsNothingElse() {
+	public void testATrashedImageNeverStands() {
 		assertEquals("b", PrivacyFilter.bestImage(Arrays.asList(image("a", -2), image("b", -1))).getName());
-		assertEquals("a", PrivacyFilter.bestImage(Arrays.asList(image("a", -2), image("b", -2))).getName());
+		assertNull("Trash is shown nowhere (#152), so it stands for no album: none rather than a trashed one.",
+			PrivacyFilter.bestImage(Arrays.asList(image("a", -2), image("b", -2))));
 	}
 
 	public void testAGroupCountsAsItsRepresentative() {

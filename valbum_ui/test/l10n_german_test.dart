@@ -300,9 +300,10 @@ void sliceThree() {
       expect(find.text(de.reload), findsOneWidget);
       expect(find.text(de.serverMenuEntry), findsOneWidget);
       // The day headings are the locale's own, which is why they go through
-      // `DateFormat` rather than through a table of names.
+      // `DateFormat` rather than through a table of names. The newest day
+      // stands at the top and is the one that is built without a scroll.
       expect(
-        find.text(inboxDayFormat(de).format(DateTime(2026, 3, 1))),
+        find.text(inboxDayFormat(de).format(DateTime(2026, 4, 5))),
         findsOneWidget,
       );
       expect(

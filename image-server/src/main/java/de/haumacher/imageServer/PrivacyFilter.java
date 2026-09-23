@@ -262,7 +262,9 @@ public class PrivacyFilter {
 	 * highest {@link ImagePart#getRating() rating} wins and the earlier part breaks a tie, so that
 	 * among equally rated images the first one stands for the album as before. A group counts as
 	 * the image it is shown by, its representative, and a {@link de.haumacher.imageServer.shared.model.Heading}
-	 * counts as nothing.
+	 * counts as nothing. A photograph rated {@link Ratings#MIN} counts as nothing either: it is
+	 * shown nowhere but in the album's trash (issue #152), so it can stand for no album — an album
+	 * holding nothing else has no cover rather than a trashed one.
 	 * </p>
 	 *
 	 * @param parts
@@ -272,7 +274,8 @@ public class PrivacyFilter {
 		ImagePart best = null;
 		for (AlbumPart part : parts) {
 			ImagePart image = shownImage(part);
-			if (image != null && (best == null || image.getRating() > best.getRating())) {
+			if (image != null && image.getRating() > Ratings.MIN
+				&& (best == null || image.getRating() > best.getRating())) {
 				best = image;
 			}
 		}

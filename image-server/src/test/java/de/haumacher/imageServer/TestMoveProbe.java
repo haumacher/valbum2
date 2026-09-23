@@ -155,6 +155,105 @@ public class TestMoveProbe extends TestCase {
 
 	// --- Helpers. ---
 
+	// --- Probes of issues #152 and #153, composing the cover with the trash and the purge with the index. ---
+
+	/**
+	 * A photograph rated -2 is shown nowhere (#152), so it can stand for no album: neither when it
+	 * is the only thing that lands in an album without a cover (#153), nor when it is all that is
+	 * left after the cover moved away.
+	 */
+	public void testATrashedPhotographNeverBecomesACover() throws Exception {
+		write("A/a.jpg", jpeg(6, 4, Color.RED));
+		write("A/b.jpg", jpeg(6, 4, Color.GREEN));
+		write("A/index.json", ("[\"AlbumInfo\",{\"title\":\"A\","
+			+ "\"indexPicture\":{\"image\":\"b.jpg\",\"scale\":1.5},\"parts\":["
+			+ "[\"ImagePart\",{\"name\":\"b.jpg\",\"width\":6,\"height\":4,\"rating\":0}],"
+			+ "[\"ImagePart\",{\"name\":\"a.jpg\",\"width\":6,\"height\":4,\"rating\":-2}]]}]")
+			.getBytes(StandardCharsets.UTF_8));
+		write("B/y.jpg", jpeg(4, 6, Color.BLUE));
+		write("C/z.jpg", jpeg(4, 6, Color.BLUE));
+		String owner = signIn();
+		ImageServlet servlet = servlet();
+
+		move(servlet, "/A/", "B", owner, "b.jpg");
+		assertNull("The cover left and only a trashed photograph stayed: no cover, rather than the trash.",
+			stored("A").getIndexPicture());
+		assertEquals("The landed photograph covers the album that had none.", "b.jpg",
+			stored("B").getIndexPicture().getImage());
+
+		move(servlet, "/A/", "C", owner, "a.jpg");
+		assertNull("What lands as trash covers nothing.", stored("C").getIndexPicture());
+	}
+
+	/**
+	 * Among equally rated photographs the cover is the first of them in the order they land in,
+	 * which is the order the request named them in — "the first best-rated image from the
+	 * selection" (the author, #153).
+	 */
+	public void testEquallyRatedPhotographsAreChosenByTheOrderTheyLandIn() throws Exception {
+		write("A/later.jpg", jpeg(6, 4, Color.RED));
+		write("A/earlier.jpg", jpeg(6, 4, Color.GREEN));
+		write("A/index.json", ("[\"AlbumInfo\",{\"title\":\"A\",\"parts\":["
+			+ "[\"ImagePart\",{\"name\":\"earlier.jpg\",\"width\":6,\"height\":4,\"rating\":1,\"date\":1000}],"
+			+ "[\"ImagePart\",{\"name\":\"later.jpg\",\"width\":6,\"height\":4,\"rating\":1,\"date\":2000}]]}]")
+			.getBytes(StandardCharsets.UTF_8));
+		write("B/y.jpg", jpeg(4, 6, Color.BLUE));
+		String owner = signIn();
+		ImageServlet servlet = servlet();
+
+		move(servlet, "/A/", "B", owner, "later.jpg", "earlier.jpg");
+
+		AlbumInfo target = stored("B");
+		List<String> landed = new ArrayList<>(names(target));
+		landed.remove("y.jpg");
+		assertEquals("They land in the order the request named them.", Arrays.asList("later.jpg", "earlier.jpg"),
+			landed);
+		assertEquals("The cover is the first of the landed.", "later.jpg", target.getIndexPicture().getImage());
+	}
+
+	/**
+	 * A purge (#152) removes the photograph from disk; the space-wide index of #118 must forget it
+	 * too, or a re-scanning device would be told the photograph is still there and skip it.
+	 */
+	public void testAPurgedPhotographIsForgottenByTheHashIndex() throws Exception {
+		byte[] a = jpeg(6, 4, Color.RED);
+		write("A/a.jpg", a);
+		write("A/b.jpg", jpeg(6, 4, Color.GREEN));
+		write("A/index.json", ("[\"AlbumInfo\",{\"title\":\"A\",\"parts\":["
+			+ "[\"ImagePart\",{\"name\":\"a.jpg\",\"width\":6,\"height\":4,\"rating\":-2}],"
+			+ "[\"ImagePart\",{\"name\":\"b.jpg\",\"width\":6,\"height\":4,\"rating\":0}]]}]")
+			.getBytes(StandardCharsets.UTF_8));
+		write("B/y.jpg", jpeg(4, 6, Color.BLUE));
+		String owner = signIn();
+		ImageServlet servlet = servlet();
+
+		assertEquals(Collections.singletonList("a.jpg"), present(servlet, "/A/", owner, a));
+		assertEquals(Collections.singletonList("A/a.jpg"), present(servlet, "/B/", owner, a));
+
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", "purge");
+		FakeResponse response = new FakeResponse();
+		servlet.doPost(request("/A/", null, "", owner, parameters), response.response());
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+
+		assertFalse(Files.exists(_base.resolve("A/a.jpg")));
+		assertEquals("The folder itself no longer knows the photograph.", Collections.emptyList(),
+			present(servlet, "/A/", owner, a));
+		assertEquals("Nor does the index of the space.", Collections.emptyList(),
+			present(servlet, "/B/", owner, a));
+		assertEquals(Collections.singletonList("b.jpg"), names(stored("A")));
+
+		ImageServlet restarted = servlet();
+		assertEquals("A fresh server reads the same truth from disk.", Collections.emptyList(),
+			present(restarted, "/B/", owner, a));
+	}
+
+	/** The album as its sidecar stores it (the answered album may carry a derived cover, the sidecar never). */
+	private AlbumInfo stored(String folder) throws IOException {
+		String contents = new String(Files.readAllBytes(_base.resolve(folder + "/index.json")), StandardCharsets.UTF_8);
+		return (AlbumInfo) Resource.readResource(reader(contents));
+	}
+
 	private List<String> present(ImageServlet servlet, String folder, String token, byte[] contents) throws Exception {
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("action", "check");
