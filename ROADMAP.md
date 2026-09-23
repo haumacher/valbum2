@@ -248,7 +248,10 @@ suggestions across the space), #128 (a person linked to a member), #129 (XMP fac
   downloads as one streamed archive, each name checked as its own original would be. And two things
   the probes and the demo taught: a photograph rated −2 never covers an album, and the preview of a
   picture smaller than the preview box carried black margins into every tile (#165) — "a real album"
-  never showed it because a photograph is always taller than 600 px.
+  never showed it because a photograph is always taller than 600 px. Decided the same night (#159):
+  the trash folder **stays** for the album/folder delete of #109 and for a contributor's delete of their
+  own photographs in an inbox — the larger, unrated losses keep their safety net on disk — and only the
+  purge of trash-rated photographs deletes.
 
 - **2026-09-23 (evening)** — Five reports from using 2.7.0, all in one round. **The trash of an album**
   (#152): a photograph rated −2 is answered to editors only from now on (a share link's "every photo"
