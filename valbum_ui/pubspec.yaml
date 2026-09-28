@@ -58,6 +58,11 @@ dependencies:
   path_provider: ^2.1.6
   photo_manager: ^3.12.0
   workmanager: ^0.10.9
+  # Whether the app may read where the photos were taken, asked without an
+  # Activity so that a background run can ask it (issue #169); a plugin of this
+  # repository, reached only through `lib/photo_library_manager.dart`.
+  media_location:
+    path: packages/media_location
   # Keeping the screen on while an upload runs (issue #63); reached only through
   # `lib/wakelock_plugin.dart`.
   wakelock_plus: ^1.8.0

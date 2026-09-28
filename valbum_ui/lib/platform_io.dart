@@ -39,9 +39,14 @@ bool isSocketError(Object error) => error is SocketException;
 /// Only Android and iOS have a camera roll to watch; a desktop has a file
 /// system and no library, and says so rather than offering a switch that
 /// would never do anything (issue #30).
-PhotoLibrary defaultPhotoLibrary() => Platform.isAndroid || Platform.isIOS
-    ? PhotoManagerLibrary()
-    : const UnavailablePhotoLibrary(NoPhotoLibraryPlatform());
+///
+/// A [background] library never asks the user for anything (issue #169): a
+/// background run has no screen to ask on, so it reads what was granted and
+/// declines where that is not enough, see [PhotoManagerLibrary.interactive].
+PhotoLibrary defaultPhotoLibrary({bool background = false}) =>
+    Platform.isAndroid || Platform.isIOS
+        ? PhotoManagerLibrary(interactive: !background)
+        : const UnavailablePhotoLibrary(NoPhotoLibraryPlatform());
 
 /// What keeps the screen awake while an upload runs, see [Wakelock].
 ///

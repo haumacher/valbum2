@@ -100,6 +100,17 @@ class PhotoAccessDenied extends AppNotice {
   const PhotoAccessDenied();
 }
 
+/// A background run may read the photos but not where they were taken
+/// (issue #169).
+///
+/// Android hands an app without `ACCESS_MEDIA_LOCATION` every photograph with
+/// its position zero-filled (issue #166), and only the app on the screen can
+/// ask for that permission. The background run uploads nothing until the app
+/// was opened once and asked, rather than uploading the redacted copies.
+class MediaLocationNotGranted extends AppNotice {
+  const MediaLocationNotGranted();
+}
+
 /// The bytes of a photo are not on the device — still in the cloud.
 class PhotoNotOnDevice extends AppNotice {
   final String name;
@@ -196,6 +207,7 @@ String noticeText(AppNotice notice, AppLocalizations l10n) => switch (notice) {
       PhotoLibraryOpenFailed(problem: var problem) =>
         l10n.noticePhotoLibraryOpenFailed(problem),
       PhotoAccessDenied() => l10n.noticePhotoAccessDenied,
+      MediaLocationNotGranted() => l10n.noticeMediaLocationNotGranted,
       PhotoNotOnDevice(name: var name) => l10n.noticeAlbumNotOnDevice(name),
       NoPhotoLibraryHere() => l10n.noPhotoLibrary,
       NoPhotoLibraryPlatform() => l10n.noticeNoPhotoLibraryPlatform,

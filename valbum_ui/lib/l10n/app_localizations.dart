@@ -3458,6 +3458,12 @@ abstract class AppLocalizations {
   /// **'Access to the photo library was denied. Allow photo access for VAlbum in the system settings, then try again.'**
   String get noticePhotoAccessDenied;
 
+  /// Says that a background camera-roll sync declined because the app may not yet read the location stored in the photos; opening the app once lets it ask for that permission
+  ///
+  /// In en, this message translates to:
+  /// **'Open the app once so it may read where the photos were taken; until then the background sync uploads nothing.'**
+  String get noticeMediaLocationNotGranted;
+
   /// Says that the device's photo library could not be opened
   ///
   /// In en, this message translates to:

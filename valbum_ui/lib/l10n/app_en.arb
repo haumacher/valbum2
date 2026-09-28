@@ -3494,6 +3494,11 @@
     "description": "Says that the device refused access to its photos",
     "x-translated": "4ed46469"
   },
+  "noticeMediaLocationNotGranted": "Open the app once so it may read where the photos were taken; until then the background sync uploads nothing.",
+  "@noticeMediaLocationNotGranted": {
+    "description": "Says that a background camera-roll sync declined because the app may not yet read the location stored in the photos; opening the app once lets it ask for that permission",
+    "x-translated": "33e01c45"
+  },
   "noticePhotoLibraryOpenFailed": "The photo library cannot be opened: {problem}",
   "@noticePhotoLibraryOpenFailed": {
     "description": "Says that the device's photo library could not be opened",

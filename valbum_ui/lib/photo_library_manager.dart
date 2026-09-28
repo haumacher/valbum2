@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:media_location/media_location.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import 'photo_library.dart';
@@ -53,20 +54,59 @@ class PhotoManagerLibrary extends PhotoLibrary {
   final StreamController<void> _changes = StreamController<void>.broadcast();
   bool _watching = false;
 
-  PhotoManagerLibrary();
+  /// Whether this library may ask the user for a permission (issue #169).
+  ///
+  /// `true` for the app on the screen, which asks through
+  /// `requestPermissionExtend` — the photos *and* `ACCESS_MEDIA_LOCATION`
+  /// (issue #166). `false` for a background run: on Android 14 and later that
+  /// request needs an Activity whenever a permission is not held yet, and the
+  /// engine WorkManager starts has none, so asking there threw instead of
+  /// answering. A background library therefore only *reads* what was granted
+  /// ([PhotoManager.getPermissionState] and [locationGranted], neither of
+  /// which needs an Activity) and declines where that is not enough.
+  ///
+  /// A property of the library rather than a parameter of [requestAccess],
+  /// because it is a property of the process the library lives in: the sync
+  /// engine asks for access the same way wherever it runs, and the one place
+  /// that knows it builds a background run ([runBackgroundSync]) says so once,
+  /// where it builds the library.
+  final bool interactive;
+
+  /// Whether the app may read where the photos were taken.
+  ///
+  /// `photo_manager` cannot say: its `getPermissionState` ignores
+  /// `mediaLocation` on Android, and reading an original without the
+  /// permission silently answers the redacted copy. So the question goes to
+  /// the app's own plugin (`packages/media_location`), which is registered
+  /// in every engine, the background one included. A test replaces it.
+  final Future<bool> Function() locationGranted;
+
+  PhotoManagerLibrary({
+    this.interactive = true,
+    Future<bool> Function()? locationGranted,
+  }) : locationGranted = locationGranted ?? _deviceLocationGranted;
+
+  /// The device's answer: asked on Android, where the position is redacted
+  /// without the permission; `true` everywhere else, where there is nothing
+  /// to ask.
+  static Future<bool> _deviceLocationGranted() =>
+      Platform.isAndroid ? isMediaLocationGranted() : Future.value(true);
 
   @override
   int get scanLimit => photoScanLimit;
 
   @override
   Future<bool> requestAccess() async {
+    if (!interactive) {
+      return _checkAccess();
+    }
     PermissionState state;
     try {
       state = await PhotoManager.requestPermissionExtend(
         requestOption: withMediaLocation,
       );
     } catch (error) {
-      accessProblem = PhotoLibraryOpenFailed("$error");
+      accessProblem = PhotoLibraryOpenFailed(platformErrorText(error));
       return false;
     }
     if (state.isAuth || state == PermissionState.limited) {
@@ -77,6 +117,43 @@ class PhotoManagerLibrary extends PhotoLibrary {
     }
     accessProblem = const PhotoAccessDenied();
     return false;
+  }
+
+  /// [requestAccess] without asking anybody, see [interactive].
+  ///
+  /// Access to the photos alone is not enough in the background: without the
+  /// location permission every original would be read as its redacted copy
+  /// and uploaded for good, which is what issue #166 ended. The run declines
+  /// with [MediaLocationNotGranted] instead, until the app is opened and
+  /// asks. A question the platform cannot answer declines as well — never is
+  /// an unknown answer read as "granted".
+  Future<bool> _checkAccess() async {
+    PermissionState state;
+    try {
+      state = await PhotoManager.getPermissionState(
+        requestOption: withMediaLocation,
+      );
+    } catch (error) {
+      accessProblem = PhotoLibraryOpenFailed(platformErrorText(error));
+      return false;
+    }
+    if (!state.isAuth && state != PermissionState.limited) {
+      accessProblem = const PhotoAccessDenied();
+      return false;
+    }
+    bool located;
+    try {
+      located = await locationGranted();
+    } catch (error) {
+      accessProblem = PhotoLibraryOpenFailed(platformErrorText(error));
+      return false;
+    }
+    if (!located) {
+      accessProblem = const MediaLocationNotGranted();
+      return false;
+    }
+    accessProblem = null;
+    return true;
   }
 
   @override
@@ -188,7 +265,7 @@ class PhotoManagerLibrary extends PhotoLibrary {
         ),
       );
     } catch (error) {
-      accessProblem = PhotoLibraryFailed("$error");
+      accessProblem = PhotoLibraryFailed(platformErrorText(error));
       return const [];
     }
     var albums = <PhotoAlbum>[];
@@ -291,7 +368,12 @@ class PhotoManagerLibrary extends PhotoLibrary {
   }
 
   Stream<List<int>> _read(AssetEntity asset) async* {
-    var file = await asset.originFile;
+    File? file;
+    try {
+      file = await asset.originFile;
+    } catch (error) {
+      throw PhotoLibraryException(PhotoLibraryFailed(platformErrorText(error)));
+    }
     if (file == null) {
       // Not a reason to skip it: skipping would advance the watermark past a
       // photo that was never uploaded. The run fails, says so, and retries.
@@ -349,7 +431,7 @@ Future<void> saveToPhotoLibrary(
       requestOption: withMediaLocation,
     );
   } catch (error) {
-    throw PhotoLibraryException(PhotoLibraryOpenFailed("$error"));
+    throw PhotoLibraryException(PhotoLibraryOpenFailed(platformErrorText(error)));
   }
   if (!state.isAuth && state != PermissionState.limited) {
     throw const PhotoLibraryException(PhotoAccessDenied());
@@ -370,6 +452,6 @@ Future<void> saveToPhotoLibrary(
   } on PhotoLibraryException {
     rethrow;
   } catch (error) {
-    throw PhotoLibraryException(PhotoLibraryOpenFailed("$error"));
+    throw PhotoLibraryException(PhotoLibraryOpenFailed(platformErrorText(error)));
   }
 }

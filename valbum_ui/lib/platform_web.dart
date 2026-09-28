@@ -34,7 +34,7 @@ bool isSocketError(Object error) => false;
 ///
 /// A page cannot watch the machine's photos, so camera-roll sync says so
 /// instead of pretending (issue #30).
-PhotoLibrary defaultPhotoLibrary() =>
+PhotoLibrary defaultPhotoLibrary({bool background = false}) =>
     const UnavailablePhotoLibrary(NoPhotoLibraryBrowser());
 
 /// What keeps the screen awake in a browser: nothing, see [Wakelock].

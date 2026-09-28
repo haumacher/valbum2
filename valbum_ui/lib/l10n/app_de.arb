@@ -658,9 +658,10 @@
   "viewerEditPersonsDone": "Benennen der Gesichter beenden",
   "viewerMarkFace": "Ein Gesicht markieren",
   "viewerMarkFaceHint": "Zeichnen Sie ein Rechteck um ein Gesicht.",
+  "viewerAdjustFaceHint": "Ziehen Sie das Feld, um es zu verschieben, oder eine Ecke, um die Größe anzupassen.",
   "viewerFaceDecision": "Dieses Gesicht",
   "viewerMarkFaceTooSmall": "Zeichnen Sie ein größeres Rechteck um das Gesicht der Person.",
   "personsChooserInAlbum": "In diesem Album",
   "personsChooserAll": "Alle Personen",
-  "viewerAdjustFaceHint": "Ziehen Sie das Feld, um es zu verschieben, oder eine Ecke, um die Größe anzupassen."
+  "noticeMediaLocationNotGranted": "Öffnen Sie die App einmal, damit sie den Aufnahmeort der Fotos auslesen kann; bis dahin werden bei der Synchronisierung im Hintergrund keine Daten hochgeladen."
 }

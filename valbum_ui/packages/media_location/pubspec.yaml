@@ -1,0 +1,21 @@
+name: media_location
+description: >-
+  Whether this app may read where the photos were taken
+  (ACCESS_MEDIA_LOCATION), asked without an Activity so that a background
+  run can ask it too (issue #169). Part of VAlbum2, not published.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: de.haumacher.valbum.media_location
+        pluginClass: MediaLocationPlugin

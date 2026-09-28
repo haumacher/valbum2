@@ -25,6 +25,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'background.dart';
 import 'caller.dart';
@@ -852,8 +853,8 @@ class CameraRollSync extends ChangeNotifier {
       _backgroundProblem = null;
     } catch (error) {
       _backgroundProblem = enabled
-          ? BackgroundScheduleFailed("$error")
-          : BackgroundUnscheduleFailed("$error");
+          ? BackgroundScheduleFailed(platformErrorText(error))
+          : BackgroundUnscheduleFailed(platformErrorText(error));
     }
     if (!_disposed) {
       notifyListeners();
@@ -1038,7 +1039,7 @@ class CameraRollSync extends ChangeNotifier {
     try {
       sources = await _sources();
     } catch (error) {
-      _fail(notice: PhotoLibraryFailed("$error"));
+      _fail(notice: PhotoLibraryFailed(platformErrorText(error)));
       return;
     }
     // Only now, with the library readable, an album to watch and the caller in
@@ -1081,7 +1082,7 @@ class CameraRollSync extends ChangeNotifier {
                 source == CameraRollConfig.wholeLibrary ? const [] : [source],
           );
         } catch (error) {
-          _fail(notice: PhotoLibraryFailed("$error"));
+          _fail(notice: PhotoLibraryFailed(platformErrorText(error)));
           return;
         }
 
@@ -1428,6 +1429,11 @@ class CameraRollSync extends ChangeNotifier {
   static AppNotice _reasonOf(Object error) {
     if (error is PhotoLibraryException) {
       return error.notice;
+    }
+    if (error is PlatformException) {
+      // The device's own platform refused, not the server; and its message,
+      // never its Java stack (issue #169).
+      return PhotoLibraryFailed(platformErrorText(error));
     }
     return ServerUnreachable(
       VAlbumClient.isTransportFailure(error)

@@ -2090,6 +2090,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Access to the photo library was denied. Allow photo access for VAlbum in the system settings, then try again.';
 
   @override
+  String get noticeMediaLocationNotGranted =>
+      'Open the app once so it may read where the photos were taken; until then the background sync uploads nothing.';
+
+  @override
   String noticePhotoLibraryOpenFailed(String problem) {
     return 'The photo library cannot be opened: $problem';
   }

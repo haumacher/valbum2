@@ -2121,6 +2121,10 @@ class AppLocalizationsDe extends AppLocalizations {
       'Der Zugriff auf die Fotobibliothek wurde verweigert. Erlauben Sie VAlbum in den Systemeinstellungen den Zugriff auf Fotos und versuchen Sie es dann erneut.';
 
   @override
+  String get noticeMediaLocationNotGranted =>
+      'Öffnen Sie die App einmal, damit sie den Aufnahmeort der Fotos auslesen kann; bis dahin werden bei der Synchronisierung im Hintergrund keine Daten hochgeladen.';
+
+  @override
   String noticePhotoLibraryOpenFailed(String problem) {
     return 'Die Fotobibliothek kann nicht geöffnet werden: $problem';
   }

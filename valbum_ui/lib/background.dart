@@ -379,7 +379,12 @@ Future<BackgroundRunResult> runBackgroundSync({
     httpClient: transport ?? ownTransport!,
   );
 
-  var ownLibrary = library == null ? defaultPhotoLibrary() : null;
+  // A background run has no Activity to ask for a permission with (issue
+  // #169): it reads what the app on the screen was granted, and declines
+  // where that is not enough rather than failing or uploading redacted
+  // copies.
+  var ownLibrary =
+      library == null ? defaultPhotoLibrary(background: true) : null;
   var photos = library ?? ownLibrary!;
 
   // The Wi-Fi-only setting holds for a background run exactly as it does for
@@ -421,7 +426,7 @@ Future<BackgroundRunResult> runBackgroundSync({
       _ => BackgroundRunRecord.failed(now(), reasonOfStatus(status)),
     });
   } catch (error) {
-    return await record(BackgroundRunRecord.failed(now(), "$error"));
+    return await record(BackgroundRunRecord.failed(now(), platformErrorText(error)));
   } finally {
     sync.dispose();
     ownLibrary?.dispose();

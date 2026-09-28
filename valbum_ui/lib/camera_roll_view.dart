@@ -56,6 +56,13 @@ const Key cameraRollStopKey = Key("cameraRoll.stop");
 /// is no background sync on this platform.
 const Key cameraRollBackgroundKey = Key("cameraRoll.background");
 
+/// The key of the line saying what the sync is doing or did last.
+const Key cameraRollStatusKey = Key("cameraRoll.status");
+
+/// The key of the selection region around the whole section, which makes
+/// every line of it copyable (issue #169).
+const Key cameraRollSelectableKey = Key("cameraRoll.selectable");
+
 /// The key of the line telling a guest why there is no camera-roll sync for
 /// them (issue #54).
 const Key cameraRollNoSpaceKey = Key("cameraRoll.noSpace");
@@ -160,6 +167,28 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     var hasLibrary = sync.library.available;
     var available = hasLibrary && !guest;
     var l10n = AppLocalizations.of(context)!;
+    // Every line this section says can be copied (issue #169): a status or a
+    // refusal is what one pastes into a bug report, and a reason the platform
+    // gave is not something to type off a screen. One region around the whole
+    // section, so that a selection may span the status and the background
+    // line; the switches, the boxes and the buttons take their taps as before.
+    return SelectionArea(
+      key: cameraRollSelectableKey,
+      child: _content(context, sync, config, status, guest, hasLibrary,
+          available, l10n),
+    );
+  }
+
+  Widget _content(
+    BuildContext context,
+    CameraRollSync sync,
+    CameraRollConfig config,
+    CameraRollStatus status,
+    bool guest,
+    bool hasLibrary,
+    bool available,
+    AppLocalizations l10n,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -222,7 +251,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
           ],
         ),
         const SizedBox(height: 16),
-        Text(cameraRollLine(status, l10n)),
+        Text(cameraRollLine(status, l10n), key: cameraRollStatusKey),
         _backgroundLine(sync),
         if (status.running)
           Padding(

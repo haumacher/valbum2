@@ -12,8 +12,8 @@
 library;
 
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'client.dart';
@@ -33,6 +33,26 @@ class PhotoLibraryException implements Exception {
 
   @override
   String toString() => "PhotoLibraryException($notice)";
+}
+
+/// What a failure of the platform's photo library says, as a notice carries
+/// it (issue #169).
+///
+/// A [PlatformException] is its platform's *message* — failing that its
+/// code — and never its `toString()`, which drags the whole Java stack of the
+/// `details` into a line a person reads. A [MissingPluginException] — a
+/// plugin not registered in this engine — is its message as well. Anything
+/// else is its own text.
+String platformErrorText(Object error) {
+  if (error is PlatformException) {
+    var message = error.message?.trim();
+    return message == null || message.isEmpty ? error.code : message;
+  }
+  if (error is MissingPluginException) {
+    var message = error.message?.trim();
+    return message == null || message.isEmpty ? "$error" : message;
+  }
+  return "$error";
 }
 
 /// One item of the device's photo library.
