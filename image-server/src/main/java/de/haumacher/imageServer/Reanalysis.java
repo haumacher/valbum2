@@ -10,6 +10,7 @@ import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.GeoLocation;
 import de.haumacher.imageServer.shared.model.ImageGroup;
+import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ReanalyzeResult;
 import de.haumacher.imageServer.shared.model.Resource;
@@ -43,9 +44,35 @@ import java.util.logging.Logger;
  * location} (an absent one, or the <code>0/0</code> of a camera without a fix) has its file's
  * headers read again by {@link ImageData#analyze(AlbumInfo, java.io.File)} &mdash; metadata only,
  * never a pixel decoded, a video's container read exactly as at analysis &mdash; and what the file
- * says is written into exactly those two fields. A stored date, orientation, rating, privacy,
- * comment, tag or anything else is never touched: the author may have corrected the date, and a
- * file cannot know better than its author. A part that lacks nothing is not even read.
+ * says is written into exactly those two fields. A stored date (but for the one case below),
+ * orientation, rating, privacy, comment, tag or anything else is never touched: the author may have
+ * corrected the date, and a file cannot know better than its author. A video that lacks nothing is not even read.
+ * </p>
+ *
+ * <h2>The one date it corrects</h2>
+ *
+ * <p>
+ * Before issue #183 the wall clock of a photograph without an EXIF offset was read as if it were
+ * UTC, so every such photograph of a library in another zone was stored an hour or two off. Every
+ * photograph is therefore read, and its stored {@link ImagePart#getDate() date} is replaced by
+ * today's reading (the GPS offset, else the zone of the space, see
+ * {@link ImageData#analyze(AlbumInfo, File, ImageData.Analysis, java.time.ZoneId)}) exactly where
+ * <em>all</em> of this holds:
+ * </p>
+ * <ul>
+ * <li>the file carries a <code>DateTimeOriginal</code> and no <code>OffsetTimeOriginal</code>;</li>
+ * <li>the stored date equals, to the millisecond, what the old reading makes of that file
+ * ({@link ImageData#getLegacyExifDate()});</li>
+ * <li>today's reading differs from it.</li>
+ * </ul>
+ * <p>
+ * A date somebody corrected by hand never equals the old reading and stays; a photograph with an
+ * offset was read right before and stays; a second run finds the corrected date, which is no
+ * longer the old reading, and corrects nothing. A later change of the space's
+ * <code>timeZone</code> re-dates nothing either: the dates it would move are no old readings. The
+ * album's order is left as stored &mdash; re-sorting is the reader's "Sort by date" &mdash; and
+ * {@link ReanalyzeResult#getDatesCorrected()} counts the corrections apart from the details
+ * filled.
  * </p>
  *
  * <p>
@@ -113,6 +140,8 @@ public final class Reanalysis {
 
 		final AtomicInteger _albums = new AtomicInteger();
 
+		final AtomicInteger _corrected = new AtomicInteger();
+
 		final CompletableFuture<Void> _done = new CompletableFuture<>();
 
 		/** Whether the run has ended, successfully or not. */
@@ -131,6 +160,7 @@ public final class Reanalysis {
 				.setExamined(_examined.get())
 				.setFilled(_filled.get())
 				.setAlbums(_albums.get())
+				.setDatesCorrected(_corrected.get())
 				.setRunning(!isDone());
 		}
 	}
@@ -242,15 +272,23 @@ public final class Reanalysis {
 		}
 	}
 
-	/** What a file said that its part lacked. */
+	/** What a file said that its part may lack or have stored wrongly. */
 	private static final class Found {
 		final String _camera;
 
 		final GeoLocation _location;
 
-		Found(String camera, GeoLocation location) {
+		/** Today's reading of the recording time. */
+		final long _date;
+
+		/** The reading before issue #183, see {@link ImageData#getLegacyExifDate()}. */
+		final Long _legacyDate;
+
+		Found(String camera, GeoLocation location, long date, Long legacyDate) {
 			_camera = camera;
 			_location = location;
+			_date = date;
+			_legacyDate = legacyDate;
 		}
 	}
 
@@ -289,7 +327,9 @@ public final class Reanalysis {
 		// The files are read without anything held: this is the slow part.
 		Map<String, Found> found = new HashMap<>();
 		for (ImagePart image : images((AlbumInfo) stored)) {
-			if (!lacksSomething(image)) {
+			// A photograph is read whatever it lacks: its date may be one the old reading stored,
+			// see the class comment. A video's date is never corrected.
+			if (!lacksSomething(image) && image.getKind() != ImageKind.IMAGE) {
 				continue;
 			}
 			File file = new File(dir, image.getName());
@@ -298,12 +338,13 @@ public final class Reanalysis {
 			}
 			ImageData analysed;
 			try {
-				analysed = ImageData.analyze(AlbumInfo.create(), file);
+				analysed = ImageData.analyze(AlbumInfo.create(), file, ImageData.Analysis.NONE, _cache.zone());
 			} catch (Exception ex) {
 				LOG.warning("Cannot re-read '" + file + "': " + ex.getMessage());
 				continue;
 			}
-			found.put(image.getName(), new Found(analysed.getCamera(), analysed.getLocation()));
+			found.put(image.getName(), new Found(analysed.getCamera(), analysed.getLocation(), analysed.getDate(),
+				analysed.getLegacyExifDate()));
 		}
 		if (found.isEmpty()) {
 			return;
@@ -317,20 +358,29 @@ public final class Reanalysis {
 		}
 		AlbumInfo target = (AlbumInfo) current;
 		int filled = 0;
+		int corrected = 0;
 		for (ImagePart image : images(target)) {
 			Found details = found.get(image.getName());
-			if (details != null && fill(image, details)) {
+			if (details == null) {
+				continue;
+			}
+			if (fill(image, details)) {
 				filled++;
 			}
+			if (correctDate(image, details)) {
+				corrected++;
+			}
 		}
-		if (filled == 0) {
+		if (filled == 0 && corrected == 0) {
 			return;
 		}
 		ImageServlet.storeSidecar(dir, ImageServlet.sidecarOf(target));
 		_cache.invalidate(folder);
 		progress._filled.addAndGet(filled);
+		progress._corrected.addAndGet(corrected);
 		progress._albums.incrementAndGet();
-		LOG.info("Filled the details of " + filled + " photograph(s) in '" + dir + "'.");
+		LOG.info("Filled the details of " + filled + " and corrected the recording time of " + corrected
+			+ " photograph(s) in '" + dir + "'.");
 	}
 
 	/** Whether the given part lacks something a file could tell. */
@@ -358,6 +408,19 @@ public final class Reanalysis {
 			changed = true;
 		}
 		return changed;
+	}
+
+	/**
+	 * Replaces a stored date the reading before issue #183 wrote by today's reading, see the class
+	 * comment; whether it did.
+	 */
+	private static boolean correctDate(ImagePart image, Found details) {
+		Long legacy = details._legacyDate;
+		if (legacy == null || image.getDate() != legacy.longValue() || details._date == legacy.longValue()) {
+			return false;
+		}
+		image.setDate(details._date);
+		return true;
 	}
 
 	/** Every photograph and video of the album, the members of a group one by one. */

@@ -3765,7 +3765,8 @@ class CacheRefreshed extends _JsonObject {
 ///  reads the headers of every photograph and video below the folder once more &mdash; never a pixel
 ///  &mdash; and fills in what the sidecar lacks: an empty {@link ImagePart#getCamera() camera} and an
 ///  absent (or <code>0/0</code>) {@link ImagePart#getLocation() location}. Nothing that is stored is
-///  ever changed, least of all a date the author corrected.
+///  ever changed, least of all a date the author corrected &mdash; with one exception, see
+///  <code>datesCorrected</code>.
 ///  </p>
 /// 
 ///  <p>
@@ -3788,12 +3789,24 @@ class ReanalyzeResult extends _JsonObject {
 	///  Whether the run goes on in the background, so the counts are the counts so far.
 	bool running;
 
+	///  How many photographs had their recording time corrected (issue #183).
+	/// 
+	///  <p>
+	///  Before issue #183 the wall clock of a photograph without an EXIF offset was read as UTC. A
+	///  stored {@link ImagePart#getDate() date} is corrected only where it equals, to the
+	///  millisecond, what that reading makes of the file, the file carries no offset, and the reading
+	///  of today (the GPS time, else the zone of the space) differs: a date the author corrected
+	///  never matches and stays. The album's order is left as stored.
+	///  </p>
+	int datesCorrected;
+
 	/// Creates a ReanalyzeResult.
 	ReanalyzeResult({
 			this.examined = 0, 
 			this.filled = 0, 
 			this.albums = 0, 
 			this.running = false, 
+			this.datesCorrected = 0, 
 	});
 
 	/// Parses a ReanalyzeResult from a string source.
@@ -3830,6 +3843,10 @@ class ReanalyzeResult extends _JsonObject {
 				running = json.expectBool();
 				break;
 			}
+			case "datesCorrected": {
+				datesCorrected = json.expectInt();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3849,6 +3866,9 @@ class ReanalyzeResult extends _JsonObject {
 
 		json.addKey("running");
 		json.addBool(running);
+
+		json.addKey("datesCorrected");
+		json.addNumber(datesCorrected);
 	}
 
 }

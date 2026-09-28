@@ -145,9 +145,9 @@ public class TestVideoDate extends TestCase {
 			List.of("before.jpg", "middle.mp4", "after.jpg"), names(info));
 
 		// The photo dates are what their EXIF says, so the order is a date order, not a name order.
-		assertEquals(exifMillis("2005:08:20 10:00:00"), date(info, "before.jpg"));
+		assertEquals(photoMillis("2005:08:20 10:00:00"), date(info, "before.jpg"));
 		assertEquals(RECORDED_MILLIS, date(info, "middle.mp4"));
-		assertEquals(exifMillis("2005:08:28 10:00:00"), date(info, "after.jpg"));
+		assertEquals(photoMillis("2005:08:28 10:00:00"), date(info, "after.jpg"));
 	}
 
 	/**
@@ -225,9 +225,18 @@ public class TestVideoDate extends TestCase {
 	}
 
 	/**
-	 * An EXIF date without a time-zone tag, read as UTC — exactly what
-	 * <code>ExifSubIFDDirectory.getDateOriginal()</code> does with it, and the same convention the
-	 * container time of a video is taken with.
+	 * The recording time of a photo whose EXIF date carries neither an offset nor a GPS time, in a
+	 * space without a <code>timeZone</code>: the wall clock in the server's zone, see issue #183.
+	 */
+	static long photoMillis(String exifDate) {
+		return LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(exifMillis(exifDate)), ZoneOffset.UTC)
+			.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+	}
+
+	/**
+	 * The given EXIF date spelling read as UTC — what the reading before issue #183 made of a
+	 * photo's wall clock, the convention the container time of a video is still taken with, and a
+	 * plain instant for a modification time.
 	 */
 	static long exifMillis(String exifDate) {
 		LocalDateTime local = LocalDateTime.of(

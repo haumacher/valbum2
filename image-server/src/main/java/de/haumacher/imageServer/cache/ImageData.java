@@ -35,6 +35,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Date;
+import java.util.TimeZone;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -49,6 +50,9 @@ public class ImageData extends ImagePart {
 	private static final Logger LOG = Logger.getLogger(ImageData.class.getName());
 	private String _contentType;
 	private File _file;
+
+	/** See {@link #getLegacyExifDate()}. */
+	private Long _legacyExifDate;
 
 	/**
 	 * Creates a {@link ImageData}.
@@ -67,6 +71,25 @@ public class ImageData extends ImagePart {
 	 */
 	public File getFile() {
 		return _file;
+	}
+
+	/**
+	 * What the reading before issue #183 made of this file's recording time, where it differs in
+	 * rule from today's.
+	 *
+	 * <p>
+	 * Before issue #183 the EXIF <code>DateTimeOriginal</code> of a photograph that carries no
+	 * <code>OffsetTimeOriginal</code> was read as if its wall clock were UTC (metadata-extractor's
+	 * {@link ExifSubIFDDirectory#getDateOriginal()} does that, whatever the JVM zone). That is the
+	 * value answered here, so that {@link de.haumacher.imageServer.Reanalysis} can tell a stored
+	 * date the old reading wrote from one somebody corrected.
+	 * </p>
+	 *
+	 * @return <code>null</code> where the file carries no <code>DateTimeOriginal</code>, or carries
+	 *         an offset beside it (the old reading applied it, as today's does).
+	 */
+	public Long getLegacyExifDate() {
+		return _legacyExifDate;
 	}
 
 	/**
@@ -110,22 +133,43 @@ public class ImageData extends ImagePart {
 	}
 
 	/**
-	 * Loads {@link ImageData} from the given image file.
+	 * Loads {@link ImageData} from the given image file, dating it in the server's zone.
+	 *
+	 * <p>
+	 * For a caller that uses nothing but the dimensions or the camera; everything that stores a
+	 * date asks {@link #analyze(AlbumInfo, File, Analysis, ZoneId)} with the zone of the space.
+	 * </p>
 	 */
 	public static ImageData analyze(AlbumInfo album, File file)
 			throws ImageProcessingException, IOException, MetadataException {
-		return analyze(album, file, Analysis.NONE);
+		return analyze(album, file, Analysis.NONE, ZoneId.systemDefault());
+	}
+
+	/**
+	 * Loads {@link ImageData} from the given image file, taking over what the given
+	 * {@link Analysis} finds in a photograph, and dating it in the server's zone.
+	 */
+	public static ImageData analyze(AlbumInfo album, File file, Analysis more)
+			throws ImageProcessingException, IOException, MetadataException {
+		return analyze(album, file, more, ZoneId.systemDefault());
 	}
 
 	/**
 	 * Loads {@link ImageData} from the given image file, taking over what the given
 	 * {@link Analysis} finds in a photograph.
+	 *
+	 * @param zone
+	 *        The zone of the space the file lies in, see
+	 *        {@link de.haumacher.imageServer.auth.SpaceStore.Config#getZone()}: where a photograph
+	 *        says neither its offset nor a GPS time, its wall clock is read in this zone, and so is
+	 *        a date in a file name (issue #183).
 	 */
-	public static ImageData analyze(AlbumInfo album, File file, Analysis more) throws ImageProcessingException, IOException, MetadataException {
+	public static ImageData analyze(AlbumInfo album, File file, Analysis more, ZoneId zone)
+			throws ImageProcessingException, IOException, MetadataException {
 		ImageData result = new ImageData(album, file, file.getName());
 
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
-		result.setDate(date(metadata, file).getTime());
+		result.setDate(result.date(metadata, file, zone == null ? ZoneId.systemDefault() : zone).getTime());
 		result.setCamera(camera(metadata));
 		result.setLocation(location(metadata));
 
@@ -254,32 +298,81 @@ public class ImageData extends ImagePart {
 		ZonedDateTime.of(1990, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli();
 
 	/**
+	 * The largest offset from UTC a zone of the world has ever had, in either direction; a GPS time
+	 * that says more is no offset but a stale or broken fix, see {@link #gpsOffset(Metadata, long)}.
+	 */
+	public static final long MAX_OFFSET_MILLIS = 14L * 60 * 60 * 1000;
+
+	/**
+	 * The unit every offset of the world is a multiple of (Nepal's +05:45, the Chatham Islands'
+	 * +12:45), which a GPS offset is rounded to.
+	 */
+	public static final long OFFSET_UNIT_MILLIS = 15L * 60 * 1000;
+
+	private static final TimeZone UTC = TimeZone.getTimeZone("UTC");
+
+	private static final Pattern OFFSET = Pattern.compile("[+-]\\d\\d:\\d\\d");
+
+	/**
 	 * When the given file was taken or recorded.
 	 *
 	 * <p>
-	 * A photo says so in its EXIF data. A video has no EXIF data at all, so before issue #72 every
-	 * video got its modification time — for an uploaded or moved video the time it arrived on the
-	 * server, later than every photo of the trip, which sorted all videos behind all photos. The
-	 * recording time of a video is in its container instead, see {@link #recordingTime(Metadata)}.
+	 * A photo says so in its EXIF data, as a wall clock (<code>DateTimeOriginal</code>, with
+	 * <code>SubSecTimeOriginal</code>) that is a moment only together with its offset from UTC.
+	 * Where the wall clock is there, the moment is, in this order (issue #183):
+	 * </p>
+	 * <ol>
+	 * <li>the wall clock at the photo's own <code>OffsetTimeOriginal</code> (EXIF 2.31, written by
+	 * every newer phone);</li>
+	 * <li>the wall clock at the offset the photo's GPS time says, see
+	 * {@link #gpsOffset(Metadata, long)} &mdash; a GPS time is always UTC, so the difference
+	 * <em>is</em> the offset the camera's clock was set to;</li>
+	 * <li>the wall clock in the given zone, the zone of the space.</li>
+	 * </ol>
+	 *
+	 * <p>
+	 * Before issue #183 the wall clock was taken as UTC wherever the offset was missing, which is
+	 * what the library hands out, see {@link #getLegacyExifDate()}.
+	 * </p>
+	 *
+	 * <p>
+	 * A video has no EXIF data at all, so before issue #72 every video got its modification time —
+	 * for an uploaded or moved video the time it arrived on the server, later than every photo of
+	 * the trip, which sorted all videos behind all photos. The recording time of a video is in its
+	 * container instead, see {@link #recordingTime(Metadata)}.
 	 * </p>
 	 *
 	 * @return The date to sort the part by, never <code>null</code>: the file's modification time
 	 *         when neither the EXIF data, nor the container, nor the file name say anything
 	 *         usable.
 	 */
-	private static Date date(Metadata metadata, File file) {
+	private Date date(Metadata metadata, File file, ZoneId zone) {
 		ExifSubIFDDirectory directory = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
 		if (directory != null) {
-			Date dateOriginal = directory.getDateOriginal();
-			if (dateOriginal != null) {
-				return dateOriginal;
+			Date wallAsUtc = directory.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL,
+				directory.getString(ExifSubIFDDirectory.TAG_SUBSECOND_TIME_ORIGINAL), UTC);
+			if (wallAsUtc != null) {
+				ZoneOffset offset = offset(directory);
+				if (offset != null) {
+					return new Date(wallAsUtc.getTime() - offset.getTotalSeconds() * 1000L);
+				}
+				// Exactly what the reading before #183 answered here.
+				Date legacy = directory.getDateOriginal();
+				_legacyExifDate = legacy == null ? null : Long.valueOf(legacy.getTime());
+
+				Long gps = gpsOffset(metadata, wallAsUtc.getTime());
+				if (gps != null) {
+					return new Date(wallAsUtc.getTime() - gps.longValue());
+				}
+				LocalDateTime wall = LocalDateTime.ofInstant(wallAsUtc.toInstant(), ZoneOffset.UTC);
+				return Date.from(wall.atZone(zone).toInstant());
 			}
 		}
 		Date recorded = recordingTime(metadata);
 		if (recorded != null) {
 			return recorded;
 		}
-		Date named = nameDate(file.getName());
+		Date named = nameDate(file.getName(), zone);
 		if (named != null) {
 			return named;
 		}
@@ -287,12 +380,72 @@ public class ImageData extends ImagePart {
 	}
 
 	/**
+	 * The <code>OffsetTimeOriginal</code> of the photo, <code>null</code> when it carries none (or
+	 * one that is not of the form <code>±HH:MM</code> the standard prescribes).
+	 */
+	private static ZoneOffset offset(ExifSubIFDDirectory directory) {
+		String value = directory.getString(ExifSubIFDDirectory.TAG_TIME_ZONE_ORIGINAL);
+		if (value == null) {
+			return null;
+		}
+		String trimmed = value.trim();
+		if (!OFFSET.matcher(trimmed).matches()) {
+			return null;
+		}
+		try {
+			return ZoneOffset.of(trimmed);
+		} catch (DateTimeException ex) {
+			return null;
+		}
+	}
+
+	/**
+	 * The offset of the camera's clock from UTC, as the photo's GPS time says it.
+	 *
+	 * <p>
+	 * <code>GPSDateStamp</code> and <code>GPSTimeStamp</code> are UTC by definition, and a camera
+	 * writes them at the moment of the fix, which is the moment of the photograph or a few seconds
+	 * before it. The difference to the wall clock is therefore the offset plus a little drift, and
+	 * rounded to {@link #OFFSET_UNIT_MILLIS} it is the offset. A difference beyond
+	 * {@link #MAX_OFFSET_MILLIS} is a fix from another day or a broken clock, and says nothing.
+	 * </p>
+	 *
+	 * @param wallAsUtc
+	 *        The wall clock of the photo, read as if it were UTC.
+	 * @return The offset in milliseconds (wall clock minus UTC), <code>null</code> when the photo
+	 *         carries no usable GPS time.
+	 */
+	private static Long gpsOffset(Metadata metadata, long wallAsUtc) {
+		GpsDirectory gps = metadata.getFirstDirectoryOfType(GpsDirectory.class);
+		if (gps == null) {
+			return null;
+		}
+		Date utc;
+		try {
+			utc = gps.getGpsDate();
+		} catch (RuntimeException ex) {
+			return null;
+		}
+		if (utc == null) {
+			return null;
+		}
+		long rounded = Math.round((wallAsUtc - utc.getTime()) / (double) OFFSET_UNIT_MILLIS) * OFFSET_UNIT_MILLIS;
+		if (Math.abs(rounded) > MAX_OFFSET_MILLIS) {
+			LOG.fine("Ignoring the GPS time " + utc + ": " + (wallAsUtc - utc.getTime()) / 1000
+				+ " s from the wall clock is no offset.");
+			return null;
+		}
+		return Long.valueOf(rounded);
+	}
+
+	/**
 	 * When the video was recorded, from the <code>mvhd</code> creation time of its container.
 	 *
 	 * <p>
-	 * The time is taken as the library hands it out, exactly as the EXIF date is: the box is
-	 * defined as UTC, but phones write local time into it and there is nothing in the file that
-	 * says which of the two it is, so guessing would only move the error around.
+	 * The time is taken as the library hands it out: the box is defined as UTC, but phones write
+	 * local time into it and there is nothing in the file that says which of the two it is, so
+	 * guessing would only move the error around. A photo is different, see issue #183: its wall
+	 * clock is a wall clock by definition, and the zone it was set to is what is missing.
 	 * </p>
 	 *
 	 * @return <code>null</code> if this is no video, or its container carries no usable time, see
@@ -678,9 +831,7 @@ public class ImageData extends ImagePart {
 	 * </p>
 	 *
 	 * <p>
-	 * The result is read in the server's default zone, exactly as an EXIF date and a container
-	 * time are taken as they come: the name carries no zone, so anything else would only move the
-	 * error around.
+	 * The result is read in the server's default zone, see {@link #nameDate(String, ZoneId)}.
 	 * </p>
 	 *
 	 * @param fileName
@@ -688,13 +839,32 @@ public class ImageData extends ImagePart {
 	 * @return The time the name says, or <code>null</code> when it says none.
 	 */
 	public static Date nameDate(String fileName) {
+		return nameDate(fileName, ZoneId.systemDefault());
+	}
+
+	/**
+	 * The recording time a file name carries, see {@link #nameDate(String)}.
+	 *
+	 * <p>
+	 * The name carries no zone, so it is read in the given one, the zone of the space the file lies
+	 * in: the zone a photograph without an offset is read in too (issue #183), so that the chain of
+	 * {@link #date(Metadata, File, ZoneId)} is one clock.
+	 * </p>
+	 *
+	 * @param fileName
+	 *        The plain name of the file, without a path.
+	 * @param zone
+	 *        The zone the wall clock of the name is read in.
+	 * @return The time the name says, or <code>null</code> when it says none.
+	 */
+	public static Date nameDate(String fileName, ZoneId zone) {
 		if (fileName == null) {
 			return null;
 		}
 		Matcher matcher = NAME_DATE.matcher(fileName);
 		int from = 0;
 		while (from <= fileName.length() && matcher.find(from)) {
-			Date result = dateOf(matcher);
+			Date result = dateOf(matcher, zone);
 			if (result != null) {
 				return result;
 			}
@@ -706,21 +876,22 @@ public class ImageData extends ImagePart {
 	/**
 	 * The date of the group that matched, <code>null</code> when those digits are no date.
 	 */
-	private static Date dateOf(Matcher matcher) {
+	private static Date dateOf(Matcher matcher, ZoneId zone) {
 		if (matcher.group(1) != null) {
-			return at(matcher, 1, 2, 3, 4, 5, 6);
+			return at(matcher, zone, 1, 2, 3, 4, 5, 6);
 		}
 		if (matcher.group(7) != null) {
-			return at(matcher, 7, 8, 9, 10, 12, 13);
+			return at(matcher, zone, 7, 8, 9, 10, 12, 13);
 		}
 		if (matcher.group(14) != null) {
-			return at(matcher, 14, 15, 16, -1, -1, -1);
+			return at(matcher, zone, 14, 15, 16, -1, -1, -1);
 		}
-		return at(matcher, 17, 18, 19, -1, -1, -1);
+		return at(matcher, zone, 17, 18, 19, -1, -1, -1);
 	}
 
 	/** The date the given groups spell, <code>null</code> when it is none. */
-	private static Date at(Matcher matcher, int year, int month, int day, int hour, int minute, int second) {
+	private static Date at(Matcher matcher, ZoneId zone, int year, int month, int day, int hour, int minute,
+			int second) {
 		int y = number(matcher, year);
 		if (y < EARLIEST_NAME_YEAR || y > ZonedDateTime.now().getYear() + 1) {
 			return null;
@@ -728,7 +899,7 @@ public class ImageData extends ImagePart {
 		try {
 			LocalDateTime local = LocalDateTime.of(y, number(matcher, month), number(matcher, day),
 				number(matcher, hour), number(matcher, minute), number(matcher, second));
-			return Date.from(local.atZone(ZoneId.systemDefault()).toInstant());
+			return Date.from(local.atZone(zone).toInstant());
 		} catch (DateTimeException ex) {
 			// A month, a day of a month, or a time of day that does not exist: these digits are
 			// no date, and the search goes on.

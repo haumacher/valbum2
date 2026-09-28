@@ -177,6 +177,11 @@ void sliceThree() {
       expect(find.text(de.serverMenuEntry), findsOneWidget);
       // Re-reading the photo details, issue #161.
       expect(find.text(de.reanalyze), findsOneWidget);
+      // And the recording times it corrected, issue #183.
+      expect(de.reanalyzeDatesCorrected(1),
+          "Die Aufnahmezeit von 1 Foto wurde korrigiert.");
+      expect(de.reanalyzeDatesCorrected(3),
+          "Die Aufnahmezeiten von 3 Fotos wurden korrigiert.");
 
       var en = l10nOf(const Locale("en"));
       expect(find.text(en.albumProperties), findsNothing);

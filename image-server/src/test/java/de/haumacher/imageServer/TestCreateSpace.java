@@ -313,14 +313,14 @@ public class TestCreateSpace extends TestCase {
 	// --- The command line. ---
 
 	public void testTheCommandAnswersItsExitCode() throws Exception {
-		assertEquals(0, Main.createSpace(_base, "family", "", SpaceStore.ANONYMOUS_NONE, SpaceStore.FACES_OFF, null));
+		assertEquals(0, Main.createSpace(_base, "family", "", SpaceStore.ANONYMOUS_NONE, SpaceStore.FACES_OFF, null, null));
 
 		PrintStream err = System.err;
 		ByteArrayOutputStream captured = new ByteArrayOutputStream();
 		System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
 		int code;
 		try {
-			code = Main.createSpace(_base, "family", "", SpaceStore.ANONYMOUS_NONE, SpaceStore.FACES_OFF, null);
+			code = Main.createSpace(_base, "family", "", SpaceStore.ANONYMOUS_NONE, SpaceStore.FACES_OFF, null, null);
 		} finally {
 			System.setErr(err);
 		}
@@ -328,6 +328,66 @@ public class TestCreateSpace extends TestCase {
 		String printed = captured.toString(StandardCharsets.UTF_8);
 		assertEquals("One line: " + printed, 1, printed.strip().lines().count());
 		assertTrue(printed, printed.contains(SpaceCreation.alreadyASpace("family")));
+	}
+
+	// --- The time zone of issue #183. ---
+
+	public void testTheTimeZoneIsWrittenWhereOneIsGiven() throws Exception {
+		SpaceCreation.Report report = SpaceCreation.create(_base, "family", "", SpaceStore.ANONYMOUS_NONE,
+			SpaceStore.FACES_OFF, "Europe/Berlin", null);
+
+		SpaceStore.Config config = SpaceStore.load(_base.resolve("family"), "family");
+		assertEquals("Europe/Berlin", config.getTimeZone());
+		assertEquals(java.time.ZoneId.of("Europe/Berlin"), config.getZone());
+		assertTrue(report.toString(), report.toString().contains("time zone Europe/Berlin"));
+	}
+
+	public void testWithoutATimeZoneTheFileNamesNone() throws Exception {
+		create("family", "", SpaceStore.ANONYMOUS_NONE, SpaceStore.FACES_OFF, null);
+
+		String file = Files.readString(SpaceStore.file(_base.resolve("family")), StandardCharsets.UTF_8);
+		assertFalse("The space follows the server's zone: " + file, file.contains("timeZone"));
+	}
+
+	public void testAnUnknownTimeZoneIsRefusedAndWritesNothing() throws Exception {
+		String before = fingerprint(_base);
+		try {
+			SpaceCreation.create(_base, "family", "", SpaceStore.ANONYMOUS_NONE, SpaceStore.FACES_OFF, "Nowhere/Zone",
+				null);
+			fail("An unknown zone must be refused.");
+		} catch (SpaceCreation.Refused ex) {
+			assertTrue(ex.getMessage(), ex.getMessage().contains("'Nowhere/Zone' is no time zone"));
+			assertTrue(ex.getMessage(), ex.getMessage().contains("Nothing was written."));
+		}
+		assertFalse(Files.exists(_base.resolve("family")));
+		assertEquals(before, fingerprint(_base));
+	}
+
+	public void testTheCommandLineTakesTheTimeZone() throws Exception {
+		net.sourceforge.argparse4j.inf.ArgumentParser parser =
+			net.sourceforge.argparse4j.ArgumentParsers.newFor("test").build();
+		parser.addArgument("--basepath").type(File.class);
+		parser.addArgument("--spaces");
+		Jobs.addTo(parser);
+
+		PrintStream err = System.err;
+		ByteArrayOutputStream captured = new ByteArrayOutputStream();
+		System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+		Integer refused;
+		try {
+			refused = Jobs.run(parser.parseArgs(new String[] { "--basepath", _base.toString(), "--create-space",
+				"family", "--time-zone", "Nowhere/Zone" }));
+		} finally {
+			System.setErr(err);
+		}
+		assertEquals(Integer.valueOf(1), refused);
+		assertTrue(captured.toString(StandardCharsets.UTF_8),
+			captured.toString(StandardCharsets.UTF_8).contains("'Nowhere/Zone' is no time zone"));
+		assertFalse("Nothing was written.", Files.exists(_base.resolve("family")));
+
+		assertEquals(Integer.valueOf(0), Jobs.run(parser.parseArgs(new String[] { "--basepath", _base.toString(),
+			"--create-space", "family", "--time-zone", "Asia/Kathmandu" })));
+		assertEquals("Asia/Kathmandu", SpaceStore.load(_base.resolve("family"), "family").getTimeZone());
 	}
 
 	// --- The server afterwards. ---

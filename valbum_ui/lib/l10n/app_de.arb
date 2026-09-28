@@ -400,7 +400,6 @@
   "noDuplicatesFound": "Es gibt nirgendwo sonst in der Bibliothek ein Foto dieses Albums.",
   "duplicatesSetAside": "{count, plural, =1{1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.} other{{count} Fotos wurden aussortiert; die verbleibenden Kopien befinden sich an anderer Stelle in der Bibliothek.}}",
   "reanalyze": "Fotodetails erneut einlesen",
-  "reanalyzeExplanation": "Liest die Kamera- und Positionsdaten erneut aus den Dateien aus und ergänzt fehlende Angaben. Bereits gespeicherte Daten werden nicht verändert.",
   "reanalyzeDone": "{examined} Fotos überprüft; bei {filled} davon wurde eine Kamera oder eine Position hinzugefügt.",
   "reanalyzeRunning": "Wird im Hintergrund noch gelesen: Bisher wurden {examined} Fotos überprüft, {filled} davon haben eine Kamera oder eine Position erhalten.",
   "refreshPreviews": "Vorschauen aktualisieren",
@@ -662,13 +661,15 @@
   "viewerMarkFaceTooSmall": "Zeichnen Sie ein größeres Rechteck um das Gesicht der Person.",
   "personsChooserInAlbum": "In diesem Album",
   "personsChooserAll": "Alle Personen",
-  "goToStartPage": "Zur Startseite",
-  "loadFailureDetails": "Details",
-  "loadFailureTechnical": "HTTP-{status} für {url}",
   "loadNotFoundAlbum": "Das Album {name} wurde auf dem Server {server} nicht gefunden.",
   "loadNotFoundEntry": "Das Album oder der Ordner {name} wurde auf dem Server {server} nicht gefunden.",
   "loadNotFoundStart": "Die Startseite wurde auf dem Server {server} nicht gefunden.",
   "loadFailedAlbum": "Das Album {name} konnte auf dem Server {server} nicht geöffnet werden.",
   "loadFailedEntry": "Das Album oder der Ordner {name} konnte auf dem Server {server} nicht geöffnet werden.",
-  "loadFailedStart": "Die Startseite konnte auf dem Server {server} nicht geöffnet werden."
+  "loadFailedStart": "Die Startseite konnte auf dem Server {server} nicht geöffnet werden.",
+  "goToStartPage": "Zur Startseite",
+  "loadFailureDetails": "Details",
+  "loadFailureTechnical": "HTTP-{status} für {url}",
+  "reanalyzeExplanation": "Die Kamera- und Positionsdaten werden erneut aus den Dateien ausgelesen und fehlende Angaben ergänzt. Außerdem werden die Aufnahmedaten korrigiert, die von einer älteren Version in der falschen Zeitzone eingelesen wurden. Abgesehen davon wird nichts an den bereits gespeicherten Daten geändert.",
+  "reanalyzeDatesCorrected": "{count, plural, =1{Die Aufnahmezeit von 1 Foto wurde korrigiert.} other{Die Aufnahmezeiten von {count} Fotos wurden korrigiert.}}"
 }

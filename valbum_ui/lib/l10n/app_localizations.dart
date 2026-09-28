@@ -2501,7 +2501,7 @@ abstract class AppLocalizations {
   /// Explains what re-reading the photo details of an album does
   ///
   /// In en, this message translates to:
-  /// **'Reads the camera and the position from the files again and fills what is missing. Nothing already stored is changed.'**
+  /// **'Reads the camera and the position from the files again and fills what is missing. It also corrects the recording times that an older version read in the wrong time zone. Apart from that, nothing already stored is changed.'**
   String get reanalyzeExplanation;
 
   /// Says what re-reading the photo details did, with the number of photos looked at and the number that gained something
@@ -2515,6 +2515,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Still reading in the background: checked {examined} photos so far, {filled} of them gained a camera or a position.'**
   String reanalyzeRunning(int examined, int filled);
+
+  /// Added to the result of re-reading the photo details where recording times that an older version had read in the wrong time zone were corrected, with their number
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Corrected the recording time of 1 photo.} other{Corrected the recording times of {count} photos.}}'**
+  String reanalyzeDatesCorrected(int count);
 
   /// Menu entry and dialog title of throwing the generated previews away
   ///

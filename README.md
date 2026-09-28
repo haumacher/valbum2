@@ -95,6 +95,7 @@ What the container needs ([`compose.yaml`](compose.yaml) has it all):
 
    Adjust the volume, `PUID`/`PGID`, and the left `8080` if that port is taken. Skip the web-portal
    page and finish; the image is pulled and started.
+   The image runs in UTC; set `TZ` or the space's `timeZone`.
 4. **Sign in**: see [Signing in the first device](#signing-in-the-first-device).
 
 ### Raspberry Pi, Debian and Ubuntu
@@ -144,7 +145,7 @@ The `.deb` reads `/etc/default/valbum`; Docker takes the same variables from `en
 | `JAVA_OPTS` | JVM options, e.g. `-Xmx512m` | | |
 | `JAVA_HOME` | The Java to use | from `PATH` | |
 | `PUID` / `PGID` | User and group the server runs as | | owner of `/photos` |
-| `TZ` | Time zone for photos without one | system | UTC |
+| `TZ` | Time zone for photos without one, where the space names no `timeZone` | system | UTC |
 | `VALBUM_HEAP_PERCENT` | Heap as a share of the memory; an `-Xmx` wins | | `50` |
 
 On the `.deb`, point it at your photos and restart:
@@ -253,6 +254,7 @@ one space into another.
 - A space's settings live in `<space>/.valbum/space.json`: `name`, `anonymous` (`public` lets
   visitors see the public photos, `none` shows them nothing), `faces` (`on`/`off`) and `mapUrl` (the
   map a photo's position opens, `{lat}`/`{lon}` in it).
+- `timeZone` in `space.json` (e.g. `Europe/Berlin`) is where a photo that states no time zone and no GPS time was taken; without it the server's zone.
 - **Users** belong to one space. Everybody but its first administrator **joins by invitation**:
   *Invite…* in *Users*, choose what they may do, send the link. Whoever opens it picks their name
   and signs in. Until then the seat shows as pending and can be withdrawn.
@@ -338,7 +340,7 @@ docker compose exec valbum valbum-admin create-space family --name "The Family"
 
 | Command | What it does |
 |---|---|
-| `create-space <folder>` | Makes a folder below the library folder a space (`--name`, `--anonymous none\|public`, `--faces on\|off`). The new space's sign-in code appears in the log when the server starts again. |
+| `create-space <folder>` | Makes a folder below the library folder a space (`--name`, `--anonymous none\|public`, `--faces on\|off`, `--time-zone <zone>`). The new space's sign-in code appears in the log when the server starts again. |
 | `move-into-space <folder>` | Moves a one-space library, with its users, devices, links, invitations and people, into a space of its own, so further spaces fit beside it. Only renames. The old addresses keep working until you delete `.valbum/moved.json`. |
 | `replace-originals <folder>` | Puts downloaded originals in the place of the copies older phone apps uploaded without their position; each copy is kept in `.valbum/replaced/`. `--dry-run` only reports. |
 | `migrate-to-user`, `migrate-to-spaces` | For libraries from before spaces existed. |

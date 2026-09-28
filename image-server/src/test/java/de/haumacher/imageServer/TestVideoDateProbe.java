@@ -90,7 +90,7 @@ public class TestVideoDateProbe extends TestCase {
 		TestVideoDate.writeJpegWithDateOriginal(photo, "2005:08:20 10:00:00");
 		assertTrue(photo.setLastModified(System.currentTimeMillis()));
 		ImagePart part = ImageData.analyze(AlbumInfo.create(), photo);
-		assertEquals(TestVideoDate.exifMillis("2005:08:20 10:00:00"), part.getDate());
+		assertEquals(TestVideoDate.photoMillis("2005:08:20 10:00:00"), part.getDate());
 	}
 
 	/** A container time before digital video is nonsense and gives way to the modification time. */

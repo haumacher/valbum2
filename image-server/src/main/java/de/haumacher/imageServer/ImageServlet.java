@@ -589,8 +589,10 @@ public class ImageServlet extends HttpServlet {
 		boolean facesEnabled = config != null && config.isFacesEnabled();
 		_people = new PeopleStore(_basePath);
 		// The register has to exist before the cache does: a photograph that is analysed for the
-		// first time may name people, see FaceImport and issue #129.
-		_cache = new ResourceCache(new FaceImport(_people, facesEnabled)::read);
+		// first time may name people, see FaceImport and issue #129. The zone is the space's: a
+		// photograph that does not say its own is dated in it, see issue #183.
+		_cache = new ResourceCache(new FaceImport(_people, facesEnabled)::read,
+			config == null ? null : config.getZone());
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
 		_index = new HashIndex(_basePath);

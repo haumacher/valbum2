@@ -186,8 +186,24 @@ public final class SpaceCreation {
 	 */
 	public static Report create(Path basePath, String folder, String name, String anonymous, String faces,
 			SpaceMode mode) throws Refused, IOException {
+		return create(basePath, folder, name, anonymous, faces, null, mode);
+	}
+
+	/**
+	 * Creates the space, see {@link #create(Path, String, String, String, String, SpaceMode)}.
+	 *
+	 * @param timeZone
+	 *        The zone the photographs of the space are dated in where they do not say theirs (issue
+	 *        #183), an id {@link SpaceStore#zoneOf(String)} knows; <code>null</code> or empty for the
+	 *        server's zone. An unknown id is refused before anything is written.
+	 */
+	public static Report create(Path basePath, String folder, String name, String anonymous, String faces,
+			String timeZone, SpaceMode mode) throws Refused, IOException {
 		if (mode == SpaceMode.SINGLE) {
 			throw new Refused(FORCED_SINGLE);
+		}
+		if (timeZone != null && !timeZone.trim().isEmpty() && SpaceStore.zoneOf(timeZone) == null) {
+			throw new Refused(SpaceStore.unknownTimeZone(timeZone) + " Nothing was written.");
 		}
 		if (!Files.isDirectory(basePath)) {
 			throw new Refused("The base folder '" + basePath + "' does not exist. Nothing was written.");
@@ -238,7 +254,7 @@ public final class SpaceCreation {
 		String found = exists ? describe(root, folder) : null;
 
 		try {
-			SpaceStore.create(root, name, anonymous, faces);
+			SpaceStore.create(root, name, anonymous, faces, timeZone);
 		} catch (FileAlreadyExistsException ex) {
 			throw new Refused(alreadyASpace(folder));
 		}
@@ -247,7 +263,9 @@ public final class SpaceCreation {
 		Report report = new Report();
 		report.say(exists ? found : "Created the folder '" + folder + "'.");
 		report.say("Wrote " + folder + "/" + UserStore.DIRECTORY_NAME + "/" + SpaceStore.FILE_NAME + ": name '"
-			+ written.getName() + "', anonymous " + written.getAnonymous() + ", faces " + written.getFaces() + ".");
+			+ written.getName() + "', anonymous " + written.getAnonymous() + ", faces " + written.getFaces()
+			+ ", time zone " + (written.getTimeZone().isEmpty() ? "the server's (" + java.time.ZoneId.systemDefault() + ")"
+				: written.getTimeZone()) + ".");
 		if (Files.exists(root.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME))) {
 			report.say("The folder carries a user store of its own already; its users and devices are the "
 				+ "space's.");

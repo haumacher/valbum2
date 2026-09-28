@@ -6,6 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.auth.SpaceMode;
 import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.UserStore;
+import de.haumacher.imageServer.cache.ImageData;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.ReanalyzeResult;
 import de.haumacher.imageServer.upload.HashCache;
@@ -355,13 +356,16 @@ public final class ReplaceOriginals {
 	/** Re-reads every touched album, see {@link Reanalysis}; the summary line. */
 	private static String reanalyze(Map<Space, Set<Path>> touched) {
 		int filled = 0;
+		int corrected = 0;
 		int albums = 0;
 		List<String> problems = new ArrayList<>();
 		for (Map.Entry<Space, Set<Path>> entry : touched.entrySet()) {
 			Path root = entry.getKey()._root;
 			ResourceCache cache;
 			try {
-				cache = new ResourceCache();
+				// Dated in the zone of the space, as the server dates them, see issue #183.
+				cache = new ResourceCache(ImageData.Analysis.NONE,
+					SpaceStore.load(root, root.getFileName() == null ? "" : root.getFileName().toString()).getZone());
 			} catch (IOException ex) {
 				problems.add(ex.getMessage());
 				continue;
@@ -373,6 +377,7 @@ public final class ReplaceOriginals {
 					PathInfo path = relative.toString().isEmpty() ? new PathInfo(root) : new PathInfo(root, relative);
 					ReanalyzeResult result = reanalysis.now(path);
 					filled += result.getFilled();
+					corrected += result.getDatesCorrected();
 					albums += result.getAlbums();
 				}
 				reanalysis.shutdown();
@@ -384,8 +389,9 @@ public final class ReplaceOriginals {
 				}
 			}
 		}
-		return "Filled the missing camera or position of " + filled + " photograph(s) in " + albums
-			+ " album(s); every date, rating, orientation, comment and tag stays as it was."
+		return "Filled the missing camera or position of " + filled + " photograph(s) and corrected the "
+			+ "recording time read in the wrong zone of " + corrected + " in " + albums
+			+ " album(s); every other date, rating, orientation, comment and tag stays as it was."
 			+ (problems.isEmpty() ? "" : " Problems: " + String.join("; ", problems));
 	}
 

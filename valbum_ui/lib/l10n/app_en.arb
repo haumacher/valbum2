@@ -2393,10 +2393,10 @@
     "description": "Menu entry and dialog title of reading the camera and the position of an album's photos from the files again",
     "x-translated": "ebde847c"
   },
-  "reanalyzeExplanation": "Reads the camera and the position from the files again and fills what is missing. Nothing already stored is changed.",
+  "reanalyzeExplanation": "Reads the camera and the position from the files again and fills what is missing. It also corrects the recording times that an older version read in the wrong time zone. Apart from that, nothing already stored is changed.",
   "@reanalyzeExplanation": {
     "description": "Explains what re-reading the photo details of an album does",
-    "x-translated": "559343e6"
+    "x-translated": "2546c633"
   },
   "reanalyzeDone": "Checked {examined} photos; {filled} of them gained a camera or a position.",
   "@reanalyzeDone": {
@@ -2423,6 +2423,16 @@
       }
     },
     "x-translated": "926d387b"
+  },
+  "reanalyzeDatesCorrected": "{count, plural, =1{Corrected the recording time of 1 photo.} other{Corrected the recording times of {count} photos.}}",
+  "@reanalyzeDatesCorrected": {
+    "description": "Added to the result of re-reading the photo details where recording times that an older version had read in the wrong time zone were corrected, with their number",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "66fdd88a"
   },
   "refreshPreviews": "Refresh previews",
   "@refreshPreviews": {

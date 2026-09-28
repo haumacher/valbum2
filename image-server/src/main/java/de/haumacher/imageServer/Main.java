@@ -151,9 +151,10 @@ public class Main {
 	 *         was refused (nothing was written then).
 	 */
 	static int createSpace(Path basePath, String folder, String name, String anonymous, String faces,
-			SpaceMode spaces) {
+			String timeZone, SpaceMode spaces) {
 		try {
-			SpaceCreation.Report report = SpaceCreation.create(basePath, folder, name, anonymous, faces, spaces);
+			SpaceCreation.Report report =
+				SpaceCreation.create(basePath, folder, name, anonymous, faces, timeZone, spaces);
 			System.out.println("Creating the space '" + folder + "' in '" + basePath + "':");
 			for (String line : report.getLines()) {
 				System.out.println("  " + line);

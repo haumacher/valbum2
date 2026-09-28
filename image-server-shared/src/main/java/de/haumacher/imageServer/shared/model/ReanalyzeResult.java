@@ -9,7 +9,8 @@ package de.haumacher.imageServer.shared.model;
  * reads the headers of every photograph and video below the folder once more &mdash; never a pixel
  * &mdash; and fills in what the sidecar lacks: an empty {@link ImagePart#getCamera() camera} and an
  * absent (or <code>0/0</code>) {@link ImagePart#getLocation() location}. Nothing that is stored is
- * ever changed, least of all a date the author corrected.
+ * ever changed, least of all a date the author corrected &mdash; with one exception, see
+ * <code>datesCorrected</code>.
  * </p>
  *
  * <p>
@@ -44,6 +45,9 @@ public class ReanalyzeResult extends de.haumacher.msgbuf.data.AbstractDataObject
 	/** @see #isRunning() */
 	private static final String RUNNING__PROP = "running";
 
+	/** @see #getDatesCorrected() */
+	private static final String DATES_CORRECTED__PROP = "datesCorrected";
+
 	private int _examined = 0;
 
 	private int _filled = 0;
@@ -51,6 +55,8 @@ public class ReanalyzeResult extends de.haumacher.msgbuf.data.AbstractDataObject
 	private int _albums = 0;
 
 	private boolean _running = false;
+
+	private int _datesCorrected = 0;
 
 	/**
 	 * Creates a {@link ReanalyzeResult} instance.
@@ -141,6 +147,34 @@ public class ReanalyzeResult extends de.haumacher.msgbuf.data.AbstractDataObject
 		_running = value;
 	}
 
+	/**
+	 * How many photographs had their recording time corrected (issue #183).
+	 *
+	 * <p>
+	 * Before issue #183 the wall clock of a photograph without an EXIF offset was read as UTC. A
+	 * stored {@link ImagePart#getDate() date} is corrected only where it equals, to the
+	 * millisecond, what that reading makes of the file, the file carries no offset, and the reading
+	 * of today (the GPS time, else the zone of the space) differs: a date the author corrected
+	 * never matches and stays. The album's order is left as stored.
+	 * </p>
+	 */
+	public final int getDatesCorrected() {
+		return _datesCorrected;
+	}
+
+	/**
+	 * @see #getDatesCorrected()
+	 */
+	public de.haumacher.imageServer.shared.model.ReanalyzeResult setDatesCorrected(int value) {
+		internalSetDatesCorrected(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getDatesCorrected()} without chain call utility. */
+	protected final void internalSetDatesCorrected(int value) {
+		_datesCorrected = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ReanalyzeResult readReanalyzeResult(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ReanalyzeResult result = new de.haumacher.imageServer.shared.model.ReanalyzeResult();
@@ -164,6 +198,8 @@ public class ReanalyzeResult extends de.haumacher.msgbuf.data.AbstractDataObject
 		out.value(getAlbums());
 		out.name(RUNNING__PROP);
 		out.value(isRunning());
+		out.name(DATES_CORRECTED__PROP);
+		out.value(getDatesCorrected());
 	}
 
 	@Override
@@ -173,6 +209,7 @@ public class ReanalyzeResult extends de.haumacher.msgbuf.data.AbstractDataObject
 			case FILLED__PROP: setFilled(in.nextInt()); break;
 			case ALBUMS__PROP: setAlbums(in.nextInt()); break;
 			case RUNNING__PROP: setRunning(in.nextBoolean()); break;
+			case DATES_CORRECTED__PROP: setDatesCorrected(in.nextInt()); break;
 			default: super.readField(in, field);
 		}
 	}

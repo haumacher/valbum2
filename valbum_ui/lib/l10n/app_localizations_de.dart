@@ -1466,7 +1466,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get reanalyzeExplanation =>
-      'Liest die Kamera- und Positionsdaten erneut aus den Dateien aus und ergänzt fehlende Angaben. Bereits gespeicherte Daten werden nicht verändert.';
+      'Die Kamera- und Positionsdaten werden erneut aus den Dateien ausgelesen und fehlende Angaben ergänzt. Außerdem werden die Aufnahmedaten korrigiert, die von einer älteren Version in der falschen Zeitzone eingelesen wurden. Abgesehen davon wird nichts an den bereits gespeicherten Daten geändert.';
 
   @override
   String reanalyzeDone(int examined, int filled) {
@@ -1476,6 +1476,17 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String reanalyzeRunning(int examined, int filled) {
     return 'Wird im Hintergrund noch gelesen: Bisher wurden $examined Fotos überprüft, $filled davon haben eine Kamera oder eine Position erhalten.';
+  }
+
+  @override
+  String reanalyzeDatesCorrected(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Die Aufnahmezeiten von $count Fotos wurden korrigiert.',
+      one: 'Die Aufnahmezeit von 1 Foto wurde korrigiert.',
+    );
+    return '$_temp0';
   }
 
   @override

@@ -44,6 +44,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.text.DateFormat;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -100,8 +101,31 @@ public class ResourceCache {
 	 *        {@link de.haumacher.imageServer.faces.FaceImport} and issue #129.
 	 */
 	public ResourceCache(ImageData.Analysis analysis) throws IOException {
-		_loader = new Loader(analysis);
+		this(analysis, null);
+	}
+
+	/**
+	 * Creates a {@link ResourceCache} for the albums of one space.
+	 *
+	 * @param analysis
+	 *        See {@link #ResourceCache(ImageData.Analysis)}.
+	 * @param zone
+	 *        The zone of the space, see
+	 *        {@link de.haumacher.imageServer.auth.SpaceStore.Config#getZone()}: a photograph that says
+	 *        neither its offset nor a GPS time is dated in it (issue #183); <code>null</code> for the
+	 *        server's zone, asked at every analysis.
+	 */
+	public ResourceCache(ImageData.Analysis analysis, ZoneId zone) throws IOException {
+		_loader = new Loader(analysis, zone);
 		_cache = CacheBuilder.newBuilder().maximumSize(1000).build(_loader);
+	}
+
+	/**
+	 * The zone a photograph of this space is dated in where it says neither its offset nor a GPS
+	 * time, see issue #183.
+	 */
+	public ZoneId zone() {
+		return _loader.zone();
 	}
 
 	/**
@@ -260,12 +284,21 @@ public class ResourceCache {
 		/** What is taken over out of a photograph that is analysed here, see issue #129. */
 		private final ImageData.Analysis _analysis;
 
+		/** The zone of the space, <code>null</code> for the server's; see issue #183. */
+		private final ZoneId _zone;
+
 		/**
 		 * Creates a {@link ResourceCache.Loader}.
 		 */
-		public Loader(ImageData.Analysis analysis) throws IOException {
+		public Loader(ImageData.Analysis analysis, ZoneId zone) throws IOException {
 			_analysis = analysis == null ? ImageData.Analysis.NONE : analysis;
+			_zone = zone;
 			_watcher = FileSystems.getDefault().newWatchService();
+		}
+
+		/** See {@link ResourceCache#zone()}. */
+		ZoneId zone() {
+			return _zone == null ? ZoneId.systemDefault() : _zone;
 		}
 
 		@Override
@@ -323,7 +356,7 @@ public class ResourceCache {
 			if (resource instanceof AlbumInfo || images.length > 0) {
 				AlbumInfo album = resource == null ? createGenericAlbumInfo(path) : (AlbumInfo) resource;
 
-				loadAlbum(album, images, _analysis);
+				loadAlbum(album, images, _analysis, zone());
 
 				// Derived on every read and never stored, see AlbumDate#clearDerived(FolderResource).
 				album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
@@ -627,7 +660,7 @@ public class ResourceCache {
 			return Character.toUpperCase(expanded.charAt(0)) + expanded.substring(1);
 		}
 
-		private static AlbumInfo loadAlbum(AlbumInfo album, File[] files, ImageData.Analysis analysis) {
+		private static AlbumInfo loadAlbum(AlbumInfo album, File[] files, ImageData.Analysis analysis, ZoneId zone) {
 			// Update early to be able to match new images against existing image.
 			UpdateTransient.updateTransient(album);
 
@@ -645,7 +678,7 @@ public class ResourceCache {
 				try {
 					// Only a file the sidecar does not list gets here, which is what makes the
 					// face import of issue #129 run exactly once per photograph.
-					image = ImageData.analyze(album, file, analysis);
+					image = ImageData.analyze(album, file, analysis, zone);
 				} catch (IOException | ImageProcessingException | MetadataException ex) {
 					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
 					continue;

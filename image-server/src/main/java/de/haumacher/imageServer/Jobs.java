@@ -146,10 +146,14 @@ public final class Jobs {
 					"Whether visitors who are not signed in see the public photos of the space "
 						+ "('public') or nothing ('none', the default)"),
 				new Option("--faces", null, null, List.of(SpaceStore.FACES_ON, SpaceStore.FACES_OFF),
-					"Whether the server looks for faces in the photos of the space; 'off' is the default")),
+					"Whether the server looks for faces in the photos of the space; 'off' is the default"),
+				new Option("--time-zone", null, "ZONE", List.of(),
+					"The time zone the photos of the space were taken in where a photo does not say its own, "
+						+ "an IANA id such as Europe/Berlin (the server's zone otherwise)")),
 			ns -> Main.createSpace(Main.basePath(ns), ns.getString("create_space"), ns.getString("space_name"),
 				orDefault(ns.getString("anonymous"), SpaceStore.ANONYMOUS_NONE),
-				orDefault(ns.getString("faces"), SpaceStore.FACES_OFF), Main.spaceMode(ns))),
+				orDefault(ns.getString("faces"), SpaceStore.FACES_OFF), ns.getString("time_zone"),
+				Main.spaceMode(ns))),
 		new Job("move-into-space", "FOLDER",
 			"Move the library into a space of its own, so that further spaces fit beside it.",
 			"Move the albums at the base folder, and everything the library knows - its users with "

@@ -5,6 +5,7 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.Rights;
+import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImageGroup;
@@ -18,6 +19,7 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -309,7 +311,123 @@ public class TestReanalyze extends ShareTestCase {
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, get(zoo, "reanalyze", link).status());
 	}
 
+	// --- The recording time the reading before issue #183 stored. ---
+
+	/** A photograph's wall clock, without an offset. */
+	private static final String WALL = "2020:06:15 12:00:00";
+
+	/** What the reading before issue #183 made of {@link #WALL}: the wall clock as UTC. */
+	private static final long OLD_READING = Instant.parse("2020-06-15T12:00:00Z").toEpochMilli();
+
+	/** What {@link #WALL} is in a space of <code>Europe/Berlin</code>. */
+	private static final long BERLIN_READING = Instant.parse("2020-06-15T10:00:00Z").toEpochMilli();
+
+	/** Details a part carries already, so that only its date is in question. */
+	private static final String COMPLETE = "\"camera\":\"Cam\",\"location\":{\"latitude\":1.5,\"longitude\":2.5}";
+
+	public void testADateTheOldReadingStoredIsCorrected() throws Exception {
+		berlin();
+		album(TRIP, part("summer.jpg", "\"date\":" + OLD_READING + "," + COMPLETE + ",\"rating\":1"));
+		Exif.writeDates(file(TRIP, "summer.jpg"), new Exif.Dates().original(WALL));
+
+		ReanalyzeResult result = reanalyze("/" + TRIP + "/", SharingFixture.ALICE);
+
+		assertEquals(1, result.getExamined());
+		assertEquals("Nothing was missing.", 0, result.getFilled());
+		assertEquals(1, result.getDatesCorrected());
+		assertEquals(1, result.getAlbums());
+		ImagePart image = image(stored(TRIP), "summer.jpg");
+		assertEquals(BERLIN_READING, image.getDate());
+		assertEquals("Everything else stays.", 1, image.getRating());
+		assertEquals("Cam", image.getCamera());
+	}
+
+	public void testASecondRunCorrectsNothing() throws Exception {
+		berlin();
+		album(TRIP, part("summer.jpg", "\"date\":" + OLD_READING + "," + COMPLETE));
+		Exif.writeDates(file(TRIP, "summer.jpg"), new Exif.Dates().original(WALL));
+		assertEquals(1, reanalyze("/" + TRIP + "/", SharingFixture.ALICE).getDatesCorrected());
+		Path sidecar = _base.resolve(TRIP).resolve("index.json");
+		byte[] before = Files.readAllBytes(sidecar);
+
+		restartServer();
+		ReanalyzeResult again = reanalyze("/" + TRIP + "/", SharingFixture.ALICE);
+
+		assertEquals(0, again.getDatesCorrected());
+		assertEquals(0, again.getAlbums());
+		assertTrue("The sidecar is not rewritten.", Arrays.equals(before, Files.readAllBytes(sidecar)));
+		assertEquals(BERLIN_READING, image(stored(TRIP), "summer.jpg").getDate());
+	}
+
+	public void testADateCorrectedByHandStays() throws Exception {
+		berlin();
+		long byHand = Instant.parse("2020-06-15T11:30:00Z").toEpochMilli();
+		album(TRIP, part("summer.jpg", "\"date\":" + byHand + "," + COMPLETE));
+		Exif.writeDates(file(TRIP, "summer.jpg"), new Exif.Dates().original(WALL));
+		Path sidecar = _base.resolve(TRIP).resolve("index.json");
+		byte[] before = Files.readAllBytes(sidecar);
+
+		ReanalyzeResult result = reanalyze("/" + TRIP + "/", SharingFixture.ALICE);
+
+		assertEquals(0, result.getDatesCorrected());
+		assertEquals(0, result.getAlbums());
+		assertTrue(Arrays.equals(before, Files.readAllBytes(sidecar)));
+		assertEquals(byHand, image(stored(TRIP), "summer.jpg").getDate());
+	}
+
+	public void testAPhotoWithAnOffsetStays() throws Exception {
+		berlin();
+		// Even a stored date that equals the wall clock read as UTC: the file says its offset, and
+		// the old reading applied it, so this date did not come from there.
+		album(TRIP, part("offset.jpg", "\"date\":" + OLD_READING + "," + COMPLETE));
+		Exif.writeDates(file(TRIP, "offset.jpg"), new Exif.Dates().original(WALL).offset("+05:00"));
+
+		ReanalyzeResult result = reanalyze("/" + TRIP + "/", SharingFixture.ALICE);
+
+		assertEquals(0, result.getDatesCorrected());
+		assertEquals(OLD_READING, image(stored(TRIP), "offset.jpg").getDate());
+	}
+
+	public void testTheStoredOrderStaysWhenADateMovesPastAnother() throws Exception {
+		berlin();
+		long eleven = Instant.parse("2020-06-15T11:00:00Z").toEpochMilli();
+		album(TRIP, part("later.jpg", "\"date\":" + eleven + "," + COMPLETE) + ","
+			+ part("summer.jpg", "\"date\":" + OLD_READING + "," + COMPLETE));
+		Exif.writeDates(file(TRIP, "later.jpg"), new Exif.Dates().original("2020:06:15 13:00:00").offset("+02:00"));
+		Exif.writeDates(file(TRIP, "summer.jpg"), new Exif.Dates().original(WALL));
+
+		ReanalyzeResult result = reanalyze("/" + TRIP + "/", SharingFixture.ALICE);
+
+		assertEquals(1, result.getDatesCorrected());
+		AlbumInfo album = stored(TRIP);
+		assertEquals(BERLIN_READING, image(album, "summer.jpg").getDate());
+		assertEquals("Re-sorting is the reader's \"Sort by date\".", Arrays.asList("later.jpg", "summer.jpg"),
+			names(album));
+	}
+
+	public void testReadWriteReadKeepsTheCorrectedDate() throws Exception {
+		berlin();
+		album(TRIP, part("summer.jpg", "\"date\":" + OLD_READING + "," + COMPLETE));
+		Exif.writeDates(file(TRIP, "summer.jpg"), new Exif.Dates().original(WALL));
+		reanalyze("/" + TRIP + "/", SharingFixture.ALICE);
+
+		AlbumInfo album = album(get("/" + TRIP + "/", "json", SharingFixture.ALICE));
+		FakeResponse put = put("/" + TRIP + "/", json(album), SharingFixture.ALICE);
+		assertEquals(body(put), HttpServletResponse.SC_OK, put.status());
+
+		restartServer();
+		AlbumInfo again = album(get("/" + TRIP + "/", "json", SharingFixture.ALICE));
+		assertEquals(BERLIN_READING, image(again, "summer.jpg").getDate());
+		assertEquals(json(album), json(again));
+	}
+
 	// --- Helpers. ---
+
+	/** Makes the base folder a space of <code>Europe/Berlin</code>, see issue #183. */
+	private void berlin() throws Exception {
+		SpaceStore.create(_base, "", SpaceStore.ANONYMOUS_NONE, SpaceStore.FACES_OFF, "Europe/Berlin");
+		restartServer();
+	}
 
 	private ReanalyzeResult reanalyze(String pathInfo, String token) throws Exception {
 		FakeResponse response = reanalyzeResponse(pathInfo, token);

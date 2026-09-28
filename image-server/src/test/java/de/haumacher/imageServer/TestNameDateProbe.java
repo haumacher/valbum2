@@ -89,7 +89,7 @@ public class TestNameDateProbe extends TestCase {
 
 		ImagePart part = analyze(photo);
 		assertEquals("The file's own recording time wins over its name.",
-			TestVideoDate.exifMillis("2005:08:24 10:00:00"), part.getDate());
+			TestVideoDate.photoMillis("2005:08:24 10:00:00"), part.getDate());
 	}
 
 	/**

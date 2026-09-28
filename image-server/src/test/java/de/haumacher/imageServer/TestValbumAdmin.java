@@ -130,6 +130,15 @@ public class TestValbumAdmin extends TestCase {
 		assertTrue(_out, _out.startsWith("Usage: valbum-admin move-into-space FOLDER [--name NAME] [--no-restart]"));
 	}
 
+	/** The time zone of a new space, see issue #183. */
+	public void testCreateSpaceTakesTheTimeZone() throws Exception {
+		if (noShell()) {
+			return;
+		}
+		assertEquals(_err, 0, run("create-space", "family", "--time-zone", "Europe/Berlin"));
+		assertTrue(job(), job().endsWith("|--create-space|family|--time-zone|Europe/Berlin"));
+	}
+
 	public void testTheServersOwnFlagIsAcceptedAsWell() throws Exception {
 		if (noShell()) {
 			return;

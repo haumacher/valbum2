@@ -16,6 +16,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.DateTimeException;
+import java.time.ZoneId;
+import java.util.logging.Logger;
 
 /**
  * What a folder says about itself as a space, read from <code>.valbum/space.json</code> (issue #82).
@@ -33,12 +36,13 @@ import java.nio.file.StandardCopyOption;
  *
  * <pre>
  * {"version":1,"name":"Alice","anonymous":"public","mapUrl":"https://www.google.com/maps?q={lat},{lon}",
- *  "faces":"on"}
+ *  "faces":"on","timeZone":"Europe/Berlin"}
  * </pre>
  *
  * <p>
  * Everything is optional: a file holding nothing but <code>{}</code> is a space with the folder's
- * own name, no anonymous access, the default map (issue #112) and no face index (issue #124). An
+ * own name, no anonymous access, the default map (issue #112), no face index (issue #124) and the
+ * server's own time zone for the photographs that do not say theirs (issue #183). An
  * unknown <code>anonymous</code> value is read as {@link #ANONYMOUS_NONE}, the closed one, and an
  * unknown <code>faces</code> value as {@link #FACES_OFF} — a space is never opened and never made
  * to process biometrics by a typo.
@@ -95,6 +99,34 @@ public class SpaceStore {
 
 	private static final String FACES__PROP = "faces";
 
+	private static final String TIME_ZONE__PROP = "timeZone";
+
+	private static final Logger LOG = Logger.getLogger(SpaceStore.class.getName());
+
+	/**
+	 * The zone the given <code>timeZone</code> value names, see issue #183.
+	 *
+	 * @param id
+	 *        An IANA zone id such as <code>Europe/Berlin</code> (anything {@link ZoneId#of(String)}
+	 *        reads, so a fixed offset such as <code>+01:00</code> too).
+	 * @return <code>null</code> for an empty or unknown value.
+	 */
+	public static ZoneId zoneOf(String id) {
+		if (id == null || id.trim().isEmpty()) {
+			return null;
+		}
+		try {
+			return ZoneId.of(id.trim());
+		} catch (DateTimeException ex) {
+			return null;
+		}
+	}
+
+	/** The refusal of a <code>timeZone</code> value {@link #zoneOf(String)} does not know. */
+	public static String unknownTimeZone(String id) {
+		return "'" + id + "' is no time zone: give an IANA zone id such as 'Europe/Berlin' or 'UTC'.";
+	}
+
 	/** What a space says about itself. */
 	public static final class Config {
 
@@ -105,6 +137,10 @@ public class SpaceStore {
 		private final String _mapUrl;
 
 		private final String _faces;
+
+		private final String _timeZone;
+
+		private final ZoneId _zone;
 
 		/** Creates a {@link Config} with the default map, see {@link SpaceStore#DEFAULT_MAP_URL}. */
 		public Config(String name, String anonymous) {
@@ -128,10 +164,49 @@ public class SpaceStore {
 		 *        {@link SpaceStore#FACES_ON} or {@link SpaceStore#FACES_OFF}; anything else is off.
 		 */
 		public Config(String name, String anonymous, String mapUrl, String faces) {
+			this(name, anonymous, mapUrl, faces, "");
+		}
+
+		/**
+		 * Creates a {@link Config}.
+		 *
+		 * @param timeZone
+		 *        The zone a photograph that does not say its own is dated in, see issue #183; the
+		 *        empty string (or an unknown id) for the server's own zone.
+		 */
+		public Config(String name, String anonymous, String mapUrl, String faces, String timeZone) {
 			_name = name;
 			_anonymous = anonymous;
 			_mapUrl = mapUrl == null || mapUrl.trim().isEmpty() ? DEFAULT_MAP_URL : mapUrl.trim();
 			_faces = FACES_ON.equals(faces) ? FACES_ON : FACES_OFF;
+			_timeZone = timeZone == null ? "" : timeZone.trim();
+			ZoneId zone = zoneOf(_timeZone);
+			if (zone == null && !_timeZone.isEmpty()) {
+				LOG.warning("The space '" + name + "' names the time zone '" + _timeZone
+					+ "', which this server does not know; its photographs are dated in the server's zone "
+					+ ZoneId.systemDefault() + ".");
+			}
+			_zone = zone;
+		}
+
+		/**
+		 * The <code>timeZone</code> the file says, as written; empty where it says none (issue #183).
+		 */
+		public String getTimeZone() {
+			return _timeZone;
+		}
+
+		/**
+		 * The zone the wall clock of a photograph is read in where the file carries neither an
+		 * offset nor a GPS time, and a date in a file name is read in (issue #183).
+		 *
+		 * <p>
+		 * The space's {@link #getTimeZone() timeZone}, else &mdash; missing or unknown &mdash; the
+		 * server's own zone, asked at every call so that a test may set it.
+		 * </p>
+		 */
+		public ZoneId getZone() {
+			return _zone == null ? ZoneId.systemDefault() : _zone;
 		}
 
 		/** {@link SpaceStore#FACES_OFF} or {@link SpaceStore#FACES_ON}, see issue #124. */
@@ -181,7 +256,7 @@ public class SpaceStore {
 		@Override
 		public String toString() {
 			return "Space[" + _name + ", anonymous=" + _anonymous + ", map=" + _mapUrl + ", faces="
-				+ _faces + "]";
+				+ _faces + ", timeZone=" + _timeZone + "]";
 		}
 	}
 
@@ -213,6 +288,7 @@ public class SpaceStore {
 		String anonymous = "";
 		String mapUrl = "";
 		String faces = "";
+		String timeZone = "";
 		try (Reader reader = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8);
 				JsonReader in = new JsonReader(new ReaderAdapter(reader))) {
 			in.beginObject();
@@ -231,6 +307,9 @@ public class SpaceStore {
 					case FACES__PROP:
 						faces = in.nextString();
 						break;
+					case TIME_ZONE__PROP:
+						timeZone = in.nextString();
+						break;
 					default:
 						in.skipValue();
 						break;
@@ -241,7 +320,7 @@ public class SpaceStore {
 			throw new IOException("Cannot read '" + file + "': " + ex.getMessage(), ex);
 		}
 		return new Config(name.trim().isEmpty() ? folderName : name.trim(),
-			ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE, mapUrl, faces.trim());
+			ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE, mapUrl, faces.trim(), timeZone);
 	}
 
 	/**
@@ -254,7 +333,8 @@ public class SpaceStore {
 	 * </p>
 	 */
 	public static void store(Path spaceRoot, Config config) throws IOException {
-		write(spaceRoot, config.getName(), config.getAnonymous(), config.getMapUrl(), config.getFaces(), true);
+		write(spaceRoot, config.getName(), config.getAnonymous(), config.getMapUrl(), config.getFaces(),
+			config.getTimeZone().isEmpty() ? null : config.getTimeZone(), true);
 	}
 
 	/**
@@ -281,6 +361,25 @@ public class SpaceStore {
 	 *         reads.
 	 */
 	public static void create(Path spaceRoot, String name, String anonymous, String faces) throws IOException {
+		create(spaceRoot, name, anonymous, faces, null);
+	}
+
+	/**
+	 * Makes the given folder a space, see {@link #create(Path, String, String, String)}, naming the
+	 * zone its photographs are dated in where they do not say theirs (issue #183).
+	 *
+	 * @param timeZone
+	 *        An id {@link #zoneOf(String)} knows; <code>null</code> or empty to leave it out, so that
+	 *        the space follows the server's zone.
+	 * @throws IllegalArgumentException
+	 *         If <code>timeZone</code> names no zone; nothing is written then.
+	 */
+	public static void create(Path spaceRoot, String name, String anonymous, String faces, String timeZone)
+			throws IOException {
+		String zone = timeZone == null ? "" : timeZone.trim();
+		if (!zone.isEmpty() && zoneOf(zone) == null) {
+			throw new IllegalArgumentException(unknownTimeZone(timeZone));
+		}
 		if (!ANONYMOUS_NONE.equals(anonymous) && !ANONYMOUS_PUBLIC.equals(anonymous)) {
 			throw new IllegalArgumentException("Anonymous access is '" + ANONYMOUS_NONE + "' or '"
 				+ ANONYMOUS_PUBLIC + "', not '" + anonymous + "'.");
@@ -290,7 +389,8 @@ public class SpaceStore {
 				+ "', not '" + faces + "'.");
 		}
 		String trimmed = name == null ? "" : name.trim();
-		write(spaceRoot, trimmed.isEmpty() ? null : trimmed, anonymous, null, faces, false);
+		write(spaceRoot, trimmed.isEmpty() ? null : trimmed, anonymous, null, faces, zone.isEmpty() ? null : zone,
+			false);
 	}
 
 	/**
@@ -299,7 +399,8 @@ public class SpaceStore {
 	 *
 	 * <p>
 	 * What the file said is kept as it was written - a name only where it gave one, a map template
-	 * only where it named one, the face index - and only the given values replace it.
+	 * only where it named one, the face index, the time zone of issue #183 only where it named one -
+	 * and only the given values replace it.
 	 * </p>
 	 *
 	 * @param name
@@ -314,6 +415,7 @@ public class SpaceStore {
 		String storedName = "";
 		String mapUrl = "";
 		String faces = "";
+		String timeZone = "";
 		if (Files.isRegularFile(file)) {
 			try (Reader reader = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8);
 					JsonReader in = new JsonReader(new ReaderAdapter(reader))) {
@@ -329,6 +431,9 @@ public class SpaceStore {
 						case FACES__PROP:
 							faces = in.nextString();
 							break;
+						case TIME_ZONE__PROP:
+							timeZone = in.nextString();
+							break;
 						default:
 							in.skipValue();
 							break;
@@ -343,7 +448,8 @@ public class SpaceStore {
 		String written = given.isEmpty() ? storedName.trim() : given;
 		write(spaceRoot, written.isEmpty() ? null : written,
 			ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE,
-			mapUrl.trim().isEmpty() ? null : mapUrl.trim(), FACES_ON.equals(faces.trim()) ? FACES_ON : FACES_OFF, true);
+			mapUrl.trim().isEmpty() ? null : mapUrl.trim(), FACES_ON.equals(faces.trim()) ? FACES_ON : FACES_OFF,
+			timeZone.trim().isEmpty() ? null : timeZone.trim(), true);
 	}
 
 	/**
@@ -353,11 +459,13 @@ public class SpaceStore {
 	 *        <code>null</code> to leave the name out.
 	 * @param mapUrl
 	 *        <code>null</code> to leave the map template out.
+	 * @param timeZone
+	 *        <code>null</code> to leave the time zone out.
 	 * @param replace
 	 *        Whether an existing file is replaced; otherwise it is left as it is and the call fails.
 	 */
 	private static void write(Path spaceRoot, String name, String anonymous, String mapUrl, String faces,
-			boolean replace) throws IOException {
+			String timeZone, boolean replace) throws IOException {
 		Path file = file(spaceRoot);
 		Files.createDirectories(file.getParent());
 		Path tmp = file.resolveSibling(FILE_NAME + ".tmp");
@@ -379,6 +487,10 @@ public class SpaceStore {
 				}
 				out.name(FACES__PROP);
 				out.value(faces);
+				if (timeZone != null) {
+					out.name(TIME_ZONE__PROP);
+					out.value(timeZone);
+				}
 				out.endObject();
 			}
 			if (replace) {

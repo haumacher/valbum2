@@ -211,6 +211,74 @@ void main() {
     });
   });
 
+  testWidgets('corrected recording times are named (issue #183)',
+      (tester) async {
+    await withFakeImageHttp(() async {
+      await pumpAlbum(
+        tester,
+        server(
+          rights: editor,
+          requests: [],
+          answer: '{"examined": 12, "filled": 0, "albums": 1, '
+              '"datesCorrected": 3}',
+        ),
+      );
+
+      await reanalyze(tester);
+
+      expect(
+          find.text("${testL10n.reanalyzeDone(12, 0)} "
+              "${testL10n.reanalyzeDatesCorrected(3)}"),
+          findsOneWidget);
+      expect(
+          find.text("Checked 12 photos; 0 of them gained a camera or a "
+              "position. Corrected the recording times of 3 photos."),
+          findsOneWidget);
+    });
+  });
+
+  testWidgets('without a corrected time nothing is said about times',
+      (tester) async {
+    await withFakeImageHttp(() async {
+      await pumpAlbum(
+        tester,
+        server(
+          rights: editor,
+          requests: [],
+          answer: '{"examined": 12, "filled": 5, "albums": 1, '
+              '"datesCorrected": 0}',
+        ),
+      );
+
+      await reanalyze(tester);
+
+      expect(find.text(testL10n.reanalyzeDone(12, 5)), findsOneWidget);
+      expect(find.textContaining("recording time"), findsNothing);
+    });
+  });
+
+  testWidgets('one corrected time is named in the singular', (tester) async {
+    await withFakeImageHttp(() async {
+      await pumpAlbum(
+        tester,
+        server(
+          rights: editor,
+          requests: [],
+          status: 202,
+          answer: '{"examined": 40, "filled": 2, "albums": 1, '
+              '"running": true, "datesCorrected": 1}',
+        ),
+      );
+
+      await reanalyze(tester);
+
+      expect(
+          find.text("${testL10n.reanalyzeRunning(40, 2)} "
+              "Corrected the recording time of 1 photo."),
+          findsOneWidget);
+    });
+  });
+
   testWidgets('a run that goes on in the background says so', (tester) async {
     await withFakeImageHttp(() async {
       await pumpAlbum(

@@ -2034,9 +2034,14 @@ class AlbumContentState extends State<AlbumContent>
       return;
     }
 
-    showMessage(answer.running
+    var counts = answer.running
         ? _l10n.reanalyzeRunning(answer.examined, answer.filled)
-        : _l10n.reanalyzeDone(answer.examined, answer.filled));
+        : _l10n.reanalyzeDone(answer.examined, answer.filled);
+    // The recording times read in the wrong zone before issue #183 are named
+    // only where some were corrected.
+    showMessage(answer.datesCorrected > 0
+        ? "$counts ${_l10n.reanalyzeDatesCorrected(answer.datesCorrected)}"
+        : counts);
     if (answer.albums > 0) {
       widget.albumState.navigator.delegate.forgetTree(widget.albumState.path);
       widget.albumState.reload();
