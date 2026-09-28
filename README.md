@@ -19,7 +19,7 @@ photo cloud for a one-off investment.
   privacy levels, rotation, grouping near-duplicate shots, section headings — is stored in an `index.json` sidecar
   file next to your photos. No file of yours is ever modified or deleted; the only thing the server
   does to a photo is rename it when you move it to another album, when a placement rule files an album
-  into its year folder, or when you migrate the library into your space; and a photo that a move finds already present at its target is set aside in
+  into its year folder, or when you turn a library into a space; and a photo that a move finds already present at its target is set aside in
   `.valbum/duplicates/`, never removed.
 - **One server, one app.** The server (`image-server/`) is a JSON API plus static hosting for the web
   build of the app; the app (`valbum_ui/`) is written in Flutter and runs on the web, Android, iOS,
@@ -72,9 +72,10 @@ Options:
 | `--auth off\|writes\|all` | What requires a paired device: nothing, changes and uploads, or every request | `writes` |
 | `--admin-code <code>` | The sign-in code the server prints for the administrator of a space nobody signed into yet, instead of a random one; eight characters of `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, a dash between the groups allowed | a fresh one at every start |
 | `--spaces auto\|single\|multi` | Whether this server hosts one space or several (issue #82); `auto` decides from the folder tree: multi as soon as one folder below the base folder carries `.valbum/space.json` | `auto` |
-| `--migrate-to-spaces` | One-time: turn a library migrated per user into a multi-space server, every user folder a space with that user as its admin, and report what could not be carried; the server does not start afterwards | none |
+| `--create-space <folder>` | One-time: make the folder `<folder>` below the base folder a space (see *Users and spaces*), with `--space-name <name>`, `--anonymous none\|public` and `--faces on\|off`; refused on a base folder that is a single library with albums of its own; the server does not start afterwards | none |
+| `--migrate-to-spaces` | One-time: turn a library migrated per user (`--migrate-to-user`) into a multi-space server, every user folder a space with that user as its admin, and report what could not be carried; the server does not start afterwards | none |
 | `--preview-threads <n>` | How many thumbnails are generated at the same time; serving an already cached thumbnail is never throttled (the system property `valbum.previewThreads` does the same) | number of processors |
-| `--migrate-to-user <name>` | One-time: move the albums at the base folder into a folder `<name>` and make it the library owner's space (see below); the server does not start afterwards | none |
+| `--migrate-to-user <name>` | Legacy, one-time: move the albums at the base folder into a folder `<name>` named after the administrator — today only the first step before `--migrate-to-spaces` (see *Users and spaces*); the server does not start afterwards | none |
 | `--replace-originals <dir>` | Put the originals you downloaded into `<dir>` in the place of the copies a phone uploaded with the position stripped (issue #167): a file whose name the library holds exactly once and whose picture (JPEG scan data) or video (media data) is the same replaces it, the uploaded copy is set aside in `<space>/.valbum/replaced/<yyyyMMdd-HHmmss>/`, never deleted, and the missing position and camera are filled in — every other file is reported and skipped. Run it with the server stopped; the server does not start afterwards | none |
 | `--dry-run` | With `--replace-originals`: print what would be replaced and skipped, and change nothing | off |
 
@@ -144,27 +145,83 @@ server keeps only its hash and says no more than that there is one and since whe
 
 ### Users and spaces
 
-A paired device belongs to a user. A space has its administrator (the **library owner**) from the
-moment it exists — nameless and without devices until the seat code is redeemed, which is what
-gives them their name. Users, their role and their devices are kept in `<basepath>/.valbum/users.json`,
-which holds a hash of every issued token, never the token itself; a `devices.json` written by an
-older server is taken over on first start and kept as `devices.json.migrated`. Besides the
-`index.json` sidecars and the per-folder `.hashes.json` of the upload, `.valbum/` is the only place
-the server writes.
+A **space** is a library of its own: its albums, its users, its share links and its sign-in, and
+nothing crosses from one space into another. A server hosts **one space** — the base folder, the
+default — or **several**, each a folder directly below the base folder.
 
-Every user owns one top-level folder under the base folder, their *space*, and sees the library
-rooted there. The owner's space is the base folder itself until you migrate the library once,
-explicitly, with the server stopped:
+**One space.** A fresh server is a single space: the albums are the folders of the base folder,
+the app is at `<context>/` and the albums at `<context>/data/`. The users of the space and a hash of
+every device token (never the token itself) are kept in `<basepath>/.valbum/users.json`; besides
+the `index.json` sidecars and the per-folder `.hashes.json`, `.valbum/` is the only place the
+server writes.
+
+**Several spaces.** A folder becomes a space when it carries `.valbum/space.json`. Create it with
+the server stopped:
 
 ```
-java -jar image-server/target/image-server-jar-with-dependencies.jar --basepath /path/to/photos --migrate-to-user <name>
+java -jar image-server/target/image-server-jar-with-dependencies.jar --basepath /path/to/photos \
+    --create-space family --space-name "The Family" --anonymous none --faces off
 ```
 
-This moves every entry of the base folder except `.valbum` and `.upload` into `/path/to/photos/<name>/`
-by a plain rename (sidecars and preview caches ride along), records the folder as the owner's space
-and exits. It is refused, with nothing moved, if the owner already has a space, the target folder
-is not empty, or the name is not a valid folder name. Once the library is migrated, anonymous
-callers are refused in every mode but `off`, because the base folder then holds only user spaces.
+This writes `/path/to/photos/family/.valbum/space.json` — creating the folder if it is missing —
+and nothing else; the server does not start. `--space-name` is the name shown for the space (the
+folder name otherwise), `--anonymous public` lets visitors who are not signed in see its public
+photos (`none`, the default, shows them nothing), and `--faces on` switches on the face index
+(see *Faces* below). An existing folder is fine, empty or holding albums: it becomes the space with
+everything in it, nothing moved. Refused, with nothing written, are a folder that is a space
+already, a name no album folder may have (a leading dot, a slash, or a name like `@eaDir` or
+`#recycle` that a NAS writes), and the names the server answers itself (`data`, `s`, `i`, `assets`,
+`canvaskit`, `icons`).
+
+As soon as one folder is a space, the server runs in multi-space mode (`--spaces auto`, the
+default, follows the folders; `--spaces single|multi` says so outright). Every space is then
+reached at `<context>/<space>/` — the app — and `<context>/<space>/data/`, and its share links and
+invitations live below it (`<context>/<space>/s/<token>/`, `<context>/<space>/i/<token>/`). The
+albums directly in the base folder are **not** served in that mode, which is why `--create-space`
+refuses a base folder that is a single library with albums, photos or users of its own: turn that
+library into a space first (below).
+
+**Users.** Every user belongs to exactly one space and holds **one permission for the whole
+space**: a role (`admin`, `edit`, `contribute` or `view`), a clearance (how far up the privacy
+levels they may look) and the share flag (whether they may hand out share links), see *Who may do
+what* below. A space has its administrator from the moment it exists — nameless and without a
+device until they sign in, which is when they choose their name. Everybody else **joins by
+invitation**: the administrator invites, the invitation carries the permission the newcomer gets,
+and whoever opens the link picks their name and signs in.
+
+**The seat code.** At every start the server prints, for each space whose administrator has no
+signed-in device yet, one sign-in code:
+
+```
+Space 'family': sign the administrator in with the code ABCD-EFGH (valid 10 minutes, once; restart the server for a new one).
+```
+
+(on a single-space server the line begins with *This library*). So after `--create-space`, restart
+the server and sign the new space's administrator in with the printed code at
+`<context>/<space>/`. `--admin-code <code>` fixes that code instead of a fresh one at every start.
+Once the administrator has a device, nothing is printed for that space any more.
+
+**Turning one library into several spaces.** A library served as one space becomes a space folder
+in two explicit, rename-only steps, with the server stopped:
+
+```
+java -jar ... --basepath /path/to/photos --migrate-to-user <admin name>
+java -jar ... --basepath /path/to/photos --migrate-to-spaces
+```
+
+The first moves every entry of the base folder except `.valbum` and `.upload` into
+`/path/to/photos/<admin name>/` by a plain rename (sidecars and preview caches ride along) and
+records that folder as the administrator's; where the administrator already has a name, it must be that
+one. The second makes every such folder a space with that user as its administrator and their
+devices, and moves what the space model cannot carry — the old user store with the other members,
+the share links, the open invitations — aside into `.valbum/retired/<timestamp>/`, naming each in a
+printed report: invite the other members into the new space again. Nothing is deleted. After that,
+`--create-space` adds further spaces beside it.
+
+`--migrate-to-user` is a leftover of an older per-user model: on its own it only moves the albums
+one folder down, and it has no use today other than as the first of these two steps.
+`--migrate-to-spaces` on a library that was never migrated per user leaves it the single space it
+is and says so.
 
 ### Faces (opt-in, off by default)
 
@@ -176,7 +233,8 @@ you switch it on**, per space, by hand:
 { "version": 1, "faces": "on" }
 ```
 
-in `<space>/.valbum/space.json` (any other value, and a missing one, means off). Processing the
+in `<space>/.valbum/space.json` (any other value, and a missing one, means off) — for a new space,
+`--create-space <folder> --faces on` writes it. Processing the
 biometrics of one's own family is the administrator's decision, not a default somebody is surprised
 by.
 
@@ -369,6 +427,7 @@ Everything is set in `/etc/default/valbum`:
 | `VALBUM_PORT` | HTTP port | `8080` |
 | `VALBUM_CONTEXTPATH` | First path segment of the URL | none |
 | `VALBUM_AUTH` | `off`, `writes` or `all` | `writes` |
+| `VALBUM_SPACES` | `auto` (one space, or several as soon as a folder is a space), `single` or `multi`, see *Users and spaces* | `auto` |
 | `VALBUM_OPTS` | Further server options | none |
 | `JAVA_OPTS` / `JAVA_HOME` | JVM options and the JVM to use | system default |
 
@@ -392,16 +451,16 @@ journalctl -u valbum | grep "with the code"
 
 Then open `http://<your-pi>:8080/` in a browser — or point the app's server setting
 at that address — and sign in with that code within ten minutes; the app asks for the
-name the library owner should be known by. Missed the ten minutes? `sudo systemctl
+name the administrator should be known by. Missed the ten minutes? `sudo systemctl
 restart valbum` prints a new one. A fixed code instead of a fresh one at every start:
 `VALBUM_OPTS="--admin-code ABCD-EFGH"` in `/etc/default/valbum`.
 
-To give the owner a space of their own (see *Users and spaces* above), stop the
-service and migrate once:
+To add a space (see *Users and spaces* above), stop the service, create it, and start
+again; the journal then shows the sign-in code for the new space's administrator:
 
 ```
 sudo systemctl stop valbum
-sudo -u valbum valbum-server --migrate-to-user <name>
+sudo -u valbum valbum-server --create-space family --space-name "The Family"
 sudo systemctl start valbum
 ```
 

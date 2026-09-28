@@ -33,6 +33,17 @@ VALBUM_CONTEXTPATH=
 #   all    - anonymous requests are refused altogether
 VALBUM_AUTH=writes
 
+# Whether the server hosts one space or several. A space is a library of its
+# own, with its own albums, users and sign-in:
+#   auto   - follow the folders: several spaces as soon as one folder directly
+#            below VALBUM_BASEPATH is a space (carries .valbum/space.json, which
+#            'valbum-server --create-space <folder>' writes), one otherwise
+#   single - the library folder is the one space, whatever the folders say
+#   multi  - every space is a folder below the library folder, reached at
+#            http://<host>:<port>/<context>/<folder>/ ; the albums directly in
+#            the library folder are not served
+VALBUM_SPACES=auto
+
 # Further server arguments, appended to the ones above. The most useful one is
 # a fixed sign-in code for the administrator of a space that nobody has signed
 # into yet; without it the server makes a fresh one at every start and prints it
@@ -62,9 +73,11 @@ JAVA_OPTS=
 JAVA_HOME=
 
 # One-time jobs are run with the same wrapper, so they use the configuration
-# above. Moving the library into a space of its own owner (issue #45), for
-# instance, is:
+# above. Adding a space, for instance, is:
 #
 #   sudo systemctl stop valbum
-#   sudo -u valbum valbum-server --migrate-to-user alice
+#   sudo -u valbum valbum-server --create-space family --space-name "The Family"
 #   sudo systemctl start valbum
+#
+# and the journal then shows the sign-in code for the administrator of the new
+# space (journalctl -u valbum).

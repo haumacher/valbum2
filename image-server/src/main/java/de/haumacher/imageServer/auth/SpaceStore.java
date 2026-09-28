@@ -22,8 +22,9 @@ import java.nio.file.StandardCopyOption;
  *
  * <p>
  * The presence of this file is what makes a folder below the base folder a space, which is why the
- * file is written by hand — a space is created by whoever administers the machine, never by the
- * server, so that no request can bring a space into existence.
+ * file is written by whoever administers the machine — by hand, or with the command
+ * <code>--create-space</code> of issue #175, see {@link #create(Path, String, String, String)} — and
+ * never by the running server, so that no request can bring a space into existence.
  * </p>
  *
  * <p>
@@ -253,24 +254,88 @@ public class SpaceStore {
 	 * </p>
 	 */
 	public static void store(Path spaceRoot, Config config) throws IOException {
+		write(spaceRoot, config.getName(), config.getAnonymous(), config.getMapUrl(), config.getFaces(), true);
+	}
+
+	/**
+	 * Makes the given folder a space, see issue #175: writes a new {@value #FILE_NAME}, creating the
+	 * folder and its {@value UserStore#DIRECTORY_NAME} where they are missing.
+	 *
+	 * <p>
+	 * What is written is exactly what {@link #load(Path, String)} reads back: the name only where
+	 * one is given (else the folder's own name is the space's, and follows a renamed folder), the
+	 * anonymous access and the face index as the two words this class knows, and no map template,
+	 * so that the space shows positions on {@link #DEFAULT_MAP_URL} until somebody names another.
+	 * </p>
+	 *
+	 * @param name
+	 *        The name to show for the space; empty for the folder's own name.
+	 * @param anonymous
+	 *        {@link #ANONYMOUS_NONE} or {@link #ANONYMOUS_PUBLIC}.
+	 * @param faces
+	 *        {@link #FACES_OFF} or {@link #FACES_ON}.
+	 * @throws java.nio.file.FileAlreadyExistsException
+	 *         If the folder is a space already; its file is not touched then.
+	 * @throws IllegalArgumentException
+	 *         If <code>anonymous</code> or <code>faces</code> is not one of the words this class
+	 *         reads.
+	 */
+	public static void create(Path spaceRoot, String name, String anonymous, String faces) throws IOException {
+		if (!ANONYMOUS_NONE.equals(anonymous) && !ANONYMOUS_PUBLIC.equals(anonymous)) {
+			throw new IllegalArgumentException("Anonymous access is '" + ANONYMOUS_NONE + "' or '"
+				+ ANONYMOUS_PUBLIC + "', not '" + anonymous + "'.");
+		}
+		if (!FACES_OFF.equals(faces) && !FACES_ON.equals(faces)) {
+			throw new IllegalArgumentException("The face index is '" + FACES_ON + "' or '" + FACES_OFF
+				+ "', not '" + faces + "'.");
+		}
+		String trimmed = name == null ? "" : name.trim();
+		write(spaceRoot, trimmed.isEmpty() ? null : trimmed, anonymous, null, faces, false);
+	}
+
+	/**
+	 * Writes the file through a temporary sibling, so that a space is never half-written.
+	 *
+	 * @param name
+	 *        <code>null</code> to leave the name out.
+	 * @param mapUrl
+	 *        <code>null</code> to leave the map template out.
+	 * @param replace
+	 *        Whether an existing file is replaced; otherwise it is left as it is and the call fails.
+	 */
+	private static void write(Path spaceRoot, String name, String anonymous, String mapUrl, String faces,
+			boolean replace) throws IOException {
 		Path file = file(spaceRoot);
 		Files.createDirectories(file.getParent());
 		Path tmp = file.resolveSibling(FILE_NAME + ".tmp");
-		try (Writer writer = new OutputStreamWriter(Files.newOutputStream(tmp), StandardCharsets.UTF_8);
-				JsonWriter out = new JsonWriter(new WriterAdapter(writer))) {
-			out.beginObject();
-			out.name(VERSION__PROP);
-			out.value(VERSION);
-			out.name(NAME__PROP);
-			out.value(config.getName());
-			out.name(ANONYMOUS__PROP);
-			out.value(config.getAnonymous());
-			out.name(MAP_URL__PROP);
-			out.value(config.getMapUrl());
-			out.name(FACES__PROP);
-			out.value(config.getFaces());
-			out.endObject();
+		try {
+			try (Writer writer = new OutputStreamWriter(Files.newOutputStream(tmp), StandardCharsets.UTF_8);
+					JsonWriter out = new JsonWriter(new WriterAdapter(writer))) {
+				out.beginObject();
+				out.name(VERSION__PROP);
+				out.value(VERSION);
+				if (name != null) {
+					out.name(NAME__PROP);
+					out.value(name);
+				}
+				out.name(ANONYMOUS__PROP);
+				out.value(anonymous);
+				if (mapUrl != null) {
+					out.name(MAP_URL__PROP);
+					out.value(mapUrl);
+				}
+				out.name(FACES__PROP);
+				out.value(faces);
+				out.endObject();
+			}
+			if (replace) {
+				Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+			} else {
+				// No REPLACE_EXISTING: a space that appeared in the meantime is never overwritten.
+				Files.move(tmp, file);
+			}
+		} finally {
+			Files.deleteIfExists(tmp);
 		}
-		Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
 	}
 }

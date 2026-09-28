@@ -12,6 +12,7 @@ import de.haumacher.imageServer.auth.LibraryMigration;
 import de.haumacher.imageServer.auth.LibraryMigration.MigrationRefused;
 import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.SpaceMode;
+import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.Spaces;
 import de.haumacher.imageServer.auth.SpacesMigration;
 import de.haumacher.imageServer.auth.UserStore;
@@ -89,6 +90,20 @@ public class Main {
 				+ "server is not started afterwards");
 		parser.addArgument("--dry-run").action(net.sourceforge.argparse4j.impl.Arguments.storeTrue())
 			.help("With --replace-originals: print what would be replaced and skipped, and touch nothing");
+		parser.addArgument("--create-space").metavar("FOLDER").help(
+			"Make the folder of that name directly below the base folder a space (issue #175): write "
+				+ "its .valbum/space.json, creating the folder if it is missing; an existing folder "
+				+ "becomes the space with its albums. Refused on a base folder that is a single-space "
+				+ "library with albums of its own. The server is not started; its next start prints "
+				+ "the sign-in code for the new space's administrator");
+		parser.addArgument("--space-name").metavar("NAME").help(
+			"With --create-space: the name to show for the space (the folder name otherwise)");
+		parser.addArgument("--anonymous").choices(SpaceStore.ANONYMOUS_NONE, SpaceStore.ANONYMOUS_PUBLIC).help(
+			"With --create-space: whether visitors who are not signed in see the public photos of the "
+				+ "space ('public') or nothing ('none', the default)");
+		parser.addArgument("--faces").choices(SpaceStore.FACES_ON, SpaceStore.FACES_OFF).help(
+			"With --create-space: whether the server looks for faces in the photos of the space "
+				+ "(issue #124); 'off' is the default");
 		parser.addArgument("--preview-threads").type(type).help(
 			"How many thumbnails are generated at the same time (issue #69); the default is the "
 				+ "number of processors, and the system property 'valbum.previewThreads' does the "
@@ -159,7 +174,48 @@ public class Main {
 			return;
 		}
 
+		String createSpace = ns.getString("create_space");
+		if (createSpace != null) {
+			File basePath = ns.get("basepath");
+			System.exit(createSpace(basePath.toPath(), createSpace, ns.getString("space_name"),
+				orDefault(ns.getString("anonymous"), SpaceStore.ANONYMOUS_NONE),
+				orDefault(ns.getString("faces"), SpaceStore.FACES_OFF), SpaceMode.parse(ns.getString("spaces"))));
+			return;
+		}
+		for (String option : new String[] { "space_name", "anonymous", "faces" }) {
+			if (ns.getString(option) != null) {
+				System.err.println("--" + option.replace('_', '-') + " only applies to --create-space <folder>.");
+				System.exit(1);
+				return;
+			}
+		}
+
 		new Main(ns).start();
+	}
+
+	private static String orDefault(String value, String fallback) {
+		return value == null ? fallback : value;
+	}
+
+	/**
+	 * Creates a space on disk, see {@link SpaceCreation}.
+	 *
+	 * @return The process exit code: <code>0</code> if the space was created, <code>1</code> if it
+	 *         was refused (nothing was written then).
+	 */
+	static int createSpace(Path basePath, String folder, String name, String anonymous, String faces,
+			SpaceMode spaces) {
+		try {
+			SpaceCreation.Report report = SpaceCreation.create(basePath, folder, name, anonymous, faces, spaces);
+			System.out.println("Creating the space '" + folder + "' in '" + basePath + "':");
+			for (String line : report.getLines()) {
+				System.out.println("  " + line);
+			}
+			return 0;
+		} catch (SpaceCreation.Refused | IOException ex) {
+			System.err.println("Cannot create the space: " + ex.getMessage());
+			return 1;
+		}
 	}
 
 	/**
