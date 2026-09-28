@@ -1174,6 +1174,10 @@ class AppLocalizationsDe extends AppLocalizations {
       'Stattdessen wird die Originaldatei abgespielt.';
 
   @override
+  String get videoFetchedWithoutSignIn =>
+      'Der Browser hat das Video ohne Anmeldung abgerufen und erhielt eine Zugriffsverweigerung.';
+
+  @override
   String videoFormatRefused(String contentType) {
     return 'Dieser Browser oder dieses Gerät kann dieses Format nicht wiedergeben ($contentType).';
   }

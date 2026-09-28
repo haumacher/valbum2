@@ -434,6 +434,33 @@ class UploadProgress {
 /// outstanding, see [UploadProgress.fraction].
 const double uploadProgressCeiling = 0.99;
 
+/// An address of a video that a platform player may fetch without the
+/// device's bearer, see [VAlbumClient.signMediaUrl] and issue #185.
+@immutable
+class SignedMediaUrl {
+  /// The address to hand to the player: the one that was signed, plus
+  /// `media=<signature>`.
+  final String url;
+
+  /// When the signature stops working, `null` where the server did not say.
+  final DateTime? expires;
+
+  const SignedMediaUrl(this.url, {this.expires});
+
+  /// Whether the signature has run out at [now].
+  bool expiredAt(DateTime now) => expires != null && !now.isBefore(expires!);
+
+  @override
+  String toString() => "SignedMediaUrl(${maskUrl(url)}, $expires)";
+}
+
+/// Turns the address of a video into one the platform player may fetch
+/// without the device's bearer, see [VAlbumClient.mediaSigner] (issue #185).
+///
+/// Injected into the players rather than the whole client, like
+/// [RenditionState]'s probe: a test answers it without a transport.
+typedef MediaSigner = Future<SignedMediaUrl> Function(String url);
+
 /// What the server says about a video rendition, see
 /// [VAlbumClient.renditionState] and issues #74/#75.
 enum RenditionStatus {
@@ -773,6 +800,67 @@ class VAlbumClient {
 
   /// The URL of the three-second silent teaser of the video at [imageUrl].
   String teaserUrl(String imageUrl) => "$imageUrl?type=teaser";
+
+  /// The [MediaSigner] of this client where the platform player cannot send
+  /// the bearer, `null` where nothing needs signing (issue #185).
+  ///
+  /// On the web `video_player` hands the address to an HTML `<video>`
+  /// element, which fetches it itself and ignores the `httpHeaders` it is
+  /// given: a space that shows nothing to anonymous callers refuses every
+  /// such fetch. So there — and only where this client carries a token, a
+  /// device's or a share link's, because an anonymous caller has nothing to
+  /// sign for and fetches the plain address — every address a player is
+  /// handed is signed first, see [signMediaUrl]. Everywhere else the player
+  /// sends the header itself and nothing changes.
+  ///
+  /// [isWeb] is the platform decision, injected by a test the way
+  /// [deriveDataUrl] takes it.
+  MediaSigner? mediaSigner({bool isWeb = kIsWeb}) {
+    var value = token;
+    if (!isWeb || value == null || value.isEmpty) {
+      return null;
+    }
+    return signMediaUrl;
+  }
+
+  /// Asks the server, with this client's bearer, for a signed address of the
+  /// video file at [url] (issue #185).
+  ///
+  /// [url] is the address the player would be handed — [originalUrl],
+  /// [playbackUrl] or [teaserUrl] — and says which file it is by its
+  /// `?type=`. The server checks what the plain request would be checked for
+  /// and answers a signature for exactly that path and kind, ten minutes
+  /// long; the address handed back is [url] itself with `media=` appended, so
+  /// a proxy that rewrites the path in front of the server changes nothing.
+  /// The token never appears in it. Throws a [VAlbumException] with the
+  /// server's reason where it refuses.
+  Future<SignedMediaUrl> signMediaUrl(String url) async {
+    var uri = Uri.parse(url);
+    var type = uri.queryParameters["type"];
+    var kind = switch (type) {
+      null => "original",
+      "video" => "video",
+      "teaser" => "teaser",
+      _ => throw ArgumentError.value(url, "url", "no video file"),
+    };
+    var asked = uri.replace(
+      queryParameters: {"type": "media-url", "for": kind},
+    ).toString();
+    var response = await _http
+        .get(Uri.parse(asked), headers: authHeaders)
+        .timeout(timeout);
+    if (response.statusCode != 200) {
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingLoading("'${maskUrl(asked)}'"),
+          url: asked);
+    }
+    var answer = MediaUrl.read(JsonReader.fromString(response.body));
+    var separator = url.contains("?") ? "&" : "?";
+    return SignedMediaUrl(
+      "$url${separator}media=${Uri.encodeQueryComponent(answer.media)}",
+      expires: DateTime.tryParse(answer.expires),
+    );
+  }
 
   /// The URL of the crop of one face of the image at [imageUrl] (issue #124).
   ///

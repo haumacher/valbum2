@@ -2794,6 +2794,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
     return VideoTeaser(
       teaserUrl: state.client.teaserUrl("${state.albumUrl}${image.name}"),
       headers: state.client.authHeaders,
+      signUrl: state.client.mediaSigner(),
       probeTeaser: state.client.renditionState,
       child: tile,
     );

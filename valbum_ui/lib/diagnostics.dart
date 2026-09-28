@@ -392,10 +392,20 @@ String platformErrorFact(Object error) {
         "message ${error.message}",
       if (error.details != null) "details ${error.details}",
     ];
-    return "Platform error: ${parts.join(", ")}";
+    return maskMediaSignatures("Platform error: ${parts.join(", ")}");
   }
-  return "Platform error: $error";
+  return maskMediaSignatures("Platform error: $error");
 }
+
+/// [text] with the value of every `media=` parameter masked (issue #185).
+///
+/// A signed media address opens one video for ten minutes to whoever holds
+/// it; a platform's error may quote the address it failed on, and a log is
+/// pasted into a bug report.
+String maskMediaSignatures(String text) => text.replaceAllMapped(
+      RegExp(r"([?&]media=)([^&#\s]+)"),
+      (match) => "${match[1]}${maskToken(match[2]!)}",
+    );
 
 /// The kind of a request, without the file it names: the method and the
 /// `?type=`/`?action=` of the protocol, or what a bare address is — the
@@ -568,7 +578,8 @@ String maskToken(String token) {
       "${token.substring(token.length - 2)}";
 }
 
-/// The URL as the log writes it: every token in the path masked.
+/// The URL as the log writes it: every token in the path masked, and the
+/// signature of a media address (issue #185).
 ///
 /// A share link (`…/s/<token>/`) and an invitation (`…/i/<token>/`) carry
 /// their secret in the *path*, so a URL is never logged as it is. Everything
@@ -594,11 +605,11 @@ String maskUrl(String url) {
     }
   }
   if (!masked) {
-    return url;
+    return maskMediaSignatures(url);
   }
-  return uri
+  return maskMediaSignatures(uri
       .replace(path: segments.join("/"))
       .toString()
       // `Uri` percent-encodes the mask; the log shows the dots.
-      .replaceAll("%E2%80%A2", "•");
+      .replaceAll("%E2%80%A2", "•"));
 }

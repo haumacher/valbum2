@@ -91,6 +91,35 @@ String? videoErrorHint(AppLocalizations l10n, Object problem) {
   return null;
 }
 
+/// Whether the platform's own words name one of [statuses] as an HTTP
+/// status, see issue #185.
+///
+/// Firefox's `<video>` reports a refused fetch as `401: Unauthorized`; a
+/// three-digit number standing on its own is read as a status, a longer one
+/// (a size, a duration) is not.
+bool problemNamesStatus(Object? problem, Set<int> statuses) {
+  if (problem == null) {
+    return false;
+  }
+  var text = problem.toString();
+  var status = RegExp(r"(?<![0-9])([1-5][0-9]{2})(?![0-9])");
+  for (var match in status.allMatches(text)) {
+    if (statuses.contains(int.parse(match[1]!))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// The statuses a platform player reports for a fetch the server refused for
+/// want of a sign-in, see [VideoFailureKind.signInMissing].
+const Set<int> signInStatuses = {401, 403};
+
+/// The statuses after which a signed media address is asked for anew, once,
+/// see [VideoView.signUrl]: refused (a secret made anew, a device signed out
+/// and in again) or run out.
+const Set<int> renewalStatuses = {401, 410};
+
 /// Creates the controller playing the video at the given URL.
 ///
 /// Injected into [VideoView] so that tests can supply a controller that fails
@@ -158,6 +187,11 @@ enum VideoFailureKind {
 
   /// The server delivered the file and the platform's player refused it.
   format,
+
+  /// The server delivers the file to this app, and the platform's player —
+  /// which fetches it itself — reports `401`/`403`: it went without the
+  /// sign-in (issue #185).
+  signInMissing,
 
   /// The server delivers the file, and the player reported that it could not
   /// fetch it (a cleartext policy, a lost connection).
@@ -238,6 +272,9 @@ class VideoFailure {
     if (timedOut) {
       return VideoFailureKind.silent;
     }
+    if (problemNamesStatus(problem, signInStatuses)) {
+      return VideoFailureKind.signInMissing;
+    }
     return _isNetwork(problem)
         ? VideoFailureKind.notFetched
         : VideoFailureKind.format;
@@ -288,6 +325,7 @@ class VideoFailure {
         l10n.videoServerUnreachable(answer?.transportError ?? ""),
       VideoFailureKind.refused => refusalSentence(l10n, answer!),
       VideoFailureKind.format => l10n.videoFormatRefused(typeOf(l10n, answer!)),
+      VideoFailureKind.signInMissing => l10n.videoFetchedWithoutSignIn,
       VideoFailureKind.notFetched =>
         l10n.videoNotFetched(typeOf(l10n, answer!)),
       VideoFailureKind.silent =>
@@ -329,6 +367,8 @@ class VideoFailure {
         VideoFailureKind.refused => "the server refused the file",
         VideoFailureKind.format =>
           "the server delivered the file and the platform refused it",
+        VideoFailureKind.signInMissing =>
+          "the browser fetched the video without the sign-in and was refused",
         VideoFailureKind.notFetched =>
           "the server delivers the file and the player could not fetch it",
         VideoFailureKind.silent =>
@@ -403,6 +443,17 @@ class VideoView extends StatefulWidget {
   /// How the view waits out a `Retry-After`, see [Wait].
   final Wait wait;
 
+  /// Signs every address before the player is handed it, `null` where the
+  /// player sends [headers] itself (issue #185).
+  ///
+  /// On the web the player is an HTML `<video>` element that fetches the
+  /// address itself and cannot send the bearer, see
+  /// [VAlbumClient.mediaSigner]. The rendition and the original are signed
+  /// alike; where the player then reports `401`/`410`, or the signature has
+  /// run out while it played, the address is signed anew and played on from
+  /// where it was — once per file, see [renewalStatuses].
+  final MediaSigner? signUrl;
+
   /// Where a failure is written down (issues #73, #184).
   ///
   /// The log of the client the view was built from, see `image_view.dart`;
@@ -439,6 +490,7 @@ class VideoView extends StatefulWidget {
     this.headers = const {},
     this.autoPlay = true,
     this.createController = networkController,
+    this.signUrl,
     this.log,
     this.renditionUrl,
     this.probeRendition,
@@ -493,6 +545,18 @@ class VideoViewState extends State<VideoView> {
 
   /// The timer of [videoStartTimeout], see [_watch].
   Timer? _watchdog;
+
+  /// The signed address the current player was handed, `null` where nothing
+  /// is signed, see [VideoView.signUrl].
+  SignedMediaUrl? _signed;
+
+  /// How often the signed address of the current file was asked for anew.
+  int _renewals = 0;
+
+  /// The URLs this view handed a player, in order (issue #185): what a test
+  /// reads to see what the platform was told to fetch.
+  @visibleForTesting
+  final List<String> playedUrls = [];
 
   /// How long the current player has been waited for.
   Duration _waited = Duration.zero;
@@ -690,13 +754,49 @@ class VideoViewState extends State<VideoView> {
   /// Creates the controller for [url] and starts playing, or records the
   /// failure. [source] and [why] say which file this is and why this one,
   /// for the entry of a failure.
-  Future<void> _open(String url, VideoSource source, String why) async {
+  ///
+  /// Where there is a [VideoView.signUrl], the player is handed the signed
+  /// address instead of [url]; [renewal] says that this is the one renewal of
+  /// a signature the player was refused with, [resumeAt] where to play on.
+  Future<void> _open(
+    String url,
+    VideoSource source,
+    String why, {
+    bool renewal = false,
+    Duration? resumeAt,
+  }) async {
     _source = source;
     _why = why;
+    if (!renewal) {
+      _renewals = 0;
+    }
+    _signed = null;
+    var played = url;
+    var signer = widget.signUrl;
+    if (signer != null) {
+      var attempt = _attempt;
+      SignedMediaUrl signed;
+      try {
+        signed = await signer(url);
+      } catch (problem) {
+        if (mounted && _attempt == attempt) {
+          // Refused what the plain request would be refused: that is the
+          // server's answer for this file, and the player never ran.
+          _fail(signing: _answerOfSigning(problem));
+        }
+        return;
+      }
+      if (!mounted || _attempt != attempt) {
+        return;
+      }
+      _signed = signed;
+      played = signed.url;
+    }
+    playedUrls.add(played);
     VideoPlayerController controller;
     try {
       controller = widget.createController(
-        Uri.parse(url),
+        Uri.parse(played),
         headers: widget.headers,
       );
     } catch (problem) {
@@ -718,6 +818,9 @@ class VideoViewState extends State<VideoView> {
       }
       _watchdog?.cancel();
       await controller.setLooping(false);
+      if (resumeAt != null && resumeAt > Duration.zero) {
+        await controller.seekTo(resumeAt);
+      }
       if (widget.autoPlay) {
         await controller.play();
       }
@@ -830,23 +933,67 @@ class VideoViewState extends State<VideoView> {
         "${value.errorDescription == null ? "" : ", error ${value.errorDescription}"}";
   }
 
+  /// What refusing a signed address says, as the server's answer for the
+  /// file, see [VideoView.signUrl].
+  static SourceAnswer _answerOfSigning(Object problem) {
+    if (problem is VAlbumException && problem.status != null) {
+      return SourceAnswer(status: problem.status, message: problem.reason);
+    }
+    return SourceAnswer(
+      transportError: VAlbumClient.isTransportFailure(problem)
+          ? VAlbumClient.transportMessage(problem)
+          : "$problem",
+    );
+  }
+
+  /// Signs the address of the current file anew and plays on, where the
+  /// player was refused a signed address (issue #185) — once per file.
+  ///
+  /// Answers whether it did.
+  bool _renew(Object? problem, VideoPlayerController controller) {
+    var signed = _signed;
+    if (signed == null || _renewals > 0 || widget.signUrl == null) {
+      return false;
+    }
+    if (!problemNamesStatus(problem, renewalStatuses) &&
+        !signed.expiredAt(DateTime.now())) {
+      return false;
+    }
+    _renewals++;
+    var value = controller.value;
+    var position = value.isInitialized ? value.position : null;
+    var url = _source == VideoSource.rendition
+        ? widget.renditionUrl!
+        : widget.videoUrl;
+    _close();
+    _open(url, _source, _why, renewal: true, resumeAt: position);
+    return true;
+  }
+
   /// Records that the video did not play and says why (issue #184).
   ///
   /// Asks the server once what it answers for the original — the size of the
   /// file, and for a video played from the original the very answer the
   /// player got — then writes one entry into the log and shows the message.
   /// The rendition's answer is known already, from the probe that chose it.
+  ///
+  /// [signing] is the server's refusal of a signed address (issue #185),
+  /// which stands for the answer: the player was never handed anything.
   Future<void> _fail({
     Object? problem,
     bool timedOut = false,
     bool gaveUp = false,
     VideoPlayerController? controller,
+    SourceAnswer? signing,
   }) async {
     if (controller != null) {
       if (identical(_failedController, controller)) {
         return;
       }
       _failedController = controller;
+      if (!timedOut && _renew(problem, controller)) {
+        return;
+      }
     }
     _watchdog?.cancel();
     var attempt = _attempt;
@@ -874,7 +1021,9 @@ class VideoViewState extends State<VideoView> {
       // Started over meanwhile; the new attempt speaks for itself.
       return;
     }
-    var answer = source == VideoSource.rendition ? _renditionAnswer : original;
+    var answer =
+        signing ?? (source == VideoSource.rendition ? _renditionAnswer : original);
+    var signed = _signed;
     var failure = VideoFailure(
       kind: VideoFailure.classify(
         answer: answer,
@@ -899,6 +1048,12 @@ class VideoViewState extends State<VideoView> {
             ? "Tried: the playable version (?type=video), because $why"
             : "Tried: the original, because $why",
         "URL: ${maskUrl(url)}",
+        if (signing != null)
+          "Media address: refused, the player was handed nothing",
+        if (signing == null && signed != null)
+          "Media address: signed for the browser's player"
+              "${signed.expires == null ? "" : ", valid until ${signed.expires!.toUtc().toIso8601String()}"}"
+              "${_renewals > 0 ? ", asked for anew once" : ""}",
         if (answer != null) ...answer.facts,
         if (answer == null) "Server answered: not asked (no probe)",
         if (refusal != null && source == VideoSource.original) ...[
@@ -1303,6 +1458,10 @@ class VideoTeaser extends StatefulWidget {
   /// The headers the player sends, see [networkController].
   final Map<String, String> headers;
 
+  /// Signs the teaser's address before the player is handed it, `null` where
+  /// the player sends [headers] itself, see [VideoView.signUrl].
+  final MediaSigner? signUrl;
+
   /// Creates the controller playing the teaser.
   final VideoControllerFactory createController;
 
@@ -1323,6 +1482,7 @@ class VideoTeaser extends StatefulWidget {
     required this.child,
     this.headers = const {},
     this.createController = networkController,
+    this.signUrl,
     this.probeTeaser,
     this.enabled,
   });
@@ -1394,10 +1554,24 @@ class VideoTeaserState extends State<VideoTeaser> {
       _givenUp = !state.isPending || _asked > 1;
       return;
     }
+    var played = widget.teaserUrl;
+    var signer = widget.signUrl;
+    if (signer != null) {
+      try {
+        played = (await signer(played)).url;
+      } catch (_) {
+        // A teaser is a nicety; a signature that is refused ends it.
+        _givenUp = true;
+        return;
+      }
+      if (!mounted || _hover != hover || _controller != null) {
+        return;
+      }
+    }
     VideoPlayerController controller;
     try {
       controller = widget.createController(
-        Uri.parse(widget.teaserUrl),
+        Uri.parse(played),
         headers: widget.headers,
       );
     } catch (_) {

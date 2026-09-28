@@ -1936,6 +1936,9 @@ class ImageViewState extends State<ImageView>
             // Poster and player turned together, see [VideoView.orientation].
             orientation: self.orientation,
             headers: widget.client.authHeaders,
+            // On the web the player fetches without the bearer; it is handed
+            // signed addresses instead (issue #185).
+            signUrl: widget.client.mediaSigner(),
             // A failure of the platform player goes into the same log every
             // failed request of this app goes into, with the video's own
             // facts, see issues #73 and #184.

@@ -2000,6 +2000,12 @@ abstract class AppLocalizations {
   /// **'The original is played instead.'**
   String get videoPlayingOriginal;
 
+  /// Shown where the app itself is delivered the video, but the browser's own video player, which fetches the address itself, reports 401/403: it was refused for want of the sign-in
+  ///
+  /// In en, this message translates to:
+  /// **'The browser fetched the video without the sign-in and was refused.'**
+  String get videoFetchedWithoutSignIn;
+
   /// Shown where the server delivered the video and the platform's player refused it; contentType is the MIME type the server named
   ///
   /// In en, this message translates to:

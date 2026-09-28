@@ -14,6 +14,7 @@ import de.haumacher.imageServer.auth.AuthService.PathRefused;
 import de.haumacher.imageServer.auth.Clearances;
 import de.haumacher.imageServer.auth.DeviceCodeStore;
 import de.haumacher.imageServer.auth.InvitationStore;
+import de.haumacher.imageServer.auth.MediaSignatures;
 import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.Rights;
@@ -48,6 +49,7 @@ import de.haumacher.imageServer.shared.model.Invitation;
 import de.haumacher.imageServer.shared.model.InvitationCreated;
 import de.haumacher.imageServer.shared.model.InvitationList;
 import de.haumacher.imageServer.shared.model.ListingInfo;
+import de.haumacher.imageServer.shared.model.MediaUrl;
 import de.haumacher.imageServer.shared.model.MemberName;
 import de.haumacher.imageServer.shared.model.MoveName;
 import de.haumacher.imageServer.shared.model.MoveOutcome;
@@ -334,6 +336,28 @@ public class ImageServlet extends HttpServlet {
 
 	/** The <code>type</code> a face crop is asked for with, see issue #124. */
 	public static final String FACE_TYPE = "face";
+
+	/**
+	 * The <code>type</code> asking for a signed address of one file of a video, see issue #185 and
+	 * {@link MediaSignatures}.
+	 *
+	 * <p>
+	 * A <code>GET</code>, not an action: it is a read — it answers what the caller may fetch
+	 * already, checked exactly as that fetch is checked — it changes nothing (the secret made at
+	 * first use is an implementation detail), and it needs no body.
+	 * </p>
+	 */
+	public static final String MEDIA_URL_TYPE = "media-url";
+
+	/** The parameter of {@link #MEDIA_URL_TYPE} naming the file: <code>video</code>, <code>teaser</code> or <code>original</code>. */
+	public static final String MEDIA_FOR_PARAMETER = "for";
+
+	/** The message a {@link #MEDIA_URL_TYPE} request is refused with that names no known file. */
+	public static final String MEDIA_KIND_UNKNOWN =
+		"A media address is made for 'video', 'teaser' or 'original'.";
+
+	/** The message a {@link #MEDIA_URL_TYPE} request is refused with for a file that is no video. */
+	public static final String MEDIA_NOT_A_VIDEO = "Only a video has a media address.";
 
 	/** The parameter naming which face of an image is asked for, see issue #124. */
 	public static final String FACE_PARAMETER = "face";
@@ -645,6 +669,22 @@ public class ImageServlet extends HttpServlet {
 		String type = context.getParameter("type");
 
 		Caller caller = _auth.caller(request);
+		String media = context.getParameter(MediaSignatures.PARAMETER);
+		if (media != null) {
+			// A signed media address of issue #185: the signature decides who asks, a bearer beside
+			// it is ignored, and it opens exactly the one file it was made for -- every other type
+			// is no kind it can be made for and fails the check.
+			try {
+				caller = _auth.mediaCaller(media, pathInfo == null ? "" : pathInfo,
+					MediaSignatures.Kind.ofType(type));
+			} catch (AuthService.Refused ex) {
+				LOG.warning("Refusing the media address of '" + pathInfo + "': " + ex.getMessage());
+				errorInfo(context, ex.getStatus(), ex.getMessage());
+				return;
+			}
+			// The address is a credential for ten minutes: no shared cache keeps what it opened.
+			response.setHeader("Cache-Control", "private, no-store");
+		}
 		if (gone(context, caller)) {
 			return;
 		}
@@ -731,6 +771,11 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		if (file.isDirectory()) {
+			if (media != null) {
+				// Never issued for a folder; a folder that took a video's place is not opened by it.
+				errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, AuthService.MEDIA_REFUSED);
+				return;
+			}
 			if (type != null && !"json".equals(type)) {
 				// A folder is answered as JSON and nothing else; any other type is a request this
 				// server does not understand, not a folder that is missing, see issue #176.
@@ -771,6 +816,11 @@ public class ImageServlet extends HttpServlet {
 					errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
 					return;
 				}
+			}
+
+			if (MEDIA_URL_TYPE.equals(type)) {
+				issueMediaUrl(context, caller, resourcePath, viewAs);
+				return;
 			}
 
 			// The description and the thumbnail are looking; the original file is taking a copy.
@@ -3571,6 +3621,73 @@ public class ImageServlet extends HttpServlet {
 				serveData(context, pathInfo.toFile(), mimeType);
 			}
 		}
+	}
+
+	/**
+	 * Answers <code>&lt;video&gt;?type=media-url&amp;for=video|teaser|original</code> with a
+	 * {@link MediaUrl}, see issue #185 and {@link MediaSignatures}.
+	 *
+	 * <p>
+	 * Everything the plain request for that file would be asked is asked here, before anything is
+	 * signed: the inbox rule (by the caller of {@link #doGet}), the right —
+	 * {@link Rights#VIEW} for the rendition and the teaser, {@link Rights#DOWNLOAD} for the
+	 * original —, the clearance and the rating floor. The request carrying the signature is then
+	 * served as the device or link would have been served, and is asked all of it again.
+	 * </p>
+	 */
+	private void issueMediaUrl(Context context, Caller caller, PathInfo pathInfo, int viewAs) throws IOException {
+		MediaSignatures.Kind kind = MediaSignatures.Kind.named(context.getParameter(MEDIA_FOR_PARAMETER));
+		if (kind == null) {
+			LOG.warning("Refusing a media address of '" + context.request().getPathInfo() + "' for '"
+				+ context.getParameter(MEDIA_FOR_PARAMETER) + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, MEDIA_KIND_UNKNOWN);
+			return;
+		}
+		if (!VideoRenditions.isVideo(pathInfo.toFile())) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, MEDIA_NOT_A_VIDEO);
+			return;
+		}
+		String right = kind.right();
+		if (!_auth.rights(caller, pathInfo).contains(right)) {
+			refuse(context, caller, pathInfo, right, false);
+			return;
+		}
+		int clearance = Math.min(_auth.clearance(caller, pathInfo), viewAs);
+		String refusal = hidden(pathInfo, clearance, _auth.minRating(caller, pathInfo, viewAs));
+		if (refusal != null) {
+			imageRefused(context, caller, refusal);
+			return;
+		}
+		HttpServletRequest request = context.request();
+		String path = request.getPathInfo() == null ? "" : request.getPathInfo();
+		java.time.Instant expires =
+			java.time.Instant.now().plus(MediaSignatures.LIFETIME).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+		String signature;
+		try {
+			signature = _auth.signMedia(caller, path, kind, expires.getEpochSecond());
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing a media address of '" + path + "': " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+		String query = (kind.getType() == null ? "" : "type=" + kind.getType() + "&")
+			+ MediaSignatures.PARAMETER + "=" + signature;
+		String url = request.getContextPath() + request.getServletPath() + encodePath(path) + "?" + query;
+		serveJsonObject(context.response(),
+			MediaUrl.create().setUrl(url).setMedia(signature).setExpires(expires.toString()));
+	}
+
+	/** The given path with every segment percent-encoded, the slashes kept. */
+	private static String encodePath(String path) {
+		StringBuilder result = new StringBuilder();
+		String[] segments = path.split("/", -1);
+		for (int n = 0; n < segments.length; n++) {
+			if (n > 0) {
+				result.append('/');
+			}
+			result.append(java.net.URLEncoder.encode(segments[n], StandardCharsets.UTF_8).replace("+", "%20"));
+		}
+		return result.toString();
 	}
 
 	/**

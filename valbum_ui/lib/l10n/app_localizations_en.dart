@@ -1156,6 +1156,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get videoPlayingOriginal => 'The original is played instead.';
 
   @override
+  String get videoFetchedWithoutSignIn =>
+      'The browser fetched the video without the sign-in and was refused.';
+
+  @override
   String videoFormatRefused(String contentType) {
     return 'This browser or device cannot play this format ($contentType).';
   }

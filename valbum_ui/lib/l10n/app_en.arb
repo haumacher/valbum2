@@ -1952,6 +1952,11 @@
     "description": "Follows videoConversionFailed or videoServerRefused where the original file plays in place of the playable version",
     "x-translated": "f17690ca"
   },
+  "videoFetchedWithoutSignIn": "The browser fetched the video without the sign-in and was refused.",
+  "@videoFetchedWithoutSignIn": {
+    "description": "Shown where the app itself is delivered the video, but the browser's own video player, which fetches the address itself, reports 401/403: it was refused for want of the sign-in",
+    "x-translated": "e936ebf5"
+  },
   "videoFormatRefused": "This browser or device cannot play this format ({contentType}).",
   "@videoFormatRefused": {
     "description": "Shown where the server delivered the video and the platform's player refused it; contentType is the MIME type the server named",

@@ -53,6 +53,32 @@ public class AuthService {
 		"This device is no longer signed in at the server. Sign in again with a code.";
 
 	/**
+	 * The message a request for a media address is refused with that nobody signed in made, see
+	 * issue #185.
+	 *
+	 * <p>
+	 * A signature is made out to a device or to a share link; an anonymous caller has neither, and
+	 * where the space shows it anything at all it may fetch the plain address.
+	 * </p>
+	 */
+	public static final String MEDIA_URL_ANONYMOUS =
+		"A media address is made for a signed-in device or a share link. Sign in with a code.";
+
+	/** The message a media address is refused with that is not a signature over the request (issue #185). */
+	public static final String MEDIA_REFUSED =
+		"This media address is not valid for this file. Ask the album for a new one.";
+
+	/** The message a media address is refused with that ran out, see {@link MediaSignatures#LIFETIME}. */
+	public static final String MEDIA_EXPIRED = "This media address has expired. Ask the album for a new one.";
+
+	/**
+	 * The message a media address is refused with whose device was signed out, or whose share link
+	 * is gone from the store, since it was made (issue #185).
+	 */
+	public static final String MEDIA_SIGNED_OUT =
+		"The device this media address was made for is no longer signed in at the server. Sign in again with a code.";
+
+	/**
 	 * The message a pairing carrying the retired pairing secret is refused with, see issue #89.
 	 *
 	 * <p>
@@ -830,6 +856,9 @@ public class AuthService {
 
 	private final DeviceCodeStore _deviceCodes;
 
+	/** The signed media addresses of issue #185, <code>null</code> while {@link AuthMode#OFF}. */
+	private final MediaSignatures _media;
+
 	private final InviteMode _inviteMode;
 
 	/**
@@ -857,6 +886,7 @@ public class AuthService {
 		_users = mode == AuthMode.OFF ? null : new UserStore(basePath);
 		_shares = mode == AuthMode.OFF ? null : new ShareStore(basePath);
 		_deviceCodes = mode == AuthMode.OFF ? null : new DeviceCodeStore(basePath);
+		_media = mode == AuthMode.OFF ? null : new MediaSignatures(basePath);
 		ensureAdminSeat();
 		adoptInvitations();
 		try {
@@ -1136,6 +1166,105 @@ public class AuthService {
 		return token.isEmpty() ? null : token;
 	}
 
+
+	/** The signed media addresses of this space, <code>null</code> while {@link AuthMode#OFF}. */
+	public MediaSignatures getMediaSignatures() {
+		return _media;
+	}
+
+	/**
+	 * A signature opening the given file of a video to a request that carries no bearer, see
+	 * issue #185.
+	 *
+	 * <p>
+	 * Only the signature is made here; whether the caller may have that file is the servlet's
+	 * question, asked exactly as for the plain request before this is called.
+	 * </p>
+	 *
+	 * @param caller
+	 *        Who asked, with their bearer: a paired device or a live share link.
+	 * @param path
+	 *        The path of the request as the servlet sees it.
+	 * @param expires
+	 *        Seconds since the epoch.
+	 * @throws Refused
+	 *         For a caller that is neither, {@link #MEDIA_URL_ANONYMOUS}.
+	 */
+	public String signMedia(Caller caller, String path, MediaSignatures.Kind kind, long expires)
+			throws Refused, IOException {
+		if (_media == null) {
+			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_URL_ANONYMOUS);
+		}
+		if (caller.isShareLink() && !caller.isShareGone()) {
+			return _media.sign(path, kind, MediaSignatures.SHARE, caller.getShare().getId(), expires);
+		}
+		if (caller.isPaired() && !caller.getDeviceId().isEmpty()) {
+			return _media.sign(path, kind, MediaSignatures.DEVICE, caller.getDeviceId(), expires);
+		}
+		throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_URL_ANONYMOUS);
+	}
+
+	/**
+	 * The caller a request carrying a media signature is served as, see issue #185.
+	 *
+	 * <p>
+	 * Exactly the device or the share link the signature was made for, as its bearer would have
+	 * been identified <em>now</em>: a device signed out since is nobody, a link withdrawn since is
+	 * gone. The signature is checked against the request's own path and kind first, so it opens
+	 * nothing but the one file it was made for.
+	 * </p>
+	 *
+	 * @param value
+	 *        The value of the {@value MediaSignatures#PARAMETER} parameter.
+	 * @param path
+	 *        The path of the request as the servlet sees it.
+	 * @param kind
+	 *        The kind the request asks for, see {@link MediaSignatures.Kind#ofType(String)};
+	 *        <code>null</code> where it asks for something no signature opens.
+	 * @throws Refused
+	 *         <code>401</code> {@link #MEDIA_REFUSED} for a signature that is not over this
+	 *         request, <code>410</code> {@link #MEDIA_EXPIRED} for one that ran out,
+	 *         <code>401</code> {@link #MEDIA_SIGNED_OUT} for one whose device or link is no longer
+	 *         known.
+	 */
+	public Caller mediaCaller(String value, String path, MediaSignatures.Kind kind) throws Refused {
+		if (_media == null) {
+			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_REFUSED);
+		}
+		MediaSignatures.Verified verified =
+			_media.verify(value, path, kind, java.time.Instant.now().getEpochSecond());
+		switch (verified.getStatus()) {
+			case EXPIRED:
+				throw new Refused(HttpServletResponse.SC_GONE, MEDIA_EXPIRED);
+			case INVALID:
+				throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_REFUSED);
+			case VALID:
+				break;
+		}
+		String id = verified.getId();
+		if (MediaSignatures.SHARE.equals(verified.getSubjectKind())) {
+			ShareStore.Link share = _shares.get(id);
+			if (share == null) {
+				throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_SIGNED_OUT);
+			}
+			if (share.isRevoked()) {
+				return Caller.shareGone(share, LINK_REVOKED);
+			}
+			if (share.isExpired(java.time.Instant.now())) {
+				return Caller.shareGone(share, LINK_EXPIRED);
+			}
+			return Caller.shareLink(share);
+		}
+		User user = _users.deviceOwner(id);
+		UserStore.Device device = user == null ? null : user.getDevice(id);
+		if (device == null) {
+			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_SIGNED_OUT);
+		}
+		if (!Roles.isKnown(user.getRole())) {
+			return Caller.rejected(ROLE_REFUSED);
+		}
+		return Caller.signedIn(user, device);
+	}
 
 	/** Whether the given caller may read. */
 	public boolean readAllowed(Caller caller) {

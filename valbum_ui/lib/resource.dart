@@ -4970,6 +4970,87 @@ class DeviceCodeCreated extends _JsonObject {
 
 }
 
+///  The answer to <code>&lt;video&gt;?type=media-url&amp;for=video|teaser|original</code>: an address
+///  a player may fetch without the <code>Authorization</code> header, see issue #185.
+/// 
+///  <p>
+///  On the web the app hands a video to an HTML <code>&lt;video&gt;</code> element, which fetches the
+///  address itself and cannot send the device's bearer. So the device asks, with its bearer, for a
+///  short-lived signature over exactly this path and this kind of file, and the element fetches the
+///  ordinary address with <code>&amp;media=&lt;signature&gt;</code> appended. The rights are checked
+///  when the signature is issued, exactly as for the plain request; a request carrying it is served
+///  that one file and nothing else. The device token itself never appears in an address.
+///  </p>
+class MediaUrl extends _JsonObject {
+	///  The address to play: the ordinary address of the file, path-absolute
+	///  (<code>/valbum/data/2026/a.mp4?type=video&amp;media=…</code>), carrying {@link #media}.
+	String url;
+
+	///  The value of the <code>media</code> parameter alone, for a client that builds the address
+	///  itself (the app appends it to the address it already has, so a proxy that rewrites the
+	///  path changes nothing).
+	String media;
+
+	///  When the signature stops working, an ISO-8601 instant; ten minutes after it was issued.
+	String expires;
+
+	/// Creates a MediaUrl.
+	MediaUrl({
+			this.url = "", 
+			this.media = "", 
+			this.expires = "", 
+	});
+
+	/// Parses a MediaUrl from a string source.
+	static MediaUrl? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a MediaUrl instance from the given reader.
+	static MediaUrl read(JsonReader json) {
+		MediaUrl result = MediaUrl();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "MediaUrl";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "url": {
+				url = json.expectString();
+				break;
+			}
+			case "media": {
+				media = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("url");
+		json.addString(url);
+
+		json.addKey("media");
+		json.addString(media);
+
+		json.addKey("expires");
+		json.addString(expires);
+	}
+
+}
+
 ///  The renaming of a {@link Group}, sent to <code>&lt;data&gt;/?action=regroup</code>, see issue #55.
 /// 
 ///  <p>
