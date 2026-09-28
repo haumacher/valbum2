@@ -10,6 +10,7 @@ import 'diagnostics.dart';
 import 'l10n/app_localizations.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
+import 'page_insets.dart';
 
 /// Asks the server whether a rendition can be played, see
 /// [VAlbumClient.renditionState].
@@ -456,7 +457,14 @@ class VideoViewState extends State<VideoView> {
   Widget buildControls(VideoPlayerController controller) => Container(
         key: const Key("video-controls"),
         color: Colors.black54,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        // The bar runs to the edge of the screen and its buttons stay clear
+        // of a system bar swiped in over the immersive viewer (issues #60,
+        // #171). It stands at the foot, so the status bar at the top is none
+        // of its business.
+        padding: pagePadding(
+          context,
+          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        ).copyWith(top: 4),
         child: Row(
           children: [
             IconButton(

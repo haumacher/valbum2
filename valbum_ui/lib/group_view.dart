@@ -21,6 +21,7 @@ import 'image_view.dart';
 import 'l10n/app_localizations.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
+import 'page_insets.dart';
 
 /// The height a row of the group layout aims at, as in the album view.
 const double _maxRowHeight = 250;
@@ -69,8 +70,12 @@ class GroupView extends StatelessWidget {
       backgroundColor: Colors.black,
       body: LayoutBuilder(
         builder: (context, constraints) {
+          // The rows are laid out in what is left between the side insets of
+          // an edge-to-edge screen, and the last one ends above the
+          // navigation bar (issue #171).
+          var padding = pagePadding(context);
           var layout = layouter.AlbumLayout(
-            constraints.maxWidth,
+            constraints.maxWidth - padding.horizontal,
             _maxRowHeight,
             group.images,
           );
@@ -79,6 +84,7 @@ class GroupView extends StatelessWidget {
             layout.getPageWidth(),
           );
           return SingleChildScrollView(
+            padding: padding,
             child: Column(children: builder.buildRows(layout)),
           );
         },

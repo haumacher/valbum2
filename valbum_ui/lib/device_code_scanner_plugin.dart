@@ -14,6 +14,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'device_code_payload.dart';
 import 'device_code_scanner.dart';
 import 'l10n/app_localizations.dart';
+import 'page_insets.dart';
 
 /// The key of the page showing the camera.
 const Key deviceCodeScannerPageKey = Key("settings.deviceCode.scanner");
@@ -102,6 +103,7 @@ class DeviceCodeScannerPageState extends State<DeviceCodeScannerPage> {
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
+    var insets = pagePadding(context);
     return Scaffold(
       key: deviceCodeScannerPageKey,
       appBar: AppBar(
@@ -122,9 +124,10 @@ class DeviceCodeScannerPageState extends State<DeviceCodeScannerPage> {
             ),
           ),
           Positioned(
-            left: 16,
-            right: 16,
-            bottom: 24,
+            // Clear of the navigation bar of an edge-to-edge screen (#171).
+            left: 16 + insets.left,
+            right: 16 + insets.right,
+            bottom: 24 + insets.bottom,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [

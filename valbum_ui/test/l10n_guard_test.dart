@@ -75,6 +75,7 @@ const List<String> convertedFiles = [
   "lib/offline.dart",
   "lib/offline_file.dart",
   "lib/oriented_thumbnail.dart",
+  "lib/page_insets.dart",
   "lib/people_registry.dart",
   "lib/person_names.dart",
   "lib/photo_library.dart",

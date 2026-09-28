@@ -44,6 +44,7 @@ import 'trash_view.dart';
 import 'upload_progress.dart';
 import 'urls.dart';
 import 'wakelock.dart';
+import 'page_insets.dart';
 
 typedef Action = void Function(BuildContext context);
 
@@ -1799,7 +1800,7 @@ class VAlbumState extends State<VAlbumView>
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: pagePadding(context, const EdgeInsets.all(24)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

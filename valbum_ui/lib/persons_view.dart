@@ -65,6 +65,7 @@ import 'resource.dart';
 import 'rights.dart';
 import 'share_session.dart';
 import 'thumbnails.dart';
+import 'page_insets.dart';
 
 /// How often the editor asks again while the server is still detecting.
 ///
@@ -1521,7 +1522,10 @@ class PersonsContentState extends State<PersonsContent>
                       )
                     : ListView(
                         controller: _scroll,
-                        padding: const EdgeInsets.only(bottom: 32),
+                        padding: pagePadding(
+                          context,
+                          const EdgeInsets.only(bottom: 32),
+                        ),
                         children: [
                           for (var group in shown)
                             _group(
