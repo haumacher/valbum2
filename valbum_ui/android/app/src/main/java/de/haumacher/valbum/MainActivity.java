@@ -1,4 +1,4 @@
-package de.haumacher.valbum_ui;
+package de.haumacher.valbum;
 
 import io.flutter.embedding.android.FlutterActivity;
 

@@ -8,7 +8,7 @@
 PRODUCT_NAME = VAlbum
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = de.haumacher.valbumUi
+PRODUCT_BUNDLE_IDENTIFIER = de.haumacher.valbum
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2023 de.haumacher. All rights reserved.

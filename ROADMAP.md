@@ -232,6 +232,13 @@ suggestions across the space), #128 (a person linked to a member), #129 (XMP fac
 
 ## Decisions log
 
+- **2026-09-28** — The app will be distributed through the **Play Store** (the author). Obtainium was
+  tried and rejected, because its "add app" page is not something a family member can work, and the
+  server handing out its own APK is set aside. Before the first upload the application id becomes
+  **`de.haumacher.valbum`** (Android, Linux; the iOS/macOS bundle id likewise) instead of the Flutter
+  template's `de.haumacher.valbum_ui`, because a store can never rename it. Android treats the new id as
+  a different app: an installed 2.8.x does not update to it and has to be uninstalled, and the device is
+  signed in anew. The reviewer access and the demo space are drafted in their own issue.
 - **2026-09-23 (night)** — The second round of the evening, from using the first. The inbox is worked like
   the album's edit mode (#160): the tap has the album's semantics (a plain click replaces — "a simple
   click lets the last clicked image selected" was dangerous), an editor's tile carries the rating
