@@ -408,19 +408,21 @@ sudo systemctl start valbum
 ### Behind a reverse proxy
 
 To reach the server from the internet under a name of your own with HTTPS, put a reverse proxy
-in front of it and forward `https://home.example.org/valbum/` to `http://<pi>:8080/valbum/`
-(the context path has to be the same on both sides, see `VALBUM_CONTEXTPATH`). The server never
-spells an absolute URL to itself: its redirects carry only the path, so no rewriting of
-`Location` headers is needed, and when the proxy sends the `X-Forwarded-Proto` and
-`X-Forwarded-Host` headers (or `Forwarded`), requests report the public surface. Two things the
-proxy must allow: request bodies large enough for an upload of many photos at once, and enough
-time for it.
+in front of it and forward `https://home.example.org/valbum/` to `http://<server>:8080/valbum/`.
+`<server>` is where VAlbum runs as seen from the proxy: `127.0.0.1` when the proxy runs on the same
+machine (the usual case, and then nothing but the proxy can reach port 8080 from outside once the
+firewall closes it), otherwise that machine's address in your network. The context path has to be
+the same on both sides (see `VALBUM_CONTEXTPATH`). The server never spells an absolute URL to
+itself: its redirects carry only the path, so no rewriting of `Location` headers is needed, and when
+the proxy sends the `X-Forwarded-Proto` and `X-Forwarded-Host` headers (or `Forwarded`), requests
+report the public surface. Two things the proxy must allow: request bodies large enough for an
+upload of many photos at once, and enough time for it.
 
-nginx:
+nginx, inside the `server { listen 443 ssl; … }` block of your site:
 
 ```
 location /valbum/ {
-    proxy_pass         http://192.168.178.20:8080/valbum/;
+    proxy_pass         http://127.0.0.1:8080/valbum/;
     proxy_set_header   Host              $host;
     proxy_set_header   X-Forwarded-Proto $scheme;
     proxy_set_header   X-Forwarded-Host  $host;
@@ -431,15 +433,25 @@ location /valbum/ {
 }
 ```
 
-Apache httpd (`mod_proxy_http`):
+Apache httpd needs three modules, which Debian does not enable by default — without `headers`,
+Apache refuses the configuration with *Invalid command 'RequestHeader'*:
+
+```
+sudo a2enmod proxy proxy_http headers
+```
+
+Then, inside the `<VirtualHost *:443>` block of your HTTPS site (`mod_proxy` sends
+`X-Forwarded-Host` and `X-Forwarded-For` by itself; only the scheme has to be said):
 
 ```
 ProxyPreserveHost On
-ProxyPass        /valbum/ http://192.168.178.20:8080/valbum/
+ProxyPass        /valbum/ http://127.0.0.1:8080/valbum/
 RequestHeader set X-Forwarded-Proto "https"
 LimitRequestBody 0
 ProxyTimeout     600
 ```
+
+and `sudo apachectl configtest && sudo systemctl reload apache2`.
 
 ### Updating
 
