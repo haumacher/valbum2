@@ -4,6 +4,8 @@
 /// can be unit-tested without pumping a widget tree.
 library;
 
+import 'album_edit.dart' show noMinRating;
+import 'inbox_view.dart' show inboxDays;
 import 'resource.dart';
 
 /// Rebuilds the transient fields of an album: the [AbstractImage.previous],
@@ -32,7 +34,27 @@ class AlbumInitializer {
         part.group = null;
       }
     }
-    _link(self.parts.whereType<AbstractImage>().toList());
+    _link(_chainOf(self));
+  }
+
+  /// The images of the album in the order the viewer pages through them: the
+  /// order they are drawn in.
+  ///
+  /// For an album that is its stored order. An inbox draws something else
+  /// than the server's flat newest-first answer — the days newest first, the
+  /// photographs of a day chronologically ([inboxDays]) — so its chain follows
+  /// the days, or "next" in the viewer would step to the photograph drawn
+  /// *before* inside a day. Every photograph is linked, the trashed ones
+  /// included; the viewer skips what its rating floor hides, as it does in
+  /// an album.
+  static List<AbstractImage> _chainOf(AlbumInfo self) {
+    if (self.kind == AlbumKind.inbox) {
+      return [
+        for (var day in inboxDays(self.parts, minRating: noMinRating))
+          ...day.images,
+      ];
+    }
+    return self.parts.whereType<AbstractImage>().toList();
   }
 
   /// Links the given images into a chain of `previous`/`next`/`home`/`end`.
