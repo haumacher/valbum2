@@ -239,6 +239,18 @@ in a separate service, and abuse and law (the DSA, GDPR) come first. Open questi
 
 ## Decisions log
 
+- **2026-09-28 (evening)** — 2.9.0 released (tag `valbum-2.9.0` on 0b7c12f). It is the first release
+  with a container image: `hauix/valbum` on Docker Hub and `ghcr.io/haumacher/valbum`, amd64 and
+  arm64 under one digest (#174). It is also the first with the app id `de.haumacher.valbum`, which does
+  not update a 2.8 app. The day brought:
+  - **setup and administration:** `valbum-admin` for the one-time jobs (#180); `create-space` (#175)
+    and `move-into-space`, which keeps the old addresses answering (#177); a README for the ordinary
+    user first (#179);
+  - **server fixes:** NAS litter ignored (#173); faces on headless machines (#182); photo times from
+    the zone tag, the GPS time or the space's zone (#183);
+  - **app fixes:** the background sync without a window (#169); the browser upload without Dart
+    hashing (#170); form dialogs that a stray tap cannot close (#178); error messages that name the
+    album (#176) and a diagnostics log of failures only (#184).
 - **2026-09-28** — Phase 8 opened as a draft (#181) from the author's idea of a photo hosting
   service: "Allowing to 'try it out' is fine - for limited time, limited space. It must require the
   user to identify itself to prevent abuse." Its first step, creating a space from the app, is useful
