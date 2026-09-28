@@ -34,6 +34,28 @@ OfflineCache defaultOfflineCache() => FileOfflineCache.underSupportDirectory();
 /// platforms), so the `dart:io` type is checked as well.
 bool isSocketError(Object error) => error is SocketException;
 
+/// The browser's `Blob` behind an object URL: there is none off the web, so a
+/// picked file is read through its own `openRead`, see `browser_upload.dart`
+/// and issue #170.
+Future<Object?> blobOfObjectUrl(String url) async => null;
+
+/// The hash of a browser `Blob`, see `browser_upload.dart`; never asked off
+/// the web, where no [UploadFile.blob] is ever set.
+Future<String> sha256OfBlob(Object blob, {bool useWebCrypto = true}) =>
+    throw UnimplementedError();
+
+/// The upload of browser `Blob`s, see `browser_upload.dart`; never asked off
+/// the web, where no [UploadFile.blob] is ever set.
+Future<({int status, String body})> sendBlobForm(
+  Uri uri,
+  List<({String name, Object blob})> parts, {
+  String method = "PUT",
+  Map<String, String> headers = const {},
+  void Function(int sent, int total)? onProgress,
+  bool Function()? cancelled,
+}) =>
+    throw UnimplementedError();
+
 /// The photo library of the device, see [PhotoLibrary].
 ///
 /// Only Android and iOS have a camera roll to watch; a desktop has a file

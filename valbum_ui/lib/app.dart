@@ -44,6 +44,7 @@ import 'trash_view.dart';
 import 'upload_progress.dart';
 import 'urls.dart';
 import 'wakelock.dart';
+import 'page_insets.dart';
 
 typedef Action = void Function(BuildContext context);
 
@@ -1799,7 +1800,7 @@ class VAlbumState extends State<VAlbumView>
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: pagePadding(context, const EdgeInsets.all(24)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -2143,12 +2144,17 @@ class VAlbumState extends State<VAlbumView>
       return;
     }
 
+    // In a browser the picked file's `Blob` goes along, so that it is hashed
+    // and sent by the browser itself rather than through the page's one Dart
+    // thread (issue #170); everywhere else there is none, and the file is
+    // read through `openRead` as before.
     var uploads = [
       for (var file in files)
         UploadFile(
           name: file.name,
           length: await file.length(),
           openRead: file.openRead,
+          blob: await blobOfObjectUrl(file.path),
         ),
     ];
 

@@ -36,6 +36,7 @@ import 'platform.dart';
 import 'resource.dart';
 import 'sign_in_form.dart';
 import 'urls.dart';
+import 'page_insets.dart';
 
 /// Persistence of the server URL on the device.
 ///
@@ -1193,7 +1194,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 640),
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: pagePadding(context, const EdgeInsets.all(16)),
             children: [
               if (widget.isWeb)
                 ..._serverLine(l10n, settings)

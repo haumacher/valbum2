@@ -23,6 +23,7 @@ import 'resource.dart';
 import 'settings.dart';
 import 'sign_in_form.dart';
 import 'urls.dart';
+import 'page_insets.dart';
 
 /// The key of the whole screen.
 const Key firstScreenKey = Key("first.screen");
@@ -117,7 +118,7 @@ class FirstScreenState extends State<FirstScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: pagePadding(context, const EdgeInsets.all(24)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children:

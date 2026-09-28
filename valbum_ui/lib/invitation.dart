@@ -37,6 +37,7 @@ import 'platform.dart';
 import 'resource.dart';
 import 'settings.dart';
 import 'urls.dart';
+import 'page_insets.dart';
 
 /// What an invitation promises, said to the person who opened it (issue #85).
 ///
@@ -240,7 +241,7 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: pagePadding(context, const EdgeInsets.all(24)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,

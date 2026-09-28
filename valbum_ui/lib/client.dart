@@ -50,11 +50,22 @@ class UploadFile {
   /// receives itself, so this value is an optimisation, never a promise.
   final String? sha256;
 
+  /// The browser's `Blob` of the contents, on the web only, `null` everywhere
+  /// else (issue #170).
+  ///
+  /// Opaque here, because this file is compiled for every platform: only
+  /// `browser_upload.dart` knows it for what it is. Where it is set, the file
+  /// is hashed by Web Crypto and sent as a part of a browser `FormData`, so
+  /// that its bytes never pass through the page's one Dart thread; where it is
+  /// not, [openRead] is what is hashed and sent, as on every other platform.
+  final Object? blob;
+
   const UploadFile({
     required this.name,
     required this.length,
     required this.openRead,
     this.sha256,
+    this.blob,
   });
 
   /// The same file, with its contents' hash attached.
@@ -63,6 +74,7 @@ class UploadFile {
         length: length,
         openRead: openRead,
         sha256: hash,
+        blob: blob,
       );
 }
 
@@ -1089,7 +1101,59 @@ class VAlbumClient {
     UploadHandle? handle,
   }) async {
     var uri = Uri.parse(url);
+    int status;
+    String body;
+    try {
+      (status: status, body: body) =
+          files.isNotEmpty && files.every((file) => file.blob != null)
+              ? await _sendBlobs(uri, files, onProgress, handle)
+              : await _sendStreamed(uri, files, onProgress, handle);
+    } catch (error) {
+      // A cancelled upload fails the body stream (or aborts the browser's
+      // request); whatever the transport made of that is not worth quoting,
+      // the user knows what they did.
+      if (handle != null && handle.cancelled) {
+        throw VAlbumException(uploadCancelledMessage(platformMessages));
+      }
+      rethrow;
+    }
+    return uploadAnswer(status, body, url, files, handle: handle);
+  }
 
+  /// What an upload to [url] comes to, once the server answered [status]
+  /// with [body] — the one reading of the answer, whichever transport carried
+  /// the request (issue #170).
+  ///
+  /// A cancelled upload is refused even with an answer in hand: a transport
+  /// that buffers the whole body (a test double, a proxy) can answer a request
+  /// that was cancelled halfway, and a cancelled upload must never be reported
+  /// as a success. A refusal names the server's reason, see [failure]; any
+  /// other answer is read by [uploadResult].
+  static UploadResult uploadAnswer(
+    int status,
+    String body,
+    String url,
+    List<UploadFile> files, {
+    UploadHandle? handle,
+  }) {
+    if (handle != null && handle.cancelled) {
+      throw VAlbumException(uploadCancelledMessage(platformMessages));
+    }
+    if (status >= 300) {
+      throw failure(status, body, platformMessages.doingUploading("'$url'"));
+    }
+    return uploadResult(body, files);
+  }
+
+  /// The upload as every platform but the web sends it: a streamed
+  /// `MultipartRequest` whose body is counted as the transport pulls it, see
+  /// [_CountingRequest].
+  Future<({int status, String body})> _sendStreamed(
+    Uri uri,
+    List<UploadFile> files,
+    void Function(int percent)? onProgress,
+    UploadHandle? handle,
+  ) async {
     var multipart = http.MultipartRequest("PUT", uri);
     for (var file in files) {
       multipart.files.add(
@@ -1116,37 +1180,68 @@ class VAlbumClient {
       multipartBody,
       handle: handle,
       onTransferred: (transferred) => onProgress?.call(
-        contentLength <= 0 ? 100 : (100 * transferred / contentLength).round(),
+        _percent(transferred, contentLength),
       ),
     );
     request.headers.addAll(multipart.headers);
     request.headers.addAll(authHeaders);
     request.contentLength = contentLength;
 
-    http.StreamedResponse response;
-    String body;
+    var response = await _http.send(request);
+    var body = await response.stream.bytesToString();
+    return (status: response.statusCode, body: body);
+  }
+
+  /// The upload of a browser (issue #170): the picked `Blob`s as a `FormData`
+  /// over `XMLHttpRequest`, the bytes never copied into Dart, see
+  /// `browser_upload.dart`.
+  ///
+  /// The request does not pass the [http.Client], so what [_ObservedTransport]
+  /// does for every other request is done here: the request is written into
+  /// the [log], and an answer — any answer — means the server was reached.
+  Future<({int status, String body})> _sendBlobs(
+    Uri uri,
+    List<UploadFile> files,
+    void Function(int percent)? onProgress,
+    UploadHandle? handle,
+  ) async {
+    var headers = authHeaders;
+    var bearer = headers.containsKey("Authorization");
+    ({int status, String body}) answer;
     try {
-      response = await _http.send(request);
-      body = await response.stream.bytesToString();
+      answer = await sendBlobForm(
+        uri,
+        [for (var file in files) (name: file.name, blob: file.blob!)],
+        headers: headers,
+        onProgress: (sent, total) => onProgress?.call(_percent(sent, total)),
+        cancelled: handle == null ? null : () => handle.cancelled,
+      );
     } catch (error) {
-      // A cancelled upload fails the body stream; whatever the transport made
-      // of that is not worth quoting, the user knows what they did.
-      if (handle != null && handle.cancelled) {
-        throw VAlbumException(uploadCancelledMessage(platformMessages));
-      }
+      log?.failed("PUT", uri.toString(), error: error, bearer: bearer);
       rethrow;
     }
-    // Checked again: a transport that buffers the whole body (a test double,
-    // a proxy) can answer a request that was cancelled halfway, and a
-    // cancelled upload must never be reported as a success.
-    if (handle != null && handle.cancelled) {
-      throw VAlbumException(uploadCancelledMessage(platformMessages));
+    offlineState?.online();
+    log?.answered("PUT", uri.toString(), status: answer.status, bearer: bearer);
+    return answer;
+  }
+
+  /// [transferred] of [total] bytes, in percent; an empty body is all sent.
+  static int _percent(int transferred, int total) =>
+      total <= 0 ? 100 : (100 * transferred / total).round();
+
+  /// The hash of [file]'s contents: through Web Crypto where the file is a
+  /// browser `Blob`, by reading [UploadFile.openRead] everywhere else.
+  ///
+  /// A `Blob` is followed by a return to the event loop, so that hashing a
+  /// hundred photos in a browser is a hundred tasks, never one (issue #170).
+  static Future<String> _hashOf(UploadFile file) async {
+    var blob = file.blob;
+    if (blob == null) {
+      return sha256Of(file.openRead());
     }
-    if (response.statusCode >= 300) {
-      throw failure(
-          response.statusCode, body, platformMessages.doingUploading("'$url'"));
-    }
-    return uploadResult(body, files);
+    var hash = await sha256OfBlob(blob);
+    await Future<void>.delayed(Duration.zero);
+    return hash;
   }
 
   /// The server's answer to an upload of the given files.
@@ -1347,9 +1442,7 @@ class VAlbumClient {
         imagesTotal: files.length,
       ));
       hashed.add(
-        file.sha256 != null
-            ? file
-            : file.withHash(await sha256Of(file.openRead())),
+        file.sha256 != null ? file : file.withHash(await _hashOf(file)),
       );
     }
     onProgress?.call(UploadProgress(
