@@ -1723,13 +1723,6 @@ class AppLocalizationsDe extends AppLocalizations {
       'Ohne Datum bleibt das Album in diesem Ordner.';
 
   @override
-  String get createInboxLabel => 'Posteingang';
-
-  @override
-  String get createInboxHint =>
-      'Fotos, die darauf warten, sortiert zu werden: sortiert nach dem Tag, an dem sie aufgenommen wurden, ohne Datum und ohne eigene Reihenfolge.';
-
-  @override
   String get newFolderTitle => 'Neuer Ordner';
 
   @override

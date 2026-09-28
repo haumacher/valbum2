@@ -277,7 +277,6 @@ void sliceThree() {
       await tester.pumpAndSettle();
 
       expect(find.text(de.newAlbumTitle), findsOneWidget);
-      expect(find.text(de.createInboxHint), findsOneWidget);
       expect(find.text(de.createAlbumUndatedHint), findsOneWidget);
       expect(find.text(de.titleLabel), findsOneWidget);
       expect(find.text(de.create), findsOneWidget);

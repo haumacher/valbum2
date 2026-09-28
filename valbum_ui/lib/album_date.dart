@@ -171,6 +171,18 @@ String? albumDateLabel(int effectiveDate) => effectiveDate == 0
 bool folderHasDate(FolderInfo folder) =>
     folder.kind == FolderKind.album && folder.effectiveDate != 0;
 
+/// The earliest day an album may be dated on, in every calendar that asks.
+final DateTime firstAlbumDate = DateTime(1900);
+
+/// The latest day an album may be dated on, in every calendar that asks.
+///
+/// Far in the future on purpose: an album for the holiday that starts next
+/// week may be made today (the author's decision on issue #178), and the
+/// server refuses no date either. One bound, shared by the create dialog, the
+/// album properties and the recording-time correction, which used to
+/// disagree: the create dialog stopped at the moment it was built.
+final DateTime lastAlbumDate = DateTime(2100);
+
 /// The spelling of a date in a folder name, the naming convention `yyyy-MM-dd`.
 final DateFormat folderDateFormat = DateFormat("yyyy-MM-dd");
 

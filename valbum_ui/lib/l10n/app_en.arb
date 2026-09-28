@@ -2792,16 +2792,6 @@
     "description": "Says what leaving the date of a new album empty means",
     "x-translated": "46e983c9"
   },
-  "createInboxLabel": "Inbox",
-  "@createInboxLabel": {
-    "description": "Label of the choice making the new folder an inbox",
-    "x-translated": "bfd0dc3d"
-  },
-  "createInboxHint": "Photographs waiting to be sorted: shown by the day they were taken, no date and no order of their own.",
-  "@createInboxHint": {
-    "description": "Says what an inbox is, in the dialog making one",
-    "x-translated": "71bbc797"
-  },
   "newFolderTitle": "New folder",
   "@newFolderTitle": {
     "description": "Title of the dialog making a folder",

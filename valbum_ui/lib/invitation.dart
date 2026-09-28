@@ -32,6 +32,7 @@ import 'package:http/http.dart' as http;
 import 'caller.dart';
 import 'l10n/app_localizations.dart';
 import 'client.dart';
+import 'form_dialog.dart';
 import 'manage_view.dart';
 import 'platform.dart';
 import 'resource.dart';
@@ -438,7 +439,7 @@ enum InviteExpiry {
 
 /// Opens the dialog issuing an invitation, see [InviteDialog].
 Future<void> openInviteDialog(BuildContext context, VAlbumClient client) =>
-    showDialog<void>(
+    showFormDialog<void>(
       context: context,
       builder: (_) => InviteDialog(client: client),
     );

@@ -22,6 +22,7 @@ import 'caller.dart';
 import 'client.dart';
 import 'downloads.dart';
 import 'drag_scroll.dart';
+import 'form_dialog.dart';
 import 'image_properties.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
@@ -678,7 +679,7 @@ class AlbumContentState extends State<AlbumContent>
   /// older sidecar, which carries no level, is offered as the section it is
   /// drawn as, and is written back with the level only once it is changed.
   Future<void> editHeading(Heading heading) async {
-    var input = await showDialog<HeadingInput>(
+    var input = await showFormDialog<HeadingInput>(
       context: context,
       builder: (context) => HeadingDialog(
         title: _l10n.editHeadingTitle,
@@ -724,7 +725,7 @@ class AlbumContentState extends State<AlbumContent>
         return;
       }
     }
-    var input = await showDialog<HeadingInput>(
+    var input = await showFormDialog<HeadingInput>(
       context: context,
       builder: (context) => HeadingDialog(
         title: _l10n.insertHeading,
@@ -833,7 +834,7 @@ class AlbumContentState extends State<AlbumContent>
       return;
     }
 
-    var answer = await showDialog<TimeCorrection>(
+    var answer = await showFormDialog<TimeCorrection>(
       context: context,
       builder: (context) => AdjustRecordingTimeDialog(
         reference: reference,
@@ -1363,7 +1364,7 @@ class AlbumContentState extends State<AlbumContent>
     if (!editing && refuseWhileOffline(context)) {
       return;
     }
-    var result = await showDialog<AlbumProperties>(
+    var result = await showFormDialog<AlbumProperties>(
       context: context,
       builder: (context) => AlbumPropertiesDialog(
         AlbumProperties(
@@ -3158,7 +3159,7 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   /// the tile's stored index — see [insertHeadingBeforeDisplayed] for why the
   /// two differ and why the display decides (issue #71).
   Future<void> createHeading() async {
-    var input = await showDialog<HeadingInput>(
+    var input = await showFormDialog<HeadingInput>(
       context: context,
       builder: (context) => HeadingDialog(
         title: _l10n.insertHeading,
@@ -3582,6 +3583,9 @@ class HeadingDialogState extends State<HeadingDialog> {
           onSelected: (_) => setState(() => level = value),
         );
     return AlertDialog(
+      // The title and the fields scroll where a phone's keyboard leaves too
+      // little room for them; the buttons stay (issue #178).
+      scrollable: true,
       title: Text(widget.title),
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3668,75 +3672,51 @@ class TextInputDialogState extends State<TextInputDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DefaultTextStyle(
-              style: DialogTheme.of(context).titleTextStyle ??
-                  Theme.of(context).textTheme.titleLarge!,
-              child: Semantics(
-                namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
-                container: true,
-                child: Text(widget.title),
-              ),
-            ),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              minLines: widget.multiLine ? 3 : 1,
-              maxLines: widget.multiLine ? 8 : 1,
-              decoration: InputDecoration(label: Text(widget.label)),
-            ),
-            if (widget.details.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: DefaultTextStyle.merge(
-                  style: Theme.of(context).textTheme.bodySmall,
-                  child: Column(
-                    key: const Key("properties-details"),
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: widget.details,
-                  ),
-                ),
-              ),
-            if (widget.note != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Text(
-                  widget.note!,
-                  key: const Key("properties-contributor"),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(AppLocalizations.of(context)!.cancel),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.check),
-                      label: Text(AppLocalizations.of(context)!.apply),
-                      onPressed: () =>
-                          Navigator.of(context).pop(controller.text),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return FormDialogFrame(
+      title: Text(widget.title),
+      fields: [
+        TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: widget.multiLine ? 3 : 1,
+          maxLines: widget.multiLine ? 8 : 1,
+          decoration: InputDecoration(label: Text(widget.label)),
         ),
-      ),
+        if (widget.details.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: DefaultTextStyle.merge(
+              style: Theme.of(context).textTheme.bodySmall,
+              child: Column(
+                key: const Key("properties-details"),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: widget.details,
+              ),
+            ),
+          ),
+        if (widget.note != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+              widget.note!,
+              key: const Key("properties-contributor"),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+      ],
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(AppLocalizations.of(context)!.cancel),
+        ),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.check),
+          label: Text(AppLocalizations.of(context)!.apply),
+          onPressed: () =>
+              Navigator.of(context).pop(controller.text),
+        ),
+      ],
     );
   }
 }
@@ -3913,8 +3893,8 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
     var day = await showDatePicker(
       context: context,
       initialDate: start,
-      firstDate: DateTime(1900),
-      lastDate: DateTime(2100),
+      firstDate: firstAlbumDate,
+      lastDate: lastAlbumDate,
     );
     if (day == null || !mounted) {
       return;
@@ -3940,101 +3920,77 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var small = Theme.of(context).textTheme.bodySmall;
-    return Dialog(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+    return FormDialogFrame(
+      title: Text(l10n.adjustRecordingTimeTitle),
+      fields: [
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            "${widget.reference.name}: ${timeFormat.format(current)}",
+            key: const Key("adjust-reference"),
+          ),
+        ),
+        Row(
           children: [
-            DefaultTextStyle(
-              style: DialogTheme.of(context).titleTextStyle ??
-                  Theme.of(context).textTheme.titleLarge!,
-              child: Semantics(
-                namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
-                container: true,
-                child: Text(l10n.adjustRecordingTimeTitle),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                "${widget.reference.name}: ${timeFormat.format(current)}",
-                key: const Key("adjust-reference"),
-              ),
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    key: const Key("adjust-time"),
-                    controller: controller,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      label: Text(l10n.correctTime),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  key: const Key("adjust-pick"),
-                  tooltip: l10n.pickDateAndTime,
-                  icon: const Icon(Icons.edit_calendar),
-                  onPressed: pickTime,
-                ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(offsetText(l10n), key: const Key("adjust-offset")),
-            ),
-            Text(countText(l10n), key: const Key("adjust-count")),
-            // One tap for what the file names already say, offered only where
-            // there is something to repair, see issue #102.
-            if (nameDated.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: OutlinedButton.icon(
-                  key: const Key("use-name-date"),
-                  icon: const Icon(Icons.drive_file_rename_outline),
-                  label: Text(nameDateText(l10n)),
-                  onPressed: () =>
-                      Navigator.of(context).pop(const UseNameDates()),
+            Expanded(
+              child: TextField(
+                key: const Key("adjust-time"),
+                controller: controller,
+                autofocus: true,
+                decoration: InputDecoration(
+                  label: Text(l10n.correctTime),
                 ),
               ),
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                l10n.adjustRecordingTimeHelp,
-                key: const Key("adjust-help"),
-                style: small,
-              ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(l10n.cancel),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.check),
-                      label: Text(l10n.apply),
-                      onPressed: corrected == null
-                          ? null
-                          : () => Navigator.of(context)
-                              .pop(ShiftToTime(corrected!)),
-                    ),
-                  ),
-                ],
-              ),
+            IconButton(
+              key: const Key("adjust-pick"),
+              tooltip: l10n.pickDateAndTime,
+              icon: const Icon(Icons.edit_calendar),
+              onPressed: pickTime,
             ),
           ],
         ),
-      ),
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Text(offsetText(l10n), key: const Key("adjust-offset")),
+        ),
+        Text(countText(l10n), key: const Key("adjust-count")),
+        // One tap for what the file names already say, offered only where
+        // there is something to repair, see issue #102.
+        if (nameDated.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: OutlinedButton.icon(
+              key: const Key("use-name-date"),
+              icon: const Icon(Icons.drive_file_rename_outline),
+              label: Text(nameDateText(l10n)),
+              onPressed: () =>
+                  Navigator.of(context).pop(const UseNameDates()),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Text(
+            l10n.adjustRecordingTimeHelp,
+            key: const Key("adjust-help"),
+            style: small,
+          ),
+        ),
+      ],
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.check),
+          label: Text(l10n.apply),
+          onPressed: corrected == null
+              ? null
+              : () => Navigator.of(context)
+                  .pop(ShiftToTime(corrected!)),
+        ),
+      ],
     );
   }
 }
@@ -4084,6 +4040,11 @@ String albumKindExplanation(AppLocalizations l10n) => l10n.inboxExplanation;
 
 /// The size of the crop editor's preview of the index picture.
 const double indexPictureEditorSize = 200;
+
+/// The height the album properties need for their content to show the crop
+/// editor beside at least one field, see [AlbumPropertiesDialogState.build]:
+/// the title, the editor with its zoom row, the buttons, and one field.
+const double cropEditorNeedsHeight = 420;
 
 /// The factor one zoom step of the crop editor scales by.
 const double indexPictureZoomStep = 1.25;
@@ -4187,66 +4148,47 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    return Dialog(
-      child: Padding(
-        // Tight, so that the whole dialog still fits a short screen: the
-        // album date moved in with issue #48. Scrollable since issue #136,
-        // which added the kind switch: a dialog that is one row too tall for
-        // the screen must scroll, not overflow.
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DefaultTextStyle(
-              style: DialogTheme.of(context).titleTextStyle ??
-                  Theme.of(context).textTheme.titleLarge!,
-              child: Semantics(
-                namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
-                container: true,
-                child: Text(l10n.albumProperties),
-              ),
-            ),
-            TextField(
-              controller: titleController,
-              autofocus: true,
-              decoration: InputDecoration(label: Text(l10n.titleLabel)),
-            ),
-            TextField(
-              controller: subTitleController,
-              decoration: InputDecoration(label: Text(l10n.subtitleLabel)),
-            ),
-            if (!isInbox) buildDateRow(context),
-            // The kind switch stands where the "Albumbild" label stood: the
-            // dialog is not scrollable — the crop editor below takes the pan
-            // gesture a scroll view would fight it for — so a row that is
-            // added has to be a row that is taken away, and the crop editor
-            // says what it is without a label over it, see issue #136.
-            if (widget.mayChangeKind) buildKindRow(context),
-            if (!isInbox) buildIndexPictureEditor(context),
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(l10n.cancel),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.check),
-                      label: Text(l10n.apply),
-                      onPressed: applyPressed,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return FormDialogFrame(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      actionsGap: 8,
+      title: Text(l10n.albumProperties),
+      fields: [
+        TextField(
+          controller: titleController,
+          autofocus: true,
+          decoration: InputDecoration(label: Text(l10n.titleLabel)),
         ),
-      ),
+        TextField(
+          controller: subTitleController,
+          decoration: InputDecoration(label: Text(l10n.subtitleLabel)),
+        ),
+        if (!isInbox) buildDateRow(context),
+        // The kind switch stands where the "Albumbild" label stood: the
+        // dialog must not grow, and the crop editor says what it is without
+        // a label over it, see issue #136.
+        if (widget.mayChangeKind) buildKindRow(context),
+      ],
+      // Only the fields above scroll (issue #178). The crop editor stands
+      // below them, outside the scroll view: a scroll view would take the
+      // pan gesture away from it (issue #136). It cannot shrink either, so
+      // where the dialog is shorter than [cropEditorNeedsHeight] — a phone
+      // with its keyboard open, or turned sideways — it steps aside and the
+      // fields have the room; the crop is kept in this state and the editor
+      // is back as soon as there is room again (on a phone, a touch beside
+      // the field closes the keyboard). A desktop always has the room.
+      fixed: [if (!isInbox) buildIndexPictureEditor(context)],
+      fixedNeedsHeight: cropEditorNeedsHeight,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.check),
+          label: Text(l10n.apply),
+          onPressed: applyPressed,
+        ),
+      ],
     );
   }
 
@@ -4360,8 +4302,8 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
     var picked = await showDatePicker(
       context: context,
       initialDate: initial,
-      firstDate: DateTime(1900),
-      lastDate: DateTime(2100),
+      firstDate: firstAlbumDate,
+      lastDate: lastAlbumDate,
     );
     if (picked == null || !mounted) {
       return;

@@ -20,6 +20,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'device_code_payload.dart';
+import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'settings.dart';
@@ -1445,7 +1446,7 @@ class UsersSectionState extends State<UsersSection> {
 
   /// Opens the dialog changing what [user] may do and see (issue #83).
   Future<void> _edit(UserEntry user) async {
-    var answer = await showDialog<UserList>(
+    var answer = await showFormDialog<UserList>(
       context: context,
       builder: (context) => PermissionDialog(client: widget.client, user: user),
     );

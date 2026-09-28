@@ -1698,13 +1698,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Without a date the album stays in this folder.';
 
   @override
-  String get createInboxLabel => 'Inbox';
-
-  @override
-  String get createInboxHint =>
-      'Photographs waiting to be sorted: shown by the day they were taken, no date and no order of their own.';
-
-  @override
   String get newFolderTitle => 'New folder';
 
   @override

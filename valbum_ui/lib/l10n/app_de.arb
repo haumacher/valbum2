@@ -467,8 +467,6 @@
   "placementHeading": "Ablageregel",
   "placementExplanation": "Was hier eintrifft, wird im entsprechenden Jahresordner abgelegt. Was bereits hier ist, bleibt so lange dort, bis die Ablageregel über das Menü angewendet wird.",
   "createAlbumUndatedHint": "Ohne Datum bleibt das Album in diesem Ordner.",
-  "createInboxLabel": "Posteingang",
-  "createInboxHint": "Fotos, die darauf warten, sortiert zu werden: sortiert nach dem Tag, an dem sie aufgenommen wurden, ohne Datum und ohne eigene Reihenfolge.",
   "newFolderTitle": "Neuer Ordner",
   "imageCount": "{count, plural, =1{1 Bild} other{{count} Bilder}}",
   "targetTopLevel": "die oberste Ebene",

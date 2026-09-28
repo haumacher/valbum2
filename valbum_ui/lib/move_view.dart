@@ -11,6 +11,7 @@ import 'album_date.dart';
 import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
 import 'offline.dart';
@@ -125,7 +126,7 @@ Future<void> moveWithPicker({
   }
 
   var messenger = ScaffoldMessenger.of(context);
-  var picked = await showDialog<PickedTarget>(
+  var picked = await showFormDialog<PickedTarget>(
     context: context,
     builder: (context) => FolderPicker(
       client: client,
@@ -734,7 +735,7 @@ class FolderPickerState extends State<FolderPicker> {
   /// move creates it in the folder shown and then moves into the path the
   /// server answers, see [moveWithPicker] and issue #114.
   Future<void> _createAlbum() async {
-    var album = await showDialog<AlbumInfo>(
+    var album = await showFormDialog<AlbumInfo>(
       context: context,
       builder: (context) => CreateAlbumDialog(initialDate: widget.newAlbumDate),
     );

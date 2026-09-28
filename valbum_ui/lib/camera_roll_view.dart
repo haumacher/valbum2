@@ -14,6 +14,7 @@ import 'background.dart';
 import 'caller.dart';
 import 'camera_roll.dart';
 import 'client.dart';
+import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'notices.dart';
 import 'photo_library.dart';
@@ -494,7 +495,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
       setState(() => refusal = AppLocalizations.of(context)!.saveServerFirst);
       return;
     }
-    var chosen = await showDialog<List<String>>(
+    var chosen = await showFormDialog<List<String>>(
       context: context,
       builder: (_) => InboxPickerDialog(client: client),
     );
@@ -676,7 +677,7 @@ class _InboxPickerDialogState extends State<InboxPickerDialog> {
   /// into a folder the server does not know would be stored as a single file
   /// instead, so the album has to exist before the first sync.
   Future<void> _createAlbum() async {
-    var name = await showDialog<String>(
+    var name = await showFormDialog<String>(
       context: context,
       builder: (context) => const _NameDialog(),
     );
