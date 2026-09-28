@@ -197,8 +197,12 @@ before the first release; the secret and the environment were checked by then.
 
 ## Cutting a release
 
-1. **Make sure `master` is green.** The CI workflow must have passed on the commit you tag;
-   the release workflow does not re-run the Flutter tests and runs the Java tests on one leg only.
+1. **Make sure `master` is green.** The CI workflow must have passed on the commit you tag, or,
+   where that commit changed only text CI skips (Markdown other than README and RELEASE,
+   `LICENSE`, `.claude/`), on the last commit before it that ran CI. The release workflow does not
+   re-run the Flutter tests and runs the Java tests on one leg only. CI runs the container job only
+   where the server, its packaging or the image changed; the release always builds and
+   smoke-tests the image itself.
 2. **Pick the version.** The pom on `master` carries the *next* version as a snapshot,
    `1.1.0-SNAPSHOT` means the next release is `1.1.0`. The tag must be exactly
    `valbum-<major>.<minor>.<patch>`; `valbum-1.1` or `v1.1.0` fail in the first job. The

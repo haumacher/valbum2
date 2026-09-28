@@ -3,9 +3,54 @@ name: CI
 on:
   push:
     branches: [master]
+    # Text alone cannot break a test: a commit touching only these runs no CI. A release tag
+    # needs a green run on the last commit before it that did run, see RELEASE.md.
+    paths-ignore:
+      - '**.md'
+      # Read by TestDebianPackageProbe, so not text alone.
+      - '!README.md'
+      - '!RELEASE.md'
+      - 'LICENSE'
+      - '.claude/**'
+      - '.gitignore'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      # Read by TestDebianPackageProbe, so not text alone.
+      - '!README.md'
+      - '!RELEASE.md'
+      - 'LICENSE'
+      - '.claude/**'
+      - '.gitignore'
+  workflow_dispatch:
+
+# A newer push to the same branch makes an older, still running check pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # Which parts a push touched: the container job below runs only where the image can have
+  # changed. The release builds and smoke-tests the image anyway before it pushes.
+  changes:
+    name: Changed parts
+    runs-on: ubuntu-latest
+    outputs:
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            docker:
+              - 'image-server/**'
+              - 'image-server-shared/**'
+              - 'util-servlet/**'
+              - 'pom.xml'
+              - 'compose.yaml'
+              - '.github/workflows/ci.yml'
+
   server:
     name: Java server (Maven)
     runs-on: ubuntu-latest
@@ -44,6 +89,8 @@ jobs:
   # both architectures from the packages' JARs.
   docker:
     name: Container image (amd64)
+    needs: changes
+    if: needs.changes.outputs.docker == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
