@@ -10,11 +10,11 @@
 #   - FFmpeg (#74, #87): every ELF of org/bytedeco/ffmpeg/<platform>/, the program included,
 #     resolved with LD_LIBRARY_PATH on the extracted libraries, as VideoRenditions.program hands
 #     the child process;
-#   - the face index (#124): every ELF of org/bytedeco/opencv/<platform>/, beside the OpenBLAS
-#     and JavaCPP libraries it is loaded with. Not just the closure of libopencv_java.so, which is
-#     what TestDebianPackageLibraries checks: FaceDetection loads it through the JavaCPP preset
-#     'opencv_java', which inherits nearly every OpenCV preset and so loads their JNI libraries
-#     too - highgui's among them, which links GTK 2.
+#   - the face index (#124, #182): what FaceDetection loads - libopencv_java.so, whose closure
+#     ldd resolves through the extracted OpenCV libraries, and the OpenBLAS preset beside it. Not
+#     every ELF of the OpenCV artifact: highgui links GTK 2, and the face index loads it no longer
+#     (#182). So this also fails as soon as anything the face index loads needs a GUI library
+#     again (GTK, GDK, cairo, highgui) - the image installs none of them, on purpose.
 #
 # Usage: check-libraries <dir the natives were extracted to (org/bytedeco/...)>
 #
@@ -62,9 +62,19 @@ for file in "$FFMPEG"/*; do
 		check "$file" "$FFMPEG:$JAVACPP"
 	fi
 done
-for file in "$OPENCV"/*; do
-	if [ -f "$file" ] && is_elf "$file"; then
-		check "$file" "$OPENCV:$OPENBLAS:$JAVACPP"
+for file in "$OPENCV/libopencv_java.so" "$OPENBLAS"/libjniopenblas.so; do
+	if [ ! -f "$file" ]; then
+		echo "check-libraries: $file, which the face index loads, is missing." >&2
+		failed=1
+		continue
+	fi
+	check "$file" "$OPENCV:$OPENBLAS:$JAVACPP"
+	gui=$(LD_LIBRARY_PATH="$OPENCV:$OPENBLAS:$JAVACPP" ldd "$file" 2>&1 \
+		| grep -E 'lib(gtk|gdk|cairo)|highgui' || true)
+	if [ -n "$gui" ]; then
+		echo "check-libraries: $file, which the face index loads, links a GUI library (#182):" >&2
+		echo "$gui" >&2
+		failed=1
 	fi
 done
 

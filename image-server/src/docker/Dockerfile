@@ -42,22 +42,17 @@ RUN mkdir /natives && unzip -q /work/fat.jar 'org/bytedeco/*/linux-*/*' -d /nati
 # --- The runtime image ------------------------------------------------------------------------------
 FROM ${BASE} AS runtime
 
-# The system libraries the bundled natives link and no JavaCPP artifact ships:
-#
-#   - for the FFmpeg program of the video renditions exactly the 'Recommends' of the Debian
-#     package (image-server/src/deb/control/control), which TestDebianPackageLibraries derives
-#     from the artifacts' ELF headers and TestDockerImageLibraries holds this line to;
-#   - for the face index GTK 2: FaceDetection loads OpenCV through the JavaCPP preset
-#     'opencv_java', which inherits nearly every OpenCV preset and so loads the JNI library of
-#     'opencv_highgui', which links GTK 2, gdk-pixbuf, cairo and glib. Without them the detector
-#     does not load at all and a space with 'faces: on' is served without faces. It costs the
-#     image about 115 MB, and it goes again once the face index loads only what it uses.
+# The system libraries the bundled natives link and no JavaCPP artifact ships: for the FFmpeg
+# program of the video renditions exactly the 'Recommends' of the Debian package
+# (image-server/src/deb/control/control), which TestDebianPackageLibraries derives from the
+# artifacts' ELF headers and TestDockerImageLibraries holds this line to. The face index needs
+# nothing here: FaceDetection loads libopencv_java.so and its closure, never the GTK-linking
+# highgui (#182), and check-libraries fails should that ever change.
 #
 # check-libraries (the 'check' target below) proves the closure inside the built image.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64 \
-		libgtk2.0-0t64 \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --chmod=755 deb/valbum-server /usr/bin/valbum-server

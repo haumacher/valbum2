@@ -207,6 +207,76 @@ public class TestDebianPackageLibraries extends TestCase {
 			+ String.join("\n", missing), List.of(), missing);
 	}
 
+	/**
+	 * What {@link de.haumacher.imageServer.faces.FaceDetection} loads is exactly the closure of
+	 * {@value #OPENCV_ENTRY_POINT} inside the artifact, in an order the dynamic linker can follow,
+	 * and not <code>highgui</code>, see issue #182.
+	 *
+	 * <p>
+	 * The face index loads the OpenCV libraries one by one instead of through the JavaCPP preset,
+	 * whose JNI libraries link the GTK-linking <code>highgui</code>. Its list is written down
+	 * ({@link de.haumacher.imageServer.faces.FaceDetection#OPENCV_JAVA_CLOSURE}), so this holds it
+	 * to the ELF headers of every packaged platform: a library missing from the list is a face index
+	 * that does not load, one too many is a library loaded for nothing (or, if it is
+	 * <code>highgui</code>, the headless machine without faces again), and one before a library it
+	 * links is a load that fails, because the run path the presets were built with points at their
+	 * build machine and the linker only finds what is loaded already.
+	 * </p>
+	 */
+	public void testTheFaceIndexLoadsExactlyTheClosureOfOpenCvJava() throws Exception {
+		Map<String, Map<String, byte[]>> byPlatform = shippedOpenCvLibraries();
+		if (byPlatform.isEmpty()) {
+			System.out.println("No org.bytedeco OpenCV platform artifact on the class path; nothing to check.");
+			return;
+		}
+		assertTrue("A normal build has at least the linux-x86_64 natives on the class path, found: "
+			+ byPlatform.keySet(), byPlatform.containsKey("linux-x86_64"));
+
+		List<String> loaded = new ArrayList<>();
+		for (String library : de.haumacher.imageServer.faces.FaceDetection.OPENCV_JAVA_CLOSURE) {
+			loaded.add(soname(library));
+		}
+		assertEquals("The face index loads " + OPENCV_ENTRY_POINT + " last.", OPENCV_ENTRY_POINT,
+			loaded.get(loaded.size() - 1));
+
+		for (Map.Entry<String, Map<String, byte[]>> platform : byPlatform.entrySet()) {
+			Map<String, byte[]> shipped = platform.getValue();
+			if (!shipped.containsKey(OPENCV_ENTRY_POINT)) {
+				continue;
+			}
+			// Only OpenCV's own libraries: OpenBLAS (and the runtime libraries its artifact ships on
+			// some platforms) is loaded as a preset of its own.
+			Set<String> closure = new TreeSet<>();
+			ArrayList<String> pending = new ArrayList<>(List.of(OPENCV_ENTRY_POINT));
+			while (!pending.isEmpty()) {
+				String soname = pending.remove(pending.size() - 1);
+				byte[] library = shipped.get(soname);
+				if (library == null || !soname.startsWith("libopencv_") || !closure.add(soname)) {
+					continue;
+				}
+				pending.addAll(Elf.needed(library));
+			}
+			String name = platform.getKey();
+			assertFalse(name + ": " + OPENCV_ENTRY_POINT + " links highgui, and so GTK: " + closure,
+				closure.stream().anyMatch(soname -> soname.contains("highgui")));
+			assertEquals(name + ": the face index does not load exactly the closure of " + OPENCV_ENTRY_POINT
+				+ "; correct FaceDetection.OPENCV_JAVA_CLOSURE.", closure, new TreeSet<>(loaded));
+
+			Set<String> before = new LinkedHashSet<>();
+			for (String soname : loaded) {
+				for (String needed : Elf.needed(shipped.get(soname))) {
+					if (closure.contains(needed)) {
+						assertTrue(name + ": FaceDetection.OPENCV_JAVA_CLOSURE loads " + soname + " before " + needed
+							+ ", which it links.", before.contains(needed));
+					}
+				}
+				before.add(soname);
+			}
+			System.out.println(name + ": the face index loads the " + loaded.size() + " libraries of "
+				+ OPENCV_ENTRY_POINT + "'s closure, highgui not among them.");
+		}
+	}
+
 	/** The control file is well formed enough for jdeb to read it. */
 	public void testControlFileIsWellFormed() throws Exception {
 		assertTrue("Missing " + CONTROL.getAbsolutePath(), CONTROL.isFile());
@@ -340,32 +410,7 @@ public class TestDebianPackageLibraries extends TestCase {
 	 * libraries it pulls in, that the bundled artifacts do not provide themselves.
 	 */
 	private Map<String, Set<String>> externalOpenCvLibraries() throws IOException {
-		Map<String, Map<String, byte[]>> byPlatform = new TreeMap<>();
-		for (File jar : artifacts("opencv-", "openblas-")) {
-			try (ZipFile zip = new ZipFile(jar)) {
-				Enumeration<? extends ZipEntry> entries = zip.entries();
-				while (entries.hasMoreElements()) {
-					ZipEntry entry = entries.nextElement();
-					Matcher matcher = OPENCV_ENTRY.matcher(entry.getName());
-					if (entry.isDirectory() || !matcher.matches()) {
-						continue;
-					}
-					String platform = matcher.group(1);
-					if (!PACKAGED_PLATFORMS.contains(platform)) {
-						continue;
-					}
-					byte[] content;
-					try (InputStream in = zip.getInputStream(entry)) {
-						content = in.readAllBytes();
-					}
-					if (!Elf.isElf(content)) {
-						continue;
-					}
-					byPlatform.computeIfAbsent(platform, key -> new LinkedHashMap<>())
-						.putIfAbsent(new File(matcher.group(2)).getName(), content);
-				}
-			}
-		}
+		Map<String, Map<String, byte[]>> byPlatform = shippedOpenCvLibraries();
 
 		Map<String, Set<String>> result = new TreeMap<>();
 		for (Map.Entry<String, Map<String, byte[]>> platform : byPlatform.entrySet()) {
@@ -394,6 +439,49 @@ public class TestDebianPackageLibraries extends TestCase {
 			result.put(platform.getKey(), external);
 		}
 		return result;
+	}
+
+	/**
+	 * Per packaged platform, the ELF files of the OpenCV and OpenBLAS artifacts, by file name.
+	 */
+	private static Map<String, Map<String, byte[]>> shippedOpenCvLibraries() throws IOException {
+		Map<String, Map<String, byte[]>> byPlatform = new TreeMap<>();
+		for (File jar : artifacts("opencv-", "openblas-")) {
+			try (ZipFile zip = new ZipFile(jar)) {
+				Enumeration<? extends ZipEntry> entries = zip.entries();
+				while (entries.hasMoreElements()) {
+					ZipEntry entry = entries.nextElement();
+					Matcher matcher = OPENCV_ENTRY.matcher(entry.getName());
+					if (entry.isDirectory() || !matcher.matches()) {
+						continue;
+					}
+					String platform = matcher.group(1);
+					if (!PACKAGED_PLATFORMS.contains(platform)) {
+						continue;
+					}
+					byte[] content;
+					try (InputStream in = zip.getInputStream(entry)) {
+						content = in.readAllBytes();
+					}
+					if (!Elf.isElf(content)) {
+						continue;
+					}
+					byPlatform.computeIfAbsent(platform, key -> new LinkedHashMap<>())
+						.putIfAbsent(new File(matcher.group(2)).getName(), content);
+				}
+			}
+		}
+		return byPlatform;
+	}
+
+	/**
+	 * The file name JavaCPP gives a library it is asked for as <code>name@.version</code> (or
+	 * <code>name</code>) on Linux.
+	 */
+	private static String soname(String javacppName) {
+		int at = javacppName.indexOf('@');
+		return at < 0 ? "lib" + javacppName + ".so"
+			: "lib" + javacppName.substring(0, at) + ".so" + javacppName.substring(at + 1);
 	}
 
 	/** The <code>org.bytedeco</code> FFmpeg platform artifacts on the test class path. */
