@@ -239,6 +239,11 @@ in a separate service, and abuse and law (the DSA, GDPR) come first. Open questi
 
 ## Decisions log
 
+- **2026-09-29** — 2.9.1 released (tag `valbum-2.9.1` on 1bcd098), with two fixes reported against
+  2.9.0: videos in the browser play from a short-lived signed address (#185; the video element
+  cannot send the sign-in), and a pasted `valbum-device://` code link is taken wherever a server or
+  a code is typed. CI now skips text-only commits, cancels superseded runs, and builds the container
+  only where it can have changed (the author: "feels a little wasteful").
 - **2026-09-28 (evening)** — 2.9.0 released (tag `valbum-2.9.0` on 0b7c12f). It is the first release
   with a container image: `hauix/valbum` on Docker Hub and `ghcr.io/haumacher/valbum`, amd64 and
   arm64 under one digest (#174). It is also the first with the app id `de.haumacher.valbum`, which does
