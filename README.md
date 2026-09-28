@@ -127,8 +127,9 @@ Every release carries a signed `valbum-<version>.apk` on the
 Android asks you to allow installing from your browser. The first screen asks where your album is:
 type the server address or paste an invitation link, then sign in with a code.
 
-From 2.9 on the app has a new id: a 2.8 or older app does not update to it. Uninstall it first and
-sign in again.
+From 2.9 on the app has a new id, so a 2.8 or older app does not update to it; the two install side
+by side. Install 2.9, then in the old app open *Server… → My devices → Add a device…* and sign the
+new app in with that code. Uninstall the old app only then — it may be your only signed-in device.
 
 ### Configuration
 
