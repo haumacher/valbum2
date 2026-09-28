@@ -230,8 +230,19 @@ first ("Persons in this album"). Packages in delivery order: #124 (detection, cl
 #125 (register, confirmed tags, the tagging action), #126 (the face editor), #127 (recognition and
 suggestions across the space), #128 (a person linked to a member), #129 (XMP face regions imported).
 
+## Phase 8 — Hosted spaces (draft)
+
+A hosting service on the same server, which the self-hosted server stays independent of. The core
+gains general mechanisms: a space created from the app without a restart, quotas, a lifecycle with
+trials, and limits on costly work per space. Sign-up, identity (phone or payment) and payment live
+in a separate service, and abuse and law (the DSA, GDPR) come first. Open questions in #181.
+
 ## Decisions log
 
+- **2026-09-28** — Phase 8 opened as a draft (#181) from the author's idea of a photo hosting
+  service: "Allowing to 'try it out' is fine - for limited time, limited space. It must require the
+  user to identify itself to prevent abuse." Its first step, creating a space from the app, is useful
+  for self-hosting too. Nothing is built before the open questions in #181 are decided.
 - **2026-09-28** — The app will be distributed through the **Play Store** (the author). Obtainium was
   tried and rejected, because its "add app" page is not something a family member can work, and the
   server handing out its own APK is set aside. Before the first upload the application id becomes
