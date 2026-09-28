@@ -33,9 +33,10 @@ import java.util.logging.Logger;
  * costs the packages not one further native library, see
  * <code>TestDebianPackageLibraries</code>. What it does <em>not</em> ship is a JavaCPP wrapper of
  * <code>FaceDetectorYN</code>/<code>FaceRecognizerSF</code> at this version; the official OpenCV
- * Java bindings (<code>org.opencv.*</code>, loaded through
- * <code>org.bytedeco.opencv.opencv_java</code>) are in the very same artifact and do have them,
- * so that is the door used here.
+ * Java bindings (<code>org.opencv.*</code>, implemented in the artifact's
+ * <code>libopencv_java.so</code>) are in the very same artifact and do have them, so that is the
+ * door used here — loaded without the GTK-linking <code>highgui</code> that the JavaCPP preset of
+ * the same name would bring along, see {@link #OPENCV_JAVA_CLOSURE} and issue #182.
  * </p>
  *
  * <h2>The models</h2>
@@ -521,12 +522,112 @@ public final class FaceDetection {
 	 * </p>
 	 */
 	private static void load() throws Exception {
-		org.bytedeco.javacpp.Loader.load(org.bytedeco.opencv.opencv_java.class);
+		loadOpenCv();
 		File detector = unpack(DETECTOR_RESOURCE);
 		File recogniser = unpack(RECOGNISER_RESOURCE);
 		_yunet = org.opencv.objdetect.FaceDetectorYN.create(detector.getAbsolutePath(), "",
 			new org.opencv.core.Size(320, 320), SCORE_THRESHOLD, NMS_THRESHOLD, TOP_K);
 		_sface = org.opencv.objdetect.FaceRecognizerSF.create(recogniser.getAbsolutePath(), "");
+	}
+
+	/**
+	 * The library the official OpenCV Java bindings (<code>org.opencv.*</code>) are implemented in.
+	 */
+	public static final String OPENCV_JAVA = "opencv_java";
+
+	/**
+	 * The native libraries the official OpenCV Java bindings need on Linux, in an order in which
+	 * every one comes after everything it links: the closure of {@value #OPENCV_JAVA} inside the
+	 * <code>org.bytedeco:opencv</code> artifact, spelled as JavaCPP names a library
+	 * (<code>name@.version</code>), see issue #182.
+	 *
+	 * <p>
+	 * The same on every packaged platform (linux-x86_64, linux-arm64, linux-armhf);
+	 * <code>TestDebianPackageLibraries.testTheFaceIndexLoadsExactlyTheClosureOfOpenCvJava</code>
+	 * derives the closure from the ELF headers of the artifacts and holds this list to it, so an
+	 * upgrade of the presets that changes what {@value #OPENCV_JAVA} links fails there. What is
+	 * <em>not</em> in it is <code>opencv_highgui</code>, the one library of the artifact that links
+	 * GTK 2.
+	 * </p>
+	 */
+	public static final List<String> OPENCV_JAVA_CLOSURE = List.of(
+		"opencv_core@.406",
+		"opencv_bioinspired@.406",
+		"opencv_flann@.406",
+		"opencv_imgproc@.406",
+		"opencv_ml@.406",
+		"opencv_phase_unwrapping@.406",
+		"opencv_dnn@.406",
+		"opencv_features2d@.406",
+		"opencv_img_hash@.406",
+		"opencv_imgcodecs@.406",
+		"opencv_photo@.406",
+		"opencv_plot@.406",
+		"opencv_barcode@.406",
+		"opencv_calib3d@.406",
+		"opencv_text@.406",
+		"opencv_videoio@.406",
+		"opencv_wechat_qrcode@.406",
+		"opencv_xfeatures2d@.406",
+		"opencv_xphoto@.406",
+		"opencv_aruco@.406",
+		"opencv_objdetect@.406",
+		"opencv_structured_light@.406",
+		"opencv_video@.406",
+		"opencv_bgsegm@.406",
+		"opencv_face@.406",
+		"opencv_tracking@.406",
+		"opencv_ximgproc@.406",
+		OPENCV_JAVA);
+
+	/**
+	 * Loads the natives of the official OpenCV Java bindings — and nothing else.
+	 *
+	 * <p>
+	 * Not <code>Loader.load(opencv_java.class)</code>, which is what JavaCPP offers for it, see
+	 * issue #182: that preset inherits thirteen others, and loading a preset loads its JNI library,
+	 * which for <code>opencv_java</code> itself and for nearly every one it inherits
+	 * (<code>objdetect</code>, <code>face</code>, <code>calib3d</code>, …) links
+	 * <code>libopencv_highgui</code>, and that one GTK 2, gdk-pixbuf and cairo. A headless machine
+	 * (Raspberry Pi OS Lite, a server, a container) has none of them, so the face index never
+	 * started there. <code>libopencv_java.so</code>, the one library the bindings call, needs no
+	 * JNI library of JavaCPP at all and none of the GUI.
+	 * </p>
+	 *
+	 * <p>
+	 * So the libraries are taken one by one through JavaCPP's own machinery — found in the
+	 * artifact of this platform (<code>Loader.findLibrary</code>), extracted into the same cache,
+	 * loaded with <code>System.load</code> (<code>Loader.loadLibrary</code>) — in
+	 * {@link #OPENCV_JAVA_CLOSURE}'s order, because the run path the presets were linked with
+	 * points at their build machine and the dynamic linker finds a dependency only because it is
+	 * already loaded under its soname. OpenBLAS, which <code>opencv_core</code> links, is the one
+	 * preset loaded as a preset: <code>opencv_core</code> inherits it, and its JNI library links
+	 * nothing but OpenBLAS itself.
+	 * </p>
+	 *
+	 * <p>
+	 * Only on Linux: the list spells Linux sonames, the packages are Linux packages, and on macOS
+	 * and Windows <code>highgui</code> links the system's own GUI, which is always there — so a
+	 * development machine of that kind loads the preset as before.
+	 * </p>
+	 */
+	private static void loadOpenCv() {
+		if (!org.bytedeco.javacpp.Loader.getPlatform().startsWith("linux-")) {
+			org.bytedeco.javacpp.Loader.load(org.bytedeco.opencv.opencv_java.class);
+			return;
+		}
+		org.bytedeco.javacpp.Loader.load(org.bytedeco.openblas.global.openblas.class);
+		Class<?> artifact = org.bytedeco.opencv.opencv_java.class;
+		org.bytedeco.javacpp.ClassProperties properties =
+			org.bytedeco.javacpp.Loader.loadProperties(artifact, org.bytedeco.javacpp.Loader.loadProperties(), false);
+		for (String library : OPENCV_JAVA_CLOSURE) {
+			java.net.URL[] urls = org.bytedeco.javacpp.Loader.findLibrary(artifact, properties, library);
+			String path = org.bytedeco.javacpp.Loader.loadLibrary(artifact, urls, library);
+			if (path == null) {
+				// Loading switched off (org.bytedeco.javacpp.loadLibraries=false).
+				throw new UnsatisfiedLinkError("JavaCPP did not load '" + library + "'.");
+			}
+		}
 	}
 
 	/**
