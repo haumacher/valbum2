@@ -1,0 +1,14 @@
+#!/bin/sh
+#
+# The HEALTHCHECK of the VAlbum container image (#174): the app base answers. It is the page every
+# browser loads first, served without signing in whatever VALBUM_AUTH says, so it tells a running
+# server from a hung or a crashed one without a token.
+#
+set -eu
+context=${VALBUM_CONTEXTPATH:-}
+context=${context#/}
+context=${context%/}
+if [ -n "$context" ]; then
+	context="$context/"
+fi
+exec curl --fail --silent --show-error --max-time 8 --output /dev/null "http://127.0.0.1:${VALBUM_PORT:-8080}/$context"

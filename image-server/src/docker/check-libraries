@@ -1,0 +1,75 @@
+#!/bin/sh
+#
+# Checks inside the VAlbum container image that the bundled natives find every library they link
+# (#174) - the image's counterpart of TestDebianPackageLibraries, which checks the Debian
+# package's Recommends against the same artifacts. Run by the Dockerfile's 'check' target, which
+# CI builds; the published image never carries the extracted natives this reads.
+#
+# What is checked is what the server loads, the same two shapes as the Debian test:
+#
+#   - FFmpeg (#74, #87): every ELF of org/bytedeco/ffmpeg/<platform>/, the program included,
+#     resolved with LD_LIBRARY_PATH on the extracted libraries, as VideoRenditions.program hands
+#     the child process;
+#   - the face index (#124): every ELF of org/bytedeco/opencv/<platform>/, beside the OpenBLAS
+#     and JavaCPP libraries it is loaded with. Not just the closure of libopencv_java.so, which is
+#     what TestDebianPackageLibraries checks: FaceDetection loads it through the JavaCPP preset
+#     'opencv_java', which inherits nearly every OpenCV preset and so loads their JNI libraries
+#     too - highgui's among them, which links GTK 2.
+#
+# Usage: check-libraries <dir the natives were extracted to (org/bytedeco/...)>
+#
+set -eu
+
+ROOT=$1/org/bytedeco
+platform_dir() {
+	for dir in "$ROOT/$1"/linux-*; do
+		if [ -d "$dir" ]; then echo "$dir"; return; fi
+	done
+	echo "check-libraries: no natives of '$1' below $ROOT." >&2
+	exit 1
+}
+FFMPEG=$(platform_dir ffmpeg)
+OPENCV=$(platform_dir opencv)
+OPENBLAS=$(platform_dir openblas)
+JAVACPP=$(platform_dir javacpp)
+
+failed=0
+checked=0
+check() {
+	path=$1
+	libs=$2
+	if ! out=$(LD_LIBRARY_PATH=$libs ldd "$path" 2>&1); then
+		echo "check-libraries: ldd cannot read $path: $out" >&2
+		failed=1
+		return
+	fi
+	checked=$((checked + 1))
+	missing=$(echo "$out" | grep 'not found' || true)
+	if [ -n "$missing" ]; then
+		echo "check-libraries: $path needs a library the image does not carry:" >&2
+		echo "$missing" >&2
+		failed=1
+	fi
+}
+
+is_elf() {
+	[ "$(head -c 4 "$1" | tail -c 3)" = ELF ]
+}
+
+for file in "$FFMPEG"/*; do
+	if [ -f "$file" ] && is_elf "$file"; then
+		chmod +x "$file"
+		check "$file" "$FFMPEG:$JAVACPP"
+	fi
+done
+for file in "$OPENCV"/*; do
+	if [ -f "$file" ] && is_elf "$file"; then
+		check "$file" "$OPENCV:$OPENBLAS:$JAVACPP"
+	fi
+done
+
+if [ "$failed" != 0 ]; then
+	echo "check-libraries: install what is missing in the Dockerfile's apt-get line, and name it in image-server/src/deb/control/control's Recommends as well." >&2
+	exit 1
+fi
+echo "check-libraries: $(basename "$FFMPEG"): FFmpeg and OpenCV ($checked ELF files) resolve every library they link."

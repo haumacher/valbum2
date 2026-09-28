@@ -37,6 +37,51 @@ jobs:
       - name: Build and test
         run: mvn -B clean install
 
+  # The container image of #174, amd64 only and never pushed: the platform JAR with the web app
+  # bundled, as the release builds it (the health check asks the app base), the image's own
+  # library check, and the image started on a copy of the test album - a video rendition and the
+  # face index inside the container, the files it writes owned by PUID:PGID. The release builds
+  # both architectures from the packages' JARs.
+  docker:
+    name: Container image (amd64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.2'
+          cache: true
+      - name: Build the web app
+        working-directory: valbum_ui
+        run: |
+          flutter pub get
+          flutter build web --release
+      - name: Build the platform JAR
+        run: mvn -B -Djavacpp.platform=linux-x86_64 -DskipTests package
+      - name: Hand it to the image
+        run: |
+          mkdir -p "$RUNNER_TEMP/jars"
+          cp image-server/target/image-server-linux-x86_64-jar-with-dependencies.jar "$RUNNER_TEMP/jars/amd64.jar"
+      - uses: docker/setup-buildx-action@v3
+      - name: Check the libraries inside the image
+        run: |
+          docker buildx build --platform linux/amd64 --target check \
+            --build-context jars="$RUNNER_TEMP/jars" \
+            -f image-server/src/docker/Dockerfile image-server/src
+      - name: Build the image
+        run: |
+          docker buildx build --platform linux/amd64 --load -t valbum:ci \
+            --build-context jars="$RUNNER_TEMP/jars" \
+            -f image-server/src/docker/Dockerfile image-server/src
+      - name: Smoke-test the image
+        run: image-server/src/docker/smoke-test valbum:ci linux/amd64
+
   app:
     name: Flutter app
     runs-on: ubuntu-latest

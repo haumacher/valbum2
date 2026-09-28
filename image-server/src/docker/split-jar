@@ -1,0 +1,76 @@
+#!/bin/sh
+#
+# Splits the server's jar-with-dependencies into the two layers of the container image (#174):
+#
+#   <out>/lib/valbum-deps.jar  every dependency with its natives, and the two ONNX face models
+#   <out>/valbum.jar           VAlbum's own classes (de/haumacher/imageServer, de/haumacher/util),
+#                              its Maven metadata and the bundled Flutter web app
+#                              (META-INF/resources), with the fat JAR's manifest plus
+#                              'Class-Path: lib/valbum-deps.jar'
+#
+# so that 'java -jar valbum.jar' runs exactly the class path the fat JAR ran, and an update of
+# VAlbum alone replaces only the small second layer. The models belong to the first: they are
+# resources of VAlbum, but 40 MB that change only with a new model.
+#
+# Both JARs are written reproducibly - entries sorted, every time stamp fixed, no extra
+# attributes - because a layer is shared between two image versions only if its bytes are equal:
+# the same dependencies must give the same valbum-deps.jar whatever else was rebuilt.
+#
+# Usage: split-jar <fat.jar> <out-dir>
+#
+set -eu
+
+FAT=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
+mkdir -p "$2"
+OUT=$(cd "$2" && pwd)
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+mkdir -p "$WORK/all" "$WORK/app" "$WORK/lib" "$OUT/lib"
+unzip -q "$FAT" -d "$WORK/all"
+
+cd "$WORK/all"
+
+# VAlbum's own entries. Everything else, the models included, is a dependency.
+for path in de/haumacher/imageServer de/haumacher/util META-INF/resources META-INF/maven/de.haumacher; do
+	if [ -e "$path" ]; then
+		mkdir -p "$WORK/app/$(dirname "$path")"
+		mv "$path" "$WORK/app/$path"
+	fi
+done
+if [ -d "$WORK/app/de/haumacher/imageServer/faces" ]; then
+	mkdir -p de/haumacher/imageServer/faces
+	find "$WORK/app/de/haumacher/imageServer/faces" -maxdepth 1 -name '*.onnx' \
+		-exec mv {} de/haumacher/imageServer/faces/ \;
+fi
+
+if [ ! -f "$WORK/app/de/haumacher/imageServer/Main.class" ]; then
+	echo "split-jar: $FAT holds no de/haumacher/imageServer/Main.class - not the VAlbum server JAR." >&2
+	exit 1
+fi
+
+# The manifest of the application JAR: the fat JAR's own, with the dependency JAR on the class
+# path. A manifest line is at most 72 bytes; the attribute written here is short enough.
+mkdir -p "$WORK/app/META-INF"
+grep -v -i -e '^Class-Path:' -e '^[[:space:]]*$' META-INF/MANIFEST.MF | tr -d '\r' > "$WORK/app/META-INF/MANIFEST.MF"
+printf 'Class-Path: lib/valbum-deps.jar\n\n' >> "$WORK/app/META-INF/MANIFEST.MF"
+rm -f META-INF/MANIFEST.MF
+
+# Writes the tree below $1 as the JAR $2, reproducibly: files only (a JAR needs no directory
+# entries), sorted bytewise, every time stamp the same, no extra attributes. The manifest, where
+# there is one, comes first, as java.util.jar.JarInputStream expects.
+pack() {
+	(
+		cd "$1"
+		TZ=UTC find . -type f -exec touch -d '1980-01-02 00:00:00' {} +
+		{
+			if [ -f META-INF/MANIFEST.MF ]; then echo META-INF/MANIFEST.MF; fi
+			find . -type f | sed 's|^\./||' | grep -v -x 'META-INF/MANIFEST.MF' | LC_ALL=C sort
+		} | TZ=UTC zip -q -X -D -@ "$2"
+	)
+}
+
+pack "$WORK/all" "$OUT/lib/valbum-deps.jar"
+pack "$WORK/app" "$OUT/valbum.jar"
+
+echo "split-jar: $(unzip -Z1 "$OUT/lib/valbum-deps.jar" | wc -l) entries in lib/valbum-deps.jar ($(du -h "$OUT/lib/valbum-deps.jar" | cut -f1)), $(unzip -Z1 "$OUT/valbum.jar" | wc -l) in valbum.jar ($(du -h "$OUT/valbum.jar" | cut -f1))"

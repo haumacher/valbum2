@@ -527,6 +527,98 @@ you download it with. Point it at your server in its settings and sign in with a
 the one the server printed at start-up, one from a device you already hold, or a
 recovery code from your administrator.
 
+## Docker (Synology NAS)
+
+Every release is also published as a container image, for `amd64` and `arm64` under one tag, on
+Docker Hub as **`hauix/valbum`** and, identical, on GitHub as `ghcr.io/haumacher/valbum`:
+`:<version>` (e.g. `:2.9.0`) and `:latest`. The container pulls the image of its own
+architecture by itself. The image holds only the natives of its platform, the web app and the
+libraries the video renditions and the face index need.
+
+**Which NAS runs it.** Synology's *Container Manager* runs on every x86-64 model (the "+" series
+and up), and since DSM 7.2 on the ARM models **DS124, DS223, DS223j and DS423**. Older ARM models
+(DS218, DS220j, …) have no Container Manager and cannot run it. Synology's own litter
+(`@eaDir`, `#recycle`) is never shown as an album.
+
+The runtime contract, which `compose.yaml` in this repository spells out:
+
+- **The photo folder is mounted read-write at `/photos`.** That is the library: VAlbum writes its
+  sidecars (`index.json`, `.hashes.json`), its caches (`.vacache`) and its users (`.valbum`)
+  beside the photos, and never modifies an original. A container with nothing mounted there
+  refuses to start, because the users and every sidecar would otherwise live inside the container
+  and be lost with the next update.
+- **`PUID` and `PGID`** are the user and group the server runs as, and every file it writes into
+  the photo folder belongs to them — never to root. Take the user who owns the photo share; on a
+  Synology NAS `id <user>` in an SSH session shows the numbers, typically `uid=1026` and group
+  `users`, `gid=100`. That user needs *Read/Write* on the share (Control Panel → Shared Folder →
+  Edit → Permissions). Without `PUID`/`PGID` the owner of `/photos` is taken, and a folder owned by
+  root is refused. `UMASK=002` makes the written files group-writable. (Alternatively start the
+  container as that user with `user: "1026:100"`; `PUID`/`PGID` are then not read.)
+- **Port 8080, context path `valbum`**: the album is at `http://<nas>:<host port>/valbum/`.
+- **The configuration** is the environment the Debian package reads from `/etc/default/valbum`:
+
+| Variable | Meaning | Default in the image |
+|---|---|---|
+| `PUID` / `PGID` | User and group the server runs as | the owner of `/photos` |
+| `TZ` | Time zone (dates of photos that carry none) | UTC |
+| `VALBUM_AUTH` | `off`, `writes` or `all` | `writes` |
+| `VALBUM_SPACES` | `auto`, `single` or `multi`, see *Users and spaces* | `auto` |
+| `VALBUM_CONTEXTPATH` | First path segment of the URL, `""` for none | `valbum` |
+| `VALBUM_PORT` | Port inside the container | `8080` |
+| `VALBUM_OPTS` | Further server options, e.g. `--preview-threads 1` | none |
+| `JAVA_OPTS` | JVM options; an `-Xmx` here wins over the percentage | none |
+| `VALBUM_HEAP_PERCENT` | Heap as a share of the memory the container may use | `50` |
+
+- **Memory.** The heap is `VALBUM_HEAP_PERCENT` of the memory the container sees — the NAS's
+  memory, or the limit set on the container (`mem_limit`). On a **DS223j** (1 GB, not
+  extendable) make one preview at a time, `VALBUM_OPTS: "--preview-threads 1"`, and leave the
+  face index off (*Faces* above; it is off unless a space's `space.json` says `faces: on`) — it
+  is the largest consumer of memory and time.
+- A **health check** asks the app base every 30 seconds; Container Manager shows the container as
+  *healthy* once the server answers.
+
+### Setting it up in Container Manager
+
+1. **Package Center**: install *Container Manager*.
+2. **File Station**: create a folder for the project, e.g. `docker/valbum`, and know where the
+   photos are, e.g. the share `photo` (`/volume1/photo`).
+3. **Container Manager → Project → Create**: name `valbum`, path the folder from step 2, source
+   *Create docker-compose.yaml*, and paste:
+
+   ```yaml
+   services:
+     valbum:
+       image: hauix/valbum:latest
+       container_name: valbum
+       restart: unless-stopped
+       ports:
+         - "8080:8080"
+       volumes:
+         - /volume1/photo:/photos
+       environment:
+         PUID: "1026"
+         PGID: "100"
+         TZ: Europe/Berlin
+         VALBUM_AUTH: writes
+         VALBUM_OPTS: ""
+   ```
+
+   Change the volume to your photo folder, `PUID`/`PGID` to its owner, and the host port (the
+   left `8080`) if another package uses it. Skip the web-portal page, finish, and the project pulls
+   the image and starts.
+4. **The sign-in code.** At every start, while nobody has signed in, the server prints a sign-in
+   code for the administrator into its log: **Container Manager → Container → `valbum` → Details →
+   Log** (or `docker logs valbum`), the line *"sign the administrator in with the code …"*. Open
+   `http://<nas>:8080/valbum/` within ten minutes and sign in with it. Missed it? Restart the
+   container (*Action → Restart*) and a new one is printed. `VALBUM_OPTS: "--admin-code ABCD-EFGH"`
+   fixes the code instead.
+
+**Updating:** *Container Manager → Project → `valbum` → Action → Build* pulls the newer image and
+recreates the container; from a shell, `docker compose pull && docker compose up -d` in the project
+folder. The library stays where it is, in the photo folder. One-time jobs run with the same image
+while the server is stopped, e.g. a further space:
+`docker compose run --rm valbum --create-space family --space-name "The Family"`.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and how changes are made.

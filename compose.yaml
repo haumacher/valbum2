@@ -1,0 +1,29 @@
+# VAlbum as a container, e.g. a project in Synology's Container Manager (README, section
+# "Docker (Synology NAS)"). Adjust the three marked lines, then `docker compose up -d`.
+#
+# The first start prints the administrator's sign-in code into the container log
+# (`docker compose logs valbum`; in Container Manager: Container > valbum > Log).
+services:
+  valbum:
+    image: hauix/valbum:latest        # the same image as ghcr.io/haumacher/valbum:latest
+    container_name: valbum
+    restart: unless-stopped
+    ports:
+      - "8080:8080"                   # <host port>:8080 - the album is at http://<nas>:<host port>/valbum/
+    volumes:
+      - /volume1/photo:/photos        # <-- your photo folder; VAlbum writes its sidecars beside the photos
+    environment:
+      # The user and group the server runs as, and who owns every file it writes into the
+      # photo folder. On a Synology NAS: `id <user>` in an SSH session, typically 1026 and 100.
+      PUID: "1026"                    # <--
+      PGID: "100"                     # <--
+      # The time zone the dates of photos without one are read in.
+      TZ: Europe/Berlin
+      # The same settings as /etc/default/valbum of the Debian package:
+      VALBUM_AUTH: writes             # off | writes | all
+      VALBUM_SPACES: auto             # auto | single | multi
+      # VALBUM_CONTEXTPATH: valbum    # the path the album is served under; "" for the server root
+      # Further server arguments. On a NAS with 1 GB (DS223j) make one preview at a time:
+      VALBUM_OPTS: ""                 # e.g. "--preview-threads 1" or "--admin-code ABCD-EFGH"
+      # The heap is a share of the memory (50 % by default); an -Xmx here wins.
+      JAVA_OPTS: ""

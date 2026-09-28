@@ -3,7 +3,9 @@
 A release is cut by pushing a tag `valbum-<major>.<minor>.<patch>`. The *Release* workflow
 (`.github/workflows/release.yml`) then builds the server's Debian packages for `arm64`,
 `amd64` and `armhf`, a signed Android APK, publishes a GitHub Release with all of them and
-rebuilds the APT repository on GitHub Pages, <https://haumacher.github.io/valbum2/>.
+rebuilds the APT repository on GitHub Pages, <https://haumacher.github.io/valbum2/>. The
+container image (`amd64` and `arm64` under one tag) is pushed to `ghcr.io/haumacher/valbum` and to
+Docker Hub, `hauix/valbum`.
 
 Nothing is ever published unsigned: a missing secret fails the job with a message saying what
 to add. This document is the one-time setup of those secrets and the repository settings, the
@@ -16,6 +18,7 @@ release procedure itself, and what to do when something goes wrong.
 | `prepare` | tag push or manual run | Parses the tag into the version `x.y.z` and the Android `versionCode` `x*10000 + y*100 + z`. Refuses any other tag form. |
 | `web` | tag | `flutter build web --release`, handed to the packaging jobs as a workflow artifact so the app is built once. |
 | `deb` (×3) | tag | Sets the pom version from the tag (`mvn versions:set`, **not** committed), builds `valbum_<version>_<arch>.deb` with the web build bundled into the jar. The tests run on the `amd64` leg only. |
+| `docker` | tag | Takes the `amd64` and `arm64` platform jars of the `deb` job (workflow artifacts `jar-<arch>`, so the image carries the bytes of the packages), runs the image's library check for both architectures (`--target check`, arm64 under QEMU), builds the `amd64` image and runs `image-server/src/docker/smoke-test` on it, then builds and pushes the multi-arch image in **one** `docker buildx` run to `ghcr.io/<owner>/valbum` and, where configured, Docker Hub — so both registries carry the same digest. Tags `<version>`, plus `latest` when the version is the newest `valbum-*` tag (republishing an older release leaves `latest` alone). Without Docker Hub configured it warns once and pushes to ghcr.io only. No `armhf` image: the Java 21 base image exists for `amd64` and `arm64` only. |
 | `android` | tag | Writes the keystore from the secrets, `flutter build apk --release`, verifies with `apksigner` that the APK is **not** debug-signed, deletes the signing material again. |
 | `release` | tag | Creates the GitHub Release `VAlbum <version>` with generated notes, or replaces the assets of an existing one: the three `.deb`, `valbum-<version>.apk`, `SHA256SUMS`. Runs even when the Android job failed (the release then carries the packages only and the run shows red). |
 | `pages` | tag, or manual run without a tag | Downloads the `.deb` assets of the **newest two** releases, builds the signed APT repository with `.github/scripts/build-apt-repo.sh` and deploys it to GitHub Pages. |
@@ -116,7 +119,42 @@ keyPassword=<key password>
 Without that file `flutter build apk --release` falls back to the debug key, which is fine
 for `flutter run --release` and never leaves your machine.
 
-### 3. GitHub Pages
+### 3. The container registries
+
+**ghcr.io** needs no secret: the `docker` job pushes with the workflow's own `GITHUB_TOKEN`
+(`packages: write`). A package that does not exist yet is created **private** on the first push,
+linked to this repository through the image's `org.opencontainers.image.source` label. Make it
+public once, or the NAS cannot pull it: *github.com → your profile → Packages → `valbum` →
+Package settings → Change visibility → Public*.
+
+**Docker Hub** is the name the README and `compose.yaml` use, because Synology's Container Manager
+searches Docker Hub by default. It needs an access token, never a password:
+
+1. On <https://hub.docker.com>, *Account settings → Personal access tokens → Generate new token*,
+   description e.g. `valbum release`, access permissions **Read & Write**. Copy the token; it is
+   shown once.
+2. Store it as a secret and the account name as a repository **variable** (a variable, not a
+   secret, because it also forms the image name and appears in the log):
+
+   ```
+   gh secret set DOCKERHUB_TOKEN                      # paste the token at the prompt
+   gh variable set DOCKERHUB_USERNAME --body hauix
+   gh variable set DOCKERHUB_IMAGE --body hauix/valbum    # optional; <username>/valbum by default
+   ```
+
+| Name | Kind | Value |
+|---|---|---|
+| `DOCKERHUB_TOKEN` | secret | The access token (Read & Write) |
+| `DOCKERHUB_USERNAME` | variable | The Docker Hub account, `hauix` |
+| `DOCKERHUB_IMAGE` | variable, optional | The repository to push to; `<DOCKERHUB_USERNAME>/valbum` when unset |
+
+The first push creates the repository with the account's default visibility (public on a free
+account). Without the secret or the variable the `docker` job pushes to ghcr.io only and says so
+in one warning, so a fork without a Docker Hub account stays green. The Docker Hub repository's
+description is not maintained by the workflow; write it once on the repository page, pointing at
+the README's *Docker (Synology NAS)* section.
+
+### 4. GitHub Pages
 
 Under **Settings → Pages**, set *Build and deployment → Source* to **GitHub Actions**. This
 creates the `github-pages` environment the `pages` job deploys to. The repository is
@@ -141,10 +179,10 @@ gh api --method POST repos/haumacher/valbum2/environments/github-pages/deploymen
 
 Keep the `master` rule: a manual run that only republishes the site runs from `master`.
 
-### 4. Workflow permissions
+### 5. Workflow permissions
 
-The workflow declares what it needs per job (`contents: write` for the release, `pages: write`
-and `id-token: write` for the deployment); those declarations override the repository's
+The workflow declares what it needs per job (`contents: write` for the release, `packages: write`
+for the container image, `pages: write` and `id-token: write` for the deployment); those declarations override the repository's
 default workflow permissions, so nothing has to be changed under
 *Settings → Actions → General*. Actions must be enabled for the repository, which they are
 by default.
@@ -182,6 +220,15 @@ before the first release; the secret and the environment were checked by then.
      `SHA256SUMS`. Edit the generated notes if they need a human sentence.
    - <https://haumacher.github.io/valbum2/> lists the new version, and on a machine with the
      repository configured `sudo apt update && apt policy valbum` offers it.
+   - The container image carries both architectures under the same digest on both registries:
+
+     ```
+     docker buildx imagetools inspect hauix/valbum:1.1.0
+     docker buildx imagetools inspect ghcr.io/haumacher/valbum:1.1.0
+     ```
+
+     shows `linux/amd64` and `linux/arm64` and the same `Digest:` line twice; `:latest` names
+     the same digest.
    - `apksigner verify --print-certs valbum-1.1.0.apk` (from the Android build tools) shows
      your certificate, not `CN=Android Debug`.
 6. **Open the next version.** Bump the pom by hand and commit it to `master`:
@@ -226,6 +273,18 @@ mvn -B -Djavacpp.platform=linux-arm64 -DskipTests clean install
 dpkg-deb --info image-server/target/valbum_1.1.0_arm64.deb
 git checkout pom.xml */pom.xml            # undo the version change
 
+# The container image, both architectures, from the platform jars (arm64 under QEMU:
+# docker/setup-qemu-action on CI, the qemu-user-static / binfmt packages locally). Loaded into
+# the local image store, never pushed; the 'check' target resolves the natives' libraries.
+mkdir -p /tmp/jars
+mvn -B -Djavacpp.platform=linux-x86_64 -DskipTests package && cp image-server/target/image-server-linux-x86_64-jar-with-dependencies.jar /tmp/jars/amd64.jar
+mvn -B -Djavacpp.platform=linux-arm64 -DskipTests package && cp image-server/target/image-server-linux-arm64-jar-with-dependencies.jar /tmp/jars/arm64.jar
+docker buildx build --platform linux/amd64,linux/arm64 --build-context jars=/tmp/jars \
+    -f image-server/src/docker/Dockerfile --target check image-server/src
+docker buildx build --platform linux/amd64,linux/arm64 --build-context jars=/tmp/jars \
+    -f image-server/src/docker/Dockerfile -t valbum:local --load image-server/src
+image-server/src/docker/smoke-test valbum:local linux/amd64      # and linux/arm64, slower
+
 # The APT repository from a directory of .deb files, signed with a key in your GNUPGHOME
 sudo apt-get install dpkg-dev apt-utils gnupg
 .github/scripts/build-apt-repo.sh image-server/target site <key-id>
@@ -243,10 +302,14 @@ python3 -m http.server -d site 8000       # then point a test machine at http://
 | `Missing repository secret(s): ANDROID_...` | Set the secrets from section 2. The release is published without the APK; rerun the failed jobs afterwards to attach it. |
 | `Missing repository secret APT_SIGNING_KEY` | Set it from section 1. The release exists; run the workflow with an empty tag to publish the site. |
 | `APT_SIGNING_KEY contains no secret key` | The secret holds the public key. Export with `gpg --armor --export-secret-keys`, not `--export`. |
-| `Branch "valbum-x.y.z" is not allowed to deploy to github-pages` | Add the `valbum-*` tag rule from section 3, then rerun the `pages` job. |
+| `Branch "valbum-x.y.z" is not allowed to deploy to github-pages` | Add the `valbum-*` tag rule from section 4, then rerun the `pages` job. |
 | `The APK is signed with the debug key` | `key.properties` was not picked up: an alias or password secret is wrong or empty. Check the four secrets. |
 | `apksigner was not found` | The Flutter action's Android SDK lacks build tools; usually a transient image problem, rerun. |
 | `Expected ...deb, but the build produced:` | The version in the pom and the tag disagree, or the `deb.arch` mapping for the platform is missing; build locally as above. |
 | `apt update` on a client: `NO_PUBKEY` or `The following signatures couldn't be verified` | The signing key changed. Re-import `valbum.gpg` from the site on the client. |
 | `Video renditions: NOT available - ... libxcb-shape.so.0 ...` (or `libasound.so.2`) in the journal | The server was installed with `--no-install-recommends`, or runs from the jar on a headless machine. The bundled FFmpeg links these. `sudo apt install libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64` (`libasound2` before trixie/24.04), then `sudo systemctl restart valbum`. |
+| `Docker Hub is not configured` warning in the `docker` job | The secret `DOCKERHUB_TOKEN` or the variable `DOCKERHUB_USERNAME` is missing (section 3); the image went to ghcr.io only. Set them and rerun the `docker` job. |
+| `docker` job: `denied` or `unauthorized` on push to Docker Hub | The token is expired, revoked or has read access only. Generate a Read & Write token and replace `DOCKERHUB_TOKEN`. |
+| The NAS cannot pull `ghcr.io/haumacher/valbum` (`unauthorized`, `not found`) | The package is still private; make it public (section 3), or use `hauix/valbum`. |
+| `check-libraries: ... needs a library the image does not carry` | A JavaCPP upgrade links something new. Add the package to the `apt-get` line of the Dockerfile's runtime stage, and to the control file's `Recommends` where the FFmpeg program needs it. |
 | The site lists a version but `apt` does not offer it | The client's architecture has no package in that version, or `apt update` was not run. `apt policy valbum` shows what is seen. |

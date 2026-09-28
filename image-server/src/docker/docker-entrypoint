@@ -1,0 +1,108 @@
+#!/bin/sh
+#
+# The entry point of the VAlbum container image (#174).
+#
+# It decides who the server runs as and then hands over to valbum-server, the start script of the
+# Debian package, which turns the VALBUM_* variables into server arguments - one place for that,
+# whether the server runs under systemd or in a container. Arguments given to the container
+# ('docker run ... valbum --create-space family') are passed on to the server after the
+# configured ones, exactly as valbum-server passes its own.
+#
+# Who the server runs as:
+#
+#   - started as root (the default), the server runs as PUID:PGID, set in the environment - on a
+#     Synology NAS the uid and gid of the user who owns the photo share (1026:100 for the first
+#     user created). setpriv drops to those numbers without a user entry: the image's own users
+#     (ubuntu is uid 1000) neither conflict nor matter. Without PUID/PGID the owner of the
+#     library folder is taken, and where that is root the container refuses to start rather than
+#     writing root-owned sidecars into somebody's photos; PUID=0 says root explicitly.
+#   - started as another user already ('docker run --user 1026:100', 'user:' in compose), there
+#     is nothing to drop and PUID/PGID are not read.
+#
+# Every file the server creates below the library - sidecars, .vacache, .valbum - therefore
+# belongs to that user. UMASK (e.g. 002) opens them to the group as well.
+#
+# The heap is a share of the memory the container may use (VALBUM_HEAP_PERCENT, 50 by default):
+# the natives (OpenCV, the decoded pictures) and the FFmpeg child process need the rest. JAVA_OPTS
+# comes after it, so an -Xmx there - or another -XX:MaxRAMPercentage - wins.
+#
+set -eu
+
+VALBUM_BASEPATH=${VALBUM_BASEPATH:-/photos}
+export VALBUM_BASEPATH
+
+# The library must be a mounted volume, or lie on one: an unmounted /photos is a folder of the
+# container, and the users, the sign-in and every sidecar written there would vanish with the
+# next update of the image.
+mounted() {
+	dir=$1
+	while :; do
+		if awk -v d="$dir" '$5 == d { found = 1 } END { exit !found }' /proc/self/mountinfo; then
+			[ "$dir" != / ]
+			return
+		fi
+		[ "$dir" = / ] && return 1
+		dir=$(dirname "$dir")
+	done
+}
+if [ ! -d "$VALBUM_BASEPATH" ]; then
+	echo "valbum: the library folder '$VALBUM_BASEPATH' does not exist. Mount the photo folder there, e.g. 'volumes: [\"/volume1/photo:/photos\"]'." >&2
+	exit 1
+fi
+if [ "${VALBUM_ALLOW_UNMOUNTED:-}" != 1 ] && ! mounted "$VALBUM_BASEPATH"; then
+	echo "valbum: nothing is mounted at '$VALBUM_BASEPATH' - the albums, the users and the sign-in would live inside the container and be lost with the next update." >&2
+	echo "valbum: mount the photo folder there, e.g. 'volumes: [\"/volume1/photo:/photos\"]' in compose.yaml or '-v /volume1/photo:/photos'." >&2
+	exit 1
+fi
+
+# What the server unpacks at start - the JavaCPP natives, the face models - goes to a folder of
+# the container's own, one per uid, so that a container restarted as somebody else never finds
+# files it may not overwrite.
+run_as() {
+	scratch=/tmp/valbum-$1
+	mkdir -p "$scratch"
+	if [ "$(id -u)" = 0 ]; then
+		chown "$1:$2" "$scratch"
+	fi
+	chmod 700 "$scratch"
+	JAVA_OPTS="-XX:MaxRAMPercentage=${VALBUM_HEAP_PERCENT:-50} -Djava.io.tmpdir=$scratch -Dorg.bytedeco.javacpp.cachedir=$scratch/javacpp ${JAVA_OPTS:-}"
+	HOME=$scratch
+	export JAVA_OPTS HOME
+}
+
+if [ -n "${UMASK:-}" ]; then
+	umask "$UMASK"
+fi
+
+if [ "$(id -u)" != 0 ]; then
+	run_as "$(id -u)" "$(id -g)"
+	exec /usr/bin/valbum-server "$@"
+fi
+
+if [ -z "${PUID:-}" ] || [ -z "${PGID:-}" ]; then
+	owner_uid=$(stat -c %u "$VALBUM_BASEPATH")
+	owner_gid=$(stat -c %g "$VALBUM_BASEPATH")
+	PUID=${PUID:-$owner_uid}
+	PGID=${PGID:-$owner_gid}
+	if [ "$PUID" = 0 ] || [ "$PGID" = 0 ]; then
+		echo "valbum: PUID and PGID are not set, and '$VALBUM_BASEPATH' belongs to root - the server would write root-owned files into the photos." >&2
+		echo "valbum: set PUID and PGID to the user and group that own the photo folder (on a Synology NAS 'id <user>' in an SSH session shows them, typically 1026 and 100), or PUID=0 PGID=0 to run as root after all." >&2
+		exit 1
+	fi
+	echo "valbum: PUID/PGID not set; running as the owner of '$VALBUM_BASEPATH', $PUID:$PGID."
+fi
+
+case "$PUID$PGID" in
+	*[!0-9]*)
+		echo "valbum: PUID and PGID must be numbers, got PUID='$PUID' PGID='$PGID'." >&2
+		exit 1
+		;;
+esac
+
+run_as "$PUID" "$PGID"
+
+if [ "$PUID" = 0 ] && [ "$PGID" = 0 ]; then
+	exec /usr/bin/valbum-server "$@"
+fi
+
+exec setpriv --reuid="$PUID" --regid="$PGID" --clear-groups --no-new-privs -- /usr/bin/valbum-server "$@"
