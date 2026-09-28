@@ -1,0 +1,127 @@
+#!/bin/bash
+#
+# Starts the VAlbum container image on a scratch copy of the test album and checks what the image
+# promises (#174): the app base, an album, the seat code in the log, a video rendition made inside
+# the container (which proves the FFmpeg libraries), the face index loaded and detecting the
+# fixture portraits (which proves the OpenCV libraries), the health check, and that every file the
+# server wrote into the mounted folder belongs to PUID:PGID.
+#
+# Run by CI's Docker job and by the release before anything is pushed; usable by hand as well:
+#
+#   image-server/src/docker/smoke-test <image> [<platform>]      e.g. valbum:test linux/amd64
+#
+# Needs docker, curl and python3; runs from anywhere inside the repository. The committed fixture
+# is never mounted: the container gets a copy in a temporary folder, removed afterwards.
+#
+set -euo pipefail
+
+IMAGE=$1
+PLATFORM=${2:-linux/amd64}
+PORT=${SMOKE_PORT:-18174}
+NAME=valbum-smoke-$$
+ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
+FIXTURES=$ROOT/image-server/src/test/fixtures
+WORK=$(mktemp -d)
+LIBRARY=$WORK/library
+BASE=http://127.0.0.1:$PORT/valbum
+DATA=$BASE/data
+ALBUM="2005-08-24%20Blumen%20und%20Fliegen"
+PORTRAITS="2020-01-01%20Portraits"
+
+cleanup() {
+	status=$?
+	if [ "$status" != 0 ]; then
+		echo "--- container log"
+		docker logs "$NAME" 2>&1 | tail -60 || true
+	fi
+	docker rm -f "$NAME" >/dev/null 2>&1 || true
+	# Whatever the container wrote belongs to the caller, so this needs no root.
+	rm -rf "$WORK"
+	exit "$status"
+}
+trap cleanup EXIT
+
+fail() {
+	echo "smoke-test: FAILED: $*" >&2
+	exit 1
+}
+
+# Polls a command until it succeeds, at most $1 seconds.
+wait_for() {
+	limit=$1
+	shift
+	start=$(date +%s)
+	until "$@"; do
+		if [ $(($(date +%s) - start)) -ge "$limit" ]; then
+			return 1
+		fi
+		sleep 3
+	done
+}
+
+# The test album without the state and the caches a developer's run left in it, plus a space
+# with the face index on and the four fixture portraits as an album.
+cp -r "$FIXTURES/test-album" "$LIBRARY"
+rm -rf "$LIBRARY/.valbum"
+find "$LIBRARY" -name .vacache -type d -prune -exec sh -c 'find "$1" -mindepth 1 ! -name .gitignore -delete' _ {} \;
+mkdir -p "$LIBRARY/.valbum" "$LIBRARY/2020-01-01 Portraits"
+echo '{"version": 1, "faces": "on"}' > "$LIBRARY/.valbum/space.json"
+cp "$FIXTURES"/faces/*.jpg "$LIBRARY/2020-01-01 Portraits/"
+touch "$WORK/started"
+
+echo "smoke-test: starting $IMAGE ($PLATFORM) as $(id -u):$(id -g) on port $PORT"
+docker run -d --name "$NAME" --platform "$PLATFORM" -p "127.0.0.1:$PORT:8080" \
+	-e PUID="$(id -u)" -e PGID="$(id -g)" -v "$LIBRARY:/photos" "$IMAGE" >/dev/null
+
+healthy() {
+	state=$(docker inspect --format '{{.State.Status}} {{.State.Health.Status}}' "$NAME")
+	case "$state" in
+		"running healthy") return 0 ;;
+		running*) return 1 ;;
+		*) fail "the container is '$state'" ;;
+	esac
+}
+wait_for 300 healthy || fail "the container did not become healthy within 300 s"
+echo "smoke-test: healthy"
+
+page=$(curl -fsS "$BASE/")
+grep -q '<base href="/valbum/">' <<<"$page" || fail "the app base has no <base href=\"/valbum/\">"
+echo "smoke-test: app base answers with <base href=\"/valbum/\">"
+
+curl -fsS "$DATA/$ALBUM/?type=json" | grep -q '"AlbumInfo"' || fail "the album answers no AlbumInfo"
+echo "smoke-test: album JSON answers"
+
+code=$(docker logs "$NAME" 2>&1 | sed -n 's/.*sign the administrator in with the code \([A-Z0-9-]*\).*/\1/p' | tail -1)
+[ -n "$code" ] || fail "the log carries no seat code"
+echo "smoke-test: the log carries the seat code"
+
+rendition() {
+	status=$(curl -s -o /dev/null -w '%{http_code}' "$DATA/$ALBUM/MVI_0450.mp4?type=video")
+	case "$status" in
+		200) return 0 ;;
+		202) return 1 ;;
+		*) fail "the video rendition answers $status" ;;
+	esac
+}
+wait_for 300 rendition || fail "no video rendition within 300 s"
+echo "smoke-test: video rendition made inside the container"
+
+curl -fsS "$DATA/?type=auth" | grep -q '"faces":true' || fail "?type=auth does not answer faces: true for a space with faces: on"
+token=$(curl -fsS -X POST -H 'Content-Type: application/json' "$DATA/?action=pair" \
+	--data "{\"deviceCode\": \"$code\", \"userName\": \"smoke\", \"deviceName\": \"smoke-test\"}" \
+	| python3 -c 'import json, sys; print(json.load(sys.stdin)["token"])')
+faces() {
+	curl -fsS -H "Authorization: Bearer $token" "$DATA/$PORTRAITS/?type=json" | python3 -c '
+import json, sys
+album = json.load(sys.stdin)[1]
+found = sum(1 for part in album["parts"] if part[1].get("faces"))
+sys.exit(0 if not album.get("facesPending") and found == 4 else 1)'
+}
+wait_for 300 faces || fail "the face index did not find a face in each of the four portraits within 300 s"
+echo "smoke-test: faces detected in all four portraits"
+
+foreign=$(find "$LIBRARY" -newer "$WORK/started" \( ! -user "$(id -u)" -o ! -group "$(id -g)" \) | head -5)
+[ -z "$foreign" ] || fail "files not owned by $(id -u):$(id -g): $foreign"
+echo "smoke-test: all $(find "$LIBRARY" -newer "$WORK/started" | wc -l) files written belong to $(id -u):$(id -g)"
+
+echo "smoke-test: $IMAGE ($PLATFORM) passed"

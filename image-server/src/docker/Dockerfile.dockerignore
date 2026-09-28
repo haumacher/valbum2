@@ -1,0 +1,7 @@
+# Only what the image is built from; the rest of image-server/src (fixtures above all) stays out.
+*
+!docker/split-jar
+!docker/docker-entrypoint
+!docker/healthcheck
+!docker/check-libraries
+!deb/valbum-server

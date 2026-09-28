@@ -2,7 +2,9 @@ name: Release
 
 # A tag `valbum-<x.y.z>` builds the server's Debian packages for arm64, amd64 and
 # armhf, a signed Android APK, publishes a GitHub Release with all of them and
-# rebuilds the APT repository on GitHub Pages.
+# rebuilds the APT repository on GitHub Pages. The container image (amd64 and
+# arm64, one multi-arch tag) is built from the same platform JARs and pushed to
+# ghcr.io and, where configured, to Docker Hub.
 #
 # The GitHub Release assets are the source of truth; the Pages site is a derived
 # view that is rebuilt from scratch on every run, so `workflow_dispatch` without
@@ -184,6 +186,135 @@ jobs:
           path: image-server/target/valbum_*.deb
           if-no-files-found: error
           retention-days: 7
+      # The container image of #174 is built from this very JAR (the web app bundled in), so the
+      # image and the package of one release carry the same bytes and nothing is built twice.
+      # armhf has no image: the Java 21 base image exists for amd64 and arm64 only.
+      - name: Hand the platform JAR to the container image
+        if: matrix.arch != 'armhf'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar-${{ matrix.arch }}
+          path: image-server/target/image-server-${{ matrix.platform }}-jar-with-dependencies.jar
+          if-no-files-found: error
+          retention-days: 1
+
+  docker:
+    name: Container image
+    needs: [prepare, deb]
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - name: Take over the platform JARs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: jar-*
+          path: ${{ runner.temp }}/artifacts
+      # The Dockerfile's named context 'jars' holds one JAR per Docker architecture.
+      - name: Name the JARs after their architectures
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/jars"
+          mv "$RUNNER_TEMP"/artifacts/jar-amd64/image-server-linux-x86_64-jar-with-dependencies.jar "$RUNNER_TEMP/jars/amd64.jar"
+          mv "$RUNNER_TEMP"/artifacts/jar-arm64/image-server-linux-arm64-jar-with-dependencies.jar "$RUNNER_TEMP/jars/arm64.jar"
+          ls -l "$RUNNER_TEMP/jars"
+      - name: Name the images
+        id: names
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+          HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          HUB_USER: ${{ vars.DOCKERHUB_USERNAME }}
+          HUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
+        run: |
+          set -euo pipefail
+          ghcr="ghcr.io/${OWNER,,}/valbum"
+          images="$ghcr"
+          if [ -n "$HUB_TOKEN" ] && [ -n "$HUB_USER" ]; then
+            hub="${HUB_IMAGE:-$HUB_USER/valbum}"
+            images="$images $hub"
+            echo "hub=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Docker Hub is not configured (secret DOCKERHUB_TOKEN and variable DOCKERHUB_USERNAME, see RELEASE.md); the image is pushed to $ghcr only."
+            echo "hub=false" >> "$GITHUB_OUTPUT"
+          fi
+          # 'latest' follows the newest release, not the latest run: republishing an older tag
+          # must not move it backwards.
+          newest=$(git ls-remote --tags --refs origin 'valbum-*' \
+                     | sed -n 's|.*refs/tags/valbum-\([0-9]*\.[0-9]*\.[0-9]*\)$|\1|p' | sort -V | tail -1)
+          tags=""
+          for image in $images; do
+            tags="$tags,$image:$VERSION"
+            if [ "$VERSION" = "$newest" ]; then
+              tags="$tags,$image:latest"
+            fi
+          done
+          [ "$VERSION" = "$newest" ] || echo "::notice::$VERSION is not the newest release ($newest); 'latest' stays where it is."
+          echo "Tags: ${tags#,}"
+          {
+            echo "tags=${tags#,}"
+            echo "ghcr=$ghcr"
+            echo "hub_image=${hub:-}"
+            # The commit of the tag; github.sha is the default branch on a manual run.
+            echo "revision=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      # The image's own library check (check-libraries), for both architectures, arm64 under QEMU.
+      - name: Check the libraries inside the images
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 --target check \
+            --build-context jars="$RUNNER_TEMP/jars" \
+            -f image-server/src/docker/Dockerfile image-server/src
+      # The amd64 image as it will be published, started on a copy of the test album before
+      # anything leaves the runner.
+      - name: Smoke-test the amd64 image
+        run: |
+          docker buildx build --platform linux/amd64 --load -t valbum:smoke \
+            --build-context jars="$RUNNER_TEMP/jars" \
+            -f image-server/src/docker/Dockerfile image-server/src
+          image-server/src/docker/smoke-test valbum:smoke linux/amd64
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - if: steps.names.outputs.hub == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # One build pushes every tag of both registries, so they carry the same manifest digest.
+      - name: Build and push the multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: image-server/src
+          file: image-server/src/docker/Dockerfile
+          build-contexts: jars=${{ runner.temp }}/jars
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.names.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=VAlbum
+            org.opencontainers.image.description=Self-hosted photo and video album server
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.names.outputs.revision }}
+      - name: Show what was pushed
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          GHCR: ${{ steps.names.outputs.ghcr }}
+          HUB: ${{ steps.names.outputs.hub_image }}
+        run: |
+          set -euo pipefail
+          for image in "$GHCR" ${HUB:+"$HUB"}; do
+            docker buildx imagetools inspect "$image:$VERSION"
+          done
 
   android:
     name: Android APK
