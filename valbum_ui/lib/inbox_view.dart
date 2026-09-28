@@ -57,6 +57,7 @@ import 'app.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'form_dialog.dart';
 import 'image_properties.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
@@ -538,7 +539,7 @@ class InboxContentState extends State<InboxContent> {
       return;
     }
 
-    var answer = await showDialog<TimeCorrection>(
+    var answer = await showFormDialog<TimeCorrection>(
       context: context,
       builder: (context) => AdjustRecordingTimeDialog(
         reference: reference,
@@ -742,7 +743,7 @@ class InboxContentState extends State<InboxContent> {
     if (refuseWhileOffline(context)) {
       return;
     }
-    var result = await showDialog<AlbumProperties>(
+    var result = await showFormDialog<AlbumProperties>(
       context: context,
       builder: (context) => AlbumPropertiesDialog(
         AlbumProperties(

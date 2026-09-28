@@ -115,8 +115,11 @@ void main() {
   });
 
   group('the create dialog', () {
-    testWidgets('names an inbox by its title alone and sends the kind',
+    testWidgets('always makes an album: an inbox is switched in the properties',
         (tester) async {
+      // Making an inbox is rare, so the create dialog offers no choice of
+      // kind (the author's decision on issue #178): an inbox is an album
+      // switched in its properties (below), or the one the sync makes.
       var requests = <http.Request>[];
       await pumpAt(
         tester,
@@ -131,21 +134,18 @@ void main() {
       await tester.tap(find.text("Create album"));
       await tester.pumpAndSettle();
 
-      // Ticking the box takes the date field away: an inbox has no date.
+      expect(find.byKey(const Key("create-kind-inbox")), findsNothing);
+      expect(find.byType(CheckboxListTile), findsNothing);
       expect(find.text(testL10n.dateLabel), findsOneWidget);
-      await tester.tap(find.byKey(const Key("create-kind-inbox")));
-      await tester.pumpAndSettle();
-      expect(find.text(testL10n.dateLabel), findsNothing);
-      expect(find.byKey(const Key("create-album-date-hint")), findsNothing);
 
+      // No date: the title alone names the folder, and it is an album.
       await tester.enterText(find.byType(TextFormField).first, "Holiday");
       await tester.tap(find.text(testL10n.create));
       await tester.pumpAndSettle();
 
       var put = requests.singleWhere((r) => r.method == "PUT");
-      // The title alone, with no date in front of it.
       expect(pathOf(put), "/valbum/data/Holiday/");
-      expect(put.body, contains('"kind":"INBOX"'));
+      expect(put.body, isNot(contains('"kind":"INBOX"')));
       expect(put.body, contains('"date":0'));
     });
   });

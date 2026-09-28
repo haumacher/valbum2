@@ -2900,18 +2900,6 @@ abstract class AppLocalizations {
   /// **'Without a date the album stays in this folder.'**
   String get createAlbumUndatedHint;
 
-  /// Label of the choice making the new folder an inbox
-  ///
-  /// In en, this message translates to:
-  /// **'Inbox'**
-  String get createInboxLabel;
-
-  /// Says what an inbox is, in the dialog making one
-  ///
-  /// In en, this message translates to:
-  /// **'Photographs waiting to be sorted: shown by the day they were taken, no date and no order of their own.'**
-  String get createInboxHint;
-
   /// Title of the dialog making a folder
   ///
   /// In en, this message translates to:

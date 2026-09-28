@@ -18,6 +18,7 @@ import 'client.dart';
 import 'downloads.dart';
 import 'image_properties.dart';
 import 'album_edit.dart' show PlaneTransform;
+import 'form_dialog.dart';
 import 'image_transform.dart';
 import 'move_view.dart';
 import 'offline.dart';
@@ -791,7 +792,7 @@ class ImageViewState extends State<ImageView>
     if (!mounted) {
       return null;
     }
-    var chosen = await showDialog<Person>(
+    var chosen = await showFormDialog<Person>(
       context: context,
       builder: (context) => PersonChooser(
         people: _distinct(people),

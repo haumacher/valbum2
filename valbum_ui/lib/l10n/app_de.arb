@@ -467,8 +467,6 @@
   "placementHeading": "Ablageregel",
   "placementExplanation": "Was hier eintrifft, wird im entsprechenden Jahresordner abgelegt. Was bereits hier ist, bleibt so lange dort, bis die Ablageregel über das Menü angewendet wird.",
   "createAlbumUndatedHint": "Ohne Datum bleibt das Album in diesem Ordner.",
-  "createInboxLabel": "Posteingang",
-  "createInboxHint": "Fotos, die darauf warten, sortiert zu werden: sortiert nach dem Tag, an dem sie aufgenommen wurden, ohne Datum und ohne eigene Reihenfolge.",
   "newFolderTitle": "Neuer Ordner",
   "imageCount": "{count, plural, =1{1 Bild} other{{count} Bilder}}",
   "targetTopLevel": "die oberste Ebene",
@@ -560,6 +558,7 @@
   "noticePhotoLibraryUnreadable": "Die Fotobibliothek kann nicht gelesen werden.",
   "noticePhotoLibraryFailed": "Die Fotobibliothek konnte nicht gelesen werden: {problem}",
   "noticePhotoAccessDenied": "Der Zugriff auf die Fotobibliothek wurde verweigert. Erlauben Sie VAlbum in den Systemeinstellungen den Zugriff auf Fotos und versuchen Sie es dann erneut.",
+  "noticeMediaLocationNotGranted": "Öffnen Sie die App einmal, damit sie den Aufnahmeort der Fotos auslesen kann; bis dahin werden bei der Synchronisierung im Hintergrund keine Daten hochgeladen.",
   "noticePhotoLibraryOpenFailed": "Die Fotobibliothek kann nicht geöffnet werden: {problem}",
   "noticeAlbumNotOnDevice": "Der Inhalt von {name} befindet sich noch nicht auf diesem Gerät (noch in der Cloud?).",
   "noticeBackgroundScheduleFailed": "Die Hintergrundsynchronisierung konnte nicht geplant werden: {problem}",
@@ -662,6 +661,5 @@
   "viewerFaceDecision": "Dieses Gesicht",
   "viewerMarkFaceTooSmall": "Zeichnen Sie ein größeres Rechteck um das Gesicht der Person.",
   "personsChooserInAlbum": "In diesem Album",
-  "personsChooserAll": "Alle Personen",
-  "noticeMediaLocationNotGranted": "Öffnen Sie die App einmal, damit sie den Aufnahmeort der Fotos auslesen kann; bis dahin werden bei der Synchronisierung im Hintergrund keine Daten hochgeladen."
+  "personsChooserAll": "Alle Personen"
 }

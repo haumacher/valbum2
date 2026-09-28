@@ -19,6 +19,7 @@ import 'package:intl/intl.dart';
 import 'album_edit.dart' show privacyMembers, privacyPublic;
 import 'caller.dart';
 import 'client.dart';
+import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show dayOf;
 import 'offline.dart';
@@ -94,7 +95,7 @@ Future<void> shareLinksOf({
   if (refuseWhileOffline(context)) {
     return;
   }
-  await showDialog<void>(
+  await showFormDialog<void>(
     context: context,
     builder: (context) =>
         ShareLinkDialog(client: client, path: path, label: label),
@@ -441,15 +442,18 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
         ),
       ),
       const SizedBox(height: 8),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.end,
+      // Under one another where a phone is too narrow for both, see #178.
+      OverflowBar(
+        alignment: MainAxisAlignment.end,
+        overflowAlignment: OverflowBarAlignment.end,
+        spacing: 8,
+        overflowSpacing: 8,
         children: [
           TextButton(
             key: const Key("link-cancel"),
             onPressed: _busy ? null : () => setState(() => _creating = false),
             child: Text(l10n.cancel),
           ),
-          const SizedBox(width: 8),
           ElevatedButton(
             key: const Key("link-create"),
             onPressed: _busy ? null : _create,

@@ -57,6 +57,7 @@ import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'drag_scroll.dart';
+import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
@@ -1028,7 +1029,7 @@ class PersonsContentState extends State<PersonsContent>
     if (!mayEdit) {
       return;
     }
-    var chosen = await showDialog<Person>(
+    var chosen = await showFormDialog<Person>(
       context: context,
       builder: (context) => PersonChooser(
         people: people.values.toList(),
@@ -1076,7 +1077,7 @@ class PersonsContentState extends State<PersonsContent>
 
   /// Renames the person of the given group, everywhere in the space.
   Future<void> renamePerson(FaceGroup group) async {
-    var name = await showDialog<String>(
+    var name = await showFormDialog<String>(
       context: context,
       builder: (context) => PersonNameDialog(
         title: _l10n.personsRenameTitle,
@@ -1111,7 +1112,7 @@ class PersonsContentState extends State<PersonsContent>
   /// what stood under the old id now stands under the new one, and nothing of
   /// it is a change this album has to write.
   Future<void> mergePerson(FaceGroup group) async {
-    var into = await showDialog<Person>(
+    var into = await showFormDialog<Person>(
       context: context,
       builder: (context) => PersonChooser(
         people: [
@@ -2262,6 +2263,11 @@ class _PickPerson extends Intent {
   const _PickPerson();
 }
 
+/// The height of the chooser's content below which its list no longer has
+/// the room to scroll by itself, see [PersonChooser] and issue #178: the
+/// search field, the "New person" entry and two or three names.
+const double _roomyChooserHeight = 240;
+
 class PersonChooser extends StatefulWidget {
   /// The people offered.
   final List<Person> people;
@@ -2435,55 +2441,66 @@ class _PersonChooserState extends State<PersonChooser> {
       title: Text(widget.title ?? l10n.personsChooseTitle),
       content: SizedBox(
         width: 360,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (widget.notice != null) Text(widget.notice!),
-            TextField(
-              key: const Key("persons-search"),
-              controller: _search,
-              decoration: InputDecoration(labelText: l10n.personsSearchLabel),
-              // A changed filter leaves the highlight nowhere, see [_highlighted].
-              onChanged: (_) => setState(() => _highlighted = -1),
-              autofocus: true,
-              onSubmitted: (_) => _enter(),
-            ),
-            const SizedBox(height: 8),
-            if (_shown.isEmpty && widget.people.isEmpty)
-              Text(l10n.personsNobodyYet, key: const Key("persons-nobody")),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  // A section with nobody in it is no section: a heading over
-                  // an empty list says there is something there.
-                  if (here.isNotEmpty && elsewhere.isNotEmpty)
-                    _heading(
-                      context,
-                      l10n.personsChooserInAlbum,
-                      const Key("persons-chooser-in-album"),
-                    ),
-                  for (var person in here) _pick(context, person, labels),
-                  if (here.isNotEmpty && elsewhere.isNotEmpty)
-                    _heading(
-                      context,
-                      l10n.personsChooserAll,
-                      const Key("persons-chooser-all"),
-                    ),
-                  for (var person in elsewhere) _pick(context, person, labels),
-                ],
+        child: LayoutBuilder(builder: (context, constraints) {
+          // With room, the list scrolls by itself between the search field
+          // and the button. Where a phone's keyboard leaves the dialog too
+          // little for that, the list would be squeezed to nothing: then the
+          // whole content scrolls and the list is laid out in full, so that
+          // every person stays within reach (issue #178).
+          var roomy = constraints.maxHeight >= _roomyChooserHeight;
+          var list = ListView(
+            shrinkWrap: true,
+            physics: roomy ? null : const NeverScrollableScrollPhysics(),
+            children: [
+              // A section with nobody in it is no section: a heading over
+              // an empty list says there is something there.
+              if (here.isNotEmpty && elsewhere.isNotEmpty)
+                _heading(
+                  context,
+                  l10n.personsChooserInAlbum,
+                  const Key("persons-chooser-in-album"),
+                ),
+              for (var person in here) _pick(context, person, labels),
+              if (here.isNotEmpty && elsewhere.isNotEmpty)
+                _heading(
+                  context,
+                  l10n.personsChooserAll,
+                  const Key("persons-chooser-all"),
+                ),
+              for (var person in elsewhere) _pick(context, person, labels),
+            ],
+          );
+          var column = Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (widget.notice != null) Text(widget.notice!),
+              TextField(
+                key: const Key("persons-search"),
+                controller: _search,
+                decoration:
+                    InputDecoration(labelText: l10n.personsSearchLabel),
+                // A changed filter leaves the highlight nowhere, see
+                // [_highlighted].
+                onChanged: (_) => setState(() => _highlighted = -1),
+                autofocus: true,
+                onSubmitted: (_) => _enter(),
               ),
-            ),
-            if (widget.onCreate != null)
-              TextButton.icon(
-                key: const Key("persons-new-person"),
-                onPressed: _create,
-                icon: const Icon(Icons.person_add),
-                label: Text(l10n.personsNewPersonEntry),
-              ),
-          ],
-        ),
+              const SizedBox(height: 8),
+              if (_shown.isEmpty && widget.people.isEmpty)
+                Text(l10n.personsNobodyYet, key: const Key("persons-nobody")),
+              if (roomy) Flexible(child: list) else list,
+              if (widget.onCreate != null)
+                TextButton.icon(
+                  key: const Key("persons-new-person"),
+                  onPressed: _create,
+                  icon: const Icon(Icons.person_add),
+                  label: Text(l10n.personsNewPersonEntry),
+                ),
+            ],
+          );
+          return roomy ? column : SingleChildScrollView(child: column);
+        }),
       ),
       actions: [
         TextButton(
@@ -2535,7 +2552,7 @@ class _PersonChooserState extends State<PersonChooser> {
 
   Future<void> _create() async {
     var l10n = AppLocalizations.of(context)!;
-    var name = await showDialog<String>(
+    var name = await showFormDialog<String>(
       context: context,
       builder: (context) => PersonNameDialog(
         title: l10n.personsNewPersonTitle,

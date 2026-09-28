@@ -9,6 +9,7 @@ import 'app.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'form_dialog.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
 import 'move_view.dart';
@@ -629,10 +630,9 @@ class ListingView extends StatelessWidget {
       return;
     }
     var messenger = ScaffoldMessenger.of(context);
-    // `showDialog`, not `showGeneralDialog`: it brings the barrier that closes
-    // the dialog on a tap beside it and on Escape. Together with the cancel
-    // button of the dialog itself, the action has a way back, see issue #35.
-    ListingInfo? folder = await showDialog<ListingInfo>(
+    // A form dialog: Escape and its own Cancel are the way back (issue #35),
+    // a tap beside it is not, since that would throw the input away (#178).
+    ListingInfo? folder = await showFormDialog<ListingInfo>(
       context: context,
       builder: (context) => const CreateFolderDialog(),
     );
@@ -657,7 +657,7 @@ class ListingView extends StatelessWidget {
       return;
     }
     var messenger = ScaffoldMessenger.of(context);
-    AlbumInfo? album = await showDialog<AlbumInfo>(
+    AlbumInfo? album = await showFormDialog<AlbumInfo>(
       context: context,
       builder: (context) => const CreateAlbumDialog(),
     );
@@ -705,7 +705,7 @@ class ListingView extends StatelessWidget {
       return;
     }
     var messenger = ScaffoldMessenger.of(context);
-    var edited = await showDialog<FolderProperties>(
+    var edited = await showFormDialog<FolderProperties>(
       context: context,
       builder: (context) => FolderPropertiesDialog(
         FolderProperties(title: listing.title, placement: listing.placement),
@@ -843,90 +843,65 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    return Dialog(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        child: SingleChildScrollView(
+    return FormDialogFrame(
+      title: Text(l10n.folderProperties),
+      fields: [
+        TextField(
+          controller: titleController,
+          autofocus: true,
+          decoration: InputDecoration(label: Text(l10n.titleLabel)),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Text(
+            l10n.placementHeading,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+        ),
+        // What the rule does, plainly: it places what arrives, it does not
+        // tidy up behind itself.
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 4),
+          child: Text(
+            l10n.placementExplanation,
+            key: const Key("placement-explanation"),
+          ),
+        ),
+        RadioGroup<Placement>(
+          groupValue: placement,
+          onChanged: (value) => setState(
+            () => placement = value ?? Placement.none,
+          ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              DefaultTextStyle(
-                style: DialogTheme.of(context).titleTextStyle ??
-                    Theme.of(context).textTheme.titleLarge!,
-                child: Semantics(
-                    namesRoute:
-                        Theme.of(context).platform != TargetPlatform.iOS,
-                  container: true,
-                  child: Text(l10n.folderProperties),
+              for (var entry in placementLabels(l10n).entries)
+                RadioListTile<Placement>(
+                  key: Key("placement-${entry.key.name}"),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(entry.value),
+                  value: entry.key,
                 ),
-              ),
-              TextField(
-                controller: titleController,
-                autofocus: true,
-                decoration: InputDecoration(label: Text(l10n.titleLabel)),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Text(
-                  l10n.placementHeading,
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-              ),
-              // What the rule does, plainly: it places what arrives, it
-              // does not tidy up behind itself.
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 4),
-                child: Text(
-                  l10n.placementExplanation,
-                  key: const Key("placement-explanation"),
-                ),
-              ),
-              RadioGroup<Placement>(
-                groupValue: placement,
-                onChanged: (value) => setState(
-                  () => placement = value ?? Placement.none,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var entry in placementLabels(l10n).entries)
-                      RadioListTile<Placement>(
-                        key: Key("placement-${entry.key.name}"),
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(entry.value),
-                        value: entry.key,
-                      ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Text(l10n.cancel),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.check),
-                      label: Text(l10n.apply),
-                      onPressed: () => Navigator.of(context).pop(
-                        FolderProperties(
-                          title: titleController.text,
-                          placement: placement,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),
-      ),
+      ],
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.check),
+          label: Text(l10n.apply),
+          onPressed: () => Navigator.of(context).pop(
+            FolderProperties(
+              title: titleController.text,
+              placement: placement,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -953,122 +928,77 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
   String? albumSubTitle;
   DateTime? albumDate;
 
-  /// Whether the folder being made is an inbox, see issue #136.
-  ///
-  /// An inbox has no date — the server derives none for one and files it
-  /// nowhere — so the date field goes while the box is ticked, and the folder
-  /// is named by its title alone.
-  bool inbox = false;
-
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var now = DateTime.now();
 
-    return Dialog(
-      child: Form(
-        key: formKey,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DefaultTextStyle(
-                style: DialogTheme.of(context).titleTextStyle ??
-                    Theme.of(context).textTheme.titleLarge!,
-                child: Semantics(
-                  // For iOS platform, the focus always lands on the title.
-                  // Set nameRoute to false to avoid title being announced twice.
-                  namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
-                  container: true,
-                  child: Text(l10n.newAlbumTitle),
-                ),
-              ),
-              // What is being made, before anything is typed: an inbox has no
-              // date, so the choice stands above the field it takes away.
-              CheckboxListTile(
-                key: const Key("create-kind-inbox"),
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                value: inbox,
-                title: Text(l10n.createInboxLabel),
-                subtitle: Text(
-                  l10n.createInboxHint,
-                  key: const Key("create-kind-inbox-hint"),
-                  style: const TextStyle(fontSize: 12),
-                ),
-                onChanged: (value) => setState(() => inbox = value == true),
-              ),
-              if (!inbox)
-                DateTimeFormField(
-                  mode: DateTimeFieldPickerMode.date,
-                  firstDate: DateTime(1900),
-                  lastDate: now,
-                  // The day proposed stands in the field, so that it is the
-                  // album's date without anything further being done — and the
-                  // calendar opens on it when it is changed, see issue #114.
-                  initialValue: widget.initialDate,
-                  initialPickerDateTime: widget.initialDate ?? now,
-                  // The field is cleared by the dialog, not by an icon of the
-                  // package's own: `date_field` 7 would otherwise replace the
-                  // calendar icon below with a cross as soon as a day stands in
-                  // the field (issue #108 upgraded the package for `intl`).
-                  canClear: false,
-                  onSaved: (value) => albumDate = value,
-                  dateFormat: folderDateFormat,
-                  // No validator: an album without a date is one the server
-                  // leaves in the folder it was made in, which is how an
-                  // `Inbox` is made by hand, see issue #119.
-                  decoration: InputDecoration(
-                    label: Text(l10n.dateLabel),
-                    suffixIcon: const Icon(Icons.date_range),
-                  ),
-                ),
-              if (!inbox)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    l10n.createAlbumUndatedHint,
-                    key: const Key("create-album-date-hint"),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-              TextFormField(
-                decoration: InputDecoration(label: Text(l10n.titleLabel)),
-                onSaved: (value) => albumTitle = value,
-                validator: (String? value) {
-                  return value == null || value.isEmpty
-                      ? l10n.mustNotBeEmpty
-                      : null;
-                },
-              ),
-              TextFormField(
-                decoration: InputDecoration(label: Text(l10n.subtitleLabel)),
-                onSaved: (value) => albumSubTitle = value,
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: cancelPressed,
-                      child: Text(l10n.cancel),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.check),
-                      label: Text(l10n.create),
-                      onPressed: createPressed,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    // Always an album: an inbox is rare, and is made by switching an album in
+    // its properties (`album-kind`) or by the camera-roll sync, see #178.
+    return Form(
+      key: formKey,
+      child: FormDialogFrame(
+        title: Text(l10n.newAlbumTitle),
+        fields: [
+          DateTimeFormField(
+            mode: DateTimeFieldPickerMode.date,
+            // Any day, the future included: an album for the holiday that
+            // starts next week may be made today (issue #178).
+            firstDate: firstAlbumDate,
+            lastDate: lastAlbumDate,
+            // The day proposed stands in the field, so that it is the album's
+            // date without anything further being done — and the calendar
+            // opens on it when it is changed, see issue #114.
+            initialValue: widget.initialDate,
+            initialPickerDateTime: widget.initialDate ?? now,
+            // The field is cleared by the dialog, not by an icon of the
+            // package's own: `date_field` 7 would otherwise replace the
+            // calendar icon below with a cross as soon as a day stands in the
+            // field (issue #108 upgraded the package for `intl`).
+            canClear: false,
+            onSaved: (value) => albumDate = value,
+            dateFormat: folderDateFormat,
+            // No validator: an album without a date is one the server leaves
+            // in the folder it was made in, which is how an `Inbox` is made
+            // by hand, see issue #119.
+            decoration: InputDecoration(
+              label: Text(l10n.dateLabel),
+              suffixIcon: const Icon(Icons.date_range),
+            ),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              l10n.createAlbumUndatedHint,
+              key: const Key("create-album-date-hint"),
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+          TextFormField(
+            decoration: InputDecoration(label: Text(l10n.titleLabel)),
+            onSaved: (value) => albumTitle = value,
+            validator: (String? value) {
+              return value == null || value.isEmpty
+                  ? l10n.mustNotBeEmpty
+                  : null;
+            },
+          ),
+          TextFormField(
+            decoration: InputDecoration(label: Text(l10n.subtitleLabel)),
+            onSaved: (value) => albumSubTitle = value,
+          ),
+        ],
+        actions: [
+          TextButton(
+            onPressed: cancelPressed,
+            child: Text(l10n.cancel),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.check),
+            label: Text(l10n.create),
+            onPressed: createPressed,
+          ),
+        ],
       ),
     );
   }
@@ -1085,9 +1015,7 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
     formState.save();
 
     var title = albumTitle!;
-    // An inbox has no date, whatever the field held before the box was
-    // ticked: the server derives none for one, see issue #136.
-    var date = inbox ? null : albumDate;
+    var date = albumDate;
 
     var info = AlbumInfo(
       title: title,
@@ -1100,7 +1028,7 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
       // `yyyy-MM-dd title`, the title alone without a date -- the one
       // composition, shared with the move picker, see [albumFolderName].
       path: albumFolderName(date, title),
-      kind: inbox ? AlbumKind.inbox : AlbumKind.album,
+      kind: AlbumKind.album,
     );
 
     Navigator.of(context).pop(info);
@@ -1121,57 +1049,32 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    return Dialog(
-      child: Form(
-        key: formKey,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DefaultTextStyle(
-                style: DialogTheme.of(context).titleTextStyle ??
-                    Theme.of(context).textTheme.titleLarge!,
-                child: Semantics(
-                  // For iOS platform, the focus always lands on the title.
-                  // Set nameRoute to false to avoid title being announced twice.
-                  namesRoute: Theme.of(context).platform != TargetPlatform.iOS,
-                  container: true,
-                  child: Text(l10n.newFolderTitle),
-                ),
-              ),
-              TextFormField(
-                decoration: InputDecoration(label: Text(l10n.nameLabel)),
-                onSaved: (value) => folderName = value,
-                validator: (String? value) {
-                  return value == null || value.isEmpty
-                      ? l10n.mustNotBeEmpty
-                      : null;
-                },
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: cancelPressed,
-                      child: Text(l10n.cancel),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.check),
-                      label: Text(l10n.create),
-                      onPressed: createPressed,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    return Form(
+      key: formKey,
+      child: FormDialogFrame(
+        title: Text(l10n.newFolderTitle),
+        fields: [
+          TextFormField(
+            decoration: InputDecoration(label: Text(l10n.nameLabel)),
+            onSaved: (value) => folderName = value,
+            validator: (String? value) {
+              return value == null || value.isEmpty
+                  ? l10n.mustNotBeEmpty
+                  : null;
+            },
           ),
-        ),
+        ],
+        actions: [
+          TextButton(
+            onPressed: cancelPressed,
+            child: Text(l10n.cancel),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.check),
+            label: Text(l10n.create),
+            onPressed: createPressed,
+          ),
+        ],
       ),
     );
   }

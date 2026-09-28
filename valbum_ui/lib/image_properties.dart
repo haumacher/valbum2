@@ -14,6 +14,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'album_view.dart' show TextInputDialog;
+import 'form_dialog.dart';
 import 'attribution.dart';
 import 'caller.dart';
 import 'l10n/app_localizations.dart';
@@ -259,12 +260,16 @@ Future<String?> showImageProperties(
   ImagePart image, {
   String? initialDescription,
   bool editable = true,
-}) =>
-    showDialog<String>(
-      context: context,
-      builder: (context) => ImagePropertiesDialog(
+}) {
+  Widget build(BuildContext context) => ImagePropertiesDialog(
         image,
         initial: initialDescription,
         editable: editable,
-      ),
-    );
+      );
+  // The description is typed input and is closed by Cancel or Escape only;
+  // the read-only details are something shown, which a tap beside closes,
+  // see issue #178.
+  return editable
+      ? showFormDialog<String>(context: context, builder: build)
+      : showDialog<String>(context: context, builder: build);
+}
