@@ -431,7 +431,7 @@ public final class ReplaceOriginals {
 	 * <p>
 	 * A folder whose name starts with a dot is the server's own (the cache, the trash, the
 	 * duplicates, the copies set aside by an earlier run) and is never looked into, and neither is
-	 * the incoming folder, wherever it lies.
+	 * the litter of another system ({@link LibraryFiles}) or the incoming folder, wherever it lies.
 	 * </p>
 	 */
 	private static Map<String, List<Path>> library(List<Space> spaces, Path incoming) throws IOException {
@@ -441,7 +441,7 @@ public final class ReplaceOriginals {
 			Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
 				@Override
 				public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-					if (!dir.equals(root) && dir.getFileName().toString().startsWith(".")) {
+					if (!dir.equals(root) && LibraryFiles.isIgnored(dir.getFileName().toString())) {
 						return FileVisitResult.SKIP_SUBTREE;
 					}
 					if (dir.toRealPath().equals(incoming)) {
@@ -453,7 +453,7 @@ public final class ReplaceOriginals {
 				@Override
 				public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
 					String name = file.getFileName().toString();
-					if (attrs.isRegularFile() && !name.startsWith(".") && ResourceCache.isImage(file.toFile())) {
+					if (attrs.isRegularFile() && !LibraryFiles.isIgnored(name) && ResourceCache.isImage(file.toFile())) {
 						result.computeIfAbsent(name, n -> new ArrayList<>()).add(file);
 					}
 					return FileVisitResult.CONTINUE;

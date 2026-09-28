@@ -14,6 +14,8 @@ import de.haumacher.imageServer.AlbumDate;
 import de.haumacher.imageServer.Contributors;
 import de.haumacher.imageServer.FolderCover;
 import de.haumacher.imageServer.Inboxes;
+import de.haumacher.imageServer.LibraryFiles;
+import de.haumacher.imageServer.MoveService;
 import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
@@ -68,7 +70,10 @@ public class ResourceCache {
 	private static Set<String> ACCEPTED = new HashSet<>(Arrays.asList("jpg", "jpeg", "png", "mp4"));
 
 	static final FileFilter IMAGES = f -> {
-		return f.isFile() && ACCEPTED.contains(Util.suffix(f.getName()));
+		// A hidden file or the litter of another system is no photograph, whatever its extension says
+		// (Synology's @eaDir thumbnails lie in an ignored folder, macOS' ._ files carry .jpg), see
+		// issue #173.
+		return f.isFile() && ACCEPTED.contains(Util.suffix(f.getName())) && !LibraryFiles.isIgnored(f);
 	};
 
 	private static final String SEP = "[-_\\.]";
@@ -244,7 +249,7 @@ public class ResourceCache {
 	}
 
 	static final class Loader extends CacheLoader<PathInfo, Resource> {
-		private static final FileFilter DIRECTORIES = f -> f.isDirectory() && !f.getName().startsWith(".");
+		private static final FileFilter DIRECTORIES = f -> f.isDirectory() && !LibraryFiles.isIgnored(f);
 
 		private static final Logger LOG = Logger.getLogger(ResourceCache.class.getName());
 
@@ -340,6 +345,7 @@ public class ResourceCache {
 				try {
 					resource = loadJSON(indexFile, FolderResource::readFolderResource);
 					dropZeroLocations(resource);
+					dropIgnoredParts(resource);
 				} catch (IOException ex) {
 					LOG.log(Level.WARNING, "Faild to directory index: " + indexFile.getAbsolutePath(), ex);
 					resource = null;
@@ -373,6 +379,53 @@ public class ResourceCache {
 						dropZeroLocation(member);
 					}
 				}
+			}
+		}
+
+		/**
+		 * Forgets every part a sidecar written before issue #173 lists for a file that is no part of
+		 * the library now (a Mac's <code>._IMG_1.jpg</code>, which an earlier build showed as a
+		 * photograph), see {@link LibraryFiles#isIgnored(String)}.
+		 *
+		 * <p>
+		 * The file is never looked at again, so its part would be a tile without a picture: it is
+		 * taken out of its group the way a move takes a photograph out (a group of one becomes a
+		 * plain part), an index picture naming it is cleared, and the next ordinary write of the
+		 * album simply omits it. The sidecar itself is not rewritten here &mdash; reading never
+		 * writes.
+		 * </p>
+		 */
+		static void dropIgnoredParts(FolderResource resource) {
+			if (!(resource instanceof AlbumInfo)) {
+				return;
+			}
+			AlbumInfo album = (AlbumInfo) resource;
+			List<ImagePart> ignored = new ArrayList<>();
+			for (AlbumPart part : album.getParts()) {
+				if (part instanceof ImagePart) {
+					addIgnored(ignored, (ImagePart) part);
+				} else if (part instanceof ImageGroup) {
+					for (ImagePart member : ((ImageGroup) part).getImages()) {
+						addIgnored(ignored, member);
+					}
+				}
+			}
+			if (ignored.isEmpty()) {
+				return;
+			}
+			UpdateTransient.updateTransient(album);
+			for (ImagePart image : ignored) {
+				MoveService.detach(album, image);
+			}
+			ThumbnailInfo cover = album.getIndexPicture();
+			if (cover != null && LibraryFiles.isIgnored(cover.getImage())) {
+				album.setIndexPicture(null);
+			}
+		}
+
+		private static void addIgnored(List<ImagePart> result, ImagePart image) {
+			if (LibraryFiles.isIgnored(image.getName())) {
+				result.add(image);
 			}
 		}
 

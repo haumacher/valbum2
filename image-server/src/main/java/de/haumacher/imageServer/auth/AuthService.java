@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.auth;
 
+import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.auth.UserStore.Login;
 import de.haumacher.imageServer.auth.UserStore.User;
@@ -1714,6 +1715,12 @@ public class AuthService {
 			// The user whose album was shared is gone; the link leads nowhere, and it says so.
 			throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, unknownSpace(share.getOwner()));
 		}
+		if (!LibraryFiles.isLibraryPath(share.getPath())) {
+			// A link an earlier build made on what is no part of the library now (a NAS's @eaDir,
+			// which it listed as an album, issue #173): it opens nothing, and says so as any address
+			// into such a folder is answered. It stays in the store, for its owner to withdraw.
+			throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, PATH_ESCAPED);
+		}
 		Path space = spaceRoot(owner, basePath);
 		Path root = share.getPath().isEmpty() ? space : space.resolve(share.getPath());
 
@@ -1812,10 +1819,12 @@ public class AuthService {
 
 		for (Path segment : relative) {
 			String name = segment.toString();
-			if (name.startsWith(".")) {
+			if (LibraryFiles.isIgnored(name)) {
 				// The server's own business: the user store, the sidecars, the preview cache, the
 				// duplicates of issue #47 and the trash of issue #109. A listing never shows such a
 				// folder, and since a deleted album lives in one, no address reaches into it either.
+				// Neither does an address reach the litter of another system (a NAS's @eaDir and
+				// #recycle), which a listing does not show either, see issue #173.
 				throw new PathRefused(HttpServletResponse.SC_NOT_FOUND, PATH_ESCAPED);
 			}
 			Path folder = consumed == null ? currentRoot : currentRoot.resolve(consumed);

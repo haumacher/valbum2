@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -126,6 +127,23 @@ public class TestReplaceOriginals extends TestCase {
 		assertTrue(line, line.startsWith("skipped " + NAME + ": ambiguous"));
 		assertTrue(line, line.contains(ALBUM + "/" + NAME));
 		assertEquals("Nothing was moved.", before, fingerprint());
+	}
+
+	/** A NAS's copy of the name below its litter folder is no second library file, see issue #173. */
+	public void testTheLitterOfANasIsNoSecondCopy() throws Exception {
+		Path album = redactedAlbum(_base, ALBUM);
+		Path litter = album.resolve("@eaDir").resolve(NAME);
+		Files.createDirectories(litter.getParent());
+		Files.copy(album.resolve(NAME), litter);
+		Files.createDirectories(_base.resolve("#recycle"));
+		Files.copy(album.resolve(NAME), _base.resolve("#recycle").resolve(NAME));
+		byte[] litterBytes = Files.readAllBytes(litter);
+		Redacted.writeOriginal(_incoming.resolve(NAME).toFile(), _picture);
+
+		ReplaceOriginals.Report report = run(false);
+
+		assertEquals(List.of("replaced " + ALBUM + "/" + NAME), report.getLines());
+		assertTrue("The litter is left alone.", Arrays.equals(litterBytes, Files.readAllBytes(litter)));
 	}
 
 	public void testAFileWhosePixelsDifferIsSkipped() throws Exception {

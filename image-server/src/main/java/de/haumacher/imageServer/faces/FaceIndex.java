@@ -4,6 +4,7 @@
 package de.haumacher.imageServer.faces;
 
 import de.haumacher.imageServer.CacheRefresh;
+import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.imageServer.PreviewCache;
 import de.haumacher.imageServer.PreviewException;
 import de.haumacher.imageServer.cache.ResourceCache;
@@ -2038,7 +2039,7 @@ public class FaceIndex {
 		while (!pending.isEmpty()) {
 			File folder = pending.removeFirst();
 			result.add(folder);
-			File[] children = folder.listFiles(f -> f.isDirectory() && !f.getName().startsWith("."));
+			File[] children = folder.listFiles(f -> f.isDirectory() && !LibraryFiles.isIgnored(f));
 			if (children != null) {
 				Collections.addAll(pending, children);
 			}

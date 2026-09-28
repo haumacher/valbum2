@@ -126,7 +126,7 @@ public final class FolderCover {
 		if (name == null || name.isEmpty()) {
 			return null;
 		}
-		if (name.startsWith(".") || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) {
+		if (LibraryFiles.isIgnored(name) || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) {
 			return null;
 		}
 		return name;

@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.auth;
 
+import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
@@ -305,9 +306,19 @@ public class ShareStore {
 			return folder.isEmpty() || path.equals(folder) || path.startsWith(folder + "/");
 		}
 
-		/** Whether this link covers the given path in the given space. */
+		/**
+		 * Whether this link covers the given path in the given space, which is where it is listed
+		 * and withdrawn.
+		 *
+		 * <p>
+		 * A link an earlier build made on what is no part of the library now (a NAS's
+		 * <code>@eaDir</code>, issue #173) opens nothing, and no address reaches its folder: it is
+		 * managed at the deepest folder above it that is still part of the library, so that its
+		 * owner can see it and withdraw it.
+		 * </p>
+		 */
 		public boolean covers(String owner, String path) {
-			return _owner.equals(owner) && isBelow(path, _path);
+			return _owner.equals(owner) && isBelow(path, LibraryFiles.libraryPrefix(_path));
 		}
 
 		@Override

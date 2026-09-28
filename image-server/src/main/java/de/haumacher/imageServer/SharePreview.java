@@ -376,6 +376,10 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 	/** Where the given link points, in the coordinates of its space. */
 	private static PathInfo path(Spaces.Space space, ShareStore.Link link) {
 		String relative = link.getPath();
+		if (!LibraryFiles.isLibraryPath(relative)) {
+			// No part of the library any more, see AuthService#resolveShared and issue #173.
+			return null;
+		}
 		if (relative.isEmpty()) {
 			return new PathInfo(space.getRoot());
 		}

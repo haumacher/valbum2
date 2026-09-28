@@ -141,8 +141,9 @@ public final class FolderNames {
 	 *
 	 * <p>
 	 * A name that is a path (<code>a/b</code>), a name that is a navigation step (<code>.</code>,
-	 * <code>..</code>) and a name that hides the folder (<code>.thing</code>, which the server
-	 * itself uses for <code>.valbum</code> and <code>.vacache</code>) are none: a title that
+	 * <code>..</code>), a name that hides the folder (<code>.thing</code>, which the server
+	 * itself uses for <code>.valbum</code> and <code>.vacache</code>) and a
+	 * name {@link LibraryFiles#isIgnored(String) another system uses} are none: a title that
 	 * composes to one of them is refused, and nothing is written, see
 	 * {@link #illegalName(String)}.
 	 * </p>
@@ -151,7 +152,9 @@ public final class FolderNames {
 		if (name == null || name.trim().isEmpty()) {
 			return false;
 		}
-		if (name.equals(".") || name.equals("..") || name.startsWith(".")) {
+		if (name.equals(".") || name.equals("..") || LibraryFiles.isIgnored(name)) {
+			// A hidden name, and a name another system writes into every folder (@eaDir, #recycle,
+			// ...): a folder of either name would vanish from the library the moment it is made.
 			return false;
 		}
 		for (int n = 0, cnt = name.length(); n < cnt; n++) {

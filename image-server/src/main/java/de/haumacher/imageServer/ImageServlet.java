@@ -109,6 +109,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
@@ -801,6 +802,9 @@ public class ImageServlet extends HttpServlet {
 		if (gone(context, caller)) {
 			return;
 		}
+		if (refusedFolderName(context, caller)) {
+			return;
+		}
 		Location location = resolve(context, caller);
 		if (location == null) {
 			return;
@@ -882,6 +886,62 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		storeFolder(context, location, resourcePath);
+	}
+
+	/**
+	 * Refuses a sidecar PUT whose last segment is a name no folder of the library may have, see
+	 * issue #173.
+	 *
+	 * <p>
+	 * Creating an album is a PUT of its sidecar to the path it is to have, and a folder named
+	 * <code>@eaDir</code> or <code>#recycle</code> (or <code>.thing</code>) would vanish from the
+	 * library the moment it was made, see {@link LibraryFiles}. {@link AuthService} refuses such an
+	 * address as it refuses any address reaching into the server's own folders, with a
+	 * <code>404</code> that tells the one who typed the title nothing. So the folder above is
+	 * resolved instead, asked for the right a creation needs, and the name is refused as the rename
+	 * of issue #130 refuses it: <code>400</code>, {@link FolderNames#illegalName(String)}, nothing
+	 * written. Every other request naming such a segment is left to the ordinary refusal.
+	 * </p>
+	 *
+	 * @return Whether the request has been answered.
+	 */
+	private boolean refusedFolderName(Context context, Caller caller) throws IOException {
+		HttpServletRequest request = context.request();
+		String contentType = request.getContentType();
+		if (contentType == null || !contentType.trim().toLowerCase(Locale.ROOT).startsWith("application/json")) {
+			return false;
+		}
+		String pathInfo = request.getPathInfo();
+		if (pathInfo == null) {
+			return false;
+		}
+		String trimmed = pathInfo.endsWith("/") ? pathInfo.substring(0, pathInfo.length() - 1) : pathInfo;
+		int slash = trimmed.lastIndexOf('/');
+		if (slash < 0) {
+			return false;
+		}
+		String name = trimmed.substring(slash + 1);
+		if (name.equals(".") || name.equals("..") || !LibraryFiles.isIgnored(name)) {
+			return false;
+		}
+		Location parent;
+		try {
+			parent = _auth.resolve(caller, _basePath, slash == 0 ? "" : trimmed.substring(1, slash));
+		} catch (PathRefused ex) {
+			// The folder above is no place either: the ordinary refusal of the whole path.
+			return false;
+		}
+		PathInfo folder = parent.getPath();
+		if (!folder.toFile().isDirectory()) {
+			return false;
+		}
+		if (!_auth.mayEdit(caller, folder)) {
+			refuse(context, caller, folder, Rights.EDIT, true);
+			return true;
+		}
+		LOG.warning("Refusing to create the folder '" + name + "' in '" + folder.toFile() + "'.");
+		errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, FolderNames.illegalName(name));
+		return true;
 	}
 
 	/**
@@ -1114,7 +1174,9 @@ public class ImageServlet extends HttpServlet {
 		List<UploadItem> uploads = _fileUpload.parseRequest(context.request());
 		for (UploadItem upload : uploads) {
 			String name = baseName(upload.getName());
-			if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(name))) {
+			// A hidden name or the name of another system's litter (a Mac's ._IMG_1.jpg) would be
+			// stored and never shown, see LibraryFiles: no file the library holds.
+			if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(name)) || LibraryFiles.isIgnored(name)) {
 				LOG.warning("Unsupported upload extension: " + name);
 				// Nothing is stored: an upload is accepted as a whole or not at all.
 				discard(uploads);
@@ -1439,7 +1501,7 @@ public class ImageServlet extends HttpServlet {
 		List<File> files = new ArrayList<>();
 		for (String name : names) {
 			// A name is an entry of this folder, never an address: no separator, nothing hidden.
-			File file = name == null || name.isEmpty() || name.startsWith(".") || name.indexOf('/') >= 0
+			File file = name == null || name.isEmpty() || LibraryFiles.isIgnored(name) || name.indexOf('/') >= 0
 				|| name.indexOf('\\') >= 0 ? null : new File(folder.toFile(), name);
 			if (file == null || !file.isFile() || !ResourceCache.isImage(file)) {
 				LOG.warning("Refusing the download in '" + context.request().getPathInfo() + "': no photograph '"

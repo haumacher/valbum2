@@ -243,6 +243,24 @@ public class TestSharePreview extends TestCase {
 			Arrays.equals(preview(TRIP, "public.jpg"), cover.bodyBytes()));
 	}
 
+	/**
+	 * A link an earlier build made on a NAS's <code>@eaDir</code>, which it listed as an album, draws
+	 * no card: that folder is no part of the library any more, see issue #173.
+	 */
+	public void testALinkOnLitterHasNoCover() throws Exception {
+		single();
+		album(_base, ZOO + "/@eaDir", "[\"AlbumInfo\",{\"title\":\"@eaDir\",\"parts\":["
+			+ "[\"ImagePart\",{\"name\":\"SYNOPHOTO_THUMB_M.jpg\",\"width\":4,\"height\":3}]]}]",
+			"SYNOPHOTO_THUMB_M.jpg");
+		String token = share("", ZOO + "/@eaDir", Privacy.MEMBERS, Ratings.MIN);
+
+		FakeResponse cover = get("/s/" + token + "/cover.jpg");
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, cover.status());
+		String html = body(get("/s/" + token + "/"));
+		assertFalse("No picture of DSM's is named: " + html, html.contains("og:image"));
+		assertFalse("Nor its title: " + html, html.contains("@eaDir"));
+	}
+
 	/** A link that may show nothing has no cover, and its page names none. */
 	public void testALinkWithoutAVisibleImageHasNoCover() throws Exception {
 		single();

@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.upload;
 
+import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.IndexProgress;
@@ -29,6 +30,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -196,6 +198,13 @@ public class HashIndex {
 	private ExecutorService _indexer;
 
 	private CountDownLatch _pass;
+
+	/**
+	 * The folders recorded since the running pass took its walk of the tree, <code>null</code>
+	 * while no pass runs: what an upload or a move put into the index meanwhile is not dropped for
+	 * not having been walked, see {@link #indexNow()}.
+	 */
+	private Set<String> _recordedDuringPass;
 
 	/**
 	 * Loads the index of the given space; nothing is scanned and nothing is hashed until
@@ -410,10 +419,15 @@ public class HashIndex {
 				withImages.add(folder);
 			}
 		}
+		Set<String> walked = new HashSet<>();
+		for (File folder : folders) {
+			walked.add(relative(folder));
+		}
 		synchronized (this) {
 			_total = withImages.size();
 			_done = 0;
 			_complete = false;
+			_recordedDuringPass = new HashSet<>();
 		}
 
 		for (File folder : withImages) {
@@ -421,6 +435,9 @@ public class HashIndex {
 				// The server is going down: what is done is written, and the next start carries
 				// on where this left off.
 				synchronized (this) {
+					// Nothing unvisited is dropped: an interrupted pass knows nothing about the
+					// folders it did not reach, and the next one carries on with what is known.
+					_recordedDuringPass = null;
 					persist(true);
 				}
 				LOG.info("Indexing of '" + _root + "' stopped after " + _done + " folder(s).");
@@ -439,10 +456,15 @@ public class HashIndex {
 			}
 		}
 		synchronized (this) {
-			// A folder that is gone from the tree is gone from the index; what its files were is
-			// answered by nothing any more.
+			// After a complete pass the index holds exactly the folders the pass walked (and what was
+			// recorded while it ran): a folder gone from the tree is gone from the index, and so is
+			// one the walk does not go into any more — an entry an earlier build wrote for what is
+			// no part of the library now, see LibraryFiles and issue #173.
+			Set<String> recorded = _recordedDuringPass;
+			_recordedDuringPass = null;
 			_folders.keySet().removeIf(path -> {
-				boolean gone = !Files.isDirectory(_root.resolve(path));
+				boolean gone = (!walked.contains(path) && !recorded.contains(path))
+					|| !Files.isDirectory(_root.resolve(path));
 				if (gone) {
 					_lookupStale = true;
 					_dirty = true;
@@ -514,7 +536,7 @@ public class HashIndex {
 		while (!pending.isEmpty()) {
 			File folder = pending.removeFirst();
 			result.add(folder);
-			File[] children = folder.listFiles(f -> f.isDirectory() && !f.getName().startsWith("."));
+			File[] children = folder.listFiles(f -> f.isDirectory() && !LibraryFiles.isIgnored(f));
 			if (children != null) {
 				for (File child : children) {
 					pending.add(child);
@@ -566,8 +588,23 @@ public class HashIndex {
 
 	/** Puts what a folder holds into the index, replacing what was known about it. */
 	private void record(String path, long stamp, Map<String, String> hashByName) {
+		if (!LibraryFiles.isLibraryPath(path)) {
+			// No part of the library: never an answer, whatever wrote a sidecar there.
+			if (_folders.remove(path) != null) {
+				_lookupStale = true;
+				_dirty = true;
+			}
+			return;
+		}
+		if (_recordedDuringPass != null) {
+			_recordedDuringPass.add(path);
+		}
 		Map<String, String> nameByHash = new HashMap<>();
 		for (Map.Entry<String, String> entry : hashByName.entrySet()) {
+			if (LibraryFiles.isIgnored(entry.getKey())) {
+				// A sidecar an earlier build wrote may name a file that is no photograph now.
+				continue;
+			}
 			nameByHash.putIfAbsent(entry.getValue(), entry.getKey());
 		}
 		Folder previous = _folders.put(path, new Folder(stamp, nameByHash));
@@ -703,6 +740,15 @@ public class HashIndex {
 			}
 		}
 		in.endObject();
+		if (!LibraryFiles.isLibraryPath(path)) {
+			// Written by a build that did not know this is no part of the library (a NAS's @eaDir,
+			// issue #173): dropped, and the next write of the file leaves it out.
+			_dirty = true;
+			return;
+		}
+		if (nameByHash.values().removeIf(LibraryFiles::isIgnored)) {
+			_dirty = true;
+		}
 		_folders.put(path, new Folder(stamp, nameByHash));
 	}
 

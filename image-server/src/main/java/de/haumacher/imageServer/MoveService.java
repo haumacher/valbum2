@@ -736,7 +736,7 @@ public class MoveService {
 		if (!dir.isDirectory()) {
 			throw new MoveRefused(HttpServletResponse.SC_NOT_FOUND, SOURCE_MISSING);
 		}
-		File[] children = dir.listFiles(f -> f.isDirectory() && !f.getName().startsWith("."));
+		File[] children = dir.listFiles(f -> f.isDirectory() && !LibraryFiles.isIgnored(f));
 		if (children == null) {
 			throw new MoveRefused(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, FOLDER_UNREADABLE);
 		}
@@ -942,7 +942,7 @@ public class MoveService {
 	 * replaced by that image, since a group of one is not a group.
 	 * </p>
 	 */
-	static void detach(AlbumInfo album, ImagePart image) {
+	public static void detach(AlbumInfo album, ImagePart image) {
 		ImageGroup group = image.getGroup();
 		if (group == null) {
 			album.removePart(image);
@@ -1135,9 +1135,10 @@ public class MoveService {
 
 	/** Whether the given name addresses a single entry of a folder. */
 	private static boolean isPlainName(String name) {
-		if (name == null || name.isEmpty() || name.startsWith(".")) {
+		if (name == null || name.isEmpty() || LibraryFiles.isIgnored(name)) {
 			// A name starting with a dot is the server's own business (the sidecars, the user
-			// store, the upload staging area) and no album entry.
+			// store, the upload staging area), and the litter of another system is nobody's: no
+			// album entry either, see LibraryFiles.
 			return false;
 		}
 		return name.indexOf('/') < 0 && name.indexOf('\\') < 0 && !name.equals("..");

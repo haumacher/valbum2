@@ -573,6 +573,16 @@ public class DeleteService {
 	 * </ul>
 	 *
 	 * <p>
+	 * And the one thing besides that the server did not write but deletes all the same: what other
+	 * systems {@link LibraryFiles#GENERATED generate}, a file of such a name or a folder of such a
+	 * name with everything in it, wherever it lies below (issue #173, the author's decision). A
+	 * folder is never saved by what a NAS wrote into it. A folder in which a NAS
+	 * {@link LibraryFiles#HELD holds the user's own files} (its recycle bin, a snapshot) is the
+	 * opposite: like a foreign file it sends the folder to the trash, contents untouched, even when
+	 * it is empty.
+	 * </p>
+	 *
+	 * <p>
 	 * A file in the cache directory is still <em>looked at</em>: an image there that
 	 * {@link CacheRefresh#isGenerated(String) the server did not generate} counts as a picture like
 	 * any other and sends the folder to the trash, files and all. Nothing anybody may want back is
@@ -605,7 +615,20 @@ public class DeleteService {
 				// trash instead, where the link travels along as the name it is.
 				return false;
 			}
-			if (file.isDirectory()) {
+			if (LibraryFiles.isHeld(file.getName())) {
+				// A NAS's recycle bin or snapshot holds the user's own files: never unlinked, the
+				// folder goes to the trash with it, see issue #173.
+				return false;
+			}
+			if (LibraryFiles.isGenerated(file.getName())) {
+				// What another system writes into every folder it sees (Synology's @eaDir with its
+				// own thumbnails, Thumbs.db, .DS_Store): generated like the server's own files, never
+				// a picture of anybody's, and gone with the folder it was written into, see issue
+				// #173.
+				if (!collectLitter(file, result)) {
+					return false;
+				}
+			} else if (file.isDirectory()) {
 				if (!collect(file, inCache || PreviewCache.CACHE_DIRECTORY_NAME.equals(file.getName()), result)) {
 					return false;
 				}
@@ -617,6 +640,34 @@ public class DeleteService {
 		}
 		// After its contents: a directory is removed when it is empty and never before.
 		result.add(dir);
+		return true;
+	}
+
+	/**
+	 * Collects a {@link LibraryFiles#isGenerated(String) generated} file, or a generated folder
+	 * with everything below it, depth first.
+	 *
+	 * <p>
+	 * Nothing inside is looked at as a picture: Synology's <code>@eaDir</code> is full of JPEGs,
+	 * and every one of them is DSM's thumbnail of a photograph that lies (or lay) beside it. A link
+	 * still refuses, for the reason {@link #collect(File, boolean, List)} gives.
+	 * </p>
+	 *
+	 * @return Whether everything found may be deleted.
+	 */
+	private static boolean collectLitter(File litter, List<File> result) {
+		if (litter.isDirectory()) {
+			File[] contents = litter.listFiles();
+			if (contents == null) {
+				return false;
+			}
+			for (File file : contents) {
+				if (Files.isSymbolicLink(file.toPath()) || !collectLitter(file, result)) {
+					return false;
+				}
+			}
+		}
+		result.add(litter);
 		return true;
 	}
 
@@ -710,7 +761,7 @@ public class DeleteService {
 
 	/** Whether the given name addresses a single entry of a folder, see {@link MoveService}. */
 	private static boolean isPlainName(String name) {
-		if (name == null || name.isEmpty() || name.startsWith(".")) {
+		if (name == null || name.isEmpty() || LibraryFiles.isIgnored(name)) {
 			return false;
 		}
 		return name.indexOf('/') < 0 && name.indexOf('\\') < 0 && !name.equals("..");

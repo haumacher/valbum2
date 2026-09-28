@@ -230,8 +230,9 @@ public final class Reanalysis {
 				LOG.log(Level.WARNING, "Cannot write the details re-read in '" + dir + "': " + ex.getMessage(), ex);
 			}
 		}
-		// Hidden folders are the server's own: the cache, the trash, the duplicates.
-		File[] children = dir.listFiles(f -> f.isDirectory() && !f.getName().startsWith("."));
+		// Hidden folders are the server's own (the cache, the trash, the duplicates), and the litter of
+		// another system is nobody's album, see LibraryFiles.
+		File[] children = dir.listFiles(f -> f.isDirectory() && !LibraryFiles.isIgnored(f));
 		if (children == null) {
 			return;
 		}

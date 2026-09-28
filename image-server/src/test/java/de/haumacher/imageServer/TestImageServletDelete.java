@@ -248,6 +248,154 @@ public class TestImageServletDelete extends TestCase {
 		assertEquals("my notes", read(new File(trash(), "Empty/notes.txt").toPath()));
 	}
 
+	// --- The litter of other systems, see issue #173. ---
+
+	public void testAnAlbumHoldingOnlyLitterIsRemoved() throws Exception {
+		sidecar("A/Empty", "[\"AlbumInfo\",{\"title\":\"Empty\",\"parts\":[]}]");
+		write("A/Empty/.hashes.json", "{}".getBytes(StandardCharsets.UTF_8));
+		// What Synology DSM writes into every folder of a share: its own thumbnails, real JPEGs.
+		write("A/Empty/@eaDir/SYNOPHOTO_THUMB_M.jpg", jpeg(4, 3, Color.RED));
+		write("A/Empty/@eaDir/SYNOPHOTO_THUMB_M.jpg@SynoEAStream", new byte[] { 1, 2 });
+		write("A/Empty/@eaDir/gone.jpg/SYNOPHOTO_THUMB_XL.jpg", jpeg(5, 3, Color.RED));
+		write("A/Empty/Thumbs.db", new byte[] { 3 });
+		write("A/Empty/.DS_Store", new byte[] { 4 });
+		write("A/Empty/.vacache/preview-gone.jpg", jpeg(4, 3, Color.BLUE));
+		write("A/Empty/.vacache/@eaDir/preview-gone.jpg@SynoEAStream", new byte[] { 5 });
+		// What an earlier build, which took @eaDir for an album, wrote into it: sidecars, hashes, a
+		// preview cache and a face cache. All of it goes with DSM's thumbnails.
+		write("A/Empty/@eaDir/index.json", "[\"AlbumInfo\",{\"title\":\"@eaDir\"}]".getBytes(StandardCharsets.UTF_8));
+		write("A/Empty/@eaDir/index.json.1234567", "{}".getBytes(StandardCharsets.UTF_8));
+		write("A/Empty/@eaDir/.hashes.json", "{}".getBytes(StandardCharsets.UTF_8));
+		write("A/Empty/@eaDir/.vacache/preview-SYNOPHOTO_THUMB_M.jpg", jpeg(4, 3, Color.RED));
+		write("A/Empty/@eaDir/.vacache/faces.json", "{}".getBytes(StandardCharsets.UTF_8));
+		sidecar("A", "[\"ListingInfo\",{\"title\":\"A\"}]");
+
+		MoveResult result = delete("/A/", "Empty");
+
+		MoveOutcome outcome = result.getOutcomes().get(0);
+		assertEquals("DSM's thumbnails are no photographs: the album held none.", DeleteService.REMOVED,
+			outcome.getMessage());
+		assertEquals("", outcome.getNewName());
+		assertFalse("The folder is gone, the litter with it.", _base.resolve("A/Empty").toFile().exists());
+		assertFalse("Nothing went to the trash.", trash().exists());
+	}
+
+	public void testAForeignFileBesideLitterStillSavesTheFolder() throws Exception {
+		sidecar("A/Empty", "[\"AlbumInfo\",{\"title\":\"Empty\",\"parts\":[]}]");
+		write("A/Empty/@eaDir/SYNOPHOTO_THUMB_M.jpg", jpeg(4, 3, Color.RED));
+		write("A/Empty/Thumbs.db", new byte[] { 3 });
+		write("A/Empty/notes.txt", "my notes".getBytes(StandardCharsets.UTF_8));
+		String before = fingerprint(_base.resolve("A/Empty"));
+
+		MoveResult result = delete("/A/", "Empty");
+
+		assertEquals("The litter never saves a folder, and never condemns one either.",
+			DeleteService.trashed("Empty"), result.getOutcomes().get(0).getMessage());
+		assertEquals("my notes", read(new File(trash(), "Empty/notes.txt").toPath()));
+		assertEquals("Nothing was deleted on the way, the litter included.", before,
+			fingerprint(new File(trash(), "Empty").toPath()));
+	}
+
+	public void testARecycleBinSavesTheFolderByteForByte() throws Exception {
+		sidecar("A/Empty", "[\"AlbumInfo\",{\"title\":\"Empty\",\"parts\":[]}]");
+		write("A/Empty/@eaDir/SYNOPHOTO_THUMB_M.jpg", jpeg(4, 3, Color.RED));
+		write("A/Empty/Thumbs.db", new byte[] { 3 });
+		byte[] old = jpeg(9, 5, Color.ORANGE);
+		write("A/Empty/#recycle/old.jpg", old);
+		String before = fingerprint(_base.resolve("A/Empty"));
+
+		MoveResult result = delete("/A/", "Empty");
+
+		assertEquals("The recycle bin of a share holds the user's own files: never unlinked.",
+			DeleteService.trashed("Empty"), result.getOutcomes().get(0).getMessage());
+		assertTrue("The recycled photograph is in the trash, byte for byte.",
+			Arrays.equals(old, Files.readAllBytes(new File(trash(), "Empty/#recycle/old.jpg").toPath())));
+		assertEquals("Nothing was deleted on the way, DSM's thumbnails included.", before,
+			fingerprint(new File(trash(), "Empty").toPath()));
+	}
+
+	/**
+	 * The amendment of issue #173 pinned to the letter: exactly the names of
+	 * {@link LibraryFiles#GENERATED}, as a file and as a folder and in any case, are removed with a
+	 * folder that holds no picture; a {@link LibraryFiles#HELD} name (even an empty folder of it), a
+	 * name merely resembling a generated one, and any other hidden file still send the folder to
+	 * the trash, every byte of it.
+	 */
+	public void testOnlyTheGeneratedListIsRemovedWithAFolder() throws Exception {
+		assertEquals("The list is a constant; a change of it is a change of what the server deletes.",
+			Arrays.asList("@eaDir", ".@__thumb", "Thumbs.db", "desktop.ini", ".DS_Store"), LibraryFiles.GENERATED);
+		assertEquals("What a NAS holds aside is the user's, and never deleted.",
+			Arrays.asList("#recycle", "#snapshot", "@Recently-Snapshot"), LibraryFiles.HELD);
+
+		for (String name : withUpperCase(LibraryFiles.GENERATED)) {
+			for (boolean folder : new boolean[] { false, true }) {
+				delete(_base.resolve("A"));
+				sidecar("A/Empty", "[\"AlbumInfo\",{\"title\":\"Empty\",\"parts\":[]}]");
+				write("A/Empty/" + name + (folder ? "/inside.jpg" : ""), jpeg(4, 3, Color.RED));
+
+				MoveResult result = delete("/A/", "Empty");
+
+				assertEquals("'" + name + "'" + (folder ? " as a folder" : "") + " is generated.", DeleteService.REMOVED,
+					result.getOutcomes().get(0).getMessage());
+				assertFalse(_base.resolve("A/Empty").toFile().exists());
+			}
+		}
+		assertFalse(trash().exists());
+
+		List<String> kept = new ArrayList<>(withUpperCase(LibraryFiles.HELD));
+		kept.addAll(Arrays.asList("eaDir", "@eaDir2", "recycle", "Thumbs.db.bak", "desktop.ini.txt", ".hidden",
+			"._a.jpg", ".DS_Store2"));
+		for (String name : kept) {
+			for (int shape = 0; shape < 3; shape++) {
+				delete(_base.resolve("A"));
+				sidecar("A/Empty", "[\"AlbumInfo\",{\"title\":\"Empty\",\"parts\":[]}]");
+				if (shape == 2) {
+					// An empty folder of the name.
+					Files.createDirectories(_base.resolve("A/Empty/" + name));
+					if (!LibraryFiles.isHeld(name)) {
+						continue;
+					}
+				} else {
+					write("A/Empty/" + name + (shape == 1 ? "/inside.txt" : ""),
+						"somebody's".getBytes(StandardCharsets.UTF_8));
+				}
+				String before = fingerprint(_base.resolve("A/Empty"));
+
+				MoveResult result = delete("/A/", "Empty");
+
+				String what = "'" + name + "'" + (shape == 0 ? "" : shape == 1 ? " as a folder" : " as an empty folder");
+				assertEquals(what + " is somebody's.", DeleteService.trashed("Empty"),
+					result.getOutcomes().get(0).getMessage());
+				assertEquals(before, fingerprint(new File(trash(), "Empty").toPath()));
+				if (shape == 2) {
+					assertTrue(what + " came along.", new File(trash(), "Empty/" + name).isDirectory());
+				}
+				delete(trash().toPath());
+			}
+		}
+	}
+
+	private static List<String> withUpperCase(List<String> names) {
+		List<String> result = new ArrayList<>();
+		for (String name : names) {
+			result.add(name);
+			result.add(name.toUpperCase(java.util.Locale.ROOT));
+		}
+		return result;
+	}
+
+	public void testALinkInsideLitterStillRefusesTheRemoval() throws Exception {
+		sidecar("A/Empty", "[\"AlbumInfo\",{\"title\":\"Empty\",\"parts\":[]}]");
+		write("Elsewhere/precious.jpg", jpeg(4, 3, Color.RED));
+		Files.createDirectories(_base.resolve("A/Empty/@eaDir"));
+		Files.createSymbolicLink(_base.resolve("A/Empty/@eaDir/link"), _base.resolve("Elsewhere"));
+
+		MoveResult result = delete("/A/", "Empty");
+
+		assertEquals(DeleteService.trashed("Empty"), result.getOutcomes().get(0).getMessage());
+		assertTrue("What the link points to is never touched.", _base.resolve("Elsewhere/precious.jpg").toFile().isFile());
+	}
+
 	// --- The p0: nothing but what the server wrote is ever deleted. ---
 
 	public void testNothingButWhatTheServerWroteIsEverDeleted() throws Exception {
@@ -259,7 +407,16 @@ public class TestImageServletDelete extends TestCase {
 		write("A/Tree/2020/Trip/Deeper/.vacache/stray.png", jpeg(4, 3, Color.PINK));
 		write("A/Tree/notes.txt", "notes".getBytes(StandardCharsets.UTF_8));
 		write("A/Tree/2020/Trip/notes.txt", "more notes".getBytes(StandardCharsets.UTF_8));
-		sidecar("A/Tree", "[\"ListingInfo\",{\"title\":\"Tree\"}]");
+		// What other systems write (issue #173) inside a folder that goes to the trash goes along,
+		// not a byte lost.
+		write("A/Tree/2020/Trip/@eaDir/deep.jpg/SYNOPHOTO_THUMB_M.jpg", jpeg(4, 3, Color.BLUE));
+		write("A/Tree/Thumbs.db", new byte[] { 1 });
+		write("A/Tree/2020/Empty/@eaDir/SYNOPHOTO_THUMB_S.jpg", jpeg(3, 3, Color.RED));
+		// And what a NAS holds aside for the user: the recycle bin and a snapshot, never unlinked.
+		write("A/Tree/2020/Empty/#recycle/old.jpg", jpeg(9, 5, Color.ORANGE));
+		write("A/Tree/@Recently-Snapshot/GMT+01_2026-09-01/top.jpg", jpeg(8, 6, Color.RED));
+		Files.createDirectories(_base.resolve("A/Tree/2020/#snapshot"));
+		sidecar("A/Tree","[\"ListingInfo\",{\"title\":\"Tree\"}]");
 		sidecar("A/Tree/2020/Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":["
 			+ part("deep.jpg", "\"rating\":-2") + "]}]");
 
@@ -271,6 +428,7 @@ public class TestImageServletDelete extends TestCase {
 		assertFalse(_base.resolve("A/Tree").toFile().exists());
 		assertEquals("Every byte of the tree survived the delete, name for name.",
 			before, fingerprint(new File(trash(), "Tree").toPath()));
+		assertTrue("Even an empty snapshot folder came along.", new File(trash(), "Tree/2020/#snapshot").isDirectory());
 	}
 
 	/**
@@ -291,6 +449,12 @@ public class TestImageServletDelete extends TestCase {
 		write("A/Trip/.vacache/face-gone.jpg-f0123456789ab.jpg", jpeg(4, 3, Color.RED));
 		write("A/Trip/.vacache/preview-kept.jpg", jpeg(4, 3, Color.BLUE));
 		write("A/Trip/.vacache/face-kept.jpg-1.jpg", jpeg(4, 3, Color.BLUE));
+		// The litter of issue #173 is removed with a folder the delete removes, never by a purge:
+		// not even DSM's thumbnail of the very photograph that is purged.
+		write("A/Trip/@eaDir/gone.jpg/SYNOPHOTO_THUMB_M.jpg", jpeg(4, 3, Color.RED));
+		write("A/Trip/@eaDir/gone.jpg@SynoEAStream", new byte[] { 1 });
+		write("A/Trip/Thumbs.db", new byte[] { 2 });
+		write("A/Trip/.vacache/@eaDir/preview-gone.jpg@SynoEAStream", new byte[] { 3 });
 		image("A/Other/other.jpg", 8, 6, Color.RED);
 		sidecar("A/Other", "[\"AlbumInfo\",{\"title\":\"Other\",\"parts\":[" + part("other.jpg", "\"rating\":-2")
 			+ "]}]");
