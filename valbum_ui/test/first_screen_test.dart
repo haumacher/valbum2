@@ -226,4 +226,78 @@ void main() {
     expect(find.byKey(firstScreenFieldKey), findsOneWidget);
     expect(find.byKey(deviceCodeFieldKey), findsNothing);
   });
+
+  // A pasted code link does what the scanned QR code does: the server into
+  // the field, the code into the sign-in (the author: "wenn ich da den
+  // Recovery-Link eingebe funktioniert das überhaupt nicht").
+  const link = "valbum-device://pair?server=http%3A%2F%2Fserver%2Fvalbum%2F"
+      "&code=ABCD2345";
+
+  testWidgets('a pasted code link fills the server and the code',
+      (tester) async {
+    var requests = <http.Request>[];
+    var store = await pumpFirst(tester, plainServer(requests: requests));
+
+    await enter(tester, link);
+    await tapVisible(tester, find.byKey(firstScreenContinueKey));
+
+    expect(find.byKey(firstScreenProblemKey), findsNothing);
+    expect(
+      tester.widget<TextField>(find.byKey(deviceCodeFieldKey)).controller
+          ?.text,
+      "ABCD-2345",
+    );
+    await tapVisible(tester, find.byKey(signInButtonKey));
+    expect(store.value, "http://server/valbum/");
+    expect(store.token, "tok-2");
+    expect(
+      requests.any((request) =>
+          request.url.queryParameters["action"] == "pair" &&
+          RegExp("ABCD-?2345").hasMatch(request.body)),
+      isTrue,
+    );
+  });
+
+  testWidgets('a code link pasted into the code field signs in',
+      (tester) async {
+    var requests = <http.Request>[];
+    var store = await pumpFirst(tester, plainServer(requests: requests));
+
+    await enter(tester, "http://server/valbum/");
+    await tapVisible(tester, find.byKey(firstScreenContinueKey));
+    await tester.enterText(find.byKey(deviceCodeFieldKey), link);
+    await tester.pumpAndSettle();
+    await tapVisible(tester, find.byKey(signInButtonKey));
+
+    expect(store.token, "tok-2");
+    expect(
+      requests.any((request) =>
+          request.url.queryParameters["action"] == "pair" &&
+          RegExp("ABCD-?2345").hasMatch(request.body)),
+      isTrue,
+    );
+  });
+
+  testWidgets('a code link of another server in the code field is refused',
+      (tester) async {
+    var requests = <http.Request>[];
+    var store = await pumpFirst(tester, plainServer(requests: requests));
+
+    await enter(tester, "http://server/valbum/");
+    await tapVisible(tester, find.byKey(firstScreenContinueKey));
+    await tester.enterText(
+      find.byKey(deviceCodeFieldKey),
+      "valbum-device://pair?server=http%3A%2F%2Fother%2Fvalbum%2F"
+      "&code=ABCD2345",
+    );
+    await tester.pumpAndSettle();
+    await tapVisible(tester, find.byKey(signInButtonKey));
+
+    expect(find.textContaining("http://other/valbum/"), findsWidgets);
+    expect(store.token, isNot("tok-2"));
+    expect(
+      requests.where((r) => r.url.queryParameters["action"] == "pair"),
+      isEmpty,
+    );
+  });
 }

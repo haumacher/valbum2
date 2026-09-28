@@ -345,6 +345,30 @@ class SignInFormState extends State<SignInForm> {
     var code = location.isInvitation
         ? location.invitation
         : codeController.text.trim();
+    // The link a code dialog offers beside its QR code, pasted into the code
+    // field: its code, if it is a code for this server.
+    var pasted = location.isInvitation ? null : parseDeviceCodePayload(code);
+    if (pasted != null) {
+      var takesTheServer = widget.onScanned;
+      if (takesTheServer != null &&
+          !sameServer(pasted.serverUrl, location.serverUrl)) {
+        // Where the form may change the server, a pasted link does what a
+        // scanned one does: the server into its field, the code into this
+        // one, and the next press signs in there.
+        takesTheServer(pasted);
+        acceptScanned(pasted);
+        return;
+      }
+      if (!sameServer(pasted.serverUrl, location.serverUrl)) {
+        setState(() {
+          signInError = otherServerRefusal(l10n, pasted.serverUrl);
+          pairing = null;
+        });
+        return;
+      }
+      code = pasted.code;
+      codeController.text = pasted.formattedCode;
+    }
     if (code.isEmpty) {
       // There is one way in and it is a code (issue #89); an empty field is
       // said here rather than sent to be refused.

@@ -268,6 +268,13 @@ class FirstScreenState extends State<FirstScreen> {
   /// Takes what was entered: a server, an invitation link, or nothing usable.
   Future<void> accept() async {
     var l10n = AppLocalizations.of(context)!;
+    // The link a code dialog offers beside its QR code, pasted instead of
+    // scanned: the same server and code the camera would have read.
+    var pasted = parseDeviceCodePayload(controller.text);
+    if (pasted != null) {
+      controller.text = pasted.serverUrl;
+      scannedCode = pasted.formattedCode;
+    }
     ServerLocation location;
     try {
       location = serverLocationOf(controller.text);

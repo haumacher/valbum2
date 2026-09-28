@@ -798,9 +798,15 @@ const Key signInErrorKey = Key("settings.signIn.error");
 ///
 /// Upper case, letters, digits and the dash the other device shows; anything
 /// else is not part of a code and is dropped rather than carried to the
-/// server, which would only refuse it.
+/// server, which would only refuse it — except a whole code link.
 final TextInputFormatter deviceCodeFormatter =
     TextInputFormatter.withFunction((oldValue, newValue) {
+  // A code link pasted whole is kept as it is: the sign-in takes its code
+  // after checking its server, see [parseDeviceCodePayload]. Filtered, it
+  // would become a code nobody issued.
+  if (parseDeviceCodePayload(newValue.text) != null) {
+    return newValue;
+  }
   var kept = newValue.text.toUpperCase().replaceAll(RegExp("[^A-Z0-9-]"), "");
   if (kept == newValue.text) {
     return newValue;
@@ -951,6 +957,10 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// like the pairing secret, see issue #52.
   String invitationToken = "";
 
+  /// The code of a code link pasted into the server field, handed to the
+  /// sign-in below; empty while there is none.
+  String pastedCode = "";
+
   /// What the server said the entered invitation offers, `null` while it has
   /// not answered (or answered that the token is no invitation of its).
   InvitationInfo? invitationOffer;
@@ -1031,6 +1041,14 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// the app asks for a server; the field therefore reads a `/i/<token>/` URL
   /// as "this server, and this invitation", see [serverLocationOf].
   void _enteredChanged() {
+    // A code link pasted where the server goes: the server stays in the
+    // field, the code goes into the sign-in below, as a scan puts it there.
+    var pasted = parseDeviceCodePayload(controller.text);
+    if (pasted != null) {
+      pastedCode = pasted.formattedCode;
+      controller.text = pasted.serverUrl;
+      return;
+    }
     var location = entered;
     var token = location?.invitation ?? "";
     if (token == invitationToken) {
@@ -1352,21 +1370,26 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
           key: const Key("settings.signIn.noServer"),
         )
       else
-        SignInForm(
-          key: signInFormKey,
-          settings: settings,
-          clientFor: widget.clientFor,
-          location: location,
-          onScanned: _scannedServer,
-          onSignedIn: _signedIn,
-          actions: [
-            TextButton.icon(
-              key: signOutButtonKey,
-              onPressed: settings.signedIn ? _signOut : null,
-              icon: const Icon(Icons.logout),
-              label: Text(l10n.signOut),
-            ),
-          ],
+        KeyedSubtree(
+          // A pasted code link starts the form afresh with its code.
+          key: ValueKey(pastedCode),
+          child: SignInForm(
+            key: signInFormKey,
+            initialCode: pastedCode,
+            settings: settings,
+            clientFor: widget.clientFor,
+            location: location,
+            onScanned: _scannedServer,
+            onSignedIn: _signedIn,
+            actions: [
+              TextButton.icon(
+                key: signOutButtonKey,
+                onPressed: settings.signedIn ? _signOut : null,
+                icon: const Icon(Icons.logout),
+                label: Text(l10n.signOut),
+              ),
+            ],
+          ),
         ),
       if (signOutMessage != null)
         Padding(
@@ -1491,8 +1514,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       const SizedBox(height: 24),
       const Divider(),
       const SizedBox(height: 8),
-      Text(l10n.peopleHeading,
-          style: Theme.of(context).textTheme.titleMedium),
+      Text(l10n.peopleHeading, style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
       Text(l10n.inviteExplanation),
       const SizedBox(height: 16),
