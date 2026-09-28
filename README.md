@@ -2,586 +2,76 @@
 
 *The friendly home for all your digital memories.*
 
-VAlbum lets you keep your photos and videos on hardware you own and browse them from any device,
-without handing them to a cloud provider. A small Java server reads your album folders and serves
-them; one Flutter app shows them in the browser, on your phone, or on the desktop. Put the server on
-a [Raspberry Pi](https://www.raspberrypi.org/) behind your internet connection and you have your own
-photo cloud for a one-off investment.
+VAlbum keeps your photos and videos on hardware you own — a Raspberry Pi, a NAS, any Linux
+machine — and shows them on every device, without a cloud provider. A small server reads your
+album folders; one app shows them in the browser, on Android and on the desktop.
 
 *Eine deutsche Zusammenfassung steht am Ende dieser Seite.*
 
+## What VAlbum is
+
+- **Albums from your folders.** Every folder with photos and videos is an album. Titles, captions,
+  ratings, headings and order are added in the app.
+- **Camera-roll sync.** The Android app uploads new photos into an *inbox* album, where you sort
+  them into albums by day.
+- **Share links.** Hand out a link to one album or folder, with an expiry and the photos it may show.
+- **Invitations.** Family and friends join with a link and get the permission you chose.
+- **Privacy levels.** Each photo is public, for members, or private.
+- **Faces** (off unless you switch them on). The server finds faces, groups them and recognises the
+  people you named.
+- **Spaces.** One server can host several separate libraries, each with its own users.
+- **One app** for the web, Android and the desktop.
+
+Where the project is heading is in [ROADMAP.md](ROADMAP.md).
+
 ## How it works
 
-- **Your folders are your albums.** One folder holds all albums; each album is a folder with photos
-  and videos; nest them any way you like. The server reads that tree and presents it as listings and
-  albums with titles and dates derived from folder names and image metadata, newest first.
-- **Originals are never touched.** Everything you change in VAlbum — titles, captions, ratings,
-  privacy levels, rotation, grouping near-duplicate shots, section headings — is stored in an `index.json` sidecar
-  file next to your photos. No file of yours is ever modified or deleted; the only thing the server
-  does to a photo is rename it when you move it to another album, when a placement rule files an album
-  into its year folder, or when you turn a library into a space; and a photo that a move finds already present at its target is set aside in
-  `.valbum/duplicates/`, never removed.
-- **One server, one app.** The server (`image-server/`) is a JSON API plus static hosting for the web
-  build of the app; the app (`valbum_ui/`) is written in Flutter and runs on the web, Android, iOS,
-  Linux, Windows and macOS.
-- **Albums that look like albums.** The row layout stitches landscape shots into rows and pairs
-  portraits with stacked landscapes so every row fills the page width — the heart of VAlbum since
-  its first version.
-
-Where the project is heading is written down in [ROADMAP.md](ROADMAP.md).
-
-## Building
-
-You need Git, a JDK 21 ([Temurin](https://adoptium.net/temurin/releases/?version=21)),
-[Apache Maven](https://maven.apache.org/) 3.6 or newer, and — for the app —
-the [Flutter SDK](https://docs.flutter.dev/get-started/install) (stable channel).
-
-Build the app for the web first, so the server can bundle it:
-
-```
-cd valbum_ui
-flutter pub get
-flutter build web
-cd ..
-```
-
-Then build the server from the repository root. If `valbum_ui/build/web` exists it is packed into
-the jar; if not, you get an API-only server.
-
-```
-mvn clean install
-```
-
-The result is `image-server/target/image-server-jar-with-dependencies.jar`, which contains everything
-needed to run.
-
-## Running
-
-```
-java -jar image-server-jar-with-dependencies.jar --basepath /path/to/your/photos
-```
-
-Options:
-
-| Option | Meaning | Default |
-|---|---|---|
-| `--basepath <dir>` | The folder containing your albums | current directory |
-| `--port <n>` | HTTP port | `8080` |
-| `--contextpath <name>` | First path segment of the URL, e.g. `photos` → `http://host:8080/photos/` | none |
-| `--webroot <dir>` | Serve the web app from a directory instead of the bundled copy (development) | bundled |
-| `--auth off\|writes\|all` | What requires a paired device: nothing, changes and uploads, or every request | `writes` |
-| `--admin-code <code>` | The sign-in code the server prints for the administrator of a space nobody signed into yet, instead of a random one; eight characters of `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, a dash between the groups allowed | a fresh one at every start |
-| `--spaces auto\|single\|multi` | Whether this server hosts one space or several (issue #82); `auto` decides from the folder tree: multi as soon as one folder below the base folder carries `.valbum/space.json` | `auto` |
-| `--create-space <folder>` | One-time: make the folder `<folder>` below the base folder a space (see *Users and spaces*), with `--space-name <name>`, `--anonymous none\|public` and `--faces on\|off`; refused on a base folder that is a single library with albums of its own; the server does not start afterwards | none |
-| `--move-into-space <folder>` | One-time: move a single-space library with everything it knows into the new space `<folder>`, keeping its old addresses (see *Users and spaces*), with `--space-name <name>`; the server does not start afterwards | none |
-| `--migrate-to-spaces` | One-time, for libraries from before spaces existed: turn a library split per user (`--migrate-to-user`) into a multi-space server; the server does not start afterwards | none |
-| `--preview-threads <n>` | How many thumbnails are generated at the same time; serving an already cached thumbnail is never throttled (the system property `valbum.previewThreads` does the same) | number of processors |
-| `--migrate-to-user <name>` | One-time, for libraries from before spaces existed: the first step before `--migrate-to-spaces`; the server does not start afterwards | none |
-| `--replace-originals <dir>` | Put the originals you downloaded into `<dir>` in the place of the copies a phone uploaded with the position stripped (issue #167): a file whose name the library holds exactly once and whose picture (JPEG scan data) or video (media data) is the same replaces it, the uploaded copy is set aside in `<space>/.valbum/replaced/<yyyyMMdd-HHmmss>/`, never deleted, and the missing position and camera are filled in — every other file is reported and skipped. Run it with the server stopped; the server does not start afterwards | none |
-| `--dry-run` | With `--replace-originals`: print what would be replaced and skipped, and change nothing | off |
-
-### Signing in a device
-
-With `--auth writes` (the default) the server serves every read but refuses an anonymous change or
-upload with `401` and a message the app shows. There is one way in, and it is always the same
-thing: a **code**. A code works once, lives ten minutes and signs one device in as one user.
-
-At start-up the server prints a code for the administrator of every space that has no signed-in
-device yet:
-
-```
-This library: sign the administrator in with the code ABCD-EFGH (valid 10 minutes, once; restart the server for a new one).
-```
-
-Open the album in a browser: a server that shows nothing to strangers answers with a
-**sign-in page**, and that page is the form — enter the code and a device name there and press
-"Sign in". In the app off the web, the first screen asks where your album is; type the server
-address (or paste an invitation link, or scan a QR code), and the same sign-in follows. The
-administrator of a fresh space has no name yet, so the app asks for one and signs in again with
-it: that name is what the users list shows, what an uploaded photo is attributed to and what a
-permission change addresses. The server issues a token for this device, the app stores it beside
-the server URL and sends it on every request from then on; the settings show who the device is
-signed in as (user, role, device, space). "Sign out" forgets the token.
-
-Once somebody signed in, nothing is printed any more — the printed code is a bootstrap, never a
-standing master key. A further device comes from a code of a device you already hold (below), and
-somebody who lost every device they had gets a **recovery code** from an administrator. If the
-administrator themselves has no device left, restart the server: a fresh code is printed, which
-only somebody with the machine can do.
-
-`--auth all` refuses anonymous reads as well; `--auth off` is the old behaviour, open to everyone
-who can reach the server.
-
-### Adding a further device of your own
-
-A user who wants a second device must not use an invitation (that would create another user). On
-a device you are already signed in on, open "My
-devices" in the server settings and press "Add a device…": the server issues a short code
-(`XXXX-XXXX`) that lives ten minutes and works once. Type it into the "Device code" field of the
-sign-in section on the new device, together with a device name, and press "Sign in": the new
-device is signed in as you and appears in your device list at once, where it can be signed out
-again. The code is deliberately not a link — it is never sent anywhere and cannot be forwarded —
-and it dies with the device that issued it: signing that device out withdraws every code it handed
-out that was not used yet. Never give a device code to anybody else; it signs them in as you.
-
-If you lost every device you had — a cleared browser, an app reinstalled — an administrator makes
-the same code for you: in the users list, "Recovery code" beside your name. It is the same
-single-use code with the same ten minutes; it signs a device in as *you*, and it dies with the
-administrator's device that made it.
-
-### The backup code: the way back from your last sign-out
-
-Signing out on a borrowed device is harmless — your own device is still signed in. Signing out
-of your **last** device is not: a device code lives ten minutes and dies with the device that made
-it, so there would be nothing left to sign in with. The app therefore asks before that sign-out and
-names the ways back, and one of them you can lay in a drawer today.
-
-Under "My devices", "Create backup code…" gives you a code of your own: sixteen characters
-(`XXXX-XXXX-XXXX-XXXX`) of the same alphabet, shown **once**, with **no expiry at all**. Write it
-down or put it in a password manager. It is typed into the same sign-in field as every other code,
-it works **once**, and unlike a device code it does *not* die with the device that made it —
-which is the whole point, since that is the device you are about to sign out of. You have one at a
-time: making a new one withdraws the old one, and "Withdraw" ends it without a replacement. The
-server keeps only its hash and says no more than that there is one and since when.
-
-### Users and spaces
-
-A **space** is a library of its own: its albums, its users, its share links and its sign-in, and
-nothing crosses from one space into another. A server hosts **one space** — the base folder, the
-default — or **several**, each a folder directly below the base folder.
-
-**One space.** A fresh server is a single space: the albums are the folders of the base folder,
-the app is at `<context>/` and the albums at `<context>/data/`. The users of the space and a hash of
-every device token (never the token itself) are kept in `<basepath>/.valbum/users.json`; besides
-the `index.json` sidecars and the per-folder `.hashes.json`, `.valbum/` is the only place the
-server writes.
-
-**Several spaces.** A folder becomes a space when it carries `.valbum/space.json`. Create it with
-`valbum-admin` (below):
-
-```
-sudo valbum-admin create-space family --name "The Family" --anonymous none --faces off
-```
-
-This writes `/path/to/photos/family/.valbum/space.json` — creating the folder if it is missing —
-and nothing else. `--name` is the name shown for the space (the
-folder name otherwise), `--anonymous public` lets visitors who are not signed in see its public
-photos (`none`, the default, shows them nothing), and `--faces on` switches on the face index
-(see *Faces* below). An existing folder is fine, empty or holding albums: it becomes the space with
-everything in it, nothing moved. Refused, with nothing written, are a folder that is a space
-already, a name no album folder may have (a leading dot, a slash, or a name like `@eaDir` or
-`#recycle` that a NAS writes), and the names the server answers itself (`data`, `s`, `i`, `assets`,
-`canvaskit`, `icons`).
-
-As soon as one folder is a space, the server runs in multi-space mode (`--spaces auto`, the
-default, follows the folders; `--spaces single|multi` says so outright). Every space is then
-reached at `<context>/<space>/` — the app — and `<context>/<space>/data/`, and its share links and
-invitations live below it (`<context>/<space>/s/<token>/`, `<context>/<space>/i/<token>/`). The
-albums directly in the base folder are **not** served in that mode, which is why `create-space`
-refuses a base folder that is a single library with albums, photos or users of its own: move that
-library into a space first (below).
-
-**Users.** Every user belongs to exactly one space and holds **one permission for the whole
-space**: a role (`admin`, `edit`, `contribute` or `view`), a clearance (how far up the privacy
-levels they may look) and the share flag (whether they may hand out share links), see *Who may do
-what* below. A space has its administrator from the moment it exists — nameless and without a
-device until they sign in, which is when they choose their name. Everybody else **joins by
-invitation**: the administrator invites, the invitation carries the permission the newcomer gets,
-and whoever opens the link picks their name and signs in.
-
-**The seat code.** At every start the server prints, for each space whose administrator has no
-signed-in device yet, one sign-in code:
-
-```
-Space 'family': sign the administrator in with the code ABCD-EFGH (valid 10 minutes, once; restart the server for a new one).
-```
-
-(on a single-space server the line begins with *This library*). So after `create-space`, sign the
-new space's administrator in with the code the restarted server printed, at `<context>/<space>/`. `--admin-code <code>` fixes that code instead of a fresh one at every start.
-Once the administrator has a device, nothing is printed for that space any more.
-
-**Turning one library into several spaces.** Move the library into a space of its own:
-
-```
-sudo valbum-admin move-into-space family --name "The Family"
-```
-
-This renames the albums and the library's `.valbum` (users and devices, share links, invitations,
-people) into `/path/to/photos/family/`; nothing is copied or deleted. The old addresses keep
-working: `.valbum/moved.json` in the base folder makes `<context>/`, `<context>/data/`,
-`<context>/s/…` and `<context>/i/…` answer as the space `family`, so signed-in devices, share
-links and invitations already sent open it as before; new ones get the address
-`<context>/family/…`. Delete that file to end the old addresses. After that, `create-space` adds
-further spaces beside it.
-
-**`valbum-admin`** runs these one-time jobs of the server: `sudo valbum-admin <command>` on the
-Debian package, `docker compose exec valbum valbum-admin <command>` in the container. It stops the
-server, runs the job as the server's user with the server's configuration, and starts the server
-again (`--no-restart` leaves it stopped); `valbum-admin help [<command>]` lists the commands and
-their options. Each command is the server flag without its dashes (`create-space` is
-`--create-space`), and the flags keep working with `java -jar`; the one short name is `--name`
-(of `create-space` and `move-into-space`) for `--space-name`.
-
-`migrate-to-user` and `migrate-to-spaces` are for libraries from before spaces existed.
-
-### Faces (opt-in, off by default)
-
-The server can look for faces in the photographs of a space, group the faces of an album into the
-people they most likely are, and answer a crop of each of them. It does **nothing of the sort until
-you switch it on**, per space, by hand:
-
-```json
-{ "version": 1, "faces": "on" }
-```
-
-in `<space>/.valbum/space.json` (any other value, and a missing one, means off) — for a new space,
-`valbum-admin create-space <folder> --faces on` writes it. Processing the
-biometrics of one's own family is the administrator's decision, not a default somebody is surprised
-by.
-
-With it on, one low-priority thread per space walks the library once and then keeps out of the way,
-looking at each photograph's **preview** — never the original, never a video, not even its poster
-frame. What it finds goes into the album's own `.vacache/faces.json`: a box for each face, the
-numbers the recogniser describes it by, and which group of the album's faces it was put into. That
-file is **cache** — recomputable from the pixels plus the model version it is stamped with — so
-`POST <folder>/?action=refresh-cache` throws it away like any preview, and nothing about faces is
-ever written into an album's `index.json`.
-
-What leaves the server is a box and a group, `ImagePart.faces`, and a JPEG crop at
-`GET <image>?type=face&face=<n>`. **The embeddings never leave the server**, and faces are answered
-to **signed-in members only**: an anonymous visitor of an open space and a share link are answered
-the album exactly as before, without a single face. `?type=auth` says whether a space has this
-switched on at all.
-
-The detector is YuNet and the recogniser SFace, two small ONNX models bundled with the server (their
-sources and licences are in `image-server/src/main/resources/de/haumacher/imageServer/faces/NOTICE.txt`),
-run through the OpenCV that already comes with the video renditions. A machine whose OpenCV does not
-load says so in one line at start-up and serves albums without faces.
-
-### Moving images and albums
-
-In edit mode, a selection of images can be moved to another album, and an album or folder to
-another folder: `POST <data>/<source folder>/?action=move` with the target folder and the names to
-move. A move is a rename on the same file system — the pixels are never touched — and the image's
-rating, privacy level, comment and orientation move with it into the target album's `index.json`,
-as does its entry in `.hashes.json`, so the upload de-duplication keeps working. Moving a group's
-representative moves the whole group. A name already taken at the target is resolved as an upload
-would (the moved file gets a free name); a photo the target already holds with identical content is
-set aside in `.valbum/duplicates/`, never deleted. Every name gets an outcome: its new name (a path
-below the target when the target files by year, see below), or the reason it was not moved. Nothing
-is ever overwritten.
-
-### Reordering images
-
-In edit mode every tile carries a drag handle in its top right corner: drag it — in any direction,
-with a finger or with the mouse — to move the image somewhere else in the album; an insert cursor
-shows whether it lands before or behind the tile under the pointer, and a selection of several
-tiles is carried by the handle of any of them. With a mouse a tile can also be picked up by pulling
-it sideways. The new order is written when you save the album.
-
-### Album dates and placement rules
-
-An album has a date: the one its author sets in the album properties (stored in `index.json`), else
-the leading date of its folder name (`2026-09-06 Name`, `2026-09 Name`, `2026 Name`), else the
-earliest photo date. The server reports this *effective date* on every album and listing tile and
-never stores a derived one; listings are ordered newest first, undated folders after them by name.
-A folder can carry a placement rule — by year or by year and month — set in its properties. The rule
-places whatever lands in the folder: an album created there is filed into `YYYY/` (or
-`YYYY/YYYY-MM/`), an album moved there likewise, and `POST <folder>/?action=place` files what is
-already there, once, explicitly. Year folders are ordinary folders. The rule places, it does not
-police: what you drag elsewhere by hand stays there.
-
-### Who may do what
-
-Everybody in a space holds **one permission for the whole space** — there are no per-album
-permissions:
-
-| | may look and download | may add photos | may change albums | may manage the space |
-|---|---|---|---|---|
-| `admin` | yes | yes | yes | yes |
-| `edit` | yes | yes | yes | no |
-| `contribute` | yes | yes | no | no |
-| `view` | yes | no | no | no |
-
-Beside the role, every user has a **clearance** — `public`, `nonPrivate` or `all` — which says how
-far up the privacy levels below they may look, and a **share flag** which says whether they may
-hand out share links. An administrator holds everything: full clearance, the share flag, and the
-users of the space.
-
-Only an administrator invites people into a space (`?action=invite`, the invitation carries the
-role, clearance and share flag the invitee gets), changes what somebody may do
-(`?action=set-permission`) or removes a user with their devices (`?action=remove-user`). The last
-administrator of a space can be neither demoted nor removed.
-
-**An invitation is a pending user carrying a code.** Issuing one creates the user right away —
-without a name, without a device, with the permission the invitation carries — and one single-use
-code for them; the link `<context>/i/<token>/` is that code. Whoever opens it chooses the name
-they want to be known by, and joining is the ordinary sign-in. The users list therefore shows the
-people who are here *and* the seats still waiting for somebody ("Invited for Grandma (pending)",
-with the optional memento the inviter wrote for themselves); withdrawing an invitation, or letting
-it run out, removes that seat again, while somebody who already joined keeps their account.
-Removing the inviter withdraws the invitations they sent and nobody accepted.
-
-A library written by an older build calls its users `member` and `guest`; they are read as `edit`
-(clearance `all`, may share) and `view` (clearance `nonPrivate`), and the stored file is not
-rewritten. The sharing of that build — grants, groups, albums linked into somebody else's tree and
-guest accounts — is gone; its endpoints answer `410 Gone` with a message naming what does the job
-now, for one release.
-
-### Share links
-
-Somebody with the share flag hands out a link to one album or folder: press "Share" on it, give the
-link a label, say how long it lives, how far up the privacy levels it shows, which ratings it
-includes, and whether whoever opens it may also add photos. The server answers a URL of the form
-`<host>/<context>/s/<token>/` (under the space on a multi-space server) and shows the token exactly
-once — it is the link, so treat it like a password.
-
-A link is its own permission: it shows what it was cut to at the moment it was made, and that does
-not change afterwards, whatever happens to the permission of the person who made it. A link can
-never show more than its maker may see (the server refuses such a link rather than trimming it
-silently), never shows a private image, and never allows changing what is there. Whoever opens it
-sees that album as the whole site; there is nothing above it. Contributions through a link are
-recorded as coming from the link, not from a person.
-
-You see and withdraw the links you handed out yourself; an administrator sees and withdraws every
-link of the space. Removing a user withdraws every link they handed out, and the answer says how
-many. An expired or withdrawn link answers `410 Gone` with a sentence saying which of the two it
-is.
-
-### Privacy levels
-
-Every image has a privacy level, set on its tile in the app: **public** (0), **members** (1) or
-**private** (2). The server enforces it on the way out: a listing omits what the caller may not
-see, and the image, thumbnail and preview endpoints refuse such an image with a message (401 for an
-anonymous caller, 403 for a signed-in one). How far up the scale somebody may look is their
-**clearance** (see below); an administrator sees everything in their space; an anonymous caller in
-`--auth writes` mode sees only public images, so a single-user library on a home network keeps
-working minus its restricted photos; `--auth off` shows everything to everyone. A
-group whose representative is hidden is shown by its best visible member, and an album whose cover
-is hidden gets its first visible image as cover. `?viewAs=public` or `?viewAs=members` on a request
-lowers the caller's own clearance for that request (it can never raise it) — the app's "view as"
-switch uses it. Nothing is written: the sidecars keep every image at its level.
-
-Open `http://localhost:8080/` (or your context path) in a browser. The JSON API is available under
-`/data/`, for example `http://localhost:8080/data/?type=json`.
-
-### Demo server
-
-After `mvn install`, a demo server with a small sample album starts with:
-
-```
-mvn exec:java@test-server -pl :image-server
-```
-
-It listens on http://localhost:9090/valbum/ and serves the bundled web app if you built it.
-
-### Running the app during development
-
-```
-cd valbum_ui
-flutter run -d chrome        # or -d linux, an Android device, ...
-```
-
-On the web the app talks to the server it was loaded from. Other platforms take the server
-from the app's settings screen (the default is the demo server, `http://localhost:9090/valbum/data`).
-
-## Install on a Raspberry Pi or another Debian/Ubuntu machine
-
-Released versions are published as Debian packages from an APT repository, so the
-server installs and updates like any other package:
-
-```
-sudo install -d /usr/share/keyrings
-curl -fsSL https://haumacher.github.io/valbum2/valbum.gpg | sudo tee /usr/share/keyrings/valbum.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/valbum.gpg] https://haumacher.github.io/valbum2 stable main" | sudo tee /etc/apt/sources.list.d/valbum.list
-sudo apt update && sudo apt install valbum
-```
-
-Packages are published for `arm64`, `amd64` and `armhf`; APT picks the right one.
-The server needs a **Java 21 runtime**, which Debian 13 (trixie), Raspberry Pi OS
-trixie and Ubuntu 24.04 have; Debian 12 (bookworm) ships only Java 17 and is not
-enough.
-
-The package *recommends* the X11/xcb and ALSA libraries the bundled FFmpeg links
-for video renditions (the streamable MP4 and the teaser made beside a video).
-`apt install` pulls recommendations in by default; installing with
-`--no-install-recommends` leaves them out, and the server then says
-`Video renditions: NOT available - ...` in its journal while albums, photos,
-thumbnails and video poster frames keep working. They can be added at any time:
-
-```
-sudo apt install libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64
-```
-
-(`libasound2` instead of `libasound2t64` before Debian trixie and Ubuntu 24.04.)
-
-The package installs the jar as `/usr/share/valbum/valbum.jar` with the wrapper
-`/usr/bin/valbum-server` and the one-time jobs' `/usr/bin/valbum-admin`, and enables and starts
-the systemd service `valbum`.
-
-### Configuration
-
-Everything is set in `/etc/default/valbum`:
-
-| Variable | Meaning | Default |
-|---|---|---|
-| `VALBUM_BASEPATH` | The folder containing your albums | `/var/lib/valbum` |
-| `VALBUM_PORT` | HTTP port | `8080` |
-| `VALBUM_CONTEXTPATH` | First path segment of the URL | none |
-| `VALBUM_AUTH` | `off`, `writes` or `all` | `writes` |
-| `VALBUM_SPACES` | `auto` (one space, or several as soon as a folder is a space), `single` or `multi`, see *Users and spaces* | `auto` |
-| `VALBUM_OPTS` | Further server options | none |
-| `JAVA_OPTS` / `JAVA_HOME` | JVM options and the JVM to use | system default |
-
-Point it at the disk holding your photos and restart:
-
-```
-sudo nano /etc/default/valbum       # VALBUM_BASEPATH=/mnt/photos
-sudo systemctl restart valbum
-```
-
-The library folder is never deleted by the package, not even when it is purged.
-
-### Signing in the first device
-
-At every start, while nobody is signed in, the server prints a sign-in code for the
-administrator to the journal:
-
-```
-journalctl -u valbum | grep "with the code"
-```
-
-Then open `http://<your-pi>:8080/` in a browser — or point the app's server setting
-at that address — and sign in with that code within ten minutes; the app asks for the
-name the administrator should be known by. Missed the ten minutes? `sudo systemctl
-restart valbum` prints a new one. A fixed code instead of a fresh one at every start:
-`VALBUM_OPTS="--admin-code ABCD-EFGH"` in `/etc/default/valbum`.
-
-To add a space (see *Users and spaces* above); the journal then shows the sign-in code for the
-new space's administrator:
-
-```
-sudo valbum-admin create-space family --name "The Family"
-```
-
-### Behind a reverse proxy
-
-To reach the server from the internet under a name of your own with HTTPS, put a reverse proxy
-in front of it and forward `https://home.example.org/valbum/` to `http://<server>:8080/valbum/`.
-`<server>` is where VAlbum runs as seen from the proxy: `127.0.0.1` when the proxy runs on the same
-machine (the usual case, and then nothing but the proxy can reach port 8080 from outside once the
-firewall closes it), otherwise that machine's address in your network. The context path has to be
-the same on both sides (see `VALBUM_CONTEXTPATH`). The server never spells an absolute URL to
-itself: its redirects carry only the path, so no rewriting of `Location` headers is needed, and when
-the proxy sends the `X-Forwarded-Proto` and `X-Forwarded-Host` headers (or `Forwarded`), requests
-report the public surface. Two things the proxy must allow: request bodies large enough for an
-upload of many photos at once, and enough time for it.
-
-nginx, inside the `server { listen 443 ssl; … }` block of your site:
-
-```
-location /valbum/ {
-    proxy_pass         http://127.0.0.1:8080/valbum/;
-    proxy_set_header   Host              $host;
-    proxy_set_header   X-Forwarded-Proto $scheme;
-    proxy_set_header   X-Forwarded-Host  $host;
-    proxy_set_header   X-Forwarded-For   $remote_addr;
-    client_max_body_size 0;          # uploads: no limit (or e.g. 2g)
-    proxy_read_timeout   600s;
-    proxy_request_buffering off;     # stream the upload through instead of spooling it
-}
-```
-
-Apache httpd needs three modules, which Debian does not enable by default — without `headers`,
-Apache refuses the configuration with *Invalid command 'RequestHeader'*:
-
-```
-sudo a2enmod proxy proxy_http headers
-```
-
-Then, inside the `<VirtualHost *:443>` block of your HTTPS site (`mod_proxy` sends
-`X-Forwarded-Host` and `X-Forwarded-For` by itself; only the scheme has to be said):
-
-```
-ProxyPreserveHost On
-ProxyPass        /valbum/ http://127.0.0.1:8080/valbum/
-RequestHeader set X-Forwarded-Proto "https"
-LimitRequestBody 0
-ProxyTimeout     600
-```
-
-and `sudo apachectl configtest && sudo systemctl reload apache2`.
-
-### Updating
-
-```
-sudo apt update && sudo apt upgrade
-```
-
-### The Android app
-
-Every release also carries a signed APK, `valbum-<version>.apk`, on the
-[Releases page](https://github.com/haumacher/valbum2/releases). It is not in Google
-Play, so Android asks you to allow installing apps from the browser or file manager
-you download it with. Point it at your server in its settings and sign in with a code —
-the one the server printed at start-up, one from a device you already hold, or a
-recovery code from your administrator.
-
-## Docker (Synology NAS)
-
-Every release is also published as a container image, for `amd64` and `arm64` under one tag, on
-Docker Hub as **`hauix/valbum`** and, identical, on GitHub as `ghcr.io/haumacher/valbum`:
-`:<version>` (e.g. `:2.9.0`) and `:latest`. The container pulls the image of its own
-architecture by itself. The image holds only the natives of its platform, the web app and the
-libraries the video renditions and the face index need.
-
-**Which NAS runs it.** Synology's *Container Manager* runs on every x86-64 model (the "+" series
-and up), and since DSM 7.2 on the ARM models **DS124, DS223, DS223j and DS423**. Older ARM models
-(DS218, DS220j, …) have no Container Manager and cannot run it. Synology's own litter
-(`@eaDir`, `#recycle`) is never shown as an album.
-
-The runtime contract, which `compose.yaml` in this repository spells out:
-
-- **The photo folder is mounted read-write at `/photos`.** That is the library: VAlbum writes its
-  sidecars (`index.json`, `.hashes.json`), its caches (`.vacache`) and its users (`.valbum`)
-  beside the photos, and never modifies an original. A container with nothing mounted there
-  refuses to start, because the users and every sidecar would otherwise live inside the container
-  and be lost with the next update.
-- **`PUID` and `PGID`** are the user and group the server runs as, and every file it writes into
-  the photo folder belongs to them — never to root. Take the user who owns the photo share; on a
-  Synology NAS `id <user>` in an SSH session shows the numbers, typically `uid=1026` and group
-  `users`, `gid=100`. That user needs *Read/Write* on the share (Control Panel → Shared Folder →
-  Edit → Permissions). Without `PUID`/`PGID` the owner of `/photos` is taken, and a folder owned by
-  root is refused. `UMASK=002` makes the written files group-writable. (Alternatively start the
-  container as that user with `user: "1026:100"`; `PUID`/`PGID` are then not read.)
-- **Port 8080, context path `valbum`**: the album is at `http://<nas>:<host port>/valbum/`.
-- **The configuration** is the environment the Debian package reads from `/etc/default/valbum`:
-
-| Variable | Meaning | Default in the image |
-|---|---|---|
-| `PUID` / `PGID` | User and group the server runs as | the owner of `/photos` |
-| `TZ` | Time zone (dates of photos that carry none) | UTC |
-| `VALBUM_AUTH` | `off`, `writes` or `all` | `writes` |
-| `VALBUM_SPACES` | `auto`, `single` or `multi`, see *Users and spaces* | `auto` |
-| `VALBUM_CONTEXTPATH` | First path segment of the URL, `""` for none | `valbum` |
-| `VALBUM_PORT` | Port inside the container | `8080` |
-| `VALBUM_OPTS` | Further server options, e.g. `--preview-threads 1` | none |
-| `JAVA_OPTS` | JVM options; an `-Xmx` here wins over the percentage | none |
-| `VALBUM_HEAP_PERCENT` | Heap as a share of the memory the container may use | `50` |
-
-- **Memory.** The heap is `VALBUM_HEAP_PERCENT` of the memory the container sees — the NAS's
-  memory, or the limit set on the container (`mem_limit`). On a **DS223j** (1 GB, not
-  extendable) make one preview at a time, `VALBUM_OPTS: "--preview-threads 1"`, and leave the
-  face index off (*Faces* above; it is off unless a space's `space.json` says `faces: on`) — it
-  is the largest consumer of memory and time.
-- A **health check** asks the app base every 30 seconds; Container Manager shows the container as
-  *healthy* once the server answers.
-
-### Setting it up in Container Manager
+- **Your folders are your albums.** One folder holds everything; nest albums as you like. Dates
+  come from the album, its folder name (`2026-09-06 Trip`) or its earliest photo; newest first.
+- **Photos are never modified.** What you change in the app is written to small files beside
+  your photos (`index.json`, `.hashes.json`) and to caches (`.vacache`).
+- **Nothing is deleted, with two exceptions:**
+  - an administrator **purges** the photos rated "Trash" on an album's trash page;
+  - deleting an album that holds no picture removes the empty folder.
+- **Everything else is a rename.** A deleted album goes to `.valbum/trash/`, a duplicate a move or
+  a duplicate search finds to `.valbum/duplicates/`, a replaced upload to `.valbum/replaced/` — all
+  inside the library, where you can take them back by hand.
+- **Albums that look like albums.** Rows fill the page width, landscape and portrait shots mixed.
+
+## Installing
+
+Pick one: a NAS with Docker, a Raspberry Pi or other Debian/Ubuntu machine, and on the phone the
+Android app.
+
+### Docker (Synology NAS)
+
+Every release is a container image for `amd64` and `arm64`: **`hauix/valbum`** on Docker Hub,
+identical `ghcr.io/haumacher/valbum`, tags `:<version>` and `:latest`.
+
+Synology's *Container Manager* runs on every x86-64 model and, since DSM 7.2, on the ARM models
+DS124, DS223, DS223j and DS423. Older ARM models (DS218, DS220j, …) cannot run it. Synology's
+`@eaDir` and `#recycle` folders are never shown as albums.
+
+What the container needs ([`compose.yaml`](compose.yaml) has it all):
+
+- **The photo folder, read-write, at `/photos`.** VAlbum writes its files beside the photos. Without
+  a mount the container refuses to start, so nothing is lost with the next update.
+- **`PUID` and `PGID`**: the user and group the server runs as and who owns every file it writes.
+  Take the owner of the photo share; `id <user>` in an SSH session shows them, on Synology typically
+  `1026` and `100`. That user needs *Read/Write* on the share. Without them the owner of `/photos` is
+  taken; a folder owned by root is refused. `UMASK=002` makes the files group-writable.
+  (Or run the container as that user with `user: "1026:100"`.)
+- **Port 8080**, the album at `http://<nas>:8080/valbum/`.
+- **Memory.** The heap is `VALBUM_HEAP_PERCENT` (50 %) of what the container may use. On a
+  **DS223j** (1 GB) set `VALBUM_OPTS: "--preview-threads 1"` and leave faces off; they need the
+  most memory and time.
+- A health check asks the app every 30 seconds; Container Manager then shows *healthy*.
+
+#### Setting it up in Container Manager
 
 1. **Package Center**: install *Container Manager*.
-2. **File Station**: create a folder for the project, e.g. `docker/valbum`, and know where the
-   photos are, e.g. the share `photo` (`/volume1/photo`).
+2. **File Station**: create a folder for the project, e.g. `docker/valbum`. Note where the photos
+   are, e.g. `/volume1/photo`.
 3. **Container Manager → Project → Create**: name `valbum`, path the folder from step 2, source
    *Create docker-compose.yaml*, and paste:
 
@@ -603,59 +93,13 @@ The runtime contract, which `compose.yaml` in this repository spells out:
          VALBUM_OPTS: ""
    ```
 
-   Change the volume to your photo folder, `PUID`/`PGID` to its owner, and the host port (the
-   left `8080`) if another package uses it. Skip the web-portal page, finish, and the project pulls
-   the image and starts.
-4. **The sign-in code.** At every start, while nobody has signed in, the server prints a sign-in
-   code for the administrator into its log: **Container Manager → Container → `valbum` → Details →
-   Log** (or `docker logs valbum`), the line *"sign the administrator in with the code …"*. Open
-   `http://<nas>:8080/valbum/` within ten minutes and sign in with it. Missed it? Restart the
-   container (*Action → Restart*) and a new one is printed. `VALBUM_OPTS: "--admin-code ABCD-EFGH"`
-   fixes the code instead.
+   Adjust the volume, `PUID`/`PGID`, and the left `8080` if that port is taken. Skip the web-portal
+   page and finish; the image is pulled and started.
+4. **Sign in**: see [Signing in the first device](#signing-in-the-first-device).
 
-**Updating:** *Container Manager → Project → `valbum` → Action → Build* pulls the newer image and
-recreates the container; from a shell, `docker compose pull && docker compose up -d` in the project
-folder. The library stays where it is, in the photo folder. One-time jobs run inside the running
-container, e.g. a further space: `docker compose exec valbum valbum-admin create-space family --name
-"The Family"`; the log then shows the new space's sign-in code.
+### Raspberry Pi, Debian and Ubuntu
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and how changes are made.
-
----
-
-## Zusammenfassung auf Deutsch
-
-Mit VAlbum verwaltest Du Deine digitalen Photos und Videos ohne Cloud-Dienstleister. Ein kleiner
-Java-Server liest Deine Album-Ordner und stellt sie bereit; eine Flutter-App zeigt sie im Browser,
-auf dem Handy oder auf dem Desktop. Deine Photos organisierst Du wie bisher: ein Ordner mit allen
-Alben, jedes Album ein Ordner mit Photos und Videos. VAlbum fasst Deine Dateien nie an — alle
-Änderungen (Titel, Beschriftungen, Bewertungen, Drehungen, Gruppierungen) landen in einer
-`index.json`-Datei neben Deinen Photos.
-
-Bauen: `flutter build web` in `valbum_ui/`, dann `mvn clean install` im Hauptverzeichnis (JDK 21 und
-Maven nötig). Starten: `java -jar image-server-jar-with-dependencies.jar --basepath /pfad/zu/den/photos`,
-danach http://localhost:8080/ im Browser öffnen. Optionen: `--port`, `--contextpath`, `--webroot`, `--auth`, `--admin-code`, `--preview-threads`.
-
-Standardmäßig lehnt der Server anonyme Änderungen ab (`--auth writes`). Angemeldet wird immer mit
-einem **Code**: Er gilt zehn Minuten, funktioniert einmal und meldet ein Gerät als einen Benutzer
-an. Solange sich in einem Raum noch niemand angemeldet hat, gibt der Server beim Start einen Code
-für dessen Administrator aus; Du gibst ihn in den Server-Einstellungen der App ein und wählst
-dabei den Namen, unter dem Du in diesem Raum bekannt sein willst. Danach wird nichts mehr
-ausgegeben — ein weiteres eigenes Gerät meldest Du mit einem Code von einem Gerät an, das Du schon
-hast, und wer alle Geräte verloren hat, bekommt vom Administrator einen Wiederherstellungs-Code
-(oder, wenn es den Administrator selbst trifft, hilft ein Neustart des Servers).
-
-Im Bearbeitungsmodus trägt jede Kachel rechts oben einen Ziehgriff: Zieh daran — in jede
-Richtung, mit dem Finger oder mit der Maus —, um das Bild an eine andere Stelle des Albums zu
-schieben; ein Einfügebalken zeigt, ob es vor oder hinter die Kachel unter dem Zeiger kommt, und
-eine Mehrfachauswahl wird am Griff einer beliebigen ihrer Kacheln getragen. Mit der Maus lässt
-sich eine Kachel auch weiterhin durch seitliches Ziehen aufnehmen. Die neue Reihenfolge wird beim
-Speichern des Albums geschrieben.
-
-Auf einem Raspberry Pi (oder einem anderen Debian/Ubuntu-Rechner) installierst Du den
-Server als Paket aus dem APT-Repository:
+Released versions come from an APT repository:
 
 ```
 sudo install -d /usr/share/keyrings
@@ -664,18 +108,348 @@ echo "deb [signed-by=/usr/share/keyrings/valbum.gpg] https://haumacher.github.io
 sudo apt update && sudo apt install valbum
 ```
 
-Es gibt Pakete für `arm64`, `amd64` und `armhf`; eine Java-21-Laufzeitumgebung wird
-benötigt (Debian 13 bzw. Raspberry Pi OS trixie, Ubuntu 24.04 — Debian 12 reicht nicht).
-Das Paket empfiehlt (`Recommends`) die X11/xcb- und ALSA-Bibliotheken, die das
-mitgelieferte FFmpeg für Video-Konvertierungen braucht; `apt install` installiert sie
-standardmäßig mit. Bei `--no-install-recommends` fehlen sie, im Journal steht dann
-`Video renditions: NOT available - ...`, alles andere (Alben, Fotos, Vorschaubilder,
-Standbilder von Videos) funktioniert weiter. Nachrüsten mit
+- Packages for `arm64`, `amd64` and `armhf`; APT picks the right one.
+- It needs **Java 21**: Debian 13 (trixie), Raspberry Pi OS trixie, Ubuntu 24.04. Debian 12 is not
+  enough.
+- A plain `apt install` also brings the libraries videos need. With `--no-install-recommends`
+  videos get no streamable copy (`Video renditions: NOT available` in the log); photos, thumbnails
+  and video poster frames still work. Add them later with
+  `sudo apt install libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64`
+  (`libasound2` before trixie and Ubuntu 24.04).
+- The service `valbum` starts at once and serves `http://<machine>:8080/`, the library in
+  `/var/lib/valbum`. Point it at your photos under [Configuration](#configuration).
+
+### The Android app
+
+Every release carries a signed `valbum-<version>.apk` on the
+[Releases page](https://github.com/haumacher/valbum2/releases). It is not in Google Play yet, so
+Android asks you to allow installing from your browser. The first screen asks where your album is:
+type the server address or paste an invitation link, then sign in with a code.
+
+From 2.9 on the app has a new id: a 2.8 or older app does not update to it. Uninstall it first and
+sign in again.
+
+### Configuration
+
+The `.deb` reads `/etc/default/valbum`; Docker takes the same variables from `environment:`.
+
+| Variable | Meaning | `.deb` | Docker |
+|---|---|---|---|
+| `VALBUM_BASEPATH` | The library folder | `/var/lib/valbum` | `/photos` (mount it) |
+| `VALBUM_PORT` | HTTP port | `8080` | `8080` |
+| `VALBUM_CONTEXTPATH` | First path segment of the URL, empty for the root | empty | `valbum` |
+| `VALBUM_AUTH` | Sign-in needed for: `off` nothing, `writes` changes and uploads, `all` everything | `writes` | `writes` |
+| `VALBUM_SPACES` | `auto`, `single` or `multi`, see [Users and spaces](#users-and-spaces) | `auto` | `auto` |
+| `VALBUM_OPTS` | Further [server options](#server-options), e.g. `--preview-threads 1` | | |
+| `JAVA_OPTS` | JVM options, e.g. `-Xmx512m` | | |
+| `JAVA_HOME` | The Java to use | from `PATH` | |
+| `PUID` / `PGID` | User and group the server runs as | | owner of `/photos` |
+| `TZ` | Time zone for photos without one | system | UTC |
+| `VALBUM_HEAP_PERCENT` | Heap as a share of the memory; an `-Xmx` wins | | `50` |
+
+On the `.deb`, point it at your photos and restart:
+
+```
+sudo nano /etc/default/valbum       # VALBUM_BASEPATH=/mnt/photos
+sudo systemctl restart valbum
+```
+
+The user `valbum` must be able to read and write there. Removing the package never deletes the
+library.
+
+### Signing in the first device
+
+Every space has an administrator from the start, without a name or a device. At every start the
+server prints a sign-in code for them into its log, until they have signed in:
+
+```
+This library: sign the administrator in with the code ABCD-EFGH (valid 10 minutes, once; restart the server for a new one).
+```
+
+| | Where the code is | New code |
+|---|---|---|
+| `.deb` | `journalctl -u valbum \| grep "with the code"` | `sudo systemctl restart valbum` |
+| Docker | Container Manager → Container → `valbum` → Details → Log, or `docker compose logs valbum` | restart the container |
+
+Open the album in a browser (or the app), enter the code and a device name, and choose the name you
+will be known by. `--admin-code ABCD-EFGH` in `VALBUM_OPTS` fixes the code instead of a fresh one.
+
+### Behind a reverse proxy
+
+For HTTPS under your own name, forward `https://home.example.org/valbum/` to
+`http://127.0.0.1:8080/valbum/` (or the server's address, when the proxy runs elsewhere). The context
+path must be the same on both sides: Docker has `valbum`; on the `.deb` set
+`VALBUM_CONTEXTPATH=valbum`. No `Location` rewriting is needed; send `X-Forwarded-Proto` and
+`X-Forwarded-Host` (or `Forwarded`). Allow large uploads and enough time for them.
+
+nginx, inside the `server { listen 443 ssl; … }` block:
+
+```
+location /valbum/ {
+    proxy_pass         http://127.0.0.1:8080/valbum/;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_set_header   X-Forwarded-Host  $host;
+    proxy_set_header   X-Forwarded-For   $remote_addr;
+    client_max_body_size 0;          # uploads: no limit (or e.g. 2g)
+    proxy_read_timeout   600s;
+    proxy_request_buffering off;     # stream the upload through instead of spooling it
+}
+```
+
+Apache needs three modules; without `headers` it refuses the configuration with
+*Invalid command 'RequestHeader'*:
+
+```
+sudo a2enmod proxy proxy_http headers
+```
+
+Then, inside the `<VirtualHost *:443>` block (`mod_proxy` sends `X-Forwarded-Host` by itself):
+
+```
+ProxyPreserveHost On
+ProxyPass        /valbum/ http://127.0.0.1:8080/valbum/
+RequestHeader set X-Forwarded-Proto "https"
+LimitRequestBody 0
+ProxyTimeout     600
+```
+
+and `sudo apachectl configtest && sudo systemctl reload apache2`.
+
+### Updating
+
+- `.deb`: `sudo apt update && sudo apt upgrade`
+- Docker: *Container Manager → Project → `valbum` → Action → Build*, or
+  `docker compose pull && docker compose up -d` in the project folder.
+
+The library stays where it is.
+
+## Using VAlbum
+
+Most of what follows is under **Server settings…** in the app's menu.
+
+### Devices and the backup code
+
+- **Signing in** is always a **code**: it works once, for ten minutes, and signs one device in as
+  one user.
+- **Another device of yours**: *My devices → Add a device…* shows a code (also as a QR code). Enter
+  it on the new device. Never give it to anybody else — it signs them in as you.
+- **Lost every device?** An administrator makes a *Recovery code* beside your name in *Users*. If the
+  administrator lost theirs, restarting the server prints a fresh code.
+- **Backup code**: *My devices → Create backup code…* gives a 16-character code that never expires
+  and works once — your way back after signing out of your last device. Write it down. A new one
+  replaces the old one.
+
+### Users and spaces
+
+A **space** is a library of its own: albums, users, share links and sign-in. Nothing crosses from
+one space into another.
+
+- **One space** is the default: the library folder itself.
+- **Several spaces**: each is a folder below the library folder, created with
+  [`valbum-admin create-space`](#administration), reached at `<context>/<space>/`. In that mode the
+  albums directly in the library folder are not served; move them into a space first with
+  `valbum-admin move-into-space`.
+- A space's settings live in `<space>/.valbum/space.json`: `name`, `anonymous` (`public` lets
+  visitors see the public photos, `none` shows them nothing), `faces` (`on`/`off`) and `mapUrl` (the
+  map a photo's position opens, `{lat}`/`{lon}` in it).
+- **Users** belong to one space. Everybody but its first administrator **joins by invitation**:
+  *Invite…* in *Users*, choose what they may do, send the link. Whoever opens it picks their name
+  and signs in. Until then the seat shows as pending and can be withdrawn.
+
+### Who may do what
+
+Every user holds one permission for the whole space — a role, a clearance and the share flag:
+
+| Role | look and download | add photos | change albums | manage users |
+|---|---|---|---|---|
+| `admin` | yes | yes | yes | yes |
+| `edit` | yes | yes | yes | no |
+| `contribute` | yes | yes | no | no |
+| `view` | yes | no | no | no |
+
+- **Clearance** (`public`, `nonPrivate`, `all`): how far up the privacy levels they may look.
+- **Share flag**: whether they may hand out share links.
+- The administrator changes these in *Users*. The last administrator can be neither demoted nor
+  removed.
+
+### Privacy levels
+
+Each photo is **Public**, **Members** or **Private**, set on its tile. A caller sees only what their
+clearance allows; a visitor who is not signed in sees public photos (with `--auth writes` or
+`anonymous: public`). *View as* in the album menu shows the album as members or the public see it.
+
+### Share links
+
+*Share link…* on an album or folder: a label, an expiry, the privacy level and ratings it shows,
+and whether it may add photos. The link is shown once — treat it like a password.
+
+- It shows what it was made with and never changes afterwards.
+- It never shows a private photo, never allows editing, and never shows more than its maker may see.
+- Whoever opens it sees that album and nothing above it.
+- You see and withdraw your own links; the administrator sees every link of the space.
+
+### Albums
+
+- **Inbox**: *Make this an inbox* in the album properties. Photos are shown by day; tap a day to
+  select it and move it into an album. The camera-roll sync creates one named `Inbox`.
+- **Moving**: *Move to…* for a selection, *Move album to…* for the album. Nothing is overwritten; a
+  photo the target already holds is set aside.
+- **Reordering**: in the edit mode, drag a tile by its handle (top right).
+- **Dates and filing**: an album's date comes from its properties, its folder name or its earliest
+  photo. A folder may file new albums by year or by year and month (*Filing rule*).
+- **Trash**: rate a photo *Trash* to hide it. *Show trash* in the album menu lists these photos:
+  *Restore* brings one back, an administrator's *Purge…* deletes them from disk.
+- **Deleting an album**: *Delete album…* moves it into the space's trash folder (an empty one is
+  removed).
+- **Duplicates**: *Find duplicates...* sets aside the album's photos that are elsewhere in the space.
+- **Downloading**: *Download original* in the photo viewer; a selection in the edit mode downloads
+  as one zip (a phone saves the photos one by one).
+
+### Faces
+
+Off unless the space's `space.json` says `"faces": "on"` (`valbum-admin create-space … --faces on`
+for a new space). Processing your family's faces is your decision, not a default.
+
+- The server looks at each photo once, in the background, and groups the faces per album.
+- *Persons in this album* in the album menu names the groups; *Edit persons* in the viewer names a
+  single face or marks one the server missed. A named person is then suggested on other photos.
+- Faces are shown to signed-in members only, never through a share link or to the public.
+- What describes a face for recognition never leaves the server.
+
+## Administration
+
+`valbum-admin` runs the server's one-time jobs. It stops the server, runs the job as the server's
+user with its configuration, and starts the server again (`--no-restart` leaves it stopped).
+
+```
+sudo valbum-admin help
+sudo valbum-admin help create-space
+sudo valbum-admin create-space family --name "The Family"
+sudo valbum-admin move-into-space family
+sudo valbum-admin replace-originals /path/to/originals --dry-run
+```
+
+In Docker, the same inside the running container:
+
+```
+docker compose exec valbum valbum-admin create-space family --name "The Family"
+```
+
+| Command | What it does |
+|---|---|
+| `create-space <folder>` | Makes a folder below the library folder a space (`--name`, `--anonymous none\|public`, `--faces on\|off`). The new space's sign-in code appears in the log when the server starts again. |
+| `move-into-space <folder>` | Moves a one-space library, with its users, devices, links, invitations and people, into a space of its own, so further spaces fit beside it. Only renames. The old addresses keep working until you delete `.valbum/moved.json`. |
+| `replace-originals <folder>` | Puts downloaded originals in the place of the copies older phone apps uploaded without their position; each copy is kept in `.valbum/replaced/`. `--dry-run` only reports. |
+| `migrate-to-user`, `migrate-to-spaces` | For libraries from before spaces existed. |
+
+### Server options
+
+Set in `VALBUM_OPTS` (or given to `java -jar`, see [For developers](#for-developers)).
+
+| Option | Meaning | Default |
+|---|---|---|
+| `--basepath <dir>` | The library folder | current directory |
+| `--port <n>` | HTTP port | `8080` |
+| `--contextpath <name>` | First path segment of the URL | none |
+| `--auth off\|writes\|all` | What needs a signed-in device: nothing, changes and uploads, everything | `writes` |
+| `--spaces auto\|single\|multi` | One space or several; `auto` follows the folders | `auto` |
+| `--admin-code <code>` | A fixed sign-in code for an administrator without a device (8 characters of `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, dashes allowed) | a fresh one per start |
+| `--preview-threads <n>` | Thumbnails made at the same time | number of processors |
+| `--webroot <dir>` | Serve the web app from a directory instead of the bundled one | bundled |
+
+Each `valbum-admin` command is also a flag (`create-space` is `--create-space`, its `--name` is
+`--space-name`); the server then runs the job and does not start.
+
+## For developers
+
+### Building
+
+You need Git, a JDK 21 ([Temurin](https://adoptium.net/temurin/releases/?version=21)),
+[Maven](https://maven.apache.org/) 3.6+ and the [Flutter SDK](https://docs.flutter.dev/get-started/install)
+(stable). Build the web app first, so the server bundles it:
+
+```
+cd valbum_ui && flutter pub get && flutter build web && cd ..
+mvn clean install
+```
+
+The result is `image-server/target/image-server-jar-with-dependencies.jar`. Without
+`valbum_ui/build/web` the jar serves the API only.
+
+### Running from source
+
+```
+java -jar image-server/target/image-server-jar-with-dependencies.jar --basepath /path/to/photos
+```
+
+Then open `http://localhost:8080/`; the JSON API is under `/data/`. Every
+[server option](#server-options) is a flag here, the one-time jobs too (`--create-space family
+--space-name "The Family"`); stop a running server first.
+
+### Demo server
+
+```
+mvn exec:java@test-server -pl :image-server
+```
+
+A sample album at http://localhost:9090/valbum/, administrator code `ABCD-EFGH`.
+
+### The app during development
+
+```
+cd valbum_ui
+flutter run -d chrome        # or -d linux, an Android device, ...
+```
+
+On the web the app talks to the server it was loaded from; elsewhere the default is the demo server,
+`http://localhost:9090/valbum/data`.
+
+### Releasing and contributing
+
+Releases are cut by a tag, see [RELEASE.md](RELEASE.md). How to build, test and send changes is in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## Zusammenfassung auf Deutsch
+
+VAlbum hält Deine Photos und Videos auf eigener Hardware — Raspberry Pi, NAS oder ein beliebiger
+Linux-Rechner — und zeigt sie auf allen Geräten, ohne Cloud-Anbieter. Jeder Ordner mit Photos ist ein
+Album. Die Android-App lädt neue Photos in ein Eingangs-Album; Freigabe-Links, Einladungen,
+Sichtbarkeitsstufen, Gesichtserkennung (nur auf Wunsch) und mehrere getrennte Bibliotheken
+("Spaces") auf einem Server gehören dazu.
+
+Deine Photos werden nie verändert. Titel, Bewertungen und Reihenfolge stehen in kleinen Dateien
+neben den Photos. Gelöscht wird nur, wenn ein Administrator die als "Trash" bewerteten Photos eines
+Albums endgültig entfernt, oder wenn ein Album ohne Bilder gelöscht wird. Alles andere wird nur
+umbenannt, nach `.valbum/trash/`, `duplicates/` oder `replaced/`.
+
+**Installieren.** Auf einer Synology-NAS mit Container Manager das Image `hauix/valbum` mit der
+`compose.yaml` oben einrichten (Photo-Ordner nach `/photos`, `PUID`/`PGID` auf dessen Besitzer);
+das Album liegt dann unter `http://<nas>:8080/valbum/`. Auf einem Raspberry Pi oder unter
+Debian/Ubuntu (Java 21 nötig, also Debian 13 oder Ubuntu 24.04) kommt es als Paket:
+
+```
+sudo install -d /usr/share/keyrings
+curl -fsSL https://haumacher.github.io/valbum2/valbum.gpg | sudo tee /usr/share/keyrings/valbum.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/valbum.gpg] https://haumacher.github.io/valbum2 stable main" | sudo tee /etc/apt/sources.list.d/valbum.list
+sudo apt update && sudo apt install valbum
+```
+
+Den Photo-Ordner stellst Du in `/etc/default/valbum` ein (`VALBUM_BASEPATH`, danach
+`sudo systemctl restart valbum`); das Album liegt unter `http://<rechner>:8080/`. Wer mit
+`--no-install-recommends` installiert, bekommt keine Video-Umwandlungen; nachrüsten mit
 `sudo apt install libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64`
-(vor trixie bzw. 24.04 heißt das Paket `libasound2`).
-Eingestellt wird alles in `/etc/default/valbum` (vor allem `VALBUM_BASEPATH`, danach
-`sudo systemctl restart valbum`); der Anmelde-Code für den Administrator steht bei
-jedem Start im Journal (`journalctl -u valbum`), solange sich noch niemand angemeldet
-hat. Aktualisiert wird mit `sudo apt upgrade`. Die
-Android-App liegt als signierte APK-Datei bei jedem Release auf der
+(vor trixie bzw. 24.04 `libasound2`). Die Android-App gibt es als APK auf der
 [Releases-Seite](https://github.com/haumacher/valbum2/releases).
+
+**Anmelden.** Beim Start schreibt der Server einen Anmelde-Code für den Administrator ins Log
+(`journalctl -u valbum` bzw. das Container-Log), solange der noch kein Gerät hat. Der Code gilt zehn
+Minuten und einmal; ein Neustart erzeugt einen neuen. Weitere Geräte meldest Du mit einem Code aus
+"My devices" an, weitere Personen kommen per Einladung dazu.
+
+**Verwalten.** Einmalige Aufgaben erledigt `valbum-admin`, z.B.
+`sudo valbum-admin create-space familie --name "Die Familie"` (im Container:
+`docker compose exec valbum valbum-admin …`); `sudo valbum-admin help` zeigt alle Befehle.
+Aktualisiert wird mit `sudo apt upgrade` bzw. `docker compose pull && docker compose up -d`.

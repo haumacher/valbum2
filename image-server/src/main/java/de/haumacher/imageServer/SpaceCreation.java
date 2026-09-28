@@ -267,9 +267,9 @@ public final class SpaceCreation {
 		}
 		report.say("Addresses: <context>/" + folder + "/ (the application) and <context>/" + folder
 			+ "/data/ (its albums).");
-		report.say("Next: restart the server. It prints the sign-in code for the administrator of '"
-			+ folder + "' at start-up, valid "
-			+ DeviceCodeStore.LIFETIME_MINUTES + " minutes; --admin-code fixes it.");
+		report.say("The sign-in code for the administrator of '" + folder + "' appears in the server's log "
+			+ "(journalctl -u valbum, or the container log) when the server starts, which valbum-admin does "
+			+ "next; it is valid " + DeviceCodeStore.LIFETIME_MINUTES + " minutes, and --admin-code fixes it.");
 		return report;
 	}
 

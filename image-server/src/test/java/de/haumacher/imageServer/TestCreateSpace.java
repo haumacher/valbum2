@@ -86,7 +86,7 @@ public class TestCreateSpace extends TestCase {
 		assertFalse("No map template is written: " + file, file.contains("mapUrl"));
 
 		assertTrue(report.toString(), report.toString().contains("Created the folder 'family'"));
-		assertTrue(report.toString(), report.toString().contains("restart the server"));
+		assertTrue(report.toString(), report.toString().contains("appears in the server's log"));
 	}
 
 	public void testTheDefaultsAreClosedAndWithoutFaces() throws Exception {
