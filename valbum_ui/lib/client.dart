@@ -470,10 +470,15 @@ class RenditionState {
   /// The server's own words where it spoke, `null` otherwise.
   final String? message;
 
+  /// Everything the server's answer said about itself, `null` where the state
+  /// was not learned from a request (issue #184).
+  final SourceAnswer? answer;
+
   const RenditionState(
     this.status, {
     this.retryAfter = renditionRetryDefault,
     this.message,
+    this.answer,
   });
 
   /// Whether the rendition can be played right now.
@@ -484,6 +489,84 @@ class RenditionState {
 
   @override
   String toString() => "RenditionState(${status.name}, $retryAfter, $message)";
+}
+
+/// What the server answered to one ranged request, see
+/// [VAlbumClient.probeSource] and issue #184.
+///
+/// The facts a failure entry of the [DiagnosticsLog] needs about a source:
+/// the status or why there was none, the type and the length of the answer,
+/// the size of the whole file, and the sentence of an `ErrorInfo`.
+@immutable
+class SourceAnswer {
+  /// The status, `null` where the server could not be reached.
+  final int? status;
+
+  /// The reason phrase of the status, where the transport keeps one.
+  final String? reason;
+
+  /// The `Content-Type` of the answer.
+  final String? contentType;
+
+  /// The `Content-Length` of the answer — one byte for a ranged answer.
+  final int? contentLength;
+
+  /// The size of the whole file, out of `Content-Range` (or the length of a
+  /// `200`), `null` where the answer does not say.
+  final int? totalLength;
+
+  /// The sentence of the server's `ErrorInfo`, `null` where it gave none.
+  final String? message;
+
+  /// Why nothing was answered, `null` where the server answered.
+  final String? transportError;
+
+  /// The server's `Retry-After`, clamped, see [RenditionState.retryAfter].
+  final Duration retryAfter;
+
+  const SourceAnswer({
+    this.status,
+    this.reason,
+    this.contentType,
+    this.contentLength,
+    this.totalLength,
+    this.message,
+    this.transportError,
+    this.retryAfter = renditionRetryDefault,
+  });
+
+  /// Whether the server delivers the file: `200`, or `206` for the range.
+  bool get delivers => status == 200 || status == 206;
+
+  /// The whole size a `Content-Range: bytes 0-0/<size>` names.
+  static int? totalOf(String? contentRange) {
+    if (contentRange == null) {
+      return null;
+    }
+    var slash = contentRange.lastIndexOf("/");
+    return slash < 0 ? null : int.tryParse(contentRange.substring(slash + 1));
+  }
+
+  /// The lines a failure entry says about this answer, see [DiagnosticsLog].
+  List<String> get facts {
+    var status = this.status;
+    if (status == null) {
+      return ["Server answered: nothing — ${transportError ?? "no answer"}"];
+    }
+    return [
+      answerFact(
+        status,
+        reason: reason,
+        contentType: contentType,
+        contentLength: contentLength,
+        totalLength: totalLength,
+      ),
+      if (message != null && message!.isNotEmpty) "Server said: $message",
+    ];
+  }
+
+  @override
+  String toString() => facts.join("; ");
 }
 
 /// What a rendition probe waits when the server names no `Retry-After`.
@@ -733,45 +816,89 @@ class VAlbumClient {
     return response.bodyBytes;
   }
 
+  /// What the server answers for [url], learned with one request of this
+  /// client's own (issue #184).
+  ///
+  /// A `GET` of the first byte (`Range: bytes=0-0`) with the bearer this
+  /// client carries: a player fetches its URL itself and tells nobody what
+  /// the server answered, so where a video will not play this is how the view
+  /// learns it — the status, the `Content-Type`, the `Content-Length` and the
+  /// whole size out of `Content-Range`, and the sentence of an `ErrorInfo`.
+  ///
+  /// Straight over the undecorated transport, so the [log] does not get a
+  /// second entry for what the asking view writes down with all its facts;
+  /// an answer still counts as the server being reached. Never throws: a
+  /// server that cannot be reached is an answer of its own,
+  /// [SourceAnswer.transportError].
+  Future<SourceAnswer> probeSource(String url) async {
+    http.Response response;
+    try {
+      response = await _transport.get(
+        Uri.parse(url),
+        headers: {...authHeaders, "Range": "bytes=0-0"},
+      ).timeout(timeout);
+    } catch (error) {
+      return SourceAnswer(
+        transportError:
+            isTransportFailure(error) ? transportMessage(error) : "$error",
+      );
+    }
+    offlineState?.online();
+    var status = response.statusCode;
+    var headers = response.headers;
+    return SourceAnswer(
+      status: status,
+      reason: response.reasonPhrase,
+      contentType: headers["content-type"],
+      contentLength: int.tryParse(headers["content-length"] ?? "") ??
+          response.bodyBytes.length,
+      totalLength: SourceAnswer.totalOf(headers["content-range"]) ??
+          (status == 200
+              ? int.tryParse(headers["content-length"] ?? "")
+              : null),
+      message: status >= 200 && status < 300 && status != 202
+          ? null
+          : errorMessage(response.body),
+      retryAfter: retryAfterOf(headers["retry-after"]),
+    );
+  }
+
   /// Whether the rendition at [url] can be played, see [RenditionState].
   ///
-  /// One lightweight request with the bearer this client carries: a `GET` of
-  /// the first byte (`Range: bytes=0-0`), which the server answers `206` — or
-  /// `200` where it ignores the range — for a rendition that is there, `202`
-  /// with a `Retry-After` while it is still being made, and `500` once the
-  /// transcode has failed, see issue #74. A `HEAD` would be cheaper still, but
-  /// one byte also proves that the range requests the player depends on are
-  /// really answered.
+  /// One lightweight request with the bearer this client carries, see
+  /// [probeSource]: the server answers `206` — or `200` where it ignores the
+  /// range — for a rendition that is there, `202` with a `Retry-After` while
+  /// it is still being made, and `500` once the transcode has failed, see
+  /// issue #74. A `HEAD` would be cheaper still, but one byte also proves that
+  /// the range requests the player depends on are really answered.
   ///
   /// Never throws: a server that cannot be reached is not a reason to refuse
   /// the video, it is a reason to fall back to the original, which is what
   /// [RenditionStatus.unavailable] says.
   Future<RenditionState> renditionState(String url) async {
-    http.Response response;
-    try {
-      response = await _http.get(
-        Uri.parse(url),
-        headers: {...authHeaders, "Range": "bytes=0-0"},
-      ).timeout(timeout);
-    } catch (error) {
+    var answer = await probeSource(url);
+    if (answer.transportError != null) {
       return RenditionState(
         RenditionStatus.unavailable,
-        message: isTransportFailure(error) ? transportMessage(error) : "$error",
+        message: answer.transportError,
+        answer: answer,
       );
     }
-    if (response.statusCode == 200 || response.statusCode == 206) {
-      return const RenditionState(RenditionStatus.ready);
+    if (answer.delivers) {
+      return RenditionState(RenditionStatus.ready, answer: answer);
     }
-    if (response.statusCode == 202) {
+    if (answer.status == 202) {
       return RenditionState(
         RenditionStatus.pending,
-        retryAfter: retryAfterOf(response.headers["retry-after"]),
-        message: errorMessage(response.body),
+        retryAfter: answer.retryAfter,
+        message: answer.message,
+        answer: answer,
       );
     }
     return RenditionState(
       RenditionStatus.unavailable,
-      message: errorMessage(response.body),
+      message: answer.message,
+      answer: answer,
     );
   }
 
@@ -1210,7 +1337,7 @@ class VAlbumClient {
   /// `browser_upload.dart`.
   ///
   /// The request does not pass the [http.Client], so what [_ObservedTransport]
-  /// does for every other request is done here: the request is written into
+  /// does for every other request is done here: a failure is written into
   /// the [log], and an answer — any answer — means the server was reached.
   Future<({int status, String body})> _sendBlobs(
     Uri uri,
@@ -1234,7 +1361,16 @@ class VAlbumClient {
       rethrow;
     }
     offlineState?.online();
-    log?.answered("PUT", uri.toString(), status: answer.status, bearer: bearer);
+    if (answer.status >= 400) {
+      log?.refused(
+        "PUT",
+        uri.toString(),
+        status: answer.status,
+        contentLength: answer.body.length,
+        message: errorMessage(answer.body),
+        bearer: bearer,
+      );
+    }
     return answer;
   }
 
@@ -2390,16 +2526,19 @@ class _UploadCancelled implements Exception {
 ///    offline state is cleared; only a transport failure leaves it alone (and
 ///    the load that fell back on a cached copy sets it, see
 ///    [VAlbumClient._cachedResource]);
-///  * every request is written into the [DiagnosticsLog] with its method, its
-///    URL and either the status or the *complete* text of the failure.
+///  * every request that *fails* is written into the [DiagnosticsLog] — a
+///    transport failure with its *complete* text, a status of 400 or more
+///    with its type, its length and the sentence of its `ErrorInfo`; what
+///    went well is not written down at all (issue #184).
 ///
 /// The alternative — touching both rules into each of the twenty-odd request
 /// methods — is what let the lock-out of issue #57 exist in the first place:
 /// [VAlbumClient.loadResource] was the only method that reported having
 /// reached the server, and it reported it only for a `200`.
 ///
-/// Nothing secret passes: no body is ever logged, and of the `Authorization`
-/// header only whether there was one.
+/// Nothing secret passes: no request body is ever logged, of an answer only
+/// the sentence of its `ErrorInfo`, and of the `Authorization` header only
+/// whether there was one.
 class _ObservedTransport extends http.BaseClient {
   final http.Client _inner;
   final OfflineState? offlineState;
@@ -2421,8 +2560,40 @@ class _ObservedTransport extends http.BaseClient {
     }
     // The server spoke; whether it liked the request is the caller's business.
     offlineState?.online();
-    log?.answered(method, url, status: response.statusCode, bearer: bearer);
-    return response;
+    var sink = log;
+    if (sink == null || response.statusCode < 400) {
+      // Nothing that went well is written down (issue #184).
+      return response;
+    }
+    // A refusal is written with what the server said, so its body is read
+    // here — an `ErrorInfo` of a few dozen bytes — and handed on unchanged.
+    List<int> body;
+    try {
+      body = await response.stream.toBytes();
+    } catch (error) {
+      sink.failed(method, url, error: error, bearer: bearer);
+      rethrow;
+    }
+    sink.refused(
+      method,
+      url,
+      status: response.statusCode,
+      reason: response.reasonPhrase,
+      contentType: response.headers["content-type"],
+      contentLength: response.contentLength ?? body.length,
+      message: VAlbumClient.errorMessage(utf8.decode(body, allowMalformed: true)),
+      bearer: bearer,
+    );
+    return http.StreamedResponse(
+      http.ByteStream.fromBytes(body),
+      response.statusCode,
+      contentLength: body.length,
+      request: response.request,
+      headers: response.headers,
+      isRedirect: response.isRedirect,
+      persistentConnection: response.persistentConnection,
+      reasonPhrase: response.reasonPhrase,
+    );
   }
 
   @override

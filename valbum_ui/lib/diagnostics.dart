@@ -1,16 +1,23 @@
-/// The diagnostics log (issue #58): what the app did on the network, kept in
-/// memory so that a user can copy it and paste it into a bug report.
+/// The diagnostics log (issues #58, #184): the problems the app ran into,
+/// kept in memory so that a user can copy them into a bug report.
 ///
-/// A name that does not resolve on one network and resolves in the browser on
-/// the very same phone is not something guesswork settles: what is needed is
-/// the OS error, and which of the two lookups Dart performs (IPv4 and IPv6 are
-/// asked separately) answered what. The app therefore keeps a bounded log of
-/// every request it makes — method, URL, and the status or the *complete*
-/// transport error — plus the steps of the connection test, and hands it over
-/// as one block of text.
+/// **Failures only** (issue #184). A successful request, a routine event and
+/// every "answered 200" are not written down: a log that holds every GET
+/// buries the one line that matters, and the author's verdict on such a log
+/// was that it holds "nothing of any interest at all". What *is* written is a
+/// problem, and each entry stands on its own — a headline saying what was
+/// attempted and that it failed, and one line per fact under it: the request,
+/// what the server answered (status, `Content-Type`, `Content-Length`, the
+/// sentence of its `ErrorInfo`), and what the platform said, with its code and
+/// its *complete* text (a `SocketException` carries the OS message and its
+/// errno, which is what issue #58 was about).
+///
+/// The entries are bug-report text and stay English whatever the device's
+/// language, like the header of [DiagnosticsLog.copyText]: whoever reads a
+/// pasted log reads it next to the source code.
 ///
 /// Nothing secret is ever written here: no request bodies at all (the pairing
-/// request carries the secret), never the value of an `Authorization` header
+/// request carries the code), never the value of an `Authorization` header
 /// (only whether there was one), and every token in a URL path is masked, see
 /// [maskUrl].
 library;
@@ -18,6 +25,8 @@ library;
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import 'urls.dart';
 
@@ -32,32 +41,139 @@ const String appVersion = "1.0.0+1";
 /// How many entries a [DiagnosticsLog] keeps.
 const int diagnosticsCapacity = 300;
 
-/// One line of the [DiagnosticsLog]: when, and what.
-@immutable
+/// What an empty log says, in the box and in the copied text.
+const String noProblemsRecorded = "No problems recorded.";
+
+/// How far apart two failures of the same cause may be and still be one
+/// entry, see [DiagnosticsLog.add] and issue #184.
+const Duration diagnosticsMergeWindow = Duration(seconds: 60);
+
+/// How many of the affected items a merged entry names before "and n more".
+const int diagnosticsNamedItems = 3;
+
+/// The *cause* of a failure: what kind of thing was attempted, what the
+/// server answered (or that it did not), and what the platform said — and
+/// nothing about *which* file it was (issue #184).
+///
+/// The one definition two entries are merged by, see [DiagnosticsLog.add]:
+/// sixty thumbnails of an album that fail because the server is away are one
+/// problem, and sixty entries of it would push the one meaningful entry out
+/// of the log. [attempt] names the kind of attempt with a word of its own per
+/// writer (`request GET type=tn`, `video`, `picture`), so a video failure is
+/// never merged into a storm of thumbnails.
+String failureCause({
+  required String attempt,
+  String? answer,
+  String? platformError,
+}) =>
+    "$attempt | ${answer ?? "no answer"} | ${platformError ?? "no error"}";
+
+/// One problem of the [DiagnosticsLog]: when, what failed, and the facts —
+/// and, where the same cause failed again and again, how often and for what.
 class DiagnosticsEntry {
-  /// When the entry was written.
+  /// When the entry was written: the first occurrence.
   final DateTime at;
 
-  /// What happened, already free of anything secret.
-  final String message;
+  /// What was attempted and that it failed, in one line.
+  final String headline;
 
-  const DiagnosticsEntry(this.at, this.message);
+  /// One line per fact: the request, the server's answer, the platform's
+  /// error, … — already free of anything secret. The facts of the first
+  /// occurrence; a repetition adds only its time and its item.
+  final List<String> facts;
 
-  /// The entry as it is shown and copied: `hh:mm:ss.mmm  message`.
+  /// What this entry is merged by, see [failureCause]; `null` for an entry
+  /// that is never merged.
+  final String? cause;
+
+  /// How often the failure happened.
+  int _count = 1;
+
+  /// When it happened last.
+  DateTime _lastAt;
+
+  /// The distinct items it happened for (a file name, an address), in order.
+  final List<String> _items = [];
+
+  DiagnosticsEntry(
+    this.at,
+    this.headline, [
+    this.facts = const [],
+    this.cause,
+    String? item,
+  ]) : _lastAt = at {
+    if (item != null) {
+      _items.add(item);
+    }
+  }
+
+  /// How often the failure happened, 1 for a single one.
+  int get count => _count;
+
+  /// When the failure happened last.
+  DateTime get lastAt => _lastAt;
+
+  /// The distinct items the failure happened for.
+  List<String> get items => List.unmodifiable(_items);
+
+  /// Counts one more occurrence at [time], for [item].
+  void _repeat(DateTime time, String? item) {
+    _count++;
+    _lastAt = time;
+    if (item != null && !_items.contains(item)) {
+      _items.add(item);
+    }
+  }
+
+  /// The lines a repeated entry adds under its facts: how often, when, and
+  /// for what.
+  List<String> get repetition {
+    if (_count == 1) {
+      return const [];
+    }
+    var named = _items.take(diagnosticsNamedItems).join(", ");
+    var more = _items.length - diagnosticsNamedItems;
+    return [
+      "Repeated: $_count times, ${_clock(at)}–${_clock(_lastAt)}",
+      if (_items.isNotEmpty)
+        "Affected: $named${more > 0 ? " and $more more" : ""}",
+    ];
+  }
+
+  /// The entry without its time: the headline, and each fact indented under
+  /// it.
+  String get message {
+    var lines = [...facts, ...repetition];
+    return lines.isEmpty
+        ? headline
+        : [headline, for (var line in lines) "  $line"].join("\n");
+  }
+
+  /// The entry as it is shown and copied: `hh:mm:ss.mmm  headline`, the facts
+  /// indented under the headline.
   @override
-  String toString() => "${_two(at.hour)}:${_two(at.minute)}:${_two(at.second)}"
-      ".${_three(at.millisecond)}  $message";
+  String toString() {
+    var stamp = "${_clock(at)}.${_three(at.millisecond)}  ";
+    var indent = " " * stamp.length;
+    return [
+      "$stamp$headline",
+      for (var line in [...facts, ...repetition]) "$indent$line",
+    ].join("\n");
+  }
+
+  static String _clock(DateTime time) =>
+      "${_two(time.hour)}:${_two(time.minute)}:${_two(time.second)}";
 
   static String _two(int value) => value.toString().padLeft(2, "0");
 
   static String _three(int value) => value.toString().padLeft(3, "0");
 }
 
-/// What the app did on the network, the last [capacity] entries of it.
+/// The problems the app ran into, the last [capacity] of them.
 ///
 /// One instance per app, handed to every [VAlbumClient] the app builds (the
-/// way the offline state and the cache are), so that every request lands in
-/// the same log whichever server it went to. A [ChangeNotifier], so that the
+/// way the offline state and the cache are), so that every failure lands in
+/// the same log whichever server it came from. A [ChangeNotifier], so that the
 /// diagnostics section of the settings screen shows what arrives while it is
 /// open.
 class DiagnosticsLog extends ChangeNotifier {
@@ -77,33 +193,90 @@ class DiagnosticsLog extends ChangeNotifier {
   /// What is in the log, oldest first.
   List<DiagnosticsEntry> get entries => List.unmodifiable(_entries);
 
-  /// Whether nothing has been logged yet.
+  /// Whether no problem has been recorded.
   bool get isEmpty => _entries.isEmpty;
 
-  /// Adds [message] as the newest entry, dropping the oldest beyond
-  /// [capacity].
-  void add(String message) {
-    _entries.addLast(DiagnosticsEntry(now(), message));
+  /// Records a problem: [headline] says what failed, [facts] why, one line
+  /// each. The oldest entry is dropped beyond [capacity].
+  ///
+  /// Only for a failure — nothing that went well is ever written here, see
+  /// the library comment.
+  ///
+  /// A failure with a [cause] (see [failureCause]) that an entry of the last
+  /// [diagnosticsMergeWindow] already has is **merged into it** (issue #184):
+  /// that entry keeps its first headline and facts and counts one more, for
+  /// [item] — the file or address that differs. An album of sixty photos
+  /// opened while the server is away is one entry, "Repeated: 60 times", and
+  /// not sixty that push everything else out. The window is measured from
+  /// the entry's latest occurrence, so a storm that goes on stays one entry,
+  /// and an entry of another cause in between (a video that failed while the
+  /// thumbnails did) keeps its own place.
+  void add(
+    String headline, [
+    List<String> facts = const [],
+    String? cause,
+    String? item,
+  ]) {
+    var time = now();
+    if (cause != null) {
+      for (var entry in _entries.toList().reversed) {
+        if (time.difference(entry.lastAt) > diagnosticsMergeWindow) {
+          break;
+        }
+        if (entry.cause == cause) {
+          entry._repeat(time, item);
+          notifyListeners();
+          return;
+        }
+      }
+    }
+    _entries.addLast(
+      DiagnosticsEntry(time, headline, List.unmodifiable(facts), cause, item),
+    );
     while (_entries.length > capacity) {
       _entries.removeFirst();
     }
     notifyListeners();
   }
 
-  /// Logs a request the server answered, whatever it answered.
+  /// Records a request the server refused — a status of 400 or more.
   ///
-  /// The status is the point: a `401` is the server speaking, and the log has
-  /// to tell that apart from a request that never arrived, see [failed].
-  void answered(
+  /// A `2xx` and a `3xx` are the server doing its job and are never written
+  /// down; a refusal is written with everything the answer said about itself,
+  /// the sentence of its `ErrorInfo` included, because "403" alone does not
+  /// say which right was missing.
+  void refused(
     String method,
     String url, {
     required int status,
+    String? reason,
+    String? contentType,
+    int? contentLength,
+    String? message,
     bool bearer = false,
   }) =>
-      add("$method ${maskUrl(url)} ${_bearer(bearer)}-> $status");
+      add(
+        "Could not ${requestPurpose(method, url)}: the server answered "
+        "${statusText(status, reason)}",
+        [
+          requestFact(method, url, bearer: bearer),
+          answerFact(
+            status,
+            reason: reason,
+            contentType: contentType,
+            contentLength: contentLength,
+          ),
+          if (message != null && message.isNotEmpty) "Server said: $message",
+        ],
+        failureCause(
+          attempt: "request ${requestKind(method, url)}",
+          answer: "$status ${message ?? ""}",
+        ),
+        requestItem(url),
+      );
 
-  /// Logs a request that never got an answer, with the *complete* text of the
-  /// failure.
+  /// Records a request that never got an answer, with the *complete* text of
+  /// the failure.
   ///
   /// `error.toString()`, not a headline: a `SocketException` carries the OS
   /// message and its errno, and that is the one thing issue #58 is about.
@@ -113,11 +286,20 @@ class DiagnosticsLog extends ChangeNotifier {
     required Object error,
     bool bearer = false,
   }) =>
-      add("$method ${maskUrl(url)} ${_bearer(bearer)}!! $error");
+      add(
+        "Could not ${requestPurpose(method, url)}: no answer from the server",
+        [
+          requestFact(method, url, bearer: bearer),
+          platformErrorFact(error),
+        ],
+        failureCause(
+          attempt: "request ${requestKind(method, url)}",
+          platformError: errorCause(error, url),
+        ),
+        requestItem(url),
+      );
 
-  static String _bearer(bool bearer) => bearer ? "(bearer) " : "";
-
-  /// Forgets everything logged so far.
+  /// Forgets everything recorded so far.
   void clear() {
     if (_entries.isEmpty) {
       return;
@@ -129,9 +311,10 @@ class DiagnosticsLog extends ChangeNotifier {
   /// The whole log with its header, as it goes to the clipboard.
   ///
   /// [platform] is what the machine says about itself (see
-  /// `platformDescription` of `platform.dart`), [serverUrl] the server the
-  /// device is configured for — the header exists so that a pasted log says
-  /// *where* it was taken, not only what happened.
+  /// `platformDescription` of `platform.dart`: the operating system, or the
+  /// browser's user agent), [serverUrl] the server the device is configured
+  /// for — the header exists so that a pasted log says *where* it was taken,
+  /// not only what went wrong.
   String copyText({
     String? serverUrl,
     String platform = "unknown",
@@ -147,16 +330,229 @@ class DiagnosticsLog extends ChangeNotifier {
         "Server: ${serverUrl == null || serverUrl.isEmpty ? "(none)" : maskUrl(serverUrl)}",
       )
       ..writeln("Copied: ${stamp.toIso8601String()}")
-      ..writeln("Entries: ${_entries.length} (of $capacity)")
+      ..writeln("Problems: ${_entries.length} (the last $capacity are kept)")
       ..writeln();
     if (_entries.isEmpty) {
-      buffer.writeln("(nothing logged yet)");
+      buffer.writeln(noProblemsRecorded);
     }
     for (var entry in _entries) {
       buffer.writeln(entry.toString());
     }
     return buffer.toString();
   }
+}
+
+/// The line naming a request: `Request: GET <url> (with bearer)`.
+String requestFact(String method, String url, {bool bearer = false}) =>
+    "Request: $method ${maskUrl(url)}${bearer ? " (with bearer)" : ""}";
+
+/// The line saying what the server answered: status, type and length.
+String answerFact(
+  int status, {
+  String? reason,
+  String? contentType,
+  int? contentLength,
+  int? totalLength,
+}) {
+  var parts = [
+    statusText(status, reason),
+    "Content-Type ${contentType == null || contentType.isEmpty ? "(none)" : contentType}",
+    "Content-Length ${contentLength ?? "(none)"}",
+    if (totalLength != null) "of ${byteCount(totalLength)}",
+  ];
+  return "Server answered: ${parts.join(", ")}";
+}
+
+/// A status with its reason phrase where there is one: `403 Forbidden`.
+String statusText(int status, [String? reason]) =>
+    reason == null || reason.isEmpty ? "$status" : "$status $reason";
+
+/// A size as a bug report wants it: exact, and readable.
+String byteCount(int bytes) {
+  if (bytes < 1024) {
+    return "$bytes bytes";
+  }
+  const units = ["kB", "MB", "GB"];
+  var value = bytes / 1024;
+  var unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return "$bytes bytes (${value.toStringAsFixed(1)} ${units[unit]})";
+}
+
+/// The line saying what the platform reported: code and message where it has
+/// them, the whole text otherwise.
+String platformErrorFact(Object error) {
+  if (error is PlatformException) {
+    var parts = [
+      "code ${error.code}",
+      if (error.message != null && error.message!.isNotEmpty)
+        "message ${error.message}",
+      if (error.details != null) "details ${error.details}",
+    ];
+    return "Platform error: ${parts.join(", ")}";
+  }
+  return "Platform error: $error";
+}
+
+/// The kind of a request, without the file it names: the method and the
+/// `?type=`/`?action=` of the protocol, or what a bare address is — the
+/// attempt of a [failureCause].
+String requestKind(String method, String url) {
+  var query = Uri.tryParse(url)?.queryParameters ?? const {};
+  var action = query["action"];
+  if (action != null) {
+    return "$method action=$action";
+  }
+  var type = query["type"];
+  if (type != null) {
+    return "$method type=$type";
+  }
+  return "$method ${url.split("?").first.endsWith("/") ? "folder" : "file"}";
+}
+
+/// What a merged entry lists a request as: the name of the file or folder it
+/// named, else its masked address.
+String requestItem(String url) {
+  var segments = maskUrl(url)
+      .split("?")
+      .first
+      .split("/")
+      .where((segment) => segment.isNotEmpty)
+      .toList();
+  return segments.length > 2 ? _decoded(segments.last) : maskUrl(url);
+}
+
+/// The platform's error as a [failureCause] compares it: the text, without
+/// the address it happened for, which is the item and not the cause.
+String errorCause(Object error, [String? url]) {
+  if (error is http.ClientException) {
+    return "ClientException: ${error.message}";
+  }
+  var text = error.toString();
+  if (url != null && url.isNotEmpty) {
+    text = text.replaceAll(url, "<url>");
+  }
+  return text;
+}
+
+/// What a request was for, in words, for the headline of its failure.
+///
+/// Read off the query the protocol puts on every address (`?type=…`,
+/// `?action=…`) and the method: a headline "Could not load a thumbnail" says
+/// at a glance what "GET …/a.jpg?type=tn -> 404" makes one work out.
+String requestPurpose(String method, String url) {
+  Uri uri;
+  try {
+    uri = Uri.parse(url);
+  } catch (_) {
+    return "send $method $url";
+  }
+  var query = uri.queryParameters;
+  var action = query["action"];
+  if (action != null) {
+    return switch (action) {
+      "pair" => "sign this device in",
+      "check" => "ask which photos the server already has",
+      "move" => "move",
+      "delete" => "delete",
+      "zip" => "download the selection as an archive",
+      "share" => "create a share link",
+      "tag-faces" || "adjust-faces" => "save a decision about a face",
+      _ => "carry out '$action'",
+    };
+  }
+  var type = query["type"];
+  // The names come from the *masked* URL: the last segment of a session
+  // address is its token.
+  var segments = maskUrl(url)
+      .split("?")
+      .first
+      .split("/")
+      .where((segment) => segment.isNotEmpty)
+      .toList();
+  var name = segments.length > 2 ? _decoded(segments.last) : null;
+  var of = name == null ? "" : " of '$name'";
+  switch (type) {
+    case "json":
+      return "load the album listing";
+    case "tn":
+      return "load the thumbnail$of";
+    case "video":
+      return "load the playable version$of";
+    case "teaser":
+      return "load the teaser$of";
+    case "face":
+      return "load a face$of";
+    case "auth":
+      return "ask the server who this device is";
+    case null:
+      break;
+    default:
+      return "load '$type'";
+  }
+  var folder = url.endsWith("/") && name != null ? " '$name'" : "";
+  return switch (method) {
+    "PUT" => "upload to or save the folder$folder",
+    "POST" => "send a request to the folder$folder",
+    _ => url.endsWith("/") || name == null
+        ? "load the folder$folder"
+        : "load the original$of",
+  };
+}
+
+/// [segment] with its percent escapes resolved, as it stands where it cannot
+/// be.
+String _decoded(String segment) {
+  try {
+    return Uri.decodeComponent(segment);
+  } catch (_) {
+    return segment;
+  }
+}
+
+/// The album at [albumUrl] as a failure entry names it: its path below the
+/// data root [dataUrl], quoted, or "the top level".
+String albumLabel(String dataUrl, String albumUrl) {
+  var path = albumUrl.startsWith(dataUrl)
+      ? albumUrl.substring(dataUrl.length)
+      : albumUrl;
+  while (path.startsWith("/")) {
+    path = path.substring(1);
+  }
+  while (path.endsWith("/")) {
+    path = path.substring(0, path.length - 1);
+  }
+  if (path.isEmpty) {
+    return "the top level";
+  }
+  try {
+    path = Uri.decodeFull(path);
+  } catch (_) {
+    // Kept as it is.
+  }
+  return "'$path'";
+}
+
+/// The line describing a photograph or video of an album: name, extension,
+/// kind, dimensions and, where known, the size of the file.
+String originalFact(
+  String name, {
+  String? kind,
+  int width = 0,
+  int height = 0,
+  int? size,
+}) {
+  var dot = name.lastIndexOf(".");
+  var parts = [
+    "extension ${dot < 0 ? "(none)" : name.substring(dot)}",
+    if (kind != null) "kind $kind",
+    if (width > 0 && height > 0) "$width×$height",
+    size == null ? "size unknown" : byteCount(size),
+  ];
+  return "Original: $name (${parts.join(", ")})";
 }
 
 /// A token as a log shows it: enough to recognise it, not enough to use.

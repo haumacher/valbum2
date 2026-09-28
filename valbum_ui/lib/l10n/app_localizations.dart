@@ -515,13 +515,13 @@ abstract class AppLocalizations {
   /// Explains what the diagnostics log is for
   ///
   /// In en, this message translates to:
-  /// **'What this app did on the network - copy it into a bug report.'**
+  /// **'The problems this app ran into - copy them into a bug report.'**
   String get diagnosticsLead;
 
   /// Shown while the diagnostics log holds nothing
   ///
   /// In en, this message translates to:
-  /// **'Nothing logged yet. Test the connection, or browse the album, and what the app asked the server appears here.'**
+  /// **'No problems recorded.'**
   String get diagnosticsEmpty;
 
   /// Shown after the log was copied
@@ -1937,7 +1937,7 @@ abstract class AppLocalizations {
   /// Said while the server is still making the video rendition
   ///
   /// In en, this message translates to:
-  /// **'The video is being prepared…'**
+  /// **'The playable version of this video is still being made.'**
   String get videoPreparing;
 
   /// Button playing the original file instead of waiting
@@ -1967,8 +1967,92 @@ abstract class AppLocalizations {
   /// Says where the raw failure of a video can be read
   ///
   /// In en, this message translates to:
-  /// **'The technical details are in the diagnostics log of the server settings.'**
+  /// **'Details for a bug report: the diagnostics log in the server settings.'**
   String get videoDiagnosticsHint;
+
+  /// Said under videoPreparing while the app waits for the server's Retry-After before asking again; attempt counts the asks, attempts is their limit
+  ///
+  /// In en, this message translates to:
+  /// **'{seconds, plural, =1{Asking again in 1 second ({attempt} of {attempts}).} other{Asking again in {seconds} seconds ({attempt} of {attempts}).}}'**
+  String videoPreparingRetry(int seconds, int attempt, int attempts);
+
+  /// Shown where the app stopped asking for a video rendition the server is still making
+  ///
+  /// In en, this message translates to:
+  /// **'The playable version is still being made — try again in a minute.'**
+  String get videoPendingGaveUp;
+
+  /// Button asking the server again for a video that is still being made
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get videoTryAgain;
+
+  /// Shown where the server failed to make the playable version of a video; reason is the server's own sentence
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not convert this video: {reason}'**
+  String videoConversionFailed(String reason);
+
+  /// Follows videoConversionFailed or videoServerRefused where the original file plays in place of the playable version
+  ///
+  /// In en, this message translates to:
+  /// **'The original is played instead.'**
+  String get videoPlayingOriginal;
+
+  /// Shown where the server delivered the video and the platform's player refused it; contentType is the MIME type the server named
+  ///
+  /// In en, this message translates to:
+  /// **'This browser or device cannot play this format ({contentType}).'**
+  String videoFormatRefused(String contentType);
+
+  /// Shown where the server answers the video but the platform's player reported a network failure
+  ///
+  /// In en, this message translates to:
+  /// **'The server delivers this video ({contentType}), but the player could not fetch it.'**
+  String videoNotFetched(String contentType);
+
+  /// Shown where the server answered the video with an error status; message is the server's own sentence
+  ///
+  /// In en, this message translates to:
+  /// **'The server refused the video with status {status}: {message}'**
+  String videoServerRefused(String message, int status);
+
+  /// Shown where the server answered the video with an error status and no sentence of its own
+  ///
+  /// In en, this message translates to:
+  /// **'The server refused the video with status {status}.'**
+  String videoServerRefusedBare(int status);
+
+  /// Shown where the video's address got no answer at all; problem is the transport's reason
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not be reached: {problem}'**
+  String videoServerUnreachable(String problem);
+
+  /// Shown where the player neither started the video nor reported a failure in time
+  ///
+  /// In en, this message translates to:
+  /// **'{seconds, plural, =1{The video did not start within 1 second.} other{The video did not start within {seconds} seconds.}}'**
+  String videoDidNotStart(int seconds);
+
+  /// Follows videoDidNotStart where the server does answer the video; contentType is the MIME type it named
+  ///
+  /// In en, this message translates to:
+  /// **'The server delivers it ({contentType}), but the player neither started nor reported an error.'**
+  String videoSilentDelivers(String contentType);
+
+  /// Stands in the place of a MIME type in the video messages where the server named none
+  ///
+  /// In en, this message translates to:
+  /// **'no type given'**
+  String get videoUnknownType;
+
+  /// Tooltip of the button closing the notice that the original video is played instead
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get videoNoticeDismiss;
 
   /// Tooltip of the button pausing a video
   ///

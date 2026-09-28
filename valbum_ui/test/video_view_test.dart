@@ -199,12 +199,12 @@ void main() {
 
     expect(find.byKey(const Key("video-error")), findsOneWidget);
 
-    // The message names the URL and says one plain sentence; the raw failure
-    // is in the diagnostics log, not on the screen, see issue #73 and
-    // `video_error_test.dart`.
+    // One plain sentence; the raw failure is in the diagnostics log, not on
+    // the screen, see issues #73/#184 and `video_error_test.dart`. No URL:
+    // an address says nothing to the person holding the phone.
     expect(
       find.text("http://server/valbum/data/album/clip.mp4"),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text(testL10n.videoCannotPlay), findsOneWidget);
     expect(find.textContaining("No player for"), findsNothing);

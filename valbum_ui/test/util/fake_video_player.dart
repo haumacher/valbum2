@@ -26,6 +26,14 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   /// Whether creating a player reports an error instead of a video.
   bool failInit = false;
 
+  /// The error a failing player reports, see [failInit].
+  PlatformException initError =
+      PlatformException(code: "VideoError", message: "Cannot open video");
+
+  /// Whether a created player says nothing at all — neither a video nor an
+  /// error — which is the silent failure of issue #184.
+  bool neverInit = false;
+
   final Map<int, StreamController<VideoEvent>> _streams =
       <int, StreamController<VideoEvent>>{};
   int _nextPlayerId = 0;
@@ -40,10 +48,10 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
     var playerId = _nextPlayerId++;
     var stream = StreamController<VideoEvent>();
     _streams[playerId] = stream;
-    if (failInit) {
-      stream.addError(
-        PlatformException(code: "VideoError", message: "Cannot open video"),
-      );
+    if (neverInit) {
+      // Nothing: the player neither starts nor fails.
+    } else if (failInit) {
+      stream.addError(initError);
     } else {
       stream.add(
         VideoEvent(

@@ -421,15 +421,15 @@
     "description": "Heading of the diagnostics section",
     "x-translated": "90c07d0"
   },
-  "diagnosticsLead": "What this app did on the network - copy it into a bug report.",
+  "diagnosticsLead": "The problems this app ran into - copy them into a bug report.",
   "@diagnosticsLead": {
     "description": "Explains what the diagnostics log is for",
-    "x-translated": "ef531e"
+    "x-translated": "aa95f2f5"
   },
-  "diagnosticsEmpty": "Nothing logged yet. Test the connection, or browse the album, and what the app asked the server appears here.",
+  "diagnosticsEmpty": "No problems recorded.",
   "@diagnosticsEmpty": {
     "description": "Shown while the diagnostics log holds nothing",
-    "x-translated": "673823a2"
+    "x-translated": "bdfd5c7b"
   },
   "diagnosticsCopied": "The diagnostics log is on the clipboard.",
   "@diagnosticsCopied": {
@@ -1881,10 +1881,10 @@
     "description": "Button making the image shown represent its group",
     "x-translated": "a0d8f653"
   },
-  "videoPreparing": "The video is being prepared…",
+  "videoPreparing": "The playable version of this video is still being made.",
   "@videoPreparing": {
     "description": "Said while the server is still making the video rendition",
-    "x-translated": "3428caa5"
+    "x-translated": "d4c4d594"
   },
   "videoPlayOriginal": "Play the original",
   "@videoPlayOriginal": {
@@ -1906,10 +1906,134 @@
     "description": "Hint below the video refusal where the format cannot be decoded",
     "x-translated": "5b0fe9c4"
   },
-  "videoDiagnosticsHint": "The technical details are in the diagnostics log of the server settings.",
+  "videoDiagnosticsHint": "Details for a bug report: the diagnostics log in the server settings.",
   "@videoDiagnosticsHint": {
     "description": "Says where the raw failure of a video can be read",
-    "x-translated": "e172920f"
+    "x-translated": "8125e0d5"
+  },
+  "videoPreparingRetry": "{seconds, plural, =1{Asking again in 1 second ({attempt} of {attempts}).} other{Asking again in {seconds} seconds ({attempt} of {attempts}).}}",
+  "@videoPreparingRetry": {
+    "description": "Said under videoPreparing while the app waits for the server's Retry-After before asking again; attempt counts the asks, attempts is their limit",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "attempt": {
+        "type": "int"
+      },
+      "attempts": {
+        "type": "int"
+      }
+    },
+    "x-translated": "9e8a77ab"
+  },
+  "videoPendingGaveUp": "The playable version is still being made — try again in a minute.",
+  "@videoPendingGaveUp": {
+    "description": "Shown where the app stopped asking for a video rendition the server is still making",
+    "x-translated": "87f400bd"
+  },
+  "videoTryAgain": "Try again",
+  "@videoTryAgain": {
+    "description": "Button asking the server again for a video that is still being made",
+    "x-translated": "c1dae16"
+  },
+  "videoConversionFailed": "The server could not convert this video: {reason}",
+  "@videoConversionFailed": {
+    "description": "Shown where the server failed to make the playable version of a video; reason is the server's own sentence",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    },
+    "x-translated": "d5c8ffbd"
+  },
+  "videoPlayingOriginal": "The original is played instead.",
+  "@videoPlayingOriginal": {
+    "description": "Follows videoConversionFailed or videoServerRefused where the original file plays in place of the playable version",
+    "x-translated": "f17690ca"
+  },
+  "videoFormatRefused": "This browser or device cannot play this format ({contentType}).",
+  "@videoFormatRefused": {
+    "description": "Shown where the server delivered the video and the platform's player refused it; contentType is the MIME type the server named",
+    "placeholders": {
+      "contentType": {
+        "type": "String"
+      }
+    },
+    "x-translated": "25b201b"
+  },
+  "videoNotFetched": "The server delivers this video ({contentType}), but the player could not fetch it.",
+  "@videoNotFetched": {
+    "description": "Shown where the server answers the video but the platform's player reported a network failure",
+    "placeholders": {
+      "contentType": {
+        "type": "String"
+      }
+    },
+    "x-translated": "c6c9ba6b"
+  },
+  "videoServerRefused": "The server refused the video with status {status}: {message}",
+  "@videoServerRefused": {
+    "description": "Shown where the server answered the video with an error status; message is the server's own sentence",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      },
+      "status": {
+        "type": "int"
+      }
+    },
+    "x-translated": "a9257af7"
+  },
+  "videoServerRefusedBare": "The server refused the video with status {status}.",
+  "@videoServerRefusedBare": {
+    "description": "Shown where the server answered the video with an error status and no sentence of its own",
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    },
+    "x-translated": "2580878c"
+  },
+  "videoServerUnreachable": "The server could not be reached: {problem}",
+  "@videoServerUnreachable": {
+    "description": "Shown where the video's address got no answer at all; problem is the transport's reason",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "5321e433"
+  },
+  "videoDidNotStart": "{seconds, plural, =1{The video did not start within 1 second.} other{The video did not start within {seconds} seconds.}}",
+  "@videoDidNotStart": {
+    "description": "Shown where the player neither started the video nor reported a failure in time",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    },
+    "x-translated": "546d6f2d"
+  },
+  "videoSilentDelivers": "The server delivers it ({contentType}), but the player neither started nor reported an error.",
+  "@videoSilentDelivers": {
+    "description": "Follows videoDidNotStart where the server does answer the video; contentType is the MIME type it named",
+    "placeholders": {
+      "contentType": {
+        "type": "String"
+      }
+    },
+    "x-translated": "15a7531f"
+  },
+  "videoUnknownType": "no type given",
+  "@videoUnknownType": {
+    "description": "Stands in the place of a MIME type in the video messages where the server named none",
+    "x-translated": "792b9fc1"
+  },
+  "videoNoticeDismiss": "Dismiss",
+  "@videoNoticeDismiss": {
+    "description": "Tooltip of the button closing the notice that the original video is played instead",
+    "x-translated": "fff59f5b"
   },
   "pause": "Pause",
   "@pause": {

@@ -260,11 +260,10 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get diagnosticsLead =>
-      'Was diese App im Netzwerk getan hat – fügen Sie dies in einen Fehlerbericht ein.';
+      'Die Probleme, auf die diese App gestoßen ist – fügen Sie diese in einen Fehlerbericht ein.';
 
   @override
-  String get diagnosticsEmpty =>
-      'Es wurde noch nichts protokolliert. Testen Sie die Verbindung oder durchsuchen Sie das Album – die Anfragen der App an den Server werden hier angezeigt.';
+  String get diagnosticsEmpty => 'Es wurden keine Probleme festgestellt.';
 
   @override
   String get diagnosticsCopied =>
@@ -1126,7 +1125,8 @@ class AppLocalizationsDe extends AppLocalizations {
   String get useAsGroupPicture => 'Als Gruppenbild verwenden';
 
   @override
-  String get videoPreparing => 'Das Video wird gerade vorbereitet…';
+  String get videoPreparing =>
+      'Die abspielbare Version dieses Videos wird noch erstellt.';
 
   @override
   String get videoPlayOriginal => 'Die Originaldatei abspielen';
@@ -1144,7 +1144,81 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get videoDiagnosticsHint =>
-      'Die technischen Details finden sich im Diagnoseprotokoll der Servereinstellungen.';
+      'Details für einen Fehlerbericht: das Diagnoseprotokoll in den Servereinstellungen.';
+
+  @override
+  String videoPreparingRetry(int seconds, int attempt, int attempts) {
+    String _temp0 = intl.Intl.pluralLogic(
+      seconds,
+      locale: localeName,
+      other: 'Erneute Anfrage in $seconds Sekunden ($attempt von $attempts).',
+      one: 'Erneute Anfrage in 1 Sekunde ($attempt von $attempts).',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get videoPendingGaveUp =>
+      'Die abspielbare Version wird noch erstellt – versuchen Sie es in einer Minute erneut.';
+
+  @override
+  String get videoTryAgain => 'Erneut versuchen';
+
+  @override
+  String videoConversionFailed(String reason) {
+    return 'Der Server konnte dieses Video nicht konvertieren: $reason';
+  }
+
+  @override
+  String get videoPlayingOriginal =>
+      'Stattdessen wird die Originaldatei abgespielt.';
+
+  @override
+  String videoFormatRefused(String contentType) {
+    return 'Dieser Browser oder dieses Gerät kann dieses Format nicht wiedergeben ($contentType).';
+  }
+
+  @override
+  String videoNotFetched(String contentType) {
+    return 'Der Server stellt dieses Video bereit ($contentType), doch der Player konnte es nicht abrufen.';
+  }
+
+  @override
+  String videoServerRefused(String message, int status) {
+    return 'Der Server hat das Video mit dem Status $status abgelehnt: $message';
+  }
+
+  @override
+  String videoServerRefusedBare(int status) {
+    return 'Der Server hat das Video mit dem Status $status abgelehnt.';
+  }
+
+  @override
+  String videoServerUnreachable(String problem) {
+    return 'Der Server konnte nicht erreicht werden: $problem';
+  }
+
+  @override
+  String videoDidNotStart(int seconds) {
+    String _temp0 = intl.Intl.pluralLogic(
+      seconds,
+      locale: localeName,
+      other: 'Das Video wurde nicht innerhalb von $seconds Sekunden gestartet.',
+      one: 'Das Video wurde nicht innerhalb von 1 Sekunde gestartet.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String videoSilentDelivers(String contentType) {
+    return 'Der Server liefert es aus ($contentType), aber der Player hat weder gestartet noch einen Fehler gemeldet.';
+  }
+
+  @override
+  String get videoUnknownType => 'kein Typ angegeben';
+
+  @override
+  String get videoNoticeDismiss => 'Schließen';
 
   @override
   String get pause => 'Pause';

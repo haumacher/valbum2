@@ -91,21 +91,22 @@ void main() {
       expect(shown, isNot(contains("com.google.android")));
       expect(shown, isNot(contains("VideoError")));
 
-      // And all of it is in the log, where a bug report can fetch it.
-      var logged = [for (var entry in log.entries) entry.message].join("\n");
-      expect(logged, contains("PlatformException"));
+      // And all of it is in the log, where a bug report can fetch it: one
+      // entry, with the platform's code and its whole message.
+      expect(log.entries, hasLength(1));
+      var logged = log.entries.single.message;
+      expect(logged, contains("Platform error: code VideoError"));
       expect(logged, contains("ExoPlaybackException"));
       expect(logged, contains("Source error"));
       expect(logged, contains(videoUrl));
     });
 
-    testWidgets('keeps the URL that was refused', (tester) async {
-      await pumpFailing(tester, exoSourceError);
+    testWidgets('shows no URL: the address is in the log', (tester) async {
+      var log = await pumpFailing(tester, exoSourceError);
 
-      expect(
-        tester.widget<Text>(find.byKey(const Key("video-error-url"))).data,
-        videoUrl,
-      );
+      expect(find.byKey(const Key("video-error-url")), findsNothing);
+      expect(shownText(tester), isNot(contains(videoUrl)));
+      expect(log.entries.single.message, contains("URL: $videoUrl"));
     });
 
     testWidgets('says where the details are', (tester) async {
@@ -153,7 +154,7 @@ void main() {
 
       expect(find.byKey(const Key("video-error-hint")), findsNothing);
       expect(find.byKey(const Key("video-error-headline")), findsOneWidget);
-      expect(find.byKey(const Key("video-error-url")), findsOneWidget);
+      expect(find.byKey(const Key("video-error-diagnostics")), findsOneWidget);
       expect(shownText(tester), isNot(contains("sideways")));
     });
 
@@ -205,8 +206,8 @@ void main() {
             home: VideoView(
               videoUrl: longUrl,
               posterUrl: "$longUrl?type=tn",
-              // A classified failure, so that all four lines are there: the
-              // icon, the headline, the hint, the URL and the pointer.
+              // A classified failure, so that every line is there: the icon,
+              // the headline, the hint and the pointer.
               createController: failingWith(exoSourceError),
               log: DiagnosticsLog(),
             ),
@@ -230,7 +231,6 @@ void main() {
       // first — it is the top of the scrollable content, so it is on screen
       // whatever the slot's height.
       expect(find.byKey(const Key("video-error-hint")), findsOneWidget);
-      expect(find.byKey(const Key("video-error-url")), findsOneWidget);
       expect(find.byKey(const Key("video-error-diagnostics")), findsOneWidget);
       var headline = find.byKey(const Key("video-error-headline"));
       expect(headline, findsOneWidget);
@@ -276,7 +276,6 @@ void main() {
       for (var key in const [
         Key("video-error-headline"),
         Key("video-error-hint"),
-        Key("video-error-url"),
         Key("video-error-diagnostics"),
       ]) {
         var text = tester.widget<Text>(find.byKey(key));

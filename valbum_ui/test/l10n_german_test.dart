@@ -10,6 +10,8 @@
 /// and a retranslation must not break this test.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -787,6 +789,82 @@ void sliceTwo() {
       expect(find.text(de.videoCannotPlay), findsOneWidget);
       expect(find.text(de.videoNetworkHint), findsOneWidget);
       expect(find.text(de.videoDiagnosticsHint), findsOneWidget);
+    });
+
+    testWidgets('the video still being made, and the one never ready (#184)',
+        (tester) async {
+      Future<RenditionState> pending(String url) async => const RenditionState(
+            RenditionStatus.pending,
+            retryAfter: Duration(seconds: 10),
+            answer: SourceAnswer(status: 202),
+          );
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(
+          localizedApp(
+            VideoView(
+              videoUrl: "http://server/valbum/data/album/clip.mp4",
+              renditionUrl: "http://server/valbum/data/album/clip.mp4?type=video",
+              probeRendition: pending,
+              posterUrl: "http://server/valbum/data/album/clip.mp4?type=tn",
+              wait: (delay) => Completer<void>().future,
+            ),
+            locale: const Locale("de"),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+      });
+
+      expect(find.text(de.videoPreparing), findsOneWidget);
+      expect(find.text(de.videoPreparingRetry(10, 2, 6)), findsOneWidget);
+      expect(
+        de.videoPreparingRetry(10, 2, 6),
+        "Erneute Anfrage in 10 Sekunden (2 von 6).",
+      );
+      expect(find.text(de.videoPlayOriginal), findsOneWidget);
+
+      // And the sentences a failure is told in.
+      expect(de.videoPendingGaveUp, contains("in einer Minute"));
+      expect(de.videoDidNotStart(10), contains("10 Sekunden"));
+      expect(
+        de.videoFormatRefused("video/mp4"),
+        "Dieser Browser oder dieses Gerät kann dieses Format nicht "
+        "wiedergeben (video/mp4).",
+      );
+      expect(de.videoConversionFailed("x"), startsWith("Der Server konnte"));
+      expect(de.diagnosticsEmpty, "Es wurden keine Probleme festgestellt.");
+    });
+
+    testWidgets('the video format the device refuses (#184)', (tester) async {
+      Future<RenditionState> ready(String url) async => const RenditionState(
+            RenditionStatus.ready,
+            answer: SourceAnswer(status: 206, contentType: "video/mp4"),
+          );
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(
+          localizedApp(
+            VideoView(
+              videoUrl: "http://server/valbum/data/album/clip.mp4",
+              renditionUrl: "http://server/valbum/data/album/clip.mp4?type=video",
+              probeRendition: ready,
+              posterUrl: "http://server/valbum/data/album/clip.mp4?type=tn",
+              createController: (
+                url, {
+                Map<String, String> headers = const {},
+              }) =>
+                  throw StateError("MEDIA_ERR_SRC_NOT_SUPPORTED"),
+            ),
+            locale: const Locale("de"),
+          ),
+        );
+        for (var i = 0; i < 6; i++) {
+          await tester.pump();
+        }
+      });
+
+      expect(find.text(de.videoFormatRefused("video/mp4")), findsOneWidget);
+      expect(find.text(de.videoDiagnosticsHint), findsOneWidget);
+      expect(find.text(testL10n.videoFormatRefused("video/mp4")), findsNothing);
     });
 
     testWidgets('the in-app photo picker', (tester) async {

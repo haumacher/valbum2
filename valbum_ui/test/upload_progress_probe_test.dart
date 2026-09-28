@@ -101,9 +101,8 @@ void main() {
       "0 of 0 images",
     ]);
     expect(progress.last.fraction, 1);
-    var text = messagesOf(log);
-    expect(text, contains("POST http://pi/valbum/data/album/?action=check (bearer) -> 200"));
-    expect(text, isNot(contains("PUT")));
+    // Everything went well: nothing is written down (issue #184).
+    expect(log.isEmpty, isTrue);
   });
 
   test('an older server: everything is sent, progress follows the drain',
@@ -155,9 +154,13 @@ void main() {
           (a, b) => a < b ? a : b,
         );
     expect(progressAtConsumption[half]!, greaterThan(0));
+    // The one refusal is written down, the upload that worked is not.
     var text = messagesOf(log);
-    expect(text, contains("?action=check -> 404"));
-    expect(text, contains("PUT http://pi/valbum/data/album/ -> 200"));
+    expect(log.entries, hasLength(1));
+    expect(text, contains("Could not ask which photos the server already has"));
+    expect(text, contains("?action=check"));
+    expect(text, contains("Server answered: 404"));
+    expect(text, isNot(contains("PUT")));
   });
 
   test('a refused PUT is the server speaking: message, log, online', () async {
@@ -181,7 +184,10 @@ void main() {
           .having((e) => e.message, "message", contains("Sign in first."))),
     );
     expect(state.offline, isFalse);
-    expect(messagesOf(log), contains("PUT http://pi/valbum/data/album/ (bearer) -> 401"));
+    var text = messagesOf(log);
+    expect(text, contains("Could not upload to or save the folder 'album': the server answered 401"));
+    expect(text, contains("Request: PUT http://pi/valbum/data/album/ (with bearer)"));
+    expect(text, contains("Server said: Sign in first."));
   });
 
   test('cancelled before the first byte: refused, never a result', () async {

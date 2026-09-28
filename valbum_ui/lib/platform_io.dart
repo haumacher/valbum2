@@ -14,7 +14,6 @@ import 'connectivity.dart';
 import 'connectivity_plugin.dart';
 import 'device_code_scanner.dart';
 import 'device_code_scanner_plugin.dart';
-import 'diagnostics.dart';
 import 'offline.dart';
 import 'offline_file.dart';
 import 'photo_library.dart';
@@ -194,28 +193,30 @@ void rewritePageUrl(String url) {}
 String platformDescription() =>
     "${Platform.operatingSystem} ${Platform.operatingSystemVersion}";
 
-/// Resolves [host] explicitly and writes what each address family answered
-/// into [log] (issue #58).
+/// Resolves [host] explicitly and answers what each address family said, one
+/// line each, for the entry of a failed connection test (issues #58, #184).
 ///
 /// Dart asks IPv4 and IPv6 separately (see `staggeredLookup` in the SDK), and
 /// a name that is a CNAME to an AAAA-only address fails in a way that the
 /// headline of the exception does not explain: one of the two queries answers
 /// and the other does not, or the OS refuses both. Each query is therefore
 /// made here in its own right, and its addresses — or its error, with the
-/// errno the OS gave — are logged as a line of their own.
-Future<void> logHostResolution(DiagnosticsLog log, String host) async {
+/// errno the OS gave — are a line of their own.
+Future<List<String>> hostResolution(String host) async {
+  var lines = <String>[];
   for (var family in const [
     ("IPv4", InternetAddressType.IPv4),
     ("IPv6", InternetAddressType.IPv6),
   ]) {
     try {
       var addresses = await InternetAddress.lookup(host, type: family.$2);
-      log.add(
-        "lookup ${family.$1} $host -> "
+      lines.add(
+        "Lookup ${family.$1} $host: "
         "${addresses.isEmpty ? "no address" : addresses.map((a) => a.address).join(", ")}",
       );
     } catch (error) {
-      log.add("lookup ${family.$1} $host !! $error");
+      lines.add("Lookup ${family.$1} $host failed: $error");
     }
   }
+  return lines;
 }

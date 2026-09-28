@@ -80,7 +80,9 @@ void main() {
       }
     });
 
-    expect(probe.asked, [renditionUrl, renditionUrl]);
+    // Twice for the rendition, then once for the original that failed: the
+    // one request of issue #184 that learns what the server answers for it.
+    expect(probe.asked, [renditionUrl, renditionUrl, imageUrl]);
     expect(waits, [const Duration(seconds: 4)]);
     expect(opened, [imageUrl], reason: "the original is the fallback, never the rendition URL");
     expect(find.byKey(const Key("video-preparing")), findsNothing);
@@ -117,7 +119,10 @@ void main() {
       await tester.pump();
     });
     expect(opened, [imageUrl]);
-    expect(probe.asked.length, 1, reason: "no further probe after the person chose the original");
+    expect(probe.asked.where((url) => url == renditionUrl).length, 1,
+        reason: "no further probe after the person chose the original");
+    // The original that failed is asked about once, see issue #184.
+    expect(probe.asked.last, imageUrl);
     expect(find.byKey(const Key("video-preparing")), findsNothing);
   });
 }

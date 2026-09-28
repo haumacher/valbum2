@@ -181,6 +181,9 @@ public class TestVideoRenditions extends TestCase {
 		FakeResponse failed = get(broken, "video");
 		assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, failed.status());
 		assertTrue(failed.body(), failed.body().contains(ImageServlet.RENDITION_FAILED));
+		// With the reason FFmpeg gave (issue #184), and never the server's own folder.
+		assertTrue(failed.body(), failed.body().contains("FFmpeg failed with exit code"));
+		assertFalse(failed.body(), failed.body().contains(_album.getAbsolutePath()));
 		assertEquals("no-store", failed.header("Cache-Control"));
 
 		assertFalse("A failure must not leave a rendition behind.",
@@ -313,6 +316,21 @@ public class TestVideoRenditions extends TestCase {
 		String pathInfo = "/" + ALBUM + "/" + file.getName();
 		servlet().doGet(request(pathInfo, null, new byte[0], headers, parameters), response.response());
 		return response;
+	}
+
+
+	/** The reason of a failed transcode is answered without the album's folder, see issue #184. */
+	public void testRenditionFailedNamesTheReasonWithoutTheFolder() {
+		File file = new File(_album, "broken.mp4");
+		String reason = "IOException: FFmpeg failed with exit code 1: " + file.getAbsolutePath()
+			+ ": Invalid data found when processing input";
+
+		String message = ImageServlet.renditionFailed(file, reason);
+
+		assertEquals(ImageServlet.RENDITION_FAILED
+			+ " IOException: FFmpeg failed with exit code 1: broken.mp4: Invalid data found when processing input",
+			message);
+		assertEquals(ImageServlet.RENDITION_FAILED, ImageServlet.renditionFailed(file, null));
 	}
 
 }

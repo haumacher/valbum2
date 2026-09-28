@@ -407,7 +407,10 @@ public class VideoRenditions {
 		if (status != 0) {
 			String message = "FFmpeg failed with exit code " + status;
 			LOG.warning(message + ":\n" + String.join("\n", tail));
-			throw new IOException(message + ".");
+			// The last line FFmpeg wrote is what it says went wrong; it travels to the app in the
+			// ErrorInfo of the refusal (issue #184), so that "cannot be prepared" comes with a why.
+			String last = tail.isEmpty() ? "" : tail.peekLast().trim();
+			throw new IOException(last.isEmpty() ? message + "." : message + ": " + last);
 		}
 	}
 

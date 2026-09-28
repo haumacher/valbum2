@@ -261,7 +261,12 @@ void main() {
       expect(find.byKey(const Key("video-preparing")), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const Key("video-preparing-line"))).data,
-        "The video is being prepared…",
+        "The playable version of this video is still being made.",
+      );
+      // And when it asks again (issue #184).
+      expect(
+        tester.widget<Text>(find.byKey(const Key("video-preparing-retry"))).data,
+        "Asking again in 10 seconds (2 of 6).",
       );
       expect(find.byKey(const Key("video-play-original")), findsOneWidget);
       // Nothing is played while it is being made, and nothing is an error.

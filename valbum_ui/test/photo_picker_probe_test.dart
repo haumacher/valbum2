@@ -34,7 +34,7 @@ PhotoItem photo(String name, DateTime takenAt) =>
 void main() {
   testWidgets(
       'a lost second batch: plain words, the wakelock released, the album '
-      'reloaded, both PUTs in the log', (tester) async {
+      'reloaded, the lost PUT in the log', (tester) async {
     var wakelock = RecordingWakelock();
     var log = DiagnosticsLog();
     var listings = 0;
@@ -85,10 +85,14 @@ void main() {
     expect(text.data, contains("5"));
     expect(text.data, isNot(contains("ClientException")));
     expect(wakelock.requests, [true, false]);
-    var logged = log.entries.map((e) => e.message).join("\n");
-    expect(logged, contains("PUT http://server/valbum/data/"));
-    expect(logged.split("\n").where((l) => l.startsWith("PUT")).length, 2);
-    expect(logged, contains("!! ClientException"));
+    // The one that failed, with the transport's whole text; the one that
+    // arrived is no problem and is not written down (issue #184).
+    expect(log.entries, hasLength(1));
+    var logged = log.entries.single.message;
+    expect(logged, contains("Could not upload to or save the folder"));
+    expect(logged, contains("no answer from the server"));
+    expect(logged, contains("Request: PUT http://server/valbum/data/"));
+    expect(logged, contains("Platform error: ClientException"));
     expect(logged, contains("Connection reset by peer"));
   });
 

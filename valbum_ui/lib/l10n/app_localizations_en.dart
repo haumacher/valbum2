@@ -254,11 +254,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get diagnosticsLead =>
-      'What this app did on the network - copy it into a bug report.';
+      'The problems this app ran into - copy them into a bug report.';
 
   @override
-  String get diagnosticsEmpty =>
-      'Nothing logged yet. Test the connection, or browse the album, and what the app asked the server appears here.';
+  String get diagnosticsEmpty => 'No problems recorded.';
 
   @override
   String get diagnosticsCopied => 'The diagnostics log is on the clipboard.';
@@ -1109,7 +1108,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get useAsGroupPicture => 'Use as group picture';
 
   @override
-  String get videoPreparing => 'The video is being prepared…';
+  String get videoPreparing =>
+      'The playable version of this video is still being made.';
 
   @override
   String get videoPlayOriginal => 'Play the original';
@@ -1127,7 +1127,80 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get videoDiagnosticsHint =>
-      'The technical details are in the diagnostics log of the server settings.';
+      'Details for a bug report: the diagnostics log in the server settings.';
+
+  @override
+  String videoPreparingRetry(int seconds, int attempt, int attempts) {
+    String _temp0 = intl.Intl.pluralLogic(
+      seconds,
+      locale: localeName,
+      other: 'Asking again in $seconds seconds ($attempt of $attempts).',
+      one: 'Asking again in 1 second ($attempt of $attempts).',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get videoPendingGaveUp =>
+      'The playable version is still being made — try again in a minute.';
+
+  @override
+  String get videoTryAgain => 'Try again';
+
+  @override
+  String videoConversionFailed(String reason) {
+    return 'The server could not convert this video: $reason';
+  }
+
+  @override
+  String get videoPlayingOriginal => 'The original is played instead.';
+
+  @override
+  String videoFormatRefused(String contentType) {
+    return 'This browser or device cannot play this format ($contentType).';
+  }
+
+  @override
+  String videoNotFetched(String contentType) {
+    return 'The server delivers this video ($contentType), but the player could not fetch it.';
+  }
+
+  @override
+  String videoServerRefused(String message, int status) {
+    return 'The server refused the video with status $status: $message';
+  }
+
+  @override
+  String videoServerRefusedBare(int status) {
+    return 'The server refused the video with status $status.';
+  }
+
+  @override
+  String videoServerUnreachable(String problem) {
+    return 'The server could not be reached: $problem';
+  }
+
+  @override
+  String videoDidNotStart(int seconds) {
+    String _temp0 = intl.Intl.pluralLogic(
+      seconds,
+      locale: localeName,
+      other: 'The video did not start within $seconds seconds.',
+      one: 'The video did not start within 1 second.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String videoSilentDelivers(String contentType) {
+    return 'The server delivers it ($contentType), but the player neither started nor reported an error.';
+  }
+
+  @override
+  String get videoUnknownType => 'no type given';
+
+  @override
+  String get videoNoticeDismiss => 'Dismiss';
 
   @override
   String get pause => 'Pause';

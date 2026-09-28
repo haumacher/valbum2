@@ -249,10 +249,14 @@ void main() {
 
       await tapViewerDownload(tester);
 
-      // The original, never the playback rendition.
+      // The original, never the playback rendition — and in one piece. A
+      // ranged request of one byte is the player's diagnostic probe of issue
+      // #184 (the test's player cannot play), never the download.
       var originals = [
         for (var request in requests)
-          if (request.url.query.isEmpty) request,
+          if (request.url.query.isEmpty &&
+              request.headers["Range"] != "bytes=0-0")
+            request,
       ];
       expect(originals, hasLength(1));
       expect(originals.single.headers.containsKey("Range"), isFalse);

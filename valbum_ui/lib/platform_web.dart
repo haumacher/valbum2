@@ -11,7 +11,6 @@ import 'client.dart';
 import 'downloads.dart';
 import 'connectivity.dart';
 import 'device_code_scanner.dart';
-import 'diagnostics.dart';
 import 'offline.dart';
 import 'photo_library.dart';
 import 'notices.dart';
@@ -149,22 +148,32 @@ void rewritePageUrl(String url) => _replaceState(null, "", url);
 @JS('window.history.replaceState')
 external void _replaceState(JSAny? data, String title, String url);
 
-/// What this machine says about itself, for the header of a diagnostics log.
+/// What this machine says about itself, for the header of a diagnostics log
+/// and the facts of a failure entry (issue #184).
 ///
-/// A browser is asked through the page, not through `dart:io`; the user agent
-/// is in the bug report anyway, so the header says only that this is the web
-/// build.
-String platformDescription() => "web";
+/// The browser's user agent: which browser, which version and on which
+/// system is what decides whether a video format plays, and a page can ask
+/// nothing more precise.
+String platformDescription() {
+  try {
+    var navigator = globalContext["navigator"] as JSObject?;
+    var agent = (navigator?["userAgent"] as JSString?)?.toDart;
+    if (agent != null && agent.isNotEmpty) {
+      return "web, $agent";
+    }
+  } catch (_) {
+    // A page without a navigator is still the web build.
+  }
+  return "web";
+}
 
 /// Resolves [host] explicitly: not possible in a browser (issue #58).
 ///
 /// A page cannot ask the resolver anything — the browser resolves names for
-/// it and says nothing about how. That is written into the log rather than
-/// left out, so that a pasted log from the web is not read as "both lookups
+/// it and says nothing about how. That is said in the entry rather than left
+/// out, so that a pasted log from the web is not read as "both lookups
 /// succeeded".
-Future<void> logHostResolution(DiagnosticsLog log, String host) async {
-  log.add(
-    "lookup $host: name resolution cannot be asked in a browser; the page "
-    "sees only whether the request went through.",
-  );
-}
+Future<List<String>> hostResolution(String host) async => [
+      "Lookup $host: name resolution cannot be asked in a browser; the page "
+          "sees only whether the request went through.",
+    ];

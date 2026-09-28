@@ -436,7 +436,7 @@ class ServerSettingsScope extends InheritedNotifier<ServerSettings> {
   /// Builds the client the connection test talks to the entered server with.
   final ClientFactory clientFor;
 
-  /// What the app did on the network, shown by the diagnostics section of the
+  /// The problems the app ran into, shown by the diagnostics section of the
   /// settings screen (issue #58).
   final DiagnosticsLog? diagnostics;
 
@@ -515,49 +515,48 @@ Widget outcomeRow(BuildContext context, ConnectionTestResult outcome) => Row(
 
 /// Fetches the root resource of the server [client] talks to.
 ///
-/// Every outcome is reported as a message; nothing fails silently. Every step
-/// is written into the client's [DiagnosticsLog] as well (issue #58) — the
-/// URL the entered address was turned into, what the name resolves to on each
-/// address family, what the root listing answered and what `?type=auth` said —
-/// because a connection that fails on one network and works on another is
-/// settled by data, not by the headline of an exception.
+/// Every outcome is reported as a message; nothing fails silently. A test
+/// that fails is written into the client's [DiagnosticsLog] as one entry
+/// (issues #58, #184) — the URL the entered address was turned into, what the
+/// name resolves to on each address family, what the root listing answered
+/// and what `?type=auth` said — because a connection that fails on one
+/// network and works on another is settled by data, not by the headline of an
+/// exception. A test that succeeds writes nothing: the log holds problems.
 Future<ConnectionTestResult> testServerConnection(
   AppLocalizations l10n,
   VAlbumClient client,
 ) async {
-  var log = client.log;
-  log?.add("connection test: data URL ${maskUrl(client.dataUrl)}");
-  if (log != null) {
-    await _logResolution(log, client.dataUrl);
-  }
   var reached = await _reachServer(l10n, client);
-  log?.add(
-    "connection test: root ${reached.ok ? "reached" : "failed"} - "
-    "${reached.message}",
-  );
   var status = await _authStatus(l10n, client);
-  log?.add("connection test: auth ${status ?? "no answer"}");
+  var log = client.log;
+  if (!reached.ok && log != null) {
+    log.add("Connection test failed: ${reached.message}", [
+      "Data URL: ${maskUrl(client.dataUrl)}",
+      ...await _resolution(client.dataUrl),
+      "Root listing: ${reached.message}",
+      "Sign-in: ${status ?? "no answer"}",
+      "Platform: ${platformDescription()}",
+    ]);
+  }
   return reached.withAuthStatus(status);
 }
 
-/// Resolves the host of [dataUrl] explicitly, see `logHostResolution`.
+/// Resolves the host of [dataUrl] explicitly, see `hostResolution`.
 ///
-/// A step of its own, with lines of its own: a pasted log has to answer "did
-/// the IPv4 query fail, did the IPv6 query fail, what did the OS say", which
-/// the failure of the request alone never says.
-Future<void> _logResolution(DiagnosticsLog log, String dataUrl) async {
+/// Lines of their own: a pasted log has to answer "did the IPv4 query fail,
+/// did the IPv6 query fail, what did the OS say", which the failure of the
+/// request alone never says.
+Future<List<String>> _resolution(String dataUrl) async {
   String host;
   try {
     host = Uri.parse(dataUrl).host;
   } catch (error) {
-    log.add("connection test: no host in '$dataUrl' ($error)");
-    return;
+    return ["No host in '$dataUrl' ($error)"];
   }
   if (host.isEmpty) {
-    log.add("connection test: no host in '$dataUrl'");
-    return;
+    return ["No host in '$dataUrl'"];
   }
-  await logHostResolution(log, host);
+  return hostResolution(host);
 }
 
 /// What the server says about this client's sign-in, `null` if it says
@@ -891,7 +890,7 @@ class ServerSettingsScreen extends StatefulWidget {
   /// configured yet: there is nothing to go back to.
   final bool closable;
 
-  /// What the app did on the network, shown by the diagnostics section
+  /// The problems the app ran into, shown by the diagnostics section
   /// (issue #58); a screen without one keeps a log of its own, which is empty
   /// until something uses it.
   final DiagnosticsLog? diagnostics;
@@ -959,7 +958,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// Why the entered invitation cannot be used, if it cannot.
   String? invitationProblem;
 
-  /// What the app did on the network, see [DiagnosticsLog].
+  /// The problems the app ran into, see [DiagnosticsLog].
   ///
   /// The app's own log where there is one; a screen pumped without one (a
   /// test, an embedder) keeps an empty one of its own rather than hiding the
@@ -1753,7 +1752,8 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     });
   }
 
-  /// The diagnostics section: what this app did on the network (issue #58).
+  /// The diagnostics section: the problems this app ran into (issues #58,
+  /// #184).
   ///
   /// Collapsed by default — the settings screen keeps its shape for everyone
   /// who never needs it — and monospaced, newest last, because what is pasted

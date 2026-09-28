@@ -81,7 +81,7 @@ class VAlbumApp extends StatefulWidget {
   /// Whether the app is currently showing what the [cache] holds.
   final OfflineState? offlineState;
 
-  /// What the app did on the network, see [DiagnosticsLog] (issue #58).
+  /// The problems the app ran into, see [DiagnosticsLog] (issues #58, #184).
   ///
   /// Defaults to a log of this app's own; a test injects one to read what the
   /// app logged.
@@ -200,7 +200,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// Whether the app is showing a cached copy, see [OfflineState].
   late final OfflineState offlineState = widget.offlineState ?? OfflineState();
 
-  /// What this app did on the network, see [DiagnosticsLog].
+  /// The problems this app ran into, see [DiagnosticsLog].
   ///
   /// One per app, handed to every client it builds — a session client
   /// included — so that the diagnostics section of the settings shows all of

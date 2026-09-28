@@ -69,7 +69,9 @@ void main() {
     var text = messagesOf(log);
     expect(text, contains("errno = 7"));
     expect(text, contains("No address associated with hostname"));
-    expect(text, contains("GET http://pi:8082/valbum/data/album/x.jpg?type=tn (bearer) -> 403"));
+    expect(text, contains("Could not load the thumbnail of 'x.jpg': the server answered 403"));
+    expect(text, contains("Request: GET http://pi:8082/valbum/data/album/x.jpg?type=tn (with bearer)"));
+    expect(text, contains("Server said: Private."));
     expect(text, isNot(contains("tok-probe")));
 
     // The rule is symmetric: the next lost listing sets it again.
@@ -80,7 +82,7 @@ void main() {
     expect(state.offline, isFalse);
   });
 
-  test('a streamed upload is logged without its body and with its bearer',
+  test('a streamed upload that succeeds is not logged at all (issue #184)',
       () async {
     var log = DiagnosticsLog();
     var state = OfflineState()..goneOffline(null);
@@ -116,10 +118,8 @@ void main() {
     expect(seenAuthorization, "Bearer secret-bearer-token");
     expect(state.offline, isFalse, reason: "the upload was answered");
 
-    var text = messagesOf(log);
-    expect(text, contains("PUT http://pi:8082/valbum/data/album/ (bearer) -> 200"));
-    expect(text, isNot(contains("SECRET-PIXELS")));
-    expect(text, isNot(contains("secret-bearer-token")));
+    // Nothing went wrong, so nothing is written down.
+    expect(log.isEmpty, isTrue);
   });
 
   test('a derived client for another server writes into the same log',
@@ -141,9 +141,11 @@ void main() {
     await second.authInfo();
 
     var text = messagesOf(log);
-    expect(text, contains("GET http://stored/valbum/data/?type=auth !! "));
+    expect(log.entries, hasLength(1), reason: "the answered one is no problem");
+    expect(text, contains("Could not ask the server who this device is: no answer"));
+    expect(text, contains("Request: GET http://stored/valbum/data/?type=auth"));
     expect(text, contains("Failed host lookup: 'stored'"));
-    expect(text, contains("GET http://homepi:8082/valbum/data/?type=auth -> 200"));
+    expect(text, isNot(contains("homepi")));
   });
 
   test('maskUrl masks every token and keeps everything else', () {

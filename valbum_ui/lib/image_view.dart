@@ -15,6 +15,7 @@ import 'app.dart';
 import 'attribution.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'diagnostics.dart';
 import 'downloads.dart';
 import 'image_properties.dart';
 import 'album_edit.dart' show PlaneTransform;
@@ -23,6 +24,7 @@ import 'image_transform.dart';
 import 'move_view.dart';
 import 'offline.dart';
 import 'people_registry.dart';
+import 'platform.dart' show platformDescription;
 import 'person_names.dart';
 import 'persons_view.dart' show PersonChooser;
 import 'l10n/app_localizations.dart';
@@ -1274,11 +1276,12 @@ class ImageViewState extends State<ImageView>
   ///
   /// Called from a builder, so the message is shown after the frame: a
   /// snack bar may not be put up while the tree is being built.
-  void _reportFailure() {
+  void _reportFailure(Object error) {
     if (_failureReported) {
       return;
     }
     _failureReported = true;
+    _logFailure(error);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -1293,6 +1296,56 @@ class ImageViewState extends State<ImageView>
         ),
       );
     });
+  }
+
+  /// Writes the failed picture into the diagnostics log as one entry
+  /// (issue #184): which picture, which source and why, what the server
+  /// answered to it and what the platform said.
+  ///
+  /// `Image` can only say *that* the picture failed, so the server's answer
+  /// is learned with one request of the viewer's own, once per failure, see
+  /// [VAlbumClient.probeSource]. A thumbnail the server refused is left out:
+  /// it went through the client, which wrote the refusal down already.
+  Future<void> _logFailure(Object error) async {
+    var client = widget.client;
+    var log = client.log;
+    if (log == null || error is VAlbumException) {
+      return;
+    }
+    var image = part;
+    var original = picture is NetworkImage;
+    var url = original
+        ? client.originalUrl(dataUrl)
+        : client.thumbnailUrl(dataUrl);
+    var answer = await client.probeSource(url);
+    log.add(
+      "Picture could not be shown: ${image.name} in "
+      "${albumLabel(client.dataUrl, widget.baseUrl)}",
+      [
+        original
+            ? "Tried: the original, because this caller may download it"
+            : "Tried: the preview (?type=tn), because this caller may not "
+                "download the original",
+        "URL: ${maskUrl(url)}",
+        ...answer.facts,
+        originalFact(
+          image.name,
+          kind: image.kind.name,
+          width: image.width,
+          height: image.height,
+          size: original ? answer.totalLength : null,
+        ),
+        platformErrorFact(error),
+        "Platform: ${platformDescription()}",
+      ],
+      failureCause(
+        attempt: "picture ${original ? "original" : "preview"}",
+        answer: answer.transportError ??
+            "${answer.status} ${answer.message ?? ""}",
+        platformError: errorCause(error, url),
+      ),
+      image.name,
+    );
   }
 
   /// The transform of the image in a viewport of the given size.
@@ -1758,7 +1811,7 @@ class ImageViewState extends State<ImageView>
       // right — the viewer asks for nothing this caller may not have, see
       // [viewerPicture] — so it is a failure, and failures speak once.
       errorBuilder: (context, error, stackTrace) {
-        _reportFailure();
+        _reportFailure(error);
         return const SizedBox.expand();
       },
     );
@@ -1884,8 +1937,11 @@ class ImageViewState extends State<ImageView>
             orientation: self.orientation,
             headers: widget.client.authHeaders,
             // A failure of the platform player goes into the same log every
-            // request of this app goes into, see issue #73.
+            // failed request of this app goes into, with the video's own
+            // facts, see issues #73 and #184.
             log: widget.client.log,
+            part: self,
+            album: albumLabel(widget.client.dataUrl, widget.baseUrl),
           ),
         ),
       ),

@@ -4486,9 +4486,29 @@ public class ImageServlet extends HttpServlet {
 			default:
 				LOG.warning("Refusing the " + kind.parameter() + " rendition of '"
 					+ context.request().getPathInfo() + "': " + rendition.getReason());
-				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, RENDITION_FAILED);
+				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+					renditionFailed(file, rendition.getReason()));
 				return;
 		}
+	}
+
+	/**
+	 * The message a failed transcode is answered with: {@link #RENDITION_FAILED} and the reason the
+	 * transcoder gave, see issue #184.
+	 *
+	 * <p>
+	 * The app shows the reason ("the server could not convert this video: …") and writes it into its
+	 * diagnostics log, so the absolute folder of the album — a fact about the server's disk, not about
+	 * the video — is cut out of it; what is left names the file by its name.
+	 * </p>
+	 */
+	static String renditionFailed(File file, String reason) {
+		if (reason == null || reason.isEmpty()) {
+			return RENDITION_FAILED;
+		}
+		File folder = file.getAbsoluteFile().getParentFile();
+		String shown = folder == null ? reason : reason.replace(folder.getPath() + File.separator, "");
+		return RENDITION_FAILED + " " + shown;
 	}
 
 	/**

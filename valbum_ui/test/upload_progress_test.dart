@@ -227,7 +227,7 @@ void main() {
       );
     });
 
-    test('is logged as one answered PUT, without the body', () async {
+    test('is not logged at all when it succeeds (issue #184)', () async {
       var log = DiagnosticsLog();
       var transport = SlowTransport(
         answer: storedAnswer(const ["a.jpg"]),
@@ -245,12 +245,8 @@ void main() {
         [sizedFile("a.jpg", 4096, 0x53)],
       );
 
-      var lines = [for (var entry in log.entries) entry.message];
-      expect(
-        lines,
-        ["PUT http://server/valbum/data/album/ (bearer) -> 200"],
-      );
-      expect(lines.join("\n"), isNot(contains("secret-bearer-token")));
+      // The log holds problems, and nothing went wrong.
+      expect(log.isEmpty, isTrue);
     });
   });
 
