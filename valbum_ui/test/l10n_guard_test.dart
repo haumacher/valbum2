@@ -66,6 +66,7 @@ const List<String> convertedFiles = [
   "lib/invitation.dart",
   "lib/keyboard_scroll.dart",
   "lib/listing_view.dart",
+  "lib/load_failure.dart",
   "lib/locales.dart",
   "lib/main.dart",
   "lib/manage_view.dart",

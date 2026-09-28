@@ -2546,4 +2546,45 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get personsChooserAll => 'Alle Personen';
+
+  @override
+  String loadNotFoundAlbum(String server, String name) {
+    return 'Das Album $name wurde auf dem Server $server nicht gefunden.';
+  }
+
+  @override
+  String loadNotFoundEntry(String server, String name) {
+    return 'Das Album oder der Ordner $name wurde auf dem Server $server nicht gefunden.';
+  }
+
+  @override
+  String loadNotFoundStart(String server) {
+    return 'Die Startseite wurde auf dem Server $server nicht gefunden.';
+  }
+
+  @override
+  String loadFailedAlbum(String server, String name) {
+    return 'Das Album $name konnte auf dem Server $server nicht geöffnet werden.';
+  }
+
+  @override
+  String loadFailedEntry(String server, String name) {
+    return 'Das Album oder der Ordner $name konnte auf dem Server $server nicht geöffnet werden.';
+  }
+
+  @override
+  String loadFailedStart(String server) {
+    return 'Die Startseite konnte auf dem Server $server nicht geöffnet werden.';
+  }
+
+  @override
+  String get goToStartPage => 'Zur Startseite';
+
+  @override
+  String get loadFailureDetails => 'Details';
+
+  @override
+  String loadFailureTechnical(String url, int status) {
+    return 'HTTP-$status für $url';
+  }
 }

@@ -4081,6 +4081,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All persons'**
   String get personsChooserAll;
+
+  /// Headline of a page that could not be loaded because the server says the album the address names does not exist (issue #176). name is the album's folder name, server the address of the server as the reader opened it (e.g. http://host/valbum/).
+  ///
+  /// In en, this message translates to:
+  /// **'The album \'{name}\' was not found on the server {server}.'**
+  String loadNotFoundAlbum(String server, String name);
+
+  /// Headline of a page that could not be loaded because the server says the album or folder the address names does not exist (issue #176); the app cannot tell which of the two was meant. name is the folder name, server the address of the server as the reader opened it.
+  ///
+  /// In en, this message translates to:
+  /// **'The album or folder \'{name}\' was not found on the server {server}.'**
+  String loadNotFoundEntry(String server, String name);
+
+  /// Headline of the start page (the top listing) when the server says it does not exist (issue #176). server is the address of the server as the reader opened it.
+  ///
+  /// In en, this message translates to:
+  /// **'The start page was not found on the server {server}.'**
+  String loadNotFoundStart(String server);
+
+  /// Headline of a page that could not be loaded because the server refused or failed the request for the album (issue #176). name is the album's folder name, server the address of the server as the reader opened it.
+  ///
+  /// In en, this message translates to:
+  /// **'The album \'{name}\' could not be opened on the server {server}.'**
+  String loadFailedAlbum(String server, String name);
+
+  /// Headline of a page that could not be loaded because the server refused or failed the request (issue #176); the app cannot tell whether an album or a folder was meant. name is the folder name, server the address of the server.
+  ///
+  /// In en, this message translates to:
+  /// **'The album or folder \'{name}\' could not be opened on the server {server}.'**
+  String loadFailedEntry(String server, String name);
+
+  /// Headline of the start page (the top listing) when the server refused or failed the request (issue #176). server is the address of the server as the reader opened it.
+  ///
+  /// In en, this message translates to:
+  /// **'The start page could not be opened on the server {server}.'**
+  String loadFailedStart(String server);
+
+  /// Button on a page that could not be loaded, leading to the top listing of the server (issue #176).
+  ///
+  /// In en, this message translates to:
+  /// **'Go to the start page'**
+  String get goToStartPage;
+
+  /// Title of the expandable line on a page that could not be loaded, which reveals the technical address and status (issue #176).
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get loadFailureDetails;
+
+  /// The technical detail of a failed load, shown when the Details line is expanded (issue #176): the HTTP status and the internal address the app asked.
+  ///
+  /// In en, this message translates to:
+  /// **'HTTP {status} for {url}'**
+  String loadFailureTechnical(String url, int status);
 }
 
 class _AppLocalizationsDelegate

@@ -4180,5 +4180,100 @@
   "@personsChooserAll": {
     "description": "The heading of the person chooser's second section, holding everybody else of the space (issue #150).",
     "x-translated": "cb8b9b76"
+  },
+  "loadNotFoundAlbum": "The album '{name}' was not found on the server {server}.",
+  "@loadNotFoundAlbum": {
+    "description": "Headline of a page that could not be loaded because the server says the album the address names does not exist (issue #176). name is the album's folder name, server the address of the server as the reader opened it (e.g. http://host/valbum/).",
+    "placeholders": {
+      "server": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "63853063"
+  },
+  "loadNotFoundEntry": "The album or folder '{name}' was not found on the server {server}.",
+  "@loadNotFoundEntry": {
+    "description": "Headline of a page that could not be loaded because the server says the album or folder the address names does not exist (issue #176); the app cannot tell which of the two was meant. name is the folder name, server the address of the server as the reader opened it.",
+    "placeholders": {
+      "server": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "297a2660"
+  },
+  "loadNotFoundStart": "The start page was not found on the server {server}.",
+  "@loadNotFoundStart": {
+    "description": "Headline of the start page (the top listing) when the server says it does not exist (issue #176). server is the address of the server as the reader opened it.",
+    "placeholders": {
+      "server": {
+        "type": "String"
+      }
+    },
+    "x-translated": "65d45480"
+  },
+  "loadFailedAlbum": "The album '{name}' could not be opened on the server {server}.",
+  "@loadFailedAlbum": {
+    "description": "Headline of a page that could not be loaded because the server refused or failed the request for the album (issue #176). name is the album's folder name, server the address of the server as the reader opened it.",
+    "placeholders": {
+      "server": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "4d8812dc"
+  },
+  "loadFailedEntry": "The album or folder '{name}' could not be opened on the server {server}.",
+  "@loadFailedEntry": {
+    "description": "Headline of a page that could not be loaded because the server refused or failed the request (issue #176); the app cannot tell whether an album or a folder was meant. name is the folder name, server the address of the server.",
+    "placeholders": {
+      "server": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "87b40cb7"
+  },
+  "loadFailedStart": "The start page could not be opened on the server {server}.",
+  "@loadFailedStart": {
+    "description": "Headline of the start page (the top listing) when the server refused or failed the request (issue #176). server is the address of the server as the reader opened it.",
+    "placeholders": {
+      "server": {
+        "type": "String"
+      }
+    },
+    "x-translated": "c6d6be08"
+  },
+  "goToStartPage": "Go to the start page",
+  "@goToStartPage": {
+    "description": "Button on a page that could not be loaded, leading to the top listing of the server (issue #176).",
+    "x-translated": "a40b717d"
+  },
+  "loadFailureDetails": "Details",
+  "@loadFailureDetails": {
+    "description": "Title of the expandable line on a page that could not be loaded, which reveals the technical address and status (issue #176).",
+    "x-translated": "bd9b3216"
+  },
+  "loadFailureTechnical": "HTTP {status} for {url}",
+  "@loadFailureTechnical": {
+    "description": "The technical detail of a failed load, shown when the Details line is expanded (issue #176): the HTTP status and the internal address the app asked.",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      },
+      "status": {
+        "type": "int"
+      }
+    },
+    "x-translated": "a02a9791"
   }
 }

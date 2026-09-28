@@ -24,7 +24,17 @@ class VAlbumException implements Exception {
   /// answer at all (a transport failure) or the failure is not a status.
   final int? status;
 
-  const VAlbumException(this.message, {this.status});
+  /// The address that was asked, where the failure is an answer to one
+  /// (issue #176): technical detail for the "Details" line of a failed load,
+  /// never the headline, see `load_failure.dart`.
+  final String? url;
+
+  /// The server's own reason — the message of the [ErrorInfo] it answered
+  /// with — `null` where the answer carried none and [message] had to be
+  /// composed from the status.
+  final String? reason;
+
+  const VAlbumException(this.message, {this.status, this.url, this.reason});
 
   @override
   String toString() => message;
@@ -811,8 +821,11 @@ class VAlbumClient {
       return _cachedResource(path, uri, error);
     }
     if (response.statusCode != 200) {
+      // An answer, whatever its status: the server is there, so nothing
+      // cached stands in for it — a 404 is "not found", never "offline".
       throw failure(response.statusCode, response.body,
-          platformMessages.doingLoading("'$uri'"));
+          platformMessages.doingLoading("'$uri'"),
+          url: uri);
     }
     // Parsed before it is cached: an answer that is not album data must not
     // become the cached copy of this album.
@@ -2265,14 +2278,24 @@ class VAlbumClient {
   /// A server that refuses says why: the body of a refusal is an [ErrorInfo]
   /// whose message is meant for the user, so that is what the exception
   /// carries. Only where there is no such body does the status have to do.
-  static VAlbumException failure(int status, String body, String what) {
+  ///
+  /// [url] is the address that was asked, carried along for whoever shows
+  /// the technical details, see [VAlbumException.url].
+  static VAlbumException failure(
+    int status,
+    String body,
+    String what, {
+    String? url,
+  }) {
     var message = errorMessage(body);
     if (message != null) {
-      return VAlbumException(message, status: status);
+      return VAlbumException(message,
+          status: status, url: url, reason: message);
     }
     return VAlbumException(
       platformMessages.httpFailure(what, status),
       status: status,
+      url: url,
     );
   }
 

@@ -27,6 +27,7 @@ import 'image_view.dart';
 import 'inbox_view.dart';
 import 'invitation.dart';
 import 'l10n/app_localizations.dart';
+import 'load_failure.dart';
 import 'listing_view.dart';
 import 'locales.dart';
 import 'notices.dart';
@@ -1688,7 +1689,14 @@ class VAlbumState extends State<VAlbumView>
     );
   }
 
-  /// The view of a load that failed, naming the server's own reason.
+  /// The view of a load that failed, in the reader's terms (issue #176).
+  ///
+  /// Every level of the app is a [VAlbumView], so this is the one place a
+  /// failed load of the listing, an album, an inbox, the viewer, a group, the
+  /// persons page or the trash page is shown: [LoadFailureView] names the
+  /// album or folder of the route and the server as the reader opened it,
+  /// quotes the server's own reason, and offers the start page, the server
+  /// settings and the retry; the technical address is behind "Details".
   ///
   /// A server refusing a device that is not signed in answers with the reason
   /// it refuses; that reason names a remedy the user reaches from here, so the
@@ -1703,34 +1711,13 @@ class VAlbumState extends State<VAlbumView>
     if (error is VAlbumException && error.status == 401) {
       return buildSignInRequired(error);
     }
-    var l10n = AppLocalizations.of(context)!;
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.appTitle)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                l10n.loadingFailed("${error?.toString()}"),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: () => openServerSettings(context),
-                icon: const Icon(Icons.settings),
-                label: Text(l10n.serverSettingsAction),
-              ),
-            ],
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: reload,
-        tooltip: l10n.reload,
-        child: const Icon(Icons.update),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+    return LoadFailureView(
+      route: route,
+      error: error,
+      server: appBaseOf(client.dataUrl),
+      onHome: navigator.home,
+      onRetry: reload,
+      onSettings: () => openServerSettings(context),
     );
   }
 
@@ -2062,19 +2049,11 @@ class VAlbumState extends State<VAlbumView>
   void showGroupView(ImageGroup group) =>
       navigator.go(AlternativesRoute(path, group.thumbnailName));
 
+  /// An [ErrorInfo] answered with a success status: the server's message is
+  /// all there is, shown by the same page as every failed load.
   @override
-  Widget visitErrorInfo(ErrorInfo self, BuildContext arg) {
-    var l10n = AppLocalizations.of(arg)!;
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.appTitle)),
-      body: Center(child: Text(l10n.loadingFailed(self.message))),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        tooltip: l10n.reload,
-        child: const Icon(Icons.update),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-    );
-  }
+  Widget visitErrorInfo(ErrorInfo self, BuildContext arg) =>
+      buildError(VAlbumException(self.message));
 
   @override
   Widget visitHeading(Heading self, BuildContext arg) {

@@ -560,6 +560,7 @@
   "noticePhotoLibraryUnreadable": "Die Fotobibliothek kann nicht gelesen werden.",
   "noticePhotoLibraryFailed": "Die Fotobibliothek konnte nicht gelesen werden: {problem}",
   "noticePhotoAccessDenied": "Der Zugriff auf die Fotobibliothek wurde verweigert. Erlauben Sie VAlbum in den Systemeinstellungen den Zugriff auf Fotos und versuchen Sie es dann erneut.",
+  "noticeMediaLocationNotGranted": "Öffnen Sie die App einmal, damit sie den Aufnahmeort der Fotos auslesen kann; bis dahin werden bei der Synchronisierung im Hintergrund keine Daten hochgeladen.",
   "noticePhotoLibraryOpenFailed": "Die Fotobibliothek kann nicht geöffnet werden: {problem}",
   "noticeAlbumNotOnDevice": "Der Inhalt von {name} befindet sich noch nicht auf diesem Gerät (noch in der Cloud?).",
   "noticeBackgroundScheduleFailed": "Die Hintergrundsynchronisierung konnte nicht geplant werden: {problem}",
@@ -663,5 +664,13 @@
   "viewerMarkFaceTooSmall": "Zeichnen Sie ein größeres Rechteck um das Gesicht der Person.",
   "personsChooserInAlbum": "In diesem Album",
   "personsChooserAll": "Alle Personen",
-  "noticeMediaLocationNotGranted": "Öffnen Sie die App einmal, damit sie den Aufnahmeort der Fotos auslesen kann; bis dahin werden bei der Synchronisierung im Hintergrund keine Daten hochgeladen."
+  "goToStartPage": "Zur Startseite",
+  "loadFailureDetails": "Details",
+  "loadFailureTechnical": "HTTP-{status} für {url}",
+  "loadNotFoundAlbum": "Das Album {name} wurde auf dem Server {server} nicht gefunden.",
+  "loadNotFoundEntry": "Das Album oder der Ordner {name} wurde auf dem Server {server} nicht gefunden.",
+  "loadNotFoundStart": "Die Startseite wurde auf dem Server {server} nicht gefunden.",
+  "loadFailedAlbum": "Das Album {name} konnte auf dem Server {server} nicht geöffnet werden.",
+  "loadFailedEntry": "Das Album oder der Ordner {name} konnte auf dem Server {server} nicht geöffnet werden.",
+  "loadFailedStart": "Die Startseite konnte auf dem Server {server} nicht geöffnet werden."
 }

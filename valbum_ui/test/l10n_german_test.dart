@@ -36,6 +36,7 @@ import 'devices_test.dart'
     show authOfUser, json, signedIn, storeSignedIn, threeDevices;
 import 'inbox_listing_test.dart' show listingWithCount;
 import 'inbox_view_test.dart' show inboxTree, pumpInbox;
+import 'load_failure_test.dart' as load;
 import 'move_test.dart' show recordingClient, treeAnswer;
 import 'persons_view_test.dart'
     show albumOf, authOf, editorClient, pumpEditor, selectFace;
@@ -349,6 +350,33 @@ void sliceThree() {
         inboxDayFormat(de).format(DateTime(2026, 3, 1)),
         isNot(inboxDayFormat(l10nOf(const Locale("en")))
             .format(DateTime(2026, 3, 1))),
+      );
+    });
+
+    testWidgets('the page of a load that failed (issue #176)',
+        (tester) async {
+      speakGerman(tester);
+      await load.pumpAt(
+        tester,
+        const ListingOrAlbumRoute(["valbum"]),
+        load.serverKnowingOnlyTheRoot(),
+      );
+
+      expect(
+        find.text(de.loadNotFoundEntry(load.appBase, "valbum")),
+        findsOneWidget,
+      );
+      expect(
+        find.text("Das Album oder der Ordner valbum wurde auf dem Server "
+            "${load.appBase} nicht gefunden."),
+        findsOneWidget,
+      );
+      expect(find.text(de.goToStartPage), findsOneWidget);
+      expect(find.text(de.loadFailureDetails), findsOneWidget);
+      expect(
+        find.text(l10nOf(const Locale("en"))
+            .loadNotFoundEntry(load.appBase, "valbum")),
+        findsNothing,
       );
     });
 

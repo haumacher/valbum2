@@ -722,11 +722,20 @@ public class ImageServlet extends HttpServlet {
 
 		File file = resourcePath.toFile();
 		if (!file.exists()) {
-			error404(context);
+			// Nothing is malformed about an address naming nothing: it is not found, and the
+			// answer says which segment is missing, see issue #176.
+			notFound(context, resourcePath);
 			return;
 		}
 
 		if (file.isDirectory()) {
+			if (type != null && !"json".equals(type)) {
+				// A folder is answered as JSON and nothing else; any other type is a request this
+				// server does not understand, not a folder that is missing, see issue #176.
+				LOG.warning("Rejecting the unknown type '" + type + "' at '" + pathInfo + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, unknownType(type));
+				return;
+			}
 			// The "view as" of the request survives the redirect, or the preview would jump back.
 			String query = "/?type=" + type + viewAsQuery(context);
 			if (pathInfo == null) {
@@ -776,8 +785,42 @@ public class ImageServlet extends HttpServlet {
 			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
 			serveImage(context, resourcePath, caller, clearance, _auth.minRating(caller, resourcePath, viewAs), viewAs);
 		} else {
-			error404(context);
+			// A file that is no photograph is no resource of this server: not found, as above.
+			notFound(context, resourcePath);
 		}
+	}
+
+	/**
+	 * The message an address naming no folder or file is answered with, see issue #176.
+	 *
+	 * @param segment
+	 *        The first segment of the address that names nothing.
+	 */
+	public static String notFound(String segment) {
+		return "There is no album, folder or file '" + segment + "' here.";
+	}
+
+	/** The message a request for a folder in a form this server does not know is refused with. */
+	public static String unknownType(String type) {
+		return "A folder cannot be answered as '" + type + "'; ask for '?type=json'.";
+	}
+
+	/**
+	 * Answers <code>404</code> with an {@link ErrorInfo} naming the first segment of the given path
+	 * that does not exist (or, where every folder above exists, the path's own name).
+	 */
+	private static void notFound(Context context, PathInfo path) throws IOException {
+		File missing = path.toFile();
+		File root = path.getBasePath().toFile();
+		while (true) {
+			File parent = missing.getParentFile();
+			if (parent == null || parent.equals(root) || parent.exists()) {
+				break;
+			}
+			missing = parent;
+		}
+		LOG.warning("Not found: '" + context.request().getPathInfo() + "' (at '" + missing.getName() + "').");
+		errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notFound(missing.getName()));
 	}
 
 	/** The <code>viewAs</code> parameter of the current request, ready to be appended to a URL. */

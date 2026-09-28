@@ -65,8 +65,14 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    expect(find.textContaining('Loading failed'), findsOneWidget);
-    expect(find.textContaining('HTTP 404'), findsOneWidget);
+    // In the reader's terms since issue #176: what was not found, and where;
+    // the status stands behind "Details", see `load_failure_test.dart`.
+    expect(
+      find.text('The start page was not found on the server '
+          'http://server/valbum/.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('HTTP 404'), findsNothing);
   });
 
   testWidgets('an ErrorInfo resource shows its message', (tester) async {
