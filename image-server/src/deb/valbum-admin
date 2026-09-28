@@ -1,0 +1,379 @@
+#!/bin/bash
+#
+# Runs a one-time job of the VAlbum server on its library (issue #180):
+#
+#     sudo valbum-admin create-space family --name "The Family"
+#     docker compose exec valbum valbum-admin create-space family
+#     valbum-admin help [<command>]
+#
+# The commands are the server's one-time jobs, named after their flag without the dashes
+# (--create-space is 'create-space'); their options are passed on to the job. Which jobs there are,
+# what they take and what they do is asked from the server itself ('valbum-server --list-jobs'), so
+# this script offers exactly the jobs the installed server knows. Where a job's option has a short
+# name here (create-space --name for the server's --space-name), the server's table says so; the
+# server's own flag is accepted as well.
+#
+# A job must not run beside the server, which holds the same stores, so this script
+#
+#   - on the Debian package (run it with sudo): stops valbum.service if it runs, runs the job as
+#     the user 'valbum' through valbum-server - configuration, Java and library from
+#     /etc/default/valbum, as the service has them - and starts the service again if it was
+#     running;
+#   - in the container image: asks the entry point, which supervises the server (see
+#     docker-entrypoint), to stop it, runs the job as PUID:PGID through the entry point, and lets
+#     it start the server again - the container keeps running throughout.
+#
+# Every step is said in one line, the job's exit code is passed on, and nothing is run when the
+# server cannot be stopped. --no-restart leaves the server stopped afterwards. valbum-admin never
+# starts a server that was not running before.
+#
+set -u
+
+SERVER=${VALBUM_SERVER:-/usr/bin/valbum-server}
+BACKEND=${VALBUM_ADMIN_BACKEND:-systemd}
+SERVICE=${VALBUM_SERVICE:-valbum.service}
+SERVICE_USER=${VALBUM_USER:-valbum}
+RUN_DIR=${VALBUM_RUN:-/run/valbum}
+ENTRYPOINT=${VALBUM_ENTRYPOINT:-/usr/local/bin/docker-entrypoint}
+STOP_SECONDS=${VALBUM_ADMIN_STOP_SECONDS:-60}
+
+say() {
+	echo "valbum-admin: $*"
+}
+
+# Refuses with a message on stderr; $1 is the exit code.
+refuse() {
+	code=$1
+	shift
+	echo "valbum-admin: $*" >&2
+	exit "$code"
+}
+
+# --- The server's table of jobs ----------------------------------------------------------------------
+
+declare -a JOBS=()
+declare -A JOB_FLAG=() JOB_ARG=() JOB_SUMMARY=() JOB_HELP=() JOB_OPTIONS=()
+declare -A OPT_FLAG=() OPT_VALUE=() OPT_HELP=() OPT_BY_FLAG=()
+
+# Splits $1 at every tab into the array 'fields', keeping empty fields.
+split() {
+	local rest=$1
+	fields=()
+	while [[ $rest == *$'\t'* ]]; do
+		fields+=("${rest%%$'\t'*}")
+		rest=${rest#*$'\t'}
+	done
+	fields+=("$rest")
+}
+
+load_jobs() {
+	local listing line
+	if ! listing=$("$SERVER" --list-jobs); then
+		refuse 1 "cannot ask the server which jobs it has ('$SERVER --list-jobs' failed)."
+	fi
+	{
+		IFS= read -r line
+		if [ "$line" != $'valbum-jobs\t1' ]; then
+			refuse 1 "'$SERVER --list-jobs' answered a listing this valbum-admin cannot read."
+		fi
+		while IFS= read -r line; do
+			split "$line"
+			case ${fields[0]} in
+				job)
+					JOBS+=("${fields[1]}")
+					JOB_FLAG[${fields[1]}]=${fields[2]}
+					JOB_ARG[${fields[1]}]=${fields[3]}
+					JOB_SUMMARY[${fields[1]}]=${fields[4]}
+					JOB_HELP[${fields[1]}]=${fields[5]}
+					JOB_OPTIONS[${fields[1]}]=
+					;;
+				option)
+					local key="${fields[1]} ${fields[2]}"
+					JOB_OPTIONS[${fields[1]}]+="${fields[2]} "
+					OPT_FLAG[$key]=${fields[3]}
+					OPT_VALUE[$key]=${fields[4]}
+					OPT_HELP[$key]=${fields[5]}
+					OPT_BY_FLAG["${fields[1]} ${fields[3]}"]=${fields[2]}
+					;;
+			esac
+		done
+	} <<<"$listing"
+}
+
+is_job() {
+	[ -n "${JOB_FLAG[$1]+set}" ]
+}
+
+wrap() {
+	fold -s -w "${1:-76}" | sed 's/ *$//'
+}
+
+usage_of() {
+	local job=$1 line name
+	line="valbum-admin $job"
+	[ -z "${JOB_ARG[$job]}" ] || line+=" ${JOB_ARG[$job]}"
+	for name in ${JOB_OPTIONS[$job]}; do
+		if [ -n "${OPT_VALUE[$job $name]}" ]; then
+			line+=" [$name ${OPT_VALUE[$job $name]}]"
+		else
+			line+=" [$name]"
+		fi
+	done
+	echo "$line [--no-restart]"
+}
+
+help_all() {
+	local job line
+	echo "Usage: valbum-admin <command> [options]"
+	echo "       valbum-admin help [<command>]"
+	echo
+	echo "Runs a one-time job of the VAlbum server on its library: stops the server, runs the job" \
+		"as the server's user and starts the server again." | wrap
+	echo
+	echo "Commands:"
+	for job in "${JOBS[@]}"; do
+		echo "${JOB_SUMMARY[$job]}" | wrap 55 | {
+			IFS= read -r line
+			printf '  %-19s %s\n' "$job" "$line"
+			while IFS= read -r line; do
+				printf '  %-19s %s\n' "" "$line"
+			done
+		}
+	done
+	echo
+	echo "'valbum-admin help <command>' shows the options of a command."
+}
+
+help_job() {
+	local job=$1 name
+	echo "Usage: $(usage_of "$job")"
+	echo
+	echo "${JOB_HELP[$job]}." | wrap
+	echo
+	echo "Options:"
+	for name in ${JOB_OPTIONS[$job]}; do
+		echo "  $name${OPT_VALUE[$job $name]:+ ${OPT_VALUE[$job $name]}}"
+		local text="${OPT_HELP[$job $name]}."
+		if [ "${OPT_FLAG[$job $name]}" != "$name" ]; then
+			text+=" The server's ${OPT_FLAG[$job $name]}."
+		fi
+		echo "$text" | wrap 72 | sed 's/^/      /'
+	done
+	echo "  --no-restart"
+	echo "      Leave the server stopped after the job."
+}
+
+# --- The command line --------------------------------------------------------------------------------
+
+NO_RESTART=
+declare -a COMMAND=()
+
+# Turns the arguments of job $1 into the server's arguments, in COMMAND.
+translate() {
+	local job=$1 arg name value key
+	shift
+	local -a positional=() options=()
+	while [ $# -gt 0 ]; do
+		arg=$1
+		shift
+		case $arg in
+			--no-restart)
+				NO_RESTART=1
+				;;
+			-h | --help)
+				help_job "$job"
+				exit 0
+				;;
+			--)
+				positional+=("$@")
+				break
+				;;
+			--*)
+				name=${arg%%=*}
+				if [ -n "${OPT_BY_FLAG[$job $name]+set}" ]; then
+					name=${OPT_BY_FLAG[$job $name]}
+				fi
+				key="$job $name"
+				if [ -z "${OPT_FLAG[$key]+set}" ]; then
+					refuse 2 "'$job' has no option '${arg%%=*}'; 'valbum-admin help $job' lists its options."
+				fi
+				if [ -z "${OPT_VALUE[$key]}" ]; then
+					[[ $arg != *=* ]] || refuse 2 "'$name' takes no value."
+					options+=("${OPT_FLAG[$key]}")
+				else
+					if [[ $arg == *=* ]]; then
+						value=${arg#*=}
+					elif [ $# -gt 0 ]; then
+						value=$1
+						shift
+					else
+						refuse 2 "'$name' needs a value: $name ${OPT_VALUE[$key]}."
+					fi
+					options+=("${OPT_FLAG[$key]}" "$value")
+				fi
+				;;
+			-?*)
+				refuse 2 "'$job' has no option '$arg'; 'valbum-admin help $job' lists its options."
+				;;
+			*)
+				positional+=("$arg")
+				;;
+		esac
+	done
+	if [ -z "${JOB_ARG[$job]}" ]; then
+		[ ${#positional[@]} -eq 0 ] || refuse 2 "'$job' takes no argument, got '${positional[0]}'. Usage: $(usage_of "$job")"
+		COMMAND=("${JOB_FLAG[$job]}" "${options[@]}")
+	else
+		[ ${#positional[@]} -eq 1 ] || refuse 2 "'$job' takes one ${JOB_ARG[$job]}. Usage: $(usage_of "$job")"
+		COMMAND=("${JOB_FLAG[$job]}" "${positional[0]}" "${options[@]}")
+	fi
+}
+
+# --- Running the job ---------------------------------------------------------------------------------
+
+STATUS=0
+
+# Runs "$@" in the foreground and sets STATUS. An interrupt (Ctrl-C) ends the job, not this script,
+# so that the server is started again all the same.
+run_job() {
+	trap : INT TERM
+	"$@"
+	STATUS=$?
+	trap - INT TERM
+	if [ "$STATUS" = 0 ]; then
+		say "'$JOB' finished."
+	else
+		say "'$JOB' failed with exit code $STATUS."
+	fi
+}
+
+systemd_job() {
+	if [ "$(id -u)" != 0 ]; then
+		refuse 1 "must be run as root, e.g. 'sudo valbum-admin $JOB ...': it stops and starts $SERVICE and runs the job as the user '$SERVICE_USER'."
+	fi
+	local state was_running=
+	state=$(systemctl is-active "$SERVICE" 2>/dev/null)
+	case $state in
+		inactive | failed | unknown | "")
+			say "$SERVICE is not running."
+			;;
+		*)
+			was_running=1
+			say "stopping $SERVICE."
+			if ! systemctl stop "$SERVICE"; then
+				refuse 1 "could not stop $SERVICE; nothing was run."
+			fi
+			state=$(systemctl is-active "$SERVICE" 2>/dev/null)
+			case $state in
+				inactive | failed | unknown | "") ;;
+				*) refuse 1 "$SERVICE is still '$state' after stopping it; nothing was run." ;;
+			esac
+			;;
+	esac
+
+	say "running '$JOB' as the user '$SERVICE_USER'."
+	run_job runuser -u "$SERVICE_USER" -- "$SERVER" "${COMMAND[@]}"
+
+	if [ -z "$was_running" ]; then
+		say "$SERVICE was not running before, so it stays stopped."
+	elif [ -n "$NO_RESTART" ]; then
+		say "$SERVICE stays stopped (--no-restart); 'sudo systemctl start ${SERVICE%.service}' starts it."
+	else
+		say "starting $SERVICE."
+		if ! systemctl start "$SERVICE"; then
+			echo "valbum-admin: could not start $SERVICE again; 'journalctl -u ${SERVICE%.service}' says why." >&2
+			[ "$STATUS" != 0 ] || STATUS=1
+		fi
+	fi
+}
+
+# The state the container's entry point writes: 'running <pid>' or 'paused'.
+container_state() {
+	cat "$RUN_DIR/state" 2>/dev/null
+}
+
+container_job() {
+	if [ ! -r "$RUN_DIR/state" ]; then
+		refuse 1 "the server in this container is not supervised by docker-entrypoint (no $RUN_DIR/state), so it cannot be stopped for a job; nothing was run."
+	fi
+	# The pause file is the lock as well: made with noclobber, it fails where another job holds it.
+	if ! (set -C; : >"$RUN_DIR/pause") 2>/dev/null; then
+		refuse 1 "another valbum-admin job is running (or $RUN_DIR/pause was left behind; 'docker compose restart valbum' clears it); nothing was run."
+	fi
+	say "stopping the server."
+	local waited=0
+	while [ "$(container_state)" != paused ]; do
+		# Asked again every five seconds, in case the server was just being started.
+		if [ $((waited % 5)) = 0 ] && ! kill -USR1 1 2>/dev/null; then
+			rm -f "$RUN_DIR/pause"
+			refuse 1 "cannot ask the container's entry point (PID 1) to stop the server; run valbum-admin as the container's own user ('docker compose exec' runs as root, which works). Nothing was run."
+		fi
+		if [ "$waited" -ge "$STOP_SECONDS" ]; then
+			rm -f "$RUN_DIR/pause"
+			refuse 1 "the server did not stop within $STOP_SECONDS seconds; nothing was run."
+		fi
+		sleep 1
+		waited=$((waited + 1))
+	done
+
+	say "running '$JOB' as the server's user."
+	run_job "$ENTRYPOINT" --run-once "${COMMAND[@]}"
+
+	if [ -n "$NO_RESTART" ]; then
+		say "the server stays stopped (--no-restart); 'docker compose restart valbum' starts it."
+		return
+	fi
+	say "starting the server."
+	rm -f "$RUN_DIR/pause"
+	waited=0
+	while [ "$(container_state)" = paused ] && [ "$waited" -lt 30 ]; do
+		sleep 1
+		waited=$((waited + 1))
+	done
+	if [ "$(container_state)" = paused ]; then
+		echo "valbum-admin: the server did not start again within 30 seconds; 'docker compose logs valbum' says why." >&2
+		[ "$STATUS" != 0 ] || STATUS=1
+	fi
+}
+
+# --- Main --------------------------------------------------------------------------------------------
+
+while [ $# -gt 0 ]; do
+	case $1 in
+		--no-restart) NO_RESTART=1 ;;
+		-h | --help) set -- help; break ;;
+		-*) refuse 2 "unknown option '$1'; 'valbum-admin help' lists the commands." ;;
+		*) break ;;
+	esac
+	shift
+done
+
+load_jobs
+
+if [ $# -eq 0 ]; then
+	help_all >&2
+	exit 2
+fi
+
+JOB=$1
+shift
+if [ "$JOB" = help ]; then
+	if [ $# -eq 0 ]; then
+		help_all
+	elif is_job "$1"; then
+		help_job "$1"
+	else
+		refuse 2 "there is no command '$1'; 'valbum-admin help' lists them."
+	fi
+	exit 0
+fi
+is_job "$JOB" || refuse 2 "there is no command '$JOB'; 'valbum-admin help' lists them."
+
+translate "$JOB" "$@"
+
+case $BACKEND in
+	systemd) systemd_job ;;
+	container) container_job ;;
+	*) refuse 1 "unknown VALBUM_ADMIN_BACKEND '$BACKEND' (systemd or container)." ;;
+esac
+exit "$STATUS"

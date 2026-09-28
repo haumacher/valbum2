@@ -4,7 +4,15 @@
 # browser loads first, served without signing in whatever VALBUM_AUTH says, so it tells a running
 # server from a hung or a crashed one without a token.
 #
+# While valbum-admin runs a one-time job the server is stopped on purpose (see docker-entrypoint);
+# the check then answers healthy, so that a long job never marks the container unhealthy - which
+# is what a watchdog on the NAS would restart it for, killing the job.
+#
 set -eu
+if [ -e "${VALBUM_RUN:-/run/valbum}/pause" ]; then
+	echo "paused for a valbum-admin job"
+	exit 0
+fi
 context=${VALBUM_CONTEXTPATH:-}
 context=${context#/}
 context=${context%/}

@@ -156,15 +156,14 @@ the `index.json` sidecars and the per-folder `.hashes.json`, `.valbum/` is the o
 server writes.
 
 **Several spaces.** A folder becomes a space when it carries `.valbum/space.json`. Create it with
-the server stopped:
+`valbum-admin` (below):
 
 ```
-java -jar image-server/target/image-server-jar-with-dependencies.jar --basepath /path/to/photos \
-    --create-space family --space-name "The Family" --anonymous none --faces off
+sudo valbum-admin create-space family --name "The Family" --anonymous none --faces off
 ```
 
 This writes `/path/to/photos/family/.valbum/space.json` — creating the folder if it is missing —
-and nothing else; the server does not start. `--space-name` is the name shown for the space (the
+and nothing else. `--name` is the name shown for the space (the
 folder name otherwise), `--anonymous public` lets visitors who are not signed in see its public
 photos (`none`, the default, shows them nothing), and `--faces on` switches on the face index
 (see *Faces* below). An existing folder is fine, empty or holding albums: it becomes the space with
@@ -177,7 +176,7 @@ As soon as one folder is a space, the server runs in multi-space mode (`--spaces
 default, follows the folders; `--spaces single|multi` says so outright). Every space is then
 reached at `<context>/<space>/` — the app — and `<context>/<space>/data/`, and its share links and
 invitations live below it (`<context>/<space>/s/<token>/`, `<context>/<space>/i/<token>/`). The
-albums directly in the base folder are **not** served in that mode, which is why `--create-space`
+albums directly in the base folder are **not** served in that mode, which is why `create-space`
 refuses a base folder that is a single library with albums, photos or users of its own: turn that
 library into a space first (below).
 
@@ -196,17 +195,16 @@ signed-in device yet, one sign-in code:
 Space 'family': sign the administrator in with the code ABCD-EFGH (valid 10 minutes, once; restart the server for a new one).
 ```
 
-(on a single-space server the line begins with *This library*). So after `--create-space`, restart
-the server and sign the new space's administrator in with the printed code at
-`<context>/<space>/`. `--admin-code <code>` fixes that code instead of a fresh one at every start.
+(on a single-space server the line begins with *This library*). So after `create-space`, sign the
+new space's administrator in with the code the restarted server printed, at `<context>/<space>/`. `--admin-code <code>` fixes that code instead of a fresh one at every start.
 Once the administrator has a device, nothing is printed for that space any more.
 
 **Turning one library into several spaces.** A library served as one space becomes a space folder
-in two explicit, rename-only steps, with the server stopped:
+in two explicit, rename-only steps:
 
 ```
-java -jar ... --basepath /path/to/photos --migrate-to-user <admin name>
-java -jar ... --basepath /path/to/photos --migrate-to-spaces
+sudo valbum-admin migrate-to-user <admin name>
+sudo valbum-admin migrate-to-spaces
 ```
 
 The first moves every entry of the base folder except `.valbum` and `.upload` into
@@ -216,7 +214,15 @@ one. The second makes every such folder a space with that user as its administra
 devices, and moves what the space model cannot carry — the old user store with the other members,
 the share links, the open invitations — aside into `.valbum/retired/<timestamp>/`, naming each in a
 printed report: invite the other members into the new space again. Nothing is deleted. After that,
-`--create-space` adds further spaces beside it.
+`create-space` adds further spaces beside it.
+
+**`valbum-admin`** runs these one-time jobs of the server: `sudo valbum-admin <command>` on the
+Debian package, `docker compose exec valbum valbum-admin <command>` in the container. It stops the
+server, runs the job as the server's user with the server's configuration, and starts the server
+again (`--no-restart` leaves it stopped); `valbum-admin help [<command>]` lists the commands and
+their options. Each command is the server flag without its dashes (`create-space` is
+`--create-space`), and the flags keep working with `java -jar`; the one short name is
+`create-space --name` for `--space-name`.
 
 `--migrate-to-user` is a leftover of an older per-user model: on its own it only moves the albums
 one folder down, and it has no use today other than as the first of these two steps.
@@ -234,7 +240,7 @@ you switch it on**, per space, by hand:
 ```
 
 in `<space>/.valbum/space.json` (any other value, and a missing one, means off) — for a new space,
-`--create-space <folder> --faces on` writes it. Processing the
+`valbum-admin create-space <folder> --faces on` writes it. Processing the
 biometrics of one's own family is the administrator's decision, not a default somebody is surprised
 by.
 
@@ -415,7 +421,8 @@ sudo apt install libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64
 (`libasound2` instead of `libasound2t64` before Debian trixie and Ubuntu 24.04.)
 
 The package installs the jar as `/usr/share/valbum/valbum.jar` with the wrapper
-`/usr/bin/valbum-server`, and enables and starts the systemd service `valbum`.
+`/usr/bin/valbum-server` and the one-time jobs' `/usr/bin/valbum-admin`, and enables and starts
+the systemd service `valbum`.
 
 ### Configuration
 
@@ -455,13 +462,11 @@ name the administrator should be known by. Missed the ten minutes? `sudo systemc
 restart valbum` prints a new one. A fixed code instead of a fresh one at every start:
 `VALBUM_OPTS="--admin-code ABCD-EFGH"` in `/etc/default/valbum`.
 
-To add a space (see *Users and spaces* above), stop the service, create it, and start
-again; the journal then shows the sign-in code for the new space's administrator:
+To add a space (see *Users and spaces* above); the journal then shows the sign-in code for the
+new space's administrator:
 
 ```
-sudo systemctl stop valbum
-sudo -u valbum valbum-server --create-space family --space-name "The Family"
-sudo systemctl start valbum
+sudo valbum-admin create-space family --name "The Family"
 ```
 
 ### Behind a reverse proxy
@@ -615,9 +620,9 @@ The runtime contract, which `compose.yaml` in this repository spells out:
 
 **Updating:** *Container Manager → Project → `valbum` → Action → Build* pulls the newer image and
 recreates the container; from a shell, `docker compose pull && docker compose up -d` in the project
-folder. The library stays where it is, in the photo folder. One-time jobs run with the same image
-while the server is stopped, e.g. a further space:
-`docker compose run --rm valbum --create-space family --space-name "The Family"`.
+folder. The library stays where it is, in the photo folder. One-time jobs run inside the running
+container, e.g. a further space: `docker compose exec valbum valbum-admin create-space family --name
+"The Family"`; the log then shows the new space's sign-in code.
 
 ## Contributing
 

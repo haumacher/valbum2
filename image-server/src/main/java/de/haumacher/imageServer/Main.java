@@ -12,7 +12,6 @@ import de.haumacher.imageServer.auth.LibraryMigration;
 import de.haumacher.imageServer.auth.LibraryMigration.MigrationRefused;
 import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.SpaceMode;
-import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.Spaces;
 import de.haumacher.imageServer.auth.SpacesMigration;
 import de.haumacher.imageServer.auth.UserStore;
@@ -76,34 +75,6 @@ public class Main {
 			"Whether this server hosts one space or several (issue #82): 'auto' decides from the "
 				+ "folder tree — multi as soon as one folder directly below the base folder carries "
 				+ "'.valbum/space.json', single otherwise — and 'single'/'multi' say so outright");
-		parser.addArgument("--migrate-to-spaces").action(net.sourceforge.argparse4j.impl.Arguments.storeTrue())
-			.help("Turn a library migrated per user (--migrate-to-user) into a multi-space server: "
-				+ "every user folder becomes a space with that user as its admin, and what the space "
-				+ "model cannot represent is moved aside and reported. A one-time, explicit, "
-				+ "rename-only step; the server is not started afterwards");
-		parser.addArgument("--replace-originals").type(new FileArgumentType()).help(
-			"Put the originals in the given folder in the place of the redacted copies a phone "
-				+ "uploaded (issue #167): every file whose name the library holds exactly once and "
-				+ "whose picture (JPEG scan data) or video (media data) is the same is moved into its "
-				+ "album, the redacted copy set aside in <space>/.valbum/replaced/<timestamp>/, and "
-				+ "the missing position and camera filled in. Run it with the server stopped; the "
-				+ "server is not started afterwards");
-		parser.addArgument("--dry-run").action(net.sourceforge.argparse4j.impl.Arguments.storeTrue())
-			.help("With --replace-originals: print what would be replaced and skipped, and touch nothing");
-		parser.addArgument("--create-space").metavar("FOLDER").help(
-			"Make the folder of that name directly below the base folder a space (issue #175): write "
-				+ "its .valbum/space.json, creating the folder if it is missing; an existing folder "
-				+ "becomes the space with its albums. Refused on a base folder that is a single-space "
-				+ "library with albums of its own. The server is not started; its next start prints "
-				+ "the sign-in code for the new space's administrator");
-		parser.addArgument("--space-name").metavar("NAME").help(
-			"With --create-space: the name to show for the space (the folder name otherwise)");
-		parser.addArgument("--anonymous").choices(SpaceStore.ANONYMOUS_NONE, SpaceStore.ANONYMOUS_PUBLIC).help(
-			"With --create-space: whether visitors who are not signed in see the public photos of the "
-				+ "space ('public') or nothing ('none', the default)");
-		parser.addArgument("--faces").choices(SpaceStore.FACES_ON, SpaceStore.FACES_OFF).help(
-			"With --create-space: whether the server looks for faces in the photos of the space "
-				+ "(issue #124); 'off' is the default");
 		parser.addArgument("--preview-threads").type(type).help(
 			"How many thumbnails are generated at the same time (issue #69); the default is the "
 				+ "number of processors, and the system property 'valbum.previewThreads' does the "
@@ -117,10 +88,10 @@ public class Main {
 				+ " characters of '" + DeviceCodeStore.ALPHABET + "', a dash between groups allowed. "
 				+ "It is issued anew at every start while the administrator has no device, and never "
 				+ "once they have one");
-		parser.addArgument("--migrate-to-user").help(
-			"Move the albums at the base folder into a folder of that name and make it the library "
-				+ "owner's space (issue #45). A one-time, explicit rename-only move; the server is "
-				+ "not started afterwards");
+		parser.addArgument("--list-jobs").action(net.sourceforge.argparse4j.impl.Arguments.storeTrue()).help(
+			"Print the one-time jobs of this server and their options in a machine-readable form "
+				+ "(issue #180, read by valbum-admin) and exit");
+		Jobs.addTo(parser);
 
 		Namespace ns;
 		try {
@@ -129,7 +100,14 @@ public class Main {
 			System.exit(-1);
 			return;
 		} catch (ArgumentParserException ex) {
+			parser.handleError(ex);
 			System.exit(-1);
+			return;
+		}
+
+		if (Boolean.TRUE.equals(ns.getBoolean("list_jobs"))) {
+			Jobs.list(System.out);
+			System.exit(0);
 			return;
 		}
 
@@ -147,54 +125,22 @@ public class Main {
 			return;
 		}
 
-		String migrateTo = ns.getString("migrate_to_user");
-		if (migrateTo != null) {
-			File basePath = ns.get("basepath");
-			System.exit(migrateLibrary(basePath.toPath(), migrateTo));
+		Integer job = Jobs.run(ns);
+		if (job != null) {
+			System.exit(job.intValue());
 			return;
-		}
-
-		if (Boolean.TRUE.equals(ns.getBoolean("migrate_to_spaces"))) {
-			File basePath = ns.get("basepath");
-			System.exit(migrateToSpaces(basePath.toPath()));
-			return;
-		}
-
-		File replaceFrom = ns.get("replace_originals");
-		boolean dryRun = Boolean.TRUE.equals(ns.getBoolean("dry_run"));
-		if (replaceFrom != null || dryRun) {
-			if (replaceFrom == null) {
-				System.err.println("--dry-run only applies to --replace-originals <folder>.");
-				System.exit(1);
-				return;
-			}
-			File basePath = ns.get("basepath");
-			System.exit(replaceOriginals(basePath.toPath(), replaceFrom.toPath(),
-				SpaceMode.parse(ns.getString("spaces")), dryRun));
-			return;
-		}
-
-		String createSpace = ns.getString("create_space");
-		if (createSpace != null) {
-			File basePath = ns.get("basepath");
-			System.exit(createSpace(basePath.toPath(), createSpace, ns.getString("space_name"),
-				orDefault(ns.getString("anonymous"), SpaceStore.ANONYMOUS_NONE),
-				orDefault(ns.getString("faces"), SpaceStore.FACES_OFF), SpaceMode.parse(ns.getString("spaces"))));
-			return;
-		}
-		for (String option : new String[] { "space_name", "anonymous", "faces" }) {
-			if (ns.getString(option) != null) {
-				System.err.println("--" + option.replace('_', '-') + " only applies to --create-space <folder>.");
-				System.exit(1);
-				return;
-			}
 		}
 
 		new Main(ns).start();
 	}
 
-	private static String orDefault(String value, String fallback) {
-		return value == null ? fallback : value;
+	static Path basePath(Namespace ns) {
+		File basePath = ns.get("basepath");
+		return basePath.toPath();
+	}
+
+	static SpaceMode spaceMode(Namespace ns) {
+		return SpaceMode.parse(ns.getString("spaces"));
 	}
 
 	/**
@@ -285,18 +231,12 @@ public class Main {
 	}
 
 	/**
-	 * Runs the explicit library migration, see {@link LibraryMigration}.
-	 *
-	 * @return The process exit code: <code>0</code> if the library was moved, non-zero if the
-	 *         migration was refused (nothing was moved then).
-	 */
-	/**
 	 * Runs the explicit migration to the space model, see {@link SpacesMigration}.
 	 *
 	 * @return The process exit code: <code>0</code> if the library was migrated (or already is one
 	 *         space), non-zero if the migration was refused (nothing was moved then).
 	 */
-	private static int migrateToSpaces(Path basePath) {
+	static int migrateToSpaces(Path basePath) {
 		try {
 			SpacesMigration.Report report = SpacesMigration.migrate(basePath);
 			System.out.println("Migrating '" + basePath + "' to the space model:");
@@ -319,7 +259,13 @@ public class Main {
 		}
 	}
 
-	private static int migrateLibrary(Path basePath, String userName) {
+	/**
+	 * Runs the explicit library migration, see {@link LibraryMigration}.
+	 *
+	 * @return The process exit code: <code>0</code> if the library was moved, non-zero if the
+	 *         migration was refused (nothing was moved then).
+	 */
+	static int migrateLibrary(Path basePath, String userName) {
 		try {
 			List<String> moved = LibraryMigration.migrate(basePath, userName);
 			System.out.println("Moved " + moved.size() + " entries of '" + basePath + "' into '"

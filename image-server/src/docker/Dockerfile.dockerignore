@@ -5,3 +5,4 @@
 !docker/healthcheck
 !docker/check-libraries
 !deb/valbum-server
+!deb/valbum-admin

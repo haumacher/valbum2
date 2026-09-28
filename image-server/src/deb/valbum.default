@@ -37,7 +37,7 @@ VALBUM_AUTH=writes
 # own, with its own albums, users and sign-in:
 #   auto   - follow the folders: several spaces as soon as one folder directly
 #            below VALBUM_BASEPATH is a space (carries .valbum/space.json, which
-#            'valbum-server --create-space <folder>' writes), one otherwise
+#            'valbum-admin create-space <folder>' writes), one otherwise
 #   single - the library folder is the one space, whatever the folders say
 #   multi  - every space is a folder below the library folder, reached at
 #            http://<host>:<port>/<context>/<folder>/ ; the albums directly in
@@ -72,12 +72,11 @@ JAVA_OPTS=
 #   JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
 JAVA_HOME=
 
-# One-time jobs are run with the same wrapper, so they use the configuration
-# above. Adding a space, for instance, is:
+# One-time jobs are run with valbum-admin, which stops the service, runs the
+# job as the user "valbum" with the configuration above, and starts the
+# service again. Adding a space, for instance, is:
 #
-#   sudo systemctl stop valbum
-#   sudo -u valbum valbum-server --create-space family --space-name "The Family"
-#   sudo systemctl start valbum
+#   sudo valbum-admin create-space family --name "The Family"
 #
 # and the journal then shows the sign-in code for the administrator of the new
-# space (journalctl -u valbum).
+# space (journalctl -u valbum). 'valbum-admin help' lists the jobs.

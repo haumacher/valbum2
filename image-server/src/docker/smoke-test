@@ -4,7 +4,11 @@
 # promises (#174): the app base, an album, the seat code in the log, a video rendition made inside
 # the container (which proves the FFmpeg libraries), the face index loaded and detecting the
 # fixture portraits (which proves the OpenCV libraries), the health check, and that every file the
-# server wrote into the mounted folder belongs to PUID:PGID.
+# server wrote into the mounted folder belongs to PUID:PGID. A second container, started on an
+# empty library as a new installation is, shows that valbum-admin runs a one-time job inside the
+# running container (#180): the server is stopped, the first space created as PUID:PGID, and the
+# server back with the new space's seat code in the log;
+# and that 'docker stop' ends both containers through the forwarded SIGTERM, not a SIGKILL.
 #
 # Run by CI's Docker job and by the release before anything is pushed; usable by hand as well:
 #
@@ -19,6 +23,8 @@ IMAGE=$1
 PLATFORM=${2:-linux/amd64}
 PORT=${SMOKE_PORT:-18174}
 NAME=valbum-smoke-$$
+ADMIN_NAME=$NAME-admin
+ADMIN_PORT=$((PORT + 1))
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 FIXTURES=$ROOT/image-server/src/test/fixtures
 WORK=$(mktemp -d)
@@ -34,7 +40,7 @@ cleanup() {
 		echo "--- container log"
 		docker logs "$NAME" 2>&1 | tail -60 || true
 	fi
-	docker rm -f "$NAME" >/dev/null 2>&1 || true
+	docker rm -f "$NAME" "$ADMIN_NAME" >/dev/null 2>&1 || true
 	# Whatever the container wrote belongs to the caller, so this needs no root.
 	rm -rf "$WORK"
 	exit "$status"
@@ -123,5 +129,66 @@ echo "smoke-test: faces detected in all four portraits"
 foreign=$(find "$LIBRARY" -newer "$WORK/started" \( ! -user "$(id -u)" -o ! -group "$(id -g)" \) | head -5)
 [ -z "$foreign" ] || fail "files not owned by $(id -u):$(id -g): $foreign"
 echo "smoke-test: all $(find "$LIBRARY" -newer "$WORK/started" | wc -l) files written belong to $(id -u):$(id -g)"
+
+# 'docker stop' sends SIGTERM to the entry point, which forwards it to the server: the container
+# ends with the server's own status (143), long before Docker's SIGKILL (137) after 10 s.
+stops_cleanly() {
+	start=$(date +%s)
+	docker stop -t 10 "$1" >/dev/null
+	took=$(($(date +%s) - start))
+	exit_code=$(docker inspect --format '{{.State.ExitCode}}' "$1")
+	[ "$exit_code" != 137 ] || fail "'docker stop' had to kill $2 (exit code 137)"
+	[ "$took" -lt 9 ] || fail "'docker stop' took $took s for $2"
+	echo "smoke-test: 'docker stop' ended $2 in $took s (exit code $exit_code)"
+}
+
+# --- valbum-admin in a running container (#180): the first space of a fresh installation ------
+# Started once on an empty folder, the library holds the unclaimed administrator seat, which is no
+# content: create-space makes the first space, and the server comes back serving it.
+SPACES=$WORK/spaces
+mkdir -p "$SPACES"
+docker run -d --name "$ADMIN_NAME" --platform "$PLATFORM" -p "127.0.0.1:$ADMIN_PORT:8080" \
+	-e PUID="$(id -u)" -e PGID="$(id -g)" -v "$SPACES:/photos" "$IMAGE" >/dev/null
+seat_codes() {
+	docker logs "$ADMIN_NAME" 2>&1 | grep -c "$1: sign the administrator in with the code" || true
+}
+starts() {
+	docker logs "$ADMIN_NAME" 2>&1 | grep -c "^Image server started" || true
+}
+first_start() { [ "$(seat_codes "This library")" -ge 1 ]; }
+wait_for 120 first_start || fail "the second container did not start on the empty library"
+[ -f "$SPACES/.valbum/users.json" ] || fail "the first start wrote no administrator seat"
+
+help=$(docker exec "$ADMIN_NAME" valbum-admin help) || fail "'valbum-admin help' failed"
+grep -q '^  create-space ' <<<"$help" || fail "'valbum-admin help' does not offer create-space"
+echo "smoke-test: 'valbum-admin help' offers create-space"
+
+if ! docker exec "$ADMIN_NAME" valbum-admin create-space family --name "The Family" >"$WORK/admin.out" 2>&1; then
+	cat "$WORK/admin.out"
+	fail "'valbum-admin create-space' failed"
+fi
+sed 's/^/smoke-test:   /' "$WORK/admin.out"
+grep -q '"The Family"' "$SPACES/family/.valbum/space.json" || fail "create-space wrote no space.json naming 'The Family'"
+[ "$(stat -c %u:%g "$SPACES/family/.valbum/space.json")" = "$(id -u):$(id -g)" ] \
+	|| fail "the job did not run as $(id -u):$(id -g)"
+echo "smoke-test: valbum-admin create-space wrote the space as $(id -u):$(id -g)"
+
+family_seat() { [ "$(seat_codes "Space 'family'")" -ge 1 ]; }
+wait_for 120 family_seat || fail "the server did not come back with a seat code for the new space"
+[ "$(docker inspect --format '{{.State.Status}}' "$ADMIN_NAME")" = running ] || fail "the container stopped during the job"
+[ "$(starts)" -ge 2 ] || fail "the server was not restarted (one start only in the log)"
+family_page() {
+	curl -fsS "http://127.0.0.1:$ADMIN_PORT/valbum/family/" 2>/dev/null | grep -q '<base href="/valbum/family/">'
+}
+wait_for 60 family_page || fail "the new space's app base does not answer"
+echo "smoke-test: the server came back in the same container, serving the new space, its seat code in the log"
+
+# A job that leaves the server stopped: the health check says healthy all the same.
+docker exec "$ADMIN_NAME" valbum-admin create-space other --no-restart >/dev/null || fail "'create-space --no-restart' failed"
+health=$(docker exec "$ADMIN_NAME" healthcheck) || fail "the health check fails while paused"
+grep -q paused <<<"$health" || fail "the health check does not answer healthy while paused"
+echo "smoke-test: the health check answers healthy while the server is stopped for a job"
+stops_cleanly "$ADMIN_NAME" "the paused container"
+stops_cleanly "$NAME" "the running server"
 
 echo "smoke-test: $IMAGE ($PLATFORM) passed"

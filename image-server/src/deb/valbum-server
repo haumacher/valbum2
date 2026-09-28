@@ -6,7 +6,10 @@
 # hand, for example:
 #
 #     valbum-server --help
-#     sudo -u valbum valbum-server --create-space family
+#
+# The server's one-time jobs (--create-space and the like) are run with
+# valbum-admin, which stops and starts the service around them and runs this
+# script as the user 'valbum' (issue #180); the flags work here as well.
 #
 # Arguments given on the command line are passed to the server after the
 # configured ones, so they override what /etc/default/valbum says.
@@ -111,7 +114,8 @@ fi
 # mounted - is refused instead of served empty: the server would otherwise start
 # writing its sidecar files next to nothing. Under systemd (Restart=on-failure)
 # the service simply tries again a few seconds later, until the disk is mounted.
-if [ ! -d "$VALBUM_BASEPATH" ]; then
+# Listing the one-time jobs (valbum-admin help) reads no library.
+if [ ! -d "$VALBUM_BASEPATH" ] && [ "${1:-}" != --list-jobs ]; then
 	echo "valbum-server: the library folder '$VALBUM_BASEPATH' does not exist or is not a directory (VALBUM_BASEPATH in $CONFIG)." >&2
 	exit 1
 fi

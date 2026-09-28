@@ -585,6 +585,25 @@ public class DeviceCodeStore {
 		return _clock;
 	}
 
+	/**
+	 * Reads the codes of the album tree rooted at the given path.
+	 *
+	 * @return The codes, empty where there is no store.
+	 * @throws IOException
+	 *         If the store cannot be read (where the constructor would quietly honour no code).
+	 */
+	public static List<Code> read(Path basePath) throws IOException {
+		Path file = basePath.resolve(UserStore.DIRECTORY_NAME).resolve(FILE_NAME);
+		if (!Files.exists(file)) {
+			return List.of();
+		}
+		try (Reader reader = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8)) {
+			return readCodes(new JsonReader(new ReaderAdapter(reader)));
+		} catch (RuntimeException ex) {
+			throw new IOException("Cannot read '" + file + "': " + ex.getMessage(), ex);
+		}
+	}
+
 	/** Every code this store still holds, in the order they were issued. */
 	public synchronized List<Code> getCodes() {
 		return Collections.unmodifiableList(new ArrayList<>(_codes));

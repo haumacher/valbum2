@@ -1,12 +1,27 @@
 #!/bin/sh
 #
-# The entry point of the VAlbum container image (#174).
+# The entry point of the VAlbum container image (#174, #180).
 #
 # It decides who the server runs as and then hands over to valbum-server, the start script of the
 # Debian package, which turns the VALBUM_* variables into server arguments - one place for that,
 # whether the server runs under systemd or in a container. Arguments given to the container
 # ('docker run ... valbum --create-space family') are passed on to the server after the
 # configured ones, exactly as valbum-server passes its own.
+#
+# It stays PID 1 and supervises the server, so that valbum-admin can run a one-time job inside the
+# running container ('docker compose exec valbum valbum-admin create-space family', #180):
+#
+#   - the server runs as a child; SIGTERM and SIGINT are forwarded to it, and the entry point
+#     exits with the server's status, so 'docker stop' takes as long as the server's own shutdown
+#     and a server that ends by itself ends the container, as before;
+#   - valbum-admin creates $VALBUM_RUN/pause and sends SIGUSR1: the entry point stops the server,
+#     writes 'paused' into $VALBUM_RUN/state and waits, polling once a second, until the file is
+#     gone - then it starts the server again, which prints the seat code of a new space into the
+#     container log. While the file is there the health check answers healthy, so a long job
+#     never makes the container 'unhealthy'. A pause left behind by a container stopped during a
+#     job is removed at the next start;
+#   - '--run-once <server arguments>' runs the server - or a job - once, as the user chosen
+#     below, without supervising: that is how each server start and valbum-admin's job are run.
 #
 # Who the server runs as:
 #
@@ -27,6 +42,66 @@
 # comes after it, so an -Xmx there - or another -XX:MaxRAMPercentage - wins.
 #
 set -eu
+
+RUN=${VALBUM_RUN:-/run/valbum}
+
+# --- The supervisor (PID 1) ----------------------------------------------------------------------
+
+state() {
+	echo "$1" >"$RUN/state.tmp" && mv -f "$RUN/state.tmp" "$RUN/state"
+}
+
+supervise() {
+	if ! mkdir -p "$RUN" 2>/dev/null || [ ! -w "$RUN" ]; then
+		echo "valbum: cannot write '$RUN'; the server runs unsupervised and valbum-admin cannot stop it for a job."
+		exec "$0" --run-once "$@"
+	fi
+	rm -f "$RUN/pause"
+	child=
+	stopping=
+	trap 'stopping=1; [ -z "$child" ] || kill -TERM "$child" 2>/dev/null || true' TERM INT
+	trap '[ -z "$child" ] || kill -TERM "$child" 2>/dev/null || true' USR1
+	while :; do
+		if [ -e "$RUN/pause" ]; then
+			state paused
+			echo "valbum: the server is stopped for a valbum-admin job."
+			while [ -e "$RUN/pause" ] && [ -z "$stopping" ]; do
+				sleep 1
+			done
+			[ -z "$stopping" ] || exit 143
+			echo "valbum: the job is done; starting the server again."
+		fi
+		"$0" --run-once "$@" &
+		child=$!
+		state "running $child"
+		# A pause or a stop that arrived while the server was being started.
+		if [ -e "$RUN/pause" ] || [ -n "$stopping" ]; then
+			kill -TERM "$child" 2>/dev/null || true
+		fi
+		# wait returns early for every trapped signal; the child is waited for until it is gone.
+		while :; do
+			if wait "$child"; then
+				status=0
+			else
+				status=$?
+			fi
+			kill -0 "$child" 2>/dev/null || break
+		done
+		child=
+		if [ -z "$stopping" ] && [ -e "$RUN/pause" ]; then
+			continue
+		fi
+		state "exited $status"
+		exit "$status"
+	done
+}
+
+if [ "${1:-}" != --run-once ]; then
+	supervise "$@"
+fi
+shift
+
+# --- One run of the server, or of a job ----------------------------------------------------------
 
 VALBUM_BASEPATH=${VALBUM_BASEPATH:-/photos}
 export VALBUM_BASEPATH

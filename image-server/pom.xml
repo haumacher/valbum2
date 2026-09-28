@@ -194,6 +194,17 @@
 											</mapper>
 										</data>
 										<data>
+											<src>${project.basedir}/src/deb/valbum-admin</src>
+											<type>file</type>
+											<dst>/usr/bin/valbum-admin</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>755</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
 											<src>${project.basedir}/src/deb/valbum.default</src>
 											<type>file</type>
 											<dst>/etc/default/valbum</dst>

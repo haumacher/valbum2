@@ -517,6 +517,26 @@ public class UserStore {
 		load();
 	}
 
+	/**
+	 * Reads the users of the album tree rooted at the given path, and writes nothing (unlike the
+	 * constructor, which may give old devices their ids or take over a legacy store).
+	 *
+	 * @return The users, empty where there is no store.
+	 * @throws IOException
+	 *         If the store cannot be read.
+	 */
+	public static List<User> read(Path basePath) throws IOException {
+		Path file = basePath.resolve(DIRECTORY_NAME).resolve(FILE_NAME);
+		if (!Files.exists(file)) {
+			return List.of();
+		}
+		try (Reader reader = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8)) {
+			return readUsers(new JsonReader(new ReaderAdapter(reader)));
+		} catch (RuntimeException ex) {
+			throw new IOException("Cannot read '" + file + "': " + ex.getMessage(), ex);
+		}
+	}
+
 	/** The file this store is persisted in. */
 	public Path getFile() {
 		return _file;

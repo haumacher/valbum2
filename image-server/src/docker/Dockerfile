@@ -7,8 +7,9 @@
 # all-platform JAR (which carries the natives of every OS and CPU). Build context and inputs:
 #
 #   - the build context is image-server/src, of which Dockerfile.dockerignore admits only this
-#     directory's scripts and deb/valbum-server - the same start script the Debian package runs,
-#     so one place turns the VALBUM_* variables into server arguments;
+#     directory's scripts, deb/valbum-server - the same start script the Debian package runs,
+#     so one place turns the VALBUM_* variables into server arguments - and deb/valbum-admin,
+#     the front of the one-time jobs (#180);
 #   - the named context 'jars' is a directory holding one platform JAR per architecture, named
 #     after Docker's TARGETARCH: amd64.jar (built with -Djavacpp.platform=linux-x86_64) and
 #     arm64.jar (-Djavacpp.platform=linux-arm64). Each is the image-server-<platform>-jar-with-
@@ -61,6 +62,7 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --chmod=755 deb/valbum-server /usr/bin/valbum-server
+COPY --chmod=755 deb/valbum-admin /usr/bin/valbum-admin
 COPY --chmod=755 docker/docker-entrypoint /usr/local/bin/docker-entrypoint
 COPY --chmod=755 docker/healthcheck /usr/local/bin/healthcheck
 COPY --chmod=755 docker/check-libraries /usr/local/bin/check-libraries
@@ -79,9 +81,13 @@ ENV VALBUM_JAR=/opt/valbum/valbum.jar \
 	VALBUM_SPACES=auto \
 	VALBUM_OPTS= \
 	JAVA_OPTS= \
-	VALBUM_HEAP_PERCENT=50
+	VALBUM_HEAP_PERCENT=50 \
+	VALBUM_ADMIN_BACKEND=container \
+	VALBUM_RUN=/run/valbum
 
-RUN mkdir -p /photos
+# /run/valbum holds the supervisor's state and valbum-admin's pause file (see docker-entrypoint);
+# writable by everybody, because the container may run as any user ('user:' in compose).
+RUN mkdir -p /photos /run/valbum && chmod 0777 /run/valbum
 
 EXPOSE 8080
 

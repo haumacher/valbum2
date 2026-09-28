@@ -53,7 +53,8 @@ import java.util.Set;
  * context root ({@link #RESERVED});</li>
  * <li>a folder that is a space already, and a file of that name;</li>
  * <li>a base folder that is served as one space and has content of its own — an album, a photo, or
- * a user store at its root. Under <code>--spaces auto</code> the first space flips the server to
+ * a user store beyond the unclaimed seat of its first start ({@link #isClaimed(Path)}) at its
+ * root. Under <code>--spaces auto</code> the first space flips the server to
  * multi-space mode, and every album at the root would vanish from its address; the library has to
  * be turned into spaces first, see {@link #singleLibrary(List, boolean)}.</li>
  * </ul>
@@ -229,7 +230,7 @@ public final class SpaceCreation {
 		}
 		Collections.sort(spaces);
 		Collections.sort(content);
-		boolean users = Files.exists(basePath.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME));
+		boolean users = isClaimed(basePath);
 		// Only 'auto' flips: a forced multi-space server serves no root album already.
 		if (mode == null && spaces.isEmpty() && (!content.isEmpty() || users)) {
 			throw new Refused(singleLibrary(content, users));
@@ -258,6 +259,10 @@ public final class SpaceCreation {
 		}
 		if (spaces.isEmpty()) {
 			report.say("This is the first space: the server switches to multi-space mode at its next start.");
+			if (Files.exists(basePath.resolve(UserStore.DIRECTORY_NAME).resolve(UserStore.FILE_NAME))) {
+				report.say("The base folder's own administrator seat, which nobody claimed, stays in "
+					+ UserStore.DIRECTORY_NAME + "/ unused: no address reaches it in multi-space mode.");
+			}
 		} else {
 			report.say("The other space(s): " + String.join(", ", spaces) + ".");
 		}
@@ -267,6 +272,50 @@ public final class SpaceCreation {
 			+ folder + "' at start-up, valid "
 			+ DeviceCodeStore.LIFETIME_MINUTES + " minutes; --admin-code fixes it.");
 		return report;
+	}
+
+	/**
+	 * Whether the stores in the base folder's <code>.valbum</code> hold anything a first start of a
+	 * fresh library did not write there itself.
+	 *
+	 * <p>
+	 * Every first start writes the seat of the space's administrator (issue #89): a
+	 * <code>users.json</code> with one user who has no name, no device and no invitation, and a
+	 * <code>device-codes.json</code> with the seat codes the server issued for them. That is an
+	 * empty library, and a first space may be created beside it; the seat is left where it is, where
+	 * no address of a multi-space server reaches it. Anything more is somebody's: a named user, a
+	 * device, a pending invitation, a code a device issued, share links, an older store - and
+	 * refuses, as does a store that cannot be read.
+	 * </p>
+	 */
+	static boolean isClaimed(Path basePath) {
+		Path state = basePath.resolve(UserStore.DIRECTORY_NAME);
+		for (String store : List.of(UserStore.LEGACY_FILE_NAME, ShareStore.FILE_NAME, InvitationStore.FILE_NAME)) {
+			if (Files.exists(state.resolve(store))) {
+				return true;
+			}
+		}
+		try {
+			List<UserStore.User> users = UserStore.read(basePath);
+			if (users.size() > 1) {
+				return true;
+			}
+			for (UserStore.User user : users) {
+				if (!user.getName().isEmpty() || !user.getDevices().isEmpty() || !user.getInvitation().isEmpty()
+					|| !user.getInvitedBy().isEmpty()) {
+					return true;
+				}
+			}
+			for (DeviceCodeStore.Code code : DeviceCodeStore.read(basePath)) {
+				if (!DeviceCodeStore.SERVER_ISSUER.equals(code.getIssuedBy()) || !code.getUser().isEmpty()
+					|| code.isBackup() || code.isInvitation()) {
+					return true;
+				}
+			}
+			return false;
+		} catch (IOException ex) {
+			return true;
+		}
 	}
 
 	/** What an existing folder that becomes the space holds, in one line. */

@@ -193,15 +193,92 @@ public class TestCreateSpace extends TestCase {
 		assertTrue(message, message.contains("loose.jpg"));
 	}
 
-	public void testASingleSpaceLibraryWithUsersIsRefused() throws Exception {
-		// An empty library somebody signed into: the seat of issue #89 lives at the base folder.
-		new de.haumacher.imageServer.auth.AuthService(AuthMode.WRITES, _base);
-		assertTrue(Files.exists(_base.resolve(".valbum/users.json")));
+	/**
+	 * The flow of a new installation: the server started once on an empty folder, then the first
+	 * space. What that start left - the unclaimed seat of issue #89 and its seat code - is no
+	 * content, and it stays where it is.
+	 */
+	public void testAFirstSpaceAfterTheFirstStartOfAnEmptyLibrary() throws Exception {
+		firstStart();
+		byte[] seat = Files.readAllBytes(_base.resolve(".valbum/users.json"));
+
+		SpaceCreation.Report report = create("family", "", SpaceStore.ANONYMOUS_NONE, SpaceStore.FACES_OFF, null);
+
+		assertTrue(report.toString(), report.toString().contains("administrator seat, which nobody claimed"));
+		assertTrue("The seat is left as it was.",
+			java.util.Arrays.equals(seat, Files.readAllBytes(_base.resolve(".valbum/users.json"))));
+		Spaces spaces = Spaces.detect(_base, null, AuthMode.WRITES, InviteMode.MEMBERS);
+		assertEquals(SpaceMode.MULTI, spaces.getMode());
+		assertEquals(List.of("family"), spaces.segments());
+		List<String> lines = Main.reportSpace(spaces, spaces.bySegment("family"), null);
+		assertTrue(lines.toString(),
+			lines.stream().anyMatch(line -> line.startsWith("Space 'family': sign the administrator in with the code")));
+	}
+
+	public void testALibrarySomebodySignedIntoIsRefused() throws Exception {
+		String code = firstStart();
+		_server = Main.createServer(0, "/valbum", _base.toFile(), null,
+			Spaces.detect(_base, null, AuthMode.WRITES, InviteMode.MEMBERS));
+		_server.start();
+		int port = ((ServerConnector) _server.getConnectors()[0]).getLocalPort();
+		HttpResponse<String> paired = HttpClient.newHttpClient().send(
+			HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/valbum/data/?action=pair"))
+				.header("Content-Type", "application/json")
+				.POST(HttpRequest.BodyPublishers.ofString(Codes.pairRequest(code, "Laptop", "Anna"))).build(),
+			HttpResponse.BodyHandlers.ofString());
+		assertEquals(paired.body(), 200, paired.statusCode());
+		_server.stop();
+		_server = null;
 
 		String message = refused("family", null, null);
 
 		assertTrue(message, message.contains("user store"));
 		assertTrue(message, message.contains("--migrate-to-spaces"));
+		assertFalse("Nothing was written.", Files.exists(_base.resolve("family")));
+	}
+
+	public void testANamedAdministratorWithoutADeviceIsRefused() throws Exception {
+		de.haumacher.imageServer.auth.AuthService auth =
+			new de.haumacher.imageServer.auth.AuthService(AuthMode.WRITES, _base);
+		auth.getUsers().getOwner().setName("anna");
+		auth.getUsers().store();
+
+		assertTrue(refused("family", null, null).contains("user store"));
+	}
+
+	public void testAnUnreadableUserStoreIsRefused() throws Exception {
+		Files.createDirectories(_base.resolve(".valbum"));
+		Files.writeString(_base.resolve(".valbum/users.json"), "{not json", StandardCharsets.UTF_8);
+
+		assertTrue(refused("family", null, null).contains("user store"));
+	}
+
+	/**
+	 * Starts the server once on the base folder, as a first start does, and stops it again.
+	 *
+	 * @return The seat code the start issued.
+	 */
+	private String firstStart() throws Exception {
+		Spaces spaces = Spaces.detect(_base, null, AuthMode.WRITES, InviteMode.MEMBERS);
+		assertEquals(SpaceMode.SINGLE, spaces.getMode());
+		List<String> lines = Main.reportSpace(spaces, spaces.single(), null);
+		Matcher matcher = Pattern.compile("This library: sign the administrator in with the code ([A-Z0-9-]+) ")
+			.matcher(String.join("\n", lines));
+		assertTrue(lines.toString(), matcher.find());
+		Server server = Main.createServer(0, "/valbum", _base.toFile(), null, spaces);
+		server.start();
+		try {
+			int port = ((ServerConnector) server.getConnectors()[0]).getLocalPort();
+			HttpResponse<String> listing = HttpClient.newHttpClient().send(
+				HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/valbum/data/?type=json")).build(),
+				HttpResponse.BodyHandlers.ofString());
+			assertEquals(listing.body(), 200, listing.statusCode());
+		} finally {
+			server.stop();
+		}
+		assertTrue(Files.exists(_base.resolve(".valbum/users.json")));
+		assertTrue(Files.exists(_base.resolve(".valbum/device-codes.json")));
+		return matcher.group(1);
 	}
 
 	public void testWhatNoSystemCountsDoesNotMakeALibrary() throws Exception {
