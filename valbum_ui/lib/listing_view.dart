@@ -9,6 +9,7 @@ import 'app.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
 import 'move_view.dart';
 import 'resource.dart';
@@ -245,37 +246,40 @@ class ListingView extends StatelessWidget {
             Expanded(child: emptyNotice(context, link != null, mayChange))
           else
             Expanded(
-              child: LayoutBuilder(
-                builder: (BuildContext context, BoxConstraints constraints) {
-                  double imageBorder = 8;
-                  var preferredImageWidth = 200;
-                  var maxWidth = constraints.maxWidth;
-                  double preferredImageSpace =
-                      preferredImageWidth + 2 * imageBorder;
-                  double imagesPerRowFrag = maxWidth / preferredImageSpace;
-                  var imagesPerRow = imagesPerRowFrag.round();
-                  bool underflow = self.folders.length < imagesPerRow;
-                  double difference = underflow
-                      ? 0
-                      : maxWidth - imagesPerRow * preferredImageSpace;
-                  double imageSpace =
-                      preferredImageSpace + difference / imagesPerRow;
+              // A scrollbar and the paging keys, issue #168.
+              child: KeyboardScroll(
+                child: LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    double imageBorder = 8;
+                    var preferredImageWidth = 200;
+                    var maxWidth = constraints.maxWidth;
+                    double preferredImageSpace =
+                        preferredImageWidth + 2 * imageBorder;
+                    double imagesPerRowFrag = maxWidth / preferredImageSpace;
+                    var imagesPerRow = imagesPerRowFrag.round();
+                    bool underflow = self.folders.length < imagesPerRow;
+                    double difference = underflow
+                        ? 0
+                        : maxWidth - imagesPerRow * preferredImageSpace;
+                    double imageSpace =
+                        preferredImageSpace + difference / imagesPerRow;
 
-                  return SingleChildScrollView(
-                    scrollDirection: Axis.vertical,
-                    // The last row of tiles ends above the system navigation
-                    // bar instead of running under it, see issue #60.
-                    padding: EdgeInsets.only(
-                      bottom: MediaQuery.paddingOf(context).bottom,
-                    ),
-                    child: buildFolderList(
-                      context,
-                      self,
-                      imageSpace - 2 * imageBorder,
-                      imageBorder,
-                    ),
-                  );
-                },
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.vertical,
+                      // The last row of tiles ends above the system navigation
+                      // bar instead of running under it, see issue #60.
+                      padding: EdgeInsets.only(
+                        bottom: MediaQuery.paddingOf(context).bottom,
+                      ),
+                      child: buildFolderList(
+                        context,
+                        self,
+                        imageSpace - 2 * imageBorder,
+                        imageBorder,
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
         ],
@@ -840,90 +844,90 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     return Dialog(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DefaultTextStyle(
-                  style: DialogTheme.of(context).titleTextStyle ??
-                      Theme.of(context).textTheme.titleLarge!,
-                  child: Semantics(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DefaultTextStyle(
+                style: DialogTheme.of(context).titleTextStyle ??
+                    Theme.of(context).textTheme.titleLarge!,
+                child: Semantics(
                     namesRoute:
                         Theme.of(context).platform != TargetPlatform.iOS,
-                    container: true,
-                    child: Text(l10n.folderProperties),
-                  ),
+                  container: true,
+                  child: Text(l10n.folderProperties),
                 ),
-                TextField(
-                  controller: titleController,
-                  autofocus: true,
-                  decoration: InputDecoration(label: Text(l10n.titleLabel)),
+              ),
+              TextField(
+                controller: titleController,
+                autofocus: true,
+                decoration: InputDecoration(label: Text(l10n.titleLabel)),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text(
+                  l10n.placementHeading,
+                  style: Theme.of(context).textTheme.labelLarge,
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Text(
-                    l10n.placementHeading,
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
+              ),
+              // What the rule does, plainly: it places what arrives, it
+              // does not tidy up behind itself.
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                child: Text(
+                  l10n.placementExplanation,
+                  key: const Key("placement-explanation"),
                 ),
-                // What the rule does, plainly: it places what arrives, it
-                // does not tidy up behind itself.
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, bottom: 4),
-                  child: Text(
-                    l10n.placementExplanation,
-                    key: const Key("placement-explanation"),
-                  ),
+              ),
+              RadioGroup<Placement>(
+                groupValue: placement,
+                onChanged: (value) => setState(
+                  () => placement = value ?? Placement.none,
                 ),
-                RadioGroup<Placement>(
-                  groupValue: placement,
-                  onChanged: (value) => setState(
-                    () => placement = value ?? Placement.none,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var entry in placementLabels(l10n).entries)
-                        RadioListTile<Placement>(
-                          key: Key("placement-${entry.key.name}"),
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(entry.value),
-                          value: entry.key,
-                        ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Text(l10n.cancel),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var entry in placementLabels(l10n).entries)
+                      RadioListTile<Placement>(
+                        key: Key("placement-${entry.key.name}"),
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(entry.value),
+                        value: entry.key,
                       ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.check),
-                        label: Text(l10n.apply),
-                        onPressed: () => Navigator.of(context).pop(
-                          FolderProperties(
-                            title: titleController.text,
-                            placement: placement,
-                          ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(l10n.cancel),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.check),
+                      label: Text(l10n.apply),
+                      onPressed: () => Navigator.of(context).pop(
+                        FolderProperties(
+                          title: titleController.text,
+                          placement: placement,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
   }
 }
 

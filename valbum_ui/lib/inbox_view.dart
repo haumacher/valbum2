@@ -58,6 +58,7 @@ import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
 import 'image_properties.dart';
+import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
 import 'move_view.dart';
@@ -872,19 +873,22 @@ class InboxContentState extends State<InboxContent> {
                       ),
                     ),
                   )
-                : LayoutBuilder(
-                    builder: (context, constraints) => CustomScrollView(
-                      scrollDirection: Axis.vertical,
-                      scrollCacheExtent:
-                          const ScrollCacheExtent.viewport(contextViewports),
-                      slivers: [
-                        ...buildSlivers(sections, constraints.maxWidth),
-                        SliverToBoxAdapter(
-                          child: SizedBox(
-                            height: MediaQuery.paddingOf(context).bottom,
+                // A scrollbar and the paging keys, issue #168.
+                : KeyboardScroll(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => CustomScrollView(
+                        scrollDirection: Axis.vertical,
+                        scrollCacheExtent:
+                            const ScrollCacheExtent.viewport(contextViewports),
+                        slivers: [
+                          ...buildSlivers(sections, constraints.maxWidth),
+                          SliverToBoxAdapter(
+                            child: SizedBox(
+                              height: MediaQuery.paddingOf(context).bottom,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
           ),
