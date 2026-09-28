@@ -17,6 +17,10 @@ import 'photo_library.dart';
 import 'notices.dart';
 import 'wakelock.dart';
 
+// The upload of a browser keeps the photo bytes out of Dart, see
+// `browser_upload.dart` and issue #170.
+export 'browser_upload.dart' show blobOfObjectUrl, sha256OfBlob, sendBlobForm;
+
 /// The cache the web app uses: memory only.
 ///
 /// In a browser the app is served by the very server the data comes from, and

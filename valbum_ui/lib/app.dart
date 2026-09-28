@@ -2143,12 +2143,17 @@ class VAlbumState extends State<VAlbumView>
       return;
     }
 
+    // In a browser the picked file's `Blob` goes along, so that it is hashed
+    // and sent by the browser itself rather than through the page's one Dart
+    // thread (issue #170); everywhere else there is none, and the file is
+    // read through `openRead` as before.
     var uploads = [
       for (var file in files)
         UploadFile(
           name: file.name,
           length: await file.length(),
           openRead: file.openRead,
+          blob: await blobOfObjectUrl(file.path),
         ),
     ];
 

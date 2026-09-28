@@ -43,6 +43,7 @@ const List<String> convertedFiles = [
   "lib/attribution.dart",
   "lib/background.dart",
   "lib/background_workmanager.dart",
+  "lib/browser_upload.dart",
   "lib/cache_refresh.dart",
   "lib/caller.dart",
   "lib/camera_roll.dart",
@@ -182,6 +183,7 @@ const Map<String, String> allowedLiterals = {
       "thrown, see allowedThrownLiterals",
   r"The thumbnail at ${} is empty.": "thrown, see allowedThrownLiterals",
   r"The face crop at ${} is empty.": "thrown, see allowedThrownLiterals",
+  "XMLHttpRequest error.": "thrown, see allowedThrownLiterals",
   // What the connection test appends to its own, already localized, message.
   r"${} (${})": "punctuation around a localized message",
   // The countdown of a device code: digits and a colon.
@@ -234,6 +236,10 @@ const Map<String, String> allowedLiterals = {
 /// a localized sentence of the app's own. A message that is shown belongs in
 /// the ARB, not in this map.
 const Map<String, String> allowedThrownLiterals = {
+  "XMLHttpRequest error.":
+      "the `ClientException` of `browser_upload.dart`, in the very words "
+          "`BrowserClient` throws for the same failure (issue #170); a "
+          "transport failure is told as `uploadConnectionLost`, never quoted",
   "Not an absolute server URL (expected e.g. 'http://host:8080/valbum/').":
       "FormatException of dataUrlOf/serverLocationOf; serverUrlError answers "
           "`serverUrlInvalid` instead of showing it, and the other callers "
