@@ -23,6 +23,7 @@ import 'client.dart';
 import 'downloads.dart';
 import 'drag_scroll.dart';
 import 'image_properties.dart';
+import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
 import 'move_view.dart';
@@ -2073,27 +2074,29 @@ class AlbumContentState extends State<AlbumContent>
     var hidesEverything =
         self.parts.isNotEmpty && !shown.any((part) => part is AbstractImage);
 
-    return Focus(
-      autofocus: true,
-      onKeyEvent: onKey,
-      // Where the pointer of a drag is, and which one it is, see
-      // [_trackPointer]: what the edge scrolling of issue #42 runs on.
-      child: Listener(
-        onPointerDown: _trackPointer,
-        onPointerMove: _trackPointer,
-        // The end of the gesture, whatever became of it: the rows of the
-        // album are built on demand since issue #111, so the tile a drag
-        // started on may have been disposed on the way (the edge scrolling of
-        // issue #42 can carry it three viewports away) — and a [Draggable]
-        // whose state is gone no longer reports the end of its drag. The
-        // pointer does, here, and the drop itself has been taken by then: the
-        // gesture arena and the drag avatar are served before this listener
-        // sees the release.
-        onPointerUp: _endGesture,
-        onPointerCancel: _endGesture,
-        child: Stack(
-          children: [
-            LayoutBuilder(
+    // Where the pointer of a drag is, and which one it is, see
+    // [_trackPointer]: what the edge scrolling of issue #42 runs on.
+    return Listener(
+      onPointerDown: _trackPointer,
+      onPointerMove: _trackPointer,
+      // The end of the gesture, whatever became of it: the rows of the
+      // album are built on demand since issue #111, so the tile a drag
+      // started on may have been disposed on the way (the edge scrolling of
+      // issue #42 can carry it three viewports away) — and a [Draggable]
+      // whose state is gone no longer reports the end of its drag. The
+      // pointer does, here, and the drop itself has been taken by then: the
+      // gesture arena and the drag avatar are served before this listener
+      // sees the release.
+      onPointerUp: _endGesture,
+      onPointerCancel: _endGesture,
+      child: Stack(
+        children: [
+          // The scrollbar and the paging keys of issue #168, around the
+          // album's own keys ([onKey]) and on the ambient controller the
+          // edge scrolling of issue #42 drives too.
+          KeyboardScroll(
+            onKeyEvent: onKey,
+            child: LayoutBuilder(
               builder: (BuildContext context, BoxConstraints constraints) {
                 // The layout of the whole album — cheap, and it needs every
                 // image to decide the rows. Only the *widgets* are built on
@@ -2129,16 +2132,16 @@ class AlbumContentState extends State<AlbumContent>
                 );
               },
             ),
-            if (!editMode && widget.albumState.path.isNotEmpty)
-              Positioned(top: 8, left: 8, child: floating(wayUp())),
-            if (!editMode)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: floating(albumMenu(context)),
-              ),
-          ],
-        ),
+          ),
+          if (!editMode && widget.albumState.path.isNotEmpty)
+            Positioned(top: 8, left: 8, child: floating(wayUp())),
+          if (!editMode)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: floating(albumMenu(context)),
+            ),
+        ],
       ),
     );
   }
