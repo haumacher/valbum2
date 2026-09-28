@@ -3,10 +3,14 @@
  */
 package de.haumacher.imageServer;
 
+import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.SpaceStore;
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.ToIntFunction;
 import net.sourceforge.argparse4j.impl.Arguments;
 import net.sourceforge.argparse4j.inf.Argument;
@@ -32,6 +36,7 @@ import net.sourceforge.argparse4j.inf.Namespace;
  * <table>
  * <tr><th>valbum-admin</th><th>server flag</th></tr>
  * <tr><td><code>create-space --name</code></td><td><code>--space-name</code></td></tr>
+ * <tr><td><code>move-into-space --name</code></td><td><code>--space-name</code></td></tr>
  * </table>
  *
  * <p>
@@ -121,44 +126,18 @@ public final class Jobs {
 	}
 
 	/**
-	 * Every one-time job, in the order {@link Main} checks for them: where several are given, the
-	 * first one runs, as it always did.
+	 * Every one-time job, in the order {@link Main} checks for them and <code>valbum-admin help</code>
+	 * lists them: where several are given, the first one runs. The jobs for libraries from before
+	 * spaces existed come last.
 	 */
 	public static final List<Job> ALL = List.of(
-		new Job("migrate-to-user", "NAME",
-			"Move the albums of the base folder into a folder named after the library owner.",
-			"Move the albums at the base folder into a folder of that name and make it the library "
-				+ "owner's space (issue #45). A one-time, explicit rename-only move; the server is "
-				+ "not started afterwards",
-			List.of(),
-			ns -> Main.migrateLibrary(Main.basePath(ns), ns.getString("migrate_to_user"))),
-		new Job("migrate-to-spaces", null,
-			"Turn a library migrated per user into a server of several spaces.",
-			"Turn a library migrated per user (--migrate-to-user) into a multi-space server: "
-				+ "every user folder becomes a space with that user as its admin, and what the space "
-				+ "model cannot represent is moved aside and reported. A one-time, explicit, "
-				+ "rename-only step; the server is not started afterwards",
-			List.of(),
-			ns -> Main.migrateToSpaces(Main.basePath(ns))),
-		new Job("replace-originals", "FOLDER",
-			"Put downloaded originals in the place of the copies a phone uploaded without their position.",
-			"Put the originals in the given folder in the place of the redacted copies a phone "
-				+ "uploaded (issue #167): every file whose name the library holds exactly once and "
-				+ "whose picture (JPEG scan data) or video (media data) is the same is moved into its "
-				+ "album, the redacted copy set aside in <space>/.valbum/replaced/<timestamp>/, and "
-				+ "the missing position and camera filled in. Run it with the server stopped; the "
-				+ "server is not started afterwards",
-			List.of(new Option("--dry-run", null, null, List.of(),
-				"Print what would be replaced and skipped, and touch nothing")),
-			ns -> Main.replaceOriginals(Main.basePath(ns), Path.of(ns.getString("replace_originals")),
-				Main.spaceMode(ns), Boolean.TRUE.equals(ns.getBoolean("dry_run")))),
 		new Job("create-space", "FOLDER",
 			"Make a folder directly below the base folder a space of its own.",
-			"Make the folder of that name directly below the base folder a space (issue #175): write "
-				+ "its .valbum/space.json, creating the folder if it is missing; an existing folder "
-				+ "becomes the space with its albums. Refused on a base folder that is a single-space "
-				+ "library with albums of its own. The server is not started; its next start prints "
-				+ "the sign-in code for the new space's administrator",
+			"Make the folder of that name directly below the base folder a space: write its "
+				+ ".valbum/space.json, creating the folder if it is missing; an existing folder becomes the "
+				+ "space with its albums. A library that still has its albums in the base folder is moved "
+				+ "into a space first, with move-into-space. At its next start the server prints the "
+				+ "sign-in code for the new space's administrator",
 			List.of(
 				new Option("--space-name", "--name", "NAME", List.of(),
 					"The name to show for the space (the folder name otherwise)"),
@@ -167,11 +146,47 @@ public final class Jobs {
 					"Whether visitors who are not signed in see the public photos of the space "
 						+ "('public') or nothing ('none', the default)"),
 				new Option("--faces", null, null, List.of(SpaceStore.FACES_ON, SpaceStore.FACES_OFF),
-					"Whether the server looks for faces in the photos of the space (issue #124); "
-						+ "'off' is the default")),
+					"Whether the server looks for faces in the photos of the space; 'off' is the default")),
 			ns -> Main.createSpace(Main.basePath(ns), ns.getString("create_space"), ns.getString("space_name"),
 				orDefault(ns.getString("anonymous"), SpaceStore.ANONYMOUS_NONE),
-				orDefault(ns.getString("faces"), SpaceStore.FACES_OFF), Main.spaceMode(ns))));
+				orDefault(ns.getString("faces"), SpaceStore.FACES_OFF), Main.spaceMode(ns))),
+		new Job("move-into-space", "FOLDER",
+			"Move the library into a space of its own, so that further spaces fit beside it.",
+			"Move the albums at the base folder, and everything the library knows - its users with "
+				+ "their devices, share links, invitations and people - into a new or empty folder of that "
+				+ "name, which becomes a space. It only renames; nothing is copied or deleted. The old "
+				+ "addresses keep working: signed-in devices, share links and invitations already sent "
+				+ "open the space as before",
+			List.of(new Option("--space-name", "--name", "NAME", List.of(),
+				"The name to show for the space (otherwise the name the library has, or the folder name)")),
+			ns -> Main.moveIntoSpace(Main.basePath(ns), ns.getString("move_into_space"), ns.getString("space_name"),
+				AuthMode.parse(ns.getString("auth")), Main.spaceMode(ns))),
+		new Job("replace-originals", "FOLDER",
+			"Put downloaded originals in the place of the copies a phone uploaded without their position.",
+			"Put the originals in the given folder in the place of the redacted copies a phone "
+				+ "uploaded: every file whose name the library holds exactly once and whose picture (JPEG "
+				+ "scan data) or video (media data) is the same is moved into its album, the redacted copy "
+				+ "set aside in <space>/.valbum/replaced/<timestamp>/, and the missing position and camera "
+				+ "filled in",
+			List.of(new Option("--dry-run", null, null, List.of(),
+				"Print what would be replaced and skipped, and touch nothing")),
+			ns -> Main.replaceOriginals(Main.basePath(ns), Path.of(ns.getString("replace_originals")),
+				Main.spaceMode(ns), Boolean.TRUE.equals(ns.getBoolean("dry_run")))),
+		new Job("migrate-to-user", "NAME",
+			"For libraries from before spaces existed: move the albums into a folder named after the owner.",
+			"For libraries from before spaces existed: move the albums at the base folder into a folder "
+				+ "of that name, the library owner's - the first of two steps, migrate-to-spaces is the "
+				+ "second. A current library moves into a space with move-into-space",
+			List.of(),
+			ns -> Main.migrateLibrary(Main.basePath(ns), ns.getString("migrate_to_user"))),
+		new Job("migrate-to-spaces", null,
+			"For libraries from before spaces existed: turn the folders of their users into spaces.",
+			"For libraries from before spaces existed, split per user with migrate-to-user: every user "
+				+ "folder becomes a space with that user as its administrator, and what spaces cannot "
+				+ "represent is moved aside and reported. A current library moves into a space with "
+				+ "move-into-space",
+			List.of(),
+			ns -> Main.migrateToSpaces(Main.basePath(ns))));
 
 	private Jobs() {
 		// Only the table.
@@ -181,7 +196,13 @@ public final class Jobs {
 		return value == null ? fallback : value;
 	}
 
-	/** Registers the flags of every job and their options with the server's parser. */
+	/**
+	 * Registers the flags of every job and their options with the server's parser.
+	 *
+	 * <p>
+	 * Several jobs may share an option (<code>--space-name</code>); its flag is registered once.
+	 * </p>
+	 */
 	static void addTo(ArgumentParser parser) {
 		for (Job job : ALL) {
 			Argument flag = parser.addArgument(job.flag()).help(job.help());
@@ -190,9 +211,15 @@ public final class Jobs {
 			} else {
 				flag.metavar(job.metavar());
 			}
+		}
+		Set<String> registered = new HashSet<>();
+		for (Job job : ALL) {
 			for (Option option : job.options()) {
+				if (!registered.add(option.flag())) {
+					continue;
+				}
 				Argument argument = parser.addArgument(option.flag())
-					.help("With " + job.flag() + ": " + lowerFirst(option.help()));
+					.help("With " + jobsOf(option.flag()) + ": " + lowerFirst(option.help()));
 				if (!option.choices().isEmpty()) {
 					argument.choices(option.choices().toArray(new String[0]));
 				} else if (option.metavar() == null) {
@@ -202,6 +229,19 @@ public final class Jobs {
 				}
 			}
 		}
+	}
+
+	/** The jobs that take the option of the given flag, as the server's usage names them. */
+	private static String jobsOf(String optionFlag) {
+		List<String> jobs = new ArrayList<>();
+		for (Job job : ALL) {
+			for (Option option : job.options()) {
+				if (option.flag().equals(optionFlag)) {
+					jobs.add(job.flag() + (job.metavar() == null ? "" : " <" + job.metavar().toLowerCase() + ">"));
+				}
+			}
+		}
+		return String.join(" or ", jobs);
 	}
 
 	private static String lowerFirst(String help) {
@@ -224,8 +264,7 @@ public final class Jobs {
 			for (Option option : job.options()) {
 				Object value = ns.get(option.dest());
 				if (value != null && !Boolean.FALSE.equals(value)) {
-					System.err.println(option.flag() + " only applies to " + job.flag()
-						+ (job.metavar() == null ? "" : " <" + job.metavar().toLowerCase() + ">") + ".");
+					System.err.println(option.flag() + " only applies to " + jobsOf(option.flag()) + ".");
 					return 1;
 				}
 			}

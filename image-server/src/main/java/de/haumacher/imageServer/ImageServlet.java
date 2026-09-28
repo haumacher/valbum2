@@ -2519,7 +2519,7 @@ public class ImageServlet extends HttpServlet {
 	 * {@link ShareStore#URL_SEGMENT}.
 	 * </p>
 	 */
-	private static String shareUrl(Context context, String token) {
+	private String shareUrl(Context context, String token) {
 		return appUrl(context, ShareStore.URL_SEGMENT, token);
 	}
 
@@ -2539,10 +2539,21 @@ public class ImageServlet extends HttpServlet {
 	 * from a field, so a single-space server keeps spelling <code>&lt;context&gt;/s/&lt;token&gt;/</code>
 	 * exactly as before.
 	 * </p>
+	 *
+	 * <p>
+	 * A request that reached the space through the old single-space addresses of a library moved
+	 * into it (<code>&lt;context&gt;/data/...</code>, see {@link de.haumacher.imageServer.auth.Spaces#alias()}) carries no space
+	 * in its servlet path. What it creates is spelled with the space's own address all the same:
+	 * the link or invitation is new, and the old addresses live only as long as the marker.
+	 * </p>
 	 */
-	private static String appUrl(Context context, String segment, String token) {
+	private String appUrl(Context context, String segment, String token) {
 		String contextPath = context.getContextPath() == null ? "" : context.getContextPath();
-		return contextPath + appBase(context) + "/" + segment + "/" + token + "/";
+		String base = appBase(context);
+		if (base.isEmpty() && !_space.isEmpty()) {
+			base = "/" + _space;
+		}
+		return contextPath + base + "/" + segment + "/" + token + "/";
 	}
 
 	/**

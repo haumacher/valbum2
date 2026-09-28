@@ -116,6 +116,20 @@ public class TestValbumAdmin extends TestCase {
 		assertEquals("One line per step: " + _out, 4, _out.lines().count());
 	}
 
+	/** Two jobs share the server's --space-name, and each offers it as --name. */
+	public void testMoveIntoSpaceTakesTheNameAndTheServersAuth() throws Exception {
+		if (noShell()) {
+			return;
+		}
+		assertEquals(_err, 0, run("move-into-space", "family", "--name", "The Family"));
+		String job = job();
+		assertTrue("The installation's --auth reaches the job, which keeps what visitors see: " + job,
+			job.contains("|--auth|"));
+		assertTrue(job, job.endsWith("|--move-into-space|family|--space-name|The Family"));
+		assertEquals(_err, 0, run("help", "move-into-space"));
+		assertTrue(_out, _out.startsWith("Usage: valbum-admin move-into-space FOLDER [--name NAME] [--no-restart]"));
+	}
+
 	public void testTheServersOwnFlagIsAcceptedAsWell() throws Exception {
 		if (noShell()) {
 			return;

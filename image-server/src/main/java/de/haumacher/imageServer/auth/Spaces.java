@@ -102,9 +102,43 @@ public class Spaces {
 
 	private final Map<String, Space> _spaces;
 
+	private final Space _alias;
+
+	private final String _aliasProblem;
+
 	private Spaces(SpaceMode mode, Map<String, Space> spaces) {
+		this(mode, spaces, null, null);
+	}
+
+	private Spaces(SpaceMode mode, Map<String, Space> spaces, Space alias, String aliasProblem) {
 		_mode = mode;
 		_spaces = spaces;
+		_alias = alias;
+		_aliasProblem = aliasProblem;
+	}
+
+	/**
+	 * The space the old single-space addresses answer as, <code>null</code> if there is none.
+	 *
+	 * <p>
+	 * A library moved into a space (<code>--move-into-space</code>) leaves a
+	 * {@link SpaceAlias marker} in the base folder naming that space. While it is there, a
+	 * {@link SpaceMode#MULTI} server answers <code>&lt;context&gt;/data/...</code>,
+	 * <code>&lt;context&gt;/s/&lt;token&gt;/</code> and <code>&lt;context&gt;/i/&lt;token&gt;/</code>
+	 * as that space - the same {@link AuthService}, the same stores - so the paired devices, the
+	 * share links and the invitations of the library keep working at the addresses they know.
+	 * </p>
+	 */
+	public Space alias() {
+		return _alias;
+	}
+
+	/**
+	 * Why the base folder's marker names no space this server hosts, <code>null</code> if it
+	 * does or there is none; said once at start-up.
+	 */
+	public String aliasProblem() {
+		return _aliasProblem;
 	}
 
 	/** Whether this server hosts one space or several. */
@@ -125,10 +159,18 @@ public class Spaces {
 	/**
 	 * The space addressed by the given first path segment.
 	 *
+	 * <p>
+	 * The empty segment is the context root: the one space of a {@link SpaceMode#SINGLE} server,
+	 * and the {@link #alias()} of a {@link SpaceMode#MULTI} one.
+	 * </p>
+	 *
 	 * @return <code>null</code> if there is no such space, which every endpoint answers as
 	 *         "no such space" rather than as "nothing here".
 	 */
 	public Space bySegment(String segment) {
+		if ((segment == null || segment.isEmpty()) && _mode == SpaceMode.MULTI) {
+			return _alias;
+		}
 		return _spaces.get(segment == null ? "" : segment);
 	}
 
@@ -177,6 +219,21 @@ public class Spaces {
 				AuthMode spaceMode = authModeOf(authMode, config);
 				spaces.put(segment, new Space(segment, root, config,
 					new AuthService(spaceMode, root, inviteMode)));
+			}
+			String aliased;
+			try {
+				aliased = SpaceAlias.read(basePath);
+			} catch (IOException ex) {
+				return new Spaces(mode, spaces, null, ex.getMessage() + "; the old addresses answer 'no such space'.");
+			}
+			if (aliased != null) {
+				Space alias = spaces.get(aliased);
+				if (alias == null) {
+					return new Spaces(mode, spaces, null, UserStore.DIRECTORY_NAME + "/" + SpaceAlias.FILE_NAME
+						+ " names the space '" + aliased + "', which this server does not host; the old "
+						+ "addresses answer 'no such space'.");
+				}
+				return new Spaces(mode, spaces, alias, null);
 			}
 		}
 		return new Spaces(mode, spaces);

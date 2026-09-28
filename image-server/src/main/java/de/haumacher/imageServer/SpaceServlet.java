@@ -49,6 +49,14 @@ import java.util.Map;
  * that there is no such space, not shown an album browser that cannot load anything.
  * </p>
  *
+ * <p>
+ * The exception is a server with an {@link Spaces#alias() alias}, the space a single-space
+ * library was moved into: there the context root <em>is</em> that library, as it was before the
+ * move - <code>&lt;context&gt;/data/...</code> is its data root, <code>&lt;context&gt;/s/...</code>
+ * and <code>&lt;context&gt;/i/...</code> its sessions, and every other path the application with
+ * its deep links.
+ * </p>
+ *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class SpaceServlet extends HttpServlet {
@@ -156,6 +164,22 @@ public class SpaceServlet extends HttpServlet {
 				return;
 			}
 			// The application, rebased onto "/<space>/" by the resource servlet.
+			_app.service(request, response);
+			return;
+		}
+
+		Spaces.Space alias = _spaces.alias();
+		if (alias != null) {
+			// A library moved into a space keeps its old addresses, see Spaces#alias(): the data
+			// root at the context root is that space's, spelled in the caller's coordinates (the
+			// servlet path stays "/data"), and the application and the sessions at the context
+			// root open it, deep links of the old addresses included.
+			if (pathInfo != null && isData(pathInfo)) {
+				_data.get(alias.getSegment()).service(
+					new InSpace(request, Settings.DATA_PREFIX, pathInfo.substring(Settings.DATA_PREFIX.length())),
+					response);
+				return;
+			}
 			_app.service(request, response);
 			return;
 		}

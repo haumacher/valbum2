@@ -4,7 +4,9 @@
 # promises (#174): the app base, an album, the seat code in the log, a video rendition made inside
 # the container (which proves the FFmpeg libraries), the face index loaded and detecting the
 # fixture portraits (which proves the OpenCV libraries), the health check, and that every file the
-# server wrote into the mounted folder belongs to PUID:PGID. A second container, started on an
+# server wrote into the mounted folder belongs to PUID:PGID; then valbum-admin moves that library
+# into the space 'family' (#177), and the paired device lists the album at the old and the new
+# address. A second container, started on an
 # empty library as a new installation is, shows that valbum-admin runs a one-time job inside the
 # running container (#180): the server is stopped, the first space created as PUID:PGID, and the
 # server back with the new space's seat code in the log;
@@ -129,6 +131,27 @@ echo "smoke-test: faces detected in all four portraits"
 foreign=$(find "$LIBRARY" -newer "$WORK/started" \( ! -user "$(id -u)" -o ! -group "$(id -g)" \) | head -5)
 [ -z "$foreign" ] || fail "files not owned by $(id -u):$(id -g): $foreign"
 echo "smoke-test: all $(find "$LIBRARY" -newer "$WORK/started" | wc -l) files written belong to $(id -u):$(id -g)"
+
+# --- valbum-admin move-into-space (#177): the library with a signed-in device becomes a space ------
+# The paired device keeps its stored <context>/data, which the old address answers as the space.
+if ! docker exec "$NAME" valbum-admin move-into-space family >"$WORK/move.out" 2>&1; then
+	cat "$WORK/move.out"
+	fail "'valbum-admin move-into-space' failed"
+fi
+sed 's/^/smoke-test:   /' "$WORK/move.out"
+[ -f "$LIBRARY/family/.valbum/space.json" ] || fail "move-into-space left no family/.valbum/space.json"
+[ -f "$LIBRARY/.valbum/moved.json" ] || fail "move-into-space wrote no .valbum/moved.json"
+[ -d "$LIBRARY/family/2005-08-24 Blumen und Fliegen" ] || fail "the album was not moved into family/"
+moved_back() {
+	[ "$(docker logs "$NAME" 2>&1 | grep -c '^Image server started')" -ge 2 ] \
+		&& curl -fsS -H "Authorization: Bearer $token" "$DATA/$ALBUM/?type=json" 2>/dev/null | grep -q '"AlbumInfo"'
+}
+wait_for 120 moved_back || fail "after move-into-space the old <context>/data does not list the album for the paired device"
+echo "smoke-test: the server came back, and the paired device's old <context>/data lists the album"
+curl -fsS -H "Authorization: Bearer $token" "$BASE/family/data/$ALBUM/?type=json" | grep -q '"AlbumInfo"' \
+	|| fail "the new address <context>/family/data does not list the album"
+curl -fsS "$BASE/" | grep -q '<base href="/valbum/">' || fail "the old app base does not answer after the move"
+echo "smoke-test: the new address <context>/family/data lists the album too"
 
 # 'docker stop' sends SIGTERM to the entry point, which forwards it to the server: the container
 # ends with the server's own status (143), long before Docker's SIGKILL (137) after 10 s.

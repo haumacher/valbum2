@@ -294,6 +294,59 @@ public class SpaceStore {
 	}
 
 	/**
+	 * Rewrites the {@value #FILE_NAME} of a library moved into a space, see
+	 * <code>--move-into-space</code>, writing it where there is none.
+	 *
+	 * <p>
+	 * What the file said is kept as it was written - a name only where it gave one, a map template
+	 * only where it named one, the face index - and only the given values replace it.
+	 * </p>
+	 *
+	 * @param name
+	 *        The name to show for the space; <code>null</code> or empty to keep the file's.
+	 * @param anonymous
+	 *        {@link #ANONYMOUS_NONE} or {@link #ANONYMOUS_PUBLIC}.
+	 * @throws IOException
+	 *         If the file is there but cannot be read; it is not touched then.
+	 */
+	public static void rewrite(Path spaceRoot, String name, String anonymous) throws IOException {
+		Path file = file(spaceRoot);
+		String storedName = "";
+		String mapUrl = "";
+		String faces = "";
+		if (Files.isRegularFile(file)) {
+			try (Reader reader = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8);
+					JsonReader in = new JsonReader(new ReaderAdapter(reader))) {
+				in.beginObject();
+				while (in.hasNext()) {
+					switch (in.nextName()) {
+						case NAME__PROP:
+							storedName = in.nextString();
+							break;
+						case MAP_URL__PROP:
+							mapUrl = in.nextString();
+							break;
+						case FACES__PROP:
+							faces = in.nextString();
+							break;
+						default:
+							in.skipValue();
+							break;
+					}
+				}
+				in.endObject();
+			} catch (RuntimeException ex) {
+				throw new IOException("Cannot read '" + file + "': " + ex.getMessage(), ex);
+			}
+		}
+		String given = name == null ? "" : name.trim();
+		String written = given.isEmpty() ? storedName.trim() : given;
+		write(spaceRoot, written.isEmpty() ? null : written,
+			ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE,
+			mapUrl.trim().isEmpty() ? null : mapUrl.trim(), FACES_ON.equals(faces.trim()) ? FACES_ON : FACES_OFF, true);
+	}
+
+	/**
 	 * Writes the file through a temporary sibling, so that a space is never half-written.
 	 *
 	 * @param name

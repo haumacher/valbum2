@@ -11,6 +11,7 @@ import de.haumacher.imageServer.auth.InviteMode;
 import de.haumacher.imageServer.auth.LibraryMigration;
 import de.haumacher.imageServer.auth.LibraryMigration.MigrationRefused;
 import de.haumacher.imageServer.auth.ShareStore;
+import de.haumacher.imageServer.auth.SpaceAlias;
 import de.haumacher.imageServer.auth.SpaceMode;
 import de.haumacher.imageServer.auth.Spaces;
 import de.haumacher.imageServer.auth.SpacesMigration;
@@ -160,6 +161,26 @@ public class Main {
 			return 0;
 		} catch (SpaceCreation.Refused | IOException ex) {
 			System.err.println("Cannot create the space: " + ex.getMessage());
+			return 1;
+		}
+	}
+
+	/**
+	 * Moves a single-space library into a space of its own, see {@link SpaceMove}.
+	 *
+	 * @return The process exit code: <code>0</code> if the library was moved, <code>1</code> if it
+	 *         was refused (nothing was moved then) or failed.
+	 */
+	static int moveIntoSpace(Path basePath, String folder, String name, AuthMode auth, SpaceMode spaces) {
+		try {
+			SpaceCreation.Report report = SpaceMove.move(basePath, folder, name, auth, spaces);
+			System.out.println("Moving the library in '" + basePath + "' into the space '" + folder + "':");
+			for (String line : report.getLines()) {
+				System.out.println("  " + line);
+			}
+			return 0;
+		} catch (SpaceCreation.Refused | IOException ex) {
+			System.err.println("Cannot move the library into a space: " + ex.getMessage());
 			return 1;
 		}
 	}
@@ -339,6 +360,14 @@ public class Main {
 		if (spaces.getMode() == SpaceMode.MULTI && spaces.getSpaces().isEmpty()) {
 			System.out.println("  (no folder below the base folder carries .valbum/space.json; "
 				+ "every address is answered with 'no such space')");
+		}
+		if (spaces.alias() != null) {
+			System.out.println("  The old addresses " + _contextPath + "/, " + _contextPath + "/data/, "
+				+ _contextPath + "/s/... and " + _contextPath + "/i/... answer as the space '"
+				+ spaces.alias().getSegment() + "' (" + UserStore.DIRECTORY_NAME + "/" + SpaceAlias.FILE_NAME
+				+ "; delete it to end that).");
+		} else if (spaces.aliasProblem() != null) {
+			System.out.println("  " + spaces.aliasProblem());
 		}
 		// A duplicates folder of an older version, which nothing writes to any more: named once,
 		// never moved and never deleted, see issue #109.

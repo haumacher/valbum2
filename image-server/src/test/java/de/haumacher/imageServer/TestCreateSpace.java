@@ -5,11 +5,9 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.InviteMode;
-import de.haumacher.imageServer.auth.LibraryMigration;
 import de.haumacher.imageServer.auth.SpaceMode;
 import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.Spaces;
-import de.haumacher.imageServer.auth.SpacesMigration;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.msgbuf.json.JsonReader;
@@ -182,8 +180,8 @@ public class TestCreateSpace extends TestCase {
 
 		String message = refused("family", null, null);
 
-		assertTrue(message, message.contains("--migrate-to-spaces"));
-		assertTrue(message, message.contains("--migrate-to-user"));
+		assertTrue(message, message.contains("valbum-admin move-into-space <folder>"));
+		assertFalse(message, message.contains("migrate-to"));
 		assertTrue(message, message.contains("2020-05-01 Trip"));
 	}
 
@@ -233,7 +231,7 @@ public class TestCreateSpace extends TestCase {
 		String message = refused("family", null, null);
 
 		assertTrue(message, message.contains("user store"));
-		assertTrue(message, message.contains("--migrate-to-spaces"));
+		assertTrue(message, message.contains("valbum-admin move-into-space"));
 		assertFalse("Nothing was written.", Files.exists(_base.resolve("family")));
 	}
 
@@ -301,8 +299,7 @@ public class TestCreateSpace extends TestCase {
 		auth.getUsers().store();
 		refused("family", null, null);
 
-		LibraryMigration.migrate(_base, "alice");
-		SpacesMigration.migrate(_base);
+		SpaceMove.move(_base, "alice", null, AuthMode.WRITES, null);
 		create("family", "", SpaceStore.ANONYMOUS_NONE, SpaceStore.FACES_OFF, null);
 
 		assertEquals(List.of("alice", "family"),

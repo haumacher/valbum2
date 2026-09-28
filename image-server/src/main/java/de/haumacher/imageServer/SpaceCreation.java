@@ -56,7 +56,7 @@ import java.util.Set;
  * a user store beyond the unclaimed seat of its first start ({@link #isClaimed(Path)}) at its
  * root. Under <code>--spaces auto</code> the first space flips the server to
  * multi-space mode, and every album at the root would vanish from its address; the library has to
- * be turned into spaces first, see {@link #singleLibrary(List, boolean)}.</li>
+ * be moved into a space first, see {@link #singleLibrary(List, boolean)}.</li>
  * </ul>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -134,9 +134,8 @@ public final class SpaceCreation {
 	 * The refusal of a base folder that is a single-space library with content at its root.
 	 *
 	 * <p>
-	 * <code>--migrate-to-spaces</code> alone keeps such a library the one space it is (issue #82):
-	 * it turns into spaces only the folders a per-user migration gave their owners. So the way
-	 * there is the two steps together, and the message names both.
+	 * The way there is {@link SpaceMove}, which carries the library with everything it knows into a
+	 * space of its own and keeps its old addresses answering (issue #177).
 	 * </p>
 	 *
 	 * @param found
@@ -161,8 +160,8 @@ public final class SpaceCreation {
 				.append(UserStore.DIRECTORY_NAME).append('/').append(UserStore.FILE_NAME).append(')');
 		}
 		return "The base folder is a single-space library with " + what + " at its root; a first space "
-			+ "would switch the server to multi-space mode and take them off their addresses. Turn the "
-			+ "library into a space first: --migrate-to-user <folder>, then --migrate-to-spaces. "
+			+ "would switch the server to multi-space mode and take them off their addresses. Move the "
+			+ "library into a space of its own first: valbum-admin move-into-space <folder>. "
 			+ "Nothing was written.";
 	}
 

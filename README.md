@@ -73,9 +73,10 @@ Options:
 | `--admin-code <code>` | The sign-in code the server prints for the administrator of a space nobody signed into yet, instead of a random one; eight characters of `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, a dash between the groups allowed | a fresh one at every start |
 | `--spaces auto\|single\|multi` | Whether this server hosts one space or several (issue #82); `auto` decides from the folder tree: multi as soon as one folder below the base folder carries `.valbum/space.json` | `auto` |
 | `--create-space <folder>` | One-time: make the folder `<folder>` below the base folder a space (see *Users and spaces*), with `--space-name <name>`, `--anonymous none\|public` and `--faces on\|off`; refused on a base folder that is a single library with albums of its own; the server does not start afterwards | none |
-| `--migrate-to-spaces` | One-time: turn a library migrated per user (`--migrate-to-user`) into a multi-space server, every user folder a space with that user as its admin, and report what could not be carried; the server does not start afterwards | none |
+| `--move-into-space <folder>` | One-time: move a single-space library with everything it knows into the new space `<folder>`, keeping its old addresses (see *Users and spaces*), with `--space-name <name>`; the server does not start afterwards | none |
+| `--migrate-to-spaces` | One-time, for libraries from before spaces existed: turn a library split per user (`--migrate-to-user`) into a multi-space server; the server does not start afterwards | none |
 | `--preview-threads <n>` | How many thumbnails are generated at the same time; serving an already cached thumbnail is never throttled (the system property `valbum.previewThreads` does the same) | number of processors |
-| `--migrate-to-user <name>` | Legacy, one-time: move the albums at the base folder into a folder `<name>` named after the administrator — today only the first step before `--migrate-to-spaces` (see *Users and spaces*); the server does not start afterwards | none |
+| `--migrate-to-user <name>` | One-time, for libraries from before spaces existed: the first step before `--migrate-to-spaces`; the server does not start afterwards | none |
 | `--replace-originals <dir>` | Put the originals you downloaded into `<dir>` in the place of the copies a phone uploaded with the position stripped (issue #167): a file whose name the library holds exactly once and whose picture (JPEG scan data) or video (media data) is the same replaces it, the uploaded copy is set aside in `<space>/.valbum/replaced/<yyyyMMdd-HHmmss>/`, never deleted, and the missing position and camera are filled in — every other file is reported and skipped. Run it with the server stopped; the server does not start afterwards | none |
 | `--dry-run` | With `--replace-originals`: print what would be replaced and skipped, and change nothing | off |
 
@@ -177,7 +178,7 @@ default, follows the folders; `--spaces single|multi` says so outright). Every s
 reached at `<context>/<space>/` — the app — and `<context>/<space>/data/`, and its share links and
 invitations live below it (`<context>/<space>/s/<token>/`, `<context>/<space>/i/<token>/`). The
 albums directly in the base folder are **not** served in that mode, which is why `create-space`
-refuses a base folder that is a single library with albums, photos or users of its own: turn that
+refuses a base folder that is a single library with albums, photos or users of its own: move that
 library into a space first (below).
 
 **Users.** Every user belongs to exactly one space and holds **one permission for the whole
@@ -199,35 +200,29 @@ Space 'family': sign the administrator in with the code ABCD-EFGH (valid 10 minu
 new space's administrator in with the code the restarted server printed, at `<context>/<space>/`. `--admin-code <code>` fixes that code instead of a fresh one at every start.
 Once the administrator has a device, nothing is printed for that space any more.
 
-**Turning one library into several spaces.** A library served as one space becomes a space folder
-in two explicit, rename-only steps:
+**Turning one library into several spaces.** Move the library into a space of its own:
 
 ```
-sudo valbum-admin migrate-to-user <admin name>
-sudo valbum-admin migrate-to-spaces
+sudo valbum-admin move-into-space family --name "The Family"
 ```
 
-The first moves every entry of the base folder except `.valbum` and `.upload` into
-`/path/to/photos/<admin name>/` by a plain rename (sidecars and preview caches ride along) and
-records that folder as the administrator's; where the administrator already has a name, it must be that
-one. The second makes every such folder a space with that user as its administrator and their
-devices, and moves what the space model cannot carry — the old user store with the other members,
-the share links, the open invitations — aside into `.valbum/retired/<timestamp>/`, naming each in a
-printed report: invite the other members into the new space again. Nothing is deleted. After that,
-`create-space` adds further spaces beside it.
+This renames the albums and the library's `.valbum` (users and devices, share links, invitations,
+people) into `/path/to/photos/family/`; nothing is copied or deleted. The old addresses keep
+working: `.valbum/moved.json` in the base folder makes `<context>/`, `<context>/data/`,
+`<context>/s/…` and `<context>/i/…` answer as the space `family`, so signed-in devices, share
+links and invitations already sent open it as before; new ones get the address
+`<context>/family/…`. Delete that file to end the old addresses. After that, `create-space` adds
+further spaces beside it.
 
 **`valbum-admin`** runs these one-time jobs of the server: `sudo valbum-admin <command>` on the
 Debian package, `docker compose exec valbum valbum-admin <command>` in the container. It stops the
 server, runs the job as the server's user with the server's configuration, and starts the server
 again (`--no-restart` leaves it stopped); `valbum-admin help [<command>]` lists the commands and
 their options. Each command is the server flag without its dashes (`create-space` is
-`--create-space`), and the flags keep working with `java -jar`; the one short name is
-`create-space --name` for `--space-name`.
+`--create-space`), and the flags keep working with `java -jar`; the one short name is `--name`
+(of `create-space` and `move-into-space`) for `--space-name`.
 
-`--migrate-to-user` is a leftover of an older per-user model: on its own it only moves the albums
-one folder down, and it has no use today other than as the first of these two steps.
-`--migrate-to-spaces` on a library that was never migrated per user leaves it the single space it
-is and says so.
+`migrate-to-user` and `migrate-to-spaces` are for libraries from before spaces existed.
 
 ### Faces (opt-in, off by default)
 
