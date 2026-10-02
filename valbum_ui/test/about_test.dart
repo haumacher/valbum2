@@ -60,6 +60,8 @@ void expectAboutDialog() {
   expect(find.byKey(const Key("about-github")), findsOneWidget);
   // The address is readable, not only clickable.
   expect(find.text(githubUrl), findsOneWidget);
+  // The licence, which the repository's LICENSE states.
+  expect(find.text(testL10n.aboutLicense), findsOneWidget);
 }
 
 void main() {
@@ -185,6 +187,7 @@ void main() {
       expect(find.text(de.aboutDescription), findsOneWidget);
       expect(find.text(de.aboutSourceCode), findsOneWidget);
       expect(find.text(de.aboutVersion("2.10.0")), findsOneWidget);
+      expect(find.text(de.aboutLicense), findsOneWidget);
       expect(de.aboutMenuEntry, isNot(testL10n.aboutMenuEntry));
     });
   });

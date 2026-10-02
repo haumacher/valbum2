@@ -4429,5 +4429,10 @@
   "@aboutSourceCode": {
     "description": "Line in the About dialog above the link to the app's GitHub page (issue #187).",
     "x-translated": "4b91b59c"
+  },
+  "aboutLicense": "Free software under the GNU Affero General Public License, version 3 or later.",
+  "@aboutLicense": {
+    "description": "The licence line of the About dialog (the legalese under the version). The licence name is a proper name; keep 'GNU Affero General Public License' untranslated.",
+    "x-translated": "70c433b4"
   }
 }

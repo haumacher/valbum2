@@ -688,7 +688,8 @@
   "loadFailureDetails": "Details",
   "loadFailureTechnical": "HTTP-{status} für {url}",
   "aboutMenuEntry": "Über VAlbum",
+  "aboutDescription": "Ein selbst gehostetes Foto- und Videoalbum. Die Fotos verbleiben auf dem eigenen Server des Besitzers, und der Server verändert die Originale niemals.",
   "aboutVersion": "Version {version}",
   "aboutSourceCode": "Quellcode, Dokumentation und Fehlerberichte:",
-  "aboutDescription": "Ein selbst gehostetes Foto- und Videoalbum. Die Fotos verbleiben auf dem eigenen Server des Besitzers, und der Server verändert die Originale niemals."
+  "aboutLicense": "Freie Software unter der GNU Affero General Public License, Version 3 oder höher."
 }

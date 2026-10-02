@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1533,8 +1534,7 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count Fotos wurden aussortiert; die verbleibenden Kopien befinden sich an anderer Stelle in der Bibliothek.',
-      one:
-          '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
+      one: '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
     );
     return '$_temp0';
   }
@@ -1581,8 +1581,7 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count zwischengespeicherte Dateien wurden verworfen; die Vorschauen werden neu erstellt.',
-      one:
-          '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
+      one: '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
     );
     return '$_temp0';
   }
@@ -2684,4 +2683,8 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get aboutSourceCode => 'Quellcode, Dokumentation und Fehlerberichte:';
+
+  @override
+  String get aboutLicense =>
+      'Freie Software unter der GNU Affero General Public License, Version 3 oder höher.';
 }

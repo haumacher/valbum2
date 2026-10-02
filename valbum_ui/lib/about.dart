@@ -9,7 +9,9 @@
 /// Flutter's own [AboutDialog] is the frame: it is localized by the Material
 /// localizations, and its "View licenses" page lists the licences of every
 /// package the app is built from, which an About dialog owes its reader.
-/// VAlbum itself states no licence of its own, so there is no legalese line.
+/// VAlbum is licensed under the AGPL, version 3 or later: the legalese line
+/// says so, and the GitHub link is where the source a network user is owed
+/// (the licence's section 13) can be had.
 library;
 
 import 'package:flutter/material.dart';
@@ -49,6 +51,7 @@ void showAbout(BuildContext context) {
     applicationVersion:
         shownVersion.isEmpty ? null : l10n.aboutVersion(shownVersion),
     applicationIcon: const Icon(Icons.photo_library_outlined, size: 48),
+    applicationLegalese: l10n.aboutLicense,
     children: [
       const SizedBox(height: 16),
       Text(l10n.aboutDescription, key: const Key("about-description")),

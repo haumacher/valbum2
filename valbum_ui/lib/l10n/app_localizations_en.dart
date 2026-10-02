@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1510,8 +1511,7 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other:
           '$count photos were set aside; the copies that stay are elsewhere in the library.',
-      one:
-          '1 photo was set aside; the copy that stays is elsewhere in the library.',
+      one: '1 photo was set aside; the copy that stays is elsewhere in the library.',
     );
     return '$_temp0';
   }
@@ -2642,4 +2642,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aboutSourceCode => 'Source code, documentation and bug reports:';
+
+  @override
+  String get aboutLicense =>
+      'Free software under the GNU Affero General Public License, version 3 or later.';
 }
