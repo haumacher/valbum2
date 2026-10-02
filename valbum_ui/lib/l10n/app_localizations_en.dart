@@ -1223,6 +1223,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get systemPickerEntry => 'Choose files... (max. 100)';
 
   @override
+  String get pickerPhotosAndVideos => 'Photos and videos';
+
+  @override
+  String get pickerAllFiles => 'All files';
+
+  @override
   String get photoLibraryTitle => 'Photo library';
 
   @override

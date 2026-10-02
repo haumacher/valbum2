@@ -308,6 +308,7 @@
   "useAsGroupPicture": "Als Gruppenbild verwenden",
   "videoPreparing": "Die abspielbare Version dieses Videos wird noch erstellt.",
   "videoPlayOriginal": "Die Originaldatei abspielen",
+  "videoNeedsRendition": "Dieser Browser kann das Original dieses Videos nicht abspielen; es wird abgespielt, sobald der Server es konvertiert hat.",
   "videoCannotPlay": "Dieses Video kann nicht abgespielt werden.",
   "videoNetworkHint": "Der Server war nicht erreichbar oder hat das Video abgelehnt.",
   "videoFormatHint": "Dieses Gerät kann das Format dieses Videos nicht wiedergeben.",
@@ -695,5 +696,6 @@
   "aboutVersion": "Version {version}",
   "aboutSourceCode": "Quellcode, Dokumentation und Fehlerberichte:",
   "aboutLicense": "Freie Software unter der GNU Affero General Public License, Version 3 oder höher.",
-  "videoNeedsRendition": "Dieser Browser kann das Original dieses Videos nicht abspielen; es wird abgespielt, sobald der Server es konvertiert hat."
+  "pickerPhotosAndVideos": "Fotos und Videos",
+  "pickerAllFiles": "Alle Dateien"
 }

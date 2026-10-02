@@ -9,7 +9,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart';
 
 import 'album_model.dart';
 import 'album_view.dart';
@@ -30,6 +29,7 @@ import 'l10n/app_localizations.dart';
 import 'load_failure.dart';
 import 'listing_view.dart';
 import 'locales.dart';
+import 'media_picker.dart';
 import 'notices.dart';
 import 'offline.dart';
 import 'persons_view.dart';
@@ -2110,10 +2110,10 @@ class VAlbumState extends State<VAlbumView>
     await uploadPicked([for (var item in picked) item.upload]);
   }
 
-  /// Uploads what the user picks in the system's file picker.
+  /// Uploads what the user picks in the system's picker — photographs and
+  /// videos alike (issue #197), see [mediaPicker].
   Future<void> uploadFromFiles() async {
-    ImagePicker picker = ImagePicker();
-    List<XFile> files = await picker.pickMultiImage();
+    var files = await mediaPicker(AppLocalizations.of(context)!);
     if (kDebugMode) {
       print("files picked ${files.map((e) => e.name)}");
     }
@@ -2122,19 +2122,7 @@ class VAlbumState extends State<VAlbumView>
       return;
     }
 
-    // In a browser the picked file's `Blob` goes along, so that it is hashed
-    // and sent by the browser itself rather than through the page's one Dart
-    // thread (issue #170); everywhere else there is none, and the file is
-    // read through `openRead` as before.
-    var uploads = [
-      for (var file in files)
-        UploadFile(
-          name: file.name,
-          length: await file.length(),
-          openRead: file.openRead,
-          blob: await blobOfObjectUrl(file.path),
-        ),
-    ];
+    var uploads = await uploadFilesOf(files);
 
     if (!mounted) {
       if (kDebugMode) {

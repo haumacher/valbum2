@@ -2065,6 +2065,16 @@
     "description": "Menu entry opening the system's file picker",
     "x-translated": "8e59adcd"
   },
+  "pickerPhotosAndVideos": "Photos and videos",
+  "@pickerPhotosAndVideos": {
+    "description": "Name of the file-type filter of the desktop's file dialog when choosing files to upload",
+    "x-translated": "79e41150"
+  },
+  "pickerAllFiles": "All files",
+  "@pickerAllFiles": {
+    "description": "Name of the file-type filter of the desktop's file dialog that shows every file",
+    "x-translated": "230922fd"
+  },
   "photoLibraryTitle": "Photo library",
   "@photoLibraryTitle": {
     "description": "Title of the screen picking photos off the device",

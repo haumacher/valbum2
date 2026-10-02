@@ -2090,6 +2090,18 @@ abstract class AppLocalizations {
   /// **'Choose files... (max. 100)'**
   String get systemPickerEntry;
 
+  /// Name of the file-type filter of the desktop's file dialog when choosing files to upload
+  ///
+  /// In en, this message translates to:
+  /// **'Photos and videos'**
+  String get pickerPhotosAndVideos;
+
+  /// Name of the file-type filter of the desktop's file dialog that shows every file
+  ///
+  /// In en, this message translates to:
+  /// **'All files'**
+  String get pickerAllFiles;
+
   /// Title of the screen picking photos off the device
   ///
   /// In en, this message translates to:

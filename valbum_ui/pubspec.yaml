@@ -83,7 +83,9 @@ dependencies:
   url_launcher: ^6.3.0
   # Asking where a downloaded original is saved on a desktop (issue #164);
   # reached only through `lib/platform_io.dart`, and asked there only off
-  # Android and iOS, whose downloads go into the photo library instead.
+  # Android and iOS, whose downloads go into the photo library instead. Also
+  # the desktop's picker of an upload (`lib/media_picker.dart`, issue #197),
+  # filtered by the types the server takes.
   file_selector: ^1.0.3
 
 dev_dependencies:

@@ -1241,6 +1241,12 @@ class AppLocalizationsDe extends AppLocalizations {
   String get systemPickerEntry => 'Dateien auswählen... (max. 100)';
 
   @override
+  String get pickerPhotosAndVideos => 'Fotos und Videos';
+
+  @override
+  String get pickerAllFiles => 'Alle Dateien';
+
+  @override
   String get photoLibraryTitle => 'Fotogalerie';
 
   @override
