@@ -2669,4 +2669,33 @@ class AppLocalizationsDe extends AppLocalizations {
   String loadFailureTechnical(String url, int status) {
     return 'HTTP-$status für $url';
   }
+
+  @override
+  String uploadNotTaken(String reasons, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Dateien wurden nicht hochgeladen:',
+      one: 'Eine Datei wurde nicht hochgeladen:',
+    );
+    return '$_temp0 $reasons';
+  }
+
+  @override
+  String uploadFormatRefused(String names) {
+    return 'Der Server akzeptiert eine dieser Dateien nicht: $names. Aus diesem Stapel wurde nichts gespeichert.';
+  }
+
+  @override
+  String cameraRollSkipped(String names, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Elemente wurden übersprungen, da ihr Format vom Server nicht unterstützt wird:',
+      one:
+          'Ein Element wurde übersprungen, da sein Format vom Server nicht unterstützt wird:',
+    );
+    return '$_temp0 $names.';
+  }
 }

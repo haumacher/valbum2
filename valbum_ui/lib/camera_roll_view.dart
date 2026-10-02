@@ -90,9 +90,8 @@ class CameraRollScope extends InheritedNotifier<CameraRollSync> {
 /// No album chosen is no longer a dead end (issue #54): the first run creates
 /// [defaultInboxName] in the user's own space, and the label says so rather
 /// than asking for a decision that is not needed.
-String inboxLabel(AppLocalizations l10n, List<String> path) => path.isEmpty
-    ? l10n.inboxNotChosen(defaultInboxName)
-    : path.join(" > ");
+String inboxLabel(AppLocalizations l10n, List<String> path) =>
+    path.isEmpty ? l10n.inboxNotChosen(defaultInboxName) : path.join(" > ");
 
 /// The "Camera roll" section of the server settings.
 ///
@@ -175,8 +174,8 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     // line; the switches, the boxes and the buttons take their taps as before.
     return SelectionArea(
       key: cameraRollSelectableKey,
-      child: _content(context, sync, config, status, guest, hasLibrary,
-          available, l10n),
+      child: _content(
+          context, sync, config, status, guest, hasLibrary, available, l10n),
     );
   }
 
@@ -211,7 +210,8 @@ class _CameraRollSectionState extends State<CameraRollSection> {
           // about their space below, not about a camera they do have.
           subtitle: hasLibrary
               ? null
-              : Text(noticeOr(sync.library.accessProblem, l10n.noPhotoLibrary, l10n)),
+              : Text(noticeOr(
+                  sync.library.accessProblem, l10n.noPhotoLibrary, l10n)),
           value: config.enabled,
           onChanged: available ? _toggle : null,
         ),
@@ -468,8 +468,9 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     if (!mounted) {
       return;
     }
-    setState(() => refusal =
-        problem == null ? null : noticeText(problem, AppLocalizations.of(context)!));
+    setState(() => refusal = problem == null
+        ? null
+        : noticeText(problem, AppLocalizations.of(context)!));
     // Switching the sync on is where the library is asked for access; the
     // albums it refused to name a moment ago can be named now.
     _reloadAlbums();
@@ -608,9 +609,8 @@ class _InboxPickerDialogState extends State<InboxPickerDialog> {
           label: Text(l10n.newAlbumAction),
         ),
         FilledButton(
-          onPressed: path.isEmpty
-              ? null
-              : () => Navigator.of(context).pop([...path]),
+          onPressed:
+              path.isEmpty ? null : () => Navigator.of(context).pop([...path]),
           child: Text(l10n.useThisAlbum),
         ),
       ],
@@ -799,15 +799,16 @@ String cameraRollLine(CameraRollStatus status, AppLocalizations l10n) {
     case CameraRollPhase.disabled:
       return l10n.cameraRollOff;
     case CameraRollPhase.unavailable:
-      return noticeOr(status.notice, status.message ?? l10n.noPhotoLibrary, l10n);
+      return noticeOr(
+          status.notice, status.message ?? l10n.noPhotoLibrary, l10n);
     case CameraRollPhase.running:
       return l10n.cameraRollUploading(status.total, status.done + 1);
     case CameraRollPhase.waiting:
       // A run that waits for the index has not failed: it is postponed, and
       // the sentence says what the server is doing (issue #118).
       if (status.indexing) {
-        var indexing =
-            l10n.cameraRollIndexing(status.indexingTotal!, status.indexingDone!);
+        var indexing = l10n.cameraRollIndexing(
+            status.indexingTotal!, status.indexingDone!);
         return "$indexing ${l10n.cameraRollWaitingUntil(when())}";
       }
       return l10n.cameraRollFailedRetrying(reason(), when());
@@ -823,6 +824,17 @@ String cameraRollLine(CameraRollStatus status, AppLocalizations l10n) {
 }
 
 String _lastRunLine(CameraRollStatus status, AppLocalizations l10n) {
+  var line = _syncedLine(status, l10n);
+  var skipped = status.lastSkipped;
+  if (skipped.isEmpty) {
+    return line;
+  }
+  // What the server does not take is said once, and not tried again (#186).
+  var named = skipped.take(3).join(", ") + (skipped.length > 3 ? ", ..." : "");
+  return "$line ${l10n.cameraRollSkipped(named, skipped.length)}";
+}
+
+String _syncedLine(CameraRollStatus status, AppLocalizations l10n) {
   var when = status.lastSuccess;
   if (when == null) {
     return l10n.cameraRollWaitingForPhotos;

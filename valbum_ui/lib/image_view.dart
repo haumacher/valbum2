@@ -64,11 +64,21 @@ const Duration _snapBackDuration = Duration(milliseconds: 150);
 /// One helper for one question, because the display and the prefetch of
 /// issue #101 must produce the *same* [ImageProvider]: an [ImageCache] key
 /// that differs by a hair turns a prefetched neighbour into a second download.
+///
+/// A HEIC/HEIF original is never handed to the image codec (issue #186):
+/// Chrome, Firefox and the desktop cannot decode it, so the caller who may
+/// have the original is shown the server's **display rendition** instead
+/// (`?type=display`, a full-size JPEG asking the same `download` right), on
+/// every platform alike. "Download original" still saves the HEIC itself.
 ImageProvider viewerPicture(
   VAlbumClient client,
   String imageUrl, {
   required bool mayDownload,
 }) {
+  if (mayDownload && isHeifName(imageUrl)) {
+    return NetworkImage(client.displayUrl(imageUrl),
+        headers: client.authHeaders);
+  }
   if (mayDownload) {
     // The original is not cached (an album of originals would fill the
     // device), but it must still identify itself: a server started with
@@ -1314,18 +1324,25 @@ class ImageViewState extends State<ImageView>
     }
     var image = part;
     var original = picture is NetworkImage;
-    var url = original
-        ? client.originalUrl(dataUrl)
-        : client.thumbnailUrl(dataUrl);
+    // A HEIC is shown by its display rendition, never by the original (#186).
+    var display = original && isHeifName(dataUrl);
+    var url = display
+        ? client.displayUrl(dataUrl)
+        : original
+            ? client.originalUrl(dataUrl)
+            : client.thumbnailUrl(dataUrl);
     var answer = await client.probeSource(url);
     log.add(
       "Picture could not be shown: ${image.name} in "
       "${albumLabel(client.dataUrl, widget.baseUrl)}",
       [
-        original
-            ? "Tried: the original, because this caller may download it"
-            : "Tried: the preview (?type=tn), because this caller may not "
-                "download the original",
+        display
+            ? "Tried: the display rendition (?type=display), because the "
+                "original is a HEIC/HEIF the platform cannot be expected to decode"
+            : original
+                ? "Tried: the original, because this caller may download it"
+                : "Tried: the preview (?type=tn), because this caller may not "
+                    "download the original",
         "URL: ${maskUrl(url)}",
         ...answer.facts,
         originalFact(
@@ -1340,8 +1357,8 @@ class ImageViewState extends State<ImageView>
       ],
       failureCause(
         attempt: "picture ${original ? "original" : "preview"}",
-        answer: answer.transportError ??
-            "${answer.status} ${answer.message ?? ""}",
+        answer:
+            answer.transportError ?? "${answer.status} ${answer.message ?? ""}",
         platformError: errorCause(error, url),
       ),
       image.name,

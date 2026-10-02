@@ -456,6 +456,13 @@ class CameraRollStatus {
   /// it, and so does choosing an inbox.
   final String? inboxGoneUsing;
 
+  /// The items the last successful run skipped because the server does not
+  /// take their format (issue #186), by name; empty otherwise.
+  ///
+  /// A skipped item is not tried again: the watermark moved past it with its
+  /// batch, exactly as past a photo the server already had.
+  final List<String> lastSkipped;
+
   const CameraRollStatus({
     this.phase = CameraRollPhase.disabled,
     this.done = 0,
@@ -470,6 +477,7 @@ class CameraRollStatus {
     this.indexingDone,
     this.indexingTotal,
     this.inboxGoneUsing,
+    this.lastSkipped = const [],
   });
 
   /// Whether the run is waiting for the server to finish indexing (issue #118).
@@ -501,6 +509,7 @@ class CameraRollStatus {
     int? indexingDone,
     int? indexingTotal,
     String? inboxGoneUsing,
+    List<String>? lastSkipped,
   }) =>
       CameraRollStatus(
         phase: phase ?? this.phase,
@@ -520,8 +529,8 @@ class CameraRollStatus {
         // Like [message]: what one run found out about the inbox is that
         // run's, so the next transition clears it unless it says otherwise.
         inboxGoneUsing: inboxGoneUsing,
+        lastSkipped: lastSkipped ?? this.lastSkipped,
       );
-
 }
 
 /// Builds a timer, so that a test does not have to wait for one.
@@ -1055,6 +1064,7 @@ class CameraRollSync extends ChangeNotifier {
     var stored = 0;
     var present = 0;
     var presentIn = <String>[];
+    var skipped = <String>[];
     var transferred = 0;
     // Whether this run already had to replace the inbox (issue #132): once
     // per run, so a server that answers 404 for the freshly created album
@@ -1128,9 +1138,10 @@ class CameraRollSync extends ChangeNotifier {
             // nothing else -- the `?action=check` of issue #118 and the
             // transfer itself -- so a 404 out of it is that album saying it is
             // not there, see below.
-            Future<UploadSummary> transfer() => client.uploadNew(
+            Future<UploadSummary> send(List<PhotoItem> items) =>
+                client.uploadNew(
                   _config.inbox,
-                  [for (var item in fresh) item.upload],
+                  [for (var item in items) item.upload],
                   // While the server is still reading the library it cannot
                   // say that a photo is already in some album, and a first
                   // sync over an existing library would upload what is there.
@@ -1138,6 +1149,8 @@ class CameraRollSync extends ChangeNotifier {
                   // issue #118.
                   waitForIndex: !_config.syncWhileIndexing,
                 );
+            Future<UploadSummary> transfer() =>
+                _sendSkippingUnsupported(fresh, send);
 
             UploadSummary summary;
             try {
@@ -1175,6 +1188,11 @@ class CameraRollSync extends ChangeNotifier {
             }
             stored += summary.stored;
             present += summary.present;
+            for (var refused in summary.refused) {
+              if (!skipped.contains(refused.name)) {
+                skipped.add(refused.name);
+              }
+            }
             for (var where in summary.presentIn) {
               if (!presentIn.contains(where)) {
                 presentIn.add(where);
@@ -1196,8 +1214,90 @@ class CameraRollSync extends ChangeNotifier {
         }
       }
     }
-    _succeed(stored, present, presentIn);
+    _succeed(stored, present, presentIn, skipped);
   }
+
+  /// Sends [items] by [send], and where the server refuses the batch as
+  /// unsupported media (415) sends them one by one, skipping exactly the items
+  /// it refuses for their own format (issue #186).
+  ///
+  /// A current server stores the rest of a batch and names a refused file in
+  /// [UploadSummary.refused]; only a batch holding nothing it takes is a 415,
+  /// and a server built before #186 answers 415 for the whole batch. Either
+  /// way, an item is skipped only where the refusal is about *it* — the
+  /// server's sentence names it, or the server said nothing and its extension
+  /// is none this app knows a server to take — so a 415 that is about
+  /// anything else still fails the run and keeps the watermark: no supported
+  /// photo is ever passed over.
+  Future<UploadSummary> _sendSkippingUnsupported(
+    List<PhotoItem> items,
+    Future<UploadSummary> Function(List<PhotoItem>) send,
+  ) async {
+    try {
+      return await send(items);
+    } on VAlbumException catch (error) {
+      if (error.status != 415) {
+        rethrow;
+      }
+      if (items.length == 1) {
+        if (!_refusesItself(error, items.single)) {
+          rethrow;
+        }
+        return UploadSummary(
+          stored: 0,
+          present: 0,
+          refused: [
+            RefusedFile(name: items.single.name, reason: error.message),
+          ],
+        );
+      }
+      var stored = 0;
+      var present = 0;
+      var presentIn = <String>[];
+      var refused = <RefusedFile>[];
+      IndexProgress? indexed;
+      for (var item in items) {
+        var summary = await _sendSkippingUnsupported([item], send);
+        if (summary.deferred) {
+          return summary;
+        }
+        stored += summary.stored;
+        present += summary.present;
+        presentIn
+            .addAll(summary.presentIn.where((p) => !presentIn.contains(p)));
+        refused.addAll(summary.refused);
+        indexed = summary.indexed ?? indexed;
+      }
+      return UploadSummary(
+        stored: stored,
+        present: present,
+        presentIn: presentIn,
+        indexed: indexed,
+        refused: refused,
+      );
+    }
+  }
+
+  /// Whether the 415 [error] refuses [item] for what it is, see
+  /// [_sendSkippingUnsupported].
+  static bool _refusesItself(VAlbumException error, PhotoItem item) {
+    var reason = error.reason;
+    if (reason != null) {
+      return reason.contains(item.name);
+    }
+    return !knownExtensions.contains(extensionOf(item.name));
+  }
+
+  /// The extensions (lower case) a current server takes, see
+  /// [_refusesItself].
+  static const Set<String> knownExtensions = {
+    "jpg",
+    "jpeg",
+    "png",
+    "heic",
+    "heif",
+    "mp4",
+  };
 
   /// The device albums this run scans, see [CameraRollConfig.sources].
   ///
@@ -1331,7 +1431,8 @@ class CameraRollSync extends ChangeNotifier {
     ));
   }
 
-  void _succeed(int stored, int present, List<String> presentIn) {
+  void _succeed(int stored, int present, List<String> presentIn,
+      [List<String> skipped = const []]) {
     var fallback = _inboxGoneUsing;
     // Said once: this run is the line the user reads, and the next one is
     // about the inbox they now have.
@@ -1346,6 +1447,7 @@ class CameraRollSync extends ChangeNotifier {
       lastPresent: present,
       lastPresentIn: presentIn,
       inboxGoneUsing: fallback,
+      lastSkipped: skipped,
     ));
   }
 

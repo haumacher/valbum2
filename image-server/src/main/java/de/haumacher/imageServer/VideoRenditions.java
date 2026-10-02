@@ -445,7 +445,7 @@ public class VideoRenditions {
 	 * @param command
 	 *        The command line, the program itself first.
 	 */
-	static ProcessBuilder program(List<String> command) {
+	public static ProcessBuilder program(List<String> command) {
 		ProcessBuilder builder = new ProcessBuilder(command);
 		File directory = new File(command.get(0)).getParentFile();
 		// A bare program name (found on the PATH) has no directory of its own: the working
@@ -703,7 +703,7 @@ public class VideoRenditions {
 	 * call, and a test that makes the program fail later must be able to.
 	 * </p>
 	 */
-	static String executable() throws IOException {
+	public static String executable() throws IOException {
 		try {
 			String executable = _locator.locate();
 			if (executable == null) {

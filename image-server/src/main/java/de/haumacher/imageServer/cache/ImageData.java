@@ -21,6 +21,7 @@ import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 import com.drew.metadata.png.PngDirectory;
 import com.drew.metadata.xmp.XmpDirectory;
+import de.haumacher.imageServer.heif.HeifFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.GeoLocation;
 import de.haumacher.imageServer.shared.model.ImageKind;
@@ -168,6 +169,10 @@ public class ImageData extends ImagePart {
 			throws ImageProcessingException, IOException, MetadataException {
 		ImageData result = new ImageData(album, file, file.getName());
 
+		if (HeifFile.isHeif(file)) {
+			return analyzeHeif(result, file, more, zone);
+		}
+
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
 		result.setDate(result.date(metadata, file, zone == null ? ZoneId.systemDefault() : zone).getTime());
 		result.setCamera(camera(metadata));
@@ -278,6 +283,33 @@ public class ImageData extends ImagePart {
 		}
 
 		throw new IllegalArgumentException("Neither JPG, PNG, MOV, nor MP4 file: " + file);
+	}
+
+	/**
+	 * Describes a HEIC/HEIF photograph, see issue #186.
+	 *
+	 * <p>
+	 * The container is read by {@link HeifFile}, never metadata-extractor's own HEIF reader (which
+	 * answers the size of whichever <code>ispe</code> it meets first, a tile's or a thumbnail's);
+	 * its EXIF and XMP items are handed to the very readers a JPEG's are, so the date, the camera,
+	 * the position and the face import of issue #129 are read as they are for a JPEG. The size is
+	 * the picture as shown, the container's <code>irot</code>/<code>imir</code> applied; the EXIF
+	 * orientation inside is not read, see {@link HeifFile#getOrientation()}. Nothing is decoded,
+	 * so a server that cannot decode HEVC still lists the photograph.
+	 * </p>
+	 */
+	private static ImageData analyzeHeif(ImageData result, File file, Analysis more, ZoneId zone)
+			throws IOException {
+		HeifFile heif = HeifFile.read(file);
+		Metadata metadata = heif.metadata();
+		result.setDate(result.date(metadata, file, zone == null ? ZoneId.systemDefault() : zone).getTime());
+		result.setCamera(camera(metadata));
+		result.setLocation(location(metadata));
+		result.setKind(ImageKind.IMAGE);
+		result.setWidth(heif.getDisplayWidth());
+		result.setHeight(heif.getDisplayHeight());
+		more.read(result, metadata, heif.getRawWidth(), heif.getRawHeight());
+		return result;
 	}
 
 	/**

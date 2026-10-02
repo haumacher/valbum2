@@ -405,7 +405,8 @@ public class DeleteService {
 	 *
 	 * <p>
 	 * A name rule, exact per kind, and {@link CacheRefresh#isGenerated(String)} has to name the file
-	 * too: the preview (named as {@link PreviewCache#createPreview(File)} names it), the two video
+	 * too: the preview (named as {@link PreviewCache#createPreview(File)} names it), the display
+	 * rendition of a HEIC ({@link PreviewCache#displayFile(File)}, issue #186), the two video
 	 * renditions ({@link VideoRenditions.Kind#fileName(String)}) and the face crops of either naming
 	 * (<code>face-&lt;name&gt;-f&lt;12 hex&gt;.jpg</code>, <code>face-&lt;name&gt;-&lt;n&gt;.jpg</code>),
 	 * each also under its {@value PreviewCache#TMP_SUFFIX} name. A file of another photograph whose
@@ -425,6 +426,7 @@ public class DeleteService {
 		for (VideoRenditions.Kind kind : VideoRenditions.Kind.values()) {
 			exact.add(kind.fileName(name));
 		}
+		exact.add(PreviewCache.DISPLAY_PREFIX + name + "." + PreviewCache.DISPLAY_EXTENSION);
 		String cropPrefix = de.haumacher.imageServer.faces.FaceIndex.CROP_PREFIX + name + "-";
 		for (File file : files) {
 			String fileName = file.getName();

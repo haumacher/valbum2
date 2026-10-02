@@ -185,6 +185,12 @@ public abstract class SpaceTestCase extends TestCase {
 			throws Exception {
 		LinkedHashMap<String, byte[]> files = new LinkedHashMap<>();
 		files.put(fileName, contents);
+		return upload(pathInfo, token, files);
+	}
+
+	/** Uploads the given files, by name, in one request. */
+	protected FakeResponse upload(String pathInfo, String token, LinkedHashMap<String, byte[]> files)
+			throws Exception {
 		Map<String, String> headers = new HashMap<>();
 		headers.put("Content-Type", "multipart/form-data; boundary=" + BOUNDARY);
 		if (token != null) {

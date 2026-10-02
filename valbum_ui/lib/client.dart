@@ -161,6 +161,12 @@ class UploadSummary {
   /// and what has to be sent again.
   final int remaining;
 
+  /// The files the server refused on their own while it stored the rest of
+  /// their batch (issue #186): a format the library does not hold, or a name
+  /// it never shows. Each carries the server's own sentence, which names the
+  /// file.
+  final List<RefusedFile> refused;
+
   const UploadSummary({
     required this.stored,
     required this.present,
@@ -168,10 +174,11 @@ class UploadSummary {
     this.presentIn = const [],
     this.indexed,
     this.deferred = false,
+    this.refused = const [],
   });
 
   /// The number of files the upload was asked to transfer.
-  int get total => stored + present + remaining;
+  int get total => stored + present + remaining + refused.length;
 
   /// The number of files that are on the server now.
   int get onServer => stored + present;
@@ -199,13 +206,40 @@ class UploadSummary {
   /// photos that were already there are somewhere else in the library, the
   /// sentence says where — that is the whole answer to "why did this upload
   /// nothing?", see issue #118.
+  ///
+  /// A file the server refused is named with the server's own reason, behind
+  /// the counts (issue #186).
   String messageOf(AppLocalizations l10n) {
     var summary = l10n.uploadSummary(stored, present);
-    if (presentIn.isEmpty) {
-      return summary;
+    if (presentIn.isNotEmpty) {
+      summary = "$summary ${l10n.alreadyInLibrary(presentIn.join(", "))}";
     }
-    return "$summary ${l10n.alreadyInLibrary(presentIn.join(", "))}";
+    if (refused.isNotEmpty) {
+      var reasons = refused
+          .map((file) => file.reason.isEmpty ? file.name : file.reason)
+          .join(" ");
+      summary = "$summary ${l10n.uploadNotTaken(reasons, refused.length)}";
+    }
+    return summary;
   }
+}
+
+/// The extensions (lower case) a server built before issue #186 takes; it
+/// refuses a batch holding anything else with a bare 415, see
+/// [VAlbumClient.uploadAnswer].
+const Set<String> olderServerExtensions = {"jpg", "jpeg", "png", "mp4"};
+
+/// The lower-case extension of [name], `""` where it has none.
+String extensionOf(String name) {
+  var dot = name.lastIndexOf(".");
+  return dot < 0 ? "" : name.substring(dot + 1).toLowerCase();
+}
+
+/// Whether [name] is a HEIC/HEIF photograph, whose original no browser but
+/// Safari and no desktop decoder can show (issue #186).
+bool isHeifName(String name) {
+  var extension = extensionOf(name);
+  return extension == "heic" || extension == "heif";
 }
 
 /// The greatest number of files one request carries, see [UploadBatching].
@@ -790,6 +824,12 @@ class VAlbumClient {
   /// The URL delivering the original of the image at the given URL.
   String originalUrl(String imageUrl) => imageUrl;
 
+  /// The URL of the display rendition of the HEIC/HEIF photograph at
+  /// [imageUrl] (issue #186): a full-size JPEG of it, upright, which every
+  /// platform can decode — Chrome, Firefox and the desktop cannot decode the
+  /// original. It asks the `download` right, as the original does.
+  String displayUrl(String imageUrl) => "$imageUrl?type=display";
+
   /// The URL of the playback rendition of the video at [imageUrl] (issue #74).
   ///
   /// What the app plays instead of the original: a faststart 720p file, which
@@ -1367,6 +1407,24 @@ class VAlbumClient {
     if (handle != null && handle.cancelled) {
       throw VAlbumException(uploadCancelledMessage(platformMessages));
     }
+    if (status == 415 && errorMessage(body) == null) {
+      // A server built before issue #186 refuses a whole batch for one file
+      // it does not take, and says nothing about which: the files are named
+      // here, by what that server took (its extensions), so the person is not
+      // left with a bare status.
+      var suspects = [
+        for (var file in files)
+          if (!olderServerExtensions.contains(extensionOf(file.name))) file.name
+      ];
+      var names =
+          (suspects.isEmpty ? [for (var file in files) file.name] : suspects)
+              .join(", ");
+      throw VAlbumException(
+        platformMessages.uploadFormatRefused(names),
+        status: status,
+        url: url,
+      );
+    }
     if (status >= 300) {
       throw failure(status, body, platformMessages.doingUploading("'$url'"));
     }
@@ -1761,6 +1819,7 @@ class VAlbumClient {
 
     var stored = 0;
     var present = skipped;
+    var refused = <RefusedFile>[];
     var sentFiles = 0;
     var images = pending.length;
     var confirmed = 0;
@@ -1828,6 +1887,7 @@ class VAlbumClient {
           stored: stored,
           present: present,
           remaining: pending.length - sentFiles,
+          refused: refused,
         );
         throw UploadInterrupted(
           summary: summary,
@@ -1846,6 +1906,7 @@ class VAlbumClient {
           result.files.where((file) => file.status != uploadPresent).length;
       stored += batchStored;
       present += result.files.length - batchStored;
+      refused.addAll(result.refused);
       sentFiles += batch.length;
       // Only now, with the answer in hand, are these images on the server.
       confirmed += batchImages;
@@ -1860,6 +1921,7 @@ class VAlbumClient {
       present: present,
       presentIn: presentIn,
       indexed: indexed,
+      refused: refused,
     );
   }
 
@@ -2669,7 +2731,8 @@ class _ObservedTransport extends http.BaseClient {
       reason: response.reasonPhrase,
       contentType: response.headers["content-type"],
       contentLength: response.contentLength ?? body.length,
-      message: VAlbumClient.errorMessage(utf8.decode(body, allowMalformed: true)),
+      message:
+          VAlbumClient.errorMessage(utf8.decode(body, allowMalformed: true)),
       bearer: bearer,
     );
     return http.StreamedResponse(

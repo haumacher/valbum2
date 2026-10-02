@@ -49,6 +49,8 @@ public class CacheRefresh {
 	 * <ul>
 	 * <li>A preview, <code>preview-&lt;name&gt;[.&lt;type&gt;]</code>, see
 	 * {@link PreviewCache#createPreview(File)}.</li>
+	 * <li>The display rendition of a HEIC/HEIF photograph, <code>display-&lt;name&gt;.jpg</code>, see
+	 * {@link PreviewCache#createDisplay(File)} and issue #186.</li>
 	 * <li>A playback rendition, <code>video-&lt;name&gt;.mp4</code>, and a teaser,
 	 * <code>teaser-&lt;name&gt;.mp4</code>, see {@link VideoRenditions}.</li>
 	 * <li>The faces found in the photographs of this folder,
@@ -69,6 +71,11 @@ public class CacheRefresh {
 			: name;
 		if (plain.startsWith(PreviewCache.PREVIEW_PREFIX)) {
 			return plain.length() > PreviewCache.PREVIEW_PREFIX.length();
+		}
+		if (plain.startsWith(PreviewCache.DISPLAY_PREFIX)
+			&& plain.length() > PreviewCache.DISPLAY_PREFIX.length() + PreviewCache.DISPLAY_EXTENSION.length() + 1
+			&& plain.toLowerCase(Locale.ROOT).endsWith("." + PreviewCache.DISPLAY_EXTENSION)) {
+			return true;
 		}
 		if (plain.equals(de.haumacher.imageServer.faces.FaceCache.FILE_NAME)) {
 			return true;

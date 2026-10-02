@@ -1738,8 +1738,7 @@ class VAlbumState extends State<VAlbumView>
   Widget buildShareError(Object? error) {
     var refusal = error is VAlbumException ? error : null;
     var l10n = AppLocalizations.of(context)!;
-    var message =
-        refusal?.message ?? "${error ?? l10n.noDataLoaded}";
+    var message = refusal?.message ?? "${error ?? l10n.noDataLoaded}";
     if (refusal?.status == 410) {
       return ShareGoneScreen(message: message);
     }
@@ -2295,7 +2294,9 @@ class VAlbumState extends State<VAlbumView>
       messenger,
       SnackBar(
         content: Text(summary.messageOf(l10n)),
-        duration: const Duration(seconds: 4),
+        // A file that was not taken is named, which takes longer to read
+        // (issue #186).
+        duration: Duration(seconds: summary.refused.isEmpty ? 4 : 10),
       ),
     );
 

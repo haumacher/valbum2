@@ -4219,6 +4219,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'HTTP {status} for {url}'**
   String loadFailureTechnical(String url, int status);
+
+  /// Added to the summary of an upload when the server refused some files on their own and stored the rest (issue #186); reasons is the server's own sentences, one per file, each naming the file
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{One file was not uploaded:} other{{count} files were not uploaded:}} {reasons}'**
+  String uploadNotTaken(String reasons, int count);
+
+  /// Said when an older server refused a whole upload as unsupported media (HTTP 415) without saying which file (issue #186); names lists the files it most likely refused
+  ///
+  /// In en, this message translates to:
+  /// **'The server does not take one of these files: {names}. Nothing of this batch was stored.'**
+  String uploadFormatRefused(String names);
+
+  /// Added to the camera-roll status line when the sync skipped items whose format the server does not accept (issue #186); they are not tried again
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{One item was skipped, its format is not supported by the server:} other{{count} items were skipped, their format is not supported by the server:}} {names}.'**
+  String cameraRollSkipped(String names, int count);
 }
 
 class _AppLocalizationsDelegate

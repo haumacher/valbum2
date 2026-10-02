@@ -68,7 +68,7 @@ import java.util.regex.Pattern;
  */
 public class ResourceCache {
 
-	private static Set<String> ACCEPTED = new HashSet<>(Arrays.asList("jpg", "jpeg", "png", "mp4"));
+	private static Set<String> ACCEPTED = new HashSet<>(Arrays.asList("jpg", "jpeg", "png", "heic", "heif", "mp4"));
 
 	static final FileFilter IMAGES = f -> {
 		// A hidden file or the litter of another system is no photograph, whatever its extension says

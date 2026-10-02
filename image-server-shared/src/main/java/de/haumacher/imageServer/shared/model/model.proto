@@ -1333,8 +1333,31 @@ message PresentFile {
  * </p>
  */
 message UploadResult {
-	/** One entry per file of the upload request, in the order they were received. */
+	/** One entry per stored or present file of the upload request, in the order they were received. */
 	repeated UploadedFile files;
+
+	/**
+	 * The files of the request that were not taken, in the order they were received, see issue
+	 * #186.
+	 *
+	 * <p>
+	 * A file of a format the library does not hold (a <code>.webp</code>, a <code>.txt</code>) or
+	 * of a name it never shows (a hidden name, a NAS's or a desktop's litter) is refused on its
+	 * own: every other file of the request is stored as if it had come alone. Empty where
+	 * everything was taken; a request that holds nothing the library takes is refused as a whole
+	 * (<code>415</code> with an {@link ErrorInfo} naming the files) instead.
+	 * </p>
+	 */
+	repeated RefusedFile refused;
+}
+
+/** A file of an upload that was not stored, see {@link UploadResult#refused}. */
+message RefusedFile {
+	/** The file name as it was sent by the client. */
+	string name;
+
+	/** Why it was not stored, a sentence naming the file, meant for the user. */
+	string reason;
 }
 
 /** What happened to a single file of an upload, see {@link UploadResult}. */

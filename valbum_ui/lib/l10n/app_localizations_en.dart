@@ -2627,4 +2627,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String loadFailureTechnical(String url, int status) {
     return 'HTTP $status for $url';
   }
+
+  @override
+  String uploadNotTaken(String reasons, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files were not uploaded:',
+      one: 'One file was not uploaded:',
+    );
+    return '$_temp0 $reasons';
+  }
+
+  @override
+  String uploadFormatRefused(String names) {
+    return 'The server does not take one of these files: $names. Nothing of this batch was stored.';
+  }
+
+  @override
+  String cameraRollSkipped(String names, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count items were skipped, their format is not supported by the server:',
+      one: 'One item was skipped, its format is not supported by the server:',
+    );
+    return '$_temp0 $names.';
+  }
 }

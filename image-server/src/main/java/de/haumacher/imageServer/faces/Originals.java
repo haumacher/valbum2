@@ -3,6 +3,8 @@
  */
 package de.haumacher.imageServer.faces;
 
+import de.haumacher.imageServer.heif.HeifDecoder;
+import de.haumacher.imageServer.heif.HeifFile;
 import de.haumacher.imageServer.shared.model.Orientation;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
@@ -173,6 +175,9 @@ public final class Originals {
 
 	private static Region decode(File file, double left, double top, double right, double bottom, int bound,
 			int mode) throws IOException {
+		if (HeifFile.isHeif(file)) {
+			return decodeHeif(file, left, top, right, bottom, bound, mode);
+		}
 		try (ImageInputStream in = ImageIO.createImageInputStream(file)) {
 			if (in == null) {
 				throw new IOException("Cannot open '" + file.getName() + "'.");
@@ -223,6 +228,43 @@ public final class Originals {
 	}
 
 	/** The smallest sampling that brings the given side to at most the given number of pixels. */
+	/**
+	 * The region decode of a HEIC/HEIF photograph, see issue #186: the same rectangle and the same
+	 * sampling as the ImageIO path computes, the program of {@link HeifDecoder} cutting and scaling
+	 * so that no more than the region at its sampled size enters the heap. Its raw raster is the
+	 * one {@link HeifFile} defines, which is the frame a face box is stored in.
+	 */
+	private static Region decodeHeif(File file, double left, double top, double right, double bottom, int bound,
+			int mode) throws IOException {
+		HeifFile heif = HeifFile.read(file);
+		int rawWidth = heif.getRawWidth();
+		int rawHeight = heif.getRawHeight();
+		int x0 = clamp((int) Math.floor(left), 0, rawWidth - 1);
+		int y0 = clamp((int) Math.floor(top), 0, rawHeight - 1);
+		int x1 = clamp((int) Math.ceil(right), x0 + 1, rawWidth);
+		int y1 = clamp((int) Math.ceil(bottom), y0 + 1, rawHeight);
+		int width = x1 - x0;
+		int height = y1 - y0;
+		int sampling = sampling(width, height, bound, mode);
+		// What ImageIO's subsampling answers: every n-th pixel, the first one included.
+		int outWidth = (width + sampling - 1) / sampling;
+		int outHeight = (height + sampling - 1) / sampling;
+		BufferedImage image = HeifDecoder.decodeRaw(file, heif, x0, y0, width, height, outWidth, outHeight);
+		DECODES.incrementAndGet();
+		return new Region(image, x0, y0, sampling, rawWidth, rawHeight);
+	}
+
+	private static int sampling(int width, int height, int bound, int mode) {
+		switch (mode) {
+			case BY_LONG_SIDE:
+				return samplingForLongSide(Math.max(width, height), bound);
+			case AT_LEAST_LONG_SIDE:
+				return samplingForShortSide(Math.max(width, height), bound);
+			default:
+				return samplingForShortSide(Math.min(width, height), bound);
+		}
+	}
+
 	public static int samplingForLongSide(int side, int max) {
 		if (max <= 0 || side <= max) {
 			return 1;

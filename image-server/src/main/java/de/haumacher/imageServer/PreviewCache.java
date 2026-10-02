@@ -11,6 +11,9 @@ import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.png.PngDirectory;
+import de.haumacher.imageServer.faces.Faces;
+import de.haumacher.imageServer.heif.HeifDecoder;
+import de.haumacher.imageServer.heif.HeifFile;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.util.Orientations;
 import de.haumacher.util.servlet.Util;
@@ -66,7 +69,32 @@ public class PreviewCache {
 
 	private static final String JPG = "jpg";
 
-	public static final Set<String> SUPPORTED_EXTENSIONS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, MP4)));
+	private static final String HEIC = "heic";
+
+	private static final String HEIF = "heif";
+
+	/**
+	 * The extensions of the files the library holds, lower case: a file of another extension is
+	 * refused at the upload and never listed.
+	 */
+	public static final Set<String> SUPPORTED_EXTENSIONS =
+		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, HEIC, HEIF, MP4)));
+
+	/**
+	 * The name every display rendition begins with, inside {@value #CACHE_DIRECTORY_NAME}, see
+	 * {@link #createDisplay(File)}.
+	 */
+	public static final String DISPLAY_PREFIX = "display-";
+
+	/** The extension of a display rendition. */
+	public static final String DISPLAY_EXTENSION = JPG;
+
+	/**
+	 * The longest side of a display rendition, see {@link #createDisplay(File)}: every phone
+	 * photograph up to 16 MP passes unscaled, a 50 or 200 MP one is brought down to a picture a
+	 * screen can show.
+	 */
+	public static final int DISPLAY_LONG_SIDE = 4096;
 
 	private static final int PREVIEW_HEIGHT = 600;
 
@@ -245,9 +273,105 @@ public class PreviewCache {
 		File cacheDir = new File(file.getParentFile(), CACHE_DIRECTORY_NAME);
 		File previewCache = new File(cacheDir, PREVIEW_PREFIX + fileName + (suffix.equals(imageType) ? "" : "." + imageType));
 		if (!upToDate(file, previewCache)) {
-			generate(file, previewCache, suffix, imageType);
+			if (!SUPPORTED_EXTENSIONS.contains(suffix)) {
+				throw new PreviewException("Unsupported format: " + fileName);
+			}
+			generate(file, previewCache, tmp -> makePreview(file, tmp, suffix, imageType));
 		}
 		return previewCache;
+	}
+
+	/**
+	 * Where the display rendition of the given original lies, made or not, see
+	 * {@link #createDisplay(File)}.
+	 */
+	public static File displayFile(File file) {
+		return new File(new File(file.getParentFile(), CACHE_DIRECTORY_NAME),
+			DISPLAY_PREFIX + file.getName() + "." + DISPLAY_EXTENSION);
+	}
+
+	/**
+	 * Whether the given original has a display rendition: a format no browser and no app can be
+	 * expected to decode, which is a HEIC/HEIF photograph and nothing else (issue #186).
+	 */
+	public static boolean needsDisplay(File file) {
+		return HeifFile.isHeif(file);
+	}
+
+	/**
+	 * Looks up or creates the display rendition of the given HEIC/HEIF photograph, see issue #186.
+	 *
+	 * <p>
+	 * A JPEG of the photograph upright, at most {@value #DISPLAY_LONG_SIDE} pixels on its long side
+	 * and never scaled up, made on the first request and kept in
+	 * {@value #CACHE_DIRECTORY_NAME} as <code>display-&lt;name&gt;.jpg</code>: what the viewer shows
+	 * in place of an original that Chrome, Firefox and the app's own decoder cannot read. It is
+	 * made exactly as a preview is — under one of the {@link #permits}, the second request waiting
+	 * for the first, written to {@value #TMP_SUFFIX} and moved into place — and goes stale like one
+	 * (the original newer, {@link #LAST_UPDATE}); <code>?action=refresh-cache</code> and the purge
+	 * throw it away with the preview, see {@link CacheRefresh#isGenerated(String)}.
+	 * </p>
+	 */
+	public static File createDisplay(File file) throws PreviewException {
+		if (!needsDisplay(file)) {
+			throw new PreviewException("No display rendition for '" + file.getName() + "'.");
+		}
+		File display = displayFile(file);
+		if (!upToDate(file, display)) {
+			generate(file, display, tmp -> {
+				try {
+					HeifFile heif = HeifFile.read(file);
+					int width = heif.getDisplayWidth();
+					int height = heif.getDisplayHeight();
+					double scale = Math.min(1.0, ((double) DISPLAY_LONG_SIDE) / Math.max(width, height));
+					HeifDecoder.writeUprightJpeg(file, heif, Math.max(1, (int) Math.round(width * scale)),
+						Math.max(1, (int) Math.round(height * scale)), tmp);
+				} catch (IOException ex) {
+					throw new PreviewException("Cannot create the display rendition of '" + file.getName() + "': "
+						+ ex.getMessage(), ex);
+				}
+			});
+		}
+		return display;
+	}
+
+	/** Writes a generated file into the temporary name it is given. */
+	private interface Maker {
+
+		/** Writes into the given temporary file. */
+		void make(File tmp) throws PreviewException;
+	}
+
+	/** Writes the preview of the given original. */
+	private static void makePreview(File file, File tmp, String suffix, String imageType) throws PreviewException {
+		String fileName = file.getName();
+		switch (suffix) {
+			case JPG:
+			case JPEG:
+			case PNG:
+				try {
+					createImagePreview(file, tmp, imageType);
+				} catch (ImageProcessingException | MetadataException | IOException ex) {
+					throw new PreviewException("Cannot create image preview for '" + fileName + "'.", ex);
+				}
+				break;
+			case HEIC:
+			case HEIF:
+				try {
+					createHeifPreview(file, tmp);
+				} catch (IOException ex) {
+					throw new PreviewException("Cannot create image preview for '" + fileName + "': "
+						+ ex.getMessage(), ex);
+				}
+				break;
+			default:
+				try {
+					createVideoPreview(file, tmp);
+				} catch (ImageProcessingException | MetadataException | IOException ex) {
+					throw new PreviewException("Cannot create video preview for '" + fileName + "'.", ex);
+				}
+				break;
+		}
 	}
 
 	/**
@@ -270,8 +394,7 @@ public class PreviewCache {
 	/**
 	 * Generates the preview, or waits for the generation somebody else has already started.
 	 */
-	private static void generate(File file, File previewCache, String suffix, String imageType)
-			throws PreviewException {
+	private static void generate(File file, File previewCache, Maker maker) throws PreviewException {
 		String key = previewCache.getAbsolutePath();
 		CompletableFuture<Void> mine = new CompletableFuture<>();
 		CompletableFuture<Void> running = IN_FLIGHT.putIfAbsent(key, mine);
@@ -280,7 +403,7 @@ public class PreviewCache {
 			return;
 		}
 		try {
-			build(file, previewCache, suffix, imageType);
+			build(file, previewCache, maker);
 			mine.complete(null);
 		} catch (PreviewException | RuntimeException | Error ex) {
 			mine.completeExceptionally(ex);
@@ -326,12 +449,8 @@ public class PreviewCache {
 	 * generation and is never served.
 	 * </p>
 	 */
-	private static void build(File file, File previewCache, String suffix, String imageType)
-			throws PreviewException {
+	private static void build(File file, File previewCache, Maker maker) throws PreviewException {
 		String fileName = file.getName();
-		if (!SUPPORTED_EXTENSIONS.contains(suffix)) {
-			throw new PreviewException("Unsupported format: " + fileName);
-		}
 
 		Semaphore semaphore = permits;
 		try {
@@ -355,24 +474,7 @@ public class PreviewCache {
 			File tmp = new File(cacheDir, previewCache.getName() + TMP_SUFFIX);
 			hook.generationStarted(file);
 			try {
-				switch (suffix) {
-					case JPG:
-					case JPEG:
-					case PNG:
-						try {
-							createImagePreview(file, tmp, imageType);
-						} catch (ImageProcessingException | MetadataException | IOException ex) {
-							throw new PreviewException("Cannot create image preview for '" + fileName + "'.", ex);
-						}
-						break;
-					default:
-						try {
-							createVideoPreview(file, tmp);
-						} catch (ImageProcessingException | MetadataException | IOException ex) {
-							throw new PreviewException("Cannot create video preview for '" + fileName + "'.", ex);
-						}
-						break;
-				}
+				maker.make(tmp);
 				try {
 					moveIntoPlace(tmp, previewCache);
 				} catch (IOException ex) {
@@ -483,6 +585,46 @@ public class PreviewCache {
 			} finally {
 				reader.dispose();
 			}
+		}
+	}
+
+	/**
+	 * Creates the preview of the given HEIC/HEIF photograph, see issue #186.
+	 *
+	 * <p>
+	 * The program of {@link HeifDecoder} decodes the raw raster straight at the size the preview
+	 * needs, so no more than the preview ever enters the heap; it is then turned upright by the
+	 * very transform a JPEG is turned by, {@link #orientationTransform}, the container's
+	 * <code>irot</code>/<code>imir</code> standing for the EXIF orientation (see
+	 * {@link HeifFile#getOrientation()}). The face index finds its faces on this picture and maps
+	 * them back into the raw raster by the same table, so both frames agree for a HEIC as for a
+	 * JPEG (issue #142).
+	 * </p>
+	 */
+	private static void createHeifPreview(File file, File previewCache) throws IOException {
+		HeifFile heif = HeifFile.read(file);
+		Orientation orientation = heif.getOrientation();
+		int displayWidth = heif.getDisplayWidth();
+		int displayHeight = heif.getDisplayHeight();
+		int[] box = previewBox(displayWidth, displayHeight);
+		// Never scaled up, and the canvas no larger than the picture (issue #165).
+		int previewWidth = Math.min(box[0], displayWidth);
+		int previewHeight = Math.min(box[1], displayHeight);
+		boolean swapped = Faces.swaps(orientation);
+		int rawWidth = swapped ? previewHeight : previewWidth;
+		int rawHeight = swapped ? previewWidth : previewHeight;
+
+		BufferedImage raw = HeifDecoder.decodeRaw(file, heif, rawWidth, rawHeight);
+		BufferedImage copy = new BufferedImage(previewWidth, previewHeight, BufferedImage.TYPE_INT_RGB);
+		Graphics2D g = copy.createGraphics();
+		try {
+			g.setTransform(orientationTransform(orientation, rawWidth, rawHeight));
+			g.drawImage(raw, null, 0, 0);
+		} finally {
+			g.dispose();
+		}
+		if (!ImageIO.write(copy, JPG, previewCache)) {
+			throw new IOException("No JPEG writer.");
 		}
 	}
 
@@ -600,7 +742,7 @@ public class PreviewCache {
 	 * file.
 	 * </p>
 	 */
-	static AffineTransform orientationTransform(Orientation orientation, double rawWidth, double rawHeight) {
+	public static AffineTransform orientationTransform(Orientation orientation, double rawWidth, double rawHeight) {
 		// u = m00 * s + m01 * t + m02, v = m10 * s + m11 * t + m12, with (s,t) the raw pixel.
 		switch (orientation) {
 			case FLIP_H:

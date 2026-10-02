@@ -3202,12 +3202,25 @@ class PresentFile extends _JsonObject {
 ///  {@link UploadedFile#getStatus() present} instead of storing them a second time.
 ///  </p>
 class UploadResult extends _JsonObject {
-	///  One entry per file of the upload request, in the order they were received.
+	///  One entry per stored or present file of the upload request, in the order they were received.
 	List<UploadedFile> files;
+
+	///  The files of the request that were not taken, in the order they were received, see issue
+	///  #186.
+	/// 
+	///  <p>
+	///  A file of a format the library does not hold (a <code>.webp</code>, a <code>.txt</code>) or
+	///  of a name it never shows (a hidden name, a NAS's or a desktop's litter) is refused on its
+	///  own: every other file of the request is stored as if it had come alone. Empty where
+	///  everything was taken; a request that holds nothing the library takes is refused as a whole
+	///  (<code>415</code> with an {@link ErrorInfo} naming the files) instead.
+	///  </p>
+	List<RefusedFile> refused;
 
 	/// Creates a UploadResult.
 	UploadResult({
 			this.files = const [], 
+			this.refused = const [], 
 	});
 
 	/// Parses a UploadResult from a string source.
@@ -3241,6 +3254,19 @@ class UploadResult extends _JsonObject {
 				}
 				break;
 			}
+			case "refused": {
+				json.expectArray();
+				refused = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = RefusedFile.read(json);
+						if (value != null) {
+							refused.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3255,6 +3281,70 @@ class UploadResult extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("refused");
+		json.startArray();
+		for (var _element in refused) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  A file of an upload that was not stored, see {@link UploadResult#refused}.
+class RefusedFile extends _JsonObject {
+	///  The file name as it was sent by the client.
+	String name;
+
+	///  Why it was not stored, a sentence naming the file, meant for the user.
+	String reason;
+
+	/// Creates a RefusedFile.
+	RefusedFile({
+			this.name = "", 
+			this.reason = "", 
+	});
+
+	/// Parses a RefusedFile from a string source.
+	static RefusedFile? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a RefusedFile instance from the given reader.
+	static RefusedFile read(JsonReader json) {
+		RefusedFile result = RefusedFile();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "RefusedFile";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "reason": {
+				reason = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("reason");
+		json.addString(reason);
 	}
 
 }

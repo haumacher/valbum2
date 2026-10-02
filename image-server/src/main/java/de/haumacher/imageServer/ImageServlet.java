@@ -29,6 +29,8 @@ import de.haumacher.imageServer.faces.FaceIndex;
 import de.haumacher.imageServer.faces.FaceTags;
 import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.faces.PeopleStore;
+import de.haumacher.imageServer.heif.HeifDecoder;
+import de.haumacher.imageServer.heif.HeifFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.CacheRefreshed;
 import de.haumacher.imageServer.shared.model.ContentHash;
@@ -63,6 +65,7 @@ import de.haumacher.imageServer.shared.model.PersonLink;
 import de.haumacher.imageServer.shared.model.PersonMerge;
 import de.haumacher.imageServer.shared.model.PersonRename;
 import de.haumacher.imageServer.shared.model.PresentFile;
+import de.haumacher.imageServer.shared.model.RefusedFile;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ShareLink;
 import de.haumacher.imageServer.shared.model.ShareLinkCreated;
@@ -219,6 +222,33 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 */
 	public static final String PREVIEW_FAILED = "The preview of this image cannot be created.";
+
+	/**
+	 * The <code>type</code> of the display rendition of a HEIC/HEIF photograph, see
+	 * {@link PreviewCache#createDisplay(File)} and issue #186.
+	 */
+	public static final String DISPLAY_TYPE = "display";
+
+	/** The message a display rendition of a photograph that needs none is refused with. */
+	public static final String DISPLAY_NOT_NEEDED =
+		"Only a HEIC/HEIF photograph has a display rendition; ask for the original.";
+
+	/** The message a display rendition that cannot be made is answered with. */
+	public static final String DISPLAY_FAILED = "This photograph cannot be shown at full size.";
+
+	/**
+	 * The message a preview that cannot be made is answered with: {@link #PREVIEW_FAILED}, or for a
+	 * HEIC on a server that cannot decode one, why not (issue #186).
+	 */
+	static String previewFailed(File file) {
+		if (HeifFile.isHeif(file)) {
+			String unavailable = HeifDecoder.unavailability();
+			if (unavailable != null) {
+				return unavailable;
+			}
+		}
+		return PREVIEW_FAILED;
+	}
 
 	/**
 	 * The message a request for a video rendition that is not made yet is answered with.
@@ -1181,9 +1211,10 @@ public class ImageServlet extends HttpServlet {
 	private void storeSingleImage(Context context, Caller caller, PathInfo folderPath, File target)
 			throws IOException {
 		String name = target.getName();
-		if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(name))) {
-			LOG.warning("Unsupported upload extension: " + name);
-			error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+		String refusal = uploadRefusal(name);
+		if (refusal != null) {
+			LOG.warning("Refusing the upload of '" + name + "': " + refusal);
+			errorInfo(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, refusal);
 			return;
 		}
 
@@ -1229,6 +1260,36 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Why a file of the given name is not taken into the library, <code>null</code> when it is.
+	 *
+	 * <p>
+	 * A format the library does not hold (see {@link PreviewCache#SUPPORTED_EXTENSIONS}), and a
+	 * hidden name or the name of another system's litter (a Mac's <code>._IMG_1.jpg</code>), which
+	 * would be stored and never shown, see {@link LibraryFiles}. The sentence names the file, so
+	 * that an app showing it needs nothing else to say which.
+	 * </p>
+	 */
+	static String uploadRefusal(String name) {
+		if (LibraryFiles.isIgnored(name)) {
+			return unsupportedName(name);
+		}
+		if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(name))) {
+			return unsupportedFormat(name);
+		}
+		return null;
+	}
+
+	/** The refusal of an upload in a format the library does not hold, see issue #186. */
+	public static String unsupportedFormat(String name) {
+		return "'" + name + "' was not uploaded: its format is not supported (JPEG, PNG, HEIC/HEIF and MP4 are).";
+	}
+
+	/** The refusal of an upload whose name the library never shows, see issue #173. */
+	public static String unsupportedName(String name) {
+		return "'" + name + "' was not uploaded: a hidden file or the litter of another system is no photograph.";
+	}
+
+	/**
 	 * Who to record as the contributor of what the given caller uploads, see issue #53.
 	 *
 	 * <p>
@@ -1263,24 +1324,40 @@ public class ImageServlet extends HttpServlet {
 	 * contributor — whoever brought the photo here is who brought it here, however often it is
 	 * sent again.
 	 * </p>
+	 *
+	 * <p>
+	 * A file the library does not take (see {@link #uploadRefusal(String)}) is answered in
+	 * {@link UploadResult#getRefused()} and the rest of the request is stored, see issue #186; a
+	 * request holding nothing but such files is refused with a <code>415</code> whose
+	 * {@link ErrorInfo} names them.
+	 * </p>
 	 */
 	private void storeUploads(Context context, Caller caller, PathInfo folderPath) throws IOException {
 		File folder = folderPath.toFile();
 		List<UploadItem> uploads = _fileUpload.parseRequest(context.request());
+
+		// A file the library does not take is refused on its own; everything else is stored as if
+		// it had come alone (issue #186). Only a request with nothing to store is refused whole.
+		UploadResult result = UploadResult.create();
+		List<UploadItem> accepted = new ArrayList<>();
 		for (UploadItem upload : uploads) {
 			String name = baseName(upload.getName());
-			// A hidden name or the name of another system's litter (a Mac's ._IMG_1.jpg) would be
-			// stored and never shown, see LibraryFiles: no file the library holds.
-			if (!PreviewCache.SUPPORTED_EXTENSIONS.contains(extension(name)) || LibraryFiles.isIgnored(name)) {
-				LOG.warning("Unsupported upload extension: " + name);
-				// Nothing is stored: an upload is accepted as a whole or not at all.
-				discard(uploads);
-				error(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
-				return;
+			String refusal = uploadRefusal(name);
+			if (refusal != null) {
+				LOG.warning("Refusing the upload of '" + name + "': " + refusal);
+				upload.delete();
+				result.addRefused(RefusedFile.create().setName(name).setReason(refusal));
+			} else {
+				accepted.add(upload);
 			}
 		}
+		if (accepted.isEmpty() && !result.getRefused().isEmpty()) {
+			errorInfo(context, HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE,
+				result.getRefused().stream().map(RefusedFile::getReason).collect(Collectors.joining(" ")));
+			return;
+		}
+		uploads = accepted;
 
-		UploadResult result = UploadResult.create();
 		HashCache hashes = new HashCache(folder);
 		try {
 			for (UploadItem upload : uploads) {
@@ -3603,10 +3680,12 @@ public class ImageServlet extends HttpServlet {
 				data = PreviewCache.createPreview(pathInfo.toFile());
 			} catch (PreviewException ex) {
 				LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
-				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, PREVIEW_FAILED);
+				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, previewFailed(pathInfo.toFile()));
 				return;
 			}
 			serveData(context, data, "image/jpeg");
+		} else if (DISPLAY_TYPE.equals(type)) {
+			serveDisplay(context, pathInfo.toFile());
 		} else if (FACE_TYPE.equals(type)) {
 			serveFace(context, pathInfo, caller, viewAs);
 		} else if (VideoRenditions.Kind.PLAYBACK.parameter().equals(type)) {
@@ -3621,6 +3700,36 @@ public class ImageServlet extends HttpServlet {
 				serveData(context, pathInfo.toFile(), mimeType);
 			}
 		}
+	}
+
+	/**
+	 * Answers <code>&lt;image&gt;?type=display</code>: the full-size JPEG the viewer shows in place
+	 * of a HEIC/HEIF original that no browser but Safari and no app decoder can read, see issue
+	 * #186 and {@link PreviewCache#createDisplay(File)}.
+	 *
+	 * <p>
+	 * It asks the {@link Rights#DOWNLOAD} right, exactly as the original it stands in for: a
+	 * <code>view</code>-only caller is shown the <code>?type=tn</code> rendition of a HEIC as of a
+	 * JPEG (issue #95), and is not handed a picture of the original's size through the side door of
+	 * its format.
+	 * </p>
+	 */
+	private void serveDisplay(Context context, File file) throws IOException {
+		if (!PreviewCache.needsDisplay(file)) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, DISPLAY_NOT_NEEDED);
+			return;
+		}
+		File data;
+		try {
+			data = PreviewCache.createDisplay(file);
+		} catch (PreviewException ex) {
+			LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
+			String unavailable = HeifDecoder.unavailability();
+			errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+				unavailable != null ? unavailable : DISPLAY_FAILED);
+			return;
+		}
+		serveData(context, data, "image/jpeg");
 	}
 
 	/**
@@ -4682,6 +4791,10 @@ public class ImageServlet extends HttpServlet {
 			case QUICKTIME:
 				return "video/quicktime";
 			case IMAGE:
+				if (HeifFile.isHeif(image.getName())) {
+					// Not every container's MIME table knows them, see issue #186.
+					return "heic".equals(extension(image.getName())) ? "image/heic" : "image/heif";
+				}
 				return context.request().getServletContext().getMimeType(image.getName());
 			}
 		}

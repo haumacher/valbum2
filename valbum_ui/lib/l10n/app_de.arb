@@ -317,6 +317,7 @@
   "videoTryAgain": "Erneut versuchen",
   "videoConversionFailed": "Der Server konnte dieses Video nicht konvertieren: {reason}",
   "videoPlayingOriginal": "Stattdessen wird die Originaldatei abgespielt.",
+  "videoFetchedWithoutSignIn": "Der Browser hat das Video ohne Anmeldung abgerufen und erhielt eine Zugriffsverweigerung.",
   "videoFormatRefused": "Dieser Browser oder dieses Gerät kann dieses Format nicht wiedergeben ({contentType}).",
   "videoNotFetched": "Der Server stellt dieses Video bereit ({contentType}), doch der Player konnte es nicht abrufen.",
   "videoServerRefused": "Der Server hat das Video mit dem Status {status} abgelehnt: {message}",
@@ -686,5 +687,7 @@
   "goToStartPage": "Zur Startseite",
   "loadFailureDetails": "Details",
   "loadFailureTechnical": "HTTP-{status} für {url}",
-  "videoFetchedWithoutSignIn": "Der Browser hat das Video ohne Anmeldung abgerufen und erhielt eine Zugriffsverweigerung."
+  "uploadNotTaken": "{count, plural, =1{Eine Datei wurde nicht hochgeladen:} other{{count} Dateien wurden nicht hochgeladen:}} {reasons}",
+  "uploadFormatRefused": "Der Server akzeptiert eine dieser Dateien nicht: {names}. Aus diesem Stapel wurde nichts gespeichert.",
+  "cameraRollSkipped": "{count, plural, =1{Ein Element wurde übersprungen, da sein Format vom Server nicht unterstützt wird:} other{{count} Elemente wurden übersprungen, da ihr Format vom Server nicht unterstützt wird:}} {names}."
 }

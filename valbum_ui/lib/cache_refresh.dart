@@ -4,9 +4,10 @@
 /// looks inside a cached file: it is fresh when it is newer than the original,
 /// so a broken thumbnail stayed broken for ever. Since issue #98 an
 /// administrator can tell the server to delete what it generated itself —
-/// `preview-*`, `video-*.mp4`, `teaser-*.mp4` and their `.tmp` leftovers,
-/// inside that one folder's `.vacache` and nowhere else. The photos are never
-/// touched, and the previews are made anew when they are next asked for.
+/// `preview-*`, `display-*.jpg` (issue #186), `video-*.mp4`, `teaser-*.mp4`
+/// and their `.tmp` leftovers, inside that one folder's `.vacache` and nowhere
+/// else. The photos are never touched, and the previews are made anew when
+/// they are next asked for.
 ///
 /// An extension rather than a method of [VAlbumClient]: this is one call of
 /// one screen, and the client is the app's common transport — it is built from

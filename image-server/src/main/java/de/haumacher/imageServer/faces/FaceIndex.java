@@ -8,6 +8,7 @@ import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.imageServer.PreviewCache;
 import de.haumacher.imageServer.PreviewException;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.heif.HeifFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FaceInfo;
@@ -1090,6 +1091,11 @@ public class FaceIndex {
 
 	/** The size of the given file's own raster, before any orientation; a header read, no pixels. */
 	static int[] rasterOf(File file) throws IOException {
+		if (HeifFile.isHeif(file)) {
+			// The raw raster of a HEIC: the coded picture before irot/imir, see HeifFile.
+			HeifFile heif = HeifFile.read(file);
+			return new int[] { heif.getRawWidth(), heif.getRawHeight() };
+		}
 		try (javax.imageio.stream.ImageInputStream in = ImageIO.createImageInputStream(file)) {
 			if (in == null) {
 				throw new IOException("Cannot open '" + file.getName() + "'.");
@@ -1117,6 +1123,15 @@ public class FaceIndex {
 	 * </p>
 	 */
 	static Orientation exifOrientation(File file) {
+		if (HeifFile.isHeif(file)) {
+			// A HEIC is turned by its container, not by the EXIF it carries, see HeifFile.
+			try {
+				return HeifFile.read(file).getOrientation();
+			} catch (IOException ex) {
+				LOG.log(Level.FINE, "No orientation in '" + file.getName() + "'.", ex);
+				return Orientation.IDENTITY;
+			}
+		}
 		try {
 			com.drew.metadata.Metadata metadata = com.drew.imaging.ImageMetadataReader.readMetadata(file);
 			com.drew.metadata.exif.ExifIFD0Directory directory =
@@ -1135,7 +1150,7 @@ public class FaceIndex {
 	/** Whether the given file is a photograph; a video is never looked at, see issue #123. */
 	static boolean isPhotograph(File file) {
 		String suffix = de.haumacher.util.servlet.Util.suffix(file.getName());
-		return "jpg".equals(suffix) || "jpeg".equals(suffix) || "png".equals(suffix);
+		return "jpg".equals(suffix) || "jpeg".equals(suffix) || "png".equals(suffix) || HeifFile.isHeif(file);
 	}
 
 	/** Whether the given part is a photograph the detector would look at. */

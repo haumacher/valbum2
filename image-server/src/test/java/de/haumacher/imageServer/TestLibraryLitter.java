@@ -356,11 +356,27 @@ public class TestLibraryLitter extends TestCase {
 		_servlet.doPut(request("/" + ALBUM + "/", "multipart/form-data; boundary=" + BOUNDARY, multipart(files),
 			Collections.emptyMap()), response.response());
 
-		assertEquals("A file the library would never show is not stored.",
-			HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, response.status());
-		assertFalse("An upload is accepted as a whole or not at all.",
+		// Since issue #186 the litter is refused on its own and the photograph beside it stored.
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+		assertTrue("The photograph of the batch is stored.",
 			_base.resolve(ALBUM + "/IMG_9999.jpg").toFile().exists());
-		assertFalse(_base.resolve(ALBUM + "/._IMG_9999.jpg").toFile().exists());
+		assertFalse("A file the library would never show is not stored.",
+			_base.resolve(ALBUM + "/._IMG_9999.jpg").toFile().exists());
+		de.haumacher.imageServer.shared.model.UploadResult result =
+			de.haumacher.imageServer.shared.model.UploadResult.readUploadResult(
+				new de.haumacher.msgbuf.json.JsonReader(new de.haumacher.msgbuf.server.io.ReaderAdapter(
+					new java.io.StringReader(response.body()))));
+		assertEquals(1, result.getRefused().size());
+		assertEquals("._IMG_9999.jpg", result.getRefused().get(0).getName());
+		assertEquals(ImageServlet.unsupportedName("._IMG_9999.jpg"), result.getRefused().get(0).getReason());
+
+		// Alone, it is refused whole, with a reason naming it.
+		files.remove("IMG_9999.jpg");
+		FakeResponse alone = new FakeResponse();
+		_servlet.doPut(request("/" + ALBUM + "/", "multipart/form-data; boundary=" + BOUNDARY, multipart(files),
+			Collections.emptyMap()), alone.response());
+		assertEquals(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, alone.status());
+		assertEquals(ImageServlet.unsupportedName("._IMG_9999.jpg"), errorMessage(alone));
 	}
 
 	public void testNoAlbumIsCreatedUnderALitterName() throws Exception {

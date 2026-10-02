@@ -154,10 +154,23 @@ public class TestImageServletUpload extends TestCase {
 			Collections.singletonList(ImageServlet.STORED), states(upload(_servlet, "/", files("a.jpg", RED))));
 	}
 
-	public void testUnsupportedExtensionStoresNothing() throws Exception {
-		FakeResponse response = uploadResponse(_servlet, "/", files("a.jpg", RED, "notes.txt", BLUE));
+	public void testAnUnsupportedExtensionIsRefusedAlone() throws Exception {
+		UploadResult result = upload(_servlet, "/", files("a.jpg", RED, "notes.txt", BLUE));
+
+		assertEquals("The supported file is stored, see issue #186.", Collections.singletonList("a.jpg"),
+			imageNames());
+		assertEquals(Collections.singletonList("a.jpg"), storedNames(result));
+		assertEquals(1, result.getRefused().size());
+		assertEquals("notes.txt", result.getRefused().get(0).getName());
+		assertEquals(ImageServlet.unsupportedFormat("notes.txt"), result.getRefused().get(0).getReason());
+		assertFalse(Files.exists(_base.resolve("notes.txt")));
+	}
+
+	public void testOnlyUnsupportedFilesStoreNothing() throws Exception {
+		FakeResponse response = uploadResponse(_servlet, "/", files("notes.txt", BLUE));
 
 		assertEquals(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, response.status());
+		assertEquals(ImageServlet.unsupportedFormat("notes.txt"), errorMessage(response));
 		assertEquals("A refused upload must store nothing at all.",
 			Collections.emptyList(), imageNames());
 	}
