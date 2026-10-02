@@ -226,6 +226,17 @@
 												<group>root</group>
 											</mapper>
 										</data>
+										<data>
+											<src>${project.basedir}/src/deb/copyright</src>
+											<type>file</type>
+											<dst>/usr/share/doc/valbum/copyright</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>644</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
 										<!--
 											The default library folder. Shipped root-owned, because the
 											'valbum' user is created by postinst, which hands the folder

@@ -626,6 +626,13 @@ void sliceTwo() {
       );
       await tester.pumpAndSettle();
       expect(find.text(de.shareContinueToStart), findsOneWidget);
+      // The way to the About dialog a stranger is offered there (#187), and
+      // the dialog itself.
+      expect(find.text(de.aboutMenuEntry), findsOneWidget);
+      await tester.tap(find.byKey(const Key("about")));
+      await tester.pumpAndSettle();
+      expect(find.text(de.aboutDescription), findsOneWidget);
+      expect(find.text(de.aboutSourceCode), findsOneWidget);
 
       await tester.pumpWidget(
         localizedApp(

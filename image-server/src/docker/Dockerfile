@@ -101,3 +101,5 @@ RUN check-libraries /natives
 
 # --- The published image: the runtime stage, and the default target ------------------------------
 FROM runtime
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.source="https://github.com/haumacher/valbum2"

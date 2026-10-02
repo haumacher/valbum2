@@ -2698,4 +2698,23 @@ class AppLocalizationsDe extends AppLocalizations {
     );
     return '$_temp0 $names.';
   }
+
+  @override
+  String get aboutMenuEntry => 'Über VAlbum';
+
+  @override
+  String get aboutDescription =>
+      'Ein selbst gehostetes Foto- und Videoalbum. Die Fotos verbleiben auf dem eigenen Server des Besitzers, und der Server verändert die Originale niemals.';
+
+  @override
+  String aboutVersion(String version) {
+    return 'Version $version';
+  }
+
+  @override
+  String get aboutSourceCode => 'Quellcode, Dokumentation und Fehlerberichte:';
+
+  @override
+  String get aboutLicense =>
+      'Freie Software unter der GNU Affero General Public License, Version 3 oder höher.';
 }

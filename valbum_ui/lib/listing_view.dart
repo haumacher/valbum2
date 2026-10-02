@@ -4,6 +4,7 @@ library;
 import 'package:date_field/date_field.dart';
 import 'package:flutter/material.dart';
 
+import 'about.dart';
 import 'album_date.dart';
 import 'app.dart';
 import 'caller.dart';
@@ -233,7 +234,10 @@ class ListingView extends StatelessWidget {
             menuItem(Icons.update, l10n.reload, (_) => albumState.reload()),
             // A visitor of a link has no server of their own to configure.
             if (link == null)
-              menuItem(Icons.settings, l10n.serverMenuEntry, openServerSettings),
+              menuItem(
+                  Icons.settings, l10n.serverMenuEntry, openServerSettings),
+            // What this app is, the last entry of every main menu (#187).
+            aboutMenuItem(l10n),
           ]),
         ],
       ),
@@ -253,7 +257,12 @@ class ListingView extends StatelessWidget {
                   builder: (BuildContext context, BoxConstraints constraints) {
                     double imageBorder = 8;
                     var preferredImageWidth = 200;
-                    var maxWidth = constraints.maxWidth;
+                    // The tiles stay clear of a cutout or the navigation bar
+                    // at a side in landscape, the app bar having taken the
+                    // top inset already.
+                    var insets = MediaQuery.paddingOf(context);
+                    var maxWidth =
+                        constraints.maxWidth - insets.left - insets.right;
                     double preferredImageSpace =
                         preferredImageWidth + 2 * imageBorder;
                     double imagesPerRowFrag = maxWidth / preferredImageSpace;
@@ -270,7 +279,9 @@ class ListingView extends StatelessWidget {
                       // The last row of tiles ends above the system navigation
                       // bar instead of running under it, see issue #60.
                       padding: EdgeInsets.only(
-                        bottom: MediaQuery.paddingOf(context).bottom,
+                        left: insets.left,
+                        right: insets.right,
+                        bottom: insets.bottom,
                       ),
                       child: buildFolderList(
                         context,

@@ -456,3 +456,6 @@ Minuten und einmal; ein Neustart erzeugt einen neuen. Weitere Geräte meldest Du
 `sudo valbum-admin create-space familie --name "Die Familie"` (im Container:
 `docker compose exec valbum valbum-admin …`); `sudo valbum-admin help` zeigt alle Befehle.
 Aktualisiert wird mit `sudo apt upgrade` bzw. `docker compose pull && docker compose up -d`.
+
+**Lizenz.** VAlbum ist freie Software unter der
+[GNU Affero General Public License, Version 3 oder höher](LICENSE) (AGPL-3.0-or-later).

@@ -50,6 +50,7 @@ import 'package:flutter/services.dart' show HardwareKeyboard;
 import 'package:intl/intl.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 
+import 'about.dart';
 import 'album_edit.dart';
 import 'album_model.dart';
 import 'album_view.dart';
@@ -877,19 +878,33 @@ class InboxContentState extends State<InboxContent> {
                 // A scrollbar and the paging keys, issue #168.
                 : KeyboardScroll(
                     child: LayoutBuilder(
-                      builder: (context, constraints) => CustomScrollView(
-                        scrollDirection: Axis.vertical,
-                        scrollCacheExtent:
-                            const ScrollCacheExtent.viewport(contextViewports),
-                        slivers: [
-                          ...buildSlivers(sections, constraints.maxWidth),
-                          SliverToBoxAdapter(
-                            child: SizedBox(
-                              height: MediaQuery.paddingOf(context).bottom,
+                      builder: (context, constraints) {
+                        // Clear of a cutout or the navigation bar at a side
+                        // in landscape; the app bar took the top inset.
+                        var insets = MediaQuery.paddingOf(context);
+                        return CustomScrollView(
+                          scrollDirection: Axis.vertical,
+                          scrollCacheExtent: const ScrollCacheExtent.viewport(
+                              contextViewports),
+                          slivers: [
+                            SliverPadding(
+                              padding: EdgeInsets.only(
+                                  left: insets.left, right: insets.right),
+                              sliver: SliverMainAxisGroup(
+                                slivers: buildSlivers(
+                                  sections,
+                                  constraints.maxWidth -
+                                      insets.left -
+                                      insets.right,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                            SliverToBoxAdapter(
+                              child: SizedBox(height: insets.bottom),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
           ),
@@ -954,6 +969,8 @@ class InboxContentState extends State<InboxContent> {
         menuItem(Icons.update, _l10n.reload, (_) => widget.albumState.reload()),
         if (share == null)
           menuItem(Icons.settings, _l10n.serverMenuEntry, openServerSettings),
+        // What this app is, the last entry of every main menu (#187).
+        aboutMenuItem(_l10n),
       ];
 
   /// The inbox as the slivers of its scroll view: a month line where the

@@ -4237,6 +4237,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{One item was skipped, its format is not supported by the server:} other{{count} items were skipped, their format is not supported by the server:}} {names}.'**
   String cameraRollSkipped(String names, int count);
+
+  /// Menu entry (in every main menu, and in a share link) opening the dialog that tells about the app and links to its GitHub page (issue #187). VAlbum is the app's name and stays as it is.
+  ///
+  /// In en, this message translates to:
+  /// **'About VAlbum'**
+  String get aboutMenuEntry;
+
+  /// What the app is, in the About dialog (issue #187).
+  ///
+  /// In en, this message translates to:
+  /// **'A self-hosted photo and video album. The photos stay on their owner\'s own server, and the server never changes the originals.'**
+  String get aboutDescription;
+
+  /// The version line under the app's name in the About dialog (issue #187), e.g. 'Version 2.10.0'.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version}'**
+  String aboutVersion(String version);
+
+  /// Line in the About dialog above the link to the app's GitHub page (issue #187).
+  ///
+  /// In en, this message translates to:
+  /// **'Source code, documentation and bug reports:'**
+  String get aboutSourceCode;
+
+  /// The licence line of the About dialog (the legalese under the version). The licence name is a proper name; keep 'GNU Affero General Public License' untranslated.
+  ///
+  /// In en, this message translates to:
+  /// **'Free software under the GNU Affero General Public License, version 3 or later.'**
+  String get aboutLicense;
 }
 
 class _AppLocalizationsDelegate

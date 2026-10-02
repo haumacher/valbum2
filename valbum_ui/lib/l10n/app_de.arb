@@ -689,5 +689,10 @@
   "loadFailureTechnical": "HTTP-{status} für {url}",
   "uploadNotTaken": "{count, plural, =1{Eine Datei wurde nicht hochgeladen:} other{{count} Dateien wurden nicht hochgeladen:}} {reasons}",
   "uploadFormatRefused": "Der Server akzeptiert eine dieser Dateien nicht: {names}. Aus diesem Stapel wurde nichts gespeichert.",
-  "cameraRollSkipped": "{count, plural, =1{Ein Element wurde übersprungen, da sein Format vom Server nicht unterstützt wird:} other{{count} Elemente wurden übersprungen, da ihr Format vom Server nicht unterstützt wird:}} {names}."
+  "cameraRollSkipped": "{count, plural, =1{Ein Element wurde übersprungen, da sein Format vom Server nicht unterstützt wird:} other{{count} Elemente wurden übersprungen, da ihr Format vom Server nicht unterstützt wird:}} {names}.",
+  "aboutMenuEntry": "Über VAlbum",
+  "aboutDescription": "Ein selbst gehostetes Foto- und Videoalbum. Die Fotos verbleiben auf dem eigenen Server des Besitzers, und der Server verändert die Originale niemals.",
+  "aboutVersion": "Version {version}",
+  "aboutSourceCode": "Quellcode, Dokumentation und Fehlerberichte:",
+  "aboutLicense": "Freie Software unter der GNU Affero General Public License, Version 3 oder höher."
 }

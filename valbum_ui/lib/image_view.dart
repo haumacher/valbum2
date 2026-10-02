@@ -10,6 +10,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'about.dart';
 import 'album_layout.dart' show Orientations, ToImage;
 import 'app.dart';
 import 'attribution.dart';
@@ -2189,7 +2190,7 @@ class ImageViewState extends State<ImageView>
           leaveEditPersons,
           key: const Key("viewer-edit-persons-done"),
         ),
-      ] else if (mayEditPersons || mayDownloadOriginal)
+      ] else
         // The viewer's own menu, the last control at the right (issue #100).
         Container(
           key: const Key("viewer-menu"),
@@ -2230,6 +2231,8 @@ class ImageViewState extends State<ImageView>
                   ],
                 ),
               ),
+            // What this app is, the last entry of every main menu (#187).
+            aboutMenuItem(l10n),
           ]),
         ),
     ];

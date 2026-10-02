@@ -24,3 +24,4 @@ valbum_ui/.flutter-plugins-dependencies
 .playwright-mcp/
 recording.json
 .vacache/
+__pycache__/

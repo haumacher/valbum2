@@ -4440,5 +4440,35 @@
       }
     },
     "x-translated": "28bce912"
+  },
+  "aboutMenuEntry": "About VAlbum",
+  "@aboutMenuEntry": {
+    "description": "Menu entry (in every main menu, and in a share link) opening the dialog that tells about the app and links to its GitHub page (issue #187). VAlbum is the app's name and stays as it is.",
+    "x-translated": "41783028"
+  },
+  "aboutDescription": "A self-hosted photo and video album. The photos stay on their owner's own server, and the server never changes the originals.",
+  "@aboutDescription": {
+    "description": "What the app is, in the About dialog (issue #187).",
+    "x-translated": "be4ca56d"
+  },
+  "aboutVersion": "Version {version}",
+  "@aboutVersion": {
+    "description": "The version line under the app's name in the About dialog (issue #187), e.g. 'Version 2.10.0'.",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    },
+    "x-translated": "28ef659b"
+  },
+  "aboutSourceCode": "Source code, documentation and bug reports:",
+  "@aboutSourceCode": {
+    "description": "Line in the About dialog above the link to the app's GitHub page (issue #187).",
+    "x-translated": "4b91b59c"
+  },
+  "aboutLicense": "Free software under the GNU Affero General Public License, version 3 or later.",
+  "@aboutLicense": {
+    "description": "The licence line of the About dialog (the legalese under the version). The licence name is a proper name; keep 'GNU Affero General Public License' untranslated.",
+    "x-translated": "70c433b4"
   }
 }
