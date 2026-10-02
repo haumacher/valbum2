@@ -1,6 +1,6 @@
-# QuickTime, iTunes and 3GPP videos (issue #189)
+# Video containers (issues #189 and #192)
 
-Five tiny generated videos — no real recording. One second at 10 fps, each frame four quadrants
+Ten tiny generated videos — no real recording. One second at 10 fps, each frame four quadrants
 upright: red top left, green top right, blue bottom left, yellow bottom right, so a probe of each
 corner of the poster tells a wrong turn apart.
 
@@ -30,3 +30,26 @@ the first time a transcode runs:
 FFMPEG_DIR=~/.javacpp/cache/ffmpeg-5.1.2-1.5.8-linux-x86_64.jar/org/bytedeco/ffmpeg/linux-x86_64 \
   sh image-server/src/test/fixtures/video/generate.sh
 ```
+
+## The containers only FFmpeg reads (issue #192)
+
+metadata-extractor reads none of these (an AVI only partly), so the server asks the bundled FFmpeg
+(`VideoProbe`). All are 96 × 64, four quadrants, one second.
+
+| File                              | Container       | Streams                        | Dated by                                     |
+| --------------------------------- | --------------- | ------------------------------ | -------------------------------------------- |
+| `clip.mts`                        | MPEG-TS (AVCHD) | H.264 + AC-3                   | H.264 SEI `MDPM` 2024-05-17 12:34:56 +02:00  |
+| `interlaced.m2ts`                 | MPEG-TS         | MPEG-2, field-coded, 25 fps    | nothing: its modification time               |
+| `clip.avi`                        | AVI             | Motion JPEG + PCM 8 kHz        | INFO `ICRD` 2005-06-18 (midnight, space zone) |
+| `clip.mkv`                        | Matroska        | H.264 + Opus                   | `DateUTC` 2024-05-17 12:36:00 UTC            |
+| `screen-2024-05-17_12-37-00.webm` | WebM            | VP8                            | its name (#102), 12:37:00 in the space zone  |
+
+`clip.mts` carries the recording time a Sony or Panasonic camcorder writes: an SEI
+`user_data_unregistered` message (UUID `17ee8c60-f84d-11d9-8cd6-0800200c9a66`, then `MDPM`) with
+tag `0x18` (zone byte, year, month) and tag `0x19` (day, hour, minute, second) in BCD, inserted by
+FFmpeg's `h264_metadata` bitstream filter. The interlaced fixture is MPEG-2 (as an HDV camcorder
+writes it) because `libopenh264`, the only H.264 encoder of the LGPL build, encodes progressive
+frames only — an interlaced AVCHD H.264 clip cannot be generated here; FFmpeg reads this one as
+"bottom first", which is what the deinterlacing rule asks. An AVI's `IDIT` chunk (what a Canon or
+Nikon writes) is read by FFmpeg as `creation_time` too, but FFmpeg cannot write one, so no fixture
+carries it.

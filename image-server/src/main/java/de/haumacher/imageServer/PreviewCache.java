@@ -13,6 +13,7 @@ import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.png.PngDirectory;
 import com.drew.metadata.webp.WebpDirectory;
 import de.haumacher.imageServer.cache.ImageData;
+import de.haumacher.imageServer.cache.VideoProbe;
 import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.heif.HeifDecoder;
 import de.haumacher.imageServer.heif.HeifFile;
@@ -71,6 +72,16 @@ public class PreviewCache {
 
 	private static final String THREE_GP = "3gp";
 
+	private static final String MTS = "mts";
+
+	private static final String M2TS = "m2ts";
+
+	private static final String AVI = "avi";
+
+	private static final String MKV = "mkv";
+
+	private static final String WEBM = "webm";
+
 	private static final String PNG = "png";
 
 	private static final String JPEG = "jpeg";
@@ -97,16 +108,20 @@ public class PreviewCache {
 	 * refused at the upload and never listed.
 	 */
 	public static final Set<String> SUPPORTED_EXTENSIONS =
-		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, WEBP, GIF, HEIC, HEIF, MP4, MOV, M4V, THREE_GP)));
+		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, WEBP, GIF, HEIC, HEIF, MP4, MOV, M4V, THREE_GP, MTS, M2TS, AVI,
+			MKV, WEBM)));
 
 	/**
 	 * The extensions of the videos among {@link #SUPPORTED_EXTENSIONS}, lower case: the ISO media
 	 * and QuickTime containers the bundled FFmpeg reads — an mp4, a QuickTime movie (every iPhone
-	 * video, issue #189), an iTunes <code>.m4v</code> and a 3GPP file of an older phone. Each has a
-	 * poster frame and the renditions of {@link VideoRenditions}.
+	 * video, issue #189), an iTunes <code>.m4v</code> and a 3GPP file of an older phone — and the
+	 * containers only FFmpeg reads (issue #192, {@link VideoProbe}): an AVCHD camcorder's
+	 * <code>.mts</code>/<code>.m2ts</code>, an older camera's <code>.avi</code>, a Matroska
+	 * <code>.mkv</code> and a <code>.webm</code>. Each has a poster frame and the renditions of
+	 * {@link VideoRenditions}.
 	 */
 	public static final Set<String> VIDEO_EXTENSIONS =
-		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(MP4, MOV, M4V, THREE_GP)));
+		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(MP4, MOV, M4V, THREE_GP, MTS, M2TS, AVI, MKV, WEBM)));
 
 	/** Whether a file of the given name is a video, by its extension in any case. */
 	public static boolean isVideoName(String name) {
@@ -887,9 +902,15 @@ public class PreviewCache {
 			ImageProcessingException, IOException, MetadataException {
 		BufferedImage image = getPreviewFrame(file);
 
+		VideoProbe probe = VideoProbe.handles(file.getName()) ? VideoProbe.probe(file) : null;
+		if (probe != null) {
+			image = shownFrame(image, probe);
+		}
+
 		// The rotation of an mp4 and of a QuickTime movie alike (issue #189): a portrait iPhone
-		// video is stored on its side and turned by the matrix of its track.
-		int rotation = ImageData.rotation(ImageData.readMetadata(file));
+		// video is stored on its side and turned by the matrix of its track. A container only
+		// FFmpeg reads says it in its display matrix (issue #192).
+		int rotation = probe != null ? probe.getRotation() : ImageData.rotation(ImageData.readMetadata(file));
 		if (rotation != 0) {
 			int rawWidth = image.getWidth();
 			int rawHeight = image.getHeight();
@@ -914,6 +935,48 @@ public class PreviewCache {
 			image = copy;
 		}
 		ImageIO.write(image, JPG, previewCache);
+	}
+
+	/**
+	 * The poster frame of a video read through {@link VideoProbe} as it is shown, before its
+	 * rotation, see issue #192.
+	 *
+	 * <p>
+	 * An interlaced frame (an AVCHD camcorder's 1080i) holds two fields half a frame time apart,
+	 * which a still picture shows as combs on everything that moves: the poster is drawn from the
+	 * first field's lines alone, doubled. And a raster with a sample aspect ratio (HDV's and
+	 * AVCHD's 1440 × 1080) is stretched to the width it is shown at.
+	 * </p>
+	 */
+	private static BufferedImage shownFrame(BufferedImage frame, VideoProbe probe) {
+		int rawWidth = frame.getWidth();
+		int rawHeight = frame.getHeight();
+		boolean quarter = probe.getRotation() == 90 || probe.getRotation() == 270;
+		int width = quarter ? probe.getHeight() : probe.getWidth();
+		int height = quarter ? probe.getWidth() : probe.getHeight();
+		boolean field = probe.isInterlaced() && rawHeight >= 2;
+		if (!field && width == rawWidth && height == rawHeight) {
+			return frame;
+		}
+		BufferedImage source = frame;
+		if (field) {
+			source = new BufferedImage(rawWidth, (rawHeight + 1) / 2, BufferedImage.TYPE_INT_RGB);
+			for (int y = 0; y < source.getHeight(); y++) {
+				for (int x = 0; x < rawWidth; x++) {
+					source.setRGB(x, y, frame.getRGB(x, 2 * y));
+				}
+			}
+		}
+		BufferedImage shown = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+		Graphics2D g = shown.createGraphics();
+		try {
+			g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+				java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			g.drawImage(source, 0, 0, width, height, null);
+		} finally {
+			g.dispose();
+		}
+		return shown;
 	}
 
 	private static BufferedImage getPreviewFrame(File file) throws Exception {

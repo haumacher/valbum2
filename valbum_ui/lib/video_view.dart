@@ -173,7 +173,29 @@ const int renditionPendingAttemptsWithoutOriginal = 60;
 
 /// The extensions of the containers no browser can be relied on to play,
 /// whatever their codec, see [originalPlaysHere].
-const Set<String> browserUnplayableVideoExtensions = {"3gp", "3g2"};
+///
+/// The 3GPP files of #189, and of #192 an AVCHD camcorder's transport stream
+/// (`.mts`, `.m2ts`), an older camera's `.avi` and a Matroska `.mkv` — Chrome
+/// plays some Matroska files as WebM, but nothing says which, so never. A
+/// `.webm` is not among them: Chrome and Firefox play VP8, VP9 and AV1 WebM.
+const Set<String> browserUnplayableVideoExtensions = {
+  "3gp",
+  "3g2",
+  "mts",
+  "m2ts",
+  "avi",
+  "mkv",
+};
+
+/// The extensions of the containers the player of iOS and macOS (AVFoundation)
+/// does not read at all, see [originalPlaysHere] and issue #192.
+const Set<String> applePlayerUnplayableVideoExtensions = {
+  "mts",
+  "m2ts",
+  "avi",
+  "mkv",
+  "webm",
+};
 
 /// Whether the original of the video [part] can be expected to play here
 /// (issue #189), see [VideoView.originalPlayable].
@@ -190,8 +212,26 @@ const Set<String> browserUnplayableVideoExtensions = {"3gp", "3g2"};
 /// would not settle it either: whether a browser decodes HEVC depends on the
 /// viewer's own graphics hardware, which the server cannot know. An mp4 or an
 /// `.m4v` keeps the original as its fallback, exactly as before.
-bool originalPlaysHere(ImagePart part, {bool isWeb = kIsWeb}) {
-  if (!isWeb || part.kind == ImageKind.image) {
+///
+/// The containers only the server's FFmpeg reads (issue #192) play through
+/// the rendition as well: in a browser all but a `.webm`
+/// ([browserUnplayableVideoExtensions]), and on iOS and macOS none of them,
+/// AVFoundation reading neither a transport stream, an AVI, Matroska nor WebM
+/// ([applePlayerUnplayableVideoExtensions]); Android's player reads them all.
+bool originalPlaysHere(
+  ImagePart part, {
+  bool isWeb = kIsWeb,
+  TargetPlatform? platform,
+}) {
+  if (part.kind == ImageKind.image) {
+    return true;
+  }
+  if (!isWeb) {
+    var target = platform ?? defaultTargetPlatform;
+    if (target == TargetPlatform.iOS || target == TargetPlatform.macOS) {
+      return !applePlayerUnplayableVideoExtensions
+          .contains(extensionOf(part.name));
+    }
     return true;
   }
   if (part.kind == ImageKind.quicktime) {
