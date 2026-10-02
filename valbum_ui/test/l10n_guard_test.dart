@@ -34,6 +34,7 @@ const List<String> generatedArbs = ["lib/l10n/app_de.arb"];
 /// only ones left out. The app is converted; what a file may still hold in
 /// spite of that is named in [allowedLiterals], and each entry says why.
 const List<String> convertedFiles = [
+  "lib/about.dart",
   "lib/album_date.dart",
   "lib/album_edit.dart",
   "lib/album_layout.dart",

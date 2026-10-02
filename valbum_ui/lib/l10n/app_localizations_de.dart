@@ -2669,4 +2669,19 @@ class AppLocalizationsDe extends AppLocalizations {
   String loadFailureTechnical(String url, int status) {
     return 'HTTP-$status für $url';
   }
+
+  @override
+  String get aboutMenuEntry => 'Über VAlbum';
+
+  @override
+  String get aboutDescription =>
+      'Ein selbst gehostetes Foto- und Videoalbum. Die Fotos verbleiben auf dem eigenen Server des Besitzers, und der Server verändert die Originale niemals.';
+
+  @override
+  String aboutVersion(String version) {
+    return 'Version $version';
+  }
+
+  @override
+  String get aboutSourceCode => 'Quellcode, Dokumentation und Fehlerberichte:';
 }

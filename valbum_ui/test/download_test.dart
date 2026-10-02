@@ -205,9 +205,11 @@ void main() {
     testWidgets('offers nothing to a caller who may only look', (tester) async {
       await pumpViewer(tester, viewerClient([]), rights: const ["view"]);
 
-      // Nothing else is in the menu for a looker, so there is no menu.
-      expect(find.byKey(const Key("viewer-menu")), findsNothing);
+      // The menu holds nothing but the About entry for a looker (#187).
+      await tester.tap(find.byKey(const Key("viewer-menu")));
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key("viewer-download")), findsNothing);
+      expect(menuKeys(tester), ["about"]);
     });
 
     testWidgets('offers the original inside a share link made with download',

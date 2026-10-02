@@ -101,7 +101,9 @@ jobs:
         working-directory: valbum_ui
         run: |
           flutter pub get
-          flutter build web --release
+          # The version the About dialog shows (#187); a build without it shows none.
+          flutter build web --release \
+            --dart-define=VALBUM_VERSION=${{ needs.prepare.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: web
@@ -384,7 +386,8 @@ jobs:
           flutter pub get
           flutter build apk --release \
             --build-name=${{ needs.prepare.outputs.version }} \
-            --build-number=${{ needs.prepare.outputs.build_number }}
+            --build-number=${{ needs.prepare.outputs.build_number }} \
+            --dart-define=VALBUM_VERSION=${{ needs.prepare.outputs.version }}
           mv build/app/outputs/flutter-apk/app-release.apk \
              build/app/outputs/flutter-apk/valbum-${{ needs.prepare.outputs.version }}.apk
       - name: Check the signature

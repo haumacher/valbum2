@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 
+import 'about.dart';
 import 'album_date.dart';
 import 'album_edit.dart';
 import 'album_model.dart';
@@ -1737,6 +1738,9 @@ class AlbumContentState extends State<AlbumContent>
           // A visitor of a link has no server of their own to configure.
           if (share == null)
             menuItem(Icons.settings, _l10n.serverMenuEntry, openServerSettings),
+          // What this app is, the last entry of every main menu — and the one
+          // a visitor of a share link most wants to find (#187).
+          aboutMenuItem(_l10n),
         ]),
       ];
 
@@ -2062,6 +2066,10 @@ class AlbumContentState extends State<AlbumContent>
         SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
       );
 
+  /// How far the floating controls stand from the edge of what the system
+  /// leaves the page, see [contentView].
+  static const double floatingMargin = 8;
+
   /// A floating control over the photos: dark and translucent, so that the
   /// album stays what it is about while never losing its way back.
   Widget floating(List<Widget> children) => DecoratedBox(
@@ -2080,6 +2088,14 @@ class AlbumContentState extends State<AlbumContent>
     var hidesEverything =
         self.parts.isNotEmpty && !shown.any((part) => part is AbstractImage);
 
+    // What the system keeps for itself on an edge-to-edge screen: the status
+    // bar and a display cutout at the top, a cutout or the navigation bar at
+    // a side in landscape. The view mode has no app bar to take the top inset
+    // away, so the album's heading starts below it and the floating controls
+    // stand clear of it — under the status bar they could be seen but not
+    // tapped, the bar taking the touch. The edit mode's app bar has
+    // already taken the top inset out of [MediaQuery], so this is zero there.
+    var insets = MediaQuery.paddingOf(context);
     // Where the pointer of a drag is, and which one it is, see
     // [_trackPointer]: what the edge scrolling of issue #42 runs on.
     return Listener(
@@ -2109,7 +2125,7 @@ class AlbumContentState extends State<AlbumContent>
                 // demand, see [buildSlivers] (issue #111).
                 var slivers = buildSlivers(
                   self,
-                  constraints.maxWidth,
+                  constraints.maxWidth - insets.left - insets.right,
                   hidesEverything: hidesEverything,
                 );
                 // Every sliver is given the full width of the page, whatever
@@ -2126,13 +2142,15 @@ class AlbumContentState extends State<AlbumContent>
                   scrollCacheExtent:
                       const ScrollCacheExtent.viewport(contextViewports),
                   slivers: [
-                    ...slivers,
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                          insets.left, insets.top, insets.right, 0),
+                      sliver: SliverMainAxisGroup(slivers: slivers),
+                    ),
                     // The last row of tiles ends above the system navigation
                     // bar instead of running under it, see issue #60.
                     SliverToBoxAdapter(
-                      child: SizedBox(
-                        height: MediaQuery.paddingOf(context).bottom,
-                      ),
+                      child: SizedBox(height: insets.bottom),
                     ),
                   ],
                 );
@@ -2140,11 +2158,15 @@ class AlbumContentState extends State<AlbumContent>
             ),
           ),
           if (!editMode && widget.albumState.path.isNotEmpty)
-            Positioned(top: 8, left: 8, child: floating(wayUp())),
+            Positioned(
+              top: insets.top + floatingMargin,
+              left: insets.left + floatingMargin,
+              child: floating(wayUp()),
+            ),
           if (!editMode)
             Positioned(
-              top: 8,
-              right: 8,
+              top: insets.top + floatingMargin,
+              right: insets.right + floatingMargin,
               child: floating(albumMenu(context)),
             ),
         ],

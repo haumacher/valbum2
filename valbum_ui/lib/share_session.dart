@@ -25,6 +25,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'about.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'rights.dart';
@@ -164,27 +165,34 @@ class SharePlainPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
         key: const Key("share-plain-page"),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 48),
-                  const SizedBox(height: 16),
-                  Text(
-                    message,
-                    key: const Key("share-plain-message"),
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  if (action != null) ...[
+        // No app bar: the status bar and a cutout are kept clear here.
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 48),
+                    const SizedBox(height: 16),
+                    Text(
+                      message,
+                      key: const Key("share-plain-message"),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (action != null) ...[
+                      const SizedBox(height: 24),
+                      action!,
+                    ],
+                    // What this is, for whoever was sent a link that ended
+                    // here (#187): the one thing the page offers besides.
                     const SizedBox(height: 24),
-                    action!,
+                    aboutButton(context),
                   ],
-                ],
+                ),
               ),
             ),
           ),

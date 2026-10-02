@@ -16,7 +16,7 @@ release procedure itself, and what to do when something goes wrong.
 | Job | Runs on | What it does |
 |---|---|---|
 | `prepare` | tag push or manual run | Parses the tag into the version `x.y.z` and the Android `versionCode` `x*10000 + y*100 + z`. Refuses any other tag form. |
-| `web` | tag | `flutter build web --release`, handed to the packaging jobs as a workflow artifact so the app is built once. |
+| `web` | tag | `flutter build web --release --dart-define=VALBUM_VERSION=<version>` (the version the app's About dialog shows, #187; the APK gets the same define), handed to the packaging jobs as a workflow artifact so the app is built once. |
 | `deb` (×3) | tag | Sets the pom version from the tag (`mvn versions:set`, **not** committed), builds `valbum_<version>_<arch>.deb` with the web build bundled into the jar. The tests run on the `amd64` leg only. |
 | `docker` | tag | Takes the `amd64` and `arm64` platform jars of the `deb` job (workflow artifacts `jar-<arch>`, so the image carries the bytes of the packages), runs the image's library check for both architectures (`--target check`, arm64 under QEMU), builds the `amd64` image and runs `image-server/src/docker/smoke-test` on it, then builds and pushes the multi-arch image in **one** `docker buildx` run to `ghcr.io/<owner>/valbum` and, where configured, Docker Hub — so both registries carry the same digest. Tags `<version>`, plus `latest` when the version is the newest `valbum-*` tag (republishing an older release leaves `latest` alone). Without Docker Hub configured it warns once and pushes to ghcr.io only. No `armhf` image: the Java 21 base image exists for `amd64` and `arm64` only. |
 | `android` | tag | Writes the keystore from the secrets, `flutter build apk --release`, verifies with `apksigner` that the APK is **not** debug-signed, deletes the signing material again. |
@@ -267,7 +267,7 @@ debug a packaging problem.
 
 ```
 # The web app, bundled into the jar by the Maven build if valbum_ui/build/web exists
-( cd valbum_ui && flutter pub get && flutter build web --release )
+( cd valbum_ui && flutter pub get && flutter build web --release --dart-define=VALBUM_VERSION=1.1.0 )
 
 # One Debian package; the platform selects the architecture (linux-x86_64 → amd64,
 # linux-arm64 → arm64, linux-armhf → armhf). Without -Djavacpp.platform no .deb is built:
