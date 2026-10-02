@@ -85,6 +85,49 @@ public class TestWebpFaceFrame extends TestCase {
 		}
 	}
 
+	/**
+	 * The raw raster of a GIF is its canvas, and a region of it shows the frame where it lies on the
+	 * canvas and white elsewhere, as the preview does (issue #207).
+	 */
+	public void testAGifFrameSmallerThanItsCanvasIsReadOnTheCanvas() throws Exception {
+		File file = copy("offset.gif");
+		int[] raw = FaceIndex.rasterOf(file);
+		assertEquals(96, raw[0]);
+		assertEquals(64, raw[1]);
+
+		// The whole canvas, every fourth pixel: 24 x 16.
+		Originals.Region whole = Originals.decodeLongSide(file, 0, 0, 96, 64, 24);
+		assertEquals(4, whole.getSampling());
+		assertEquals(24, whole.getImage().getWidth());
+		assertEquals(16, whole.getImage().getHeight());
+		de.haumacher.imageServer.TestWebpGif.assertOffsetGif(whole.getImage(), 4);
+
+		// A region straddling the frame's left edge, every third pixel: white, then red.
+		Originals.Region edge = Originals.decodeLongSide(file, 20, 18, 44, 30, 8);
+		assertEquals(3, edge.getSampling());
+		BufferedImage image = edge.getImage();
+		assertEquals(8, image.getWidth());
+		assertEquals(4, image.getHeight());
+		// Canvas columns 20, 23, ..., 41: the frame begins at 32, the fifth sample (32) is red.
+		de.haumacher.imageServer.TestWebpGif.assertWhite(image, 3, 1);
+		TestHeifDecoder.assertColour(TestHeifDecoder.RED, image, 4, 1);
+		TestHeifDecoder.assertColour(TestHeifDecoder.RED, image, 7, 1);
+
+		// Outside the frame altogether.
+		Originals.Region outside = Originals.decodeLongSide(file, 0, 0, 30, 14, 30);
+		de.haumacher.imageServer.TestWebpGif.assertWhite(outside.getImage(), 10, 5);
+		assertEquals("The face index's preview look sees the same picture.", 96,
+			ImageIO.read(PreviewCache.createPreview(file)).getWidth());
+
+		// An animated WebP's first frame on its canvas, the same picture.
+		File webp = copy("offset.webp");
+		int[] canvas = FaceIndex.rasterOf(webp);
+		assertEquals(96, canvas[0]);
+		assertEquals(64, canvas[1]);
+		de.haumacher.imageServer.TestWebpGif.assertOffsetGif(
+			Originals.decodeLongSide(webp, 0, 0, 96, 64, 24).getImage(), 4);
+	}
+
 	private File copy(String name) throws Exception {
 		File file = _dir.resolve(name).toFile();
 		Files.copy(new File(FIXTURES, name).toPath(), file.toPath());

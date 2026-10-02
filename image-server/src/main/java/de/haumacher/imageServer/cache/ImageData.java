@@ -312,8 +312,17 @@ public class ImageData extends ImagePart {
 	 * with the QuickTime reader, which also reads the <code>com.apple.quicktime.*</code> keys of an
 	 * iPhone video.
 	 * </p>
+	 *
+	 * <p>
+	 * A WebP is read by {@link WebpMetadata}, which hands metadata-extractor only the header of its
+	 * picture chunk instead of the whole compressed picture (issue #207).
+	 * </p>
 	 */
 	public static Metadata readMetadata(File file) throws ImageProcessingException, IOException {
+		if (WebpMetadata.isWebp(file)) {
+			// Without reading the picture into the heap, issue #207.
+			return WebpMetadata.read(file);
+		}
 		Metadata metadata = ImageMetadataReader.readMetadata(file);
 		QuickTimeDirectory movDirectory = metadata.getFirstDirectoryOfType(QuickTimeDirectory.class);
 		if (movDirectory != null) {

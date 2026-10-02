@@ -238,9 +238,14 @@ public class ImageServlet extends HttpServlet {
 
 	/**
 	 * The message a preview that cannot be made is answered with: {@link #PREVIEW_FAILED}, or for a
-	 * HEIC on a server that cannot decode one, why not (issue #186).
+	 * HEIC on a server that cannot decode one, why not (issue #186), and for a picture whose decoder
+	 * needs more memory than the server has for one, how much and what to do (issue #207).
 	 */
-	static String previewFailed(File file) {
+	static String previewFailed(File file, PreviewException failure) {
+		if (failure.getCause() instanceof PictureTooLargeException) {
+			// Which picture, how much it needs, how much there is and what to do (issue #207).
+			return failure.getCause().getMessage();
+		}
 		if (HeifFile.isHeif(file)) {
 			String unavailable = HeifDecoder.unavailability();
 			if (unavailable != null) {
@@ -3680,7 +3685,7 @@ public class ImageServlet extends HttpServlet {
 				data = PreviewCache.createPreview(pathInfo.toFile());
 			} catch (PreviewException ex) {
 				LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
-				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, previewFailed(pathInfo.toFile()));
+				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, previewFailed(pathInfo.toFile(), ex));
 				return;
 			}
 			serveData(context, data, "image/jpeg");

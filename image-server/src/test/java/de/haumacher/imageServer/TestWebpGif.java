@@ -117,6 +117,66 @@ public class TestWebpGif extends ShareTestCase {
 		}
 	}
 
+	/**
+	 * A GIF whose first frame is smaller than its logical screen is shown on that screen, the frame
+	 * at its offset and the rest white, so that the listed size and the preview agree (issue #207);
+	 * an animated WebP whose first frame is smaller than its canvas likewise.
+	 */
+	public void testAFirstFrameSmallerThanItsCanvasIsShownOnTheCanvas() throws Exception {
+		uploadAll("offset.gif", fixture("offset.gif"), "offset.webp", fixture("offset.webp"));
+		for (String name : Arrays.asList("offset.gif", "offset.webp")) {
+			assertSize(image(album(), name), 96, 64);
+
+			FakeResponse response = get(PATH + name, "tn", SharingFixture.ALICE);
+			assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+			assertJpeg(response.bodyBytes());
+			BufferedImage picture = ImageIO.read(new ByteArrayInputStream(response.bodyBytes()));
+			assertEquals(name, 96, picture.getWidth());
+			assertEquals(name, 64, picture.getHeight());
+			assertOffsetGif(picture, 1);
+		}
+	}
+
+	/**
+	 * The pixels of the canvas of <code>offset.gif</code> and <code>offset.webp</code>, drawn at every <code>sampling</code>-th pixel:
+	 * the frame (32, 16, 48 × 32) with its red, green and blue quadrants, white around it — not the
+	 * magenta of its background colour — and in its transparent corner.
+	 */
+	public static void assertOffsetGif(BufferedImage picture, int sampling) {
+		assertWhite(picture, 5 / sampling, 5 / sampling);
+		assertWhite(picture, 90 / sampling, 60 / sampling);
+		assertWhite(picture, 20 / sampling, 40 / sampling);
+		assertWhite(picture, 88 / sampling, 24 / sampling);
+		TestHeifDecoder.assertColour(TestHeifDecoder.RED, picture, 40 / sampling, 20 / sampling);
+		TestHeifDecoder.assertColour(0x00FF00, picture, 72 / sampling, 20 / sampling);
+		TestHeifDecoder.assertColour(0x0000FF, picture, 40 / sampling, 44 / sampling);
+		// The transparent quadrant of the frame.
+		assertWhite(picture, 72 / sampling, 44 / sampling);
+	}
+
+	public static void assertWhite(BufferedImage picture, int x, int y) {
+		int rgb = picture.getRGB(x, y) & 0xFFFFFF;
+		assertTrue("White at " + x + "," + y + ", not " + Integer.toHexString(rgb),
+			((rgb >> 16) & 0xFF) > 230 && ((rgb >> 8) & 0xFF) > 230 && (rgb & 0xFF) > 230);
+	}
+
+	public void testAPictureTooLargeForTheServerIsRefusedWithAReason() throws Exception {
+		copy("lossless-4mp.webp");
+		PictureReader.setBudget(8 << 20);
+		try {
+			FakeResponse response = get(PATH + "lossless-4mp.webp", "tn", SharingFixture.ALICE);
+			assertEquals(response.body(), HttpServletResponse.SC_INTERNAL_SERVER_ERROR, response.status());
+			de.haumacher.imageServer.shared.model.ErrorInfo error =
+				(de.haumacher.imageServer.shared.model.ErrorInfo) Resource.readResource(reader(response.body()));
+			assertTrue(error.getMessage(), error.getMessage().contains("2400 × 1600"));
+			assertTrue(error.getMessage(), error.getMessage().contains("-Xmx"));
+		} finally {
+			PictureReader.resetBudget();
+		}
+		// With the memory it needs, it is shown.
+		assertEquals(HttpServletResponse.SC_OK, get(PATH + "lossless-4mp.webp", "tn", SharingFixture.ALICE).status());
+	}
+
 	public void testATransparentPixelIsShownOnWhite() throws Exception {
 		copy("alpha.webp");
 		FakeResponse response = get(PATH + "alpha.webp", "tn", SharingFixture.ALICE);

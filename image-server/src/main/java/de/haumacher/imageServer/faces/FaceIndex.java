@@ -5,6 +5,7 @@ package de.haumacher.imageServer.faces;
 
 import de.haumacher.imageServer.CacheRefresh;
 import de.haumacher.imageServer.LibraryFiles;
+import de.haumacher.imageServer.PictureReader;
 import de.haumacher.imageServer.PreviewCache;
 import de.haumacher.imageServer.PreviewException;
 import de.haumacher.imageServer.cache.ResourceCache;
@@ -1096,21 +1097,9 @@ public class FaceIndex {
 			HeifFile heif = HeifFile.read(file);
 			return new int[] { heif.getRawWidth(), heif.getRawHeight() };
 		}
-		try (javax.imageio.stream.ImageInputStream in = ImageIO.createImageInputStream(file)) {
-			if (in == null) {
-				throw new IOException("Cannot open '" + file.getName() + "'.");
-			}
-			java.util.Iterator<javax.imageio.ImageReader> readers = ImageIO.getImageReaders(in);
-			if (!readers.hasNext()) {
-				throw new IOException("No image reader for '" + file.getName() + "'.");
-			}
-			javax.imageio.ImageReader reader = readers.next();
-			try {
-				reader.setInput(in, true, true);
-				return new int[] { reader.getWidth(0), reader.getHeight(0) };
-			} finally {
-				reader.dispose();
-			}
+		// The canvas: a GIF's logical screen, whatever its first frame covers (issue #207).
+		try (PictureReader picture = PictureReader.open(file)) {
+			return new int[] { picture.getWidth(), picture.getHeight() };
 		}
 	}
 
@@ -1133,7 +1122,7 @@ public class FaceIndex {
 			}
 		}
 		try {
-			com.drew.metadata.Metadata metadata = com.drew.imaging.ImageMetadataReader.readMetadata(file);
+			com.drew.metadata.Metadata metadata = de.haumacher.imageServer.cache.ImageData.readMetadata(file);
 			com.drew.metadata.exif.ExifIFD0Directory directory =
 				metadata.getFirstDirectoryOfType(com.drew.metadata.exif.ExifIFD0Directory.class);
 			if (directory != null

@@ -3,7 +3,6 @@
  */
 package de.haumacher.imageServer;
 
-import com.drew.imaging.ImageMetadataReader;
 import com.drew.imaging.ImageProcessingException;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.MetadataException;
@@ -32,7 +31,6 @@ import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,9 +39,6 @@ import java.util.concurrent.Semaphore;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.imageio.ImageIO;
-import javax.imageio.ImageReadParam;
-import javax.imageio.ImageReader;
-import javax.imageio.stream.ImageInputStream;
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber.Exception;
@@ -387,6 +382,9 @@ public class PreviewCache {
 			case GIF:
 				try {
 					createImagePreview(file, tmp, imageType);
+				} catch (PictureTooLargeException ex) {
+					// Its message says what is wrong and what to do, and is what the request is answered.
+					throw new PreviewException(ex.getMessage(), ex);
 				} catch (ImageProcessingException | MetadataException | IOException ex) {
 					throw new PreviewException("Cannot create image preview for '" + fileName + "'.", ex);
 				}
@@ -564,77 +562,69 @@ public class PreviewCache {
 	 * while the original keeps its animation, and a transparent pixel is shown on
 	 * {@link #TRANSPARENT_BACKGROUND}, because their preview is a JPEG.
 	 * </p>
+	 *
+	 * <p>
+	 * The pixels are read through {@link PictureReader} (issue #207), which composes the first frame
+	 * of a GIF or an animated WebP onto its canvas and makes a decoder that holds the whole picture —
+	 * a WebP — reserve that memory first, refusing with a {@link PictureTooLargeException} what the
+	 * heap cannot hold.
+	 * </p>
 	 */
 	private static void createImagePreview(File file, File previewCache, String imgType)
 			throws ImageProcessingException, IOException, MetadataException {
-		Metadata metadata = ImageMetadataReader.readMetadata(file);
+		Metadata metadata = ImageData.readMetadata(file);
 		int orientationCode = getImageOrientation(metadata);
 		Orientation orientation = Orientations.fromCode(orientationCode);
 		boolean swapped = orientationCode >= 5;
 
-		try (ImageInputStream in = ImageIO.createImageInputStream(file)) {
-			if (in == null) {
-				throw new IOException("Cannot open image data of '" + file.getName() + "'.");
+		try (PictureReader picture = PictureReader.open(file)) {
+			ImageDimension dimension = imageDimension(metadata, picture, swapped);
+			int origWidth = dimension.getWidth();
+			int origHeight = dimension.getHeight();
+
+			int[] box = previewBox(origWidth, origHeight);
+			int previewWidth = box[0];
+			int previewHeight = box[1];
+
+			BufferedImage orig = picture.read(null, subsampling(origWidth, origHeight, previewWidth, previewHeight));
+
+			// The raster as decoded, in the file's own (un-rotated) orientation.
+			int rawWidth = orig.getWidth();
+			int rawHeight = orig.getHeight();
+
+			// The same raster as the viewer sees it, which is what the preview box is filled with.
+			int decodedWidth = swapped ? rawHeight : rawWidth;
+			int decodedHeight = swapped ? rawWidth : rawHeight;
+
+			// A picture smaller than its box is never scaled up (below), so the box shrinks to the
+			// picture instead: a canvas larger than the picture would carry black margins into the
+			// rendition, and a tile drawing that rendition into its row would show the margins as a
+			// picture that does not fill its place (issue #165). The rectangle FaceIndex.content
+			// computes — min(preview, display), centred — is then the whole canvas.
+			previewWidth = Math.min(previewWidth, decodedWidth);
+			previewHeight = Math.min(previewHeight, decodedHeight);
+
+			boolean opaque = JPG.equals(imgType);
+			BufferedImage copy = new BufferedImage(previewWidth, previewHeight,
+				opaque ? jpegType(orig) : imageType(orig));
+			Graphics2D g = (Graphics2D) copy.getGraphics();
+			if (opaque && orig.getColorModel().hasAlpha()) {
+				// A JPEG has no transparency: what the picture leaves open is shown on white.
+				g.setColor(TRANSPARENT_BACKGROUND);
+				g.fillRect(0, 0, previewWidth, previewHeight);
 			}
-			Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
-			if (!readers.hasNext()) {
-				throw new IOException("No image reader for '" + file.getName() + "'.");
-			}
-			ImageReader reader = readers.next();
-			try {
-				reader.setInput(in, true, true);
 
-				ImageDimension dimension = imageDimension(metadata, reader, swapped);
-				int origWidth = dimension.getWidth();
-				int origHeight = dimension.getHeight();
+			double scaleX = Math.min(1.0, ((double) previewWidth) / decodedWidth);
+			double scaleY = Math.min(1.0, ((double) previewHeight) / decodedHeight);
 
-				int[] box = previewBox(origWidth, origHeight);
-				int previewWidth = box[0];
-				int previewHeight = box[1];
+			AffineTransform tx = new AffineTransform();
+			tx.translate((previewWidth - decodedWidth * scaleX) / 2, (previewHeight - decodedHeight * scaleY) / 2);
+			tx.scale(scaleX, scaleY);
+			tx.concatenate(orientationTransform(orientation, rawWidth, rawHeight));
+			g.setTransform(tx);
 
-				BufferedImage orig =
-					read(reader, subsampling(origWidth, origHeight, previewWidth, previewHeight));
-
-				// The raster as decoded, in the file's own (un-rotated) orientation.
-				int rawWidth = orig.getWidth();
-				int rawHeight = orig.getHeight();
-
-				// The same raster as the viewer sees it, which is what the preview box is filled with.
-				int decodedWidth = swapped ? rawHeight : rawWidth;
-				int decodedHeight = swapped ? rawWidth : rawHeight;
-
-				// A picture smaller than its box is never scaled up (below), so the box shrinks to the
-				// picture instead: a canvas larger than the picture would carry black margins into the
-				// rendition, and a tile drawing that rendition into its row would show the margins as a
-				// picture that does not fill its place (issue #165). The rectangle FaceIndex.content
-				// computes — min(preview, display), centred — is then the whole canvas.
-				previewWidth = Math.min(previewWidth, decodedWidth);
-				previewHeight = Math.min(previewHeight, decodedHeight);
-
-				boolean opaque = JPG.equals(imgType);
-				BufferedImage copy = new BufferedImage(previewWidth, previewHeight,
-					opaque ? jpegType(orig) : imageType(orig));
-				Graphics2D g = (Graphics2D) copy.getGraphics();
-				if (opaque && orig.getColorModel().hasAlpha()) {
-					// A JPEG has no transparency: what the picture leaves open is shown on white.
-					g.setColor(TRANSPARENT_BACKGROUND);
-					g.fillRect(0, 0, previewWidth, previewHeight);
-				}
-
-				double scaleX = Math.min(1.0, ((double) previewWidth) / decodedWidth);
-				double scaleY = Math.min(1.0, ((double) previewHeight) / decodedHeight);
-
-				AffineTransform tx = new AffineTransform();
-				tx.translate((previewWidth - decodedWidth * scaleX) / 2, (previewHeight - decodedHeight * scaleY) / 2);
-				tx.scale(scaleX, scaleY);
-				tx.concatenate(orientationTransform(orientation, rawWidth, rawHeight));
-				g.setTransform(tx);
-
-				g.drawImage(orig, null, 0, 0);
-				ImageIO.write(copy, imgType, previewCache);
-			} finally {
-				reader.dispose();
-			}
+			g.drawImage(orig, null, 0, 0);
+			ImageIO.write(copy, imgType, previewCache);
 		}
 	}
 
@@ -706,17 +696,6 @@ public class PreviewCache {
 	}
 
 	/**
-	 * Decodes the first image of the given reader, sampling only every <code>n</code>-th pixel.
-	 */
-	private static BufferedImage read(ImageReader reader, int n) throws IOException {
-		ImageReadParam param = reader.getDefaultReadParam();
-		if (n > 1) {
-			param.setSourceSubsampling(n, n, 0, 0);
-		}
-		return reader.read(0, param);
-	}
-
-	/**
 	 * The factor to sample the original with so that the decoded raster still covers the preview.
 	 *
 	 * <p>
@@ -747,8 +726,7 @@ public class PreviewCache {
 	 * a bound on the raster.
 	 * </p>
 	 */
-	private static ImageDimension imageDimension(Metadata metadata, ImageReader reader, boolean swapped)
-			throws IOException {
+	private static ImageDimension imageDimension(Metadata metadata, PictureReader picture, boolean swapped) {
 		try {
 			ImageDimension dimension = getImageDimension(metadata);
 			if (dimension.getWidth() > 0 && dimension.getHeight() > 0) {
@@ -757,8 +735,8 @@ public class PreviewCache {
 		} catch (MetadataException | IllegalArgumentException ex) {
 			// No dimension in the metadata, ask the reader below.
 		}
-		int rawWidth = reader.getWidth(0);
-		int rawHeight = reader.getHeight(0);
+		int rawWidth = picture.getWidth();
+		int rawHeight = picture.getHeight();
 		return swapped ? new ImageDimension(rawHeight, rawWidth) : new ImageDimension(rawWidth, rawHeight);
 	}
 

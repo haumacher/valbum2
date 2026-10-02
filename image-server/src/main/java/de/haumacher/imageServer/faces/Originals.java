@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.faces;
 
+import de.haumacher.imageServer.PictureReader;
 import de.haumacher.imageServer.PreviewCache;
 import de.haumacher.imageServer.heif.HeifDecoder;
 import de.haumacher.imageServer.heif.HeifFile;
@@ -11,12 +12,7 @@ import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicLong;
-import javax.imageio.ImageIO;
-import javax.imageio.ImageReadParam;
-import javax.imageio.ImageReader;
-import javax.imageio.stream.ImageInputStream;
 
 /**
  * Reading one rectangle out of an original, see issue #140.
@@ -30,8 +26,8 @@ import javax.imageio.stream.ImageInputStream;
  *
  * <p>
  * <b>Never the whole raster.</b> A region decode through
- * {@link ImageReadParam#setSourceRegion(Rectangle)} plus
- * {@link ImageReadParam#setSourceSubsampling(int, int, int, int)} allocates a raster of the piece
+ * {@link javax.imageio.ImageReadParam#setSourceRegion(Rectangle)} plus
+ * {@link javax.imageio.ImageReadParam#setSourceSubsampling(int, int, int, int)} allocates a raster of the piece
  * asked for and of the sampling chosen, so the memory of one face is bounded by the size it is
  * wanted at (a few hundred pixels) whatever the photograph's size — the very rule
  * {@link de.haumacher.imageServer.PreviewCache} already follows for a preview (issue #68). The
@@ -179,52 +175,21 @@ public final class Originals {
 		if (HeifFile.isHeif(file)) {
 			return decodeHeif(file, left, top, right, bottom, bound, mode);
 		}
-		try (ImageInputStream in = ImageIO.createImageInputStream(file)) {
-			if (in == null) {
-				throw new IOException("Cannot open '" + file.getName() + "'.");
-			}
-			Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
-			if (!readers.hasNext()) {
-				throw new IOException("No image reader for '" + file.getName() + "'.");
-			}
-			ImageReader reader = readers.next();
-			try {
-				reader.setInput(in, true, true);
-				int rawWidth = reader.getWidth(0);
-				int rawHeight = reader.getHeight(0);
-				int x0 = clamp((int) Math.floor(left), 0, rawWidth - 1);
-				int y0 = clamp((int) Math.floor(top), 0, rawHeight - 1);
-				int x1 = clamp((int) Math.ceil(right), x0 + 1, rawWidth);
-				int y1 = clamp((int) Math.ceil(bottom), y0 + 1, rawHeight);
-				int width = x1 - x0;
-				int height = y1 - y0;
-				int sampling;
-				switch (mode) {
-					case BY_LONG_SIDE:
-						sampling = samplingForLongSide(Math.max(width, height), bound);
-						break;
-					case AT_LEAST_LONG_SIDE:
-						sampling = samplingForShortSide(Math.max(width, height), bound);
-						break;
-					default:
-						sampling = samplingForShortSide(Math.min(width, height), bound);
-						break;
-				}
-
-				ImageReadParam param = reader.getDefaultReadParam();
-				param.setSourceRegion(new Rectangle(x0, y0, width, height));
-				if (sampling > 1) {
-					param.setSourceSubsampling(sampling, sampling, 0, 0);
-				}
-				BufferedImage image = reader.read(0, param);
-				if (image == null) {
-					throw new IOException("Nothing decoded from '" + file.getName() + "'.");
-				}
-				DECODES.incrementAndGet();
-				return new Region(opaque(image), x0, y0, sampling, rawWidth, rawHeight);
-			} finally {
-				reader.dispose();
-			}
+		try (PictureReader picture = PictureReader.open(file)) {
+			int rawWidth = picture.getWidth();
+			int rawHeight = picture.getHeight();
+			int x0 = clamp((int) Math.floor(left), 0, rawWidth - 1);
+			int y0 = clamp((int) Math.floor(top), 0, rawHeight - 1);
+			int x1 = clamp((int) Math.ceil(right), x0 + 1, rawWidth);
+			int y1 = clamp((int) Math.ceil(bottom), y0 + 1, rawHeight);
+			int width = x1 - x0;
+			int height = y1 - y0;
+			int sampling = sampling(width, height, bound, mode);
+			// The memory rule of the preview holds here too (issue #207): a decoder that holds the
+			// whole picture reserves it first, and a picture the heap cannot hold is refused.
+			BufferedImage image = picture.read(new Rectangle(x0, y0, width, height), sampling);
+			DECODES.incrementAndGet();
+			return new Region(opaque(image), x0, y0, sampling, rawWidth, rawHeight);
 		}
 	}
 
