@@ -3209,7 +3209,7 @@ class UploadResult extends _JsonObject {
 	///  #186.
 	/// 
 	///  <p>
-	///  A file of a format the library does not hold (a <code>.webp</code>, a <code>.txt</code>) or
+	///  A file of a format the library does not hold (a <code>.bmp</code>, a <code>.txt</code>) or
 	///  of a name it never shows (a hidden name, a NAS's or a desktop's litter) is refused on its
 	///  own: every other file of the request is stored as if it had come alone. Empty where
 	///  everything was taken; a request that holds nothing the library takes is refused as a whole

@@ -1150,7 +1150,8 @@ public class FaceIndex {
 	/** Whether the given file is a photograph; a video is never looked at, see issue #123. */
 	static boolean isPhotograph(File file) {
 		String suffix = de.haumacher.util.servlet.Util.suffix(file.getName());
-		return "jpg".equals(suffix) || "jpeg".equals(suffix) || "png".equals(suffix) || HeifFile.isHeif(file);
+		return "jpg".equals(suffix) || "jpeg".equals(suffix) || "png".equals(suffix) || "webp".equals(suffix)
+			|| "gif".equals(suffix) || HeifFile.isHeif(file);
 	}
 
 	/** Whether the given part is a photograph the detector would look at. */

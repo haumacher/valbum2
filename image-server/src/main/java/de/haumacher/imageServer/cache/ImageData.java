@@ -13,6 +13,7 @@ import com.drew.metadata.MetadataException;
 import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.drew.metadata.exif.GpsDirectory;
+import com.drew.metadata.gif.GifHeaderDirectory;
 import com.drew.metadata.jpeg.JpegCommentDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.mov.QuickTimeDirectory;
@@ -21,6 +22,7 @@ import com.drew.metadata.mov.metadata.QuickTimeMetadataDirectory;
 import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 import com.drew.metadata.png.PngDirectory;
+import com.drew.metadata.webp.WebpDirectory;
 import com.drew.metadata.xmp.XmpDirectory;
 import de.haumacher.imageServer.heif.HeifFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -185,10 +187,7 @@ public class ImageData extends ImagePart {
 			int rawWidth = jpegDirectory.getImageWidth();
 			int rawHeight = jpegDirectory.getImageHeight();
 
-			ExifIFD0Directory exifIFD0Directory = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
-			int orientation = exifIFD0Directory == null || !exifIFD0Directory.containsTag(ExifIFD0Directory.TAG_ORIENTATION) ? 1 : exifIFD0Directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
-
-			Orientation tx = Orientations.fromCode(orientation);
+			Orientation tx = Orientations.fromCode(exifOrientation(metadata));
 			result.setWidth(Orientations.width(tx, rawWidth, rawHeight));
 			result.setHeight(Orientations.height(tx, rawWidth, rawHeight));
 
@@ -220,6 +219,36 @@ public class ImageData extends ImagePart {
 			return result;
 		}
 
+		WebpDirectory webpDirectory = metadata.getFirstDirectoryOfType(WebpDirectory.class);
+		if (webpDirectory != null && webpDirectory.containsTag(WebpDirectory.TAG_IMAGE_WIDTH)) {
+			// Issue #190: a WebP may carry an EXIF and an XMP chunk, which metadata-extractor reads
+			// into the very directories a JPEG's land in — so the date, the camera and the position
+			// above, the orientation here and the face import of #129 work as for a JPEG.
+			result.setKind(ImageKind.IMAGE);
+			int rawWidth = webpDirectory.getInt(WebpDirectory.TAG_IMAGE_WIDTH);
+			int rawHeight = webpDirectory.getInt(WebpDirectory.TAG_IMAGE_HEIGHT);
+			Orientation tx = Orientations.fromCode(exifOrientation(metadata));
+			result.setWidth(Orientations.width(tx, rawWidth, rawHeight));
+			result.setHeight(Orientations.height(tx, rawWidth, rawHeight));
+			more.read(result, metadata, rawWidth, rawHeight);
+			return result;
+		}
+
+		GifHeaderDirectory gifDirectory = metadata.getFirstDirectoryOfType(GifHeaderDirectory.class);
+		if (gifDirectory != null) {
+			// Issue #190: a GIF says no date, no camera and no position, so it is dated by its name
+			// (#102) and then by its modification time; its size is the logical screen's, the
+			// picture a browser shows, and it is never turned. An XMP packet in an application
+			// extension is read by metadata-extractor and handed to the face import like any other.
+			result.setKind(ImageKind.IMAGE);
+			int rawWidth = gifDirectory.getInt(GifHeaderDirectory.TAG_IMAGE_WIDTH);
+			int rawHeight = gifDirectory.getInt(GifHeaderDirectory.TAG_IMAGE_HEIGHT);
+			result.setWidth(rawWidth);
+			result.setHeight(rawHeight);
+			more.read(result, metadata, rawWidth, rawHeight);
+			return result;
+		}
+
 		Mp4Directory mp4Directory = metadata.getFirstDirectoryOfType(Mp4Directory.class);
 		if (mp4Directory != null) {
 			Mp4VideoDirectory mp4VideoDirectory = metadata.getFirstDirectoryOfType(Mp4VideoDirectory.class);
@@ -246,7 +275,14 @@ public class ImageData extends ImagePart {
 			}
 		}
 
-		throw new IllegalArgumentException("Neither JPG, PNG, MOV, nor MP4 file: " + file);
+		throw new IllegalArgumentException("Neither JPG, PNG, WebP, GIF, MOV, nor MP4 file: " + file);
+	}
+
+	/** The EXIF orientation code the given metadata say, <code>1</code> where they say none. */
+	private static int exifOrientation(Metadata metadata) throws MetadataException {
+		ExifIFD0Directory exifIFD0Directory = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
+		return exifIFD0Directory == null || !exifIFD0Directory.containsTag(ExifIFD0Directory.TAG_ORIENTATION) ? 1
+			: exifIFD0Directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
 	}
 
 	/** The size of a video as it is shown: its track's size, turned by the container's rotation. */

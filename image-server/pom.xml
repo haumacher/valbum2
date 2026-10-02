@@ -343,6 +343,17 @@
 			<version>6.1.11</version>
 		</dependency>
 
+		<!-- The WebP reader of issue #190: an ImageIO plugin in pure Java (BSD-3-Clause), so no
+		     native library comes with it. It decodes lossy, lossless, alpha and every frame of an
+		     animated WebP and honours ImageReadParam's source region and subsampling, which the
+		     preview (#68) and the region decode of the face index (#140, #163) rely on. GIF needs
+		     nothing: ImageIO reads it. -->
+		<dependency>
+			<groupId>com.twelvemonkeys.imageio</groupId>
+			<artifactId>imageio-webp</artifactId>
+			<version>3.15.2</version>
+		</dependency>
+
 		<dependency>
 		    <groupId>org.apache.commons</groupId>
 		    <artifactId>commons-fileupload2-jakarta</artifactId>
