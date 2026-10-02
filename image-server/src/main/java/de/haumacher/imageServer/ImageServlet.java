@@ -31,6 +31,8 @@ import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.faces.PeopleStore;
 import de.haumacher.imageServer.heif.HeifDecoder;
 import de.haumacher.imageServer.heif.HeifFile;
+import de.haumacher.imageServer.raw.NoEmbeddedPreviewException;
+import de.haumacher.imageServer.raw.RawFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.CacheRefreshed;
 import de.haumacher.imageServer.shared.model.ContentHash;
@@ -111,6 +113,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -231,7 +235,7 @@ public class ImageServlet extends HttpServlet {
 
 	/** The message a display rendition of a photograph that needs none is refused with. */
 	public static final String DISPLAY_NOT_NEEDED =
-		"Only a HEIC/HEIF photograph has a display rendition; ask for the original.";
+		"Only a HEIC/HEIF or a raw photograph has a display rendition; ask for the original.";
 
 	/** The message a display rendition that cannot be made is answered with. */
 	public static final String DISPLAY_FAILED = "This photograph cannot be shown at full size.";
@@ -242,8 +246,10 @@ public class ImageServlet extends HttpServlet {
 	 * needs more memory than the server has for one, how much and what to do (issue #207).
 	 */
 	static String previewFailed(File file, PreviewException failure) {
-		if (failure.getCause() instanceof PictureTooLargeException) {
-			// Which picture, how much it needs, how much there is and what to do (issue #207).
+		if (failure.getCause() instanceof PictureTooLargeException
+			|| failure.getCause() instanceof NoEmbeddedPreviewException) {
+			// Which picture, how much it needs, how much there is and what to do (issue #207); which
+			// raw carries no preview and what to do (issue #191).
 			return failure.getCause().getMessage();
 		}
 		if (HeifFile.isHeif(file)) {
@@ -1286,7 +1292,7 @@ public class ImageServlet extends HttpServlet {
 
 	/** The refusal of an upload in a format the library does not hold, see issue #186. */
 	public static String unsupportedFormat(String name) {
-		return "'" + name + "' was not uploaded: its format is not supported (JPEG, PNG, WebP, GIF, HEIC/HEIF, MP4, MOV, M4V, 3GP, MTS/M2TS, AVI, MKV and WebM are).";
+		return "'" + name + "' was not uploaded: its format is not supported (JPEG, PNG, WebP, GIF, HEIC/HEIF, the raw formats DNG, CR2, CR3, NEF, ARW, ORF, RW2 and RAF, MP4, MOV, M4V, 3GP, MTS/M2TS, AVI, MKV and WebM are).";
 	}
 
 	/** The refusal of an upload whose name the library never shows, see issue #173. */
@@ -1363,6 +1369,15 @@ public class ImageServlet extends HttpServlet {
 		}
 		uploads = accepted;
 
+		// A raw and the JPEG of its name sent together are one photograph, and are stored under one
+		// free base name, so that a name taken by another photograph separates neither from the
+		// other, see issue #191.
+		List<String> batch = new ArrayList<>();
+		for (UploadItem upload : uploads) {
+			batch.add(baseName(upload.getName()));
+		}
+		Map<String, String> reserved = new HashMap<>();
+
 		HashCache hashes = new HashCache(folder);
 		try {
 			for (UploadItem upload : uploads) {
@@ -1377,7 +1392,7 @@ public class ImageServlet extends HttpServlet {
 					continue;
 				}
 
-				File targetFile = freeName(folder, name);
+				File targetFile = pairName(folder, name, batch, reserved);
 				store(upload, targetFile);
 				hashes.put(targetFile, hash, attribution(caller));
 				LOG.info("Storing image: " + targetFile);
@@ -1675,7 +1690,8 @@ public class ImageServlet extends HttpServlet {
 
 		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
 		int minRating = _auth.minRating(caller, folder, viewAs);
-		List<File> files = new ArrayList<>();
+		// A file once, though a photograph and its raw companion be named both.
+		Set<File> files = new LinkedHashSet<>();
 		for (String name : names) {
 			// A name is an entry of this folder, never an address: no separator, nothing hidden.
 			File file = name == null || name.isEmpty() || LibraryFiles.isIgnored(name) || name.indexOf('/') >= 0
@@ -1701,6 +1717,14 @@ public class ImageServlet extends HttpServlet {
 				return;
 			}
 			files.add(file);
+			// A photograph's originals are its JPEG and the raw shot beside it, see issue #191.
+			Resource part = _cache.lookup(image);
+			if (part instanceof ImagePart && name.equals(((ImagePart) part).getName())) {
+				File raw = RawPairs.companion(folder.toFile(), (ImagePart) part);
+				if (raw != null) {
+					files.add(raw);
+				}
+			}
 		}
 
 		HttpServletResponse response = context.response();
@@ -1709,7 +1733,7 @@ public class ImageServlet extends HttpServlet {
 		response.setContentType(ZipDownload.CONTENT_TYPE);
 		response.setHeader("Content-Disposition", ZipDownload.contentDisposition(folder.toFile().getName()));
 		LOG.info("Delivering " + files.size() + " originals of '" + context.request().getPathInfo() + "' as a zip.");
-		ZipDownload.write(response.getOutputStream(), files);
+		ZipDownload.write(response.getOutputStream(), new ArrayList<>(files));
 	}
 
 	/** The message a download naming something that is no photograph of the album is refused with. */
@@ -2120,6 +2144,57 @@ public class ImageServlet extends HttpServlet {
 	 * upload does, see {@link MoveService}.
 	 * </p>
 	 */
+	/**
+	 * The file an upload of the given name is stored as: a free name, and for one of a raw pair sent
+	 * in the same batch the name of a base free for both, see issue #191.
+	 *
+	 * @param batch
+	 *        The names of the files of the request.
+	 * @param reserved
+	 *        The names reserved for the partners of pairs stored already, by the partner's name;
+	 *        filled here.
+	 */
+	static File pairName(File folder, String name, List<String> batch, Map<String, String> reserved) {
+		String wanted = reserved.remove(name);
+		if (wanted != null) {
+			return freeName(folder, wanted);
+		}
+		boolean raw = RawFile.isRawName(name);
+		if (!raw && !RawPairs.isCompanionType(name)) {
+			return freeName(folder, name);
+		}
+		String base = RawPairs.base(name);
+		String partner = null;
+		for (String other : batch) {
+			if (!other.equals(name) && !reserved.containsKey(other) && RawPairs.base(other).equals(base)
+				&& (raw ? RawPairs.isCompanionType(other) : RawFile.isRawName(other))) {
+				partner = other;
+				break;
+			}
+		}
+		if (partner == null) {
+			return freeName(folder, name);
+		}
+		Set<String> taken = new HashSet<>();
+		String[] present = folder.list();
+		if (present != null) {
+			for (String file : present) {
+				if (RawFile.isRawName(file) || RawPairs.isCompanionType(file)) {
+					taken.add(RawPairs.base(file));
+				}
+			}
+		}
+		int dot = name.lastIndexOf('.');
+		String stem = dot < 0 ? name : name.substring(0, dot);
+		String candidate = stem;
+		for (int n = 2; taken.contains(candidate.toLowerCase(Locale.ROOT)); n++) {
+			candidate = stem + "-" + n;
+		}
+		String mine = RawPairs.withBaseOf(name, candidate + ".x");
+		reserved.put(partner, RawPairs.withBaseOf(partner, candidate + ".x"));
+		return freeName(folder, mine);
+	}
+
 	static File freeName(File folder, String fileName) {
 		File targetFile = new File(folder, fileName);
 		if (!targetFile.exists()) {
@@ -3700,7 +3775,9 @@ public class ImageServlet extends HttpServlet {
 		} else {
 			Resource resource = _cache.lookup(pathInfo);
 			if (resource != null) {
-				String mimeType = mimeType(context, resource);
+				// The raw companion of a photograph is served as what it is, see issue #191.
+				String mimeType = RawFile.isRawName(pathInfo.getName()) ? RawFile.contentType(pathInfo.getName())
+					: mimeType(context, resource);
 
 				serveData(context, pathInfo.toFile(), mimeType);
 			}
@@ -3729,7 +3806,12 @@ public class ImageServlet extends HttpServlet {
 			data = PreviewCache.createDisplay(file);
 		} catch (PreviewException ex) {
 			LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
-			String unavailable = HeifDecoder.unavailability();
+			if (ex.getCause() instanceof NoEmbeddedPreviewException
+				|| ex.getCause() instanceof PictureTooLargeException) {
+				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, ex.getCause().getMessage());
+				return;
+			}
+			String unavailable = RawFile.isRaw(file) ? null : HeifDecoder.unavailability();
 			errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
 				unavailable != null ? unavailable : DISPLAY_FAILED);
 			return;

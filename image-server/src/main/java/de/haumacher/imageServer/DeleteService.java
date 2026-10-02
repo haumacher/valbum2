@@ -28,8 +28,10 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -320,6 +322,7 @@ public class DeleteService {
 		// nothing happens.
 		Path dirPath = dir.getAbsoluteFile().toPath().normalize();
 		List<File> originals = new ArrayList<>();
+		Map<Integer, File> companions = new HashMap<>();
 		List<List<File>> generated = new ArrayList<>();
 		for (ImagePart image : trashed) {
 			String name = image.getName();
@@ -330,7 +333,19 @@ public class DeleteService {
 				throw new MoveRefused(HttpServletResponse.SC_CONFLICT, purgeUnresolved(name));
 			}
 			originals.add(file);
-			generated.add(generatedOf(dir, name));
+			List<File> derived = generatedOf(dir, name);
+			// A raw and its JPEG are one photograph, and a purge deletes both, see issue #191. The
+			// loader answers a companion only where it is a regular raw file of this folder.
+			String raw = image.getRaw();
+			if (raw != null && !raw.isEmpty()) {
+				File companion = RawPairs.companion(dir, image);
+				if (companion == null || !dirPath.equals(companion.getAbsoluteFile().toPath().normalize().getParent())) {
+					throw new MoveRefused(HttpServletResponse.SC_CONFLICT, purgeUnresolved(raw));
+				}
+				companions.put(Integer.valueOf(originals.size() - 1), companion);
+				derived.addAll(generatedOf(dir, raw));
+			}
+			generated.add(derived);
 		}
 
 		// Read before the files go, so that the refresh below sees them vanish.
@@ -349,6 +364,17 @@ public class DeleteService {
 				}
 				MoveService.detach(album, image);
 				changed = true;
+				File companion = companions.get(Integer.valueOf(n));
+				if (companion != null) {
+					try {
+						Files.delete(companion.toPath());
+						LOG.info("Purged '" + companion.getAbsolutePath() + "', the raw of '" + original.getName() + "'.");
+					} catch (IOException ex) {
+						// The photograph is gone; its raw is left as a photograph of its own, which is
+						// what the next read shows and the next purge of it deletes.
+						LOG.log(Level.WARNING, "Cannot delete '" + companion.getAbsolutePath() + "': " + ex.getMessage(), ex);
+					}
+				}
 				for (File file : generated.get(n)) {
 					if (!file.delete() && file.exists()) {
 						// Derived data: what cannot be deleted is abandoned, the photograph is gone.

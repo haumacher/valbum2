@@ -60,6 +60,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getTags() */
 	private static final String TAGS__PROP = "tags";
 
+	/** @see #getRaw() */
+	private static final String RAW__PROP = "raw";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -91,6 +94,8 @@ public class ImagePart extends AbstractImage {
 	private final java.util.List<de.haumacher.imageServer.shared.model.FaceInfo> _faces = new java.util.ArrayList<>();
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.FaceTag> _tags = new java.util.ArrayList<>();
+
+	private String _raw = "";
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -594,6 +599,50 @@ public class ImagePart extends AbstractImage {
 		_tags.remove(value);
 	}
 
+	/**
+	 * The raw file shot beside this photograph, see issue #191: the plain file name of a
+	 * <code>.dng</code>, <code>.cr2</code>, <code>.cr3</code>, <code>.nef</code>, <code>.arw</code>,
+	 * <code>.orf</code>, <code>.rw2</code> or <code>.raf</code> in the same folder, the empty string
+	 * where there is none.
+	 *
+	 * <p>
+	 * A raw file and the JPEG (or HEIC/HEIF) of the same base name, compared ignoring case, are
+	 * <em>the same photograph</em> (the author's decision on #191): one entry of the album, whose
+	 * {@link #getName()} is the JPEG and whose companion is named here. Everything that acts on the photo
+	 * acts on both files &mdash; a move, the delete into the trash, the purge, the zip &mdash; while
+	 * the hashes, the duplicates and a replacement of #167 take each file on its own. The listing
+	 * never shows the companion as a tile of its own; the original of the raw is addressed by its
+	 * own name, <code>&lt;album&gt;/&lt;raw&gt;</code>, and answered under the rights, the privacy
+	 * and the rating of this photograph.
+	 * </p>
+	 *
+	 * <p>
+	 * <b>Stored</b> in <code>index.json</code>, and absent in a sidecar written before this field
+	 * existed, which reads as "none". A part whose companion is gone is answered without one, a
+	 * part whose own file is gone and whose companion is still there is answered as the raw (its
+	 * edits kept), and a raw whose base name matches a listed JPEG that claims no raw is paired with
+	 * it on the next read &mdash; derived on every read and written back by the album's next
+	 * ordinary write, reading never writes. A raw without a JPEG of its name is a photograph of its
+	 * own, shown through the JPEG preview it carries, and carries no companion.
+	 * </p>
+	 */
+	public final String getRaw() {
+		return _raw;
+	}
+
+	/**
+	 * @see #getRaw()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setRaw(String value) {
+		internalSetRaw(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getRaw()} without chain call utility. */
+	protected final void internalSetRaw(String value) {
+		_raw = value;
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -679,6 +728,8 @@ public class ImagePart extends AbstractImage {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(RAW__PROP);
+		out.value(getRaw());
 	}
 
 	@Override
@@ -713,6 +764,7 @@ public class ImagePart extends AbstractImage {
 				in.endArray();
 			}
 			break;
+			case RAW__PROP: setRaw(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

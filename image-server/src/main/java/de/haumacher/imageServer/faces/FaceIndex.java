@@ -427,6 +427,14 @@ public class FaceIndex {
 			return;
 		}
 
+		// The raw beside a JPEG of its name is that photograph, and the JPEG is looked at, see issue #191.
+		Set<String> pairedBases = new java.util.HashSet<>();
+		for (File image : images) {
+			if (de.haumacher.imageServer.RawPairs.isCompanionType(image.getName())) {
+				pairedBases.add(de.haumacher.imageServer.RawPairs.base(image.getName()));
+			}
+		}
+
 		FaceCache cache = new FaceCache(folder);
 		Set<String> present = new LinkedHashSet<>();
 		boolean changed = false;
@@ -438,6 +446,10 @@ public class FaceIndex {
 			}
 			if (!isPhotograph(image)) {
 				// A video is never handed to the detector, see issue #123.
+				continue;
+			}
+			if (de.haumacher.imageServer.raw.RawFile.isRaw(image)
+				&& pairedBases.contains(de.haumacher.imageServer.RawPairs.base(image.getName()))) {
 				continue;
 			}
 			String hash = hashByName.get(image.getName());
@@ -1123,13 +1135,9 @@ public class FaceIndex {
 		}
 		try {
 			com.drew.metadata.Metadata metadata = de.haumacher.imageServer.cache.ImageData.readMetadata(file);
-			com.drew.metadata.exif.ExifIFD0Directory directory =
-				metadata.getFirstDirectoryOfType(com.drew.metadata.exif.ExifIFD0Directory.class);
-			if (directory != null
-				&& directory.containsTag(com.drew.metadata.exif.ExifIFD0Directory.TAG_ORIENTATION)) {
-				return Orientations.fromCode(
-					directory.getInt(com.drew.metadata.exif.ExifIFD0Directory.TAG_ORIENTATION));
-			}
+			// The raw's own orientation for a raw photograph, applied to its embedded JPEG, see
+			// issue #191 and RawFile.
+			return Orientations.fromCode(de.haumacher.imageServer.cache.ImageData.orientationCode(metadata));
 		} catch (Exception ex) {
 			LOG.log(Level.FINE, "No orientation in '" + file.getName() + "'.", ex);
 		}
@@ -1140,7 +1148,7 @@ public class FaceIndex {
 	static boolean isPhotograph(File file) {
 		String suffix = de.haumacher.util.servlet.Util.suffix(file.getName());
 		return "jpg".equals(suffix) || "jpeg".equals(suffix) || "png".equals(suffix) || "webp".equals(suffix)
-			|| "gif".equals(suffix) || HeifFile.isHeif(file);
+			|| "gif".equals(suffix) || HeifFile.isHeif(file) || de.haumacher.imageServer.raw.RawFile.isRaw(file);
 	}
 
 	/** Whether the given part is a photograph the detector would look at. */

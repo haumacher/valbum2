@@ -45,6 +45,15 @@ String albumJson() => AlbumInfo(
           location: GeoLocation(latitude: 48.123456, longitude: 8.654321),
         ),
         ImagePart(
+          name: "pair.jpg",
+          date: 1015113600000,
+          camera: "Canon EOS 70D",
+          kind: ImageKind.image,
+          width: 2048,
+          height: 1536,
+          raw: "pair.CR2",
+        ),
+        ImagePart(
           name: "plain.jpg",
           comment: "Nichts bekannt",
           kind: ImageKind.image,
@@ -166,6 +175,31 @@ void main() {
       // Where it was taken is the last thing said about the file, after what
       // took it, see issue #112.
       expect(fromTile.last, "Location: 48.123456, 8.654321");
+    });
+  });
+
+  testWidgets('a photograph shot with a raw names it, in both places',
+      (tester) async {
+    // A raw and the JPEG of its name are one photograph (issue #191).
+    await withFakeImageHttp(() async {
+      await pumpViewerOn(tester, "pair.jpg");
+      await openFromViewer(tester);
+      var fromViewer = detailLines(tester);
+      expect(find.byKey(const Key("property-raw")), findsOneWidget);
+      await cancel(tester);
+
+      await openFromTile(tester, "pair.jpg");
+      var fromTile = detailLines(tester);
+      expect(fromViewer, fromTile);
+      expect(fromTile.last, "Raw file: pair.CR2");
+    });
+  });
+
+  testWidgets('a photograph without a raw has no raw line', (tester) async {
+    await withFakeImageHttp(() async {
+      await pumpViewerOn(tester, "a.jpg");
+      await openFromViewer(tester);
+      expect(find.byKey(const Key("property-raw")), findsNothing);
     });
   });
 

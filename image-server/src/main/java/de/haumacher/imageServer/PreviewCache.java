@@ -6,7 +6,6 @@ package de.haumacher.imageServer;
 import com.drew.imaging.ImageProcessingException;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.MetadataException;
-import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.gif.GifHeaderDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.png.PngDirectory;
@@ -16,6 +15,7 @@ import de.haumacher.imageServer.cache.VideoProbe;
 import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.heif.HeifDecoder;
 import de.haumacher.imageServer.heif.HeifFile;
+import de.haumacher.imageServer.raw.RawFile;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.util.Orientations;
 import de.haumacher.util.servlet.Util;
@@ -91,6 +91,22 @@ public class PreviewCache {
 
 	private static final String GIF = "gif";
 
+	private static final String DNG = "dng";
+
+	private static final String CR2 = "cr2";
+
+	private static final String CR3 = "cr3";
+
+	private static final String NEF = "nef";
+
+	private static final String ARW = "arw";
+
+	private static final String ORF = "orf";
+
+	private static final String RW2 = "rw2";
+
+	private static final String RAF = "raf";
+
 	/**
 	 * The colour a transparent pixel of a picture is shown on in its preview, which is a JPEG and
 	 * has no transparency (issue #190): white, the page the album's tiles stand on, so that a
@@ -104,7 +120,16 @@ public class PreviewCache {
 	 */
 	public static final Set<String> SUPPORTED_EXTENSIONS =
 		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, WEBP, GIF, HEIC, HEIF, MP4, MOV, M4V, THREE_GP, MTS, M2TS, AVI,
-			MKV, WEBM)));
+			MKV, WEBM, DNG, CR2, CR3, NEF, ARW, ORF, RW2, RAF)));
+
+	/**
+	 * The extensions of the raw photographs among {@link #SUPPORTED_EXTENSIONS}, lower case, see
+	 * issue #191 and {@link RawFile}: a phone's DNG (Android, Apple ProRAW), Canon's CR2 and CR3,
+	 * Nikon's NEF, Sony's ARW, Olympus' ORF, Panasonic's RW2 and Fujifilm's RAF. Each is shown through
+	 * the JPEG preview it carries, and is downloaded as it came.
+	 */
+	public static final Set<String> RAW_EXTENSIONS =
+		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(DNG, CR2, CR3, NEF, ARW, ORF, RW2, RAF)));
 
 	/**
 	 * The extensions of the videos among {@link #SUPPORTED_EXTENSIONS}, lower case: the ISO media
@@ -336,10 +361,10 @@ public class PreviewCache {
 
 	/**
 	 * Whether the given original has a display rendition: a format no browser and no app can be
-	 * expected to decode, which is a HEIC/HEIF photograph and nothing else (issue #186).
+	 * expected to decode, which is a HEIC/HEIF photograph (issue #186) and a raw one (issue #191).
 	 */
 	public static boolean needsDisplay(File file) {
-		return HeifFile.isHeif(file);
+		return HeifFile.isHeif(file) || RawFile.isRaw(file);
 	}
 
 	/**
@@ -363,6 +388,10 @@ public class PreviewCache {
 		File display = displayFile(file);
 		if (!upToDate(file, display)) {
 			generate(file, display, tmp -> {
+				if (RawFile.isRaw(file)) {
+					createRawDisplay(file, tmp);
+					return;
+				}
 				try {
 					HeifFile heif = HeifFile.read(file);
 					int width = heif.getDisplayWidth();
@@ -377,6 +406,45 @@ public class PreviewCache {
 			});
 		}
 		return display;
+	}
+
+	/**
+	 * Writes the display rendition of a raw photograph, see issue #191: its embedded JPEG upright,
+	 * subsampled by the smallest whole factor that brings its long side to at most
+	 * {@value #DISPLAY_LONG_SIDE} pixels, so that the decode never holds more than the rendition.
+	 */
+	private static void createRawDisplay(File file, File tmp) throws PreviewException {
+		try (PictureReader picture = PictureReader.open(file)) {
+			Orientation orientation = Orientations.fromCode(getImageOrientation(ImageData.readMetadata(file)));
+			int rawWidth = picture.getWidth();
+			int rawHeight = picture.getHeight();
+			int sampling = Math.max(1, (Math.max(rawWidth, rawHeight) + DISPLAY_LONG_SIDE - 1) / DISPLAY_LONG_SIDE);
+			BufferedImage raw = picture.read(null, sampling);
+			writeUpright(raw, orientation, tmp);
+		} catch (PictureTooLargeException | de.haumacher.imageServer.raw.NoEmbeddedPreviewException ex) {
+			throw new PreviewException(ex.getMessage(), ex);
+		} catch (ImageProcessingException | MetadataException | IOException ex) {
+			throw new PreviewException("Cannot create the display rendition of '" + file.getName() + "': "
+				+ ex.getMessage(), ex);
+		}
+	}
+
+	/** Writes the given raw raster as a JPEG, turned upright by the given orientation. */
+	private static void writeUpright(BufferedImage raw, Orientation orientation, File target) throws IOException {
+		boolean swapped = Faces.swaps(orientation);
+		int width = swapped ? raw.getHeight() : raw.getWidth();
+		int height = swapped ? raw.getWidth() : raw.getHeight();
+		BufferedImage copy = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+		Graphics2D g = copy.createGraphics();
+		try {
+			g.setTransform(orientationTransform(orientation, raw.getWidth(), raw.getHeight()));
+			g.drawImage(raw, null, 0, 0);
+		} finally {
+			g.dispose();
+		}
+		if (!ImageIO.write(copy, JPG, target)) {
+			throw new IOException("No JPEG writer.");
+		}
 	}
 
 	/** Writes a generated file into the temporary name it is given. */
@@ -395,9 +463,19 @@ public class PreviewCache {
 			case PNG:
 			case WEBP:
 			case GIF:
+			case DNG:
+			case CR2:
+			case CR3:
+			case NEF:
+			case ARW:
+			case ORF:
+			case RW2:
+			case RAF:
+				// A raw photograph is read through the JPEG preview it carries, which PictureReader
+				// opens in its place, see issue #191.
 				try {
 					createImagePreview(file, tmp, imageType);
-				} catch (PictureTooLargeException ex) {
+				} catch (PictureTooLargeException | de.haumacher.imageServer.raw.NoEmbeddedPreviewException ex) {
 					// Its message says what is wrong and what to do, and is what the request is answered.
 					throw new PreviewException(ex.getMessage(), ex);
 				} catch (ImageProcessingException | MetadataException | IOException ex) {
@@ -593,7 +671,9 @@ public class PreviewCache {
 		boolean swapped = orientationCode >= 5;
 
 		try (PictureReader picture = PictureReader.open(file)) {
-			ImageDimension dimension = imageDimension(metadata, picture, swapped);
+			// The picture of a raw is its embedded JPEG, whatever size the raw's own tags say.
+			ImageDimension dimension = RawFile.isRaw(file) ? imageDimension(picture, swapped)
+				: imageDimension(metadata, picture, swapped);
 			int origWidth = dimension.getWidth();
 			int origHeight = dimension.getHeight();
 
@@ -750,6 +830,11 @@ public class PreviewCache {
 		} catch (MetadataException | IllegalArgumentException ex) {
 			// No dimension in the metadata, ask the reader below.
 		}
+		return imageDimension(picture, swapped);
+	}
+
+	/** The picture's dimension as the viewer sees it, as the reader says it. */
+	private static ImageDimension imageDimension(PictureReader picture, boolean swapped) {
 		int rawWidth = picture.getWidth();
 		int rawHeight = picture.getHeight();
 		return swapped ? new ImageDimension(rawHeight, rawWidth) : new ImageDimension(rawWidth, rawHeight);
@@ -869,11 +954,7 @@ public class PreviewCache {
 	}
 
 	private static int getImageOrientation(Metadata metadata) throws MetadataException {
-		ExifIFD0Directory exifIFD0Directory = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
-		if (exifIFD0Directory != null && exifIFD0Directory.containsTag(ExifIFD0Directory.TAG_ORIENTATION)) {
-			return exifIFD0Directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
-		}
-		return 1;
+		return ImageData.orientationCode(metadata);
 	}
 
 	private static void createVideoPreview(File file, File previewCache) throws Exception,

@@ -242,6 +242,28 @@ bool isHeifName(String name) {
   return extension == "heic" || extension == "heif";
 }
 
+/// The extensions of the raw photographs the server takes (issue #191,
+/// `PreviewCache.RAW_EXTENSIONS`).
+const Set<String> rawExtensions = {
+  "dng",
+  "cr2",
+  "cr3",
+  "nef",
+  "arw",
+  "orf",
+  "rw2",
+  "raf",
+};
+
+/// Whether [name] is a raw photograph (issue #191): no browser and no app
+/// decoder shows one, so the viewer shows the server's display rendition of
+/// the JPEG preview it carries, as for a HEIC.
+bool isRawName(String name) => rawExtensions.contains(extensionOf(name));
+
+/// Whether the original of [name] needs the server's display rendition
+/// (`?type=display`) to be shown: a HEIC/HEIF (#186) or a raw (#191).
+bool needsDisplayRendition(String name) => isHeifName(name) || isRawName(name);
+
 /// The greatest number of files one request carries, see [UploadBatching].
 const int uploadBatchFiles = 25;
 
@@ -1531,8 +1553,7 @@ class VAlbumClient {
       uri,
       multipartBody,
       handle: handle,
-      onTransferred: (transferred) =>
-          onTransferred(transferred, contentLength),
+      onTransferred: (transferred) => onTransferred(transferred, contentLength),
     );
     request.headers.addAll(multipart.headers);
     request.headers.addAll(authHeaders);
@@ -1950,8 +1971,8 @@ class VAlbumClient {
                   ? UploadPhase.waiting
                   : UploadPhase.transferring,
               within,
-              sent: confirmed +
-                  imagesSentOf(batchLengths, sentBytes, totalBytes),
+              sent:
+                  confirmed + imagesSentOf(batchLengths, sentBytes, totalBytes),
             );
           },
           handle: handle,

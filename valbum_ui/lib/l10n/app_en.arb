@@ -3188,6 +3188,16 @@
     },
     "x-translated": "7c899f7d"
   },
+  "propertyRaw": "Raw file: {name}",
+  "@propertyRaw": {
+    "description": "The line naming the raw file (a camera's unprocessed .CR2, .NEF, .DNG …) shot beside the photograph, which is the same photograph",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "3c7e3318"
+  },
   "propertyLocation": "Location: {latitude}, {longitude}",
   "@propertyLocation": {
     "description": "The line naming where an image was taken, in decimal degrees",
@@ -3275,6 +3285,11 @@
   "@viewerDownload": {
     "description": "Entry of the viewer's menu saving the original file of the photograph or video shown onto the device",
     "x-translated": "c5690645"
+  },
+  "viewerDownloadRaw": "Download raw file",
+  "@viewerDownloadRaw": {
+    "description": "Entry of the viewer's menu saving the raw file (a camera's unprocessed .CR2, .NEF, .DNG …) shot beside the photograph shown onto the device",
+    "x-translated": "36b08364"
   },
   "downloadSelection": "{count, plural, =1{Download 1 original} other{Download {count} originals}}",
   "@downloadSelection": {

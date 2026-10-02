@@ -35,7 +35,8 @@ Widget imagePropertyLine(Key key, String text) =>
 /// Each line only where there is something to say: the name the file carries
 /// (issue #103), the recording time it is sorted by — the sidecar's, which the
 /// adjustment of issue #77 may have corrected — the camera that took it
-/// (issue #78) and, where the file said so, where it was taken (issue #112).
+/// (issue #78), the raw file shot beside it (issue #191) and, where the file
+/// said so, where it was taken (issue #112).
 ///
 /// [mapUrl] is the template of the space, which the location line opens; an
 /// empty one is [defaultMapUrl], so a caller that has no server to ask still
@@ -63,6 +64,13 @@ List<Widget> imagePropertyLines(
         imagePropertyLine(
           const Key("property-camera"),
           l10n.propertyCamera(image.camera),
+        ),
+      // The raw shot beside the photograph, which is the same photograph
+      // (issue #191).
+      if (image.raw.isNotEmpty)
+        imagePropertyLine(
+          const Key("property-raw"),
+          l10n.propertyRaw(image.raw),
         ),
       if (hasPosition(image.location))
         ImageLocationLine(

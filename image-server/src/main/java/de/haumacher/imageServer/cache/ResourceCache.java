@@ -18,6 +18,7 @@ import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.imageServer.MoveService;
 import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.PreviewCache;
+import de.haumacher.imageServer.RawPairs;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -268,7 +269,13 @@ public class ResourceCache {
 			return _cache.getUnchecked(pathInfo);
 		} else {
 			AlbumInfo container = (AlbumInfo) _cache.getUnchecked(pathInfo.parent());
-			return container.getImageByName().get(pathInfo.getName());
+			ImagePart image = container.getImageByName().get(pathInfo.getName());
+			if (image == null) {
+				// The raw companion of a photograph is that photograph, and is answered with its
+				// rights, its privacy and its rating, see issue #191.
+				image = RawPairs.partOf(container, pathInfo.getName());
+			}
+			return image;
 		}
 	}
 
@@ -664,13 +671,24 @@ public class ResourceCache {
 			// Update early to be able to match new images against existing image.
 			UpdateTransient.updateTransient(album);
 
+			// A raw and the JPEG of its name are one photograph, see issue #191: what the sidecar
+			// says about them is made true to the files before anything new is analysed.
+			RawPairs.Plan pairs = RawPairs.reconcile(album, files, file -> {
+				try {
+					return ImageData.analyze(album, file, analysis, zone);
+				} catch (IOException | ImageProcessingException | MetadataException | RuntimeException ex) {
+					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
+					return null;
+				}
+			});
+
 			List<ImageData> newImages = new ArrayList<>();
 			for (File file : files) {
 				String name = file.getName();
 
 				ImagePart existing = album.getImageByName().get(name);
-				if (existing != null) {
-					// Already known.
+				if (existing != null || pairs.skips(name)) {
+					// Already known, or the companion of a photograph.
 					continue;
 				}
 
@@ -683,6 +701,7 @@ public class ResourceCache {
 					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
 					continue;
 				}
+				image.setRaw(pairs.rawFor(name));
 
 				newImages.add(image);
 			}

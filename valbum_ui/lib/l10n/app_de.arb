@@ -229,6 +229,7 @@
   "expiryOneDay": "1 Tag",
   "expiryOneWeek": "1 Woche",
   "expiryOneMonth": "1 Monat",
+  "expiryPickDate": "An einem bestimmten Datum…",
   "shareDialogTitle": "{name} per Link freigeben",
   "shareTargetTopLevel": "die oberste Ebene",
   "linksHeading": "Links",
@@ -248,8 +249,12 @@
   "expiresHeading": "Ablaufdatum",
   "showsHeading": "Anzeigen",
   "privacyPublicOnly": "Nur öffentliche Fotos",
+  "privacyUpToMembers": "Alle Fotos",
   "privacyMembersNote": "Ein privates Foto wird niemals über einen Link angezeigt.",
   "lowestRatingHeading": "Niedrigste Bewertung",
+  "linkRightsHelp": "Das Anzeigen ist immer erlaubt, das Bearbeiten niemals.",
+  "linkRatingAllButTrash": "Jedes Foto außer denen im Papierkorb",
+  "linkRatingAtLeast": "Mindestens {rating}",
   "createLink": "Link erstellen",
   "theLinkHeading": "Der Link",
   "shareLinkOnce": "Kopieren Sie sie jetzt: Der Server speichert nur ihren Fingerabdruck und kann sie nie wieder anzeigen. Ein verlorener Link wird zurückgezogen und neu erstellt.",
@@ -695,9 +700,6 @@
   "aboutVersion": "Version {version}",
   "aboutSourceCode": "Quellcode, Dokumentation und Fehlerberichte:",
   "aboutLicense": "Freie Software unter der GNU Affero General Public License, Version 3 oder höher.",
-  "expiryPickDate": "An einem bestimmten Datum…",
-  "privacyUpToMembers": "Alle Fotos",
-  "linkRightsHelp": "Das Anzeigen ist immer erlaubt, das Bearbeiten niemals.",
-  "linkRatingAllButTrash": "Jedes Foto außer denen im Papierkorb",
-  "linkRatingAtLeast": "Mindestens {rating}"
+  "propertyRaw": "Rohdatei: {name}",
+  "viewerDownloadRaw": "Rohdatei herunterladen"
 }
