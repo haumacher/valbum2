@@ -3482,10 +3482,10 @@ abstract class AppLocalizations {
   /// **'Preparing: {done} of {total}...'**
   String uploadPreparing(int total, int done);
 
-  /// Says how many images of an upload have arrived
+  /// Says how many images of an upload have been sent so far (their bytes are out; the server has not necessarily confirmed them yet)
   ///
   /// In en, this message translates to:
-  /// **'{done} of {total} images'**
+  /// **'{done} of {total} images sent'**
   String uploadImageCount(int total, int done);
 
   /// Says what an upload transferred and what the server already held

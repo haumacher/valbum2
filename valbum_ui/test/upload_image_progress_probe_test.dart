@@ -84,7 +84,7 @@ void main() {
         reason: "the total is what will arrive, not what was picked");
     expect(transfer.last.imagesDone, 8);
     expect(transfer.last.fraction, 1.0);
-    expect(transfer.last.lineOf(testL10n), "8 of 8 images");
+    expect(transfer.last.lineOf(testL10n), "8 of 8 images sent");
     expect(transfer.where((r) => r.fraction >= 1.0).length, 1,
         reason: "1.0 exactly once, when the last batch has answered");
     for (var i = 1; i < transfer.length; i++) {
@@ -148,7 +148,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text("1234 of 5678 images"), findsOneWidget);
+    expect(find.text("1234 of 5678 images sent"), findsOneWidget);
     expect(find.text("22 %"), findsOneWidget);
     var wheel = tester.widget<CircularProgressIndicator>(find.byKey(uploadProgressWheelKey));
     expect(wheel.value, closeTo(0.2173, 1e-9));

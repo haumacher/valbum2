@@ -564,7 +564,7 @@
   "uploadAsking": "Der Server wird gerade abgefragt...",
   "uploadWaiting": "Warten auf den Server...",
   "uploadPreparing": "Vorbereitung: {done} von {total}...",
-  "uploadImageCount": "{done} von {total} Bildern",
+  "uploadImageCount": "{done} von {total} Bildern gesendet",
   "uploadSummary": "{stored} hochgeladen, {present} bereits vorhanden.",
   "alreadyInLibrary": "Bereits in der Bibliothek vorhanden: {where}.",
   "noticeGuestNoSpace": "Bitte den Administrator, dir Speicherplatz für ein Album zuzuweisen.",

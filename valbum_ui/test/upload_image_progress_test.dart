@@ -240,9 +240,9 @@ void main() {
 
     expect(lines.first, "Preparing: 1 of 12...");
     expect(lines, contains(uploadAskingMessage(testL10n)));
-    expect(lines, contains("4 of 12 images"));
+    expect(lines, contains("4 of 12 images sent"));
     expect(lines, contains(testL10n.uploadWaiting));
-    expect(lines.last, "12 of 12 images");
+    expect(lines.last, "12 of 12 images sent");
     for (var line in lines) {
       expect(line, isNot(contains("Paket")));
     }

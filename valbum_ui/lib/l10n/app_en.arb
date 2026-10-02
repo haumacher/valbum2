@@ -3542,9 +3542,9 @@
     },
     "x-translated": "50f9659f"
   },
-  "uploadImageCount": "{done} of {total} images",
+  "uploadImageCount": "{done} of {total} images sent",
   "@uploadImageCount": {
-    "description": "Says how many images of an upload have arrived",
+    "description": "Says how many images of an upload have been sent so far (their bytes are out; the server has not necessarily confirmed them yet)",
     "placeholders": {
       "total": {
         "type": "int"
@@ -3553,7 +3553,7 @@
         "type": "int"
       }
     },
-    "x-translated": "52b9e7"
+    "x-translated": "9d5cdad"
   },
   "uploadSummary": "{stored} uploaded, {present} already present.",
   "@uploadSummary": {

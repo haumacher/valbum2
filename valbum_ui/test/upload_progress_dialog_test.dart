@@ -63,7 +63,7 @@ void main() {
 
     expect(
       tester.widget<Text>(find.byKey(uploadProgressCountKey)).data,
-      "12 of 48 images",
+      "12 of 48 images sent",
     );
     expect(wheelOf(tester).value, 0.25);
     expect(
@@ -95,7 +95,7 @@ void main() {
 
     expect(
       tester.widget<Text>(find.byKey(uploadProgressCountKey)).data,
-      "8 of 12 images",
+      "8 of 12 images sent",
     );
     expect(wheelOf(tester).value, 0.75);
     expect(
@@ -129,7 +129,7 @@ void main() {
     expect(count, findsOneWidget);
     expect(
       tester.widget<Text>(count).data,
-      "128 of 256 images",
+      "128 of 256 images sent",
     );
     var box = tester.getRect(count);
     expect(box.left, greaterThanOrEqualTo(0));

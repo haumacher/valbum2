@@ -364,8 +364,50 @@ String uploadWaitingMessage(AppLocalizations l10n) => l10n.uploadWaiting;
 /// The one measurement the person can check against what they picked: images.
 /// Not batches, not bytes, not requests — the report of #70 was that two
 /// different numbers were counted at once while the wheel only spun.
+///
+/// The count is of images *sent* (issue #194), [UploadProgress.imagesSent],
+/// and the line says so: an image whose bytes are out is not yet confirmed by
+/// the server, and "uploaded" would claim that it is.
 String uploadImageCountMessage(AppLocalizations l10n, int done, int total) =>
     l10n.uploadImageCount(total, done);
+
+/// How many of the files of one request have fully gone out, once [sent] of
+/// the request's [total] bytes are (issue #194).
+///
+/// The files are sent in the order of [lengths]. The multipart overhead — the
+/// boundaries and the part headers — is *apportioned*: [sent] is scaled onto
+/// the files' own bytes by `sum(lengths) / total`, so a file counts once the
+/// same share of the body is out as its end is of the files' bytes. That is
+/// not exact to the byte (a part's header goes out before its file), and need
+/// not be — the author's decision was "the count sent is sufficient" — but it
+/// is exact at both ends: nothing counts before a byte is out, everything
+/// counts once the whole body is. A file of no bytes counts with the one
+/// before it.
+int imagesSentOf(List<int> lengths, int sent, int total) {
+  if (lengths.isEmpty) {
+    return 0;
+  }
+  if (total <= 0 || sent >= total) {
+    return lengths.length;
+  }
+  if (sent <= 0) {
+    return 0;
+  }
+  var bytes = lengths.fold<int>(0, (sum, length) => sum + length);
+  // In integers: a file ending at `end` of the files' bytes is out once
+  // `sent * bytes >= end * total`.
+  var count = 0;
+  var end = 0;
+  for (var length in lengths) {
+    end += length;
+    if (BigInt.from(sent) * BigInt.from(bytes) <
+        BigInt.from(end) * BigInt.from(total)) {
+      break;
+    }
+    count++;
+  }
+  return count;
+}
 
 /// What part of an upload is running, see [UploadProgress].
 enum UploadPhase {
@@ -401,7 +443,18 @@ class UploadProgress {
   /// During [UploadPhase.preparing] this is the image being hashed instead:
   /// that phase counts its way through the picked files and there is nothing
   /// on the server yet.
+  ///
+  /// This is the number a failure speaks of (issue #64): what is on the
+  /// server, never what merely left the device, see [imagesSent].
   final int imagesDone;
+
+  /// The images whose bytes have fully gone out (issue #194): the confirmed
+  /// ones plus those of the batch in flight that are sent, see
+  /// [imagesSentOf]. What the dialog counts while transferring, because a
+  /// batch of 25 photos would otherwise show 0 the whole time it is on its
+  /// way. Never less than [imagesDone], never more than [imagesTotal], and it
+  /// never runs backwards; the same as [imagesDone] outside the transfer.
+  final int imagesSent;
 
   /// How many images are being uploaded.
   ///
@@ -424,7 +477,8 @@ class UploadProgress {
     required this.imagesDone,
     required this.imagesTotal,
     this.fraction = 0,
-  });
+    int? imagesSent,
+  }) : imagesSent = imagesSent ?? imagesDone;
 
   /// What the dialog shows before the upload has reported anything.
   factory UploadProgress.start(int images) => UploadProgress(
@@ -444,7 +498,7 @@ class UploadProgress {
         UploadPhase.preparing => l10n.uploadPreparing(imagesTotal, imagesDone),
         UploadPhase.asking => uploadAskingMessage(l10n),
         UploadPhase.transferring =>
-          uploadImageCountMessage(l10n, imagesDone, imagesTotal),
+          uploadImageCountMessage(l10n, imagesSent, imagesTotal),
         UploadPhase.waiting => uploadWaitingMessage(l10n),
       };
 
@@ -453,15 +507,17 @@ class UploadProgress {
       other is UploadProgress &&
       other.phase == phase &&
       other.imagesDone == imagesDone &&
+      other.imagesSent == imagesSent &&
       other.imagesTotal == imagesTotal &&
       other.fraction == fraction;
 
   @override
-  int get hashCode => Object.hash(phase, imagesDone, imagesTotal, fraction);
+  int get hashCode =>
+      Object.hash(phase, imagesDone, imagesSent, imagesTotal, fraction);
 
   @override
-  String toString() =>
-      "UploadProgress(${phase.name}, $imagesDone/$imagesTotal, $fraction)";
+  String toString() => "UploadProgress(${phase.name}, "
+      "$imagesDone/$imagesTotal, sent: $imagesSent, $fraction)";
 }
 
 /// The greatest [UploadProgress.fraction] reported while an answer is still
@@ -1350,6 +1406,10 @@ class VAlbumClient {
   /// than the disk the two are worlds apart, and the number the user was shown
   /// used to be the faster of them.
   ///
+  /// [onTransferred] is told the same in bytes — sent so far and the body's
+  /// total — which is what [uploadNew] maps onto the files, see
+  /// [imagesSentOf] and issue #194.
+  ///
   /// The upload stops as soon as [handle] is cancelled: the body stream fails,
   /// the request fails with it, and this throws — a cancelled upload never
   /// answers an [UploadResult], whatever the transport made of the truncated
@@ -1366,16 +1426,22 @@ class VAlbumClient {
     String url,
     List<UploadFile> files, {
     void Function(int percent)? onProgress,
+    void Function(int sent, int total)? onTransferred,
     UploadHandle? handle,
   }) async {
     var uri = Uri.parse(url);
+    void transferred(int sent, int total) {
+      onTransferred?.call(sent, total);
+      onProgress?.call(_percent(sent, total));
+    }
+
     int status;
     String body;
     try {
       (status: status, body: body) =
           files.isNotEmpty && files.every((file) => file.blob != null)
-              ? await _sendBlobs(uri, files, onProgress, handle)
-              : await _sendStreamed(uri, files, onProgress, handle);
+              ? await _sendBlobs(uri, files, transferred, handle)
+              : await _sendStreamed(uri, files, transferred, handle);
     } catch (error) {
       // A cancelled upload fails the body stream (or aborts the browser's
       // request); whatever the transport made of that is not worth quoting,
@@ -1437,7 +1503,7 @@ class VAlbumClient {
   Future<({int status, String body})> _sendStreamed(
     Uri uri,
     List<UploadFile> files,
-    void Function(int percent)? onProgress,
+    void Function(int sent, int total) onTransferred,
     UploadHandle? handle,
   ) async {
     var multipart = http.MultipartRequest("PUT", uri);
@@ -1465,9 +1531,8 @@ class VAlbumClient {
       uri,
       multipartBody,
       handle: handle,
-      onTransferred: (transferred) => onProgress?.call(
-        _percent(transferred, contentLength),
-      ),
+      onTransferred: (transferred) =>
+          onTransferred(transferred, contentLength),
     );
     request.headers.addAll(multipart.headers);
     request.headers.addAll(authHeaders);
@@ -1488,7 +1553,7 @@ class VAlbumClient {
   Future<({int status, String body})> _sendBlobs(
     Uri uri,
     List<UploadFile> files,
-    void Function(int percent)? onProgress,
+    void Function(int sent, int total) onTransferred,
     UploadHandle? handle,
   ) async {
     var headers = authHeaders;
@@ -1499,7 +1564,7 @@ class VAlbumClient {
         uri,
         [for (var file in files) (name: file.name, blob: file.blob!)],
         headers: headers,
-        onProgress: (sent, total) => onProgress?.call(_percent(sent, total)),
+        onProgress: onTransferred,
         cancelled: handle == null ? null : () => handle.cancelled,
       );
     } catch (error) {
@@ -1710,8 +1775,8 @@ class VAlbumClient {
   /// [UploadInterrupted] saying how much is on the server and how much is not.
   ///
   /// [onProgress] reports one [UploadProgress] per step: the phase, how many
-  /// images the server has confirmed, and the fraction the wheel shows
-  /// (issue #70). One measurement, images — the batches are transport and are
+  /// images the server has confirmed, how many have been sent (issue #194),
+  /// and the fraction the wheel shows (issue #70). One measurement, images — the batches are transport and are
   /// never reported. Hashing a hundred photos on a phone takes long enough
   /// that a dialog showing nothing at all looks hung, so the preparing counts
   /// itself out (issue #59); a caller that does not care leaves [onProgress]
@@ -1823,11 +1888,19 @@ class VAlbumClient {
     var sentFiles = 0;
     var images = pending.length;
     var confirmed = 0;
+    // The images sent so far, see [UploadProgress.imagesSent]: like the
+    // fraction, it never runs backwards.
+    var sentImages = 0;
     var reported = -1.0;
     // The fraction never runs backwards, and it reaches 1.0 exactly once, when
     // the last batch has answered: everything before that is capped at
     // [uploadProgressCeiling], because an answer is still outstanding.
-    void report(UploadPhase phase, double fraction, {bool finished = false}) {
+    void report(
+      UploadPhase phase,
+      double fraction, {
+      bool finished = false,
+      int sent = 0,
+    }) {
       var value = finished
           ? fraction.clamp(0.0, 1.0)
           : fraction.clamp(0.0, uploadProgressCeiling);
@@ -1835,11 +1908,19 @@ class VAlbumClient {
         value = reported;
       }
       reported = value;
+      var count = sent < confirmed ? confirmed : sent;
+      if (count > images) {
+        count = images;
+      }
+      if (count > sentImages) {
+        sentImages = count;
+      }
       onProgress?.call(UploadProgress(
         phase: phase,
         imagesDone: confirmed,
         imagesTotal: images,
         fraction: value,
+        imagesSent: sentImages,
       ));
     }
 
@@ -1849,6 +1930,7 @@ class VAlbumClient {
       // wheel by — never further: what the wheel shows is bounded by what
       // [UploadProgress.imagesDone] becomes once this batch answers.
       var batchImages = batch.length;
+      var batchLengths = [for (var file in batch) file.length];
       var last = index == batches.length - 1;
       report(UploadPhase.transferring, confirmed / images);
 
@@ -1857,16 +1939,19 @@ class VAlbumClient {
         result = await uploadFiles(
           folderUrl(path),
           batch,
-          onProgress: (percent) {
-            var within = (confirmed + batchImages * percent / 100) / images;
+          onTransferred: (sentBytes, totalBytes) {
+            var share = totalBytes <= 0 ? 1.0 : sentBytes / totalBytes;
+            var within = (confirmed + batchImages * share) / images;
             // The body of the *last* batch being out is the one wait the
             // person is told about, see [uploadWaitingMessage] and issue #59;
             // between batches the image count stays on the screen.
             report(
-              last && percent >= 100
+              last && share >= 1
                   ? UploadPhase.waiting
                   : UploadPhase.transferring,
               within,
+              sent: confirmed +
+                  imagesSentOf(batchLengths, sentBytes, totalBytes),
             );
           },
           handle: handle,

@@ -2190,8 +2190,8 @@ class VAlbumState extends State<VAlbumView>
     var progress = ValueNotifier<UploadProgress>(
       UploadProgress.start(uploads.length),
     );
-    // The last count the person saw, so that a failure speaks of the same
-    // number the dialog showed, see [interruptedUploadMessage] and issue #64.
+    // The last count the server confirmed, which a failure speaks of, see
+    // [interruptedUploadMessage] and issues #64 and #194.
     var shown = 0;
     var navigator = Navigator.of(context, rootNavigator: true);
     var open = true;
@@ -2236,7 +2236,10 @@ class VAlbumState extends State<VAlbumView>
         onProgress: (report) {
           // Only what the server has confirmed: the preparing phase counts
           // the file it is hashing, which is nothing anybody received, see
-          // [UploadProgress.imagesDone].
+          // [UploadProgress.imagesDone]. The dialog counts the images *sent*
+          // (issue #194), but a failure speaks of what is on the server —
+          // the dialog's "sent" and the failure's "on the server" are two
+          // words for two numbers, and only the second one is a promise.
           if (report.phase != UploadPhase.preparing) {
             shown = report.imagesDone;
           }
@@ -2255,7 +2258,7 @@ class VAlbumState extends State<VAlbumView>
       // single photo made it: a `ClientException` about a broken pipe says
       // nothing to the person holding the phone, and the raw text is in the
       // diagnostics log where a bug report can fetch it. The count is the one
-      // the dialog last showed, see [shown].
+      // the server confirmed, see [shown].
       var lost = partial == null && VAlbumClient.isTransportFailure(error)
           ? interruptedUploadMessage(
               l10n,

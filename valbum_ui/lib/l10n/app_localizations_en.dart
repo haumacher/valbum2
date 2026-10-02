@@ -2130,7 +2130,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String uploadImageCount(int total, int done) {
-    return '$done of $total images';
+    return '$done of $total images sent';
   }
 
   @override

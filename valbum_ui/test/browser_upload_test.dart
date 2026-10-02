@@ -236,6 +236,14 @@ void main() {
       for (var i = 1; i < transfer.length; i++) {
         expect(transfer[i], greaterThanOrEqualTo(transfer[i - 1]));
       }
+      // The XHR's own progress counts the images sent before the server has
+      // answered, exactly as the streamed transport does (issue #194).
+      expect(
+        progress.any((step) => step.imagesDone == 0 && step.imagesSent == 2),
+        isTrue,
+        reason: "$progress",
+      );
+      expect(progress.last.imagesSent, 2);
     });
 
     test('reports the bytes of the body as they are sent', () async {

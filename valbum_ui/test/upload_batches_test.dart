@@ -216,10 +216,10 @@ void main() {
       }
       // What the person reads while the transfer runs is images, and the count
       // ends where the batches end.
-      expect(lines, contains("0 of 60 images"));
-      expect(lines, contains("25 of 60 images"));
-      expect(lines, contains("50 of 60 images"));
-      expect(lines.last, "60 of 60 images");
+      expect(lines, contains("0 of 60 images sent"));
+      expect(lines, contains("25 of 60 images sent"));
+      expect(lines, contains("50 of 60 images sent"));
+      expect(lines.last, "60 of 60 images sent");
     });
 
     test('counts the images the server confirmed, batch by batch', () async {

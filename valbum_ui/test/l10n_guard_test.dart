@@ -121,7 +121,7 @@ const Map<String, String> allowedLiterals = {
   r"CallerPermission(${}, ${}, ${})": "toString()",
   r"CallerInfo(${}, ${}, ${})": "toString()",
   r"SessionUrl(${} ${} at ${})": "toString()",
-  r"UploadProgress(${}, ${}/${}, ${})": "toString()",
+  r"UploadProgress(${}, ${}/${}, sent: ${}, ${})": "toString()",
   r"RenditionState(${}, ${}, ${})": "toString()",
   r"SignedMediaUrl(${}, ${})": "toString()",
   "no video file": "ArgumentError of a programming mistake, never shown",

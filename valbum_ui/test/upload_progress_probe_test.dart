@@ -98,7 +98,7 @@ void main() {
       "Preparing: 1 of 2...",
       "Preparing: 2 of 2...",
       uploadAskingMessage(testL10n),
-      "0 of 0 images",
+      "0 of 0 images sent",
     ]);
     expect(progress.last.fraction, 1);
     // Everything went well: nothing is written down (issue #184).
