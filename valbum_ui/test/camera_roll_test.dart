@@ -1011,6 +1011,45 @@ void main() {
       expect(harness.uploads, isEmpty);
     });
 
+    test('a video of an iPhone, an iTunes export and an old phone is sent '
+        '(issue #189)', () async {
+      var harness = Harness(
+        items: [
+          photo("a.jpg", 1),
+          photo("IMG_0001.MOV", 2),
+          photo("clip.m4v", 3),
+          photo("clip.3gp", 4),
+        ],
+      );
+      addTearDown(harness.dispose);
+      await harness.sync.load();
+
+      await harness.sync.syncNow();
+
+      expect(harness.uploadedNames, [
+        ["a.jpg", "IMG_0001.MOV", "clip.m4v", "clip.3gp"],
+      ]);
+      expect(harness.sync.status.phase, CameraRollPhase.idle);
+    });
+
+    test('a server before #186 refusing a movie with a bare 415 skips it alone',
+        () async {
+      var harness = Harness(
+        items: [photo("a.jpg", 1), photo("IMG_0001.MOV", 2), photo("c.mp4", 3)],
+      );
+      addTearDown(harness.dispose);
+      harness.upload = (request) async => request.body.contains("IMG_0001.MOV")
+          ? http.Response("", 415)
+          : http.Response("", 200);
+      await harness.sync.load();
+
+      await harness.sync.syncNow();
+
+      expect(harness.sync.status.phase, CameraRollPhase.idle);
+      expect(harness.sync.status.lastSkipped, ["IMG_0001.MOV"]);
+      expect(harness.sync.status.lastStored, 2);
+    });
+
     test('an older server refusing the whole batch is asked item by item',
         () async {
       var harness = Harness(

@@ -1280,24 +1280,21 @@ class CameraRollSync extends ChangeNotifier {
 
   /// Whether the 415 [error] refuses [item] for what it is, see
   /// [_sendSkippingUnsupported].
+  ///
+  /// A current server names the file it refuses (issue #186); a 415 without
+  /// a reason comes from a server built before that, which takes exactly
+  /// [olderServerExtensions] — so a bare 415 refuses an item of any other
+  /// extension for what it is: a HEIC, and an iPhone's `.MOV`, an `.m4v` or a
+  /// `.3gp` (issue #189), which such a server never took. The sync itself
+  /// offers every photograph and video the device library holds, whatever
+  /// its extension; the server decides.
   static bool _refusesItself(VAlbumException error, PhotoItem item) {
     var reason = error.reason;
     if (reason != null) {
       return reason.contains(item.name);
     }
-    return !knownExtensions.contains(extensionOf(item.name));
+    return !olderServerExtensions.contains(extensionOf(item.name));
   }
-
-  /// The extensions (lower case) a current server takes, see
-  /// [_refusesItself].
-  static const Set<String> knownExtensions = {
-    "jpg",
-    "jpeg",
-    "png",
-    "heic",
-    "heif",
-    "mp4",
-  };
 
   /// The device albums this run scans, see [CameraRollConfig.sources].
   ///

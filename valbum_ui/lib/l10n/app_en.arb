@@ -1891,6 +1891,11 @@
     "description": "Button playing the original file instead of waiting",
     "x-translated": "232de50d"
   },
+  "videoNeedsRendition": "This browser cannot play the original of this video; it plays as soon as the server has converted it.",
+  "@videoNeedsRendition": {
+    "description": "Said under videoPreparing where the browser cannot play the original (a QuickTime or 3GPP video), so there is no button to play it",
+    "x-translated": "5d4bcf6"
+  },
   "videoCannotPlay": "Cannot play this video.",
   "@videoCannotPlay": {
     "description": "Headline shown where a video cannot be played",

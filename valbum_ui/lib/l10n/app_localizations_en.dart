@@ -1115,6 +1115,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get videoPlayOriginal => 'Play the original';
 
   @override
+  String get videoNeedsRendition =>
+      'This browser cannot play the original of this video; it plays as soon as the server has converted it.';
+
+  @override
   String get videoCannotPlay => 'Cannot play this video.';
 
   @override

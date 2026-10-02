@@ -9,8 +9,8 @@ import com.drew.metadata.Metadata;
 import com.drew.metadata.MetadataException;
 import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.jpeg.JpegDirectory;
-import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.png.PngDirectory;
+import de.haumacher.imageServer.cache.ImageData;
 import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.heif.HeifDecoder;
 import de.haumacher.imageServer.heif.HeifFile;
@@ -63,6 +63,12 @@ public class PreviewCache {
 
 	private static final String MP4 = "mp4";
 
+	private static final String MOV = "mov";
+
+	private static final String M4V = "m4v";
+
+	private static final String THREE_GP = "3gp";
+
 	private static final String PNG = "png";
 
 	private static final String JPEG = "jpeg";
@@ -78,7 +84,22 @@ public class PreviewCache {
 	 * refused at the upload and never listed.
 	 */
 	public static final Set<String> SUPPORTED_EXTENSIONS =
-		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, HEIC, HEIF, MP4)));
+		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, HEIC, HEIF, MP4, MOV, M4V, THREE_GP)));
+
+	/**
+	 * The extensions of the videos among {@link #SUPPORTED_EXTENSIONS}, lower case: the ISO media
+	 * and QuickTime containers the bundled FFmpeg reads — an mp4, a QuickTime movie (every iPhone
+	 * video, issue #189), an iTunes <code>.m4v</code> and a 3GPP file of an older phone. Each has a
+	 * poster frame and the renditions of {@link VideoRenditions}.
+	 */
+	public static final Set<String> VIDEO_EXTENSIONS =
+		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(MP4, MOV, M4V, THREE_GP)));
+
+	/** Whether a file of the given name is a video, by its extension in any case. */
+	public static boolean isVideoName(String name) {
+		String suffix = Util.suffix(name);
+		return suffix != null && VIDEO_EXTENSIONS.contains(suffix);
+	}
 
 	/**
 	 * The name every display rendition begins with, inside {@value #CACHE_DIRECTORY_NAME}, see
@@ -803,38 +824,31 @@ public class PreviewCache {
 			ImageProcessingException, IOException, MetadataException {
 		BufferedImage image = getPreviewFrame(file);
 
-		Metadata metadata = ImageMetadataReader.readMetadata(file);
-		Mp4Directory mp4Directory = metadata.getFirstDirectoryOfType(Mp4Directory.class);
-		if (mp4Directory != null && mp4Directory.containsTag(Mp4Directory.TAG_ROTATION)) {
-			int rotation = mp4Directory.getInt(Mp4Directory.TAG_ROTATION);
-			while (rotation < 0) {
-				rotation += 360;
+		// The rotation of an mp4 and of a QuickTime movie alike (issue #189): a portrait iPhone
+		// video is stored on its side and turned by the matrix of its track.
+		int rotation = ImageData.rotation(ImageData.readMetadata(file));
+		if (rotation != 0) {
+			int rawWidth = image.getWidth();
+			int rawHeight = image.getHeight();
+
+			int width, height;
+			if (rotation == 90 || rotation == 270) {
+				width = rawHeight;
+				height = rawWidth;
+			} else {
+				width = rawWidth;
+				height = rawHeight;
 			}
-			if (rotation != 0) {
-				// Apply transformation to the preview image.
 
-				int rawWidth = image.getWidth();
-				int rawHeight = image.getHeight();
+			BufferedImage copy = new BufferedImage(width, height, image.getType());
+			Graphics2D g = (Graphics2D) copy.getGraphics();
+			AffineTransform tx = new AffineTransform();
+			tx.translate((width - rawWidth) / 2, (height - rawHeight) / 2);
+			tx.rotate(-Math.toRadians(rotation), rawWidth / 2, rawHeight / 2);
+			g.setTransform(tx);
+			g.drawImage(image, null, 0, 0);
 
-				int width, height;
-				if (rotation == 90 || rotation == 270) {
-					width = rawHeight;
-					height = rawWidth;
-				} else {
-					width = rawWidth;
-					height = rawHeight;
-				}
-
-				BufferedImage copy = new BufferedImage(width, height, image.getType());
-				Graphics2D g = (Graphics2D) copy.getGraphics();
-				AffineTransform tx = new AffineTransform();
-		        tx.translate((width - rawWidth) / 2, (height - rawHeight) / 2);
-				tx.rotate(-Math.toRadians(rotation), rawWidth / 2, rawHeight / 2);
-		        g.setTransform(tx);
-		        g.drawImage(image, null, 0, 0);
-
-		        image = copy;
-			}
+			image = copy;
 		}
 		ImageIO.write(image, JPG, previewCache);
 	}
