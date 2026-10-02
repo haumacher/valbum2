@@ -979,14 +979,14 @@ void main() {
   group('an item the server does not take (issue #186)', () {
     test('is skipped, named, and the watermark moves past it', () async {
       var harness = Harness(
-        items: [photo("a.jpg", 1), photo("x.webp", 2), photo("c.heic", 3)],
+        items: [photo("a.jpg", 1), photo("x.bmp", 2), photo("c.heic", 3)],
       );
       addTearDown(harness.dispose);
       harness.upload = (request) async => http.Response(
             '{"files":[{"name":"a.jpg","storedAs":"a.jpg","hash":"h1",'
             '"status":"stored"},{"name":"c.heic","storedAs":"c.heic",'
-            '"hash":"h3","status":"stored"}],"refused":[{"name":"x.webp",'
-            '"reason":"\'x.webp\' was not uploaded: its format is not '
+            '"hash":"h3","status":"stored"}],"refused":[{"name":"x.bmp",'
+            '"reason":"\'x.bmp\' was not uploaded: its format is not '
             'supported."}]}',
             200,
           );
@@ -996,13 +996,13 @@ void main() {
 
       expect(harness.sync.status.phase, CameraRollPhase.idle);
       expect(harness.sync.status.lastStored, 2);
-      expect(harness.sync.status.lastSkipped, ["x.webp"]);
+      expect(harness.sync.status.lastSkipped, ["x.bmp"]);
       expect((await harness.store.loadCameraRollConfig()).since,
           DateTime.utc(2026, 3, 1, 12, 3));
       expect(
         cameraRollLine(harness.sync.status, testL10n),
         contains("One item was skipped, its format is not supported by the "
-            "server: x.webp."),
+            "server: x.bmp."),
       );
 
       // The next run does not offer it again.
@@ -1053,12 +1053,12 @@ void main() {
     test('an older server refusing the whole batch is asked item by item',
         () async {
       var harness = Harness(
-        items: [photo("a.jpg", 1), photo("x.webp", 2), photo("c.jpg", 3)],
+        items: [photo("a.jpg", 1), photo("x.bmp", 2), photo("c.jpg", 3)],
       );
       addTearDown(harness.dispose);
       // A server before #186: one file it does not take refuses the batch,
       // with a bare 415.
-      harness.upload = (request) async => request.body.contains("x.webp")
+      harness.upload = (request) async => request.body.contains("x.bmp")
           ? http.Response("", 415)
           : http.Response("", 200);
       await harness.sync.load();
@@ -1066,14 +1066,14 @@ void main() {
       await harness.sync.syncNow();
 
       expect(harness.uploadedNames, [
-        ["a.jpg", "x.webp", "c.jpg"],
+        ["a.jpg", "x.bmp", "c.jpg"],
         ["a.jpg"],
-        ["x.webp"],
+        ["x.bmp"],
         ["c.jpg"],
       ]);
       expect(harness.sync.status.phase, CameraRollPhase.idle);
       expect(harness.sync.status.lastStored, 2);
-      expect(harness.sync.status.lastSkipped, ["x.webp"]);
+      expect(harness.sync.status.lastSkipped, ["x.bmp"]);
       expect((await harness.store.loadCameraRollConfig()).since,
           DateTime.utc(2026, 3, 1, 12, 3));
     });

@@ -51,15 +51,15 @@ void main() {
         present: 0,
         refused: [
           RefusedFile(
-            name: "x.webp",
-            reason: "'x.webp' was not uploaded: its format is not supported.",
+            name: "x.bmp",
+            reason: "'x.bmp' was not uploaded: its format is not supported.",
           ),
         ],
       );
       expect(
         summary.messageOf(testL10n),
         "1 uploaded, 0 already present. One file was not uploaded: "
-        "'x.webp' was not uploaded: its format is not supported.",
+        "'x.bmp' was not uploaded: its format is not supported.",
       );
       expect(summary.total, 2);
     });
@@ -73,8 +73,8 @@ void main() {
         if (request.method == "PUT") {
           return http.Response(
             '{"files":[{"name":"a.jpg","storedAs":"a.jpg","hash":"h",'
-            '"status":"stored"}],"refused":[{"name":"x.webp","reason":'
-            '"\'x.webp\' was not uploaded: its format is not supported."}]}',
+            '"status":"stored"}],"refused":[{"name":"x.bmp","reason":'
+            '"\'x.bmp\' was not uploaded: its format is not supported."}]}',
             200,
           );
         }
@@ -87,13 +87,13 @@ void main() {
         var state = tester.state<VAlbumState>(find.byType(VAlbumView));
         await state.uploadPicked([
           fileNamed("a.jpg", "a".codeUnits),
-          fileNamed("x.webp", "x".codeUnits),
+          fileNamed("x.bmp", "x".codeUnits),
         ]);
         await tester.pumpAndSettle();
       });
 
       expect(
-        find.textContaining("'x.webp' was not uploaded: its format is not "
+        find.textContaining("'x.bmp' was not uploaded: its format is not "
             "supported."),
         findsOneWidget,
       );
@@ -111,7 +111,7 @@ void main() {
           return http.Response('{"present":[]}', 200);
         }
         return http.Response(
-          '["ErrorInfo",{"message":"\'x.webp\' was not uploaded: its '
+          '["ErrorInfo",{"message":"\'x.bmp\' was not uploaded: its '
           'format is not supported."}]',
           415,
         );
@@ -121,12 +121,12 @@ void main() {
         await tester.pumpWidget(VAlbumApp(client: client));
         await tester.pumpAndSettle();
         var state = tester.state<VAlbumState>(find.byType(VAlbumView));
-        await state.uploadPicked([fileNamed("x.webp", "x".codeUnits)]);
+        await state.uploadPicked([fileNamed("x.bmp", "x".codeUnits)]);
         await tester.pumpAndSettle();
       });
 
       expect(
-        find.textContaining("'x.webp' was not uploaded: its format is not "
+        find.textContaining("'x.bmp' was not uploaded: its format is not "
             "supported."),
         findsOneWidget,
       );

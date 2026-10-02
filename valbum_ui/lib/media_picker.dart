@@ -34,7 +34,7 @@ import 'platform.dart';
 
 /// The extensions of the files the server takes, the one place the app names
 /// them (`PreviewCache.SUPPORTED_EXTENSIONS` on the server; #189 added the
-/// video containers).
+/// video containers, #190 WebP and GIF).
 ///
 /// Only the desktop's file dialog is filtered by it, and only as its first
 /// filter, see the library doc.
@@ -42,6 +42,8 @@ const List<String> uploadExtensions = [
   "jpg",
   "jpeg",
   "png",
+  "webp",
+  "gif",
   "heic",
   "heif",
   "mp4",
