@@ -217,7 +217,7 @@ void main() {
     await tapVisible(tester, find.byKey(inviteButtonKey));
     await tester.tap(find.byKey(const Key("invite-create")));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key("invite-close")));
+    await tester.tap(find.byKey(const Key("invite-done")));
     await tester.pumpAndSettle();
 
     expect(listings, 2);

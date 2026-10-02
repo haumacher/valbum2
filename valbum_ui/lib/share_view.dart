@@ -25,7 +25,7 @@ import 'manage_view.dart' show dayOf;
 import 'offline.dart';
 import 'resource.dart';
 import 'rights.dart';
-import 'share_session.dart' show ratingFloorLabel;
+import 'share_session.dart' show ratingFloorLabel, ratingName;
 import 'urls.dart';
 
 /// Whether this caller may hand out a link to the folder at [path]
@@ -81,6 +81,9 @@ enum LinkExpiry {
       };
 }
 
+/// The three states of the share-link dialog, each with its own buttons.
+enum _LinkDialogState { list, form, result }
+
 /// Opens the share-link dialog on the folder at [path], see issue #51.
 ///
 /// Offered exactly where "Share with…" is: a link is a grant whose subject is
@@ -95,10 +98,18 @@ Future<void> shareLinksOf({
   if (refuseWhileOffline(context)) {
     return;
   }
+  // Asked here, where the caller is known: the dialog lies on the root
+  // navigator. Nobody said → nothing is withheld on a guess.
+  var caller = CallerInfo.maybeOf(context);
+  var mayShowMembers = caller == null || caller.permission.seesMembers;
   await showFormDialog<void>(
     context: context,
-    builder: (context) =>
-        ShareLinkDialog(client: client, path: path, label: label),
+    builder: (context) => ShareLinkDialog(
+      client: client,
+      path: path,
+      label: label,
+      mayShowMembers: mayShowMembers,
+    ),
   );
 }
 
@@ -116,11 +127,19 @@ class ShareLinkDialog extends StatefulWidget {
   /// How the folder is named in the title, its last segment by default.
   final String? label;
 
+  /// Whether the creator may hand out a link showing what members see.
+  ///
+  /// False for a creator whose own clearance is public: the server refuses a
+  /// link above the creator's clearance rather than trimming it (issue #84,
+  /// `shareAboveClearance`), so "All photos" is not offered at all.
+  final bool mayShowMembers;
+
   const ShareLinkDialog({
     super.key,
     required this.client,
     required this.path,
     this.label,
+    this.mayShowMembers = true,
   });
 
   @override
@@ -158,8 +177,11 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   /// Only [privacyPublic] and [privacyMembers] are offered: the server clamps
   /// a link's clearance to `min(members, maxPrivacy)`, so a third choice
   /// would promise something no link ever shows — a private photo is never
-  /// handed out through a link.
-  int _maxPrivacy = privacyPublic;
+  /// handed out through a link. "All photos" ([privacyMembers]) by default,
+  /// because a photo is public only where somebody said so and a link of
+  /// public photos would show nothing (issue #205) — unless the creator does
+  /// not see those photos themselves, see [ShareLinkDialog.mayShowMembers].
+  late int _maxPrivacy = widget.mayShowMembers ? privacyMembers : privacyPublic;
 
   /// The rating floor of the new link, the lowest by default: a link shows
   /// what the album holds unless its author says otherwise.
@@ -202,6 +224,13 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
     }
   }
 
+  /// Which of its three states the dialog is in, see [_actions].
+  _LinkDialogState get _state => _created != null
+      ? _LinkDialogState.result
+      : _creating
+          ? _LinkDialogState.form
+          : _LinkDialogState.list;
+
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
@@ -214,34 +243,70 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
       title: Text(l10n.shareDialogTitle(name)),
       content: SizedBox(
         width: 460,
-        height: 440,
         child: _links == null
-            ? const Center(child: CircularProgressIndicator())
+            ? const SizedBox(
+                height: 120,
+                child: Center(child: CircularProgressIndicator()),
+              )
             : SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
-                  children: _created != null
-                      ? _createdSection(context)
-                      : [
-                          ..._linkSection(context),
-                          const Divider(),
-                          ...(_creating
-                              ? _formSection(context)
-                              : _newLinkTile()),
-                        ],
+                  children: switch (_state) {
+                    _LinkDialogState.result => _createdSection(context),
+                    _LinkDialogState.form => _formSection(context),
+                    _LinkDialogState.list => [
+                        ..._linkSection(context),
+                        const Divider(),
+                        ..._newLinkTile(),
+                      ],
+                  },
                 ),
               ),
       ),
-      actions: [
-        TextButton(
-          key: const Key("share-link-close"),
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(l10n.close),
-        ),
-      ],
+      // The one button bar of the dialog, set from its state, see
+      // `form_dialog.dart` and issue #206.
+      actions: _actions(l10n),
     );
   }
+
+  /// The buttons of the dialog's one bar in its current state (issue #206):
+  /// Close on the list, Cancel and Create on the form, Done on the result.
+  List<Widget> _actions(AppLocalizations l10n) => switch (_state) {
+        _LinkDialogState.list => [
+            TextButton(
+              key: const Key("share-link-close"),
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(l10n.close),
+            ),
+          ],
+        _LinkDialogState.form => [
+            TextButton(
+              key: const Key("link-cancel"),
+              onPressed: _busy ? null : () => setState(() => _creating = false),
+              child: Text(l10n.cancel),
+            ),
+            ElevatedButton(
+              key: const Key("link-create"),
+              onPressed: _busy ? null : _create,
+              child: Text(l10n.createLink),
+            ),
+          ],
+        _LinkDialogState.result => [
+            ElevatedButton(
+              key: const Key("share-link-done"),
+              // Back to the list, which now carries the new link.
+              onPressed: () {
+                setState(() {
+                  _created = null;
+                  _label.clear();
+                });
+                _load();
+              },
+              child: Text(l10n.done),
+            ),
+          ],
+      };
 
   /// The links covering this folder, the inherited ones marked.
   List<Widget> _linkSection(BuildContext context) {
@@ -350,143 +415,176 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
         ),
       ];
 
-  /// The five questions a new link asks.
+  /// The form of a new link: the label, then one compact row per question
+  /// (issue #205).
+  ///
+  /// Most links are made with the defaults, so the label comes first and has
+  /// the focus, and every other question is one row whose answer stands in it
+  /// — "type a label → Create". The rows are [_questions], each built by
+  /// [_choiceRow] or [_row], so a further question is one more entry there.
   List<Widget> _formSection(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    var titles = Theme.of(context).textTheme.titleSmall;
     return [
-      Text(l10n.newLinkHeading, style: titles),
+      Text(l10n.newLinkHeading, style: Theme.of(context).textTheme.titleSmall),
       TextField(
         key: const Key("link-label"),
         controller: _label,
         autofocus: true,
         decoration: InputDecoration(
+          isDense: true,
           label: Text(l10n.linkLabelLabel),
           helperText: l10n.linkLabelHelp,
         ),
       ),
-      const SizedBox(height: 8),
-      Text(l10n.expiresHeading, style: titles),
-      for (var choice in LinkExpiry.values)
-        _choiceTile(
-          key: "expiry-${choice.name}",
-          chosen: _expiry == choice,
-          title: choice == LinkExpiry.date && _expiryDate != null
-              ? DateFormat.yMMMd().format(_expiryDate!)
-              : choice.labelOf(l10n),
-          onTap: () => _chooseExpiry(choice),
-        ),
-      const SizedBox(height: 8),
-      Text(l10n.showsHeading, style: titles),
-      _choiceTile(
-        key: "privacy-public",
-        chosen: _maxPrivacy == privacyPublic,
-        title: l10n.privacyPublicOnly,
-        onTap: () => setState(() => _maxPrivacy = privacyPublic),
-      ),
-      _choiceTile(
-        key: "privacy-members",
-        chosen: _maxPrivacy == privacyMembers,
-        title: l10n.privacyUpToMembers,
-        subtitle: l10n.privacyMembersNote,
-        onTap: () => setState(() => _maxPrivacy = privacyMembers),
-      ),
-      const SizedBox(height: 8),
-      Text(l10n.lowestRatingHeading, style: titles),
-      for (var rating in const [-2, -1, 0, 1, 2])
-        _choiceTile(
-          key: "rating-$rating",
-          chosen: _minRating == rating,
-          title: ratingFloorLabel(l10n, rating),
-          onTap: () => setState(() => _minRating = rating),
-        ),
-      const SizedBox(height: 8),
-      Text(l10n.permissionMayHeading, style: titles),
-      CheckboxListTile(
-        key: const Key("link-right-view"),
-        contentPadding: EdgeInsets.zero,
-        dense: true,
-        controlAffinity: ListTileControlAffinity.leading,
-        value: true,
-        // Always on: a link that allows nothing would be a link to nothing.
-        onChanged: null,
-        title: Text(rightLabel(l10n, rightView)),
-        subtitle: Text(rightExplanation(l10n, rightView)),
-      ),
-      for (var right in const [rightDownload, rightContribute])
-        CheckboxListTile(
-          key: Key("link-right-$right"),
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          controlAffinity: ListTileControlAffinity.leading,
-          value: _picked.contains(right),
-          onChanged: (value) => setState(() {
-            _picked = {
-              rightView,
-              for (var held in _picked)
-                if (held != right) held,
-              if (value ?? false) right,
-            };
-          }),
-          title: Text(rightLabel(l10n, right)),
-          subtitle: Text(rightExplanation(l10n, right)),
-        ),
-      // Never `edit`: a link is not an account, and the server refuses one
-      // that would allow it.
-      Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(
-          l10n.linkNeverEdits,
-          key: const Key("link-no-edit"),
-          style: const TextStyle(fontSize: 12),
-        ),
-      ),
-      const SizedBox(height: 8),
-      // Under one another where a phone is too narrow for both, see #178.
-      OverflowBar(
-        alignment: MainAxisAlignment.end,
-        overflowAlignment: OverflowBarAlignment.end,
-        spacing: 8,
-        overflowSpacing: 8,
-        children: [
-          TextButton(
-            key: const Key("link-cancel"),
-            onPressed: _busy ? null : () => setState(() => _creating = false),
-            child: Text(l10n.cancel),
-          ),
-          ElevatedButton(
-            key: const Key("link-create"),
-            onPressed: _busy ? null : _create,
-            child: Text(l10n.createLink),
-          ),
-        ],
-      ),
+      ..._questions(l10n),
     ];
   }
 
-  /// One choice of a group, ticked when it is the current one.
+  /// The ratings a link may start at, see [_minRating].
   ///
-  /// A [ListTile], not a `RadioListTile`: the radio of the framework wants a
-  /// `RadioGroup` ancestor since Flutter 3.32, and the dialog already shows
-  /// its choices in the tile idiom of the settings.
-  Widget _choiceTile({
-    required String key,
-    required bool chosen,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) =>
-      ListTile(
-        key: Key(key),
-        contentPadding: EdgeInsets.zero,
-        dense: true,
-        selected: chosen,
-        leading: Icon(
-          chosen ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+  /// No −1: a link never shows a photo rated −2 whatever it stores (issue
+  /// #152), so "at least Poor" would show exactly what "every photo but the
+  /// trash" shows.
+  static const List<int> _ratingFloors = [-2, 0, 1, 2];
+
+  /// The questions below the label, one row each.
+  List<Widget> _questions(AppLocalizations l10n) => [
+        _choiceRow<LinkExpiry>(
+          key: "link-expiry",
+          label: l10n.expiresHeading,
+          value: _expiry,
+          choices: [
+            for (var choice in LinkExpiry.values)
+              (
+                choice,
+                choice == LinkExpiry.date && _expiryDate != null
+                    ? DateFormat.yMMMd().format(_expiryDate!)
+                    : choice.labelOf(l10n),
+              ),
+          ],
+          onChanged: _chooseExpiry,
         ),
-        title: Text(title),
-        subtitle: subtitle == null ? null : Text(subtitle),
-        onTap: _busy ? null : onTap,
+        _choiceRow<int>(
+          key: "link-shows",
+          label: l10n.showsHeading,
+          helper: l10n.privacyMembersNote,
+          value: _maxPrivacy,
+          choices: [
+            if (widget.mayShowMembers)
+              (privacyMembers, l10n.privacyUpToMembers),
+            (privacyPublic, l10n.privacyPublicOnly),
+          ],
+          onChanged: (value) => setState(() => _maxPrivacy = value),
+        ),
+        _choiceRow<int>(
+          key: "link-rating",
+          label: l10n.lowestRatingHeading,
+          value: _minRating,
+          choices: [
+            for (var rating in _ratingFloors)
+              (
+                rating,
+                rating <= -2
+                    ? l10n.linkRatingAllButTrash
+                    : l10n.linkRatingAtLeast(ratingName(l10n, rating)),
+              ),
+          ],
+          onChanged: (value) => setState(() => _minRating = value),
+        ),
+        // `view` is always among the rights, so only the two that are a
+        // choice are offered; each is independent of the other, which no
+        // single select could say. Never `edit`: a link is not an account,
+        // and the server refuses one that would allow it.
+        _row(
+          label: l10n.permissionMayHeading,
+          helper: l10n.linkRightsHelp,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (var right in const [rightDownload, rightContribute])
+                FilterChip(
+                  key: Key("link-right-$right"),
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  label: Text(rightLabel(l10n, right)),
+                  tooltip: rightExplanation(l10n, right),
+                  selected: _picked.contains(right),
+                  onSelected: _busy
+                      ? null
+                      : (value) => setState(() {
+                            _picked = {
+                              rightView,
+                              for (var held in _picked)
+                                if (held != right) held,
+                              if (value) right,
+                            };
+                          }),
+                ),
+            ],
+          ),
+        ),
+      ];
+
+  /// One question of the form whose answer is one of [choices], as a
+  /// dropdown under its [label].
+  ///
+  /// A [DropdownButton] controlled by [value] alone, not a form field that
+  /// keeps a value of its own: "On a date…" whose picker is cancelled must
+  /// leave the answer that stood before.
+  Widget _choiceRow<T>({
+    required String key,
+    required String label,
+    String? helper,
+    required T value,
+    required List<(T, String)> choices,
+    required ValueChanged<T> onChanged,
+  }) =>
+      _row(
+        label: label,
+        helper: helper,
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<T>(
+            key: Key(key),
+            value: value,
+            isDense: true,
+            isExpanded: true,
+            items: [
+              for (var (choice, text) in choices)
+                DropdownMenuItem<T>(
+                  value: choice,
+                  child: Text(text, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+            // One choice is no choice: shown, and not offered.
+            onChanged: _busy || choices.length < 2
+                ? null
+                : (picked) {
+                    if (picked != null) {
+                      onChanged(picked);
+                    }
+                  },
+          ),
+        ),
+      );
+
+  /// One row of the form: [child] under the question's [label].
+  Widget _row({
+    required String label,
+    String? helper,
+    required Widget child,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: InputDecorator(
+          decoration: InputDecoration(
+            isDense: true,
+            labelText: label,
+            helperText: helper,
+            helperMaxLines: 2,
+          ),
+          child: child,
+        ),
       );
 
   /// How a link's own folder is named, the whole space having no name.
@@ -598,21 +696,6 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
       ),
       const SizedBox(height: 16),
       Text(l10n.shareLinkOnce, key: const Key("share-link-once")),
-      const SizedBox(height: 16),
-      Align(
-        alignment: Alignment.centerRight,
-        child: ElevatedButton(
-          key: const Key("share-link-done"),
-          onPressed: () {
-            setState(() {
-              _created = null;
-              _label.clear();
-            });
-            _load();
-          },
-          child: Text(l10n.done),
-        ),
-      ),
     ];
   }
 

@@ -853,7 +853,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get expiryOneMonth => '1 Monat';
 
   @override
-  String get expiryPickDate => 'Ein Datum…';
+  String get expiryPickDate => 'An einem bestimmten Datum…';
 
   @override
   String shareDialogTitle(String name) {
@@ -919,7 +919,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get privacyPublicOnly => 'Nur öffentliche Fotos';
 
   @override
-  String get privacyUpToMembers => 'Was die Mitglieder sehen';
+  String get privacyUpToMembers => 'Alle Fotos';
 
   @override
   String get privacyMembersNote =>
@@ -929,7 +929,16 @@ class AppLocalizationsDe extends AppLocalizations {
   String get lowestRatingHeading => 'Niedrigste Bewertung';
 
   @override
-  String get linkNeverEdits => 'Ein Link erlaubt niemals eine Bearbeitung.';
+  String get linkRightsHelp =>
+      'Das Anzeigen ist immer erlaubt, das Bearbeiten niemals.';
+
+  @override
+  String get linkRatingAllButTrash => 'Jedes Foto außer denen im Papierkorb';
+
+  @override
+  String linkRatingAtLeast(String rating) {
+    return 'Mindestens $rating';
+  }
 
   @override
   String get createLink => 'Link erstellen';

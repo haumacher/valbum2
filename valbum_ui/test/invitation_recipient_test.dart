@@ -123,7 +123,7 @@ void main() {
     await tester.enterText(find.byKey(invitationRecipientFieldKey), "Grandma");
     await tapVisible(tester, find.byKey(const Key("invite-create")));
     await tester.pumpAndSettle();
-    await tapVisible(tester, find.byKey(const Key("invite-close")));
+    await tapVisible(tester, find.byKey(const Key("invite-done")));
     await tester.pumpAndSettle();
 
     expect(find.text("Invited for Grandma (pending)"), findsOneWidget);

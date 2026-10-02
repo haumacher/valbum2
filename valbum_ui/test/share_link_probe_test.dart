@@ -278,8 +278,9 @@ void main() {
 
       await tester.tap(find.byKey(const Key("new-link")));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.byKey(const Key("expiry-day")));
-      await tester.tap(find.byKey(const Key("expiry-day")));
+      await tester.tap(find.byKey(const Key("link-expiry")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(testL10n.expiryOneDay).last);
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const Key("link-create")));
       await tester.tap(find.byKey(const Key("link-create")));

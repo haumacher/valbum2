@@ -234,6 +234,14 @@ Future<void> tapKey(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
+/// Opens the dropdown with the given key and picks the choice named [text].
+Future<void> chooseFrom(WidgetTester tester, String key, String text) async {
+  await tapKey(tester, key);
+  // The open menu carries the choice; the closed button may show it too.
+  await tester.tap(find.text(text).last);
+  await tester.pumpAndSettle();
+}
+
 /// The body of the last request of the given action.
 String bodyOf(List<http.Request> requests, String action) => requests
     .lastWhere((request) => request.url.queryParameters["action"] == action)
@@ -457,17 +465,18 @@ void main() {
       await tapKey(tester, "new-link");
       await tester.enterText(find.byKey(const Key("link-label")), "Party");
       await tester.pumpAndSettle();
-      await tapKey(tester, "expiry-week");
-      await tapKey(tester, "privacy-members");
-      await tapKey(tester, "rating--1");
+      await chooseFrom(tester, "link-expiry", testL10n.expiryOneWeek);
+      await chooseFrom(tester, "link-shows", testL10n.privacyPublicOnly);
+      await chooseFrom(tester, "link-rating",
+          testL10n.linkRatingAtLeast(testL10n.ratingUnrated));
       await tapKey(tester, "link-right-download");
       await tapKey(tester, "link-right-contribute");
       await tapKey(tester, "link-create");
 
       var body = bodyOf(requests, "share");
       expect(body, contains('"label":"Party"'));
-      expect(body, contains('"maxPrivacy":1'));
-      expect(body, contains('"minRating":-1'));
+      expect(body, contains('"maxPrivacy":0'));
+      expect(body, contains('"minRating":0'));
       expect(body, contains('"name":"view"'));
       expect(body, contains('"name":"download"'));
       expect(body, contains('"name":"contribute"'));

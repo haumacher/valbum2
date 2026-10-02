@@ -506,13 +506,30 @@ class InviteDialogState extends State<InviteDialog> {
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          key: const Key("invite-close"),
-          onPressed: _busy ? null : () => Navigator.of(context).pop(),
-          child: Text(l10n.close),
-        ),
-      ],
+      // The one button bar of the dialog, set from its state, see
+      // `form_dialog.dart` and issue #206: Cancel and Create on the form,
+      // Done on the invitation made — which closes, since the list it now
+      // stands in is the screen's behind the dialog.
+      actions: _created == null
+          ? [
+              TextButton(
+                key: const Key("invite-cancel"),
+                onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                child: Text(l10n.cancel),
+              ),
+              ElevatedButton(
+                key: const Key("invite-create"),
+                onPressed: _busy ? null : _create,
+                child: Text(l10n.createInvitation),
+              ),
+            ]
+          : [
+              ElevatedButton(
+                key: const Key("invite-done"),
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(l10n.done),
+              ),
+            ],
     );
   }
 
@@ -574,15 +591,6 @@ class InviteDialogState extends State<InviteDialog> {
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
         ),
-      const SizedBox(height: 8),
-      Align(
-        alignment: Alignment.centerRight,
-        child: ElevatedButton(
-          key: const Key("invite-create"),
-          onPressed: _busy ? null : _create,
-          child: Text(l10n.createInvitation),
-        ),
-      ),
     ];
   }
 
@@ -693,19 +701,6 @@ class InviteDialogState extends State<InviteDialog> {
       ],
       const SizedBox(height: 16),
       Text(l10n.invitationOnce, key: const Key("invite-once")),
-      const SizedBox(height: 16),
-      Align(
-        alignment: Alignment.centerRight,
-        child: ElevatedButton(
-          key: const Key("invite-done"),
-          onPressed: () => setState(() {
-            _created = null;
-            _note.clear();
-            _recipient.clear();
-          }),
-          child: Text(l10n.done),
-        ),
-      ),
     ];
   }
 

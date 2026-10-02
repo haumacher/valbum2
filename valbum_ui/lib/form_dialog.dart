@@ -1,6 +1,6 @@
 /// Dialogs that collect input, see issue #178.
 ///
-/// Two rules, each kept in one place so that no dialog can forget it:
+/// Three rules, each kept in one place so that no dialog can forget it:
 ///
 /// * **Input is discarded by Cancel or Escape only.** [showFormDialog] opens a
 ///   dialog whose barrier does not close it: on a phone a tap meant for a
@@ -13,6 +13,20 @@
 ///   the buttons are on the screen however little of it the keyboard leaves.
 ///   A `Dialog` already keeps clear of the keyboard (`viewInsets`) and of its
 ///   `insetPadding`; what it does not do is scroll.
+/// * **A dialog has exactly one button bar, its own, at the bottom** (issue
+///   #206): the `actions:` of an `AlertDialog`, the [FormDialogFrame.actions]
+///   of a frame — never a second row of buttons inside the content. A dialog
+///   that passes through states (a list, the form of a new entry, the result
+///   shown once) sets that one bar from its state:
+///   * **list** — "Close", plus the action opening the form where it is a
+///     button rather than an entry of the list;
+///   * **form** — "Cancel" (back to the list, or out where there is none, the
+///     input discarded) and "Create …"; no "Close" beside them;
+///   * **result** — "Done", back to the list the new entry now stands in:
+///     the dialog's own where it has one (the share links), the screen's
+///     behind it where it has none (the invitation, which then closes).
+///   A button that belongs to one entry of the content — a copy icon, a
+///   withdrawal beside a link — is part of that entry, not a bar.
 ///
 /// A dialog that only shows something — a photograph, a confirmation without
 /// input — keeps the ordinary `showDialog` and its dismissing barrier.

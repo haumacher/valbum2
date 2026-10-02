@@ -1427,10 +1427,10 @@
     "description": "Choice: expires after one month",
     "x-translated": "dc4093b5"
   },
-  "expiryPickDate": "A date…",
+  "expiryPickDate": "On a date…",
   "@expiryPickDate": {
     "description": "Choice opening a date picker for the day a link expires",
-    "x-translated": "c43d0ed3"
+    "x-translated": "d418c8de"
   },
   "shareDialogTitle": "Share {name} by link",
   "@shareDialogTitle": {
@@ -1545,10 +1545,10 @@
     "description": "Choice: the link shows only the photos marked public",
     "x-translated": "3440df6b"
   },
-  "privacyUpToMembers": "Up to what members see",
+  "privacyUpToMembers": "All photos",
   "@privacyUpToMembers": {
-    "description": "Choice: the link shows what a member of the space sees",
-    "x-translated": "a1b26568"
+    "description": "Choice of a new share link: it shows every photo a link can show, which is what a member of the space sees (a private photo never)",
+    "x-translated": "d9e8bb4a"
   },
   "privacyMembersNote": "A private photo is never shown through a link.",
   "@privacyMembersNote": {
@@ -1560,10 +1560,26 @@
     "description": "Heading above the rating floor of a new share link",
     "x-translated": "d590cb88"
   },
-  "linkNeverEdits": "A link never allows editing.",
-  "@linkNeverEdits": {
-    "description": "Says that a share link can never carry the right to edit",
-    "x-translated": "bdea4fc0"
+  "linkRightsHelp": "Viewing is always allowed, editing never.",
+  "@linkRightsHelp": {
+    "description": "Helper under the rights of a new share link: every link allows viewing, none allows editing",
+    "x-translated": "c441ccec"
+  },
+  "linkRatingAllButTrash": "Every photo but the trash",
+  "@linkRatingAllButTrash": {
+    "description": "Choice of the lowest rating a new share link shows: every photo, except those rated Trash, which a link never shows",
+    "x-translated": "47d8b007"
+  },
+  "linkRatingAtLeast": "At least {rating}",
+  "@linkRatingAtLeast": {
+    "description": "Choice of the lowest rating a new share link shows: photos rated at least this",
+    "placeholders": {
+      "rating": {
+        "type": "String",
+        "example": "Good"
+      }
+    },
+    "x-translated": "c95522e1"
   },
   "createLink": "Create link",
   "@createLink": {

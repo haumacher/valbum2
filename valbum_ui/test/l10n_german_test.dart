@@ -671,8 +671,15 @@ void sliceTwo() {
       expect(find.text(de.showsHeading), findsWidgets);
       expect(find.text(de.lowestRatingHeading), findsOneWidget);
       expect(find.text(de.privacyMembersNote), findsOneWidget);
-      expect(find.text(de.linkNeverEdits), findsOneWidget);
+      // The compact form of issue #205, its defaults in German.
+      expect(find.text(de.expiryNever), findsOneWidget);
+      expect(find.text(de.privacyUpToMembers), findsOneWidget);
+      expect(find.text(de.linkRatingAllButTrash), findsOneWidget);
+      expect(find.text(de.linkRightsHelp), findsOneWidget);
+      // One bar, set from the state (issue #206): Cancel and Create.
+      expect(find.text(de.cancel), findsOneWidget);
       expect(find.text(de.createLink), findsOneWidget);
+      expect(find.text(de.close), findsNothing);
     });
 
     testWidgets('the welcome screen of an invitation', (tester) async {
@@ -715,7 +722,9 @@ void sliceTwo() {
       expect(find.text(de.inviteNoteLabel), findsOneWidget);
       expect(find.text(de.expiresHeading), findsOneWidget);
       expect(find.text(de.createInvitation), findsOneWidget);
-      expect(find.text(de.close), findsOneWidget);
+      // One bar, set from the state (issue #206): Cancel beside Create.
+      expect(find.text(de.cancel), findsOneWidget);
+      expect(find.text(de.close), findsNothing);
     });
 
     testWidgets('the camera-roll section', (tester) async {

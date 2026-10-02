@@ -1475,7 +1475,7 @@ abstract class AppLocalizations {
   /// Choice opening a date picker for the day a link expires
   ///
   /// In en, this message translates to:
-  /// **'A date…'**
+  /// **'On a date…'**
   String get expiryPickDate;
 
   /// Title of the dialog listing and making the links of one folder
@@ -1592,10 +1592,10 @@ abstract class AppLocalizations {
   /// **'Public photos only'**
   String get privacyPublicOnly;
 
-  /// Choice: the link shows what a member of the space sees
+  /// Choice of a new share link: it shows every photo a link can show, which is what a member of the space sees (a private photo never)
   ///
   /// In en, this message translates to:
-  /// **'Up to what members see'**
+  /// **'All photos'**
   String get privacyUpToMembers;
 
   /// Explains the ceiling of what any share link can show
@@ -1610,11 +1610,23 @@ abstract class AppLocalizations {
   /// **'Lowest rating'**
   String get lowestRatingHeading;
 
-  /// Says that a share link can never carry the right to edit
+  /// Helper under the rights of a new share link: every link allows viewing, none allows editing
   ///
   /// In en, this message translates to:
-  /// **'A link never allows editing.'**
-  String get linkNeverEdits;
+  /// **'Viewing is always allowed, editing never.'**
+  String get linkRightsHelp;
+
+  /// Choice of the lowest rating a new share link shows: every photo, except those rated Trash, which a link never shows
+  ///
+  /// In en, this message translates to:
+  /// **'Every photo but the trash'**
+  String get linkRatingAllButTrash;
+
+  /// Choice of the lowest rating a new share link shows: photos rated at least this
+  ///
+  /// In en, this message translates to:
+  /// **'At least {rating}'**
+  String linkRatingAtLeast(String rating);
 
   /// Button making the share link the form describes
   ///
