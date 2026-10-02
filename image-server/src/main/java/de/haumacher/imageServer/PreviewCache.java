@@ -8,8 +8,10 @@ import com.drew.imaging.ImageProcessingException;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.MetadataException;
 import com.drew.metadata.exif.ExifIFD0Directory;
+import com.drew.metadata.gif.GifHeaderDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
 import com.drew.metadata.png.PngDirectory;
+import com.drew.metadata.webp.WebpDirectory;
 import de.haumacher.imageServer.cache.ImageData;
 import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.heif.HeifDecoder;
@@ -79,12 +81,23 @@ public class PreviewCache {
 
 	private static final String HEIF = "heif";
 
+	private static final String WEBP = "webp";
+
+	private static final String GIF = "gif";
+
+	/**
+	 * The colour a transparent pixel of a picture is shown on in its preview, which is a JPEG and
+	 * has no transparency (issue #190): white, the page the album's tiles stand on, so that a
+	 * sticker or a logo cut out of its background looks in the album as it looks on a web page.
+	 */
+	public static final java.awt.Color TRANSPARENT_BACKGROUND = java.awt.Color.WHITE;
+
 	/**
 	 * The extensions of the files the library holds, lower case: a file of another extension is
 	 * refused at the upload and never listed.
 	 */
 	public static final Set<String> SUPPORTED_EXTENSIONS =
-		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, HEIC, HEIF, MP4, MOV, M4V, THREE_GP)));
+		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, WEBP, GIF, HEIC, HEIF, MP4, MOV, M4V, THREE_GP)));
 
 	/**
 	 * The extensions of the videos among {@link #SUPPORTED_EXTENSIONS}, lower case: the ISO media
@@ -370,6 +383,8 @@ public class PreviewCache {
 			case JPG:
 			case JPEG:
 			case PNG:
+			case WEBP:
+			case GIF:
 				try {
 					createImagePreview(file, tmp, imageType);
 				} catch (ImageProcessingException | MetadataException | IOException ex) {
@@ -542,6 +557,13 @@ public class PreviewCache {
 	 * orientation transform below is therefore computed against the raster actually decoded, not
 	 * against the original's size.
 	 * </p>
+	 *
+	 * <p>
+	 * A WebP (read by the TwelveMonkeys plugin) and a GIF (read by ImageIO itself) take this very
+	 * path, issue #190: the preview of an animated one is its first frame — image 0 of the reader —
+	 * while the original keeps its animation, and a transparent pixel is shown on
+	 * {@link #TRANSPARENT_BACKGROUND}, because their preview is a JPEG.
+	 * </p>
 	 */
 	private static void createImagePreview(File file, File previewCache, String imgType)
 			throws ImageProcessingException, IOException, MetadataException {
@@ -589,8 +611,15 @@ public class PreviewCache {
 				previewWidth = Math.min(previewWidth, decodedWidth);
 				previewHeight = Math.min(previewHeight, decodedHeight);
 
-				BufferedImage copy = new BufferedImage(previewWidth, previewHeight, imageType(orig));
+				boolean opaque = JPG.equals(imgType);
+				BufferedImage copy = new BufferedImage(previewWidth, previewHeight,
+					opaque ? jpegType(orig) : imageType(orig));
 				Graphics2D g = (Graphics2D) copy.getGraphics();
+				if (opaque && orig.getColorModel().hasAlpha()) {
+					// A JPEG has no transparency: what the picture leaves open is shown on white.
+					g.setColor(TRANSPARENT_BACKGROUND);
+					g.fillRect(0, 0, previewWidth, previewHeight);
+				}
 
 				double scaleX = Math.min(1.0, ((double) previewWidth) / decodedWidth);
 				double scaleY = Math.min(1.0, ((double) previewHeight) / decodedHeight);
@@ -743,6 +772,24 @@ public class PreviewCache {
 	}
 
 	/**
+	 * The type to create a JPEG preview's raster with: the decoded raster's own type where the JPEG
+	 * writer takes it, three bytes per pixel otherwise — for a picture with transparency (a WebP
+	 * with alpha, a GIF with a transparent colour), which the writer refuses, and for the palette
+	 * of a GIF, which a scaled drawing must not be forced back into (issue #190).
+	 */
+	private static int jpegType(BufferedImage orig) {
+		switch (orig.getType()) {
+			case BufferedImage.TYPE_3BYTE_BGR:
+			case BufferedImage.TYPE_INT_RGB:
+			case BufferedImage.TYPE_INT_BGR:
+			case BufferedImage.TYPE_BYTE_GRAY:
+				return orig.getType();
+			default:
+				return BufferedImage.TYPE_INT_RGB;
+		}
+	}
+
+	/**
 	 * The transform that brings the raw raster of a file with the given EXIF orientation upright,
 	 * see issue #143.
 	 *
@@ -809,7 +856,23 @@ public class PreviewCache {
 			return new ImageDimension(width, height);
 		}
 
-		throw new IllegalArgumentException("Neither JPG nor PNG image.");
+		WebpDirectory webpDirectory = metadata.getFirstDirectoryOfType(WebpDirectory.class);
+		if (webpDirectory != null && webpDirectory.containsTag(WebpDirectory.TAG_IMAGE_WIDTH)) {
+			int rawWidth = webpDirectory.getInt(WebpDirectory.TAG_IMAGE_WIDTH);
+			int rawHeight = webpDirectory.getInt(WebpDirectory.TAG_IMAGE_HEIGHT);
+			// A WebP may carry an EXIF chunk, and its orientation is applied as a JPEG's is.
+			boolean swapped = getImageOrientation(metadata) >= 5;
+			return swapped ? new ImageDimension(rawHeight, rawWidth) : new ImageDimension(rawWidth, rawHeight);
+		}
+
+		GifHeaderDirectory gifDirectory = metadata.getFirstDirectoryOfType(GifHeaderDirectory.class);
+		if (gifDirectory != null) {
+			int width = gifDirectory.getInt(GifHeaderDirectory.TAG_IMAGE_WIDTH);
+			int height = gifDirectory.getInt(GifHeaderDirectory.TAG_IMAGE_HEIGHT);
+			return new ImageDimension(width, height);
+		}
+
+		throw new IllegalArgumentException("Neither JPG, PNG, WebP nor GIF image.");
 	}
 
 	private static int getImageOrientation(Metadata metadata) throws MetadataException {

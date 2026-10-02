@@ -1281,7 +1281,7 @@ public class ImageServlet extends HttpServlet {
 
 	/** The refusal of an upload in a format the library does not hold, see issue #186. */
 	public static String unsupportedFormat(String name) {
-		return "'" + name + "' was not uploaded: its format is not supported (JPEG, PNG, HEIC/HEIF, MP4, MOV, M4V and 3GP are).";
+		return "'" + name + "' was not uploaded: its format is not supported (JPEG, PNG, WebP, GIF, HEIC/HEIF, MP4, MOV, M4V and 3GP are).";
 	}
 
 	/** The refusal of an upload whose name the library never shows, see issue #173. */
@@ -4794,10 +4794,30 @@ public class ImageServlet extends HttpServlet {
 					// Not every container's MIME table knows them, see issue #186.
 					return "heic".equals(extension(image.getName())) ? "image/heic" : "image/heif";
 				}
+				String picture = pictureType(image.getName());
+				if (picture != null) {
+					return picture;
+				}
 				return context.request().getServletContext().getMimeType(image.getName());
 			}
 		}
 		return "application/binary";
+	}
+
+	/**
+	 * The content type of a WebP or GIF original, see issue #190, by its extension in any case;
+	 * <code>null</code> for every other name, whose type the container's MIME table says. Written
+	 * down rather than left to that table, which need not know <code>.webp</code>.
+	 */
+	static String pictureType(String name) {
+		switch (extension(name)) {
+			case "webp":
+				return "image/webp";
+			case "gif":
+				return "image/gif";
+			default:
+				return null;
+		}
 	}
 
 	/**

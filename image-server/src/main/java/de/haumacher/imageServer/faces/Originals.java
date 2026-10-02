@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.faces;
 
+import de.haumacher.imageServer.PreviewCache;
 import de.haumacher.imageServer.heif.HeifDecoder;
 import de.haumacher.imageServer.heif.HeifFile;
 import de.haumacher.imageServer.shared.model.Orientation;
@@ -220,11 +221,34 @@ public final class Originals {
 					throw new IOException("Nothing decoded from '" + file.getName() + "'.");
 				}
 				DECODES.incrementAndGet();
-				return new Region(image, x0, y0, sampling, rawWidth, rawHeight);
+				return new Region(opaque(image), x0, y0, sampling, rawWidth, rawHeight);
 			} finally {
 				reader.dispose();
 			}
 		}
+	}
+
+	/**
+	 * The given raster with every transparent pixel shown on
+	 * {@link PreviewCache#TRANSPARENT_BACKGROUND}, as the preview shows it (issue #190): a WebP with
+	 * alpha or a GIF with a transparent colour is looked at in the original as on the preview, so
+	 * that the two looks of the face index see the same picture. A raster without alpha is answered
+	 * as it is.
+	 */
+	static BufferedImage opaque(BufferedImage image) {
+		if (!image.getColorModel().hasAlpha()) {
+			return image;
+		}
+		BufferedImage result = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_RGB);
+		java.awt.Graphics2D g = result.createGraphics();
+		try {
+			g.setColor(PreviewCache.TRANSPARENT_BACKGROUND);
+			g.fillRect(0, 0, image.getWidth(), image.getHeight());
+			g.drawImage(image, 0, 0, null);
+		} finally {
+			g.dispose();
+		}
+		return result;
 	}
 
 	/** The smallest sampling that brings the given side to at most the given number of pixels. */

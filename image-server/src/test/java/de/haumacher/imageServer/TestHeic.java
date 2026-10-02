@@ -174,16 +174,16 @@ public class TestHeic extends ShareTestCase {
 	}
 
 	public void testAnUnsupportedFileIsRefusedAloneAndTheRestStored() throws Exception {
-		UploadResult result = uploadAll("a.jpg", bytes(JPEG), "x.webp", "webp".getBytes(), "single.heic",
+		UploadResult result = uploadAll("a.jpg", bytes(JPEG), "x.bmp", "bmp".getBytes(), "single.heic",
 			fixture("single.heic"), ".hidden.jpg", bytes(JPEG));
 		assertEquals(Arrays.asList("a.jpg", "single.heic"),
 			result.getFiles().stream().map(UploadedFile::getStoredAs).collect(Collectors.toList()));
-		assertEquals(Arrays.asList("x.webp", ".hidden.jpg"),
+		assertEquals(Arrays.asList("x.bmp", ".hidden.jpg"),
 			result.getRefused().stream().map(RefusedFile::getName).collect(Collectors.toList()));
-		assertEquals(ImageServlet.unsupportedFormat("x.webp"), result.getRefused().get(0).getReason());
-		assertTrue(result.getRefused().get(0).getReason().contains("x.webp"));
+		assertEquals(ImageServlet.unsupportedFormat("x.bmp"), result.getRefused().get(0).getReason());
+		assertTrue(result.getRefused().get(0).getReason().contains("x.bmp"));
 		assertEquals(ImageServlet.unsupportedName(".hidden.jpg"), result.getRefused().get(1).getReason());
-		assertFalse(Files.exists(_base.resolve(ALBUM).resolve("x.webp")));
+		assertFalse(Files.exists(_base.resolve(ALBUM).resolve("x.bmp")));
 		assertFalse(Files.exists(_base.resolve(ALBUM).resolve(".hidden.jpg")));
 		assertTrue(Files.exists(_base.resolve(ALBUM).resolve("a.jpg")));
 		assertTrue(Files.exists(_base.resolve(ALBUM).resolve("single.heic")));
@@ -191,19 +191,19 @@ public class TestHeic extends ShareTestCase {
 
 	public void testABatchOfNothingSupportedIsRefusedWithAReason() throws Exception {
 		LinkedHashMap<String, byte[]> files = new LinkedHashMap<>();
-		files.put("x.webp", "webp".getBytes());
+		files.put("x.bmp", "bmp".getBytes());
 		FakeResponse response = upload(PATH, SharingFixture.ALICE, files);
 		assertEquals(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, response.status());
-		assertEquals(ImageServlet.unsupportedFormat("x.webp"), errorMessage(response));
+		assertEquals(ImageServlet.unsupportedFormat("x.bmp"), errorMessage(response));
 		try (java.util.stream.Stream<Path> stored = Files.list(_base.resolve(ALBUM))) {
 			assertEquals(0, stored.filter(p -> !p.getFileName().toString().startsWith(".")).count());
 		}
 	}
 
 	public void testASingleImagePutOfAnUnsupportedFileNamesIt() throws Exception {
-		FakeResponse response = upload(PATH + "x.webp", SharingFixture.ALICE, "x.webp", "webp".getBytes());
+		FakeResponse response = upload(PATH + "x.bmp", SharingFixture.ALICE, "x.bmp", "bmp".getBytes());
 		assertEquals(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, response.status());
-		assertEquals(ImageServlet.unsupportedFormat("x.webp"), errorMessage(response));
+		assertEquals(ImageServlet.unsupportedFormat("x.bmp"), errorMessage(response));
 	}
 
 	public void testWithoutADecoderTheListingStandsAndThePreviewSaysWhy() throws Exception {
