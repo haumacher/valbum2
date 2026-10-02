@@ -17,6 +17,7 @@ import de.haumacher.imageServer.Inboxes;
 import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.imageServer.MoveService;
 import de.haumacher.imageServer.PathInfo;
+import de.haumacher.imageServer.PreviewCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -46,13 +47,11 @@ import java.nio.file.WatchService;
 import java.text.DateFormat;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -68,7 +67,8 @@ import java.util.regex.Pattern;
  */
 public class ResourceCache {
 
-	private static Set<String> ACCEPTED = new HashSet<>(Arrays.asList("jpg", "jpeg", "png", "heic", "heif", "mp4"));
+	/** What a folder shows, the one list an upload is held to as well, see issue #186. */
+	private static final Set<String> ACCEPTED = PreviewCache.SUPPORTED_EXTENSIONS;
 
 	static final FileFilter IMAGES = f -> {
 		// A hidden file or the litter of another system is no photograph, whatever its extension says

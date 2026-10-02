@@ -1950,6 +1950,9 @@ class ImageViewState extends State<ImageView>
             videoUrl: widget.client.originalUrl(dataUrl),
             renditionUrl: widget.client.playbackUrl(dataUrl),
             probeRendition: widget.client.renditionState,
+            // A QuickTime movie or a 3GPP file plays in a browser only through
+            // the rendition (issue #189).
+            originalPlayable: originalPlaysHere(self),
             posterUrl: widget.client.thumbnailUrl(dataUrl),
             // Poster and player turned together, see [VideoView.orientation].
             orientation: self.orientation,

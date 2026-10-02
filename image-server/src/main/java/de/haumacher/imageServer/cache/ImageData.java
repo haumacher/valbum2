@@ -7,6 +7,7 @@ import com.adobe.internal.xmp.XMPException;
 import com.adobe.internal.xmp.XMPMeta;
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.imaging.ImageProcessingException;
+import com.drew.imaging.mp4.Mp4MetadataReader;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.MetadataException;
 import com.drew.metadata.exif.ExifIFD0Directory;
@@ -173,7 +174,7 @@ public class ImageData extends ImagePart {
 			return analyzeHeif(result, file, more, zone);
 		}
 
-		Metadata metadata = ImageMetadataReader.readMetadata(file);
+		Metadata metadata = readMetadata(file);
 		result.setDate(result.date(metadata, file, zone == null ? ZoneId.systemDefault() : zone).getTime());
 		result.setCamera(camera(metadata));
 		result.setLocation(location(metadata));
@@ -221,68 +222,91 @@ public class ImageData extends ImagePart {
 
 		Mp4Directory mp4Directory = metadata.getFirstDirectoryOfType(Mp4Directory.class);
 		if (mp4Directory != null) {
-			try {
-				int rotation;
-				if (mp4Directory.hasTagName(Mp4Directory.TAG_ROTATION)) {
-					rotation = mp4Directory.getInt(Mp4Directory.TAG_ROTATION);
-				} else {
-					rotation = 0;
-				}
-				while (rotation < 0) {
-					rotation += 360;
-				}
-
-				Mp4VideoDirectory mp4VideoDirectory = metadata.getFirstDirectoryOfType(Mp4VideoDirectory.class);
-				if (mp4VideoDirectory != null) {
+			Mp4VideoDirectory mp4VideoDirectory = metadata.getFirstDirectoryOfType(Mp4VideoDirectory.class);
+			if (mp4VideoDirectory != null) {
+				try {
 					result.setKind(ImageKind.VIDEO);
-
-					int rawWidth = mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_WIDTH);
-					int rawHeight = mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_HEIGHT);
-
-					if (rotation == 90 || rotation == 270) {
-						result.setWidth(rawHeight);
-						result.setHeight(rawWidth);
-					} else {
-						result.setWidth(rawWidth);
-						result.setHeight(rawHeight);
-					}
-
+					setVideoSize(result, rotation(metadata), mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_WIDTH),
+						mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_HEIGHT));
 					return result;
+				} catch (MetadataException ex) {
+					throw new IllegalArgumentException("Cannot get MP4 meta data: " + file);
 				}
-			} catch (MetadataException ex) {
-				throw new IllegalArgumentException("Cannot get MP4 meta data: " + file);
 			}
 		}
 
 		QuickTimeDirectory movDirectory = metadata.getFirstDirectoryOfType(QuickTimeDirectory.class);
 		if (movDirectory != null) {
-			int rotation;
-			if (movDirectory.hasTagName(QuickTimeDirectory.TAG_ROTATION)) {
-				rotation = movDirectory.getInt(QuickTimeDirectory.TAG_ROTATION);
-			} else {
-				rotation = 0;
-			}
-
 			QuickTimeVideoDirectory movVideoDirectory = metadata.getFirstDirectoryOfType(QuickTimeVideoDirectory.class);
 			if (movVideoDirectory != null) {
 				result.setKind(ImageKind.QUICKTIME);
-
-				int rawWidth = movVideoDirectory.getInt(QuickTimeVideoDirectory.TAG_WIDTH);
-				int rawHeight = movVideoDirectory.getInt(QuickTimeVideoDirectory.TAG_HEIGHT);
-
-				if (rotation == 90 || rotation == 270) {
-					result.setWidth(rawHeight);
-					result.setHeight(rawWidth);
-				} else {
-					result.setWidth(rawWidth);
-					result.setHeight(rawHeight);
-				}
-
+				setVideoSize(result, rotation(metadata), movVideoDirectory.getInt(QuickTimeVideoDirectory.TAG_WIDTH),
+					movVideoDirectory.getInt(QuickTimeVideoDirectory.TAG_HEIGHT));
 				return result;
 			}
 		}
 
 		throw new IllegalArgumentException("Neither JPG, PNG, MOV, nor MP4 file: " + file);
+	}
+
+	/** The size of a video as it is shown: its track's size, turned by the container's rotation. */
+	private static void setVideoSize(ImagePart result, int rotation, int rawWidth, int rawHeight) {
+		if (rotation == 90 || rotation == 270) {
+			result.setWidth(rawHeight);
+			result.setHeight(rawWidth);
+		} else {
+			result.setWidth(rawWidth);
+			result.setHeight(rawHeight);
+		}
+	}
+
+	/** The major brand of a QuickTime movie, see {@link #readMetadata(File)}. */
+	private static final String QUICKTIME_BRAND = "qt  ";
+
+	/**
+	 * Reads the metadata of the given file, an ISO media file of the mp4 family by the mp4 reader.
+	 *
+	 * <p>
+	 * metadata-extractor tells an mp4 from a QuickTime movie by the major brand of the
+	 * <code>ftyp</code> box and takes every brand it does not know for an mp4 for QuickTime — a
+	 * 3GPP file of an older phone (<code>3gp4</code>, <code>3gp6</code>, …) among them, whose
+	 * tracks the QuickTime reader then cannot parse, so it answered neither a size nor a kind
+	 * (issue #189). A file that names a major brand and does not name QuickTime's is an ISO media
+	 * file and is read as one; a QuickTime movie, and an old one without an <code>ftyp</code>, stay
+	 * with the QuickTime reader, which also reads the <code>com.apple.quicktime.*</code> keys of an
+	 * iPhone video.
+	 * </p>
+	 */
+	public static Metadata readMetadata(File file) throws ImageProcessingException, IOException {
+		Metadata metadata = ImageMetadataReader.readMetadata(file);
+		QuickTimeDirectory movDirectory = metadata.getFirstDirectoryOfType(QuickTimeDirectory.class);
+		if (movDirectory != null) {
+			String brand = movDirectory.getString(QuickTimeDirectory.TAG_MAJOR_BRAND);
+			if (brand != null && !QUICKTIME_BRAND.equals(brand)) {
+				return Mp4MetadataReader.readMetadata(file);
+			}
+		}
+		return metadata;
+	}
+
+	/**
+	 * The rotation of a video in degrees, <code>0</code>, <code>90</code>, <code>180</code> or
+	 * <code>270</code>, as the matrix of its container says it; <code>0</code> for anything else.
+	 */
+	public static int rotation(Metadata metadata) {
+		int rotation = 0;
+		Mp4Directory mp4Directory = metadata.getFirstDirectoryOfType(Mp4Directory.class);
+		QuickTimeDirectory movDirectory = metadata.getFirstDirectoryOfType(QuickTimeDirectory.class);
+		try {
+			if (mp4Directory != null && mp4Directory.containsTag(Mp4Directory.TAG_ROTATION)) {
+				rotation = mp4Directory.getInt(Mp4Directory.TAG_ROTATION);
+			} else if (movDirectory != null && movDirectory.containsTag(QuickTimeDirectory.TAG_ROTATION)) {
+				rotation = movDirectory.getInt(QuickTimeDirectory.TAG_ROTATION);
+			}
+		} catch (MetadataException ex) {
+			return 0;
+		}
+		return ((rotation % 360) + 360) % 360;
 	}
 
 	/**
@@ -371,7 +395,7 @@ public class ImageData extends ImagePart {
 	 * A video has no EXIF data at all, so before issue #72 every video got its modification time —
 	 * for an uploaded or moved video the time it arrived on the server, later than every photo of
 	 * the trip, which sorted all videos behind all photos. The recording time of a video is in its
-	 * container instead, see {@link #recordingTime(Metadata)}.
+	 * container instead, see {@link #recordingTime(Metadata, ZoneId)}.
 	 * </p>
 	 *
 	 * @return The date to sort the part by, never <code>null</code>: the file's modification time
@@ -400,7 +424,7 @@ public class ImageData extends ImagePart {
 				return Date.from(wall.atZone(zone).toInstant());
 			}
 		}
-		Date recorded = recordingTime(metadata);
+		Date recorded = recordingTime(metadata, zone);
 		if (recorded != null) {
 			return recorded;
 		}
@@ -471,19 +495,40 @@ public class ImageData extends ImagePart {
 	}
 
 	/**
-	 * When the video was recorded, from the <code>mvhd</code> creation time of its container.
+	 * When the video was recorded: the creation date an Apple device writes, else the
+	 * <code>mvhd</code> creation time of its container.
 	 *
 	 * <p>
-	 * The time is taken as the library hands it out: the box is defined as UTC, but phones write
-	 * local time into it and there is nothing in the file that says which of the two it is, so
-	 * guessing would only move the error around. A photo is different, see issue #183: its wall
-	 * clock is a wall clock by definition, and the zone it was set to is what is missing.
+	 * An iPhone video (and the video half of a Live Photo) carries
+	 * <code>com.apple.quicktime.creationdate</code> in the <code>meta</code> box of its movie
+	 * (issue #189): the moment the recording started, written as the wall clock with its offset
+	 * (<code>2024-05-17T14:30:00+0200</code>). It is asked first, because it is the one time an
+	 * edit on the phone keeps — a trimmed or exported video gets a new <code>mvhd</code> time, and
+	 * a tool that rewrites the container may leave the <code>mvhd</code> at 0, which is 1904. A
+	 * creation date without an offset is a wall clock and is read in the zone of the space, as the
+	 * wall clock of a photo is (issue #183).
+	 * </p>
+	 *
+	 * <p>
+	 * The <code>mvhd</code> time is taken as the library hands it out: the box is defined as UTC, but
+	 * phones write local time into it and there is nothing in the file that says which of the two
+	 * it is, so guessing would only move the error around. A photo is different, see issue #183: its
+	 * wall clock is a wall clock by definition, and the zone it was set to is what is missing.
 	 * </p>
 	 *
 	 * @return <code>null</code> if this is no video, or its container carries no usable time, see
 	 *         {@link #EARLIEST_RECORDING}.
 	 */
-	private static Date recordingTime(Metadata metadata) {
+	private static Date recordingTime(Metadata metadata, ZoneId zone) {
+		QuickTimeMetadataDirectory movMetadata =
+			metadata.getFirstDirectoryOfType(QuickTimeMetadataDirectory.class);
+		if (movMetadata != null) {
+			Date created = plausible(
+				appleCreationDate(movMetadata.getString(QuickTimeMetadataDirectory.TAG_CREATION_DATE), zone));
+			if (created != null) {
+				return created;
+			}
+		}
 		Mp4Directory mp4Directory = metadata.getFirstDirectoryOfType(Mp4Directory.class);
 		if (mp4Directory != null) {
 			Date created = plausible(mp4Directory.getDate(Mp4Directory.TAG_CREATION_TIME));
@@ -496,6 +541,48 @@ public class ImageData extends ImagePart {
 			return plausible(movDirectory.getDate(QuickTimeDirectory.TAG_CREATION_TIME));
 		}
 		return null;
+	}
+
+	/**
+	 * The ISO 8601 form of <code>com.apple.quicktime.creationdate</code>: a date, a time to the
+	 * second with optional fractions, and an optional offset with or without its colon.
+	 */
+	private static final Pattern APPLE_DATE = Pattern.compile(
+		"(\\d{4})-(\\d{2})-(\\d{2})[T ](\\d{2}):(\\d{2}):(\\d{2})(?:[.,](\\d{1,9}))?\\s*(Z|[+-]\\d{2}(?::?\\d{2})?)?");
+
+	/**
+	 * The moment the given <code>com.apple.quicktime.creationdate</code> says, see
+	 * {@link #recordingTime(Metadata, ZoneId)}.
+	 *
+	 * @return <code>null</code> where the value is missing or not of the form Apple writes.
+	 */
+	public static Date appleCreationDate(String value, ZoneId zone) {
+		if (value == null) {
+			return null;
+		}
+		Matcher matcher = APPLE_DATE.matcher(value.trim());
+		if (!matcher.matches()) {
+			return null;
+		}
+		try {
+			String fraction = matcher.group(7);
+			int nanos = fraction == null ? 0 : Integer.parseInt((fraction + "00000000").substring(0, 9));
+			LocalDateTime wall = LocalDateTime.of(Integer.parseInt(matcher.group(1)),
+				Integer.parseInt(matcher.group(2)), Integer.parseInt(matcher.group(3)),
+				Integer.parseInt(matcher.group(4)), Integer.parseInt(matcher.group(5)),
+				Integer.parseInt(matcher.group(6)), nanos);
+			String offset = matcher.group(8);
+			if (offset == null) {
+				return Date.from(wall.atZone(zone == null ? ZoneId.systemDefault() : zone).toInstant());
+			}
+			if (!"Z".equals(offset) && offset.length() == 5) {
+				// +0200: the form an iPhone writes, which ZoneOffset reads only with its colon.
+				offset = offset.substring(0, 3) + ":" + offset.substring(3);
+			}
+			return Date.from(wall.atOffset(ZoneOffset.of(offset)).toInstant());
+		} catch (DateTimeException | NumberFormatException ex) {
+			return null;
+		}
 	}
 
 	/**

@@ -139,6 +139,12 @@ void main() {
       platform.dataSources.single.uri,
       "http://server/valbum/data/album/clip.mov?type=video",
     );
+    // The rule of issue #189, as the viewer hands it on: off the web the
+    // platform player plays every original.
+    expect(
+      tester.widget<VideoView>(find.byType(VideoView)).originalPlayable,
+      originalPlaysHere(video),
+    );
   });
 
   testWidgets('the viewer shows an image without a player', (tester) async {

@@ -1946,6 +1946,12 @@ abstract class AppLocalizations {
   /// **'Play the original'**
   String get videoPlayOriginal;
 
+  /// Said under videoPreparing where the browser cannot play the original (a QuickTime or 3GPP video), so there is no button to play it
+  ///
+  /// In en, this message translates to:
+  /// **'This browser cannot play the original of this video; it plays as soon as the server has converted it.'**
+  String get videoNeedsRendition;
+
   /// Headline shown where a video cannot be played
   ///
   /// In en, this message translates to:

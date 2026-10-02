@@ -1132,6 +1132,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get videoPlayOriginal => 'Die Originaldatei abspielen';
 
   @override
+  String get videoNeedsRendition =>
+      'Dieser Browser kann das Original dieses Videos nicht abspielen; es wird abgespielt, sobald der Server es konvertiert hat.';
+
+  @override
   String get videoCannotPlay => 'Dieses Video kann nicht abgespielt werden.';
 
   @override

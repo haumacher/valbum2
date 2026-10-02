@@ -161,7 +161,7 @@ public class VideoRenditions {
 
 	/** Whether the given file is a video this server makes renditions of. */
 	public static boolean isVideo(File file) {
-		return MP4.equals(Util.suffix(file.getName()));
+		return PreviewCache.isVideoName(file.getName());
 	}
 
 	private final ExecutorService _transcoder = Executors.newSingleThreadExecutor(runnable -> {

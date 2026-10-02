@@ -163,6 +163,43 @@ const Duration videoStartTimeoutMax = Duration(seconds: 60);
 /// ask again with one tap, or play the original at once.
 const int renditionPendingAttempts = 6;
 
+/// How often the view asks for a rendition where the original cannot be
+/// played here, see [VideoView.originalPlayable].
+///
+/// There is nothing else to play then, so the view keeps waiting for the
+/// conversion — ten minutes at the server's `Retry-After` of ten seconds,
+/// what a long iPhone video takes on a small server — before it says so.
+const int renditionPendingAttemptsWithoutOriginal = 60;
+
+/// The extensions of the containers no browser can be relied on to play,
+/// whatever their codec, see [originalPlaysHere].
+const Set<String> browserUnplayableVideoExtensions = {"3gp", "3g2"};
+
+/// Whether the original of the video [part] can be expected to play here
+/// (issue #189), see [VideoView.originalPlayable].
+///
+/// The app and the desktop hand a video to the platform's own player, which
+/// reads a QuickTime movie, an HEVC recording and a 3GPP file of an old phone
+/// alike — there the original is always the fallback it was. A browser is
+/// different: Chrome and Firefox do not support the QuickTime container,
+/// play an iPhone's HEVC only on some machines, and play neither H.263 nor
+/// AMR, so on the web the original of a QuickTime movie (the server says so
+/// by [ImageKind.quicktime], read from the file's own `ftyp` box) and of a
+/// 3GPP file is not offered as something to play — those play through the
+/// rendition the server converts them to. The codec is not on the wire and
+/// would not settle it either: whether a browser decodes HEVC depends on the
+/// viewer's own graphics hardware, which the server cannot know. An mp4 or an
+/// `.m4v` keeps the original as its fallback, exactly as before.
+bool originalPlaysHere(ImagePart part, {bool isWeb = kIsWeb}) {
+  if (!isWeb || part.kind == ImageKind.image) {
+    return true;
+  }
+  if (part.kind == ImageKind.quicktime) {
+    return false;
+  }
+  return !browserUnplayableVideoExtensions.contains(extensionOf(part.name));
+}
+
 /// Which file the view plays, see [VideoView.renditionUrl].
 enum VideoSource {
   /// The server's playable version (`?type=video`).
@@ -443,6 +480,16 @@ class VideoView extends StatefulWidget {
   /// How the view waits out a `Retry-After`, see [Wait].
   final Wait wait;
 
+  /// Whether [videoUrl] can be played here at all, see [originalPlaysHere].
+  ///
+  /// Where it cannot — a QuickTime movie or a 3GPP file in a browser — the
+  /// rendition is the only thing to play: the view does not offer
+  /// [AppLocalizations.videoPlayOriginal] while the server converts it, says
+  /// why ([AppLocalizations.videoNeedsRendition]) and keeps asking for
+  /// [renditionPendingAttemptsWithoutOriginal] times. A rendition that will
+  /// never come still falls back to the original, there being nothing else.
+  final bool originalPlayable;
+
   /// Signs every address before the player is handed it, `null` where the
   /// player sends [headers] itself (issue #185).
   ///
@@ -495,6 +542,7 @@ class VideoView extends StatefulWidget {
     this.renditionUrl,
     this.probeRendition,
     this.wait = realWait,
+    this.originalPlayable = true,
     this.orientation = Orientation.identity,
     this.part,
     this.album,
@@ -660,7 +708,7 @@ class VideoViewState extends State<VideoView> {
         );
         return;
       }
-      if (_asked >= renditionPendingAttempts) {
+      if (_asked >= _pendingAttempts) {
         // Asked often enough: say so, and let the person decide.
         _source = VideoSource.rendition;
         _why = "the server makes a playable version of this video";
@@ -677,6 +725,12 @@ class VideoViewState extends State<VideoView> {
       await widget.wait(state.retryAfter);
     }
   }
+
+  /// How often a pending rendition is asked about, see
+  /// [VideoView.originalPlayable].
+  int get _pendingAttempts => widget.originalPlayable
+      ? renditionPendingAttempts
+      : renditionPendingAttemptsWithoutOriginal;
 
   /// The answer a [RenditionState] stands for where it carries none — a probe
   /// that is not the client's, see [VideoView.probeRendition].
@@ -1313,21 +1367,29 @@ class VideoViewState extends State<VideoView> {
               l10n.videoPreparingRetry(
                 _retryIn.inSeconds,
                 _asked + 1,
-                renditionPendingAttempts,
+                _pendingAttempts,
               ),
               key: const Key("video-preparing-retry"),
               style: const TextStyle(color: Colors.white70),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
-            TextButton(
-              key: const Key("video-play-original"),
-              onPressed: playOriginal,
-              child: Text(
-                l10n.videoPlayOriginal,
-                style: const TextStyle(color: Colors.white),
+            if (widget.originalPlayable)
+              TextButton(
+                key: const Key("video-play-original"),
+                onPressed: playOriginal,
+                child: Text(
+                  l10n.videoPlayOriginal,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              )
+            else
+              Text(
+                l10n.videoNeedsRendition,
+                key: const Key("video-needs-rendition"),
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
               ),
-            ),
           ],
         ),
       ),
@@ -1395,14 +1457,15 @@ class VideoViewState extends State<VideoView> {
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
-                  TextButton(
-                    key: const Key("video-play-original"),
-                    onPressed: playOriginal,
-                    child: Text(
-                      l10n.videoPlayOriginal,
-                      style: const TextStyle(color: Colors.white),
+                  if (widget.originalPlayable)
+                    TextButton(
+                      key: const Key("video-play-original"),
+                      onPressed: playOriginal,
+                      child: Text(
+                        l10n.videoPlayOriginal,
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ],

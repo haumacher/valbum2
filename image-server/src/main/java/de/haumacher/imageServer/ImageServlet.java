@@ -1281,7 +1281,7 @@ public class ImageServlet extends HttpServlet {
 
 	/** The refusal of an upload in a format the library does not hold, see issue #186. */
 	public static String unsupportedFormat(String name) {
-		return "'" + name + "' was not uploaded: its format is not supported (JPEG, PNG, HEIC/HEIF and MP4 are).";
+		return "'" + name + "' was not uploaded: its format is not supported (JPEG, PNG, HEIC/HEIF, MP4, MOV, M4V and 3GP are).";
 	}
 
 	/** The refusal of an upload whose name the library never shows, see issue #173. */
@@ -4787,9 +4787,8 @@ public class ImageServlet extends HttpServlet {
 			ImageKind kind = image.getKind();
 			switch (kind) {
 			case VIDEO:
-				return "video/mp4";
 			case QUICKTIME:
-				return "video/quicktime";
+				return videoType(image.getName(), kind);
 			case IMAGE:
 				if (HeifFile.isHeif(image.getName())) {
 					// Not every container's MIME table knows them, see issue #186.
@@ -4799,6 +4798,27 @@ public class ImageServlet extends HttpServlet {
 			}
 		}
 		return "application/binary";
+	}
+
+	/**
+	 * The content type of the original of a video, see issue #189.
+	 *
+	 * <p>
+	 * By the container the analysis found and the name it came with: a QuickTime movie is
+	 * <code>video/quicktime</code> whatever it is called, a 3GPP file <code>video/3gpp</code>, and
+	 * every other file of the mp4 family — an <code>.m4v</code> of an Apple export among them, which
+	 * is an mp4 with a brand of its own — <code>video/mp4</code>, the one type a browser's player
+	 * is sure to try.
+	 * </p>
+	 */
+	static String videoType(String name, ImageKind kind) {
+		if (kind == ImageKind.QUICKTIME) {
+			return "video/quicktime";
+		}
+		if ("3gp".equals(extension(name))) {
+			return "video/3gpp";
+		}
+		return "video/mp4";
 	}
 
 	private static void serveJson(HttpServletResponse response, Resource album) throws IOException {
