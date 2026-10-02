@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer;
 
+import de.haumacher.imageServer.cache.VideoProbe;
 import de.haumacher.util.servlet.Util;
 import java.io.BufferedReader;
 import java.io.File;
@@ -516,7 +517,7 @@ public class VideoRenditions {
 			command.add("2");
 		}
 		command.add("-vf");
-		command.add(scaleFilter(kind == Kind.TEASER ? TEASER_HEIGHT : PLAYBACK_HEIGHT));
+		command.add(videoFilter(file, kind == Kind.TEASER ? TEASER_HEIGHT : PLAYBACK_HEIGHT));
 		command.add("-c:v");
 		command.add(encoder());
 		command.add("-b:v");
@@ -563,6 +564,36 @@ public class VideoRenditions {
 	static String scaleFilter(int shortSide) {
 		String limited = "min(" + shortSide + "\\,";
 		return "scale=w=if(gt(iw\\,ih)\\,-2\\," + limited + "iw)):h=if(gt(iw\\,ih)\\," + limited + "ih)\\,-2)";
+	}
+
+	/**
+	 * The filter chain of a rendition: deinterlacing where the stream is interlaced, then the
+	 * scaling of {@link #scaleFilter(int)}.
+	 *
+	 * <p>
+	 * An AVCHD camcorder records 1080i, two fields per frame half a frame time apart, which a
+	 * browser plays as combs on everything that moves (issue #192). Where the stream says it is
+	 * interlaced ({@link VideoProbe#isInterlaced()}, any container) it is deinterlaced with
+	 * <code>yadif</code> at one frame per frame; <code>deint=interlaced</code> leaves a frame alone
+	 * that is flagged progressive, so a stream switching between both is not softened where it
+	 * need not be. A stream that says it is progressive, or a file the probe cannot open, is
+	 * scaled only.
+	 * </p>
+	 */
+	static String videoFilter(File file, int shortSide) {
+		return (interlaced(file) ? DEINTERLACE + "," : "") + scaleFilter(shortSide);
+	}
+
+	/** The deinterlacing filter of {@link #videoFilter(File, int)}. */
+	static final String DEINTERLACE = "yadif=deint=interlaced";
+
+	private static boolean interlaced(File file) {
+		try {
+			return VideoProbe.probe(file).isInterlaced();
+		} catch (IOException | RuntimeException ex) {
+			LOG.log(Level.FINE, "Cannot probe '" + file.getName() + "' for interlacing.", ex);
+			return false;
+		}
 	}
 
 	/** How many threads a transcode may use: half the machine, so that the server stays answerable. */

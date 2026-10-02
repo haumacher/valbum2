@@ -1,6 +1,7 @@
 #!/bin/sh
-# Writes the video fixtures of issue #189 with the FFmpeg program the server bundles
-# (org.bytedeco:ffmpeg, the LGPL build: libopenh264 for H.264, h263, aac, libopencore_amrnb).
+# Writes the video fixtures of issues #189 and #192 with the FFmpeg program the server bundles
+# (org.bytedeco:ffmpeg, the LGPL build: libopenh264 for H.264, h263, aac, libopencore_amrnb,
+# mpeg2video, mjpeg, ac3, libopus, libvpx).
 #
 #   FFMPEG_DIR=~/.javacpp/cache/ffmpeg-5.1.2-1.5.8-linux-x86_64.jar/org/bytedeco/ffmpeg/linux-x86_64 \
 #     sh image-server/src/test/fixtures/video/generate.sh
@@ -48,3 +49,34 @@ $FF -f lavfi -i "$(quadrants 48 32)" -c:v libopenh264 -b:v 100k \
 	-metadata creation_time=2024-05-17T12:33:00Z "$TMP/flat.mov"
 $FF -i "$TMP/flat.mov" -c copy -metadata:s:v:0 rotate=90 \
 	-metadata creation_time=2024-05-17T12:33:00Z "$HERE/rotated.mov"
+
+# --- The containers only FFmpeg reads (issue #192). ---
+
+# An AVCHD camcorder clip (MPEG transport stream), H.264 + AC-3, carrying the recording time a
+# Sony or Panasonic camcorder writes into an SEI message of the H.264 stream (user data
+# unregistered, UUID 17ee8c60-f84d-11d9-8cd6-0800200c9a66, "MDPM"): two entries, tag 0x18 (zone
+# +02:00, year 2024, month 05) and tag 0x19 (day 17, 12:34:56), in BCD. No byte is zero, so the
+# payload passes through the command line.
+MDPM=$(printf 'MDPM\002\030\004\040\044\005\031\027\022\064\126')
+$FF -f lavfi -i "$(quadrants 48 32)" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=1" \
+	-c:v libopenh264 -b:v 100k \
+	-bsf:v "h264_metadata=sei_user_data=17ee8c60-f84d-11d9-8cd6-0800200c9a66+$MDPM" \
+	-c:a ac3 -b:a 64k -ac 1 -shortest -f mpegts "$HERE/clip.mts"
+
+# An interlaced transport stream: openh264 encodes progressive frames only, so the interlaced
+# fixture is MPEG-2 (as an HDV camcorder writes it), field-coded (interlaced motion estimation and
+# DCT) at 25 frames a second, which FFmpeg reads as "bottom first". No date.
+$FF -f lavfi -i "$(quadrants 48 32 | sed 's/r=10/r=25/g')" -c:v mpeg2video -b:v 300k \
+	-flags +ilme+ildct -an -f mpegts "$HERE/interlaced.m2ts"
+
+# An older digital camera's AVI: Motion JPEG + 8 kHz PCM, the day in the INFO chunk (ICRD).
+$FF -f lavfi -i "$(quadrants 48 32)" -f lavfi -i "$SOUND" -c:v mjpeg -q:v 5 -c:a pcm_s16le -ac 1 \
+	-shortest -metadata date=2005-06-18 "$HERE/clip.avi"
+
+# A Matroska file, H.264 + Opus, with its DateUTC (creation_time) 2024-05-17 12:36:00 UTC.
+$FF -f lavfi -i "$(quadrants 48 32)" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=1" \
+	-c:v libopenh264 -b:v 100k -c:a libopus -b:a 16k -ac 1 -shortest \
+	-metadata creation_time=2024-05-17T12:36:00Z "$HERE/clip.mkv"
+
+# A screen recording as WebM, VP8 and no date but the one in its name.
+$FF -f lavfi -i "$(quadrants 48 32)" -c:v libvpx -b:v 100k -an "$HERE/screen-2024-05-17_12-37-00.webm"

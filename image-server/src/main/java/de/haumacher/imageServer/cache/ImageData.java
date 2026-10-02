@@ -175,6 +175,9 @@ public class ImageData extends ImagePart {
 		if (HeifFile.isHeif(file)) {
 			return analyzeHeif(result, file, more, zone);
 		}
+		if (VideoProbe.handles(file.getName())) {
+			return analyzeProbed(result, file, zone == null ? ZoneId.systemDefault() : zone);
+		}
 
 		Metadata metadata = readMetadata(file);
 		result.setDate(result.date(metadata, file, zone == null ? ZoneId.systemDefault() : zone).getTime());
@@ -367,6 +370,33 @@ public class ImageData extends ImagePart {
 	 * so a server that cannot decode HEVC still lists the photograph.
 	 * </p>
 	 */
+	/**
+	 * Reads a video metadata-extractor cannot read through FFmpeg, see {@link VideoProbe} and issue
+	 * #192: an MPEG transport stream, an AVI, a Matroska or a WebM file.
+	 *
+	 * <p>
+	 * Such a video is a {@link ImageKind#VIDEO}, shown at the size FFmpeg says (sample aspect ratio
+	 * and rotation applied), and dated by what its container says ({@link
+	 * VideoProbe#recordingTime(ZoneId)}), then by its name (#102), then by its modification time. It
+	 * says no camera and no position.
+	 * </p>
+	 */
+	private static ImageData analyzeProbed(ImageData result, File file, ZoneId zone) throws IOException {
+		VideoProbe probe = VideoProbe.probe(file);
+		result.setKind(ImageKind.VIDEO);
+		result.setWidth(probe.getWidth());
+		result.setHeight(probe.getHeight());
+		Date date = plausible(probe.recordingTime(zone));
+		if (date == null) {
+			date = nameDate(file.getName(), zone);
+		}
+		if (date == null) {
+			date = new Date(file.lastModified());
+		}
+		result.setDate(date.getTime());
+		return result;
+	}
+
 	private static ImageData analyzeHeif(ImageData result, File file, Analysis more, ZoneId zone)
 			throws IOException {
 		HeifFile heif = HeifFile.read(file);

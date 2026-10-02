@@ -240,7 +240,7 @@ public class TestVideoContainers extends ShareTestCase {
 		}
 		assertFalse(PreviewCache.isVideoName("a.jpg"));
 		assertFalse(PreviewCache.isVideoName("mov"));
-		assertNotNull(ImageServlet.uploadRefusal("a.avi"));
+		assertNotNull(ImageServlet.uploadRefusal("a.wmv"));
 	}
 
 	// --- Helpers. ---

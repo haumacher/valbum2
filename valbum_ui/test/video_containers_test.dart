@@ -116,6 +116,71 @@ void main() {
       );
     });
 
+    test('a browser plays a WebM original and no other container of #192', () {
+      expect(
+        originalPlaysHere(
+          video("screen-2024-05-17_12-37-00.WebM", ImageKind.video),
+          isWeb: true,
+        ),
+        isTrue,
+      );
+      for (var name in [
+        "00001.MTS",
+        "clip.m2ts",
+        "MVI_0001.AVI",
+        "clip.mkv",
+        "CLIP.MKV",
+      ]) {
+        expect(
+          originalPlaysHere(video(name, ImageKind.video), isWeb: true),
+          isFalse,
+          reason: name,
+        );
+      }
+    });
+
+    test('iOS and macOS play the containers of #192 through the rendition',
+        () {
+      for (var platform in [TargetPlatform.iOS, TargetPlatform.macOS]) {
+        for (var name in [
+          "00001.MTS",
+          "clip.m2ts",
+          "MVI_0001.AVI",
+          "clip.mkv",
+          "a.webm",
+        ]) {
+          expect(
+            originalPlaysHere(
+              video(name, ImageKind.video),
+              isWeb: false,
+              platform: platform,
+            ),
+            isFalse,
+            reason: "$name on $platform",
+          );
+        }
+        expect(
+          originalPlaysHere(
+            video("IMG_0001.MOV", ImageKind.quicktime),
+            isWeb: false,
+            platform: platform,
+          ),
+          isTrue,
+        );
+      }
+      for (var name in ["00001.MTS", "clip.mkv", "a.webm", "MVI_0001.AVI"]) {
+        expect(
+          originalPlaysHere(
+            video(name, ImageKind.video),
+            isWeb: false,
+            platform: TargetPlatform.android,
+          ),
+          isTrue,
+          reason: name,
+        );
+      }
+    });
+
     test('the platform player of the app plays every original', () {
       for (var part in [
         video("clip.mp4", ImageKind.video),
@@ -123,7 +188,11 @@ void main() {
         video("clip.3gp", ImageKind.video),
       ]) {
         expect(
-          originalPlaysHere(part, isWeb: false),
+          originalPlaysHere(
+            part,
+            isWeb: false,
+            platform: TargetPlatform.android,
+          ),
           isTrue,
           reason: part.name,
         );
