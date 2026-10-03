@@ -280,14 +280,35 @@ public class TestMediaUrls extends ShareTestCase {
 		assertEquals(AuthService.MEDIA_URL_ANONYMOUS, errorMessage(anonymous));
 	}
 
-	public void testOnlyAVideoHasAMediaAddress() throws Exception {
-		FakeResponse photo = issue(ZOO + "public.jpg", "original", SharingFixture.ALICE);
+	public void testOnlyAVideoHasAPlaybackAddress() throws Exception {
+		FakeResponse photo = issue(ZOO + "public.jpg", "teaser", SharingFixture.ALICE);
 		assertEquals(HttpServletResponse.SC_NOT_FOUND, photo.status());
 		assertEquals(ImageServlet.MEDIA_NOT_A_VIDEO, errorMessage(photo));
 
 		FakeResponse unknown = issue(CLIP, "thumbnail", SharingFixture.ALICE);
 		assertEquals(HttpServletResponse.SC_BAD_REQUEST, unknown.status());
 		assertEquals(ImageServlet.MEDIA_KIND_UNKNOWN, errorMessage(unknown));
+	}
+
+	public void testAPhotographsOriginalIsDownloadedFromASignedAddress() throws Exception {
+		// The browser's own download of one original, see issue #209.
+		MediaUrl url = issued(ZOO + "public.jpg", "original", SharingFixture.ALICE);
+		assertTrue(url.getUrl(), url.getUrl().startsWith("/valbum/data/2024/2024-05-01%20Zoo/public.jpg?media=d."));
+
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put(MediaSignatures.PARAMETER, url.getMedia());
+		parameters.put(ImageServlet.DOWNLOAD_PARAMETER, ImageServlet.DOWNLOAD_PARAMETER_VALUE);
+		FakeResponse saved = new FakeResponse();
+		servlet().doGet(TestImageServletPut.request(ZOO + "public.jpg", null, new byte[0], new HashMap<>(), parameters),
+			saved.response());
+
+		assertEquals(saved.body(), HttpServletResponse.SC_OK, saved.status());
+		assertEquals("attachment; filename=\"public.jpg\"; filename*=UTF-8''public.jpg",
+			saved.header("Content-Disposition"));
+		assertTrue(Arrays.equals(Files.readAllBytes(_base.resolve(SharingFixture.ZOO).resolve("public.jpg")),
+			saved.bodyBytes()));
+		assertEquals("Without download=1 the original is answered as ever.", null,
+			media(ZOO + "public.jpg", null, url.getMedia(), null).header("Content-Disposition"));
 	}
 
 	// --- Share links. ---

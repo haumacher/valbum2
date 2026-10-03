@@ -18,7 +18,7 @@
 /// by the transfer.
 ///
 /// `dart:js_interop_unsafe` rather than extension types, as in
-/// `BlobDownloadSaver`: the app's language version predates them.
+/// `BrowserDownloadSaver`: the app's language version predates them.
 library;
 
 import 'dart:async';

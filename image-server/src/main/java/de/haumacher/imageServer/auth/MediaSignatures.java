@@ -115,7 +115,15 @@ public final class MediaSignatures {
 		TEASER("teaser", "teaser"),
 
 		/** The file as it was taken: the plain address without a type. */
-		ORIGINAL("original", null);
+		ORIGINAL("original", null),
+
+		/**
+		 * A download ticket of a selection of originals, see issue #209: the signed text's path is
+		 * the folder's path with <code>?ticket=&lt;id&gt;</code> behind it, so the signature opens
+		 * exactly that ticket and nothing else. Never named in <code>for=</code> and never the kind
+		 * of a <code>type</code>: it is issued by <code>?action=zip-ticket</code> alone.
+		 */
+		ARCHIVE("archive", null);
 
 		private final String _name;
 
@@ -138,13 +146,13 @@ public final class MediaSignatures {
 
 		/** The right the plain request for this file asks for. */
 		public String right() {
-			return this == ORIGINAL ? Rights.DOWNLOAD : Rights.VIEW;
+			return this == ORIGINAL || this == ARCHIVE ? Rights.DOWNLOAD : Rights.VIEW;
 		}
 
 		/** The kind named <code>name</code> in <code>for=</code>, <code>null</code> for none. */
 		public static Kind named(String name) {
 			for (Kind kind : values()) {
-				if (kind._name.equals(name)) {
+				if (kind != ARCHIVE && kind._name.equals(name)) {
 					return kind;
 				}
 			}
@@ -157,7 +165,7 @@ public final class MediaSignatures {
 		 */
 		public static Kind ofType(String type) {
 			for (Kind kind : values()) {
-				if (type == null ? kind._type == null : type.equals(kind._type)) {
+				if (kind != ARCHIVE && (type == null ? kind._type == null : type.equals(kind._type))) {
 					return kind;
 				}
 			}
@@ -310,6 +318,20 @@ public final class MediaSignatures {
 			return new Verified(Verified.Status.EXPIRED, subjectKind, id);
 		}
 		return new Verified(Verified.Status.VALID, subjectKind, id);
+	}
+
+	/**
+	 * Who the given signature was made out to: its subject kind and id, <code>d.&lt;device&gt;</code>,
+	 * <code>s.&lt;link&gt;</code> or <code>c.&lt;link&gt;~&lt;session&gt;</code> — what a download
+	 * ticket of issue #209 is bound to. <code>null</code> for a value that is no signature.
+	 */
+	public static String subjectOf(String signature) {
+		if (signature == null) {
+			return null;
+		}
+		int first = signature.indexOf('.');
+		int second = first < 0 ? -1 : signature.indexOf('.', first + 1);
+		return second < 0 ? null : signature.substring(0, second);
 	}
 
 	private String mac(String path, Kind kind, String subjectKind, String id, long expires) throws IOException {

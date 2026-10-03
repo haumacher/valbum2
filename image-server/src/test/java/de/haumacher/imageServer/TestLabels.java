@@ -249,6 +249,11 @@ public class TestLabels extends PersonalLinkTestCase {
 		FakeResponse refused = zip("/", token, "public.jpg", "other.jpg");
 		assertEquals(refused.body(), HttpServletResponse.SC_NOT_FOUND, refused.status());
 		assertEquals(ImageServlet.notInAlbum("other.jpg"), errorMessage(refused));
+		// The browser's download ticket of issue #209 is checked by the same code.
+		FakeResponse ticket = post(ImageServlet.ZIP_TICKET_ACTION, "/", token, "public.jpg", "other.jpg");
+		assertEquals(ticket.body(), HttpServletResponse.SC_NOT_FOUND, ticket.status());
+		assertEquals(ImageServlet.notInAlbum("other.jpg"), errorMessage(ticket));
+		assertEquals(0, servlet().zipTicketCount());
 
 		FakeResponse zipped = zip("/", token, "public.jpg");
 		assertEquals(zipped.body(), HttpServletResponse.SC_OK, zipped.status());
@@ -371,13 +376,18 @@ public class TestLabels extends PersonalLinkTestCase {
 	}
 
 	private FakeResponse zip(String pathInfo, String token, String... names) throws Exception {
+		return post(ImageServlet.ZIP_ACTION, pathInfo, token, names);
+	}
+
+	/** Posts the names of a download with the given action, see issue #209. */
+	private FakeResponse post(String action, String pathInfo, String token, String... names) throws Exception {
 		StringBuilder body = new StringBuilder("{\"target\":\"\",\"names\":[");
 		for (int n = 0; n < names.length; n++) {
 			body.append(n == 0 ? "" : ",").append("{\"name\":\"").append(names[n]).append("\"}");
 		}
 		body.append("]}");
 		Map<String, String> parameters = new HashMap<>();
-		parameters.put("action", ImageServlet.ZIP_ACTION);
+		parameters.put("action", action);
 		return post(pathInfo, body.toString(), token, parameters);
 	}
 

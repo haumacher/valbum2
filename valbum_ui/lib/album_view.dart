@@ -40,6 +40,7 @@ import 'persons_view.dart';
 import 'oriented_thumbnail.dart';
 import 'routes.dart';
 import 'rights.dart';
+import 'select_mode.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
@@ -577,9 +578,13 @@ class AlbumContentState extends State<AlbumContent>
         // The album's own order, as ever: the row layout may stack a
         // portrait beside a landscape in a column, so the order its visitor
         // reports is no more "left to right" than the stored one is, and the
-        // stored order is the one every reorder of this page speaks.
+        // stored order is the one every reorder of this page speaks. The
+        // select mode (issue #209) ranges over what is shown alone: an image
+        // the rating filter or the label chip (#213) hides is not there to be
+        // downloaded.
         ordered: [
-          for (var stored in widget.album.parts)
+          for (var stored
+              in selectMode ? shownParts(shownAlbum) : widget.album.parts)
             if (stored is AbstractImage) stored,
         ],
         tapped: part,
@@ -768,7 +773,7 @@ class AlbumContentState extends State<AlbumContent>
   /// tap is no click on an image, so the anchor of a shift-click stays where
   /// it was.
   void toggleHeading(Heading heading) => setState(() {
-        var images = imagesUnder(visibleParts(widget.album), heading);
+        var images = imagesUnder(shownParts(widget.album), heading);
         if (images.every(selection.contains)) {
           images.forEach(selection.remove);
         } else {
@@ -779,7 +784,7 @@ class AlbumContentState extends State<AlbumContent>
   /// Whether everything under the given heading is selected, which lights its
   /// check box; a heading with nothing under it is never lit.
   bool headingSelected(Heading heading) {
-    var images = imagesUnder(visibleParts(widget.album), heading);
+    var images = imagesUnder(shownParts(widget.album), heading);
     return images.isNotEmpty && images.every(selection.contains);
   }
 
@@ -1392,12 +1397,16 @@ class AlbumContentState extends State<AlbumContent>
   /// above it, and above the root there is no listing to move it into.
   bool get mayMoveAlbum => mayEditAlbum && widget.albumState.path.isNotEmpty;
 
-  /// The originals the menu's download takes, see issue #164.
+  /// The originals the menu's download takes, see issues #164 and #209.
   ///
   /// With the `download` right on the album only: the images of the selection
-  /// while the edit mode holds one, every image shown (at the rating filter
-  /// standing) inside a share link, which has no edit mode, and nothing
-  /// otherwise — the viewer takes a single original.
+  /// while the edit mode holds one, and otherwise the view — every image shown
+  /// at the rating filter standing, for a member exactly as for a share link,
+  /// photographs and videos alike, and only the photographs of the label chip
+  /// standing (#213). What the view does not show is not taken: an image below
+  /// the filter, a member of a group rated below it or not carrying the chip's
+  /// label, and a photograph rated as trash (#152), which no filter shows.
+  /// Always the originals.
   List<ImagePart> get downloadImages {
     if (!rights.mayDownload || previewing) {
       return const [];
@@ -1405,27 +1414,83 @@ class AlbumContentState extends State<AlbumContent>
     if (editMode && selection.isNotEmpty) {
       return selectedImages(widget.album, selection);
     }
-    if (share != null) {
-      return selectedImages(shownAlbum, visibleParts(shownAlbum).toSet());
-    }
-    return const [];
+    return shownImages(shownParts(shownAlbum).toSet());
   }
 
-  /// Fetches [downloadImages] and hands them to the platform, see
-  /// `downloads.dart`: one archive named by the album's title where the
-  /// platform keeps files, one original after the other on a phone.
-  Future<void> downloadSelection() {
-    var names = [for (var image in downloadImages) image.name];
+  /// The images of [parts] the album shows, see [downloadImages].
+  List<ImagePart> shownImages(Set<AlbumPart> parts) {
+    var label = labelFilter;
+    return [
+      for (var image in selectedImages(shownAlbum, parts))
+        if (image.rating >= minRating &&
+            (label == null || carriesLabel(image, label)))
+          image,
+    ];
+  }
+
+  /// Fetches [images] — [downloadImages] where none are named — and hands
+  /// them to the platform, see `downloads.dart`: one archive named by the
+  /// album's title where the platform keeps files, one original after the
+  /// other on a phone.
+  Future<void> downloadSelection([List<ImagePart>? images]) {
+    var names = [for (var image in images ?? downloadImages) image.name];
     return runDownload(
       context,
-      () => downloadOriginals(
+      (progress) => downloadOriginals(
         client,
         widget.albumState.path,
         names,
         archiveName: archiveNameOf(widget.album.title),
+        progress: progress,
       ),
     );
   }
+
+  // --- The select mode, see issue #209 and `select_mode.dart`. ---
+
+  /// Whether the album is in the select mode.
+  bool _selecting = false;
+
+  /// Whether the album is in the select mode — never in the edit mode or a
+  /// "view as" preview, which the mode is never offered over.
+  bool get selectMode => _selecting && maySelect;
+
+  /// Whether the select mode is offered: to whoever may download from this
+  /// album and has no edit mode — a share link made with `download`, a member
+  /// without `edit` — where there is something to select. An editor selects
+  /// in the edit mode.
+  bool get maySelect =>
+      rights.mayDownload &&
+      !previewing &&
+      !mayEnterEditMode &&
+      !session.editMode &&
+      holdsImages;
+
+  /// Enters the select mode, with [first] selected where a long press opened
+  /// it.
+  void enterSelectMode([AlbumPart? first]) {
+    if (!maySelect) {
+      return;
+    }
+    setState(() {
+      _selecting = true;
+      selection.clear();
+      if (first != null) {
+        selection.add(first);
+      }
+      lastClicked = first;
+    });
+  }
+
+  /// Leaves the select mode; the selection goes with it.
+  void leaveSelectMode() => setState(() {
+        _selecting = false;
+        clearSelection();
+      });
+
+  /// What the select mode's download takes: the selected images the album
+  /// shows.
+  List<ImagePart> get selectedDownloads => shownImages(selection);
 
   /// Moves this album itself into another folder, see issues #47 and #121.
   ///
@@ -1711,51 +1776,63 @@ class AlbumContentState extends State<AlbumContent>
     // title twice, in two styles, before the album had started.
     var link = share;
     var editing = session.editMode;
-    var immersive = !editing && self.parts.isNotEmpty;
+    var selecting = selectMode;
+    var immersive = !editing && !selecting && self.parts.isNotEmpty;
     // The way out of the album sits where a way out belongs: at the left of
     // the app bar, ahead of everything the edit mode offers (issue #99).
     var up = wayUp();
 
+    var selected = selecting ? selectedDownloads : const <ImagePart>[];
     return Scaffold(
-      appBar: immersive
-          ? null
-          : AppBar(
-              leading: editing && up.isNotEmpty ? up.first : null,
-              automaticallyImplyLeading: false,
-              title: Column(
-                children: [
-                  Text(self.title),
-                  if (self.subTitle.isNotEmpty) Text(self.subTitle),
-                ],
-              ),
-              centerTitle: true,
-              // The edit mode reads from the left: the way out, then what
-              // the edit offers, and the album's menu last at the right,
-              // where a menu belongs (issues #99, #100). Outside the edit
-              // mode the navigation keeps the place it had. "View as" is not
-              // a button of its own any more — it is an entry of the menu,
-              // see [albumMenu] (issue #100); the move and the album
-              // properties are entries of that menu too, and are therefore
-              // offered in the view mode as well, see issue #121. Save and
-              // Cancel stay here: they are the edit's own.
-              actions: [
-                if (!editing) ...navigationActions(context),
-                if (editMode)
-                  IconButton(
-                    onPressed: () => save(),
-                    tooltip: _l10n.save,
-                    icon: const Icon(Icons.save),
+      // The select mode's bar holds the way out, the count and the download,
+      // nothing else (issue #209).
+      appBar: selecting
+          ? selectModeAppBar(
+              l10n: _l10n,
+              count: selected.length,
+              onLeave: leaveSelectMode,
+              onDownload:
+                  selected.isEmpty ? null : () => downloadSelection(selected),
+            )
+          : immersive
+              ? null
+              : AppBar(
+                  leading: editing && up.isNotEmpty ? up.first : null,
+                  automaticallyImplyLeading: false,
+                  title: Column(
+                    children: [
+                      Text(self.title),
+                      if (self.subTitle.isNotEmpty) Text(self.subTitle),
+                    ],
                   ),
-                if (editMode)
-                  IconButton(
-                    key: const Key("edit-cancel"),
-                    onPressed: cancelEdit,
-                    tooltip: _l10n.cancel,
-                    icon: const Icon(Icons.close),
-                  ),
-                if (editing) ...albumMenu(context),
-              ],
-            ),
+                  centerTitle: true,
+                  // The edit mode reads from the left: the way out, then what
+                  // the edit offers, and the album's menu last at the right,
+                  // where a menu belongs (issues #99, #100). Outside the edit
+                  // mode the navigation keeps the place it had. "View as" is not
+                  // a button of its own any more — it is an entry of the menu,
+                  // see [albumMenu] (issue #100); the move and the album
+                  // properties are entries of that menu too, and are therefore
+                  // offered in the view mode as well, see issue #121. Save and
+                  // Cancel stay here: they are the edit's own.
+                  actions: [
+                    if (!editing) ...navigationActions(context),
+                    if (editMode)
+                      IconButton(
+                        onPressed: () => save(),
+                        tooltip: _l10n.save,
+                        icon: const Icon(Icons.save),
+                      ),
+                    if (editMode)
+                      IconButton(
+                        key: const Key("edit-cancel"),
+                        onPressed: cancelEdit,
+                        tooltip: _l10n.cancel,
+                        icon: const Icon(Icons.close),
+                      ),
+                    if (editing) ...albumMenu(context),
+                  ],
+                ),
       backgroundColor: Colors.black,
       body: Column(
         children: [
@@ -1861,9 +1938,8 @@ class AlbumContentState extends State<AlbumContent>
               _l10n.moveAlbumTo,
               (_) => moveAlbum(),
             ),
-          // The copy the `download` right promises (issue #164): the
-          // selection of the edit mode, and inside a share link — which has
-          // no edit mode — everything the link shows.
+          // The copy the `download` right promises (issues #164, #209): the
+          // selection of the edit mode, and otherwise the whole view.
           if (downloadImages.isNotEmpty)
             keyedMenuItem(
               const Key("download-selection"),
@@ -1879,6 +1955,14 @@ class AlbumContentState extends State<AlbumContent>
               Icons.label_outline,
               _l10n.labelSelectionAction,
               (_) => labelSelection(),
+            ),
+          // Some of them, for whoever has no edit mode to select in (#209).
+          if (maySelect)
+            keyedMenuItem(
+              const Key("select-mode"),
+              Icons.check_circle_outline,
+              _l10n.selectPhotos,
+              (_) => enterSelectMode(),
             ),
           // The delete the listing above offers on this album's own tile,
           // asked from inside the album (#109) — and under the same condition
@@ -2340,13 +2424,13 @@ class AlbumContentState extends State<AlbumContent>
               },
             ),
           ),
-          if (!editMode && widget.albumState.path.isNotEmpty)
+          if (!editMode && !selectMode && widget.albumState.path.isNotEmpty)
             Positioned(
               top: insets.top + floatingMargin,
               left: insets.left + floatingMargin,
               child: floating(wayUp()),
             ),
-          if (!editMode)
+          if (!editMode && !selectMode)
             Positioned(
               top: insets.top + floatingMargin,
               right: insets.right + floatingMargin,
@@ -2365,6 +2449,10 @@ class AlbumContentState extends State<AlbumContent>
     }
     var key = event.logicalKey;
     if (key == LogicalKeyboardKey.escape) {
+      if (selectMode) {
+        leaveSelectMode();
+        return KeyEventResult.handled;
+      }
       if (!editMode) {
         return KeyEventResult.ignored;
       }
@@ -2482,7 +2570,8 @@ class AlbumContentState extends State<AlbumContent>
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
             child: Text(
               labelFilter == null
-                  ? AppLocalizations.of(context)!.ratingFilterHidesAll(minRating)
+                  ? AppLocalizations.of(context)!
+                      .ratingFilterHidesAll(minRating)
                   : AppLocalizations.of(context)!
                       .labelFilterHidesAll(labelFilter!),
               textAlign: TextAlign.center,
@@ -2655,6 +2744,9 @@ class AlbumContentState extends State<AlbumContent>
   /// or the text selects what stands under the heading, see [toggleHeading].
   Widget headingRow(Heading heading) {
     var fontSize = headingFontSize(heading);
+    // The select mode's headings carry the check box too, and nothing else
+    // of the edit mode's (issue #209).
+    var selectable = editMode || selectMode;
     var text = Text(
       heading.text,
       style: TextStyle(fontSize: fontSize, color: Colors.white),
@@ -2663,7 +2755,7 @@ class AlbumContentState extends State<AlbumContent>
       key: ValueKey(heading),
       mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        if (editMode) ...[
+        if (selectable) ...[
           Icon(
             headingSelected(heading)
                 ? Icons.check_box
@@ -2708,7 +2800,7 @@ class AlbumContentState extends State<AlbumContent>
       ),
       child: row,
     );
-    if (!editMode) {
+    if (!selectable) {
       return padded;
     }
     return InkWell(
@@ -2943,6 +3035,19 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
         part,
         key: ValueKey(image.name),
       );
+    } else if (state.selectMode) {
+      // The select mode of issue #209: a tap selects, the viewer stays shut.
+      return SizedBox(
+        key: ValueKey(image.name),
+        width: width,
+        height: height,
+        child: SelectableTile(
+          selected: state.isSelected(part),
+          onTap: () => state.handleTap(part),
+          onLongPress: () => state.toggleSelection(part),
+          child: imageThumbnail(image),
+        ),
+      );
     } else if (state.previewing) {
       // A "view as" preview is what somebody else sees, nothing to act on:
       // no viewer, no way into the edit mode, see [AlbumContentState.setViewAs].
@@ -2956,7 +3061,11 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
       return GestureDetector(
         key: ValueKey(image.name),
         onTap: () => state.widget.pushPart(part, image.name),
-        onLongPress: () => state.setEditMode(part),
+        // The way into the edit mode, and for whoever has none the way into
+        // the select mode (issue #209).
+        onLongPress: () => state.maySelect
+            ? state.enterSelectMode(part)
+            : state.setEditMode(part),
         child: imageThumbnail(image),
       );
     }
@@ -3001,7 +3110,10 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
         ],
       ),
     );
-    if (image.kind == ImageKind.image || state.editMode || state.previewing) {
+    if (image.kind == ImageKind.image ||
+        state.editMode ||
+        state.selectMode ||
+        state.previewing) {
       // Nothing to tease, and nothing to tease *with* while the album is
       // being edited or looked at as somebody else: a video starting under
       // the pointer of somebody dragging tiles is noise, see issue #75.
@@ -3974,8 +4086,7 @@ class TextInputDialogState extends State<TextInputDialog> {
         ElevatedButton.icon(
           icon: const Icon(Icons.check),
           label: Text(AppLocalizations.of(context)!.apply),
-          onPressed: () =>
-              Navigator.of(context).pop(controller.text),
+          onPressed: () => Navigator.of(context).pop(controller.text),
         ),
       ],
     );
@@ -4225,8 +4336,7 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
               key: const Key("use-name-date"),
               icon: const Icon(Icons.drive_file_rename_outline),
               label: Text(nameDateText(l10n)),
-              onPressed: () =>
-                  Navigator.of(context).pop(const UseNameDates()),
+              onPressed: () => Navigator.of(context).pop(const UseNameDates()),
             ),
           ),
         Padding(
@@ -4248,8 +4358,7 @@ class AdjustRecordingTimeDialogState extends State<AdjustRecordingTimeDialog> {
           label: Text(l10n.apply),
           onPressed: corrected == null
               ? null
-              : () => Navigator.of(context)
-                  .pop(ShiftToTime(corrected!)),
+              : () => Navigator.of(context).pop(ShiftToTime(corrected!)),
         ),
       ],
     );

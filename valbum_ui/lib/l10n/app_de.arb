@@ -775,5 +775,10 @@
   "labelFilterWholeAlbum": "Das gesamte Album",
   "labelFilterOnly": "Nur Fotos mit dem Label „{label}“",
   "linkShowsLabel": "Nur „{label}“",
-  "peopleLeadInviter": "Ihre Einladungen, die noch niemand angenommen hat."
+  "peopleLeadInviter": "Ihre Einladungen, die noch niemand angenommen hat.",
+  "downloadCancelled": "Der Download wurde abgebrochen.",
+  "selectPhotos": "Fotos auswählen…",
+  "downloadProgress": "Datei {current} von {count}: {received} heruntergeladen",
+  "downloadProgressOf": "Datei {current} von {count}: {received} von {total} heruntergeladen",
+  "selectModeLeave": "Den Auswahlmodus verlassen"
 }
