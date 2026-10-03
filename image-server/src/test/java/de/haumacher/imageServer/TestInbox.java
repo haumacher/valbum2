@@ -232,7 +232,9 @@ public class TestInbox extends TestCase {
 			+ part("a.jpg", 0) + "," + part("b.jpg", 0) + "]}]");
 		assertEquals(2, auth(_servlet, null).getInboxCount());
 
-		image("Inbox/c.jpg", Color.BLUE);
+		// Arriving the way photographs arrive: uploaded, which the server sees at once (a file
+		// copied onto the disk is seen only when the directory watcher reports it).
+		assertEquals(HttpServletResponse.SC_OK, upload(_servlet, "/Inbox/", null, "c.jpg", Color.BLUE).status());
 		assertEquals("A photograph that arrived is waiting.", 3, auth(_servlet, null).getInboxCount());
 
 		AlbumInfo inbox = album("/Inbox/");
