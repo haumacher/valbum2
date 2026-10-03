@@ -27,9 +27,12 @@ movie does not depend on its codec, see `originalPlaysHere` in `valbum_ui/lib/vi
 the first time a transcode runs:
 
 ```
-FFMPEG_DIR=~/.javacpp/cache/ffmpeg-5.1.2-1.5.8-linux-x86_64.jar/org/bytedeco/ffmpeg/linux-x86_64 \
+FFMPEG_DIR=~/.javacpp/cache/ffmpeg-6.0-1.5.9-linux-x86_64.jar/org/bytedeco/ffmpeg/linux-x86_64 \
   sh image-server/src/test/fixtures/video/generate.sh
 ```
+
+The committed files were written by the FFmpeg 5.1.2 of the presets 1.5.8; the server has bundled
+6.0 (presets 1.5.9) since issue #210, and the tests hold for both.
 
 ## The containers only FFmpeg reads (issue #192)
 

@@ -16,6 +16,7 @@
 	</licenses>
 
 	<modules>
+		<module>jxlatte</module>
 		<module>image-server-shared</module>
 		<module>image-server</module>
 		<module>util-servlet</module>
@@ -46,6 +47,12 @@
 			<dependency>
 				<groupId>de.haumacher</groupId>
 				<artifactId>util-servlet</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>de.haumacher</groupId>
+				<artifactId>jxlatte</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 	

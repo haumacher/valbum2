@@ -235,12 +235,16 @@ String extensionOf(String name) {
   return dot < 0 ? "" : name.substring(dot + 1).toLowerCase();
 }
 
-/// Whether [name] is a HEIC/HEIF photograph, whose original no browser but
-/// Safari and no desktop decoder can show (issue #186).
-bool isHeifName(String name) {
-  var extension = extensionOf(name);
-  return extension == "heic" || extension == "heif";
-}
+/// The extensions (lower case) of the pictures the viewer shows by the
+/// server's display rendition rather than by their original: HEIC/HEIF
+/// (issue #186), AVIF and JPEG XL (issue #193) — `CodedPictures.EXTENSIONS`
+/// on the server.
+///
+/// An AVIF is among them although every current browser decodes it: the
+/// viewer is not an `<img>` but Flutter's own codec, which decodes no AVIF on
+/// Android, iOS or the desktop, and on the web only where the browser lends
+/// it its `ImageDecoder` (Chromium); a JPEG XL is decoded by Safari alone.
+const Set<String> displayRenditionExtensions = {"heic", "heif", "avif", "jxl"};
 
 /// The extensions of the raw photographs the server takes (issue #191,
 /// `PreviewCache.RAW_EXTENSIONS`).
@@ -261,8 +265,10 @@ const Set<String> rawExtensions = {
 bool isRawName(String name) => rawExtensions.contains(extensionOf(name));
 
 /// Whether the original of [name] needs the server's display rendition
-/// (`?type=display`) to be shown: a HEIC/HEIF (#186) or a raw (#191).
-bool needsDisplayRendition(String name) => isHeifName(name) || isRawName(name);
+/// (`?type=display`) to be shown: a picture of [displayRenditionExtensions]
+/// (#186, #193) or a raw (#191).
+bool needsDisplayRendition(String name) =>
+    displayRenditionExtensions.contains(extensionOf(name)) || isRawName(name);
 
 /// The greatest number of files one request carries, see [UploadBatching].
 const int uploadBatchFiles = 25;
@@ -902,10 +908,10 @@ class VAlbumClient {
   /// The URL delivering the original of the image at the given URL.
   String originalUrl(String imageUrl) => imageUrl;
 
-  /// The URL of the display rendition of the HEIC/HEIF photograph at
-  /// [imageUrl] (issue #186): a full-size JPEG of it, upright, which every
-  /// platform can decode — Chrome, Firefox and the desktop cannot decode the
-  /// original. It asks the `download` right, as the original does.
+  /// The URL of the display rendition of the HEIC/HEIF, AVIF, JPEG XL or raw
+  /// picture at [imageUrl] (issues #186, #191, #193): a full-size JPEG of it,
+  /// upright, which every platform can decode, see [needsDisplayRendition].
+  /// It asks the `download` right, as the original does.
   String displayUrl(String imageUrl) => "$imageUrl?type=display";
 
   /// The URL of the playback rendition of the video at [imageUrl] (issue #74).

@@ -24,14 +24,13 @@ import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.coded.CodedPictures;
 import de.haumacher.imageServer.faces.FaceCache;
 import de.haumacher.imageServer.faces.FaceImport;
 import de.haumacher.imageServer.faces.FaceIndex;
 import de.haumacher.imageServer.faces.FaceTags;
 import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.faces.PeopleStore;
-import de.haumacher.imageServer.heif.HeifDecoder;
-import de.haumacher.imageServer.heif.HeifFile;
 import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.oidc.OidcLogins;
 import de.haumacher.imageServer.oidc.OidcProvider;
@@ -242,21 +241,21 @@ public class ImageServlet extends HttpServlet {
 	public static final String PREVIEW_FAILED = "The preview of this image cannot be created.";
 
 	/**
-	 * The <code>type</code> of the display rendition of a HEIC/HEIF photograph, see
-	 * {@link PreviewCache#createDisplay(File)} and issue #186.
+	 * The <code>type</code> of the display rendition of a HEIC/HEIF photograph (issue #186), an
+	 * AVIF or a JPEG XL picture (issue #193), see {@link PreviewCache#createDisplay(File)}.
 	 */
 	public static final String DISPLAY_TYPE = "display";
 
 	/** The message a display rendition of a photograph that needs none is refused with. */
 	public static final String DISPLAY_NOT_NEEDED =
-		"Only a HEIC/HEIF or a raw photograph has a display rendition; ask for the original.";
+		"Only a HEIC/HEIF, AVIF, JPEG XL or raw photograph has a display rendition; ask for the original.";
 
 	/** The message a display rendition that cannot be made is answered with. */
 	public static final String DISPLAY_FAILED = "This photograph cannot be shown at full size.";
 
 	/**
 	 * The message a preview that cannot be made is answered with: {@link #PREVIEW_FAILED}, or for a
-	 * HEIC on a server that cannot decode one, why not (issue #186), and for a picture whose decoder
+	 * HEIC or an AVIF on a server that cannot decode one, why not (issues #186, #193), and for a picture whose decoder
 	 * needs more memory than the server has for one, how much and what to do (issue #207).
 	 */
 	static String previewFailed(File file, PreviewException failure) {
@@ -266,11 +265,9 @@ public class ImageServlet extends HttpServlet {
 			// raw carries no preview and what to do (issue #191).
 			return failure.getCause().getMessage();
 		}
-		if (HeifFile.isHeif(file)) {
-			String unavailable = HeifDecoder.unavailability();
-			if (unavailable != null) {
-				return unavailable;
-			}
+		String unavailable = CodedPictures.unavailability(file.getName());
+		if (unavailable != null) {
+			return unavailable;
 		}
 		return PREVIEW_FAILED;
 	}
@@ -1357,7 +1354,7 @@ public class ImageServlet extends HttpServlet {
 
 	/** The refusal of an upload in a format the library does not hold, see issue #186. */
 	public static String unsupportedFormat(String name) {
-		return "'" + name + "' was not uploaded: its format is not supported (JPEG, PNG, WebP, GIF, HEIC/HEIF, the raw formats DNG, CR2, CR3, NEF, ARW, ORF, RW2 and RAF, MP4, MOV, M4V, 3GP, MTS/M2TS, AVI, MKV and WebM are).";
+		return "'" + name + "' was not uploaded: its format is not supported (JPEG, PNG, WebP, GIF, HEIC/HEIF, AVIF, JPEG XL, the raw formats DNG, CR2, CR3, NEF, ARW, ORF, RW2 and RAF, MP4, MOV, M4V, 3GP, MTS/M2TS, AVI, MKV and WebM are).";
 	}
 
 	/** The refusal of an upload whose name the library never shows, see issue #173. */
@@ -4483,10 +4480,12 @@ public class ImageServlet extends HttpServlet {
 			LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
 			if (ex.getCause() instanceof NoEmbeddedPreviewException
 				|| ex.getCause() instanceof PictureTooLargeException) {
+				// Which raw carries no preview (issue #191); which picture, how much it needs and
+				// what to do (issues #207, #193).
 				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, ex.getCause().getMessage());
 				return;
 			}
-			String unavailable = RawFile.isRaw(file) ? null : HeifDecoder.unavailability();
+			String unavailable = CodedPictures.unavailability(file.getName());
 			errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
 				unavailable != null ? unavailable : DISPLAY_FAILED);
 			return;
@@ -5552,9 +5551,10 @@ public class ImageServlet extends HttpServlet {
 			case QUICKTIME:
 				return videoType(image.getName(), kind);
 			case IMAGE:
-				if (HeifFile.isHeif(image.getName())) {
-					// Not every container's MIME table knows them, see issue #186.
-					return "heic".equals(extension(image.getName())) ? "image/heic" : "image/heif";
+				String coded = CodedPictures.contentType(image.getName());
+				if (coded != null) {
+					// Not every container's MIME table knows them, see issues #186, #193.
+					return coded;
 				}
 				String picture = pictureType(image.getName());
 				if (picture != null) {

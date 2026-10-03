@@ -443,6 +443,16 @@ public class VideoRenditions {
 	 * without it the ARM packages cannot transcode at all.
 	 * </p>
 	 *
+	 * <p>
+	 * And the libraries of that directory are made reachable by the names the program asks for
+	 * ({@link #linkSonames(File)}): since the presets 1.5.9 (issue #210) the <code>linux-x86_64</code>
+	 * artifact ships VA-API as <code>libva.so</code> and <code>libva-drm.so</code>, while
+	 * <code>libavutil</code> links <code>libva.so.2</code> and <code>libva-drm.so.2</code>. In the
+	 * JVM that never shows, because the dynamic loader matches a library preloaded in process by its
+	 * soname; a child process looks for a <em>file</em> of that name, finds none beside the
+	 * program and none on a headless system, and does not start.
+	 * </p>
+	 *
 	 * @param command
 	 *        The command line, the program itself first.
 	 */
@@ -452,11 +462,70 @@ public class VideoRenditions {
 		// A bare program name (found on the PATH) has no directory of its own: the working
 		// directory is not where its libraries are and must never be put on the loader's path.
 		if (directory != null) {
+			linkSonames(directory);
 			Map<String, String> environment = builder.environment();
 			environment.put(LIBRARY_PATH,
 				libraryPath(directory.getAbsolutePath(), environment.get(LIBRARY_PATH)));
 		}
 		return builder;
+	}
+
+	/** The directories {@link #linkSonames(File)} has looked at, by absolute path. */
+	private static final Map<String, Boolean> LINKED = new ConcurrentHashMap<>();
+
+	/**
+	 * Makes every library of the given directory that is stored under another name than its soname
+	 * reachable by its soname as well, through a symbolic link beside it, see
+	 * {@link #program(List)}.
+	 *
+	 * <p>
+	 * Only an unversioned <code>lib*.so</code> that is a file of its own is looked at (what JavaCPP
+	 * links itself, <code>libavcodec.so</code> &rarr; <code>libavcodec.so.60</code>, is a link
+	 * already), and only where no file of the soname's name is there; nothing is ever replaced.
+	 * Once per directory and process. A directory that cannot be written leaves the child to the
+	 * system's copy, with one line in the log.
+	 * </p>
+	 *
+	 * @return The links made, for the tests.
+	 */
+	static List<String> linkSonames(File directory) {
+		List<String> made = new ArrayList<>();
+		if (LINKED.putIfAbsent(directory.getAbsolutePath(), Boolean.TRUE) != null) {
+			return made;
+		}
+		File[] files = directory.listFiles();
+		if (files == null) {
+			return made;
+		}
+		for (File file : files) {
+			String name = file.getName();
+			if (!name.startsWith("lib") || !name.endsWith(".so") || !Files.isRegularFile(file.toPath(),
+				java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+				continue;
+			}
+			try {
+				byte[] content = Files.readAllBytes(file.toPath());
+				if (!Elf.isElf(content)) {
+					continue;
+				}
+				String soname = Elf.soname(content);
+				if (soname == null || soname.equals(name) || soname.indexOf('/') >= 0) {
+					continue;
+				}
+				java.nio.file.Path link = directory.toPath().resolve(soname);
+				if (Files.exists(link, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+					continue;
+				}
+				Files.createSymbolicLink(link, java.nio.file.Paths.get(name));
+				made.add(soname);
+			} catch (java.nio.file.FileAlreadyExistsException ex) {
+				// Another process sharing the cache made it in the meantime.
+			} catch (IOException | UnsupportedOperationException ex) {
+				LOG.log(Level.WARNING, "Cannot make the bundled '" + name + "' reachable by its soname in '"
+					+ directory + "'; the FFmpeg program needs the system's copy: " + ex.getMessage(), ex);
+			}
+		}
+		return made;
 	}
 
 	/**
@@ -529,6 +598,7 @@ public class VideoRenditions {
 		command.add("yuv420p");
 		command.add("-threads");
 		command.add(Integer.toString(threads()));
+		command.addAll(slices(encoder(), threads()));
 		// The index in front, so that playing can start with the first bytes.
 		command.add("-movflags");
 		command.add("+faststart");
@@ -595,6 +665,30 @@ public class VideoRenditions {
 			return false;
 		}
 	}
+
+	/**
+	 * The slices the encoder is asked for, so that it can use the threads it is given.
+	 *
+	 * <p>
+	 * OpenH264 encodes slices in parallel and nothing in parallel within one. The FFmpeg 5.1 of the
+	 * presets 1.5.8 left the number of slices to OpenH264, which chose them by its threads; the
+	 * FFmpeg 6.0 of the presets 1.5.9 (issue #210) asks for one slice unless told otherwise, and a
+	 * 1080p rendition took half as long again (20 s of 1080p: 3.3 s before, 4.8 s on one slice).
+	 * Never more than {@link #MAX_SLICES}: more slices only cost here (with eight threads, four
+	 * slices encoded fastest and eight slower than two). <code>libx264</code> threads by frames and
+	 * is left alone.
+	 * </p>
+	 */
+	static List<String> slices(String encoder, int threads) {
+		int slices = Math.min(threads, MAX_SLICES);
+		if ("libopenh264".equals(encoder) && slices > 1) {
+			return List.of("-slices", Integer.toString(slices));
+		}
+		return List.of();
+	}
+
+	/** The most slices OpenH264 is asked for, see {@link #slices(String, int)}. */
+	static final int MAX_SLICES = 4;
 
 	/** How many threads a transcode may use: half the machine, so that the server stays answerable. */
 	private static int threads() {

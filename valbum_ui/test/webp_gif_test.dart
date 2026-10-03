@@ -19,7 +19,7 @@ void main() {
         // server's display rendition.
         var client = VAlbumClient(dataUrl: "http://server/valbum/data");
         for (var name in ["a.webp", "B.WEBP", "c.gif", "D.GIF"]) {
-          expect(isHeifName(name), isFalse);
+          expect(needsDisplayRendition(name), isFalse);
           var picture = viewerPicture(client, "$base/$name", mayDownload: true);
           expect(picture, isA<NetworkImage>());
           expect((picture as NetworkImage).url, "$base/$name");

@@ -66,13 +66,14 @@ const Duration _snapBackDuration = Duration(milliseconds: 150);
 /// issue #101 must produce the *same* [ImageProvider]: an [ImageCache] key
 /// that differs by a hair turns a prefetched neighbour into a second download.
 ///
-/// A HEIC/HEIF original is never handed to the image codec (issue #186):
-/// Chrome, Firefox and the desktop cannot decode it, so the caller who may
-/// have the original is shown the server's **display rendition** instead
-/// (`?type=display`, a full-size JPEG asking the same `download` right), on
-/// every platform alike. "Download original" still saves the HEIC itself.
-/// A raw photograph standing alone (issue #191) is shown the same way, by the
-/// rendition of the JPEG preview it carries.
+/// A HEIC/HEIF, AVIF or JPEG XL original is never handed to the image codec
+/// (issues #186, #193, [displayRenditionExtensions]): the platform cannot be
+/// expected to decode it, so the caller who may have the original is shown the
+/// server's **display rendition** instead (`?type=display`, a full-size JPEG
+/// asking the same `download` right), on every platform alike. "Download
+/// original" still saves the original itself. A raw photograph standing alone
+/// (issue #191) is shown the same way, by the rendition of the JPEG preview it
+/// carries.
 ImageProvider viewerPicture(
   VAlbumClient client,
   String imageUrl, {
@@ -1338,8 +1339,8 @@ class ImageViewState extends State<ImageView>
     }
     var image = part;
     var original = picture is NetworkImage;
-    // A HEIC or a raw is shown by its display rendition, never by the
-    // original (#186, #191).
+    // A HEIC, an AVIF, a JPEG XL picture or a raw is shown by its display
+    // rendition, never by the original (#186, #191, #193).
     var display = original && needsDisplayRendition(dataUrl);
     var url = display
         ? client.displayUrl(dataUrl)
@@ -1353,7 +1354,8 @@ class ImageViewState extends State<ImageView>
       [
         display
             ? "Tried: the display rendition (?type=display), because the "
-                "original is a HEIC/HEIF or a raw the platform cannot be expected to decode"
+                "original is a HEIC/HEIF, AVIF, JPEG XL or raw picture the "
+                "platform cannot be expected to decode"
             : original
                 ? "Tried: the original, because this caller may download it"
                 : "Tried: the preview (?type=tn), because this caller may not "

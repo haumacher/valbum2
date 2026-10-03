@@ -137,9 +137,6 @@ public final class PictureReader implements AutoCloseable {
 	/** What a decode of the first frame holds beyond the raster it answers, in bytes. */
 	private final long _wholeBytes;
 
-	/** The semaphore a reservation was taken from, which a {@link #setBudget(long)} may have replaced. */
-	private Semaphore _semaphore;
-
 	private PictureReader(File file, ImageInputStream in, ImageReader reader) throws IOException {
 		this(file, in, reader, 0);
 	}
@@ -282,10 +279,10 @@ public final class PictureReader implements AutoCloseable {
 		if (wanted.isEmpty()) {
 			throw new IOException("Nothing to read of '" + _file.getName() + "' at " + region + ".");
 		}
-		int kib = reserve();
+		Reservation reservation = _wholeBytes <= 0 ? null : reserve(_file.getName(), "a WebP", _width, _height, _wholeBytes);
 		try {
 			Runnable observer = reservedHook;
-			if (kib > 0 && observer != null) {
+			if (reservation != null && observer != null) {
 				observer.run();
 			}
 			BufferedImage image = _frame == null ? plain(region == null ? null : wanted, n) : composed(wanted, n);
@@ -295,12 +292,11 @@ public final class PictureReader implements AutoCloseable {
 			return image;
 		} catch (OutOfMemoryError ex) {
 			// The raster that did not fit is gone with the stack; the server goes on.
-			throw new PictureTooLargeException("'" + _file.getName() + "' (" + _width + " × " + _height
-				+ " pixels) could not be decoded in this server's memory (" + mb(Runtime.getRuntime().maxMemory())
-				+ " MB of heap). Start the server with more memory (-Xmx in JAVA_OPTS) or store the picture as a JPEG.",
-				ex);
+			throw outOfMemory(_file.getName(), _width, _height, ex);
 		} finally {
-			release(kib);
+			if (reservation != null) {
+				reservation.close();
+			}
 		}
 	}
 
@@ -433,42 +429,86 @@ public final class PictureReader implements AutoCloseable {
 		return (bytes + MB - 1) / MB;
 	}
 
-	/** Reserves what the decode holds, waiting while others hold it; the KiB reserved. */
-	private int reserve() throws IOException {
-		if (_wholeBytes <= 0) {
-			return 0;
+	/**
+	 * Memory of the decode budget held by one decode, given back by {@link #close()}, see
+	 * {@link PictureReader#reserve(String, String, int, int, long)}.
+	 */
+	public static final class Reservation implements AutoCloseable {
+
+		/** The semaphore the reservation was taken from, which a {@link #setBudget(long)} may have replaced. */
+		private final Semaphore _semaphore;
+
+		private int _kib;
+
+		Reservation(Semaphore semaphore, int kib) {
+			_semaphore = semaphore;
+			_kib = kib;
 		}
+
+		@Override
+		public void close() {
+			if (_kib > 0) {
+				RESERVED.addAndGet(-_kib * 1024L);
+				_semaphore.release(_kib);
+				_kib = 0;
+			}
+		}
+	}
+
+	/**
+	 * Reserves what a decode holds beyond the raster it answers from the decode budget, waiting
+	 * while others hold it; a decode that needs more than the whole budget is refused at once.
+	 *
+	 * <p>
+	 * Every decoder that holds a whole picture asks here: the WebP reader of this class, the JPEG XL
+	 * decoder and the composition of an AVIF with alpha (issue #193).
+	 * </p>
+	 *
+	 * @param name
+	 *        The name of the file, for the message.
+	 * @param what
+	 *        What the picture is, for the message: "a WebP".
+	 * @throws PictureTooLargeException
+	 *         Where the decode needs more than the whole budget; its message says what to do.
+	 */
+	public static Reservation reserve(String name, String what, int width, int height, long bytes)
+			throws IOException {
 		Semaphore semaphore = budget;
+		if (bytes <= 0) {
+			return new Reservation(semaphore, 0);
+		}
 		long total = budgetBytes;
-		if (_wholeBytes > total) {
-			throw new PictureTooLargeException("'" + _file.getName() + "' is a WebP of " + _width + " × " + _height
-				+ " pixels whose decoder needs memory for the whole picture: about " + mb(_wholeBytes)
+		if (bytes > total) {
+			throw new PictureTooLargeException("'" + name + "' is " + what + " of " + width + " × " + height
+				+ " pixels whose decoder needs memory for the whole picture: about " + mb(bytes)
 				+ " MB of memory, more than the " + mb(total) + " MB this server lets one picture take (half of its "
 				+ mb(Runtime.getRuntime().maxMemory())
 				+ " MB of heap). Start the server with more memory (-Xmx in JAVA_OPTS) or store the picture as a JPEG.");
 		}
-		int kib = kib(_wholeBytes);
+		int kib = kib(bytes);
 		if (!semaphore.tryAcquire(kib)) {
 			WAITS.incrementAndGet();
 			try {
 				semaphore.acquire(kib);
 			} catch (InterruptedException ex) {
 				Thread.currentThread().interrupt();
-				throw new InterruptedIOException("Interrupted while waiting for the memory to decode '"
-					+ _file.getName() + "'.");
+				throw new InterruptedIOException("Interrupted while waiting for the memory to decode '" + name + "'.");
 			}
 		}
 		long now = RESERVED.addAndGet(kib * 1024L);
 		PEAK.accumulateAndGet(now, Math::max);
-		_semaphore = semaphore;
-		return kib;
+		return new Reservation(semaphore, kib);
 	}
 
-	private void release(int kib) {
-		if (kib > 0) {
-			RESERVED.addAndGet(-kib * 1024L);
-			_semaphore.release(kib);
-		}
+	/**
+	 * The answer to a decode that ran out of memory after all: the raster that did not fit is gone
+	 * with the stack, the server goes on.
+	 */
+	public static PictureTooLargeException outOfMemory(String name, int width, int height, OutOfMemoryError ex) {
+		return new PictureTooLargeException("'" + name + "' (" + width + " × " + height
+			+ " pixels) could not be decoded in this server's memory (" + mb(Runtime.getRuntime().maxMemory())
+			+ " MB of heap). Start the server with more memory (-Xmx in JAVA_OPTS) or store the picture as a JPEG.",
+			ex);
 	}
 
 	// --- The formats. ---

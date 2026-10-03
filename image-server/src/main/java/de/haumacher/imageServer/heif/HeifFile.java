@@ -8,10 +8,12 @@ import com.drew.metadata.Metadata;
 import com.drew.metadata.exif.ExifReader;
 import com.drew.metadata.xmp.XmpReader;
 import de.haumacher.imageServer.PreviewCache;
+import de.haumacher.imageServer.coded.CodedPicture;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.util.servlet.Util;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -26,16 +28,20 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The structure of a HEIC/HEIF photograph, read out of its ISOBMFF container, see issue #186.
+ * The structure of a HEIC/HEIF photograph (issue #186) or an AVIF picture (issue #193), read out
+ * of its ISOBMFF container.
  *
  * <p>
  * Only the boxes of the <code>meta</code> box are read, never a pixel: the primary item
  * (<code>pitm</code>), the item types (<code>iinf</code>), where their data lie
  * (<code>iloc</code>, in the file or in <code>idat</code>), which tiles make up a
  * <code>grid</code> (<code>iref dimg</code>) and which metadata describe the picture
- * (<code>iref cdsc</code>), and the properties (<code>iprp</code>: <code>hvcC</code>,
- * <code>ispe</code>, <code>colr</code>, <code>clap</code>, <code>irot</code>,
- * <code>imir</code>). The pixels themselves are HEVC and are decoded by {@link HeifDecoder}.
+ * (<code>iref cdsc</code>), which item is its alpha channel (<code>iref auxl</code> with the
+ * alpha <code>auxC</code>, premultiplied where <code>iref prem</code> says so), and the properties
+ * (<code>iprp</code>: <code>hvcC</code>, <code>av1C</code>, <code>ispe</code>, <code>colr</code>,
+ * <code>clap</code>, <code>irot</code>, <code>imir</code>). The pixels themselves are HEVC (a
+ * HEIC) or AV1 (an AVIF, which is HEIF with AV1 coded items — the same grids, the same turns, the
+ * same metadata items) and are decoded by {@link HeifDecoder}.
  * </p>
  *
  * <h2>The raw raster</h2>
@@ -58,13 +64,20 @@ import java.util.Set;
  * the server sees.
  * </p>
  */
-public final class HeifFile {
+public final class HeifFile implements CodedPicture {
 
-	/** The file extensions of a HEIC/HEIF photograph, lower case. */
-	public static final Set<String> EXTENSIONS = Set.of("heic", "heif");
+	/** The file extensions of a HEIF photograph — HEIC/HEIF and AVIF — lower case. */
+	public static final Set<String> EXTENSIONS = Set.of("heic", "heif", "avif");
 
 	/** The item type of an HEVC coded picture. */
 	static final String HVC1 = "hvc1";
+
+	/** The item type of an AV1 coded picture (issue #193). */
+	static final String AV01 = "av01";
+
+	/** The auxiliary type of an alpha channel, MPEG-B CICP and the older HEVC spelling. */
+	private static final Set<String> ALPHA_URNS =
+		Set.of("urn:mpeg:mpegB:cicp:systems:auxiliary:alpha", "urn:mpeg:hevc:2015:auxid:1");
 
 	/** The item type of a grid of pictures. */
 	static final String GRID = "grid";
@@ -75,33 +88,29 @@ public final class HeifFile {
 
 	private final Orientation _orientation;
 
-	private final int _columns;
-
-	private final int _rows;
-
-	private final int _tileWidth;
-
-	private final int _tileHeight;
-
 	private final int _cropLeft;
 
 	private final int _cropTop;
 
-	private final List<Tile> _tiles;
+	private final Plane _image;
 
-	private final Boolean _fullRange;
+	private final Plane _alpha;
 
-	private final int _matrix;
+	private final boolean _premultiplied;
 
 	private final byte[] _exif;
 
 	private final byte[] _xmp;
 
-	/** One HEVC coded picture: its parameter sets and where its data lie in the file. */
+	/**
+	 * One coded picture: its parameter sets (an HEVC picture's VPS, SPS and PPS, an AV1 picture's
+	 * configuration OBUs) and where its data lie in the file.
+	 */
 	public static final class Tile {
 
 		final byte[] _parameterSets;
 
+		/** The length prefix of a NAL unit, 0 for AV1, whose OBUs carry their own size. */
 		final int _lengthSize;
 
 		final long[] _offsets;
@@ -119,69 +128,151 @@ public final class HeifFile {
 		}
 	}
 
-	private HeifFile(int rawWidth, int rawHeight, Orientation orientation, int columns, int rows, int tileWidth,
-			int tileHeight, int cropLeft, int cropTop, List<Tile> tiles, Boolean fullRange, int matrix, byte[] exif,
-			byte[] xmp) {
+	/**
+	 * The coded pictures of one channel set — the colour picture, or its alpha channel — as a grid
+	 * of tiles (one tile where it is no grid), stitched row by row and cut to the raw raster by the
+	 * crop of the {@link HeifFile}.
+	 */
+	public static final class Plane {
+
+		final boolean _av1;
+
+		final int _columns;
+
+		final int _rows;
+
+		final int _tileWidth;
+
+		final int _tileHeight;
+
+		final List<Tile> _tiles;
+
+		final Boolean _fullRange;
+
+		final int _matrix;
+
+		Plane(boolean av1, int columns, int rows, int tileWidth, int tileHeight, List<Tile> tiles,
+				Boolean fullRange, int matrix) {
+			_av1 = av1;
+			_columns = columns;
+			_rows = rows;
+			_tileWidth = tileWidth;
+			_tileHeight = tileHeight;
+			_tiles = tiles;
+			_fullRange = fullRange;
+			_matrix = matrix;
+		}
+
+		/** Whether the tiles are AV1 coded (an AVIF), not HEVC. */
+		public boolean isAv1() {
+			return _av1;
+		}
+
+		/** How many tiles wide the plane is. */
+		public int getColumns() {
+			return _columns;
+		}
+
+		/** How many tiles high the plane is. */
+		public int getRows() {
+			return _rows;
+		}
+
+		/** The coded pictures, row by row. */
+		public List<Tile> getTiles() {
+			return _tiles;
+		}
+
+		/** What the <code>nclx</code> colour box says of the range, <code>null</code> without one. */
+		public Boolean getFullRange() {
+			return _fullRange;
+		}
+
+		/** The matrix coefficients of the <code>nclx</code> colour box, <code>-1</code> without one. */
+		public int getMatrix() {
+			return _matrix;
+		}
+	}
+
+	private HeifFile(int rawWidth, int rawHeight, Orientation orientation, int cropLeft, int cropTop, Plane image,
+			Plane alpha, boolean premultiplied, byte[] exif, byte[] xmp) {
 		_rawWidth = rawWidth;
 		_rawHeight = rawHeight;
 		_orientation = orientation;
-		_columns = columns;
-		_rows = rows;
-		_tileWidth = tileWidth;
-		_tileHeight = tileHeight;
 		_cropLeft = cropLeft;
 		_cropTop = cropTop;
-		_tiles = tiles;
-		_fullRange = fullRange;
-		_matrix = matrix;
+		_image = image;
+		_alpha = alpha;
+		_premultiplied = premultiplied;
 		_exif = exif;
 		_xmp = xmp;
 	}
 
-	/** Whether the given file is named as a HEIC/HEIF photograph, the extension in any case. */
+	/** Whether the given file is named as a HEIF photograph (HEIC/HEIF, AVIF), the extension in any case. */
 	public static boolean isHeif(File file) {
 		return isHeif(file.getName());
 	}
 
-	/** Whether the given file name is that of a HEIC/HEIF photograph, the extension in any case. */
+	/** Whether the given file name is that of a HEIF photograph (HEIC/HEIF, AVIF), the extension in any case. */
 	public static boolean isHeif(String name) {
 		String suffix = Util.suffix(name);
 		return suffix != null && EXTENSIONS.contains(suffix.toLowerCase(Locale.ROOT));
 	}
 
-	/** The width of the raw raster, see the class comment. */
+	@Override
 	public int getRawWidth() {
 		return _rawWidth;
 	}
 
-	/** The height of the raw raster, see the class comment. */
+	@Override
 	public int getRawHeight() {
 		return _rawHeight;
 	}
 
 	/** How the raw raster is turned for display: <code>irot</code> and <code>imir</code> as one. */
+	@Override
 	public Orientation getOrientation() {
 		return _orientation;
 	}
 
+	/** The colour picture. */
+	public Plane getImage() {
+		return _image;
+	}
+
+	/** The alpha channel, <code>null</code> for an opaque picture. */
+	public Plane getAlpha() {
+		return _alpha;
+	}
+
+	/** Whether the colour picture is premultiplied with its alpha channel (<code>iref prem</code>). */
+	public boolean isPremultiplied() {
+		return _premultiplied;
+	}
+
+	/** Whether the colour picture is AV1 coded, an AVIF (issue #193). */
+	public boolean isAv1() {
+		return _image._av1;
+	}
+
 	/** How many tiles wide the coded picture is, 1 for a picture that is no grid. */
 	public int getColumns() {
-		return _columns;
+		return _image._columns;
 	}
 
 	/** How many tiles high the coded picture is, 1 for a picture that is no grid. */
 	public int getRows() {
-		return _rows;
+		return _image._rows;
 	}
 
 	/** The width of one tile (of the whole picture where it is no grid). */
 	public int getTileWidth() {
-		return _tileWidth;
+		return _image._tileWidth;
 	}
 
 	/** The height of one tile. */
 	public int getTileHeight() {
-		return _tileHeight;
+		return _image._tileHeight;
 	}
 
 	/** Where the raw raster begins in the stitched tiles, horizontally. */
@@ -194,19 +285,19 @@ public final class HeifFile {
 		return _cropTop;
 	}
 
-	/** The coded pictures, row by row. */
+	/** The coded pictures of the colour picture, row by row. */
 	public List<Tile> getTiles() {
-		return _tiles;
+		return _image._tiles;
 	}
 
 	/** What the <code>nclx</code> colour box says of the range, <code>null</code> without one. */
 	public Boolean getFullRange() {
-		return _fullRange;
+		return _image._fullRange;
 	}
 
 	/** The matrix coefficients of the <code>nclx</code> colour box, <code>-1</code> without one. */
 	public int getMatrix() {
-		return _matrix;
+		return _image._matrix;
 	}
 
 	/** The TIFF structure of the EXIF item describing the picture, <code>null</code> without one. */
@@ -229,6 +320,7 @@ public final class HeifFile {
 	 * this picture's orientation, see {@link #getOrientation()}.
 	 * </p>
 	 */
+	@Override
 	public Metadata metadata() {
 		Metadata metadata = new Metadata();
 		if (_exif != null) {
@@ -240,14 +332,25 @@ public final class HeifFile {
 		return metadata;
 	}
 
-	/** The width of the picture as shown, the orientation applied. */
+	@Override
 	public int getDisplayWidth() {
 		return swaps(_orientation) ? _rawHeight : _rawWidth;
 	}
 
-	/** The height of the picture as shown, the orientation applied. */
+	@Override
 	public int getDisplayHeight() {
 		return swaps(_orientation) ? _rawWidth : _rawHeight;
+	}
+
+	@Override
+	public BufferedImage decodeRaw(File file, int left, int top, int width, int height, int outWidth,
+			int outHeight) throws IOException {
+		return HeifDecoder.decodeRaw(file, this, left, top, width, height, outWidth, outHeight);
+	}
+
+	@Override
+	public void writeUprightJpeg(File file, int outWidth, int outHeight, File target) throws IOException {
+		HeifDecoder.writeUprightJpeg(file, this, outWidth, outHeight, target);
 	}
 
 	static boolean swaps(Orientation orientation) {
@@ -261,7 +364,7 @@ public final class HeifFile {
 	 *
 	 * @throws IOException
 	 *         If the file is no HEIF, or its primary picture is coded in a way this server cannot
-	 *         decode (an AV1 picture, an overlay, ...): the message says which.
+	 *         decode (an overlay, a JPEG item, ...): the message says which.
 	 */
 	public static HeifFile read(File file) throws IOException {
 		try (RandomAccessFile in = new RandomAccessFile(file, "r")) {
@@ -300,6 +403,12 @@ public final class HeifFile {
 		private final Map<Long, List<Long>> _tiles = new HashMap<>();
 
 		private final Map<Long, List<Long>> _describes = new HashMap<>();
+
+		/** Auxiliary item to the items it belongs to (<code>iref auxl</code>). */
+		private final Map<Long, List<Long>> _auxiliaries = new HashMap<>();
+
+		/** Premultiplied item to its alpha items (<code>iref prem</code>). */
+		private final Map<Long, List<Long>> _premultiplied = new HashMap<>();
 
 		private final List<Box> _properties = new ArrayList<>();
 
@@ -474,6 +583,10 @@ public final class HeifFile {
 					_tiles.put(Long.valueOf(from), to);
 				} else if ("cdsc".equals(reference._type)) {
 					_describes.put(Long.valueOf(from), to);
+				} else if ("auxl".equals(reference._type)) {
+					_auxiliaries.put(Long.valueOf(from), to);
+				} else if ("prem".equals(reference._type)) {
+					_premultiplied.put(Long.valueOf(from), to);
 				}
 			}
 		}
@@ -554,9 +667,12 @@ public final class HeifFile {
 
 		private Tile tile(long id) throws IOException {
 			Item item = _items.get(Long.valueOf(id));
+			if (item != null && AV01.equals(item._type)) {
+				return av1Tile(item);
+			}
 			if (item == null || !HVC1.equals(item._type)) {
 				throw new IOException("'" + _name + "' is coded as '" + (item == null ? "?" : item._type)
-					+ "', which this server cannot decode; only HEVC ('hvc1') pictures are supported.");
+					+ "', which this server cannot decode; only HEVC ('hvc1') and AV1 ('av01') pictures are supported.");
 			}
 			Box hvcC = property(item, "hvcC");
 			if (hvcC == null) {
@@ -593,6 +709,29 @@ public final class HeifFile {
 			return new Tile(sets.toByteArray(), lengthSize, new long[0], new long[0], data(item));
 		}
 
+		/**
+		 * An AV1 coded picture: the configuration OBUs of its <code>av1C</code> (the sequence header,
+		 * which the item's own data repeat as a rule) and the item's OBUs, which carry their own
+		 * sizes (the low-overhead bitstream format of AV1-ISOBMFF).
+		 */
+		private Tile av1Tile(Item item) throws IOException {
+			Box av1C = property(item, "av1C");
+			if (av1C == null || av1C._length < 4) {
+				throw new IOException("'" + _name + "' carries an AV1 picture without its configuration.");
+			}
+			byte[] sets = av1C.bytes(4, av1C._length - 4);
+			if (item._constructionMethod == 0) {
+				long[] offsets = new long[item._extents.size()];
+				long[] lengths = new long[item._extents.size()];
+				for (int n = 0; n < offsets.length; n++) {
+					offsets[n] = item._baseOffset + item._extents.get(n)[0];
+					lengths[n] = item._extents.get(n)[1];
+				}
+				return new Tile(sets, 0, offsets, lengths, null);
+			}
+			return new Tile(sets, 0, new long[0], new long[0], data(item));
+		}
+
 		private int[] ispe(Item item) {
 			Box ispe = property(item, "ispe");
 			if (ispe == null) {
@@ -601,12 +740,9 @@ public final class HeifFile {
 			return new int[] { (int) ispe.u32(4), (int) ispe.u32(8) };
 		}
 
-		HeifFile build() throws IOException {
-			Item primary = _items.get(Long.valueOf(_primary));
-			if (primary == null) {
-				throw new IOException("'" + _name + "' names no primary picture.");
-			}
-
+		/** The coded pictures of the given item, a grid or a single picture, and its size. */
+		private Plane plane(long id, int[] size) throws IOException {
+			Item item = _items.get(Long.valueOf(id));
 			int columns;
 			int rows;
 			int width;
@@ -614,8 +750,9 @@ public final class HeifFile {
 			List<Tile> tiles = new ArrayList<>();
 			int tileWidth;
 			int tileHeight;
-			if (GRID.equals(primary._type)) {
-				byte[] grid = data(primary);
+			Item first;
+			if (GRID.equals(item._type)) {
+				byte[] grid = data(item);
 				if (grid.length < 8) {
 					throw new IOException("'" + _name + "' carries a broken grid description.");
 				}
@@ -623,51 +760,114 @@ public final class HeifFile {
 				rows = (grid[2] & 0xFF) + 1;
 				columns = (grid[3] & 0xFF) + 1;
 				if (wide) {
+					if (grid.length < 12) {
+						throw new IOException("'" + _name + "' carries a broken grid description.");
+					}
 					width = (int) Box.u32(grid, 4);
 					height = (int) Box.u32(grid, 8);
 				} else {
 					width = Box.u16(grid, 4);
 					height = Box.u16(grid, 6);
 				}
-				List<Long> ids = _tiles.getOrDefault(Long.valueOf(_primary), Collections.emptyList());
+				List<Long> ids = _tiles.getOrDefault(Long.valueOf(id), Collections.emptyList());
 				if (ids.size() != rows * columns) {
 					throw new IOException("'" + _name + "' names " + ids.size() + " tiles for a grid of "
 						+ columns + " x " + rows + ".");
 				}
-				int[] size = null;
-				for (Long id : ids) {
-					tiles.add(tile(id.longValue()));
-					int[] own = ispe(_items.get(id));
-					if (size == null) {
-						size = own;
-					} else if (own != null && (own[0] != size[0] || own[1] != size[1])) {
+				int[] tileSize = null;
+				for (Long tileId : ids) {
+					tiles.add(tile(tileId.longValue()));
+					int[] own = ispe(_items.get(tileId));
+					if (tileSize == null) {
+						tileSize = own;
+					} else if (own != null && (own[0] != tileSize[0] || own[1] != tileSize[1])) {
 						throw new IOException("'" + _name + "' carries tiles of different sizes.");
 					}
 				}
-				if (size == null) {
+				if (tileSize == null) {
 					throw new IOException("'" + _name + "' does not say how large its tiles are.");
 				}
-				tileWidth = size[0];
-				tileHeight = size[1];
+				tileWidth = tileSize[0];
+				tileHeight = tileSize[1];
 				if (width > columns * tileWidth || height > rows * tileHeight) {
 					throw new IOException("'" + _name + "' is larger than its tiles.");
 				}
+				first = _items.get(ids.get(0));
 			} else {
-				tiles.add(tile(_primary));
-				int[] size = ispe(primary);
-				if (size == null) {
+				tiles.add(tile(id));
+				int[] own = ispe(item);
+				if (own == null) {
 					throw new IOException("'" + _name + "' does not say how large it is.");
 				}
 				columns = 1;
 				rows = 1;
-				width = size[0];
-				height = size[1];
+				width = own[0];
+				height = own[1];
 				tileWidth = width;
 				tileHeight = height;
+				first = item;
 			}
 			if (width <= 0 || height <= 0) {
 				throw new IOException("'" + _name + "' has no picture.");
 			}
+			size[0] = width;
+			size[1] = height;
+
+			Boolean fullRange = null;
+			int matrix = -1;
+			Box colr = property(item, "colr");
+			if (colr == null) {
+				colr = property(first, "colr");
+			}
+			if (colr != null && colr._length >= 11 && "nclx".equals(colr.string(0, 4))) {
+				matrix = colr.u16(8);
+				fullRange = Boolean.valueOf((colr.u8(10) & 0x80) != 0);
+			}
+			return new Plane(AV01.equals(first._type), columns, rows, tileWidth, tileHeight, tiles, fullRange,
+				matrix);
+		}
+
+		/**
+		 * The alpha channel of the primary picture, <code>null</code> where it has none: the
+		 * auxiliary item of the alpha type (not a depth map, which an iPhone writes the same way),
+		 * of the primary's size.
+		 */
+		private Plane alpha(int width, int height) throws IOException {
+			for (Map.Entry<Long, List<Long>> entry : _auxiliaries.entrySet()) {
+				if (!entry.getValue().contains(Long.valueOf(_primary))) {
+					continue;
+				}
+				Item item = _items.get(entry.getKey());
+				if (item == null) {
+					continue;
+				}
+				Box auxC = property(item, "auxC");
+				if (auxC == null || auxC._length <= 4 || !ALPHA_URNS.contains(auxC.string(4, auxC.stringEnd(4)))) {
+					continue;
+				}
+				int[] size = new int[2];
+				Plane plane = plane(entry.getKey().longValue(), size);
+				if (size[0] != width || size[1] != height) {
+					throw new IOException("'" + _name + "' carries an alpha channel of " + size[0] + " x " + size[1]
+						+ " for a picture of " + width + " x " + height + ".");
+				}
+				return plane;
+			}
+			return null;
+		}
+
+		HeifFile build() throws IOException {
+			Item primary = _items.get(Long.valueOf(_primary));
+			if (primary == null) {
+				throw new IOException("'" + _name + "' names no primary picture.");
+			}
+
+			int[] size = new int[2];
+			Plane image = plane(_primary, size);
+			int width = size[0];
+			int height = size[1];
+			Plane alpha = alpha(width, height);
+			boolean premultiplied = alpha != null && _premultiplied.containsKey(Long.valueOf(_primary));
 
 			// The transformative properties, in the order they are listed: what is cut and turned.
 			double left = 0;
@@ -749,18 +949,6 @@ public final class HeifFile {
 			int rawHeight = (int) Math.round(bottom - top);
 			Orientation orientation = orientation(toCurrent);
 
-			Boolean fullRange = null;
-			int matrix = -1;
-			Box colr = property(primary, "colr");
-			if (colr == null && !tiles.isEmpty() && GRID.equals(primary._type)) {
-				List<Long> ids = _tiles.get(Long.valueOf(_primary));
-				colr = property(_items.get(ids.get(0)), "colr");
-			}
-			if (colr != null && colr._length >= 11 && "nclx".equals(colr.string(0, 4))) {
-				matrix = colr.u16(8);
-				fullRange = Boolean.valueOf((colr.u8(10) & 0x80) != 0);
-			}
-
 			byte[] exif = null;
 			byte[] xmp = null;
 			for (Map.Entry<Long, List<Long>> entry : _describes.entrySet()) {
@@ -779,8 +967,8 @@ public final class HeifFile {
 				}
 			}
 
-			return new HeifFile(rawWidth, rawHeight, orientation, columns, rows, tileWidth, tileHeight, rawLeft,
-				rawTop, tiles, fullRange, matrix, exif, xmp);
+			return new HeifFile(rawWidth, rawHeight, orientation, rawLeft, rawTop, image, alpha, premultiplied, exif,
+				xmp);
 		}
 
 		private static double fraction(Box box, int at) {
@@ -793,28 +981,35 @@ public final class HeifFile {
 			return at >= 16 ? ((int) numerator) / (double) denominator : numerator / (double) denominator;
 		}
 
-		/** The TIFF structure behind the offset field of a HEIF Exif item. */
 		private static byte[] exif(byte[] data) {
-			if (data.length < 4) {
-				return null;
-			}
-			long offset = Box.u32(data, 0);
-			int start = (int) (4 + offset);
-			if (offset > data.length || start >= data.length) {
-				return null;
-			}
-			// Some writers count the offset wrongly; the TIFF header says where it really is.
-			for (int at = start; at + 4 <= data.length && at < start + 16; at++) {
-				if ((data[at] == 'M' && data[at + 1] == 'M' && data[at + 2] == 0 && data[at + 3] == 42)
-					|| (data[at] == 'I' && data[at + 1] == 'I' && data[at + 2] == 42 && data[at + 3] == 0)) {
-					start = at;
-					break;
-				}
-			}
-			byte[] result = new byte[data.length - start];
-			System.arraycopy(data, start, result, 0, result.length);
-			return result;
+			return exifTiff(data);
 		}
+	}
+
+	/**
+	 * The TIFF structure behind the offset field of a HEIF Exif item — and of a JPEG XL
+	 * <code>Exif</code> box, which is the same (issue #193) —, <code>null</code> where there is none.
+	 */
+	public static byte[] exifTiff(byte[] data) {
+		if (data.length < 4) {
+			return null;
+		}
+		long offset = Box.u32(data, 0);
+		int start = (int) (4 + offset);
+		if (offset > data.length || start >= data.length) {
+			return null;
+		}
+		// Some writers count the offset wrongly; the TIFF header says where it really is.
+		for (int at = start; at + 4 <= data.length && at < start + 16; at++) {
+			if ((data[at] == 'M' && data[at + 1] == 'M' && data[at + 2] == 0 && data[at + 3] == 42)
+				|| (data[at] == 'I' && data[at + 1] == 'I' && data[at + 2] == 42 && data[at + 3] == 0)) {
+				start = at;
+				break;
+			}
+		}
+		byte[] result = new byte[data.length - start];
+		System.arraycopy(data, start, result, 0, result.length);
+		return result;
 	}
 
 	/**

@@ -5,6 +5,8 @@ package de.haumacher.imageServer.faces;
 
 import de.haumacher.imageServer.PictureReader;
 import de.haumacher.imageServer.PreviewCache;
+import de.haumacher.imageServer.coded.CodedPicture;
+import de.haumacher.imageServer.coded.CodedPictures;
 import de.haumacher.imageServer.heif.HeifDecoder;
 import de.haumacher.imageServer.heif.HeifFile;
 import de.haumacher.imageServer.shared.model.Orientation;
@@ -172,7 +174,7 @@ public final class Originals {
 
 	private static Region decode(File file, double left, double top, double right, double bottom, int bound,
 			int mode) throws IOException {
-		if (HeifFile.isHeif(file)) {
+		if (CodedPictures.handles(file)) {
 			return decodeHeif(file, left, top, right, bottom, bound, mode);
 		}
 		try (PictureReader picture = PictureReader.open(file)) {
@@ -221,11 +223,12 @@ public final class Originals {
 	 * The region decode of a HEIC/HEIF photograph, see issue #186: the same rectangle and the same
 	 * sampling as the ImageIO path computes, the program of {@link HeifDecoder} cutting and scaling
 	 * so that no more than the region at its sampled size enters the heap. Its raw raster is the
-	 * one {@link HeifFile} defines, which is the frame a face box is stored in.
+	 * one {@link HeifFile} defines, which is the frame a face box is stored in. An AVIF and a JPEG XL
+	 * picture are cut the same way, see {@link CodedPicture} (issue #193).
 	 */
 	private static Region decodeHeif(File file, double left, double top, double right, double bottom, int bound,
 			int mode) throws IOException {
-		HeifFile heif = HeifFile.read(file);
+		CodedPicture heif = CodedPictures.read(file);
 		int rawWidth = heif.getRawWidth();
 		int rawHeight = heif.getRawHeight();
 		int x0 = clamp((int) Math.floor(left), 0, rawWidth - 1);
@@ -238,7 +241,7 @@ public final class Originals {
 		// What ImageIO's subsampling answers: every n-th pixel, the first one included.
 		int outWidth = (width + sampling - 1) / sampling;
 		int outHeight = (height + sampling - 1) / sampling;
-		BufferedImage image = HeifDecoder.decodeRaw(file, heif, x0, y0, width, height, outWidth, outHeight);
+		BufferedImage image = heif.decodeRaw(file, x0, y0, width, height, outWidth, outHeight);
 		DECODES.incrementAndGet();
 		return new Region(image, x0, y0, sampling, rawWidth, rawHeight);
 	}

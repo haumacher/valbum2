@@ -43,7 +43,10 @@ import junit.framework.TestCase;
  * <p>
  * Why the libraries an artifact ships may be subtracted although the program looks some of them up
  * on the system path on ARM: {@link VideoRenditions#program(java.util.List)} hands the child
- * process an <code>LD_LIBRARY_PATH</code> pointing at the directory they were extracted to.
+ * process an <code>LD_LIBRARY_PATH</code> pointing at the directory they were extracted to. And
+ * why a library counts as shipped under its soname too where the artifact stores it under another
+ * name (<code>libva.so</code> for <code>libva.so.2</code> since the presets 1.5.9, issue #210):
+ * the same method links it under that name beside it.
  * </p>
  *
  * <p>
@@ -385,6 +388,12 @@ public class TestDebianPackageLibraries extends TestCase {
 						continue;
 					}
 					shipped.computeIfAbsent(platform, key -> new LinkedHashSet<>()).add(file);
+					// A library shipped under another name than its soname is reachable by its
+					// soname as well: VideoRenditions.program links it so (issue #210).
+					String soname = Elf.soname(content);
+					if (soname != null) {
+						shipped.get(platform).add(soname);
+					}
 					needed.computeIfAbsent(platform, key -> new TreeSet<>()).addAll(Elf.needed(content));
 				}
 				for (Map.Entry<String, Set<String>> platform : needed.entrySet()) {
