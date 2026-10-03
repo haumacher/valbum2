@@ -1006,6 +1006,9 @@ public class ImageServlet extends HttpServlet {
 		if (gone(context, caller)) {
 			return;
 		}
+		if (inboxHiddenFromLink(context, caller)) {
+			return;
+		}
 		if (refusedFolderName(context, caller)) {
 			return;
 		}
@@ -1041,8 +1044,11 @@ public class ImageServlet extends HttpServlet {
 		File file = resourcePath.toFile();
 		if (!file.isDirectory()) {
 			File parent = file.getParentFile();
-			if (parent == null || !parent.isDirectory()) {
-				error404(context);
+			if (parent == null || !parent.isDirectory()
+				|| (pathInfo != null && pathInfo.endsWith("/") && !baseType.equals("application/json"))) {
+				// No folder to store into: an address naming nothing, answered as a read answers
+				// it, see issues #176 and #215. A folder address is never a file name to upload to.
+				notFound(context, resourcePath);
 				return;
 			}
 			PathInfo folder = resourcePath.parent();
@@ -2109,7 +2115,8 @@ public class ImageServlet extends HttpServlet {
 
 		File folder = resourcePath.toFile();
 		if (!folder.isDirectory()) {
-			error404(context);
+			// Answered as a read answers it, see issues #176 and #215.
+			notFound(context, resourcePath);
 			return;
 		}
 
@@ -3829,7 +3836,11 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		if (gone(context, _auth.caller(request))) {
+		Caller postCaller = _auth.caller(request);
+		if (gone(context, postCaller)) {
+			return;
+		}
+		if (inboxHiddenFromLink(context, postCaller)) {
 			return;
 		}
 
@@ -4065,6 +4076,65 @@ public class ImageServlet extends HttpServlet {
 		}
 		LOG.warning("Refusing '" + context.request().getPathInfo() + "': " + caller.getGone());
 		errorInfo(context, HttpServletResponse.SC_GONE, caller.getGone());
+		return true;
+	}
+
+	/**
+	 * Answers a write through a share link that addresses an inbox, or anything in or below one,
+	 * exactly as a read is answered, see issue #215.
+	 *
+	 * <p>
+	 * An inbox does not exist for a share link (issue #135): its listing, its images and their
+	 * every shape are answered <code>404</code> with {@link Inboxes#NOT_FOUND}. A write is answered
+	 * the same — the batch upload, the single-image upload, the hash check, a sidecar or a
+	 * creation below it, and every action — before any right is asked, so that neither a stored
+	 * upload nor a refusal naming a right tells the link that something is there. A member is not
+	 * asked here; what a member may do in an inbox is #135's.
+	 * </p>
+	 *
+	 * <p>
+	 * The folder looked at is the deepest existing folder on the way to the address: the address
+	 * itself, the album a file would be in, the album a new folder would be created in. An address
+	 * the path rules refuse outright is looked at through its parent, so that
+	 * <code>Box/@eaDir/</code> is no way to learn of <code>Box</code> either.
+	 * </p>
+	 *
+	 * @return Whether the request has been answered.
+	 */
+	private boolean inboxHiddenFromLink(Context context, Caller caller) throws IOException {
+		if (!caller.isShareLink()) {
+			return false;
+		}
+		String pathInfo = context.request().getPathInfo();
+		String relative = pathInfo == null || pathInfo.isEmpty() ? "" : pathInfo.substring(1);
+		PathInfo path;
+		try {
+			path = _auth.resolve(caller, _basePath, relative).getPath();
+		} catch (PathRefused ex) {
+			String trimmed = relative.endsWith("/") ? relative.substring(0, relative.length() - 1) : relative;
+			int slash = trimmed.lastIndexOf('/');
+			if (slash < 0) {
+				return false;
+			}
+			try {
+				path = _auth.resolve(caller, _basePath, trimmed.substring(0, slash)).getPath();
+			} catch (PathRefused parentRefused) {
+				return false;
+			}
+		}
+		File folder = path.toFile();
+		File root = path.getBasePath().toFile();
+		while (folder != null && !folder.isDirectory()) {
+			if (folder.equals(root)) {
+				return false;
+			}
+			folder = folder.getParentFile();
+		}
+		if (folder == null || !Inboxes.isInbox(folder)) {
+			return false;
+		}
+		LOG.warning("Hiding the inbox from a share link's write at '" + pathInfo + "'.");
+		errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
 		return true;
 	}
 

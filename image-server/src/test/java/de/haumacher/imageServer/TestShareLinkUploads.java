@@ -20,7 +20,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * An upload through a share link is stored so that the link shows it, see issue #214.
@@ -197,26 +199,178 @@ public class TestShareLinkUploads extends PersonalLinkTestCase {
 		assertEquals(GOOD, image(album(seen), "petras.jpg").getRating());
 	}
 
-	public void testAnInboxStaysHiddenFromTheLinkThatUploadsIntoIt() throws Exception {
+	// --- An inbox does not exist for a link, for writing either (issue #215). ---
+
+	public void testALinkCannotUploadIntoAnInbox() throws Exception {
+		Path inbox = inbox();
+		String token = yearToken();
+
+		FakeResponse response = upload("/Box/", token, "guest.jpg", photo("guest"));
+		assertHidden(response);
+		assertUntouched(inbox);
+
+		assertEquals("A read answers the same.", HttpServletResponse.SC_NOT_FOUND,
+			get("/Box/", "json", token).status());
+	}
+
+	public void testALinkCannotUploadASingleImageIntoAnInbox() throws Exception {
+		Path inbox = inbox();
+		String token = yearToken();
+
+		assertHidden(upload("/Box/guest.jpg", token, "guest.jpg", photo("guest")));
+		assertUntouched(inbox);
+	}
+
+	public void testAPersonalLinkCannotUploadIntoAnInbox() throws Exception {
+		Path inbox = inbox();
+		FakeResponse response = share("/" + SharingFixture.YEAR + "/", SharingFixture.ALICE,
+			personalBody("Party", email("Tante Petra", PETRA)));
+		assertEquals(response.body(), 200, response.status());
+		String petra = tokenOf(created(response), "Tante Petra");
+		String credential = credential(petra);
+		assertStored(uploadAs("/", petra, credential, "petras.jpg", photo("petras")));
+
+		assertHidden(uploadAs("/Box/", petra, credential, "petras.jpg", photo("petras")));
+		assertHidden(uploadAs("/Box/petras.jpg", petra, credential, "petras.jpg", photo("petras")));
+		assertUntouched(inbox);
+	}
+
+	public void testALinkMadeOnAFolderThatBecameAnInboxCannotUploadIntoIt() throws Exception {
 		Path inbox = _base.resolve(SharingFixture.YEAR).resolve("Box");
 		Files.createDirectories(inbox);
 		Files.write(inbox.resolve("index.json"),
-			"[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Box\",\"parts\":[]}]".getBytes(StandardCharsets.UTF_8));
-		String token = issue("alice", SharingFixture.YEAR, "Party", "", Privacy.PUBLIC, GOOD, Rights.VIEW,
-			Rights.CONTRIBUTE);
+			"[\"AlbumInfo\",{\"title\":\"Box\",\"parts\":[]}]".getBytes(StandardCharsets.UTF_8));
+		String token = issue("alice", SharingFixture.YEAR + "/Box", "Party", "", Privacy.PUBLIC, GOOD,
+			Rights.VIEW, Rights.CONTRIBUTE);
+		makeInbox(inbox);
+		restartServer();
 
-		// What an upload into an inbox may do is issue #135's, and unchanged here.
-		assertStored(upload("/Box/", token, "guest.jpg", photo("guest")));
+		assertHidden(upload("/", token, "guest.jpg", photo("guest")));
+		assertUntouched(inbox);
+	}
 
-		FakeResponse shown = get("/Box/", "json", token);
-		assertEquals("The inbox does not exist for a link (#135), whatever it uploaded.",
-			HttpServletResponse.SC_NOT_FOUND, shown.status());
-		assertEquals(GOOD,
-			image(album(get("/" + SharingFixture.YEAR + "/Box/", "json", SharingFixture.ALICE)), "guest.jpg")
-				.getRating());
+	public void testTheHashCheckOfALinkDoesNotRevealAnInbox() throws Exception {
+		Path inbox = inbox();
+		byte[] contents = photo("sorted");
+		assertStored(upload("/" + SharingFixture.YEAR + "/Box/", SharingFixture.ALICE, "sorted.jpg", contents));
+		String token = yearToken();
+
+		FakeResponse response = check("/Box/", token, HashCache.sha256(contents));
+		assertHidden(response);
+		assertFalse(response.body(), response.body().contains("sorted.jpg"));
+		assertTrue("The owner's photograph is still there.", Files.exists(inbox.resolve("sorted.jpg")));
+	}
+
+	public void testALinkCannotCreateAnAlbumOrWriteASidecarInAnInbox() throws Exception {
+		Path inbox = inbox();
+		String token = yearToken();
+
+		assertHidden(put("/Box/New/", "[\"AlbumInfo\",{\"title\":\"New\",\"parts\":[]}]", token));
+		assertFalse(Files.exists(inbox.resolve("New")));
+
+		assertHidden(put("/Box/", "[\"AlbumInfo\",{\"title\":\"Box\",\"parts\":[]}]", token));
+		assertHidden(put("/Box/@eaDir/", "[\"AlbumInfo\",{\"title\":\"x\",\"parts\":[]}]", token));
+		assertUntouched(inbox);
+	}
+
+	public void testALinkCannotMoveIntoOrOutOfAnInbox() throws Exception {
+		Path inbox = inbox();
+		String token = yearToken();
+		assertStored(upload("/" + SharingFixture.YEAR + "/Box/", SharingFixture.ALICE, "sorted.jpg",
+			photo("sorted")));
+
+		// Into it: a link may move nothing anywhere (#53), so the target is never looked at, and
+		// the answer is the one a target that does not exist gets.
+		FakeResponse into = move("/", "Box", token, "2024-05-01 Zoo");
+		FakeResponse nowhere = move("/", "Nope", token, "2024-05-01 Zoo");
+		assertEquals(into.body(), nowhere.status(), into.status());
+		assertEquals(nowhere.body(), into.body());
+		assertTrue(Files.isDirectory(zoo()));
+
+		// Out of it, and every other action addressed at it: not there.
+		assertHidden(move("/Box/", "", token, "sorted.jpg"));
+		Map<String, String> delete = new HashMap<>();
+		delete.put("action", "delete");
+		assertHidden(post("/Box/", "{\"target\":\"\",\"names\":[{\"name\":\"sorted.jpg\"}]}", token, delete));
+		assertTrue(Files.exists(inbox.resolve("sorted.jpg")));
+	}
+
+	public void testTheRefusalIsTheAnswerOfAFolderThatDoesNotExist() throws Exception {
+		inbox();
+		String token = yearToken();
+		Files.createDirectories(_base.resolve(SharingFixture.YEAR).resolve("Empty"));
+
+		assertSameShape(upload("/Box/", token, "guest.jpg", photo("guest")),
+			upload("/Nope/", token, "guest.jpg", photo("guest")));
+		assertSameShape(upload("/Box/guest.jpg", token, "guest.jpg", photo("guest")),
+			upload("/Nope/guest.jpg", token, "guest.jpg", photo("guest")));
+		assertSameShape(check("/Box/", token, HashCache.sha256(photo("guest"))),
+			check("/Nope/", token, HashCache.sha256(photo("guest"))));
+		assertSameShape(put("/Box/New/", "[\"AlbumInfo\",{\"title\":\"New\",\"parts\":[]}]", token),
+			put("/Nope/New/", "[\"AlbumInfo\",{\"title\":\"New\",\"parts\":[]}]", token));
+		assertSameShape(get("/Box/", "json", token), get("/Nope/", "json", token));
+	}
+
+	public void testAContributingMemberStillUploadsIntoAnInbox() throws Exception {
+		Path inbox = inbox();
+
+		assertStored(upload("/" + SharingFixture.YEAR + "/Box/", SharingFixture.BOB, "bobs.jpg", photo("bobs")));
+		assertTrue(Files.exists(inbox.resolve("bobs.jpg")));
+		assertNotNull(image(album(get("/" + SharingFixture.YEAR + "/Box/", "json", SharingFixture.BOB)),
+			"bobs.jpg"));
 	}
 
 	// --- Helpers. ---
+
+	/** An inbox below the year folder, as #131 makes one. */
+	private Path inbox() throws Exception {
+		Path inbox = _base.resolve(SharingFixture.YEAR).resolve("Box");
+		Files.createDirectories(inbox);
+		makeInbox(inbox);
+		return inbox;
+	}
+
+	private static void makeInbox(Path inbox) throws Exception {
+		Files.write(inbox.resolve("index.json"),
+			"[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Box\",\"parts\":[]}]".getBytes(StandardCharsets.UTF_8));
+	}
+
+	/** A link on the year folder, which may contribute. */
+	private String yearToken() throws Exception {
+		return issue("alice", SharingFixture.YEAR, "Party", "", Privacy.PUBLIC, GOOD, Rights.VIEW,
+			Rights.CONTRIBUTE);
+	}
+
+	private FakeResponse check(String pathInfo, String token, String hash) throws Exception {
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", "check");
+		return post(pathInfo, "{\"hashes\":[{\"hash\":\"" + hash + "\"}]}", token, parameters);
+	}
+
+	/** The answer every address of an inbox gives a link: there is nothing. */
+	private static void assertHidden(FakeResponse response) throws Exception {
+		assertEquals(response.body(), HttpServletResponse.SC_NOT_FOUND, response.status());
+		assertEquals(Inboxes.NOT_FOUND, errorMessage(response));
+	}
+
+	/** Nothing but the sidecar the test wrote is in the inbox. */
+	private static void assertUntouched(Path inbox) throws Exception {
+		try (java.util.stream.Stream<Path> files = Files.list(inbox)) {
+			assertEquals(Arrays.asList("index.json"),
+				files.map(f -> f.getFileName().toString()).filter(n -> !n.startsWith(".vacache")).sorted()
+					.collect(java.util.stream.Collectors.toList()));
+		}
+		String sidecar = new String(Files.readAllBytes(inbox.resolve("index.json")), StandardCharsets.UTF_8);
+		assertTrue(sidecar, sidecar.contains("\"parts\":[]"));
+	}
+
+	/** Two refusals a caller cannot tell apart but by the words of the message. */
+	private static void assertSameShape(FakeResponse inbox, FakeResponse missing) throws Exception {
+		assertEquals("inbox: " + inbox.body() + ", missing: " + missing.body(), missing.status(), inbox.status());
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, inbox.status());
+		assertNotNull(errorMessage(inbox));
+		assertNotNull(errorMessage(missing));
+	}
 
 	private Path zoo() {
 		return _base.resolve(SharingFixture.ZOO);
