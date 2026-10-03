@@ -48,6 +48,7 @@ public class TestValbumServerScript extends TestCase {
 		Path java = bin.resolve("java");
 		Files.writeString(java, "#!/bin/sh\n"
 			+ "if [ \"$1\" = -version ]; then echo 'openjdk version \"21.0.4\" 2024-07-16' >&2; exit 0; fi\n"
+			+ "env > \"$FAKE_ENV\"\n"
 			+ "for arg in \"$@\"; do echo \"$arg\"; done\n", StandardCharsets.UTF_8);
 		Files.setPosixFilePermissions(java, PosixFilePermissions.fromString("rwxr-xr-x"));
 		Files.writeString(_dir.resolve("valbum.jar"), "not a jar", StandardCharsets.UTF_8);
@@ -109,6 +110,80 @@ public class TestValbumServerScript extends TestCase {
 			args.indexOf("--spaces") < args.indexOf("--create-space"));
 	}
 
+	// --- The settings read from the environment (issue #199). ---
+
+	/** Every setting the server reads from its environment is documented, and none is set, in the shipped file. */
+	public void testTheShippedConfigurationDocumentsTheEnvironmentSettings() throws Exception {
+		String shipped = Files.readString(DEFAULTS, StandardCharsets.UTF_8);
+		for (String name : ENV_SETTINGS) {
+			assertTrue("Not documented: " + name, shipped.contains("#   " + name + "="));
+			assertFalse("Set in the shipped file: " + name, shipped.contains("\n" + name + "="));
+		}
+		if (noShell()) {
+			return;
+		}
+		run(Map.of());
+		for (String name : ENV_SETTINGS) {
+			assertNull("Nothing configured, nothing passed: " + name, environment().get(name));
+		}
+	}
+
+	/** The mail account reaches the server through its environment and never through its arguments. */
+	public void testTheMailSettingsReachTheServerThroughItsEnvironment() throws Exception {
+		if (noShell()) {
+			return;
+		}
+		configure("VALBUM_PUBLIC_URL=https://photos.example.org/valbum\n"
+			+ "VALBUM_SMTP_HOST=smtp.example.org\n"
+			+ "VALBUM_SMTP_PORT=465\n"
+			+ "VALBUM_SMTP_USER=album@example.org\n"
+			+ "VALBUM_SMTP_PASSWORD='se cr$t\"pw'\n"
+			+ "VALBUM_SMTP_FROM=album@example.org\n"
+			+ "VALBUM_SMTP_TLS=tls");
+		List<String> args = run(Map.of());
+		Map<String, String> env = environment();
+		assertEquals("https://photos.example.org/valbum", env.get("VALBUM_PUBLIC_URL"));
+		assertEquals("smtp.example.org", env.get("VALBUM_SMTP_HOST"));
+		assertEquals("465", env.get("VALBUM_SMTP_PORT"));
+		assertEquals("album@example.org", env.get("VALBUM_SMTP_USER"));
+		assertEquals("The password arrives as written.", "se cr$t\"pw", env.get("VALBUM_SMTP_PASSWORD"));
+		assertEquals("album@example.org", env.get("VALBUM_SMTP_FROM"));
+		assertEquals("tls", env.get("VALBUM_SMTP_TLS"));
+		for (String arg : args) {
+			assertFalse("No secret on the command line: " + args, arg.contains("se cr") || arg.contains("smtp"));
+		}
+	}
+
+	public void testTheEnvironmentWinsForTheMailSettingsToo() throws Exception {
+		if (noShell()) {
+			return;
+		}
+		configure("VALBUM_SMTP_HOST=smtp.example.org");
+		run(Map.of("VALBUM_SMTP_HOST", "mail.example.net"));
+		assertEquals("mail.example.net", environment().get("VALBUM_SMTP_HOST"));
+	}
+
+	/** The names of the settings the server reads from its environment, see {@link ServerEnvironment}. */
+	static final List<String> ENV_SETTINGS = List.of(ServerEnvironment.PUBLIC_URL, ServerEnvironment.SMTP_HOST,
+		ServerEnvironment.SMTP_PORT, ServerEnvironment.SMTP_USER, ServerEnvironment.SMTP_PASSWORD,
+		ServerEnvironment.SMTP_FROM, ServerEnvironment.SMTP_TLS);
+
+	/** The environment the fake <code>java</code> was started with. */
+	private Map<String, String> environment() throws Exception {
+		Map<String, String> result = new java.util.HashMap<>();
+		String last = null;
+		for (String line : Files.readAllLines(_dir.resolve("env"), StandardCharsets.UTF_8)) {
+			int eq = line.indexOf('=');
+			if (eq > 0 && line.substring(0, eq).matches("[A-Za-z_][A-Za-z0-9_]*")) {
+				last = line.substring(0, eq);
+				result.put(last, line.substring(eq + 1));
+			} else if (last != null) {
+				result.put(last, result.get(last) + "\n" + line);
+			}
+		}
+		return result;
+	}
+
 	/** Whether this machine cannot run the script; said once per test, never passed silently. */
 	private boolean noShell() {
 		if (new File("/bin/sh").canExecute()) {
@@ -140,6 +215,7 @@ public class TestValbumServerScript extends TestCase {
 		environment.put("VALBUM_CONFIG", _config.toString());
 		environment.put("VALBUM_JAR", _dir.resolve("valbum.jar").toString());
 		environment.put("VALBUM_BASEPATH", _base.toString());
+		environment.put("FAKE_ENV", _dir.resolve("env").toString());
 		environment.putAll(env);
 		Process process = builder.start();
 		String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

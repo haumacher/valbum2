@@ -207,6 +207,9 @@ public class TestImageServletPut extends TestCase {
 		return response;
 	}
 
+	/** The fake header naming the client's address of a fake request, see {@link #request}. */
+	static final String REMOTE_ADDR = "X-Test-Remote-Addr";
+
 	static HttpServletRequest request(String pathInfo, String contentType, byte[] body) {
 		return request(pathInfo, contentType, body, Collections.emptyMap(), Collections.emptyMap());
 	}
@@ -239,6 +242,9 @@ public class TestImageServletPut extends TestCase {
 						return new FakeInputStream(body);
 					case "getHeader":
 						return headers.get(args[0]);
+					case "getRemoteAddr":
+						// The client's address, for the rate limits of issue #199.
+						return headers.getOrDefault(REMOTE_ADDR, "192.0.2.1");
 					case "getParameter":
 						return parameters.get(args[0]);
 					case "getContextPath":

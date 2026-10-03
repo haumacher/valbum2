@@ -130,6 +130,16 @@ public class SpaceServlet extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Installs the one proof by mailed code of this server in every space, see issue #199: one
+	 * instance, so that its rate limits count across the spaces.
+	 */
+	public void setEmailProofs(de.haumacher.imageServer.mail.EmailProofs proofs) {
+		for (ImageServlet servlet : _data.values()) {
+			servlet.setEmailProofs(proofs);
+		}
+	}
+
 	@Override
 	public void init(ServletConfig config) throws ServletException {
 		super.init(config);

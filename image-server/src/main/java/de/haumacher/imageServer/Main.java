@@ -132,7 +132,18 @@ public class Main {
 			return;
 		}
 
-		new Main(ns).start();
+		// The settings that are no business of the command line: the public address and the mail
+		// account, read from the environment (/etc/default/valbum, compose.yaml), see #199.
+		ServerEnvironment environment;
+		try {
+			environment = ServerEnvironment.read(System.getenv());
+		} catch (ServerEnvironment.Invalid ex) {
+			System.err.println("Cannot start: " + ex.getMessage());
+			System.exit(-1);
+			return;
+		}
+
+		new Main(ns, environment).start();
 	}
 
 	static Path basePath(Namespace ns) {
@@ -320,10 +331,23 @@ public class Main {
 
 	private final SpaceMode _spaceMode;
 
+	private final ServerEnvironment _environment;
+
 	/**
-	 * Creates a {@link Main}.
+	 * Creates a {@link Main} with nothing configured in the environment.
 	 */
 	public Main(Namespace ns) {
+		this(ns, ServerEnvironment.NONE);
+	}
+
+	/**
+	 * Creates a {@link Main}.
+	 *
+	 * @param environment
+	 *        What the environment configures, see {@link ServerEnvironment}.
+	 */
+	public Main(Namespace ns, ServerEnvironment environment) {
+		_environment = environment;
 		_port = ns.getInt("port");
 		_basePath = ns.get("basepath");
 		_contextPath = normlizeContextPath(ns.get("contextpath"));
@@ -344,7 +368,7 @@ public class Main {
 
 	private void start() throws Exception {
 		Spaces spaces = Spaces.detect(_basePath.toPath(), _spaceMode, _authMode, _inviteMode);
-		final Server server = createServer(_port, _contextPath, _basePath, _webRoot, spaces);
+		final Server server = createServer(_port, _contextPath, _basePath, _webRoot, spaces, _environment);
 		server.start();
 
 		System.out.println("Image server started: http://localhost:" + _port + _contextPath + "/ serving folder: " + _basePath);
@@ -357,6 +381,9 @@ public class Main {
 			? "Video renditions: available, transcoding with '" + VideoRenditions.encoderName() + "'"
 			: "Video renditions: NOT available - " + renditions);
 		System.out.println("Authentication: " + _authMode.protocolName());
+		for (String line : environmentReport(_environment)) {
+			System.out.println(line);
+		}
 		System.out.println("Spaces: " + spaces.getMode().protocolName());
 		if (spaces.getMode() == SpaceMode.MULTI && spaces.getSpaces().isEmpty()) {
 			System.out.println("  (no folder below the base folder carries .valbum/space.json; "
@@ -478,6 +505,33 @@ public class Main {
 	 */
 	static Server createServer(int port, String contextPath, File basePath, File webRoot, Spaces spaces)
 			throws IOException {
+		return createServer(port, contextPath, basePath, webRoot, spaces, ServerEnvironment.NONE);
+	}
+
+	/**
+	 * What a start-up says about the settings of the environment, see issue #199; never the
+	 * password.
+	 */
+	static List<String> environmentReport(ServerEnvironment environment) {
+		List<String> lines = new ArrayList<>();
+		lines.add("Public address: " + (environment.getPublicUrl() == null
+			? "not configured (" + ServerEnvironment.PUBLIC_URL + "), taken from each request"
+			: environment.getPublicUrl()));
+		lines.add("E-mail codes: " + (environment.getMail() == null
+			? "not configured (" + ServerEnvironment.SMTP_HOST + "), no address can be proven by mail"
+			: "sent through " + environment.getMail()));
+		return lines;
+	}
+
+	/**
+	 * Builds the server for the given spaces and the settings of the environment, see
+	 * {@link #createServer(int, String, File, File, AuthService)} and issue #199.
+	 */
+	static Server createServer(int port, String contextPath, File basePath, File webRoot, Spaces spaces,
+			ServerEnvironment environment) throws IOException {
+		// One proof by mailed code for the whole server, so that its rate limits count across
+		// every space, see issue #199.
+		de.haumacher.imageServer.mail.EmailProofs proofs = environment.emailProofs();
 		final Server server = new Server();
 
 		HttpConfiguration config = new HttpConfiguration();
@@ -503,11 +557,12 @@ public class Main {
 		if (spaces.getMode() == SpaceMode.SINGLE) {
 			ImageServlet data = new ImageServlet(basePath, spaces.single().getAuth(), "",
 				spaces.single().getConfig());
+			data.setEmailProofs(proofs);
 			// Every photo of the space knows its hash from here on, see issue #118: one low
 			// priority thread that reads the library once and then keeps out of the way.
 			data.startIndexing();
 			// What a messenger reads when a share link is posted, see issue #104.
-			sharePreview(app, spaces, segment -> data);
+			sharePreview(app, spaces, segment -> data, environment);
 			webapp.addServlet(new ServletHolder(data), Settings.DATA_PREFIX + "/*");
 			webapp.addServlet(new ServletHolder(app), STATIC_PREFIX + "/*");
 		} else {
@@ -517,7 +572,8 @@ public class Main {
 			SpaceServlet front = new SpaceServlet(spaces, app);
 			// Each space indexes its own photos, and nobody else's, see issue #118.
 			front.startIndexing();
-			sharePreview(app, spaces, front::dataOf);
+			front.setEmailProofs(proofs);
+			sharePreview(app, spaces, front::dataOf, environment);
 			webapp.addServlet(new ServletHolder(front), STATIC_PREFIX + "/*");
 		}
 		webapp.setClassLoader(Main.class.getClassLoader());
@@ -545,8 +601,11 @@ public class Main {
 	 * </p>
 	 */
 	private static void sharePreview(ResourceServlet app, Spaces spaces,
-			java.util.function.Function<String, ImageServlet> data) {
+			java.util.function.Function<String, ImageServlet> data, ServerEnvironment environment) {
 		SharePreview preview = new SharePreview(spaces, data);
+		// The card is read by a messenger, an outside party: the configured public address where
+		// there is one, see issue #199.
+		preview.setPublicUrl(environment.getPublicUrl());
 		app.setPageDecorator(preview);
 		app.setSessionResource(preview);
 	}

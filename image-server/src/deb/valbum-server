@@ -17,13 +17,19 @@
 set -e
 
 CONFIG=${VALBUM_CONFIG:-/etc/default/valbum}
+
+# The settings the server reads from its environment rather than from its command line (issue
+# #199): the public address and the mail account, whose password must never show in the process
+# list. They are exported below, so that they reach the server however this script was started.
+ENV_SETTINGS="VALBUM_PUBLIC_URL VALBUM_SMTP_HOST VALBUM_SMTP_PORT VALBUM_SMTP_USER VALBUM_SMTP_PASSWORD VALBUM_SMTP_FROM VALBUM_SMTP_TLS"
+
 if [ -r "$CONFIG" ]; then
 	# The systemd unit passes these as environment variables already; sourcing the
 	# file makes the script work the same way from an interactive shell. A variable
 	# set in the caller's environment wins over the file, so that
 	# 'VALBUM_PORT=9090 valbum-server' does what it says: the values present before
 	# sourcing are remembered and put back afterwards.
-	for var in VALBUM_BASEPATH VALBUM_PORT VALBUM_CONTEXTPATH VALBUM_AUTH VALBUM_SPACES VALBUM_OPTS JAVA_OPTS JAVA_HOME; do
+	for var in VALBUM_BASEPATH VALBUM_PORT VALBUM_CONTEXTPATH VALBUM_AUTH VALBUM_SPACES VALBUM_OPTS JAVA_OPTS JAVA_HOME $ENV_SETTINGS; do
 		if eval "[ -n \"\${$var+set}\" ]"; then
 			eval "env_$var=\$$var"
 			eval "env_${var}_set=1"
@@ -31,12 +37,21 @@ if [ -r "$CONFIG" ]; then
 	done
 	# shellcheck source=/dev/null
 	. "$CONFIG"
-	for var in VALBUM_BASEPATH VALBUM_PORT VALBUM_CONTEXTPATH VALBUM_AUTH VALBUM_SPACES VALBUM_OPTS JAVA_OPTS JAVA_HOME; do
+	for var in VALBUM_BASEPATH VALBUM_PORT VALBUM_CONTEXTPATH VALBUM_AUTH VALBUM_SPACES VALBUM_OPTS JAVA_OPTS JAVA_HOME $ENV_SETTINGS; do
 		if eval "[ -n \"\${env_${var}_set:-}\" ]"; then
 			eval "$var=\$env_$var"
 		fi
 	done
 fi
+
+# Sourcing sets the configuration's variables in this shell only; the server reads these from its
+# environment, so they are exported - those that are set, and nothing else.
+for var in $ENV_SETTINGS; do
+	if eval "[ -n \"\${$var+set}\" ]"; then
+		# shellcheck disable=SC2163
+		export "$var"
+	fi
+done
 
 VALBUM_JAR=${VALBUM_JAR:-/usr/share/valbum/valbum.jar}
 VALBUM_BASEPATH=${VALBUM_BASEPATH:-/var/lib/valbum}

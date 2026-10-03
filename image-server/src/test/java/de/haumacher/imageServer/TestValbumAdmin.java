@@ -72,6 +72,7 @@ public class TestValbumAdmin extends TestCase {
 			+ "  fi\n"
 			+ "done\n"
 			+ "{ printf 'java'; printf '|%s' \"$@\"; echo; } >> \"$FAKE_LOG\"\n"
+			+ "env | grep '^VALBUM_SMTP_\\|^VALBUM_PUBLIC_URL=' > \"$FAKE_ENV\"\n"
 			+ "exit \"${FAKE_JAVA_EXIT:-0}\"\n");
 		fake(bin, "id", "if [ \"$1\" = -u ]; then echo \"${FAKE_UID:-0}\"; else exec /usr/bin/id \"$@\"; fi\n");
 		fake(bin, "systemctl", "echo \"systemctl $*\" >> \"$FAKE_LOG\"\n"
@@ -91,6 +92,7 @@ public class TestValbumAdmin extends TestCase {
 		_env.put("VALBUM_CONFIG", _dir.resolve("valbum").toString());
 		_env.put("VALBUM_JAR", _dir.resolve("valbum.jar").toString());
 		_env.put("VALBUM_BASEPATH", _dir.resolve("library").toString());
+		_env.put("FAKE_ENV", _dir.resolve("env").toString());
 	}
 
 	@Override
@@ -128,6 +130,28 @@ public class TestValbumAdmin extends TestCase {
 		assertTrue(job, job.endsWith("|--move-into-space|family|--space-name|The Family"));
 		assertEquals(_err, 0, run("help", "move-into-space"));
 		assertTrue(_out, _out.startsWith("Usage: valbum-admin move-into-space FOLDER [--name NAME] [--no-restart]"));
+	}
+
+	/**
+	 * A job reads <code>/etc/default/valbum</code> as the service does, the settings of issue #199
+	 * included: through valbum-server, run as the service's user, which may read the file (mode
+	 * 640, group valbum); the password never shows on a command line.
+	 */
+	public void testAJobReadsTheConfigurationAsTheServiceDoes() throws Exception {
+		if (noShell()) {
+			return;
+		}
+		Path config = _dir.resolve("valbum");
+		Files.writeString(config, Files.readString(config, StandardCharsets.UTF_8)
+			+ "\nVALBUM_SMTP_HOST=smtp.example.org\nVALBUM_SMTP_PASSWORD='s3cret pw'\n"
+			+ "VALBUM_PUBLIC_URL=https://photos.example.org\n", StandardCharsets.UTF_8);
+		assertEquals(_err, 0, run("create-space", "family"));
+		List<String> env = Files.readAllLines(_dir.resolve("env"), StandardCharsets.UTF_8);
+		assertTrue(env.toString(), env.contains("VALBUM_SMTP_HOST=smtp.example.org"));
+		assertTrue(env.toString(), env.contains("VALBUM_SMTP_PASSWORD=s3cret pw"));
+		assertTrue(env.toString(), env.contains("VALBUM_PUBLIC_URL=https://photos.example.org"));
+		assertFalse(job(), job().contains("s3cret"));
+		assertFalse(_out + _err, (_out + _err).contains("s3cret"));
 	}
 
 	/** The time zone of a new space, see issue #183. */

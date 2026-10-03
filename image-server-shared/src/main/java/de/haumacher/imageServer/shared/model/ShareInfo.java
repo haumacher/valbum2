@@ -39,6 +39,9 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getContact() */
 	private static final String CONTACT__PROP = "contact";
 
+	/** @see #getMethods() */
+	private static final String METHODS__PROP = "methods";
+
 	private String _label = "";
 
 	private String _expires = "";
@@ -50,6 +53,8 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private de.haumacher.imageServer.shared.model.ShareType _type = de.haumacher.imageServer.shared.model.ShareType.ANONYMOUS;
 
 	private de.haumacher.imageServer.shared.model.ContactInfo _contact = null;
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> _methods = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link ShareInfo} instance.
@@ -216,6 +221,54 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		return _contact != null;
 	}
 
+	/**
+	 * The ways the contact of this session may prove a further address, see issue #199.
+	 *
+	 * <p>
+	 * Answered beside {@link #getContact()} only: <code>mail-code</code> where the server can mail a
+	 * code, so that the app offers "Add your e-mail so we recognise you on other devices"; empty
+	 * where it cannot, and for every caller who is no contact.
+	 * </p>
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> getMethods() {
+		return _methods;
+	}
+
+	/**
+	 * @see #getMethods()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareInfo setMethods(java.util.List<? extends de.haumacher.imageServer.shared.model.ProofMethod> value) {
+		internalSetMethods(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getMethods()} without chain call utility. */
+	protected final void internalSetMethods(java.util.List<? extends de.haumacher.imageServer.shared.model.ProofMethod> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'methods' cannot be null.");
+		_methods.clear();
+		_methods.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getMethods()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.ShareInfo addMethod(de.haumacher.imageServer.shared.model.ProofMethod value) {
+		internalAddMethod(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addMethod(de.haumacher.imageServer.shared.model.ProofMethod)} without chain call utility. */
+	protected final void internalAddMethod(de.haumacher.imageServer.shared.model.ProofMethod value) {
+		_methods.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getMethods()} list.
+	 */
+	public final void removeMethod(de.haumacher.imageServer.shared.model.ProofMethod value) {
+		_methods.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareInfo readShareInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareInfo result = new de.haumacher.imageServer.shared.model.ShareInfo();
@@ -249,6 +302,12 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			out.name(CONTACT__PROP);
 			getContact().writeTo(out);
 		}
+		out.name(METHODS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.ProofMethod x : getMethods()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -267,6 +326,14 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case PATH__PROP: setPath(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case TYPE__PROP: setType(de.haumacher.imageServer.shared.model.ShareType.readShareType(in)); break;
 			case CONTACT__PROP: setContact(de.haumacher.imageServer.shared.model.ContactInfo.readContactInfo(in)); break;
+			case METHODS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addMethod(de.haumacher.imageServer.shared.model.ProofMethod.readProofMethod(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

@@ -205,7 +205,8 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The member who entered the contact.
+	 * The member who entered the contact; <code>link:&lt;share id&gt;</code> for the visitor of an
+	 * open personal link who entered themselves by proving an address (issue #199).
 	 */
 	public final String getCreatedBy() {
 		return _createdBy;

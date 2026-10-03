@@ -1,7 +1,7 @@
 package de.haumacher.imageServer.shared.model;
 
 /**
- * A way to prove an address, see {@link IdentifyRequired#getMethods()}: <code>mail-code</code>, <code>oidc:google</code>, …
+ * A way to prove an address, see {@link IdentifyRequired#getMethods()}: <code>mail-code</code> (issue #199), <code>oidc:google</code>, …
  */
 public class ProofMethod extends de.haumacher.msgbuf.data.AbstractDataObject {
 

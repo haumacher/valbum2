@@ -7,8 +7,8 @@ package de.haumacher.imageServer.shared.model;
  * Carried by the {@link ErrorInfo#getIdentify()} of the <code>401</code> answered on every endpoint,
  * <code>?type=auth</code> included, and never with the album. {@link #isFirstOpen()} says that the presented token is a recipient's own link
  * that was never opened: <code>?action=identify</code> accepts it. Otherwise the caller proves an
- * address by one of the {@link #getMethods()} &mdash; none in this build, which leaves "ask the sharer
- * to send the link again".
+ * address by one of the {@link #getMethods()} (a mailed code, issue #199); where there is none, what is
+ * left is "ask the sharer to send the link again".
  * </p>
  */
 public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObject {
@@ -152,7 +152,9 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 	}
 
 	/**
-	 * The ways the server can prove an address of the contact; empty in this build.
+	 * The ways the server can prove an address here (issue #199): <code>mail-code</code> where the
+	 * server can mail a code and either the link is open or the contact has an e-mail address;
+	 * empty for a first open, which needs no proof.
 	 */
 	public final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> getMethods() {
 		return _methods;

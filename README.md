@@ -148,6 +148,8 @@ The `.deb` reads `/etc/default/valbum`; Docker takes the same variables from `en
 | `PUID` / `PGID` | User and group the server runs as | | owner of `/photos` |
 | `TZ` | Time zone for photos without one, where the space names no `timeZone` | system | UTC |
 | `VALBUM_HEAP_PERCENT` | Heap as a share of the memory; an `-Xmx` wins | | `50` |
+| `VALBUM_PUBLIC_URL` | The album's address from outside, e.g. `https://home.example.org/valbum` | from each request | from each request |
+| `VALBUM_SMTP_*` | The mail account for e-mail codes, see [Mail](#mail) | none | none |
 
 On the `.deb`, point it at your photos and restart:
 
@@ -217,6 +219,26 @@ ProxyTimeout     600
 ```
 
 and `sudo apachectl configtest && sudo systemctl reload apache2`.
+
+### Mail
+
+The server sends one kind of mail: the 6-digit code with which a visitor of a *personal* share link
+confirms an e-mail address. Without a mail account no code is offered, and a personal link "for
+anyone with the link" cannot be opened. Use your mail provider's server and account — mail sent
+straight from a home connection lands in spam:
+
+```
+VALBUM_SMTP_HOST=smtp.example.org
+VALBUM_SMTP_USER=album@example.org
+VALBUM_SMTP_PASSWORD='secret'
+# VALBUM_SMTP_TLS=starttls       # starttls (port 587, default) or tls (port 465)
+# VALBUM_SMTP_PORT=587           # only for another port
+# VALBUM_SMTP_FROM=…             # only where the user name is no address
+```
+
+In `/etc/default/valbum` (readable by root and the group `valbum` only) and `sudo systemctl restart
+valbum`; in Docker under `environment:`. The server refuses to start with a setting it cannot use,
+naming it, and prints the mail server (never the password) at start-up.
 
 ### Updating
 
@@ -446,6 +468,11 @@ Den Photo-Ordner stellst Du in `/etc/default/valbum` ein (`VALBUM_BASEPATH`, dan
 `sudo apt install libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64`
 (vor trixie bzw. 24.04 `libasound2`). Die Android-App gibt es als APK auf der
 [Releases-Seite](https://github.com/haumacher/valbum2/releases).
+
+**E-Mail.** Für persönliche Freigabe-Links verschickt der Server einen 6-stelligen Code, mit dem
+Besucher ihre E-Mail-Adresse bestätigen — sonst nichts. Dafür trägst Du das Postausgangs-Konto
+Deines Mail-Anbieters in `/etc/default/valbum` bzw. `environment:` ein (`VALBUM_SMTP_HOST`,
+`VALBUM_SMTP_USER`, `VALBUM_SMTP_PASSWORD`, siehe [Mail](#mail)); ohne Konto gibt es keinen Code.
 
 **Anmelden.** Beim Start schreibt der Server einen Anmelde-Code für den Administrator ins Log
 (`journalctl -u valbum` bzw. das Container-Log), solange der noch kein Gerät hat. Der Code gilt zehn

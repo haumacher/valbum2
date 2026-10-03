@@ -209,9 +209,14 @@
 											<src>${project.basedir}/src/deb/valbum.default</src>
 											<type>file</type>
 											<dst>/etc/default/valbum</dst>
+											<!--
+												640: the file holds the mail password since issue #199.
+												Shipped root:root, because the group 'valbum' is created
+												by postinst, which then hands the file to that group.
+											-->
 											<mapper>
 												<type>perm</type>
-												<filemode>644</filemode>
+												<filemode>640</filemode>
 												<user>root</user>
 												<group>root</group>
 											</mapper>
@@ -368,6 +373,17 @@
 			<groupId>org.brotli</groupId>
 			<artifactId>dec</artifactId>
 			<version>0.1.2</version>
+		</dependency>
+
+		<!-- The mailed code of issue #199, the only mail the server sends: Jakarta Mail through its
+		     implementation Eclipse Angus Mail (EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0,
+		     used under the latter, which lets the AGPL server link it), over SMTP submission with
+		     STARTTLS or TLS. It brings jakarta.mail-api (same licence) and angus-activation
+		     (BSD-3-Clause). -->
+		<dependency>
+			<groupId>org.eclipse.angus</groupId>
+			<artifactId>angus-mail</artifactId>
+			<version>2.0.5</version>
 		</dependency>
 
 		<dependency>

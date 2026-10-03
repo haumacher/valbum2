@@ -44,6 +44,36 @@ VALBUM_AUTH=writes
 #            the library folder are not served
 VALBUM_SPACES=auto
 
+# The address the album is reached at from outside - through the reverse
+# proxy, with the context path - for example https://photos.example.org/valbum .
+# Where it is set, the addresses the server spells for others (the preview card
+# of a share link posted in a messenger) are built from it; where it is not,
+# from each request, which is right as long as the proxy passes the forwarded
+# host on.
+#
+#   VALBUM_PUBLIC_URL=https://photos.example.org/valbum
+
+# The mail account the server sends one kind of mail through: the 6-digit code
+# with which a visitor of a personal share link proves an e-mail address. It
+# sends nothing else - invitations go out through the sharer's own mail
+# program. Without VALBUM_SMTP_HOST no code is offered anywhere, and an open
+# personal link ("anyone with the link who says who they are") cannot be used.
+#
+# Use the mail server of your mail provider (the one your mail program sends
+# through) with your account there: mail sent straight from a home connection
+# lands in spam. VALBUM_SMTP_TLS is starttls (submission, port 587, the
+# default) or tls (port 465); VALBUM_SMTP_PORT is only needed for another port,
+# and VALBUM_SMTP_FROM only where the account name is no e-mail address. Put a
+# password with special characters in single quotes. This file is readable by
+# root and the group valbum only, because of the password.
+#
+#   VALBUM_SMTP_HOST=smtp.example.org
+#   VALBUM_SMTP_PORT=587
+#   VALBUM_SMTP_USER=album@example.org
+#   VALBUM_SMTP_PASSWORD='secret'
+#   VALBUM_SMTP_FROM=album@example.org
+#   VALBUM_SMTP_TLS=starttls
+
 # Further server arguments, appended to the ones above. The most useful one is
 # a fixed sign-in code for the administrator of a space that nobody has signed
 # into yet; without it the server makes a fresh one at every start and prints it

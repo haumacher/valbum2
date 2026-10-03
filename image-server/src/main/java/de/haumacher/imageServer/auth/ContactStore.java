@@ -641,6 +641,72 @@ public class ContactStore {
 		return found;
 	}
 
+	/** The contact holding the given normalised e-mail address, <code>null</code> if none does. */
+	public synchronized Contact byEmail(String email) {
+		return byAddress(new Address(EMAIL, email, false));
+	}
+
+	/** The message an address proven by one contact and held by another is refused with (issue #199). */
+	public static final String ADDRESS_ELSEWHERE =
+		"This address belongs to somebody else here. Ask the person who shared the link.";
+
+	/**
+	 * Records that an e-mail address was proven, see issue #199.
+	 *
+	 * <p>
+	 * For a given contact the address is marked proven, or added as proven where nobody holds it.
+	 * Without one, the contact holding the address is that person and the address is marked proven
+	 * on them; where nobody holds it, a new contact is entered with it &mdash; the visitor of an
+	 * open personal link becomes a contact of the space.
+	 * </p>
+	 *
+	 * @param contactId
+	 *        The contact who proved it, <code>null</code> for a visitor who is nobody yet.
+	 * @param email
+	 *        The normalised address.
+	 * @param name
+	 *        The name of a new contact; empty names them by the address.
+	 * @param createdBy
+	 *        Who enters a new contact.
+	 * @return The contact the address belongs to; <code>null</code> where the given contact is gone.
+	 * @throws Refused
+	 *         {@link #ADDRESS_ELSEWHERE} where the given contact proved an address another one holds.
+	 */
+	public synchronized Contact prove(String contactId, String email, String name, String createdBy)
+			throws Refused, IOException {
+		Address proven = new Address(EMAIL, email, true);
+		Contact holder = byAddress(proven);
+		Contact contact;
+		if (contactId != null) {
+			contact = get(contactId);
+			if (contact == null) {
+				return null;
+			}
+			if (holder != null && holder != contact) {
+				throw new Refused(ADDRESS_ELSEWHERE);
+			}
+		} else if (holder != null) {
+			contact = holder;
+		} else {
+			String given = name == null ? "" : name.trim();
+			contact = new Contact(freeId(), given.isEmpty() ? email : given, "", Instant.now().toString(),
+				createdBy == null ? "" : createdBy, "", "", "");
+			_contacts.add(contact);
+		}
+		boolean held = false;
+		for (Address address : contact._addresses) {
+			if (address.sameAs(proven)) {
+				address._proven = true;
+				held = true;
+			}
+		}
+		if (!held) {
+			contact._addresses.add(proven);
+		}
+		store();
+		return contact;
+	}
+
 	/** The contact holding the given address, <code>null</code> if none does. */
 	private Contact byAddress(Address address) {
 		for (Contact contact : _contacts) {
