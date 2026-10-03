@@ -135,14 +135,17 @@ public class TestZipTickets extends ShareTestCase {
 		assertTrue(Arrays.equals(original("public.jpg"), entries(download).get("public.jpg")));
 	}
 
-	public void testAWithdrawnLinksTicketIsGone() throws Exception {
+	/** A deleted link (#217) is a link never made: its ticket is refused like an unknown one. */
+	public void testADeletedLinksTicketIsRefused() throws Exception {
 		String token = zooToken(Rights.VIEW, Rights.DOWNLOAD);
 		MediaUrl url = issued("/", token, "public.jpg");
 
 		FakeResponse withdrawn = unshare(ZOO, SharingFixture.ALICE, idOf(token));
 		assertEquals(withdrawn.body(), HttpServletResponse.SC_OK, withdrawn.status());
 
-		assertEquals(HttpServletResponse.SC_GONE, fetch("/", url, null).status());
+		FakeResponse refused = fetch("/", url, null);
+		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, refused.status());
+		assertEquals(AuthService.MEDIA_LINK_UNKNOWN, errorMessage(refused));
 	}
 
 	public void testAnExpiredTicketIsGone() throws Exception {
