@@ -270,6 +270,14 @@ public class ResourceCache {
 		} else {
 			AlbumInfo container = (AlbumInfo) _cache.getUnchecked(pathInfo.parent());
 			ImagePart image = container.getImageByName().get(pathInfo.getName());
+			if (image == null && isImage(pathInfo.toFile())) {
+				// A photograph that arrived after its album was cached, before the directory
+				// watcher reported it: the album is read again once rather than the file answered
+				// as nothing.
+				_cache.invalidate(pathInfo.parent());
+				container = (AlbumInfo) _cache.getUnchecked(pathInfo.parent());
+				image = container.getImageByName().get(pathInfo.getName());
+			}
 			if (image == null) {
 				// The raw companion of a photograph is that photograph, and is answered with its
 				// rights, its privacy and its rating, see issue #191.

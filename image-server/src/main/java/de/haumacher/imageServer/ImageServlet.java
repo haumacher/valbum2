@@ -4284,6 +4284,9 @@ public class ImageServlet extends HttpServlet {
 					: mimeType(context, resource);
 
 				serveData(context, pathInfo.toFile(), mimeType);
+			} else {
+				// Never an empty answer: a file the album does not describe is no photograph here.
+				notFound(context, pathInfo);
 			}
 		}
 	}
