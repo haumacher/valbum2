@@ -4669,6 +4669,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This link was sent to a group. Confirm your e-mail address to open it.'**
   String get identifyGroupIntro;
+
+  /// Entry of the viewer's menu and of the context menu of an album tile in the edit mode (issue #212): opens the editor that chooses the region of the photograph that is shown
+  ///
+  /// In en, this message translates to:
+  /// **'Crop…'**
+  String get cropMenu;
+
+  /// Title of the full-screen editor choosing the region of a photograph that is shown (issue #212)
+  ///
+  /// In en, this message translates to:
+  /// **'Crop'**
+  String get cropTitle;
+
+  /// Button of the crop editor that removes the crop, so that the whole photograph is shown again (issue #212)
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get cropReset;
+
+  /// Choice of the crop editor: the region keeps the aspect ratio of the whole photograph (issue #212)
+  ///
+  /// In en, this message translates to:
+  /// **'Image ratio'**
+  String get cropAspectImage;
+
+  /// Choice of the crop editor: the region may have any aspect ratio (issue #212)
+  ///
+  /// In en, this message translates to:
+  /// **'Freeform'**
+  String get cropAspectFree;
+
+  /// Tooltip of the crop editor's toggle that turns the chosen aspect ratio upright (issue #212)
+  ///
+  /// In en, this message translates to:
+  /// **'Portrait'**
+  String get cropPortrait;
+
+  /// Tooltip of the crop editor's toggle that turns the chosen aspect ratio to lie on its side (issue #212)
+  ///
+  /// In en, this message translates to:
+  /// **'Landscape'**
+  String get cropLandscape;
+
+  /// Note under the crop editor (issue #212): a crop is no way to hide a part of a photograph
+  ///
+  /// In en, this message translates to:
+  /// **'A crop only changes how the photo is shown. Whoever may download it still gets the whole original.'**
+  String get cropNote;
+
+  /// Screen-reader label of the picture in the crop editor (issue #212)
+  ///
+  /// In en, this message translates to:
+  /// **'Drag to draw, move or resize the frame; tap inside it to apply.'**
+  String get cropAreaHint;
 }
 
 class _AppLocalizationsDelegate

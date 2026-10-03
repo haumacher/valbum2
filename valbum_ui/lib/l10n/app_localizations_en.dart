@@ -2923,4 +2923,33 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get identifyGroupIntro =>
       'This link was sent to a group. Confirm your e-mail address to open it.';
+
+  @override
+  String get cropMenu => 'Crop…';
+
+  @override
+  String get cropTitle => 'Crop';
+
+  @override
+  String get cropReset => 'Reset';
+
+  @override
+  String get cropAspectImage => 'Image ratio';
+
+  @override
+  String get cropAspectFree => 'Freeform';
+
+  @override
+  String get cropPortrait => 'Portrait';
+
+  @override
+  String get cropLandscape => 'Landscape';
+
+  @override
+  String get cropNote =>
+      'A crop only changes how the photo is shown. Whoever may download it still gets the whole original.';
+
+  @override
+  String get cropAreaHint =>
+      'Drag to draw, move or resize the frame; tap inside it to apply.';
 }

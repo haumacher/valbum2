@@ -2969,4 +2969,33 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get identifyGroupIntro =>
       'Dieser Link wurde an eine Gruppe gesendet. Bestätigen Sie Ihre E-Mail-Adresse, um ihn zu öffnen.';
+
+  @override
+  String get cropMenu => 'Zuschneiden…';
+
+  @override
+  String get cropTitle => 'Zuschneiden';
+
+  @override
+  String get cropReset => 'Zurücksetzen';
+
+  @override
+  String get cropAspectImage => 'Bildformat';
+
+  @override
+  String get cropAspectFree => 'Freiform';
+
+  @override
+  String get cropPortrait => 'Hochformat';
+
+  @override
+  String get cropLandscape => 'Querformat';
+
+  @override
+  String get cropNote =>
+      'Ein Zuschneiden verändert lediglich die Darstellung des Fotos. Wer es herunterlädt, erhält weiterhin das gesamte Original.';
+
+  @override
+  String get cropAreaHint =>
+      'Ziehen Sie, um den Rahmen zu zeichnen, zu verschieben oder in der Größe anzupassen; tippen Sie in den Rahmen, um die Änderung zu übernehmen.';
 }

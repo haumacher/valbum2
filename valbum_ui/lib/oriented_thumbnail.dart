@@ -17,6 +17,7 @@ import 'package:flutter/material.dart' hide Orientation;
 
 import 'album_edit.dart';
 import 'client.dart';
+import 'crop.dart';
 import 'resource.dart';
 import 'thumbnails.dart';
 
@@ -98,6 +99,11 @@ Widget orientedThumbnail(
 
 /// The thumbnail of the given image part, turned by its own orientation, see
 /// [orientedThumbnail].
+///
+/// A cropped photograph (issue #212) is asked for by the address of its cut
+/// rendition ([croppedImageUrl]) and measured by the size of the region, so
+/// the tile shows exactly the region, upright, at the aspect the album laid
+/// it out at — every tile of the app that shows a part goes through here.
 Widget orientedImageThumbnail(
   VAlbumClient client,
   String imageUrl,
@@ -105,17 +111,19 @@ Widget orientedImageThumbnail(
   Key? key,
   required double width,
   required double height,
-}) =>
-    orientedThumbnail(
-      client,
-      imageUrl,
-      key: key,
-      orientation: image.orientation,
-      rawWidth: image.width.toDouble(),
-      rawHeight: image.height.toDouble(),
-      width: width,
-      height: height,
-    );
+}) {
+  var size = renditionSize(image);
+  return orientedThumbnail(
+    client,
+    croppedImageUrl(imageUrl, image),
+    key: key,
+    orientation: image.orientation,
+    rawWidth: size.width,
+    rawHeight: size.height,
+    width: width,
+    height: height,
+  );
+}
 
 /// [child] turned by [orientation], the one wrapper of issue #106.
 ///

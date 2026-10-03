@@ -21,6 +21,8 @@ import 'cache_refresh.dart';
 import 'camera_roll_view.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'crop.dart';
+import 'crop_editor.dart';
 import 'downloads.dart';
 import 'drag_scroll.dart';
 import 'form_dialog.dart';
@@ -350,6 +352,10 @@ class AlbumContentState extends State<AlbumContent>
       lastClicked = null;
     }
   }
+
+  /// Lays the album out anew, after a part changed its aspect behind the
+  /// edit buffer's back (a crop written at once, issue #212).
+  void relayout() => setState(() {});
 
   /// The orientation the given image is laid out with, see
   /// [_layoutOrientation].
@@ -2416,14 +2422,18 @@ class AlbumContentState extends State<AlbumContent>
   T withLayoutOrientations<T>(List<AbstractImage> images, T Function() body) {
     var representatives = images.map(layouter.ToImage.toImage).toList();
     var current = [for (var image in representatives) image.orientation];
+    // The crop rides along with the orientation (issue #212), so the layout
+    // measures the same region in the frame it lays out in.
+    var crops = [for (var image in representatives) image.crop];
     for (var image in representatives) {
-      image.orientation = layoutOrientation(image);
+      turnImage(image, layoutOrientation(image));
     }
     try {
       return body();
     } finally {
       for (var i = 0; i < representatives.length; i++) {
         representatives[i].orientation = current[i];
+        representatives[i].crop = crops[i];
       }
     }
   }
@@ -3150,8 +3160,11 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   /// An image that is the album's picture takes its crop along into the new
   /// frame, so that the listing tile keeps showing what the crop editor shows,
   /// see [syncIndexPictureOrientation] and issue #115.
+  ///
+  /// A cropped image keeps the same region selected, carried into the new
+  /// frame (issue #212, [turnImage]).
   void turn(Orientation Function(Orientation) operation) => album.editImage(() {
-        image.orientation = operation(image.orientation);
+        turnImage(image, operation(image.orientation));
         syncIndexPictureOrientation(album.widget.album, image);
       });
 
@@ -3246,6 +3259,14 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
           value: editImageProperties,
           child: Text(_l10n.imageProperties),
         ),
+        // The region of this photograph, and of no other (issue #212): the
+        // editor opens at once and writes at once, see [cropImage].
+        if (image.kind == ImageKind.image)
+          PopupMenuItem<void Function()>(
+            key: const Key("tile-context-crop"),
+            value: cropImage,
+            child: Text(_l10n.cropMenu),
+          ),
       ],
     );
     // The move belongs to the album, which is still there; the properties
@@ -3253,10 +3274,32 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     if (action == null || !album.mounted) {
       return;
     }
-    if (action == editImageProperties && !mounted) {
+    if ((action == editImageProperties || action == cropImage) && !mounted) {
       return;
     }
     action();
+  }
+
+  /// Crops this tile's photograph (issue #212): the editor the viewer's menu
+  /// opens, on this photograph alone whatever is selected, written at once.
+  ///
+  /// The album's edit session may hold unsaved changes: the crop is its own
+  /// action and stores nothing else, and it lands in this very part of the
+  /// buffer, so Save writes it again unchanged and Cancel (which fetches the
+  /// album anew) finds it stored. Nothing is marked dirty for it.
+  Future<void> cropImage() async {
+    var changed = await cropPhoto(
+      context,
+      client: album.client,
+      albumPath: album.widget.albumState.path,
+      imageUrl: "${album.albumUrl}${image.name}",
+      image: image,
+      album: album.widget.album,
+    );
+    if (changed && album.mounted) {
+      // The tile has another aspect now: the album is laid out anew.
+      album.relayout();
+    }
   }
 
   Future<void> editImageProperties() async {
@@ -4375,7 +4418,12 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
                 ),
                 child: indexPictureTile(
                   client,
-                  "${widget.baseUrl}/${info.image}",
+                  // The cut picture of a cropped photograph, on which the
+                  // album picture is measured (issue #212).
+                  _croppedImage == null
+                      ? "${widget.baseUrl}/${info.image}"
+                      : croppedImageUrl(
+                          "${widget.baseUrl}/${info.image}", _croppedImage!),
                   info,
                   indexPictureEditorSize,
                   key: const Key("index-picture-editor"),
@@ -4421,10 +4469,19 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
   /// The size of the file the crop shows, `0` where it is not known — then
   /// the crop is not held to covering the square, there being nothing to
   /// measure it against (issue #154).
-  int get pictureWidth => _croppedImage?.width ?? 0;
+  ///
+  /// The size of the region of a cropped photograph (issue #212): the album
+  /// picture is measured on the picture as it is shown.
+  int get pictureWidth {
+    var image = _croppedImage;
+    return image == null ? 0 : renditionSize(image).width.round();
+  }
 
   /// See [pictureWidth].
-  int get pictureHeight => _croppedImage?.height ?? 0;
+  int get pictureHeight {
+    var image = _croppedImage;
+    return image == null ? 0 : renditionSize(image).height.round();
+  }
 
   /// The image the crop shows, `null` unless it is the album's picture this
   /// dialog was opened with.

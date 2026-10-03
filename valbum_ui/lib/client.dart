@@ -948,7 +948,11 @@ class VAlbumClient {
   String jsonUrl(List<String> path) => "${folderUrl(path)}?type=json";
 
   /// The URL delivering a thumbnail of the image at the given URL.
-  String thumbnailUrl(String imageUrl) => "$imageUrl?type=tn";
+  ///
+  /// An image address may carry the region of a crop (`?crop=…`, issue #212,
+  /// see `croppedImageUrl`), which the thumbnail is then cut to.
+  String thumbnailUrl(String imageUrl) =>
+      imageUrl.contains("?") ? "$imageUrl&type=tn" : "$imageUrl?type=tn";
 
   /// The URL delivering the original of the image at the given URL.
   String originalUrl(String imageUrl) => imageUrl;
@@ -2528,6 +2532,27 @@ class VAlbumClient {
     } catch (_) {
       // Whatever came back, the decisions are stored: what this client does
       // next is ask for the album, not argue about the answer's spelling.
+      return null;
+    }
+  }
+
+  /// Stores the crop of the photograph [name] of the album at [path], at once
+  /// (issue #212): `?action=crop` with the part carrying the name and the
+  /// crop, `null` taking the crop away.
+  ///
+  /// An action and not the album's `PUT`, because the crop is written while
+  /// the album may be open in an edit session with unsaved changes, which a
+  /// `PUT` would store along with it. The answer is the album as this caller
+  /// is answered it, `null` where it cannot be read; a refusal arrives as the
+  /// thrown [VAlbumException] carrying the server's own sentence.
+  Future<AlbumInfo?> cropImage(List<String> path, String name, Crop? crop) async {
+    var url = "${folderUrl(path)}?action=crop";
+    var response =
+        await _postBody(url, _jsonOf(ImagePart(name: name, crop: crop).writeTo));
+    try {
+      var resource = Resource.read(JsonReader.fromString(response));
+      return resource is AlbumInfo ? resource : null;
+    } catch (_) {
       return null;
     }
   }

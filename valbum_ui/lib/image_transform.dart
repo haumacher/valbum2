@@ -12,6 +12,7 @@ import 'dart:math';
 import 'package:flutter/widgets.dart' show Matrix4, Offset, Rect;
 
 import 'album_layout.dart' show Orientations, ToImage;
+import 'crop.dart' show renditionRegion;
 import 'resource.dart';
 
 /// The zoom and pan state of the image shown by the viewer.
@@ -43,6 +44,20 @@ class ImageTransform {
   /// The horizontal translation that centers the fitted image, see [reset].
   final double fitTx;
 
+  /// The region of the file's picture that is shown, `null` for all of it
+  /// (issue #212): normalised `0..1` in the frame of the server's renditions,
+  /// before [orientation]. Where it is given, [rawWidth] and [rawHeight] are
+  /// the size of the *region* — the picture this transform places is the
+  /// region — and [fullRawWidth]/[fullRawHeight] the size of the whole one.
+  final Rect? region;
+
+  /// The width of the whole picture in raw pixels, [rawWidth] where nothing is
+  /// cropped.
+  final double fullRawWidth;
+
+  /// The height of the whole picture in raw pixels, see [fullRawWidth].
+  final double fullRawHeight;
+
   /// The vertical translation that centers the fitted image, see [reset].
   final double fitTy;
 
@@ -60,6 +75,9 @@ class ImageTransform {
     required this.fitScale,
     required this.fitTx,
     required this.fitTy,
+    this.region,
+    required this.fullRawWidth,
+    required this.fullRawHeight,
   })  : _scale = fitScale,
         _tx = fitTx,
         _ty = fitTy;
@@ -68,13 +86,23 @@ class ImageTransform {
   ///
   /// The image is scaled down to fit, but never scaled up beyond its original
   /// resolution, and it is centered in the viewport.
+  ///
+  /// With a [region] (issue #212), [rawWidth] and [rawHeight] are the size of
+  /// the whole picture and the region is what is fitted, see [region].
   factory ImageTransform.fit({
     Orientation orientation = Orientation.identity,
     required double rawWidth,
     required double rawHeight,
     required double pageWidth,
     required double pageHeight,
+    Rect? region,
   }) {
+    var fullRawWidth = rawWidth;
+    var fullRawHeight = rawHeight;
+    if (region != null) {
+      rawWidth = fullRawWidth * region.width;
+      rawHeight = fullRawHeight * region.height;
+    }
     var width = Orientations.width(orientation, rawWidth, rawHeight);
     var height = Orientations.height(orientation, rawWidth, rawHeight);
 
@@ -94,6 +122,9 @@ class ImageTransform {
       fitScale: scale,
       fitTx: (pageWidth - scale * width) / 2,
       fitTy: (pageHeight - scale * height) / 2,
+      region: region,
+      fullRawWidth: fullRawWidth,
+      fullRawHeight: fullRawHeight,
     );
   }
 
@@ -109,6 +140,8 @@ class ImageTransform {
         rawHeight: image.height.toDouble(),
         pageWidth: pageWidth,
         pageHeight: pageHeight,
+        // Only the region of a cropped photograph is shown (issue #212).
+        region: renditionRegion(image),
       );
 
   /// The width of the image in image pixels after [orientation] was applied.
@@ -359,7 +392,19 @@ class MarkedBox {
 /// turned, scaled and panned exactly as the face it names. The eight
 /// orientations are permutations of the two axes, so the bounding rectangle of
 /// the turned corners *is* the turned box and nothing is lost by taking it.
+///
+/// The box is a fraction of the *whole* picture, the frame every face is
+/// answered in; where the transform shows a region of it (issue #212) the box
+/// is measured against that region first, so a face keeps its place on the
+/// picture however it is cropped.
 Rect pageRectOfBox(ImageTransform tx, double x, double y, double w, double h) {
+  var region = tx.region;
+  if (region != null) {
+    x = (x - region.left) / region.width;
+    y = (y - region.top) / region.height;
+    w = w / region.width;
+    h = h / region.height;
+  }
   var m = tx.matrix;
   var a = m.entry(0, 0), b = m.entry(0, 1), e = m.entry(0, 3);
   var c = m.entry(1, 0), d = m.entry(1, 1), f = m.entry(1, 3);
@@ -413,7 +458,27 @@ MarkedBox? markedBox(ImageTransform tx, Offset one, Offset two) {
     // Drawn entirely beside the picture: that is no face of it.
     return null;
   }
+  var region = tx.region;
+  if (region != null) {
+    // Clamped to what is shown, and spoken in the frame of the whole picture
+    // the wire speaks (issue #212).
+    return MarkedBox(
+      region.left + left * region.width,
+      region.top + top * region.height,
+      (right - left) * region.width,
+      (bottom - top) * region.height,
+    );
+  }
   return MarkedBox(left, top, right - left, bottom - top);
+}
+
+/// Where the shown picture lies on the page: the whole picture, or the
+/// region of a cropped one (issue #212).
+Rect pictureRectOnPage(ImageTransform tx) {
+  var region = tx.region;
+  return region == null
+      ? pageRectOfBox(tx, 0, 0, 1, 1)
+      : pageRectOfBox(tx, region.left, region.top, region.width, region.height);
 }
 
 /// The rating of the given image, that of its representative for a group.

@@ -236,6 +236,36 @@ public class TestSharePreview extends TestCase {
 	}
 
 	/**
+	 * The card of an album whose picture is cropped shows the region, as the album's tile does
+	 * (issue #212); a folder's card likewise, through the region its listing entry derives.
+	 */
+	public void testACroppedCoverIsCut() throws Exception {
+		single();
+		String crop = ",\"crop\":{\"x\":0.5,\"y\":0.0,\"w\":0.5,\"h\":0.5}";
+		Path zoo = _base.resolve(ZOO).resolve("index.json");
+		Files.write(zoo, new String(Files.readAllBytes(zoo), StandardCharsets.UTF_8)
+			.replace("\"privacy\":1}", "\"privacy\":1" + crop + "}").getBytes(StandardCharsets.UTF_8));
+		Path alps = _base.resolve(HOLIDAYS).resolve("Alps").resolve("index.json");
+		Files.write(alps, new String(Files.readAllBytes(alps), StandardCharsets.UTF_8)
+			.replace("\"height\":3}", "\"height\":3" + crop + "}").getBytes(StandardCharsets.UTF_8));
+		double[] region = { 0.5, 0, 0.5, 0.5 };
+
+		FakeResponse cover = get("/s/" + share("", ZOO, Privacy.MEMBERS, Ratings.MIN) + "/cover.jpg");
+		assertEquals(cover.body(), HttpServletResponse.SC_OK, cover.status());
+		assertTrue("Expected the cut preview of the album's index picture.", Arrays.equals(
+			Files.readAllBytes(PreviewCache.createPreview(_base.resolve(ZOO).resolve("members.jpg").toFile(), region)
+				.toPath()),
+			cover.bodyBytes()));
+
+		FakeResponse folder = get("/s/" + share("", HOLIDAYS, Privacy.MEMBERS, Ratings.MIN) + "/cover.jpg");
+		assertEquals(folder.body(), HttpServletResponse.SC_OK, folder.status());
+		assertTrue("Expected the cut preview of the folder's first child.", Arrays.equals(
+			Files.readAllBytes(PreviewCache.createPreview(
+				_base.resolve(HOLIDAYS).resolve("Alps").resolve("alps.jpg").toFile(), region).toPath()),
+			folder.bodyBytes()));
+	}
+
+	/**
 	 * A recipient's own link of a personal share (issue #198) carries the card too, and fetching it
 	 * &mdash; which is what a messenger does with every link posted &mdash; opens nothing: the
 	 * recipient's first open is still theirs.

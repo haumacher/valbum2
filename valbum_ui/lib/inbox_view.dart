@@ -58,6 +58,7 @@ import 'app.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'crop.dart';
 import 'form_dialog.dart';
 import 'image_properties.dart';
 import 'keyboard_scroll.dart';
@@ -457,9 +458,14 @@ class InboxContentState extends State<InboxContent> {
     Orientation Function(Orientation) operation,
   ) {
     var before = image.orientation;
+    var crop = image.crop;
     return writeNow(
-      () => image.orientation = operation(image.orientation),
-      () => image.orientation = before,
+      // The crop rides along into the new frame (issue #212).
+      () => turnImage(image, operation(image.orientation)),
+      () {
+        image.orientation = before;
+        image.crop = crop;
+      },
     );
   }
 

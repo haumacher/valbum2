@@ -37,6 +37,7 @@ import de.haumacher.imageServer.oidc.OidcProvider;
 import de.haumacher.imageServer.raw.NoEmbeddedPreviewException;
 import de.haumacher.imageServer.raw.RawFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.CacheRefreshed;
 import de.haumacher.imageServer.shared.model.ContactCredential;
@@ -44,6 +45,7 @@ import de.haumacher.imageServer.shared.model.ContactIdentify;
 import de.haumacher.imageServer.shared.model.ContactShutOut;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
+import de.haumacher.imageServer.shared.model.Crop;
 import de.haumacher.imageServer.shared.model.DeviceCodeCreated;
 import de.haumacher.imageServer.shared.model.DeviceCodeRequest;
 import de.haumacher.imageServer.shared.model.DeviceEntry;
@@ -86,6 +88,7 @@ import de.haumacher.imageServer.shared.model.ShareLinkCreated;
 import de.haumacher.imageServer.shared.model.ShareLinkList;
 import de.haumacher.imageServer.shared.model.ShareResend;
 import de.haumacher.imageServer.shared.model.TagFaces;
+import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.shared.model.UploadCheck;
 import de.haumacher.imageServer.shared.model.UploadCheckResult;
 import de.haumacher.imageServer.shared.model.UploadResult;
@@ -376,6 +379,42 @@ public class ImageServlet extends HttpServlet {
 	 * {@link #tagFaces(Context, boolean)}.
 	 */
 	public static final String ADJUST_FACES_ACTION = "adjust-faces";
+
+	/** The <code>action</code> that stores the crop of one photograph, see issue #212. */
+	public static final String CROP_ACTION = "crop";
+
+	/**
+	 * The parameter of a <code>?type=tn</code> naming the region of the rendition to cut, see issue
+	 * #212 and {@link Crops#token(double[])}.
+	 */
+	public static final String CROP_PARAMETER = "crop";
+
+	/** A <code>crop</code> parameter that names no region of the picture. */
+	public static final String CROP_UNREADABLE = "The crop names no region of the picture.";
+
+	/** A cut rendition asked of a video, which has none. */
+	public static final String CROP_VIDEO_REFUSED = "Only a photograph is cropped, not a video.";
+
+	/**
+	 * A cut rendition asked by a caller who may not edit the album, of a region the photograph does
+	 * not store: the album was read before its crop changed.
+	 */
+	public static final String CROP_NOT_STORED =
+		"This photograph is cropped differently now; reload the album.";
+
+	/** The message a crop request is refused with whose body cannot be read. */
+	public static final String CROP_REQUEST_UNREADABLE = "The crop request cannot be read.";
+
+	/** The message a crop is refused with outside an album. */
+	public static final String CROP_NOT_AN_ALBUM = "There are no photographs to crop here.";
+
+	/** The message a crop is refused with that does not lie on the picture. */
+	static String cropInvalid(String image) {
+		return "The crop is not a region of '" + image + "'.";
+	}
+
+	/** The message a crop is refused with for a caller who may not edit the album. */
+	public static final String CROP_REFUSED = "Only an editor of this album may crop its photographs.";
 
 	/** The <code>action</code> that answers a selection of originals as one archive, see issue #164. */
 	public static final String ZIP_ACTION = "zip";
@@ -3864,6 +3903,10 @@ public class ImageServlet extends HttpServlet {
 			tagFaces(context, true);
 			return;
 		}
+		if (CROP_ACTION.equals(action)) {
+			cropImage(context);
+			return;
+		}
 		if ("find-duplicates".equals(action)) {
 			findDuplicates(context);
 			return;
@@ -4424,9 +4467,17 @@ public class ImageServlet extends HttpServlet {
 
 		String type = context.getParameter("type");
 		if ("tn".equals(type)) {
+			double[] region = null;
+			String cropParameter = context.getParameter(CROP_PARAMETER);
+			if (cropParameter != null) {
+				region = askedRegion(context, pathInfo, caller, cropParameter);
+				if (region == null) {
+					return;
+				}
+			}
 			File data;
 			try {
-				data = PreviewCache.createPreview(pathInfo.toFile());
+				data = PreviewCache.createPreview(pathInfo.toFile(), region);
 			} catch (PreviewException ex) {
 				LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
 				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, previewFailed(pathInfo.toFile(), ex));
@@ -4856,6 +4907,143 @@ public class ImageServlet extends HttpServlet {
 	 * @param adjust
 	 *        Whether the request is an <code>adjust-faces</code>.
 	 */
+	/**
+	 * The region a <code>?type=tn&amp;crop=&hellip;</code> asks for, <code>null</code> where the
+	 * request was answered with a refusal, see issue #212.
+	 *
+	 * <p>
+	 * The region is spoken in the frame of the rendition ({@link Crops}). Whoever may see the
+	 * photograph may ask for the region its part stores &mdash; that is what every tile of a cropped
+	 * photograph asks &mdash;, and an editor of the album may ask for any region, because the app
+	 * draws a crop it has just written before the album is read again. Anybody else asking for a
+	 * region the album does not store is refused <code>409 CROP_NOT_STORED</code>: a cut preview is
+	 * cached under its region, and a visitor must not be able to fill the cache with regions
+	 * nobody chose.
+	 * </p>
+	 */
+	private double[] askedRegion(Context context, PathInfo pathInfo, Caller caller, String parameter)
+			throws IOException {
+		double[] region = Crops.parse(parameter);
+		if (region == null) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, CROP_UNREADABLE);
+			return null;
+		}
+		if (PreviewCache.isVideoName(pathInfo.getName())) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, CROP_VIDEO_REFUSED);
+			return null;
+		}
+		Resource resource = _cache.lookup(pathInfo);
+		double[] stored = resource instanceof ImagePart ? Crops.renditionRegion((ImagePart) resource) : null;
+		if (Crops.same(stored, region)) {
+			return region;
+		}
+		if (!caller.isShareLink() && _auth.mayEdit(caller, pathInfo.parent())) {
+			return region;
+		}
+		LOG.info("Refusing the cut preview " + parameter + " of '" + pathInfo.toPath() + "': " + CROP_NOT_STORED);
+		errorInfo(context, HttpServletResponse.SC_CONFLICT, CROP_NOT_STORED);
+		return null;
+	}
+
+	/**
+	 * Stores the crop of one photograph, <code>POST &lt;album&gt;/?action=crop</code>, see issue
+	 * #212.
+	 *
+	 * <p>
+	 * The body is an {@link ImagePart} carrying the {@link ImagePart#getName() name} of the
+	 * photograph and the {@link ImagePart#getCrop() crop} to store; no crop (or one of the whole
+	 * picture) takes the crop away. Nothing else of the part is read. An action and not a meaning of
+	 * the sidecar <code>PUT</code>, because the crop is written at once from the viewer while the
+	 * album may be open in an edit session holding unsaved changes: writing the whole buffer would
+	 * store them too. The app puts the same crop into its copy of the part, so a later save of the
+	 * buffer writes it again unchanged.
+	 * </p>
+	 *
+	 * <p>
+	 * Needs {@link Rights#EDIT} on the album (a share link and a contributor are refused
+	 * <code>403</code>), refuses a video and a crop that is no region of the picture with
+	 * <code>400</code> and an unknown photograph with <code>404</code>, writing nothing. Where the
+	 * photograph is the album's picture (issue #154), its framing is measured anew on the cropped
+	 * photograph ({@link PrivacyFilter#thumbnail(ImagePart)}): the old one was measured on another
+	 * picture. The answer is the album as the caller is answered it.
+	 * </p>
+	 */
+	private void cropImage(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo folderPath = location.getPath();
+		if (caller.isShareLink()) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, CROP_REFUSED);
+			return;
+		}
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folderPath)) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (!_auth.mayEdit(caller, folderPath)) {
+			if (!identified(caller)) {
+				unauthorized(context, caller, true);
+				return;
+			}
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, CROP_REFUSED);
+			return;
+		}
+		File folder = folderPath.toFile();
+		if (!folder.isDirectory()) {
+			error404(context);
+			return;
+		}
+		ImagePart request;
+		try {
+			// The part as every part is written, ["ImagePart", {...}].
+			AlbumPart part = AlbumPart.readAlbumPart(json(readBody(context.request())));
+			if (!(part instanceof ImagePart)) {
+				throw new IllegalArgumentException("Not an image: " + part);
+			}
+			request = (ImagePart) part;
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable crop request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, CROP_REQUEST_UNREADABLE);
+			return;
+		}
+		Resource resource = _cache.lookup(folderPath);
+		if (!(resource instanceof AlbumInfo)) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, CROP_NOT_AN_ALBUM);
+			return;
+		}
+		AlbumInfo album = (AlbumInfo) resource;
+		ImagePart image = Crops.findImage(album, request.getName());
+		if (image == null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(request.getName()));
+			return;
+		}
+		if (image.getKind() != ImageKind.IMAGE) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, CROP_VIDEO_REFUSED);
+			return;
+		}
+		Crop crop = request.getCrop();
+		if (crop != null && !Crops.isValid(crop)) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, cropInvalid(image.getName()));
+			return;
+		}
+		Crop stored = crop == null || Crops.isWhole(crop) ? null : Crops.clamped(crop);
+		double[] before = Crops.renditionRegion(image);
+		image.setCrop(stored);
+		if (!Crops.same(before, Crops.renditionRegion(image))) {
+			ThumbnailInfo cover = album.getIndexPicture();
+			if (cover != null && image.getName().equals(cover.getImage())) {
+				album.setIndexPicture(PrivacyFilter.thumbnail(image));
+			}
+		}
+		storeSidecar(folder, sidecarOf(album));
+		_cache.invalidate(folderPath);
+		LOG.info("Cropped '" + image.getName() + "' in '" + folder.getAbsolutePath() + "'.");
+		answerAlbum(context, folderPath, caller);
+	}
+
 	private void tagFaces(Context context, boolean adjust) throws IOException {
 		Caller caller = _auth.caller(context.request());
 		Location location = resolve(context, caller);

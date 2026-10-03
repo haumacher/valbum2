@@ -1,0 +1,125 @@
+{
+  "description": "Issue #212: a crop stored in the frame the picture is shown in (the stored ImagePart.orientation applied, the app's transform of image_transform.dart) and the same region in the frame of the server's rendition. Read by TestCrop (Crops.toRendition/toShown) and by valbum_ui/test/crop_test.dart (cropToRendition/cropToShown, derived from ImageTransform.orientationTransform).",
+  "cases": [
+    {
+      "orientation": "IDENTITY",
+      "shown": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "rendition": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ]
+    },
+    {
+      "orientation": "FLIP_H",
+      "shown": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "rendition": [
+        0.6,
+        0.2,
+        0.3,
+        0.4
+      ]
+    },
+    {
+      "orientation": "ROT_180",
+      "shown": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "rendition": [
+        0.6,
+        0.4,
+        0.3,
+        0.4
+      ]
+    },
+    {
+      "orientation": "FLIP_V",
+      "shown": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "rendition": [
+        0.1,
+        0.4,
+        0.3,
+        0.4
+      ]
+    },
+    {
+      "orientation": "ROT_L_FLIP_V",
+      "shown": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "rendition": [
+        0.2,
+        0.1,
+        0.4,
+        0.3
+      ]
+    },
+    {
+      "orientation": "ROT_L",
+      "shown": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "rendition": [
+        0.4,
+        0.1,
+        0.4,
+        0.3
+      ]
+    },
+    {
+      "orientation": "ROT_L_FLIP_H",
+      "shown": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "rendition": [
+        0.4,
+        0.6,
+        0.4,
+        0.3
+      ]
+    },
+    {
+      "orientation": "ROT_R",
+      "shown": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "rendition": [
+        0.2,
+        0.6,
+        0.4,
+        0.3
+      ]
+    }
+  ]
+}

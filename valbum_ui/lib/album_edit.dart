@@ -10,6 +10,7 @@ import 'dart:math' as math;
 
 import 'album_layout.dart' show ToImage;
 import 'album_model.dart';
+import 'crop.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 
@@ -1207,8 +1208,10 @@ const double indexPictureTileSize = 300;
 ThumbnailInfo indexPictureOf(ImagePart image) {
   var orientation = image.orientation;
   var swapped = PlaneTransform.of(orientation).swapsDimensions;
-  double width = (swapped ? image.height : image.width).toDouble();
-  double height = (swapped ? image.width : image.height).toDouble();
+  // Measured on the picture as it is shown, its crop applied (issue #212).
+  var size = renditionSize(image);
+  double width = swapped ? size.height : size.width;
+  double height = swapped ? size.width : size.height;
   if (width <= 0 || height <= 0) {
     return ThumbnailInfo(
       image: image.name,

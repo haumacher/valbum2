@@ -16,7 +16,6 @@ import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
-import de.haumacher.imageServer.shared.util.Orientations;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -316,8 +315,11 @@ public class PrivacyFilter {
 	 */
 	static ThumbnailInfo thumbnail(ImagePart image) {
 		Orientation orientation = image.getOrientation();
-		double width = Orientations.width(orientation, image.getWidth(), image.getHeight());
-		double height = Orientations.height(orientation, image.getWidth(), image.getHeight());
+		// Measured on the picture as it is shown, its crop applied (issue #212): the tile draws the
+		// cut rendition, see ThumbnailInfo#getCrop().
+		double[] size = Crops.shownSize(image);
+		double width = size[0];
+		double height = size[1];
 		double scale;
 		double ty;
 		if (width <= 0 || height <= 0) {
@@ -455,7 +457,8 @@ public class PrivacyFilter {
 		if (album instanceof AlbumInfo) {
 			ThumbnailInfo cover = filterAlbum((AlbumInfo) album, clearance, minRating).getIndexPicture();
 			if (cover != null) {
-				result.setIndexPicture(cover);
+				// The region of a cropped photograph rides along, see issue #212.
+				result.setIndexPicture(Crops.withRegion((AlbumInfo) album, cover));
 			}
 		}
 		return result;

@@ -10,6 +10,7 @@ import 'app.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
+import 'crop.dart';
 import 'form_dialog.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
@@ -463,7 +464,10 @@ class ListingView extends StatelessWidget {
 
     return indexPictureTile(
       client,
-      "$baseUrl/${folder.name}/${indexPicture.image}",
+      // A cropped photograph is asked for cut, by the region the server
+      // derived for this cover (issue #212).
+      withRegion("$baseUrl/${folder.name}/${indexPicture.image}",
+          coverRegion(indexPicture)),
       indexPicture,
       width,
     );

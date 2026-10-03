@@ -163,14 +163,17 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 			refuse(response, HttpServletResponse.SC_GONE, AuthService.LINK_EXPIRED);
 			return true;
 		}
-		File image = cover(space, link);
+		PathInfo target = path(space, link);
+		Resource shown = shown(space, target, link);
+		File image = cover(target, shown);
 		if (image == null) {
 			refuse(response, HttpServletResponse.SC_NOT_FOUND, COVER_NONE);
 			return true;
 		}
 		File preview;
 		try {
-			preview = PreviewCache.createPreview(image);
+			// A cropped photograph is shown cut on its card as in its tile, see issue #212.
+			preview = PreviewCache.createPreview(image, region(target, shown, image));
 		} catch (PreviewException ex) {
 			LOG.log(Level.WARNING, "Cannot build the cover of " + link + ": " + ex.getMessage(), ex.getCause());
 			refuse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, COVER_FAILED);
@@ -511,6 +514,30 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 			}
 			File file = path.child(folder.getName()).child(indexPicture.getImage()).toFile();
 			return file.isFile() ? file : null;
+		}
+		return null;
+	}
+
+	/**
+	 * The region of the given cover the card shows, <code>null</code> for the whole picture: the
+	 * crop of the photograph (issue #212), read from the very answer the cover was chosen from.
+	 */
+	private static double[] region(PathInfo path, Resource shown, File image) {
+		if (shown instanceof AlbumInfo) {
+			ImagePart part = Crops.findImage((AlbumInfo) shown, image.getName());
+			return part == null ? null : Crops.renditionRegion(part);
+		}
+		if (shown instanceof ListingInfo) {
+			for (FolderInfo folder : ((ListingInfo) shown).getFolders()) {
+				ThumbnailInfo indexPicture = folder.getIndexPicture();
+				if (indexPicture == null || indexPicture.getCrop() == null) {
+					continue;
+				}
+				if (path.child(folder.getName()).child(indexPicture.getImage()).toFile().equals(image)) {
+					de.haumacher.imageServer.shared.model.Crop crop = indexPicture.getCrop();
+					return new double[] { crop.getX(), crop.getY(), crop.getW(), crop.getH() };
+				}
+			}
 		}
 		return null;
 	}

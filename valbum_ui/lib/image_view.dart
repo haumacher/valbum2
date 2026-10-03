@@ -16,6 +16,8 @@ import 'app.dart';
 import 'attribution.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'crop.dart';
+import 'crop_editor.dart';
 import 'diagnostics.dart';
 import 'downloads.dart';
 import 'image_properties.dart';
@@ -74,10 +76,15 @@ const Duration _snapBackDuration = Duration(milliseconds: 150);
 /// original" still saves the original itself. A raw photograph standing alone
 /// (issue #191) is shown the same way, by the rendition of the JPEG preview it
 /// carries.
+///
+/// [thumbnailUrl] is the address the preview rendition is asked by, the cut
+/// one of a cropped photograph (issue #212, `croppedImageUrl`); the plain
+/// image address where it is not given.
 ImageProvider viewerPicture(
   VAlbumClient client,
   String imageUrl, {
   required bool mayDownload,
+  String? thumbnailUrl,
 }) {
   if (mayDownload && needsDisplayRendition(imageUrl)) {
     return NetworkImage(client.displayUrl(imageUrl),
@@ -90,7 +97,7 @@ ImageProvider viewerPicture(
     return NetworkImage(client.originalUrl(imageUrl),
         headers: client.authHeaders);
   }
-  return ThumbnailImage(client, imageUrl);
+  return ThumbnailImage(client, thumbnailUrl ?? imageUrl);
 }
 
 /// How small a hand-drawn rectangle may be and still mean a face (issue #147).
@@ -646,6 +653,41 @@ class ImageViewState extends State<ImageView>
       CallerInfo.facesOf(context) &&
       ShareSession.of(context) == null;
 
+  /// Whether the photograph shown may be cropped here (issue #212).
+  ///
+  /// With `edit`, never in a share session, never on a video (a cropped
+  /// rendition of a video would be a transcode), and only where the viewer
+  /// knows the album to write to. Whether the album's edit mode is on does
+  /// not matter: the crop is written at once either way, see [cropShown].
+  bool get mayCrop =>
+      !isVideo &&
+      album != null &&
+      widget.editPath != null &&
+      rights.mayEdit &&
+      ShareSession.of(context) == null;
+
+  /// Opens the crop editor on the photograph shown and writes what it
+  /// answers at once, see [cropPhoto].
+  Future<void> cropShown() async {
+    var path = widget.editPath;
+    if (path == null || !mayCrop) {
+      return;
+    }
+    var changed = await cropPhoto(
+      context,
+      client: widget.client,
+      albumPath: path,
+      imageUrl: dataUrl,
+      image: part,
+      album: album,
+    );
+    if (changed && mounted) {
+      // The region is another picture: fitted anew.
+      setState(() => _transform = null);
+      prefetchNeighbours();
+    }
+  }
+
   /// Whether the mode is on, see [_editPersons].
   bool get editPersons => _editPersons && mayEditPersons;
 
@@ -688,8 +730,16 @@ class ImageViewState extends State<ImageView>
   /// a suggestion is answered, an unknown face is named and a false detection
   /// is said to be one, so a face that is not drawn is a face nobody can
   /// correct.
-  List<FaceInfo> get editableFaces =>
-      ShareSession.of(context) != null ? const [] : part.faces;
+  ///
+  /// A face entirely outside the region of a cropped photograph is not drawn
+  /// (issue #212): it is not on the picture that is shown. The persons editor
+  /// still lists it.
+  List<FaceInfo> get editableFaces => ShareSession.of(context) != null
+      ? const []
+      : [
+          for (var face in part.faces)
+            if (faceInRegion(face, renditionRegion(part))) face,
+        ];
 
   /// What stands over a face box, `null` where there is nothing to say.
   ///
@@ -1018,7 +1068,7 @@ class ImageViewState extends State<ImageView>
         adjusting.start,
         adjusting.corner,
         delta,
-        pageRectOfBox(tx, 0, 0, 1, 1),
+        pictureRectOnPage(tx),
       );
     });
   }
@@ -1220,11 +1270,20 @@ class ImageViewState extends State<ImageView>
   ///
   /// The rights are the album's, and the neighbours live in the same album, so
   /// what the caller may have of them is what they may have of this one.
+  ///
+  /// The preview rendition of a cropped photograph is its cut one (issue
+  /// #212), see [cutPicture]; the original and the display rendition are the
+  /// whole picture and are cut here, in [pictureLayer].
   ImageProvider pictureOf(ImagePart image) => viewerPicture(
         widget.client,
         "${widget.baseUrl}/${image.name}",
         mayDownload: rights.mayDownload,
+        thumbnailUrl: croppedImageUrl("${widget.baseUrl}/${image.name}", image),
       );
+
+  /// Whether the shown picture is already cut to the crop: the preview
+  /// rendition of a caller without `download` is (issue #212).
+  bool get cutPicture => picture is ThumbnailImage;
 
   /// The pictures held decoded for this viewer, by image name (issue #148).
   ///
@@ -1811,19 +1870,52 @@ class ImageViewState extends State<ImageView>
   /// opening an image from its tile fetched its thumbnail twice. An image no
   /// tile has drawn (a deep link straight into the viewer) has no such key and
   /// is fetched once, as before.
+  ///
+  /// The thumbnail of a cropped photograph is its cut rendition, the one its
+  /// tile drew (issue #212), placed on the region it shows, see [onCanvas].
   List<Widget> buildLayers(ImageTransform tx) => [
         pictureLayer(
           tx,
-          thumbnail(
-            widget.client,
-            dataUrl,
-            key: const Key("image-thumbnail"),
-            asTileDecoded: true,
-            fit: BoxFit.fill,
+          onCanvas(
+            tx,
+            thumbnail(
+              widget.client,
+              croppedImageUrl(dataUrl, part),
+              key: const Key("image-thumbnail"),
+              asTileDecoded: true,
+              fit: BoxFit.fill,
+            ),
+            cut: true,
           ),
         ),
         buildContent(tx),
       ];
+
+  /// [picture] on the canvas of the whole file (issue #212): filling it where
+  /// [picture] is the whole picture, on the region where it is already cut to
+  /// it ([cut]). Without a region the canvas is the picture.
+  Widget onCanvas(ImageTransform tx, Widget picture, {required bool cut}) {
+    var region = tx.region;
+    if (region == null) {
+      return picture;
+    }
+    return Stack(
+      fit: StackFit.expand,
+      clipBehavior: Clip.none,
+      children: [
+        if (cut)
+          Positioned(
+            left: region.left * tx.fullRawWidth,
+            top: region.top * tx.fullRawHeight,
+            width: region.width * tx.fullRawWidth,
+            height: region.height * tx.fullRawHeight,
+            child: picture,
+          )
+        else
+          Positioned.fill(child: picture),
+      ],
+    );
+  }
 
   /// The picture itself, in the layer its coordinates belong to.
   Widget buildContent(ImageTransform tx) {
@@ -1852,8 +1944,9 @@ class ImageViewState extends State<ImageView>
     // The same layer either way: what the caller may have differs, where it
     // is drawn does not, see [pictureLayer] and issue #106.
     var named = namedFaces;
+    var drawn = onCanvas(tx, image, cut: cutPicture);
     if (named.isEmpty) {
-      return pictureLayer(tx, image);
+      return pictureLayer(tx, drawn);
     }
     // The faces hang *in* the picture's own layer (issue #145): the layer is
     // the raw rectangle of the file and [ImageTransform.matrix] turns, scales
@@ -1866,11 +1959,12 @@ class ImageViewState extends State<ImageView>
       FaceRegions(
         client: widget.client,
         faces: named,
-        rawWidth: tx.rawWidth,
-        rawHeight: tx.rawHeight,
+        // The canvas is the whole file, cropped or not (issue #212).
+        rawWidth: tx.fullRawWidth,
+        rawHeight: tx.fullRawHeight,
         scale: tx.scale,
         swapsDimensions: PlaneTransform.of(tx.orientation).swapsDimensions,
-        child: image,
+        child: drawn,
       ),
     );
   }
@@ -1895,7 +1989,12 @@ class ImageViewState extends State<ImageView>
     }
     return [
       for (var face in part.faces)
-        if (face.confirmed && face.person.isNotEmpty) face,
+        // A face outside the region of a cropped photograph is not on the
+        // picture that is shown (issue #212).
+        if (face.confirmed &&
+            face.person.isNotEmpty &&
+            faceInRegion(face, renditionRegion(part)))
+          face,
     ];
   }
 
@@ -1915,13 +2014,40 @@ class ImageViewState extends State<ImageView>
   /// here as well: they used to skip the orientation and laid a rotated photo
   /// on its side, see issue #106. A rendition has the aspect ratio of the raw
   /// rectangle, so filling it distorts nothing.
-  Widget pictureLayer(ImageTransform tx, Widget child) => Positioned(
-        left: 0,
-        top: 0,
-        width: tx.rawWidth,
-        height: tx.rawHeight,
-        child: Transform(transform: tx.matrix, child: child),
+  ///
+  /// [child] is the canvas of the whole file. A cropped photograph (issue
+  /// #212) shows its region alone: the layer is the region's rectangle, which
+  /// [ImageTransform.matrix] fits, turns, zooms and pans, and the canvas is
+  /// laid into it shifted by the region's corner and clipped to it — so the
+  /// zoom and the pan act within the region and nothing outside it is drawn.
+  Widget pictureLayer(ImageTransform tx, Widget child) {
+    var region = tx.region;
+    var content = child;
+    if (region != null) {
+      content = ClipRect(
+        key: const Key("image-region"),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: -region.left * tx.fullRawWidth,
+              top: -region.top * tx.fullRawHeight,
+              width: tx.fullRawWidth,
+              height: tx.fullRawHeight,
+              child: child,
+            ),
+          ],
+        ),
       );
+    }
+    return Positioned(
+      left: 0,
+      top: 0,
+      width: tx.rawWidth,
+      height: tx.rawHeight,
+      child: Transform(transform: tx.matrix, child: content),
+    );
+  }
 
   /// The video player, filling the slot the image would occupy.
   ///
@@ -2248,6 +2374,21 @@ class ImageViewState extends State<ImageView>
                       child: Icon(Icons.raw_on, color: Colors.blueAccent),
                     ),
                     Flexible(child: Text(l10n.viewerDownloadRaw)),
+                  ],
+                ),
+              ),
+            // The region of the photograph that is shown (issue #212).
+            if (mayCrop)
+              PopupMenuItem<void Function(BuildContext)>(
+                key: const Key("viewer-crop"),
+                value: (_) => cropShown(),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(right: 16),
+                      child: Icon(Icons.crop, color: Colors.blueAccent),
+                    ),
+                    Flexible(child: Text(l10n.cropMenu)),
                   ],
                 ),
               ),

@@ -434,7 +434,8 @@ public class DeleteService {
 	 * too: the preview (named as {@link PreviewCache#createPreview(File)} names it), the display
 	 * rendition of a HEIC ({@link PreviewCache#displayFile(File)}, issue #186), the two video
 	 * renditions ({@link VideoRenditions.Kind#fileName(String)}) and the face crops of either naming
-	 * (<code>face-&lt;name&gt;-f&lt;12 hex&gt;.jpg</code>, <code>face-&lt;name&gt;-&lt;n&gt;.jpg</code>),
+	 * (<code>face-&lt;name&gt;-f&lt;12 hex&gt;.jpg</code>, <code>face-&lt;name&gt;-&lt;n&gt;.jpg</code>), the
+	 * previews of its crops (<code>preview-&lt;name&gt;-c&lt;12 hex&gt;.&lt;type&gt;</code>, issue #212),
 	 * each also under its {@value PreviewCache#TMP_SUFFIX} name. A file of another photograph whose
 	 * name merely begins with this one's is never matched.
 	 * </p>
@@ -454,6 +455,8 @@ public class DeleteService {
 		}
 		exact.add(PreviewCache.DISPLAY_PREFIX + name + "." + PreviewCache.DISPLAY_EXTENSION);
 		String cropPrefix = de.haumacher.imageServer.faces.FaceIndex.CROP_PREFIX + name + "-";
+		// The previews of a cropped photograph, one per region it was ever cut to, see issue #212.
+		String cutPrefix = PreviewCache.PREVIEW_PREFIX + name + PreviewCache.CROP_INFIX;
 		for (File file : files) {
 			String fileName = file.getName();
 			if (!file.isFile() || Files.isSymbolicLink(file.toPath()) || !CacheRefresh.isGenerated(fileName)) {
@@ -463,12 +466,16 @@ public class DeleteService {
 				? fileName.substring(0, fileName.length() - PreviewCache.TMP_SUFFIX.length())
 				: fileName;
 			if (exact.contains(plain)
-				|| (plain.startsWith(cropPrefix) && CROP_KEY.matcher(plain.substring(cropPrefix.length())).matches())) {
+				|| (plain.startsWith(cropPrefix) && CROP_KEY.matcher(plain.substring(cropPrefix.length())).matches())
+				|| (plain.startsWith(cutPrefix) && CUT_KEY.matcher(plain.substring(cutPrefix.length())).matches())) {
 				result.add(file);
 			}
 		}
 		return result;
 	}
+
+	/** What follows <code>preview-&lt;name&gt;-c</code> in the name of a cut preview, see issue #212. */
+	private static final Pattern CUT_KEY = Pattern.compile("[0-9a-f]{12}\\.(jpg|png)");
 
 	/** What follows <code>face-&lt;name&gt;-</code> in the name of a crop, see issues #124 and #141. */
 	private static final Pattern CROP_KEY = Pattern.compile("(f[0-9a-fA-F]{12}|[0-9]+)\\.[jJ][pP][gG]");

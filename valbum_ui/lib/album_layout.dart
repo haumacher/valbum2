@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:valbum_ui/resource.dart';
 
+import 'crop.dart';
+
 /// Algorithm to compute a layout of a sequence of image so that a given page width is filled
 /// allocating appropriate space for all images.
 class AlbumLayout with IterableMixin<Row> {
@@ -610,14 +612,16 @@ class Img extends Content {
   /// Creates a [Img].
   factory Img(AbstractImage image) {
     ImagePart representative = ToImage.toImage(image);
-    int width = representative.width;
-    int height = representative.height;
+    // The picture as it is shown: its crop applied (issue #212), then turned.
+    var size = renditionSize(representative);
     Orientation orientation = representative.orientation;
 
-    int displayWidth = Orientations.widthInt(orientation, width, height);
-    int displayHeight = Orientations.heightInt(orientation, width, height);
+    double displayWidth =
+        Orientations.width(orientation, size.width, size.height);
+    double displayHeight =
+        Orientations.height(orientation, size.width, size.height);
 
-    return Img._init(image, displayWidth.toDouble() / displayHeight);
+    return Img._init(image, displayWidth / displayHeight);
   }
 
   /// The [AbstractImage] represented by this [Content].

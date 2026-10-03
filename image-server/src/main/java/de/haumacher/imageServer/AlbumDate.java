@@ -268,6 +268,12 @@ public final class AlbumDate {
 				album.setEffectiveDate(0L);
 				changed = true;
 			}
+			if (album.getIndexPicture() != null && album.getIndexPicture().getCrop() != null) {
+				// The region a listing tile asks for is the photograph's crop, derived where a
+				// listing is built and never the album's own statement, see issue #212.
+				album.getIndexPicture().setCrop(null);
+				changed = true;
+			}
 		} else if (resource instanceof ListingInfo) {
 			ListingInfo listing = (ListingInfo) resource;
 			// Every entry of a listing is rebuilt from the disk on every read -- its title, its

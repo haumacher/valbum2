@@ -29,6 +29,7 @@ import 'album_edit.dart' show PlaneTransform;
 import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'crop.dart';
 import 'l10n/app_localizations.dart';
 import 'move_view.dart' show showRefusal;
 import 'offline.dart';
@@ -233,8 +234,11 @@ class TrashContentState extends State<TrashContent> {
     var screen = MediaQuery.sizeOf(context);
     var availableWidth = max(screen.width * 0.9 - 48, 120.0);
     var availableHeight = max(screen.height * 0.9 - 140, 120.0);
-    var fileWidth = image.width > 0 ? image.width.toDouble() : 1.0;
-    var fileHeight = image.height > 0 ? image.height.toDouble() : 1.0;
+    // The region of a cropped photograph, which is what its rendition shows
+    // (issue #212).
+    var size = renditionSize(image);
+    var fileWidth = size.width > 0 ? size.width : 1.0;
+    var fileHeight = size.height > 0 ? size.height : 1.0;
     var transform = PlaneTransform.of(image.orientation);
     var turnedWidth = transform.swapsDimensions ? fileHeight : fileWidth;
     var turnedHeight = transform.swapsDimensions ? fileWidth : fileHeight;

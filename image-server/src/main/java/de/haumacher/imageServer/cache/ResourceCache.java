@@ -481,6 +481,12 @@ public class ResourceCache {
 			if (ImageData.isZero(image.getLocation())) {
 				image.setLocation(null);
 			}
+			// A crop that is no region of the picture, or one of the whole picture, is read as none
+			// (issue #212): a hand-edited or a client-written sidecar never makes a tile of nothing.
+			if (image.getCrop() != null && (!de.haumacher.imageServer.Crops.isValid(image.getCrop())
+				|| de.haumacher.imageServer.Crops.isWhole(image.getCrop()) || image.getKind() != de.haumacher.imageServer.shared.model.ImageKind.IMAGE)) {
+				image.setCrop(null);
+			}
 		}
 
 		private static Resource loadListing(PathInfo pathInfo, ListingInfo listing) {
@@ -529,7 +535,10 @@ public class ResourceCache {
 					}
 					folderInfo.setTitle(albumInfo.getTitle());
 					folderInfo.setSubTitle(albumInfo.getSubTitle());
-					folderInfo.setIndexPicture(albumInfo.getIndexPicture());
+					// A cropped photograph is shown cut, and the tile asks for its region, see
+					// ThumbnailInfo#getCrop() and issue #212.
+					folderInfo.setIndexPicture(de.haumacher.imageServer.Crops.withRegion(albumInfo,
+						albumInfo.getIndexPicture()));
 					return folderInfo;
 				}
 				else if (folderResource instanceof ListingInfo) {

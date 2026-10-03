@@ -906,6 +906,100 @@ class GeoLocation extends _JsonObject {
 
 }
 
+///  The region of a photograph that is shown, see issue #212.
+/// 
+///  <p>
+///  Normalised to <code>0..1</code> of the picture <em>as it is shown</em>: the file's own EXIF
+///  orientation applied and the {@link ImagePart#getOrientation() orientation} stored beside it
+///  applied too &mdash; the upright frame the crop editor draws the picture in, so that
+///  {@link #w}&nbsp;&times;&nbsp;{@link #h} of the shown picture is the aspect the album lays the
+///  tile out at. The rectangle lies inside the picture (<code>x + w &lt;= 1</code>,
+///  <code>y + h &lt;= 1</code>) and has a positive width and height.
+///  </p>
+/// 
+///  <p>
+///  Where the same rectangle is spoken of in the frame of the server's rendition (the file upright,
+	///  the stored orientation <em>not</em> applied &mdash; the frame of a <code>?type=tn</code> and of
+///  every face box), it is named as such, see {@link ThumbnailInfo#getCrop()}.
+///  </p>
+class Crop extends _JsonObject {
+	///  The left edge, as a fraction of the shown picture's width.
+	double x;
+
+	///  The top edge, as a fraction of the shown picture's height.
+	double y;
+
+	///  The width, as a fraction of the shown picture's width.
+	double w;
+
+	///  The height, as a fraction of the shown picture's height.
+	double h;
+
+	/// Creates a Crop.
+	Crop({
+			this.x = 0.0, 
+			this.y = 0.0, 
+			this.w = 0.0, 
+			this.h = 0.0, 
+	});
+
+	/// Parses a Crop from a string source.
+	static Crop? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a Crop instance from the given reader.
+	static Crop read(JsonReader json) {
+		Crop result = Crop();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "Crop";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "x": {
+				x = json.expectDouble();
+				break;
+			}
+			case "y": {
+				y = json.expectDouble();
+				break;
+			}
+			case "w": {
+				w = json.expectDouble();
+				break;
+			}
+			case "h": {
+				h = json.expectDouble();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("x");
+		json.addNumber(x);
+
+		json.addKey("y");
+		json.addNumber(y);
+
+		json.addKey("w");
+		json.addNumber(w);
+
+		json.addKey("h");
+		json.addNumber(h);
+	}
+
+}
+
 ///  {@link Resource} describing a single image or video file.
 class ImagePart extends AbstractImage {
 	///  The kind of this {@link ImagePart}.
@@ -1091,6 +1185,20 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	String raw;
 
+	///  The region of this photograph that is shown, <code>null</code> for the whole picture, see
+	///  issue #212 and {@link Crop}.
+	/// 
+	///  <p>
+	///  <b>Stored</b> in <code>index.json</code>, and absent in a sidecar written before this field
+	///  existed, which reads as "the whole picture". It is a statement about how the photograph is
+	///  shown and nothing else: the original is never touched, a download is the whole original, and
+	///  the face boxes keep their own frame. The album lays the tile out at the crop's aspect, the
+	///  tile asks the server for a rendition of the region (<code>?type=tn&amp;crop=&hellip;</code>)
+	///  and the viewer draws the region of the original. Written by <code>?action=crop</code>, and
+	///  carried by an ordinary sidecar <code>PUT</code> like every stored field. A video carries none.
+	///  </p>
+	Crop? crop;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -1115,6 +1223,7 @@ class ImagePart extends AbstractImage {
 			this.faces = const [], 
 			this.tags = const [], 
 			this.raw = "", 
+			this.crop, 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1217,6 +1326,10 @@ class ImagePart extends AbstractImage {
 				raw = json.expectString();
 				break;
 			}
+			case "crop": {
+				crop = json.tryNull() ? null : Crop.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1283,6 +1396,12 @@ class ImagePart extends AbstractImage {
 
 		json.addKey("raw");
 		json.addString(raw);
+
+		var _crop = crop;
+		if (_crop != null) {
+			json.addKey("crop");
+			_crop.writeContent(json);
+		}
 	}
 
 	@override
@@ -2222,6 +2341,19 @@ class ThumbnailInfo extends _JsonObject {
 	///  </p>
 	Orientation orientation;
 
+	///  The region of the image's rendition a tile of this picture asks for, <code>null</code> for
+	///  the whole rendition, see issue #212.
+	/// 
+	///  <p>
+	///  The {@link ImagePart#getCrop() crop} of the photograph, in the frame of the server's rendition
+	///  (the file upright, the stored {@link ImagePart#getOrientation() orientation} not applied), so
+	///  that the listing can ask for <code>?type=tn&amp;crop=&hellip;</code> without knowing the
+	///  photograph's part. <b>Derived</b> by the server where it builds the cover of a listing entry
+	///  and never stored: the album picture's {@link #getScale() scale} and {@link #getTx() offsets}
+	///  are measured on the cropped picture.
+	///  </p>
+	Crop? crop;
+
 	/// Creates a ThumbnailInfo.
 	ThumbnailInfo({
 			this.image = "", 
@@ -2229,6 +2361,7 @@ class ThumbnailInfo extends _JsonObject {
 			this.tx = 0.0, 
 			this.ty = 0.0, 
 			this.orientation = Orientation.identity, 
+			this.crop, 
 	});
 
 	/// Parses a ThumbnailInfo from a string source.
@@ -2269,6 +2402,10 @@ class ThumbnailInfo extends _JsonObject {
 				orientation = readOrientation(json);
 				break;
 			}
+			case "crop": {
+				crop = json.tryNull() ? null : Crop.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -2291,6 +2428,12 @@ class ThumbnailInfo extends _JsonObject {
 
 		json.addKey("orientation");
 		writeOrientation(json, orientation);
+
+		var _crop = crop;
+		if (_crop != null) {
+			json.addKey("crop");
+			_crop.writeContent(json);
+		}
 	}
 
 }

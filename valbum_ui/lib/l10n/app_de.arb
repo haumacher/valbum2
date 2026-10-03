@@ -750,6 +750,7 @@
   "shareMessageBody": "Hallo {name},\n\nhier sind die Fotos aus dem {album}:\n{link}\n",
   "launchFailed": "Auf diesem Gerät lässt sich dieser Link mit keiner Anwendung öffnen.",
   "linkPersonalOpen": "Personalisiert",
+  "linkRecipientCount": "Empfänger: {count}",
   "sendAgain": "Erneut senden",
   "sendAgainHeading": "Ein neuer Link für {name}",
   "sendAgainNote": "Der frühere Link dieses Empfängers funktioniert nicht mehr.",
@@ -761,5 +762,13 @@
   "groupLinkWithoutEmail": "Diese Empfänger haben keine E-Mail-Adresse, sodass der Gruppenlink sie nicht erkennen kann. Senden Sie ihnen einen eigenen Link:",
   "shareMessageBodyGroup": "Hallo,\n\nhier sind die Fotos aus dem {album}:\n{link}\n",
   "identifyGroupIntro": "Dieser Link wurde an eine Gruppe gesendet. Bestätigen Sie Ihre E-Mail-Adresse, um ihn zu öffnen.",
-  "linkRecipientCount": "Empfänger: {count}"
+  "cropMenu": "Zuschneiden…",
+  "cropTitle": "Zuschneiden",
+  "cropReset": "Zurücksetzen",
+  "cropAspectImage": "Bildformat",
+  "cropPortrait": "Hochformat",
+  "cropLandscape": "Querformat",
+  "cropNote": "Ein Zuschneiden verändert lediglich die Darstellung des Fotos. Wer es herunterlädt, erhält weiterhin das gesamte Original.",
+  "cropAreaHint": "Ziehen Sie, um den Rahmen zu zeichnen, zu verschieben oder in der Größe anzupassen; tippen Sie in den Rahmen, um die Änderung zu übernehmen.",
+  "cropAspectFree": "Freiform"
 }

@@ -63,6 +63,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getRaw() */
 	private static final String RAW__PROP = "raw";
 
+	/** @see #getCrop() */
+	private static final String CROP__PROP = "crop";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -96,6 +99,8 @@ public class ImagePart extends AbstractImage {
 	private final java.util.List<de.haumacher.imageServer.shared.model.FaceTag> _tags = new java.util.ArrayList<>();
 
 	private String _raw = "";
+
+	private de.haumacher.imageServer.shared.model.Crop _crop = null;
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -643,6 +648,44 @@ public class ImagePart extends AbstractImage {
 		_raw = value;
 	}
 
+	/**
+	 * The region of this photograph that is shown, <code>null</code> for the whole picture, see
+	 * issue #212 and {@link Crop}.
+	 *
+	 * <p>
+	 * <b>Stored</b> in <code>index.json</code>, and absent in a sidecar written before this field
+	 * existed, which reads as "the whole picture". It is a statement about how the photograph is
+	 * shown and nothing else: the original is never touched, a download is the whole original, and
+	 * the face boxes keep their own frame. The album lays the tile out at the crop's aspect, the
+	 * tile asks the server for a rendition of the region (<code>?type=tn&amp;crop=&hellip;</code>)
+	 * and the viewer draws the region of the original. Written by <code>?action=crop</code>, and
+	 * carried by an ordinary sidecar <code>PUT</code> like every stored field. A video carries none.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.Crop getCrop() {
+		return _crop;
+	}
+
+	/**
+	 * @see #getCrop()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setCrop(de.haumacher.imageServer.shared.model.Crop value) {
+		internalSetCrop(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getCrop()} without chain call utility. */
+	protected final void internalSetCrop(de.haumacher.imageServer.shared.model.Crop value) {
+		_crop = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getCrop()} has a value.
+	 */
+	public final boolean hasCrop() {
+		return _crop != null;
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -730,6 +773,10 @@ public class ImagePart extends AbstractImage {
 		out.endArray();
 		out.name(RAW__PROP);
 		out.value(getRaw());
+		if (hasCrop()) {
+			out.name(CROP__PROP);
+			getCrop().writeTo(out);
+		}
 	}
 
 	@Override
@@ -765,6 +812,7 @@ public class ImagePart extends AbstractImage {
 			}
 			break;
 			case RAW__PROP: setRaw(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case CROP__PROP: setCrop(de.haumacher.imageServer.shared.model.Crop.readCrop(in)); break;
 			default: super.readField(in, field);
 		}
 	}

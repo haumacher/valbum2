@@ -30,6 +30,9 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getOrientation() */
 	private static final String ORIENTATION__PROP = "orientation";
 
+	/** @see #getCrop() */
+	private static final String CROP__PROP = "crop";
+
 	private String _image = "";
 
 	private double _scale = 0.0d;
@@ -39,6 +42,8 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private double _ty = 0.0d;
 
 	private de.haumacher.imageServer.shared.model.Orientation _orientation = de.haumacher.imageServer.shared.model.Orientation.IDENTITY;
+
+	private de.haumacher.imageServer.shared.model.Crop _crop = null;
 
 	/**
 	 * Creates a {@link ThumbnailInfo} instance.
@@ -164,6 +169,43 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_orientation = value;
 	}
 
+	/**
+	 * The region of the image's rendition a tile of this picture asks for, <code>null</code> for
+	 * the whole rendition, see issue #212.
+	 *
+	 * <p>
+	 * The {@link ImagePart#getCrop() crop} of the photograph, in the frame of the server's rendition
+	 * (the file upright, the stored {@link ImagePart#getOrientation() orientation} not applied), so
+	 * that the listing can ask for <code>?type=tn&amp;crop=&hellip;</code> without knowing the
+	 * photograph's part. <b>Derived</b> by the server where it builds the cover of a listing entry
+	 * and never stored: the album picture's {@link #getScale() scale} and {@link #getTx() offsets}
+	 * are measured on the cropped picture.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.Crop getCrop() {
+		return _crop;
+	}
+
+	/**
+	 * @see #getCrop()
+	 */
+	public de.haumacher.imageServer.shared.model.ThumbnailInfo setCrop(de.haumacher.imageServer.shared.model.Crop value) {
+		internalSetCrop(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getCrop()} without chain call utility. */
+	protected final void internalSetCrop(de.haumacher.imageServer.shared.model.Crop value) {
+		_crop = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getCrop()} has a value.
+	 */
+	public final boolean hasCrop() {
+		return _crop != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ThumbnailInfo readThumbnailInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ThumbnailInfo result = new de.haumacher.imageServer.shared.model.ThumbnailInfo();
@@ -189,6 +231,10 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getTy());
 		out.name(ORIENTATION__PROP);
 		getOrientation().writeTo(out);
+		if (hasCrop()) {
+			out.name(CROP__PROP);
+			getCrop().writeTo(out);
+		}
 	}
 
 	@Override
@@ -199,6 +245,7 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case TX__PROP: setTx(in.nextDouble()); break;
 			case TY__PROP: setTy(in.nextDouble()); break;
 			case ORIENTATION__PROP: setOrientation(de.haumacher.imageServer.shared.model.Orientation.readOrientation(in)); break;
+			case CROP__PROP: setCrop(de.haumacher.imageServer.shared.model.Crop.readCrop(in)); break;
 			default: super.readField(in, field);
 		}
 	}

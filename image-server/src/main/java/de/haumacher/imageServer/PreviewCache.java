@@ -356,6 +356,119 @@ public class PreviewCache {
 		return previewCache;
 	}
 
+	/** What follows <code>preview-&lt;name&gt;</code> in the name of a cut preview, see issue #212. */
+	public static final String CROP_INFIX = "-c";
+
+	/**
+	 * Where the preview of the given region of the given photograph lies, made or not, see
+	 * {@link #createPreview(File, double[])}: <code>preview-&lt;name&gt;-c&lt;12 hex&gt;.&lt;type&gt;</code>,
+	 * the hex digits being {@link Crops#key(double[])}.
+	 */
+	public static File croppedPreviewFile(File file, double[] region) {
+		String fileName = file.getName();
+		String imageType = imageType(Util.suffix(fileName));
+		return new File(new File(file.getParentFile(), CACHE_DIRECTORY_NAME),
+			PREVIEW_PREFIX + fileName + CROP_INFIX + Crops.key(region) + "." + imageType);
+	}
+
+	/**
+	 * Looks up or creates the preview of a region of the given photograph, see issue #212.
+	 *
+	 * <p>
+	 * The region is given in the frame of the preview &mdash; the file upright by its own EXIF
+	 * orientation, normalised to <code>0..1</code> &mdash; and the result is the preview a picture of
+	 * exactly that region would have: as large as {@link #previewBox(int, int)} makes it for the
+	 * region's own size and aspect, never larger than the region's pixels (issue #165). It is read
+	 * out of the <em>original</em>, not out of the whole preview, so that a small region of a large
+	 * photograph is as sharp in its tile as a whole photograph is in its own; and never as the whole
+	 * raster: the region is decoded subsampled to at least the size it is wanted at
+	 * ({@link Originals#decodeLongSideAtLeast}, the memory rule of issue #68), turned upright and
+	 * scaled to the preview.
+	 * </p>
+	 *
+	 * <p>
+	 * Cached beside the whole preview under a name carrying the region
+	 * ({@link #croppedPreviewFile(File, double[])}), made under the same permits, written to
+	 * {@value #TMP_SUFFIX} and moved into place, stale under the same rule. A video has none.
+	 * </p>
+	 *
+	 * @param region
+	 *        <code>{x, y, w, h}</code>, <code>null</code> for the whole picture, which is
+	 *        {@link #createPreview(File)}.
+	 */
+	public static File createPreview(File file, double[] region) throws PreviewException {
+		if (region == null) {
+			return createPreview(file);
+		}
+		String fileName = file.getName();
+		String suffix = Util.suffix(fileName);
+		if (!SUPPORTED_EXTENSIONS.contains(suffix) || VIDEO_EXTENSIONS.contains(suffix)) {
+			throw new PreviewException("No cut preview of '" + fileName + "'.");
+		}
+		File previewCache = croppedPreviewFile(file, region);
+		if (!upToDate(file, previewCache)) {
+			generate(file, previewCache, tmp -> {
+				try {
+					createCroppedPreview(file, region, tmp, imageType(suffix));
+				} catch (PictureTooLargeException | de.haumacher.imageServer.raw.NoEmbeddedPreviewException ex) {
+					throw new PreviewException(ex.getMessage(), ex);
+				} catch (IOException | RuntimeException ex) {
+					throw new PreviewException("Cannot create the cut preview of '" + fileName + "'.", ex);
+				}
+			});
+		}
+		return previewCache;
+	}
+
+	/** Writes the preview of the given region, see {@link #createPreview(File, double[])}. */
+	private static void createCroppedPreview(File file, double[] region, File tmp, String imgType)
+			throws IOException {
+		Orientation exif = de.haumacher.imageServer.faces.FaceIndex.exifOrientation(file);
+		int rawWidth;
+		int rawHeight;
+		if (CodedPictures.handles(file)) {
+			CodedPicture coded = CodedPictures.read(file);
+			rawWidth = coded.getRawWidth();
+			rawHeight = coded.getRawHeight();
+		} else {
+			try (PictureReader picture = PictureReader.open(file)) {
+				rawWidth = picture.getWidth();
+				rawHeight = picture.getHeight();
+			}
+		}
+		double[] raw = de.haumacher.imageServer.faces.Faces.toRaw(exif, region[0], region[1], region[2], region[3]);
+		boolean swapped = de.haumacher.imageServer.faces.Faces.swaps(exif);
+
+		// The region as it is shown, in pixels of the file.
+		int shownWidth = Math.max(1, (int) Math.round((swapped ? rawHeight : rawWidth) * region[2]));
+		int shownHeight = Math.max(1, (int) Math.round((swapped ? rawWidth : rawHeight) * region[3]));
+		int[] box = previewBox(shownWidth, shownHeight);
+		// Never scaled up, and the canvas no larger than the region (issue #165).
+		int previewWidth = Math.min(box[0], shownWidth);
+		int previewHeight = Math.min(box[1], shownHeight);
+
+		de.haumacher.imageServer.faces.Originals.Region read =
+			de.haumacher.imageServer.faces.Originals.decodeLongSideAtLeast(file,
+				raw[0] * rawWidth, raw[1] * rawHeight, (raw[0] + raw[2]) * rawWidth, (raw[1] + raw[3]) * rawHeight,
+				Math.max(previewWidth, previewHeight));
+		BufferedImage upright = de.haumacher.imageServer.faces.Originals.upright(read.getImage(), exif);
+
+		BufferedImage copy = new BufferedImage(previewWidth, previewHeight, BufferedImage.TYPE_INT_RGB);
+		Graphics2D g = copy.createGraphics();
+		try {
+			g.setColor(TRANSPARENT_BACKGROUND);
+			g.fillRect(0, 0, previewWidth, previewHeight);
+			g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+				java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			g.drawImage(upright, 0, 0, previewWidth, previewHeight, null);
+		} finally {
+			g.dispose();
+		}
+		if (!ImageIO.write(copy, imgType, tmp)) {
+			throw new IOException("No writer for '" + imgType + "'.");
+		}
+	}
+
 	/**
 	 * Where the display rendition of the given original lies, made or not, see
 	 * {@link #createDisplay(File)}.

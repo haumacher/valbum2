@@ -4905,5 +4905,50 @@
   "@identifyGroupIntro": {
     "description": "Intro of the identification card of a group link (issue #211): the visitor types their own address and gets a code, or signs in. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
     "x-translated": "b7749790"
+  },
+  "cropMenu": "Crop…",
+  "@cropMenu": {
+    "description": "Entry of the viewer's menu and of the context menu of an album tile in the edit mode (issue #212): opens the editor that chooses the region of the photograph that is shown",
+    "x-translated": "7068c608"
+  },
+  "cropTitle": "Crop",
+  "@cropTitle": {
+    "description": "Title of the full-screen editor choosing the region of a photograph that is shown (issue #212)",
+    "x-translated": "4df092a5"
+  },
+  "cropReset": "Reset",
+  "@cropReset": {
+    "description": "Button of the crop editor that removes the crop, so that the whole photograph is shown again (issue #212)",
+    "x-translated": "915c9049"
+  },
+  "cropAspectImage": "Image ratio",
+  "@cropAspectImage": {
+    "description": "Choice of the crop editor: the region keeps the aspect ratio of the whole photograph (issue #212)",
+    "x-translated": "97cd0c15"
+  },
+  "cropAspectFree": "Freeform",
+  "@cropAspectFree": {
+    "description": "Choice of the crop editor: the region may have any aspect ratio (issue #212)",
+    "x-translated": "8b009186"
+  },
+  "cropPortrait": "Portrait",
+  "@cropPortrait": {
+    "description": "Tooltip of the crop editor's toggle that turns the chosen aspect ratio upright (issue #212)",
+    "x-translated": "6c3656ad"
+  },
+  "cropLandscape": "Landscape",
+  "@cropLandscape": {
+    "description": "Tooltip of the crop editor's toggle that turns the chosen aspect ratio to lie on its side (issue #212)",
+    "x-translated": "4611b1a8"
+  },
+  "cropNote": "A crop only changes how the photo is shown. Whoever may download it still gets the whole original.",
+  "@cropNote": {
+    "description": "Note under the crop editor (issue #212): a crop is no way to hide a part of a photograph",
+    "x-translated": "a59dcbb8"
+  },
+  "cropAreaHint": "Drag to draw, move or resize the frame; tap inside it to apply.",
+  "@cropAreaHint": {
+    "description": "Screen-reader label of the picture in the crop editor (issue #212)",
+    "x-translated": "a5b5cf0"
   }
 }

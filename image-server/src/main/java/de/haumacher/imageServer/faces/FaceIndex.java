@@ -1125,7 +1125,7 @@ public class FaceIndex {
 	 * way; a file that says nothing is {@link Orientation#IDENTITY}.
 	 * </p>
 	 */
-	static Orientation exifOrientation(File file) {
+	public static Orientation exifOrientation(File file) {
 		if (CodedPictures.handles(file)) {
 			// A HEIC, an AVIF or a JPEG XL picture is turned by its container or codestream, not by
 			// the EXIF it carries, see CodedPicture.

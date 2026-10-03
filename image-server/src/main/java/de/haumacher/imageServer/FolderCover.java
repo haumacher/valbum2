@@ -97,7 +97,8 @@ public final class FolderCover {
 				// The album names a photograph that is not there any more.
 				return null;
 			}
-			return below(name, picture);
+			// The region of a cropped photograph rides along, see issue #212.
+			return below(name, Crops.withRegion((AlbumInfo) sidecar, picture));
 		}
 		if (sidecar instanceof ListingInfo) {
 			if (depth <= 0) {
@@ -141,7 +142,8 @@ public final class FolderCover {
 			.setScale(picture.getScale())
 			.setTx(picture.getTx())
 			.setTy(picture.getTy())
-			.setOrientation(picture.getOrientation());
+			.setOrientation(picture.getOrientation())
+			.setCrop(picture.getCrop());
 	}
 
 	/**
