@@ -17,6 +17,7 @@ import 'album_view.dart' show TextInputDialog;
 import 'form_dialog.dart';
 import 'attribution.dart';
 import 'caller.dart';
+import 'collections.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 
@@ -59,6 +60,12 @@ List<Widget> imagePropertyLines(
               DateTime.fromMillisecondsSinceEpoch(image.date),
             ),
           ),
+        ),
+      // Where a photograph of a collection lies (issue #221).
+      if (sourceFolderLabel(image) != null)
+        imagePropertyLine(
+          const Key("property-source"),
+          l10n.propertySource(sourceFolderLabel(image)!),
         ),
       if (image.camera.isNotEmpty)
         imagePropertyLine(

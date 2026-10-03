@@ -52,6 +52,7 @@ const List<String> convertedFiles = [
   "lib/camera_roll.dart",
   "lib/camera_roll_view.dart",
   "lib/client.dart",
+  "lib/collections.dart",
   "lib/connectivity.dart",
   "lib/connectivity_plugin.dart",
   "lib/contact_session.dart",

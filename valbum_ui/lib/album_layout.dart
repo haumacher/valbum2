@@ -621,6 +621,11 @@ class Img extends Content {
     double displayHeight =
         Orientations.height(orientation, size.width, size.height);
 
+    // A picture without dimensions -- a photograph of a collection that is
+    // gone (issue #221) -- is laid out square instead of as nothing.
+    if (!(displayWidth > 0) || !(displayHeight > 0)) {
+      return Img._init(image, 1.0);
+    }
     return Img._init(image, displayWidth / displayHeight);
   }
 

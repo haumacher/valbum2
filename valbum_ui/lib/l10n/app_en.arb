@@ -5407,5 +5407,128 @@
       }
     },
     "x-translated": "dab86fe0"
+  },
+  "doingCollecting": "adding to the collection {target}",
+  "@doingCollecting": {
+    "description": "Names what the app was doing when a request failed (adding photos to a collection, i.e. a virtual album of references)",
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    },
+    "x-translated": "e90da6ce"
+  },
+  "createCollection": "New collection",
+  "@createCollection": {
+    "description": "Menu entry of a folder listing creating a collection: an album that references photos lying in other albums instead of holding files (issue #221)",
+    "x-translated": "81cc5813"
+  },
+  "newCollectionTitle": "New collection",
+  "@newCollectionTitle": {
+    "description": "Title of the dialog creating a collection (an album of references to photos of other albums, issue #221)",
+    "x-translated": "81cc5813"
+  },
+  "newCollectionHint": "A collection shows photos of other albums without copying them.",
+  "@newCollectionHint": {
+    "description": "Hint in the dialog creating a collection (issue #221)",
+    "x-translated": "82a09b4a"
+  },
+  "collectionTakesNoMove": "A collection holds no files; photos are added to it with “Add to collection”.",
+  "@collectionTakesNoMove": {
+    "description": "Line of the move picker on a collection, which cannot be the target of a move (issue #221)",
+    "x-translated": "f56b6a3f"
+  },
+  "pickerNeedsCollection": "Photos are added to a collection — open one or create one.",
+  "@pickerNeedsCollection": {
+    "description": "Line of the add-to-collection picker on a folder that is no collection (issue #221)",
+    "x-translated": "1cc69979"
+  },
+  "createNewCollection": "Create new collection…",
+  "@createNewCollection": {
+    "description": "Entry of the add-to-collection picker creating a collection in the folder shown (issue #221)",
+    "x-translated": "281af76"
+  },
+  "nothingToCollect": "Select the photos to add first.",
+  "@nothingToCollect": {
+    "description": "Said when Add to collection is asked with nothing selected (issue #221)",
+    "x-translated": "a58732d3"
+  },
+  "addToCollectionTitle": "Add to collection",
+  "@addToCollectionTitle": {
+    "description": "Title of the dialog choosing the collection photos are added to (a collection references photos of other albums, issue #221)",
+    "x-translated": "4289a1aa"
+  },
+  "addToCollectionConfirm": "{count, plural, =1{Add 1 photo here} other{Add {count} photos here}}",
+  "@addToCollectionConfirm": {
+    "description": "Confirm button of the add-to-collection picker (issue #221)",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "116ea85"
+  },
+  "addedToCollection": "{count, plural, =0{Nothing was added to {target}.} =1{Added 1 photo to {target}.} other{Added {count} photos to {target}.}}",
+  "@addedToCollection": {
+    "description": "Summary after adding photos to a collection; target is the quoted collection path (issue #221)",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    },
+    "x-translated": "175ceef1"
+  },
+  "collectionPhotoMissing": "This photo is no longer in the library",
+  "@collectionPhotoMissing": {
+    "description": "Placeholder tile of a collection for a referenced photo that was deleted or purged from the space (issue #221)",
+    "x-translated": "fe0a770e"
+  },
+  "removeFromCollection": "Remove from collection",
+  "@removeFromCollection": {
+    "description": "Menu entry and confirm button taking selected photos out of a collection; the photos stay in their albums (issue #221)",
+    "x-translated": "800cea7d"
+  },
+  "removeFromCollectionQuestion": "{count, plural, =1{Remove 1 photo from this collection?} other{Remove {count} photos from this collection?}}",
+  "@removeFromCollectionQuestion": {
+    "description": "Title of the confirmation before photos are taken out of a collection (issue #221)",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "e1c12c1d"
+  },
+  "removeFromCollectionExplanation": "The photos are removed from this collection. They stay in their albums.",
+  "@removeFromCollectionExplanation": {
+    "description": "Explanation in the confirmation before photos are taken out of a collection (issue #221)",
+    "x-translated": "9e1d02fa"
+  },
+  "removedFromCollection": "{count, plural, =1{Removed 1 photo from the collection.} other{Removed {count} photos from the collection.}}",
+  "@removedFromCollection": {
+    "description": "Said after photos were taken out of a collection (issue #221)",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "455722d2"
+  },
+  "addToCollection": "Add to collection…",
+  "@addToCollection": {
+    "description": "Menu entry adding the selected photo(s) to a collection, i.e. a virtual album referencing photos without copying them (issue #221)",
+    "x-translated": "a6862d92"
+  },
+  "propertySource": "In album: {album}",
+  "@propertySource": {
+    "description": "The line of the image properties naming the album folder a photo shown in a collection lies in (issue #221)",
+    "placeholders": {
+      "album": {
+        "type": "String"
+      }
+    },
+    "x-translated": "8019bc1a"
   }
 }

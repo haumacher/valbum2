@@ -3254,4 +3254,99 @@ class AppLocalizationsEn extends AppLocalizations {
   String contactPasskeyRemoveTitle(String name) {
     return 'Remove this passkey of $name?';
   }
+
+  @override
+  String doingCollecting(String target) {
+    return 'adding to the collection $target';
+  }
+
+  @override
+  String get createCollection => 'New collection';
+
+  @override
+  String get newCollectionTitle => 'New collection';
+
+  @override
+  String get newCollectionHint =>
+      'A collection shows photos of other albums without copying them.';
+
+  @override
+  String get collectionTakesNoMove =>
+      'A collection holds no files; photos are added to it with “Add to collection”.';
+
+  @override
+  String get pickerNeedsCollection =>
+      'Photos are added to a collection — open one or create one.';
+
+  @override
+  String get createNewCollection => 'Create new collection…';
+
+  @override
+  String get nothingToCollect => 'Select the photos to add first.';
+
+  @override
+  String get addToCollectionTitle => 'Add to collection';
+
+  @override
+  String addToCollectionConfirm(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Add $count photos here',
+      one: 'Add 1 photo here',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String addedToCollection(int count, String target) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Added $count photos to $target.',
+      one: 'Added 1 photo to $target.',
+      zero: 'Nothing was added to $target.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get collectionPhotoMissing => 'This photo is no longer in the library';
+
+  @override
+  String get removeFromCollection => 'Remove from collection';
+
+  @override
+  String removeFromCollectionQuestion(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Remove $count photos from this collection?',
+      one: 'Remove 1 photo from this collection?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get removeFromCollectionExplanation =>
+      'The photos are removed from this collection. They stay in their albums.';
+
+  @override
+  String removedFromCollection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Removed $count photos from the collection.',
+      one: 'Removed 1 photo from the collection.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get addToCollection => 'Add to collection…';
+
+  @override
+  String propertySource(String album) {
+    return 'In album: $album';
+  }
 }

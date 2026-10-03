@@ -22,6 +22,7 @@ import 'cache_refresh.dart';
 import 'camera_roll_view.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'collections.dart';
 import 'crop.dart';
 import 'crop_editor.dart';
 import 'downloads.dart';
@@ -1019,6 +1020,10 @@ class AlbumContentState extends State<AlbumContent>
       _layoutOrientation.clear();
     });
 
+    // An edit of a photograph of a collection was written to the album it
+    // lies in (issue #221): that album is fetched anew when it is opened.
+    forgetSources(widget.albumState.navigator.delegate, widget.album);
+
     // Re-load the album, so that the transient part links are rebuilt. The
     // listing above shows the album by its index picture, which may have
     // just been chosen: it is fetched anew on the way up.
@@ -1193,8 +1198,14 @@ class AlbumContentState extends State<AlbumContent>
   /// and a write of the album under an edit session's unsaved buffer would
   /// save that buffer with it — and only where the album holds a photograph
   /// rated as trash, group members counted one by one.
+  ///
+  /// Never in a collection (issue #221): its photographs lie in other albums,
+  /// whose trash they are restored and purged in.
   bool get mayShowTrash =>
-      mayEditAlbum && !editMode && hasTrashedImages(widget.album);
+      mayEditAlbum &&
+      !editMode &&
+      !isCollection(widget.album) &&
+      hasTrashedImages(widget.album);
 
   /// Opens the trash of this album, see issue #152.
   void showTrash() =>
@@ -1214,7 +1225,77 @@ class AlbumContentState extends State<AlbumContent>
   /// Exactly the condition the toolbar button carried: the edit mode holding
   /// a selection. The edit mode itself already asks for `edit` and refuses a
   /// share link, see [editMode].
-  bool get mayMoveSelection => editMode && selection.isNotEmpty;
+  ///
+  /// Never in a collection (issue #221): a collection holds references, and a
+  /// photograph is taken out of it by "Remove from collection".
+  bool get mayMoveSelection =>
+      editMode && selection.isNotEmpty && !isCollection(widget.album);
+
+  /// The photographs of the selection a collection can be given, see issue
+  /// #221: every selected image (a group by its representative), never a
+  /// photograph that is gone.
+  List<String> get collectableNames => [
+        for (var part in widget.album.parts)
+          if (isSelected(part) &&
+              part is AbstractImage &&
+              !layouter.ToImage.toImage(part).missing)
+            part.thumbnailName,
+      ];
+
+  /// Whether "Add to collection…" is offered: a selection of the edit mode
+  /// holding a photograph (issue #221).
+  bool get mayCollectSelection =>
+      editMode && share == null && collectableNames.isNotEmpty;
+
+  /// Adds the selected photographs to a collection, chosen or created in the
+  /// picker, see issue #221. Nothing changes in this album.
+  Future<void> collectSelection() => collectWithPicker(
+        context: context,
+        client: client,
+        source: widget.albumState.path,
+        names: collectableNames,
+        delegate: widget.albumState.navigator.delegate,
+      );
+
+  /// Whether "Remove from collection" is offered: a selection of the edit
+  /// mode of a collection holding a photograph, see issue #221.
+  bool get mayRemoveFromCollection =>
+      editMode &&
+      isCollection(widget.album) &&
+      selection.any((part) => part is AbstractImage);
+
+  /// Takes the selected photographs out of this collection, see issue #221.
+  ///
+  /// Refused with unsaved changes, as a move is: the collection is fetched
+  /// again afterwards. The photographs stay in their albums.
+  Future<void> removeSelectionFromCollection() async {
+    if (dirty) {
+      showMessage(_l10n.saveOrDiscardFirst);
+      return;
+    }
+    var names = [
+      for (var part in widget.album.parts)
+        if (isSelected(part) && part is AbstractImage) part.thumbnailName,
+    ];
+    var removed = await removeFromCollection(
+      context: context,
+      client: client,
+      path: widget.albumState.path,
+      names: names,
+    );
+    if (removed && mounted) {
+      setState(() {
+        clearSelection();
+        _layoutOrientation.clear();
+      });
+      var path = widget.albumState.path;
+      if (path.isNotEmpty) {
+        widget.albumState.navigator.delegate
+            .forget(path.sublist(0, path.length - 1));
+      }
+      widget.albumState.reload();
+    }
+  }
 
   /// The label the view shows the photographs of, `null` for all of them
   /// (issue #213); the edit mode is never filtered by a label.
@@ -1455,8 +1536,12 @@ class AlbumContentState extends State<AlbumContent>
     if (!rights.mayDownload || previewing) {
       return const [];
     }
+    // A photograph of a collection that is gone has no original (#221).
     if (editMode && selection.isNotEmpty) {
-      return selectedImages(widget.album, selection);
+      return [
+        for (var image in selectedImages(widget.album, selection))
+          if (!image.missing) image,
+      ];
     }
     return shownImages(shownParts(shownAlbum).toSet());
   }
@@ -1467,6 +1552,7 @@ class AlbumContentState extends State<AlbumContent>
     return [
       for (var image in selectedImages(shownAlbum, parts))
         if (image.rating >= minRating &&
+            !image.missing &&
             (label == null || carriesLabel(image, label)))
           image,
     ];
@@ -1886,7 +1972,10 @@ class AlbumContentState extends State<AlbumContent>
       // the button is not offered rather than refused, see issue #49.
       // Inside a link the upload is offered exactly when the link allows a
       // contribution, which is what the server answered, see issue #51.
+      // A collection holds references, never files: photographs are added to
+      // it by "Add to collection…" from their albums (issue #221).
       floatingActionButton: previewing ||
+              isCollection(self) ||
               !rights.mayContribute ||
               (link != null && !link.writeAllowed)
           ? null
@@ -2044,6 +2133,23 @@ class AlbumContentState extends State<AlbumContent>
             (_) => showLess(),
             enabled: minRating < maxMinRating,
           ),
+          // A reference to the selection in a collection, chosen or created
+          // (issue #221); nothing changes in this album. Below the filter,
+          // so that the entries a selection always had keep their places.
+          if (mayCollectSelection)
+            keyedMenuItem(
+              const Key("add-to-collection"),
+              Icons.collections_bookmark_outlined,
+              _l10n.addToCollection,
+              (_) => collectSelection(),
+            ),
+          if (mayRemoveFromCollection)
+            keyedMenuItem(
+              const Key("remove-from-collection"),
+              Icons.remove_circle_outline,
+              _l10n.removeFromCollection,
+              (_) => removeSelectionFromCollection(),
+            ),
           const PopupMenuDivider(),
           menuItem(Icons.update, _l10n.reload, (_) => reloadShown()),
           // Who is in this album, see issue #126. Offered to everybody who
@@ -2051,7 +2157,7 @@ class AlbumContentState extends State<AlbumContent>
           // screen says so itself — but never in a share link, which the
           // server answers no face at all (issue #124), and never where the
           // space does not look for faces or this album has none.
-          if (mayOpenPersons(context))
+          if (mayOpenPersons(context) && !isCollection(widget.album))
             keyedMenuItem(
               const Key("persons"),
               Icons.people_outline,
@@ -2070,7 +2176,7 @@ class AlbumContentState extends State<AlbumContent>
           // Whoever may change this album may have the camera and the position
           // read out of the files again, which an album described before they existed
           // lacks, see issue #161.
-          if (mayEditAlbum)
+          if (mayEditAlbum && !isCollection(widget.album))
             keyedMenuItem(
               const Key("reanalyze"),
               Icons.manage_search,
@@ -3097,7 +3203,10 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
     } else {
       return GestureDetector(
         key: ValueKey(image.name),
-        onTap: () => state.widget.pushPart(part, image.name),
+        // A photograph that is gone opens no viewer (issue #221).
+        onTap: image.missing
+            ? null
+            : () => state.widget.pushPart(part, image.name),
         // The way into the edit mode, and for whoever has none the way into
         // the select mode (issue #209).
         onLongPress: () => state.maySelect
@@ -3114,6 +3223,11 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   /// it serves; what is stored beside the image comes on top of it and is
   /// applied here, see [orientedImageThumbnail].
   Widget imageThumbnail(ImagePart image) {
+    if (image.missing) {
+      // A photograph of a collection that is gone (issue #221): nothing to
+      // ask a thumbnail of.
+      return missingTile(AppLocalizations.of(state.context)!, width, height);
+    }
     var thumbnail = orientedImageThumbnail(
       state.client,
       "${state.albumUrl}${image.thumbnailName}",
@@ -3381,8 +3495,8 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
               if (active)
                 Positioned(top: 0, left: 0, right: 0, child: topBar()),
               if (active) Positioned.fill(child: Center(child: centerBar())),
-              if (active)
-                Positioned(bottom: 0, left: 0, right: 0, child: bottomBar()),
+              if (active && !image.missing)
+                Positioned(bottom: 0, left: 0, right: 0, child: bottomBar()!),
             ],
           ),
         ),
@@ -3391,6 +3505,9 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   }
 
   /// The rotation tools, next to the selection mark.
+  ///
+  /// A photograph of a collection that is gone (issue #221) has nothing to
+  /// turn: it is only selected, to be removed.
   Widget topBar() => toolbar([
         toolButton(
           selected ? Icons.check_box : Icons.check_box_outline_blank,
@@ -3398,20 +3515,27 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
           () => album.toggleSelection(part),
           active: selected,
         ),
+        if (!image.missing) ...[
         toolButton(Icons.rotate_right, _l10n.turnRight, rotateRight),
         toolButton(Icons.swap_vert, _l10n.flipVertically, flipVertically),
         toolButton(Icons.rotate_left, _l10n.turnLeft, rotateLeft),
+        ],
       ]);
 
   /// The tools acting on the selection.
   Widget? centerBar() {
-    if (!selected) {
+    if (!selected || image.missing) {
       return null;
     }
     var self = part;
+    // A collection has no groups (issue #221): it shows photographs of other
+    // albums one by one, each where its author put it.
+    var collection = isCollection(album.widget.album);
     return toolbar([
-      if (multiSelected)
+      if (multiSelected && !collection)
         toolButton(Icons.join_left, _l10n.group, createGroup)
+      else if (multiSelected)
+        toolButton(Icons.title, _l10n.insertHeading, createHeading)
       else ...[
         toolButton(Icons.title, _l10n.insertHeading, createHeading),
         if (self is ImageGroup) ...[
@@ -3459,7 +3583,7 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   }
 
   /// The rating chooser and, beside it, the privacy level.
-  Widget bottomBar() => toolbar([
+  Widget? bottomBar() => image.missing ? null : toolbar([
         ...ratingButtons(
           _l10n,
           rating: image.rating,
@@ -3636,6 +3760,13 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
             value: album.labelSelection,
             child: Text(_l10n.labelSelectionAction),
           ),
+        if (album.mayRemoveFromCollection)
+          PopupMenuItem<void Function()>(
+            key: const Key("tile-context-remove-from-collection"),
+            value: album.removeSelectionFromCollection,
+            child: Text(_l10n.removeFromCollection),
+          ),
+        if (!image.missing)
         PopupMenuItem<void Function()>(
           key: const Key("tile-context-properties"),
           value: editImageProperties,
@@ -3643,7 +3774,7 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         ),
         // The region of this photograph, and of no other (issue #212): the
         // editor opens at once and writes at once, see [cropImage].
-        if (image.kind == ImageKind.image)
+        if (image.kind == ImageKind.image && !image.missing)
           PopupMenuItem<void Function()>(
             key: const Key("tile-context-crop"),
             value: cropImage,
@@ -3678,6 +3809,10 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
       image: image,
       album: album.widget.album,
     );
+    if (changed) {
+      // A photograph of a collection is cropped in its own album (#221).
+      forgetSourceOf(album.widget.albumState.navigator.delegate, image);
+    }
     if (changed && album.mounted) {
       // The tile has another aspect now: the album is laid out anew.
       album.relayout();

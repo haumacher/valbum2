@@ -331,6 +331,22 @@ enum AlbumKind {
 	///  shared by a link.
 	///  </p>
 	inbox,
+	///  A collection, see issue #221: an album whose parts <em>reference</em> photographs lying in
+	///  other albums of the space instead of holding files of its own ("best of 2026").
+	/// 
+	///  <p>
+	///  Unlike {@link #INBOX} this kind is <b>stored</b> in <code>index.json</code>: it is written
+	///  once, when the collection is created by a sidecar <code>PUT</code> carrying it, and never
+	///  changed afterwards &mdash; an album never becomes a collection nor the other way round, whatever
+	///  a later <code>PUT</code> says. Every {@link ImagePart} of a collection carries a
+	///  {@link ImagePart#ref reference}, resolved by its content hash through the space's hash index
+	///  (issue #118), so that it survives a move or a rename of the photograph's album. Order,
+	///  headings, the album picture and the labels are the collection's own; everything else a
+	///  photograph says &mdash; its turn, crop, description, rating, privacy, time and faces &mdash;
+	///  is the photograph's own, answered from and written to the album it lies in. Nothing is ever
+	///  copied on disk.
+	///  </p>
+	collection,
 }
 
 /// Writes a value of AlbumKind to a JSON stream.
@@ -338,6 +354,7 @@ void writeAlbumKind(JsonSink json, AlbumKind value) {
 	switch (value) {
 		case AlbumKind.album: json.addString("ALBUM"); break;
 		case AlbumKind.inbox: json.addString("INBOX"); break;
+		case AlbumKind.collection: json.addString("COLLECTION"); break;
 		default: throw ("No such literal: " + value.name);
 	}
 }
@@ -347,6 +364,7 @@ AlbumKind readAlbumKind(JsonReader json) {
 	switch (json.expectString()) {
 		case "ALBUM": return AlbumKind.album;
 		case "INBOX": return AlbumKind.inbox;
+		case "COLLECTION": return AlbumKind.collection;
 		default: return AlbumKind.album;
 	}
 }
@@ -1267,6 +1285,29 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	List<LabelName> labels;
 
+	///  The photograph this part of a {@link AlbumKind#COLLECTION collection} stands for, see issue
+	///  #221; <code>null</code> in every ordinary album.
+	/// 
+	///  <p>
+	///  <b>Stored</b> in the collection's <code>index.json</code>, where a part holds nothing but its
+	///  {@link #name} (unique in the collection, the source's file name where that is free), this
+	///  reference and the collection's own {@link #labels}. On the wire it is answered to the
+	///  members of the space with the photograph's <em>current</em> path, and left out for a share
+	///  link, an anonymous visitor and the public preview, to whom where a photograph lies is nobody's
+	///  business.
+	///  </p>
+	PhotoRef? ref;
+
+	///  Whether the photograph this reference stands for is gone from the space, see issue #221.
+	/// 
+	///  <p>
+	///  Derived on every read and never stored: <code>true</code> for a part of a collection whose
+	///  content hash the space no longer holds anywhere (deleted, purged, replaced). Such a part
+	///  carries nothing but its {@link #name} and {@link #ref}, is answered to the editors of the
+	///  collection alone, so that they can remove it, and has no thumbnail.
+	///  </p>
+	bool missing;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -1293,6 +1334,8 @@ class ImagePart extends AbstractImage {
 			this.raw = "", 
 			this.crop, 
 			this.labels = const [], 
+			this.ref, 
+			this.missing = false, 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1412,6 +1455,14 @@ class ImagePart extends AbstractImage {
 				}
 				break;
 			}
+			case "ref": {
+				ref = json.tryNull() ? null : PhotoRef.read(json);
+				break;
+			}
+			case "missing": {
+				missing = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1491,10 +1542,83 @@ class ImagePart extends AbstractImage {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		var _ref = ref;
+		if (_ref != null) {
+			json.addKey("ref");
+			_ref.writeContent(json);
+		}
+
+		json.addKey("missing");
+		json.addBool(missing);
 	}
 
 	@override
 	R visitAbstractImage<R, A>(AbstractImageVisitor<R, A> v, A arg) => v.visitImagePart(this, arg);
+
+}
+
+///  Where a part of a collection points to, see {@link ImagePart#ref} and issue #221.
+/// 
+///  <p>
+///  The content hash is the identity: it is what survives a move, a rename of the album and a rename
+///  of the file. The path is a hint, the place the photograph was last seen, which is looked at
+///  first and refreshed whenever the collection is written; where the hint no longer holds those
+///  contents, the space's hash index (issue #118) says where they are now.
+///  </p>
+class PhotoRef extends _JsonObject {
+	///  The SHA-256 of the photograph's contents, lower-case hex.
+	String hash;
+
+	///  The photograph's path relative to the space root, <code>/</code>-separated, as last seen.
+	String path;
+
+	/// Creates a PhotoRef.
+	PhotoRef({
+			this.hash = "", 
+			this.path = "", 
+	});
+
+	/// Parses a PhotoRef from a string source.
+	static PhotoRef? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PhotoRef instance from the given reader.
+	static PhotoRef read(JsonReader json) {
+		PhotoRef result = PhotoRef();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PhotoRef";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "hash": {
+				hash = json.expectString();
+				break;
+			}
+			case "path": {
+				path = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("hash");
+		json.addString(hash);
+
+		json.addKey("path");
+		json.addString(path);
+	}
 
 }
 
@@ -2048,6 +2172,9 @@ enum FolderKind {
 	///  never as a tile. The constant stays so that a listing of an older server still reads.
 	///  </p>
 	inbox,
+	///  The entry is a collection (see {@link AlbumKind#COLLECTION}, issue #221): an album of
+	///  references to photographs of other albums. It has a date only where its author gave it one.
+	collection,
 }
 
 /// Writes a value of FolderKind to a JSON stream.
@@ -2056,6 +2183,7 @@ void writeFolderKind(JsonSink json, FolderKind value) {
 		case FolderKind.album: json.addString("ALBUM"); break;
 		case FolderKind.folder: json.addString("FOLDER"); break;
 		case FolderKind.inbox: json.addString("INBOX"); break;
+		case FolderKind.collection: json.addString("COLLECTION"); break;
 		default: throw ("No such literal: " + value.name);
 	}
 }
@@ -2066,6 +2194,7 @@ FolderKind readFolderKind(JsonReader json) {
 		case "ALBUM": return FolderKind.album;
 		case "FOLDER": return FolderKind.folder;
 		case "INBOX": return FolderKind.inbox;
+		case "COLLECTION": return FolderKind.collection;
 		default: return FolderKind.album;
 	}
 }

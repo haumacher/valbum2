@@ -62,7 +62,10 @@ import de.haumacher.imageServer.shared.model.FaceAssignment;
 import de.haumacher.imageServer.shared.model.FaceInfo;
 import de.haumacher.imageServer.shared.model.FaceState;
 import de.haumacher.imageServer.shared.model.FaceTag;
+import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
+import de.haumacher.imageServer.shared.model.Heading;
+import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Invitation;
@@ -87,6 +90,7 @@ import de.haumacher.imageServer.shared.model.PersonCreate;
 import de.haumacher.imageServer.shared.model.PersonLink;
 import de.haumacher.imageServer.shared.model.PersonMerge;
 import de.haumacher.imageServer.shared.model.PersonRename;
+import de.haumacher.imageServer.shared.model.PhotoRef;
 import de.haumacher.imageServer.shared.model.PresentFile;
 import de.haumacher.imageServer.shared.model.RefusedFile;
 import de.haumacher.imageServer.shared.model.Resource;
@@ -442,6 +446,9 @@ public class ImageServlet extends HttpServlet {
 	/** The <code>action</code> that answers a selection of originals as one archive, see issue #164. */
 	public static final String ZIP_ACTION = "zip";
 
+	/** The <code>action</code> that adds photographs to a collection, see issue #221. */
+	public static final String COLLECT_ACTION = "collect";
+
 	/** The message a download request is refused with whose body cannot be read, see issue #164. */
 	public static final String ZIP_UNREADABLE = "The download request could not be read.";
 
@@ -651,6 +658,9 @@ public class ImageServlet extends HttpServlet {
 	/** Who the photographs of this space are of, see issue #125. */
 	private final PeopleStore _people;
 
+	/** The collections of this space, resolved through {@link #_index}, see issue #221. */
+	private final PhotoCollections _collections;
+
 	/** The hash index of this space, for the tests and for the sweep of issue #118. */
 	public HashIndex index() {
 		return _index;
@@ -811,6 +821,7 @@ public class ImageServlet extends HttpServlet {
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
 		_index = new HashIndex(_basePath);
+		_collections = new PhotoCollections(_basePath, _index);
 		_faces = new FaceIndex(_basePath, facesEnabled);
 		_reanalysis = new Reanalysis(_cache, _space.isEmpty() ? basePath.getName() : _space);
 		String noFaces = _faces.unavailability();
@@ -1041,6 +1052,33 @@ public class ImageServlet extends HttpServlet {
 		// The inbox before its first upload is an empty inbox, not an address naming nothing, see
 		// issue #226; reading it writes nothing.
 		boolean unmadeInbox = !file.exists() && Inboxes.isInbox(file);
+		// A photograph of a collection is addressed in the collection and served from the album it
+		// lies in, see issue #221. What the caller may do is asked here, at the collection; what
+		// they may see of the photograph below, at its own album.
+		boolean collected = false;
+		if (!file.exists() && !unmadeInbox && !resourcePath.isRoot()
+			&& resourcePath.parent().toFile().isDirectory()) {
+			Resource container = _cache.lookup(resourcePath.parent());
+			ImagePart reference = PhotoCollections.isCollection(container)
+				? PhotoCollections.referenceNamed((AlbumInfo) container, resourcePath.getName()) : null;
+			if (reference != null) {
+				// The label a link shows is the collection's own (issue #213), asked here.
+				if (!labelShows(caller, resourcePath)) {
+					LOG.warning("Hiding a photograph without the label of the link at '" + pathInfo + "'.");
+					errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Labels.NOT_FOUND);
+					return;
+				}
+				PathInfo source = _collections.locate(reference.getRef());
+				if (source == null) {
+					LOG.warning("The photograph of '" + pathInfo + "' is gone from the space.");
+					errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoCollections.MISSING);
+					return;
+				}
+				resourcePath = source;
+				file = source.toFile();
+				collected = true;
+			}
+		}
 		if (!file.exists() && !unmadeInbox) {
 			// Nothing is malformed about an address naming nothing: it is not found, and the
 			// answer says which segment is missing, see issue #176.
@@ -1097,7 +1135,7 @@ public class ImageServlet extends HttpServlet {
 			}
 			// A photograph without the label a link shows is not there for the link, whichever of
 			// its shapes is asked for -- exactly as one of an inbox, see issue #213.
-			if (!labelShows(caller, resourcePath)) {
+			if (!collected && !labelShows(caller, resourcePath)) {
 				LOG.warning("Hiding a photograph without the label of the link at '" + pathInfo + "'.");
 				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Labels.NOT_FOUND);
 				return;
@@ -1248,12 +1286,20 @@ public class ImageServlet extends HttpServlet {
 					refuse(context, caller, folder, Rights.EDIT, true);
 					return;
 				}
+				if (PhotoCollections.isCollection(folder.toFile())) {
+					errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.FOLDER_REFUSED);
+					return;
+				}
 				createAlbum(context, location, resourcePath);
 				return;
 			}
 
 			if (!_auth.mayContribute(caller, folder)) {
 				refuse(context, caller, folder, Rights.CONTRIBUTE, true);
+				return;
+			}
+			if (PhotoCollections.isCollection(folder.toFile())) {
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.UPLOAD_REFUSED);
 				return;
 			}
 			storeSingleImage(context, caller, folder, file);
@@ -1263,6 +1309,11 @@ public class ImageServlet extends HttpServlet {
 		if (baseType.equals("multipart/form-data")) {
 			if (!_auth.mayContribute(caller, resourcePath)) {
 				refuse(context, caller, resourcePath, Rights.CONTRIBUTE, true);
+				return;
+			}
+			if (PhotoCollections.isCollection(file)) {
+				// A collection holds references, never files, see issue #221.
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.UPLOAD_REFUSED);
 				return;
 			}
 			storeUploads(context, caller, resourcePath);
@@ -1413,6 +1464,14 @@ public class ImageServlet extends HttpServlet {
 		File asked = resourcePath.toFile();
 		File parent = asked.getParentFile();
 		String name = asked.getName();
+		if (PhotoCollections.isCollection(resource)) {
+			// A collection starts empty: what it references is added by ?action=collect, which
+			// asks what the caller may see, never by the sidecar a client writes, see issue #221.
+			AlbumInfo collection = (AlbumInfo) resource;
+			collection.setParts(new ArrayList<>());
+			collection.setIndexPicture(null);
+			contents = sidecarOf(collection);
+		}
 
 		// The album is filed by what is written on it: the date the request carries, else the date
 		// in the folder name it asks for.
@@ -1740,6 +1799,13 @@ public class ImageServlet extends HttpServlet {
 		List<String> names = moveRequest.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
 		MoveService moveService = new MoveService(_cache, _auth);
 
+		if (PhotoCollections.isCollection(source.toFile()) || PhotoCollections.isCollection(target.toFile())) {
+			// A collection holds references: nothing is moved into or out of it, see issue #221.
+			LOG.warning("Refusing a move into or out of a collection at '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.MOVE_REFUSED);
+			return;
+		}
+
 		// The source rule of issue #53: the edit right, or one's own contribution and nothing
 		// else. A share link never gets that far — it has no album to take anything back into.
 		if (!_auth.mayEdit(caller, source)) {
@@ -1776,6 +1842,194 @@ public class ImageServlet extends HttpServlet {
 		_index.treeChanged(target.toFile());
 
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Adds photographs of the addressed album (or collection) to a collection, see issue #221.
+	 *
+	 * <p>
+	 * <code>POST &lt;album&gt;/?action=collect</code> with a {@link MoveRequest} whose target is the
+	 * collection. It needs {@link Rights#EDIT} on the collection, and a name is added only where
+	 * the caller is shown that photograph in its album &mdash; anything else is answered
+	 * {@link #notInAlbum(String)} for that name, as a hidden photograph is not there for them. A
+	 * photograph is identified by its content hash; one the collection already references is not
+	 * added twice. A collection without a picture is covered by the best-rated of what arrived, as
+	 * an album is (issue #153). Nothing on disk changes but the collection's sidecar (and the hash
+	 * sidecar of an album whose photographs were not hashed yet).
+	 * </p>
+	 */
+	private void collect(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo source = location.getPath();
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing an addition to a collection through a share link at '"
+				+ context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, PhotoCollections.COLLECT_REFUSED);
+			return;
+		}
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, source)) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		MoveRequest request;
+		try {
+			request = MoveRequest.readMoveRequest(json(readBody(context.request())));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable collect request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.COLLECT_UNREADABLE);
+			return;
+		}
+		PathInfo target;
+		try {
+			target = _auth.resolve(caller, _basePath, request.getTarget() == null ? "" : request.getTarget()).getPath();
+		} catch (PathRefused ex) {
+			LOG.warning("Refusing the collection '" + request.getTarget() + "': " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND,
+				AuthService.PATH_ESCAPED.equals(ex.getMessage()) ? MoveService.TARGET_ESCAPED : ex.getMessage());
+			return;
+		}
+		if (!_auth.mayEdit(caller, target)) {
+			refuseMove(context, caller, _auth.refusal(caller, Rights.EDIT, true), true);
+			return;
+		}
+		Resource collection = target.toFile().isDirectory() ? _cache.lookup(target) : null;
+		if (!PhotoCollections.isCollection(collection)) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.NOT_A_COLLECTION);
+			return;
+		}
+		Resource origin = source.toFile().isDirectory() ? _cache.lookup(source) : null;
+		if (!(origin instanceof AlbumInfo) || !_auth.mayView(caller, source)) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.NOT_AN_ALBUM);
+			return;
+		}
+
+		// What the caller is shown where the photographs come from.
+		boolean fromCollection = PhotoCollections.isCollection(origin);
+		AlbumInfo shown = fromCollection ? resolveCollection((AlbumInfo) origin, source, caller, Privacy.PRIVATE)
+			: sourceAlbum(source, caller, Privacy.PRIVATE);
+		Map<String, String> hashes = null;
+
+		AlbumInfo stored = (AlbumInfo) collection;
+		Map<String, String> nameByHash = new HashMap<>();
+		Set<String> taken = new HashSet<>();
+		for (ImagePart reference : PhotoCollections.references(stored)) {
+			nameByHash.putIfAbsent(reference.getRef().getHash(), reference.getName());
+			taken.add(reference.getName());
+		}
+		MoveResult result = MoveResult.create();
+		List<ImagePart> added = new ArrayList<>();
+		List<ImagePart> arrived = new ArrayList<>();
+		for (MoveName entry : request.getNames()) {
+			String name = entry.getName();
+			MoveOutcome outcome = MoveOutcome.create().setName(name);
+			result.addOutcome(outcome);
+			ImagePart part = shown == null || name == null ? null : Crops.findImage(shown, name);
+			if (part == null || part.isMissing()) {
+				outcome.setMessage(notInAlbum(name));
+				continue;
+			}
+			String hash;
+			String path;
+			if (fromCollection) {
+				ImagePart reference = PhotoCollections.referenceNamed((AlbumInfo) origin, name);
+				PathInfo located = reference == null ? null : _collections.locate(reference.getRef());
+				if (located == null) {
+					outcome.setMessage(PhotoCollections.MISSING);
+					continue;
+				}
+				hash = reference.getRef().getHash();
+				path = _collections.relative(located);
+			} else {
+				if (hashes == null) {
+					HashCache cache = new HashCache(source.toFile());
+					hashes = cache.hashByName();
+					// The index hears of what was hashed only now, see issue #118.
+					cache.flush();
+				}
+				hash = hashes.get(name);
+				if (hash == null) {
+					outcome.setMessage(notInAlbum(name));
+					continue;
+				}
+				path = _collections.relative(source.child(name));
+			}
+			String present = nameByHash.get(hash);
+			if (present != null) {
+				outcome.setNewName(present).setMessage(PhotoCollections.alreadyCollected(present));
+				continue;
+			}
+			String fileName = path.substring(path.lastIndexOf('/') + 1);
+			String local = PhotoCollections.freeName(taken, fileName);
+			taken.add(local);
+			nameByHash.put(hash, local);
+			ImagePart reference =
+				PhotoCollections.stored(local, PhotoRef.create().setHash(hash).setPath(path), new ArrayList<>());
+			added.add(reference);
+			ImagePart landed = PhotoCollections.copy(part);
+			landed.setName(local);
+			arrived.add(landed);
+			outcome.setNewName(local);
+		}
+
+		if (!added.isEmpty()) {
+			for (ImagePart reference : added) {
+				stored.addPart(reference);
+			}
+			ThumbnailInfo cover = stored.getIndexPicture();
+			if (cover == null || PhotoCollections.referenceNamed(stored, cover.getImage()) == null) {
+				// The rule of issue #153: the best-rated of what arrived, in the order asked.
+				ImagePart best = PrivacyFilter.bestImage(arrived);
+				if (best != null) {
+					stored.setIndexPicture(PrivacyFilter.thumbnail(best));
+				}
+			}
+			storeSidecar(target.toFile(), sidecarOf(stored));
+			_cache.invalidate(target);
+			LOG.info("Added " + added.size() + " photograph(s) to the collection '" + target.toFile() + "'.");
+		}
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Takes the named references out of the given collection, see issue #221: the photographs stay
+	 * where they are, untouched.
+	 */
+	private MoveResult removeReferences(PathInfo folder, AlbumInfo collection, List<String> names) throws IOException {
+		MoveResult result = MoveResult.create();
+		Set<String> removed = new HashSet<>();
+		for (String name : names) {
+			MoveOutcome outcome = MoveOutcome.create().setName(name).setNewName("");
+			if (PhotoCollections.referenceNamed(collection, name) != null && removed.add(name)) {
+				outcome.setMessage(PhotoCollections.REMOVED);
+			} else if (removed.contains(name)) {
+				outcome.setMessage(PhotoCollections.REMOVED);
+			} else {
+				outcome.setMessage(notInAlbum(name));
+			}
+			result.addOutcome(outcome);
+		}
+		if (!removed.isEmpty()) {
+			List<AlbumPart> parts = new ArrayList<>();
+			for (AlbumPart part : collection.getParts()) {
+				if (part instanceof ImagePart && removed.contains(((ImagePart) part).getName())) {
+					continue;
+				}
+				parts.add(part);
+			}
+			collection.setParts(parts);
+			ThumbnailInfo cover = collection.getIndexPicture();
+			if (cover != null && removed.contains(cover.getImage())) {
+				collection.setIndexPicture(null);
+			}
+			storeSidecar(folder.toFile(), sidecarOf(collection));
+			_cache.invalidate(folder);
+			LOG.info("Took " + removed.size() + " reference(s) out of the collection '" + folder.toFile() + "'.");
+		}
+		return result;
 	}
 
 	/**
@@ -1865,6 +2119,13 @@ public class ImageServlet extends HttpServlet {
 			}
 		}
 
+		Resource collection = folder.toFile().isDirectory() ? _cache.lookup(folder) : null;
+		if (PhotoCollections.isCollection(collection)) {
+			// Taking a reference out of a collection never touches the photograph, see issue #221.
+			serveJsonObject(context.response(), removeReferences(folder, (AlbumInfo) collection, names));
+			return;
+		}
+
 		MoveResult result;
 		try {
 			// The trash lives below the caller's own space, exactly as the duplicates do: nothing
@@ -1919,7 +2180,7 @@ public class ImageServlet extends HttpServlet {
 		if (names == null) {
 			return;
 		}
-		List<File> files = zipFiles(context, caller, folder, viewAs, names);
+		Map<String, File> files = zipFiles(context, caller, folder, viewAs, names);
 		if (files == null) {
 			return;
 		}
@@ -2037,7 +2298,7 @@ public class ImageServlet extends HttpServlet {
 		if (folder == null) {
 			return;
 		}
-		List<File> files = zipFiles(context, caller, folder, ticket.getViewAs(), ticket.getNames());
+		Map<String, File> files = zipFiles(context, caller, folder, ticket.getViewAs(), ticket.getNames());
 		if (files == null) {
 			return;
 		}
@@ -2120,8 +2381,12 @@ public class ImageServlet extends HttpServlet {
 	 * The files the given names of a download stand for, each asked what its original would be
 	 * asked; <code>null</code> where one was refused (and answered).
 	 */
-	private List<File> zipFiles(Context context, Caller caller, PathInfo folder, int viewAs,
+	private Map<String, File> zipFiles(Context context, Caller caller, PathInfo folder, int viewAs,
 			Collection<String> names) throws IOException {
+		Resource container = _cache.lookup(folder);
+		if (PhotoCollections.isCollection(container)) {
+			return collectionZipFiles(context, caller, folder, (AlbumInfo) container, viewAs, names);
+		}
 		Inboxes.Visibility inbox =
 			Inboxes.isInbox(_cache.lookup(folder)) ? Inboxes.visibility(_auth, caller, folder, viewAs) : null;
 		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
@@ -2168,11 +2433,66 @@ public class ImageServlet extends HttpServlet {
 				}
 			}
 		}
-		return new ArrayList<>(files);
+		Map<String, File> result = new LinkedHashMap<>();
+		for (File file : files) {
+			result.put(file.getName(), file);
+		}
+		return result;
+	}
+
+	/**
+	 * The originals the given names of a collection stand for, see issue #221: each asked what it
+	 * is asked in its own album, the label of a link asked of the collection's own; an entry is
+	 * named as the photograph is named in the collection.
+	 */
+	private Map<String, File> collectionZipFiles(Context context, Caller caller, PathInfo folder,
+			AlbumInfo collection, int viewAs, Collection<String> names) throws IOException {
+		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
+		int minRating = _auth.minRating(caller, folder, viewAs);
+		Map<String, File> result = new LinkedHashMap<>();
+		for (String name : names) {
+			ImagePart reference = PhotoCollections.referenceNamed(collection, name);
+			if (reference == null || !labelShows(caller, folder.child(name))) {
+				LOG.warning("Refusing the download in '" + context.request().getPathInfo() + "': no photograph '"
+					+ name + "'.");
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
+				return null;
+			}
+			PathInfo image = _collections.locate(reference.getRef());
+			if (image == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoCollections.MISSING);
+				return null;
+			}
+			PathInfo source = image.parent();
+			Resource part = _cache.lookup(image);
+			if (Inboxes.isInbox(source.toFile())) {
+				Inboxes.Visibility inbox = Inboxes.visibility(_auth, caller, source, viewAs);
+				if (!(part instanceof ImagePart) || !Inboxes.shows(inbox, (ImagePart) part, caller.subject())) {
+					errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
+					return null;
+				}
+			}
+			String refusal = hidden(image, clearance, minRating);
+			if (refusal != null) {
+				imageRefused(context, caller, refusal);
+				return null;
+			}
+			result.put(name, image.toFile());
+			if (part instanceof ImagePart) {
+				File raw = RawPairs.companion(source.toFile(), (ImagePart) part);
+				if (raw != null) {
+					int dot = name.lastIndexOf('.');
+					String rawName = raw.getName();
+					int rawDot = rawName.lastIndexOf('.');
+					result.put((dot > 0 ? name.substring(0, dot) : name) + (rawDot > 0 ? rawName.substring(rawDot) : ""), raw);
+				}
+			}
+		}
+		return result;
 	}
 
 	/** Streams the given files as one archive named by the given folder, see {@link ZipDownload}. */
-	private void sendZip(Context context, PathInfo folder, List<File> files) throws IOException {
+	private void sendZip(Context context, PathInfo folder, Map<String, File> files) throws IOException {
 		HttpServletResponse response = context.response();
 		allowCrossOrigin(response);
 		if (context.getParameter(TICKET_PARAMETER) != null) {
@@ -4463,6 +4783,10 @@ public class ImageServlet extends HttpServlet {
 			moveEntries(context);
 			return;
 		}
+		if (COLLECT_ACTION.equals(action)) {
+			collect(context);
+			return;
+		}
 		if ("delete".equals(action)) {
 			deleteEntries(context);
 			return;
@@ -4928,11 +5252,34 @@ public class ImageServlet extends HttpServlet {
 		if (resource == null) {
 			return;
 		}
-		// An inbox is answered flat and by date; what the client writes back must not freeze that
-		// derived order into the sidecar, see issue #131.
-		boolean rearranged = Inboxes.restoreArrangement(resourcePath.toFile(), resource);
-		// An app older than issue #213 does not know the labels and must not remove them.
-		rearranged |= Labels.keepUnknown(contents, resource, _cache.lookup(resourcePath));
+		Resource existing = _cache.lookup(resourcePath);
+		boolean rearranged;
+		Caller caller = _auth.caller(context.request());
+		List<SourceEdit> sourceEdits = null;
+		if (PhotoCollections.isCollection(existing)) {
+			if (!(resource instanceof AlbumInfo)) {
+				LOG.warning("Refusing a folder sidecar for the collection '" + resourcePath.toFile() + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, COLLECTION_SIDECAR_REFUSED);
+				return;
+			}
+			// What is the collection's own is stored here, what is the photograph's own is written
+			// to the album it lies in, see issue #221.
+			sourceEdits = new ArrayList<>();
+			resource = collectionWrite(resourcePath, (AlbumInfo) existing, (AlbumInfo) resource, caller, sourceEdits);
+			rearranged = true;
+		} else {
+			// An album never becomes a collection: the kind is stated once, when it is created.
+			rearranged = resource instanceof AlbumInfo
+				&& ((AlbumInfo) resource).getKind() == de.haumacher.imageServer.shared.model.AlbumKind.COLLECTION;
+			if (rearranged) {
+				((AlbumInfo) resource).setKind(de.haumacher.imageServer.shared.model.AlbumKind.ALBUM);
+			}
+			// An inbox is answered flat and by date; what the client writes back must not freeze
+			// that derived order into the sidecar, see issue #131.
+			rearranged |= Inboxes.restoreArrangement(resourcePath.toFile(), resource);
+			// An app older than issue #213 does not know the labels and must not remove them.
+			rearranged |= Labels.keepUnknown(contents, resource, existing);
+		}
 
 		PathInfo target = resourcePath;
 		String message = "";
@@ -4962,10 +5309,236 @@ public class ImageServlet extends HttpServlet {
 		if (wanted != null) {
 			// Nothing lies at the old path any more; a cached answer there would be a ghost.
 			_cache.invalidate(resourcePath);
+			// A renamed folder announces nothing to the hash index; the references of a
+			// collection find its photographs there only once it is read again, see issue #221.
+			_index.treeChanged(target.toFile());
+		}
+		if (sourceEdits != null) {
+			writeSources(sourceEdits, caller);
 		}
 
 		serveJsonObject(context.response(),
 			CreateResult.create().setPath(location.spell(target.relativePath())).setMessage(message));
+	}
+
+	/** The message a folder sidecar written on a collection is refused with. */
+	public static final String COLLECTION_SIDECAR_REFUSED = "A collection is written as an album, not as a folder.";
+
+	/** A change a collection's sidecar makes to a photograph of another album, see issue #221. */
+	private static final class SourceEdit {
+		final PathInfo _image;
+
+		final ImagePart _received;
+
+		SourceEdit(PathInfo image, ImagePart received) {
+			_image = image;
+			_received = received;
+		}
+	}
+
+	/**
+	 * The stored form of a collection written by the given caller, see issue #221.
+	 *
+	 * <p>
+	 * The collection's own statements are taken: the title, the date, the order, the headings, the
+	 * album picture, the labels of each reference, and which references are left out (removed). A
+	 * part naming no reference of the collection adds nothing &mdash; adding is
+	 * <code>?action=collect</code>, which asks what the caller may see &mdash;, groups are read as
+	 * their members, and a reference this caller was not answered (a photograph above their
+	 * clearance, say) is kept where it stood. What a part says about the photograph itself is
+	 * collected into the given list, for {@link #writeSources(List, Caller)}.
+	 * </p>
+	 */
+	private AlbumInfo collectionWrite(PathInfo path, AlbumInfo existing, AlbumInfo received, Caller caller,
+			List<SourceEdit> edits) {
+		AlbumInfo answered = resolveCollection(existing, path, caller, Privacy.PRIVATE);
+		Map<String, ImagePart> shown = new HashMap<>();
+		for (AlbumPart part : answered.getParts()) {
+			if (part instanceof ImagePart) {
+				shown.put(((ImagePart) part).getName(), (ImagePart) part);
+			}
+		}
+		Map<String, ImagePart> stored = PhotoCollections.byName(existing);
+
+		List<AlbumPart> parts = new ArrayList<>();
+		Set<String> kept = new HashSet<>();
+		List<AlbumPart> flat = new ArrayList<>();
+		for (AlbumPart part : received.getParts()) {
+			if (part instanceof ImageGroup) {
+				flat.addAll(((ImageGroup) part).getImages());
+			} else {
+				flat.add(part);
+			}
+		}
+		for (AlbumPart part : flat) {
+			if (part instanceof Heading) {
+				Heading heading = (Heading) part;
+				parts.add(Heading.create().setText(heading.getText()).setLevel(heading.getLevel()));
+				continue;
+			}
+			if (!(part instanceof ImagePart)) {
+				continue;
+			}
+			ImagePart image = (ImagePart) part;
+			ImagePart reference = stored.get(image.getName());
+			if (reference == null || !kept.add(image.getName())) {
+				continue;
+			}
+			ImagePart answer = shown.get(image.getName());
+			if (answer == null) {
+				parts.add(PhotoCollections.stored(reference.getName(), reference.getRef(), reference.getLabels()));
+				continue;
+			}
+			PhotoRef ref = reference.getRef();
+			if (!answer.isMissing() && answer.getRef() != null) {
+				// The hint follows the photograph, see PhotoRef.
+				ref = PhotoRef.create().setHash(ref.getHash()).setPath(answer.getRef().getPath());
+			}
+			parts.add(PhotoCollections.stored(reference.getName(), ref, image.getLabels()));
+			if (!answer.isMissing()) {
+				PathInfo source = _collections.locate(ref);
+				if (source != null) {
+					edits.add(new SourceEdit(source, image));
+				}
+			}
+		}
+
+		// What this caller was not shown is not theirs to remove: it stays after the reference it
+		// followed before.
+		List<ImagePart> order = PhotoCollections.references(existing);
+		for (int n = 0; n < order.size(); n++) {
+			ImagePart reference = order.get(n);
+			if (shown.containsKey(reference.getName()) || kept.contains(reference.getName())) {
+				continue;
+			}
+			int at = 0;
+			for (int before = n - 1; before >= 0; before--) {
+				int index = indexOfName(parts, order.get(before).getName());
+				if (index >= 0) {
+					at = index + 1;
+					break;
+				}
+			}
+			parts.add(at, PhotoCollections.stored(reference.getName(), reference.getRef(), reference.getLabels()));
+			kept.add(reference.getName());
+		}
+
+		ThumbnailInfo cover = received.getIndexPicture();
+		ThumbnailInfo storedCover = existing.getIndexPicture();
+		if (storedCover != null && !shown.containsKey(storedCover.getImage()) && kept.contains(storedCover.getImage())) {
+			// The caller was answered a substitute for a picture they may not see.
+			cover = storedCover;
+		} else if (cover != null && !kept.contains(cover.getImage())) {
+			cover = null;
+		}
+
+		AlbumInfo result = AlbumInfo.create()
+			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.COLLECTION)
+			.setTitle(received.getTitle())
+			.setSubTitle(received.getSubTitle())
+			.setDate(received.getDate())
+			.setParts(parts);
+		if (cover != null) {
+			result.setIndexPicture(cover);
+		}
+		return result;
+	}
+
+	private static int indexOfName(List<AlbumPart> parts, String name) {
+		for (int n = 0; n < parts.size(); n++) {
+			AlbumPart part = parts.get(n);
+			if (part instanceof ImagePart && ((ImagePart) part).getName().equals(name)) {
+				return n;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Writes what a collection's sidecar said about its photographs into the albums they lie in,
+	 * see issue #221: the turn, the crop, the description, the rating, the privacy and the time.
+	 * An album is written only where something changed, through the one sidecar writer.
+	 */
+	private void writeSources(List<SourceEdit> edits, Caller caller) throws IOException {
+		Map<PathInfo, List<SourceEdit>> byFolder = new LinkedHashMap<>();
+		for (SourceEdit edit : edits) {
+			byFolder.computeIfAbsent(edit._image.parent(), x -> new ArrayList<>()).add(edit);
+		}
+		for (Map.Entry<PathInfo, List<SourceEdit>> entry : byFolder.entrySet()) {
+			PathInfo folder = entry.getKey();
+			if (!_auth.mayEdit(caller, folder)) {
+				continue;
+			}
+			Resource resource = _cache.lookup(folder);
+			if (!(resource instanceof AlbumInfo) || PhotoCollections.isCollection(resource)) {
+				continue;
+			}
+			AlbumInfo album = (AlbumInfo) resource;
+			boolean changed = false;
+			for (SourceEdit edit : entry.getValue()) {
+				ImagePart image = Crops.findImage(album, edit._image.getName());
+				if (image != null) {
+					changed |= applyEdit(album, image, edit._received);
+				}
+			}
+			if (changed) {
+				storeSidecar(folder.toFile(), sidecarOf(album));
+				_cache.invalidate(folder);
+				LOG.info("Wrote the edits made through a collection into '" + folder.toFile() + "'.");
+			}
+		}
+	}
+
+	/** Takes over into the given stored part what the given received one says about it. */
+	private static boolean applyEdit(AlbumInfo album, ImagePart image, ImagePart received) {
+		boolean changed = false;
+		double[] before = Crops.renditionRegion(image);
+		Orientation orientation = image.getOrientation();
+		if (received.getOrientation() != null && received.getOrientation() != image.getOrientation()) {
+			image.setOrientation(received.getOrientation());
+			changed = true;
+		}
+		int rating = Math.max(Ratings.MIN, Math.min(Ratings.MAX, received.getRating()));
+		if (rating != image.getRating()) {
+			image.setRating(rating);
+			changed = true;
+		}
+		int privacy = Math.max(Privacy.PUBLIC, Math.min(Privacy.PRIVATE, received.getPrivacy()));
+		if (privacy != image.getPrivacy()) {
+			image.setPrivacy(privacy);
+			changed = true;
+		}
+		String comment = received.getComment() == null ? "" : received.getComment();
+		if (!comment.equals(image.getComment() == null ? "" : image.getComment())) {
+			image.setComment(comment);
+			changed = true;
+		}
+		if (received.getDate() > 0 && received.getDate() != image.getDate()) {
+			image.setDate(received.getDate());
+			changed = true;
+		}
+		if (image.getKind() == ImageKind.IMAGE) {
+			Crop crop = received.getCrop();
+			if (crop == null || Crops.isValid(crop)) {
+				Crop wanted = crop == null || Crops.isWhole(crop) ? null : Crops.clamped(crop);
+				Crop current = image.getCrop();
+				image.setCrop(wanted);
+				if (!Crops.same(before, Crops.renditionRegion(image))) {
+					changed = true;
+				} else {
+					image.setCrop(current);
+				}
+			}
+		}
+		if (changed && (orientation != image.getOrientation() || !Crops.same(before, Crops.renditionRegion(image)))) {
+			// The album's own picture is framed anew where its photograph was turned or cut, as
+			// ?action=crop does.
+			ThumbnailInfo cover = album.getIndexPicture();
+			if (cover != null && image.getName().equals(cover.getImage())) {
+				album.setIndexPicture(PrivacyFilter.thumbnail(image));
+			}
+		}
+		return changed;
 	}
 
 	/**
@@ -5146,14 +5719,7 @@ public class ImageServlet extends HttpServlet {
 		resource = shown;
 
 		if (jsonRequested(context)) {
-			Resource answer = _privacy.filter(resource, pathInfo, clearance, _auth.minRating(caller, pathInfo, viewAs),
-				_auth.photoLabel(caller));
-			answer = withLabels(withFaces(answer, pathInfo, caller, viewAs), caller, viewAs);
-			if (answer instanceof ListingInfo) {
-				// The shared albums of this folder, shown as what they point at, see issue #50.
-				// After the privacy filter: a link is filtered by the clearance on its own target,
-				// which is not the one this listing was filtered with.
-			}
+			Resource answer = folderAnswer(resource, pathInfo, caller, clearance, viewAs);
 			serveJson(context.response(), withRights(answer, _auth.rights(caller, pathInfo)));
 		} else {
 			error404(context);
@@ -5924,12 +6490,33 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		Resource resource = _cache.lookup(folderPath);
+		PathInfo answerPath = folderPath;
+		String name = request.getName();
+		if (PhotoCollections.isCollection(resource)) {
+			// The crop is the photograph's own, written to the album it lies in, see issue #221.
+			ImagePart reference = PhotoCollections.referenceNamed((AlbumInfo) resource, name);
+			ImagePart shown = reference == null ? null
+				: Crops.findImage(resolveCollection((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE), name);
+			if (shown == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
+				return;
+			}
+			PathInfo source = shown.isMissing() ? null : _collections.locate(reference.getRef());
+			if (source == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoCollections.MISSING);
+				return;
+			}
+			folderPath = source.parent();
+			folder = folderPath.toFile();
+			name = source.getName();
+			resource = _cache.lookup(folderPath);
+		}
 		if (!(resource instanceof AlbumInfo)) {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, CROP_NOT_AN_ALBUM);
 			return;
 		}
 		AlbumInfo album = (AlbumInfo) resource;
-		ImagePart image = Crops.findImage(album, request.getName());
+		ImagePart image = Crops.findImage(album, name);
 		if (image == null) {
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(request.getName()));
 			return;
@@ -5955,7 +6542,7 @@ public class ImageServlet extends HttpServlet {
 		storeSidecar(folder, sidecarOf(album));
 		_cache.invalidate(folderPath);
 		LOG.info("Cropped '" + image.getName() + "' in '" + folder.getAbsolutePath() + "'.");
-		answerAlbum(context, folderPath, caller);
+		answerAlbum(context, answerPath, caller);
 	}
 
 	private void tagFaces(Context context, boolean adjust) throws IOException {
@@ -6005,6 +6592,11 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		Resource resource = _cache.lookup(folderPath);
+		if (PhotoCollections.isCollection(resource)) {
+			LOG.warning("Refusing the tagging in the collection '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.FACES_REFUSED);
+			return;
+		}
 		if (!(resource instanceof AlbumInfo)) {
 			LOG.warning("Refusing the tagging at '" + context.request().getPathInfo() + "': " + TAG_NOT_AN_ALBUM);
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, TAG_NOT_AN_ALBUM);
@@ -6458,10 +7050,161 @@ public class ImageServlet extends HttpServlet {
 		Resource stored = _cache.lookup(folderPath);
 		int viewAs = Privacy.PRIVATE;
 		int clearance = Math.min(_auth.clearance(caller, folderPath), viewAs);
-		Resource answer = _privacy.filter(stored, folderPath, clearance, _auth.minRating(caller, folderPath, viewAs),
-			_auth.photoLabel(caller));
-		answer = withLabels(withFaces(answer, folderPath, caller, viewAs), caller, viewAs);
+		Resource answer = folderAnswer(stored, folderPath, caller, clearance, viewAs);
 		serveJson(context.response(), withRights(answer, _auth.rights(caller, folderPath)));
+	}
+
+	/**
+	 * The given folder as the given caller is answered it: filtered, faced and labelled, the
+	 * collections of issue #221 resolved. The one place a folder answer is built.
+	 *
+	 * @param resource
+	 *        What the cache holds, the inbox rule already applied; never modified.
+	 */
+	private Resource folderAnswer(Resource resource, PathInfo pathInfo, Caller caller, int clearance, int viewAs) {
+		int minRating = _auth.minRating(caller, pathInfo, viewAs);
+		String label = _auth.photoLabel(caller);
+		if (PhotoCollections.isCollection(resource)) {
+			// Every photograph as the caller would be answered it in its own album -- faces
+			// included --, then the collection's own filters on top: a link's privacy, rating and
+			// label (the label being the collection's own, see issue #213).
+			AlbumInfo resolved = resolveCollection((AlbumInfo) resource, pathInfo, caller, viewAs);
+			Resource answer = _privacy.filter(resolved, pathInfo, clearance, minRating, label);
+			return withLabels(answer, caller, viewAs);
+		}
+		Resource answer = _privacy.filter(resource, pathInfo, clearance, minRating, label);
+		answer = withLabels(withFaces(answer, pathInfo, caller, viewAs), caller, viewAs);
+		if (answer instanceof ListingInfo) {
+			answer = withCollectionCovers((ListingInfo) answer, pathInfo, caller, viewAs, label);
+		}
+		return answer;
+	}
+
+	/**
+	 * The given collection resolved for the given caller, see
+	 * {@link PhotoCollections#resolve(AlbumInfo, java.util.function.Function, boolean, boolean)}.
+	 */
+	AlbumInfo resolveCollection(AlbumInfo collection, PathInfo path, Caller caller, int viewAs) {
+		boolean member = Faces.maySee(_auth, caller, viewAs);
+		boolean editor = !caller.isShareLink() && viewAs >= Privacy.PRIVATE && _auth.mayEdit(caller, path);
+		return _collections.resolve(collection, folder -> sourceAlbum(folder, caller, viewAs), editor, member);
+	}
+
+	/**
+	 * The album in the given folder as the given caller is answered it there, <code>null</code>
+	 * where they are shown nothing of it: the source of a part of a collection, see issue #221.
+	 */
+	private AlbumInfo sourceAlbum(PathInfo folder, Caller caller, int viewAs) {
+		if (!folder.toFile().isDirectory() || !_auth.mayView(caller, folder)) {
+			return null;
+		}
+		Resource stored = _cache.lookup(folder);
+		if (!(stored instanceof AlbumInfo) || PhotoCollections.isCollection(stored)) {
+			return null;
+		}
+		Resource shown = Inboxes.filter(stored, Inboxes.visibility(_auth, caller, folder, viewAs), caller.subject());
+		if (shown == null) {
+			return null;
+		}
+		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
+		Resource answer = _privacy.filter(shown, folder, clearance, _auth.minRating(caller, folder, viewAs), "");
+		answer = withFaces(answer, folder, caller, viewAs);
+		return answer instanceof AlbumInfo ? (AlbumInfo) answer : null;
+	}
+
+	/**
+	 * The collection of the given folder as a share link sees it, for the card of issue #104: what
+	 * {@link SharePreview} draws, with the references kept so that it finds the file.
+	 */
+	AlbumInfo collectionForLink(PathInfo path, AlbumInfo collection, int clearance, int minRating, String label) {
+		AlbumInfo resolved = _collections.resolve(collection, folder -> {
+			if (!folder.toFile().isDirectory()) {
+				return null;
+			}
+			Resource stored = _cache.lookup(folder);
+			if (!(stored instanceof AlbumInfo) || PhotoCollections.isCollection(stored)) {
+				return null;
+			}
+			Resource shown = Inboxes.filter(stored, Inboxes.Visibility.NONE, "");
+			if (shown == null) {
+				return null;
+			}
+			Resource answer = _privacy.filter(shown, folder, clearance, minRating, "");
+			return answer instanceof AlbumInfo ? (AlbumInfo) answer : null;
+		}, false, true);
+		Resource filtered = _privacy.filter(resolved, path, clearance, minRating, label);
+		return filtered instanceof AlbumInfo ? (AlbumInfo) filtered : null;
+	}
+
+	/**
+	 * The given listing with the pictures of its entries that lie in a collection checked against
+	 * the photograph they stand for, see issue #221.
+	 *
+	 * <p>
+	 * A collection's tile (and a folder's tile chosen through a collection, issue #110) shows its
+	 * picture where the caller may see the photograph in its own album and the link's label is on
+	 * the reference, with the photograph's crop; otherwise no picture at all, the choice of its
+	 * author or nothing. A photograph of the inbox is never a tile's picture.
+	 * </p>
+	 */
+	private ListingInfo withCollectionCovers(ListingInfo listing, PathInfo path, Caller caller, int viewAs,
+			String label) {
+		List<FolderInfo> folders = listing.getFolders();
+		List<FolderInfo> result = null;
+		for (int n = 0, size = folders.size(); n < size; n++) {
+			FolderInfo folder = folders.get(n);
+			FolderInfo shown = collectionCover(folder, path.child(folder.getName()), caller, viewAs, label);
+			if (shown != folder && result == null) {
+				result = new ArrayList<>(folders.subList(0, n));
+			}
+			if (result != null) {
+				result.add(shown);
+			}
+		}
+		if (result == null) {
+			return listing;
+		}
+		return ListingInfo.create().setTitle(listing.getTitle()).setPlacement(listing.getPlacement())
+			.setIndex(listing.getIndex()).setFolders(result).setRights(listing.getRights());
+	}
+
+	private FolderInfo collectionCover(FolderInfo folder, PathInfo childPath, Caller caller, int viewAs, String label) {
+		ThumbnailInfo cover = folder.getIndexPicture();
+		if (cover == null || cover.getImage().isEmpty() || !childPath.toFile().isDirectory()) {
+			return folder;
+		}
+		PathInfo albumPath = FolderCover.albumOf(childPath, cover.getImage());
+		Resource album = albumPath.toFile().isDirectory() ? _cache.lookup(albumPath) : null;
+		if (!PhotoCollections.isCollection(album)) {
+			return folder;
+		}
+		ImagePart reference =
+			PhotoCollections.referenceNamed((AlbumInfo) album, FolderCover.imageName(cover.getImage()));
+		ImagePart shown = null;
+		if (reference != null && Labels.shows(reference, label)) {
+			PathInfo image = _collections.locate(reference.getRef());
+			if (image != null && !Inboxes.isInbox(image.parent().toFile())) {
+				AlbumInfo source = sourceAlbum(image.parent(), caller, viewAs);
+				shown = source == null ? null : Crops.findImage(source, image.getName());
+			}
+		}
+		FolderInfo result = FolderInfo.create()
+			.setName(folder.getName())
+			.setKind(folder.getKind())
+			.setImageCount(folder.getImageCount())
+			.setTitle(folder.getTitle())
+			.setSubTitle(folder.getSubTitle())
+			.setLink(folder.getLink())
+			.setEffectiveDate(folder.getEffectiveDate());
+		if (shown != null) {
+			ThumbnailInfo copy = Crops.copy(cover);
+			double[] region = Crops.renditionRegion(shown);
+			copy.setCrop(region == null ? null
+				: Crop.create().setX(region[0]).setY(region[1])
+					.setW(region[2]).setH(region[3]));
+			result.setIndexPicture(copy);
+		}
+		return result;
 	}
 
 	/**

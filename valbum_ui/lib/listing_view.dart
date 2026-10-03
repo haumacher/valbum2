@@ -242,6 +242,15 @@ class ListingView extends StatelessWidget {
             // never offered and then refused, see issue #49.
             if (mayChange)
               menuItem(Icons.create_new_folder, l10n.createAlbum, createAlbum),
+            // A collection of references to photographs of other albums,
+            // made wherever an album may be made, see issue #221.
+            if (mayChange)
+              keyedMenuItem(
+                const Key("create-collection"),
+                Icons.collections_bookmark_outlined,
+                l10n.createCollection,
+                createCollection,
+              ),
             if (mayChange)
               menuItem(
                 Icons.create_new_folder_outlined,
@@ -474,7 +483,13 @@ class ListingView extends StatelessWidget {
         ),
         child: Center(
           child: Icon(
-            Icons.folder,
+            // A collection of references says what it is, see issue #221.
+            folder.kind == FolderKind.collection
+                ? Icons.collections_bookmark_outlined
+                : Icons.folder,
+            key: folder.kind == FolderKind.collection
+                ? const Key("collection-icon")
+                : null,
             size: width / 2,
             color: Colors.blue,
           ),
@@ -723,6 +738,40 @@ class ListingView extends StatelessWidget {
 
     if (result.message.isNotEmpty) {
       // Nothing happens silently: an album that was filed away says so.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
+  /// Creates a collection in the folder being shown, see issue #221: an
+  /// album of references to photographs that lie in other albums.
+  void createCollection(BuildContext context) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+    AlbumInfo? collection = await showFormDialog<AlbumInfo>(
+      context: context,
+      builder: (context) => const CreateCollectionDialog(),
+    );
+    if (collection == null) {
+      return;
+    }
+    CreateResult result;
+    try {
+      result = await client.createAlbum(albumState.path, collection);
+    } catch (error) {
+      showRefusal(messenger, error);
+      return;
+    }
+    albumState.navigator.delegate.forgetTree(albumState.path);
+    albumState.reload();
+    albumState.showPath(splitPath(result.path));
+    if (result.message.isNotEmpty) {
       messenger.showSnackBar(
         SnackBar(
           content: Text(result.message),
@@ -1068,6 +1117,76 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
     );
 
     Navigator.of(context).pop(info);
+  }
+}
+
+/// The dialog that names a new collection, see issue #221.
+///
+/// A title and nothing else: a collection has no photographs of its own whose
+/// day it could carry, so it is made without a date and stays in the folder it
+/// is made in (a date may still be given in its properties). It answers the
+/// sidecar to create, of kind [AlbumKind.collection].
+class CreateCollectionDialog extends StatefulWidget {
+  const CreateCollectionDialog({super.key});
+
+  @override
+  State<StatefulWidget> createState() => CreateCollectionDialogState();
+}
+
+class CreateCollectionDialogState extends State<CreateCollectionDialog> {
+  var formKey = GlobalKey<FormState>();
+  String? title;
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return Form(
+      key: formKey,
+      child: FormDialogFrame(
+        key: const Key("create-collection-dialog"),
+        title: Text(l10n.newCollectionTitle),
+        fields: [
+          Text(
+            l10n.newCollectionHint,
+            style: const TextStyle(fontSize: 12),
+          ),
+          TextFormField(
+            key: const Key("collection-title"),
+            autofocus: true,
+            decoration: InputDecoration(label: Text(l10n.titleLabel)),
+            onSaved: (value) => title = value,
+            validator: (String? value) =>
+                value == null || value.trim().isEmpty ? l10n.mustNotBeEmpty : null,
+          ),
+        ],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.cancel),
+          ),
+          ElevatedButton.icon(
+            key: const Key("create-collection-confirm"),
+            icon: const Icon(Icons.check),
+            label: Text(l10n.create),
+            onPressed: createPressed,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void createPressed() {
+    var formState = formKey.currentState!;
+    if (!formState.validate()) {
+      return;
+    }
+    formState.save();
+    var name = title!.trim();
+    Navigator.of(context).pop(AlbumInfo(
+      title: name,
+      path: albumFolderName(null, name),
+      kind: AlbumKind.collection,
+    ));
   }
 }
 

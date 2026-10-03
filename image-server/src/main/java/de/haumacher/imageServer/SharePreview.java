@@ -425,6 +425,12 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		if (resource == null) {
 			return null;
 		}
+		if (PhotoCollections.isCollection(resource)) {
+			// A collection shows its photographs as the link sees them in their own albums, see
+			// issue #221; the references are kept here so that the card finds the file.
+			return data.collectionForLink(path, (AlbumInfo) resource, Math.min(Privacy.MEMBERS, link.getMaxPrivacy()),
+				Ratings.withoutTrash(link.getMinRating()), link.getPhotoLabel());
+		}
 		// A link never shows the inbox, see issue #131; no listing holds it as an entry, see #226.
 		Resource shown = Inboxes.filter(resource, Inboxes.Visibility.NONE, "");
 		if (shown == null) {
@@ -461,7 +467,9 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 			if (image == null) {
 				return null;
 			}
-			File file = path.child(image.getName()).toFile();
+			File file = image.getRef() != null && !image.getRef().getPath().isEmpty()
+				? path.getBasePath().resolve(image.getRef().getPath()).toFile()
+				: path.child(image.getName()).toFile();
 			return file.isFile() ? file : null;
 		}
 		if (shown instanceof ListingInfo) {
@@ -522,6 +530,17 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 	private static double[] region(PathInfo path, Resource shown, File image) {
 		if (shown instanceof AlbumInfo) {
 			ImagePart part = Crops.findImage((AlbumInfo) shown, image.getName());
+			if (PhotoCollections.isCollection(shown)) {
+				// A part of a collection is named by the collection, not by its file, see #221.
+				part = null;
+				for (AlbumPart candidate : ((AlbumInfo) shown).getParts()) {
+					if (candidate instanceof ImagePart && ((ImagePart) candidate).getRef() != null
+						&& path.getBasePath().resolve(((ImagePart) candidate).getRef().getPath()).toFile().equals(image)) {
+						part = (ImagePart) candidate;
+						break;
+					}
+				}
+			}
 			return part == null ? null : Crops.renditionRegion(part);
 		}
 		if (shown instanceof ListingInfo) {

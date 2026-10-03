@@ -20,6 +20,7 @@ import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.PreviewCache;
 import de.haumacher.imageServer.RawPairs;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AlbumKind;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
@@ -373,6 +374,15 @@ public class ResourceCache {
 				|| (resource == null && Inboxes.isInbox(dir))) {
 				AlbumInfo album = resource == null ? createGenericAlbumInfo(path) : (AlbumInfo) resource;
 
+				if (album.getKind() == AlbumKind.COLLECTION) {
+					// A collection holds references and no files, see issue #221: its parts are
+					// what its sidecar says, never reconciled with the folder, and a file somebody
+					// put there by hand is no part of it.
+					UpdateTransient.updateTransient(album);
+					album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
+					return album;
+				}
+
 				loadAlbum(album, dir, images, _analysis, zone());
 
 				// Derived on every read and never stored, see AlbumDate#clearDerived(FolderResource).
@@ -397,7 +407,11 @@ public class ResourceCache {
 					if (resource instanceof AlbumInfo) {
 						// Where the folder lies says whether it is the inbox, never the sidecar: an
 						// album an older build flagged as one reads as an album, see issue #226.
-						((AlbumInfo) resource).setKind(Inboxes.kindOf(dir));
+						// A collection is the one kind a sidecar states, see issue #221.
+						AlbumInfo album = (AlbumInfo) resource;
+						AlbumKind kind = Inboxes.kindOf(dir);
+						album.setKind(kind == AlbumKind.ALBUM && album.getKind() == AlbumKind.COLLECTION
+							? AlbumKind.COLLECTION : kind);
 					}
 					dropZeroLocations(resource);
 					dropIgnoredParts(resource);
@@ -538,7 +552,8 @@ public class ResourceCache {
 					// is a kind of album and says so, so that the tile can stand first and show no
 					// date, see issue #131.
 					boolean inbox = Inboxes.isInbox(albumInfo);
-					folderInfo.setKind(inbox ? FolderKind.INBOX : FolderKind.ALBUM);
+					folderInfo.setKind(inbox ? FolderKind.INBOX
+						: albumInfo.getKind() == AlbumKind.COLLECTION ? FolderKind.COLLECTION : FolderKind.ALBUM);
 					if (inbox) {
 						// The pile of work an inbox tile says how much of is left, see issue #137.
 						// Counted out of the sidecar that was read a line ago, so a listing pays

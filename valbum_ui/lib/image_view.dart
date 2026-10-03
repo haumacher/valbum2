@@ -16,6 +16,7 @@ import 'app.dart';
 import 'attribution.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'collections.dart';
 import 'crop.dart';
 import 'crop_editor.dart';
 import 'diagnostics.dart';
@@ -580,6 +581,8 @@ class ImageViewState extends State<ImageView>
     var messenger = ScaffoldMessenger.of(context);
     try {
       await widget.client.saveAlbum(path, owner);
+      // Written to the album a photograph of a collection lies in (#221).
+      forgetSourceOf(widget.delegate, image);
     } catch (error) {
       if (!mounted) {
         return;
@@ -631,6 +634,33 @@ class ImageViewState extends State<ImageView>
             progress: progress),
       );
 
+  // --- Collections, see issue #221. ---
+
+  /// Whether "Add to collection…" is offered for the picture shown: with
+  /// `edit`, outside a share session, where the viewer knows the album the
+  /// picture is answered from.
+  bool get mayCollect =>
+      album != null &&
+      widget.editPath != null &&
+      rights.mayEdit &&
+      !part.missing &&
+      ShareSession.of(context) == null;
+
+  /// Adds the picture shown to a collection, chosen or created in the picker.
+  Future<void> collectShown() async {
+    var path = widget.editPath;
+    if (path == null) {
+      return;
+    }
+    await collectWithPicker(
+      context: context,
+      client: widget.client,
+      source: path,
+      names: [part.name],
+      delegate: widget.delegate,
+    );
+  }
+
   // --- Naming the faces of the picture, see issue #147. ---
 
   /// Whether this picture's faces may be named here at all.
@@ -640,9 +670,13 @@ class ImageViewState extends State<ImageView>
   /// an account (issues #124 and #51). A video is left out because the
   /// detector never looks at one (issue #123): there is nothing to name and
   /// nothing to draw on.
+  ///
+  /// Never in a collection (issue #221): a face is named in the album the
+  /// photograph lies in, which is where the server stores the decision.
   bool get mayEditPersons =>
       !isVideo &&
       album != null &&
+      album!.kind != AlbumKind.collection &&
       widget.editPath != null &&
       rights.mayEdit &&
       CallerInfo.facesOf(context) &&
@@ -676,6 +710,10 @@ class ImageViewState extends State<ImageView>
       image: part,
       album: album,
     );
+    if (changed) {
+      // A photograph of a collection is cropped in its own album (#221).
+      forgetSourceOf(widget.delegate, part);
+    }
     if (changed && mounted) {
       // The region is another picture: fitted anew.
       setState(() => _transform = null);
@@ -2384,6 +2422,22 @@ class ImageViewState extends State<ImageView>
                       child: Icon(Icons.crop, color: Colors.blueAccent),
                     ),
                     Flexible(child: Text(l10n.cropMenu)),
+                  ],
+                ),
+              ),
+            // A reference to this photograph in a collection (#221).
+            if (mayCollect)
+              PopupMenuItem<void Function(BuildContext)>(
+                key: const Key("viewer-add-to-collection"),
+                value: (_) => collectShown(),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(right: 16),
+                      child: Icon(Icons.collections_bookmark_outlined,
+                          color: Colors.blueAccent),
+                    ),
+                    Flexible(child: Text(l10n.addToCollection)),
                   ],
                 ),
               ),

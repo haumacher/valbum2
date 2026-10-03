@@ -44,6 +44,12 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 	 */
 	INBOX("INBOX"),
 
+	/**
+	 * The entry is a collection (see {@link AlbumKind#COLLECTION}, issue #221): an album of
+	 * references to photographs of other albums. It has a date only where its author gave it one.
+	 */
+	COLLECTION("COLLECTION"),
+
 	;
 
 	private final String _protocolName;
@@ -69,6 +75,7 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case "ALBUM": return ALBUM;
 			case "FOLDER": return FOLDER;
 			case "INBOX": return INBOX;
+			case "COLLECTION": return COLLECTION;
 		}
 		return ALBUM;
 	}
@@ -89,6 +96,7 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case ALBUM: out.value(1); break;
 			case FOLDER: out.value(2); break;
 			case INBOX: out.value(3); break;
+			case COLLECTION: out.value(4); break;
 			default: out.value(0);
 		}
 	}
@@ -99,6 +107,7 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case 1: return ALBUM;
 			case 2: return FOLDER;
 			case 3: return INBOX;
+			case 4: return COLLECTION;
 			default: return ALBUM;
 		}
 	}

@@ -69,6 +69,12 @@ public class ImagePart extends AbstractImage {
 	/** @see #getLabels() */
 	private static final String LABELS__PROP = "labels";
 
+	/** @see #getRef() */
+	private static final String REF__PROP = "ref";
+
+	/** @see #isMissing() */
+	private static final String MISSING__PROP = "missing";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -106,6 +112,10 @@ public class ImagePart extends AbstractImage {
 	private de.haumacher.imageServer.shared.model.Crop _crop = null;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.LabelName> _labels = new java.util.ArrayList<>();
+
+	private de.haumacher.imageServer.shared.model.PhotoRef _ref = null;
+
+	private boolean _missing = false;
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -755,6 +765,70 @@ public class ImagePart extends AbstractImage {
 		_labels.remove(value);
 	}
 
+	/**
+	 * The photograph this part of a {@link AlbumKind#COLLECTION collection} stands for, see issue
+	 * #221; <code>null</code> in every ordinary album.
+	 *
+	 * <p>
+	 * <b>Stored</b> in the collection's <code>index.json</code>, where a part holds nothing but its
+	 * {@link #getName()} (unique in the collection, the source's file name where that is free), this
+	 * reference and the collection's own {@link #getLabels()}. On the wire it is answered to the
+	 * members of the space with the photograph's <em>current</em> path, and left out for a share
+	 * link, an anonymous visitor and the public preview, to whom where a photograph lies is nobody's
+	 * business.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.PhotoRef getRef() {
+		return _ref;
+	}
+
+	/**
+	 * @see #getRef()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setRef(de.haumacher.imageServer.shared.model.PhotoRef value) {
+		internalSetRef(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getRef()} without chain call utility. */
+	protected final void internalSetRef(de.haumacher.imageServer.shared.model.PhotoRef value) {
+		_ref = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getRef()} has a value.
+	 */
+	public final boolean hasRef() {
+		return _ref != null;
+	}
+
+	/**
+	 * Whether the photograph this reference stands for is gone from the space, see issue #221.
+	 *
+	 * <p>
+	 * Derived on every read and never stored: <code>true</code> for a part of a collection whose
+	 * content hash the space no longer holds anywhere (deleted, purged, replaced). Such a part
+	 * carries nothing but its {@link #getName()} and {@link #getRef()}, is answered to the editors of the
+	 * collection alone, so that they can remove it, and has no thumbnail.
+	 * </p>
+	 */
+	public final boolean isMissing() {
+		return _missing;
+	}
+
+	/**
+	 * @see #isMissing()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setMissing(boolean value) {
+		internalSetMissing(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isMissing()} without chain call utility. */
+	protected final void internalSetMissing(boolean value) {
+		_missing = value;
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -852,6 +926,12 @@ public class ImagePart extends AbstractImage {
 			x.writeTo(out);
 		}
 		out.endArray();
+		if (hasRef()) {
+			out.name(REF__PROP);
+			getRef().writeTo(out);
+		}
+		out.name(MISSING__PROP);
+		out.value(isMissing());
 	}
 
 	@Override
@@ -896,6 +976,8 @@ public class ImagePart extends AbstractImage {
 				in.endArray();
 			}
 			break;
+			case REF__PROP: setRef(de.haumacher.imageServer.shared.model.PhotoRef.readPhotoRef(in)); break;
+			case MISSING__PROP: setMissing(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}

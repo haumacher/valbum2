@@ -151,8 +151,12 @@ String? albumDateLabel(int effectiveDate) => effectiveDate == 0
 ///
 /// [FolderKind.album] is the value an entry from a server that does not know
 /// the field yet carries, so such a listing shows its dates exactly as before.
+///
+/// A collection (issue #221) is shown with a date only where its author gave
+/// it one: it has no photographs of its own whose day it could be.
 bool folderHasDate(FolderInfo folder) =>
-    folder.kind == FolderKind.album && folder.effectiveDate != 0;
+    (folder.kind == FolderKind.album || folder.kind == FolderKind.collection) &&
+    folder.effectiveDate != 0;
 
 /// The earliest day an album may be dated on, in every calendar that asks.
 final DateTime firstAlbumDate = DateTime(1900);

@@ -1800,6 +1800,42 @@ class VAlbumClient {
     return MoveResult.read(JsonReader.fromString(response.body));
   }
 
+  /// Adds the named photographs of the folder at [path] to the collection at
+  /// [target], see issue #221.
+  ///
+  /// [path] is an album or a collection; [target] is the path of a collection
+  /// relative to the root of the caller's space. Nothing is copied: the
+  /// collection stores a reference to each photograph. The answer carries one
+  /// [MoveOutcome] per name: the name the photograph has in the collection,
+  /// and a sentence where it was already there or was refused. A refusal of
+  /// the whole request is thrown as a [VAlbumException] carrying the server's
+  /// message, like every other refused write.
+  Future<MoveResult> collect(
+    List<String> path,
+    String target,
+    List<String> names,
+  ) async {
+    var url = "${folderUrl(path)}?action=collect";
+    var request = MoveRequest(
+      target: target,
+      names: [for (var name in names) MoveName(name: name)],
+    );
+    var body = StringBuffer();
+    request.writeContent(jsonStringWriter(body));
+
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingCollecting("'$target'"));
+    }
+    return MoveResult.read(JsonReader.fromString(response.body));
+  }
+
   /// Deletes the named entries of the folder at [path], see issue #109.
   ///
   /// [names] are entries of that folder, and only albums and folders: an image

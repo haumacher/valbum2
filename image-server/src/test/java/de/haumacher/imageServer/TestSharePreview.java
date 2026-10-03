@@ -236,6 +236,30 @@ public class TestSharePreview extends TestCase {
 	}
 
 	/**
+	 * The card of a collection (issue #221) is drawn with the photograph its picture stands for,
+	 * read from the album it lies in, as the link sees it there: a private one is never the card.
+	 */
+	public void testTheCoverOfACollectionIsItsPhotographAsTheLinkSeesIt() throws Exception {
+		single();
+		String zoo = de.haumacher.imageServer.upload.HashCache.sha256(_base.resolve(ZOO).resolve("public.jpg").toFile());
+		String trip = de.haumacher.imageServer.upload.HashCache.sha256(_base.resolve(TRIP).resolve("private.jpg").toFile());
+		album(_base, "Picks", "[\"AlbumInfo\",{\"kind\":\"COLLECTION\",\"title\":\"Picks\","
+			+ "\"indexPicture\":{\"image\":\"secret.jpg\"},\"parts\":["
+			+ "[\"ImagePart\",{\"name\":\"secret.jpg\",\"ref\":{\"hash\":\"" + trip + "\",\"path\":\"" + TRIP
+			+ "/private.jpg\"}}],"
+			+ "[\"ImagePart\",{\"name\":\"open.jpg\",\"ref\":{\"hash\":\"" + zoo + "\",\"path\":\"" + ZOO
+			+ "/public.jpg\"}}]]}]");
+		// What the albums hold is known by its hash once the space is indexed, see issue #118.
+		_data.get("").index().indexNow();
+		String token = share("", "Picks", Privacy.MEMBERS, Ratings.MIN);
+
+		assertTrue(get("/s/" + token + "/").body().contains("<title>Picks</title>"));
+		FakeResponse cover = get("/s/" + token + "/cover.jpg");
+		assertEquals(cover.body(), HttpServletResponse.SC_OK, cover.status());
+		assertTrue("The first photograph the link may see.", Arrays.equals(preview(ZOO, "public.jpg"), cover.bodyBytes()));
+	}
+
+	/**
 	 * The card of an album whose picture is cropped shows the region, as the album's tile does
 	 * (issue #212); a folder's card likewise, through the region its listing entry derives.
 	 */
