@@ -370,6 +370,27 @@
 			<version>2.0.5</version>
 		</dependency>
 
+		<!-- "Continue with Google" of issue #200: an OpenID Connect client (authorization code with
+		     PKCE) through pac4j (Apache-2.0) and the Nimbus OAuth/OIDC SDK and JOSE library it is
+		     built on (Apache-2.0); pac4j 6 is the Jakarta generation. The request is handed to it
+		     through a small adapter of its own (oidc/FlowContext), so no servlet integration is
+		     needed. It brings Bouncy Castle (MIT), which pac4j's configuration loads although this
+		     flow never runs it; its JARs are signed, so the server JAR leaves their signature
+		     files out (src/main/assembly/jar-with-dependencies.xml). -->
+		<dependency>
+			<groupId>org.pac4j</groupId>
+			<artifactId>pac4j-oidc</artifactId>
+			<version>6.5.9</version>
+			<exclusions>
+				<!-- Tink (with protobuf and gson) is an optional provider of the Nimbus JOSE library
+				     for the Edwards curves; an ID token of this flow is RSA- or EC-signed. -->
+				<exclusion>
+					<groupId>com.google.crypto.tink</groupId>
+					<artifactId>tink</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
 		<dependency>
 		    <groupId>org.apache.commons</groupId>
 		    <artifactId>commons-fileupload2-jakarta</artifactId>
@@ -476,9 +497,12 @@
 									<mainClass>de.haumacher.imageServer.Main</mainClass>
 								</manifest>
 							</archive>
-							<descriptorRefs>
-								<descriptorRef>jar-with-dependencies</descriptorRef>
-							</descriptorRefs>
+							<!-- The predefined jar-with-dependencies, less the signature files of
+							     signed dependencies (Bouncy Castle, issue #200): copied into this
+							     JAR they would no longer match it, and the JVM would refuse it. -->
+							<descriptors>
+								<descriptor>src/main/assembly/jar-with-dependencies.xml</descriptor>
+							</descriptors>
 							<finalName>${assembly.finalName}</finalName>
 						</configuration>
 					</execution>

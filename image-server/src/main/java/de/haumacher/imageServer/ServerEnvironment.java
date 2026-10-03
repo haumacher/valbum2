@@ -6,10 +6,19 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.mail.MailSettings;
 import de.haumacher.imageServer.mail.SmtpMailer;
+import de.haumacher.imageServer.oidc.OidcLogins;
+import de.haumacher.imageServer.oidc.OidcProvider;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The server-wide settings that come from the environment, see issue #199.
@@ -31,6 +40,11 @@ import java.util.Map;
  * <code>_FROM</code>, <code>_TLS</code> (<code>starttls</code>, the default, or <code>tls</code>;
  * <code>none</code> for a relay on this machine only): the mail account the codes of issue #199 are
  * sent through. Without <code>VALBUM_SMTP_HOST</code> no code is offered anywhere.</li>
+ * <li><code>VALBUM_OIDC_&lt;ID&gt;_CLIENT_ID</code>, <code>_CLIENT_SECRET</code>,
+ * <code>_DISCOVERY_URL</code>, <code>_LABEL</code>: a provider of OpenID Connect a visitor of a
+ * personal link proves their address through (issue #200), <code>GOOGLE</code> the one whose
+ * discovery address and label are known. A further provider is further variables. Offered only
+ * with <code>VALBUM_PUBLIC_URL</code>, which the redirect address is spelled from.</li>
  * </ul>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -58,8 +72,26 @@ public final class ServerEnvironment {
 	/** <code>starttls</code> (the default), <code>tls</code>, or <code>none</code> for a local relay. */
 	public static final String SMTP_TLS = "VALBUM_SMTP_TLS";
 
-	/** Nothing configured: no public address, no mail. */
-	public static final ServerEnvironment NONE = new ServerEnvironment(null, null);
+	/** The prefix of the variables of a provider of OpenID Connect, see issue #200. */
+	public static final String OIDC_PREFIX = "VALBUM_OIDC_";
+
+	/** The suffix of a provider's client id: <code>VALBUM_OIDC_GOOGLE_CLIENT_ID</code>. */
+	public static final String OIDC_CLIENT_ID = "_CLIENT_ID";
+
+	/** The suffix of a provider's client secret. */
+	public static final String OIDC_CLIENT_SECRET = "_CLIENT_SECRET";
+
+	/** The suffix of a provider's discovery address; Google's is known. */
+	public static final String OIDC_DISCOVERY_URL = "_DISCOVERY_URL";
+
+	/** The suffix of what a button calls the provider; "Google" for Google, else the id. */
+	public static final String OIDC_LABEL = "_LABEL";
+
+	private static final Pattern OIDC_VARIABLE = Pattern.compile(
+		"VALBUM_OIDC_([A-Z0-9]+(?:_[A-Z0-9]+)*?)(_CLIENT_ID|_CLIENT_SECRET|_DISCOVERY_URL|_LABEL)");
+
+	/** Nothing configured: no public address, no mail, no provider. */
+	public static final ServerEnvironment NONE = new ServerEnvironment(null, null, List.of());
 
 	/** Thrown for a setting the server cannot run with; the message names the variable. */
 	public static final class Invalid extends Exception {
@@ -74,9 +106,29 @@ public final class ServerEnvironment {
 
 	private final MailSettings _mail;
 
-	private ServerEnvironment(String publicUrl, MailSettings mail) {
+	private final List<OidcProvider> _providers;
+
+	private ServerEnvironment(String publicUrl, MailSettings mail, List<OidcProvider> providers) {
 		_publicUrl = publicUrl;
 		_mail = mail;
+		_providers = Collections.unmodifiableList(providers);
+	}
+
+	/**
+	 * The providers of OpenID Connect configured, see issue #200; offered only where
+	 * {@link #getPublicUrl()} is set, see {@link #oidcLogins()}.
+	 */
+	public List<OidcProvider> getOidcProviders() {
+		return _providers;
+	}
+
+	/**
+	 * The sign-in through OpenID Connect this environment allows: {@link OidcLogins#NONE} without a
+	 * provider, and without a public address, which the redirect address is spelled from.
+	 */
+	public OidcLogins oidcLogins() {
+		return _publicUrl == null || _providers.isEmpty() ? OidcLogins.NONE
+			: new OidcLogins(_publicUrl, _providers, Clock.systemUTC());
 	}
 
 	/**
@@ -105,7 +157,7 @@ public final class ServerEnvironment {
 	 *         an administrator who configured mail believes it works.
 	 */
 	public static ServerEnvironment read(Map<String, String> env) throws Invalid {
-		return new ServerEnvironment(publicUrl(value(env, PUBLIC_URL)), mail(env));
+		return new ServerEnvironment(publicUrl(value(env, PUBLIC_URL)), mail(env), providers(env));
 	}
 
 	private static String value(Map<String, String> env, String name) {
@@ -134,6 +186,84 @@ public final class ServerEnvironment {
 			result = result.substring(0, result.length() - 1);
 		}
 		return result;
+	}
+
+	/**
+	 * The providers of OpenID Connect the given environment names, by id; a variable that is set
+	 * but empty is no setting (the commented-out lines of <code>/etc/default/valbum</code> filled in
+	 * half). A provider with a client id needs its secret, and one that is not Google its discovery
+	 * address, else the start is refused naming the variable.
+	 */
+	private static List<OidcProvider> providers(Map<String, String> env) throws Invalid {
+		Map<String, Map<String, String>> byId = new TreeMap<>();
+		for (Map.Entry<String, String> entry : env.entrySet()) {
+			if (!entry.getKey().startsWith(OIDC_PREFIX)) {
+				continue;
+			}
+			Matcher matcher = OIDC_VARIABLE.matcher(entry.getKey());
+			if (!matcher.matches()) {
+				throw new Invalid(entry.getKey() + " is no setting of a sign-in provider: it is "
+					+ OIDC_PREFIX + "<ID>" + OIDC_CLIENT_ID + ", " + OIDC_CLIENT_SECRET + ", " + OIDC_DISCOVERY_URL
+					+ " or " + OIDC_LABEL + ", for example VALBUM_OIDC_GOOGLE_CLIENT_ID.");
+			}
+			String text = OIDC_CLIENT_SECRET.equals(matcher.group(2)) ? entry.getValue()
+				: entry.getValue() == null ? "" : entry.getValue().trim();
+			if (text == null || text.isEmpty()) {
+				continue;
+			}
+			byId.computeIfAbsent(matcher.group(1), id -> new TreeMap<>()).put(matcher.group(2), text);
+		}
+		List<OidcProvider> result = new ArrayList<>();
+		for (Map.Entry<String, Map<String, String>> entry : byId.entrySet()) {
+			String name = OIDC_PREFIX + entry.getKey();
+			Map<String, String> values = entry.getValue();
+			String clientId = values.get(OIDC_CLIENT_ID);
+			if (clientId == null) {
+				throw new Invalid(name + OIDC_CLIENT_ID + " is needed beside " + name
+					+ values.keySet().iterator().next() + ": the id of the OAuth client created at the provider.");
+			}
+			String secret = values.get(OIDC_CLIENT_SECRET);
+			if (secret == null) {
+				throw new Invalid(name + OIDC_CLIENT_SECRET + " is needed beside " + name + OIDC_CLIENT_ID
+					+ ": the secret of that OAuth client.");
+			}
+			String id = entry.getKey().toLowerCase(Locale.ROOT);
+			boolean google = OidcProvider.GOOGLE.equals(id);
+			String discovery = values.get(OIDC_DISCOVERY_URL);
+			if (discovery == null) {
+				if (!google) {
+					throw new Invalid(name + OIDC_DISCOVERY_URL + " is needed: the provider's address ending in "
+						+ "/.well-known/openid-configuration.");
+				}
+				discovery = OidcProvider.GOOGLE_DISCOVERY;
+			}
+			checkDiscovery(name + OIDC_DISCOVERY_URL, discovery);
+			String label = values.get(OIDC_LABEL);
+			if (label == null) {
+				label = google ? "Google" : id.substring(0, 1).toUpperCase(Locale.ROOT) + id.substring(1);
+			} else if (!label.equals(label.replaceAll("\\p{Cc}", ""))) {
+				throw new Invalid(name + OIDC_LABEL + " must be plain text on one line.");
+			}
+			result.add(new OidcProvider(id, label, clientId, secret, discovery));
+		}
+		return result;
+	}
+
+	/** A discovery address must be https; plain http only on this machine (a provider under test). */
+	private static void checkDiscovery(String variable, String value) throws Invalid {
+		URI uri;
+		try {
+			uri = new URI(value);
+		} catch (URISyntaxException ex) {
+			throw new Invalid(variable + " is no address: '" + value + "'.");
+		}
+		String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+		String host = uri.getHost() == null ? "" : uri.getHost();
+		boolean local = host.equals("localhost") || host.equals("127.0.0.1") || host.equals("[::1]");
+		if (!(scheme.equals("https") || (scheme.equals("http") && local)) || host.isEmpty()) {
+			throw new Invalid(variable + " must be an https address, for example "
+				+ "'https://login.example.org/.well-known/openid-configuration', not '" + value + "'.");
+		}
 	}
 
 	private static MailSettings mail(Map<String, String> env) throws Invalid {

@@ -154,7 +154,9 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 	/**
 	 * The ways the server can prove an address here (issue #199): <code>mail-code</code> where the
 	 * server can mail a code and either the link is open or the contact has an e-mail address;
-	 * empty for a first open, which needs no proof.
+	 * <code>oidc:&lt;provider&gt;</code> (issue #200) per configured provider of OpenID Connect where
+	 * the link is open, the contact has an e-mail address, or the token is an addressed link's own
+	 * (whose sign-in must name one of its recipients); empty for a first open, which needs no proof.
 	 */
 	public final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> getMethods() {
 		return _methods;

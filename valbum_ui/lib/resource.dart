@@ -2856,8 +2856,9 @@ class ShareInfo extends _JsonObject {
 	/// 
 	///  <p>
 	///  Answered beside {@link #contact} only: <code>mail-code</code> where the server can mail a
-	///  code, so that the app offers "Add your e-mail so we recognise you on other devices"; empty
-	///  where it cannot, and for every caller who is no contact.
+	///  code, so that the app offers "Add your e-mail so we recognise you on other devices", and
+	///  <code>oidc:&lt;provider&gt;</code> per provider of OpenID Connect (issue #200); empty where
+	///  there is neither, and for every caller who is no contact.
 	///  </p>
 	List<ProofMethod> methods;
 
@@ -6781,7 +6782,9 @@ class IdentifyRequired extends _JsonObject {
 
 	///  The ways the server can prove an address here (issue #199): <code>mail-code</code> where the
 	///  server can mail a code and either the link is open or the contact has an e-mail address;
-	///  empty for a first open, which needs no proof.
+	///  <code>oidc:&lt;provider&gt;</code> (issue #200) per configured provider of OpenID Connect where
+	///  the link is open, the contact has an e-mail address, or the token is an addressed link's own
+	///  (whose sign-in must name one of its recipients); empty for a first open, which needs no proof.
 	List<ProofMethod> methods;
 
 	///  The label of the link.
@@ -6959,12 +6962,20 @@ class MaskedAddress extends _JsonObject {
 
 ///  A way to prove an address, see {@link IdentifyRequired#methods}: <code>mail-code</code> (issue #199), <code>oidc:google</code>, …
 class ProofMethod extends _JsonObject {
-	///  The name of the method.
+	///  The name of the method: <code>mail-code</code> (issue #199), or <code>oidc:&lt;provider&gt;</code>
+	///  for a sign-in through OpenID Connect (issue #200), whose provider id is what
+	///  {@link OidcStart#provider} names.
 	String name;
+
+	///  What to call the method on a button, for a provider of OpenID Connect its name as the server's
+	///  configuration spells it ("Google"); empty for <code>mail-code</code>. Plain text: a page that
+	///  shows it escapes it like any other text.
+	String label;
 
 	/// Creates a ProofMethod.
 	ProofMethod({
 			this.name = "", 
+			this.label = "", 
 	});
 
 	/// Parses a ProofMethod from a string source.
@@ -6989,6 +7000,10 @@ class ProofMethod extends _JsonObject {
 				name = json.expectString();
 				break;
 			}
+			case "label": {
+				label = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -6999,6 +7014,224 @@ class ProofMethod extends _JsonObject {
 
 		json.addKey("name");
 		json.addString(name);
+
+		json.addKey("label");
+		json.addString(label);
+	}
+
+}
+
+///  Starting a sign-in through OpenID Connect on a personal share link,
+///  <code>&lt;data&gt;/?action=oidc-start</code> (issue #200).
+/// 
+///  <p>
+///  Sent like <code>?action=prove-email</code>, with the link's token as the bearer (and a recognised
+///  contact's credential beside it, who adds an address). The answer is an {@link OidcStarted}: the
+///  page navigates to its {@link OidcStarted#url}, the provider sends the browser back through the
+///  server's one callback <code>&lt;context&gt;/oidc/callback</code>, and that lands on the link again
+///  as <code>&lt;link base&gt;#oidc=&lt;code&gt;</code>, which <code>?action=oidc-exchange</code>
+///  turns into the {@link ContactCredential} a mailed code would have given.
+///  </p>
+class OidcStart extends _JsonObject {
+	///  The id of the provider, as the <code>oidc:&lt;id&gt;</code> of a {@link ProofMethod} names it.
+	String provider;
+
+	///  Whether to remember this browser: 90 days renewed on use, else 24 hours.
+	bool remember;
+
+	///  The name the contact wants to be greeted by; empty takes the name the provider knows them by.
+	///  Ignored where the caller is recognised already.
+	String displayName;
+
+	/// Creates a OidcStart.
+	OidcStart({
+			this.provider = "", 
+			this.remember = false, 
+			this.displayName = "", 
+	});
+
+	/// Parses a OidcStart from a string source.
+	static OidcStart? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a OidcStart instance from the given reader.
+	static OidcStart read(JsonReader json) {
+		OidcStart result = OidcStart();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "OidcStart";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "provider": {
+				provider = json.expectString();
+				break;
+			}
+			case "remember": {
+				remember = json.expectBool();
+				break;
+			}
+			case "displayName": {
+				displayName = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("provider");
+		json.addString(provider);
+
+		json.addKey("remember");
+		json.addBool(remember);
+
+		json.addKey("displayName");
+		json.addString(displayName);
+	}
+
+}
+
+///  A sign-in through OpenID Connect was started, the answer of <code>?action=oidc-start</code> (issue #200).
+class OidcStarted extends _JsonObject {
+	///  The provider's address to navigate the browser to.
+	String url;
+
+	///  The secret that ties the sign-in to whoever started it: kept by the page (in its session
+	///  storage, across the provider's pages) and sent with {@link OidcExchange#binding}. A sign-in
+	///  finished in a browser that did not start it ends in nothing.
+	String binding;
+
+	///  Until when the sign-in may be finished, an ISO-8601 instant.
+	String expires;
+
+	/// Creates a OidcStarted.
+	OidcStarted({
+			this.url = "", 
+			this.binding = "", 
+			this.expires = "", 
+	});
+
+	/// Parses a OidcStarted from a string source.
+	static OidcStarted? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a OidcStarted instance from the given reader.
+	static OidcStarted read(JsonReader json) {
+		OidcStarted result = OidcStarted();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "OidcStarted";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "url": {
+				url = json.expectString();
+				break;
+			}
+			case "binding": {
+				binding = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("url");
+		json.addString(url);
+
+		json.addKey("binding");
+		json.addString(binding);
+
+		json.addKey("expires");
+		json.addString(expires);
+	}
+
+}
+
+///  Finishing a sign-in through OpenID Connect, <code>&lt;data&gt;/?action=oidc-exchange</code>
+///  (issue #200).
+/// 
+///  <p>
+///  Sent on the same link as {@link OidcStart}, with the code the callback put behind
+///  <code>#oidc=</code> on the link's address. The code works once and for a few minutes only, and
+///  only on the link and in the space it was started on. The answer is a {@link ContactCredential},
+///  exactly as <code>?action=verify-email</code> answers it, or the refusal of the sign-in
+///  ("this link was shared with someone else", "the provider has not confirmed this address").
+///  </p>
+class OidcExchange extends _JsonObject {
+	///  The code from <code>#oidc=</code>.
+	String code;
+
+	///  The {@link OidcStarted#binding} of the start.
+	String binding;
+
+	/// Creates a OidcExchange.
+	OidcExchange({
+			this.code = "", 
+			this.binding = "", 
+	});
+
+	/// Parses a OidcExchange from a string source.
+	static OidcExchange? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a OidcExchange instance from the given reader.
+	static OidcExchange read(JsonReader json) {
+		OidcExchange result = OidcExchange();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "OidcExchange";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "code": {
+				code = json.expectString();
+				break;
+			}
+			case "binding": {
+				binding = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("code");
+		json.addString(code);
+
+		json.addKey("binding");
+		json.addString(binding);
 	}
 
 }

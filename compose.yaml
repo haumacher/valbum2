@@ -38,3 +38,9 @@ services:
       # VALBUM_SMTP_PASSWORD: secret
       # VALBUM_SMTP_FROM: album@example.org
       # VALBUM_SMTP_TLS: starttls     # starttls (port 587) | tls (port 465)
+      # "Continue with Google" for visitors of personal share links: an OAuth client ("Web
+      # application") from the Google Cloud console with the redirect URI
+      # <VALBUM_PUBLIC_URL>/oidc/callback; needs VALBUM_PUBLIC_URL (https). A further OpenID
+      # Connect provider: VALBUM_OIDC_<ID>_CLIENT_ID, _CLIENT_SECRET, _DISCOVERY_URL, _LABEL.
+      # VALBUM_OIDC_GOOGLE_CLIENT_ID: 123456789-abc.apps.googleusercontent.com
+      # VALBUM_OIDC_GOOGLE_CLIENT_SECRET: GOCSPX-...

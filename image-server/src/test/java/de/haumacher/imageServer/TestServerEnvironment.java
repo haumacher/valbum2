@@ -5,6 +5,8 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.mail.MailSettings;
+import de.haumacher.imageServer.oidc.OidcLogins;
+import de.haumacher.imageServer.oidc.OidcProvider;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,11 +74,86 @@ public class TestServerEnvironment extends TestCase {
 		Map<String, String> env = new HashMap<>(env("VALBUM_SMTP_PASSWORD", "s3cret!"));
 		env.put("VALBUM_PUBLIC_URL", "https://photos.example.org");
 		List<String> lines = Main.environmentReport(ServerEnvironment.read(env));
-		assertEquals(2, lines.size());
+		assertEquals(3, lines.size());
 		assertTrue(lines.toString(), lines.get(0).contains("https://photos.example.org"));
 		assertTrue(lines.toString(), lines.get(1).contains("smtp.example.org"));
 		assertFalse(lines.toString(), lines.toString().contains("s3cret!"));
 		assertTrue(Main.environmentReport(ServerEnvironment.NONE).get(1).contains("not configured"));
+	}
+
+	// --- OpenID Connect, issue #200. ---
+
+	public void testGoogleNeedsOnlyItsClient() throws Exception {
+		ServerEnvironment environment = ServerEnvironment.read(Map.of(
+			"VALBUM_PUBLIC_URL", "https://photos.example.org/valbum",
+			"VALBUM_OIDC_GOOGLE_CLIENT_ID", " 123.apps.googleusercontent.com ",
+			"VALBUM_OIDC_GOOGLE_CLIENT_SECRET", "GOCSPX-secret"));
+		List<OidcProvider> providers = environment.getOidcProviders();
+		assertEquals(1, providers.size());
+		OidcProvider google = providers.get(0);
+		assertEquals("google", google.getId());
+		assertEquals("Google", google.getLabel());
+		assertEquals("oidc:google", google.method());
+		assertEquals("123.apps.googleusercontent.com", google.getClientId());
+		assertEquals(OidcProvider.GOOGLE_DISCOVERY, google.getDiscoveryUrl());
+		OidcLogins logins = environment.oidcLogins();
+		assertTrue(logins.isAvailable());
+		assertEquals("https://photos.example.org/valbum/oidc/callback", logins.redirectUri());
+	}
+
+	public void testAFurtherProviderIsFurtherVariables() throws Exception {
+		Map<String, String> env = new HashMap<>();
+		env.put("VALBUM_PUBLIC_URL", "https://photos.example.org");
+		env.put("VALBUM_OIDC_GOOGLE_CLIENT_ID", "g");
+		env.put("VALBUM_OIDC_GOOGLE_CLIENT_SECRET", "gs");
+		env.put("VALBUM_OIDC_MY_IDP_CLIENT_ID", "m");
+		env.put("VALBUM_OIDC_MY_IDP_CLIENT_SECRET", "ms");
+		env.put("VALBUM_OIDC_MY_IDP_DISCOVERY_URL", "https://login.example.org/.well-known/openid-configuration");
+		env.put("VALBUM_OIDC_MY_IDP_LABEL", "Our Club");
+		// Half of a commented-out line filled in: no setting.
+		env.put("VALBUM_OIDC_OTHER_CLIENT_ID", "");
+		List<OidcProvider> providers = ServerEnvironment.read(env).getOidcProviders();
+		assertEquals(2, providers.size());
+		assertEquals("google", providers.get(0).getId());
+		assertEquals("my_idp", providers.get(1).getId());
+		assertEquals("Our Club", providers.get(1).getLabel());
+		assertEquals("oidc:my_idp", providers.get(1).method());
+	}
+
+	public void testWithoutAPublicAddressNoProviderIsOffered() throws Exception {
+		ServerEnvironment environment = ServerEnvironment.read(Map.of(
+			"VALBUM_OIDC_GOOGLE_CLIENT_ID", "g", "VALBUM_OIDC_GOOGLE_CLIENT_SECRET", "gs"));
+		assertEquals(1, environment.getOidcProviders().size());
+		assertSame(OidcLogins.NONE, environment.oidcLogins());
+		String line = Main.environmentReport(environment).get(2);
+		assertTrue(line, line.contains("not offered"));
+		assertTrue(line, line.contains("VALBUM_PUBLIC_URL"));
+	}
+
+	public void testUnusableProvidersAreRefusedNamingTheVariable() {
+		assertInvalid("VALBUM_OIDC_GOOGLE_CLIENT_SECRET", Map.of("VALBUM_OIDC_GOOGLE_CLIENT_ID", "g"));
+		assertInvalid("VALBUM_OIDC_GOOGLE_CLIENT_ID", Map.of("VALBUM_OIDC_GOOGLE_CLIENT_SECRET", "g"));
+		assertInvalid("VALBUM_OIDC_CLUB_DISCOVERY_URL",
+			Map.of("VALBUM_OIDC_CLUB_CLIENT_ID", "c", "VALBUM_OIDC_CLUB_CLIENT_SECRET", "s"));
+		assertInvalid("VALBUM_OIDC_CLUB_DISCOVERY_URL", Map.of("VALBUM_OIDC_CLUB_CLIENT_ID", "c",
+			"VALBUM_OIDC_CLUB_CLIENT_SECRET", "s", "VALBUM_OIDC_CLUB_DISCOVERY_URL", "http://login.example.org/x"));
+		assertInvalid("VALBUM_OIDC_GOOGLE_CLIENTID", Map.of("VALBUM_OIDC_GOOGLE_CLIENTID", "g"));
+		assertInvalid("VALBUM_OIDC_GOOGLE_LABEL", Map.of("VALBUM_OIDC_GOOGLE_CLIENT_ID", "g",
+			"VALBUM_OIDC_GOOGLE_CLIENT_SECRET", "s", "VALBUM_OIDC_GOOGLE_LABEL", "Goo\u0007gle"));
+	}
+
+	public void testTheStartUpNeverPrintsTheClientSecret() throws Exception {
+		ServerEnvironment environment = ServerEnvironment.read(Map.of(
+			"VALBUM_PUBLIC_URL", "https://photos.example.org/valbum",
+			"VALBUM_OIDC_GOOGLE_CLIENT_ID", "123.apps.googleusercontent.com",
+			"VALBUM_OIDC_GOOGLE_CLIENT_SECRET", "GOCSPX-s3cret"));
+		List<String> lines = Main.environmentReport(environment);
+		String line = lines.get(2);
+		assertTrue(line, line.contains("Google (google)"));
+		assertTrue(line, line.contains("https://photos.example.org/valbum/oidc/callback"));
+		assertFalse(lines.toString(), lines.toString().contains("GOCSPX-s3cret"));
+		assertFalse(environment.getOidcProviders().toString().contains("GOCSPX-s3cret"));
+		assertTrue(Main.environmentReport(ServerEnvironment.NONE).get(2).contains("not configured"));
 	}
 
 	private static Map<String, String> env(String name, String value) {

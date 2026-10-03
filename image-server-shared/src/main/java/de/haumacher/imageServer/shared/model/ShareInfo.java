@@ -226,8 +226,9 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	 *
 	 * <p>
 	 * Answered beside {@link #getContact()} only: <code>mail-code</code> where the server can mail a
-	 * code, so that the app offers "Add your e-mail so we recognise you on other devices"; empty
-	 * where it cannot, and for every caller who is no contact.
+	 * code, so that the app offers "Add your e-mail so we recognise you on other devices", and
+	 * <code>oidc:&lt;provider&gt;</code> per provider of OpenID Connect (issue #200); empty where
+	 * there is neither, and for every caller who is no contact.
 	 * </p>
 	 */
 	public final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> getMethods() {

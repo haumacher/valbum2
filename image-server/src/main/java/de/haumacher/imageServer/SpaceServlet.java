@@ -140,6 +140,16 @@ public class SpaceServlet extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Installs the one sign-in through OpenID Connect of this server in every space, see issue
+	 * #200: one instance, because one callback serves them all.
+	 */
+	public void setOidcLogins(de.haumacher.imageServer.oidc.OidcLogins oidc) {
+		for (ImageServlet servlet : _data.values()) {
+			servlet.setOidcLogins(oidc);
+		}
+	}
+
 	@Override
 	public void init(ServletConfig config) throws ServletException {
 		super.init(config);

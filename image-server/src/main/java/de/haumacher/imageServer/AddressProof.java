@@ -10,6 +10,8 @@ import de.haumacher.imageServer.auth.ContactStore;
 import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.mail.CodeMail;
 import de.haumacher.imageServer.mail.EmailProofs;
+import de.haumacher.imageServer.oidc.OidcLogins;
+import de.haumacher.imageServer.oidc.OidcProvider;
 import de.haumacher.imageServer.shared.model.ContactCredential;
 import de.haumacher.imageServer.shared.model.EmailProofSent;
 import de.haumacher.imageServer.shared.model.ProofMethod;
@@ -44,7 +46,19 @@ import java.util.logging.Logger;
  * <p>
  * Everybody else &mdash; a first open (which needs no proof), the own token of an addressed link, a
  * credential such a link does not admit, an anonymous link, a member, an anonymous caller &mdash;
- * proves nothing here.
+ * proves nothing here by a code.
+ * </p>
+ *
+ * <p>
+ * <b>A provider of OpenID Connect (issue #200)</b> proves an address the visitor never types, so it
+ * is no oracle for anybody's addresses, and what it proves ends exactly as a right code does
+ * ({@link #provenByProvider}). The same callers may use it, with one more: the own token of an
+ * addressed link (and a credential such a link does not admit), where the proven address must be
+ * one of the link's recipients ({@link Kind#ADDRESSED}). A recipient's own link stays its
+ * recipient's: there the address must be one the space saved with that very contact, the rule of the
+ * masked choice above, because the token says whose link it is; an address of another recipient of
+ * the same link is refused like a stranger's ("this link was shared with someone else") &mdash;
+ * that person has a link of their own.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -76,8 +90,18 @@ final class AddressProof {
 		OPEN,
 
 		/** A recognised contact adding an address. */
-		ADD;
+		ADD,
+
+		/**
+		 * The own token of an addressed link, or a credential such a link does not admit: only a
+		 * provider proves anything here, and only an address of one of the link's recipients.
+		 */
+		ADDRESSED;
 	}
+
+	/** What a provider's address is answered that is not the one the link was sent to (issue #200). */
+	static final String SHARED_WITH_SOMEONE_ELSE =
+		"This link was shared with someone else: the address you signed in with is not one it was sent to.";
 
 	/** The address a request names, resolved against the caller. */
 	static final class Target {
@@ -114,11 +138,14 @@ final class AddressProof {
 
 	private final EmailProofs _proofs;
 
+	private final OidcLogins _oidc;
+
 	private final String _spaceName;
 
-	AddressProof(AuthService auth, EmailProofs proofs, String spaceName) {
+	AddressProof(AuthService auth, EmailProofs proofs, OidcLogins oidc, String spaceName) {
 		_auth = auth;
 		_proofs = proofs;
+		_oidc = oidc;
 		_spaceName = spaceName;
 	}
 
@@ -152,15 +179,42 @@ final class AddressProof {
 		return null;
 	}
 
+	/**
+	 * What the given refusal lets its caller prove through a provider (issue #200),
+	 * <code>null</code> for nothing: what a code proves, and the own token of an addressed link.
+	 */
+	private static Kind providerKind(Identification identification) {
+		Kind kind = kind(identification);
+		if (kind != null) {
+			return kind;
+		}
+		ShareStore.Link link = identification.getLink();
+		if (identification.getRecipient() == null && link.isPersonal() && link.isAddressed()) {
+			return Kind.ADDRESSED;
+		}
+		return null;
+	}
+
+	/** What the given caller may prove through a provider, <code>null</code> for nothing. */
+	static Kind providerKind(Caller caller) {
+		if (caller.getContact() != null) {
+			return Kind.ADD;
+		}
+		Identification identification = caller.getIdentification();
+		return identification == null ? null : providerKind(identification);
+	}
+
 	/** The methods <code>IdentifyRequired.methods</code> names for the given refusal. */
 	List<ProofMethod> methods(Identification identification) {
 		List<ProofMethod> result = new ArrayList<>();
-		if (!_proofs.isAvailable()) {
-			return result;
-		}
 		Kind kind = kind(identification);
-		if (kind == Kind.OPEN || (kind == Kind.RECIPIENT && hasEmail(identification.getContact()))) {
+		boolean email = kind == Kind.RECIPIENT && hasEmail(identification.getContact());
+		if (_proofs.isAvailable() && (kind == Kind.OPEN || email)) {
 			result.add(ProofMethod.create().setName(EmailProofs.METHOD));
+		}
+		Kind byProvider = providerKind(identification);
+		if (byProvider == Kind.OPEN || byProvider == Kind.ADDRESSED || email) {
+			addProviders(result);
 		}
 		return result;
 	}
@@ -171,7 +225,33 @@ final class AddressProof {
 		if (_proofs.isAvailable()) {
 			result.add(ProofMethod.create().setName(EmailProofs.METHOD));
 		}
+		addProviders(result);
 		return result;
+	}
+
+	/** One method per provider of OpenID Connect the server offers, see issue #200. */
+	private void addProviders(List<ProofMethod> methods) {
+		for (OidcProvider provider : _oidc.getProviders()) {
+			methods.add(ProofMethod.create().setName(provider.method()).setLabel(provider.getLabel()));
+		}
+	}
+
+	/**
+	 * The target of a sign-in through a provider, see issue #200: whose address the caller may
+	 * prove, the address itself to come from the provider. <code>null</code> for a caller who
+	 * proves nothing here.
+	 */
+	static Target providerTarget(Caller caller) {
+		Kind kind = providerKind(caller);
+		if (kind == null) {
+			return null;
+		}
+		if (kind == Kind.ADD) {
+			return new Target(kind, caller.getShare(), caller.getContact(), null);
+		}
+		Identification identification = caller.getIdentification();
+		return new Target(kind, identification.getLink(),
+			kind == Kind.RECIPIENT ? identification.getContact() : null, null);
 	}
 
 	private static boolean hasEmail(ContactStore.Contact contact) {
@@ -267,6 +347,71 @@ final class AddressProof {
 	ContactCredential verify(Caller caller, Target target, String code, String client, boolean remember,
 			String displayName) throws EmailProofs.Refused, AuthService.Refused, IOException {
 		_proofs.verify(target.scope(), target._email, code, client);
+		return proven(caller, target, remember, displayName, "a proven address");
+	}
+
+	/**
+	 * Makes of the caller what an address a provider proved makes of them, see issue #200: exactly
+	 * what a right code does, once the address is checked against whom the link asks for.
+	 *
+	 * @param target
+	 *        What {@link #providerTarget(Caller)} answers for the caller now.
+	 * @param email
+	 *        The address the provider confirmed, normalised.
+	 * @throws AuthService.Refused
+	 *         <code>403</code> {@link #SHARED_WITH_SOMEONE_ELSE} for an address the link does not ask
+	 *         for, and every refusal a proven address meets.
+	 */
+	ContactCredential provenByProvider(Caller caller, Target target, String email, boolean remember,
+			String displayName, OidcProvider provider) throws AuthService.Refused, IOException {
+		ShareStore.Link link = target._link;
+		Target resolved;
+		switch (target._kind) {
+			case RECIPIENT: {
+				ContactStore.Contact contact = _auth.getContacts().get(target._contact.getId());
+				if (contact == null) {
+					throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.RECIPIENT_GONE);
+				}
+				if (!holdsEmail(contact, email)) {
+					LOG.info("Refusing a sign-in with " + provider + " on the link of " + contact
+						+ ": another address.");
+					throw new AuthService.Refused(HttpServletResponse.SC_FORBIDDEN, SHARED_WITH_SOMEONE_ELSE);
+				}
+				resolved = new Target(Kind.RECIPIENT, link, contact, email);
+				break;
+			}
+			case ADDRESSED: {
+				ContactStore.Contact holder = _auth.getContacts().byEmail(email);
+				if (holder == null || link.recipient(holder.getId()) == null) {
+					LOG.info("Refusing a sign-in with " + provider + " on the addressed link " + link.getId()
+						+ ": not a recipient's address.");
+					throw new AuthService.Refused(HttpServletResponse.SC_FORBIDDEN, SHARED_WITH_SOMEONE_ELSE);
+				}
+				if (holder.isBlocked() || link.isShutOut(holder.getId())) {
+					throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.CONTACT_SHUT_OUT);
+				}
+				resolved = new Target(Kind.RECIPIENT, link, holder, email);
+				break;
+			}
+			default:
+				resolved = new Target(target._kind, link, target._contact, email);
+				break;
+		}
+		return proven(caller, resolved, remember, displayName, "an address " + provider + " confirmed");
+	}
+
+	private static boolean holdsEmail(ContactStore.Contact contact, String email) {
+		for (ContactStore.Address address : contact.getAddresses()) {
+			if (ContactStore.EMAIL.equals(address.getKind()) && address.getValue().equals(email)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** What a proven address makes of the caller, the second half of {@link #verify}. */
+	private ContactCredential proven(Caller caller, Target target, boolean remember, String displayName,
+			String how) throws AuthService.Refused, IOException {
 		ContactStore contacts = _auth.getContacts();
 		ShareStore.Link link = target._link;
 		ContactStore.Contact contact;
@@ -293,7 +438,7 @@ final class AddressProof {
 			throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.RECIPIENT_GONE);
 		}
 		if (target._kind == Kind.ADD) {
-			LOG.info("Added a proven address to " + contact + ".");
+			LOG.info("Added " + how + " to " + contact + ".");
 			ContactStore.Session session = caller.getSession();
 			return ContactCredential.create()
 				.setCredential("")
@@ -305,7 +450,7 @@ final class AddressProof {
 		if (issued == null) {
 			throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.RECIPIENT_GONE);
 		}
-		LOG.info("Identified " + contact + " by a proven address through the share link " + link.getId()
+		LOG.info("Identified " + contact + " by " + how + " through the share link " + link.getId()
 			+ (remember ? ", remembered." : "."));
 		return ContactCredential.create()
 			.setCredential(issued.getCredential())

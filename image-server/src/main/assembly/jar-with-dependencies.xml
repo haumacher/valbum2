@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	The predefined 'jar-with-dependencies' of the Maven Assembly Plugin, with one change: the
+	signature files of signed dependencies are left out. Bouncy Castle (brought by pac4j, issue
+	#200) ships signed JARs; their META-INF/*.SF and *.RSA copied into this JAR would no longer
+	match its contents, and the JVM refuses a JAR whose signature does not hold.
+-->
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.0.0 http://maven.apache.org/xsd/assembly-2.0.0.xsd">
+	<id>jar-with-dependencies</id>
+	<formats>
+		<format>jar</format>
+	</formats>
+	<includeBaseDirectory>false</includeBaseDirectory>
+	<dependencySets>
+		<dependencySet>
+			<outputDirectory>/</outputDirectory>
+			<useProjectArtifact>true</useProjectArtifact>
+			<unpack>true</unpack>
+			<unpackOptions>
+				<excludes>
+					<exclude>META-INF/*.SF</exclude>
+					<exclude>META-INF/*.RSA</exclude>
+					<exclude>META-INF/*.DSA</exclude>
+					<exclude>META-INF/*.EC</exclude>
+				</excludes>
+			</unpackOptions>
+			<scope>runtime</scope>
+		</dependencySet>
+	</dependencySets>
+</assembly>

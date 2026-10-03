@@ -74,6 +74,31 @@ VALBUM_SPACES=auto
 #   VALBUM_SMTP_FROM=album@example.org
 #   VALBUM_SMTP_TLS=starttls
 
+# "Continue with Google": a visitor of a personal share link proves their
+# e-mail address by signing in with Google (OpenID Connect) instead of typing a
+# mailed code. Create an OAuth client of the type "Web application" in the
+# Google Cloud console (APIs & Services > Credentials), with the authorized
+# redirect URI
+#
+#     <VALBUM_PUBLIC_URL>/oidc/callback
+#
+# (the server prints it at start-up), and publish the consent screen out of
+# "Testing", which admits 100 users at most; the scopes asked for (openid,
+# email, profile) need no review. It needs VALBUM_PUBLIC_URL, a fixed public
+# https address: without it nothing is offered, and the journal says so. The
+# secret is why this file is readable by root and the group valbum only.
+#
+#   VALBUM_OIDC_GOOGLE_CLIENT_ID=123456789-abc.apps.googleusercontent.com
+#   VALBUM_OIDC_GOOGLE_CLIENT_SECRET='GOCSPX-...'
+#
+# A further provider of OpenID Connect is further variables of its own id, with
+# the address of its discovery document and the name its button shows:
+#
+#   VALBUM_OIDC_CLUB_CLIENT_ID=valbum
+#   VALBUM_OIDC_CLUB_CLIENT_SECRET='...'
+#   VALBUM_OIDC_CLUB_DISCOVERY_URL=https://login.example.org/.well-known/openid-configuration
+#   VALBUM_OIDC_CLUB_LABEL="Our club"
+
 # Further server arguments, appended to the ones above. The most useful one is
 # a fixed sign-in code for the administrator of a space that nobody has signed
 # into yet; without it the server makes a fresh one at every start and prints it

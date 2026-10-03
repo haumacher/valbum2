@@ -33,6 +33,8 @@ import de.haumacher.imageServer.faces.PeopleStore;
 import de.haumacher.imageServer.heif.HeifDecoder;
 import de.haumacher.imageServer.heif.HeifFile;
 import de.haumacher.imageServer.mail.EmailProofs;
+import de.haumacher.imageServer.oidc.OidcLogins;
+import de.haumacher.imageServer.oidc.OidcProvider;
 import de.haumacher.imageServer.raw.NoEmbeddedPreviewException;
 import de.haumacher.imageServer.raw.RawFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -67,6 +69,9 @@ import de.haumacher.imageServer.shared.model.MoveName;
 import de.haumacher.imageServer.shared.model.MoveOutcome;
 import de.haumacher.imageServer.shared.model.MoveRequest;
 import de.haumacher.imageServer.shared.model.MoveResult;
+import de.haumacher.imageServer.shared.model.OidcExchange;
+import de.haumacher.imageServer.shared.model.OidcStart;
+import de.haumacher.imageServer.shared.model.OidcStarted;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
@@ -518,6 +523,13 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private EmailProofs _proofs = EmailProofs.NONE;
 
+	/**
+	 * The proof of an e-mail address through a provider of OpenID Connect, see issue #200: one
+	 * instance for the whole server, whose one callback serves every space; {@link OidcLogins#NONE}
+	 * where no provider (or no public address) is configured, and in every test that installs none.
+	 */
+	private OidcLogins _oidc = OidcLogins.NONE;
+
 	/** The transcoded sidecars of the videos this server shows, see issue #74. */
 	private final VideoRenditions _videos = new VideoRenditions();
 
@@ -702,9 +714,17 @@ public class ImageServlet extends HttpServlet {
 		_proofs = proofs == null ? EmailProofs.NONE : proofs;
 	}
 
-	/** Who may prove which address, with the proof this servlet was given. */
+	/**
+	 * Installs the proof of an e-mail address through OpenID Connect, see issue #200; before, no
+	 * provider is offered and a sign-in is answered {@link OidcLogins#NOT_CONFIGURED}.
+	 */
+	public void setOidcLogins(OidcLogins oidc) {
+		_oidc = oidc == null ? OidcLogins.NONE : oidc;
+	}
+
+	/** Who may prove which address, with the proofs this servlet was given. */
 	private AddressProof addressProof() {
-		return new AddressProof(_auth, _proofs, _spaceName);
+		return new AddressProof(_auth, _proofs, _oidc, _spaceName);
 	}
 
 	@Override
@@ -2948,6 +2968,145 @@ public class ImageServlet extends HttpServlet {
 		return caller;
 	}
 
+	/**
+	 * Starts a sign-in through a provider of OpenID Connect, <code>&lt;data&gt;/?action=oidc-start</code>,
+	 * see issue #200.
+	 *
+	 * <p>
+	 * The body is an {@link OidcStart} (the provider may also be named by the parameter
+	 * <code>provider</code>), the answer an {@link OidcStarted}: the provider's address to navigate
+	 * to and the binding the exchange must show. The sign-in returns to the very link it was started
+	 * on, spelled from <code>VALBUM_PUBLIC_URL</code> in the coordinates of this request.
+	 * </p>
+	 */
+	private void oidcStart(Context context) throws IOException {
+		Caller caller = oidcCaller(context);
+		if (caller == null) {
+			return;
+		}
+		OidcStart request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = contents.length == 0 ? OidcStart.create()
+				: OidcStart.readOidcStart(new JsonReader(new ReaderAdapter(
+					new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unreadable start of a sign-in: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AddressProof.PROOF_UNREADABLE);
+			return;
+		}
+		String id = request.getProvider().isEmpty() ? context.getParameter("provider") : request.getProvider();
+		OidcProvider provider = _oidc.provider(id == null ? "" : id);
+		if (provider == null) {
+			LOG.warning("Refusing a sign-in with the unknown provider '" + id + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, OidcLogins.providerUnknown(id == null ? "" : id));
+			return;
+		}
+		AddressProof.Target target = AddressProof.providerTarget(caller);
+		String returnUrl = _oidc.getPublicUrl() + appBase(context) + "/" + ShareStore.URL_SEGMENT + "/"
+			+ bearer(context.request()) + "/";
+		try {
+			OidcLogins.Started started = _oidc.start(provider, new OidcLogins.Start(_space, target._link.getId(),
+				target._kind.name(), target._contact == null ? "" : target._contact.getId(), returnUrl,
+				request.isRemember(), request.getDisplayName()));
+			serveJsonObject(context.response(), OidcStarted.create()
+				.setUrl(started.getUrl())
+				.setBinding(started.getBinding())
+				.setExpires(started.getExpires().toString()));
+		} catch (OidcLogins.Refused ex) {
+			LOG.warning("Refusing a sign-in with " + provider + ": " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+		}
+	}
+
+	/**
+	 * Finishes a sign-in through a provider of OpenID Connect,
+	 * <code>&lt;data&gt;/?action=oidc-exchange</code>, see issue #200.
+	 *
+	 * <p>
+	 * The body is an {@link OidcExchange}; the code works once, in this space, on the link it was
+	 * started on and with its binding. Everything a mailed code is asked is then asked of the caller
+	 * as they are now, and the answer is the {@link ContactCredential} a right code gives &mdash; or
+	 * the refusal the provider's answer or the link met.
+	 * </p>
+	 */
+	private void oidcExchange(Context context) throws IOException {
+		Caller caller = oidcCaller(context);
+		if (caller == null) {
+			return;
+		}
+		OidcExchange request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = OidcExchange.readOidcExchange(new JsonReader(new ReaderAdapter(
+				new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unreadable exchange of a sign-in: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AddressProof.PROOF_UNREADABLE);
+			return;
+		}
+		OidcLogins.Proven proven = _oidc.redeem(_space, request.getCode(), request.getBinding());
+		AddressProof.Target target = AddressProof.providerTarget(caller);
+		if (proven == null || !proven.getStart().getLink().equals(target._link.getId())
+			|| !proven.getStart().getKind().equals(target._kind.name())
+			|| !proven.getStart().getContact().equals(target._contact == null ? "" : target._contact.getId())) {
+			LOG.warning("Refusing the exchange of a sign-in: " + (proven == null ? "unknown code" : "another link")
+				+ ".");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, OidcLogins.EXCHANGE_UNKNOWN);
+			return;
+		}
+		if (proven.isRefused()) {
+			LOG.warning("Answering a refused sign-in with " + proven.getProvider() + ": " + proven.getRefusal());
+			errorInfo(context, proven.getStatus(), proven.getRefusal());
+			return;
+		}
+		String displayName = proven.getStart().getDisplayName().isEmpty() ? proven.getName()
+			: proven.getStart().getDisplayName();
+		try {
+			serveJsonObject(context.response(), addressProof().provenByProvider(caller, target, proven.getEmail(),
+				proven.getStart().isRemember(), displayName, proven.getProvider()));
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing a sign-in with " + proven.getProvider() + ": " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+		}
+	}
+
+	/**
+	 * The caller of a sign-in request, <code>null</code> where the response is complete: like
+	 * {@link #proofCaller(Context)}, with the server's providers in place of its mail account.
+	 */
+	private Caller oidcCaller(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (caller.isShareGone()) {
+			gone(context, caller);
+			return null;
+		}
+		if (!_oidc.isAvailable()) {
+			LOG.warning("Refusing a sign-in: no provider is offered.");
+			errorInfo(context, HttpServletResponse.SC_NOT_IMPLEMENTED, OidcLogins.NOT_CONFIGURED);
+			return null;
+		}
+		if (AddressProof.providerTarget(caller) == null) {
+			if (caller.mustIdentify()) {
+				gone(context, caller);
+			} else {
+				LOG.warning("Refusing a sign-in outside a personal link.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AddressProof.PROOF_NOT_HERE);
+			}
+			return null;
+		}
+		return caller;
+	}
+
+	/** The bearer token of the given request, empty where it carries none. */
+	private static String bearer(HttpServletRequest request) {
+		String header = request.getHeader("Authorization");
+		if (header == null || !header.regionMatches(true, 0, "Bearer ", 0, 7)) {
+			return "";
+		}
+		return header.substring(7).trim();
+	}
+
 	/** Answers a refused code, with the time to wait where waiting helps. */
 	private static void proofRefused(Context context, EmailProofs.Refused ex) throws IOException {
 		LOG.warning("Refusing a code: " + ex.getMessage());
@@ -3643,6 +3802,15 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("verify-email".equals(action)) {
 			verifyEmail(context);
+			return;
+		}
+		if ("oidc-start".equals(action)) {
+			// ... or through a provider of OpenID Connect, see issue #200.
+			oidcStart(context);
+			return;
+		}
+		if ("oidc-exchange".equals(action)) {
+			oidcExchange(context);
 			return;
 		}
 

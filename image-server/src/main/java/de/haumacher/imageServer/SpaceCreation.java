@@ -65,11 +65,12 @@ public final class SpaceCreation {
 
 	/**
 	 * The first path segments a multi-space server answers at its context root without a space:
-	 * the data root, the two session prefixes, and the folders of the web application, whose files
-	 * a space of the same name would shadow.
+	 * the data root, the two session prefixes, the callback of a sign-in through OpenID Connect
+	 * (issue #200), and the folders of the web application, whose files a space of the same name
+	 * would shadow.
 	 */
 	public static final Set<String> RESERVED = Set.of("data", ShareStore.URL_SEGMENT, InvitationStore.URL_SEGMENT,
-		"assets", "canvaskit", "icons");
+		de.haumacher.imageServer.oidc.OidcLogins.URL_SEGMENT, "assets", "canvaskit", "icons");
 
 	/** The refusal of a server forced into single-space mode. */
 	public static final String FORCED_SINGLE = "--spaces single serves the base folder as the one space and "

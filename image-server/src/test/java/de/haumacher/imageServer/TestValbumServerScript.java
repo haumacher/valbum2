@@ -163,6 +163,37 @@ public class TestValbumServerScript extends TestCase {
 		assertEquals("mail.example.net", environment().get("VALBUM_SMTP_HOST"));
 	}
 
+	// --- The providers of OpenID Connect (issue #200), named after the provider. ---
+
+	public void testTheShippedConfigurationDocumentsGoogle() throws Exception {
+		String shipped = Files.readString(DEFAULTS, StandardCharsets.UTF_8);
+		assertTrue(shipped.contains("#   VALBUM_OIDC_GOOGLE_CLIENT_ID="));
+		assertTrue(shipped.contains("#   VALBUM_OIDC_GOOGLE_CLIENT_SECRET="));
+		assertTrue(shipped.contains("/oidc/callback"));
+		assertFalse(shipped.contains("\nVALBUM_OIDC_"));
+	}
+
+	public void testEveryProviderReachesTheServerThroughItsEnvironment() throws Exception {
+		if (noShell()) {
+			return;
+		}
+		configure("VALBUM_OIDC_GOOGLE_CLIENT_ID=123.apps.googleusercontent.com\n"
+			+ "VALBUM_OIDC_GOOGLE_CLIENT_SECRET='GOCSPX-se cr$t'\n"
+			+ "VALBUM_OIDC_MY_IDP_CLIENT_ID=valbum\n"
+			+ "VALBUM_OIDC_MY_IDP_LABEL=\"Our club\"");
+		List<String> args = run(Map.of("VALBUM_OIDC_MY_IDP_CLIENT_ID", "from-the-caller",
+			"VALBUM_OIDC_EXTRA_CLIENT_ID", "only-in-the-environment"));
+		Map<String, String> env = environment();
+		assertEquals("123.apps.googleusercontent.com", env.get("VALBUM_OIDC_GOOGLE_CLIENT_ID"));
+		assertEquals("GOCSPX-se cr$t", env.get("VALBUM_OIDC_GOOGLE_CLIENT_SECRET"));
+		assertEquals("The caller's environment wins.", "from-the-caller", env.get("VALBUM_OIDC_MY_IDP_CLIENT_ID"));
+		assertEquals("Our club", env.get("VALBUM_OIDC_MY_IDP_LABEL"));
+		assertEquals("only-in-the-environment", env.get("VALBUM_OIDC_EXTRA_CLIENT_ID"));
+		for (String arg : args) {
+			assertFalse("No secret on the command line: " + args, arg.contains("GOCSPX"));
+		}
+	}
+
 	/** The names of the settings the server reads from its environment, see {@link ServerEnvironment}. */
 	static final List<String> ENV_SETTINGS = List.of(ServerEnvironment.PUBLIC_URL, ServerEnvironment.SMTP_HOST,
 		ServerEnvironment.SMTP_PORT, ServerEnvironment.SMTP_USER, ServerEnvironment.SMTP_PASSWORD,

@@ -520,7 +520,27 @@ public class Main {
 		lines.add("E-mail codes: " + (environment.getMail() == null
 			? "not configured (" + ServerEnvironment.SMTP_HOST + "), no address can be proven by mail"
 			: "sent through " + environment.getMail()));
+		lines.add(oidcReport(environment));
 		return lines;
+	}
+
+	/**
+	 * The line that says which providers of OpenID Connect are offered, see issue #200: their names
+	 * and the redirect address to register with them, never a client id or secret.
+	 */
+	static String oidcReport(ServerEnvironment environment) {
+		java.util.List<de.haumacher.imageServer.oidc.OidcProvider> providers = environment.getOidcProviders();
+		if (providers.isEmpty()) {
+			return "Sign-in with Google or another OpenID Connect provider: not configured ("
+				+ ServerEnvironment.OIDC_PREFIX + "GOOGLE" + ServerEnvironment.OIDC_CLIENT_ID + ")";
+		}
+		String names = providers.stream().map(Object::toString).collect(java.util.stream.Collectors.joining(", "));
+		if (environment.getPublicUrl() == null) {
+			return "Sign-in with " + names + ": configured, but not offered - " + ServerEnvironment.PUBLIC_URL
+				+ " is not set, and the provider needs the public address to send the browser back to";
+		}
+		return "Sign-in with " + names + ": offered; the redirect address to register with the provider is "
+			+ de.haumacher.imageServer.oidc.OidcLogins.redirectUri(environment.getPublicUrl());
 	}
 
 	/**
@@ -532,6 +552,9 @@ public class Main {
 		// One proof by mailed code for the whole server, so that its rate limits count across
 		// every space, see issue #199.
 		de.haumacher.imageServer.mail.EmailProofs proofs = environment.emailProofs();
+		// One sign-in through OpenID Connect for the whole server: one callback serves every space,
+		// see issue #200.
+		de.haumacher.imageServer.oidc.OidcLogins oidc = environment.oidcLogins();
 		final Server server = new Server();
 
 		HttpConfiguration config = new HttpConfiguration();
@@ -558,6 +581,7 @@ public class Main {
 			ImageServlet data = new ImageServlet(basePath, spaces.single().getAuth(), "",
 				spaces.single().getConfig());
 			data.setEmailProofs(proofs);
+			data.setOidcLogins(oidc);
 			// Every photo of the space knows its hash from here on, see issue #118: one low
 			// priority thread that reads the library once and then keeps out of the way.
 			data.startIndexing();
@@ -573,9 +597,14 @@ public class Main {
 			// Each space indexes its own photos, and nobody else's, see issue #118.
 			front.startIndexing();
 			front.setEmailProofs(proofs);
+			front.setOidcLogins(oidc);
 			sharePreview(app, spaces, front::dataOf, environment);
 			webapp.addServlet(new ServletHolder(front), STATIC_PREFIX + "/*");
 		}
+		// The one address a provider sends the browser back to, for every space (issue #200); a
+		// longer prefix than the application's, so it is answered here in either mode.
+		webapp.addServlet(new ServletHolder(new OidcCallbackServlet(oidc)),
+			"/" + de.haumacher.imageServer.oidc.OidcLogins.URL_SEGMENT + "/*");
 		webapp.setClassLoader(Main.class.getClassLoader());
 
 		handlers.addHandler(webapp);

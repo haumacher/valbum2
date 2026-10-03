@@ -150,6 +150,7 @@ The `.deb` reads `/etc/default/valbum`; Docker takes the same variables from `en
 | `VALBUM_HEAP_PERCENT` | Heap as a share of the memory; an `-Xmx` wins | | `50` |
 | `VALBUM_PUBLIC_URL` | The album's address from outside, e.g. `https://home.example.org/valbum` | from each request | from each request |
 | `VALBUM_SMTP_*` | The mail account for e-mail codes, see [Mail](#mail) | none | none |
+| `VALBUM_OIDC_*` | "Continue with Google", see [Sign-in with Google](#sign-in-with-google) | none | none |
 
 On the `.deb`, point it at your photos and restart:
 
@@ -239,6 +240,27 @@ VALBUM_SMTP_PASSWORD='secret'
 In `/etc/default/valbum` (readable by root and the group `valbum` only) and `sudo systemctl restart
 valbum`; in Docker under `environment:`. The server refuses to start with a setting it cannot use,
 naming it, and prints the mail server (never the password) at start-up.
+
+### Sign-in with Google
+
+A visitor of a personal share link may confirm their address with Google instead of a mailed code.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/apis/credentials) create an OAuth
+   client of the type *Web application* with the authorized redirect URI
+   `<VALBUM_PUBLIC_URL>/oidc/callback` (the server prints it at start-up).
+2. Publish the consent screen (*Audience* → *Publish app*): in "Testing" at most 100 users get in.
+   The scopes asked for — `openid`, `email`, `profile` — need no review.
+3. Set a fixed public https address and the client:
+
+```
+VALBUM_PUBLIC_URL=https://home.example.org/valbum
+VALBUM_OIDC_GOOGLE_CLIENT_ID=123456789-abc.apps.googleusercontent.com
+VALBUM_OIDC_GOOGLE_CLIENT_SECRET='GOCSPX-…'
+```
+
+Without `VALBUM_PUBLIC_URL` nothing is offered, and the log says so. Another OpenID Connect provider
+is more variables of its own name: `VALBUM_OIDC_<NAME>_CLIENT_ID`, `_CLIENT_SECRET`,
+`_DISCOVERY_URL` (its `…/.well-known/openid-configuration`) and `_LABEL` (the button).
 
 ### Updating
 
@@ -473,6 +495,14 @@ Den Photo-Ordner stellst Du in `/etc/default/valbum` ein (`VALBUM_BASEPATH`, dan
 Besucher ihre E-Mail-Adresse bestätigen — sonst nichts. Dafür trägst Du das Postausgangs-Konto
 Deines Mail-Anbieters in `/etc/default/valbum` bzw. `environment:` ein (`VALBUM_SMTP_HOST`,
 `VALBUM_SMTP_USER`, `VALBUM_SMTP_PASSWORD`, siehe [Mail](#mail)); ohne Konto gibt es keinen Code.
+
+**Mit Google anmelden.** Statt des Codes können Besucher ihre Adresse mit Google bestätigen. Dazu
+legst Du in der Google Cloud Console einen OAuth-Client vom Typ "Webanwendung" an, mit der
+Weiterleitungs-URI `<VALBUM_PUBLIC_URL>/oidc/callback`, und veröffentlichst den Zustimmungs-Bildschirm
+(im Modus "Testen" kommen höchstens 100 Nutzer hinein; die Bereiche `openid email profile` brauchen
+keine Prüfung). Dann `VALBUM_OIDC_GOOGLE_CLIENT_ID` und `VALBUM_OIDC_GOOGLE_CLIENT_SECRET` eintragen.
+Nötig ist eine feste öffentliche https-Adresse in `VALBUM_PUBLIC_URL`; ohne sie wird nichts
+angeboten (siehe [Sign-in with Google](#sign-in-with-google)).
 
 **Anmelden.** Beim Start schreibt der Server einen Anmelde-Code für den Administrator ins Log
 (`journalctl -u valbum` bzw. das Container-Log), solange der noch kein Gerät hat. Der Code gilt zehn
