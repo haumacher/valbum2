@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1533,33 +1534,6 @@ class AppLocalizationsDe extends AppLocalizations {
   String get showFewerImages => 'Weniger Bilder anzeigen';
 
   @override
-  String get findDuplicatesAction => 'Duplikate suchen...';
-
-  @override
-  String get findDuplicatesTitle => 'Duplikate finden';
-
-  @override
-  String get findDuplicatesMessage =>
-      'Jedes Foto dieses Albums, das die Bibliothek bereits an anderer Stelle besitzt, wird aus dem Album entfernt und in einem eigenen Ordner der Bibliothek abgelegt. Es wird nichts gelöscht, und die andere Kopie bleibt an ihrem Platz.';
-
-  @override
-  String get noDuplicatesFound =>
-      'Es gibt nirgendwo sonst in der Bibliothek ein Foto dieses Albums.';
-
-  @override
-  String duplicatesSetAside(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other:
-          '$count Fotos wurden aussortiert; die verbleibenden Kopien befinden sich an anderer Stelle in der Bibliothek.',
-      one:
-          '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String get reanalyze => 'Fotodetails erneut einlesen';
 
   @override
@@ -1601,8 +1575,7 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count zwischengespeicherte Dateien wurden verworfen; die Vorschauen werden neu erstellt.',
-      one:
-          '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
+      one: '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
     );
     return '$_temp0';
   }
@@ -2124,11 +2097,6 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String doingFiling(String folder) {
     return 'Ablage im $folder';
-  }
-
-  @override
-  String doingFindingDuplicates(String folder) {
-    return 'Suche nach Duplikaten im $folder';
   }
 
   @override
@@ -2721,8 +2689,7 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count Elemente wurden übersprungen, da ihr Format vom Server nicht unterstützt wird:',
-      one:
-          'Ein Element wurde übersprungen, da sein Format vom Server nicht unterstützt wird:',
+      one: 'Ein Element wurde übersprungen, da sein Format vom Server nicht unterstützt wird:',
     );
     return '$_temp0 $names.';
   }

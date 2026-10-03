@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('de'),
-    Locale('en')
+    Locale('en'),
   ];
 
   /// The name of the application, shown as the window or browser tab title
@@ -1586,13 +1586,13 @@ abstract class AppLocalizations {
   /// **'Shows'**
   String get showsHeading;
 
-  /// Choice: the link shows only the photos marked public
+  /// Choice of a new share link, the default: it shows the public photos, which is every photo nobody marked members-only or private
   ///
   /// In en, this message translates to:
   /// **'Public photos'**
   String get privacyPublicOnly;
 
-  /// Choice of a new share link: it shows every photo a link can show, which is what a member of the space sees (a private photo never)
+  /// Choice of a new share link: besides the public photos it also shows the photos marked visible to members only (a private photo never)
   ///
   /// In en, this message translates to:
   /// **'Also members-only photos'**
@@ -2582,36 +2582,6 @@ abstract class AppLocalizations {
   /// **'Show fewer images'**
   String get showFewerImages;
 
-  /// Menu entry looking for photos the library already holds elsewhere
-  ///
-  /// In en, this message translates to:
-  /// **'Find duplicates...'**
-  String get findDuplicatesAction;
-
-  /// Title of the question asked before duplicates are set aside
-  ///
-  /// In en, this message translates to:
-  /// **'Find duplicates'**
-  String get findDuplicatesTitle;
-
-  /// Explains what looking for duplicates does
-  ///
-  /// In en, this message translates to:
-  /// **'Every photo of this album that the library already holds somewhere else is taken out of the album and kept aside in the library\'s own folder. Nothing is deleted, and the other copy stays where it is.'**
-  String get findDuplicatesMessage;
-
-  /// Said when the duplicate sweep found nothing
-  ///
-  /// In en, this message translates to:
-  /// **'No photo of this album is anywhere else in the library.'**
-  String get noDuplicatesFound;
-
-  /// Says how many photos the duplicate sweep took out of the album
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 photo was set aside; the copy that stays is elsewhere in the library.} other{{count} photos were set aside; the copies that stay are elsewhere in the library.}}'**
-  String duplicatesSetAside(int count);
-
   /// Menu entry and dialog title of reading the camera and the position of an album's photos from the files again
   ///
   /// In en, this message translates to:
@@ -3439,12 +3409,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'filing in {folder}'**
   String doingFiling(String folder);
-
-  /// Names what the app was doing when a request failed
-  ///
-  /// In en, this message translates to:
-  /// **'looking for duplicates in {folder}'**
-  String doingFindingDuplicates(String folder);
 
   /// Names what the app was doing when a request failed
   ///
@@ -4806,8 +4770,9 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }
