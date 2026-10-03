@@ -542,6 +542,8 @@
   "downloadSaved": "{name} wurde gespeichert.",
   "downloadSavedCount": "{count, plural, =1{1 Original gespeichert.} other{{count} Originale wurden gespeichert.}}",
   "downloadFailed": "Der Download ist fehlgeschlagen: {reason}",
+  "downloadCancelled": "Der Download wurde abgebrochen.",
+  "selectPhotos": "Fotos auswählen…",
   "rightsPhraseView": "Sie können einen Blick hineinwerfen",
   "rightsPhraseNone": "Hier können Sie nichts tun",
   "sharedWithYou": "Wurde für dich freigegeben",
@@ -779,5 +781,8 @@
   "addEmailNotNow": "Jetzt nicht",
   "addEmailTitle": "Fügen Sie Ihre E-Mail-Adresse hinzu",
   "addEmailExplanation": "Wir senden einen Code an diese Adresse. Sobald Sie diesen bestätigt haben, können Sie damit Ihre Links auf anderen Geräten öffnen.",
-  "addEmailDone": "Ihre E-Mail-Adresse wurde gespeichert."
+  "addEmailDone": "Ihre E-Mail-Adresse wurde gespeichert.",
+  "downloadProgress": "Datei {current} von {count}: {received} heruntergeladen",
+  "downloadProgressOf": "Datei {current} von {count}: {received} von {total} heruntergeladen",
+  "selectModeLeave": "Den Auswahlmodus verlassen"
 }

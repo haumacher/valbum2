@@ -144,15 +144,48 @@ DownloadSaver defaultDownloadSaver() => Platform.isAndroid || Platform.isIOS
 
 /// The phone's address book to pick a recipient from (issue #201): a phone
 /// has one, a desktop has none the app can reach.
-PhoneContacts? defaultPhoneContacts() => Platform.isAndroid || Platform.isIOS
-    ? const PluginPhoneContacts()
-    : null;
+PhoneContacts? defaultPhoneContacts() =>
+    Platform.isAndroid || Platform.isIOS ? const PluginPhoneContacts() : null;
+
+/// Writes [stream] into [file] chunk by chunk, as the chunks arrive (issue
+/// #209): each is written before the next is taken, so no more than one
+/// chunk of the download is ever held, and a slow disk slows the transfer
+/// down rather than piling the answer up in memory.
+///
+/// [progress] is told every chunk and asked before each whether the user
+/// cancelled. A transfer that breaks off — a lost connection, a cancel, a
+/// full disk — leaves no partial file behind: it is deleted and the failure
+/// thrown on.
+Future<void> streamIntoFile(
+  DownloadStream stream,
+  File file, {
+  DownloadProgress? progress,
+}) async {
+  progress?.announce(stream.length);
+  var out = await file.open(mode: FileMode.write);
+  try {
+    await for (var chunk in stream.content) {
+      progress?.check();
+      await out.writeFrom(chunk);
+      progress?.add(chunk.length);
+    }
+    await out.close();
+  } catch (_) {
+    await out.close();
+    if (await file.exists()) {
+      await file.delete();
+    }
+    rethrow;
+  }
+}
 
 /// Saves a download into the photo library of a phone, see
-/// [saveToPhotoLibrary].
+/// [saveFileToPhotoLibrary].
 ///
 /// A zip is no picture and would be a dead file on a phone, so a selection is
-/// saved original by original instead ([keepsArchives]).
+/// saved original by original instead ([keepsArchives]). Each original is
+/// streamed into a temporary file and handed to the library from there
+/// (issue #209), the temporary file removed afterwards, whatever happened.
 class PhotoLibraryDownloadSaver extends DownloadSaver {
   const PhotoLibraryDownloadSaver();
 
@@ -160,26 +193,50 @@ class PhotoLibraryDownloadSaver extends DownloadSaver {
   bool get keepsArchives => false;
 
   @override
-  Future<SaveOutcome> save(DownloadedFile file) async {
-    await saveToPhotoLibrary(file.name, file.bytes, file.contentType);
+  Future<SaveOutcome> save(DownloadSource source,
+      {DownloadProgress? progress}) async {
+    await askToAddToPhotoLibrary();
+    var stream = await source.open();
+    var directory = await Directory.systemTemp.createTemp("valbum-download");
+    try {
+      var file = File("${directory.path}/${source.name}");
+      await streamIntoFile(stream, file, progress: progress);
+      await saveFileToPhotoLibrary(source.name, file, stream.contentType);
+    } finally {
+      await directory.delete(recursive: true);
+    }
     return SaveOutcome.saved;
   }
 }
 
+/// Where the desktop's save dialog put the file to be saved, `null` where it
+/// was closed without a choice.
+typedef SaveLocationChooser = Future<String?> Function(String suggestedName);
+
+Future<String?> _saveDialog(String suggestedName) async =>
+    (await getSaveLocation(suggestedName: suggestedName))?.path;
+
 /// Saves a download where the user says, on a desktop.
 ///
-/// The platform's own save dialog, the file's name suggested; a dialog closed
-/// without a choice is [SaveOutcome.cancelled] and nothing is written.
+/// The platform's own save dialog comes first, the file's name suggested; a
+/// dialog closed without a choice is [SaveOutcome.cancelled] and nothing is
+/// fetched. The answer is then written into the chosen file as it arrives
+/// ([streamIntoFile], issue #209). [chooseLocation] is the dialog, replaced
+/// by a test.
 class FileDialogDownloadSaver extends DownloadSaver {
-  const FileDialogDownloadSaver();
+  final SaveLocationChooser chooseLocation;
+
+  const FileDialogDownloadSaver({this.chooseLocation = _saveDialog});
 
   @override
-  Future<SaveOutcome> save(DownloadedFile file) async {
-    var location = await getSaveLocation(suggestedName: file.name);
+  Future<SaveOutcome> save(DownloadSource source,
+      {DownloadProgress? progress}) async {
+    var location = await chooseLocation(source.name);
     if (location == null) {
       return SaveOutcome.cancelled;
     }
-    await File(location.path).writeAsBytes(file.bytes, flush: true);
+    var stream = await source.open();
+    await streamIntoFile(stream, File(location), progress: progress);
     return SaveOutcome.saved;
   }
 }

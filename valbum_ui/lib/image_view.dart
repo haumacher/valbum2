@@ -625,16 +625,11 @@ class ImageViewState extends State<ImageView>
   Future<void> downloadRaw() => downloadFile(part.raw);
 
   /// Saves the original file of the given name of this album onto the device.
-  Future<void> downloadFile(String name) => runDownload(context, () async {
-        var file =
-            await widget.client.downloadOriginal("${widget.baseUrl}/$name");
-        var outcome = await downloadSaver.save(file);
-        return DownloadResult(
-          count: outcome == SaveOutcome.saved ? 1 : 0,
-          name: file.name,
-          cancelled: outcome == SaveOutcome.cancelled,
-        );
-      });
+  Future<void> downloadFile(String name) => runDownload(
+        context,
+        (progress) => downloadOne(widget.client, "${widget.baseUrl}/$name",
+            progress: progress),
+      );
 
   // --- Naming the faces of the picture, see issue #147. ---
 

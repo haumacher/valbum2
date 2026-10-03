@@ -3331,6 +3331,56 @@
     },
     "x-translated": "3c29e262"
   },
+  "downloadCancelled": "The download was cancelled.",
+  "@downloadCancelled": {
+    "description": "Said after the user cancelled a download in progress; what was written of the file is gone",
+    "x-translated": "b6e8034b"
+  },
+  "downloadProgress": "File {current} of {count}: {received} downloaded",
+  "@downloadProgress": {
+    "description": "Progress line of a download whose length the server did not say; current is the file being fetched, count how many there are, received the amount written so far, e.g. '12.3 MB'",
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      },
+      "received": {
+        "type": "String"
+      }
+    },
+    "x-translated": "617d99d9"
+  },
+  "downloadProgressOf": "File {current} of {count}: {received} of {total} downloaded",
+  "@downloadProgressOf": {
+    "description": "Progress line of a download; current is the file being fetched, count how many there are, received the amount written so far and total the file's length, e.g. '12.3 MB' of '450 MB'",
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "received": {
+        "type": "String"
+      }
+    },
+    "x-translated": "9cb2f73"
+  },
+  "selectPhotos": "Select photos…",
+  "@selectPhotos": {
+    "description": "Entry of the album menu, for a visitor who may download but not edit, starting a mode in which photographs are selected to download some of them",
+    "x-translated": "4555590d"
+  },
+  "selectModeLeave": "Leave the selection mode",
+  "@selectModeLeave": {
+    "description": "Tooltip of the close button leaving the mode in which photographs are selected for a download",
+    "x-translated": "7e809214"
+  },
   "rightsPhraseView": "you may look",
   "@rightsPhraseView": {
     "description": "Half a sentence saying what the caller may do with a folder",

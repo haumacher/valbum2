@@ -2060,6 +2060,26 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String get downloadCancelled => 'Der Download wurde abgebrochen.';
+
+  @override
+  String downloadProgress(int current, int count, String received) {
+    return 'Datei $current von $count: $received heruntergeladen';
+  }
+
+  @override
+  String downloadProgressOf(
+      int current, String total, int count, String received) {
+    return 'Datei $current von $count: $received von $total heruntergeladen';
+  }
+
+  @override
+  String get selectPhotos => 'Fotos auswählen…';
+
+  @override
+  String get selectModeLeave => 'Den Auswahlmodus verlassen';
+
+  @override
   String get rightsPhraseView => 'Sie können einen Blick hineinwerfen';
 
   @override

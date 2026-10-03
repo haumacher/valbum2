@@ -80,46 +80,42 @@ BackgroundScheduler defaultBackgroundScheduler() =>
 void executeBackgroundTask(Future<bool> Function() task) {}
 
 /// Where a downloaded original goes in a browser: the browser's downloads,
-/// see [BlobDownloadSaver].
-DownloadSaver defaultDownloadSaver() => const BlobDownloadSaver();
+/// see [BrowserDownloadSaver].
+DownloadSaver defaultDownloadSaver() => const BrowserDownloadSaver();
 
 /// A browser has no address book to pick a recipient from (issue #201).
 PhoneContacts? defaultPhoneContacts() => null;
 
-/// Hands a download to the browser as a blob, under the file's own name
-/// (issue #164).
+/// Hands a download to the browser, which fetches it by itself (issue #209).
 ///
-/// The bytes were fetched through the client, bearer and all; the page then
-/// makes an object URL of them and clicks an anchor carrying `download`, which
-/// is the one way a page starts a download of what it already holds. The
-/// anchor is put into the document for the click (a browser that clicks only
-/// attached elements would otherwise ignore it) and taken out again, and the
-/// object URL is revoked a moment later — at once would cancel the download in
-/// a browser that reads the blob only after the click has returned.
-class BlobDownloadSaver extends DownloadSaver {
-  const BlobDownloadSaver();
+/// The app's own transport collects a whole answer before it hands it on —
+/// an album of videos does not survive that, and the browser's download would
+/// appear only after the transfer — so the browser is given an *address*
+/// instead: a signed one of issue #185 for an original, a one-time download
+/// ticket for an archive, neither carrying the bearer. The page clicks an
+/// anchor carrying `download` and that address, which starts the browser's
+/// own download at once, with its progress, its cancel, and its own marking
+/// of a broken transfer as failed. The anchor is put into the document for the
+/// click (a browser that clicks only attached elements would otherwise ignore
+/// it) and taken out again.
+class BrowserDownloadSaver extends DownloadSaver {
+  const BrowserDownloadSaver();
 
   @override
-  Future<SaveOutcome> save(DownloadedFile file) async {
-    // `dart:js_interop_unsafe` rather than extension types: the app's language
-    // version predates them, and these five calls do not justify raising it.
-    var options = JSObject()..["type"] = file.contentType.toJS;
-    var blob = (globalContext["Blob"] as JSFunction)
-        .callAsConstructor<JSObject>([file.bytes.toJS].toJS, options);
-    var urls = globalContext["URL"] as JSObject;
-    var url = urls.callMethod<JSString>("createObjectURL".toJS, blob);
+  bool get showsProgress => true;
+
+  @override
+  Future<SaveOutcome> save(DownloadSource source,
+      {DownloadProgress? progress}) async {
+    var url = await source.address();
     var document = globalContext["document"] as JSObject;
     var anchor = document.callMethod<JSObject>("createElement".toJS, "a".toJS);
-    anchor["href"] = url;
-    anchor["download"] = file.name.toJS;
+    anchor["href"] = url.toJS;
+    anchor["download"] = source.name.toJS;
     var body = document["body"] as JSObject;
     body.callMethod<JSAny?>("appendChild".toJS, anchor);
     anchor.callMethod<JSAny?>("click".toJS);
     body.callMethod<JSAny?>("removeChild".toJS, anchor);
-    Timer(
-      const Duration(minutes: 1),
-      () => urls.callMethod<JSAny?>("revokeObjectURL".toJS, url),
-    );
     return SaveOutcome.saved;
   }
 }

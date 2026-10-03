@@ -2028,6 +2028,26 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get downloadCancelled => 'The download was cancelled.';
+
+  @override
+  String downloadProgress(int current, int count, String received) {
+    return 'File $current of $count: $received downloaded';
+  }
+
+  @override
+  String downloadProgressOf(
+      int current, String total, int count, String received) {
+    return 'File $current of $count: $received of $total downloaded';
+  }
+
+  @override
+  String get selectPhotos => 'Select photos…';
+
+  @override
+  String get selectModeLeave => 'Leave the selection mode';
+
+  @override
   String get rightsPhraseView => 'you may look';
 
   @override

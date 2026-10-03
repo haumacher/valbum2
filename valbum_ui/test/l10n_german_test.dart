@@ -24,6 +24,8 @@ import 'package:valbum_ui/resource.dart';
 import 'package:valbum_ui/video_view.dart';
 
 import 'package:valbum_ui/add_email.dart';
+import 'package:valbum_ui/downloads.dart';
+import 'package:valbum_ui/select_mode.dart';
 import 'package:valbum_ui/album_view.dart';
 import 'package:valbum_ui/camera_roll.dart';
 import 'package:valbum_ui/camera_roll_view.dart';
@@ -557,6 +559,45 @@ void sliceTwo() {
       expect(find.text(de.appearsInPhotosAs("Anna")), findsOneWidget);
       var en = l10nOf(const Locale("en"));
       expect(find.text(en.appearsInPhotosAs("Anna")), findsNothing);
+    });
+  });
+
+  group('the download speaks German (issue #209)', () {
+    testWidgets('the bar of the select mode', (tester) async {
+      await tester.pumpWidget(localizedApp(
+        Builder(
+          builder: (context) => Scaffold(
+            appBar: selectModeAppBar(
+              l10n: AppLocalizations.of(context)!,
+              count: 3,
+              onLeave: () {},
+              onDownload: () {},
+            ),
+          ),
+        ),
+        locale: const Locale("de"),
+      ));
+
+      expect(find.text(de.selectedCount(3)), findsOneWidget);
+      expect(find.text(de.downloadSelection(3)), findsOneWidget);
+      expect(find.byTooltip(de.selectModeLeave), findsOneWidget);
+    });
+
+    testWidgets('the line of a download in progress', (tester) async {
+      var progress = DownloadProgress()
+        ..startFile(2, 3)
+        ..announce(4096)
+        ..add(2048);
+      await tester.pumpWidget(localizedApp(
+        Scaffold(body: DownloadProgressLine(progress)),
+        locale: const Locale("de"),
+      ));
+
+      expect(
+          find.text(de.downloadProgressOf(
+              2, formatBytes(4096), 3, formatBytes(2048))),
+          findsOneWidget);
+      expect(de.selectPhotos, isNot(l10nOf(const Locale("en")).selectPhotos));
     });
   });
 

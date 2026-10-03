@@ -1586,13 +1586,13 @@ abstract class AppLocalizations {
   /// **'Shows'**
   String get showsHeading;
 
-  /// Choice: the link shows only the photos marked public
+  /// Choice of a new share link, the default: it shows the public photos, which is every photo nobody marked members-only or private
   ///
   /// In en, this message translates to:
   /// **'Public photos'**
   String get privacyPublicOnly;
 
-  /// Choice of a new share link: it shows every photo a link can show, which is what a member of the space sees (a private photo never)
+  /// Choice of a new share link: besides the public photos it also shows the photos marked visible to members only (a private photo never)
   ///
   /// In en, this message translates to:
   /// **'Also members-only photos'**
@@ -3349,6 +3349,37 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The download failed: {reason}'**
   String downloadFailed(String reason);
+
+  /// Said after the user cancelled a download in progress; what was written of the file is gone
+  ///
+  /// In en, this message translates to:
+  /// **'The download was cancelled.'**
+  String get downloadCancelled;
+
+  /// Progress line of a download whose length the server did not say; current is the file being fetched, count how many there are, received the amount written so far, e.g. '12.3 MB'
+  ///
+  /// In en, this message translates to:
+  /// **'File {current} of {count}: {received} downloaded'**
+  String downloadProgress(int current, int count, String received);
+
+  /// Progress line of a download; current is the file being fetched, count how many there are, received the amount written so far and total the file's length, e.g. '12.3 MB' of '450 MB'
+  ///
+  /// In en, this message translates to:
+  /// **'File {current} of {count}: {received} of {total} downloaded'**
+  String downloadProgressOf(
+      int current, String total, int count, String received);
+
+  /// Entry of the album menu, for a visitor who may download but not edit, starting a mode in which photographs are selected to download some of them
+  ///
+  /// In en, this message translates to:
+  /// **'Select photos…'**
+  String get selectPhotos;
+
+  /// Tooltip of the close button leaving the mode in which photographs are selected for a download
+  ///
+  /// In en, this message translates to:
+  /// **'Leave the selection mode'**
+  String get selectModeLeave;
 
   /// Half a sentence saying what the caller may do with a folder
   ///

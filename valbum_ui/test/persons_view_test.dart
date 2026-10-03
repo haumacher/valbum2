@@ -197,6 +197,10 @@ Future<void> pumpEditor(WidgetTester tester, VAlbumClient client) async {
   await pumpAlbum(tester, client);
   await openMenu(tester);
   await withFakeImageHttp(() async {
+    // On a small surface the menu scrolls: the whole view's download (issue
+    // #209) stands above the entry.
+    await tester.ensureVisible(find.byKey(const Key("persons")));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key("persons")));
     await tester.pumpAndSettle();
   });

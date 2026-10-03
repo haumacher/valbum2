@@ -8,6 +8,7 @@
 /// platform's [DownloadSaver], which a test replaces.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -25,9 +26,19 @@ import 'util/fixtures.dart';
 import 'util/l10n.dart';
 import 'util/viewer_harness.dart';
 
-/// A saver recording what it was handed.
+/// What a [RecordingSaver] was handed and fetched.
+class SavedFile {
+  final String name;
+  final Uint8List bytes;
+  final String contentType;
+
+  const SavedFile(this.name, this.bytes, this.contentType);
+}
+
+/// A saver of the desktop's and the phone's kind, fetching through the client
+/// and recording what it received.
 class RecordingSaver extends DownloadSaver {
-  final List<DownloadedFile> saved = [];
+  final List<SavedFile> saved = [];
 
   @override
   final bool keepsArchives;
@@ -35,8 +46,32 @@ class RecordingSaver extends DownloadSaver {
   RecordingSaver({this.keepsArchives = true});
 
   @override
-  Future<SaveOutcome> save(DownloadedFile file) async {
-    saved.add(file);
+  Future<SaveOutcome> save(DownloadSource source,
+      {DownloadProgress? progress}) async {
+    var stream = await source.open();
+    var bytes = <int>[];
+    await for (var chunk in stream.content) {
+      bytes.addAll(chunk);
+    }
+    saved.add(
+        SavedFile(source.name, Uint8List.fromList(bytes), stream.contentType));
+    return SaveOutcome.saved;
+  }
+}
+
+/// A saver of the browser's kind (issue #209): it asks for the address the
+/// browser would download from and never opens the file itself.
+class AddressSaver extends DownloadSaver {
+  /// The addresses handed to the "browser", with the file names.
+  final List<(String, String)> addresses = [];
+
+  @override
+  bool get showsProgress => true;
+
+  @override
+  Future<SaveOutcome> save(DownloadSource source,
+      {DownloadProgress? progress}) async {
+    addresses.add((source.name, await source.address()));
     return SaveOutcome.saved;
   }
 }
@@ -61,6 +96,31 @@ http.Response refusal(String message, int status) => http.Response(
 /// Installs [saver] as the app's saver for the running test.
 RecordingSaver installSaver([RecordingSaver? saver]) {
   var result = saver ?? RecordingSaver();
+  var before = downloadSaver;
+  downloadSaver = result;
+  addTearDown(() => downloadSaver = before);
+  return result;
+}
+
+/// A saver of the desktop's kind that has received half of a file and waits
+/// for [release] to go on, see `runDownload`'s progress line (issue #209).
+class BlockingSaver extends DownloadSaver {
+  final Completer<void> release = Completer<void>();
+
+  @override
+  Future<SaveOutcome> save(DownloadSource source,
+      {DownloadProgress? progress}) async {
+    progress?.announce(2048);
+    progress?.add(1024);
+    await release.future;
+    progress?.check();
+    return SaveOutcome.saved;
+  }
+}
+
+/// Installs a saver of the browser's kind for the running test.
+AddressSaver installAddressSaver() {
+  var result = AddressSaver();
   var before = downloadSaver;
   downloadSaver = result;
   addTearDown(() => downloadSaver = before);
@@ -134,13 +194,44 @@ String inboxWith(List<String> rights) {
   );
 }
 
+/// An album `Inbox` carrying [rights] whose photographs are rated: `a.jpg`
+/// at 0, `b.jpg` at 1, the group `g1.jpg`/`g2.jpg` at 0 and `c.jpg` at -1,
+/// which the standing filter (0) hides (issue #209).
+String ratedAlbum(List<String> rights) =>
+    '["AlbumInfo", {"path": "Inbox", "title": "Inbox", "subTitle": "", '
+    '"rights": [${rights.map((r) => '{"name": "$r"}').join(", ")}], '
+    '"parts": ['
+    '["ImagePart", {"kind": "IMAGE", "name": "a.jpg", "date": 1015113600000, '
+    '"width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0}], '
+    '["ImagePart", {"kind": "IMAGE", "name": "b.jpg", "date": 1015113610000, '
+    '"width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 1}], '
+    '["ImageGroup", {"representative": 0, "images": ['
+    '{"kind": "IMAGE", "name": "g1.jpg", "date": 1015113620000, '
+    '"width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0}, '
+    '{"kind": "VIDEO", "name": "g2.mp4", "date": 1015113630000, '
+    '"width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0}]}], '
+    '["ImagePart", {"kind": "IMAGE", "name": "c.jpg", "date": 1015113640000, '
+    '"width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": -1}]'
+    ']}]';
+
+/// The names a download request posted.
+List<String> postedNames(http.Request request) => [
+      for (var name in (jsonDecode(request.body) as Map)["names"] as List)
+        (name as Map)["name"] as String,
+    ];
+
 /// Opens the album `Inbox` in the edit mode with `a.jpg` and `b.jpg` selected.
+///
+/// Without `edit` in [rights] the album is only opened; [album] is the
+/// album's answer for [rights], `album-move.json` by default.
 Future<void> pumpSelection(
   WidgetTester tester,
   List<http.Request> requests, {
   List<String> rights = const ["view", "download", "contribute", "edit"],
   OfflineState? offlineState,
   http.Response Function(http.Request)? zip,
+  String Function(List<String> rights) album = inboxWith,
+  bool select = true,
 }) async {
   var client = VAlbumClient(
     dataUrl: chrome.dataUrl,
@@ -154,8 +245,20 @@ Future<void> pumpSelection(
             http.Response.bytes(zipBytes, 200,
                 headers: {"content-type": "application/zip"});
       }
+      if (path == "/valbum/data/Inbox/" &&
+          request.url.queryParameters["action"] == "zip-ticket") {
+        return zip?.call(request) ??
+            chrome.json('{"url": "/valbum/data/Inbox/?action=zip&ticket=T1'
+                '&media=d.dev.99.mac", "media": "d.dev.99.mac", '
+                '"expires": "2026-10-03T12:10:00Z"}');
+      }
+      if (path == "/valbum/data/Inbox/a.jpg" &&
+          request.url.queryParameters["type"] == "media-url") {
+        return chrome.json('{"url": "/valbum/data/Inbox/a.jpg?media=d.dev.99.m",'
+            ' "media": "d.dev.99.m", "expires": "2026-10-03T12:10:00Z"}');
+      }
       if (path == "/valbum/data/Inbox/") {
-        return chrome.json(inboxWith(rights));
+        return chrome.json(album(rights));
       }
       if (path.startsWith("/valbum/data/Inbox/") && request.url.query.isEmpty) {
         return http.Response.bytes(originalBytes, 200,
@@ -177,7 +280,7 @@ Future<void> pumpSelection(
     initialRoute: const ListingOrAlbumRoute(["Inbox"]),
   ));
   await tester.pumpAndSettle();
-  if (rights.contains("edit")) {
+  if (select && rights.contains("edit")) {
     await tester.longPress(find.byType(Image).first);
     await tester.pumpAndSettle();
     await longPressTile(tester, "b.jpg");
@@ -428,15 +531,6 @@ void main() {
     // the edit mode needs `edit`, and `edit` implies `download` on the server
     // and in `Rights.ofNames` alike. A share link without it is below.
 
-    testWidgets('is not offered without a selection', (tester) async {
-      await withFakeImageHttp(() async {
-        await pumpSelection(tester, [], rights: const ["view", "download"]);
-        await openAlbumMenu(tester);
-
-        expect(find.byKey(const Key("download-selection")), findsNothing);
-      });
-    });
-
     testWidgets('is refused while the app is offline', (tester) async {
       var saver = installSaver();
       var requests = <http.Request>[];
@@ -453,6 +547,227 @@ void main() {
       expect(find.text(testL10n.offlineRefusal), findsOneWidget);
       expect(requests.where((r) => r.method != "GET"), isEmpty);
       expect(saver.saved, isEmpty);
+    });
+  });
+
+  group('the progress (issue #209)', () {
+    Future<BlockingSaver> startBlocked(WidgetTester tester) async {
+      var saver = BlockingSaver();
+      var before = downloadSaver;
+      downloadSaver = saver;
+      addTearDown(() => downloadSaver = before);
+      await pumpViewer(tester, viewerClient([]));
+      await tapViewerDownload(tester);
+      await tester.pump(downloadProgressDelay);
+      await tester.pumpAndSettle();
+      return saver;
+    }
+
+    testWidgets('says how far it has come, and goes when it is done',
+        (tester) async {
+      var saver = await startBlocked(tester);
+
+      expect(find.byKey(const Key("download-progress")), findsOneWidget);
+      var line = tester
+          .widget<Text>(find.byKey(const Key("download-progress-line")))
+          .data!;
+      expect(line, startsWith("File 1 of 1: "));
+      expect(line, endsWith(" downloaded"));
+      expect(
+          tester
+              .widget<LinearProgressIndicator>(
+                  find.byType(LinearProgressIndicator))
+              .value,
+          0.5);
+
+      saver.release.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key("download-progress")), findsNothing);
+      expect(find.text(testL10n.downloadSaved("a.jpg")), findsOneWidget);
+    });
+
+    testWidgets('is cancelled from its line', (tester) async {
+      var saver = await startBlocked(tester);
+
+      await tester.tap(find.byKey(const Key("download-cancel")));
+      saver.release.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text(testL10n.downloadCancelled), findsOneWidget);
+      expect(find.byKey(const Key("download-saved")), findsNothing);
+    });
+  });
+
+  group('the view (issue #209)', () {
+    Future<String> openEntry(WidgetTester tester) async {
+      await openAlbumMenu(tester);
+      return entryText(tester, "download-selection");
+    }
+
+    testWidgets(
+        'is offered to a member without the edit mode, at the filter set',
+        (tester) async {
+      var saver = installSaver();
+      var requests = <http.Request>[];
+      await withFakeImageHttp(() async {
+        await pumpSelection(tester, requests,
+            rights: const ["view", "download"], album: ratedAlbum);
+        expect(await openEntry(tester), "Download 4 originals");
+        await tester.tap(find.byKey(const Key("download-selection")));
+        await tester.pumpAndSettle();
+      });
+
+      // Photographs and videos alike, a group as its members, never the
+      // photograph the filter hides.
+      var post =
+          requests.singleWhere((r) => r.url.queryParameters["action"] == "zip");
+      expect(postedNames(post), ["a.jpg", "b.jpg", "g1.jpg", "g2.mp4"]);
+      expect(saver.saved.single.name, "Inbox.zip");
+    });
+
+    testWidgets('raising the filter lowers the count', (tester) async {
+      await withFakeImageHttp(() async {
+        await pumpSelection(tester, [],
+            rights: const ["view", "download"], album: ratedAlbum);
+        await openAlbumMenu(tester);
+        await tester.tap(find.text(testL10n.showFewerImages));
+        await tester.pumpAndSettle();
+        expect(await openEntry(tester), "Download 1 original");
+        await tester.tap(find.text(testL10n.showMoreImages));
+        await tester.pumpAndSettle();
+        await openAlbumMenu(tester);
+        await tester.tap(find.text(testL10n.showMoreImages));
+        await tester.pumpAndSettle();
+        expect(await openEntry(tester), "Download 5 originals");
+      });
+    });
+
+    testWidgets('is offered to an editor without a selection', (tester) async {
+      await withFakeImageHttp(() async {
+        await pumpSelection(tester, [], album: ratedAlbum, select: false);
+        expect(await openEntry(tester), "Download 4 originals");
+      });
+    });
+
+    testWidgets('gives way to the selection of the edit mode', (tester) async {
+      var requests = <http.Request>[];
+      installSaver();
+      await withFakeImageHttp(() async {
+        await pumpSelection(tester, requests, album: ratedAlbum);
+        expect(await openEntry(tester), "Download 2 originals");
+        await tester.tap(find.byKey(const Key("download-selection")));
+        await tester.pumpAndSettle();
+      });
+      var post =
+          requests.singleWhere((r) => r.url.queryParameters["action"] == "zip");
+      expect(postedNames(post), ["a.jpg", "b.jpg"]);
+    });
+
+    testWidgets('is not offered without the download right', (tester) async {
+      await withFakeImageHttp(() async {
+        await pumpSelection(tester, [],
+            rights: const ["view"], album: ratedAlbum);
+        await openAlbumMenu(tester);
+        expect(find.byKey(const Key("download-selection")), findsNothing);
+      });
+    });
+  });
+
+  group('in a browser (issue #209)', () {
+    testWidgets('an archive is an address the browser fetches by itself',
+        (tester) async {
+      var saver = installAddressSaver();
+      var requests = <http.Request>[];
+      await withFakeImageHttp(() async {
+        await pumpSelection(tester, requests,
+            rights: const ["view", "download"], album: ratedAlbum);
+        await openAlbumMenu(tester);
+        await tester.tap(find.byKey(const Key("download-selection")));
+        await tester.pumpAndSettle();
+      });
+
+      // The ticket is asked with the bearer and the names; the archive itself
+      // is never fetched through the app.
+      var ticket = requests
+          .singleWhere((r) => r.url.queryParameters["action"] == "zip-ticket");
+      expect(ticket.method, "POST");
+      expect(ticket.headers["Authorization"], "Bearer tok-9");
+      expect(postedNames(ticket), ["a.jpg", "b.jpg", "g1.jpg", "g2.mp4"]);
+      expect(requests.where((r) => r.url.queryParameters["action"] == "zip"),
+          isEmpty);
+      var (name, address) = saver.addresses.single;
+      expect(name, "Inbox.zip");
+      expect(address,
+          "http://server/valbum/data/Inbox/?action=zip&ticket=T1&media=d.dev.99.mac");
+      expect(address, isNot(contains("tok-9")));
+      // The browser shows its own progress, and the app its result.
+      expect(find.byKey(const Key("download-progress")), findsNothing);
+      expect(find.text(testL10n.downloadSaved("Inbox.zip")), findsOneWidget);
+    });
+
+    testWidgets('a refused ticket says the server\'s sentence',
+        (tester) async {
+      var saver = installAddressSaver();
+      await withFakeImageHttp(() async {
+        await pumpSelection(
+          tester,
+          [],
+          rights: const ["view", "download"],
+          album: ratedAlbum,
+          zip: (_) => refusal("This image is not available to you.", 403),
+        );
+        await openAlbumMenu(tester);
+        await tester.tap(find.byKey(const Key("download-selection")));
+        await tester.pumpAndSettle();
+      });
+
+      expect(saver.addresses, isEmpty);
+      expect(
+          find.text(
+              testL10n.downloadFailed("This image is not available to you.")),
+          findsOneWidget);
+    });
+
+    test('a single original is a signed address asking for an attachment',
+        () async {
+      var requests = <http.Request>[];
+      var client = VAlbumClient(
+        dataUrl: chrome.dataUrl,
+        token: "tok-9",
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          return chrome.json('{"url": "/x", "media": "d.dev.99.m", '
+              '"expires": "2026-10-03T12:10:00Z"}');
+        }),
+      );
+      var saver = AddressSaver();
+
+      var result = await downloadOne(
+          client, "${chrome.dataUrl}/Inbox/a.jpg", saver: saver);
+
+      expect(result.name, "a.jpg");
+      expect(requests.single.url.queryParameters,
+          {"type": "media-url", "for": "original"});
+      expect(saver.addresses.single.$2,
+          "${chrome.dataUrl}/Inbox/a.jpg?media=d.dev.99.m&download=1");
+    });
+
+    test('an anonymous caller is handed the plain address', () async {
+      var requests = <http.Request>[];
+      var client = VAlbumClient(
+        dataUrl: chrome.dataUrl,
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          return http.Response("", 500);
+        }),
+      );
+      var saver = AddressSaver();
+
+      await downloadOne(client, "${chrome.dataUrl}/Inbox/a.jpg", saver: saver);
+
+      expect(requests, isEmpty);
+      expect(
+          saver.addresses.single.$2, "${chrome.dataUrl}/Inbox/a.jpg?download=1");
     });
   });
 

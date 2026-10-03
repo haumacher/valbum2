@@ -85,7 +85,15 @@ final class ZipDownload {
 	 * </p>
 	 */
 	static String contentDisposition(String folderName) {
-		String name = (folderName == null || folderName.isEmpty() ? "album" : folderName) + ".zip";
+		return attachment((folderName == null || folderName.isEmpty() ? "album" : folderName) + ".zip");
+	}
+
+	/**
+	 * The <code>Content-Disposition</code> header of a download saved under the given file name, in
+	 * the two spellings of {@link #contentDisposition(String)}; also the header of a single original
+	 * the browser downloads by itself, see issue #209.
+	 */
+	static String attachment(String name) {
 		StringBuilder ascii = new StringBuilder();
 		for (int n = 0; n < name.length(); n++) {
 			char c = name.charAt(n);

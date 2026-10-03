@@ -129,6 +129,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -426,6 +427,32 @@ public class ImageServlet extends HttpServlet {
 	/** The message a download request naming nothing is refused with, see issue #164. */
 	public static final String ZIP_EMPTY = "Name at least one photograph to download.";
 
+	/**
+	 * The <code>action</code> that checks a download as {@link #ZIP_ACTION} would and answers an
+	 * address the browser fetches by itself, see issue #209 and {@link ZipTickets}.
+	 */
+	public static final String ZIP_TICKET_ACTION = "zip-ticket";
+
+	/**
+	 * The parameter a signed address of an original carries where the browser is to save the file
+	 * rather than show it, see issue #209: <code>download=1</code>.
+	 */
+	public static final String DOWNLOAD_PARAMETER = "download";
+
+	/** The value of {@link #DOWNLOAD_PARAMETER} that asks for the attachment. */
+	public static final String DOWNLOAD_PARAMETER_VALUE = "1";
+
+	/** The parameter of a {@link #ZIP_ACTION} <code>GET</code> naming its ticket, see issue #209. */
+	public static final String TICKET_PARAMETER = "ticket";
+
+	/** The message a <code>GET ?action=zip</code> without a ticket is refused with, see issue #209. */
+	public static final String ZIP_TICKET_REQUIRED =
+		"A download is fetched with the address the album answered for it. Start the download again.";
+
+	/** The message a used, run-out or foreign download ticket is refused with, see issue #209. */
+	public static final String ZIP_TICKET_GONE =
+		"This download address has been used already or has run out. Start the download again.";
+
 	/** The <code>type</code> a face crop is asked for with, see issue #124. */
 	public static final String FACE_TYPE = "face";
 
@@ -448,8 +475,11 @@ public class ImageServlet extends HttpServlet {
 	public static final String MEDIA_KIND_UNKNOWN =
 		"A media address is made for 'video', 'teaser' or 'original'.";
 
-	/** The message a {@link #MEDIA_URL_TYPE} request is refused with for a file that is no video. */
-	public static final String MEDIA_NOT_A_VIDEO = "Only a video has a media address.";
+	/**
+	 * The message a {@link #MEDIA_URL_TYPE} request for a rendition or a teaser is refused with for
+	 * a file that is no video; the original of every image has one, see issue #209.
+	 */
+	public static final String MEDIA_NOT_A_VIDEO = "Only a video has a playback or teaser address.";
 
 	/** The parameter naming which face of an image is asked for, see issue #124. */
 	public static final String FACE_PARAMETER = "face";
@@ -592,6 +622,14 @@ public class ImageServlet extends HttpServlet {
 
 	/** Re-reading the photo details of a folder, see issue #161. */
 	private final Reanalysis _reanalysis;
+
+	/** The download tickets of this space, see issue #209. */
+	private final ZipTickets _zipTickets = new ZipTickets();
+
+	/** How many download tickets are held, for a test. */
+	int zipTicketCount() {
+		return _zipTickets.size();
+	}
 
 	/** How long a request waits for a tree to be re-read, see {@link #REANALYZE_WAIT_MILLIS}. */
 	private long _reanalyzeWait = REANALYZE_WAIT_MILLIS;
@@ -803,6 +841,13 @@ public class ImageServlet extends HttpServlet {
 
 		String type = context.getParameter("type");
 
+		if (ZIP_ACTION.equals(context.getParameter("action"))) {
+			// The browser's own fetch of a download ticket, see issue #209: who asks is the ticket's
+			// business, never the bearer's.
+			serveZipTicket(context);
+			return;
+		}
+
 		Caller caller = _auth.caller(request);
 		String media = context.getParameter(MediaSignatures.PARAMETER);
 		if (media != null) {
@@ -982,6 +1027,11 @@ public class ImageServlet extends HttpServlet {
 			if (!_auth.rights(caller, resourcePath).contains(right)) {
 				refuse(context, caller, resourcePath, right, false);
 				return;
+			}
+			if (media != null && type == null && DOWNLOAD_PARAMETER_VALUE.equals(context.getParameter(DOWNLOAD_PARAMETER))) {
+				// The browser's own download of one original, see issue #209: saved, not shown, and
+				// under its own name wherever the page that asked lives.
+				response.setHeader("Content-Disposition", ZipDownload.attachment(file.getName()));
 			}
 			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
 			serveImage(context, resourcePath, caller, clearance, _auth.minRating(caller, resourcePath, viewAs), viewAs);
@@ -1759,41 +1809,193 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private void zipEntries(Context context) throws IOException {
 		Caller caller = _auth.caller(context.request());
-		int viewAs;
+		Integer viewAs = viewAsOf(context);
+		if (viewAs == null) {
+			return;
+		}
+		PathInfo folder = zipFolder(context, caller, viewAs);
+		if (folder == null) {
+			return;
+		}
+		Set<String> names = zipNames(context);
+		if (names == null) {
+			return;
+		}
+		List<File> files = zipFiles(context, caller, folder, viewAs, names);
+		if (files == null) {
+			return;
+		}
+		sendZip(context, folder, files);
+	}
+
+	/**
+	 * Answers <code>POST &lt;album&gt;/?action=zip-ticket</code>, the download of issue #209 a
+	 * browser fetches by itself, see {@link ZipTickets}.
+	 *
+	 * <p>
+	 * The request is the one of <code>?action=zip</code> and is checked exactly as that one is,
+	 * every refusal answered before any ticket exists. The answer is a {@link MediaUrl} whose
+	 * <code>url</code> is <code>&lt;album&gt;/?action=zip&amp;ticket=&lt;id&gt;&amp;media=&lt;signature&gt;</code>:
+	 * the signature, made out to the asking device, share link or personal-link session, is over
+	 * the album's path and the ticket together ({@link MediaSignatures.Kind#ARCHIVE}). A caller
+	 * without a token gets a ticket without a signature, which opens only what such a caller may
+	 * download anyway, and <code>media</code> is then empty.
+	 * </p>
+	 */
+	private void issueZipTicket(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Integer viewAs = viewAsOf(context);
+		if (viewAs == null) {
+			return;
+		}
+		PathInfo folder = zipFolder(context, caller, viewAs);
+		if (folder == null) {
+			return;
+		}
+		Set<String> names = zipNames(context);
+		if (names == null) {
+			return;
+		}
+		if (zipFiles(context, caller, folder, viewAs, names) == null) {
+			return;
+		}
+		HttpServletRequest request = context.request();
+		String path = request.getPathInfo() == null ? "" : request.getPathInfo();
+		java.time.Instant expires =
+			java.time.Instant.now().plus(MediaSignatures.LIFETIME).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+		String id = _zipTickets.newId();
+		String signature;
+		String subject;
+		if (caller.isPaired() || caller.isShareLink()) {
+			try {
+				signature = _auth.signMedia(caller, ticketPath(path, id), MediaSignatures.Kind.ARCHIVE,
+					expires.getEpochSecond());
+			} catch (AuthService.Refused ex) {
+				LOG.warning("Refusing a download ticket of '" + path + "': " + ex.getMessage());
+				errorInfo(context, ex.getStatus(), ex.getMessage());
+				return;
+			}
+			subject = MediaSignatures.subjectOf(signature);
+		} else {
+			signature = "";
+			subject = ZipTickets.ANONYMOUS;
+		}
+		_zipTickets.put(id, new ZipTickets.Ticket(path, names, viewAs, subject, expires.getEpochSecond()));
+		String url = request.getContextPath() + request.getServletPath() + encodePath(path) + "?action="
+			+ ZIP_ACTION + "&" + TICKET_PARAMETER + "=" + id
+			+ (signature.isEmpty() ? "" : "&" + MediaSignatures.PARAMETER + "=" + signature);
+		LOG.info("Issued a download ticket for " + names.size() + " names of '" + path + "'.");
+		serveJsonObject(context.response(),
+			MediaUrl.create().setUrl(url).setMedia(signature).setExpires(expires.toString()));
+	}
+
+	/**
+	 * Answers <code>GET &lt;album&gt;/?action=zip&amp;ticket=&lt;id&gt;[&amp;media=&lt;signature&gt;]</code>,
+	 * the browser's own fetch of a download ticket, see {@link #issueZipTicket(Context)}.
+	 *
+	 * <p>
+	 * A bearer beside it is ignored: the signature decides who asks, as for every signed media
+	 * address (issue #185), and the ticket must have been made out to exactly that subject and that
+	 * folder. It is used up by the first request, good or refused afterwards, and every name is
+	 * asked again what it was asked when the ticket was made — as the device or link would be asked
+	 * <em>now</em>.
+	 * </p>
+	 */
+	private void serveZipTicket(Context context) throws IOException {
+		HttpServletRequest request = context.request();
+		String path = request.getPathInfo() == null ? "" : request.getPathInfo();
+		String id = context.getParameter(TICKET_PARAMETER);
+		String media = context.getParameter(MediaSignatures.PARAMETER);
+		if (id == null || id.isEmpty()) {
+			LOG.warning("Refusing a download of '" + path + "' without a ticket.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, ZIP_TICKET_REQUIRED);
+			return;
+		}
+		Caller caller;
+		String subject;
+		if (media == null || media.isEmpty()) {
+			caller = Caller.ANONYMOUS;
+			subject = ZipTickets.ANONYMOUS;
+		} else {
+			try {
+				caller = _auth.mediaCaller(media, ticketPath(path, id), MediaSignatures.Kind.ARCHIVE);
+			} catch (AuthService.Refused ex) {
+				LOG.warning("Refusing the download ticket of '" + path + "': " + ex.getMessage());
+				errorInfo(context, ex.getStatus(), ex.getMessage());
+				return;
+			}
+			subject = MediaSignatures.subjectOf(media);
+		}
+		ZipTickets.Ticket ticket = _zipTickets.take(id, path, subject);
+		if (ticket == null) {
+			LOG.warning("Refusing the download ticket of '" + path + "': used, run out or not made for this caller.");
+			errorInfo(context, HttpServletResponse.SC_GONE, ZIP_TICKET_GONE);
+			return;
+		}
+		if (gone(context, caller)) {
+			return;
+		}
+		PathInfo folder = zipFolder(context, caller, ticket.getViewAs());
+		if (folder == null) {
+			return;
+		}
+		List<File> files = zipFiles(context, caller, folder, ticket.getViewAs(), ticket.getNames());
+		if (files == null) {
+			return;
+		}
+		sendZip(context, folder, files);
+		// The address was a credential for one download: no shared cache keeps what it opened.
+	}
+
+	/** The path a ticket's signature is made over: the folder's and the ticket's together. */
+	private static String ticketPath(String path, String id) {
+		return path + "?" + TICKET_PARAMETER + "=" + id;
+	}
+
+	/** The "view as" of the request, <code>null</code> where it was refused (and answered). */
+	private Integer viewAsOf(Context context) throws IOException {
 		try {
-			viewAs = Privacy.viewAs(context.getParameter(Privacy.VIEW_AS_PARAMETER));
+			return Privacy.viewAs(context.getParameter(Privacy.VIEW_AS_PARAMETER));
 		} catch (IllegalArgumentException ex) {
 			LOG.warning("Rejecting the unknown 'viewAs' value '" + ex.getMessage() + "'.");
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, VIEW_AS_REFUSED);
-			return;
+			return null;
 		}
+	}
+
+	/**
+	 * The album a download addresses, where the caller may download from it at all; <code>null</code>
+	 * where that was refused (and answered).
+	 */
+	private PathInfo zipFolder(Context context, Caller caller, int viewAs) throws IOException {
 		Location location = resolve(context, caller);
 		if (location == null) {
-			return;
+			return null;
 		}
 		PathInfo folder = location.getPath();
 		if (!_auth.readAllowed(caller) && _auth.rights(caller, folder).isEmpty()) {
 			unauthorized(context, caller, false);
-			return;
+			return null;
 		}
 		if (!folder.toFile().isDirectory()) {
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
-			return;
+			return null;
 		}
-		Inboxes.Visibility inbox = null;
-		if (Inboxes.isInbox(_cache.lookup(folder))) {
-			inbox = Inboxes.visibility(_auth, caller, folder, viewAs);
-			if (inbox == Inboxes.Visibility.NONE) {
-				LOG.warning("Hiding the inbox at '" + context.request().getPathInfo() + "'.");
-				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
-				return;
-			}
+		if (Inboxes.isInbox(_cache.lookup(folder))
+			&& Inboxes.visibility(_auth, caller, folder, viewAs) == Inboxes.Visibility.NONE) {
+			LOG.warning("Hiding the inbox at '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
+			return null;
 		}
 		if (!_auth.rights(caller, folder).contains(Rights.DOWNLOAD)) {
 			refuse(context, caller, folder, Rights.DOWNLOAD, false);
-			return;
+			return null;
 		}
+		return folder;
+	}
 
+	/** The names of a download request's body, each once; <code>null</code> where refused. */
+	private Set<String> zipNames(Context context) throws IOException {
 		MoveRequest request;
 		try {
 			byte[] contents = readBody(context.request());
@@ -1802,7 +2004,7 @@ public class ImageServlet extends HttpServlet {
 		} catch (IOException | RuntimeException ex) {
 			LOG.warning("Rejecting unparsable download request: " + ex.getMessage());
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, ZIP_UNREADABLE);
-			return;
+			return null;
 		}
 		// Each name once, in the order asked: a photograph named twice is not two entries.
 		Set<String> names = new LinkedHashSet<>();
@@ -1811,9 +2013,19 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (names.isEmpty()) {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, ZIP_EMPTY);
-			return;
+			return null;
 		}
+		return names;
+	}
 
+	/**
+	 * The files the given names of a download stand for, each asked what its original would be
+	 * asked; <code>null</code> where one was refused (and answered).
+	 */
+	private List<File> zipFiles(Context context, Caller caller, PathInfo folder, int viewAs,
+			Collection<String> names) throws IOException {
+		Inboxes.Visibility inbox =
+			Inboxes.isInbox(_cache.lookup(folder)) ? Inboxes.visibility(_auth, caller, folder, viewAs) : null;
 		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
 		int minRating = _auth.minRating(caller, folder, viewAs);
 		// A file once, though a photograph and its raw companion be named both.
@@ -1826,7 +2038,7 @@ public class ImageServlet extends HttpServlet {
 				LOG.warning("Refusing the download in '" + context.request().getPathInfo() + "': no photograph '"
 					+ name + "'.");
 				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
-				return;
+				return null;
 			}
 			PathInfo image = folder.child(name);
 			if (inbox != null) {
@@ -1834,13 +2046,13 @@ public class ImageServlet extends HttpServlet {
 				if (!(part instanceof ImagePart) || !Inboxes.shows(inbox, (ImagePart) part, caller.subject())) {
 					LOG.warning("Hiding the image of an inbox at '" + context.request().getPathInfo() + name + "'.");
 					errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
-					return;
+					return null;
 				}
 			}
 			String refusal = hidden(image, clearance, minRating);
 			if (refusal != null) {
 				imageRefused(context, caller, refusal);
-				return;
+				return null;
 			}
 			files.add(file);
 			// A photograph's originals are its JPEG and the raw shot beside it, see issue #191.
@@ -1852,14 +2064,22 @@ public class ImageServlet extends HttpServlet {
 				}
 			}
 		}
+		return new ArrayList<>(files);
+	}
 
+	/** Streams the given files as one archive named by the given folder, see {@link ZipDownload}. */
+	private void sendZip(Context context, PathInfo folder, List<File> files) throws IOException {
 		HttpServletResponse response = context.response();
 		allowCrossOrigin(response);
+		if (context.getParameter(TICKET_PARAMETER) != null) {
+			// A ticket's address was a credential for one download: no shared cache keeps it.
+			response.setHeader("Cache-Control", "private, no-store");
+		}
 		response.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
 		response.setContentType(ZipDownload.CONTENT_TYPE);
 		response.setHeader("Content-Disposition", ZipDownload.contentDisposition(folder.toFile().getName()));
 		LOG.info("Delivering " + files.size() + " originals of '" + context.request().getPathInfo() + "' as a zip.");
-		ZipDownload.write(response.getOutputStream(), new ArrayList<>(files));
+		ZipDownload.write(response.getOutputStream(), files);
 	}
 
 	/** The message a download naming something that is no photograph of the album is refused with. */
@@ -3966,6 +4186,10 @@ public class ImageServlet extends HttpServlet {
 			zipEntries(context);
 			return;
 		}
+		if (ZIP_TICKET_ACTION.equals(action)) {
+			issueZipTicket(context);
+			return;
+		}
 		if ("purge".equals(action)) {
 			purgeTrash(context);
 			return;
@@ -4701,7 +4925,9 @@ public class ImageServlet extends HttpServlet {
 
 	/**
 	 * Answers <code>&lt;video&gt;?type=media-url&amp;for=video|teaser|original</code> with a
-	 * {@link MediaUrl}, see issue #185 and {@link MediaSignatures}.
+	 * {@link MediaUrl}, see issue #185 and {@link MediaSignatures} — and
+	 * <code>&lt;image&gt;?type=media-url&amp;for=original</code> for a photograph, the address the
+	 * browser downloads it from by itself, see issue #209.
 	 *
 	 * <p>
 	 * Everything the plain request for that file would be asked is asked here, before anything is
@@ -4719,7 +4945,9 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, MEDIA_KIND_UNKNOWN);
 			return;
 		}
-		if (!VideoRenditions.isVideo(pathInfo.toFile())) {
+		if (kind != MediaSignatures.Kind.ORIGINAL && !VideoRenditions.isVideo(pathInfo.toFile())) {
+			// The original of a photograph has an address too: the browser's own download of it,
+			// see issue #209. A rendition and a teaser are a video's alone.
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, MEDIA_NOT_A_VIDEO);
 			return;
 		}

@@ -94,22 +94,49 @@ class UploadFile {
       );
 }
 
-/// A file fetched from the server to be kept on the device (issue #164).
-class DownloadedFile {
+/// A file to be taken out of the album (issues #164, #209): what it is called
+/// and the two ways to fetch it, of which the platform's [DownloadSaver] picks
+/// one.
+///
+/// Nothing is fetched until a way is taken, and neither way ever holds the
+/// whole file: [open] hands the answer over as it arrives, and [address] is a
+/// place the browser downloads from by itself.
+class DownloadSource {
   /// The name to keep it under: the image's own, or the archive's.
   final String name;
 
-  /// The contents, exactly as the server answered them.
-  final Uint8List bytes;
+  /// Fetches the file through the client — the bearer in the header — and
+  /// answers its contents as a stream, chunk by chunk as they arrive. Throws a
+  /// [VAlbumException] with the server's sentence where it refuses.
+  final Future<DownloadStream> Function() open;
+
+  /// An address the browser may fetch by itself, without the bearer: a signed
+  /// one of issue #185 for an original, a download ticket for an archive.
+  final Future<String> Function() address;
+
+  const DownloadSource({
+    required this.name,
+    required this.open,
+    required this.address,
+  });
+}
+
+/// The contents of a [DownloadSource] as the server sends them.
+class DownloadStream {
+  /// The bytes, in the chunks they arrive in; listened to once.
+  final Stream<List<int>> content;
 
   /// The media type the server announced, `application/octet-stream` where it
   /// announced none.
   final String contentType;
 
-  const DownloadedFile({
-    required this.name,
-    required this.bytes,
+  /// How long the file is, where the server said so.
+  final int? length;
+
+  const DownloadStream({
+    required this.content,
     required this.contentType,
+    this.length,
   });
 }
 
@@ -887,7 +914,8 @@ class VAlbumClient {
   Map<String, String> get authHeaders {
     var value = token;
     var person = contact;
-    if ((value == null || value.isEmpty) && (person == null || person.isEmpty)) {
+    if ((value == null || value.isEmpty) &&
+        (person == null || person.isEmpty)) {
       // The same constant as ever: an image provider keyed by its headers
       // finds what it cached under them.
       return const {};
@@ -2205,72 +2233,130 @@ class VAlbumClient {
     }
   }
 
-  /// The original of the image at [imageUrl], to be kept (issue #164).
+  /// The original of the image at [imageUrl], to be kept (issues #164,
+  /// #209).
   ///
-  /// Through this client and not through a link the platform opens: the
-  /// bearer travels in the header, which no plain anchor could carry, so a
-  /// share link's `download` and a member's work alike. No [timeout] — an
-  /// original may be a video of a gigabyte — and no [cache]: a copy taken is
-  /// not something to be shown offline. A refusal is thrown as a
-  /// [VAlbumException] carrying the server's own sentence.
-  Future<DownloadedFile> downloadOriginal(String imageUrl) async {
+  /// [DownloadSource.open] fetches it through this client: the bearer travels
+  /// in the header, which no plain anchor could carry, so a share link's
+  /// `download` and a member's work alike. No [timeout] — an original may be a
+  /// video of a gigabyte — and no [cache]: a copy taken is not something to be
+  /// shown offline. [DownloadSource.address] is the address a browser saves it
+  /// from by itself, see [originalAddress].
+  DownloadSource originalDownload(String imageUrl) {
     var url = originalUrl(imageUrl);
-    var response = await _http.get(Uri.parse(url), headers: authHeaders);
-    if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingLoading("'$url'"));
-    }
-    var name = Uri.decodeComponent(Uri.parse(url).pathSegments.last);
-    return DownloadedFile(
-      name: name,
-      bytes: response.bodyBytes,
-      contentType: _contentTypeOf(response),
+    return DownloadSource(
+      name: Uri.decodeComponent(Uri.parse(url).pathSegments.last),
+      open: () => _openDownload(
+        http.Request("GET", Uri.parse(url))..headers.addAll(authHeaders),
+        url,
+      ),
+      address: () => originalAddress(url),
     );
   }
 
+  /// The address a browser downloads the original at [url] from by itself
+  /// (issue #209): signed for this device or link where the client carries a
+  /// token ([signMediaUrl]), the plain one where it does not — an anonymous
+  /// caller fetches what it may have without any — and asking the server, with
+  /// `download=1`, to send it as an attachment under its own name.
+  Future<String> originalAddress(String url) async {
+    var value = token;
+    var address =
+        value == null || value.isEmpty ? url : (await signMediaUrl(url)).url;
+    return "$address${address.contains("?") ? "&" : "?"}download=1";
+  }
+
   /// The originals of the album at [path] named by [names], as one zip
-  /// archive called [archiveName] (issue #164).
+  /// archive called [archiveName] (issues #164, #209).
   ///
-  /// `POST <album>/?action=zip` with a [MoveRequest] whose `target` is empty:
-  /// a POST, because a selection of a few hundred camera names does not fit
-  /// into a request line. The server refuses the whole request, speaking,
-  /// before the first byte of the archive — thrown as a [VAlbumException].
-  Future<DownloadedFile> downloadArchive(
+  /// [DownloadSource.open] is `POST <album>/?action=zip` with a [MoveRequest]
+  /// whose `target` is empty: a POST, because a selection of a few hundred
+  /// camera names does not fit into a request line. The server refuses the
+  /// whole request, speaking, before the first byte of the archive — thrown
+  /// as a [VAlbumException]. [DownloadSource.address] asks for a download
+  /// ticket instead, see [archiveAddress].
+  DownloadSource archiveDownload(
     List<String> path,
     List<String> names,
     String archiveName,
-  ) async {
-    var url = "${folderUrl(path)}?action=zip";
+  ) =>
+      DownloadSource(
+        name: archiveName,
+        open: () {
+          var url = "${folderUrl(path)}?action=zip";
+          return _openDownload(
+            http.Request("POST", Uri.parse(url))
+              ..headers
+                  .addAll({"Content-Type": "application/json", ...authHeaders})
+              ..body = _namesBody(names),
+            url,
+          );
+        },
+        address: () => archiveAddress(path, names),
+      );
+
+  /// The address a browser downloads the archive of [names] in the album at
+  /// [path] from by itself (issue #209).
+  ///
+  /// `POST <album>/?action=zip-ticket` with the request of `?action=zip`: the
+  /// server checks every name exactly as the archive would be checked —
+  /// throwing its sentence as a [VAlbumException] — remembers them under a
+  /// ticket good for one download, ten minutes and this device or link
+  /// alone, and answers a [MediaUrl] naming it. The address is spelled here,
+  /// from the ticket and the signature, onto [folderUrl], the way
+  /// [signMediaUrl] appends to the address it was asked for.
+  Future<String> archiveAddress(List<String> path, List<String> names) async {
+    var url = "${folderUrl(path)}?action=zip-ticket";
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: _namesBody(names),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    ).timeout(timeout);
+    if (response.statusCode != 200) {
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingLoading("'$url'"),
+          url: url);
+    }
+    var answer = MediaUrl.read(JsonReader.fromString(response.body));
+    var ticket = Uri.parse(answer.url).queryParameters["ticket"] ?? "";
+    var media = answer.media.isEmpty
+        ? ""
+        : "&media=${Uri.encodeQueryComponent(answer.media)}";
+    return "${folderUrl(path)}?action=zip"
+        "&ticket=${Uri.encodeQueryComponent(ticket)}$media";
+  }
+
+  /// The [MoveRequest] naming [names] that a download posts.
+  static String _namesBody(List<String> names) {
     var request = MoveRequest(
       target: "",
       names: [for (var name in names) MoveName(name: name)],
     );
     var body = StringBuffer();
     request.writeContent(jsonStringWriter(body));
-    var response = await _http.post(
-      Uri.parse(url),
-      encoding: Encoding.getByName("utf-8"),
-      body: body.toString(),
-      headers: {"Content-Type": "application/json", ...authHeaders},
-    );
-    if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingLoading("'$url'"));
-    }
-    return DownloadedFile(
-      name: archiveName,
-      bytes: response.bodyBytes,
-      contentType: _contentTypeOf(response),
-    );
+    return body.toString();
   }
 
-  /// The media type of [response] without its parameters.
-  static String _contentTypeOf(http.Response response) {
-    var type = response.headers["content-type"];
-    if (type == null || type.isEmpty) {
-      return "application/octet-stream";
+  /// Sends [request] and answers its body as a stream, never collected: the
+  /// chunks are handed on as they arrive (issue #209). A refusal is read —
+  /// an `ErrorInfo` of a few dozen bytes — and thrown with its sentence.
+  Future<DownloadStream> _openDownload(
+      http.BaseRequest request, String url) async {
+    var response = await _http.send(request);
+    if (response.statusCode != 200) {
+      var body = await response.stream.bytesToString();
+      throw failure(response.statusCode, body,
+          platformMessages.doingLoading("'${maskUrl(url)}'"));
     }
-    return type.split(";").first.trim();
+    var type = response.headers["content-type"];
+    return DownloadStream(
+      content: response.stream,
+      contentType: type == null || type.isEmpty
+          ? "application/octet-stream"
+          : type.split(";").first.trim(),
+      length: response.contentLength,
+    );
   }
 
   /// The share links covering the folder at [path], the nearest one first
@@ -2320,8 +2406,7 @@ class VAlbumClient {
       List<String> path, String link, String contact) async {
     var url = "${folderUrl(path)}?action=resend";
     var response = await _postBody(
-        url,
-        _jsonOf(ShareResend(link: link, contact: contact).writeContent));
+        url, _jsonOf(ShareResend(link: link, contact: contact).writeContent));
     return ShareLinkCreated.read(JsonReader.fromString(response));
   }
 
@@ -2516,10 +2601,11 @@ class VAlbumClient {
   /// `PUT` would store along with it. The answer is the album as this caller
   /// is answered it, `null` where it cannot be read; a refusal arrives as the
   /// thrown [VAlbumException] carrying the server's own sentence.
-  Future<AlbumInfo?> cropImage(List<String> path, String name, Crop? crop) async {
+  Future<AlbumInfo?> cropImage(
+      List<String> path, String name, Crop? crop) async {
     var url = "${folderUrl(path)}?action=crop";
-    var response =
-        await _postBody(url, _jsonOf(ImagePart(name: name, crop: crop).writeTo));
+    var response = await _postBody(
+        url, _jsonOf(ImagePart(name: name, crop: crop).writeTo));
     try {
       var resource = Resource.read(JsonReader.fromString(response));
       return resource is AlbumInfo ? resource : null;
