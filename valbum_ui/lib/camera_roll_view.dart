@@ -13,12 +13,9 @@ import 'package:intl/intl.dart';
 import 'background.dart';
 import 'caller.dart';
 import 'camera_roll.dart';
-import 'client.dart';
-import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'notices.dart';
 import 'photo_library.dart';
-import 'resource.dart';
 import 'settings.dart';
 
 /// The key of the switch enabling the sync, so that a test can address it.
@@ -40,8 +37,8 @@ const Key cameraRollSourcesProblemKey = Key("cameraRoll.sourcesProblem");
 /// The key of the checkbox watching the device album of the given id.
 Key cameraRollSourceKey(String id) => Key("cameraRoll.source.$id");
 
-/// The key of the "Choose..." button opening the inbox picker.
-const Key cameraRollChooseKey = Key("cameraRoll.choose");
+/// The key of the line naming the inbox the photos go into (issue #226).
+const Key cameraRollInboxKey = Key("cameraRoll.inbox");
 
 /// The key of the "Sync now" button.
 const Key cameraRollSyncNowKey = Key("cameraRoll.syncNow");
@@ -84,14 +81,6 @@ class CameraRollScope extends InheritedNotifier<CameraRollSync> {
   static CameraRollSync? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CameraRollScope>()?.notifier;
 }
-
-/// The breadcrumb of an inbox path, or what happens while there is none.
-///
-/// No album chosen is no longer a dead end (issue #54): the first run creates
-/// [defaultInboxName] in the user's own space, and the label says so rather
-/// than asking for a decision that is not needed.
-String inboxLabel(AppLocalizations l10n, List<String> path) =>
-    path.isEmpty ? l10n.inboxNotChosen(defaultInboxName) : path.join(" > ");
 
 /// The "Camera roll" section of the server settings.
 ///
@@ -159,8 +148,8 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     }
     var config = sync.config;
     var status = sync.status;
-    // A guest has no space of their own, so there is nothing to sync into and
-    // nothing to choose: the switch and the picker are disabled and the one
+    // A guest has no space of their own, so there is nothing to sync into:
+    // the switches are disabled and the one
     // sentence that says what would change it stands below them (issue #54).
     // A caller nobody named is not a guest, see [CallerInfo].
     var guest = CallerInfo.isGuestCaller(context);
@@ -189,6 +178,7 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     bool available,
     AppLocalizations l10n,
   ) {
+    var inbox = CallerInfo.maybeOf(context)?.inbox;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -234,23 +224,21 @@ class _CameraRollSectionState extends State<CameraRollSection> {
         ),
         _sources(sync, available),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            const Icon(Icons.inbox, size: 20),
-            const SizedBox(width: 8),
-            Expanded(child: Text(inboxLabel(l10n, config.inbox))),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              key: cameraRollChooseKey,
-              // The same condition as the switches above (issue #90): where
-              // nothing will ever be uploaded — no photo library, or a guest
-              // with no space of their own — an album is not chosen either.
-              onPressed: available ? () => _chooseInbox(sync) : null,
-              icon: const Icon(Icons.folder_open),
-              label: Text(l10n.chooseAction),
-            ),
-          ],
-        ),
+        // Where the photos go is the server's word, never a choice of this
+        // device (issue #226): the one inbox of the space, named here.
+        if (inbox != null && inbox.isNotEmpty)
+          Row(
+            children: [
+              const Icon(Icons.inbox, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  l10n.cameraRollInboxTarget(inbox),
+                  key: cameraRollInboxKey,
+                ),
+              ),
+            ],
+          ),
         const SizedBox(height: 16),
         Text(cameraRollLine(status, l10n), key: cameraRollStatusKey),
         _backgroundLine(sync),
@@ -489,263 +477,6 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     await sync.syncNow();
   }
 
-  /// Opens the picker and stores what the user chose.
-  Future<void> _chooseInbox(CameraRollSync sync) async {
-    var client = sync.clientOf();
-    if (client == null) {
-      setState(() => refusal = AppLocalizations.of(context)!.saveServerFirst);
-      return;
-    }
-    var chosen = await showFormDialog<List<String>>(
-      context: context,
-      builder: (_) => InboxPickerDialog(client: client),
-    );
-    if (chosen == null || !mounted) {
-      return;
-    }
-    await sync.chooseInbox(chosen);
-    if (!mounted) {
-      return;
-    }
-    setState(() => refusal = null);
-  }
-}
-
-/// Browses the folders of the user's own space and answers the album that was
-/// chosen.
-///
-/// Pops the album path (a list of folder names), or `null` when the user
-/// leaves without choosing. A folder that does not exist yet is created
-/// through the same call the "Create album" of the listing view uses, so an
-/// inbox is one dialog away even on a fresh library.
-///
-/// The **own space** is the whole of what this picker offers (issue #54): the
-/// paths it builds are relative to the root of the caller's space — it never
-/// spells a canonical `~owner/...` — and a tile that links into somebody
-/// else's space ([FolderInfo.link], issue #50) is left out of the listing, so
-/// it can neither be chosen nor descended into. A camera roll dropped into a
-/// shared album would upload every photo of this device into an album that
-/// belongs to somebody else, and nothing on the tile would have warned about
-/// it.
-class InboxPickerDialog extends StatefulWidget {
-  final VAlbumClient client;
-
-  /// The folder the picker opens in.
-  final List<String> initialPath;
-
-  const InboxPickerDialog({
-    super.key,
-    required this.client,
-    this.initialPath = const [],
-  });
-
-  @override
-  State<InboxPickerDialog> createState() => _InboxPickerDialogState();
-}
-
-class _InboxPickerDialogState extends State<InboxPickerDialog> {
-  late List<String> path = [...widget.initialPath];
-  late Future<Resource?> resource = _load();
-
-  /// What went wrong while creating a folder, if anything.
-  String? problem;
-
-  Future<Resource?> _load() => widget.client.loadResource(path);
-
-  void _goTo(List<String> target) => setState(() {
-        path = target;
-        problem = null;
-        resource = _load();
-      });
-
-  @override
-  Widget build(BuildContext context) {
-    var l10n = AppLocalizations.of(context)!;
-    return AlertDialog(
-      title: Text(l10n.inboxAlbumTitle),
-      content: SizedBox(
-        width: 420,
-        height: 420,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _breadcrumbs(),
-            const Divider(),
-            Expanded(
-              child: FutureBuilder<Resource?>(
-                future: resource,
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Text(l10n.cannotList("${snapshot.error}")),
-                    );
-                  }
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  return _contents(snapshot.data);
-                },
-              ),
-            ),
-            if (problem != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  problem!,
-                  style: const TextStyle(color: Colors.red),
-                ),
-              ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(l10n.cancel),
-        ),
-        TextButton.icon(
-          onPressed: _createAlbum,
-          icon: const Icon(Icons.create_new_folder),
-          label: Text(l10n.newAlbumAction),
-        ),
-        FilledButton(
-          onPressed:
-              path.isEmpty ? null : () => Navigator.of(context).pop([...path]),
-          child: Text(l10n.useThisAlbum),
-        ),
-      ],
-    );
-  }
-
-  /// The path the picker stands in, every step of it a way back.
-  Widget _breadcrumbs() => Wrap(
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          TextButton(
-            onPressed: () => _goTo(const []),
-            child: Text(AppLocalizations.of(context)!.libraryBreadcrumb),
-          ),
-          for (var index = 0; index < path.length; index++) ...[
-            const Text(">"),
-            TextButton(
-              onPressed: () => _goTo(path.sublist(0, index + 1)),
-              child: Text(path[index]),
-            ),
-          ],
-        ],
-      );
-
-  Widget _contents(Resource? resource) {
-    var l10n = AppLocalizations.of(context)!;
-    return switch (resource) {
-      ListingInfo(folders: var all) when _own(all).isNotEmpty => ListView(
-          children: [
-            for (var folder in _own(all))
-              ListTile(
-                leading: const Icon(Icons.folder),
-                title: Text(
-                  folder.title.isEmpty ? folder.name : folder.title,
-                ),
-                subtitle: Text(folder.name),
-                onTap: () => _goTo([...path, folder.name]),
-              ),
-          ],
-        ),
-      ListingInfo() => Center(child: Text(l10n.noFoldersHere)),
-      AlbumInfo(title: var title) => Center(
-          child: Text(
-            l10n.folderIsAlbum(title),
-            textAlign: TextAlign.center,
-          ),
-        ),
-      ErrorInfo(message: var message) => Center(child: Text(message)),
-      _ => Center(child: Text(l10n.nothingToShow)),
-    };
-  }
-
-  /// The tiles of the caller's own space, the links into another one dropped,
-  /// see the class comment.
-  static List<FolderInfo> _own(List<FolderInfo> folders) => [
-        for (var folder in folders)
-          if (folder.link.isEmpty) folder
-      ];
-
-  /// Creates an album below the folder shown and descends into it.
-  ///
-  /// The server writes the `index.json` of a folder that does not exist yet,
-  /// which is how "Create album" of the listing view works as well — an upload
-  /// into a folder the server does not know would be stored as a single file
-  /// instead, so the album has to exist before the first sync.
-  Future<void> _createAlbum() async {
-    var name = await showFormDialog<String>(
-      context: context,
-      builder: (context) => const _NameDialog(),
-    );
-    if (name == null || name.trim().isEmpty || !mounted) {
-      return;
-    }
-    var folder = name.trim();
-    try {
-      await widget.client.putResource(
-        "${widget.client.baseUrl(path)}/$folder",
-        AlbumInfo(title: folder, path: folder),
-      );
-    } catch (error) {
-      if (mounted) {
-        var l10n = AppLocalizations.of(context)!;
-        setState(() => problem = l10n.cannotCreateFolder(folder, "$error"));
-      }
-      return;
-    }
-    if (mounted) {
-      _goTo([...path, folder]);
-    }
-  }
-}
-
-/// Asks for the name of a new album.
-class _NameDialog extends StatefulWidget {
-  const _NameDialog();
-
-  @override
-  State<_NameDialog> createState() => _NameDialogState();
-}
-
-class _NameDialogState extends State<_NameDialog> {
-  final TextEditingController controller = TextEditingController();
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    var l10n = AppLocalizations.of(context)!;
-    return AlertDialog(
-      title: Text(l10n.newAlbumTitle),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        decoration: InputDecoration(
-          labelText: l10n.folderNameLabel,
-          border: const OutlineInputBorder(),
-        ),
-        onSubmitted: (value) => Navigator.of(context).pop(value),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(l10n.cancel),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(controller.text),
-          child: Text(l10n.create),
-        ),
-      ],
-    );
-  }
 }
 
 /// The app-bar indicator saying that a camera-roll sync is running.
@@ -815,11 +546,7 @@ String cameraRollLine(CameraRollStatus status, AppLocalizations l10n) {
     case CameraRollPhase.failed:
       return l10n.cameraRollFailed(reason());
     case CameraRollPhase.idle:
-      var fallback = status.inboxGoneUsing;
-      var line = _lastRunLine(status, l10n);
-      return fallback == null
-          ? line
-          : "${l10n.cameraRollInboxGone(fallback)} $line";
+      return _lastRunLine(status, l10n);
   }
 }
 

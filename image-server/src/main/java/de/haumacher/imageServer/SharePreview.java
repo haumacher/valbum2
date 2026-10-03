@@ -425,9 +425,8 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		if (resource == null) {
 			return null;
 		}
-		// A link never shows an inbox, and never one among the entries of a shared folder: the
-		// card of a link is what a link shows, see issue #131.
-		Resource shown = Inboxes.filter(resource, path, Inboxes.Visibility.NONE, "");
+		// A link never shows the inbox, see issue #131; no listing holds it as an entry, see #226.
+		Resource shown = Inboxes.filter(resource, Inboxes.Visibility.NONE, "");
 		if (shown == null) {
 			return null;
 		}

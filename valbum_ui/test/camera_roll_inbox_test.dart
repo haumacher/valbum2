@@ -1,6 +1,6 @@
-/// Tests of the camera-roll inbox (issue #54): the album the sync creates in
-/// the user's own space when none was chosen, the picker that offers nothing
-/// but that space, and the guest who has no space at all.
+/// Tests of the camera-roll inbox: the one inbox of the space the server names
+/// in `?type=auth` (issue #226), which the sync uploads into and never chooses,
+/// guesses or creates — and the guest who has no space at all (issue #54).
 ///
 /// What a run does with the photos it finds is pinned in
 /// `camera_roll_test.dart`; only the inbox is the subject here.
@@ -11,7 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
-import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
@@ -24,7 +23,8 @@ const String serverDataUrl = "http://server/valbum/data";
 /// The `?type=auth` answer of a signed-in caller of the given role.
 String authOfUser(String role, {String name = "carol"}) =>
     '{"mode": "writes", "deviceName": "Phone", "writeAllowed": true, '
-    '"userName": "$name", "role": "$role", "space": "$name"}';
+    '"userName": "$name", "role": "$role", "space": "$name"'
+    '${role == roleGuest ? "" : ', "inbox": "Inbox", "inboxCount": 2'}}';
 
 /// The body a refusing server answers with, see `ErrorInfo` in `model.proto`.
 String refusal(String message) => '["ErrorInfo",{"message":"$message"}]';
@@ -87,7 +87,8 @@ class FakeServer {
   FakeServer server, {
   CameraRollConfig config = const CameraRollConfig(enabled: true),
   List<PhotoItem>? items,
-  CallerInfo? caller = const CallerInfo(role: roleMember, space: "carol"),
+  CallerInfo? caller =
+      const CallerInfo(role: roleMember, space: "carol", inbox: "Inbox"),
 }) {
   var store = InMemorySettingsStore();
   store.cameraRoll = config.toJson();
@@ -177,8 +178,8 @@ Future<void> pumpSettingsAs(WidgetTester tester, String role) async {
 }
 
 void main() {
-  group('the inbox a run creates', () {
-    test('is created at the root of the own space and stored where it landed',
+  group('the inbox the server names', () {
+    test('is where the photos go; nothing is created and nothing stored',
         () async {
       var server = FakeServer();
       var harness = engine(server);
@@ -186,97 +187,101 @@ void main() {
 
       await harness.sync.syncNow();
 
-      // One creation, addressed at the root of the caller's own space, with
-      // the album the app sends as its body.
       expect(harness.sync.status.phase, CameraRollPhase.idle);
-      expect(server.creations, hasLength(1));
-      expect(server.creations.single.url, "$serverDataUrl/Inbox/");
-      var sent = Resource.fromString(server.creations.single.body);
-      expect(sent, isA<AlbumInfo>());
-      // The name is in the URL the creation is addressed to; the body is the
-      // sidecar of the new album.
-      expect((sent as AlbumInfo).title, "Inbox");
-      // And it is an *inbox*, not an ordinary album (issues #131, #136): what
-      // the sync uploads is exactly what waits to be sorted.
-      expect(sent.kind, AlbumKind.inbox);
-      expect(sent.date, 0);
-      // The placement rule of the root filed it away; the sync believes the
-      // server, not the path it asked for.
-      expect(harness.sync.config.inbox, ["2026", "Inbox"]);
-      expect(
-        (await harness.store.loadCameraRollConfig()).inbox,
-        ["2026", "Inbox"],
+      expect(server.uploadUrls, ["$serverDataUrl/Inbox/"]);
+      // The server makes the folder with the first upload into it (#226).
+      expect(server.creations, isEmpty);
+      expect((await harness.store.loadCameraRollConfig()).toJson(),
+          isNot(contains("inbox")));
+    });
+
+    test('may lie anywhere the space says', () async {
+      var server = FakeServer();
+      var harness = engine(server,
+          caller: const CallerInfo(
+              role: roleContribute, inbox: "Family/Phone Uploads"));
+      await harness.sync.load();
+
+      await harness.sync.syncNow();
+
+      expect(server.uploadUrls, ["$serverDataUrl/Family/Phone%20Uploads/"]);
+    });
+
+    test('follows the server when it names another one', () async {
+      var server = FakeServer();
+      var caller = const CallerInfo(role: roleMember, inbox: "Inbox");
+      var store = InMemorySettingsStore();
+      store.cameraRoll = const CameraRollConfig(enabled: true).toJson();
+      var library = FakePhotoLibrary(items: [photo("a.jpg")]);
+      var sync = CameraRollSync(
+        store: store,
+        library: library,
+        clientOf: () =>
+            VAlbumClient(dataUrl: serverDataUrl, httpClient: server.transport),
+        callerOf: () async => caller,
       );
-      expect(server.uploadUrls, ["$serverDataUrl/2026/Inbox/"]);
+      addTearDown(() {
+        sync.dispose();
+        library.dispose();
+      });
+      await sync.load();
+      await sync.syncNow();
+
+      caller = const CallerInfo(role: roleMember, inbox: "Unsorted");
+      library.add(photo("b.jpg"));
+      await sync.syncNow();
+
+      expect(server.uploadUrls,
+          ["$serverDataUrl/Inbox/", "$serverDataUrl/Unsorted/"]);
     });
 
-    test('is created once; a second run uses what the first one stored',
-        () async {
+    test('is what a store written by an older app does not change', () async {
+      // An app before #226 stored the inbox it chose or created; it is
+      // ignored, and nothing of it is written back.
       var server = FakeServer();
-      var harness = engine(server);
+      var store = InMemorySettingsStore();
+      store.cameraRoll =
+          '{"enabled":true,"wifiOnly":false,"inbox":["2024","Phone"],"done":[]}';
+      var config = CameraRollConfig.parse(store.cameraRoll);
+      expect(config.enabled, isTrue);
+      expect(config.toJson(), isNot(contains("inbox")));
+
+      var harness = engine(server, config: config);
       await harness.sync.load();
-
-      await harness.sync.syncNow();
-      harness.library.add(photo("b.jpg"));
       await harness.sync.syncNow();
 
-      expect(server.creations, hasLength(1));
-      expect(server.uploadUrls, [
-        "$serverDataUrl/2026/Inbox/",
-        "$serverDataUrl/2026/Inbox/",
-      ]);
-    });
-
-    test('is the album that is already there when the name is taken', () async {
-      var server = FakeServer();
-      server.onCreate = (_) => http.Response(
-            refusal("'Inbox' already exists in the target folder; "
-                "nothing is overwritten."),
-            409,
-          );
-      // The album the server refused to overwrite.
-      server.onGet = (request) => request.url.path.contains("/Inbox")
-          ? http.Response(fixture("album.json"), 200)
-          : http.Response('["ListingInfo",{"path":"","folders":[]}]', 200);
-      var harness = engine(server);
-      await harness.sync.load();
-
-      await harness.sync.syncNow();
-
-      // An inbox from an earlier installation is adopted, not a failure.
-      expect(harness.sync.status.phase, CameraRollPhase.idle);
-      expect(harness.sync.status.message, isNull);
-      expect(harness.sync.config.inbox, ["Inbox"]);
-      expect((await harness.store.loadCameraRollConfig()).inbox, ["Inbox"]);
       expect(server.uploadUrls, ["$serverDataUrl/Inbox/"]);
     });
 
-    test('says the server\'s own sentence when the creation is refused',
+    test('is missing for a caller who may only look: the run says so',
         () async {
       var server = FakeServer();
-      server.onCreate = (_) => http.Response(
-            refusal("A guest has no library of their own."),
-            403,
-          );
-      var harness = engine(server);
+      var harness = engine(server,
+          caller: const CallerInfo(role: roleView, space: "carol"));
       await harness.sync.load();
 
       await harness.sync.syncNow();
 
-      expect(
-          harness.sync.status.message, "A guest has no library of their own.");
-      expect(harness.sync.config.inbox, isEmpty);
+      expect(harness.sync.status.notice, const NoInboxForCaller());
+      // No retry changes what the server names: only the administrator does.
+      expect(harness.sync.status.phase, CameraRollPhase.failed);
       expect(server.uploadUrls, isEmpty);
-      // The switch stays on and the next run tries again: a refusal that was
-      // lifted on the server must not need the user to switch anything.
-      expect(harness.sync.config.enabled, isTrue);
-      expect(harness.sync.status.phase, CameraRollPhase.waiting);
-
-      await harness.sync.syncNow();
-      expect(server.creations, hasLength(2));
+      expect(server.creations, isEmpty);
     });
 
-    test('is no longer a condition of switching the sync on', () async {
+    test('is asked again where the server did not answer', () async {
+      var server = FakeServer();
+      var harness = engine(server, caller: null);
+      await harness.sync.load();
+
+      await harness.sync.syncNow();
+
+      expect(harness.sync.status.notice, const NoInboxForCaller());
+      expect(harness.sync.status.phase, CameraRollPhase.waiting);
+      expect(server.uploadUrls, isEmpty);
+    });
+
+    test('is no condition of switching the sync on', () async {
       var server = FakeServer();
       var harness = engine(server, config: CameraRollConfig.disabled);
       await harness.sync.load();
@@ -284,28 +289,32 @@ void main() {
       expect(await harness.sync.setEnabled(true), isNull);
       expect(harness.sync.config.enabled, isTrue);
     });
-  });
 
-  group('the inbox picker', () {
-    testWidgets('offers the own space only, never a link into another one',
+    testWidgets('is named in the section, and nothing is offered to choose',
         (WidgetTester tester) async {
-      // A photo dropped into a shared album would land in somebody else's
-      // library, see `InboxPickerDialog` (issues #50, #54).
-      var client = clientReturning(
-        '["ListingInfo",{"path":"","folders":['
-        '{"name":"2024","title":"2024"},'
-        '{"name":"Zoo","title":"Zoo","link":"~alice/2024/Zoo"}]}]',
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-            localizationsDelegates: testLocalizationsDelegates,
-            supportedLocales: testSupportedLocales,
-            home: Scaffold(body: InboxPickerDialog(client: client))),
-      );
-      await tester.pumpAndSettle();
+      var server = FakeServer();
+      var harness = engine(server);
+      await harness.sync.load();
 
-      expect(find.text("2024"), findsWidgets);
-      expect(find.text("Zoo"), findsNothing);
+      await pumpSection(tester, harness.sync,
+          caller: const CallerInfo(role: roleMember, inbox: "Inbox"));
+
+      expect(find.byKey(cameraRollInboxKey), findsOneWidget);
+      expect(
+          find.text(testL10n.cameraRollInboxTarget("Inbox")), findsOneWidget);
+      expect(find.byIcon(Icons.folder_open), findsNothing);
+    });
+
+    testWidgets('is not named where the server names none',
+        (WidgetTester tester) async {
+      var server = FakeServer();
+      var harness = engine(server);
+      await harness.sync.load();
+
+      await pumpSection(tester, harness.sync,
+          caller: const CallerInfo(role: roleView));
+
+      expect(find.byKey(cameraRollInboxKey), findsNothing);
     });
   });
 
@@ -315,19 +324,15 @@ void main() {
       await pumpSettingsAs(tester, roleGuest);
 
       expect(find.byKey(cameraRollNoSpaceKey), findsOneWidget);
-      expect(find.text(noticeText(guestNoSpaceNotice, testL10n)), findsOneWidget);
+      expect(
+          find.text(noticeText(guestNoSpaceNotice, testL10n)), findsOneWidget);
       expect(
         tester
             .widget<SwitchListTile>(find.byKey(cameraRollSwitchKey))
             .onChanged,
         isNull,
       );
-      expect(
-        tester
-            .widget<OutlinedButton>(find.byKey(cameraRollChooseKey))
-            .onPressed,
-        isNull,
-      );
+      expect(find.byKey(cameraRollInboxKey), findsNothing);
     });
 
     testWidgets('is not what a member sees', (WidgetTester tester) async {
@@ -341,12 +346,8 @@ void main() {
             .onChanged,
         isNotNull,
       );
-      expect(
-        tester
-            .widget<OutlinedButton>(find.byKey(cameraRollChooseKey))
-            .onPressed,
-        isNotNull,
-      );
+      // The member is told where the photos go, from `?type=auth`.
+      expect(find.byKey(cameraRollInboxKey), findsOneWidget);
     });
 
     test('uploads nothing although the stored config says the sync is on',
@@ -356,7 +357,6 @@ void main() {
       var server = FakeServer();
       var harness = engine(
         server,
-        config: const CameraRollConfig(enabled: true, inbox: ["Inbox"]),
         caller: const CallerInfo(role: roleGuest, space: "carol"),
       );
       await harness.sync.load();
@@ -373,7 +373,6 @@ void main() {
       var server = FakeServer();
       var harness = engine(
         server,
-        config: const CameraRollConfig(enabled: true, inbox: ["Inbox"]),
         caller: const CallerInfo(role: roleGuest, space: "carol"),
       );
       await harness.sync.load();
@@ -385,7 +384,8 @@ void main() {
         caller: const CallerInfo(role: roleGuest, space: "carol"),
       );
 
-      expect(find.textContaining(noticeText(guestNoSpaceNotice, testL10n)), findsWidgets);
+      expect(find.textContaining(noticeText(guestNoSpaceNotice, testL10n)),
+          findsWidgets);
     });
   });
 }

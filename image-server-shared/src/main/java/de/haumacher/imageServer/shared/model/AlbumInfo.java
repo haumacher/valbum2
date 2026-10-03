@@ -74,12 +74,12 @@ public class AlbumInfo extends FolderResource {
 	}
 
 	/**
-	 * Whether this is an ordinary album or an inbox, see issue #131.
+	 * Whether this is an ordinary album or the inbox of its space, see issues #131 and #226.
 	 *
 	 * <p>
-	 * Stored in <code>index.json</code> like the title: it is a statement the author made about
-	 * this folder, not something the server derives. An absent value is {@link AlbumKind#ALBUM},
-	 * so every sidecar written before this field existed reads as the album it always was.
+	 * Derived on every read from where the folder lies — the one folder the space's
+	 * <code>space.json</code> names is the inbox, nothing else is — and cleared before any sidecar
+	 * write, like {@link #getEffectiveDate()}. What a client sends here is ignored.
 	 * </p>
 	 */
 	public final de.haumacher.imageServer.shared.model.AlbumKind getKind() {

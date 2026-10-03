@@ -4,9 +4,6 @@
 package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
-import de.haumacher.imageServer.shared.model.FolderInfo;
-import de.haumacher.imageServer.shared.model.ListingInfo;
-import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
 import jakarta.servlet.http.HttpServletResponse;
@@ -60,7 +57,7 @@ public class TestInboxCountProbe extends TestCase {
 			+ "[\"ImagePart\",{\"name\":\"c.jpg\",\"kind\":\"IMAGE\",\"width\":8,\"height\":6}]]}]")
 			.getBytes(StandardCharsets.UTF_8));
 
-		assertEquals(3, inbox().getImageCount());
+		assertEquals(3, inboxCount());
 
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("action", "delete");
@@ -72,22 +69,17 @@ public class TestInboxCountProbe extends TestCase {
 			response.response());
 		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
 
-		assertEquals("One went to the trash: the tile says two.", 2, inbox().getImageCount());
+		assertEquals("One went to the trash: the badge says two.", 2, inboxCount());
 	}
 
-	private FolderInfo inbox() throws Exception {
+	/** How many photographs ?type=auth says wait in the inbox, see issue #226. */
+	private int inboxCount() throws Exception {
 		Map<String, String> parameters = new HashMap<>();
-		parameters.put("type", "json");
+		parameters.put("type", "auth");
 		FakeResponse response = new FakeResponse();
 		_servlet.doGet(TestImageServletPut.request("/", null, new byte[0], new HashMap<>(), parameters), response.response());
 		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
-		ListingInfo listing = (ListingInfo) Resource.readResource(new JsonReader(new ReaderAdapter(new StringReader(response.body()))));
-		for (FolderInfo folder : listing.getFolders()) {
-			if ("Inbox".equals(folder.getName())) {
-				return folder;
-			}
-		}
-		fail("No inbox in " + listing.getFolders());
-		return null;
+		return de.haumacher.imageServer.shared.model.AuthInfo.readAuthInfo(
+			new JsonReader(new ReaderAdapter(new StringReader(response.body())))).getInboxCount();
 	}
 }

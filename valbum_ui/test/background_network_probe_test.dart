@@ -13,12 +13,14 @@ import 'package:valbum_ui/notices.dart';
 const List<String> inbox = ["Inbox"];
 
 InMemorySettingsStore storeWith(CameraRollConfig config) {
-  var store = InMemorySettingsStore("http://server/valbum/", "token-42", "Phone");
+  var store =
+      InMemorySettingsStore("http://server/valbum/", "token-42", "Phone");
   store.cameraRoll = config.toJson();
   return store;
 }
 
-CameraRollSync engine(InMemorySettingsStore store, BackgroundScheduler scheduler) =>
+CameraRollSync engine(
+        InMemorySettingsStore store, BackgroundScheduler scheduler) =>
     CameraRollSync(
       store: store,
       library: FakePhotoLibrary(),
@@ -30,7 +32,7 @@ CameraRollSync engine(InMemorySettingsStore store, BackgroundScheduler scheduler
 void main() {
   test('a toggle while the sync is off is honoured by the later switch-on',
       () async {
-    var store = storeWith(const CameraRollConfig(inbox: inbox));
+    var store = storeWith(const CameraRollConfig());
     var scheduler = FakeBackgroundScheduler();
     var sync = engine(store, scheduler);
     addTearDown(sync.dispose);
@@ -47,7 +49,7 @@ void main() {
 
   test('the next app start registers the constraint the switch was left in',
       () async {
-    var store = storeWith(const CameraRollConfig(inbox: inbox));
+    var store = storeWith(const CameraRollConfig());
     var first = FakeBackgroundScheduler();
     var sync = engine(store, first);
     await sync.load();
@@ -72,7 +74,7 @@ void main() {
 
   test('switching the sync off after a toggle cancels and registers nothing',
       () async {
-    var store = storeWith(const CameraRollConfig(inbox: inbox));
+    var store = storeWith(const CameraRollConfig());
     var scheduler = FakeBackgroundScheduler();
     var sync = engine(store, scheduler);
     addTearDown(sync.dispose);
@@ -95,7 +97,7 @@ void main() {
 
   test('a platform without background sync takes the toggle without complaint',
       () async {
-    var store = storeWith(const CameraRollConfig(inbox: inbox));
+    var store = storeWith(const CameraRollConfig());
     var scheduler = FakeBackgroundScheduler(available: false);
     var sync = engine(store, scheduler);
     addTearDown(sync.dispose);
@@ -111,7 +113,7 @@ void main() {
 
   test('a toggle that the platform refuses is recovered by the next toggle',
       () async {
-    var store = storeWith(const CameraRollConfig(inbox: inbox));
+    var store = storeWith(const CameraRollConfig());
     var scheduler = FakeBackgroundScheduler();
     var sync = engine(store, scheduler);
     addTearDown(sync.dispose);

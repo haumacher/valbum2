@@ -297,6 +297,21 @@ class CallerInfo {
   /// configured — or the server is older than the field.
   final List<String> proofMethods;
 
+  /// Where the inbox of the space is, as the server says it (issue #226): the
+  /// path of its folder below the space root, `Inbox` unless the space names
+  /// another; empty where this caller may put nothing there (a viewer, a share
+  /// link, an anonymous caller) and where the server is older than the field.
+  ///
+  /// The one place the app learns it: the camera-roll sync uploads here and
+  /// the start page opens it, and nothing in the app ever chooses or guesses
+  /// an inbox.
+  final String inbox;
+
+  /// How many photographs wait in the [inbox] for this caller (issue #226):
+  /// all of them for an editor, their own for a contributor, none rated as
+  /// trash. The badge on the start page's inbox icon.
+  final int inboxCount;
+
   const CallerInfo({
     this.userName = "",
     this.role = "",
@@ -306,6 +321,8 @@ class CallerInfo {
     this.faces = false,
     String mapUrl = "",
     this.proofMethods = const [],
+    this.inbox = "",
+    this.inboxCount = 0,
   }) : mapUrl = mapUrl == "" ? defaultMapUrl : mapUrl;
 
   /// What the server answered about this caller.
@@ -319,7 +336,18 @@ class CallerInfo {
         mapUrl: info.mapUrl.trim(),
         proofMethods: List.unmodifiable(
             [for (var method in info.proofMethods) method.name]),
+        inbox: info.inbox.trim(),
+        inboxCount: info.inboxCount,
       );
+
+  /// Whether the server named an inbox for this caller, see [inbox].
+  bool get hasInbox => inbox.isNotEmpty;
+
+  /// The [inbox] as the folder names this app addresses a folder by.
+  List<String> get inboxPath => [
+        for (var segment in inbox.split("/"))
+          if (segment.isNotEmpty) segment
+      ];
 
   /// Whether this server can prove a visitor's address at all, which an open
   /// personal link and a group link need (issues #202, #211).
@@ -353,11 +381,13 @@ class CallerInfo {
       other.mayShare == mayShare &&
       other.faces == faces &&
       other.mapUrl == mapUrl &&
-      listEquals(other.proofMethods, proofMethods);
+      listEquals(other.proofMethods, proofMethods) &&
+      other.inbox == inbox &&
+      other.inboxCount == inboxCount;
 
   @override
   int get hashCode => Object.hash(userName, role, space, clearance, mayShare,
-      faces, mapUrl, Object.hashAll(proofMethods));
+      faces, mapUrl, Object.hashAll(proofMethods), inbox, inboxCount);
 
   @override
   String toString() => "CallerInfo($userName, $role, $space)";
@@ -406,6 +436,12 @@ class CallerInfo {
   /// `false` where nobody said: a server that does not know the field answers
   /// no face either, so the face editor has nothing to show.
   static bool facesOf(BuildContext context) => maybeOf(context)?.faces ?? false;
+
+  /// Asks the server again who the enclosing app is signed in as, for the
+  /// count of the inbox badge (issue #226): after a write that changes what
+  /// waits there. Does nothing where nobody publishes a way to ask.
+  static void refresh(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<CallerScope>()?.refresh?.call();
 }
 
 /// Publishes the [CallerInfo] to the widget tree, see [CallerInfo.maybeOf].
@@ -413,9 +449,14 @@ class CallerScope extends InheritedWidget {
   /// Who the app is signed in as, `null` while nobody said.
   final CallerInfo? caller;
 
+  /// Asks the server again, see [CallerInfo.refresh]; `null` where nothing
+  /// can be asked (a test pumping a view on its own).
+  final VoidCallback? refresh;
+
   const CallerScope({
     super.key,
     required this.caller,
+    this.refresh,
     required super.child,
   });
 

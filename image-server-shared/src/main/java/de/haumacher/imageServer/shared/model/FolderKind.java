@@ -35,13 +35,11 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 	FOLDER("FOLDER"),
 
 	/**
-	 * The entry is an inbox: an album (see {@link AlbumKind#INBOX}) holding photographs that wait
-	 * to be sorted.
+	 * The entry is the inbox of the space (see {@link AlbumKind#INBOX}).
 	 *
 	 * <p>
-	 * It has no date, it stands first in its listing whatever else lies there, and it is only ever
-	 * an entry of a listing answered to a caller that may see it at all — to everybody else the
-	 * entry is simply not there, see issue #131.
+	 * Since issue #226 no listing answers it: the inbox is reached through {@link AuthInfo#inbox},
+	 * never as a tile. The constant stays so that a listing of an older server still reads.
 	 * </p>
 	 */
 	INBOX("INBOX"),

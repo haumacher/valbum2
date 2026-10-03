@@ -953,11 +953,6 @@ class AppLocalizationsDe extends AppLocalizations {
   String get invitationCopied => 'Die Einladung wurde kopiert.';
 
   @override
-  String inboxNotChosen(String name) {
-    return 'Kein Album gewählt – neue Fotos kommen in „$name“';
-  }
-
-  @override
   String get cameraRollHeading => 'Kamerarolle';
 
   @override
@@ -977,9 +972,6 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get onlyOverWifiExplanation =>
       'Neue Fotos warten auf WLAN oder eine Kabelverbindung, damit der Upload nicht das mobile Datenvolumen belastet.';
-
-  @override
-  String get chooseAction => 'Auswählen...';
 
   @override
   String get syncNow => 'Jetzt synchronisieren';
@@ -1002,48 +994,7 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get saveServerFirst =>
-      'Speichern Sie zuerst die Server-URL und wählen Sie dann ein Album auf diesem Server aus.';
-
-  @override
-  String get inboxAlbumTitle => 'Album „Posteingang“';
-
-  @override
-  String cannotList(String problem) {
-    return 'Kann nicht aufgelistet werden: $problem';
-  }
-
-  @override
-  String get newAlbumAction => 'Neues Album...';
-
-  @override
-  String get useThisAlbum => 'Dieses Album verwenden';
-
-  @override
-  String get libraryBreadcrumb => 'Bibliothek';
-
-  @override
-  String get noFoldersHere =>
-      'Hier gibt es noch keine Ordner – erstellen Sie unten einen.';
-
-  @override
-  String folderIsAlbum(String title) {
-    return 'Dies ist das Album „$title“. Neue Fotos landen hier.';
-  }
-
-  @override
-  String get nothingToShow => 'Hier gibt es nichts anzuzeigen.';
-
-  @override
   String get newAlbumTitle => 'Neues Album';
-
-  @override
-  String get folderNameLabel => 'Ordnername';
-
-  @override
-  String cannotCreateFolder(String problem, String name) {
-    return '$name kann nicht erstellt werden: $problem';
-  }
 
   @override
   String get backToAlbum => 'Zurück zum Album';
@@ -1599,16 +1550,6 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get adjustRecordingTimeHelp =>
       'Die ursprüngliche Aufnahmezeit bleibt im Foto erhalten; das Album behält seine eigene bei.';
-
-  @override
-  String get makeThisAnAlbum => 'In ein Album umwandeln';
-
-  @override
-  String get makeThisAnInbox => 'In einen Posteingang umwandeln';
-
-  @override
-  String get inboxExplanation =>
-      'Fotos, die auf das Einsortieren warten, nach Aufnahmetag gezeigt.';
 
   @override
   String get dateNone => 'Datum: keine Angabe';
@@ -2255,11 +2196,6 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String cameraRollInboxGone(String name) {
-    return 'Der gewählte Posteingang ist nicht mehr da; „$name“ wird verwendet.';
-  }
-
-  @override
   String get cameraRollNoSources =>
       'Wählen Sie die Alben aus, die synchronisiert werden sollen.';
 
@@ -2523,17 +2459,6 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String appearsInPhotosAs(String name) {
     return 'Erscheint auf Fotos als $name';
-  }
-
-  @override
-  String inboxPhotoCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count Fotos',
-      one: '1 Foto',
-    );
-    return '$_temp0';
   }
 
   @override
@@ -3043,4 +2968,36 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get moveToTrash => 'In den Papierkorb verschieben';
+
+  @override
+  String inboxTooltip(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos warten',
+      one: '1 Foto wartet',
+      zero: 'nichts wartet',
+    );
+    return 'Posteingang: $_temp0';
+  }
+
+  @override
+  String inboxMenuEntry(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count warten',
+      zero: 'nichts wartet',
+    );
+    return 'Posteingang ($_temp0)';
+  }
+
+  @override
+  String cameraRollInboxTarget(String name) {
+    return 'Neue Fotos landen im Posteingang des Servers: $name.';
+  }
+
+  @override
+  String get noticeNoInbox =>
+      'Der Server gibt keinen Posteingang für dieses Gerät an. Bitten Sie den Administrator um die Berechtigung, Fotos hinzuzufügen.';
 }

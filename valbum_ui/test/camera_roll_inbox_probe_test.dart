@@ -1,7 +1,6 @@
-/// Review probe of the camera-roll inbox (issue #54): the first-run creation
-/// composed with being offline, with a guest whose device still says
-/// "enabled", with a name conflict that is a folder rather than an album, and
-/// with the section's own wording.
+/// Review probe of the camera-roll inbox (issues #54, #226): the inbox the
+/// server names, composed with being offline, with a guest whose device still
+/// says "enabled", and with a server that did not say who is asking.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -9,7 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
-import 'util/fake_image_http.dart';
+import 'package:valbum_ui/notices.dart';
 
 const String serverDataUrl = "http://server/valbum/data";
 
@@ -63,13 +62,15 @@ class Recorder {
 ({CameraRollSync sync, InMemorySettingsStore store, FakePhotoLibrary library})
     engine(
   Recorder server, {
-  CallerInfo? caller = const CallerInfo(role: roleMember, space: "carol"),
+  CallerInfo? caller =
+      const CallerInfo(role: roleMember, space: "carol", inbox: "Inbox"),
   bool Function()? isOffline,
 }) {
   var store = InMemorySettingsStore();
   store.cameraRoll = const CameraRollConfig(enabled: true).toJson();
   var library = FakePhotoLibrary(items: [photo("a.jpg")]);
-  var client = VAlbumClient(dataUrl: serverDataUrl, httpClient: server.transport);
+  var client =
+      VAlbumClient(dataUrl: serverDataUrl, httpClient: server.transport);
   var sync = CameraRollSync(
     store: store,
     library: library,
@@ -85,7 +86,7 @@ class Recorder {
 }
 
 void main() {
-  test('offline, the first run creates nothing; back online it creates once',
+  test('offline, a run uploads nothing; back online into the inbox named',
       () async {
     var server = Recorder();
     var offline = true;
@@ -93,19 +94,16 @@ void main() {
     await harness.sync.load();
 
     await harness.sync.syncNow();
-    expect(server.creations, isEmpty, reason: "nothing to create into while away");
-    expect(server.uploads, isEmpty);
-    expect(harness.sync.config.inbox, isEmpty);
+    expect(server.requests, isEmpty, reason: "nothing is asked while away");
 
     offline = false;
     await harness.sync.syncNow();
-    expect(server.creations, hasLength(1));
-    expect(harness.sync.config.inbox, ["Inbox"]);
-    expect(server.uploads.map((r) => r.url.toString()), ["$serverDataUrl/Inbox/"]);
+    expect(server.creations, isEmpty, reason: "the server makes the inbox");
+    expect(
+        server.uploads.map((r) => r.url.toString()), ["$serverDataUrl/Inbox/"]);
   });
 
-  test('a guest whose device still says "enabled" creates and uploads nothing',
-      () async {
+  test('a guest whose device still says "enabled" uploads nothing', () async {
     var server = Recorder();
     var harness = engine(
       server,
@@ -118,41 +116,21 @@ void main() {
     expect(server.creations, isEmpty);
     expect(server.uploads, isEmpty);
     expect(harness.sync.status.notice, guestNoSpaceNotice);
-    expect(harness.sync.config.inbox, isEmpty, reason: "no album was invented");
   });
 
-  test('a folder named Inbox in the way is the server\'s sentence, not an album',
+  test('a run whose caller is unknown uploads nothing and asks again later',
       () async {
-    var server = Recorder();
-    server.onCreate = (_) => http.Response(
-          refusal("'Inbox' already exists in the target folder; nothing is overwritten."),
-          409,
-        );
-    // What stands there is a folder, which holds no photos.
-    server.onGet = (request) => request.url.path.contains("/Inbox")
-        ? http.Response('["ListingInfo",{"path":"Inbox","title":"Inbox","folders":[]}]', 200)
-        : http.Response('["ListingInfo",{"path":"","folders":[]}]', 200);
-    var harness = engine(server);
-    await harness.sync.load();
-
-    await harness.sync.syncNow();
-
-    expect(harness.sync.status.message, contains("already exists"));
-    expect(server.uploads, isEmpty, reason: "a folder is no inbox");
-    expect(harness.sync.config.inbox, isEmpty);
-  });
-
-  test('a run whose caller is unknown behaves as before: it does not refuse',
-      () async {
-    // A server from before the roles, or one that could not be asked:
-    // "nobody said" must not read as "guest".
+    // A server that could not be asked names no inbox; "nobody said" must
+    // neither read as "guest" nor make the app invent an album.
     var server = Recorder();
     var harness = engine(server, caller: null);
     await harness.sync.load();
 
     await harness.sync.syncNow();
 
-    expect(server.creations, hasLength(1));
-    expect(server.uploads, hasLength(1));
+    expect(server.creations, isEmpty);
+    expect(server.uploads, isEmpty);
+    expect(harness.sync.status.notice, const NoInboxForCaller());
+    expect(harness.sync.status.phase, CameraRollPhase.waiting);
   });
 }

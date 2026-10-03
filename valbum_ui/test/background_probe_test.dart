@@ -36,8 +36,7 @@ PhotoItem photo(String name, int minute) => fakePhoto(
 /// A store an app was already configured and paired in.
 InMemorySettingsStore configured() {
   var store = InMemorySettingsStore(serverUrl, "token-42", "Phone");
-  store.cameraRoll =
-      const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+  store.cameraRoll = const CameraRollConfig(enabled: true).toJson();
   return store;
 }
 
@@ -46,6 +45,12 @@ void main() {
     var uploaded = <String>[];
     var refuse = false;
     var transport = MockClient(servingThumbnails((request) async {
+      // Where the inbox is, as `?type=auth` names it (issue #226).
+      if (request.url.queryParameters["type"] == "auth") {
+        return http.Response(
+            '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+            200);
+      }
       if (request.method == "POST") {
         return http.Response('{"present":[]}', 200);
       }
@@ -130,6 +135,12 @@ void main() {
   testWidgets('the settings screen shows what happened while it was closed',
       (tester) async {
     var transport = MockClient(servingThumbnails((request) async {
+      // Where the inbox is, as `?type=auth` names it (issue #226).
+      if (request.url.queryParameters["type"] == "auth") {
+        return http.Response(
+            '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+            200);
+      }
       if (request.method == "POST") {
         return http.Response(
           '["ErrorInfo",{"message":"This device is not paired."}]',
@@ -189,6 +200,12 @@ void main() {
     var accepted = <String>[];
     var uploads = 0;
     var transport = MockClient((request) async {
+      // Where the inbox is, as `?type=auth` names it (issue #226).
+      if (request.url.queryParameters["type"] == "auth") {
+        return http.Response(
+            '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+            200);
+      }
       if (request.method == "POST") {
         return http.Response('{"present":[]}', 200);
       }
@@ -220,6 +237,8 @@ void main() {
     addTearDown(library.dispose);
     var timers = FakeTimers();
     var sync = CameraRollSync(
+      callerOf: () async =>
+          CallerInfo(role: roleMember, inbox: inbox.join("/")),
       store: store,
       library: library,
       clientOf: () => VAlbumClient(
@@ -258,6 +277,12 @@ void main() {
     addTearDown(library.dispose);
     var requests = 0;
     var transport = MockClient((request) async {
+      // Where the inbox is, as `?type=auth` names it (issue #226).
+      if (request.url.queryParameters["type"] == "auth") {
+        return http.Response(
+            '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+            200);
+      }
       requests++;
       return http.Response("", 200);
     });
@@ -280,6 +305,12 @@ void main() {
   test('a second run overwrites the report of the first', () async {
     // The section shows the *last* background run, not the best one.
     var transport = MockClient((request) async {
+      // Where the inbox is, as `?type=auth` names it (issue #226).
+      if (request.url.queryParameters["type"] == "auth") {
+        return http.Response(
+            '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+            200);
+      }
       if (request.method == "POST") {
         return http.Response('{"present":[]}', 200);
       }
@@ -307,6 +338,7 @@ void main() {
     var record = await store.loadBackgroundRunRecord();
     expect(record?.ok, isTrue);
     expect(record?.stored, 0);
-    expect(backgroundRunLine(record!, testL10n), contains("0 uploaded, 0 already present"));
+    expect(backgroundRunLine(record!, testL10n),
+        contains("0 uploaded, 0 already present"));
   });
 }

@@ -8,12 +8,14 @@ import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.Clearances;
 import de.haumacher.imageServer.auth.Roles;
+import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.auth.UserStore.Device;
 import de.haumacher.imageServer.auth.UserStore.User;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumKind;
 import de.haumacher.imageServer.shared.model.AlbumPart;
+import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.FolderKind;
@@ -55,11 +57,12 @@ import javax.imageio.ImageIO;
 import junit.framework.TestCase;
 
 /**
- * Test case for the inbox, see issue #131 and issue #135.
+ * Test case for the inbox, see issues #131, #135 and #226.
  *
  * <p>
  * An inbox is a kind of album: the same folder, the same <code>index.json</code>, the same parts.
- * What is tested here is everything that follows from the one stored flag — the round trip through
+ * Since issue #226 a space has one, the folder its <code>space.json</code> names. What is tested
+ * here is everything that follows from that — the round trip through
  * the sidecar, the derived order, the date it has not got, who may see it, and the single-image
  * delete that makes an inbox usable at all.
  * </p>
@@ -113,12 +116,12 @@ public class TestInbox extends TestCase {
 		super.tearDown();
 	}
 
-	// --- What an inbox is: one stored flag. ---
+	// --- What the inbox is: the one folder the space names, see issue #226. ---
 
-	public void testAStoredFlagSaysThatAFolderIsAnInbox() throws Exception {
+	public void testTheFolderTheSpaceNamesIsTheInbox() throws Exception {
 		image("Inbox/a.jpg", Color.RED);
-		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
-			+ part("a.jpg", 0) + "]}]");
+		// No flag in the sidecar: the place decides.
+		sidecar("Inbox", "[\"AlbumInfo\",{\"title\":\"Inbox\",\"parts\":[" + part("a.jpg", 0) + "]}]");
 
 		AlbumInfo album = album("/Inbox/");
 		assertEquals(AlbumKind.INBOX, album.getKind());
@@ -133,7 +136,46 @@ public class TestInbox extends TestCase {
 			AlbumKind.ALBUM, album("/Trip/").getKind());
 	}
 
-	public void testTheFlagSurvivesAPropertiesWrite() throws Exception {
+	public void testAnAlbumAnOlderBuildFlaggedIsAnAlbum() throws Exception {
+		image("2024 Phone/a.jpg", Color.RED);
+		sidecar("2024 Phone", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Phone\",\"parts\":["
+			+ part("a.jpg", day("2024-03-01")) + "]}]");
+		image("Old/Inbox/b.jpg", Color.GREEN);
+		sidecar("Old/Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
+			+ part("b.jpg", day("2024-04-01")) + "]}]");
+
+		AlbumInfo phone = album("/2024 Phone/");
+		assertEquals("One inbox per space; a second flag is no inbox, see issue #226.",
+			AlbumKind.ALBUM, phone.getKind());
+		assertTrue("It has the date of an album again.", phone.getEffectiveDate() > 0L);
+		assertEquals(AlbumKind.ALBUM, album("/Old/Inbox/").getKind());
+		assertEquals("And it is listed like any album.", Arrays.asList("2024 Phone", "Old"), names(listing("/")));
+		assertEquals(Arrays.asList(FolderKind.ALBUM, FolderKind.FOLDER), kinds(listing("/")));
+
+		assertTrue("Reading never writes: the flag is still on disk.",
+			read("2024 Phone/index.json").contains("\"kind\":\"INBOX\""));
+		AlbumInfo read = album("/2024 Phone/");
+		assertEquals(HttpServletResponse.SC_OK, put("/2024 Phone/", write(read)).status());
+		assertFalse("The next ordinary write drops it.", read("2024 Phone/index.json").contains("INBOX"));
+		assertTrue("The photograph is untouched.", _base.resolve("2024 Phone/a.jpg").toFile().isFile());
+	}
+
+	public void testAnotherFolderMayBeTheInbox() throws Exception {
+		image("Family/Unsorted/a.jpg", Color.RED);
+		image("Inbox/b.jpg", Color.GREEN);
+		ImageServlet servlet = new ImageServlet(_base.toFile(), AuthService.disabled(), "",
+			new SpaceStore.Config("", SpaceStore.ANONYMOUS_NONE, "", SpaceStore.FACES_OFF, "", "Family/Unsorted"));
+		servlet.init();
+		_servlets.add(servlet);
+
+		assertEquals(AlbumKind.INBOX, album(servlet, "/Family/Unsorted/", null).getKind());
+		assertEquals("A folder of that name elsewhere is an album.",
+			AlbumKind.ALBUM, album(servlet, "/Inbox/", null).getKind());
+		assertEquals(Arrays.asList(), names(listing(servlet, "/Family/", null)));
+		assertEquals("Family/Unsorted", auth(servlet, null).getInbox());
+	}
+
+	public void testTheKindIsDerivedAndNeverStored() throws Exception {
 		image("Inbox/a.jpg", Color.RED);
 		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
 			+ part("a.jpg", 0) + "]}]");
@@ -141,125 +183,143 @@ public class TestInbox extends TestCase {
 		AlbumInfo read = album("/Inbox/");
 		assertEquals(HttpServletResponse.SC_OK, put("/Inbox/", write(read)).status());
 
-		assertTrue("The flag is stored, not derived.",
-			read("Inbox/index.json").contains("\"kind\":\"INBOX\""));
+		assertFalse("The kind is derived from the place, never stored: " + read("Inbox/index.json"),
+			read("Inbox/index.json").contains("INBOX"));
 		assertEquals(AlbumKind.INBOX, album("/Inbox/").getKind());
 	}
 
-	public void testTheListingEntryOfAnInboxSaysWhatItIsAndHasNoDate() throws Exception {
+	public void testTheListingNeverShowsTheInbox() throws Exception {
 		image("2026-05-01 Trip/a.jpg", Color.RED);
 		sidecar("2026-05-01 Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("a.jpg", 0) + "]}]");
 		image("Inbox/b.jpg", Color.GREEN);
 		// A date stored on it and a date in its name: neither makes a day of an inbox.
-		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"date\":1700000000000,"
+		sidecar("Inbox", "[\"AlbumInfo\",{\"title\":\"Inbox\",\"date\":1700000000000,"
 			+ "\"parts\":[" + part("b.jpg", 0) + "]}]");
 
-		ListingInfo listing = listing("/");
-		assertEquals("An inbox stands first: it is what needs doing.",
-			Arrays.asList("Inbox", "2026-05-01 Trip"), names(listing));
-		assertEquals(Arrays.asList(FolderKind.INBOX, FolderKind.ALBUM), kinds(listing));
-		assertEquals("An inbox has no date, whatever is written on it.", 0L, entry(listing, "Inbox").getEffectiveDate());
-
-		assertEquals("Not even the album itself derives one.", 0L, album("/Inbox/").getEffectiveDate());
+		assertEquals("Not a tile, not even for whoever may edit it, see issue #226.",
+			Arrays.asList("2026-05-01 Trip"), names(listing("/")));
+		assertEquals("The inbox itself has no date.", 0L, album("/Inbox/").getEffectiveDate());
 	}
 
-	public void testTheListingEntryOfAnInboxSaysHowMuchIsWaiting() throws Exception {
-		image("2026-05-01 Trip/a.jpg", Color.RED);
-		image("2026-05-01 Trip/b.jpg", Color.GREEN);
-		sidecar("2026-05-01 Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":["
-			+ part("a.jpg", 0) + "," + part("b.jpg", 0) + "]}]");
+	public void testTheAuthAnswerSaysWhereTheInboxIsAndHowMuchWaits() throws Exception {
 		image("Inbox/a.jpg", Color.RED);
 		image("Inbox/b.jpg", Color.GREEN);
 		image("Inbox/c.jpg", Color.BLUE);
-		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
+		sidecar("Inbox", "[\"AlbumInfo\",{\"title\":\"Inbox\",\"parts\":["
 			+ part("a.jpg", 0) + "," + part("b.jpg", 0) + "," + part("c.jpg", 0) + "]}]");
 
-		ListingInfo listing = listing("/");
-		assertEquals("The tile of an inbox says how much is waiting, see issue #137.",
-			3, entry(listing, "Inbox").getImageCount());
-		assertEquals("An album counts nothing: how many pictures it holds is no part of what it is.",
-			0, entry(listing, "2026-05-01 Trip").getImageCount());
+		AuthInfo info = auth(_servlet, null);
+		assertEquals("Inbox", info.getInbox());
+		assertEquals(3, info.getInboxCount());
 	}
 
 	public void testAnInboxCountsTheMembersOfAGroup() throws Exception {
 		image("Inbox/a.jpg", Color.RED);
 		image("Inbox/b1.jpg", Color.GREEN);
 		image("Inbox/b2.jpg", Color.BLUE);
-		// An inbox stores no group, but an album that was turned into one may hold some.
-		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
+		// An inbox stores no group, but an album an older build turned into one may hold some.
+		sidecar("Inbox", "[\"AlbumInfo\",{\"title\":\"Inbox\",\"parts\":["
 			+ part("a.jpg", day("2026-03-01")) + ","
 			+ group(image("b1.jpg", day("2026-02-01")), image("b2.jpg", day("2026-03-03"))) + "]}]");
 
-		assertEquals("Three pictures are waiting, not two bundles.",
-			3, entry(listing("/"), "Inbox").getImageCount());
+		assertEquals("Three pictures are waiting, not two bundles.", 3, auth(_servlet, null).getInboxCount());
 	}
 
-	public void testAFolderOfFoldersCountsNothing() throws Exception {
-		image("2026/Trip/a.jpg", Color.RED);
-		sidecar("2026/Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("a.jpg", 0) + "]}]");
-
-		FolderInfo year = entry(listing("/"), "2026");
-		assertEquals(FolderKind.FOLDER, year.getKind());
-		assertEquals("A listing never walks a folder to count what lies below it.", 0, year.getImageCount());
-	}
-
-	public void testTheCountIsDerivedAndNeverStored() throws Exception {
+	public void testTheCountFollowsWhatArrivesAndWhatIsThrownAway() throws Exception {
 		image("Inbox/a.jpg", Color.RED);
 		image("Inbox/b.jpg", Color.GREEN);
-		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
+		sidecar("Inbox", "[\"AlbumInfo\",{\"title\":\"Inbox\",\"parts\":["
 			+ part("a.jpg", 0) + "," + part("b.jpg", 0) + "]}]");
-		// A listing of its own, so that there is a listing sidecar to write back.
-		sidecar("", "[\"ListingInfo\",{\"title\":\"Everything\"}]");
-
-		ListingInfo listing = listing("/");
-		assertEquals(2, entry(listing, "Inbox").getImageCount());
-
-		// The way the application writes a folder back: read, write, read again.
-		assertEquals(HttpServletResponse.SC_OK, put("/", write(listing)).status());
-		assertFalse("A derived count is never stored: " + read("index.json"),
-			read("index.json").contains("imageCount"));
+		assertEquals(2, auth(_servlet, null).getInboxCount());
 
 		image("Inbox/c.jpg", Color.BLUE);
-		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
-			+ part("a.jpg", 0) + "," + part("b.jpg", 0) + "," + part("c.jpg", 0) + "]}]");
-		assertEquals("And is answered afresh, so nothing froze it.",
-			3, entry(listing("/"), "Inbox").getImageCount());
+		assertEquals("A photograph that arrived is waiting.", 3, auth(_servlet, null).getInboxCount());
+
+		AlbumInfo inbox = album("/Inbox/");
+		((ImagePart) inbox.getParts().get(0)).setRating(-2);
+		assertEquals(HttpServletResponse.SC_OK, put("/Inbox/", write(inbox)).status());
+		assertEquals("One rated as trash is not waiting any more: the inbox hides it.",
+			2, auth(_servlet, null).getInboxCount());
 	}
 
-	public void testEverybodyWhoSeesTheInboxIsAnsweredTheWholeCount() throws Exception {
+	public void testTheCountIsWhatTheCallerIsShownThere() throws Exception {
 		sharedInbox();
 
 		ImageServlet servlet = servlet(AuthMode.WRITES);
-		assertEquals(4, entry(listing(servlet, "/", ALICE_TOKEN), "Inbox").getImageCount());
-		assertEquals("A contributor is told how much is waiting there, not how much of it is theirs:"
-			+ " the sidecar knows no contributor, and a count of one's own would cost a second file"
-			+ " per entry of every listing, see issue #137.",
-			4, entry(listing(servlet, "/", BOB_TOKEN), "Inbox").getImageCount());
+		AuthInfo alice = auth(servlet, ALICE_TOKEN);
+		assertEquals("Inbox", alice.getInbox());
+		assertEquals(4, alice.getInboxCount());
+		AuthInfo bob = auth(servlet, BOB_TOKEN);
+		assertEquals("A contributor is told where it is: the camera roll uploads there.", "Inbox", bob.getInbox());
+		assertEquals("And how many of their own wait, which is what they are shown there (issue #135).",
+			2, bob.getInboxCount());
 
-		// And whoever does not see the inbox at all is not told a number either.
-		assertEquals(Arrays.asList("2026-05-01 Trip"), names(listing(servlet, "/", DAVE_TOKEN)));
-		assertEquals(Arrays.asList("2026-05-01 Trip"), names(listing(servlet, "/", shareToken(servlet, "/"))));
+		AuthInfo dave = auth(servlet, DAVE_TOKEN);
+		assertEquals("A member who may only look is told nothing.", "", dave.getInbox());
+		assertEquals(0, dave.getInboxCount());
+		assertEquals("Nor is an anonymous caller.", "", auth(servlet, null).getInbox());
+		AuthInfo link = auth(servlet, shareToken(servlet, "/"));
+		assertEquals("Nor a share link, which never reaches the inbox.", "", link.getInbox());
+		assertEquals(0, link.getInboxCount());
 	}
 
-	public void testAnInboxIsNamedByItsTitleAlone() throws Exception {
-		AlbumInfo properties = AlbumInfo.create().setKind(AlbumKind.INBOX).setTitle("Inbox").setDate(1700000000000L);
-		assertEquals("An inbox has no date, so its folder name carries none.",
-			"Inbox", FolderNames.of(properties, "2023-11-14 Inbox"));
-		assertEquals("An album of the same properties is named by its date and its title.",
-			"2023-11-14 Inbox", FolderNames.of(AlbumInfo.create().setTitle("Inbox").setDate(1700000000000L), ""));
+	public void testTheInboxIsNotThereUntilTheFirstUploadMakesIt() throws Exception {
+		image("2026-05-01 Trip/a.jpg", Color.RED);
+		assertFalse(_base.resolve("Inbox").toFile().exists());
+
+		AlbumInfo empty = album("/Inbox/");
+		assertEquals("Before the first upload the inbox is empty.", AlbumKind.INBOX, empty.getKind());
+		assertTrue(empty.getParts().isEmpty());
+		assertEquals(0, auth(_servlet, null).getInboxCount());
+		assertTrue("A hash check may ask it.", checkUnmade().getPresent().isEmpty());
+		assertFalse("Reading and checking write nothing.", _base.resolve("Inbox").toFile().exists());
+
+		FakeResponse upload = upload(_servlet, "/Inbox/", null, "new.jpg", Color.BLUE);
+		assertEquals(upload.body(), HttpServletResponse.SC_OK, upload.status());
+		assertTrue("The first upload made it.", _base.resolve("Inbox/new.jpg").toFile().isFile());
+		assertEquals(Arrays.asList("new.jpg"), imageNames(album("/Inbox/")));
+		assertEquals(1, auth(_servlet, null).getInboxCount());
+		assertEquals("And it is still no tile.", Arrays.asList("2026-05-01 Trip"), names(listing("/")));
 	}
 
-	public void testTurningAnAlbumIntoAnInboxRenamesTheFolder() throws Exception {
-		image("2023-11-14 Inbox/a.jpg", Color.RED);
-		sidecar("2023-11-14 Inbox", "[\"AlbumInfo\",{\"title\":\"Inbox\",\"date\":1700000000000,\"parts\":["
+	public void testAViewerCannotMakeTheInbox() throws Exception {
+		users();
+		ImageServlet servlet = servlet(AuthMode.WRITES);
+
+		FakeResponse refused = upload(servlet, "/Inbox/", DAVE_TOKEN, "new.jpg", Color.BLUE);
+		assertEquals(HttpServletResponse.SC_FORBIDDEN, refused.status());
+		assertFalse(_base.resolve("Inbox").toFile().exists());
+
+		FakeResponse made = upload(servlet, "/Inbox/", BOB_TOKEN, "new.jpg", Color.BLUE);
+		assertEquals(made.body(), HttpServletResponse.SC_OK, made.status());
+		assertEquals(1, auth(servlet, BOB_TOKEN).getInboxCount());
+	}
+
+	public void testTheInboxIsNeverRenamedAfterItsTitle() throws Exception {
+		image("Inbox/a.jpg", Color.RED);
+		sidecar("Inbox", "[\"AlbumInfo\",{\"title\":\"Inbox\",\"parts\":[" + part("a.jpg", 0) + "]}]");
+
+		AlbumInfo properties = album("/Inbox/").setTitle("Eingang").setDate(1700000000000L);
+		FakeResponse response = put("/Inbox/", write(properties));
+		assertEquals(HttpServletResponse.SC_OK, response.status());
+
+		assertTrue("The space names its inbox; a title does not move it.", _base.resolve("Inbox").toFile().isDirectory());
+		assertEquals("Eingang", album("/Inbox/").getTitle());
+		assertEquals(AlbumKind.INBOX, album("/Inbox/").getKind());
+	}
+
+	public void testTheKindAClientSendsIsIgnored() throws Exception {
+		image("2023-11-14 Trip/a.jpg", Color.RED);
+		sidecar("2023-11-14 Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"date\":1700000000000,\"parts\":["
 			+ part("a.jpg", 0) + "]}]");
 
-		AlbumInfo properties = album("/2023-11-14 Inbox/").setKind(AlbumKind.INBOX);
-		assertEquals(HttpServletResponse.SC_OK, put("/2023-11-14 Inbox/", write(properties)).status());
+		AlbumInfo properties = album("/2023-11-14 Trip/").setKind(AlbumKind.INBOX);
+		assertEquals(HttpServletResponse.SC_OK, put("/2023-11-14 Trip/", write(properties)).status());
 
-		assertTrue("The folder is named by what it is, see issue #130.", _base.resolve("Inbox").toFile().isDirectory());
-		assertFalse(_base.resolve("2023-11-14 Inbox").toFile().exists());
-		assertTrue("The photograph rode along.", _base.resolve("Inbox/a.jpg").toFile().isFile());
+		assertTrue("Nothing renamed it as an inbox.", _base.resolve("2023-11-14 Trip").toFile().isDirectory());
+		assertEquals("No request makes a second inbox, see issue #226.",
+			AlbumKind.ALBUM, album("/2023-11-14 Trip/").getKind());
+		assertFalse(read("2023-11-14 Trip/index.json").contains("INBOX"));
 	}
 
 	// --- The order of an inbox is the date. ---
@@ -304,12 +364,12 @@ public class TestInbox extends TestCase {
 	 * The round trip: what an inbox answers must not become what the sidecar stores.
 	 *
 	 * <p>
-	 * The app reads the inbox flat and writes the album back when its properties are edited —
-	 * here, to turn it into an album again. The stored order and the group are the author's and
-	 * must be there when the flag is gone.
+	 * The app reads the inbox flat and writes it back. An app older than issue #226 could send the
+	 * kind <code>ALBUM</code> to turn it into an album again; the place decides now, so it stays the
+	 * inbox, and the stored order and the group are the author's all the same.
 	 * </p>
 	 */
-	public void testTurningAnInboxBackIntoAnAlbumRestoresTheStoredOrder() throws Exception {
+	public void testTheInboxStaysTheInboxAndKeepsItsStoredOrder() throws Exception {
 		Color[] colors = { Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW };
 		List<String> names = Arrays.asList("a.jpg", "b1.jpg", "b2.jpg", "c.jpg");
 		for (int n = 0; n < names.size(); n++) {
@@ -321,17 +381,17 @@ public class TestInbox extends TestCase {
 			+ group(image("b1.jpg", day("2026-02-01")), image("b2.jpg", day("2026-03-03")))
 			+ "]}]");
 
-		// Exactly what the app does: read, change one property, write back.
+		// Exactly what an older app did: read, change the kind, write back.
 		AlbumInfo flat = album("/Inbox/");
 		assertEquals(Arrays.asList("b2.jpg", "c.jpg", "a.jpg", "b1.jpg"), imageNames(flat));
 		assertEquals(HttpServletResponse.SC_OK, put("/Inbox/", write(flat.setKind(AlbumKind.ALBUM))).status());
 
-		AlbumInfo album = album("/Inbox/");
-		assertEquals(AlbumKind.ALBUM, album.getKind());
-		assertEquals("The author's order is back, because it was never overwritten.",
-			Arrays.asList("c.jpg", "a.jpg", "b1.jpg", "b2.jpg"), imageNames(album));
-		assertEquals("The group is intact.", 3, album.getParts().size());
-		assertTrue(album.getParts().get(2) instanceof ImageGroup);
+		assertEquals(AlbumKind.INBOX, album("/Inbox/").getKind());
+		AlbumInfo stored = (AlbumInfo) Resource.readResource(reader(read("Inbox/index.json")));
+		assertEquals("The author's order was never overwritten.",
+			Arrays.asList("c.jpg", "a.jpg", "b1.jpg", "b2.jpg"), imageNames(stored));
+		assertEquals("The group is intact.", 3, stored.getParts().size());
+		assertTrue(stored.getParts().get(2) instanceof ImageGroup);
 	}
 
 	/** An edit of an image in an inbox is stored, while the order stays the author's. */
@@ -376,7 +436,8 @@ public class TestInbox extends TestCase {
 		AlbumInfo inbox = album(servlet, "/Inbox/", ALICE_TOKEN);
 		assertEquals("Newest first, whoever contributed.",
 			Arrays.asList("other2.jpg", "other1.jpg", "bob2.jpg", "bob1.jpg"), imageNames(inbox));
-		assertEquals(Arrays.asList("Inbox", "2026-05-01 Trip"), names(listing(servlet, "/", ALICE_TOKEN)));
+		assertEquals("Reached through ?type=auth, never as a tile (issue #226).",
+			Arrays.asList("2026-05-01 Trip"), names(listing(servlet, "/", ALICE_TOKEN)));
 	}
 
 	public void testAContributorSeesTheirOwnContributionsAndNothingElse() throws Exception {
@@ -386,27 +447,14 @@ public class TestInbox extends TestCase {
 		AlbumInfo inbox = album(servlet, "/Inbox/", BOB_TOKEN);
 		assertEquals("A device's owner sorts what that device uploaded, see issue #53.",
 			Arrays.asList("bob2.jpg", "bob1.jpg"), imageNames(inbox));
-		assertEquals("The tile is there: they may put something in it.",
-			Arrays.asList("Inbox", "2026-05-01 Trip"), names(listing(servlet, "/", BOB_TOKEN)));
+		assertEquals("No tile for them either (issue #226).",
+			Arrays.asList("2026-05-01 Trip"), names(listing(servlet, "/", BOB_TOKEN)));
 
 		assertEquals(HttpServletResponse.SC_OK, get(servlet, "/Inbox/bob1.jpg", BOB_TOKEN, "tn").status());
 		FakeResponse foreign = get(servlet, "/Inbox/other1.jpg", BOB_TOKEN, "tn");
 		assertEquals("Somebody else's photograph is not there for them.",
 			HttpServletResponse.SC_NOT_FOUND, foreign.status());
 		assertEquals(Inboxes.NOT_FOUND, errorMessage(foreign));
-	}
-
-	public void testTheTileOfAnInboxShowsAContributorNoForeignCover() throws Exception {
-		sharedInbox();
-		// The inbox is shown by a photograph of somebody else's.
-		sidecar("Inbox", read("Inbox/index.json").replace("\"parts\":",
-			"\"indexPicture\":{\"image\":\"other1.jpg\",\"scale\":1.0},\"parts\":"));
-
-		ImageServlet servlet = servlet(AuthMode.WRITES);
-		assertNotNull("The editor sees the cover the album carries.",
-			entry(listing(servlet, "/", ALICE_TOKEN), "Inbox").getIndexPicture());
-		assertNull("A contributor keeps the tile and loses a cover that is not theirs.",
-			entry(listing(servlet, "/", BOB_TOKEN), "Inbox").getIndexPicture());
 	}
 
 	public void testAViewerDoesNotSeeTheInboxAtAll() throws Exception {
@@ -741,14 +789,17 @@ public class TestInbox extends TestCase {
 	/** In an album the rule of issue #47 is untouched: the representative carries its group. */
 	public void testInAnAlbumTheRepresentativeStillCarriesItsGroup() throws Exception {
 		groupedInbox();
-		// The very same folder, as an album.
-		sidecar("Inbox", read("Inbox/index.json").replace("\"kind\":\"INBOX\",", ""));
+		// The very same contents, as an album.
+		for (String name : Arrays.asList("a.jpg", "b1.jpg", "b2.jpg")) {
+			write("Trip/" + name, Files.readAllBytes(_base.resolve("Inbox").resolve(name)));
+		}
+		sidecar("Trip", read("Inbox/index.json").replace("\"kind\":\"INBOX\",", ""));
 
-		delete("/Inbox/", "b1.jpg");
+		delete("/Trip/", "b1.jpg");
 
 		assertTrue("An album shows a group by its representative; naming it names the group.",
-			new File(trash(), "Inbox/b2.jpg").isFile());
-		assertTrue(new File(trash(), "Inbox/b1.jpg").isFile());
+			new File(trash(), "Trip/b2.jpg").isFile());
+		assertTrue(new File(trash(), "Trip/b1.jpg").isFile());
 	}
 
 	/** An inbox whose sidecar remembers a group of two behind its flat answer. */
@@ -877,6 +928,45 @@ public class TestInbox extends TestCase {
 		FakeResponse response = shareResponse(servlet, pathInfo);
 		assertEquals("Cannot create a share link: " + response.body(), HttpServletResponse.SC_OK, response.status());
 		return ShareLinkCreated.readShareLinkCreated(reader(response.body())).getToken();
+	}
+
+	/** What <code>?type=auth</code> answers the given caller. */
+	private static AuthInfo auth(ImageServlet servlet, String token) throws Exception {
+		FakeResponse response = get(servlet, "/", token, "auth");
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+		return AuthInfo.readAuthInfo(reader(response.body()));
+	}
+
+	/** The hash check of the inbox before it exists, asking for one photograph it does not hold. */
+	private UploadCheckResult checkUnmade() throws Exception {
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", "check");
+		FakeResponse response = new FakeResponse();
+		_servlet.doPost(request("/Inbox/", "application/json",
+			"{\"hashes\":[{\"hash\":\"" + "0".repeat(64) + "\"}]}", null, parameters), response.response());
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+		return UploadCheckResult.readUploadCheckResult(reader(response.body()));
+	}
+
+	private static final String BOUNDARY = "----valbumInboxBoundary";
+
+	/** Uploads one photograph of the given colour into the given folder, as the app does. */
+	private static FakeResponse upload(ImageServlet servlet, String pathInfo, String token, String name, Color color)
+			throws Exception {
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		out.write(("--" + BOUNDARY + "\r\nContent-Disposition: form-data; name=\"" + name + "\"; filename=\""
+			+ name + "\"\r\nContent-Type: application/octet-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+		out.write(jpeg(color));
+		out.write(("\r\n--" + BOUNDARY + "--\r\n").getBytes(StandardCharsets.UTF_8));
+		Map<String, String> headers = new HashMap<>();
+		headers.put("Content-Type", "multipart/form-data; boundary=" + BOUNDARY);
+		if (token != null) {
+			headers.put("Authorization", "Bearer " + token);
+		}
+		FakeResponse response = new FakeResponse();
+		servlet.doPut(TestImageServletPut.request(pathInfo, "multipart/form-data; boundary=" + BOUNDARY,
+			out.toByteArray(), headers, new HashMap<>()), response.response());
+		return response;
 	}
 
 	private static HttpServletRequest request(String pathInfo, String contentType, String body, String token,

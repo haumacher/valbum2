@@ -1574,17 +1574,6 @@
     "description": "Said after the invitation URL went to the clipboard",
     "x-translated": "d58c1fed"
   },
-  "inboxNotChosen": "No album chosen - new photos go into '{name}'",
-  "@inboxNotChosen": {
-    "description": "Says where the camera roll uploads while no album was chosen",
-    "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "Inbox"
-      }
-    },
-    "x-translated": "8d048d6e"
-  },
   "cameraRollHeading": "Camera roll",
   "@cameraRollHeading": {
     "description": "Heading of the camera-roll section of the server settings",
@@ -1615,11 +1604,6 @@
     "description": "Explains the Wi-Fi-only switch",
     "x-translated": "c6b3c229"
   },
-  "chooseAction": "Choose...",
-  "@chooseAction": {
-    "description": "Button opening the picker of the album new photos go into",
-    "x-translated": "d1cce3c6"
-  },
   "syncNow": "Sync now",
   "@syncNow": {
     "description": "Button starting a camera-roll sync at once",
@@ -1645,87 +1629,10 @@
     },
     "x-translated": "85cbe1ac"
   },
-  "saveServerFirst": "Save the server URL first, then choose an album on it.",
-  "@saveServerFirst": {
-    "description": "Refusal shown where an album is chosen before a server is known",
-    "x-translated": "4e52220c"
-  },
-  "inboxAlbumTitle": "Inbox album",
-  "@inboxAlbumTitle": {
-    "description": "Title of the dialog choosing the album new photos go into",
-    "x-translated": "5563bb54"
-  },
-  "cannotList": "Cannot list: {problem}",
-  "@cannotList": {
-    "description": "Said where the folders of a server cannot be read",
-    "placeholders": {
-      "problem": {
-        "type": "String",
-        "example": "Connection refused"
-      }
-    },
-    "x-translated": "8176f63d"
-  },
-  "newAlbumAction": "New album...",
-  "@newAlbumAction": {
-    "description": "Button creating an album in the folder shown",
-    "x-translated": "1d778334"
-  },
-  "useThisAlbum": "Use this album",
-  "@useThisAlbum": {
-    "description": "Button choosing the folder shown as the inbox",
-    "x-translated": "b16bb3a2"
-  },
-  "libraryBreadcrumb": "Library",
-  "@libraryBreadcrumb": {
-    "description": "The root of the library in the breadcrumb of the inbox picker",
-    "x-translated": "6e3da120"
-  },
-  "noFoldersHere": "No folders here yet - create one below.",
-  "@noFoldersHere": {
-    "description": "Said where a folder of the library holds no folders",
-    "x-translated": "24e0dae7"
-  },
-  "folderIsAlbum": "This is the album '{title}'. New photos land here.",
-  "@folderIsAlbum": {
-    "description": "Said where the inbox picker stands in an album",
-    "placeholders": {
-      "title": {
-        "type": "String",
-        "example": "Inbox"
-      }
-    },
-    "x-translated": "e237e541"
-  },
-  "nothingToShow": "Nothing to show here.",
-  "@nothingToShow": {
-    "description": "Said where the server answered something the picker cannot show",
-    "x-translated": "6af6f11"
-  },
   "newAlbumTitle": "New album",
   "@newAlbumTitle": {
     "description": "Title of the dialog asking for the name of a new album",
     "x-translated": "b98b1029"
-  },
-  "folderNameLabel": "Folder name",
-  "@folderNameLabel": {
-    "description": "Field holding the name of the folder an album is written to",
-    "x-translated": "baa2a0da"
-  },
-  "cannotCreateFolder": "Cannot create '{name}': {problem}",
-  "@cannotCreateFolder": {
-    "description": "Said where an album could not be created",
-    "placeholders": {
-      "problem": {
-        "type": "String",
-        "example": "Connection refused"
-      },
-      "name": {
-        "type": "String",
-        "example": "Inbox"
-      }
-    },
-    "x-translated": "ed5aec9d"
   },
   "backToAlbum": "Back to the album",
   "@backToAlbum": {
@@ -2586,21 +2493,6 @@
   "@adjustRecordingTimeHelp": {
     "description": "Says what a recording time correction does not touch",
     "x-translated": "99b98798"
-  },
-  "makeThisAnAlbum": "Make this an album",
-  "@makeThisAnAlbum": {
-    "description": "Label of the switch turning an inbox back into an ordinary album",
-    "x-translated": "dae2da95"
-  },
-  "makeThisAnInbox": "Make this an inbox",
-  "@makeThisAnInbox": {
-    "description": "Label of the switch turning an album into an inbox",
-    "x-translated": "9d6b47ef"
-  },
-  "inboxExplanation": "Photographs waiting to be sorted, shown by the day they were taken.",
-  "@inboxExplanation": {
-    "description": "Says what an inbox is, beside the switch that makes one",
-    "x-translated": "a840f417"
   },
   "dateNone": "Date: none",
   "@dateNone": {
@@ -3727,16 +3619,6 @@
     },
     "x-translated": "667cec96"
   },
-  "cameraRollInboxGone": "The chosen inbox is gone; using '{name}'.",
-  "@cameraRollInboxGone": {
-    "description": "Says that the sync fell back to the default inbox",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    },
-    "x-translated": "973185df"
-  },
   "cameraRollNoSources": "Choose the albums to sync.",
   "@cameraRollNoSources": {
     "description": "Said while the sync watches no album of the device",
@@ -4160,16 +4042,6 @@
       }
     },
     "x-translated": "b5026e1c"
-  },
-  "inboxPhotoCount": "{count, plural, =1{1 photograph} other{{count} photographs}}",
-  "@inboxPhotoCount": {
-    "description": "How many photographs are waiting in an inbox, shown on its listing tile",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    },
-    "x-translated": "8fc26a99"
   },
   "viewerEditPersons": "Edit persons",
   "@viewerEditPersons": {
@@ -5026,5 +4898,41 @@
   "@moveToTrash": {
     "description": "Button confirming that several selected photos are rated as trash (issue #224); the other button is Cancel. The trash is the album's trash bin (German: 'Papierkorb').",
     "x-translated": "9df97b09"
+  },
+  "inboxTooltip": "Inbox: {count, plural, =0{nothing waiting} =1{1 photo waiting} other{{count} photos waiting}}",
+  "@inboxTooltip": {
+    "description": "Tooltip of the inbox icon in the app bar of the start page (issue #226); the inbox of the space is where new photos wait to be sorted into albums, and the count is how many wait. Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "30c9d00e"
+  },
+  "inboxMenuEntry": "Inbox ({count, plural, =0{nothing waiting} other{{count} waiting}})",
+  "@inboxMenuEntry": {
+    "description": "Menu entry of the start page opening the inbox of the space, where new photos wait to be sorted into albums (issue #226); the count is how many photos wait.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "1fef93bb"
+  },
+  "cameraRollInboxTarget": "New photos go into the inbox of the server: {name}.",
+  "@cameraRollInboxTarget": {
+    "description": "Says where the camera-roll sync uploads to: the one inbox of the space, which the server names (issue #226). The name is a folder name and stays as it is. Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Inbox"
+      }
+    },
+    "x-translated": "ce6b26dc"
+  },
+  "noticeNoInbox": "The server names no inbox for this device. Ask the administrator for the right to add photos.",
+  "@noticeNoInbox": {
+    "description": "Said by the camera-roll sync where the server names no inbox the device may upload into (issue #226): the device may only look at the albums, or the server is older than the app. Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "4cb65e91"
   }
 }

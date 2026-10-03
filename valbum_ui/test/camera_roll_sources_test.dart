@@ -50,13 +50,18 @@ class Harness {
   Harness({
     CameraRollConfig config = const CameraRollConfig(
       enabled: true,
-      inbox: inbox,
     ),
   }) {
     store.cameraRoll = config.toJson();
     var client = VAlbumClient(
       dataUrl: serverDataUrl,
       httpClient: MockClient((request) async {
+        // Where the inbox is, as `?type=auth` names it (issue #226).
+        if (request.url.queryParameters["type"] == "auth") {
+          return http.Response(
+              '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+              200);
+        }
         if (request.method == "POST") {
           return http.Response('{"present":[]}', 200);
         }
@@ -72,6 +77,8 @@ class Harness {
       }),
     );
     sync = CameraRollSync(
+      callerOf: () async =>
+          CallerInfo(role: roleMember, inbox: inbox.join("/")),
       store: store,
       library: library,
       clientOf: () => client,
@@ -214,7 +221,6 @@ void main() {
       var store = InMemorySettingsStore();
       var config = CameraRollConfig(
         enabled: true,
-        inbox: const ["Inbox"],
         sources: const ["cam", "wa"],
         marks: {
           "cam": SourceMark(
@@ -307,7 +313,6 @@ void main() {
       var harness = Harness(
         config: CameraRollConfig(
           enabled: true,
-          inbox: inbox,
           since: DateTime.utc(2026, 3, 1, 12, 1),
           done: const ["old.jpg"],
         ),
@@ -526,7 +531,7 @@ void main() {
 
     testWidgets('asks the device for nothing while the sync is off',
         (tester) async {
-      var harness = Harness(config: const CameraRollConfig(inbox: inbox));
+      var harness = Harness(config: const CameraRollConfig());
       addTearDown(harness.dispose);
       harness.library.granted = false;
       harness.library.accessProblem = const PhotoAccessDenied();

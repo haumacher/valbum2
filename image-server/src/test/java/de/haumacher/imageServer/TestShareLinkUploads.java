@@ -242,8 +242,7 @@ public class TestShareLinkUploads extends PersonalLinkTestCase {
 			"[\"AlbumInfo\",{\"title\":\"Box\",\"parts\":[]}]".getBytes(StandardCharsets.UTF_8));
 		String token = issue("alice", SharingFixture.YEAR + "/Box", "Party", "", Privacy.PUBLIC, GOOD,
 			Rights.VIEW, Rights.CONTRIBUTE);
-		makeInbox(inbox);
-		restartServer();
+		makeInbox();
 
 		assertHidden(upload("/", token, "guest.jpg", photo("guest")));
 		assertUntouched(inbox);
@@ -295,6 +294,21 @@ public class TestShareLinkUploads extends PersonalLinkTestCase {
 		assertTrue(Files.exists(inbox.resolve("sorted.jpg")));
 	}
 
+	public void testALinkCannotMakeTheInboxByAFirstUpload() throws Exception {
+		makeInbox();
+		String token = yearToken();
+		Path inbox = _base.resolve(SharingFixture.YEAR).resolve("Box");
+
+		assertHidden(upload("/Box/", token, "guest.jpg", photo("guest")));
+		assertHidden(upload("/Box/guest.jpg", token, "guest.jpg", photo("guest")));
+		assertHidden(check("/Box/", token, HashCache.sha256(photo("guest"))));
+		assertHidden(get("/Box/", "json", token));
+		assertFalse("The inbox is made by the first upload of a member, never of a link.", Files.exists(inbox));
+
+		assertStored(upload("/" + SharingFixture.YEAR + "/Box/", SharingFixture.BOB, "bobs.jpg", photo("bobs")));
+		assertTrue(Files.exists(inbox.resolve("bobs.jpg")));
+	}
+
 	public void testTheRefusalIsTheAnswerOfAFolderThatDoesNotExist() throws Exception {
 		inbox();
 		String token = yearToken();
@@ -322,17 +336,20 @@ public class TestShareLinkUploads extends PersonalLinkTestCase {
 
 	// --- Helpers. ---
 
-	/** An inbox below the year folder, as #131 makes one. */
+	/** The inbox of the space below the year folder, as its space.json may name one (issue #226). */
 	private Path inbox() throws Exception {
 		Path inbox = _base.resolve(SharingFixture.YEAR).resolve("Box");
 		Files.createDirectories(inbox);
-		makeInbox(inbox);
+		Files.write(inbox.resolve("index.json"),
+			"[\"AlbumInfo\",{\"title\":\"Box\",\"parts\":[]}]".getBytes(StandardCharsets.UTF_8));
+		makeInbox();
 		return inbox;
 	}
 
-	private static void makeInbox(Path inbox) throws Exception {
-		Files.write(inbox.resolve("index.json"),
-			"[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Box\",\"parts\":[]}]".getBytes(StandardCharsets.UTF_8));
+	/** Names the year folder's <code>Box</code> the space's inbox and starts the server anew. */
+	private void makeInbox() throws Exception {
+		de.haumacher.imageServer.auth.SpaceStore.storeInbox(_base, SharingFixture.YEAR + "/Box");
+		restartServer();
 	}
 
 	/** A link on the year folder, which may contribute. */

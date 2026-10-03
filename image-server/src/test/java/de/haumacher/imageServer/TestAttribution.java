@@ -52,7 +52,7 @@ public class TestAttribution extends ShareTestCase {
 	private static final String ALICES_ZOO = "/" + SharingFixture.ZOO + "/";
 
 	/** The album a contribution is taken back into. */
-	private static final String INBOX = "Inbox";
+	private static final String INBOX = SharingFixture.CAROLS_ALBUM;
 
 	@Override
 	protected void setUp() throws Exception {

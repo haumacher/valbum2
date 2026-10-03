@@ -8,22 +8,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/locales.dart';
 import 'package:valbum_ui/main.dart';
 
+import 'package:valbum_ui/notices.dart';
+
 import 'util/l10n.dart';
 
 void main() {
-  test('the camera-roll line says the inbox fallback in the reader\'s language',
+  test('the camera-roll line says a missing inbox in the reader\'s language',
       () {
-    var status = CameraRollStatus(
-      phase: CameraRollPhase.idle,
-      lastSuccess: DateTime(2026, 3, 1, 12),
-      lastStored: 1,
-      inboxGoneUsing: "Inbox",
+    var status = const CameraRollStatus(
+      phase: CameraRollPhase.failed,
+      notice: NoInboxForCaller(),
     );
     var german = cameraRollLine(status, l10nOf(const Locale("de")));
     var english = cameraRollLine(status, l10nOf(const Locale("en")));
-    expect(german, contains("Inbox"),
-        reason: "The folder name on disk stays what it is.");
-    expect(english, contains("Inbox"));
     expect(german, isNot(english));
     expect(german.trim(), isNotEmpty);
   });

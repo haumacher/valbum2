@@ -58,7 +58,7 @@ public class Spaces {
 
 		private final Path _root;
 
-		private final SpaceStore.Config _config;
+		private SpaceStore.Config _config;
 
 		private final AuthService _auth;
 
@@ -85,6 +85,15 @@ public class Spaces {
 		/** What the space says about itself, see {@link SpaceStore}. */
 		public SpaceStore.Config getConfig() {
 			return _config;
+		}
+
+		/**
+		 * Settles the inbox of this space, see issue #226 and
+		 * {@link de.haumacher.imageServer.InboxMigration}: called at start-up, before any servlet of
+		 * the space is built.
+		 */
+		public void settleInbox(String inbox) {
+			_config = _config.withInbox(inbox);
 		}
 
 		/** The users, devices and permissions of this space, and nobody else's. */

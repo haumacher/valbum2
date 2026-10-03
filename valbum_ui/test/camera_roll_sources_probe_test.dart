@@ -9,7 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
 
-import 'camera_roll_sources_test.dart' show photo, inbox, serverDataUrl;
+import 'camera_roll_sources_test.dart' show photo, serverDataUrl;
 
 class ProbeHarness {
   final FakePhotoLibrary library = FakePhotoLibrary();
@@ -24,11 +24,15 @@ class ProbeHarness {
   String? refuse;
 
   ProbeHarness() {
-    store.cameraRoll =
-        const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+    store.cameraRoll = const CameraRollConfig(enabled: true).toJson();
     var client = VAlbumClient(
       dataUrl: serverDataUrl,
       httpClient: MockClient((request) async {
+        // Where the inbox is, as `?type=auth` names it (issue #226).
+        if (request.url.queryParameters["type"] == "auth") {
+          return http.Response(
+              '{"mode":"writes","role":"admin","inbox":"${"Inbox"}"}', 200);
+        }
         if (request.method == "POST") {
           if (!everythingPresent) return http.Response('{"present":[]}', 200);
           var asked = jsonDecode(request.body)["hashes"] as List;
@@ -48,21 +52,28 @@ class ProbeHarness {
         return http.Response("", 200);
       }),
     );
-    sync = CameraRollSync(store: store, library: library, clientOf: () => client);
+    sync = CameraRollSync(
+        callerOf: () async => CallerInfo(role: roleMember, inbox: "Inbox"),
+        store: store,
+        library: library,
+        clientOf: () => client);
   }
 
   List<String> get uploadedNames => [
         for (var body in uploads)
-          for (var m in RegExp('filename="([^"]+)"').allMatches(body)) m.group(1)!
+          for (var m in RegExp('filename="([^"]+)"').allMatches(body))
+            m.group(1)!
       ];
 }
 
 void main() {
-  test('a photo the server already holds advances its album\'s mark without '
+  test(
+      'a photo the server already holds advances its album\'s mark without '
       'an upload', () async {
     var h = ProbeHarness()..everythingPresent = true;
     addTearDown(() => h.sync.dispose());
-    var cam = h.library.addAlbum("Camera", [photo("cam.jpg", 1)], id: "cam", camera: true);
+    var cam = h.library
+        .addAlbum("Camera", [photo("cam.jpg", 1)], id: "cam", camera: true);
     await h.sync.load();
     var seen = <CameraRollStatus>[];
     h.sync.addListener(() => seen.add(h.sync.status));
@@ -77,21 +88,25 @@ void main() {
     expect(seen.map((s) => s.lastPresent), contains(1));
   });
 
-  test('a refused upload in the second album keeps that album\'s mark and '
+  test(
+      'a refused upload in the second album keeps that album\'s mark and '
       'the first album\'s progress', () async {
     var h = ProbeHarness()..refuse = "wa.jpg";
     addTearDown(() => h.sync.dispose());
-    var cam = h.library.addAlbum("Camera", [photo("cam.jpg", 1)], id: "cam", camera: true);
+    var cam = h.library
+        .addAlbum("Camera", [photo("cam.jpg", 1)], id: "cam", camera: true);
     var wa = h.library.addAlbum("WhatsApp", [photo("wa.jpg", 2)], id: "wa");
     await h.sync.load();
-    await h.sync.chooseSources([cam.id, wa.id], albums: await h.library.albums());
+    await h.sync
+        .chooseSources([cam.id, wa.id], albums: await h.library.albums());
     await pumpEventQueue();
     await h.sync.syncNow();
     expect(h.uploadedNames, ["cam.jpg"]);
     expect(h.sync.config.markOf("cam").since, photo("cam.jpg", 1).takenAt);
     expect(h.sync.config.markOf("wa"), SourceMark.beginning,
         reason: "nothing of the refused batch was accepted");
-    expect(h.sync.status.phase, anyOf(CameraRollPhase.failed, CameraRollPhase.waiting));
+    expect(h.sync.status.phase,
+        anyOf(CameraRollPhase.failed, CameraRollPhase.waiting));
     expect(h.sync.status.message, contains("disk is full"));
     // The retry scans only what is still open: the refused album from the
     // beginning, the camera from its mark.

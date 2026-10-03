@@ -21,7 +21,8 @@ const List<String> inbox = ["Inbox"];
 
 /// A store holding the given camera-roll configuration.
 InMemorySettingsStore storeWith(CameraRollConfig config) {
-  var store = InMemorySettingsStore("http://server/valbum/", "token-42", "Phone");
+  var store =
+      InMemorySettingsStore("http://server/valbum/", "token-42", "Phone");
   store.cameraRoll = config.toJson();
   return store;
 }
@@ -60,7 +61,7 @@ Future<void> pumpSection(WidgetTester tester, CameraRollSync sync) async {
 void main() {
   group('switching the sync on', () {
     test('asks for an unmetered network while Wi-Fi-only is on', () async {
-      var store = storeWith(const CameraRollConfig(inbox: inbox));
+      var store = storeWith(const CameraRollConfig());
       var scheduler = FakeBackgroundScheduler();
       var sync = engine(store, scheduler);
       addTearDown(sync.dispose);
@@ -74,7 +75,7 @@ void main() {
 
     test('asks for any connection while Wi-Fi-only is off', () async {
       var store = storeWith(
-        const CameraRollConfig(wifiOnly: false, inbox: inbox),
+        const CameraRollConfig(wifiOnly: false),
       );
       var scheduler = FakeBackgroundScheduler();
       var sync = engine(store, scheduler);
@@ -91,7 +92,7 @@ void main() {
   group('toggling the Wi-Fi-only switch', () {
     test('re-registers the task while the sync is on', () async {
       var store = storeWith(
-        const CameraRollConfig(enabled: true, inbox: inbox),
+        const CameraRollConfig(enabled: true),
       );
       var scheduler = FakeBackgroundScheduler();
       var sync = engine(store, scheduler);
@@ -117,7 +118,7 @@ void main() {
     });
 
     test('registers nothing while the sync is off', () async {
-      var store = storeWith(const CameraRollConfig(inbox: inbox));
+      var store = storeWith(const CameraRollConfig());
       var scheduler = FakeBackgroundScheduler();
       var sync = engine(store, scheduler);
       addTearDown(sync.dispose);
@@ -135,7 +136,7 @@ void main() {
 
     test('says so when the plugin refuses, and stores the setting', () async {
       var store = storeWith(
-        const CameraRollConfig(enabled: true, inbox: inbox),
+        const CameraRollConfig(enabled: true),
       );
       var scheduler = FakeBackgroundScheduler(
         problem: StateError("no WorkManager here"),
@@ -166,7 +167,7 @@ void main() {
 
   test('an app start carries the stored setting to the platform', () async {
     var store = storeWith(
-      const CameraRollConfig(enabled: true, wifiOnly: false, inbox: inbox),
+      const CameraRollConfig(enabled: true, wifiOnly: false),
     );
     var scheduler = FakeBackgroundScheduler();
     var sync = engine(store, scheduler);
@@ -182,7 +183,7 @@ void main() {
   testWidgets('the switch on the settings screen changes the constraint',
       (tester) async {
     var store = storeWith(
-      const CameraRollConfig(enabled: true, inbox: inbox),
+      const CameraRollConfig(enabled: true),
     );
     var scheduler = FakeBackgroundScheduler();
     var library = FakePhotoLibrary();

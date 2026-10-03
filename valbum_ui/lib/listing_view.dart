@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'about.dart';
 import 'album_date.dart';
+import 'album_view.dart' show keyedMenuItem;
 import 'app.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
@@ -170,6 +171,14 @@ class ListingView extends StatelessWidget {
     var link = ShareSession.of(context);
     var sharedLine = sharedLineIn(context);
     var mayChange = rightsIn(context).mayEdit && link == null;
+    // The inbox of the space is no tile of any listing; it is reached from the
+    // start page, by an icon carrying how much waits there and by the same
+    // entry in the menu -- for whoever may put something in it, which is
+    // whom the server names it to (issue #226).
+    var caller = CallerInfo.maybeOf(context);
+    var inbox = link == null && albumState.path.isEmpty && caller != null && caller.hasInbox
+        ? caller
+        : null;
     return Scaffold(
       // Black like the album pages, so that the way down does not flash from
       // a light page to a dark one, see issue #40.
@@ -190,6 +199,11 @@ class ListingView extends StatelessWidget {
         actions: <Widget>[
           // Unobtrusive while a camera-roll sync runs, nothing otherwise.
           const CameraRollIndicator(),
+          if (inbox != null)
+            InboxButton(
+              count: inbox.inboxCount,
+              onPressed: () => albumState.showPath(inbox.inboxPath),
+            ),
           // No home on the home screen, see issue #40.
           if (albumState.path.isNotEmpty)
             IconButton(
@@ -209,6 +223,13 @@ class ListingView extends StatelessWidget {
               ),
               const PopupMenuDivider(),
             ],
+            if (inbox != null)
+              keyedMenuItem(
+                const Key("open-inbox"),
+                Icons.inbox,
+                l10n.inboxMenuEntry(inbox.inboxCount),
+                (_) => albumState.showPath(inbox.inboxPath),
+              ),
             // Only with `edit`: what the caller may not do is not offered,
             // never offered and then refused, see issue #49.
             if (mayChange)
@@ -232,7 +253,12 @@ class ListingView extends StatelessWidget {
                 (context) =>
                     shareFolderLink(context, albumState.path, self.title),
               ),
-            menuItem(Icons.update, l10n.reload, (_) => albumState.reload()),
+            menuItem(Icons.update, l10n.reload, (_) {
+              albumState.reload();
+              // How much waits in the inbox is part of what the start page
+              // says (issue #226).
+              CallerInfo.refresh(context);
+            }),
             // A visitor of a link has no server of their own to configure.
             if (link == null)
               menuItem(
@@ -394,22 +420,6 @@ class ListingView extends StatelessWidget {
                       ),
                       textAlign: TextAlign.center,
                     ),
-                  // How much is waiting in an inbox (issue #137), in the
-                  // line an album's date stands in -- an inbox has none.
-                  // Only an inbox is counted: everything else answers `0`,
-                  // and so does a server built before the field existed,
-                  // which is why nothing is shown for a count of nothing.
-                  if (folderIsInbox(folder) && folder.imageCount > 0)
-                    Text(
-                      AppLocalizations.of(context)!
-                          .inboxPhotoCount(folder.imageCount),
-                      key: const Key("inbox-count"),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white60,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
                   if (folder.subTitle.isNotEmpty)
                     Text(
                       folder.subTitle,
@@ -440,10 +450,6 @@ class ListingView extends StatelessWidget {
   Widget buildFolderPicture(FolderInfo folder, double width) {
     var indexPicture = folder.indexPicture;
     if (indexPicture == null) {
-      // An inbox says what it is (issues #131, #136): it is undated and it
-      // stands first, and the icon is what makes that read as "this wants
-      // doing" rather than as a folder that lost its date.
-      var inbox = folderIsInbox(folder);
       return Container(
         width: width,
         height: width,
@@ -453,8 +459,7 @@ class ListingView extends StatelessWidget {
         ),
         child: Center(
           child: Icon(
-            inbox ? Icons.inbox : Icons.folder,
-            key: inbox ? const Key("inbox-icon") : null,
+            Icons.folder,
             size: width / 2,
             color: Colors.blue,
           ),
@@ -486,9 +491,7 @@ class ListingView extends StatelessWidget {
     // the entry is a question about the entry itself, so the two are asked
     var link = ShareSession.of(context);
     var mayMove = rightsIn(context).mayEdit && link == null;
-    // An inbox is never handed out: the server refuses `?action=share` on one
-    // with `INBOX_NOT_SHARED`, so the entry is not offered, see issue #135.
-    var mayShareChild = mayShare(context, childPath) && !folderIsInbox(folder);
+    var mayShareChild = mayShare(context, childPath);
     if (!context.mounted || (!mayMove && !mayShareChild)) {
       // Nothing this caller may do here: no menu rather than an empty one.
       return;
@@ -1114,4 +1117,33 @@ class CreateFolderDialogState extends State<CreateFolderDialog> {
 
     Navigator.of(context).pop(info);
   }
+}
+
+/// The inbox of the space on the start page, see issue #226: an icon carrying
+/// a badge with how many photographs wait there for the caller.
+///
+/// The inbox is no tile of any listing; this is how it is opened. No badge
+/// for an empty inbox, `99+` above that many.
+class InboxButton extends StatelessWidget {
+  /// How many photographs wait, see [CallerInfo.inboxCount].
+  final int count;
+
+  /// Opens the inbox.
+  final VoidCallback onPressed;
+
+  const InboxButton({super.key, required this.count, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        key: const Key("inbox-button"),
+        tooltip: AppLocalizations.of(context)!.inboxTooltip(count),
+        onPressed: onPressed,
+        icon: Badge.count(
+          key: const Key("inbox-badge"),
+          count: count,
+          maxCount: 99,
+          isLabelVisible: count > 0,
+          child: const Icon(Icons.inbox),
+        ),
+      );
 }

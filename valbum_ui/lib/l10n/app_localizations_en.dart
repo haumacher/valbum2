@@ -939,11 +939,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get invitationCopied => 'The invitation was copied.';
 
   @override
-  String inboxNotChosen(String name) {
-    return 'No album chosen - new photos go into \'$name\'';
-  }
-
-  @override
   String get cameraRollHeading => 'Camera roll';
 
   @override
@@ -962,9 +957,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get onlyOverWifiExplanation =>
       'New photos wait for a Wi-Fi or a wired connection, so that the upload does not eat into a mobile data plan.';
-
-  @override
-  String get chooseAction => 'Choose...';
 
   @override
   String get syncNow => 'Sync now';
@@ -987,47 +979,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get saveServerFirst =>
-      'Save the server URL first, then choose an album on it.';
-
-  @override
-  String get inboxAlbumTitle => 'Inbox album';
-
-  @override
-  String cannotList(String problem) {
-    return 'Cannot list: $problem';
-  }
-
-  @override
-  String get newAlbumAction => 'New album...';
-
-  @override
-  String get useThisAlbum => 'Use this album';
-
-  @override
-  String get libraryBreadcrumb => 'Library';
-
-  @override
-  String get noFoldersHere => 'No folders here yet - create one below.';
-
-  @override
-  String folderIsAlbum(String title) {
-    return 'This is the album \'$title\'. New photos land here.';
-  }
-
-  @override
-  String get nothingToShow => 'Nothing to show here.';
-
-  @override
   String get newAlbumTitle => 'New album';
-
-  @override
-  String get folderNameLabel => 'Folder name';
-
-  @override
-  String cannotCreateFolder(String problem, String name) {
-    return 'Cannot create \'$name\': $problem';
-  }
 
   @override
   String get backToAlbum => 'Back to the album';
@@ -1575,16 +1527,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get adjustRecordingTimeHelp =>
       'The original recording time stays in the photo; the album keeps its own.';
-
-  @override
-  String get makeThisAnAlbum => 'Make this an album';
-
-  @override
-  String get makeThisAnInbox => 'Make this an inbox';
-
-  @override
-  String get inboxExplanation =>
-      'Photographs waiting to be sorted, shown by the day they were taken.';
 
   @override
   String get dateNone => 'Date: none';
@@ -2225,11 +2167,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String cameraRollInboxGone(String name) {
-    return 'The chosen inbox is gone; using \'$name\'.';
-  }
-
-  @override
   String get cameraRollNoSources => 'Choose the albums to sync.';
 
   @override
@@ -2484,17 +2421,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String appearsInPhotosAs(String name) {
     return 'Appears in photos as $name';
-  }
-
-  @override
-  String inboxPhotoCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count photographs',
-      one: '1 photograph',
-    );
-    return '$_temp0';
   }
 
   @override
@@ -3001,4 +2927,36 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get moveToTrash => 'Move to trash';
+
+  @override
+  String inboxTooltip(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photos waiting',
+      one: '1 photo waiting',
+      zero: 'nothing waiting',
+    );
+    return 'Inbox: $_temp0';
+  }
+
+  @override
+  String inboxMenuEntry(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count waiting',
+      zero: 'nothing waiting',
+    );
+    return 'Inbox ($_temp0)';
+  }
+
+  @override
+  String cameraRollInboxTarget(String name) {
+    return 'New photos go into the inbox of the server: $name.';
+  }
+
+  @override
+  String get noticeNoInbox =>
+      'The server names no inbox for this device. Ask the administrator for the right to add photos.';
 }

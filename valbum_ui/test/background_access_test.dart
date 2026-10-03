@@ -124,7 +124,6 @@ InMemorySettingsStore enabledStore() {
   var store = InMemorySettingsStore("http://server/valbum/", "token", "Phone");
   store.cameraRoll = const CameraRollConfig(
     enabled: true,
-    inbox: ["Inbox"],
   ).toJson();
   return store;
 }
@@ -134,6 +133,11 @@ class FakeServer {
   final List<http.Request> uploads = [];
 
   http.Client get transport => MockClient((request) async {
+        // Where the inbox is, as `?type=auth` names it (issue #226).
+        if (request.url.queryParameters["type"] == "auth") {
+          return http.Response(
+              '{"mode":"writes","role":"admin","inbox":"${"Inbox"}"}', 200);
+        }
         if (request.method == "POST") {
           return http.Response('{"present":[]}', 200);
         }
@@ -154,12 +158,12 @@ Future<BackgroundRunResult> runInBackground(
   var library = backgroundLibrary();
   addTearDown(library.dispose);
   return (await tester.runAsync(() => runBackgroundSync(
-            store: store,
-            library: library,
-            transport: server.transport,
-            connectivity: FakeConnectivity(),
-            clock: () => now,
-          )))!;
+        store: store,
+        library: library,
+        transport: server.transport,
+        connectivity: FakeConnectivity(),
+        clock: () => now,
+      )))!;
 }
 
 /// Pumps the camera-roll section in [locale], showing what [store] recorded.
@@ -169,6 +173,7 @@ Future<void> pumpSection(
   Locale locale = defaultTestLocale,
 }) async {
   var sync = CameraRollSync(
+    callerOf: () async => CallerInfo(role: roleMember, inbox: "Inbox"),
     store: store,
     library: FakePhotoLibrary(),
     clientOf: () => null,
@@ -210,7 +215,8 @@ void main() {
     testWidgets('the app on the screen still asks, the location included',
         (tester) async {
       var platform = FakePlatform()..install();
-      var library = PhotoManagerLibrary(locationGranted: isMediaLocationGranted);
+      var library =
+          PhotoManagerLibrary(locationGranted: isMediaLocationGranted);
 
       expect(await library.requestAccess(), isTrue);
 
@@ -305,7 +311,8 @@ void main() {
         message: javaMessage,
         details: javaStack,
       );
-      var library = PhotoManagerLibrary(locationGranted: isMediaLocationGranted);
+      var library =
+          PhotoManagerLibrary(locationGranted: isMediaLocationGranted);
 
       expect(await library.requestAccess(), isFalse);
 
@@ -419,8 +426,9 @@ void main() {
         );
       }
       // The switches under the region still take their taps.
-      bool wifiOnly() =>
-          tester.widget<SwitchListTile>(find.byKey(cameraRollWifiOnlyKey)).value;
+      bool wifiOnly() => tester
+          .widget<SwitchListTile>(find.byKey(cameraRollWifiOnlyKey))
+          .value;
       var before = wifiOnly();
       await tester.tap(find.byKey(cameraRollWifiOnlyKey));
       await tester.pumpAndSettle();

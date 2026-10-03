@@ -256,23 +256,28 @@ public class TestFolderPicture extends TestCase {
 			hidden.getIndexPicture());
 	}
 
-	/** An inbox is never the picture of a folder for somebody who may not see the inbox. */
-	public void testAnInboxIsNoPictureForAViewer() throws Exception {
+	/** The inbox is never the picture of a folder, for nobody, see issues #135 and #226. */
+	public void testTheInboxIsNobodysFolderPicture() throws Exception {
 		users();
 		image("F/Inbox/a.jpg");
-		sidecar("F/Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\","
+		sidecar("F/Inbox", "[\"AlbumInfo\",{\"title\":\"Inbox\","
 			+ "\"indexPicture\":{\"image\":\"a.jpg\",\"scale\":1.0},"
 			+ "\"parts\":[[\"ImagePart\",{\"name\":\"a.jpg\",\"width\":4,\"height\":3}]]}]");
 		sidecar("F", "[\"ListingInfo\",{\"title\":\"F\",\"index\":\"Inbox\"}]");
 
-		ImageServlet servlet = servlet(AuthMode.WRITES);
-		assertEquals("Whoever may sort the inbox sees what it holds.",
-			"Inbox/a.jpg", byName(listing(servlet, "/", ALICE_TOKEN), "F").getIndexPicture().getImage());
-
-		FolderInfo hidden = byName(listing(servlet, "/", DAVE_TOKEN), "F");
-		assertEquals("The folder itself is no inbox and stays.", "F", hidden.getName());
-		assertNull("A photograph nobody has sorted yet is nobody's folder picture, see issue #135.",
-			hidden.getIndexPicture());
+		ImageServlet servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base), "",
+			new de.haumacher.imageServer.auth.SpaceStore.Config("", "none", "", "off", "", "F/Inbox"));
+		servlet.init();
+		try {
+			FolderInfo editor = byName(listing(servlet, "/", ALICE_TOKEN), "F");
+			assertEquals("The folder itself is no inbox and stays.", "F", editor.getName());
+			assertNull("A photograph nobody has sorted yet is no folder picture, not even for an editor.",
+				editor.getIndexPicture());
+			assertNull(byName(listing(servlet, "/", DAVE_TOKEN), "F").getIndexPicture());
+			assertTrue("The inbox is no tile of F either.", listing(servlet, "/F/", ALICE_TOKEN).getFolders().isEmpty());
+		} finally {
+			servlet.destroy();
+		}
 	}
 
 	// --- The round trip. ---

@@ -54,6 +54,12 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getProofMethods() */
 	private static final String PROOF_METHODS__PROP = "proofMethods";
 
+	/** @see #getInbox() */
+	private static final String INBOX__PROP = "inbox";
+
+	/** @see #getInboxCount() */
+	private static final String INBOX_COUNT__PROP = "inboxCount";
+
 	private String _mode = "";
 
 	private String _deviceName = "";
@@ -79,6 +85,10 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private de.haumacher.imageServer.shared.model.InvitationInfo _invitation = null;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> _proofMethods = new java.util.ArrayList<>();
+
+	private String _inbox = "";
+
+	private int _inboxCount = 0;
 
 	/**
 	 * Creates a {@link AuthInfo} instance.
@@ -445,6 +455,61 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_proofMethods.remove(value);
 	}
 
+	/**
+	 * Where the inbox of this space is, see issue #226: the path of its folder relative to the data
+	 * root of the space (<code>Inbox</code> by default, what <code>space.json</code>
+	 * <code>inbox</code> names), so that the app never guesses and never chooses one.
+	 *
+	 * <p>
+	 * Answered to a signed-in member who may contribute to it (or edit it), and to everybody under
+	 * <code>--auth off</code>; empty for a share link, an anonymous caller and a member who may only
+	 * look. The folder need not exist yet: it is created by the first upload into it.
+	 * </p>
+	 */
+	public final String getInbox() {
+		return _inbox;
+	}
+
+	/**
+	 * @see #getInbox()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setInbox(String value) {
+		internalSetInbox(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getInbox()} without chain call utility. */
+	protected final void internalSetInbox(String value) {
+		_inbox = value;
+	}
+
+	/**
+	 * How many photographs wait in the {@link #getInbox()}, see issue #226: the badge on the start page's
+	 * inbox icon.
+	 *
+	 * <p>
+	 * The photographs the caller would see there — all of them for an editor, their own
+	 * contributions for a member who may only contribute (issue #135) — without those rated as trash
+	 * (−2), which the inbox screen hides. <code>0</code> wherever {@link #getInbox()} is empty.
+	 * </p>
+	 */
+	public final int getInboxCount() {
+		return _inboxCount;
+	}
+
+	/**
+	 * @see #getInboxCount()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setInboxCount(int value) {
+		internalSetInboxCount(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getInboxCount()} without chain call utility. */
+	protected final void internalSetInboxCount(int value) {
+		_inboxCount = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.AuthInfo readAuthInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.AuthInfo result = new de.haumacher.imageServer.shared.model.AuthInfo();
@@ -494,6 +559,10 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(INBOX__PROP);
+		out.value(getInbox());
+		out.name(INBOX_COUNT__PROP);
+		out.value(getInboxCount());
 	}
 
 	@Override
@@ -519,6 +588,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
+			case INBOX__PROP: setInbox(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case INBOX_COUNT__PROP: setInboxCount(in.nextInt()); break;
 			default: super.readField(in, field);
 		}
 	}

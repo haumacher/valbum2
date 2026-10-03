@@ -45,7 +45,6 @@ InMemorySettingsStore enabledStore({
   String? token = deviceToken,
   CameraRollConfig config = const CameraRollConfig(
     enabled: true,
-    inbox: inbox,
   ),
 }) {
   var store = InMemorySettingsStore(url, token, token == null ? null : "Phone");
@@ -80,6 +79,9 @@ class FakeServer {
   /// The URLs of the uploads, in order.
   final List<String> uploadUrls = [];
 
+  /// What `?type=auth` answers: who asks, and where the inbox is (#226).
+  String auth = '{"mode":"writes","role":"admin","inbox":"Inbox"}';
+
   /// The transport to hand to the code under test.
   http.Client get transport => MockClient((request) async {
         requests.add(request);
@@ -97,6 +99,9 @@ class FakeServer {
           uploads.add(request.body);
           uploadUrls.add(request.url.toString());
           return upload(request);
+        }
+        if (request.url.query == "type=auth") {
+          return http.Response(auth, 200);
         }
         return http.Response("", 404);
       });
@@ -222,7 +227,7 @@ void main() {
 
     test('does nothing and records nothing while the sync is off', () async {
       var store = enabledStore(
-        config: const CameraRollConfig(inbox: inbox),
+        config: const CameraRollConfig(),
       );
       var server = FakeServer();
       var library = FakePhotoLibrary(items: [photo("a.jpg", 1)]);
@@ -287,20 +292,16 @@ void main() {
       expect(server.requests, isEmpty);
     });
 
-    test(
-        'creates the inbox album where none was chosen, as a foreground run '
-        'does', () async {
-      // The background run is the foreground run (issue #54): the very same
-      // engine creates the album and stores where the server put it, and this
-      // test is here so that it stays that way.
+    test('uploads into the inbox the server names, as a foreground run does',
+        () async {
+      // The background run is the foreground run: it asks `?type=auth` where
+      // the inbox is (issue #226) and creates nothing, and this test is here
+      // so that it stays that way.
       var store = enabledStore(
         config: const CameraRollConfig(enabled: true),
       );
       var server = FakeServer()
-        ..create = (_) => http.Response(
-              '{"path":"2026/Inbox"}',
-              200,
-            );
+        ..auth = '{"mode":"writes","inbox":"2026/Inbox"}';
       var library = FakePhotoLibrary(items: [photo("a.jpg", 1)]);
       addTearDown(library.dispose);
 
@@ -312,8 +313,7 @@ void main() {
       );
 
       expect(result.ok, isTrue);
-      expect(server.created, ["http://server/valbum/data/Inbox/"]);
-      expect((await store.loadCameraRollConfig()).inbox, ["2026", "Inbox"]);
+      expect(server.created, isEmpty);
       expect(server.uploadUrls, ["http://server/valbum/data/2026/Inbox/"]);
     });
 
@@ -360,6 +360,8 @@ void main() {
 
       // The very same store, read by the engine the app builds when it opens.
       var foreground = CameraRollSync(
+        callerOf: () async =>
+            CallerInfo(role: roleMember, inbox: inbox.join("/")),
         store: store,
         library: library,
         clientOf: () => VAlbumClient(
@@ -395,6 +397,8 @@ void main() {
       );
 
       var foreground = CameraRollSync(
+        callerOf: () async =>
+            CallerInfo(role: roleMember, inbox: inbox.join("/")),
         store: store,
         library: library,
         clientOf: () => null,
@@ -414,6 +418,8 @@ void main() {
       FakePhotoLibrary? library,
     }) =>
         CameraRollSync(
+          callerOf: () async =>
+              CallerInfo(role: roleMember, inbox: inbox.join("/")),
           store: store,
           library: library ?? FakePhotoLibrary(),
           clientOf: () => null,
@@ -424,7 +430,7 @@ void main() {
 
     test('is asked to schedule when the sync is switched on', () async {
       var store = enabledStore(
-        config: const CameraRollConfig(inbox: inbox),
+        config: const CameraRollConfig(),
       );
       var scheduler = FakeBackgroundScheduler();
       var sync = engine(store, scheduler);
@@ -467,7 +473,7 @@ void main() {
 
     test('is not asked at a start with a switched-off config', () async {
       var store = enabledStore(
-        config: const CameraRollConfig(inbox: inbox),
+        config: const CameraRollConfig(),
       );
       var scheduler = FakeBackgroundScheduler();
       var sync = engine(store, scheduler);
@@ -498,7 +504,7 @@ void main() {
 
     test('says so when the plugin refuses, and never throws', () async {
       var store = enabledStore(
-        config: const CameraRollConfig(inbox: inbox),
+        config: const CameraRollConfig(),
       );
       var scheduler = FakeBackgroundScheduler(
         problem: StateError("no WorkManager here"),
@@ -533,6 +539,8 @@ void main() {
         BackgroundRunRecord(at: now, ok: true, stored: 2, present: 3),
       );
       var sync = CameraRollSync(
+        callerOf: () async =>
+            CallerInfo(role: roleMember, inbox: inbox.join("/")),
         store: store,
         library: FakePhotoLibrary(),
         clientOf: () => null,
@@ -558,6 +566,8 @@ void main() {
         BackgroundRunRecord.failed(now, "The server cannot be reached."),
       );
       var sync = CameraRollSync(
+        callerOf: () async =>
+            CallerInfo(role: roleMember, inbox: inbox.join("/")),
         store: store,
         library: FakePhotoLibrary(),
         clientOf: () => null,
@@ -581,6 +591,8 @@ void main() {
         (tester) async {
       var store = enabledStore();
       var sync = CameraRollSync(
+        callerOf: () async =>
+            CallerInfo(role: roleMember, inbox: inbox.join("/")),
         store: store,
         library: FakePhotoLibrary(),
         clientOf: () => null,
@@ -602,9 +614,11 @@ void main() {
 
     testWidgets('shows a scheduler that refused', (tester) async {
       var store = enabledStore(
-        config: const CameraRollConfig(inbox: inbox),
+        config: const CameraRollConfig(),
       );
       var sync = CameraRollSync(
+        callerOf: () async =>
+            CallerInfo(role: roleMember, inbox: inbox.join("/")),
         store: store,
         library: FakePhotoLibrary(),
         clientOf: () => null,

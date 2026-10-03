@@ -248,23 +248,23 @@ public class ResourceCache {
 	 * </p>
 	 *
 	 * <p>
-	 * An inbox stands first whatever else lies there: it is undated (issue #131) and it is what
-	 * needs doing, so it is not sorted in among the albums but in front of them, ties by name.
-	 * </p>
-	 *
-	 * <p>
 	 * A folder without a date sorts by name exactly as every folder did before issue #48. The date
 	 * is the cheap one — a sidecar date or a date in the folder name — so this order costs a
 	 * listing nothing but the sidecars it reads anyway, see {@link FolderInfo#getEffectiveDate()}.
 	 * </p>
 	 */
 	public static final Comparator<FolderInfo> BY_DATE =
-		Comparator.comparingInt((FolderInfo folder) -> folder.getKind() == FolderKind.INBOX ? 0 : 1)
-			.thenComparing(Comparator.comparingLong(FolderInfo::getEffectiveDate).reversed())
+		Comparator.comparingLong((FolderInfo folder) -> folder.getEffectiveDate()).reversed()
 			.thenComparing(FolderInfo::getName, String.CASE_INSENSITIVE_ORDER);
 
 	public Resource lookup(PathInfo pathInfo) {
 		_loader.processEvents(_cache);
+		if (!pathInfo.toFile().exists() && Inboxes.isInbox(pathInfo.toFile())) {
+			// The inbox of the space before its first upload, see issue #226: an empty inbox,
+			// answered without writing and without caching anything -- the first upload creates
+			// the folder.
+			return Loader.createGenericAlbumInfo(pathInfo);
+		}
 		if (pathInfo.toFile().isDirectory()) {
 			return _cache.getUnchecked(pathInfo);
 		} else {
@@ -368,7 +368,9 @@ public class ResourceCache {
 				LOG.log(Level.WARNING, "Cannot register directory watcher on '" + dir + "'.", ex);
 			}
 
-			if (resource instanceof AlbumInfo || images.length > 0) {
+			if (resource instanceof AlbumInfo || images.length > 0
+				// The inbox is an album however empty it is, see issue #226.
+				|| (resource == null && Inboxes.isInbox(dir))) {
 				AlbumInfo album = resource == null ? createGenericAlbumInfo(path) : (AlbumInfo) resource;
 
 				loadAlbum(album, dir, images, _analysis, zone());
@@ -392,6 +394,11 @@ public class ResourceCache {
 			if (indexFile.exists()) {
 				try {
 					resource = loadJSON(indexFile, FolderResource::readFolderResource);
+					if (resource instanceof AlbumInfo) {
+						// Where the folder lies says whether it is the inbox, never the sidecar: an
+						// album an older build flagged as one reads as an album, see issue #226.
+						((AlbumInfo) resource).setKind(Inboxes.kindOf(dir));
+					}
 					dropZeroLocations(resource);
 					dropIgnoredParts(resource);
 				} catch (IOException ex) {
@@ -499,6 +506,11 @@ public class ResourceCache {
 
 			List<FolderInfo> folders = new ArrayList<>(dirs.length);
 			for (File folder : dirs) {
+				if (Inboxes.isInbox(folder)) {
+					// The inbox is never a tile of a listing, for nobody: it is reached through
+					// ?type=auth, see issue #226.
+					continue;
+				}
 				folders.add(loadFolderInfo(folder));
 			}
 			folders.sort(ResourceCache.BY_DATE);
@@ -733,7 +745,7 @@ public class ResourceCache {
 		}
 
 		static AlbumInfo createGenericAlbumInfo(PathInfo pathInfo) {
-			AlbumInfo album = AlbumInfo.create();
+			AlbumInfo album = AlbumInfo.create().setKind(Inboxes.kindOf(pathInfo.toFile()));
 			String dirName = pathInfo.getName();
 
 			Pattern prefixPattern = Pattern.compile("[-_\\.\\s0-9]*");

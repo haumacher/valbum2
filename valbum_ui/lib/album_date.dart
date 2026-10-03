@@ -109,24 +109,17 @@ DateTime? folderNameDate(String folderName) {
 int _daysInMonth(int year, int month) =>
     DateTime(year, month + 1).difference(DateTime(year, month)).inDays;
 
-/// The folders of a listing in the order they are shown: the inboxes first,
-/// then the newest first, the undated behind them by name.
+/// The folders of a listing in the order they are shown: the newest first,
+/// the undated behind them by name.
 ///
 /// A copy, never the list it was given: the listing the app holds is what the
-/// server said, and the order is how it is read out.
-///
-/// An inbox stands **first** (issues #131, #135): it is undated, so the date
-/// order would drop it to the end — and an inbox is exactly the entry that
-/// wants doing. The server sorts its listing the same way
-/// (`ResourceCache.BY_DATE`), so this mirrors it for an older server and for
-/// the offline cache, as the date order below does.
+/// server said, and the order is how it is read out. The server sorts its
+/// listing the same way (`ResourceCache.BY_DATE`), so this mirrors it for an
+/// older server and for the offline cache. The inbox of the space is no entry
+/// of any listing (issue #226).
 List<FolderInfo> sortedFolders(List<FolderInfo> folders) {
   var result = List.of(folders);
   result.sort((a, b) {
-    var inbox = _inboxFirst(a).compareTo(_inboxFirst(b));
-    if (inbox != 0) {
-      return inbox;
-    }
     if (a.effectiveDate != b.effectiveDate) {
       // Newest first; an undated folder (0) therefore falls to the end.
       return b.effectiveDate.compareTo(a.effectiveDate);
@@ -135,16 +128,6 @@ List<FolderInfo> sortedFolders(List<FolderInfo> folders) {
   });
   return result;
 }
-
-/// The sort rank of an entry's kind: an inbox `0`, everything else `1`.
-int _inboxFirst(FolderInfo folder) => folder.kind == FolderKind.inbox ? 0 : 1;
-
-/// Whether a listing entry is an inbox, see issues #131 and #135.
-///
-/// [FolderKind.album] is what an entry from a server that does not know the
-/// field carries, so an older listing holds no inbox at all — which is what
-/// such a server answers.
-bool folderIsInbox(FolderInfo folder) => folder.kind == FolderKind.inbox;
 
 /// The date of an album as the app writes it out for a reader, `null` when
 /// nothing says when the album happened, see issue #107.

@@ -27,11 +27,16 @@ class Harness {
   Harness(List<PhotoItem> items, NetworkKind kind)
       : library = FakePhotoLibrary(items: items),
         network = FakeConnectivity(kind) {
-    store.cameraRoll =
-        const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+    store.cameraRoll = const CameraRollConfig(enabled: true).toJson();
     var client = VAlbumClient(
       dataUrl: "http://server/valbum/data",
       httpClient: MockClient((request) async {
+        // Where the inbox is, as `?type=auth` names it (issue #226).
+        if (request.url.queryParameters["type"] == "auth") {
+          return http.Response(
+              '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+              200);
+        }
         if (request.method == "POST") {
           return http.Response('{"present":[]}', 200);
         }
@@ -40,6 +45,8 @@ class Harness {
       }),
     );
     sync = CameraRollSync(
+      callerOf: () async =>
+          CallerInfo(role: roleMember, inbox: inbox.join("/")),
       store: store,
       library: library,
       clientOf: () => client,
@@ -57,7 +64,8 @@ class Harness {
 }
 
 void main() {
-  test('lifting the limit on mobile data syncs at once, and the progress '
+  test(
+      'lifting the limit on mobile data syncs at once, and the progress '
       'survives putting it back', () async {
     var harness = Harness([photo("a.jpg", 1)], NetworkKind.mobile);
     addTearDown(harness.dispose);
@@ -72,7 +80,7 @@ void main() {
     expect(harness.uploads, hasLength(1));
     var config = await harness.store.loadCameraRollConfig();
     expect(config.wifiOnly, isFalse);
-    expect(config.inbox, inbox, reason: "the other settings are untouched");
+    expect(config.sources, isNull, reason: "the other settings are untouched");
     expect(config.since, isNotNull, reason: "the progress is recorded");
 
     // On again, still on mobile data: a new photo waits, the old progress

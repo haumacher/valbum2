@@ -264,6 +264,12 @@ public final class AlbumDate {
 		}
 		if (resource instanceof AlbumInfo) {
 			AlbumInfo album = (AlbumInfo) resource;
+			if (album.getKind() != de.haumacher.imageServer.shared.model.AlbumKind.ALBUM) {
+				// Whether a folder is the inbox is decided by where it lies (space.json), never by
+				// what its sidecar says, see issue #226: an older sidecar loses the word here.
+				album.setKind(de.haumacher.imageServer.shared.model.AlbumKind.ALBUM);
+				changed = true;
+			}
 			if (album.getEffectiveDate() != 0L) {
 				album.setEffectiveDate(0L);
 				changed = true;

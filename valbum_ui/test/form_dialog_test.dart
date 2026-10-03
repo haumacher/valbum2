@@ -62,8 +62,8 @@ Future<Opened> openForm(
         body: Center(
           child: TextButton(
             onPressed: () async {
-              opened.answer =
-                  await showFormDialog<Object>(context: context, builder: dialog);
+              opened.answer = await showFormDialog<Object>(
+                  context: context, builder: dialog);
             },
             child: const Text("open"),
           ),
@@ -83,9 +83,8 @@ Future<void> reachAndTap(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
   // Above the keyboard: a button behind it is one nobody can press.
   var view = tester.view;
-  var visibleBottom =
-      view.physicalSize.height / view.devicePixelRatio -
-          view.viewInsets.bottom / view.devicePixelRatio;
+  var visibleBottom = view.physicalSize.height / view.devicePixelRatio -
+      view.viewInsets.bottom / view.devicePixelRatio;
   expect(tester.getRect(target).bottom, lessThanOrEqualTo(visibleBottom),
       reason: "the button is behind the keyboard");
   await tester.tap(target);
@@ -144,8 +143,7 @@ List<FormCase> formCases(List<http.Request> requests) => [
         fill: (tester) =>
             typeInto(tester, find.byType(TextFormField).first, "Trip"),
         primary: () => find.text(en.create),
-        expectAnswer: (answer) =>
-            expect((answer as AlbumInfo).title, "Trip"),
+        expectAnswer: (answer) => expect((answer as AlbumInfo).title, "Trip"),
       ),
       FormCase(
         name: "CreateFolderDialog",
@@ -153,8 +151,7 @@ List<FormCase> formCases(List<http.Request> requests) => [
         fill: (tester) =>
             typeInto(tester, find.byType(TextFormField).first, "2026"),
         primary: () => find.text(en.create),
-        expectAnswer: (answer) =>
-            expect((answer as ListingInfo).path, "2026"),
+        expectAnswer: (answer) => expect((answer as ListingInfo).path, "2026"),
       ),
       FormCase(
         name: "FolderPropertiesDialog",
@@ -170,7 +167,6 @@ List<FormCase> formCases(List<http.Request> requests) => [
         name: "AlbumPropertiesDialog",
         dialog: (_) => const AlbumPropertiesDialog(
           AlbumProperties(title: "Old", subTitle: ""),
-          mayChangeKind: true,
         ),
         fill: (tester) => typeInto(tester, find.byType(TextField).first, "New"),
         primary: () => find.text(en.apply),
@@ -210,11 +206,11 @@ List<FormCase> formCases(List<http.Request> requests) => [
           );
           return AdjustRecordingTimeDialog(reference: image, images: [image]);
         },
-        fill: (tester) => typeInto(tester,
-            find.byKey(const Key("adjust-time")), "2026-03-01 13:00:00"),
+        fill: (tester) => typeInto(tester, find.byKey(const Key("adjust-time")),
+            "2026-03-01 13:00:00"),
         primary: () => find.text(en.apply),
-        expectAnswer: (answer) => expect(
-            (answer as ShiftToTime).corrected, DateTime(2026, 3, 1, 13)),
+        expectAnswer: (answer) =>
+            expect((answer as ShiftToTime).corrected, DateTime(2026, 3, 1, 13)),
       ),
       FormCase(
         name: "PersonNameDialog",
@@ -225,7 +221,8 @@ List<FormCase> formCases(List<http.Request> requests) => [
       ),
       FormCase(
         name: "PersonChooser",
-        dialog: (_) => PersonChooser(people: [berta, Person(id: "p2", name: "Carl")]),
+        dialog: (_) =>
+            PersonChooser(people: [berta, Person(id: "p2", name: "Carl")]),
         fill: (tester) => typeInto(tester, find.byType(TextField), "ber"),
         primary: () => find.text("Berta"),
         expectAnswer: (answer) => expect((answer as Person).id, "p1"),
@@ -243,43 +240,9 @@ List<FormCase> formCases(List<http.Request> requests) => [
             expect((answer as PickedTarget).path, isEmpty),
       ),
       FormCase(
-        name: "InboxPickerDialog",
-        dialog: (_) => InboxPickerDialog(
-          client: clientReturning(
-            '["AlbumInfo",{"path":"Inbox","title":"Inbox","parts":[]}]',
-          ),
-          initialPath: const ["Inbox"],
-        ),
-        primary: () => find.text(en.useThisAlbum),
-        expectAnswer: (answer) => expect(answer, ["Inbox"]),
-      ),
-      FormCase(
-        name: "the inbox picker's new album name (_NameDialog)",
-        dialog: (_) => InboxPickerDialog(
-          client: clientReturning(
-            '["AlbumInfo",{"path":"Inbox","title":"Inbox","parts":[]}]',
-            requests: requests,
-          ),
-          initialPath: const ["Inbox"],
-        ),
-        fill: (tester) async {
-          await tester.tap(find.text(en.newAlbumAction));
-          await tester.pumpAndSettle();
-          await typeInto(tester, find.widgetWithText(TextField, en.folderNameLabel),
-              "Holiday");
-        },
-        primary: () => find.widgetWithText(FilledButton, en.create),
-        nested: true,
-        // The picker stays and goes into the album it made.
-        afterPrimary: (tester) => expect(
-            requests.where((r) => r.method == "PUT").single.url.path,
-            "/valbum/data/Inbox/Holiday"),
-      ),
-      FormCase(
         name: "PermissionDialog",
         dialog: (_) => PermissionDialog(
-          client: clientReturning('{"users":[]}',
-              requests: requests),
+          client: clientReturning('{"users":[]}', requests: requests),
           user: UserEntry(name: "bob", role: "view", clearance: "public"),
         ),
         primary: () => find.byKey(const Key("permission-save")),
@@ -292,8 +255,8 @@ List<FormCase> formCases(List<http.Request> requests) => [
               '["InvitationCreated",{"id":"i1","url":"http://s/i/t/"}]',
               requests: requests),
         ),
-        fill: (tester) => typeInto(
-            tester, find.byKey(const Key("invite-recipient")), "Aunt"),
+        fill: (tester) =>
+            typeInto(tester, find.byKey(const Key("invite-recipient")), "Aunt"),
         primary: () => find.byKey(const Key("invite-create")),
         // It stays and shows the address, which is made only once.
         afterPrimary: (tester) =>
@@ -353,8 +316,10 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(opened.closed, isFalse);
-        expect(find.byType(Dialog).evaluate().isNotEmpty ||
-            find.byType(AlertDialog).evaluate().isNotEmpty, isTrue);
+        expect(
+            find.byType(Dialog).evaluate().isNotEmpty ||
+                find.byType(AlertDialog).evaluate().isNotEmpty,
+            isTrue);
       });
 
       testWidgets('$name: Escape cancels', (tester) async {
@@ -385,8 +350,8 @@ void main() {
     testWidgets('"Album erstellen" is reached above the keyboard and answers',
         (tester) async {
       phoneWithKeyboard(tester);
-      var opened = await openForm(
-          tester, (_) => const CreateAlbumDialog(), locale: german);
+      var opened = await openForm(tester, (_) => const CreateAlbumDialog(),
+          locale: german);
       await typeInto(tester, find.byType(TextFormField).first, "Urlaub");
 
       // The button row fits the dialog's width in German too.
@@ -399,8 +364,8 @@ void main() {
     testWidgets('"Ordner erstellen" is reached above the keyboard and answers',
         (tester) async {
       phoneWithKeyboard(tester);
-      var opened = await openForm(
-          tester, (_) => const CreateFolderDialog(), locale: german);
+      var opened = await openForm(tester, (_) => const CreateFolderDialog(),
+          locale: german);
       await typeInto(tester, find.byType(TextFormField).first, "Reisen");
 
       await reachAndTap(tester, find.text(de.create));
@@ -430,8 +395,8 @@ void main() {
       return DateTime(now.year, now.month, now.day);
     }
 
-    Future<AlbumInfo> createWithPickedDay(
-        WidgetTester tester, DateTime day, {required bool typed}) async {
+    Future<AlbumInfo> createWithPickedDay(WidgetTester tester, DateTime day,
+        {required bool typed}) async {
       phoneWithKeyboard(tester, keyboard: 0);
       tester.view.physicalSize = const Size(360, 800);
       var opened = await openForm(tester, (_) => const CreateAlbumDialog());

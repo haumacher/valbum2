@@ -83,6 +83,11 @@ public final class FolderCover {
 			return null;
 		}
 		File child = new File(folder, name);
+		if (Inboxes.isInbox(child)) {
+			// The inbox is never shown as a tile, and so never as the picture of one: its
+			// photographs are nobody's choice yet, see issue #226.
+			return null;
+		}
 		if (!child.isDirectory()) {
 			// The chosen entry is gone: no picture, and the choice is left standing.
 			return null;
@@ -165,34 +170,5 @@ public final class FolderCover {
 	public static String imageName(String image) {
 		int slash = image.lastIndexOf('/');
 		return slash < 0 ? image : image.substring(slash + 1);
-	}
-
-	/**
-	 * Whether the photograph the given cover shows lies in — or below — an inbox.
-	 *
-	 * <p>
-	 * A cover reaching into an inbox is only ever answered to a caller that may see that inbox,
-	 * see issue #135: the picture a folder is shown with must not be a photograph nobody has
-	 * looked at yet. Every folder on the way is asked, because a folder may have chosen a child
-	 * that chose the inbox.
-	 * </p>
-	 *
-	 * @param entry
-	 *        Where the tile's own folder lies.
-	 * @param image
-	 *        The {@link ThumbnailInfo#getImage() image} of its cover.
-	 */
-	public static boolean throughInbox(PathInfo entry, String image) {
-		PathInfo album = albumOf(entry, image);
-		PathInfo path = album;
-		while (true) {
-			if (Inboxes.isInbox(path.toFile())) {
-				return true;
-			}
-			if (path.equals(entry) || path.isRoot()) {
-				return false;
-			}
-			path = path.parent();
-		}
 	}
 }

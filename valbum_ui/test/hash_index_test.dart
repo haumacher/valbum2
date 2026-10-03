@@ -85,7 +85,6 @@ void main() {
         items: [photo("a.jpg", 1)],
         config: const CameraRollConfig(
           enabled: true,
-          inbox: inbox,
           syncWhileIndexing: true,
         ),
       );
@@ -191,7 +190,8 @@ void main() {
 
       expect(summary.present, 1);
       expect(summary.presentIn, isEmpty);
-      expect(summary.messageOf(testL10n), isNot(contains("Already in the library")));
+      expect(summary.messageOf(testL10n),
+          isNot(contains("Already in the library")));
     });
 
     test('the sync names where it is, once the run is over', () async {
@@ -207,7 +207,8 @@ void main() {
       expect(status.lastPresent, 1);
       expect(status.lastPresentIn, ["2020/Trip/a.jpg"]);
       expect(cameraRollLine(status, testL10n), contains("1 already there"));
-      expect(cameraRollLine(status, testL10n), contains("Already in the library: 2020/Trip/a.jpg."));
+      expect(cameraRollLine(status, testL10n),
+          contains("Already in the library: 2020/Trip/a.jpg."));
     });
   });
 

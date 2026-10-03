@@ -225,11 +225,8 @@ public class TestPersonalLinksProbe extends PersonalLinkTestCase {
 	}
 
 	public void testAnInboxIsNoPersonalLinkEither() throws Exception {
-		Path inbox = _base.resolve("Box");
-		Files.createDirectories(inbox);
-		Files.write(inbox.resolve("index.json"),
-			"[\"AlbumInfo\",{\"title\":\"Box\",\"kind\":\"INBOX\",\"parts\":[]}]".getBytes(StandardCharsets.UTF_8));
-		FakeResponse response = sharePersonal("/Box/", SharingFixture.ALICE, email("Tante Petra", PETRA));
+		// The inbox of the space, before or after its first upload, see issue #226.
+		FakeResponse response = sharePersonal("/Inbox/", SharingFixture.ALICE, email("Tante Petra", PETRA));
 		assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status());
 		assertEquals(Inboxes.INBOX_NOT_SHARED, errorMessage(response));
 		assertTrue("Nobody was entered for a link that was not made.",

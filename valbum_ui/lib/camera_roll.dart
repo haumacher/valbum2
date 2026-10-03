@@ -1,5 +1,6 @@
-/// Camera-roll sync (issue #30): new photos on the device flow into an inbox
-/// album on the server.
+/// Camera-roll sync (issue #30): new photos on the device flow into the inbox
+/// of the space on the server — the one the server names in `?type=auth`
+/// (issue #226), never one this app chooses.
 ///
 /// The engine is [CameraRollSync]. It is a state machine with exactly one run
 /// at a time:
@@ -35,13 +36,6 @@ import 'photo_library.dart';
 import 'resource.dart';
 import 'notices.dart';
 import 'settings.dart';
-
-/// The name of the album the sync creates when the user chose no inbox.
-///
-/// Created at the root of the caller's *own* space (issue #54); where the root
-/// carries a placement rule the server files it away and says where it landed,
-/// see [VAlbumClient.createAlbum].
-const String defaultInboxName = "Inbox";
 
 /// What a guest is answered instead of a camera-roll sync, see issue #54.
 ///
@@ -139,15 +133,6 @@ class CameraRollConfig {
   /// real money, so the safe answer is the one an app that was updated gets.
   final bool wifiOnly;
 
-  /// The album on the server new photos are uploaded into, empty while none
-  /// was chosen and none was created yet.
-  ///
-  /// A path of folder names relative to the root of the caller's own space, as
-  /// everywhere else in this app, see [VAlbumClient.folderUrl]. Empty is not a
-  /// reason to refuse a run since issue #54: the first run creates
-  /// [defaultInboxName] in the space and stores where the server put it.
-  final List<String> inbox;
-
   /// The taken-at stamp of the newest item that was handled, `null` before the
   /// first run.
   ///
@@ -185,7 +170,6 @@ class CameraRollConfig {
     this.enabled = false,
     this.wifiOnly = true,
     this.syncWhileIndexing = false,
-    this.inbox = const [],
     this.since,
     this.done = const [],
     this.sources,
@@ -194,15 +178,6 @@ class CameraRollConfig {
 
   /// The configuration of an app that was never told to sync anything.
   static const CameraRollConfig disabled = CameraRollConfig();
-
-  /// Whether an inbox album is known, chosen by the user or created by the
-  /// first run.
-  ///
-  /// The root of the library is deliberately not an inbox: a camera roll
-  /// dropped into the root would fill the listing with loose files — and in a
-  /// guest's root the server refuses a photo outright, see
-  /// [guestNoSpaceNotice].
-  bool get hasInbox => inbox.isNotEmpty;
 
   /// The source id standing for the whole photo library.
   ///
@@ -234,7 +209,6 @@ class CameraRollConfig {
     bool? enabled,
     bool? wifiOnly,
     bool? syncWhileIndexing,
-    List<String>? inbox,
     DateTime? since,
     List<String>? done,
     List<String>? sources,
@@ -244,7 +218,6 @@ class CameraRollConfig {
         enabled: enabled ?? this.enabled,
         wifiOnly: wifiOnly ?? this.wifiOnly,
         syncWhileIndexing: syncWhileIndexing ?? this.syncWhileIndexing,
-        inbox: inbox ?? this.inbox,
         since: since ?? this.since,
         done: done ?? this.done,
         sources: sources ?? this.sources,
@@ -256,7 +229,6 @@ class CameraRollConfig {
         "enabled": enabled,
         "wifiOnly": wifiOnly,
         if (syncWhileIndexing) "syncWhileIndexing": true,
-        "inbox": inbox,
         if (since != null) "since": since!.toUtc().toIso8601String(),
         "done": done,
         if (sources != null) "sources": sources,
@@ -269,8 +241,11 @@ class CameraRollConfig {
   /// The configuration stored as [text], [disabled] if there is none.
   ///
   /// A blob this version cannot read is treated as absent rather than as a
-  /// reason to fail: the user re-chooses the inbox, and nothing is lost but
-  /// the watermark — the server answers `present` for what it already holds.
+  /// reason to fail: nothing is lost but the watermark — the server answers
+  /// `present` for what it already holds.
+  ///
+  /// The `inbox` an app before issue #226 stored is ignored: the server names
+  /// the one inbox of the space, see [CallerInfo.inbox].
   static CameraRollConfig parse(String? text) {
     if (text == null || text.trim().isEmpty) {
       return disabled;
@@ -289,7 +264,6 @@ class CameraRollConfig {
         // Absent means off: a store written before issue #118 must not sync
         // against an index that cannot yet answer for the whole library.
         syncWhileIndexing: json["syncWhileIndexing"] == true,
-        inbox: [for (var name in (json["inbox"] as List? ?? [])) "$name"],
         since: since is String ? DateTime.tryParse(since) : null,
         done: [for (var id in (json["done"] as List? ?? [])) "$id"],
         // Absent means "the camera album" (issue #117), which only the device
@@ -314,7 +288,6 @@ class CameraRollConfig {
       other.enabled == enabled &&
       other.wifiOnly == wifiOnly &&
       other.syncWhileIndexing == syncWhileIndexing &&
-      listEquals(other.inbox, inbox) &&
       other.since == since &&
       listEquals(other.done, done) &&
       listEquals(other.sources, sources) &&
@@ -324,7 +297,6 @@ class CameraRollConfig {
   int get hashCode => Object.hash(
         enabled,
         wifiOnly,
-        inbox.length,
         since,
         done.length,
         sources?.length,
@@ -444,18 +416,6 @@ class CameraRollStatus {
   final int? indexingDone;
   final int? indexingTotal;
 
-  /// The inbox a run fell back to after the chosen one was gone, `null` while
-  /// there is nothing to say (issue #132).
-  ///
-  /// Since issue #130 a properties write renames an album's directory, so the
-  /// path the sync stored can simply stop existing — the server then answers
-  /// 404 for the one album this sync uploads into. The run does not stop for
-  /// that: it falls back to the default inbox rule, uploads there, and names
-  /// the album it used, because a user whose photos land somewhere else must
-  /// be told where. It belongs to that run, so the next successful one clears
-  /// it, and so does choosing an inbox.
-  final String? inboxGoneUsing;
-
   /// The items the last successful run skipped because the server does not
   /// take their format (issue #186), by name; empty otherwise.
   ///
@@ -476,7 +436,6 @@ class CameraRollStatus {
     this.lastPresentIn = const [],
     this.indexingDone,
     this.indexingTotal,
-    this.inboxGoneUsing,
     this.lastSkipped = const [],
   });
 
@@ -508,7 +467,6 @@ class CameraRollStatus {
     List<String>? lastPresentIn,
     int? indexingDone,
     int? indexingTotal,
-    String? inboxGoneUsing,
     List<String>? lastSkipped,
   }) =>
       CameraRollStatus(
@@ -526,9 +484,6 @@ class CameraRollStatus {
         // next transition clears it unless it says otherwise.
         indexingDone: indexingDone,
         indexingTotal: indexingTotal,
-        // Like [message]: what one run found out about the inbox is that
-        // run's, so the next transition clears it unless it says otherwise.
-        inboxGoneUsing: inboxGoneUsing,
         lastSkipped: lastSkipped ?? this.lastSkipped,
       );
 }
@@ -629,16 +584,6 @@ class CameraRollSync extends ChangeNotifier {
   /// returns, so a timer there would either die unfired or hold the isolate
   /// open. The platform runs the task again anyway, see [runOnce].
   bool _armRetries = true;
-
-  /// What a run found out about the inbox and has not said yet (issue #132),
-  /// `null` while there is nothing to say.
-  ///
-  /// Not a local of the run that found it: a run that falls back and then
-  /// defers for the index (issue #118) or fails must not swallow the sentence
-  /// — the notice belongs to the *next line the user reads about a run that
-  /// worked*, so it is kept until [_succeed] says it, or until the user
-  /// chooses an inbox themselves.
-  String? _inboxGoneUsing;
 
   bool _running = false;
   bool _pending = false;
@@ -825,9 +770,8 @@ class CameraRollSync extends ChangeNotifier {
   /// switch that flips back on its own would leave the user guessing. The
   /// reason as data, which the section turns into words, see [noticeText].
   ///
-  /// A missing inbox album is no longer such a reason (issue #54): the first
-  /// run creates [defaultInboxName] in the caller's own space. Choosing one
-  /// beforehand stays possible, it is not a condition any more.
+  /// Where the photos go is not the sync's to decide: the server names the
+  /// one inbox of the space (issue #226), and a run asks it.
   Future<AppNotice?> setEnabled(bool value) async {
     if (value && !await library.requestAccess()) {
       return library.accessProblem ?? const PhotoLibraryUnreadable();
@@ -897,18 +841,6 @@ class CameraRollSync extends ChangeNotifier {
     }
   }
 
-  /// Chooses the album new photos are uploaded into.
-  ///
-  /// Changing the inbox does not re-upload anything: the watermark stays, and
-  /// the server answers `present` for contents the new album already holds.
-  Future<void> chooseInbox(List<String> path) async {
-    // The user has decided where the photos go; a run's sentence about an
-    // inbox they just replaced would only confuse (issue #132).
-    _inboxGoneUsing = null;
-    await _store(_config.copyWith(inbox: [...path]));
-    _publish(_restingStatus());
-  }
-
   /// Chooses the device albums the sync watches (issue #117).
   ///
   /// [albums] is what the device holds, needed to know which albums were
@@ -950,7 +882,6 @@ class CameraRollSync extends ChangeNotifier {
     await _store(CameraRollConfig(
       enabled: _config.enabled,
       wifiOnly: _config.wifiOnly,
-      inbox: _config.inbox,
       sources: _config.sources,
     ));
     _publish(_restingStatus());
@@ -1035,13 +966,29 @@ class CameraRollSync extends ChangeNotifier {
     CallerInfo? caller;
     try {
       caller = await callerOf();
-    } catch (_) {
-      // The server did not say who this is; the run goes on as it did before
-      // the question existed, and the server refuses what it must refuse.
-      caller = null;
+    } on VAlbumException catch (error) {
+      // The server answered and refused to say; its own sentence is the
+      // reason, and the run is tried again.
+      _fail(message: error.message);
+      return;
+    } catch (error) {
+      // The server could not be asked where the inbox is (issue #226): the
+      // transport's reason, retried like any failed transfer.
+      _fail(notice: _reasonOf(error));
+      return;
     }
     if (caller?.isGuest ?? false) {
       _fail(notice: guestNoSpaceNotice, retry: false);
+      return;
+    }
+    // The one inbox of the space, as the server names it (issue #226): the
+    // sync never chooses, guesses or creates one, and the server makes the
+    // folder with the first upload into it. A caller it names none for may
+    // put nothing there, which no retry changes; a server that did not answer
+    // is asked again.
+    var inbox = caller?.inboxPath ?? const <String>[];
+    if (inbox.isEmpty) {
+      _fail(notice: const NoInboxForCaller(), retry: caller == null);
       return;
     }
     List<String> sources;
@@ -1051,14 +998,8 @@ class CameraRollSync extends ChangeNotifier {
       _fail(notice: PhotoLibraryFailed(platformErrorText(error)));
       return;
     }
-    // Only now, with the library readable, an album to watch and the caller in
-    // their own space: an app that may not look at any photo — or that is
-    // watching none — must not leave an empty album behind on the server.
     if (sources.isEmpty) {
       _succeed(0, 0, const []);
-      return;
-    }
-    if (!await _ensureInbox(client)) {
       return;
     }
     var stored = 0;
@@ -1066,10 +1007,6 @@ class CameraRollSync extends ChangeNotifier {
     var presentIn = <String>[];
     var skipped = <String>[];
     var transferred = 0;
-    // Whether this run already had to replace the inbox (issue #132): once
-    // per run, so a server that answers 404 for the freshly created album
-    // fails like any other refusal instead of looping.
-    var inboxReplaced = false;
     // An item that lies in two watched albums is uploaded once; the mark of
     // both albums still moves past it, see below.
     var uploaded = <String>{};
@@ -1134,13 +1071,9 @@ class CameraRollSync extends ChangeNotifier {
               if (!uploaded.contains(item.id)) item
           ];
           if (fresh.isNotEmpty) {
-            // Every request this makes is addressed at the inbox and at
-            // nothing else -- the `?action=check` of issue #118 and the
-            // transfer itself -- so a 404 out of it is that album saying it is
-            // not there, see below.
             Future<UploadSummary> send(List<PhotoItem> items) =>
                 client.uploadNew(
-                  _config.inbox,
+                  inbox,
                   [for (var item in items) item.upload],
                   // While the server is still reading the library it cannot
                   // say that a photo is already in some album, and a first
@@ -1154,26 +1087,7 @@ class CameraRollSync extends ChangeNotifier {
 
             UploadSummary summary;
             try {
-              try {
-                summary = await transfer();
-              } on VAlbumException catch (error) {
-                // The chosen inbox is gone -- renamed by a properties write
-                // since issue #130, or moved away. Only a 404 is that, and
-                // only the first one of a run: any other refusal is the
-                // server speaking and is told as it was told (issue #132).
-                if (error.status != 404 || inboxReplaced) {
-                  rethrow;
-                }
-                inboxReplaced = true;
-                if (!await _ensureInbox(client, replace: true)) {
-                  // The fallback itself was refused; it has said why, and the
-                  // inbox that was stored stays stored -- a server that is
-                  // restarting must not cost the user their choice.
-                  return;
-                }
-                _inboxGoneUsing = defaultInboxName;
-                summary = await transfer();
-              }
+              summary = await transfer();
             } on VAlbumException catch (error) {
               _fail(message: error.message);
               return;
@@ -1311,96 +1225,6 @@ class CameraRollSync extends ChangeNotifier {
     return defaultSources(await library.albums());
   }
 
-  /// Makes sure there is an inbox album, creating it where there is none.
-  ///
-  /// The inbox is an album inside the caller's *own* space (issue #54): the
-  /// user may choose one in the settings, and where they did not, the first
-  /// run creates [defaultInboxName] at the root of the space. What is stored
-  /// is not the path that was asked for but the [CreateResult.path] the server
-  /// answers — a placement rule on the root files the album into its year
-  /// folder, and the sync uploads where the album really is, see issue #48.
-  ///
-  /// An album of that name that is already there is *not* a failure of the
-  /// sync: it is the inbox of an earlier installation, and the run adopts it.
-  /// Asking the listing before creating would not save that branch — two
-  /// devices can create the inbox at the same moment — so the conflict is the
-  /// one mechanism, and the album the server refused to overwrite is read to
-  /// make sure it is an album and not something else of that name.
-  ///
-  /// With [replace], the inbox that is stored is not believed: the run found
-  /// it gone (issue #132) and asks for the default one again, by exactly this
-  /// rule. Nothing but the path changes -- the watermarks stay, so nothing is
-  /// uploaded a second time.
-  ///
-  /// Answers whether the run may go on; a run that may not has already said
-  /// why, see [_fail].
-  Future<bool> _ensureInbox(VAlbumClient client, {bool replace = false}) async {
-    if (_config.hasInbox && !replace) {
-      return true;
-    }
-    CreateResult created;
-    try {
-      created = await client.createAlbum(
-        const [],
-        // An inbox, not an ordinary album (issues #131, #136): what the sync
-        // uploads is exactly what waits to be sorted, and the inbox screen is
-        // what sorts it. An album of that name that is already there keeps
-        // the kind it has — see [_existingInbox], which adopts it untouched:
-        // whoever made it decided what it is.
-        AlbumInfo(
-          title: defaultInboxName,
-          path: defaultInboxName,
-          kind: AlbumKind.inbox,
-        ),
-      );
-    } on VAlbumException catch (error) {
-      var existing = await _existingInbox(client, error);
-      if (existing == null) {
-        // The server's own sentence, not a guess about what it meant.
-        _fail(message: error.message);
-        return false;
-      }
-      await _store(_config.copyWith(inbox: existing));
-      return true;
-    } catch (error) {
-      _fail(notice: _reasonOf(error));
-      return false;
-    }
-    await _store(_config.copyWith(inbox: _pathSegments(created.path)));
-    return true;
-  }
-
-  /// The inbox album that made the creation fail with [error], `null` when the
-  /// refusal was not about a name that is taken.
-  ///
-  /// Only a conflict (HTTP 409, "the name is taken") is a candidate, and only
-  /// an *album* of that name is adopted: a listing folder named `Inbox` would
-  /// take single files instead of photos of an album, and anything else of
-  /// that name is the server's refusal, told as the server told it.
-  Future<List<String>?> _existingInbox(
-    VAlbumClient client,
-    VAlbumException error,
-  ) async {
-    if (error.status != 409) {
-      return null;
-    }
-    try {
-      var resource = await client.loadResource(const [defaultInboxName]);
-      return resource is AlbumInfo ? const [defaultInboxName] : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// The segments of a `/`-separated server path, the empty ones dropped.
-  ///
-  /// The [CreateResult.path] is spelled the way every path in this app is:
-  /// relative to the root of the caller's own space.
-  static List<String> _pathSegments(String path) => [
-        for (var segment in path.split("/"))
-          if (segment.isNotEmpty) segment
-      ];
-
   /// Records that [batch], scanned from [source], was accepted by the server.
   ///
   /// The album's watermark becomes the newest taken-at stamp handled so far;
@@ -1430,10 +1254,6 @@ class CameraRollSync extends ChangeNotifier {
 
   void _succeed(int stored, int present, List<String> presentIn,
       [List<String> skipped = const []]) {
-    var fallback = _inboxGoneUsing;
-    // Said once: this run is the line the user reads, and the next one is
-    // about the inbox they now have.
-    _inboxGoneUsing = null;
     _attempt = 0;
     _retryTimer?.cancel();
     _retryTimer = null;
@@ -1443,7 +1263,6 @@ class CameraRollSync extends ChangeNotifier {
       lastStored: stored,
       lastPresent: present,
       lastPresentIn: presentIn,
-      inboxGoneUsing: fallback,
       lastSkipped: skipped,
     ));
   }

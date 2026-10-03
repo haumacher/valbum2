@@ -584,6 +584,12 @@ public class ImageServlet extends HttpServlet {
 	private final String _mapUrl;
 
 	/**
+	 * The path of the space's inbox relative to its root, see issue #226: what its
+	 * <code>space.json</code> names, else {@link SpaceStore#DEFAULT_INBOX}.
+	 */
+	private final String _inbox;
+
+	/**
 	 * The name of the space this servlet serves as the code mail of issue #199 says it: its
 	 * <code>space.json</code> name, the folder name in a multi-space server, empty where neither
 	 * says one (the mail then names the program).
@@ -769,6 +775,9 @@ public class ImageServlet extends HttpServlet {
 		_mapUrl = config == null ? SpaceStore.DEFAULT_MAP_URL : config.getMapUrl();
 		_spaceName = config == null ? "" : config.getName();
 		_basePath = basePath.toPath();
+		_inbox = config == null ? SpaceStore.DEFAULT_INBOX : config.getInbox();
+		// One inbox per space, decided by where a folder lies, see issue #226.
+		Inboxes.register(_basePath, _inbox);
 		boolean facesEnabled = config != null && config.isFacesEnabled();
 		_people = new PeopleStore(_basePath);
 		// The register has to exist before the cache does: a photograph that is analysed for the
@@ -829,6 +838,7 @@ public class ImageServlet extends HttpServlet {
 	 */
 	@Override
 	public void destroy() {
+		Inboxes.unregister(_basePath);
 		_videos.shutdown();
 		_index.shutdown();
 		_faces.shutdown();
@@ -886,6 +896,9 @@ public class ImageServlet extends HttpServlet {
 			// Always answerable: this is how an unpaired app learns that it must pair. The map
 			// template of the space rides along, see issue #112.
 			AuthInfo info = _auth.authInfo(caller, _basePath, _space).setMapUrl(_mapUrl).setFaces(_faces.isEnabled());
+			// Where the inbox is and how much waits there, for whoever may put something in it,
+			// so that the app never guesses, see issue #226.
+			answerInbox(info, caller);
 			if (info.getShare() != null && info.getShare().getContact() != null) {
 				// A recognised contact may add an address, where the server can mail a code (#199);
 				// whether they have one already decides whether the app offers it (#211).
@@ -964,14 +977,17 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		File file = resourcePath.toFile();
-		if (!file.exists()) {
+		// The inbox before its first upload is an empty inbox, not an address naming nothing, see
+		// issue #226; reading it writes nothing.
+		boolean unmadeInbox = !file.exists() && Inboxes.isInbox(file);
+		if (!file.exists() && !unmadeInbox) {
 			// Nothing is malformed about an address naming nothing: it is not found, and the
 			// answer says which segment is missing, see issue #176.
 			notFound(context, resourcePath);
 			return;
 		}
 
-		if (file.isDirectory()) {
+		if (file.isDirectory() || unmadeInbox) {
 			if (media != null) {
 				// Never issued for a folder; a folder that took a video's place is not opened by it.
 				errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, AuthService.MEDIA_REFUSED);
@@ -1146,6 +1162,9 @@ public class ImageServlet extends HttpServlet {
 		String baseType = mimeType.getBaseType();
 
 		File file = resourcePath.toFile();
+		if (!baseType.equals("application/json") && !makeInbox(context, caller, resourcePath)) {
+			return;
+		}
 		if (!file.isDirectory()) {
 			File parent = file.getParentFile();
 			if (parent == null || !parent.isDirectory()
@@ -2403,7 +2422,10 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		File folder = resourcePath.toFile();
-		if (!folder.isDirectory()) {
+		// The inbox before its first upload holds nothing yet; asking it is no address naming
+		// nothing, see issue #226, and the check writes no sidecar into a folder that is not there.
+		boolean unmadeInbox = !folder.exists() && Inboxes.isInbox(folder);
+		if (!folder.isDirectory() && !unmadeInbox) {
 			// Answered as a read answers it, see issues #176 and #215.
 			notFound(context, resourcePath);
 			return;
@@ -2429,12 +2451,16 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		HashCache hashes = new HashCache(folder);
 		Map<String, String> nameByHash;
-		try {
-			nameByHash = hashes.nameByHash();
-		} finally {
-			hashes.flush();
+		if (unmadeInbox) {
+			nameByHash = Collections.emptyMap();
+		} else {
+			HashCache hashes = new HashCache(folder);
+			try {
+				nameByHash = hashes.nameByHash();
+			} finally {
+				hashes.flush();
+			}
 		}
 
 		// The folder was read (and its sidecar filled); the index hears about that through the
@@ -4452,19 +4478,97 @@ public class ImageServlet extends HttpServlet {
 				return false;
 			}
 		}
-		File folder = path.toFile();
-		File root = path.getBasePath().toFile();
-		while (folder != null && !folder.isDirectory()) {
-			if (folder.equals(root)) {
-				return false;
-			}
-			folder = folder.getParentFile();
-		}
-		if (folder == null || !Inboxes.isInbox(folder)) {
+		// The inbox is a place, whether it exists yet or not, see issue #226: an address in or below
+		// it is the inbox's, and a link never writes there -- not even the first upload that would
+		// create it.
+		if (!Inboxes.inOrBelowInbox(path.toFile())) {
 			return false;
 		}
 		LOG.warning("Hiding the inbox from a share link's write at '" + pathInfo + "'.");
 		errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
+		return true;
+	}
+
+	/**
+	 * Where the inbox of this space lies, see issue #226, whether it exists yet or not.
+	 */
+	private PathInfo inboxPath() {
+		return new PathInfo(_basePath, Paths.get(_inbox.replace('/', File.separatorChar)));
+	}
+
+	/**
+	 * Says where the inbox of this space is and how much waits there, see
+	 * {@link AuthInfo#getInbox()} and issue #226.
+	 *
+	 * <p>
+	 * Only to a caller who may put something into it: a member who may contribute (they are told
+	 * how many of <em>their own</em> photographs wait, which is what they are shown there, see
+	 * issue #135), an editor (all of them), and everybody under <code>--auth off</code>. A share
+	 * link never reaches the inbox (issues #135, #215) and is not told where it is; neither is an
+	 * anonymous caller or a member who may only look.
+	 * </p>
+	 */
+	private void answerInbox(AuthInfo info, Caller caller) {
+		if (caller.isShareLink() || caller.getInvitationGone() != null) {
+			return;
+		}
+		PathInfo inbox = inboxPath();
+		Inboxes.Visibility visibility = Inboxes.visibility(_auth, caller, inbox, Privacy.PRIVATE);
+		if (visibility == Inboxes.Visibility.NONE) {
+			return;
+		}
+		info.setInbox(_inbox);
+		try {
+			Resource resource = _cache.lookup(inbox);
+			if (resource instanceof AlbumInfo) {
+				info.setInboxCount(Inboxes.waiting((AlbumInfo) resource, visibility, caller.subject()));
+			}
+		} catch (RuntimeException ex) {
+			// The count is a badge; a folder that cannot be read leaves it at nothing.
+			LOG.log(Level.WARNING, "Cannot count the inbox '" + inbox.toFile() + "': " + ex.getMessage(), ex);
+		}
+	}
+
+	/**
+	 * Creates the inbox of this space where an upload addresses it before it exists, see issue
+	 * #226: the folder itself, or a photograph directly in it.
+	 *
+	 * <p>
+	 * The first write into the inbox is what makes it, and nothing else does: a read of the inbox
+	 * before is answered an empty inbox and writes nothing. The caller must be one who may put
+	 * something there; everybody else is refused as an upload into any folder is.
+	 * </p>
+	 *
+	 * @return Whether the request goes on; <code>false</code> where it has been answered.
+	 */
+	private boolean makeInbox(Context context, Caller caller, PathInfo resourcePath) throws IOException {
+		File asked = resourcePath.toFile();
+		PathInfo inbox;
+		if (Inboxes.isInbox(asked)) {
+			inbox = resourcePath;
+		} else if (!resourcePath.isRoot() && Inboxes.isInbox(asked.getParentFile())) {
+			inbox = resourcePath.parent();
+		} else {
+			return true;
+		}
+		File folder = inbox.toFile();
+		if (folder.isDirectory()) {
+			return true;
+		}
+		if (!_auth.mayContribute(caller, inbox)) {
+			refuse(context, caller, inbox, Rights.CONTRIBUTE, true);
+			return false;
+		}
+		try {
+			Files.createDirectories(folder.toPath());
+		} catch (IOException ex) {
+			LOG.log(Level.WARNING, "Cannot create the inbox '" + folder + "': " + ex.getMessage(), ex);
+			errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+				"The inbox of this space cannot be created: " + ex.getMessage());
+			return false;
+		}
+		LOG.info("Created the inbox of the space: " + folder.getAbsolutePath());
+		_cache.invalidateTree(inbox);
 		return true;
 	}
 
@@ -4585,9 +4689,10 @@ public class ImageServlet extends HttpServlet {
 	 * <code>null</code> when it already has the name they compose, see issue #130.
 	 *
 	 * <p>
-	 * Three folders are left alone whatever they say about themselves:
+	 * Four folders are left alone whatever they say about themselves:
 	 * </p>
 	 * <ul>
+	 * <li>the inbox of the space, whose place <code>space.json</code> names (issue #226);</li>
 	 * <li>the root of a space, which is not the server's to name — it is the folder the library
 	 * was started on;</li>
 	 * <li>a year or month folder, which is part of a {@link PlacementRule placement} structure and
@@ -4607,6 +4712,11 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private static String renameTo(PathInfo resourcePath, FolderResource resource) {
 		if (resourcePath.isRoot()) {
+			return null;
+		}
+		if (Inboxes.isInbox(resourcePath.toFile())) {
+			// The space names its inbox (space.json, issue #226); a title written on it never moves
+			// it away from there.
 			return null;
 		}
 		String current = resourcePath.getName();
@@ -4740,7 +4850,7 @@ public class ImageServlet extends HttpServlet {
 
 		// What this caller may see of an inbox -- of this folder, if it is one, and of the inboxes
 		// among the entries of this listing, see issue #131.
-		Resource shown = Inboxes.filter(resource, pathInfo, Inboxes.visibility(_auth, caller, pathInfo, viewAs),
+		Resource shown = Inboxes.filter(resource, Inboxes.visibility(_auth, caller, pathInfo, viewAs),
 			caller.subject());
 		if (shown == null) {
 			// An inbox this caller may not see is not there for them, and a refusal naming it

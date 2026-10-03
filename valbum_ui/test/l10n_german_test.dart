@@ -40,7 +40,6 @@ import 'album_menu_actions_test.dart' show pumpAlbum;
 import 'camera_roll_test.dart' show Harness;
 import 'devices_test.dart'
     show authOfUser, json, signedIn, storeSignedIn, threeDevices;
-import 'inbox_listing_test.dart' show listingWithCount;
 import 'inbox_view_test.dart' show inboxTree, pumpInbox;
 import 'load_failure_test.dart' as load;
 import 'move_test.dart' show recordingClient, treeAnswer;
@@ -282,7 +281,6 @@ void sliceThree() {
         localizedApp(
           const AlbumPropertiesDialog(
             AlbumProperties(title: "Zoo", subTitle: ""),
-            mayChangeKind: true,
           ),
           locale: const Locale("de"),
         ),
@@ -293,7 +291,6 @@ void sliceThree() {
       expect(find.text(de.titleLabel), findsOneWidget);
       expect(find.text(de.subtitleLabel), findsOneWidget);
       expect(find.text(de.dateNone), findsOneWidget);
-      expect(find.text(de.makeThisAnInbox), findsOneWidget);
       expect(find.text(de.noAlbumPictureHint), findsOneWidget);
       expect(find.text(de.cancel), findsOneWidget);
       expect(find.text(de.apply), findsOneWidget);
@@ -548,19 +545,24 @@ void sliceTwo() {
       expect(find.text(en.personsLinkMeEntry), findsNothing);
     });
 
-    testWidgets('the count of an inbox on its listing tile', (tester) async {
-      speakGerman(tester);
-      await withFakeImageHttp(() async {
-        await tester.pumpWidget(VAlbumApp(
-          client: recordingClient((_) => json(listingWithCount), []),
-          initialRoute: const ListingOrAlbumRoute([]),
-        ));
-        await tester.pumpAndSettle();
-      });
+    testWidgets('the inbox of the start page and of the camera roll',
+        (tester) async {
+      await tester.pumpWidget(localizedApp(
+        Scaffold(
+          appBar: AppBar(actions: [InboxButton(count: 12, onPressed: () {})]),
+        ),
+        locale: const Locale("de"),
+      ));
+      await tester.pumpAndSettle();
 
-      expect(find.text(de.inboxPhotoCount(12)), findsOneWidget);
       var en = l10nOf(const Locale("en"));
-      expect(find.text(en.inboxPhotoCount(12)), findsNothing);
+      expect(find.byTooltip(de.inboxTooltip(12)), findsOneWidget);
+      expect(de.inboxTooltip(12), isNot(en.inboxTooltip(12)));
+      expect(de.inboxMenuEntry(12), isNot(en.inboxMenuEntry(12)));
+      expect(de.cameraRollInboxTarget("Inbox"), contains("Inbox"),
+          reason: "The folder name on disk stays what it is.");
+      expect(noticeText(const NoInboxForCaller(), de),
+          isNot(noticeText(const NoInboxForCaller(), en)));
     });
 
     testWidgets('the person a member is, in the users list', (tester) async {
@@ -903,7 +905,6 @@ void sliceTwo() {
       expect(find.text(de.cameraRollUploadNew), findsOneWidget);
       expect(find.text(de.onlyOverWifi), findsOneWidget);
       expect(find.text(de.onlyOverWifiExplanation), findsOneWidget);
-      expect(find.text(de.chooseAction), findsOneWidget);
       expect(find.text(de.syncNow), findsOneWidget);
     });
 

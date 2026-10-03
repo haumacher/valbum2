@@ -37,7 +37,8 @@ public class TestZipDownload extends ShareTestCase {
 
 	private static final String ZOO = "/" + SharingFixture.ZOO + "/";
 
-	private static final String INBOX = "Family Inbox";
+	/** The inbox of the space, see issue #226. */
+	private static final String INBOX = de.haumacher.imageServer.auth.SpaceStore.DEFAULT_INBOX;
 
 	public void testTwoImagesAreZippedByteForByte() throws Exception {
 		String before = albumFingerprint("alice");

@@ -49,8 +49,7 @@ class Harness {
   Harness({
     List<PhotoItem>? items,
     NetworkKind network = NetworkKind.mobile,
-    CameraRollConfig config =
-        const CameraRollConfig(enabled: true, inbox: inbox),
+    CameraRollConfig config = const CameraRollConfig(enabled: true),
   })  : library = FakePhotoLibrary(items: items),
         network = FakeConnectivity(network),
         store = InMemorySettingsStore() {
@@ -58,6 +57,12 @@ class Harness {
     var client = VAlbumClient(
       dataUrl: serverDataUrl,
       httpClient: MockClient((request) async {
+        // Where the inbox is, as `?type=auth` names it (issue #226).
+        if (request.url.queryParameters["type"] == "auth") {
+          return http.Response(
+              '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+              200);
+        }
         requests.add(request);
         if (request.method == "POST") {
           return http.Response('{"present":[]}', 200);
@@ -67,6 +72,8 @@ class Harness {
       }),
     );
     sync = CameraRollSync(
+      callerOf: () async =>
+          CallerInfo(role: roleMember, inbox: inbox.join("/")),
       store: store,
       library: library,
       clientOf: () => client,
@@ -111,7 +118,6 @@ void main() {
 
       expect(config.wifiOnly, isTrue);
       expect(config.enabled, isTrue, reason: "the old meaning is unchanged");
-      expect(config.inbox, ["Inbox"]);
     });
 
     test('is on in a fresh configuration', () {
@@ -123,12 +129,12 @@ void main() {
       var store = InMemorySettingsStore();
 
       await store.saveCameraRollConfig(
-        const CameraRollConfig(enabled: true, wifiOnly: false, inbox: inbox),
+        const CameraRollConfig(enabled: true, wifiOnly: false),
       );
       expect((await store.loadCameraRollConfig()).wifiOnly, isFalse);
 
       await store.saveCameraRollConfig(
-        const CameraRollConfig(enabled: true, inbox: inbox),
+        const CameraRollConfig(enabled: true),
       );
       expect((await store.loadCameraRollConfig()).wifiOnly, isTrue);
     });
@@ -138,7 +144,6 @@ void main() {
         config: const CameraRollConfig(
           enabled: true,
           wifiOnly: false,
-          inbox: inbox,
         ),
       );
       addTearDown(harness.dispose);
@@ -279,7 +284,6 @@ void main() {
         config: const CameraRollConfig(
           enabled: true,
           wifiOnly: false,
-          inbox: inbox,
         ),
       );
       addTearDown(harness.dispose);
@@ -344,7 +348,6 @@ void main() {
       store.cameraRoll = CameraRollConfig(
         enabled: true,
         wifiOnly: wifiOnly,
-        inbox: inbox,
       ).toJson();
       return store;
     }
@@ -352,6 +355,12 @@ void main() {
     /// A transport recording every request, answering as an empty server.
     http.Client transportInto(List<http.Request> requests) =>
         MockClient((request) async {
+          // Where the inbox is, as `?type=auth` names it (issue #226).
+          if (request.url.queryParameters["type"] == "auth") {
+            return http.Response(
+                '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+                200);
+          }
           requests.add(request);
           if (request.method == "POST") {
             return http.Response('{"present":[]}', 200);
@@ -380,7 +389,8 @@ void main() {
       expect(result.ok, isFalse);
       expect(result.record?.message, contains("Wi-Fi"));
       // The settings screen shows exactly this the next time it is opened.
-      expect((await store.loadBackgroundRunRecord())?.message, contains("Wi-Fi"));
+      expect(
+          (await store.loadBackgroundRunRecord())?.message, contains("Wi-Fi"));
       expect((await store.loadCameraRollConfig()).since, isNull);
     });
 

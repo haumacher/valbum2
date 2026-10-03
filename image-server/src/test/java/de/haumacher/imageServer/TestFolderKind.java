@@ -92,9 +92,9 @@ public class TestFolderKind extends TestCase {
 
 	/** A folder without a sidecar that holds images is an album -- the rule the server opens it by. */
 	public void testASidecarLessFolderHoldingImagesIsAnAlbum() throws Exception {
-		album("Inbox");
+		album("Unsorted");
 
-		assertEquals(FolderKind.ALBUM, byName(listing("/"), "Inbox").getKind());
+		assertEquals(FolderKind.ALBUM, byName(listing("/"), "Unsorted").getKind());
 	}
 
 	/** A folder without a sidecar that holds nothing at all is a folder of folders. */

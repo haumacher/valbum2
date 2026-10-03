@@ -1,21 +1,18 @@
 package de.haumacher.imageServer.shared.model;
 
 /**
- * What an {@link AlbumInfo} is: an ordinary album, or an inbox, see issue #131.
+ * What an {@link AlbumInfo} is: an ordinary album, or the inbox of its space, see issues #131 and
+ * #226.
  *
  * <p>
  * An inbox is a <em>kind of album</em> and not a resource of its own: the same folder, the same
  * <code>index.json</code>, the same parts, so that every mechanism an album has — upload, hashes,
- * moving, deleting, thumbnails, attribution — works there unchanged. One stored flag says what it
- * is, and everything an inbox does differently follows from that flag alone.
- * </p>
- *
- * <p>
- * {@link #ALBUM} is the first constant and therefore what every sidecar written before this field
- * existed reads as: an album, exactly as it always was. Switching an album to an inbox and back is
- * an ordinary properties write and loses nothing — what an inbox derives (its order, its date) is
- * derived on the way out and never stored, so the album is itself again the moment the flag is
- * cleared.
+ * moving, deleting, thumbnails, attribution — works there unchanged. Since issue #226 a space has
+ * exactly one inbox, the folder its <code>space.json</code> names (<code>inbox</code>, default
+ * <code>Inbox</code>), and the kind is <em>derived</em> from that place on every read: the folder
+ * is answered {@link #INBOX}, every other album {@link #ALBUM}, whatever an older sidecar says.
+ * It is never stored any more — a sidecar written before #226 that says <code>INBOX</code> is read
+ * as an album unless it is the space's inbox, and loses the word on its next ordinary write.
  * </p>
  */
 public enum AlbumKind implements de.haumacher.msgbuf.data.ProtocolEnum {

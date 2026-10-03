@@ -401,15 +401,10 @@ Future<BackgroundRunResult> runBackgroundSync({
     // sync; a background isolate has no app around it, so the run asks the
     // server itself — one small question before a transfer of photos, and the
     // only way a demoted device learns that it has no space any more, see
-    // [CameraRollSync.callerOf] (issue #54). A server that does not answer
-    // leaves the caller unknown, exactly as in the app.
-    callerOf: () async {
-      try {
-        return CallerInfo.of(await client.authInfo());
-      } catch (_) {
-        return null;
-      }
-    },
+    // [CameraRollSync.callerOf] (issue #54) — and where the inbox is (issue
+    // #226). A server that cannot be asked is the run's reason, told as the
+    // transport told it.
+    callerOf: () async => CallerInfo.of(await client.authInfo()),
     connectivity: network,
     clock: now,
   );

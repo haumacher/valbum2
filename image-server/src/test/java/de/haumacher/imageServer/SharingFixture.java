@@ -61,8 +61,11 @@ class SharingFixture {
 	/** The folder nothing is granted on. */
 	static final String PRIVATE = "Private";
 
-	/** The album a photo is moved into the zoo from. */
-	static final String CAROLS_ALBUM = "Inbox";
+	/**
+	 * The album a photo is moved into the zoo from: an ordinary album, the space's inbox (issue
+	 * #226) being no place a link may be made on.
+	 */
+	static final String CAROLS_ALBUM = "Unsorted";
 
 	private SharingFixture() {
 		// Fixtures only.
@@ -88,7 +91,7 @@ class SharingFixture {
 			"[\"ImagePart\",{\"name\":\"open.jpg\",\"width\":4,\"height\":3}]", "open.jpg");
 		album(base, PRIVATE, "Private",
 			"[\"ImagePart\",{\"name\":\"secret.jpg\",\"width\":4,\"height\":3}]", "secret.jpg");
-		album(base, CAROLS_ALBUM, "Inbox",
+		album(base, CAROLS_ALBUM, "Unsorted",
 			"[\"ImagePart\",{\"name\":\"carols.jpg\",\"width\":4,\"height\":3}]", "carols.jpg");
 	}
 

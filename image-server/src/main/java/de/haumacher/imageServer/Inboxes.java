@@ -6,46 +6,55 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.AuthService.Caller;
 import de.haumacher.imageServer.auth.Privacy;
+import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumKind;
 import de.haumacher.imageServer.shared.model.AlbumPart;
-import de.haumacher.imageServer.shared.model.FolderInfo;
-import de.haumacher.imageServer.shared.model.FolderKind;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.Heading;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
-import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.upload.HashCache;
 import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * What an inbox is, and what tells it from an album, see issue #131.
+ * What an inbox is, and what tells it from an album, see issues #131 and #226.
  *
  * <p>
- * An inbox is a {@link AlbumKind#INBOX kind of album} and not a resource of its own: the same
+ * A space has exactly one inbox: the folder its <code>space.json</code> names (<code>inbox</code>,
+ * default {@link de.haumacher.imageServer.auth.SpaceStore#DEFAULT_INBOX Inbox}), registered here by
+ * the {@link ImageServlet} of that space, see {@link #register(Path, String)}. <em>Where</em> a
+ * folder lies decides whether it is the inbox, never what its sidecar says: the loader answers the
+ * {@link AlbumKind kind} from {@link #isInbox(File)}, an album an older build flagged as an inbox
+ * reads as an ordinary album (issue #226), and no request can make a second one.
+ * </p>
+ *
+ * <p>
+ * The inbox is a {@link AlbumKind#INBOX kind of album} and not a resource of its own: the same
  * folder, the same <code>index.json</code>, the same parts. Everything that makes it an inbox
  * happens on the way out, here:
  * </p>
  * <ul>
  * <li>its parts are answered {@link #flatten(AlbumInfo, String) flat and by date, newest first}, whatever order
  * and grouping the sidecar lists — derived on every read, exactly like
- * {@link AlbumInfo#getEffectiveDate()}, so the author's album is still there when the flag is
- * cleared again;</li>
+ * {@link AlbumInfo#getEffectiveDate()}, so the stored arrangement is never touched;</li>
  * <li>it is {@link #visibility(AuthService, Caller, PathInfo, int) shown} to a caller that may
- * edit it, in part to a caller that may contribute to it, and to nobody else — not even as an
- * entry of the listing above it;</li>
- * <li>it has no date and it is filed nowhere, see {@link AlbumDate#ofFolder(FolderResource,
- * String)} and {@link FolderNames#of(FolderResource, String)}.</li>
+ * edit it, in part to a caller that may contribute to it, and to nobody else; and it is never an
+ * entry of a listing, not even for its editors (issue #226) — the app reaches it through
+ * <code>?type=auth</code>;</li>
+ * <li>it has no date, it is filed nowhere and it is never renamed after its title, see
+ * {@link AlbumDate#ofFolder(FolderResource, String)}.</li>
  * </ul>
  *
  * <p>
@@ -77,6 +86,83 @@ public final class Inboxes {
 		// Static utility.
 	}
 
+	/**
+	 * The inbox folder of every space a servlet of this process serves, by the space root, see
+	 * {@link #register(Path, String)}.
+	 *
+	 * <p>
+	 * Static, because the question "is this folder an inbox" is asked by the static machinery that
+	 * describes a folder from its sidecar (the {@link ResourceCache} loader, {@link FolderCover},
+	 * {@link AlbumDate}), which knows a folder and not the space it belongs to. A path is the
+	 * absolute, normalised path of the folder, so the two never differ in spelling.
+	 * </p>
+	 */
+	private static final Map<Path, Registration> BY_ROOT = new ConcurrentHashMap<>();
+
+	/** The inbox folders of {@link #BY_ROOT}, for the lookup by folder. */
+	private static final Map<Path, Path> ROOT_BY_INBOX = new ConcurrentHashMap<>();
+
+	/** One space's inbox, counted by the servlets serving that space. */
+	private static final class Registration {
+		final Path _inbox;
+
+		int _count;
+
+		Registration(Path inbox) {
+			_inbox = inbox;
+		}
+	}
+
+	/**
+	 * Makes the given folder of the given space its inbox, see issue #226.
+	 *
+	 * @param spaceRoot
+	 *        The root folder of the space.
+	 * @param inbox
+	 *        The path of the inbox relative to the root, segments separated by <code>/</code>, see
+	 *        {@link de.haumacher.imageServer.auth.SpaceStore.Config#getInbox()}.
+	 */
+	public static synchronized void register(Path spaceRoot, String inbox) {
+		Path root = normal(spaceRoot);
+		Path folder = normal(root.resolve(inbox.replace('/', File.separatorChar)));
+		Registration registration = BY_ROOT.get(root);
+		if (registration != null && !registration._inbox.equals(folder)) {
+			// Another servlet named another inbox for the same space: the later one decides.
+			ROOT_BY_INBOX.remove(registration._inbox);
+			registration = null;
+		}
+		if (registration == null) {
+			registration = new Registration(folder);
+			BY_ROOT.put(root, registration);
+			ROOT_BY_INBOX.put(folder, root);
+		}
+		registration._count++;
+	}
+
+	/** Forgets what {@link #register(Path, String)} said, once every servlet of the space is gone. */
+	public static synchronized void unregister(Path spaceRoot) {
+		Path root = normal(spaceRoot);
+		Registration registration = BY_ROOT.get(root);
+		if (registration == null || --registration._count > 0) {
+			return;
+		}
+		BY_ROOT.remove(root);
+		ROOT_BY_INBOX.remove(registration._inbox);
+	}
+
+	/**
+	 * The inbox folder of the space at the given root, <code>null</code> where no servlet of this
+	 * process serves it.
+	 */
+	public static File inboxOf(Path spaceRoot) {
+		Registration registration = BY_ROOT.get(normal(spaceRoot));
+		return registration == null ? null : registration._inbox.toFile();
+	}
+
+	private static Path normal(Path path) {
+		return path.toAbsolutePath().normalize();
+	}
+
 	/** How much of an inbox a request is answered. */
 	public enum Visibility {
 		/** All of it: the caller may edit this folder. */
@@ -95,14 +181,36 @@ public final class Inboxes {
 	}
 
 	/**
-	 * Whether the folder on disk describes itself as an inbox.
+	 * Whether the given folder is the inbox of its space, see issue #226, whether it exists yet or
+	 * not.
 	 *
 	 * <p>
-	 * The cheap look, the one a listing uses: the sidecar and nothing else, no image is opened.
+	 * Nothing is read: the place decides, see {@link #register(Path, String)}.
 	 * </p>
 	 */
 	public static boolean isInbox(File folder) {
-		return isInbox(ResourceCache.sidecar(folder));
+		return folder != null && ROOT_BY_INBOX.containsKey(normal(folder.toPath()));
+	}
+
+	/**
+	 * Whether the given folder or one above it is the inbox of its space; the inbox is an album and
+	 * holds no folder, but a request may name one below it.
+	 */
+	public static boolean inOrBelowInbox(File folder) {
+		for (File current = folder; current != null; current = current.getParentFile()) {
+			if (isInbox(current)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * The kind of the album in the given folder, see issue #226: {@link AlbumKind#INBOX} for the
+	 * space's inbox and {@link AlbumKind#ALBUM} for every other, whatever a sidecar says.
+	 */
+	public static AlbumKind kindOf(File folder) {
+		return isInbox(folder) ? AlbumKind.INBOX : AlbumKind.ALBUM;
 	}
 
 	/**
@@ -146,18 +254,16 @@ public final class Inboxes {
 	}
 
 	/**
-	 * The given resource as a request of the given {@link Visibility} may see the inboxes in it.
+	 * The given resource as a request of the given {@link Visibility} may see it.
 	 *
 	 * <p>
-	 * An inbox itself is flattened (and cut to the caller's own contributions), and an inbox among
-	 * the entries of a listing is dropped where the caller may not see it. Everything else is
-	 * answered unchanged — the very object the cache holds, as before.
+	 * The inbox itself is flattened (and cut to the caller's own contributions). Everything else is
+	 * answered unchanged — the very object the cache holds, as before. A listing needs nothing: it
+	 * never holds the inbox, see issue #226, because the loader leaves it out for everybody.
 	 * </p>
 	 *
 	 * @param resource
 	 *        What the cache holds; never modified.
-	 * @param path
-	 *        Where that resource lies, needed to reach the folders of a listing.
 	 * @param visibility
 	 *        What this caller may see of an inbox, see
 	 *        {@link #visibility(AuthService, Caller, PathInfo, int)}.
@@ -166,7 +272,7 @@ public final class Inboxes {
 	 *        {@link Visibility#OWN}.
 	 * @return The resource to answer, <code>null</code> if it is an inbox this caller may not see.
 	 */
-	public static Resource filter(Resource resource, PathInfo path, Visibility visibility, String subject) {
+	public static Resource filter(Resource resource, Visibility visibility, String subject) {
 		if (resource instanceof AlbumInfo) {
 			AlbumInfo album = (AlbumInfo) resource;
 			if (!isInbox(album)) {
@@ -177,122 +283,26 @@ public final class Inboxes {
 			}
 			return flatten(album, visibility == Visibility.OWN ? subject : null);
 		}
-		if (resource instanceof ListingInfo) {
-			return filterListing((ListingInfo) resource, path, visibility, subject);
-		}
 		return resource;
 	}
 
 	/**
-	 * The given listing without the inboxes the caller may not see.
-	 *
-	 * <p>
-	 * A folder that vanishes is otherwise exactly what this server does not do (see
-	 * the {@link PrivacyFilter}, where a folder whose cover is hidden keeps its tile).
-	 * An inbox is the one exception, and it is the whole point: a photograph nobody has looked at
-	 * yet must not be one click away for a visitor, and a tile saying "Inbox (12)" would be that
-	 * click.
-	 * </p>
+	 * How many photographs of the given inbox a caller of the given {@link Visibility} is shown as
+	 * waiting, see {@link de.haumacher.imageServer.shared.model.AuthInfo#getInboxCount()} and issue
+	 * #226: what {@link #flatten(AlbumInfo, String)} answers them, without the photographs rated
+	 * trash, which the inbox screen hides.
 	 */
-	private static ListingInfo filterListing(ListingInfo listing, PathInfo path, Visibility visibility,
-			String subject) {
-		List<FolderInfo> folders = listing.getFolders();
-		List<FolderInfo> filtered = null;
-		for (int n = 0, size = folders.size(); n < size; n++) {
-			FolderInfo folder = folders.get(n);
-			FolderInfo visible = folder.getKind() == FolderKind.INBOX
-				? entry(folder, path.child(folder.getName()), visibility, subject)
-				: uncovered(folder, path.child(folder.getName()), visibility);
-			if (visible != folder && filtered == null) {
-				filtered = new ArrayList<>(folders.subList(0, n));
-			}
-			if (filtered != null && visible != null) {
-				filtered.add(visible);
-			}
-		}
-		if (filtered == null) {
-			return listing;
-		}
-		return ListingInfo.create()
-			.setTitle(listing.getTitle())
-			.setPlacement(listing.getPlacement())
-			// The choice of issue #110 rides along with every copy of a listing.
-			.setIndex(listing.getIndex())
-			.setFolders(filtered);
-	}
-
-	/**
-	 * The tile of a folder of folders whose cover reaches into an inbox, as the caller may see it.
-	 *
-	 * <p>
-	 * A folder is shown by the picture of the child it chose, and that child may be an inbox — or
-	 * a folder that chose one, see issue #110. The photograph then is one nobody has sorted yet,
-	 * and the rule of issue #135 holds wherever it is shown: whoever may edit the inbox sees it,
-	 * and to everybody else the folder carries the folder icon. Not even a contributor sees it:
-	 * the cover of a folder is one picture out of somebody else's unsorted pile, and a tile that
-	 * showed it would show it to them by accident.
-	 * </p>
-	 *
-	 * <p>
-	 * The tile itself stays, cover or no cover: only an inbox <em>entry</em> ever vanishes, and
-	 * this entry is an ordinary folder.
-	 * </p>
-	 */
-	private static FolderInfo uncovered(FolderInfo folder, PathInfo childPath, Visibility visibility) {
-		if (visibility == Visibility.FULL) {
-			return folder;
-		}
-		ThumbnailInfo cover = folder.getIndexPicture();
-		if (cover == null || cover.getImage().indexOf('/') < 0) {
-			// An album's own cover lies in the album; only a folder's reaches further down.
-			return folder;
-		}
-		if (!FolderCover.throughInbox(childPath, cover.getImage())) {
-			return folder;
-		}
-		return FolderInfo.create()
-			.setName(folder.getName())
-			.setKind(folder.getKind())
-			// How much is waiting in the inbox is not a question of whose cover may be shown,
-			// see issue #137.
-			.setImageCount(folder.getImageCount())
-			.setTitle(folder.getTitle())
-			.setSubTitle(folder.getSubTitle())
-			.setLink(folder.getLink())
-			.setEffectiveDate(folder.getEffectiveDate());
-	}
-
-	/**
-	 * The tile of an inbox as the caller may see it, <code>null</code> where they may not see it
-	 * at all.
-	 *
-	 * <p>
-	 * A contributor keeps the tile and loses the cover unless it shows a photograph of their own:
-	 * the tile says "there is an inbox and you may put something in it", which is true for them,
-	 * while the cover would show somebody else's picture.
-	 * </p>
-	 */
-	private static FolderInfo entry(FolderInfo folder, PathInfo childPath, Visibility visibility, String subject) {
+	public static int waiting(AlbumInfo inbox, Visibility visibility, String subject) {
 		if (visibility == Visibility.NONE) {
-			return null;
+			return 0;
 		}
-		if (visibility == Visibility.FULL) {
-			return folder;
+		int result = 0;
+		for (AlbumPart part : flatten(inbox, visibility == Visibility.OWN ? subject : null).getParts()) {
+			if (part instanceof ImagePart && ((ImagePart) part).getRating() > Ratings.MIN) {
+				result++;
+			}
 		}
-		ThumbnailInfo cover = folder.getIndexPicture();
-		if (cover == null || contributedBy(childPath.toFile(), cover.getImage(), subject)) {
-			return folder;
-		}
-		return FolderInfo.create()
-			.setName(folder.getName())
-			.setKind(folder.getKind())
-			// How much is waiting in the inbox is not a question of whose cover may be shown,
-			// see issue #137.
-			.setImageCount(folder.getImageCount())
-			.setTitle(folder.getTitle())
-			.setSubTitle(folder.getSubTitle())
-			.setLink(folder.getLink())
-			.setEffectiveDate(folder.getEffectiveDate());
+		return result;
 	}
 
 	/**
@@ -488,7 +498,8 @@ public final class Inboxes {
 			return false;
 		}
 		AlbumInfo stored = (AlbumInfo) sidecar;
-		if (!isInbox(stored) && !isInbox(album)) {
+		if (!isInbox(folder)) {
+			// The place decides, never the kind a client sends, see issue #226.
 			return false;
 		}
 		Map<String, ImagePart> receivedImages = byName(album);

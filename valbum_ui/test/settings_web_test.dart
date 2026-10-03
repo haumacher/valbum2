@@ -78,7 +78,8 @@ void main() {
       expect(find.byKey(serverUrlHelpKey), findsNothing);
       expect(find.text("Save"), findsNothing);
       expect(find.text("Test connection"), findsNothing);
-      expect(find.text("Use the server this app was loaded from"), findsNothing);
+      expect(
+          find.text("Use the server this app was loaded from"), findsNothing);
       expect(find.text("Forget this server"), findsNothing);
     });
 
@@ -96,7 +97,7 @@ void main() {
 
       expect(find.byType(CameraRollSection), findsNothing);
       expect(find.byKey(cameraRollSwitchKey), findsNothing);
-      expect(find.byKey(cameraRollChooseKey), findsNothing);
+      expect(find.byKey(cameraRollInboxKey), findsNothing);
     });
 
     testWidgets('keeps sign-in, cache and diagnostics', (tester) async {
@@ -119,13 +120,13 @@ void main() {
       expect(find.byKey(serverLineKey), findsNothing);
     });
 
-    testWidgets('keeps the camera-roll section and its chooser',
+    testWidgets('keeps the camera-roll section, which offers no inbox choice',
         (tester) async {
       await pumpSettings(tester, isWeb: false);
 
       expect(find.byType(CameraRollSection), findsOneWidget);
       expect(find.byKey(cameraRollSwitchKey), findsOneWidget);
-      expect(find.byKey(cameraRollChooseKey), findsOneWidget);
+      expect(find.byIcon(Icons.folder_open), findsNothing);
     });
   });
 }

@@ -1,196 +1,248 @@
-/// The inbox where it is *not* the screen, the app half of issue #136: the
-/// listing tile, the create dialog and the switch that turns an album into an
-/// inbox and back.
+/// The inbox where it is *not* the screen (issue #226): one inbox per space,
+/// reached from an icon with a badge in the app bar of the start page and from
+/// the same entry in its menu, never a tile of a listing, never chosen and
+/// never made by switching an album.
 library;
 
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:valbum_ui/inbox_view.dart';
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/resource.dart';
 
 import 'inbox_view_test.dart' show inboxJson;
-import 'move_test.dart' hide main;
+import 'move_test.dart' show json;
 import 'share_link_test.dart' as share;
 import 'util/fake_image_http.dart';
+import 'util/fixtures.dart';
 import 'util/l10n.dart';
 
-/// A listing holding an inbox and a dated album: the inbox is undated, so the
-/// date order alone would drop it to the end.
-const String listingWithInbox = '["ListingInfo", {"path": "", '
+/// The start page as a current server answers it: the inbox is no entry.
+const String startListing = '["ListingInfo", {"path": "", '
     '"title": "Library", "folders": ['
     '{"name": "2026-05-01 Trip", "title": "Trip", "kind": "ALBUM", '
     '"effectiveDate": 1777593600000}, '
-    '{"name": "Inbox", "title": "Inbox", "kind": "INBOX"}'
+    '{"name": "Family", "title": "Family", "kind": "FOLDER"}'
     ']}]';
 
-/// The same listing with the counts of issue #137 on it: the inbox says how
-/// much is waiting, the album carries a number nobody shows.
-const String listingWithCount = '["ListingInfo", {"path": "", '
-    '"title": "Library", "folders": ['
-    '{"name": "2026-05-01 Trip", "title": "Trip", "kind": "ALBUM", '
-    '"effectiveDate": 1777593600000, "imageCount": 7}, '
-    '{"name": "Inbox", "title": "Inbox", "kind": "INBOX", "imageCount": 12}'
-    ']}]';
+/// A folder of folders below the start page.
+const String familyListing = '["ListingInfo", {"path": "Family", '
+    '"title": "Family", "folders": []}]';
 
-/// An ordinary album, which the kind switch turns into an inbox.
-const String plainAlbum = '["AlbumInfo", {"path": "Album", '
-    '"title": "Album", "subTitle": "", "parts": ['
-    '["ImagePart", {"kind": "IMAGE", "name": "a.jpg", "date": 1015113600000, '
-    '"width": 2048, "height": 1536, "orientation": "IDENTITY"}]]}]';
+/// The `?type=auth` answer of a signed-in member, the inbox named where
+/// [inbox] is given.
+String authAnswer(
+        {String role = "edit", String? inbox = "Inbox", int count = 0}) =>
+    '{"mode": "writes", "deviceName": "Phone", "writeAllowed": true, '
+    '"userName": "carol", "role": "$role"'
+    '${inbox == null ? "" : ', "inbox": "$inbox", "inboxCount": $count'}}';
 
-Future<void> pumpAt(
-  WidgetTester tester,
-  http.Response Function(http.Request) handler, {
+/// Pumps the whole app, signed in, at [route]; [auth] answers `?type=auth`
+/// and is asked anew on every request, so a test may change what it says.
+Future<List<http.Request>> pumpSignedIn(
+  WidgetTester tester, {
+  required String Function() auth,
   List<String> route = const [],
-  List<http.Request>? requests,
 }) async {
+  var requests = <http.Request>[];
+  var client = VAlbumClient(
+    dataUrl: "http://server/valbum/data",
+    // Only a signed-in device is asked who it is, see `_syncCaller`.
+    token: "dev-1",
+    httpClient: MockClient(servingThumbnails((request) async {
+      requests.add(request);
+      if (request.url.queryParameters["type"] == "auth") {
+        return json(auth());
+      }
+      var path = request.url.path;
+      if (path.endsWith("/Inbox/") || path.endsWith("/Inbox")) {
+        return json(inboxJson(rights: const ["view", "contribute", "edit"]));
+      }
+      if (path.endsWith("/Family/") || path.endsWith("/Family")) {
+        return json(familyListing);
+      }
+      return json(startListing);
+    })),
+  );
+  var settings = ServerSettings(
+    store: InMemorySettingsStore(
+        "http://server/valbum/", "dev-1", "Phone", "carol"),
+  );
+  await settings.load();
   await withFakeImageHttp(() async {
     await tester.pumpWidget(VAlbumApp(
-      client: recordingClient(handler, requests ?? []),
+      client: client,
+      settings: settings,
+      photoLibrary: FakePhotoLibrary(),
       initialRoute: ListingOrAlbumRoute(route),
     ));
     await tester.pumpAndSettle();
   });
+  return requests;
 }
 
 void main() {
-  group('the listing tile of an inbox', () {
-    testWidgets('stands first, carries the inbox icon and no date',
+  group('the start page', () {
+    testWidgets('carries the inbox icon with how much waits there',
         (tester) async {
-      await pumpAt(tester, (_) => json(listingWithInbox));
+      await pumpSignedIn(tester, auth: () => authAnswer(count: 12));
 
-      // First, although it is the undated one: an inbox is what wants doing.
-      // The tiles wrap into one row here, so "first" reads left to right.
-      var inbox = tester.getTopLeft(find.text("Inbox"));
-      var trip = tester.getTopLeft(find.text("Trip"));
-      expect(inbox.dy, trip.dy);
-      expect(inbox.dx, lessThan(trip.dx));
-      // Its own icon; the album beside it keeps the folder icon it had.
-      expect(find.byKey(const Key("inbox-icon")), findsOneWidget);
-      expect(find.byIcon(Icons.inbox), findsOneWidget);
-      expect(find.byIcon(Icons.folder), findsOneWidget);
-      // One date line, and it belongs to the album — an inbox has no date.
-      expect(find.byKey(const Key("folder-date")), findsOneWidget);
-      expect(find.text("May 1, 2026"), findsOneWidget);
+      expect(find.byKey(const Key("inbox-button")), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key("inbox-badge")),
+          matching: find.text("12"),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byTooltip(testL10n.inboxTooltip(12)), findsOneWidget);
     });
 
-    testWidgets('says how much is waiting, and only for an inbox',
-        (tester) async {
-      await pumpAt(tester, (_) => json(listingWithCount));
+    testWidgets('shows no number for an empty inbox', (tester) async {
+      await pumpSignedIn(tester, auth: () => authAnswer(count: 0));
 
-      expect(find.byKey(const Key("inbox-count")), findsOneWidget);
-      expect(find.text(testL10n.inboxPhotoCount(12)), findsOneWidget);
-      // The album beside it carries a count too — an older server answers one
-      // for everything — and no tile of an album ever shows it.
-      expect(find.text(testL10n.inboxPhotoCount(7)), findsNothing);
+      expect(find.byKey(const Key("inbox-button")), findsOneWidget);
+      expect(
+        tester
+            .widget<Badge>(find.byKey(const Key("inbox-badge")))
+            .isLabelVisible,
+        isFalse,
+      );
     });
 
-    testWidgets('says nothing where nothing is waiting', (tester) async {
-      // A count of nothing, which is also what a server built before the
-      // field answers: an empty inbox says nothing rather than "0".
-      await pumpAt(tester, (_) => json(listingWithInbox));
+    testWidgets('lists no inbox tile, whatever the server holds',
+        (tester) async {
+      await pumpSignedIn(tester, auth: () => authAnswer(count: 3));
 
+      expect(find.text("Trip"), findsOneWidget);
+      expect(find.text("Family"), findsOneWidget);
+      // The tile of #136/#137 is gone: no inbox icon on a tile, no count line.
+      expect(find.byKey(const Key("inbox-icon")), findsNothing);
       expect(find.byKey(const Key("inbox-count")), findsNothing);
     });
 
-    testWidgets('is never offered a share link', (tester) async {
-      await pumpAt(tester, (_) => json(listingWithInbox));
+    testWidgets('opens the inbox from the icon', (tester) async {
+      await pumpSignedIn(tester, auth: () => authAnswer(count: 2));
 
-      await tester.longPress(
-        find
-            .ancestor(
-                of: find.text("Inbox"), matching: find.byType(GestureDetector))
-            .first,
-      );
+      await tester.tap(find.byKey(const Key("inbox-button")));
       await tester.pumpAndSettle();
 
-      // The server refuses `?action=share` on an inbox, so nothing offers it.
-      expect(find.text("Share link…"), findsNothing);
-      // What does make sense is there.
-      expect(find.text("Move to…"), findsOneWidget);
-      expect(find.byKey(const Key("delete-entry")), findsOneWidget);
+      expect(find.byType(InboxContent), findsOneWidget);
+    });
+
+    testWidgets('opens the inbox from the menu entry', (tester) async {
+      await pumpSignedIn(tester, auth: () => authAnswer(count: 2));
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(find.text(testL10n.inboxMenuEntry(2)), findsOneWidget);
+      await tester.tap(find.byKey(const Key("open-inbox")));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InboxContent), findsOneWidget);
+    });
+
+    testWidgets('opens an inbox wherever the space names it', (tester) async {
+      var requests = await pumpSignedIn(tester,
+          auth: () => authAnswer(inbox: "Family/Inbox", count: 1));
+
+      await tester.tap(find.byKey(const Key("inbox-button")));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InboxContent), findsOneWidget);
+      expect(
+        requests.map((r) => r.url.path),
+        contains("/valbum/data/Family/Inbox/"),
+      );
+    });
+
+    testWidgets('asks the count anew when the inbox is left', (tester) async {
+      var count = 12;
+      await pumpSignedIn(tester, auth: () => authAnswer(count: count));
+      await tester.tap(find.byKey(const Key("inbox-button")));
+      await tester.pumpAndSettle();
+
+      // What was sorted in the inbox no longer waits there.
+      count = 3;
+      await tester.tap(find.byTooltip(testL10n.up));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key("inbox-badge")),
+          matching: find.text("3"),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('offers no inbox to a member who may only look',
+        (tester) async {
+      // The server names the inbox to whoever may put something in it, and
+      // to nobody else (issue #226).
+      await pumpSignedIn(tester,
+          auth: () => authAnswer(role: "view", inbox: null));
+
+      expect(find.byKey(const Key("inbox-button")), findsNothing);
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key("open-inbox")), findsNothing);
+    });
+
+    testWidgets('a folder below it carries no inbox icon', (tester) async {
+      await pumpSignedIn(tester,
+          auth: () => authAnswer(count: 5), route: const ["Family"]);
+
+      expect(find.byKey(const Key("inbox-button")), findsNothing);
     });
   });
 
-  group('the create dialog', () {
-    testWidgets('always makes an album: an inbox is switched in the properties',
+  group('the album properties', () {
+    testWidgets('offer no switch that makes an inbox of an album',
         (tester) async {
-      // Making an inbox is rare, so the create dialog offers no choice of
-      // kind (the author's decision on issue #178): an inbox is an album
-      // switched in its properties (below), or the one the sync makes.
-      var requests = <http.Request>[];
-      await pumpAt(
-        tester,
-        (request) => request.method == "PUT"
-            ? json('{"path":"Holiday"}')
-            : json(listingWithInbox),
-        requests: requests,
-      );
-
-      await tester.tap(find.byIcon(Icons.more_vert).last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("Create album"));
+      await tester.pumpWidget(localizedApp(const Scaffold(
+        body: AlbumPropertiesDialog(
+          AlbumProperties(title: "Trip", subTitle: ""),
+        ),
+      )));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key("create-kind-inbox")), findsNothing);
-      expect(find.byType(CheckboxListTile), findsNothing);
-      expect(find.text(testL10n.dateLabel), findsOneWidget);
-
-      // No date: the title alone names the folder, and it is an album.
-      await tester.enterText(find.byType(TextFormField).first, "Holiday");
-      await tester.tap(find.text(testL10n.create));
-      await tester.pumpAndSettle();
-
-      var put = requests.singleWhere((r) => r.method == "PUT");
-      expect(pathOf(put), "/valbum/data/Holiday/");
-      expect(put.body, isNot(contains('"kind":"INBOX"')));
-      expect(put.body, contains('"date":0'));
+      expect(find.byKey(const Key("album-kind")), findsNothing);
+      expect(find.byType(Checkbox), findsNothing);
+      expect(find.byKey(const Key("album-date")), findsOneWidget);
     });
-  });
 
-  group('the kind switch of the album properties', () {
-    testWidgets('writes the kind and shows the inbox screen without leaving',
+    testWidgets('of the inbox show neither a date nor a switch',
         (tester) async {
-      var requests = <http.Request>[];
-      var turned = false;
-      await pumpAt(
-        tester,
-        (request) {
-          if (request.method == "PUT") {
-            turned = true;
-            return json("");
-          }
-          return json(turned ? inboxJson() : plainAlbum);
-        },
-        route: const ["Album"],
-        requests: requests,
-      );
-
-      expect(find.byType(AlbumContent), findsOneWidget);
-
-      await tester.tap(find.byIcon(Icons.more_vert).last);
+      AlbumProperties? answered;
+      await tester.pumpWidget(localizedApp(Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: TextButton(
+              onPressed: () async =>
+                  answered = await showDialog<AlbumProperties>(
+                context: context,
+                builder: (_) => const AlbumPropertiesDialog(
+                  AlbumProperties(
+                      title: "Inbox", subTitle: "", kind: AlbumKind.inbox),
+                ),
+              ),
+              child: const Text("open"),
+            ),
+          ),
+        ),
+      )));
+      await tester.tap(find.text("open"));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key("album-properties")));
-      await tester.pumpAndSettle();
-      expect(find.text(albumKindActionLabel(testL10n, AlbumKind.album)), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key("album-kind")));
-      await tester.pumpAndSettle();
-      // The dialog now shows an inbox: no date, no album picture.
+      expect(find.byKey(const Key("album-kind")), findsNothing);
       expect(find.byKey(const Key("album-date")), findsNothing);
-      expect(find.text(albumKindActionLabel(testL10n, AlbumKind.inbox)), findsOneWidget);
       await tester.tap(find.text(testL10n.apply));
       await tester.pumpAndSettle();
-
-      var put = requests.singleWhere((r) => r.method == "PUT");
-      expect(pathOf(put), "/valbum/data/Album/");
-      expect(put.body, contains('"kind":"INBOX"'));
-
-      // The same address, another screen: nobody left the folder.
-      expect(find.byType(InboxContent), findsOneWidget);
-      expect(find.byType(AlbumContent), findsNothing);
+      expect(answered?.kind, AlbumKind.inbox,
+          reason: "the kind is the server's, carried through untouched");
     });
   });
 
@@ -214,6 +266,7 @@ void main() {
       expect(find.byType(ShareConfinedScreen), findsOneWidget);
       expect(find.text("No such album."), findsOneWidget);
       expect(find.byType(InboxContent), findsNothing);
+      expect(find.byKey(const Key("inbox-button")), findsNothing);
     });
   });
 }

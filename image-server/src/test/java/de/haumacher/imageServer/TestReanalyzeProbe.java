@@ -76,7 +76,8 @@ public class TestReanalyzeProbe extends ShareTestCase {
 
 		AlbumInfo written = (AlbumInfo) de.haumacher.imageServer.shared.model.Resource
 			.readResource(reader(Files.readString(folder.resolve("index.json"), StandardCharsets.UTF_8)));
-		assertEquals(AlbumKind.INBOX, written.getKind());
+		assertEquals("Whether a folder is the inbox is its place, never written (issue #226).",
+			AlbumKind.ALBUM, written.getKind());
 		// The share fixture already holds carols.jpg in this folder, which the sidecar does not
 		// list: the loader shows it, but a re-read never writes what the author did not list.
 		assertEquals("The stored arrangement, not the flat answer, and nothing the sidecar did not list.", 2,

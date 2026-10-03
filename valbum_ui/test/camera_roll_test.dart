@@ -24,6 +24,11 @@ const String serverDataUrl = "http://server/valbum/data";
 /// The album new photos go into.
 const List<String> inbox = ["2026-03-01 Inbox"];
 
+/// Who the harness's sync uploads as: a member the server names [inbox] to,
+/// see `CallerInfo.inbox` (issue #226).
+const CallerInfo inboxCaller =
+    CallerInfo(role: roleMember, inbox: "2026-03-01 Inbox", inboxCount: 0);
+
 /// A client answering through the given handler, without the thumbnail
 /// wrapper: nothing in a camera-roll sync fetches an image.
 VAlbumClient syncClient(
@@ -96,10 +101,10 @@ class Harness {
   Harness({
     List<PhotoItem>? items,
     PhotoLibrary? photoLibrary,
-    CameraRollConfig config =
-        const CameraRollConfig(enabled: true, inbox: inbox),
+    CameraRollConfig config = const CameraRollConfig(enabled: true),
     int batchSize = 10,
     bool withServer = true,
+    CallerInfo? caller = inboxCaller,
   })  : library = photoLibrary is FakePhotoLibrary
             ? photoLibrary
             : FakePhotoLibrary(items: items),
@@ -131,6 +136,7 @@ class Harness {
       store: store,
       library: photoLibrary ?? library,
       clientOf: () => client,
+      callerOf: () async => caller,
       isOffline: () => offline,
       batchSize: batchSize,
       clock: () => timers.now,
@@ -183,7 +189,6 @@ void main() {
       var store = InMemorySettingsStore();
       var config = CameraRollConfig(
         enabled: true,
-        inbox: const ["holidays", "2026"],
         since: DateTime.utc(2026, 3, 1, 12, 30),
         done: const ["a", "b"],
       );
@@ -199,7 +204,6 @@ void main() {
       var config = await store.loadCameraRollConfig();
 
       expect(config.enabled, isFalse);
-      expect(config.inbox, isEmpty);
       expect(config.since, isNull);
       expect(config, CameraRollConfig.disabled);
     });
@@ -229,7 +233,8 @@ void main() {
       expect(harness.sync.status.phase, CameraRollPhase.idle);
       expect(harness.sync.status.lastStored, 3);
       expect(harness.sync.status.lastPresent, 0);
-      expect(cameraRollLine(harness.sync.status, testL10n), contains("Synced 3 photos"));
+      expect(cameraRollLine(harness.sync.status, testL10n),
+          contains("Synced 3 photos"));
     });
 
     test('uploads into the chosen inbox album', () async {
@@ -275,7 +280,8 @@ void main() {
       expect(harness.uploads, isEmpty);
       expect(harness.requests, isEmpty, reason: "Nothing to even ask about.");
       expect(harness.sync.status.phase, CameraRollPhase.idle);
-      expect(cameraRollLine(harness.sync.status, testL10n), contains("Nothing new"));
+      expect(cameraRollLine(harness.sync.status, testL10n),
+          contains("Nothing new"));
     });
 
     test('picks up an item added after the previous run', () async {
@@ -309,7 +315,8 @@ void main() {
           reason: "The check answered 'present' for every hash.");
       expect(harness.sync.status.lastStored, 0);
       expect(harness.sync.status.lastPresent, 2);
-      expect(cameraRollLine(harness.sync.status, testL10n), contains("Synced 2 photos"));
+      expect(cameraRollLine(harness.sync.status, testL10n),
+          contains("Synced 2 photos"));
     });
 
     test('a reinstalled app converges without re-uploading', () async {
@@ -317,7 +324,7 @@ void main() {
       // scanned, and the server answers that it has everything.
       var harness = Harness(
         items: [photo("a.jpg", 1), photo("b.jpg", 2), photo("c.jpg", 3)],
-        config: const CameraRollConfig(enabled: true, inbox: inbox),
+        config: const CameraRollConfig(enabled: true),
         batchSize: 2,
       );
       addTearDown(harness.dispose);
@@ -364,7 +371,8 @@ void main() {
       );
       expect(harness.sync.status.nextAttempt,
           harness.timers.now.add(const Duration(seconds: 30)));
-      expect(cameraRollLine(harness.sync.status, testL10n), contains("retrying at"));
+      expect(cameraRollLine(harness.sync.status, testL10n),
+          contains("retrying at"));
       expect(harness.timers.pending, contains(const Duration(seconds: 30)));
     });
 
@@ -438,7 +446,8 @@ void main() {
 
       expect(harness.sync.status.phase, CameraRollPhase.waiting);
       expect(harness.sync.status.message, "Pair this device.");
-      expect(cameraRollLine(harness.sync.status, testL10n), contains("Pair this device."));
+      expect(cameraRollLine(harness.sync.status, testL10n),
+          contains("Pair this device."));
     });
 
     test('refuses to run while the app is offline', () async {
@@ -454,21 +463,20 @@ void main() {
       expect(harness.sync.status.notice, const ServerOffline());
     });
 
-    test('does not refuse a run without an inbox album any more', () async {
-      // Since issue #54 the run creates one; what it creates and where it
-      // puts it is pinned in `camera_roll_inbox_test.dart`.
-      var harness = Harness(
-        items: [photo("a.jpg", 1)],
-        config: const CameraRollConfig(enabled: true),
-      );
+    test('uploads into the inbox the server names and creates nothing',
+        () async {
+      // Issue #226: the inbox is the server's word; the run never creates one.
+      // What it does where none is named is pinned in
+      // `camera_roll_inbox_test.dart`.
+      var harness = Harness(items: [photo("a.jpg", 1)]);
       addTearDown(harness.dispose);
       await harness.sync.load();
 
       await harness.sync.syncNow();
 
       expect(harness.sync.status.phase, CameraRollPhase.idle);
-      expect(harness.sync.config.inbox, ["Inbox"]);
-      expect(harness.uploads, hasLength(1));
+      expect(harness.created, isEmpty);
+      expect(harness.uploadUrls, ["$serverDataUrl/2026-03-01%20Inbox/"]);
     });
 
     test('refuses to run without a server', () async {
@@ -630,7 +638,7 @@ void main() {
     test('is refused when the platform has no photo library', () async {
       var harness = Harness(
         photoLibrary: const UnavailablePhotoLibrary(NoPhotoLibraryPlatform()),
-        config: const CameraRollConfig(inbox: inbox),
+        config: const CameraRollConfig(),
       );
       addTearDown(harness.sync.dispose);
       await harness.sync.load();
@@ -642,17 +650,15 @@ void main() {
       expect(harness.sync.config.enabled, isFalse);
     });
 
-    test('stores the choice and starts watching', () async {
+    test('stores the switch and starts watching', () async {
       var harness = Harness(config: CameraRollConfig.disabled);
       addTearDown(harness.dispose);
       await harness.sync.load();
 
-      await harness.sync.chooseInbox(inbox);
       expect(await harness.sync.setEnabled(true), isNull);
       await pumpEventQueue();
 
       expect((await harness.store.loadCameraRollConfig()).enabled, isTrue);
-      expect((await harness.store.loadCameraRollConfig()).inbox, inbox);
       expect(harness.timers.pending, contains(const Duration(minutes: 15)));
 
       await harness.sync.setEnabled(false);
@@ -663,20 +669,25 @@ void main() {
 
   group('the status line', () {
     test('says what every phase means', () {
-      expect(cameraRollLine(const CameraRollStatus(), testL10n), contains("off"));
       expect(
-        cameraRollLine(const CameraRollStatus(
-          phase: CameraRollPhase.unavailable,
-          notice: NoPhotoLibraryHere(),
-        ), testL10n),
+          cameraRollLine(const CameraRollStatus(), testL10n), contains("off"));
+      expect(
+        cameraRollLine(
+            const CameraRollStatus(
+              phase: CameraRollPhase.unavailable,
+              notice: NoPhotoLibraryHere(),
+            ),
+            testL10n),
         "No photo library on this platform",
       );
       expect(
-        cameraRollLine(const CameraRollStatus(
-          phase: CameraRollPhase.running,
-          done: 2,
-          total: 8,
-        ), testL10n),
+        cameraRollLine(
+            const CameraRollStatus(
+              phase: CameraRollPhase.running,
+              done: 2,
+              total: 8,
+            ),
+            testL10n),
         "Uploading 3 of 8...",
       );
       expect(
@@ -691,14 +702,17 @@ void main() {
         startsWith("Failed: no route - retrying at "),
       );
       expect(
-        cameraRollLine(const CameraRollStatus(
-          phase: CameraRollPhase.failed,
-          message: "no server",
-        ), testL10n),
+        cameraRollLine(
+            const CameraRollStatus(
+              phase: CameraRollPhase.failed,
+              message: "no server",
+            ),
+            testL10n),
         "Failed: no server",
       );
       expect(
-        cameraRollLine(const CameraRollStatus(phase: CameraRollPhase.idle), testL10n),
+        cameraRollLine(
+            const CameraRollStatus(phase: CameraRollPhase.idle), testL10n),
         "Waiting for new photos.",
       );
       expect(
@@ -765,29 +779,32 @@ void main() {
       );
     });
 
-    testWidgets('chooses an inbox album through the picker',
+    testWidgets('names the inbox the server names and offers no choice',
         (WidgetTester tester) async {
       var harness = Harness(config: CameraRollConfig.disabled);
       addTearDown(harness.dispose);
       await harness.sync.load();
-      await pumpSection(tester, harness.sync);
-
-      expect(find.textContaining("No album chosen"), findsOneWidget);
-
-      await tester.tap(find.byKey(cameraRollChooseKey));
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: testLocalizationsDelegates,
+          supportedLocales: testSupportedLocales,
+          home: CallerScope(
+            caller: inboxCaller,
+            child: CameraRollScope(
+              sync: harness.sync,
+              child: const Scaffold(
+                body: SingleChildScrollView(child: CameraRollSection()),
+              ),
+            ),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
-      // The mocked listing tree: the root lists two folders.
-      expect(find.text("Schlosspark Karlsruhe"), findsOneWidget);
-      await tester.tap(find.text("2003-06-21 Ausflug"));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("Use this album"));
-      await tester.pumpAndSettle();
-
-      expect(harness.sync.config.inbox, ["2003-06-21 Ausflug"]);
-      expect(find.text("2003-06-21 Ausflug"), findsOneWidget);
-      expect((await harness.store.loadCameraRollConfig()).inbox,
-          ["2003-06-21 Ausflug"]);
+      expect(find.byKey(cameraRollInboxKey), findsOneWidget);
+      expect(find.textContaining("2026-03-01 Inbox"), findsOneWidget);
+      expect(find.byIcon(Icons.folder_open), findsNothing,
+          reason: "the inbox is the server's word, never a choice (#226)");
     });
 
     testWidgets('shows the progress of a run and stops it',
@@ -884,7 +901,8 @@ void main() {
 
       expect(find.text("Camera roll"), findsOneWidget);
       expect(find.byKey(cameraRollSwitchKey), findsOneWidget);
-      expect(find.textContaining("No album chosen"), findsOneWidget);
+      // No choice of an inbox: it is the server's word (issue #226).
+      expect(find.byIcon(Icons.folder_open), findsNothing);
     });
   });
 
@@ -937,8 +955,7 @@ void main() {
       var library = FakePhotoLibrary(items: [photo("a.jpg", 1)]);
       addTearDown(library.dispose);
       var store = InMemorySettingsStore()
-        ..cameraRoll =
-            const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+        ..cameraRoll = const CameraRollConfig(enabled: true).toJson();
       var client = VAlbumClient(
         dataUrl: serverDataUrl,
         httpClient: MockClient(servingThumbnails((request) async {
@@ -948,6 +965,10 @@ void main() {
           if (request.method == "PUT") {
             await gate.future;
             return http.Response("", 200);
+          }
+          if (request.url.query == "type=auth") {
+            // The run asks where the inbox is (issue #226).
+            return http.Response('{"mode":"off","inbox":"Inbox"}', 200);
           }
           return http.Response(fixture("listing.json"), 200);
         })),
@@ -1011,7 +1032,8 @@ void main() {
       expect(harness.uploads, isEmpty);
     });
 
-    test('a video of an iPhone, an iTunes export and an old phone is sent '
+    test(
+        'a video of an iPhone, an iTunes export and an old phone is sent '
         '(issue #189)', () async {
       var harness = Harness(
         items: [

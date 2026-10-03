@@ -48,7 +48,8 @@ public class TestMediaUrls extends ShareTestCase {
 
 	private static final String PRIVATE_CLIP = ZOO + "private.mp4";
 
-	private static final String INBOX = "Family Inbox";
+	/** The inbox of the space, see issue #226. */
+	private static final String INBOX = de.haumacher.imageServer.auth.SpaceStore.DEFAULT_INBOX;
 
 	@Override
 	protected void setUp() throws Exception {

@@ -20,6 +20,12 @@ void main() {
       (tester) async {
     var requests = <http.Request>[];
     var transport = MockClient(servingThumbnails((request) async {
+      // Where the inbox is, as `?type=auth` names it (issue #226).
+      if (request.url.queryParameters["type"] == "auth") {
+        return http.Response(
+            '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+            200);
+      }
       requests.add(request);
       if (request.url.host == "other") {
         if (request.method == "GET") {
@@ -39,8 +45,7 @@ void main() {
       return http.Response(fixture("listing.json"), 200);
     }));
     var store = InMemorySettingsStore("http://server/valbum/");
-    store.cameraRoll =
-        const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+    store.cameraRoll = const CameraRollConfig(enabled: true).toJson();
     var settings = ServerSettings(store: store, platformDefault: () => null);
     var library = FakePhotoLibrary(items: [
       fakePhoto("one.jpg", "one".codeUnits,
@@ -90,6 +95,7 @@ void main() {
     sync.trigger();
     await withFakeImageHttp(() => tester.pumpAndSettle());
     expect(sync.status.phase, CameraRollPhase.waiting);
-    expect(cameraRollLine(sync.status, testL10n).toLowerCase(), contains("offline"));
+    expect(cameraRollLine(sync.status, testL10n).toLowerCase(),
+        contains("offline"));
   });
 }

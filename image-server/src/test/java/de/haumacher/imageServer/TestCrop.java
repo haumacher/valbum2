@@ -205,9 +205,12 @@ public class TestCrop extends TestCase {
 
 	/** An inbox writes at once, and so does its crop (issue #160); it is answered with the part. */
 	public void testAnInboxIsCroppedLikeAnAlbum() throws Exception {
-		AlbumInfo album = album(ALICE_TOKEN);
-		album.setKind(de.haumacher.imageServer.shared.model.AlbumKind.INBOX);
-		assertEquals(HttpServletResponse.SC_OK, put(write(album), ALICE_TOKEN).status());
+		// The album is the space's inbox, see issue #226.
+		_servlet.destroy();
+		_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.WRITES, _base), "",
+			new de.haumacher.imageServer.auth.SpaceStore.Config("", "none", "", "off", "", ALBUM));
+		_servlet.init();
+		assertEquals(de.haumacher.imageServer.shared.model.AlbumKind.INBOX, album(ALICE_TOKEN).getKind());
 
 		AlbumInfo answer = crop(IMAGE, crop(0.5, 0, 0.5, 0.5), ALICE_TOKEN);
 		assertEquals(de.haumacher.imageServer.shared.model.AlbumKind.INBOX, answer.getKind());

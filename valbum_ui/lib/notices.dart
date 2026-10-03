@@ -50,6 +50,12 @@ class GuestHasNoSpace extends AppNotice {
   const GuestHasNoSpace();
 }
 
+/// The server names no inbox this device may upload into, see issue #226: the
+/// caller may only look, or the server is older than the one inbox of a space.
+class NoInboxForCaller extends AppNotice {
+  const NoInboxForCaller();
+}
+
 /// This device names no album server.
 class NoServerConfigured extends AppNotice {
   const NoServerConfigured();
@@ -197,6 +203,7 @@ class NoWifiOther extends AppNotice {
 /// so that the same thing is said the same way wherever it is shown.
 String noticeText(AppNotice notice, AppLocalizations l10n) => switch (notice) {
       GuestHasNoSpace() => l10n.noticeGuestNoSpace,
+      NoInboxForCaller() => l10n.noticeNoInbox,
       NoServerConfigured() => l10n.noticeNoServerConfigured,
       ServerOffline() => l10n.noticeOffline,
       ServerUnreachable(problem: var problem) =>

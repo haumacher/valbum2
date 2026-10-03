@@ -38,6 +38,10 @@
 ///    the clicked photograph is part of it and otherwise on that photograph
 ///    alone, which first becomes the selection (the #139/#156 rule); the
 ///    browser's own menu is taken away while the inbox stands;
+///  * a space has exactly one, the folder the server names in `?type=auth`
+///    (issue #226): it is never a tile of a listing and never chosen, it is
+///    opened from the inbox icon of the start page, whose badge says how much
+///    waits here;
 ///  * what an inbox has no use for is not there: no reorder, no drag handles,
 ///    no headings of its own, no description, no album picture, no groups, no
 ///    "view as".
@@ -319,10 +323,17 @@ class InboxContentState extends State<InboxContent> {
   /// The words this screen reads in.
   AppLocalizations get _l10n => AppLocalizations.of(context)!;
 
+  /// Asks the server again how much waits here, see [CallerInfo.refresh];
+  /// kept from the tree while it can still be read, and called when the
+  /// screen is left (issue #226).
+  VoidCallback? _refreshCaller;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     share = ShareSession.of(context);
+    _refreshCaller =
+        context.getInheritedWidgetOfExactType<CallerScope>()?.refresh;
   }
 
   @override
@@ -457,6 +468,13 @@ class InboxContentState extends State<InboxContent> {
     if (_browserMenuTaken) {
       _browserMenuTaken = false;
       browserMenu.enable();
+    }
+    // What was sorted here, moved out or thrown away is no longer waiting: the
+    // badge on the start page is asked anew once this screen is gone, and
+    // never while the tree is being torn down.
+    var refresh = _refreshCaller;
+    if (refresh != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => refresh());
     }
     super.dispose();
   }
@@ -821,12 +839,12 @@ class InboxContentState extends State<InboxContent> {
     );
   }
 
-  /// Opens the album properties, which for an inbox carry the kind switch.
+  /// Opens the album properties: the title and the subtitle of the inbox.
   ///
   /// The very dialog the album page opens and the very write it makes: an
-  /// inbox has no buffer, so this is always the "write at once" branch, and
-  /// the answer says where the folder is now — clearing the switch dates the
-  /// folder again and may rename it (issue #130).
+  /// inbox has no buffer, so this is always the "write at once" branch. The
+  /// inbox is what the space names it, never an album switched to one (issue
+  /// #226), and the server never renames it after its title.
   Future<void> editProperties() async {
     if (refuseWhileOffline(context)) {
       return;
@@ -841,7 +859,6 @@ class InboxContentState extends State<InboxContent> {
           indexPicture: album.indexPicture,
           kind: album.kind,
         ),
-        mayChangeKind: true,
         client: client,
         baseUrl: widget.baseUrl,
       ),
@@ -862,7 +879,6 @@ class InboxContentState extends State<InboxContent> {
       album.subTitle = values.subTitle;
       album.date = values.date;
       album.indexPicture = values.indexPicture;
-      album.kind = values.kind;
     }
 
     setState(() => apply(result));
@@ -882,15 +898,8 @@ class InboxContentState extends State<InboxContent> {
     if (!mounted) {
       return;
     }
-    // The listing above shows this folder by its title and its kind, both of
-    // which may have just changed -- and so may the folder's own name (#130).
-    if (path.isNotEmpty) {
-      widget.albumState.navigator.delegate
-          .forget(path.sublist(0, path.length - 1));
-    }
     if (stored.message.isEmpty) {
-      // The same address, another kind: the album page takes over, or this
-      // screen does, without anybody leaving the folder they are standing in.
+      // The same address, the new title shown.
       widget.albumState.navigator.delegate.forget(path);
       widget.albumState.reload();
       return;

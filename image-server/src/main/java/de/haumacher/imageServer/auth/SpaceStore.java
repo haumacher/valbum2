@@ -27,7 +27,8 @@ import java.util.logging.Logger;
  * The presence of this file is what makes a folder below the base folder a space, which is why the
  * file is written by whoever administers the machine — by hand, or with the command
  * <code>--create-space</code> of issue #175, see {@link #create(Path, String, String, String)} — and
- * never by the running server, so that no request can bring a space into existence.
+ * never by a request, so that no request can bring a space into existence. The one thing a starting
+ * server writes into it is the inbox it settled on, once, see {@link #storeInbox(Path, String)}.
  * </p>
  *
  * <p>
@@ -36,13 +37,14 @@ import java.util.logging.Logger;
  *
  * <pre>
  * {"version":1,"name":"Alice","anonymous":"public","mapUrl":"https://www.google.com/maps?q={lat},{lon}",
- *  "faces":"on","timeZone":"Europe/Berlin"}
+ *  "faces":"on","timeZone":"Europe/Berlin","inbox":"Inbox"}
  * </pre>
  *
  * <p>
  * Everything is optional: a file holding nothing but <code>{}</code> is a space with the folder's
  * own name, no anonymous access, the default map (issue #112), no face index (issue #124) and the
- * server's own time zone for the photographs that do not say theirs (issue #183). An
+ * server's own time zone for the photographs that do not say theirs (issue #183), and its inbox
+ * at {@link #DEFAULT_INBOX} (issue #226). An
  * unknown <code>anonymous</code> value is read as {@link #ANONYMOUS_NONE}, the closed one, and an
  * unknown <code>faces</code> value as {@link #FACES_OFF} — a space is never opened and never made
  * to process biometrics by a typo.
@@ -87,6 +89,12 @@ public class SpaceStore {
 	 */
 	public static final String DEFAULT_MAP_URL = "https://www.google.com/maps?q={lat},{lon}";
 
+	/**
+	 * The folder of the space's inbox where the file names none, see issue #226: a folder of this
+	 * name at the space root, created by the first upload into it.
+	 */
+	public static final String DEFAULT_INBOX = "Inbox";
+
 	private static final int VERSION = 1;
 
 	private static final String VERSION__PROP = "version";
@@ -100,6 +108,8 @@ public class SpaceStore {
 	private static final String FACES__PROP = "faces";
 
 	private static final String TIME_ZONE__PROP = "timeZone";
+
+	private static final String INBOX__PROP = "inbox";
 
 	private static final Logger LOG = Logger.getLogger(SpaceStore.class.getName());
 
@@ -142,6 +152,8 @@ public class SpaceStore {
 
 		private final ZoneId _zone;
 
+		private final String _inbox;
+
 		/** Creates a {@link Config} with the default map, see {@link SpaceStore#DEFAULT_MAP_URL}. */
 		public Config(String name, String anonymous) {
 			this(name, anonymous, "");
@@ -175,6 +187,19 @@ public class SpaceStore {
 		 *        empty string (or an unknown id) for the server's own zone.
 		 */
 		public Config(String name, String anonymous, String mapUrl, String faces, String timeZone) {
+			this(name, anonymous, mapUrl, faces, timeZone, "");
+		}
+
+		/**
+		 * Creates a {@link Config}.
+		 *
+		 * @param inbox
+		 *        The path of the space's inbox relative to its root as the file names it, see issue
+		 *        #226; the empty string where it names none (the inbox is then
+		 *        {@link SpaceStore#DEFAULT_INBOX}). A path {@link SpaceStore#checkInbox(String)}
+		 *        refuses is logged and read as none.
+		 */
+		public Config(String name, String anonymous, String mapUrl, String faces, String timeZone, String inbox) {
 			_name = name;
 			_anonymous = anonymous;
 			_mapUrl = mapUrl == null || mapUrl.trim().isEmpty() ? DEFAULT_MAP_URL : mapUrl.trim();
@@ -187,6 +212,35 @@ public class SpaceStore {
 					+ ZoneId.systemDefault() + ".");
 			}
 			_zone = zone;
+			String stored = inbox == null ? "" : inbox.trim();
+			String problem = stored.isEmpty() ? null : checkInbox(stored);
+			if (problem != null) {
+				LOG.warning("The space '" + name + "' names the inbox '" + stored + "': " + problem
+					+ " Its inbox is '" + DEFAULT_INBOX + "'.");
+				stored = "";
+			}
+			_inbox = stored;
+		}
+
+		/**
+		 * The path of the space's inbox relative to its root, see issue #226: what the file names,
+		 * else {@link SpaceStore#DEFAULT_INBOX}. Never empty.
+		 */
+		public String getInbox() {
+			return _inbox.isEmpty() ? DEFAULT_INBOX : _inbox;
+		}
+
+		/** This configuration with the given inbox, see {@link #getInbox()}. */
+		public Config withInbox(String inbox) {
+			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, inbox);
+		}
+
+		/**
+		 * Whether the file names the inbox itself, see issue #226; a space that does not has not
+		 * been settled by {@link de.haumacher.imageServer.InboxMigration} yet.
+		 */
+		public boolean hasStoredInbox() {
+			return !_inbox.isEmpty();
 		}
 
 		/**
@@ -256,7 +310,7 @@ public class SpaceStore {
 		@Override
 		public String toString() {
 			return "Space[" + _name + ", anonymous=" + _anonymous + ", map=" + _mapUrl + ", faces="
-				+ _faces + ", timeZone=" + _timeZone + "]";
+				+ _faces + ", timeZone=" + _timeZone + ", inbox=" + getInbox() + "]";
 		}
 	}
 
@@ -284,11 +338,35 @@ public class SpaceStore {
 		if (!Files.isRegularFile(file)) {
 			return new Config(folderName, ANONYMOUS_NONE);
 		}
+		Stored stored = readStored(file);
+		return new Config(stored.name.trim().isEmpty() ? folderName : stored.name.trim(),
+			ANONYMOUS_PUBLIC.equals(stored.anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE, stored.mapUrl,
+			stored.faces.trim(), stored.timeZone, stored.inbox);
+	}
+
+	/** The values of a {@value #FILE_NAME} exactly as they are written, empty where one is absent. */
+	private static final class Stored {
 		String name = "";
+
 		String anonymous = "";
+
 		String mapUrl = "";
+
 		String faces = "";
+
 		String timeZone = "";
+
+		String inbox = "";
+	}
+
+	/**
+	 * Reads the given file as it is written.
+	 *
+	 * @throws IOException
+	 *         If it cannot be read; a broken file is never answered with defaults.
+	 */
+	private static Stored readStored(Path file) throws IOException {
+		Stored result = new Stored();
 		try (Reader reader = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8);
 				JsonReader in = new JsonReader(new ReaderAdapter(reader))) {
 			in.beginObject();
@@ -296,19 +374,22 @@ public class SpaceStore {
 				String key = in.nextName();
 				switch (key) {
 					case NAME__PROP:
-						name = in.nextString();
+						result.name = in.nextString();
 						break;
 					case ANONYMOUS__PROP:
-						anonymous = in.nextString();
+						result.anonymous = in.nextString();
 						break;
 					case MAP_URL__PROP:
-						mapUrl = in.nextString();
+						result.mapUrl = in.nextString();
 						break;
 					case FACES__PROP:
-						faces = in.nextString();
+						result.faces = in.nextString();
 						break;
 					case TIME_ZONE__PROP:
-						timeZone = in.nextString();
+						result.timeZone = in.nextString();
+						break;
+					case INBOX__PROP:
+						result.inbox = in.nextString();
 						break;
 					default:
 						in.skipValue();
@@ -319,8 +400,60 @@ public class SpaceStore {
 		} catch (RuntimeException ex) {
 			throw new IOException("Cannot read '" + file + "': " + ex.getMessage(), ex);
 		}
-		return new Config(name.trim().isEmpty() ? folderName : name.trim(),
-			ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE, mapUrl, faces.trim(), timeZone);
+		return result;
+	}
+
+	/**
+	 * Why the given value cannot name the inbox of a space, <code>null</code> where it can, see
+	 * issue #226.
+	 *
+	 * <p>
+	 * A path relative to the space root, its segments separated by <code>/</code>: every segment a
+	 * legal folder name that the library does not ignore (no leading dot, no <code>..</code>, no
+	 * litter of issue #173), so that the inbox is an ordinary folder of the library and never a
+	 * place below <code>.valbum</code> or outside the space.
+	 * </p>
+	 */
+	public static String checkInbox(String inbox) {
+		if (inbox == null || inbox.trim().isEmpty()) {
+			return "An inbox needs a folder name.";
+		}
+		for (String segment : inbox.trim().split("/", -1)) {
+			if (segment.isEmpty() || !segment.equals(segment.trim())
+				|| !de.haumacher.imageServer.FolderNames.isLegal(segment)
+				|| de.haumacher.imageServer.LibraryFiles.isIgnored(segment)) {
+				return "'" + inbox + "' is no folder of the space: name a folder below the space root, "
+					+ "its segments separated by '/', none of them empty or starting with a dot.";
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Writes the inbox of the space at the given folder into its {@value #FILE_NAME}, see issue
+	 * #226, keeping everything else the file says exactly as it is written; a file that is not
+	 * there yet is written with the defaults {@link #load(Path, String)} reads anyway.
+	 *
+	 * <p>
+	 * The one write of the running server into this file: the decision of
+	 * {@link de.haumacher.imageServer.InboxMigration}, made once and written down so that it is
+	 * not made again, differently, at the next start.
+	 * </p>
+	 *
+	 * @throws IOException
+	 *         If the file is there but cannot be read; it is not touched then.
+	 * @throws IllegalArgumentException
+	 *         If {@link #checkInbox(String)} refuses the path; nothing is written then.
+	 */
+	public static void storeInbox(Path spaceRoot, String inbox) throws IOException {
+		String problem = checkInbox(inbox);
+		if (problem != null) {
+			throw new IllegalArgumentException(problem);
+		}
+		Path file = file(spaceRoot);
+		Stored stored = Files.isRegularFile(file) ? readStored(file) : new Stored();
+		stored.inbox = inbox.trim();
+		write(spaceRoot, stored, true);
 	}
 
 	/**
@@ -334,7 +467,8 @@ public class SpaceStore {
 	 */
 	public static void store(Path spaceRoot, Config config) throws IOException {
 		write(spaceRoot, config.getName(), config.getAnonymous(), config.getMapUrl(), config.getFaces(),
-			config.getTimeZone().isEmpty() ? null : config.getTimeZone(), true);
+			config.getTimeZone().isEmpty() ? null : config.getTimeZone(),
+			config.hasStoredInbox() ? config.getInbox() : null, true);
 	}
 
 	/**
@@ -390,7 +524,7 @@ public class SpaceStore {
 		}
 		String trimmed = name == null ? "" : name.trim();
 		write(spaceRoot, trimmed.isEmpty() ? null : trimmed, anonymous, null, faces, zone.isEmpty() ? null : zone,
-			false);
+			null, false);
 	}
 
 	/**
@@ -399,8 +533,8 @@ public class SpaceStore {
 	 *
 	 * <p>
 	 * What the file said is kept as it was written - a name only where it gave one, a map template
-	 * only where it named one, the face index, the time zone of issue #183 only where it named one -
-	 * and only the given values replace it.
+	 * only where it named one, the face index, the time zone of issue #183 and the inbox of issue
+	 * #226 only where it named them - and only the given values replace it.
 	 * </p>
 	 *
 	 * @param name
@@ -412,44 +546,21 @@ public class SpaceStore {
 	 */
 	public static void rewrite(Path spaceRoot, String name, String anonymous) throws IOException {
 		Path file = file(spaceRoot);
-		String storedName = "";
-		String mapUrl = "";
-		String faces = "";
-		String timeZone = "";
-		if (Files.isRegularFile(file)) {
-			try (Reader reader = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8);
-					JsonReader in = new JsonReader(new ReaderAdapter(reader))) {
-				in.beginObject();
-				while (in.hasNext()) {
-					switch (in.nextName()) {
-						case NAME__PROP:
-							storedName = in.nextString();
-							break;
-						case MAP_URL__PROP:
-							mapUrl = in.nextString();
-							break;
-						case FACES__PROP:
-							faces = in.nextString();
-							break;
-						case TIME_ZONE__PROP:
-							timeZone = in.nextString();
-							break;
-						default:
-							in.skipValue();
-							break;
-					}
-				}
-				in.endObject();
-			} catch (RuntimeException ex) {
-				throw new IOException("Cannot read '" + file + "': " + ex.getMessage(), ex);
-			}
-		}
+		Stored stored = Files.isRegularFile(file) ? readStored(file) : new Stored();
 		String given = name == null ? "" : name.trim();
-		String written = given.isEmpty() ? storedName.trim() : given;
-		write(spaceRoot, written.isEmpty() ? null : written,
-			ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE,
-			mapUrl.trim().isEmpty() ? null : mapUrl.trim(), FACES_ON.equals(faces.trim()) ? FACES_ON : FACES_OFF,
-			timeZone.trim().isEmpty() ? null : timeZone.trim(), true);
+		stored.name = given.isEmpty() ? stored.name.trim() : given;
+		stored.anonymous = ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE;
+		write(spaceRoot, stored, true);
+	}
+
+	/** Writes what was read, see {@link #readStored(Path)}, leaving out what it does not say. */
+	private static void write(Path spaceRoot, Stored stored, boolean replace) throws IOException {
+		write(spaceRoot, stored.name.trim().isEmpty() ? null : stored.name.trim(),
+			ANONYMOUS_PUBLIC.equals(stored.anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE,
+			stored.mapUrl.trim().isEmpty() ? null : stored.mapUrl.trim(),
+			FACES_ON.equals(stored.faces.trim()) ? FACES_ON : FACES_OFF,
+			stored.timeZone.trim().isEmpty() ? null : stored.timeZone.trim(),
+			stored.inbox.trim().isEmpty() ? null : stored.inbox.trim(), replace);
 	}
 
 	/**
@@ -461,11 +572,13 @@ public class SpaceStore {
 	 *        <code>null</code> to leave the map template out.
 	 * @param timeZone
 	 *        <code>null</code> to leave the time zone out.
+	 * @param inbox
+	 *        <code>null</code> to leave the inbox out, see issue #226.
 	 * @param replace
 	 *        Whether an existing file is replaced; otherwise it is left as it is and the call fails.
 	 */
 	private static void write(Path spaceRoot, String name, String anonymous, String mapUrl, String faces,
-			String timeZone, boolean replace) throws IOException {
+			String timeZone, String inbox, boolean replace) throws IOException {
 		Path file = file(spaceRoot);
 		Files.createDirectories(file.getParent());
 		Path tmp = file.resolveSibling(FILE_NAME + ".tmp");
@@ -490,6 +603,10 @@ public class SpaceStore {
 				if (timeZone != null) {
 					out.name(TIME_ZONE__PROP);
 					out.value(timeZone);
+				}
+				if (inbox != null) {
+					out.name(INBOX__PROP);
+					out.value(inbox);
 				}
 				out.endObject();
 			}

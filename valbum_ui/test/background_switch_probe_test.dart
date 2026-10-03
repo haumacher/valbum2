@@ -13,8 +13,7 @@ const List<String> inbox = ["2026-03-01 Inbox"];
 
 InMemorySettingsStore storeWith(String serverUrl) {
   var store = InMemorySettingsStore(serverUrl, "token-42", "Phone");
-  store.cameraRoll =
-      const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+  store.cameraRoll = const CameraRollConfig(enabled: true).toJson();
   return store;
 }
 
@@ -53,6 +52,12 @@ void main() {
       store: store,
       library: onePhoto(),
       transport: MockClient((request) async {
+        // Where the inbox is, as `?type=auth` names it (issue #226).
+        if (request.url.queryParameters["type"] == "auth") {
+          return http.Response(
+              '{"mode":"writes","role":"admin","inbox":"${inbox.join("/")}"}',
+              200);
+        }
         requests.add(request);
         return http.Response("", 200);
       }),

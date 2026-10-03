@@ -260,10 +260,11 @@ class VAlbumAppState extends State<VAlbumApp> {
     store: settings.store,
     library: photoLibrary,
     clientOf: () => client,
-    // The answer of the one `?type=auth` question this app asks, see
-    // [_syncCaller]: a guest has no space of their own to sync into, and the
-    // run says so instead of uploading (issue #54).
-    callerOf: () async => caller,
+    // Asked afresh before every run: the run uploads into the inbox the server
+    // names (issue #226), and a guest has no space of their own to sync into,
+    // which the run says instead of uploading (issue #54). Where the server
+    // does not answer, the answer of [_syncCaller] stands in.
+    callerOf: _askCaller,
     isOffline: () => offlineState.offline,
     scheduler: backgroundScheduler,
     connectivity: connectivity,
@@ -564,6 +565,9 @@ class VAlbumAppState extends State<VAlbumApp> {
     // while the stored configuration says the sync is off. The sync starts
     // only once the server URL is known: otherwise its first run fails with
     // "no server configured" although one is stored on the device.
+    // A run that uploaded something changed what waits in the inbox, and the
+    // badge on the start page says how much (issue #226).
+    cameraRoll.addListener(_cameraRollChanged);
     settingsLoaded.then((_) => cameraRoll.load()).then((_) {
       if (mounted) {
         cameraRoll.start();
@@ -955,6 +959,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   @override
   void dispose() {
     settings.removeListener(_settingsChanged);
+    cameraRoll.removeListener(_cameraRollChanged);
     cameraRoll.dispose();
     connectivity.dispose();
     if (widget.photoLibrary == null) {
@@ -1066,6 +1071,67 @@ class VAlbumAppState extends State<VAlbumApp> {
     });
   }
 
+  /// Who the current client is, asked of the server now, for a camera-roll
+  /// run (issue #226): the inbox it uploads into is the server's word.
+  ///
+  /// A signed-in caller's answer is published as well, so the badge follows.
+  Future<CallerInfo?> _askCaller() async {
+    var current = client;
+    if (current == null) {
+      return caller;
+    }
+    try {
+      var asked = CallerInfo.of(await current.authInfo());
+      if (mounted && current == client && (current.token ?? "").isNotEmpty) {
+        if (asked != caller) {
+          setState(() => caller = asked);
+        }
+      }
+      return asked;
+    } catch (_) {
+      return caller;
+    }
+  }
+
+  /// Asks the server again who this device is, for the count of the inbox
+  /// badge (issue #226), see [CallerInfo.refresh].
+  ///
+  /// Only for a signed-in device, exactly as [_syncCaller]: an anonymous
+  /// caller is not named and shows no badge.
+  void _refreshCaller() {
+    var current = client;
+    if (current == null || (current.token ?? "").isEmpty) {
+      return;
+    }
+    var asked = _callerAsked;
+    current.authInfo().then((info) {
+      if (!mounted || _callerAsked != asked) {
+        return;
+      }
+      var next = CallerInfo.of(info);
+      if (next != caller) {
+        setState(() => caller = next);
+      }
+    }).catchError((Object _) {
+      // The badge keeps what it said; the next question may be answered.
+    });
+  }
+
+  /// The camera-roll sync's status changed, see [_refreshCaller].
+  DateTime? _lastSyncSeen;
+
+  void _cameraRollChanged() {
+    var status = cameraRoll.status;
+    var success = status.lastSuccess;
+    if (success == null || success == _lastSyncSeen) {
+      return;
+    }
+    _lastSyncSeen = success;
+    if (status.lastStored > 0) {
+      _refreshCaller();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return OfflineScope(
@@ -1090,6 +1156,7 @@ class VAlbumAppState extends State<VAlbumApp> {
                   session: shareSession,
                   child: CallerScope(
                     caller: caller,
+                    refresh: _refreshCaller,
                     child: _readyForTheRouter && client != null
                         ? _albumApp(client!)
                         : _beforeTheRouter(),

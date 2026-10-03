@@ -368,6 +368,9 @@ public class Main {
 
 	private void start() throws Exception {
 		Spaces spaces = Spaces.detect(_basePath.toPath(), _spaceMode, _authMode, _inviteMode);
+		// One inbox per space, settled once and written into its space.json, see issue #226 --
+		// before the servlets are built, which ask the configuration where it is.
+		List<String> inboxes = InboxMigration.settleAll(spaces);
 		final Server server = createServer(_port, _contextPath, _basePath, _webRoot, spaces, _environment);
 		server.start();
 
@@ -396,6 +399,9 @@ public class Main {
 				+ "; delete it to end that).");
 		} else if (spaces.aliasProblem() != null) {
 			System.out.println("  " + spaces.aliasProblem());
+		}
+		for (String line : inboxes) {
+			System.out.println("  " + line);
 		}
 		// A duplicates folder of an older version, which nothing writes to any more: named once,
 		// never moved and never deleted, see issue #109.

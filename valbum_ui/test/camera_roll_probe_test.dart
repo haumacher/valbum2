@@ -34,10 +34,14 @@ CameraRollSync engine({
   required Future<http.Response> Function(http.Request request) upload,
   List<String>? uploads,
   int batchSize = 10,
+  CallerInfo Function()? caller,
 }) =>
     CameraRollSync(
       store: store,
       library: library,
+      // The inbox the server names, see issue #226.
+      callerOf: () async =>
+          caller?.call() ?? const CallerInfo(role: roleMember, inbox: "Inbox"),
       clientOf: () => VAlbumClient(
         dataUrl: serverDataUrl,
         httpClient: MockClient((request) async {
@@ -77,8 +81,7 @@ void main() {
     ]);
     addTearDown(library.dispose);
     var store = InMemorySettingsStore()
-      ..cameraRoll =
-          const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+      ..cameraRoll = const CameraRollConfig(enabled: true).toJson();
     var timers = FakeTimers();
     var uploads = <String>[];
     var attempt = 0;
@@ -121,8 +124,7 @@ void main() {
     var library = FakePhotoLibrary(items: [photo("a.jpg", 1, id: "a")]);
     addTearDown(library.dispose);
     var store = InMemorySettingsStore()
-      ..cameraRoll =
-          const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+      ..cameraRoll = const CameraRollConfig(enabled: true).toJson();
     var timers = FakeTimers();
     var uploads = <String>[];
     Future<http.Response> accept(http.Request request) async =>
@@ -170,8 +172,7 @@ void main() {
     ]);
     addTearDown(library.dispose);
     var store = InMemorySettingsStore()
-      ..cameraRoll =
-          const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+      ..cameraRoll = const CameraRollConfig(enabled: true).toJson();
     var timers = FakeTimers();
     var sync = engine(
       store: store,
@@ -191,31 +192,32 @@ void main() {
     expect(timers.pending, [const Duration(seconds: 30)]);
   });
 
-  test('changing the inbox does not offer the whole library again', () async {
+  test('the server naming another inbox does not offer the library again',
+      () async {
     var library = FakePhotoLibrary(items: [photo("a.jpg", 1, id: "a")]);
     addTearDown(library.dispose);
     var store = InMemorySettingsStore()
-      ..cameraRoll =
-          const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+      ..cameraRoll = const CameraRollConfig(enabled: true).toJson();
     var timers = FakeTimers();
     var uploads = <String>[];
+    var inbox = "Inbox";
     var sync = engine(
       store: store,
       library: library,
       timers: timers,
       uploads: uploads,
       upload: (_) async => http.Response("", 200),
+      caller: () => CallerInfo(role: roleMember, inbox: inbox),
     );
     addTearDown(sync.dispose);
     await sync.load();
     await sync.syncNow();
 
-    await sync.chooseInbox(const ["Another"]);
+    inbox = "Another";
     await sync.syncNow();
 
     expect(uploads, hasLength(1));
     expect(sync.config.since, DateTime.utc(2026, 3, 1, 12, 1));
-    expect(sync.config.inbox, ["Another"]);
   });
 
   test('"forget what was uploaded" re-scans but the server refuses duplicates',
@@ -223,8 +225,7 @@ void main() {
     var library = FakePhotoLibrary(items: [photo("a.jpg", 1, id: "a")]);
     addTearDown(library.dispose);
     var store = InMemorySettingsStore()
-      ..cameraRoll =
-          const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+      ..cameraRoll = const CameraRollConfig(enabled: true).toJson();
     var timers = FakeTimers();
     var uploads = <String>[];
     var sync = engine(
@@ -259,7 +260,6 @@ void main() {
     );
 
     expect(config.enabled, isTrue);
-    expect(config.inbox, ["a", "b"]);
     expect(config.since, DateTime.utc(2026, 3, 1, 12, 5));
     expect(config.done, ["x"]);
   });
@@ -269,8 +269,7 @@ void main() {
     var library = FakePhotoLibrary(items: [photo("a.jpg", 1, id: "a")]);
     addTearDown(library.dispose);
     var store = InMemorySettingsStore()
-      ..cameraRoll =
-          const CameraRollConfig(enabled: true, inbox: inbox).toJson();
+      ..cameraRoll = const CameraRollConfig(enabled: true).toJson();
     var timers = FakeTimers();
     var sync = engine(
       store: store,

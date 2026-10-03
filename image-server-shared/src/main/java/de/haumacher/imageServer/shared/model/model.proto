@@ -59,21 +59,18 @@ message RightName {
 }
 
 /**
- * What an {@link AlbumInfo} is: an ordinary album, or an inbox, see issue #131.
+ * What an {@link AlbumInfo} is: an ordinary album, or the inbox of its space, see issues #131 and
+ * #226.
  *
  * <p>
  * An inbox is a <em>kind of album</em> and not a resource of its own: the same folder, the same
  * <code>index.json</code>, the same parts, so that every mechanism an album has — upload, hashes,
- * moving, deleting, thumbnails, attribution — works there unchanged. One stored flag says what it
- * is, and everything an inbox does differently follows from that flag alone.
- * </p>
- *
- * <p>
- * {@link #ALBUM} is the first constant and therefore what every sidecar written before this field
- * existed reads as: an album, exactly as it always was. Switching an album to an inbox and back is
- * an ordinary properties write and loses nothing — what an inbox derives (its order, its date) is
- * derived on the way out and never stored, so the album is itself again the moment the flag is
- * cleared.
+ * moving, deleting, thumbnails, attribution — works there unchanged. Since issue #226 a space has
+ * exactly one inbox, the folder its <code>space.json</code> names (<code>inbox</code>, default
+ * <code>Inbox</code>), and the kind is <em>derived</em> from that place on every read: the folder
+ * is answered {@link #INBOX}, every other album {@link #ALBUM}, whatever an older sidecar says.
+ * It is never stored any more — a sidecar written before #226 that says <code>INBOX</code> is read
+ * as an album unless it is the space's inbox, and loses the word on its next ordinary write.
  * </p>
  */
 enum AlbumKind {
@@ -97,12 +94,12 @@ enum AlbumKind {
 /** {@link Resource} describing a collection of {@link AlbumPart}s. */
 message AlbumInfo extends FolderResource {
 	/**
-	 * Whether this is an ordinary album or an inbox, see issue #131.
+	 * Whether this is an ordinary album or the inbox of its space, see issues #131 and #226.
 	 *
 	 * <p>
-	 * Stored in <code>index.json</code> like the title: it is a statement the author made about
-	 * this folder, not something the server derives. An absent value is {@link AlbumKind#ALBUM},
-	 * so every sidecar written before this field existed reads as the album it always was.
+	 * Derived on every read from where the folder lies — the one folder the space's
+	 * <code>space.json</code> names is the inbox, nothing else is — and cleared before any sidecar
+	 * write, like {@link #effectiveDate}. What a client sends here is ignored.
 	 * </p>
 	 */
 	AlbumKind kind;
@@ -908,13 +905,11 @@ enum FolderKind {
 	FOLDER;
 	
 	/**
-	 * The entry is an inbox: an album (see {@link AlbumKind#INBOX}) holding photographs that wait
-	 * to be sorted.
+	 * The entry is the inbox of the space (see {@link AlbumKind#INBOX}).
 	 *
 	 * <p>
-	 * It has no date, it stands first in its listing whatever else lies there, and it is only ever
-	 * an entry of a listing answered to a caller that may see it at all — to everybody else the
-	 * entry is simply not there, see issue #131.
+	 * Since issue #226 no listing answers it: the inbox is reached through {@link AuthInfo#inbox},
+	 * never as a tile. The constant stays so that a listing of an older server still reads.
 	 * </p>
 	 */
 	INBOX;
@@ -1356,6 +1351,31 @@ message AuthInfo {
 	 * </p>
 	 */
 	repeated ProofMethod proofMethods;
+
+	/**
+	 * Where the inbox of this space is, see issue #226: the path of its folder relative to the data
+	 * root of the space (<code>Inbox</code> by default, what <code>space.json</code>
+	 * <code>inbox</code> names), so that the app never guesses and never chooses one.
+	 *
+	 * <p>
+	 * Answered to a signed-in member who may contribute to it (or edit it), and to everybody under
+	 * <code>--auth off</code>; empty for a share link, an anonymous caller and a member who may only
+	 * look. The folder need not exist yet: it is created by the first upload into it.
+	 * </p>
+	 */
+	string inbox;
+
+	/**
+	 * How many photographs wait in the {@link #inbox}, see issue #226: the badge on the start page's
+	 * inbox icon.
+	 *
+	 * <p>
+	 * The photographs the caller would see there — all of them for an editor, their own
+	 * contributions for a member who may only contribute (issue #135) — without those rated as trash
+	 * (−2), which the inbox screen hides. <code>0</code> wherever {@link #inbox} is empty.
+	 * </p>
+	 */
+	int inboxCount;
 }
 
 /**

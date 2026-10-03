@@ -1658,12 +1658,6 @@ abstract class AppLocalizations {
   /// **'The invitation was copied.'**
   String get invitationCopied;
 
-  /// Says where the camera roll uploads while no album was chosen
-  ///
-  /// In en, this message translates to:
-  /// **'No album chosen - new photos go into \'{name}\''**
-  String inboxNotChosen(String name);
-
   /// Heading of the camera-roll section of the server settings
   ///
   /// In en, this message translates to:
@@ -1700,12 +1694,6 @@ abstract class AppLocalizations {
   /// **'New photos wait for a Wi-Fi or a wired connection, so that the upload does not eat into a mobile data plan.'**
   String get onlyOverWifiExplanation;
 
-  /// Button opening the picker of the album new photos go into
-  ///
-  /// In en, this message translates to:
-  /// **'Choose...'**
-  String get chooseAction;
-
   /// Button starting a camera-roll sync at once
   ///
   /// In en, this message translates to:
@@ -1730,77 +1718,11 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 photo} other{{count} photos}}'**
   String photoCount(int count);
 
-  /// Refusal shown where an album is chosen before a server is known
-  ///
-  /// In en, this message translates to:
-  /// **'Save the server URL first, then choose an album on it.'**
-  String get saveServerFirst;
-
-  /// Title of the dialog choosing the album new photos go into
-  ///
-  /// In en, this message translates to:
-  /// **'Inbox album'**
-  String get inboxAlbumTitle;
-
-  /// Said where the folders of a server cannot be read
-  ///
-  /// In en, this message translates to:
-  /// **'Cannot list: {problem}'**
-  String cannotList(String problem);
-
-  /// Button creating an album in the folder shown
-  ///
-  /// In en, this message translates to:
-  /// **'New album...'**
-  String get newAlbumAction;
-
-  /// Button choosing the folder shown as the inbox
-  ///
-  /// In en, this message translates to:
-  /// **'Use this album'**
-  String get useThisAlbum;
-
-  /// The root of the library in the breadcrumb of the inbox picker
-  ///
-  /// In en, this message translates to:
-  /// **'Library'**
-  String get libraryBreadcrumb;
-
-  /// Said where a folder of the library holds no folders
-  ///
-  /// In en, this message translates to:
-  /// **'No folders here yet - create one below.'**
-  String get noFoldersHere;
-
-  /// Said where the inbox picker stands in an album
-  ///
-  /// In en, this message translates to:
-  /// **'This is the album \'{title}\'. New photos land here.'**
-  String folderIsAlbum(String title);
-
-  /// Said where the server answered something the picker cannot show
-  ///
-  /// In en, this message translates to:
-  /// **'Nothing to show here.'**
-  String get nothingToShow;
-
   /// Title of the dialog asking for the name of a new album
   ///
   /// In en, this message translates to:
   /// **'New album'**
   String get newAlbumTitle;
-
-  /// Field holding the name of the folder an album is written to
-  ///
-  /// In en, this message translates to:
-  /// **'Folder name'**
-  String get folderNameLabel;
-
-  /// Said where an album could not be created
-  ///
-  /// In en, this message translates to:
-  /// **'Cannot create \'{name}\': {problem}'**
-  String cannotCreateFolder(String problem, String name);
 
   /// Tooltip of the way out of the alternatives view
   ///
@@ -2653,24 +2575,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The original recording time stays in the photo; the album keeps its own.'**
   String get adjustRecordingTimeHelp;
-
-  /// Label of the switch turning an inbox back into an ordinary album
-  ///
-  /// In en, this message translates to:
-  /// **'Make this an album'**
-  String get makeThisAnAlbum;
-
-  /// Label of the switch turning an album into an inbox
-  ///
-  /// In en, this message translates to:
-  /// **'Make this an inbox'**
-  String get makeThisAnInbox;
-
-  /// Says what an inbox is, beside the switch that makes one
-  ///
-  /// In en, this message translates to:
-  /// **'Photographs waiting to be sorted, shown by the day they were taken.'**
-  String get inboxExplanation;
 
   /// Says that an album carries no date at all
   ///
@@ -3609,12 +3513,6 @@ abstract class AppLocalizations {
   /// **'The library is still being indexed ({done} of {total} folders); photos already in an unindexed album may be uploaded again.'**
   String cameraRollIndexing(int total, int done);
 
-  /// Says that the sync fell back to the default inbox
-  ///
-  /// In en, this message translates to:
-  /// **'The chosen inbox is gone; using \'{name}\'.'**
-  String cameraRollInboxGone(String name);
-
   /// Said while the sync watches no album of the device
   ///
   /// In en, this message translates to:
@@ -4022,12 +3920,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Appears in photos as {name}'**
   String appearsInPhotosAs(String name);
-
-  /// How many photographs are waiting in an inbox, shown on its listing tile
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 photograph} other{{count} photographs}}'**
-  String inboxPhotoCount(int count);
 
   /// The viewer's menu entry opening the mode in which every recognised face is marked with its name and can be corrected (issue #147).
   ///
@@ -4796,6 +4688,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Move to trash'**
   String get moveToTrash;
+
+  /// Tooltip of the inbox icon in the app bar of the start page (issue #226); the inbox of the space is where new photos wait to be sorted into albums, and the count is how many wait. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Inbox: {count, plural, =0{nothing waiting} =1{1 photo waiting} other{{count} photos waiting}}'**
+  String inboxTooltip(int count);
+
+  /// Menu entry of the start page opening the inbox of the space, where new photos wait to be sorted into albums (issue #226); the count is how many photos wait.
+  ///
+  /// In en, this message translates to:
+  /// **'Inbox ({count, plural, =0{nothing waiting} other{{count} waiting}})'**
+  String inboxMenuEntry(int count);
+
+  /// Says where the camera-roll sync uploads to: the one inbox of the space, which the server names (issue #226). The name is a folder name and stays as it is. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'New photos go into the inbox of the server: {name}.'**
+  String cameraRollInboxTarget(String name);
+
+  /// Said by the camera-roll sync where the server names no inbox the device may upload into (issue #226): the device may only look at the albums, or the server is older than the app. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'The server names no inbox for this device. Ask the administrator for the right to add photos.'**
+  String get noticeNoInbox;
 }
 
 class _AppLocalizationsDelegate
