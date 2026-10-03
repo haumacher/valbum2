@@ -213,6 +213,52 @@ abstract class FolderResource extends Resource {
 
 }
 
+///  One label of a photograph, see {@link ImagePart#labels} and issue #213.
+class LabelName extends _JsonObject {
+	///  The label as the author typed it, compared exactly.
+	String name;
+
+	/// Creates a LabelName.
+	LabelName({
+			this.name = "", 
+	});
+
+	/// Parses a LabelName from a string source.
+	static LabelName? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a LabelName instance from the given reader.
+	static LabelName read(JsonReader json) {
+		LabelName result = LabelName();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "LabelName";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+	}
+
+}
+
 ///  The name of a single right, see {@link FolderResource#rights}.
 class RightName extends _JsonObject {
 	///  One of <code>view</code>, <code>download</code>, <code>contribute</code>, <code>edit</code>.
@@ -1199,6 +1245,31 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	Crop? crop;
 
+	///  The labels of this photograph, see issue #213: the author's sub-views of the album, "the day
+	///  we met Anna and Ben".
+	/// 
+	///  <p>
+	///  <b>Stored</b> in <code>index.json</code>, and absent in a sidecar written before this field
+	///  existed, which reads as "none". A photograph may carry several, each once; a label is plain
+	///  text compared exactly, and the labels <em>of an album</em> are the labels its photographs
+	///  carry &mdash; there is no list of them anywhere else. Set in the edit mode and carried by the
+	///  ordinary sidecar <code>PUT</code>; renamed or removed on every photograph of an album at once
+	///  by <code>?action=relabel</code> ({@link LabelChange}), which also carries a share link showing
+	///  the label along. A share link may show the photographs of one label only
+	///  ({@link ShareLink#photoLabel}), and an upload through such a link carries that label.
+	///  </p>
+	/// 
+	///  <p>
+	///  Answered to the members of the space only: a share link, an anonymous visitor and the
+	///  author's preview as the public sees it are answered no label at all.
+	///  </p>
+	/// 
+	///  <p>
+	///  A list of messages, not a list of plain strings: the Dart backend of the model generator
+	///  mis-types a <code>repeated string</code> field, see {@link UploadCheck#hashes}.
+	///  </p>
+	List<LabelName> labels;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -1224,6 +1295,7 @@ class ImagePart extends AbstractImage {
 			this.tags = const [], 
 			this.raw = "", 
 			this.crop, 
+			this.labels = const [], 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1330,6 +1402,19 @@ class ImagePart extends AbstractImage {
 				crop = json.tryNull() ? null : Crop.read(json);
 				break;
 			}
+			case "labels": {
+				json.expectArray();
+				labels = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = LabelName.read(json);
+						if (value != null) {
+							labels.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1402,6 +1487,13 @@ class ImagePart extends AbstractImage {
 			json.addKey("crop");
 			_crop.writeContent(json);
 		}
+
+		json.addKey("labels");
+		json.startArray();
+		for (var _element in labels) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 	@override
@@ -5645,6 +5737,21 @@ class ShareLink extends _JsonObject {
 	///  </p>
 	List<ShareRecipient> recipients;
 
+	///  The one {@link ImagePart#labels label} whose photographs the link shows, empty for the whole
+	///  album, see issue #213.
+	/// 
+	///  <p>
+	///  Stored on the link and frozen there like {@link #maxPrivacy} and {@link #minRating}: a
+	///  photograph without the label does not exist for the link &mdash; not in the album, not as a
+	///  thumbnail, a rendition, an original or in a zip, and not as the cover of its card &mdash; and
+	///  the privacy level, the rating floor and the trash still apply on top. Given on a link to an
+	///  album only (a folder of folders is refused, labels being the statement of one album); a
+	///  rename of the label in that album by <code>?action=relabel</code> carries the link along, a
+	///  removal of the label leaves the link showing nothing. An upload through the link carries the
+	///  label, so that the link shows what was sent through it.
+	///  </p>
+	String photoLabel;
+
 	/// Creates a ShareLink.
 	ShareLink({
 			this.id = "", 
@@ -5659,6 +5766,7 @@ class ShareLink extends _JsonObject {
 			this.revoked = "", 
 			this.type = ShareType.anonymous, 
 			this.recipients = const [], 
+			this.photoLabel = "", 
 	});
 
 	/// Parses a ShareLink from a string source.
@@ -5745,6 +5853,10 @@ class ShareLink extends _JsonObject {
 				}
 				break;
 			}
+			case "photoLabel": {
+				photoLabel = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -5796,6 +5908,9 @@ class ShareLink extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("photoLabel");
+		json.addString(photoLabel);
 	}
 
 }
@@ -8764,6 +8879,69 @@ class TagFaces extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+	}
+
+}
+
+///  What <code>?action=relabel</code> asks for: one label of an album renamed or removed on every
+///  photograph carrying it, see issue #213.
+class LabelChange extends _JsonObject {
+	///  The label as the photographs carry it.
+	String from;
+
+	///  The new label; empty removes the label from every photograph.
+	/// 
+	///  <p>
+	///  A share link on the album showing {@link #from} is carried along to the new name; a removal
+	///  leaves such a link showing nothing.
+	///  </p>
+	String to;
+
+	/// Creates a LabelChange.
+	LabelChange({
+			this.from = "", 
+			this.to = "", 
+	});
+
+	/// Parses a LabelChange from a string source.
+	static LabelChange? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a LabelChange instance from the given reader.
+	static LabelChange read(JsonReader json) {
+		LabelChange result = LabelChange();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "LabelChange";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "from": {
+				from = json.expectString();
+				break;
+			}
+			case "to": {
+				to = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("from");
+		json.addString(from);
+
+		json.addKey("to");
+		json.addString(to);
 	}
 
 }

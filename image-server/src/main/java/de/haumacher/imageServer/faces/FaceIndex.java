@@ -1447,7 +1447,7 @@ public class FaceIndex {
 	 * ever serialised into the response.
 	 * </p>
 	 */
-	static ImagePart copyOf(ImagePart image) {
+	public static ImagePart copyOf(ImagePart image) {
 		try {
 			StringWriter buffer = new StringWriter();
 			try (JsonWriter out = new JsonWriter(new WriterAdapter(buffer))) {

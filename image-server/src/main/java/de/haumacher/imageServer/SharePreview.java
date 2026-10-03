@@ -435,9 +435,10 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 			return null;
 		}
 		// A link never shows a private image, whoever made it, never one below its rating, and
-		// never one in the trash, which is its editors' alone (issue #152).
+		// never one in the trash, which is its editors' alone (issue #152), and never one without
+		// the label it shows (issue #213).
 		return data.privacy().filter(shown, path, Math.min(Privacy.MEMBERS, link.getMaxPrivacy()),
-			Ratings.withoutTrash(link.getMinRating()));
+			Ratings.withoutTrash(link.getMinRating()), link.getPhotoLabel());
 	}
 
 	/**

@@ -137,6 +137,8 @@ public class ShareStore {
 
 	private static final String SHUT_OUT__PROP = "shutOut";
 
+	private static final String PHOTO_LABEL__PROP = "photoLabel";
+
 	/**
 	 * A recipient of an addressed personal link and their own link, see issue #198.
 	 *
@@ -254,6 +256,8 @@ public class ShareStore {
 		private String _revoked;
 
 		private String _type = ANONYMOUS;
+
+		private String _photoLabel = "";
 
 		private final List<Recipient> _recipients = new ArrayList<>();
 
@@ -416,6 +420,20 @@ public class ShareStore {
 		/** Whether this link opens anything at all right now. */
 		public boolean isLive() {
 			return !isRevoked() && !isExpired(Instant.now());
+		}
+
+		/**
+		 * The one label of the album whose photographs this link shows, empty for the whole album,
+		 * see issue #213.
+		 *
+		 * <p>
+		 * Frozen like {@link #getMinRating()}, with one exception: a rename of the label in the
+		 * album the link points at carries the link along ({@link ShareStore#relabel}), because
+		 * the link was handed out on those photographs and not on a spelling.
+		 * </p>
+		 */
+		public String getPhotoLabel() {
+			return _photoLabel;
 		}
 
 		/** {@link ShareStore#ANONYMOUS} or {@link ShareStore#PERSONAL}, see issue #198. */
@@ -695,6 +713,60 @@ public class ShareStore {
 	}
 
 	/**
+	 * Gives a link that was just issued the label whose photographs it shows, see issue #213.
+	 *
+	 * <p>
+	 * Part of issuing it: called right after {@link #create} or {@link #createPersonal} and before
+	 * the link was ever answered, never to change what a link handed out shows.
+	 * </p>
+	 */
+	public synchronized void setPhotoLabel(Link link, String photoLabel) throws IOException {
+		String label = photoLabel == null ? "" : photoLabel;
+		if (label.equals(link._photoLabel)) {
+			return;
+		}
+		link._photoLabel = label;
+		store();
+	}
+
+	/**
+	 * Carries every link on the given album that shows the given label along to the label's new
+	 * name, see issue #213.
+	 *
+	 * <p>
+	 * The decision of #213: a link was handed out on the photographs of a label, and a rename
+	 * changes how the author spells that set, not which photographs it holds. A link that froze the
+	 * old spelling would silently show nothing after the rename. A withdrawn link is rewritten too,
+	 * as {@link #rename(String, String, String)} does with its path.
+	 * </p>
+	 *
+	 * @param owner
+	 *        The space the album lies in, see {@link Link#getOwner()}.
+	 * @param path
+	 *        The album's path in that space.
+	 * @return How many links were rewritten.
+	 */
+	public synchronized int relabel(String owner, String path, String from, String to) throws IOException {
+		if (owner == null || path == null || from == null || from.isEmpty() || to == null || to.isEmpty()
+			|| from.equals(to)) {
+			return 0;
+		}
+		int changed = 0;
+		for (Link link : _links) {
+			if (owner.equals(link.getOwner()) && path.equals(link.getPath()) && from.equals(link._photoLabel)) {
+				link._photoLabel = to;
+				changed++;
+			}
+		}
+		if (changed > 0) {
+			store();
+			LOG.info("Carried " + changed + " share link(s) on '" + path + "' from the label '" + from + "' to '" + to
+				+ "'.");
+		}
+		return changed;
+	}
+
+	/**
 	 * Marks the given recipient's current token as opened: it identifies nobody any more.
 	 *
 	 * @return Whether this call opened it; <code>false</code> if it was opened before, which is
@@ -883,6 +955,7 @@ public class ShareStore {
 		String revoked = "";
 		java.util.List<String> rights = null;
 		String type = ANONYMOUS;
+		String photoLabel = "";
 		List<Recipient> recipients = new ArrayList<>();
 		java.util.Map<String, String> shutOut = new java.util.LinkedHashMap<>();
 		in.beginObject();
@@ -933,6 +1006,9 @@ public class ShareStore {
 				case TYPE__PROP:
 					type = in.nextString();
 					break;
+				case PHOTO_LABEL__PROP:
+					photoLabel = in.nextString();
+					break;
 				case RECIPIENTS__PROP:
 					in.beginArray();
 					while (in.hasNext()) {
@@ -956,6 +1032,8 @@ public class ShareStore {
 		// A link written before issue #83 says nothing about its rights: it allowed looking.
 		Link link = new Link(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating,
 			rights == null ? Rights.READ_ONLY : rights, createdBy, created, revoked);
+		// A link written before issue #213 says nothing about a label: it shows the whole album.
+		link._photoLabel = photoLabel;
 		if (PERSONAL.equals(type)) {
 			link._type = PERSONAL;
 			link._recipients.addAll(recipients);
@@ -1169,6 +1247,11 @@ public class ShareStore {
 		out.value(link.getCreated());
 		out.name(REVOKED__PROP);
 		out.value(link.getRevoked());
+		if (!link.getPhotoLabel().isEmpty()) {
+			// A link showing the whole album is written as every link was before issue #213.
+			out.name(PHOTO_LABEL__PROP);
+			out.value(link.getPhotoLabel());
+		}
 		if (!ANONYMOUS.equals(link.getType())) {
 			// An anonymous link is written as every link was before issue #198.
 			out.name(TYPE__PROP);

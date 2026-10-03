@@ -26,15 +26,20 @@ public class TestHeadingLevelProbe extends ShareTestCase {
 			"[\"Heading\",{\"text\":\"Morning\",\"level\":1}],"
 				+ "[\"ImagePart\",{\"name\":\"a.jpg\",\"width\":4,\"height\":3}],"
 				+ "[\"Heading\",{\"text\":\"At the pier\",\"level\":2}],"
-				+ "[\"ImagePart\",{\"name\":\"b.jpg\",\"width\":4,\"height\":3,\"privacy\":2}],"
-				+ "[\"Heading\",{\"text\":\"Old style\"}]",
-			"a.jpg", "b.jpg");
+				+ "[\"ImagePart\",{\"name\":\"b.jpg\",\"width\":4,\"height\":3}],"
+				+ "[\"ImagePart\",{\"name\":\"p.jpg\",\"width\":4,\"height\":3,\"privacy\":2}],"
+				+ "[\"Heading\",{\"text\":\"Old style\"}],"
+				+ "[\"ImagePart\",{\"name\":\"c.jpg\",\"width\":4,\"height\":3}],"
+				+ "[\"Heading\",{\"text\":\"Private only\",\"level\":2}],"
+				+ "[\"ImagePart\",{\"name\":\"d.jpg\",\"width\":4,\"height\":3,\"privacy\":2}]",
+			"a.jpg", "b.jpg", "p.jpg", "c.jpg", "d.jpg");
 		String link = created(share("/2024/2024-07-01 Lake/", SharingFixture.ALICE,
 			shareBody("Lake", "", 1, -2, Rights.VIEW))).getToken();
 
 		AlbumInfo answered = album(get("/", "json", link));
 		List<Heading> headings = headings(answered);
-		assertEquals("Every heading passes the filter, the private photograph does not.",
+		// A heading stands where a photograph under it is shown, see issue #213.
+		assertEquals("Every heading with a shown photograph passes the filter, the private ones do not.",
 			Arrays.asList("Morning", "At the pier", "Old style"), texts(headings));
 		assertEquals(1, headings.get(0).getLevel());
 		assertEquals("The level rides through the filtered copy.", 2, headings.get(1).getLevel());
@@ -45,7 +50,7 @@ public class TestHeadingLevelProbe extends ShareTestCase {
 				images++;
 			}
 		}
-		assertEquals(1, images);
+		assertEquals(3, images);
 	}
 
 	public void testAnInboxDropsItsHeadingsWhateverTheirLevel() throws Exception {

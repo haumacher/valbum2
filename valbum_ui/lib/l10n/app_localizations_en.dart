@@ -2983,4 +2983,90 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get addEmailDone => 'Your e-mail address is saved.';
+
+  @override
+  String get labelSelectionAction => 'Label…';
+
+  @override
+  String labelDialogTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photos',
+      one: 'one photo',
+    );
+    return 'Labels of $_temp0';
+  }
+
+  @override
+  String get labelDialogHelp =>
+      'A ticked label is given to every selected photo, an unticked one is taken off them. A label is a view of this album: the chips above the photos show it, and a share link can show the photos of one label alone.';
+
+  @override
+  String get labelNoneYet => 'This album has no labels yet.';
+
+  @override
+  String get labelNewField => 'New label';
+
+  @override
+  String get labelNewAdd => 'Add this label';
+
+  @override
+  String get labelApply => 'Apply';
+
+  @override
+  String labelChipTooltip(String label) {
+    return 'Show only the photos labeled “$label”; tap again to show them all';
+  }
+
+  @override
+  String labelFilterHidesAll(String label) {
+    return 'No photo with the label “$label” passes the rating filter.';
+  }
+
+  @override
+  String get labelRename => 'Rename label…';
+
+  @override
+  String get labelDelete => 'Remove label…';
+
+  @override
+  String labelRenameTitle(String label) {
+    return 'Rename the label “$label”';
+  }
+
+  @override
+  String get labelRenameField => 'New name';
+
+  @override
+  String get labelRenameHelp =>
+      'The label is renamed on every photo of this album. A share link showing it follows the new name.';
+
+  @override
+  String labelDeleteTitle(String label) {
+    return 'Remove the label “$label”?';
+  }
+
+  @override
+  String get labelDeleteExplanation =>
+      'The label is taken off every photo of this album; the photos stay. A share link showing this label will show nothing.';
+
+  @override
+  String get labelDeleteConfirm => 'Remove';
+
+  @override
+  String get labelFilterHeading => 'Photos';
+
+  @override
+  String get labelFilterWholeAlbum => 'The whole album';
+
+  @override
+  String labelFilterOnly(String label) {
+    return 'Only photos with the label “$label”';
+  }
+
+  @override
+  String linkShowsLabel(String label) {
+    return 'Only “$label”';
+  }
 }

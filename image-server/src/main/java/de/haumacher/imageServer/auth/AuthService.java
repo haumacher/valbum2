@@ -2464,6 +2464,21 @@ public class AuthService {
 	}
 
 	/**
+	 * The one label whose photographs the given caller is shown, the empty string for all of them,
+	 * see issue #213.
+	 *
+	 * <p>
+	 * A share link's own {@link ShareStore.Link#getPhotoLabel() label}; everybody else is shown
+	 * every photograph and filters by labels in the app. The one place this is read, beside
+	 * {@link #minRating(Caller, PathInfo, int)}: {@link de.haumacher.imageServer.PrivacyFilter}
+	 * applies it on the way out.
+	 * </p>
+	 */
+	public String photoLabel(Caller caller) {
+		return caller != null && caller.isShareLink() ? caller.getShare().getPhotoLabel() : "";
+	}
+
+	/**
 	 * What the given caller is allowed to do, see {@link AuthInfo}.
 	 *
 	 * <p>

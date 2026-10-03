@@ -11,6 +11,7 @@ import 'dart:math';
 
 import 'package:flutter/widgets.dart' show Matrix4, Offset, Rect;
 
+import 'album_labels.dart' show shownByLabelFilter;
 import 'album_layout.dart' show Orientations, ToImage;
 import 'crop.dart' show renditionRegion;
 import 'resource.dart';
@@ -484,9 +485,10 @@ Rect pictureRectOnPage(ImageTransform tx) {
 /// The rating of the given image, that of its representative for a group.
 int ratingOf(AbstractImage image) => ToImage.toImage(image).rating;
 
-/// Whether the given image passes the album's rating filter.
+/// Whether the given image passes the album's rating filter — and its label
+/// filter, so that the viewer pages through what the grid shows (issue #213).
 bool isVisible(AbstractImage image, int minRating) =>
-    ratingOf(image) >= minRating;
+    ratingOf(image) >= minRating && shownByLabelFilter(image);
 
 /// The next image passing the rating filter, `null` if there is none.
 AbstractImage? nextVisible(AbstractImage image, int minRating) =>

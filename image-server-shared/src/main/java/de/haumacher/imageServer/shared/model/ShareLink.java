@@ -63,6 +63,9 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getRecipients() */
 	private static final String RECIPIENTS__PROP = "recipients";
 
+	/** @see #getPhotoLabel() */
+	private static final String PHOTO_LABEL__PROP = "photoLabel";
+
 	private String _id = "";
 
 	private String _label = "";
@@ -86,6 +89,8 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private de.haumacher.imageServer.shared.model.ShareType _type = de.haumacher.imageServer.shared.model.ShareType.ANONYMOUS;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.ShareRecipient> _recipients = new java.util.ArrayList<>();
+
+	private String _photoLabel = "";
 
 	/**
 	 * Creates a {@link ShareLink} instance.
@@ -399,6 +404,38 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_recipients.remove(value);
 	}
 
+	/**
+	 * The one {@link ImagePart#getLabels() label} whose photographs the link shows, empty for the whole
+	 * album, see issue #213.
+	 *
+	 * <p>
+	 * Stored on the link and frozen there like {@link #getMaxPrivacy()} and {@link #getMinRating()}: a
+	 * photograph without the label does not exist for the link &mdash; not in the album, not as a
+	 * thumbnail, a rendition, an original or in a zip, and not as the cover of its card &mdash; and
+	 * the privacy level, the rating floor and the trash still apply on top. Given on a link to an
+	 * album only (a folder of folders is refused, labels being the statement of one album); a
+	 * rename of the label in that album by <code>?action=relabel</code> carries the link along, a
+	 * removal of the label leaves the link showing nothing. An upload through the link carries the
+	 * label, so that the link shows what was sent through it.
+	 * </p>
+	 */
+	public final String getPhotoLabel() {
+		return _photoLabel;
+	}
+
+	/**
+	 * @see #getPhotoLabel()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink setPhotoLabel(String value) {
+		internalSetPhotoLabel(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPhotoLabel()} without chain call utility. */
+	protected final void internalSetPhotoLabel(String value) {
+		_photoLabel = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareLink readShareLink(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareLink result = new de.haumacher.imageServer.shared.model.ShareLink();
@@ -446,6 +483,8 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(PHOTO_LABEL__PROP);
+		out.value(getPhotoLabel());
 	}
 
 	@Override
@@ -477,6 +516,7 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
+			case PHOTO_LABEL__PROP: setPhotoLabel(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

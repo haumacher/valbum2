@@ -2549,6 +2549,27 @@ class VAlbumClient {
     }
   }
 
+  /// Renames the label [from] of the album at [path] to [to] on every
+  /// photograph carrying it, or takes it off every one where [to] is empty
+  /// (issue #213): `?action=relabel` with a [LabelChange].
+  ///
+  /// An action and not the album's `PUT`, because the server has to know that
+  /// it is a rename: a share link showing the label follows it to the new
+  /// name. The answer is the album as this caller is answered it, `null`
+  /// where it cannot be read; a refusal arrives as the thrown
+  /// [VAlbumException] carrying the server's own sentence.
+  Future<AlbumInfo?> relabel(List<String> path, String from, String to) async {
+    var url = "${folderUrl(path)}?action=relabel";
+    var response =
+        await _postBody(url, _jsonOf(LabelChange(from: from, to: to).writeContent));
+    try {
+      var resource = Resource.read(JsonReader.fromString(response));
+      return resource is AlbumInfo ? resource : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// The devices this caller is signed in on (issue #55).
   ///
   /// Always the caller's *own* devices: the administrator manages the users of

@@ -3030,4 +3030,90 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get addEmailDone => 'Ihre E-Mail-Adresse wurde gespeichert.';
+
+  @override
+  String get labelSelectionAction => 'Label…';
+
+  @override
+  String labelDialogTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos',
+      one: 'ein Foto',
+    );
+    return 'Labels von $_temp0';
+  }
+
+  @override
+  String get labelDialogHelp =>
+      'Ein markiertes Label wird jedem ausgewählten Foto zugewiesen, ein unmarkiertes wird entfernt. Ein Label ist eine Ansicht dieses Albums: Die Chips über den Fotos zeigen dies an, und über einen Freigabelink können die Fotos eines einzelnen Labels angezeigt werden.';
+
+  @override
+  String get labelNoneYet => 'Dieses Album hat noch keine Labels.';
+
+  @override
+  String get labelNewField => 'Neues Label';
+
+  @override
+  String get labelNewAdd => 'Dieses Label hinzufügen';
+
+  @override
+  String get labelApply => 'Anwenden';
+
+  @override
+  String labelChipTooltip(String label) {
+    return 'Nur die Fotos mit dem Label „$label“ anzeigen; erneut antippen, um alle anzuzeigen';
+  }
+
+  @override
+  String labelFilterHidesAll(String label) {
+    return 'Kein Foto mit dem Label „$label“ passiert den Bewertungsfilter.';
+  }
+
+  @override
+  String get labelRename => 'Label umbenennen…';
+
+  @override
+  String get labelDelete => 'Label entfernen…';
+
+  @override
+  String labelRenameTitle(String label) {
+    return 'Benennen Sie das Label „$label“ um.';
+  }
+
+  @override
+  String get labelRenameField => 'Neuer Name';
+
+  @override
+  String get labelRenameHelp =>
+      'Das Label wird auf jedem Foto dieses Albums umbenannt. Ein Freigabelink, der das Foto anzeigt, folgt dem neuen Namen.';
+
+  @override
+  String labelDeleteTitle(String label) {
+    return 'Soll das Label „$label“ entfernt werden?';
+  }
+
+  @override
+  String get labelDeleteExplanation =>
+      'Das Label wird von jedem Foto dieses Albums entfernt; die Fotos bleiben erhalten. Ein Freigabelink, der dieses Label anzeigt, zeigt nichts an.';
+
+  @override
+  String get labelDeleteConfirm => 'Entfernen';
+
+  @override
+  String get labelFilterHeading => 'Fotos';
+
+  @override
+  String get labelFilterWholeAlbum => 'Das gesamte Album';
+
+  @override
+  String labelFilterOnly(String label) {
+    return 'Nur Fotos mit dem Label „$label“';
+  }
+
+  @override
+  String linkShowsLabel(String label) {
+    return 'Nur „$label“';
+  }
 }

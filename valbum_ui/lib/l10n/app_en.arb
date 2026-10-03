@@ -5000,5 +5000,151 @@
   "@addEmailDone": {
     "description": "Message after an e-mail address was added and confirmed in the dialog 'Add your e-mail' (issue #211). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
     "x-translated": "d0ff8e0a"
+  },
+  "labelSelectionAction": "Label…",
+  "@labelSelectionAction": {
+    "description": "Entry of the album menu and of a tile's context menu in the edit mode (issue #213): opens the dialog that gives the selected photos labels or takes labels off them. A label marks a sub-view of the album, e.g. the photos of one day. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "fd9fcb15"
+  },
+  "labelDialogTitle": "Labels of {count, plural, =1{one photo} other{{count} photos}}",
+  "@labelDialogTitle": {
+    "description": "Title of the dialog giving the selected photos of an album labels (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "ee3cadfc"
+  },
+  "labelDialogHelp": "A ticked label is given to every selected photo, an unticked one is taken off them. A label is a view of this album: the chips above the photos show it, and a share link can show the photos of one label alone.",
+  "@labelDialogHelp": {
+    "description": "Explanation in the label dialog (issue #213). Address the reader formally, as the whole app does (German: 'Sie', never 'du'). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "97beba1e"
+  },
+  "labelNoneYet": "This album has no labels yet.",
+  "@labelNoneYet": {
+    "description": "Line of the label dialog (issue #213) where the album carries no label yet; a new one is typed into the field below. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "8eeb14aa"
+  },
+  "labelNewField": "New label",
+  "@labelNewField": {
+    "description": "Text field of the label dialog (issue #213) where a new label is typed, e.g. 'Day with Anna'. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "8eb42e82"
+  },
+  "labelNewAdd": "Add this label",
+  "@labelNewAdd": {
+    "description": "Tooltip of the button next to the new-label field of the label dialog (issue #213), which adds the typed label to the list, ticked. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "ab9bd293"
+  },
+  "labelApply": "Apply",
+  "@labelApply": {
+    "description": "Button of the label dialog (issue #213) applying the ticked and unticked labels to the selected photos (the album is saved with the edit mode's Save). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "7ceea31b"
+  },
+  "labelChipTooltip": "Show only the photos labeled “{label}”; tap again to show them all",
+  "@labelChipTooltip": {
+    "description": "Tooltip of a label chip above the photos of an album (issue #213): a tap filters the album to the photos carrying the label. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "placeholders": {
+      "label": {
+        "type": "String",
+        "example": "Day with Anna"
+      }
+    },
+    "x-translated": "68e37a09"
+  },
+  "labelFilterHidesAll": "No photo with the label “{label}” passes the rating filter.",
+  "@labelFilterHidesAll": {
+    "description": "Line shown in an album filtered by a label chip (issue #213) where the rating filter hides every photo carrying the label. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "placeholders": {
+      "label": {
+        "type": "String",
+        "example": "Day with Anna"
+      }
+    },
+    "x-translated": "9f693a28"
+  },
+  "labelRename": "Rename label…",
+  "@labelRename": {
+    "description": "Entry of the menu of a label chip (issue #213), offered to editors: renames the label on every photo of the album. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "f1e4a10b"
+  },
+  "labelDelete": "Remove label…",
+  "@labelDelete": {
+    "description": "Entry of the menu of a label chip (issue #213), offered to editors: takes the label off every photo of the album; the photos stay. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "28c85d54"
+  },
+  "labelRenameTitle": "Rename the label “{label}”",
+  "@labelRenameTitle": {
+    "description": "Title of the dialog renaming a label of an album (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "placeholders": {
+      "label": {
+        "type": "String",
+        "example": "Day with Anna"
+      }
+    },
+    "x-translated": "30322134"
+  },
+  "labelRenameField": "New name",
+  "@labelRenameField": {
+    "description": "Field of the dialog renaming a label of an album (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "283adf93"
+  },
+  "labelRenameHelp": "The label is renamed on every photo of this album. A share link showing it follows the new name.",
+  "@labelRenameHelp": {
+    "description": "Explanation in the dialog renaming a label (issue #213): a link made for the label keeps showing the same photos. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "68426cd6"
+  },
+  "labelDeleteTitle": "Remove the label “{label}”?",
+  "@labelDeleteTitle": {
+    "description": "Title of the confirmation removing a label from every photo of an album (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "placeholders": {
+      "label": {
+        "type": "String",
+        "example": "Day with Anna"
+      }
+    },
+    "x-translated": "c799d9f2"
+  },
+  "labelDeleteExplanation": "The label is taken off every photo of this album; the photos stay. A share link showing this label will show nothing.",
+  "@labelDeleteExplanation": {
+    "description": "Explanation in the confirmation removing a label (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "f315817c"
+  },
+  "labelDeleteConfirm": "Remove",
+  "@labelDeleteConfirm": {
+    "description": "Button confirming that a label is taken off every photo of an album (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "6f2c1806"
+  },
+  "labelFilterHeading": "Photos",
+  "@labelFilterHeading": {
+    "description": "Heading of the row of the new-share-link form (issue #213) choosing between the whole album and the photos of one label. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "fdae5ef"
+  },
+  "labelFilterWholeAlbum": "The whole album",
+  "@labelFilterWholeAlbum": {
+    "description": "Choice of the row 'Photos' of the new-share-link form (issue #213): the link shows the album, not only the photos of one label. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "x-translated": "5770a643"
+  },
+  "labelFilterOnly": "Only photos with the label “{label}”",
+  "@labelFilterOnly": {
+    "description": "Choice of the row 'Photos' of the new-share-link form (issue #213): the link shows only the photos carrying this label of the album. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "placeholders": {
+      "label": {
+        "type": "String",
+        "example": "Day with Anna"
+      }
+    },
+    "x-translated": "b0891eac"
+  },
+  "linkShowsLabel": "Only “{label}”",
+  "@linkShowsLabel": {
+    "description": "Part of the one-line description of a share link in the list of links (issue #213): the link shows only the photos carrying this label. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.",
+    "placeholders": {
+      "label": {
+        "type": "String",
+        "example": "Day with Anna"
+      }
+    },
+    "x-translated": "716de756"
   }
 }

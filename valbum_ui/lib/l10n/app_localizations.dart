@@ -1586,13 +1586,13 @@ abstract class AppLocalizations {
   /// **'Shows'**
   String get showsHeading;
 
-  /// Choice: the link shows only the photos marked public
+  /// Choice of a new share link, the default: it shows the public photos, which is every photo nobody marked members-only or private
   ///
   /// In en, this message translates to:
   /// **'Public photos'**
   String get privacyPublicOnly;
 
-  /// Choice of a new share link: it shows every photo a link can show, which is what a member of the space sees (a private photo never)
+  /// Choice of a new share link: besides the public photos it also shows the photos marked visible to members only (a private photo never)
   ///
   /// In en, this message translates to:
   /// **'Also members-only photos'**
@@ -4777,6 +4777,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your e-mail address is saved.'**
   String get addEmailDone;
+
+  /// Entry of the album menu and of a tile's context menu in the edit mode (issue #213): opens the dialog that gives the selected photos labels or takes labels off them. A label marks a sub-view of the album, e.g. the photos of one day. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Label…'**
+  String get labelSelectionAction;
+
+  /// Title of the dialog giving the selected photos of an album labels (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Labels of {count, plural, =1{one photo} other{{count} photos}}'**
+  String labelDialogTitle(int count);
+
+  /// Explanation in the label dialog (issue #213). Address the reader formally, as the whole app does (German: 'Sie', never 'du'). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'A ticked label is given to every selected photo, an unticked one is taken off them. A label is a view of this album: the chips above the photos show it, and a share link can show the photos of one label alone.'**
+  String get labelDialogHelp;
+
+  /// Line of the label dialog (issue #213) where the album carries no label yet; a new one is typed into the field below. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'This album has no labels yet.'**
+  String get labelNoneYet;
+
+  /// Text field of the label dialog (issue #213) where a new label is typed, e.g. 'Day with Anna'. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'New label'**
+  String get labelNewField;
+
+  /// Tooltip of the button next to the new-label field of the label dialog (issue #213), which adds the typed label to the list, ticked. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Add this label'**
+  String get labelNewAdd;
+
+  /// Button of the label dialog (issue #213) applying the ticked and unticked labels to the selected photos (the album is saved with the edit mode's Save). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get labelApply;
+
+  /// Tooltip of a label chip above the photos of an album (issue #213): a tap filters the album to the photos carrying the label. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Show only the photos labeled “{label}”; tap again to show them all'**
+  String labelChipTooltip(String label);
+
+  /// Line shown in an album filtered by a label chip (issue #213) where the rating filter hides every photo carrying the label. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'No photo with the label “{label}” passes the rating filter.'**
+  String labelFilterHidesAll(String label);
+
+  /// Entry of the menu of a label chip (issue #213), offered to editors: renames the label on every photo of the album. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename label…'**
+  String get labelRename;
+
+  /// Entry of the menu of a label chip (issue #213), offered to editors: takes the label off every photo of the album; the photos stay. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove label…'**
+  String get labelDelete;
+
+  /// Title of the dialog renaming a label of an album (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename the label “{label}”'**
+  String labelRenameTitle(String label);
+
+  /// Field of the dialog renaming a label of an album (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'New name'**
+  String get labelRenameField;
+
+  /// Explanation in the dialog renaming a label (issue #213): a link made for the label keeps showing the same photos. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'The label is renamed on every photo of this album. A share link showing it follows the new name.'**
+  String get labelRenameHelp;
+
+  /// Title of the confirmation removing a label from every photo of an album (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the label “{label}”?'**
+  String labelDeleteTitle(String label);
+
+  /// Explanation in the confirmation removing a label (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'The label is taken off every photo of this album; the photos stay. A share link showing this label will show nothing.'**
+  String get labelDeleteExplanation;
+
+  /// Button confirming that a label is taken off every photo of an album (issue #213). Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get labelDeleteConfirm;
+
+  /// Heading of the row of the new-share-link form (issue #213) choosing between the whole album and the photos of one label. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos'**
+  String get labelFilterHeading;
+
+  /// Choice of the row 'Photos' of the new-share-link form (issue #213): the link shows the album, not only the photos of one label. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'The whole album'**
+  String get labelFilterWholeAlbum;
+
+  /// Choice of the row 'Photos' of the new-share-link form (issue #213): the link shows only the photos carrying this label of the album. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Only photos with the label “{label}”'**
+  String labelFilterOnly(String label);
+
+  /// Part of the one-line description of a share link in the list of links (issue #213): the link shows only the photos carrying this label. Terminology: a label of a photo is called 'Label' in German (plural 'Labels'), never 'Beschriftung', 'Bezeichnung' or 'Etikett'; the chips are 'Label-Chips'.
+  ///
+  /// In en, this message translates to:
+  /// **'Only “{label}”'**
+  String linkShowsLabel(String label);
 }
 
 class _AppLocalizationsDelegate

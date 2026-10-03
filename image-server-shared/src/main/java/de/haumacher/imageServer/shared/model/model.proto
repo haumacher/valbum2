@@ -46,6 +46,12 @@ abstract message FolderResource extends Resource {
 
 }
 
+/** One label of a photograph, see {@link ImagePart#labels} and issue #213. */
+message LabelName {
+	/** The label as the author typed it, compared exactly. */
+	string name;
+}
+
 /** The name of a single right, see {@link FolderResource#rights}. */
 message RightName {
 	/** One of <code>view</code>, <code>download</code>, <code>contribute</code>, <code>edit</code>. */
@@ -519,6 +525,33 @@ message ImagePart extends AbstractImage {
 	 * </p>
 	 */
 	Crop crop;
+
+	/**
+	 * The labels of this photograph, see issue #213: the author's sub-views of the album, "the day
+	 * we met Anna and Ben".
+	 *
+	 * <p>
+	 * <b>Stored</b> in <code>index.json</code>, and absent in a sidecar written before this field
+	 * existed, which reads as "none". A photograph may carry several, each once; a label is plain
+	 * text compared exactly, and the labels <em>of an album</em> are the labels its photographs
+	 * carry &mdash; there is no list of them anywhere else. Set in the edit mode and carried by the
+	 * ordinary sidecar <code>PUT</code>; renamed or removed on every photograph of an album at once
+	 * by <code>?action=relabel</code> ({@link LabelChange}), which also carries a share link showing
+	 * the label along. A share link may show the photographs of one label only
+	 * ({@link ShareLink#photoLabel}), and an upload through such a link carries that label.
+	 * </p>
+	 *
+	 * <p>
+	 * Answered to the members of the space only: a share link, an anonymous visitor and the
+	 * author's preview as the public sees it are answered no label at all.
+	 * </p>
+	 *
+	 * <p>
+	 * A list of messages, not a list of plain strings: the Dart backend of the model generator
+	 * mis-types a <code>repeated string</code> field, see {@link UploadCheck#hashes}.
+	 * </p>
+	 */
+	repeated LabelName labels;
 }
 
 /** One face found in an {@link ImagePart}, see issue #124. */
@@ -2238,6 +2271,23 @@ message ShareLink {
 	 * </p>
 	 */
 	repeated ShareRecipient recipients;
+
+	/**
+	 * The one {@link ImagePart#labels label} whose photographs the link shows, empty for the whole
+	 * album, see issue #213.
+	 *
+	 * <p>
+	 * Stored on the link and frozen there like {@link #maxPrivacy} and {@link #minRating}: a
+	 * photograph without the label does not exist for the link &mdash; not in the album, not as a
+	 * thumbnail, a rendition, an original or in a zip, and not as the cover of its card &mdash; and
+	 * the privacy level, the rating floor and the trash still apply on top. Given on a link to an
+	 * album only (a folder of folders is refused, labels being the statement of one album); a
+	 * rename of the label in that album by <code>?action=relabel</code> carries the link along, a
+	 * removal of the label leaves the link showing nothing. An upload through the link carries the
+	 * label, so that the link shows what was sent through it.
+	 * </p>
+	 */
+	string photoLabel;
 }
 
 /**
@@ -3080,6 +3130,25 @@ message PersonLink {
 message TagFaces {
 	/** The decisions to store. */
 	repeated FaceAssignment faces;
+}
+
+/**
+ * What <code>?action=relabel</code> asks for: one label of an album renamed or removed on every
+ * photograph carrying it, see issue #213.
+ */
+message LabelChange {
+	/** The label as the photographs carry it. */
+	string from;
+
+	/**
+	 * The new label; empty removes the label from every photograph.
+	 *
+	 * <p>
+	 * A share link on the album showing {@link #from} is carried along to the new name; a removal
+	 * leaves such a link showing nothing.
+	 * </p>
+	 */
+	string to;
 }
 
 /** One decision about one face, see {@link TagFaces}. */
