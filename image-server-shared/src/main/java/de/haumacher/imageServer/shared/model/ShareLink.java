@@ -57,6 +57,12 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getRevoked() */
 	private static final String REVOKED__PROP = "revoked";
 
+	/** @see #getType() */
+	private static final String TYPE__PROP = "type";
+
+	/** @see #getRecipients() */
+	private static final String RECIPIENTS__PROP = "recipients";
+
 	private String _id = "";
 
 	private String _label = "";
@@ -76,6 +82,10 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _created = "";
 
 	private String _revoked = "";
+
+	private de.haumacher.imageServer.shared.model.ShareType _type = de.haumacher.imageServer.shared.model.ShareType.ANONYMOUS;
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.ShareRecipient> _recipients = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link ShareLink} instance.
@@ -318,6 +328,77 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_revoked = value;
 	}
 
+	/**
+	 * Whether the link is anonymous (the default) or personal, see issue #198.
+	 *
+	 * <p>
+	 * An anonymous link with {@link #getRecipients()} is refused.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.ShareType getType() {
+		return _type;
+	}
+
+	/**
+	 * @see #getType()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink setType(de.haumacher.imageServer.shared.model.ShareType value) {
+		internalSetType(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getType()} without chain call utility. */
+	protected final void internalSetType(de.haumacher.imageServer.shared.model.ShareType value) {
+		if (value == null) throw new IllegalArgumentException("Property 'type' cannot be null.");
+		_type = value;
+	}
+
+	/**
+	 * Who an addressed personal link was sent to, see {@link ShareRecipient} and issue #198.
+	 *
+	 * <p>
+	 * Empty for an anonymous and for an open personal link.
+	 * </p>
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.ShareRecipient> getRecipients() {
+		return _recipients;
+	}
+
+	/**
+	 * @see #getRecipients()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink setRecipients(java.util.List<? extends de.haumacher.imageServer.shared.model.ShareRecipient> value) {
+		internalSetRecipients(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getRecipients()} without chain call utility. */
+	protected final void internalSetRecipients(java.util.List<? extends de.haumacher.imageServer.shared.model.ShareRecipient> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'recipients' cannot be null.");
+		_recipients.clear();
+		_recipients.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getRecipients()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink addRecipient(de.haumacher.imageServer.shared.model.ShareRecipient value) {
+		internalAddRecipient(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addRecipient(de.haumacher.imageServer.shared.model.ShareRecipient)} without chain call utility. */
+	protected final void internalAddRecipient(de.haumacher.imageServer.shared.model.ShareRecipient value) {
+		_recipients.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getRecipients()} list.
+	 */
+	public final void removeRecipient(de.haumacher.imageServer.shared.model.ShareRecipient value) {
+		_recipients.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareLink readShareLink(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareLink result = new de.haumacher.imageServer.shared.model.ShareLink();
@@ -357,6 +438,14 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getCreated());
 		out.name(REVOKED__PROP);
 		out.value(getRevoked());
+		out.name(TYPE__PROP);
+		getType().writeTo(out);
+		out.name(RECIPIENTS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.ShareRecipient x : getRecipients()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -379,6 +468,15 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case CREATED_BY__PROP: setCreatedBy(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CREATED__PROP: setCreated(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case REVOKED__PROP: setRevoked(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case TYPE__PROP: setType(de.haumacher.imageServer.shared.model.ShareType.readShareType(in)); break;
+			case RECIPIENTS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addRecipient(de.haumacher.imageServer.shared.model.ShareRecipient.readShareRecipient(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

@@ -18,7 +18,12 @@ public class ErrorInfo extends Resource {
 	/** @see #getMessage() */
 	private static final String MESSAGE__PROP = "message";
 
+	/** @see #getIdentify() */
+	private static final String IDENTIFY__PROP = "identify";
+
 	private String _message = "";
+
+	private de.haumacher.imageServer.shared.model.IdentifyRequired _identify = null;
 
 	/**
 	 * Creates a {@link ErrorInfo} instance.
@@ -54,6 +59,39 @@ public class ErrorInfo extends Resource {
 		_message = value;
 	}
 
+	/**
+	 * What a personal share link needs to know before it lets the caller in, see issue #198.
+	 *
+	 * <p>
+	 * Set on the <code>401</code>/<code>403</code> a personal link answers a caller it does not
+	 * recognise; <code>null</code> on every other refusal. It rides on the {@link ErrorInfo} rather
+	 * than being a kind of its own, so that every client keeps reading the {@link #getMessage()}.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.IdentifyRequired getIdentify() {
+		return _identify;
+	}
+
+	/**
+	 * @see #getIdentify()
+	 */
+	public de.haumacher.imageServer.shared.model.ErrorInfo setIdentify(de.haumacher.imageServer.shared.model.IdentifyRequired value) {
+		internalSetIdentify(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getIdentify()} without chain call utility. */
+	protected final void internalSetIdentify(de.haumacher.imageServer.shared.model.IdentifyRequired value) {
+		_identify = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getIdentify()} has a value.
+	 */
+	public final boolean hasIdentify() {
+		return _identify != null;
+	}
+
 	@Override
 	public String jsonType() {
 		return ERROR_INFO__TYPE;
@@ -71,12 +109,17 @@ public class ErrorInfo extends Resource {
 		super.writeFields(out);
 		out.name(MESSAGE__PROP);
 		out.value(getMessage());
+		if (hasIdentify()) {
+			out.name(IDENTIFY__PROP);
+			getIdentify().writeTo(out);
+		}
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
 			case MESSAGE__PROP: setMessage(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case IDENTIFY__PROP: setIdentify(de.haumacher.imageServer.shared.model.IdentifyRequired.readIdentifyRequired(in)); break;
 			default: super.readField(in, field);
 		}
 	}

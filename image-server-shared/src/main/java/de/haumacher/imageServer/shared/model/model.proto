@@ -1037,6 +1037,17 @@ message ThumbnailInfo {
 message ErrorInfo extends Resource {
 	/** The error message. */
 	string `message`;
+
+	/**
+	 * What a personal share link needs to know before it lets the caller in, see issue #198.
+	 *
+	 * <p>
+	 * Set on the <code>401</code>/<code>403</code> a personal link answers a caller it does not
+	 * recognise; <code>null</code> on every other refusal. It rides on the {@link ErrorInfo} rather
+	 * than being a kind of its own, so that every client keeps reading the {@link #message}.
+	 * </p>
+	 */
+	IdentifyRequired identify;
 }
 
 
@@ -1259,6 +1270,38 @@ message ShareInfo {
 
 	/** The canonical <code>~&lt;owner&gt;/&lt;path&gt;</code> of the link's target, so the app can name it. */
 	string path;
+
+	/** Whether the link is anonymous or personal, see {@link ShareType} and issue #198. */
+	ShareType type;
+
+	/**
+	 * The contact this session is, <code>null</code> for an anonymous link (issue #198).
+	 *
+	 * <p>
+	 * Set exactly where a personal link was opened with a contact credential that it admits: who
+	 * the server takes the caller to be, and therefore whom it attributes their uploads to. The
+	 * app names them ("Not you?") and nothing more is said about the contact.
+	 * </p>
+	 */
+	ContactInfo contact;
+}
+
+/**
+ * The contact a session of a personal link is, see {@link ShareInfo#contact} and issue #198.
+ */
+message ContactInfo {
+	/** The id of the contact in the space's register. */
+	string id;
+
+	/**
+	 * The name to greet the contact by: their own display name, else the name the space gives them.
+	 *
+	 * <p>
+	 * The space's name is what the sharer wrote into the address field the link was sent with, so
+	 * it is no secret to the recipient; the contact's own name replaces it once they gave one.
+	 * </p>
+	 */
+	string displayName;
 }
 
 
@@ -2078,6 +2121,24 @@ message ShareLink {
 
 	/** When the link was withdrawn, an ISO-8601 instant; empty while the link is live. */
 	string revoked;
+
+	/**
+	 * Whether the link is anonymous (the default) or personal, see issue #198.
+	 *
+	 * <p>
+	 * An anonymous link with {@link #recipients} is refused.
+	 * </p>
+	 */
+	ShareType type;
+
+	/**
+	 * Who an addressed personal link was sent to, see {@link ShareRecipient} and issue #198.
+	 *
+	 * <p>
+	 * Empty for an anonymous and for an open personal link.
+	 * </p>
+	 */
+	repeated ShareRecipient recipients;
 }
 
 /**
@@ -2110,6 +2171,310 @@ message ShareLinkCreated {
 
 	/** The link's path on this server: <code>&lt;context&gt;/s/&lt;token&gt;/</code>. */
 	string url;
+
+	/**
+	 * For an addressed personal link, one link of their own per recipient (issue #198).
+	 *
+	 * <p>
+	 * Answered exactly once, like {@link #token}: by <code>?action=share</code> for every
+	 * recipient and by <code>?action=resend</code> for the one recipient sent to again. The link's
+	 * own {@link #token} opens nothing without a contact credential; these are what the sharer
+	 * sends.
+	 * </p>
+	 */
+	repeated RecipientLink recipients;
+}
+
+/**
+ * The kind of a share link, see {@link ShareLink#type} and issue #198.
+ */
+enum ShareType {
+	/**
+	 * Whoever holds the link opens it, as every link did before issue #198; the default, and what a
+	 * link stored without a type is.
+	 */
+	ANONYMOUS;
+
+	/**
+	 * The person behind the link says who they are: a contact of the space.
+	 *
+	 * <p>
+	 * With {@link ShareLink#recipients} it is <em>addressed</em>: only those contacts get in, each
+	 * through a link of their own. Without, it is <em>open</em>: anybody who proves an address gets
+	 * in (issues #199 and #200), and a contact the space already recognises does.
+	 * </p>
+	 */
+	PERSONAL;
+}
+
+/**
+ * A recipient of a personal share link, see {@link ShareLink#recipients} and issue #198.
+ *
+ * <p>
+ * In a request either an existing contact named by {@link #contact}, or a new one described by
+ * {@link #name} and {@link #addresses}; a new contact whose address the register already holds
+ * <em>is</em> that contact. In an answer the contact as the register knows it, and what became of
+ * the recipient's own link &mdash; never its token.
+ * </p>
+ */
+message ShareRecipient {
+	/** The id of the contact; empty in a request describing a new one. */
+	string contact;
+
+	/** The name the space gives the contact; a new contact without one is named by its first address. */
+	string name;
+
+	/** The contact's addresses: what a new contact is created with, and what it holds. */
+	repeated ContactAddress addresses;
+
+	/** When the recipient's current link was issued, an ISO-8601 instant; answered by the server. */
+	string issued;
+
+	/** When the recipient's current link was first opened, empty while it was not; answered by the server. */
+	string opened;
+
+	/** When the contact was shut out of this link, empty while they are not; answered by the server. */
+	string shutOut;
+}
+
+/**
+ * The link of one recipient of a personal share link, answered exactly once (issue #198).
+ */
+message RecipientLink {
+	/** The id of the contact the link is for. */
+	string contact;
+
+	/** The name the space gives the contact. */
+	string name;
+
+	/** The contact's addresses, so that the app can offer a <code>mailto:</code> or a chat per address. */
+	repeated ContactAddress addresses;
+
+	/** The recipient's own token, answered exactly once and never stored. */
+	string token;
+
+	/** The recipient's own link on this server: <code>&lt;context&gt;[/&lt;space&gt;]/s/&lt;token&gt;/</code>. */
+	string url;
+}
+
+/** What an address of a contact is, see {@link ContactAddress} and issue #198. */
+enum AddressKind {
+	/** An e-mail address, stored lower-cased. */
+	EMAIL;
+
+	/** A phone number, stored in E.164 (<code>+4917…</code>) where the input says its country, else as given. */
+	PHONE;
+}
+
+/** One way to reach a contact, see {@link Contact#addresses} and issue #198. */
+message ContactAddress {
+	/** E-mail or phone. */
+	AddressKind kind;
+
+	/**
+	 * The address, normalised by the server.
+	 *
+	 * <p>
+	 * In a request an e-mail address may be written in the full form
+	 * <code>Tante Petra &lt;petra@gmx.de&gt;</code>; the name then names a new contact that has none.
+	 * </p>
+	 */
+	string value;
+
+	/** Whether the contact proved the address (#199, #200), rather than the sharer giving it; answered by the server. */
+	bool proven;
+}
+
+/**
+ * A person behind a personal share link: a contact of the space, see issue #198.
+ *
+ * <p>
+ * A contact is not a user: no role, no device, no clearance. What they may see and do is exactly
+ * what the link they opened allows. Stored in <code>&lt;space&gt;/.valbum/contacts.json</code> and
+ * answered by <code>&lt;data&gt;/?type=contacts</code> to every signed-in member of the space
+ * &mdash; "when you share photos, you also share contacts" &mdash; and never to a link or an
+ * anonymous caller.
+ * </p>
+ */
+message Contact {
+	/** The id of the contact; an upload of theirs is attributed to <code>contact:&lt;id&gt;</code>. */
+	string id;
+
+	/** The name the space gives the contact ("Tante Petra"); what their uploads are labelled with. */
+	string name;
+
+	/** The name the contact gave themselves at the first open, empty while they gave none. */
+	string displayName;
+
+	/** The contact's addresses, no two contacts sharing one. */
+	repeated ContactAddress addresses;
+
+	/** When the contact was entered, an ISO-8601 instant. */
+	string created;
+
+	/** The member who entered the contact. */
+	string createdBy;
+
+	/** When the contact first opened a link, empty while they never did. */
+	string firstSeen;
+
+	/** When the contact was last seen, to the hour; empty while they never were. */
+	string lastSeen;
+
+	/** When the contact was shut out of every link of the space, empty while they are not. */
+	string blocked;
+
+	/** The browsers the contact is recognised on: their contact credentials, never a secret. */
+	repeated ContactSession sessions;
+}
+
+/** A browser a contact is recognised on, see {@link Contact#sessions} and issue #198. */
+message ContactSession {
+	/** The id of the session. */
+	string id;
+
+	/** The id of the share link the session was opened through. */
+	string link;
+
+	/** When the session began, an ISO-8601 instant. */
+	string created;
+
+	/** When the session ends, an ISO-8601 instant. */
+	string expires;
+
+	/** Whether the contact asked to be remembered: 90 days renewed on use, else 24 hours. */
+	bool remember;
+
+	/** When the session was last used, to the hour. */
+	string lastUsed;
+}
+
+/** The register of contacts of a space, answered by <code>&lt;data&gt;/?type=contacts</code> (issue #198). */
+message ContactList {
+	/** Every contact, in the order they were entered. */
+	repeated Contact contacts;
+}
+
+/**
+ * Sending one recipient of a personal link a fresh link, <code>&lt;folder&gt;/?action=resend</code> (issue #198).
+ *
+ * <p>
+ * The recipient's earlier link is void from then on, and the answer is a {@link ShareLinkCreated}
+ * carrying the one fresh {@link RecipientLink}.
+ * </p>
+ */
+message ShareResend {
+	/** The id of the share link. */
+	string link;
+
+	/** The id of the contact to send again to; a recipient of the link. */
+	string contact;
+}
+
+/**
+ * Shutting a contact out of one link, <code>&lt;folder&gt;/?action=shut-out</code>, or out of the
+ * whole space, <code>&lt;data&gt;/?action=block-contact</code> (issue #198).
+ *
+ * <p>
+ * Either ends the matching contact credentials at once; <code>shutOut: false</code> lets the
+ * contact in again (and issues nothing: a link to them is sent again with
+ * <code>?action=resend</code>).
+ * </p>
+ */
+message ContactShutOut {
+	/** The id of the share link; ignored by <code>?action=block-contact</code>. */
+	string link;
+
+	/** The id of the contact. */
+	string contact;
+
+	/** Whether the contact is shut out, or let in again. */
+	bool shutOut;
+}
+
+/**
+ * The first open of a recipient's own link, <code>&lt;data&gt;/?action=identify</code> (issue #198).
+ *
+ * <p>
+ * Sent with the recipient's token as the bearer: the link identifies the recipient once, and the
+ * answer is a {@link ContactCredential} that recognises them from then on.
+ * </p>
+ */
+message ContactIdentify {
+	/** Whether to remember this browser: 90 days renewed on use, else 24 hours. */
+	bool remember;
+
+	/** The name the contact wants to be greeted by; empty keeps what the space calls them. */
+	string displayName;
+}
+
+/**
+ * A contact credential, answered once by <code>?action=identify</code> (issue #198).
+ *
+ * <p>
+ * Sent beside the link's token as the header <code>X-VAlbum-Contact: &lt;credential&gt;</code> on
+ * every request of a personal link's session, and never as a bearer: it opens no endpoint by
+ * itself, only the personal links of its space that admit the contact.
+ * </p>
+ */
+message ContactCredential {
+	/** The credential, answered exactly once and stored only as a hash. */
+	string credential;
+
+	/** When it ends, an ISO-8601 instant; renewed on use where {@link #remember} holds. */
+	string expires;
+
+	/** Whether it is remembered for 90 days. */
+	bool remember;
+
+	/** The contact it identifies. */
+	ContactInfo contact;
+}
+
+/**
+ * The refusal of a personal link to a caller the server does not recognise (issue #198).
+ *
+ * <p>
+ * Carried by the {@link ErrorInfo#identify} of the <code>401</code> answered on every endpoint,
+ * <code>?type=auth</code> included, and never with the album. {@link #firstOpen} says that the presented token is a recipient's own link
+ * that was never opened: <code>?action=identify</code> accepts it. Otherwise the caller proves an
+ * address by one of the {@link #methods} &mdash; none in this build, which leaves "ask the sharer
+ * to send the link again".
+ * </p>
+ */
+message IdentifyRequired {
+	/** Whether the token is a recipient's own link that has not been opened yet. */
+	bool firstOpen;
+
+	/** Whose own link the token is, <code>null</code> for the link's own token. */
+	ContactInfo contact;
+
+	/** The contact's addresses, masked (<code>p•••@gmx.de</code>); empty for a first open. */
+	repeated MaskedAddress addresses;
+
+	/** The ways the server can prove an address of the contact; empty in this build. */
+	repeated ProofMethod methods;
+
+	/** The label of the link. */
+	string label;
+
+	/** The member who shared the link, for "… will see your name with the photos you add". */
+	string sharedBy;
+}
+
+/** A masked address of a contact, see {@link IdentifyRequired#addresses}. */
+message MaskedAddress {
+	/** E-mail or phone. */
+	AddressKind kind;
+
+	/** The address with most of it masked. */
+	string masked;
+}
+
+/** A way to prove an address, see {@link IdentifyRequired#methods}: <code>mail-code</code>, <code>oidc:google</code>, … */
+message ProofMethod {
+	/** The name of the method. */
+	string name;
 }
 
 /**

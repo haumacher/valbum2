@@ -45,7 +45,7 @@ public class TestInvitationProbe extends InviteTestCase {
 		FakeResponse live = authOf(token);
 		assertEquals(HttpServletResponse.SC_OK, live.status());
 		assertEquals("A 200 depends on the bearer that asked.", "no-store", live.header("Cache-Control"));
-		assertEquals("Authorization", live.header("Vary"));
+		assertEquals("Authorization, " + de.haumacher.imageServer.auth.AuthService.CONTACT_HEADER, live.header("Vary"));
 
 		String id = servlet().auth().getDeviceCodes().lookup(token).getId();
 		servlet().auth().uninvite(id);

@@ -12,6 +12,7 @@ import de.haumacher.imageServer.auth.AuthService.Location;
 import de.haumacher.imageServer.auth.AuthService.PairRefused;
 import de.haumacher.imageServer.auth.AuthService.PathRefused;
 import de.haumacher.imageServer.auth.Clearances;
+import de.haumacher.imageServer.auth.ContactStore;
 import de.haumacher.imageServer.auth.DeviceCodeStore;
 import de.haumacher.imageServer.auth.InvitationStore;
 import de.haumacher.imageServer.auth.MediaSignatures;
@@ -35,6 +36,9 @@ import de.haumacher.imageServer.raw.NoEmbeddedPreviewException;
 import de.haumacher.imageServer.raw.RawFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.CacheRefreshed;
+import de.haumacher.imageServer.shared.model.ContactCredential;
+import de.haumacher.imageServer.shared.model.ContactIdentify;
+import de.haumacher.imageServer.shared.model.ContactShutOut;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
 import de.haumacher.imageServer.shared.model.DeviceCodeCreated;
@@ -72,6 +76,7 @@ import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ShareLink;
 import de.haumacher.imageServer.shared.model.ShareLinkCreated;
 import de.haumacher.imageServer.shared.model.ShareLinkList;
+import de.haumacher.imageServer.shared.model.ShareResend;
 import de.haumacher.imageServer.shared.model.TagFaces;
 import de.haumacher.imageServer.shared.model.UploadCheck;
 import de.haumacher.imageServer.shared.model.UploadCheckResult;
@@ -769,6 +774,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("people".equals(type)) {
 			servePeople(context, caller);
+			return;
+		}
+		if ("contacts".equals(type)) {
+			serveContacts(context, caller);
 			return;
 		}
 
@@ -2634,17 +2643,319 @@ public class ImageServlet extends HttpServlet {
 		}
 		String label = request.getLabel() == null ? "" : request.getLabel().trim();
 
-		// The link is the permission (issue #83): what it may do is recorded on the link itself,
-		// and there is no grant beside it any more.
-		ShareStore.Issued issued = _auth.getShares().create(location.getOwner(), location.getOwnerPath(), label,
-			expires, maxPrivacy, minRating, rights, caller.getUserName());
-		ShareStore.Link link = issued.getLink();
+		boolean personal = request.getType() == de.haumacher.imageServer.shared.model.ShareType.PERSONAL;
+		if (!personal) {
+			if (!request.getRecipients().isEmpty()) {
+				LOG.warning("Refusing an anonymous share link with recipients.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.ANONYMOUS_RECIPIENTS);
+				return;
+			}
+			// The link is the permission (issue #83): what it may do is recorded on the link
+			// itself, and there is no grant beside it any more.
+			ShareStore.Issued issued = _auth.getShares().create(location.getOwner(), location.getOwnerPath(),
+				label, expires, maxPrivacy, minRating, rights, caller.getUserName());
+			ShareStore.Link link = issued.getLink();
 
-		LOG.info("Created the share link " + link + " with " + rights + ".");
+			LOG.info("Created the share link " + link + " with " + rights + ".");
+			serveJsonObject(context.response(), ShareLinkCreated.create()
+				.setLink(onTheWire(link))
+				.setToken(issued.getToken())
+				.setUrl(shareUrl(context, issued.getToken())));
+			return;
+		}
+
+		// A personal link (issue #198): every recipient is read before anything is written, so that
+		// one unreadable address refuses the whole request and enters nobody.
+		ContactStore contacts = _auth.getContacts();
+		List<ContactStore.Request> recipients = new ArrayList<>();
+		for (de.haumacher.imageServer.shared.model.ShareRecipient recipient : request.getRecipients()) {
+			List<String[]> addresses = new ArrayList<>();
+			for (de.haumacher.imageServer.shared.model.ContactAddress address : recipient.getAddresses()) {
+				addresses.add(new String[] { PersonalLinks.kind(address.getKind()), address.getValue() });
+			}
+			try {
+				ContactStore.Request read = contacts.read(recipient.getContact(), recipient.getName(), addresses);
+				ContactStore.Contact known = read.getId().isEmpty() ? null : contacts.get(read.getId());
+				if (known != null && known.isBlocked()) {
+					throw new ContactStore.Refused(PersonalLinks.contactBlocked(known.getName()));
+				}
+				recipients.add(read);
+			} catch (ContactStore.Refused ex) {
+				LOG.warning("Refusing a recipient of a personal link: " + ex.getMessage());
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
+				return;
+			}
+		}
+		List<ContactStore.Contact> entered = new ArrayList<>();
+		List<String> ids = new ArrayList<>();
+		for (ContactStore.Request recipient : recipients) {
+			ContactStore.Contact contact = contacts.enter(recipient, caller.getUserName());
+			if (contact.isBlocked()) {
+				// Entered by an address the register holds for somebody shut out of the space.
+				LOG.warning("Refusing the blocked contact " + contact + " as a recipient.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.contactBlocked(contact.getName()));
+				return;
+			}
+			if (!ids.contains(contact.getId())) {
+				ids.add(contact.getId());
+				entered.add(contact);
+			}
+		}
+		ShareStore.IssuedPersonal issued = _auth.getShares().createPersonal(location.getOwner(),
+			location.getOwnerPath(), label, expires, maxPrivacy, minRating, rights, caller.getUserName(), ids);
+		ShareStore.Link link = issued.getIssued().getLink();
+
+		LOG.info("Created the personal share link " + link + " with " + rights + " for " + entered.size()
+			+ " recipient(s).");
+		ShareLinkCreated result = ShareLinkCreated.create()
+			.setLink(onTheWire(link))
+			.setToken(issued.getIssued().getToken())
+			.setUrl(shareUrl(context, issued.getIssued().getToken()));
+		for (ContactStore.Contact contact : entered) {
+			result.addRecipient(recipientLink(context, contact, issued.getTokens().get(contact.getId())));
+		}
+		serveJsonObject(context.response(), result);
+	}
+
+	/** The link of one recipient as it is answered once, see issue #198. */
+	private de.haumacher.imageServer.shared.model.RecipientLink recipientLink(Context context,
+			ContactStore.Contact contact, String token) {
+		return de.haumacher.imageServer.shared.model.RecipientLink.create()
+			.setContact(contact.getId())
+			.setName(contact.getName())
+			.setAddresses(PersonalLinks.addresses(contact))
+			.setToken(token)
+			.setUrl(shareUrl(context, token));
+	}
+
+	/**
+	 * Answers the contacts of the space at <code>&lt;data&gt;/?type=contacts</code>, see issue #198.
+	 *
+	 * <p>
+	 * To every signed-in member, whatever their role &mdash; "when you share photos, you also share
+	 * contacts" &mdash; and never to a share link or an anonymous caller. A server without
+	 * authentication has no share links and no contacts, and answers the empty register.
+	 * </p>
+	 */
+	private void serveContacts(Context context, Caller caller) throws IOException {
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing the contacts to the share link '" + caller.getShareLabel() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, PersonalLinks.CONTACTS_REFUSED);
+			return;
+		}
+		if (!caller.isPaired() && _auth.getMode() != AuthMode.OFF) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		serveJsonObject(context.response(), PersonalLinks.contacts(_auth.getContacts()));
+	}
+
+	/**
+	 * The first open of a recipient's own link at <code>&lt;data&gt;/?action=identify</code>, see
+	 * issue #198.
+	 *
+	 * <p>
+	 * The recipient's token is the bearer and the body a {@link ContactIdentify}; the answer is the
+	 * {@link ContactCredential} that recognises the contact from now on, given exactly once. Every
+	 * other caller is answered what it would be answered anywhere: a second open the refusal asking
+	 * who they are, everybody else <code>400</code>.
+	 * </p>
+	 */
+	private void identify(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (caller.isShareGone()) {
+			gone(context, caller);
+			return;
+		}
+		ContactIdentify request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = contents.length == 0 ? ContactIdentify.create()
+				: ContactIdentify.readContactIdentify(new JsonReader(new ReaderAdapter(
+					new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unreadable identification: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.UNREADABLE);
+			return;
+		}
+		ContactStore.Issued issued;
+		try {
+			issued = _auth.identify(caller, request.isRemember(), request.getDisplayName());
+		} catch (AuthService.Refused ex) {
+			if (caller.mustIdentify() && ex.getStatus() != HttpServletResponse.SC_GONE) {
+				// Somebody else's first open won, or this was none: asked who they are, as anywhere.
+				Caller now = _auth.caller(context.request());
+				if (now.mustIdentify() || now.isShareGone()) {
+					gone(context, now);
+					return;
+				}
+			}
+			LOG.warning("Refusing an identification: " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+			return;
+		}
+		LOG.info("Identified " + issued.getContact() + " through the share link "
+			+ caller.getShare().getId() + (request.isRemember() ? ", remembered." : "."));
+		serveJsonObject(context.response(), ContactCredential.create()
+			.setCredential(issued.getCredential())
+			.setExpires(issued.getSession().getExpires())
+			.setRemember(issued.getSession().isRemember())
+			.setContact(AuthService.contactInfo(issued.getContact())));
+	}
+
+	/**
+	 * The share link a management request about a personal link names, <code>null</code> if the
+	 * response is complete, see issue #198.
+	 *
+	 * <p>
+	 * The same rights as withdrawing it: the share flag, and the link the caller's own or the
+	 * caller an administrator; a link of somebody else's is a link this request never saw.
+	 * </p>
+	 */
+	private ShareStore.Link managedLink(Context context, Caller caller, Location location, String id)
+			throws IOException {
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return null;
+		}
+		if (!_auth.mayShareLinks(caller)) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.SHARING_REFUSED);
+			return null;
+		}
+		ShareStore.Link link = id == null || id.isEmpty() ? null : _auth.getShares().get(id.trim());
+		if (link == null || !link.covers(location.getOwner(), location.getOwnerPath()) || !mine(caller, link)) {
+			LOG.warning("Refusing a request about the unknown share link '" + id + "'.");
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.SHARE_UNKNOWN);
+			return null;
+		}
+		if (!link.isPersonal()) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.NOT_PERSONAL);
+			return null;
+		}
+		return link;
+	}
+
+	/**
+	 * Sends one recipient of a personal link a fresh link of their own at
+	 * <code>&lt;folder&gt;/?action=resend</code>, see issue #198.
+	 *
+	 * <p>
+	 * The recipient's earlier link is void at once, and the fresh one identifies them on its first
+	 * open like the first one did. Answered with a {@link ShareLinkCreated} carrying the one
+	 * {@link de.haumacher.imageServer.shared.model.RecipientLink}, the link's own token not again.
+	 * </p>
+	 */
+	private void resend(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		ShareResend request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = ShareResend.readShareResend(new JsonReader(new ReaderAdapter(
+				new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.UNREADABLE);
+			return;
+		}
+		ShareStore.Link link = managedLink(context, caller, location, request.getLink());
+		if (link == null) {
+			return;
+		}
+		ContactStore.Contact contact = _auth.getContacts().get(request.getContact());
+		if (contact == null || link.recipient(contact.getId()) == null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PersonalLinks.NOT_A_RECIPIENT);
+			return;
+		}
+		String token = _auth.getShares().resend(link.getId(), contact.getId());
+		LOG.info("Sent the share link " + link + " again to " + contact + ".");
 		serveJsonObject(context.response(), ShareLinkCreated.create()
 			.setLink(onTheWire(link))
-			.setToken(issued.getToken())
-			.setUrl(shareUrl(context, issued.getToken())));
+			.addRecipient(recipientLink(context, contact, token)));
+	}
+
+	/**
+	 * Shuts a contact out of one personal link at <code>&lt;folder&gt;/?action=shut-out</code>, or
+	 * lets them in again, see issue #198.
+	 *
+	 * <p>
+	 * The contact's credentials opened through this link end at once, and no credential opens the
+	 * link for them any more. Answered with the link as <code>?type=shares</code> lists it.
+	 * </p>
+	 */
+	private void shutOut(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		ContactShutOut request = readShutOut(context);
+		if (request == null) {
+			return;
+		}
+		ShareStore.Link link = managedLink(context, caller, location, request.getLink());
+		if (link == null) {
+			return;
+		}
+		ContactStore.Contact contact = _auth.getContacts().get(request.getContact());
+		if (contact == null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, ContactStore.unknownContact(request.getContact()));
+			return;
+		}
+		_auth.getShares().shutOut(link.getId(), contact.getId(), request.isShutOut());
+		if (request.isShutOut()) {
+			int ended = _auth.getContacts().endSessions(contact.getId(), link.getId());
+			LOG.info("Shut " + contact + " out of the share link " + link + "; ended " + ended + " session(s).");
+		} else {
+			LOG.info("Let " + contact + " into the share link " + link + " again.");
+		}
+		serveJsonObject(context.response(), ShareLinkList.create().addLink(onTheWire(link)));
+	}
+
+	/**
+	 * Shuts a contact out of every link of the space at <code>&lt;data&gt;/?action=block-contact</code>,
+	 * or lets them in again, see issue #198.
+	 *
+	 * <p>
+	 * Every credential of the contact ends at once. The contacts are the space's, shared by every
+	 * member who shares, so whoever may create share links may do it. Answered with the contact.
+	 * </p>
+	 */
+	private void blockContact(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (!_auth.mayShareLinks(caller)) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.SHARING_REFUSED);
+			return;
+		}
+		ContactShutOut request = readShutOut(context);
+		if (request == null) {
+			return;
+		}
+		ContactStore.Contact contact = _auth.getContacts().block(request.getContact(), request.isShutOut());
+		if (contact == null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, ContactStore.unknownContact(request.getContact()));
+			return;
+		}
+		LOG.info((request.isShutOut() ? "Shut " + contact + " out of" : "Let " + contact + " into")
+			+ " every link of the space, by '" + caller.getUserName() + "'.");
+		serveJsonObject(context.response(), PersonalLinks.contact(contact));
+	}
+
+	private static ContactShutOut readShutOut(Context context) throws IOException {
+		try {
+			byte[] contents = readBody(context.request());
+			return ContactShutOut.readContactShutOut(new JsonReader(new ReaderAdapter(
+				new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.UNREADABLE);
+			return null;
+		}
 	}
 
 	/**
@@ -2792,7 +3103,7 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private ShareLink onTheWire(ShareStore.Link link) {
 		Set<String> rights = link.getRights();
-		return ShareLink.create()
+		ShareLink wire = ShareLink.create()
 			.setId(link.getId())
 			.setCreatedBy(link.getCreatedBy())
 			.setLabel(link.getLabel())
@@ -2803,6 +3114,7 @@ public class ImageServlet extends HttpServlet {
 			.setPath(AuthService.canonical(link))
 			.setCreated(link.getCreated())
 			.setRevoked(link.getRevoked());
+		return PersonalLinks.withRecipients(wire, link, _auth.getContacts());
 	}
 
 	/**
@@ -3164,11 +3476,17 @@ public class ImageServlet extends HttpServlet {
 	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		Context context = new Context(request, response);
 
+		String action = context.getParameter("action");
+		if ("identify".equals(action)) {
+			// The one request a personal link that does not know who is asking may make, see #198.
+			identify(context);
+			return;
+		}
+
 		if (gone(context, _auth.caller(request))) {
 			return;
 		}
 
-		String action = context.getParameter("action");
 		if ("check".equals(action)) {
 			checkUploads(context);
 			return;
@@ -3256,6 +3574,18 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("share".equals(action)) {
 			createShare(context);
+			return;
+		}
+		if ("resend".equals(action)) {
+			resend(context);
+			return;
+		}
+		if ("shut-out".equals(action)) {
+			shutOut(context);
+			return;
+		}
+		if ("block-contact".equals(action)) {
+			blockContact(context);
 			return;
 		}
 		if ("unshare".equals(action)) {
@@ -3373,6 +3703,17 @@ public class ImageServlet extends HttpServlet {
 	 * @return Whether the request was answered here.
 	 */
 	private static boolean gone(Context context, Caller caller) throws IOException {
+		if (caller.mustIdentify()) {
+			// A personal link that does not know who is asking opens nothing, on every endpoint,
+			// "?type=auth" included: the refusal says how to become somebody, see issue #198.
+			AuthService.Identification identification = caller.getIdentification();
+			LOG.warning("Refusing '" + context.request().getPathInfo() + "': " + identification.getMessage());
+			HttpServletResponse response = context.response();
+			allowCrossOrigin(response);
+			response.setStatus(identification.getStatus());
+			serveJson(response, PersonalLinks.identifyRequired(identification));
+			return true;
+		}
 		if (!caller.isShareGone()) {
 			return false;
 		}
@@ -4993,9 +5334,10 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private static void allowCrossOrigin(HttpServletResponse response) {
 		response.setHeader("Access-Control-Allow-Origin", "*");
-		response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+		response.setHeader("Access-Control-Allow-Headers",
+			"Authorization, Content-Type, " + AuthService.CONTACT_HEADER);
 		response.setHeader("Cache-Control", "no-store");
-		response.setHeader("Vary", "Authorization");
+		response.setHeader("Vary", "Authorization, " + AuthService.CONTACT_HEADER);
 	}
 
 	/**

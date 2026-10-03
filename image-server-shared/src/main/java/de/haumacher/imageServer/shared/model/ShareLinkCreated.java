@@ -29,11 +29,16 @@ public class ShareLinkCreated extends de.haumacher.msgbuf.data.AbstractDataObjec
 	/** @see #getUrl() */
 	private static final String URL__PROP = "url";
 
+	/** @see #getRecipients() */
+	private static final String RECIPIENTS__PROP = "recipients";
+
 	private de.haumacher.imageServer.shared.model.ShareLink _link = null;
 
 	private String _token = "";
 
 	private String _url = "";
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.RecipientLink> _recipients = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link ShareLinkCreated} instance.
@@ -111,6 +116,55 @@ public class ShareLinkCreated extends de.haumacher.msgbuf.data.AbstractDataObjec
 		_url = value;
 	}
 
+	/**
+	 * For an addressed personal link, one link of their own per recipient (issue #198).
+	 *
+	 * <p>
+	 * Answered exactly once, like {@link #getToken()}: by <code>?action=share</code> for every
+	 * recipient and by <code>?action=resend</code> for the one recipient sent to again. The link's
+	 * own {@link #getToken()} opens nothing without a contact credential; these are what the sharer
+	 * sends.
+	 * </p>
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.RecipientLink> getRecipients() {
+		return _recipients;
+	}
+
+	/**
+	 * @see #getRecipients()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLinkCreated setRecipients(java.util.List<? extends de.haumacher.imageServer.shared.model.RecipientLink> value) {
+		internalSetRecipients(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getRecipients()} without chain call utility. */
+	protected final void internalSetRecipients(java.util.List<? extends de.haumacher.imageServer.shared.model.RecipientLink> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'recipients' cannot be null.");
+		_recipients.clear();
+		_recipients.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getRecipients()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLinkCreated addRecipient(de.haumacher.imageServer.shared.model.RecipientLink value) {
+		internalAddRecipient(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addRecipient(de.haumacher.imageServer.shared.model.RecipientLink)} without chain call utility. */
+	protected final void internalAddRecipient(de.haumacher.imageServer.shared.model.RecipientLink value) {
+		_recipients.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getRecipients()} list.
+	 */
+	public final void removeRecipient(de.haumacher.imageServer.shared.model.RecipientLink value) {
+		_recipients.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareLinkCreated readShareLinkCreated(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareLinkCreated result = new de.haumacher.imageServer.shared.model.ShareLinkCreated();
@@ -134,6 +188,12 @@ public class ShareLinkCreated extends de.haumacher.msgbuf.data.AbstractDataObjec
 		out.value(getToken());
 		out.name(URL__PROP);
 		out.value(getUrl());
+		out.name(RECIPIENTS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.RecipientLink x : getRecipients()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -142,6 +202,14 @@ public class ShareLinkCreated extends de.haumacher.msgbuf.data.AbstractDataObjec
 			case LINK__PROP: setLink(de.haumacher.imageServer.shared.model.ShareLink.readShareLink(in)); break;
 			case TOKEN__PROP: setToken(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case URL__PROP: setUrl(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case RECIPIENTS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addRecipient(de.haumacher.imageServer.shared.model.RecipientLink.readRecipientLink(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}
