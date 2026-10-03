@@ -126,10 +126,10 @@
     "description": "Button making this device forget its sign-in",
     "x-translated": "75cfcf01"
   },
-  "signedOutMessage": "This device no longer identifies itself to the server.",
+  "signedOutMessage": "This device is signed out.",
   "@signedOutMessage": {
     "description": "Shown after a sign-out",
-    "x-translated": "e07c0866"
+    "x-translated": "7cde604a"
   },
   "userNameHelp": "Your name in this space; it is what the others see and what your photos are attributed to.",
   "@userNameHelp": {
@@ -233,24 +233,24 @@
     "description": "The same, on the first screen, where a plain address is the alternative",
     "x-translated": "58b9cf0d"
   },
-  "invitationHeadlineWithRole": "{invitedBy} invited you to this album server: {may}.",
+  "invitationHeadlineWithRole": "{invitedBy} invited you to this album server as {role}.",
   "@invitationHeadlineWithRole": {
-    "description": "Who invited, and what the invitation offers",
+    "description": "Who invited, and in which role (a short role name such as 'Editor'). Address the reader formally (German: 'Sie', never 'du').",
     "placeholders": {
       "invitedBy": {
         "type": "String",
         "example": "alice"
       },
-      "may": {
+      "role": {
         "type": "String",
-        "example": "you may edit the albums"
+        "example": "Editor"
       }
     },
-    "x-translated": "a49d9bb8"
+    "x-translated": "96692b6b"
   },
   "invitationHeadlinePlain": "{invitedBy} invited you to this album server.",
   "@invitationHeadlinePlain": {
-    "description": "Who invited, where the offered role says nothing the app knows",
+    "description": "Who invited, where the role is unknown. Address the reader formally (German: 'Sie', never 'du').",
     "placeholders": {
       "invitedBy": {
         "type": "String",
@@ -259,15 +259,15 @@
     },
     "x-translated": "8959dfbf"
   },
-  "peopleHeading": "People",
+  "peopleHeading": "Members",
   "@peopleHeading": {
-    "description": "Heading of the section inviting people",
-    "x-translated": "2fba6f10"
+    "description": "Heading of the section of the server settings listing the members of the space and the open invitations (issue #218). German 'Mitglieder'.",
+    "x-translated": "8a1deb63"
   },
-  "inviteExplanation": "An invitation is a single-use link that creates one account on this server. Send it to the person it is for, and to nobody else.",
+  "inviteExplanation": "A single-use link that creates one account in this space. Send it only to the person it is for.",
   "@inviteExplanation": {
-    "description": "Explains what an invitation is",
-    "x-translated": "7e2c5d52"
+    "description": "Explanation at the top of the invite dialog. Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "90e71bd8"
   },
   "inviteAction": "Invite…",
   "@inviteAction": {
@@ -847,25 +847,25 @@
     "description": "Warns before a sign-out when the device list could not be read",
     "x-translated": "f334a19"
   },
-  "permissionMayHeading": "May",
+  "permissionMayHeading": "Role",
   "@permissionMayHeading": {
-    "description": "Heading of the role choices",
-    "x-translated": "d23c54ff"
+    "description": "Heading of the role choices of a permission (issue #218): which role the person has. A noun, German 'Rolle'.",
+    "x-translated": "f75b2554"
   },
   "permissionSeesHeading": "Sees",
   "@permissionSeesHeading": {
-    "description": "Heading of the clearance choices",
+    "description": "Heading of the clearance choices of a permission: which photos the person sees. German 'Sieht' (third person), never 'Siehe'.",
     "x-translated": "6766c9ff"
   },
   "mayShareLinksSwitch": "May share links",
   "@mayShareLinksSwitch": {
-    "description": "Label of the switch allowing share links",
+    "description": "Switch of a permission: the person may create share links. Short, third person ('Darf Links teilen').",
     "x-translated": "1cbb8a50"
   },
-  "mayShareLinksExplanation": "May hand out links that open an album for whoever holds them.",
+  "mayShareLinksExplanation": "Links open an album for whoever holds them.",
   "@mayShareLinksExplanation": {
     "description": "What allowing share links means",
-    "x-translated": "b942dbf2"
+    "x-translated": "74a20bc4"
   },
   "roleExplanationEdit": "May create albums, change them and add photos.",
   "@roleExplanationEdit": {
@@ -882,21 +882,6 @@
     "description": "What the view role allows",
     "x-translated": "95f7409d"
   },
-  "clearanceExplanationAll": "Sees every image, the private ones included.",
-  "@clearanceExplanationAll": {
-    "description": "What the widest clearance shows",
-    "x-translated": "1b70c402"
-  },
-  "clearanceExplanationNonPrivate": "Sees every image that is not marked private.",
-  "@clearanceExplanationNonPrivate": {
-    "description": "What the middle clearance shows",
-    "x-translated": "384148c1"
-  },
-  "clearanceExplanationPublic": "Sees only the images marked public.",
-  "@clearanceExplanationPublic": {
-    "description": "What the narrowest clearance shows",
-    "x-translated": "8b3c0386"
-  },
   "permissionDialogTitle": "What {user} may do",
   "@permissionDialogTitle": {
     "description": "Title of the dialog changing a user's permission",
@@ -908,25 +893,20 @@
     },
     "x-translated": "243a8bae"
   },
-  "usersHeading": "Users",
-  "@usersHeading": {
-    "description": "Heading of the users section",
-    "x-translated": "d5428aed"
-  },
-  "usersLead": "Everybody who has an account on this server, and what they may do and see in it.",
+  "usersLead": "Everybody with an account in this space, and the invitations nobody has accepted yet.",
   "@usersLead": {
     "description": "Explains what the users section lists",
-    "x-translated": "45b322e6"
+    "x-translated": "6308bf58"
   },
   "recoveryCodeTooltip": "Recovery code",
   "@recoveryCodeTooltip": {
     "description": "Tooltip of the button making a recovery code",
     "x-translated": "e471396f"
   },
-  "changePermissionTooltip": "Change what they may do",
+  "changePermissionTooltip": "Change permission",
   "@changePermissionTooltip": {
     "description": "Tooltip of the button opening the permission dialog",
-    "x-translated": "e4f703db"
+    "x-translated": "77cc2bb2"
   },
   "removeUserTitle": "Remove {user}?",
   "@removeUserTitle": {
@@ -965,15 +945,10 @@
     "description": "Title of the question before an invitation is withdrawn",
     "x-translated": "f0ed20d9"
   },
-  "withdrawPendingUserMessage": "The link stops working, and the seat it was holding goes.",
-  "@withdrawPendingUserMessage": {
-    "description": "What withdrawing a pending user's invitation does",
-    "x-translated": "85c741f0"
-  },
-  "withdrawInvitationMessage": "The link stops working. Somebody who already accepted it keeps their account.",
+  "withdrawInvitationMessage": "The invitation link stops working.",
   "@withdrawInvitationMessage": {
     "description": "What withdrawing an invitation does",
-    "x-translated": "6dabfe09"
+    "x-translated": "f09274d0"
   },
   "invitedByUser": "invited by {user}",
   "@invitedByUser": {
@@ -1030,41 +1005,10 @@
     },
     "x-translated": "5e682354"
   },
-  "openInvitationsHeading": "Open invitations",
-  "@openInvitationsHeading": {
-    "description": "Heading of the open invitations list",
-    "x-translated": "e6894d29"
-  },
   "noOpenInvitations": "No invitation is waiting to be accepted.",
   "@noOpenInvitations": {
     "description": "Shown when no invitation is open",
     "x-translated": "24476456"
-  },
-  "invitationPermissionBy": "{permission} — invited by {user}",
-  "@invitationPermissionBy": {
-    "description": "What an invitation offers, and who handed it out",
-    "placeholders": {
-      "permission": {
-        "type": "String",
-        "example": "may look — sees all images — no links"
-      },
-      "user": {
-        "type": "String",
-        "example": "alice"
-      }
-    },
-    "x-translated": "c17e1779"
-  },
-  "forRecipient": "for {recipient}",
-  "@forRecipient": {
-    "description": "Who an invitation was written for",
-    "placeholders": {
-      "recipient": {
-        "type": "String",
-        "example": "Grandma"
-      }
-    },
-    "x-translated": "6290191c"
   },
   "expiresNever": "expires: never",
   "@expiresNever": {
@@ -1082,7 +1026,7 @@
     },
     "x-translated": "c084329e"
   },
-  "expiresOnDay": "expires {day}",
+  "expiresOnDay": "expires on {day}",
   "@expiresOnDay": {
     "description": "When an invitation runs out",
     "placeholders": {
@@ -1091,165 +1035,72 @@
         "example": "Mar 3, 2026"
       }
     },
-    "x-translated": "d256f023"
+    "x-translated": "5f6a80f"
   },
-  "permissionSentence": "{doing}; {seeing}; {sharing}.",
-  "@permissionSentence": {
-    "description": "What a permission allows, in one sentence of three clauses",
-    "placeholders": {
-      "doing": {
-        "type": "String",
-        "example": "You may look at this space"
-      },
-      "seeing": {
-        "type": "String",
-        "example": "you see all images"
-      },
-      "sharing": {
-        "type": "String",
-        "example": "you may share links"
-      }
-    },
-    "x-translated": "77d58d20"
-  },
-  "permissionDoingAdmin": "You manage this server",
-  "@permissionDoingAdmin": {
-    "description": "First clause of the permission sentence",
-    "x-translated": "1215e0af"
-  },
-  "permissionDoingEdit": "You may edit every album of this space",
-  "@permissionDoingEdit": {
-    "description": "First clause of the permission sentence",
-    "x-translated": "63b08e96"
-  },
-  "permissionDoingContribute": "You may add photos to this space",
-  "@permissionDoingContribute": {
-    "description": "First clause of the permission sentence",
-    "x-translated": "31a5a5c3"
-  },
-  "permissionDoingView": "You may look at this space",
-  "@permissionDoingView": {
-    "description": "First clause of the permission sentence",
-    "x-translated": "b299a2d6"
-  },
-  "permissionDoingNone": "You are not signed in",
-  "@permissionDoingNone": {
-    "description": "First clause of the permission sentence",
-    "x-translated": "a1690b6"
-  },
-  "permissionSeeingAll": "you see all images",
+  "permissionSeeingAll": "Sees: all photos",
   "@permissionSeeingAll": {
-    "description": "Second clause of the permission sentence",
-    "x-translated": "e00492e1"
+    "description": "Which photos a person sees, short, in a list of permissions (issue #218).",
+    "x-translated": "7e6ebcfb"
   },
-  "permissionSeeingNonPrivate": "you see all but the private images",
+  "permissionSeeingNonPrivate": "Sees: public and members' photos",
   "@permissionSeeingNonPrivate": {
-    "description": "Second clause of the permission sentence",
-    "x-translated": "be33502c"
+    "description": "Which photos a person sees, short, in a list of permissions (issue #218): public and members-only photos, not the private ones.",
+    "x-translated": "589ff006"
   },
-  "permissionSeeingPublic": "you see the public images",
+  "permissionSeeingPublic": "Sees: public photos",
   "@permissionSeeingPublic": {
-    "description": "Second clause of the permission sentence",
-    "x-translated": "563d42d8"
+    "description": "Which photos a person sees, short, in a list of permissions (issue #218).",
+    "x-translated": "2edf8003"
   },
-  "permissionSharingMay": "you may share links",
+  "permissionSharingMay": "May share links",
   "@permissionSharingMay": {
-    "description": "Third clause of the permission sentence",
-    "x-translated": "a9b97717"
+    "description": "Whether a person may create share links, short, in a list of permissions (issue #218).",
+    "x-translated": "1cbb8a50"
   },
-  "permissionSharingMayNot": "you may not share links",
+  "permissionSharingMayNot": "May not share links",
   "@permissionSharingMayNot": {
-    "description": "Third clause of the permission sentence",
-    "x-translated": "560ab732"
+    "description": "Whether a person may create share links, short, in a list of permissions (issue #218).",
+    "x-translated": "64e812b4"
   },
-  "permissionPhrase": "{role} — {clearance} — {sharing}",
-  "@permissionPhrase": {
-    "description": "What somebody else's permission allows, in three clauses",
-    "placeholders": {
-      "role": {
-        "type": "String",
-        "example": "may look"
-      },
-      "clearance": {
-        "type": "String",
-        "example": "sees all images"
-      },
-      "sharing": {
-        "type": "String",
-        "example": "no links"
-      }
-    },
-    "x-translated": "e8a608df"
-  },
-  "permissionPhraseMayShare": "may share links",
-  "@permissionPhraseMayShare": {
-    "description": "Third clause about somebody else",
-    "x-translated": "947eb4ce"
-  },
-  "permissionPhraseNoLinks": "no links",
-  "@permissionPhraseNoLinks": {
-    "description": "Third clause about somebody else",
-    "x-translated": "cdb102df"
-  },
-  "roleWordAdmin": "manages this server",
+  "roleWordAdmin": "Administrator",
   "@roleWordAdmin": {
-    "description": "What the admin role allows, about somebody else",
-    "x-translated": "9f56e7ec"
+    "description": "Short name of the admin role (issue #218): a noun, as in a list of roles.",
+    "x-translated": "eba14da4"
   },
-  "roleWordEdit": "may edit the albums",
+  "roleWordEdit": "Editor",
   "@roleWordEdit": {
-    "description": "What the edit role allows, about somebody else",
-    "x-translated": "5afae54f"
+    "description": "Short name of the edit role (issue #218): somebody who may change every album. A noun, as in a list of roles (German 'Bearbeiter').",
+    "x-translated": "cb5df48c"
   },
-  "roleWordContribute": "may add photos",
+  "roleWordContribute": "Contributor",
   "@roleWordContribute": {
-    "description": "What the contribute role allows, about somebody else",
-    "x-translated": "1b84d89d"
+    "description": "Short name of the contribute role (issue #218): somebody who may add photos but change nothing. A noun, as in a list of roles (German 'Mitwirkender').",
+    "x-translated": "5cf31844"
   },
-  "roleWordView": "may look",
+  "roleWordView": "Viewer",
   "@roleWordView": {
-    "description": "What the view role allows, about somebody else",
-    "x-translated": "e49f5541"
+    "description": "Short name of the view role (issue #218): somebody who may only look. A noun, as in a list of roles (German 'Betrachter').",
+    "x-translated": "4f0a963"
   },
-  "roleWordUnknown": "unknown role",
+  "roleWordUnknown": "Unknown role",
   "@roleWordUnknown": {
     "description": "Shown for a role the app does not know",
-    "x-translated": "dd2e60ee"
+    "x-translated": "c51fbb16"
   },
-  "roleWordYouAdmin": "you manage this server",
-  "@roleWordYouAdmin": {
-    "description": "What the admin role allows, said to the person",
-    "x-translated": "9a8a726c"
-  },
-  "roleWordYouEdit": "you may edit the albums",
-  "@roleWordYouEdit": {
-    "description": "What the edit role allows, said to the person",
-    "x-translated": "4e9c36dd"
-  },
-  "roleWordYouContribute": "you may add photos",
-  "@roleWordYouContribute": {
-    "description": "What the contribute role allows, said to the person",
-    "x-translated": "4d2d6f8"
-  },
-  "roleWordYouView": "you may look at the albums",
-  "@roleWordYouView": {
-    "description": "What the view role allows, said to the person",
-    "x-translated": "d50221ff"
-  },
-  "clearanceWordAll": "sees all images",
+  "clearanceWordAll": "All photos",
   "@clearanceWordAll": {
-    "description": "What the widest clearance shows, about somebody else",
-    "x-translated": "934e69b7"
+    "description": "Name of a clearance choice under the heading 'Sees': every photo, the private ones included.",
+    "x-translated": "d9e8bb4a"
   },
-  "clearanceWordNonPrivate": "sees all but the private images",
+  "clearanceWordNonPrivate": "Public and members' photos",
   "@clearanceWordNonPrivate": {
-    "description": "What the middle clearance shows, about somebody else",
-    "x-translated": "27644065"
+    "description": "Name of a clearance choice under the heading 'Sees': the photos marked public and those marked for members, not the private ones.",
+    "x-translated": "d5c50a74"
   },
-  "clearanceWordPublic": "sees the public images",
+  "clearanceWordPublic": "Public photos",
   "@clearanceWordPublic": {
-    "description": "What the narrowest clearance shows, about somebody else",
-    "x-translated": "2a43815"
+    "description": "Name of a clearance choice under the heading 'Sees': only the photos marked public.",
+    "x-translated": "a1d9a451"
   },
   "serverUrlEmpty": "Enter the URL of the album server, e.g. 'http://nas.local:8080/valbum/'.",
   "@serverUrlEmpty": {
@@ -1465,7 +1316,7 @@
   },
   "withdrawTooltip": "Withdraw…",
   "@withdrawTooltip": {
-    "description": "Tooltip of the button taking a share link back",
+    "description": "Tooltip of the button withdrawing a share link: the link stops working (German 'Zurückziehen…', never 'Abheben').",
     "x-translated": "7c48e79a"
   },
   "linkNeverExpires": "never expires",
@@ -1653,15 +1504,15 @@
     },
     "x-translated": "1b20fed4"
   },
-  "invitationSignedInNote": "This device is signed in; your albums are yours from now on.",
+  "invitationSignedInNote": "This device is signed in.",
   "@invitationSignedInNote": {
     "description": "Said below the welcome after an invitation was accepted",
-    "x-translated": "d36e47bd"
+    "x-translated": "2be08204"
   },
-  "openYourAlbums": "Open your albums",
+  "openYourAlbums": "Open the albums",
   "@openYourAlbums": {
     "description": "Button leaving the invitation page for the album",
-    "x-translated": "d57610e7"
+    "x-translated": "fd63263f"
   },
   "invitationChooseName": "Choose the name you want to be known by.",
   "@invitationChooseName": {
@@ -5000,5 +4851,10 @@
   "@addEmailDone": {
     "description": "Message after an e-mail address was added and confirmed in the dialog 'Add your e-mail' (issue #211). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
     "x-translated": "d0ff8e0a"
+  },
+  "peopleLeadInviter": "The invitations you sent that nobody has accepted yet.",
+  "@peopleLeadInviter": {
+    "description": "Lead of the members section for somebody who may invite but not administer (issue #218): only their own open invitations are listed. Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "e2540d17"
   }
 }

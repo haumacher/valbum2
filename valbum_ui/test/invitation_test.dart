@@ -256,8 +256,7 @@ void main() {
       // What the invitation promises, in the words the settings use about it
       // (issue #85).
       expect(
-        find.text("alice invited you to this album server: you may edit the "
-            "albums."),
+        find.text("alice invited you to this album server as Editor."),
         findsOneWidget,
       );
       expect(find.text("Welcome"), findsOneWidget);
@@ -279,8 +278,7 @@ void main() {
       await pumpInvitation(tester, liveInvitation(role: "view"));
 
       expect(
-        find.text("alice invited you to this album server: you may look at "
-            "the albums."),
+        find.text("alice invited you to this album server as Viewer."),
         findsOneWidget,
       );
     });
@@ -315,7 +313,7 @@ void main() {
       expect(session.store.token, isNot("inv-1"));
 
       expect(find.text("You're in as carol."), findsOneWidget);
-      expect(find.text("Open your albums"), findsOneWidget);
+      expect(find.text("Open the albums"), findsOneWidget);
     });
 
     testWidgets('a refused name is said at the field, the form stays',
@@ -424,8 +422,7 @@ void main() {
       expect(find.byKey(invitationSectionKey), findsOneWidget);
       expect(find.byKey(deviceCodeFieldKey), findsNothing);
       expect(
-        find.text("alice invited you to this album server: you may look at "
-            "the albums."),
+        find.text("alice invited you to this album server as Viewer."),
         findsOneWidget,
       );
       var probe = requests.single;

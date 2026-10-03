@@ -113,14 +113,17 @@ void main() {
       await tapVisible(tester, find.byKey(inviteButtonKey));
 
       expect(find.byKey(const Key("invite-dialog")), findsOneWidget);
-      // The three roles of Phase 6, in the words of the settings.
-      expect(find.text("may edit the albums"), findsOneWidget);
-      expect(find.text("may add photos"), findsOneWidget);
-      expect(find.text("may look"), findsOneWidget);
-      // The three clearances.
-      expect(find.text("sees all images"), findsOneWidget);
-      expect(find.text("sees all but the private images"), findsOneWidget);
-      expect(find.text("sees the public images"), findsOneWidget);
+      // The three roles of Phase 6, by their short names, each with its one
+      // line of explanation (issue #218).
+      expect(find.text("Editor"), findsOneWidget);
+      expect(find.text("Contributor"), findsOneWidget);
+      expect(find.text("Viewer"), findsOneWidget);
+      expect(find.text("May add photos to the albums, but change nothing."),
+          findsOneWidget);
+      // The three clearances, short.
+      expect(find.text("All photos"), findsOneWidget);
+      expect(find.text("Public and members' photos"), findsOneWidget);
+      expect(find.text("Public photos"), findsOneWidget);
       // And the flag.
       expect(find.byKey(const Key("invite-may-share")), findsOneWidget);
 

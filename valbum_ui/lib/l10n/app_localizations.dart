@@ -245,7 +245,7 @@ abstract class AppLocalizations {
   /// Shown after a sign-out
   ///
   /// In en, this message translates to:
-  /// **'This device no longer identifies itself to the server.'**
+  /// **'This device is signed out.'**
   String get signedOutMessage;
 
   /// Explains what the user name field is for
@@ -356,28 +356,28 @@ abstract class AppLocalizations {
   /// **'This server does not know this invitation. Ask for a new one, or type the plain server address.'**
   String get invitationUnknownHere;
 
-  /// Who invited, and what the invitation offers
+  /// Who invited, and in which role (a short role name such as 'Editor'). Address the reader formally (German: 'Sie', never 'du').
   ///
   /// In en, this message translates to:
-  /// **'{invitedBy} invited you to this album server: {may}.'**
-  String invitationHeadlineWithRole(String invitedBy, String may);
+  /// **'{invitedBy} invited you to this album server as {role}.'**
+  String invitationHeadlineWithRole(String invitedBy, String role);
 
-  /// Who invited, where the offered role says nothing the app knows
+  /// Who invited, where the role is unknown. Address the reader formally (German: 'Sie', never 'du').
   ///
   /// In en, this message translates to:
   /// **'{invitedBy} invited you to this album server.'**
   String invitationHeadlinePlain(String invitedBy);
 
-  /// Heading of the section inviting people
+  /// Heading of the section of the server settings listing the members of the space and the open invitations (issue #218). German 'Mitglieder'.
   ///
   /// In en, this message translates to:
-  /// **'People'**
+  /// **'Members'**
   String get peopleHeading;
 
-  /// Explains what an invitation is
+  /// Explanation at the top of the invite dialog. Address the reader formally (German: 'Sie', never 'du').
   ///
   /// In en, this message translates to:
-  /// **'An invitation is a single-use link that creates one account on this server. Send it to the person it is for, and to nobody else.'**
+  /// **'A single-use link that creates one account in this space. Send it only to the person it is for.'**
   String get inviteExplanation;
 
   /// Button opening the invitation dialog
@@ -920,19 +920,19 @@ abstract class AppLocalizations {
   /// **'This may be your only signed-in device, and the server could not be asked. If it is, you need a recovery code from your administrator, your backup code, or a restart of the server to get back in.'**
   String get maybeLastDeviceWarning;
 
-  /// Heading of the role choices
+  /// Heading of the role choices of a permission (issue #218): which role the person has. A noun, German 'Rolle'.
   ///
   /// In en, this message translates to:
-  /// **'May'**
+  /// **'Role'**
   String get permissionMayHeading;
 
-  /// Heading of the clearance choices
+  /// Heading of the clearance choices of a permission: which photos the person sees. German 'Sieht' (third person), never 'Siehe'.
   ///
   /// In en, this message translates to:
   /// **'Sees'**
   String get permissionSeesHeading;
 
-  /// Label of the switch allowing share links
+  /// Switch of a permission: the person may create share links. Short, third person ('Darf Links teilen').
   ///
   /// In en, this message translates to:
   /// **'May share links'**
@@ -941,7 +941,7 @@ abstract class AppLocalizations {
   /// What allowing share links means
   ///
   /// In en, this message translates to:
-  /// **'May hand out links that open an album for whoever holds them.'**
+  /// **'Links open an album for whoever holds them.'**
   String get mayShareLinksExplanation;
 
   /// What the edit role allows
@@ -962,40 +962,16 @@ abstract class AppLocalizations {
   /// **'May look at the albums, and nothing more.'**
   String get roleExplanationView;
 
-  /// What the widest clearance shows
-  ///
-  /// In en, this message translates to:
-  /// **'Sees every image, the private ones included.'**
-  String get clearanceExplanationAll;
-
-  /// What the middle clearance shows
-  ///
-  /// In en, this message translates to:
-  /// **'Sees every image that is not marked private.'**
-  String get clearanceExplanationNonPrivate;
-
-  /// What the narrowest clearance shows
-  ///
-  /// In en, this message translates to:
-  /// **'Sees only the images marked public.'**
-  String get clearanceExplanationPublic;
-
   /// Title of the dialog changing a user's permission
   ///
   /// In en, this message translates to:
   /// **'What {user} may do'**
   String permissionDialogTitle(String user);
 
-  /// Heading of the users section
-  ///
-  /// In en, this message translates to:
-  /// **'Users'**
-  String get usersHeading;
-
   /// Explains what the users section lists
   ///
   /// In en, this message translates to:
-  /// **'Everybody who has an account on this server, and what they may do and see in it.'**
+  /// **'Everybody with an account in this space, and the invitations nobody has accepted yet.'**
   String get usersLead;
 
   /// Tooltip of the button making a recovery code
@@ -1007,7 +983,7 @@ abstract class AppLocalizations {
   /// Tooltip of the button opening the permission dialog
   ///
   /// In en, this message translates to:
-  /// **'Change what they may do'**
+  /// **'Change permission'**
   String get changePermissionTooltip;
 
   /// Title of the question before a user is removed
@@ -1040,16 +1016,10 @@ abstract class AppLocalizations {
   /// **'Withdraw this invitation?'**
   String get withdrawInvitationTitle;
 
-  /// What withdrawing a pending user's invitation does
-  ///
-  /// In en, this message translates to:
-  /// **'The link stops working, and the seat it was holding goes.'**
-  String get withdrawPendingUserMessage;
-
   /// What withdrawing an invitation does
   ///
   /// In en, this message translates to:
-  /// **'The link stops working. Somebody who already accepted it keeps their account.'**
+  /// **'The invitation link stops working.'**
   String get withdrawInvitationMessage;
 
   /// Who invited a pending user
@@ -1082,29 +1052,11 @@ abstract class AppLocalizations {
   /// **'invited for {recipient}'**
   String invitedForRecipient(String recipient);
 
-  /// Heading of the open invitations list
-  ///
-  /// In en, this message translates to:
-  /// **'Open invitations'**
-  String get openInvitationsHeading;
-
   /// Shown when no invitation is open
   ///
   /// In en, this message translates to:
   /// **'No invitation is waiting to be accepted.'**
   String get noOpenInvitations;
-
-  /// What an invitation offers, and who handed it out
-  ///
-  /// In en, this message translates to:
-  /// **'{permission} — invited by {user}'**
-  String invitationPermissionBy(String permission, String user);
-
-  /// Who an invitation was written for
-  ///
-  /// In en, this message translates to:
-  /// **'for {recipient}'**
-  String forRecipient(String recipient);
 
   /// Shown for an invitation without an expiry
   ///
@@ -1121,163 +1073,85 @@ abstract class AppLocalizations {
   /// When an invitation runs out
   ///
   /// In en, this message translates to:
-  /// **'expires {day}'**
+  /// **'expires on {day}'**
   String expiresOnDay(String day);
 
-  /// What a permission allows, in one sentence of three clauses
+  /// Which photos a person sees, short, in a list of permissions (issue #218).
   ///
   /// In en, this message translates to:
-  /// **'{doing}; {seeing}; {sharing}.'**
-  String permissionSentence(String doing, String seeing, String sharing);
-
-  /// First clause of the permission sentence
-  ///
-  /// In en, this message translates to:
-  /// **'You manage this server'**
-  String get permissionDoingAdmin;
-
-  /// First clause of the permission sentence
-  ///
-  /// In en, this message translates to:
-  /// **'You may edit every album of this space'**
-  String get permissionDoingEdit;
-
-  /// First clause of the permission sentence
-  ///
-  /// In en, this message translates to:
-  /// **'You may add photos to this space'**
-  String get permissionDoingContribute;
-
-  /// First clause of the permission sentence
-  ///
-  /// In en, this message translates to:
-  /// **'You may look at this space'**
-  String get permissionDoingView;
-
-  /// First clause of the permission sentence
-  ///
-  /// In en, this message translates to:
-  /// **'You are not signed in'**
-  String get permissionDoingNone;
-
-  /// Second clause of the permission sentence
-  ///
-  /// In en, this message translates to:
-  /// **'you see all images'**
+  /// **'Sees: all photos'**
   String get permissionSeeingAll;
 
-  /// Second clause of the permission sentence
+  /// Which photos a person sees, short, in a list of permissions (issue #218): public and members-only photos, not the private ones.
   ///
   /// In en, this message translates to:
-  /// **'you see all but the private images'**
+  /// **'Sees: public and members\' photos'**
   String get permissionSeeingNonPrivate;
 
-  /// Second clause of the permission sentence
+  /// Which photos a person sees, short, in a list of permissions (issue #218).
   ///
   /// In en, this message translates to:
-  /// **'you see the public images'**
+  /// **'Sees: public photos'**
   String get permissionSeeingPublic;
 
-  /// Third clause of the permission sentence
+  /// Whether a person may create share links, short, in a list of permissions (issue #218).
   ///
   /// In en, this message translates to:
-  /// **'you may share links'**
+  /// **'May share links'**
   String get permissionSharingMay;
 
-  /// Third clause of the permission sentence
+  /// Whether a person may create share links, short, in a list of permissions (issue #218).
   ///
   /// In en, this message translates to:
-  /// **'you may not share links'**
+  /// **'May not share links'**
   String get permissionSharingMayNot;
 
-  /// What somebody else's permission allows, in three clauses
+  /// Short name of the admin role (issue #218): a noun, as in a list of roles.
   ///
   /// In en, this message translates to:
-  /// **'{role} — {clearance} — {sharing}'**
-  String permissionPhrase(String role, String clearance, String sharing);
-
-  /// Third clause about somebody else
-  ///
-  /// In en, this message translates to:
-  /// **'may share links'**
-  String get permissionPhraseMayShare;
-
-  /// Third clause about somebody else
-  ///
-  /// In en, this message translates to:
-  /// **'no links'**
-  String get permissionPhraseNoLinks;
-
-  /// What the admin role allows, about somebody else
-  ///
-  /// In en, this message translates to:
-  /// **'manages this server'**
+  /// **'Administrator'**
   String get roleWordAdmin;
 
-  /// What the edit role allows, about somebody else
+  /// Short name of the edit role (issue #218): somebody who may change every album. A noun, as in a list of roles (German 'Bearbeiter').
   ///
   /// In en, this message translates to:
-  /// **'may edit the albums'**
+  /// **'Editor'**
   String get roleWordEdit;
 
-  /// What the contribute role allows, about somebody else
+  /// Short name of the contribute role (issue #218): somebody who may add photos but change nothing. A noun, as in a list of roles (German 'Mitwirkender').
   ///
   /// In en, this message translates to:
-  /// **'may add photos'**
+  /// **'Contributor'**
   String get roleWordContribute;
 
-  /// What the view role allows, about somebody else
+  /// Short name of the view role (issue #218): somebody who may only look. A noun, as in a list of roles (German 'Betrachter').
   ///
   /// In en, this message translates to:
-  /// **'may look'**
+  /// **'Viewer'**
   String get roleWordView;
 
   /// Shown for a role the app does not know
   ///
   /// In en, this message translates to:
-  /// **'unknown role'**
+  /// **'Unknown role'**
   String get roleWordUnknown;
 
-  /// What the admin role allows, said to the person
+  /// Name of a clearance choice under the heading 'Sees': every photo, the private ones included.
   ///
   /// In en, this message translates to:
-  /// **'you manage this server'**
-  String get roleWordYouAdmin;
-
-  /// What the edit role allows, said to the person
-  ///
-  /// In en, this message translates to:
-  /// **'you may edit the albums'**
-  String get roleWordYouEdit;
-
-  /// What the contribute role allows, said to the person
-  ///
-  /// In en, this message translates to:
-  /// **'you may add photos'**
-  String get roleWordYouContribute;
-
-  /// What the view role allows, said to the person
-  ///
-  /// In en, this message translates to:
-  /// **'you may look at the albums'**
-  String get roleWordYouView;
-
-  /// What the widest clearance shows, about somebody else
-  ///
-  /// In en, this message translates to:
-  /// **'sees all images'**
+  /// **'All photos'**
   String get clearanceWordAll;
 
-  /// What the middle clearance shows, about somebody else
+  /// Name of a clearance choice under the heading 'Sees': the photos marked public and those marked for members, not the private ones.
   ///
   /// In en, this message translates to:
-  /// **'sees all but the private images'**
+  /// **'Public and members\' photos'**
   String get clearanceWordNonPrivate;
 
-  /// What the narrowest clearance shows, about somebody else
+  /// Name of a clearance choice under the heading 'Sees': only the photos marked public.
   ///
   /// In en, this message translates to:
-  /// **'sees the public images'**
+  /// **'Public photos'**
   String get clearanceWordPublic;
 
   /// Shown when the server address field is empty
@@ -1508,7 +1382,7 @@ abstract class AppLocalizations {
   /// **'(no label)'**
   String get linkNoLabel;
 
-  /// Tooltip of the button taking a share link back
+  /// Tooltip of the button withdrawing a share link: the link stops working (German 'Zurückziehen…', never 'Abheben').
   ///
   /// In en, this message translates to:
   /// **'Withdraw…'**
@@ -1586,13 +1460,13 @@ abstract class AppLocalizations {
   /// **'Shows'**
   String get showsHeading;
 
-  /// Choice: the link shows only the photos marked public
+  /// Choice of a new share link, the default: it shows the public photos, which is every photo nobody marked members-only or private
   ///
   /// In en, this message translates to:
   /// **'Public photos'**
   String get privacyPublicOnly;
 
-  /// Choice of a new share link: it shows every photo a link can show, which is what a member of the space sees (a private photo never)
+  /// Choice of a new share link: besides the public photos it also shows the photos marked visible to members only (a private photo never)
   ///
   /// In en, this message translates to:
   /// **'Also members-only photos'**
@@ -1703,13 +1577,13 @@ abstract class AppLocalizations {
   /// Said below the welcome after an invitation was accepted
   ///
   /// In en, this message translates to:
-  /// **'This device is signed in; your albums are yours from now on.'**
+  /// **'This device is signed in.'**
   String get invitationSignedInNote;
 
   /// Button leaving the invitation page for the album
   ///
   /// In en, this message translates to:
-  /// **'Open your albums'**
+  /// **'Open the albums'**
   String get openYourAlbums;
 
   /// Refusal shown where the invited person named nobody
@@ -4777,6 +4651,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your e-mail address is saved.'**
   String get addEmailDone;
+
+  /// Lead of the members section for somebody who may invite but not administer (issue #218): only their own open invitations are listed. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'The invitations you sent that nobody has accepted yet.'**
+  String get peopleLeadInviter;
 }
 
 class _AppLocalizationsDelegate

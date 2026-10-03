@@ -247,7 +247,7 @@ void main() {
       expect(find.text("Space: haui"), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(permissionLineKey)).data,
-        "You manage this server; you see all images; you may share links.",
+        "Sees: all photos · May share links",
       );
       // Asked with the token the pairing answered, at the server in the field.
       var auth = requests

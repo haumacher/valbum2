@@ -1,8 +1,8 @@
 /// The management sections of the server settings (issue #55): the devices
-/// this person is signed in on, the users of this server, and the invitations
-/// that are still open.
+/// this person is signed in on, and the people of this space — its users and
+/// the invitations that are still open, in one list (issue #218).
 ///
-/// All three are lists of the same shape — ask the server, show what it
+/// Both are lists of the same shape — ask the server, show what it
 /// answers, offer the one action that belongs to a row, show the server's own
 /// sentence when it refuses — so they are written the same way and live
 /// together here rather than swelling `settings.dart`. Each is a section of
@@ -90,11 +90,9 @@ String dayOf(String instant) {
 /// The key of the "My devices" section.
 const Key devicesSectionKey = Key("settings.devices");
 
-/// The key of the users section, which only the administrator is shown.
-const Key usersSectionKey = Key("settings.users");
-
-/// The key of the pending invitations section.
-const Key invitationsSectionKey = Key("settings.invitations");
+/// The key of the people section: the users of the space and the open
+/// invitations, in one list (issue #218).
+const Key peopleSectionKey = Key("settings.people");
 
 /// The key of the "Add a device…" button of the devices section (issue #65).
 const Key addDeviceButtonKey = Key("settings.devices.add");
@@ -1069,18 +1067,11 @@ class PermissionChoices extends StatelessWidget {
     clearancePublic,
   ];
 
-  /// What each role means, in one line.
+  /// What each role means, in one short line under its name (issue #218).
   static Map<String, String> roleExplanations(AppLocalizations l10n) => {
         roleEdit: l10n.roleExplanationEdit,
         roleContribute: l10n.roleExplanationContribute,
         roleView: l10n.roleExplanationView,
-      };
-
-  /// What each clearance means, in one line.
-  static Map<String, String> clearanceExplanations(AppLocalizations l10n) => {
-        clearanceAll: l10n.clearanceExplanationAll,
-        clearanceNonPrivate: l10n.clearanceExplanationNonPrivate,
-        clearancePublic: l10n.clearanceExplanationPublic,
       };
 
   @override
@@ -1088,7 +1079,6 @@ class PermissionChoices extends StatelessWidget {
     var l10n = AppLocalizations.of(context)!;
     var titles = Theme.of(context).textTheme.titleSmall;
     var roleWords = roleExplanations(l10n);
-    var clearanceWords = clearanceExplanations(l10n);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -1108,8 +1098,8 @@ class PermissionChoices extends StatelessWidget {
           _tile(
             key: "$keyPrefix-clearance-$choice",
             chosen: clearance == choice,
+            // The name says it all: "Public and members' photos".
             title: CallerPermission.clearanceWord(l10n, choice),
-            subtitle: clearanceWords[choice],
             onTap: () => onClearance(choice),
           ),
         const SizedBox(height: 8),
@@ -1269,35 +1259,125 @@ class PermissionDialogState extends State<PermissionDialog> {
   }
 }
 
-/// The users of this server, for the administrator alone (issue #55).
+/// The people of this space and the way to invite more (issues #55, #89,
+/// #218): one list, one row per person.
 ///
-/// Who is here, what they are, where their library lies and on how many
-/// devices they are signed in — and the one thing an administrator does with a
-/// guest: make them a member, which gives them a library of their own.
-class UsersSection extends StatefulWidget {
-  final VAlbumClient client;
+/// An invitation *is* a pending user (issue #89), so the administrator reads
+/// the users of the space — the people who arrived and the seats still waiting
+/// for somebody — and every open invitation stands in that list exactly once,
+/// as its pending user, completed by what the invitation list knows of it (its
+/// note and its expiry). A caller who may invite but not administer is
+/// answered their own invitations alone, and the list shows those. "Invite…"
+/// stands at the end of the list it fills.
+class PeopleSection extends StatefulWidget {
+  final VAlbumClient? client;
 
-  /// Counts the invitations issued elsewhere on this screen; a change makes
-  /// the list read itself again (issue #89).
-  ///
-  /// An invitation is a pending user, so issuing one puts a seat into this
-  /// very list — and a list that did not notice would be the old model showing
-  /// through.
+  /// Whether the caller administers this space: only then are the users read.
+  final bool isAdmin;
+
+  /// Counts the invitations issued from this section; a change makes the list
+  /// read itself again, see [didUpdateWidget].
   final int generation;
 
-  const UsersSection({
+  /// Opens the dialog issuing an invitation; the caller counts [generation]
+  /// up afterwards.
+  final VoidCallback onInvite;
+
+  const PeopleSection({
     super.key,
     required this.client,
+    required this.isAdmin,
+    required this.onInvite,
     this.generation = 0,
   });
 
   @override
-  State<UsersSection> createState() => UsersSectionState();
+  State<PeopleSection> createState() => PeopleSectionState();
 }
 
-class UsersSectionState extends State<UsersSection> {
-  /// The users, `null` while they are being read.
+/// One row of the people list: a user, an open invitation, or both — the
+/// pending user an invitation created, together with that invitation.
+class PeopleRow {
+  /// The user, `null` for an invitation the users list does not carry (a
+  /// caller who is not the administrator is answered no users).
+  final UserEntry? user;
+
+  /// The open invitation, `null` for a user who arrived and for a pending user
+  /// whose invitation the invitation list did not answer.
+  final Invitation? invitation;
+
+  const PeopleRow({this.user, this.invitation});
+
+  /// Whether this row is an invitation nobody accepted yet.
+  bool get pending => user?.pending ?? true;
+
+  /// The id of the invitation this row stands for, empty for an arrived user.
+  String get invitationId =>
+      pending ? (invitation?.id ?? user?.invitation ?? "") : "";
+
+  /// What names the row in its keys: a user by their name, an invitation by
+  /// its id.
+  String get id => pending ? "pending-$invitationId" : user!.name;
+
+  String get role => user?.role ?? invitation!.role;
+  String get clearance => user?.clearance ?? invitation!.clearance;
+  bool get mayShare => user?.mayShare ?? invitation!.mayShare;
+  String get recipient =>
+      (user?.recipient ?? "").trim().isNotEmpty
+          ? user!.recipient.trim()
+          : (invitation?.recipient ?? "").trim();
+  String get invitedBy =>
+      (user?.invitedBy ?? "").isNotEmpty
+          ? user!.invitedBy
+          : invitation?.invitedBy ?? "";
+  String get created =>
+      (user?.created ?? "").isNotEmpty ? user!.created : invitation?.created ?? "";
+}
+
+/// The rows of the people list: every user once, and every open invitation
+/// once — as its pending user where the users list carries one, as a row of
+/// its own otherwise (issue #218).
+///
+/// [users] is `null` where the caller is answered no users. Arrived users come
+/// first, then the invitations, each in the order the server answered them.
+List<PeopleRow> peopleRows(
+  List<UserEntry>? users,
+  List<Invitation> invitations,
+) {
+  var open = [
+    for (var invitation in invitations)
+      if (PeopleSectionState.open(invitation)) invitation,
+  ];
+  var byId = {for (var invitation in open) invitation.id: invitation};
+  var arrived = <PeopleRow>[];
+  var waiting = <PeopleRow>[];
+  var shown = <String>{};
+  for (var user in users ?? const <UserEntry>[]) {
+    if (!user.pending) {
+      arrived.add(PeopleRow(user: user));
+      continue;
+    }
+    shown.add(user.invitation);
+    waiting.add(PeopleRow(user: user, invitation: byId[user.invitation]));
+  }
+  for (var invitation in open) {
+    if (!shown.contains(invitation.id)) {
+      waiting.add(PeopleRow(invitation: invitation));
+    }
+  }
+  return [...arrived, ...waiting];
+}
+
+class PeopleSectionState extends State<PeopleSection> {
+  /// The users, `null` while they are read and for a caller who is answered
+  /// none.
   List<UserEntry>? _users;
+
+  /// The invitations, `null` while they are being read.
+  List<Invitation>? _invitations;
+
+  /// Whether the first answer is still outstanding.
+  bool _loading = true;
 
   /// The server's reason for the last refusal, `null` while all is well.
   String? _problem;
@@ -1308,136 +1388,250 @@ class UsersSectionState extends State<UsersSection> {
   @override
   void initState() {
     super.initState();
+    _loading = widget.client != null;
     _load();
   }
 
   @override
-  void didUpdateWidget(UsersSection oldWidget) {
+  void didUpdateWidget(PeopleSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.generation != widget.generation) {
+    if (oldWidget.generation != widget.generation ||
+        oldWidget.isAdmin != widget.isAdmin) {
       _load();
     }
   }
 
-  Future<void> _load() async {
+  /// Whether [invitation] can still be accepted by somebody.
+  ///
+  /// An accepted one created its user and a withdrawn one is refused from then
+  /// on; neither is open. An expired one is listed — somebody still holds a
+  /// link to it, and withdrawing it tidies the list — and says so.
+  static bool open(Invitation invitation) =>
+      invitation.used.isEmpty && invitation.revoked.isEmpty;
+
+  /// Whether the instant of [invitation] has passed.
+  static bool expired(Invitation invitation) {
+    if (invitation.expires.isEmpty) {
+      return false;
+    }
     try {
-      var answer = await widget.client.users();
-      if (mounted) {
-        setState(() {
-          _users = answer.users;
-          _problem = null;
-        });
-      }
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _users = const [];
-          _problem = refusalMessage(error);
-        });
+      return DateTime.parse(invitation.expires).isBefore(DateTime.now());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _load() async {
+    var client = widget.client;
+    if (client == null) {
+      return;
+    }
+    // Both lists at once; the users only for the administrator, who alone is
+    // answered them. A refused invitation list still leaves the users shown,
+    // their pending seats without a note and an expiry.
+    var users = widget.isAdmin ? client.users() : null;
+    var invitations = client.invitations();
+    String? problem;
+    List<UserEntry>? userList;
+    List<Invitation> invitationList = const [];
+    if (users != null) {
+      try {
+        userList = (await users).users;
+      } catch (error) {
+        problem = refusalMessage(error);
       }
     }
+    try {
+      invitationList = (await invitations).invitations;
+    } catch (error) {
+      problem ??= refusalMessage(error);
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _loading = false;
+      _users = userList;
+      _invitations = invitationList;
+      _problem = problem;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    var users = _users;
     var problem = _problem;
+    var rows = _loading
+        ? const <PeopleRow>[]
+        : peopleRows(_users, _invitations ?? const []);
     return Column(
-      key: usersSectionKey,
+      key: peopleSectionKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ...sectionHead(context, l10n.usersHeading, l10n.usersLead),
-        if (users == null) sectionProgress(l10n.askingServer),
+        ...sectionHead(
+          context,
+          l10n.peopleHeading,
+          widget.isAdmin ? l10n.usersLead : l10n.peopleLeadInviter,
+        ),
+        if (_loading && widget.client != null)
+          sectionProgress(l10n.askingServer),
         if (problem != null)
-          sectionProblem(context, problem, const Key("settings.users.error")),
-        for (var user in users ?? const <UserEntry>[])
-          ListTile(
-            key: _keyOf(user),
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(
-              user.pending
-                  ? Icons.mail_outline
-                  : CallerPermission.normalizeRole(user.role) == roleAdmin
-                      ? Icons.admin_panel_settings
-                      : Icons.person,
-            ),
-            title: Text(_headline(l10n, user)),
-            subtitle: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _describe(l10n, user),
-                  key: Key("user-permission-${_idOf(user)}"),
-                ),
-                // Which person of the register this member is (issue #128),
-                // read here and edited in the face editor, where the people
-                // are: this list says who is here, not who is in a photograph.
-                if (user.personName.trim().isNotEmpty)
-                  Text(
-                    l10n.appearsInPhotosAs(user.personName.trim()),
-                    key: const Key("user-person"),
-                  ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // An invitation nobody accepted is a pending user (issue #89),
-                // and the one thing to do with them is to take the invitation
-                // back — which removes them again.
-                if (user.pending)
-                  IconButton(
-                    key: Key("user-withdraw-${_idOf(user)}"),
-                    icon: const Icon(Icons.cancel_outlined),
-                    tooltip: l10n.withdraw,
-                    onPressed: _busy ? null : () => _withdraw(user),
-                  ),
-                // Somebody who lost every device they had gets the same code
-                // as everybody else, made by an administrator (issue #89). A
-                // user who never signed in has no name to make one for: the
-                // seat code of the space is what signs them in.
-                if (user.name.isNotEmpty)
-                  IconButton(
-                    key: Key("user-recovery-${user.name}"),
-                    icon: const Icon(Icons.key_outlined),
-                    tooltip: l10n.recoveryCodeTooltip,
-                    onPressed: _busy ? null : () => _recoveryCode(user),
-                  ),
-                if (!user.pending) ...[
-                  IconButton(
-                    key: Key("user-edit-${user.name}"),
-                    icon: const Icon(Icons.tune),
-                    tooltip: l10n.changePermissionTooltip,
-                    onPressed: _busy ? null : () => _edit(user),
-                  ),
-                  IconButton(
-                    key: Key("user-remove-${user.name}"),
-                    icon: const Icon(Icons.person_remove_outlined),
-                    tooltip: l10n.remove,
-                    onPressed: _busy ? null : () => _remove(user),
-                  ),
-                ],
-              ],
-            ),
-          ),
+          sectionProblem(context, problem, const Key("settings.people.error")),
+        if (!_loading && problem == null && rows.isEmpty)
+          Text(l10n.noOpenInvitations,
+              key: const Key("settings.people.empty")),
+        for (var row in rows) _tile(l10n, row),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: inviteButtonKey,
+          onPressed: _busy ? null : widget.onInvite,
+          icon: const Icon(Icons.person_add),
+          label: Text(l10n.inviteAction),
+        ),
       ],
     );
   }
 
+  Widget _tile(AppLocalizations l10n, PeopleRow row) {
+    var user = row.user;
+    var named = !row.pending && user != null;
+    var details = _details(l10n, row);
+    return ListTile(
+      key: Key("user-${row.id}"),
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        row.pending
+            ? Icons.mail_outline
+            : CallerPermission.normalizeRole(row.role) == roleAdmin
+                ? Icons.admin_panel_settings
+                : Icons.person,
+      ),
+      title: Text(_headline(l10n, row)),
+      subtitle: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            CallerPermission.ofFields(
+              role: row.role,
+              clearance: row.clearance,
+              mayShare: row.mayShare,
+            ).phrase(l10n),
+            key: Key("user-permission-${row.id}"),
+          ),
+          if (details.isNotEmpty)
+            Text(details, key: Key("user-details-${row.id}")),
+          // Which person of the register this member is (issue #128), read
+          // here and edited in the face editor, where the people are.
+          if (user != null && user.personName.trim().isNotEmpty)
+            Text(
+              l10n.appearsInPhotosAs(user.personName.trim()),
+              key: const Key("user-person"),
+            ),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // An invitation nobody accepted is a pending user (issue #89), and
+          // the one thing to do with it is to take it back.
+          if (row.pending && row.invitationId.isNotEmpty)
+            IconButton(
+              key: Key("user-withdraw-${row.id}"),
+              icon: const Icon(Icons.cancel_outlined),
+              tooltip: l10n.withdraw,
+              onPressed: _busy ? null : () => _withdraw(row),
+            ),
+          // Somebody who lost every device they had gets the same code as
+          // everybody else, made by an administrator (issue #89).
+          if (named && user.name.isNotEmpty) ...[
+            IconButton(
+              key: Key("user-recovery-${user.name}"),
+              icon: const Icon(Icons.key_outlined),
+              tooltip: l10n.recoveryCodeTooltip,
+              onPressed: _busy ? null : () => _recoveryCode(user),
+            ),
+            IconButton(
+              key: Key("user-edit-${user.name}"),
+              icon: const Icon(Icons.tune),
+              tooltip: l10n.changePermissionTooltip,
+              onPressed: _busy ? null : () => _edit(user),
+            ),
+            IconButton(
+              key: Key("user-remove-${user.name}"),
+              icon: const Icon(Icons.person_remove_outlined),
+              tooltip: l10n.remove,
+              onPressed: _busy ? null : () => _remove(user),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// The bold line of a row: who this is.
+  ///
+  /// A pending user has no name yet, so they are named by the inviter's own
+  /// memento — "Invited for Grandma" — or, where the inviter wrote none, by
+  /// the plain fact that somebody was invited (issue #89).
+  static String _headline(AppLocalizations l10n, PeopleRow row) {
+    if (!row.pending) {
+      return userDisplayName(l10n, row.user!.name);
+    }
+    var recipient = row.recipient;
+    return recipient.isEmpty
+        ? l10n.invitedPending
+        : l10n.invitedForPending(recipient);
+  }
+
+  /// The line under the permission: where the user's library is, on how many
+  /// devices they are signed in and since when — or, for an invitation, who
+  /// sent it, the note it carries and how long it lives.
+  static String _details(AppLocalizations l10n, PeopleRow row) {
+    var parts = <String>[];
+    if (row.pending) {
+      if (row.invitedBy.isNotEmpty) {
+        parts.add(l10n.invitedByUser(userDisplayName(l10n, row.invitedBy)));
+      }
+      if (row.created.isNotEmpty) {
+        parts.add(l10n.sinceDay(dayOf(row.created)));
+      }
+      var invitation = row.invitation;
+      if (invitation != null) {
+        if (invitation.note.trim().isNotEmpty) {
+          parts.add(invitation.note.trim());
+        }
+        if (invitation.expires.isEmpty) {
+          parts.add(l10n.expiresNever);
+        } else if (expired(invitation)) {
+          parts.add(l10n.expiredOnDay(dayOf(invitation.expires)));
+        } else {
+          parts.add(l10n.expiresOnDay(dayOf(invitation.expires)));
+        }
+      }
+      return parts.join(" — ");
+    }
+    var user = row.user!;
+    parts.add(l10n.librarySpace(spaceDisplayName(l10n, user.space)));
+    parts.add(l10n.deviceCount(user.devices));
+    if (user.recipient.trim().isNotEmpty) {
+      // The inviter's memento stays beside the name: "who is 'bob42' again?"
+      parts.add(l10n.invitedForRecipient(user.recipient.trim()));
+    }
+    if (user.created.isNotEmpty) {
+      parts.add(l10n.sinceDay(dayOf(user.created)));
+    }
+    return parts.join(" — ");
+  }
+
   /// Shows a code signing a device of [user] in, for somebody who lost theirs
   /// (issue #89).
-  ///
-  /// The same code as every other — one device, one user, ten minutes, once —
-  /// and the same dialog; only its target differs, and it dies with this
-  /// administrator's device like every device-issued code.
   Future<void> _recoveryCode(UserEntry user) async {
     await showDialog<void>(
       context: context,
       builder: (context) => DeviceCodeDialog(
         key: recoveryCodeKey,
-        client: widget.client,
+        client: widget.client!,
         forUser: user.name,
         onDevices: (_) {},
       ),
@@ -1448,7 +1642,8 @@ class UsersSectionState extends State<UsersSection> {
   Future<void> _edit(UserEntry user) async {
     var answer = await showFormDialog<UserList>(
       context: context,
-      builder: (context) => PermissionDialog(client: widget.client, user: user),
+      builder: (context) =>
+          PermissionDialog(client: widget.client!, user: user),
     );
     if (answer == null || !mounted) {
       return;
@@ -1460,9 +1655,6 @@ class UsersSectionState extends State<UsersSection> {
   }
 
   /// Removes [user] from this space, after asking (issue #83).
-  ///
-  /// What it does is said before it is done: their devices are signed out,
-  /// and what they put into the space stays there with their name on it.
   Future<void> _remove(UserEntry user) async {
     var l10n = AppLocalizations.of(context)!;
     var confirmed = await confirmHere(
@@ -1482,11 +1674,10 @@ class UsersSectionState extends State<UsersSection> {
     });
     UserList answer;
     try {
-      answer = await widget.client.removeUser(user.name);
+      answer = await widget.client!.removeUser(user.name);
     } catch (error) {
       if (mounted) {
-        // The server's own sentence: the last administrator stays, and it
-        // says so.
+        // The server's own sentence: the last administrator stays.
         setState(() {
           _busy = false;
           _problem = refusalMessage(error);
@@ -1502,38 +1693,17 @@ class UsersSectionState extends State<UsersSection> {
     }
   }
 
-  /// What names a row of this list: a user by their name, a pending user by
-  /// the invitation they came in by (issue #89), which is what withdraws it.
-  static String _idOf(UserEntry user) =>
-      user.pending ? "pending-${user.invitation}" : user.name;
-
-  static Key _keyOf(UserEntry user) => Key("user-${_idOf(user)}");
-
-  /// The bold line of a row: who this is.
+  /// Withdraws the invitation of [row], after asking (issues #55, #89).
   ///
-  /// A pending user has no name yet, so they are named by the inviter's own
-  /// memento — "Invited for Grandma" — or, where the inviter wrote none, by
-  /// the plain fact that somebody was invited (issue #89).
-  static String _headline(AppLocalizations l10n, UserEntry user) {
-    if (!user.pending) {
-      return userDisplayName(l10n, user.name);
-    }
-    return user.recipient.trim().isEmpty
-        ? l10n.invitedPending
-        : l10n.invitedForPending(user.recipient.trim());
-  }
-
-  /// Withdraws the invitation of a pending [user], after asking (issue #89).
-  ///
-  /// Withdrawing it removes them: an invitation nobody accepted is a user
-  /// nobody is.
-  Future<void> _withdraw(UserEntry user) async {
+  /// Withdrawing it removes its pending user: an invitation nobody accepted is
+  /// a user nobody is.
+  Future<void> _withdraw(PeopleRow row) async {
     var l10n = AppLocalizations.of(context)!;
     var confirmed = await confirmHere(
       context: context,
       dialogKey: "withdraw-user-confirm",
       title: l10n.withdrawInvitationTitle,
-      message: l10n.withdrawPendingUserMessage,
+      message: l10n.withdrawInvitationMessage,
       confirmLabel: l10n.withdraw,
       confirmKey: "withdraw-user-confirmed",
     );
@@ -1544,255 +1714,9 @@ class UsersSectionState extends State<UsersSection> {
       _busy = true;
       _problem = null;
     });
-    try {
-      await widget.client.uninvite(user.invitation);
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _problem = refusalMessage(error);
-        });
-      }
-      return;
-    }
-    if (!mounted) {
-      return;
-    }
-    setState(() => _busy = false);
-    // The withdrawal answers the invitation, not the users; the list says
-    // what is there by asking again.
-    await _load();
-  }
-
-  /// The line under a user's name: what they may do and see, where their
-  /// library is, and since when (issue #85).
-  ///
-  /// Words, not field names: the three answers of the permission model read as
-  /// a sentence about that person, see [CallerPermission.phrase]. Changing
-  /// them is the administrator's own business, see [PermissionDialog].
-  String _describe(AppLocalizations l10n, UserEntry user) {
-    var permission = CallerPermission.ofFields(
-      role: user.role,
-      clearance: user.clearance,
-      mayShare: user.mayShare,
-    );
-    var parts = <String>[permission.phrase(l10n)];
-    if (user.pending) {
-      // Nothing to say about a library or devices: they have neither until
-      // somebody redeems the invitation (issue #89).
-      if (user.invitedBy.isNotEmpty) {
-        parts.add(l10n.invitedByUser(userDisplayName(l10n, user.invitedBy)));
-      }
-      if (user.created.isNotEmpty) {
-        parts.add(l10n.sinceDay(dayOf(user.created)));
-      }
-      return parts.join(" — ");
-    }
-    parts.add(l10n.librarySpace(spaceDisplayName(l10n, user.space)));
-    parts.add(l10n.deviceCount(user.devices));
-    if (user.recipient.trim().isNotEmpty) {
-      // The inviter's memento stays beside the name: "who is 'bob42' again?"
-      parts.add(l10n.invitedForRecipient(user.recipient.trim()));
-    }
-    if (user.created.isNotEmpty) {
-      parts.add(l10n.sinceDay(dayOf(user.created)));
-    }
-    return parts.join(" — ");
-  }
-
-}
-
-/// The invitations that are still open (issue #55).
-///
-/// The administrator is answered every invitation of this server, a member
-/// their own — so this section is shown to both, beside the "Invite…" button
-/// that fills it. An invitation that was accepted or withdrawn is not pending
-/// any more and is not listed: what is listed is what is still worth
-/// withdrawing.
-class InvitationsSection extends StatefulWidget {
-  final VAlbumClient client;
-
-  /// Counts the invitations issued elsewhere on this screen; a change makes
-  /// the list read itself again, see [didUpdateWidget].
-  final int generation;
-
-  const InvitationsSection({
-    super.key,
-    required this.client,
-    this.generation = 0,
-  });
-
-  @override
-  State<InvitationsSection> createState() => InvitationsSectionState();
-}
-
-class InvitationsSectionState extends State<InvitationsSection> {
-  /// The invitations, `null` while they are being read.
-  List<Invitation>? _invitations;
-
-  /// The server's reason for the last refusal, `null` while all is well.
-  String? _problem;
-
-  /// Whether a request of this section is running.
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
-  void didUpdateWidget(InvitationsSection oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.generation != widget.generation) {
-      _load();
-    }
-  }
-
-  Future<void> _load() async {
-    try {
-      var answer = await widget.client.invitations();
-      if (mounted) {
-        setState(() {
-          _invitations = answer.invitations;
-          _problem = null;
-        });
-      }
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _invitations = const [];
-          _problem = refusalMessage(error);
-        });
-      }
-    }
-  }
-
-  /// Whether [invitation] can still be accepted by somebody.
-  ///
-  /// An accepted one created its user and a withdrawn one is refused from then
-  /// on; neither is pending. An expired one is listed — it is still a record
-  /// somebody holds a link to, and withdrawing it tidies the list — and is
-  /// labelled as expired.
-  static bool pending(Invitation invitation) =>
-      invitation.used.isEmpty && invitation.revoked.isEmpty;
-
-  /// Whether the instant of [invitation] has passed.
-  static bool expired(Invitation invitation) {
-    if (invitation.expires.isEmpty) {
-      return false;
-    }
-    try {
-      return DateTime.parse(invitation.expires).isBefore(DateTime.now());
-    } catch (_) {
-      return false;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    var l10n = AppLocalizations.of(context)!;
-    var all = _invitations;
-    var problem = _problem;
-    var open = [
-      for (var invitation in all ?? const <Invitation>[])
-        if (pending(invitation)) invitation,
-    ];
-    return Column(
-      key: invitationsSectionKey,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 16),
-        Text(l10n.openInvitationsHeading,
-            style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 8),
-        if (all == null) sectionProgress(l10n.askingServer),
-        if (problem != null)
-          sectionProblem(
-              context, problem, const Key("settings.invitations.error")),
-        if (all != null && problem == null && open.isEmpty)
-          Text(l10n.noOpenInvitations,
-              key: const Key("settings.invitations.empty")),
-        for (var invitation in open)
-          ListTile(
-            key: Key("invitation-${invitation.id}"),
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.mail_outline),
-            title: Text(_headline(l10n, invitation)),
-            subtitle: Text(_describe(l10n, invitation)),
-            trailing: IconButton(
-              key: Key("invitation-revoke-${invitation.id}"),
-              icon: const Icon(Icons.cancel_outlined),
-              tooltip: l10n.withdraw,
-              onPressed: _busy ? null : () => _revoke(invitation),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// What the invitation makes somebody, and by whom (issue #85).
-  ///
-  /// The same words the users list uses, because it is the same thing: the
-  /// permission this person will have, see [CallerPermission.phrase].
-  String _headline(AppLocalizations l10n, Invitation invitation) {
-    var permission = CallerPermission.ofFields(
-      role: invitation.role,
-      clearance: invitation.clearance,
-      mayShare: invitation.mayShare,
-    );
-    var phrase = permission.phrase(l10n);
-    if (invitation.invitedBy.isEmpty) {
-      return phrase;
-    }
-    return l10n.invitationPermissionBy(
-      phrase,
-      userDisplayName(l10n, invitation.invitedBy),
-    );
-  }
-
-  /// The line under an invitation: the note it carries and how long it lives.
-  String _describe(AppLocalizations l10n, Invitation invitation) {
-    var parts = <String>[];
-    if (invitation.recipient.trim().isNotEmpty) {
-      // The inviter's own memento, see issue #89.
-      parts.add(l10n.forRecipient(invitation.recipient.trim()));
-    }
-    if (invitation.note.trim().isNotEmpty) {
-      parts.add(invitation.note.trim());
-    }
-    if (invitation.expires.isEmpty) {
-      parts.add(l10n.expiresNever);
-    } else if (expired(invitation)) {
-      parts.add(l10n.expiredOnDay(dayOf(invitation.expires)));
-    } else {
-      parts.add(l10n.expiresOnDay(dayOf(invitation.expires)));
-    }
-    return parts.join(" — ");
-  }
-
-  /// Withdraws [invitation], after asking.
-  Future<void> _revoke(Invitation invitation) async {
-    var l10n = AppLocalizations.of(context)!;
-    var confirmed = await confirmHere(
-      context: context,
-      dialogKey: "uninvite-confirm",
-      title: l10n.withdrawInvitationTitle,
-      message: l10n.withdrawInvitationMessage,
-      confirmLabel: l10n.withdraw,
-      confirmKey: "uninvite-confirmed",
-    );
-    if (confirmed != true || !mounted) {
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _problem = null;
-    });
     InvitationList answer;
     try {
-      answer = await widget.client.uninvite(invitation.id);
+      answer = await widget.client!.uninvite(row.invitationId);
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -1809,5 +1733,10 @@ class InvitationsSectionState extends State<InvitationsSection> {
       _busy = false;
       _invitations = answer.invitations;
     });
+    // The withdrawal answers the invitations, not the users; the
+    // administrator's list says who is there by asking again.
+    if (widget.isAdmin) {
+      await _load();
+    }
   }
 }

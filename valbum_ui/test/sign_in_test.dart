@@ -94,7 +94,7 @@ void main() {
       expect(store.userName, "haui");
 
       expect(find.text("Signed in as haui"), findsOneWidget);
-      expect(find.text("Role: admin"), findsOneWidget);
+      expect(find.text("Role: Administrator"), findsOneWidget);
       expect(find.text("Device: Kamera"), findsOneWidget);
       // A server with one library names no space, and the block says
       // nothing about one (issue #85).
@@ -228,7 +228,7 @@ void main() {
       expect(requests.first.url.query, "type=auth");
       expect(requests.first.headers["Authorization"], "Bearer tok");
       expect(find.text("Signed in as alice"), findsOneWidget);
-      expect(find.text("Role: member"), findsOneWidget);
+      expect(find.text("Role: Editor"), findsOneWidget);
       expect(find.text("Device: Pad"), findsOneWidget);
       expect(find.text("Space: alice"), findsOneWidget);
     });
@@ -259,7 +259,7 @@ void main() {
       );
 
       expect(find.text("Signed in as haui"), findsOneWidget);
-      expect(find.text("Role: admin"), findsOneWidget);
+      expect(find.text("Role: Administrator"), findsOneWidget);
       expect(find.text("Device: Phone"), findsOneWidget);
       // A server with one library names no space, and the block says
       // nothing about one (issue #85).

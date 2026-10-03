@@ -147,8 +147,9 @@ void main() {
       MockClient((request) async => serverFor("edit")(request)),
     );
 
-    // The users list is the administrator's, and the action lives in it.
-    expect(find.byKey(usersSectionKey), findsNothing);
+    // The users are the administrator's to read, and the action lives on
+    // their rows: an editor's members section lists their invitations alone.
+    expect(find.byKey(const Key("user-carol")), findsNothing);
     expect(find.byKey(const Key("user-recovery-carol")), findsNothing);
   });
 }

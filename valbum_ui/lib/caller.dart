@@ -185,44 +185,33 @@ class CallerPermission {
   /// Whether anything beyond the public images is seen.
   bool get seesMembers => seesPrivate || clearance == clearanceNonPrivate;
 
-  /// What this permission allows, in plain words (issue #85).
+  /// What this permission shows and whether links may be handed out, short
+  /// (issues #85, #218): "Sees: all photos · May share links".
   ///
-  /// One sentence of three clauses — what may be done, what is seen, whether
-  /// links may be handed out — because that is how somebody checks whether the
-  /// server thinks of them what they think it does.
-  String sentence(AppLocalizations l10n) => l10n.permissionSentence(
-        _doing(l10n),
-        _seeing(l10n),
-        _sharing(l10n),
-      );
+  /// The role stands on a line of its own where this is shown, see
+  /// [roleWord]; a sentence about somebody is not what they read quickly.
+  String sentence(AppLocalizations l10n) =>
+      "${seeing(l10n)} · ${sharing(l10n)}";
 
-  String _doing(AppLocalizations l10n) => switch (role) {
-        roleAdmin => l10n.permissionDoingAdmin,
-        roleEdit => l10n.permissionDoingEdit,
-        roleContribute => l10n.permissionDoingContribute,
-        roleView => l10n.permissionDoingView,
-        _ => l10n.permissionDoingNone,
-      };
-
-  String _seeing(AppLocalizations l10n) => switch (clearance) {
+  /// What is seen, short: "Sees: public photos".
+  String seeing(AppLocalizations l10n) => switch (clearance) {
         clearanceAll => l10n.permissionSeeingAll,
         clearanceNonPrivate => l10n.permissionSeeingNonPrivate,
         _ => l10n.permissionSeeingPublic,
       };
 
-  String _sharing(AppLocalizations l10n) => mayShare
+  /// Whether links may be handed out, short: "May share links".
+  String sharing(AppLocalizations l10n) => mayShare
       ? l10n.permissionSharingMay
       : l10n.permissionSharingMayNot;
 
-  /// What this permission allows, in the same three clauses but about
-  /// somebody else — for a row of the users or invitations list (issue #85).
-  String phrase(AppLocalizations l10n) => l10n.permissionPhrase(
-        roleWord(l10n, role),
-        clearanceWord(l10n, clearance),
-        mayShare ? l10n.permissionPhraseMayShare : l10n.permissionPhraseNoLinks,
-      );
+  /// The whole permission in one short line, for a row of the people list
+  /// (issues #85, #218): "Editor · Sees: all photos · May share links".
+  String phrase(AppLocalizations l10n) =>
+      "${roleWord(l10n, role)} · ${sentence(l10n)}";
 
-  /// What the role [name] allows, in words.
+  /// The short name of the role [name]: "Administrator", "Editor",
+  /// "Contributor", "Viewer" (issue #218) — a noun, never a sentence.
   static String roleWord(AppLocalizations l10n, String name) =>
       switch (normalizeRole(name)) {
         roleAdmin => l10n.roleWordAdmin,
@@ -232,20 +221,7 @@ class CallerPermission {
         _ => l10n.roleWordUnknown,
       };
 
-  /// What the role [name] allows, said to the person it is about.
-  ///
-  /// Empty for a role the app does not know: a sentence that names nothing is
-  /// better than one that promises the wrong thing, see [invitationRoleName].
-  static String roleWordYou(AppLocalizations l10n, String name) =>
-      switch (normalizeRole(name)) {
-        roleAdmin => l10n.roleWordYouAdmin,
-        roleEdit => l10n.roleWordYouEdit,
-        roleContribute => l10n.roleWordYouContribute,
-        roleView => l10n.roleWordYouView,
-        _ => "",
-      };
-
-  /// What the clearance [name] shows, in words.
+  /// What the clearance [name] shows, as the name of a choice: "All photos".
   ///
   /// [role] is what an empty clearance is read as, see [normalizeClearance].
   static String clearanceWord(

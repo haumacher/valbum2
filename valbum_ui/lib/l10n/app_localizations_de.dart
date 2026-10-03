@@ -47,7 +47,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get serverUrlHelp =>
-      'Die Adresse, unter der der Album-Server erreichbar ist, so wie man ihn in einem Browser öffnen würde, z. B. http://nas.local:8080/valbum/. Wenn der Server mehrere Unterordner enthält, enthält die Adresse den Unterordner: https://host/valbum/<Unterordner>/.';
+      'Die Adresse des Album-Servers, wie Sie sie im Browser öffnen würden, z. B. \'http://nas.local:8080/valbum/\'. Hat der Server mehrere Bereiche, enthält die Adresse den Bereich: \'https://host/valbum/<Bereich>/\'.';
 
   @override
   String get serverLineNoServer =>
@@ -55,7 +55,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String serverLineTalksTo(String server) {
-    return 'Dieser Browser kommuniziert mit dem $server';
+    return 'Dieser Browser ist mit $server verbunden';
   }
 
   @override
@@ -89,12 +89,11 @@ class AppLocalizationsDe extends AppLocalizations {
   String get signOut => 'Abmelden';
 
   @override
-  String get signedOutMessage =>
-      'Dieses Gerät meldet sich nicht mehr beim Server an.';
+  String get signedOutMessage => 'Dieses Gerät ist abgemeldet.';
 
   @override
   String get userNameHelp =>
-      'Tragen Sie hier Ihren Namen ein; dieser wird anderen angezeigt und dient als Bildunterschrift für Ihre Fotos.';
+      'Ihr Name in diesem Bereich: So sehen andere Sie, und Ihre Fotos werden Ihnen unter diesem Namen zugeordnet.';
 
   @override
   String get codeRequiredRefusal =>
@@ -111,7 +110,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get yourNameHelp =>
-      'So sehen dich die anderen Nutzer auf diesem Server.';
+      'Unter diesem Namen sehen andere Sie auf diesem Server.';
 
   @override
   String get userNameLabel => 'Benutzername';
@@ -131,7 +130,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String otherServerRefusal(String server) {
-    return 'Dieser Code gilt für den $server, nicht für den Server, von dem diese Seite stammt. Öffnen Sie diesen Server und melden Sie sich dort an.';
+    return 'Dieser Code gilt für $server, nicht für den Server, von dem diese Seite stammt. Öffnen Sie jenen Server und melden Sie sich dort an.';
   }
 
   @override
@@ -147,7 +146,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get askingAboutInvitation =>
-      'Der Server wird gerade zu dieser Einladung befragt...';
+      'Die Einladung wird beim Server geprüft...';
 
   @override
   String get invitationUnknown =>
@@ -155,24 +154,24 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get invitationUnknownHere =>
-      'Dieser Server kennt diese Einladung nicht. Fordern Sie eine neue an oder geben Sie die einfache Serveradresse ein.';
+      'Dieser Server kennt diese Einladung nicht. Fordern Sie eine neue an, oder geben Sie nur die Serveradresse ein.';
 
   @override
-  String invitationHeadlineWithRole(String invitedBy, String may) {
-    return '$invitedBy hat dich zu diesem Album-Server eingeladen: $may.';
+  String invitationHeadlineWithRole(String invitedBy, String role) {
+    return '$invitedBy hat Sie als $role zu diesem Album-Server eingeladen.';
   }
 
   @override
   String invitationHeadlinePlain(String invitedBy) {
-    return '$invitedBy hat dich zu diesem Album-Server eingeladen.';
+    return '$invitedBy hat Sie zu diesem Album-Server eingeladen.';
   }
 
   @override
-  String get peopleHeading => 'Menschen';
+  String get peopleHeading => 'Mitglieder';
 
   @override
   String get inviteExplanation =>
-      'Eine Einladung ist ein einmalig nutzbarer Link, über den ein Konto auf diesem Server erstellt wird. Senden Sie ihn an die Person, für die er bestimmt ist, und an niemanden sonst.';
+      'Ein einmalig nutzbarer Link, über den ein Konto in diesem Bereich erstellt wird. Senden Sie ihn nur an die Person, für die er bestimmt ist.';
 
   @override
   String get inviteAction => 'Einladen…';
@@ -220,7 +219,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get guestLibraryNotice =>
-      'Gast: Deine Bibliothek besteht aus dem, was andere mit dir teilen.';
+      'Gast: Ihre Bibliothek besteht aus dem, was andere mit Ihnen teilen.';
 
   @override
   String get cacheHeading => 'Cache';
@@ -245,7 +244,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get clearCacheQuestion =>
-      'Alle für das Offline-Surfen gespeicherten Daten werden gelöscht. Sie werden beim nächsten Zugriff auf den Server erneut abgerufen.';
+      'Alles, was für die Offline-Ansicht gespeichert wurde, wird gelöscht. Es wird beim nächsten Kontakt mit dem Server neu geladen.';
 
   @override
   String get clear => 'Leeren';
@@ -256,14 +255,14 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get diagnosticsHeading => 'Diagnostik';
+  String get diagnosticsHeading => 'Diagnose';
 
   @override
   String get diagnosticsLead =>
-      'Die Probleme, auf die diese App gestoßen ist – fügen Sie diese in einen Fehlerbericht ein.';
+      'Die Probleme, auf die diese App gestoßen ist – kopieren Sie sie in einen Fehlerbericht.';
 
   @override
-  String get diagnosticsEmpty => 'Es wurden keine Probleme festgestellt.';
+  String get diagnosticsEmpty => 'Keine Probleme aufgezeichnet.';
 
   @override
   String get diagnosticsCopied =>
@@ -283,7 +282,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get connectionSignInForEverything =>
-      'Nicht angemeldet – dieser Server zeigt ohne Anmeldung keine Informationen an';
+      'Nicht angemeldet – dieser Server zeigt ohne Anmeldung nichts an';
 
   @override
   String get connectionSignInForChanges =>
@@ -291,18 +290,18 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get notAlbumData =>
-      'Die Antwort lautet „keine Albumdaten“ – kein VAlbum-Server?';
+      'Die Antwort enthält keine Albumdaten – ist das kein VAlbum-Server?';
 
   @override
   String get albumServerReached => 'Album-Server erreicht';
 
   @override
   String get albumServerNeedsSignIn =>
-      'Der Album-Server wurde erreicht – es ist eine Anmeldung erforderlich, bevor Inhalte angezeigt werden';
+      'Album-Server erreicht – er zeigt erst nach einer Anmeldung etwas an';
 
   @override
   String get albumServerRefusesThisDevice =>
-      'Der Album-Server wurde erreicht – er lehnt die Anmeldung mit diesem Gerät ab';
+      'Album-Server erreicht – er lehnt die Anmeldung dieses Geräts ab';
 
   @override
   String get deviceNameThisBrowser => 'Dieser Browser';
@@ -326,7 +325,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get deviceNameOther => 'Mein Gerät';
 
   @override
-  String get firstScreenTitle => 'Wo ist dein Album?';
+  String get firstScreenTitle => 'Wo ist Ihr Album?';
 
   @override
   String get firstScreenLead =>
@@ -334,7 +333,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get firstScreenNoServer =>
-      'Das ist keine Serveradresse. Es sieht aus wie http://nas.local:8080/valbum/.';
+      'Das ist keine Serveradresse. Eine Serveradresse sieht so aus: \'http://nas.local:8080/valbum/\'.';
 
   @override
   String get serverAddressOrLink => 'Serveradresse oder Link';
@@ -348,7 +347,7 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get anotherServer => 'Ein anderer Server';
+  String get anotherServer => 'Anderer Server';
 
   @override
   String get openWithoutSigningIn => 'Ohne Anmeldung öffnen';
@@ -358,7 +357,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get devicesLead =>
-      'Jedes Gerät, auf dem Sie sich angemeldet haben, verfügt über ein eigenes Token. Wenn Sie ein Gerät hier entfernen, verliert dieses Token seine Gültigkeit; das Gerät muss sich erneut anmelden.';
+      'Jedes Gerät, auf dem Sie sich angemeldet haben, hat ein eigenes Token. Entfernen Sie ein Gerät hier, wird sein Token ungültig; das Gerät muss sich neu anmelden.';
 
   @override
   String get noDeviceSignedIn => 'Es ist kein Gerät angemeldet.';
@@ -369,11 +368,11 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get pairedAtUnknownTime => 'Zu einem unbekannten Zeitpunkt gekoppelt';
+  String get pairedAtUnknownTime => 'Anmeldezeitpunkt unbekannt';
 
   @override
   String pairedOn(String day) {
-    return 'Gekoppelt am $day';
+    return 'Angemeldet am $day';
   }
 
   @override
@@ -384,37 +383,36 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get noBackupCode =>
-      'Sicherheitscode: keiner. Ohne einen solchen sind Sie nach der Abmeldung von Ihrem letzten Gerät auf Ihren Administrator angewiesen.';
+      'Backup-Code: keiner. Ohne ihn sind Sie nach der Abmeldung Ihres letzten Geräts auf Ihren Administrator angewiesen.';
 
   @override
   String backupCodeMade(String day) {
-    return 'Sicherheitscode: erstellt am $day. Bewahren Sie ihn sicher auf; wenn Sie einen neuen erstellen, wird dieser ungültig.';
+    return 'Backup-Code: erstellt am $day. Bewahren Sie ihn sicher auf; ein neuer Code macht ihn ungültig.';
   }
 
   @override
-  String get createBackupCode => 'Sicherheitscode erstellen…';
+  String get createBackupCode => 'Backup-Code erstellen…';
 
   @override
-  String get createNewBackupCode => 'Neuen Sicherheitscode erstellen…';
+  String get createNewBackupCode => 'Neuen Backup-Code erstellen…';
 
   @override
-  String get withdrawBackupCodeTitle =>
-      'Sollen Sie den Backup-Code widerrufen?';
+  String get withdrawBackupCodeTitle => 'Backup-Code zurückziehen?';
 
   @override
   String get withdrawBackupCodeMessage =>
-      'Der Code, den Sie notiert haben, funktioniert nicht mehr. Wenn Sie sich von Ihrem letzten Gerät abmelden, sind Sie fortan auf einen Wiederherstellungscode Ihres Administrators angewiesen.';
+      'Der notierte Code funktioniert dann nicht mehr. Melden Sie danach Ihr letztes Gerät ab, brauchen Sie einen Wiederherstellungscode Ihres Administrators.';
 
   @override
-  String get backupCodeTitle => 'Sicherheitscode';
+  String get backupCodeTitle => 'Backup-Code';
 
   @override
   String get backupCodeAdvice =>
-      'Schreiben Sie ihn auf und bewahren Sie ihn an einem sicheren Ort auf – beispielsweise in einem Passwort-Manager oder in einer Schublade. Er läuft nie ab, funktioniert nur einmal und meldet ein Gerät in Ihrem Namen an; geben Sie ihn daher niemandem weiter. Dies ist das einzige Mal, dass er angezeigt wird.';
+      'Schreiben Sie ihn auf und bewahren Sie ihn sicher auf – im Passwort-Manager oder in einer Schublade. Er läuft nie ab, gilt einmal und meldet ein Gerät unter Ihrem Namen an; geben Sie ihn niemandem. Er wird nur dieses eine Mal angezeigt.';
 
   @override
   String get backupCodeNoExpiry =>
-      'Dieser Code verfällt nicht. Er kann einmal verwendet werden.';
+      'Dieser Code läuft nicht ab. Er gilt einmal.';
 
   @override
   String get addDeviceTitle => 'Gerät hinzufügen';
@@ -426,11 +424,11 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get deviceCodeAdvice =>
-      'Geben Sie diesen Code innerhalb von 10 Minuten auf dem anderen Gerät ein. Dadurch wird dieses Gerät unter Ihrem Namen angemeldet – geben Sie ihn niemals an andere weiter.';
+      'Geben Sie diesen Code innerhalb von 10 Minuten auf dem anderen Gerät ein. Er meldet jenes Gerät unter Ihrem Namen an – geben Sie ihn niemandem.';
 
   @override
   String recoveryCodeAdvice(String user) {
-    return 'Geben Sie diesen Code innerhalb von 10 Minuten an $user weiter; damit kann sich dieser auf einem seiner Geräte als er selbst anmelden. Er funktioniert nur einmal – geben Sie ihn an niemanden sonst weiter.';
+    return 'Geben Sie diesen Code innerhalb von 10 Minuten an $user weiter; er meldet ein Gerät unter diesem Namen an. Er gilt einmal – geben Sie ihn niemand anderem.';
   }
 
   @override
@@ -463,29 +461,29 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String deviceJoined(String name) {
-    return '$name wurde verbunden.';
+    return '$name ist angemeldet.';
   }
 
   @override
-  String get signOutThisDeviceTitle => 'Dieses Gerät auschecken?';
+  String get signOutThisDeviceTitle => 'Dieses Gerät abmelden?';
 
   @override
   String get signOutThisDeviceMessage =>
-      'Dieses Gerät vergisst seine Anmeldung und kommuniziert wieder anonym mit dem Server. Sie können sich jederzeit erneut anmelden.';
+      'Dieses Gerät vergisst seine Anmeldung und greift wieder anonym auf den Server zu. Sie können sich jederzeit neu anmelden.';
 
   @override
   String removeDeviceTitle(String name) {
-    return 'Das Gerät $name entfernen?';
+    return 'Gerät „$name“ entfernen?';
   }
 
   @override
   String removeDeviceMessage(String name) {
-    return '$name ist nicht mehr angemeldet. Es muss sich erneut anmelden, bevor es Änderungen vornehmen kann.';
+    return '„$name“ wird abgemeldet und muss sich neu anmelden, bevor es etwas ändern kann.';
   }
 
   @override
   String lastDeviceWarning(String ways) {
-    return 'Dies ist Ihr einziges angemeldetes Gerät. Um sich erneut anzumelden, haben Sie noch $ways.';
+    return 'Dies ist Ihr einziges angemeldetes Gerät. Um sich wieder anzumelden, brauchen Sie $ways.';
   }
 
   @override
@@ -494,59 +492,47 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get wayBackupCode => 'Ihr Backup-Code';
+  String get wayBackupCode => 'Ihren Backup-Code';
 
   @override
   String get wayRecoveryFromAdmin =>
-      'ein Wiederherstellungscode von Ihrem Administrator';
+      'einen Wiederherstellungscode Ihres Administrators';
 
   @override
   String get wayRecoveryFromOtherAdmin =>
-      'ein Wiederherstellungscode von einem anderen Administrator';
+      'einen Wiederherstellungscode eines anderen Administrators';
 
   @override
   String get wayServerRestart =>
-      'ein Neustart des Servers, wodurch ein neuer Anmeldecode ausgegeben wird';
+      'einen Neustart des Servers, der einen neuen Anmeldecode ausgibt';
 
   @override
   String get maybeLastDeviceWarning =>
-      'Möglicherweise ist dies Ihr einziges angemeldetes Gerät, und der Server konnte nicht abgefragt werden. In diesem Fall benötigen Sie einen Wiederherstellungscode von Ihrem Administrator, Ihren Ersatzcode oder einen Neustart des Servers, um sich wieder anzumelden.';
+      'Dies ist vielleicht Ihr einziges angemeldetes Gerät, und der Server war nicht erreichbar. Wenn ja, brauchen Sie zum Wiederanmelden einen Wiederherstellungscode Ihres Administrators, Ihren Backup-Code oder einen Neustart des Servers.';
 
   @override
-  String get permissionMayHeading => 'Mai';
+  String get permissionMayHeading => 'Rolle';
 
   @override
-  String get permissionSeesHeading => 'Siehe';
+  String get permissionSeesHeading => 'Sieht';
 
   @override
-  String get mayShareLinksSwitch => 'Links können geteilt werden';
+  String get mayShareLinksSwitch => 'Darf Links teilen';
 
   @override
   String get mayShareLinksExplanation =>
-      'Es können Links verteilt werden, die ein Album für den jeweiligen Empfänger öffnen.';
+      'Ein Link öffnet ein Album für jeden, der ihn hat.';
 
   @override
   String get roleExplanationEdit =>
-      'Darf Alben erstellen, diese bearbeiten und Fotos hinzufügen.';
+      'Darf Alben anlegen und ändern und Fotos hinzufügen.';
 
   @override
   String get roleExplanationContribute =>
-      'Darf Fotos zu den Alben hinzufügen, darf aber nichts ändern.';
+      'Darf Fotos hinzufügen, aber nichts ändern.';
 
   @override
-  String get roleExplanationView => 'Darf sich die Alben ansehen, mehr nicht.';
-
-  @override
-  String get clearanceExplanationAll =>
-      'Er sieht jedes Bild, auch die privaten.';
-
-  @override
-  String get clearanceExplanationNonPrivate =>
-      'Er sieht jedes Bild, das nicht als privat markiert ist.';
-
-  @override
-  String get clearanceExplanationPublic =>
-      'Es werden nur die als „öffentlich“ gekennzeichneten Bilder angezeigt.';
+  String get roleExplanationView => 'Darf die Alben ansehen, sonst nichts.';
 
   @override
   String permissionDialogTitle(String user) {
@@ -554,17 +540,14 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get usersHeading => 'Benutzer';
-
-  @override
   String get usersLead =>
-      'Alle Personen, die ein Konto auf diesem Server haben, sowie die Funktionen, die sie dort nutzen können, und die Inhalte, die sie dort sehen können.';
+      'Alle mit einem Konto in diesem Bereich, und die Einladungen, die noch niemand angenommen hat.';
 
   @override
   String get recoveryCodeTooltip => 'Wiederherstellungscode';
 
   @override
-  String get changePermissionTooltip => 'Ändern Sie, was sie tun dürfen';
+  String get changePermissionTooltip => 'Berechtigung ändern';
 
   @override
   String removeUserTitle(String user) {
@@ -573,7 +556,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get removeUserMessage =>
-      'Die Geräte werden abgemeldet; die Fotos und der Name darauf bleiben erhalten.';
+      'Die Geräte dieser Person werden abgemeldet; ihre Fotos bleiben und tragen weiter ihren Namen.';
 
   @override
   String get invitedPending => 'Eingeladen (ausstehend)';
@@ -587,12 +570,8 @@ class AppLocalizationsDe extends AppLocalizations {
   String get withdrawInvitationTitle => 'Diese Einladung zurückziehen?';
 
   @override
-  String get withdrawPendingUserMessage =>
-      'Der Link funktioniert nicht mehr, und der Platz, den dieser Nutzer belegt hatte, wird freigegeben.';
-
-  @override
   String get withdrawInvitationMessage =>
-      'Der Link funktioniert nicht mehr. Wer die Einladung bereits angenommen hat, behält sein Konto.';
+      'Der Einladungslink funktioniert dann nicht mehr.';
 
   @override
   String invitedByUser(String user) {
@@ -622,135 +601,75 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String invitedForRecipient(String recipient) {
-    return 'Eingeladen für $recipient';
+    return 'eingeladen für $recipient';
   }
 
   @override
-  String get openInvitationsHeading => 'Offene Einladungen';
+  String get noOpenInvitations => 'Keine offene Einladung.';
 
   @override
-  String get noOpenInvitations => 'Es wartet keine Einladung auf die Annahme.';
-
-  @override
-  String invitationPermissionBy(String permission, String user) {
-    return '$permission – eingeladen von $user';
-  }
-
-  @override
-  String forRecipient(String recipient) {
-    return 'für $recipient';
-  }
-
-  @override
-  String get expiresNever => 'Gültigkeitsdauer: unbegrenzt';
+  String get expiresNever => 'läuft nie ab';
 
   @override
   String expiredOnDay(String day) {
-    return 'am $day ablief';
+    return 'abgelaufen am $day';
   }
 
   @override
   String expiresOnDay(String day) {
-    return 'abläuft nach $day';
+    return 'läuft am $day ab';
   }
 
   @override
-  String permissionSentence(String doing, String seeing, String sharing) {
-    return '$doing; $seeing; $sharing.';
-  }
+  String get permissionSeeingAll => 'Sieht: alle Fotos';
 
   @override
-  String get permissionDoingAdmin => 'Sie verwalten diesen Server';
+  String get permissionSeeingNonPrivate => 'Sieht: alle außer privaten Fotos';
 
   @override
-  String get permissionDoingEdit =>
-      'Sie dürfen jedes Album dieses Bereichs bearbeiten';
+  String get permissionSeeingPublic => 'Sieht: öffentliche Fotos';
 
   @override
-  String get permissionDoingContribute =>
-      'Sie dürfen Fotos in diesen Bereich einfügen';
+  String get permissionSharingMay => 'Darf Links teilen';
 
   @override
-  String get permissionDoingView => 'Sie dürfen diesen Bereich betrachten';
+  String get permissionSharingMayNot => 'Darf keine Links teilen';
 
   @override
-  String get permissionDoingNone => 'Sie sind nicht angemeldet';
+  String get roleWordAdmin => 'Administrator';
 
   @override
-  String get permissionSeeingAll => 'Sie sehen alle Bilder';
+  String get roleWordEdit => 'Bearbeiter';
 
   @override
-  String get permissionSeeingNonPrivate =>
-      'Du siehst alle Bilder außer den privaten.';
+  String get roleWordContribute => 'Mitwirkender';
 
   @override
-  String get permissionSeeingPublic => 'Sie sehen die öffentlichen Bilder';
+  String get roleWordView => 'Betrachter';
 
   @override
-  String get permissionSharingMay => 'Sie dürfen Links teilen';
+  String get roleWordUnknown => 'Unbekannte Rolle';
 
   @override
-  String get permissionSharingMayNot => 'Sie dürfen keine Links teilen';
+  String get clearanceWordAll => 'Alle Fotos';
 
   @override
-  String permissionPhrase(String role, String clearance, String sharing) {
-    return '$role — $clearance — $sharing';
-  }
+  String get clearanceWordNonPrivate => 'Alle außer privaten Fotos';
 
   @override
-  String get permissionPhraseMayShare => 'Links teilen darf';
-
-  @override
-  String get permissionPhraseNoLinks => 'keine Links';
-
-  @override
-  String get roleWordAdmin => 'diesen Server verwaltet';
-
-  @override
-  String get roleWordEdit => 'die Alben bearbeiten darf';
-
-  @override
-  String get roleWordContribute => 'Fotos hinzufügen kann';
-
-  @override
-  String get roleWordView => 'kann so aussehen';
-
-  @override
-  String get roleWordUnknown => 'unbekannte Rolle';
-
-  @override
-  String get roleWordYouAdmin => ', die diesen Server verwaltet:';
-
-  @override
-  String get roleWordYouEdit => 'dürfen Sie die Alben bearbeiten';
-
-  @override
-  String get roleWordYouContribute => 'dürfen Sie Fotos hinzufügen';
-
-  @override
-  String get roleWordYouView => 'dürfen Sie sich die Alben ansehen';
-
-  @override
-  String get clearanceWordAll => 'alle Bilder sieht';
-
-  @override
-  String get clearanceWordNonPrivate =>
-      'dass dieser jemand alle Bilder außer den privaten sieht';
-
-  @override
-  String get clearanceWordPublic => 'die öffentlichen Bilder sieht';
+  String get clearanceWordPublic => 'Öffentliche Fotos';
 
   @override
   String get serverUrlEmpty =>
-      'Geben Sie die URL des Album-Servers ein, z. B. http://nas.local:8080/valbum/.';
+      'Geben Sie die Adresse des Album-Servers ein, z. B. \'http://nas.local:8080/valbum/\'.';
 
   @override
   String get serverUrlInvalid =>
-      'Das ist keine Serveradresse. Es sieht aus wie http://nas.local:8080/valbum/.';
+      'Das ist keine Serveradresse. Eine Serveradresse sieht so aus: \'http://nas.local:8080/valbum/\'.';
 
   @override
   String get shareLinkRefusal =>
-      'Dies ist ein Link zu einem freigegebenen Album, keine Anmeldung. Öffne ihn in einem Browser, um zu sehen, was für dich freigegeben wurde.';
+      'Dies ist ein Link zu einem geteilten Album, keine Anmeldung. Öffnen Sie ihn in einem Browser, um zu sehen, was mit Ihnen geteilt wurde.';
 
   @override
   String get close => 'Schließen';
@@ -780,7 +699,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get ratingPoor => 'Mangelhaft';
 
   @override
-  String get ratingTrash => 'Müll';
+  String get ratingTrash => 'Papierkorb';
 
   @override
   String get ratingFloorEveryPhoto => 'jedes Foto';
@@ -800,7 +719,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get trashRestore => 'Wiederherstellen';
 
   @override
-  String get trashPurgeAction => 'Löschen…';
+  String get trashPurgeAction => 'Endgültig löschen…';
 
   @override
   String get trashPurgeTitle => 'Papierkorb leeren';
@@ -824,14 +743,14 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get trashEmptyNotice => 'Der Papierkorb dieses Albums enthält nichts.';
+  String get trashEmptyNotice => 'Der Papierkorb dieses Albums ist leer.';
 
   @override
   String get trashBackToAlbum => 'Zurück zum Album';
 
   @override
   String doingPurgingTrash(String folder) {
-    return 'Den Papierkorb des Ordners $folder leeren';
+    return 'Leeren des Papierkorbs von $folder';
   }
 
   @override
@@ -857,7 +776,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String shareDialogTitle(String name) {
-    return '$name per Link freigeben';
+    return '$name per Link teilen';
   }
 
   @override
@@ -873,25 +792,25 @@ class AppLocalizationsDe extends AppLocalizations {
   String get linkNoLabel => '(keine Bezeichnung)';
 
   @override
-  String get withdrawTooltip => 'Abheben…';
+  String get withdrawTooltip => 'Zurückziehen…';
 
   @override
   String get linkNeverExpires => 'läuft nie ab';
 
   @override
-  String get linkUpToMembers => 'für Mitglieder';
+  String get linkUpToMembers => 'auch Mitglieder-Fotos';
 
   @override
-  String get linkPublicOnly => 'nur öffentlich';
+  String get linkPublicOnly => 'nur öffentliche';
 
   @override
   String linkWithdrawnOn(String day) {
-    return 'zurückgezogen vor $day';
+    return 'zurückgezogen am $day';
   }
 
   @override
   String linkInheritedFrom(String folder) {
-    return 'der von $folder geerbt wurde; heben Sie ihn dort auf';
+    return 'geerbt von $folder, dort zurückziehen';
   }
 
   @override
@@ -907,13 +826,14 @@ class AppLocalizationsDe extends AppLocalizations {
   String get linkLabelLabel => 'Bezeichnung';
 
   @override
-  String get linkLabelHelp => 'Was dieser Link ist, für Ihre eigene Liste.';
+  String get linkLabelHelp =>
+      'Wofür dieser Link ist – nur für Ihre eigene Übersicht.';
 
   @override
-  String get expiresHeading => 'Ablaufdatum';
+  String get expiresHeading => 'Läuft ab';
 
   @override
-  String get showsHeading => 'Anzeigen';
+  String get showsHeading => 'Zeigt';
 
   @override
   String get privacyPublicOnly => 'Öffentliche Fotos';
@@ -949,7 +869,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get shareLinkOnce =>
-      'Kopieren Sie sie jetzt: Der Server speichert nur ihren Fingerabdruck und kann sie nie wieder anzeigen. Ein verlorener Link wird zurückgezogen und neu erstellt.';
+      'Kopieren Sie ihn jetzt: Der Server speichert nur seinen Fingerabdruck und kann ihn nie wieder anzeigen. Ein verlorener Link wird zurückgezogen und neu erstellt.';
 
   @override
   String get linkCopied => 'Der Link wurde kopiert.';
@@ -959,11 +879,11 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String withdrawLinkMessage(String link) {
-    return 'Jeder, der den $link hat, kann das Album sofort nicht mehr sehen. Dies lässt sich nicht rückgängig machen; stattdessen kann ein neuer Link erstellt werden.';
+    return 'Wer $link hat, sieht das Album ab sofort nicht mehr. Das lässt sich nicht rückgängig machen; stattdessen kann ein neuer Link erstellt werden.';
   }
 
   @override
-  String get withdrawLinkThisLink => 'dieser Link';
+  String get withdrawLinkThisLink => 'diesen Link';
 
   @override
   String get invitationGuestNote =>
@@ -973,22 +893,21 @@ class AppLocalizationsDe extends AppLocalizations {
   String get deviceNameHelp => 'Um welches Ihrer Geräte es sich handelt.';
 
   @override
-  String get joining => 'Beitritt...';
+  String get joining => 'Beitreten...';
 
   @override
   String get joinAction => 'Beitreten';
 
   @override
   String invitationJoinedAs(String user) {
-    return 'Du bist als $user dabei.';
+    return 'Sie sind als $user dabei.';
   }
 
   @override
-  String get invitationSignedInNote =>
-      'Dieses Gerät ist angemeldet; deine Alben gehören ab sofort dir.';
+  String get invitationSignedInNote => 'Dieses Gerät ist angemeldet.';
 
   @override
-  String get openYourAlbums => 'Öffne deine Alben';
+  String get openYourAlbums => 'Zu den Alben';
 
   @override
   String get invitationChooseName =>
@@ -1002,14 +921,14 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get inviteRecipientHelp =>
-      'Ein Hinweis für Sie selbst: An wen diese Einladung gerichtet ist. Optional.';
+      'Eine Notiz für Sie selbst: für wen diese Einladung ist. Optional.';
 
   @override
   String get inviteNoteLabel => 'Anmerkung';
 
   @override
   String get inviteNoteHelp =>
-      'Was die eingeladene Person sieht, wenn sie den Link öffnet.';
+      'Was die eingeladene Person liest, wenn sie den Link öffnet.';
 
   @override
   String get createInvitation => 'Einladung erstellen';
@@ -1024,22 +943,22 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get invitationOnce =>
-      'Jetzt senden: Der Server speichert nur ihren Fingerabdruck und kann sie niemals wieder anzeigen. Eine verlorene Einladung wird zurückgezogen und neu erstellt.';
+      'Senden Sie sie jetzt: Der Server speichert nur ihren Fingerabdruck und kann sie nie wieder anzeigen. Eine verlorene Einladung wird zurückgezogen und neu erstellt.';
 
   @override
   String get invitationCopied => 'Die Einladung wurde kopiert.';
 
   @override
   String inboxNotChosen(String name) {
-    return 'Kein Album ausgewählt – neue Fotos werden in $name gespeichert';
+    return 'Kein Album gewählt – neue Fotos kommen in „$name“';
   }
 
   @override
-  String get cameraRollHeading => 'Kamera-Rolle';
+  String get cameraRollHeading => 'Kamerarolle';
 
   @override
   String get cameraRollExplanation =>
-      'Neue Fotos, die auf diesem Gerät aufgenommen werden, werden in ein Album der Bibliothek hochgeladen. Es wird nichts doppelt hochgeladen: Vor der Übertragung wird der Server nach dem Inhalt jedes Fotos abgefragt.';
+      'Neue Fotos dieses Geräts werden in ein Album der Bibliothek hochgeladen. Nichts wird doppelt hochgeladen: Vor jeder Übertragung wird geprüft, ob der Server das Foto schon hat.';
 
   @override
   String get cameraRollUploadNew => 'Neue Fotos hochladen';
@@ -1053,7 +972,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get onlyOverWifiExplanation =>
-      'Neue Fotos warten auf eine WLAN- oder Kabelverbindung, damit der Upload nicht das mobiles Datenvolumen belastet.';
+      'Neue Fotos warten auf WLAN oder eine Kabelverbindung, damit der Upload nicht das mobile Datenvolumen belastet.';
 
   @override
   String get chooseAction => 'Auswählen...';
@@ -1101,11 +1020,11 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get noFoldersHere =>
-      'Hier gibt es noch keine Ordner – erstelle unten einen.';
+      'Hier gibt es noch keine Ordner – erstellen Sie unten einen.';
 
   @override
   String folderIsAlbum(String title) {
-    return 'Dies ist das Album $title. Neue Fotos landen hier.';
+    return 'Dies ist das Album „$title“. Neue Fotos landen hier.';
   }
 
   @override
@@ -1126,7 +1045,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get backToAlbum => 'Zurück zum Album';
 
   @override
-  String get groupPicture => 'Gruppenfoto';
+  String get groupPicture => 'Gruppenbild';
 
   @override
   String get groupPictureIsThis => 'Dieses Bild ist das Gruppenbild';
@@ -1189,7 +1108,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get videoFetchedWithoutSignIn =>
-      'Der Browser hat das Video ohne Anmeldung abgerufen und erhielt eine Zugriffsverweigerung.';
+      'Der Browser hat das Video ohne Anmeldung abgerufen und wurde abgewiesen.';
 
   @override
   String videoFormatRefused(String contentType) {
@@ -1257,7 +1176,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get pickerAllFiles => 'Alle Dateien';
 
   @override
-  String get photoLibraryTitle => 'Fotogalerie';
+  String get photoLibraryTitle => 'Fotobibliothek';
 
   @override
   String get allAlbums => 'Alle Alben';
@@ -1324,7 +1243,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get cameraNotAllowed =>
-      'Diese App darf die Kamera nicht verwenden. Erlaube dies in den Systemeinstellungen oder gib stattdessen den Code ein.';
+      'Diese App darf die Kamera nicht verwenden. Erlauben Sie es in den Systemeinstellungen, oder geben Sie den Code ein.';
 
   @override
   String get cameraUnsupported =>
@@ -1407,13 +1326,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String get mustNotBeEmpty => 'Darf nicht leer sein';
 
   @override
-  String get viewAsYourself => 'Du selbst';
+  String get viewAsYourself => 'Sie selbst';
 
   @override
   String get viewAsMembers => 'Mitglieder';
 
   @override
-  String get viewAsPublic => 'Öffentlich';
+  String get viewAsPublic => 'Öffentlichkeit';
 
   @override
   String get viewAsStateYourself => 'Sie selbst';
@@ -1422,18 +1341,18 @@ class AppLocalizationsDe extends AppLocalizations {
   String get viewAsStateMembers => 'Mitglieder';
 
   @override
-  String get viewAsStatePublic => 'public';
+  String get viewAsStatePublic => 'Öffentlichkeit';
 
   @override
   String get viewAsLabel => 'Anzeigen als';
 
   @override
   String get previewAsMembers =>
-      'Ansicht als Mitglied – das sehen die Mitglieder';
+      'Ansicht als Mitglied – so sehen es die Mitglieder';
 
   @override
   String get previewAsPublic =>
-      'Ansicht als „öffentlich“ – das sieht die Öffentlichkeit';
+      'Ansicht als Öffentlichkeit – so sieht es die Öffentlichkeit';
 
   @override
   String get editHeadingTitle => 'Überschrift bearbeiten';
@@ -1477,15 +1396,14 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get discardChangesMessage =>
-      'Die hier vorgenommenen Änderungen wurden nicht gespeichert. Wenn Sie sie verwerfen, wird das Album wieder so angezeigt, wie es auf dem Server vorliegt.';
+      'Die Änderungen hier sind nicht gespeichert. Verwerfen zeigt das Album wieder so, wie es auf dem Server ist.';
 
   @override
-  String get saveChangesTitle =>
-      'Sollen die Änderungen an diesem Album gespeichert werden?';
+  String get saveChangesTitle => 'Änderungen an diesem Album speichern?';
 
   @override
   String get saveChangesMessage =>
-      'Wenn Sie das Album verlassen, wird der Bearbeitungsvorgang beendet. Nicht gespeicherte Änderungen gehen verloren, sofern sie nicht jetzt gespeichert werden.';
+      'Wenn Sie das Album verlassen, endet die Bearbeitung. Nicht gespeicherte Änderungen gehen verloren.';
 
   @override
   String get saveOrDiscardFirst =>
@@ -1496,7 +1414,7 @@ class AppLocalizationsDe extends AppLocalizations {
       'Eine Überschrift kann nicht verschoben werden.';
 
   @override
-  String get shareLinkAction => 'Link freigeben…';
+  String get shareLinkAction => 'Per Link teilen…';
 
   @override
   String get albumProperties => 'Albumeigenschaften';
@@ -1536,7 +1454,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get findDuplicatesAction => 'Duplikate suchen...';
 
   @override
-  String get findDuplicatesTitle => 'Duplikate finden';
+  String get findDuplicatesTitle => 'Duplikate suchen';
 
   @override
   String get findDuplicatesMessage =>
@@ -1544,7 +1462,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get noDuplicatesFound =>
-      'Es gibt nirgendwo sonst in der Bibliothek ein Foto dieses Albums.';
+      'Kein Foto dieses Albums liegt noch anderswo in der Bibliothek.';
 
   @override
   String duplicatesSetAside(int count) {
@@ -1552,9 +1470,9 @@ class AppLocalizationsDe extends AppLocalizations {
       count,
       locale: localeName,
       other:
-          '$count Fotos wurden aussortiert; die verbleibenden Kopien befinden sich an anderer Stelle in der Bibliothek.',
+          '$count Fotos wurden beiseitegelegt; die verbleibenden Kopien liegen an anderer Stelle der Bibliothek.',
       one:
-          '1 Foto wurde beiseitegelegt; die verbleibende Kopie befindet sich an anderer Stelle in der Bibliothek.',
+          '1 Foto wurde beiseitegelegt; die verbleibende Kopie liegt an anderer Stelle der Bibliothek.',
     );
     return '$_temp0';
   }
@@ -1592,7 +1510,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get refreshPreviewsMessage =>
-      'Die Miniaturansichten und Videodarstellungen dieses Albums werden gelöscht und bei der nächsten Anzeige neu erstellt. Die Fotos selbst bleiben davon unberührt.';
+      'Die Vorschaubilder und Videofassungen dieses Albums werden verworfen und beim nächsten Anzeigen neu erstellt. Die Fotos selbst bleiben unberührt.';
 
   @override
   String previewsRefreshed(int count) {
@@ -1612,7 +1530,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String ratingFilterHidesAll(int rating) {
-    return 'Kein Bild wurde mit $rating oder besser bewertet – drücke + (oder die +-Taste), um weitere anzuzeigen.';
+    return 'Kein Bild ist mit $rating oder besser bewertet – drücken Sie + (oder die Schaltfläche +), um mehr anzuzeigen.';
   }
 
   @override
@@ -1634,7 +1552,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get selectAllFromCamera => 'Alle Bilder dieser Kamera auswählen';
 
   @override
-  String get adjustRecordingTimeAction => 'Aufnahmedauer anpassen…';
+  String get adjustRecordingTimeAction => 'Aufnahmezeit anpassen…';
 
   @override
   String get imageProperties => 'Bildeigenschaften';
@@ -1647,7 +1565,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String privacyControlTooltip(String next, String level) {
-    return 'Datenschutzstufe: $level (tippen Sie für $next)';
+    return 'Sichtbarkeit: $level (tippen für $next)';
   }
 
   @override
@@ -1684,19 +1602,19 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String useNameDateOne(String time) {
-    return 'Verwende die Zeitangabe im Dateinamen: $time';
+    return 'Zeit aus dem Dateinamen verwenden: $time';
   }
 
   @override
   String useNameDateMany(int count) {
-    return 'Verwende die Zeitangabe im Dateinamen ($count Bilder)';
+    return 'Zeit aus dem Dateinamen verwenden ($count Bilder)';
   }
 
   @override
   String get adjustRecordingTimeTitle => 'Aufnahmezeit anpassen';
 
   @override
-  String get correctTime => 'Korrekte Zeit';
+  String get correctTime => 'Richtige Zeit';
 
   @override
   String get pickDateAndTime => 'Datum und Uhrzeit auswählen';
@@ -1706,14 +1624,14 @@ class AppLocalizationsDe extends AppLocalizations {
       'Die ursprüngliche Aufnahmezeit bleibt im Foto erhalten; das Album behält seine eigene bei.';
 
   @override
-  String get makeThisAnAlbum => 'Als Album speichern';
+  String get makeThisAnAlbum => 'In ein Album umwandeln';
 
   @override
-  String get makeThisAnInbox => 'Als Posteingang festlegen';
+  String get makeThisAnInbox => 'In einen Posteingang umwandeln';
 
   @override
   String get inboxExplanation =>
-      'Fotos, die darauf warten, sortiert zu werden, sortiert nach dem Aufnahmedatum.';
+      'Fotos, die auf das Einsortieren warten, nach Aufnahmetag gezeigt.';
 
   @override
   String get dateNone => 'Datum: keine Angabe';
@@ -1724,20 +1642,20 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get pickDate => 'Wähle ein Datum aus';
+  String get pickDate => 'Datum wählen';
 
   @override
   String get clearDate => 'Datum entfernen';
 
   @override
-  String get dateFromFolderName => 'Es wird aus dem Ordnernamen übernommen.';
+  String get dateFromFolderName => 'Aus dem Ordnernamen übernommen.';
 
   @override
   String get dateFromPhotos => 'Aus den Fotos übernommen.';
 
   @override
   String get noAlbumPictureHint =>
-      'Es wurde kein Albumbild ausgewählt – wählen Sie im Bearbeitungsmodus eines auf einer Kachel aus.';
+      'Kein Albumbild gewählt – wählen Sie im Bearbeitungsmodus eines auf einer Kachel.';
 
   @override
   String get zoomIn => 'Vergrößern';
@@ -1780,7 +1698,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get libraryEmptyHint =>
-      'Erstellen Sie die erste über das Menü oben rechts.';
+      'Erstellen Sie das erste über das Menü oben rechts.';
 
   @override
   String get folderEmptyNotice => 'Dieser Ordner enthält noch keine Alben.';
@@ -1798,14 +1716,14 @@ class AppLocalizationsDe extends AppLocalizations {
   String get moveToAction => 'Verschieben nach…';
 
   @override
-  String get nothingToFile => 'Es gibt nichts einzureichen.';
+  String get nothingToFile => 'Nichts abzulegen.';
 
   @override
   String filedAlbums(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Alben wurden verschoben.',
+      other: '$count Alben abgelegt.',
       one: '1 Album abgelegt.',
     );
     return '$_temp0';
@@ -1861,7 +1779,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String nothingMovedTo(String target) {
-    return 'Es wurde nichts an $target verschoben.';
+    return 'Nichts nach $target verschoben.';
   }
 
   @override
@@ -1871,7 +1789,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get deleteExplanation =>
-      'Ein Album ohne Bilder wird entfernt; ein Album mit Bildern wird in den Papierkorb des Speicherbereichs verschoben (es wird nichts von der Festplatte gelöscht).';
+      'Ein Album ohne Bilder wird entfernt; ein Album mit Bildern kommt in den Papierkorb-Ordner des Bereichs (von der Festplatte wird nichts gelöscht).';
 
   @override
   String deleteQuestion(String what) {
@@ -1889,8 +1807,7 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get imagesLiveInAlbums =>
-      'Bilder befinden sich in Alben – öffne eines.';
+  String get imagesLiveInAlbums => 'Bilder liegen in Alben – öffnen Sie eines.';
 
   @override
   String get albumHoldsNoFolders => 'Ein Album enthält keine Ordner.';
@@ -1903,7 +1820,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get createNewAlbum => 'Neues Album erstellen…';
 
   @override
-  String get moveTitle => 'Zug';
+  String get moveTitle => 'Verschieben';
 
   @override
   String get inboxEmptyNotice => 'Hier wartet nichts.';
@@ -1913,7 +1830,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get inboxDeleteExplanation =>
-      'Die Fotos werden in den Papierkorb des Speicherbereichs verschoben. Es wird nichts von der Festplatte gelöscht.';
+      'Die Fotos kommen in den Papierkorb-Ordner des Bereichs. Von der Festplatte wird nichts gelöscht.';
 
   @override
   String get clearSelection => 'Auswahl aufheben';
@@ -1923,7 +1840,7 @@ class AppLocalizationsDe extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count ausgewählte Bilder',
+      other: '$count Bilder ausgewählt',
       one: '1 Bild ausgewählt',
     );
     return '$_temp0';
@@ -1936,7 +1853,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get nothingSelected => 'Es ist nichts ausgewählt.';
 
   @override
-  String get notEditableMessage => 'Du darfst dieses Album nicht bearbeiten.';
+  String get notEditableMessage => 'Sie dürfen dieses Album nicht bearbeiten.';
 
   @override
   String get pictureFailedMessage => 'Dieses Bild konnte nicht geladen werden.';
@@ -1987,23 +1904,22 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get rightLabelView => 'Anzeigen';
+  String get rightLabelView => 'Ansehen';
 
   @override
   String get rightLabelDownload => 'Herunterladen';
 
   @override
-  String get rightLabelContribute => 'Beitrag leisten';
+  String get rightLabelContribute => 'Beitragen';
 
   @override
   String get rightLabelEdit => 'Bearbeiten';
 
   @override
-  String get rightExplanationView =>
-      'Das Album und seine Vorschaubilder anzeigen';
+  String get rightExplanationView => 'Das Album und seine Vorschaubilder sehen';
 
   @override
-  String get rightExplanationDownload => 'Kopien der Originale anfertigen';
+  String get rightExplanationDownload => 'Die Originale herunterladen';
 
   @override
   String get rightExplanationContribute => 'Fotos hinzufügen';
@@ -2013,13 +1929,13 @@ class AppLocalizationsDe extends AppLocalizations {
       'Das Album und seinen gesamten Inhalt ändern';
 
   @override
-  String get rightsPhraseEdit => 'Du kannst das ändern';
+  String get rightsPhraseEdit => 'Sie dürfen es ändern';
 
   @override
-  String get rightsPhraseContribute => 'Du kannst Fotos hinzufügen';
+  String get rightsPhraseContribute => 'Sie dürfen Fotos hinzufügen';
 
   @override
-  String get rightsPhraseDownload => 'Sie können ihn ansehen und herunterladen';
+  String get rightsPhraseDownload => 'Sie dürfen ansehen und herunterladen';
 
   @override
   String get viewerDownload => 'Original herunterladen';
@@ -2060,17 +1976,17 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get rightsPhraseView => 'Sie können einen Blick hineinwerfen';
+  String get rightsPhraseView => 'Sie dürfen ansehen';
 
   @override
-  String get rightsPhraseNone => 'Hier können Sie nichts tun';
+  String get rightsPhraseNone => 'Sie dürfen hier nichts tun';
 
   @override
-  String get sharedWithYou => 'Wurde für dich freigegeben';
+  String get sharedWithYou => 'Mit Ihnen geteilt';
 
   @override
   String sharedByOwner(String owner) {
-    return 'Freigegeben von $owner';
+    return 'Geteilt von $owner';
   }
 
   @override
@@ -2080,7 +1996,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String httpFailure(String doing, int status) {
-    return 'HTTP-$status während $doing.';
+    return 'HTTP $status beim $doing.';
   }
 
   @override
@@ -2089,7 +2005,7 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get doingLoadingImage => 'das Bild wurde geladen';
+  String get doingLoadingImage => 'Laden des Bildes';
 
   @override
   String doingStoring(String url) {
@@ -2103,47 +2019,47 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String doingUploading(String url) {
-    return 'Hochladen an $url';
+    return 'Hochladen nach $url';
   }
 
   @override
   String doingAsking(String url) {
-    return 'Abfrage von $url';
+    return 'Abfragen von $url';
   }
 
   @override
   String doingMoving(String target) {
-    return 'Wechsel zu $target';
+    return 'Verschieben nach $target';
   }
 
   @override
   String doingDeleting(String folder) {
-    return 'Löschen im $folder';
+    return 'Löschen in $folder';
   }
 
   @override
   String doingFiling(String folder) {
-    return 'Ablage im $folder';
+    return 'Ablegen in $folder';
   }
 
   @override
   String doingFindingDuplicates(String folder) {
-    return 'Suche nach Duplikaten im $folder';
+    return 'Suchen nach Duplikaten in $folder';
   }
 
   @override
   String doingReanalyzing(String folder) {
-    return 'erneutes Einlesen der Fotodaten im $folder';
+    return 'Neueinlesen der Fotodetails in $folder';
   }
 
   @override
   String doingSigningIn(String url) {
-    return 'Anmeldung unter $url';
+    return 'Anmelden bei $url';
   }
 
   @override
   String doingRefreshingPreviews(String folder) {
-    return 'Aktualisierung der Vorschauen von $folder';
+    return 'Aktualisieren der Vorschaubilder von $folder';
   }
 
   @override
@@ -2158,11 +2074,11 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String notVAlbumServer(String server) {
-    return 'Der Server unter $server hat keine Albumdaten zurückgegeben – es handelt sich also nicht um einen VAlbum-Server, oder ist die Server-URL in den Einstellungen falsch?';
+    return 'Der Server unter $server hat keine Albumdaten geliefert – kein VAlbum-Server, oder ist die Server-Adresse in den Einstellungen falsch?';
   }
 
   @override
-  String get noAnswerInTime => 'keine Antwort innerhalb der vorgegebenen Zeit';
+  String get noAnswerInTime => 'keine Antwort in der vorgesehenen Zeit';
 
   @override
   String get uploadConnectionLost => 'Verbindung unterbrochen';
@@ -2176,7 +2092,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get uploadCancelled => 'Der Upload wurde abgebrochen.';
 
   @override
-  String get uploadAsking => 'Der Server wird gerade abgefragt...';
+  String get uploadAsking => 'Der Server wird gefragt...';
 
   @override
   String get uploadWaiting => 'Warten auf den Server...';
@@ -2203,7 +2119,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get noticeGuestNoSpace =>
-      'Bitte den Administrator, dir Speicherplatz für ein Album zuzuweisen.';
+      'Bitten Sie den Administrator um einen eigenen Bereich für Ihre Alben.';
 
   @override
   String get noticeNoServerConfigured =>
@@ -2296,7 +2212,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String cameraRollUploading(int total, int done) {
-    return 'Hochladen von $done von $total...';
+    return 'Hochladen: $done von $total...';
   }
 
   @override
@@ -2305,7 +2221,7 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get cameraRollNextAttempt => 'beim nächsten Versuch';
+  String get cameraRollNextAttempt => 'zum nächsten Versuch';
 
   @override
   String cameraRollFailedRetrying(String reason, String time) {
@@ -2348,7 +2264,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String cameraRollInboxGone(String name) {
-    return 'Der ausgewählte Posteingang ist nicht mehr vorhanden; es wird $name verwendet.';
+    return 'Der gewählte Posteingang ist nicht mehr da; „$name“ wird verwendet.';
   }
 
   @override
@@ -2421,7 +2337,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String loadingFailed(String problem) {
-    return 'Ladefehler: $problem';
+    return 'Laden fehlgeschlagen: $problem';
   }
 
   @override
@@ -2456,7 +2372,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get personsReadOnlyNotice =>
-      'Nur Redakteure dürfen Gesichter benennen';
+      'Nur Bearbeiter dürfen Gesichter benennen';
 
   @override
   String get personsPendingNotice =>
@@ -2485,8 +2401,8 @@ class AppLocalizationsDe extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Personen',
-      one: '1 Person',
+      other: '$count Gesichter',
+      one: '1 Gesicht',
     );
     return '$_temp0';
   }
@@ -2496,7 +2412,7 @@ class AppLocalizationsDe extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count ausgewählte Gesichter',
+      other: '$count Gesichter ausgewählt',
       one: '1 Gesicht ausgewählt',
     );
     return '$_temp0';
@@ -2511,7 +2427,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get personsConfirmSuggestion => 'Bestätigen';
 
   @override
-  String get personsChooseTitle => 'Benenne diese Gesichter';
+  String get personsChooseTitle => 'Diese Gesichter benennen';
 
   @override
   String get personsSearchLabel => 'Suche';
@@ -2538,36 +2454,36 @@ class AppLocalizationsDe extends AppLocalizations {
   String get personsRenameNotice => 'Benennt diese Person überall um.';
 
   @override
-  String get personsMergeEntry => 'Mit … zusammenführen…';
+  String get personsMergeEntry => 'Zusammenführen mit…';
 
   @override
   String get personsMergeTitle => 'Mit einer anderen Person zusammenführen';
 
   @override
   String get personsMergeNotice =>
-      'Die Gesichter dieser Person werden zu denen der anderen Personen. Es wird nichts gelöscht.';
+      'Die Gesichter dieser Person werden der anderen Person zugeordnet. Es wird nichts gelöscht.';
 
   @override
   String get personsDiscardTitle =>
-      'Sollen die Änderungen an den Personen in diesem Album verworfen werden?';
+      'Änderungen an den Personen dieses Albums verwerfen?';
 
   @override
   String get personsDiscardMessage =>
-      'Die hier getroffenen Einstellungen wurden nicht gespeichert. Wenn Sie sie verwerfen, werden die Gesichter wieder so angezeigt, wie sie auf dem Server gespeichert sind.';
+      'Die Entscheidungen hier sind nicht gespeichert. Verwerfen zeigt die Gesichter wieder so, wie sie auf dem Server sind.';
 
   @override
   String get personsSaveTitle =>
-      'Sollen die Änderungen an den Personen in diesem Album gespeichert werden?';
+      'Änderungen an den Personen dieses Albums speichern?';
 
   @override
   String get personsSaveMessage =>
-      'Wenn Sie diese Seite verlassen, wird die Bearbeitung beendet. Nicht gespeicherte Änderungen gehen verloren, sofern sie nicht jetzt gespeichert werden.';
+      'Wenn Sie diese Seite verlassen, endet die Bearbeitung. Nicht gespeicherte Entscheidungen gehen verloren.';
 
   @override
   String get personsDragToGroup => 'Auf eine Gruppe ziehen';
 
   @override
-  String get personsShowPhoto => '„Foto anzeigen“';
+  String get personsShowPhoto => 'Foto anzeigen';
 
   @override
   String get personsNameEntry => 'Person benennen…';
@@ -2582,10 +2498,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get personsSomeoneElse => 'Jemand anderes…';
 
   @override
-  String get personsForgetEntry => 'Entscheidung rückgängig machen';
+  String get personsForgetEntry => 'Entscheidung zurücknehmen';
 
   @override
-  String get personsForgetTarget => 'Vergessen';
+  String get personsForgetTarget => 'Zurücknehmen';
 
   @override
   String personsMemberBadge(String name) {
@@ -2610,7 +2526,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get personsLinkNobodyFree =>
-      'Jedes Element dieses Raums ist bereits jemand.';
+      'Jedes Mitglied dieses Bereichs ist bereits einer Person zugeordnet.';
 
   @override
   String appearsInPhotosAs(String name) {
@@ -2638,7 +2554,8 @@ class AppLocalizationsDe extends AppLocalizations {
   String get viewerMarkFace => 'Ein Gesicht markieren';
 
   @override
-  String get viewerMarkFaceHint => 'Zeichnen Sie ein Rechteck um ein Gesicht.';
+  String get viewerMarkFaceHint =>
+      'Ziehen Sie ein Rechteck um das Gesicht einer Person, oder tippen Sie auf das Gesicht.';
 
   @override
   String get viewerAdjustFaceHint =>
@@ -2659,12 +2576,12 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String loadNotFoundAlbum(String server, String name) {
-    return 'Das Album $name wurde auf dem Server $server nicht gefunden.';
+    return 'Das Album „$name“ wurde auf dem Server $server nicht gefunden.';
   }
 
   @override
   String loadNotFoundEntry(String server, String name) {
-    return 'Das Album oder der Ordner $name wurde auf dem Server $server nicht gefunden.';
+    return 'Das Album oder der Ordner „$name“ wurde auf dem Server $server nicht gefunden.';
   }
 
   @override
@@ -2674,12 +2591,12 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String loadFailedAlbum(String server, String name) {
-    return 'Das Album $name konnte auf dem Server $server nicht geöffnet werden.';
+    return 'Das Album „$name“ konnte auf dem Server $server nicht geöffnet werden.';
   }
 
   @override
   String loadFailedEntry(String server, String name) {
-    return 'Das Album oder der Ordner $name konnte auf dem Server $server nicht geöffnet werden.';
+    return 'Das Album oder der Ordner „$name“ konnte auf dem Server $server nicht geöffnet werden.';
   }
 
   @override
@@ -2720,9 +2637,9 @@ class AppLocalizationsDe extends AppLocalizations {
       count,
       locale: localeName,
       other:
-          '$count Elemente wurden übersprungen, da ihr Format vom Server nicht unterstützt wird:',
+          '$count Dateien wurden übersprungen, ihr Format unterstützt der Server nicht:',
       one:
-          'Ein Element wurde übersprungen, da sein Format vom Server nicht unterstützt wird:',
+          'Eine Datei wurde übersprungen, ihr Format unterstützt der Server nicht:',
     );
     return '$_temp0 $names.';
   }
@@ -2765,7 +2682,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get identifyNoticeNobody =>
-      'Die Person, die dieses Album freigegeben hat, sieht Ihren Namen bei den Fotos, die Sie hinzufügen.';
+      'Die Person, die dieses Album geteilt hat, sieht Ihren Namen bei den Fotos, die Sie hinzufügen.';
 
   @override
   String get identifyRemember => 'Auf diesem Gerät angemeldet bleiben';
@@ -2774,7 +2691,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get identifyContinue => 'Weiter';
 
   @override
-  String get identifyWhoTitle => 'Wer bist du?';
+  String get identifyWhoTitle => 'Wer sind Sie?';
 
   @override
   String get identifyRecipientIntro =>
@@ -2782,7 +2699,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get identifyOpenIntro =>
-      'Dieses Album wird mit allen geteilt, die sich identifizieren. Bestätige deine E-Mail-Adresse, um es zu öffnen.';
+      'Dieses Album ist mit allen geteilt, die sagen, wer sie sind. Bestätigen Sie Ihre E-Mail-Adresse, um es zu öffnen.';
 
   @override
   String identifySendCodeTo(String address) {
@@ -2818,7 +2735,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get identifyAskAgainNobody =>
-      'Bitten Sie die Person, die den Beitrag geteilt hat, Ihnen den Link erneut zu senden.';
+      'Bitten Sie die Person, die ihn geteilt hat, Ihnen den Link erneut zu senden.';
 
   @override
   String signedInAsContact(String name) {
@@ -2829,7 +2746,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get switchPerson => 'Nicht Sie? Person wechseln';
 
   @override
-  String get linkTypeHeading => 'Wer darf es öffnen?';
+  String get linkTypeHeading => 'Wer ihn öffnen darf';
 
   @override
   String get linkTypeAnonymous => 'Jeder mit dem Link (anonym)';
@@ -2885,7 +2802,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get recipientLinksOnce =>
-      'Jeder Link wird erst jetzt angezeigt und gibt den jeweiligen Empfänger an. Versenden Sie ihn über Ihr eigenes E-Mail-Programm oder per Chat.';
+      'Jeder Link wird nur jetzt angezeigt und erkennt seinen Empfänger. Versenden Sie ihn mit Ihrem eigenen E-Mail-Programm oder Chat.';
 
   @override
   String sendEmailTo(String address) {
@@ -2915,12 +2832,12 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String shareMessageBody(String album, String name, String link) {
-    return 'Hallo $name,\n\nhier sind die Fotos aus dem $album:\n$link\n';
+    return 'Hallo $name,\n\nhier sind die Fotos von $album:\n$link\n';
   }
 
   @override
   String get launchFailed =>
-      'Auf diesem Gerät lässt sich dieser Link mit keiner Anwendung öffnen.';
+      'Keine App auf diesem Gerät kann diesen Link öffnen.';
 
   @override
   String get linkPersonalOpen => 'Personalisiert';
@@ -2956,7 +2873,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get groupLinkNote =>
-      'Wer den Link öffnet, bestätigt seine E-Mail-Adresse einmalig, entweder durch Eingabe eines Codes oder durch Einloggen.';
+      'Wer den Link öffnet, bestätigt einmal seine E-Mail-Adresse – per Code oder per Anmeldung.';
 
   @override
   String get groupLinkWithoutEmail =>
@@ -2964,7 +2881,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String shareMessageBodyGroup(String album, String link) {
-    return 'Hallo,\n\nhier sind die Fotos aus dem $album:\n$link\n';
+    return 'Hallo,\n\nhier sind die Fotos von $album:\n$link\n';
   }
 
   @override
@@ -2981,7 +2898,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get cropReset => 'Zurücksetzen';
 
   @override
-  String get cropAspectImage => 'Bildformat';
+  String get cropAspectImage => 'Seitenverhältnis des Bildes';
 
   @override
   String get cropAspectFree => 'Freiform';
@@ -2994,11 +2911,11 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get cropNote =>
-      'Ein Zuschneiden verändert lediglich die Darstellung des Fotos. Wer es herunterlädt, erhält weiterhin das gesamte Original.';
+      'Zuschneiden ändert nur die Darstellung des Fotos. Wer es herunterladen darf, erhält weiterhin das ganze Original.';
 
   @override
   String get cropAreaHint =>
-      'Ziehen Sie, um den Rahmen zu zeichnen, zu verschieben oder in der Größe anzupassen; tippen Sie in den Rahmen, um die Änderung zu übernehmen.';
+      'Ziehen Sie, um den Rahmen zu zeichnen, zu verschieben oder seine Größe zu ändern; tippen Sie in den Rahmen, um ihn zu übernehmen.';
 
   @override
   String get recipientsPickEmail => 'E-Mail-Adresse aus meinen Kontakten…';
@@ -3022,7 +2939,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get addEmailNotNow => 'Jetzt nicht';
 
   @override
-  String get addEmailTitle => 'Fügen Sie Ihre E-Mail-Adresse hinzu';
+  String get addEmailTitle => 'Ihre E-Mail-Adresse hinzufügen';
 
   @override
   String get addEmailExplanation =>
@@ -3030,4 +2947,8 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get addEmailDone => 'Ihre E-Mail-Adresse wurde gespeichert.';
+
+  @override
+  String get peopleLeadInviter =>
+      'Ihre Einladungen, die noch niemand angenommen hat.';
 }
