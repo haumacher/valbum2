@@ -990,10 +990,9 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// Counts the times the cache changed, so that its size is read again.
   int _cacheGeneration = 0;
 
-  /// Counts the invitations issued here, so that the list of the open ones
-  /// reads itself again, see [InvitationsSection.generation]. The users list
-  /// listens to the same counter: an invitation *is* a pending user (issue
-  /// #89), so issuing one adds a seat to that list.
+  /// Counts the invitations issued here, so that the people list reads itself
+  /// again, see [PeopleSection.generation]: an invitation *is* a pending user
+  /// (issue #89), so issuing one adds a row to that list.
   int _invitationGeneration = 0;
 
   /// A pre-filled suggestion: the server the app talks to, or the demo server.
@@ -1493,53 +1492,27 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     ];
   }
 
-  /// The way to invite somebody, for a caller who may (issue #52).
+  /// The people of this space and the way to invite more (issues #52, #55,
+  /// #218), for a caller who may invite.
   ///
-  /// Offered to a member and to the admin, never to a guest — a guest invites
-  /// nobody. Whether a *member* may is the server's word under
+  /// Offered to whoever may invite — never to a guest. The administrator reads
+  /// every user and every open invitation in one list, an inviter who is not
+  /// the administrator their own open invitations; "Invite…" ends that list.
+  /// Whether a *member* may invite at all is the server's word under
   /// `--invite admin`, and it is said in the dialog where it is asked, not
   /// guessed here.
-  ///
-  /// Only issuing an invitation is offered. Listing the invitations one handed
-  /// out, withdrawing them and turning a guest into a member are the
-  /// management screens of issue #55; the calls they need are in
-  /// [VAlbumClient] already.
   List<Widget> _inviteSection(AppLocalizations l10n) {
     var role = identity?.role ?? "";
     if (!CallerInfo(role: role).mayInvite) {
       return const [];
     }
-    var client = _managementClient();
     return [
-      const SizedBox(height: 24),
-      const Divider(),
-      const SizedBox(height: 8),
-      Text(l10n.peopleHeading, style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 8),
-      Text(l10n.inviteExplanation),
-      const SizedBox(height: 16),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          OutlinedButton.icon(
-            key: inviteButtonKey,
-            onPressed: _invite,
-            icon: const Icon(Icons.person_add),
-            label: Text(l10n.inviteAction),
-          ),
-        ],
+      PeopleSection(
+        client: _managementClient(),
+        isAdmin: role == roleAdmin,
+        generation: _invitationGeneration,
+        onInvite: _invite,
       ),
-      // What became of the invitations one handed out: the administrator is
-      // answered all of them, a member their own, see issue #55.
-      if (client != null)
-        InvitationsSection(
-          client: client,
-          generation: _invitationGeneration,
-        ),
-      // Who is on this server at all is the administrator's business alone.
-      if (client != null && role == roleAdmin)
-        UsersSection(client: client, generation: _invitationGeneration),
     ];
   }
 
@@ -1632,7 +1605,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
           : l10n.signedInAsUser(userDisplayName(l10n, userName)));
       var role = user.role;
       if (role != null && role.isNotEmpty) {
-        lines.add(l10n.roleLine(role));
+        lines.add(l10n.roleLine(CallerPermission.roleWord(l10n, role)));
       }
       if (user.deviceName.isNotEmpty) {
         lines.add(l10n.deviceLine(user.deviceName));

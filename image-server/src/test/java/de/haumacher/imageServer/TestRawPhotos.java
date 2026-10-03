@@ -365,32 +365,6 @@ public class TestRawPhotos extends ShareTestCase {
 		assertTrue(Arrays.equals(cr2, entries.get("IMG_1.CR2")));
 	}
 
-	public void testTheDuplicateSweepTakesEachFileOfAPairOnItsOwn() throws Exception {
-		byte[] jpeg = jpeg();
-		uploadAll("IMG_1.JPG", jpeg, "IMG_1.CR2", RawFixtures.cr2(120, 80, 1));
-		AlbumInfo album = album();
-		image(album, "IMG_1.JPG").setRating(2);
-		assertEquals(HttpServletResponse.SC_OK, put(PATH, json(album), SharingFixture.ALICE).status());
-		// The JPEG, and only the JPEG, lies elsewhere in the space too.
-		Files.createDirectories(_base.resolve("2024/Other"));
-		Files.write(_base.resolve("2024/Other/copy.jpg"), jpeg);
-		servlet().index().indexNow();
-
-		Map<String, String> parameters = new HashMap<>();
-		parameters.put("action", "find-duplicates");
-		FakeResponse response = post(PATH, "", SharingFixture.ALICE, parameters);
-		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
-		MoveResult result = MoveResult.readMoveResult(reader(response.body()));
-		assertEquals(1, result.getOutcomes().size());
-		assertEquals("IMG_1.JPG", result.getOutcomes().get(0).getName());
-
-		// The photograph stays as its raw, with what was said about it.
-		AlbumInfo after = album();
-		assertEquals(Arrays.asList("IMG_1.CR2"), names(after));
-		assertEquals(2, image(after, "IMG_1.CR2").getRating());
-		assertEquals("", image(after, "IMG_1.CR2").getRaw());
-	}
-
 	// --- The stored form. ---
 
 	public void testTheStoredFormOfAPair() throws Exception {

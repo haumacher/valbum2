@@ -217,21 +217,75 @@ Widget thumbnail(
 /// issue #93. Decoded at the height it is drawn at, a tile costs a ninth of
 /// that and the cache holds many times more of the album.
 ///
-/// The height asked for is the displayed height times the device's pixel
-/// ratio, rounded up, so nothing is ever drawn from fewer pixels than it
-/// shows; `allowUpscaling: false` caps it at the thumbnail's own size, so a
-/// tile larger than the thumbnail decodes it unchanged instead of blowing it
-/// up in memory. The cache key changes with the size, which is the point: two
-/// tiles of different size are two different decodings of one download.
+/// The height needed is the displayed height times the device's pixel ratio,
+/// rounded up, so nothing is ever drawn from fewer pixels than it shows;
+/// `allowUpscaling: false` caps it at the thumbnail's own size, so a tile
+/// larger than the thumbnail decodes it unchanged instead of blowing it up in
+/// memory. The cache key changes with the size: two tiles of different size
+/// are two different decodings of one download.
+///
+/// **A decoding that is already there is reused where it is tall enough**
+/// (issue #223): taking a photograph out of an album lays out every row
+/// behind it again, a few pixels taller or shorter each, and a new key for
+/// every tile there decoded the whole rest of the album anew. Where the
+/// decoding this image was last given ([decodedThumbnailHeight]) is still in
+/// the [ImageCache] — live, cached or on its way — and holds at least the
+/// pixels needed and at most [_reusedDecodingBound] times as many rows, that
+/// decoding is asked for again: same key, no decode, the very picture the
+/// tile already shows. The bound is what #93 is about: a decoding twice as
+/// tall holds four times the pixels the tile needs, which is the most a tile
+/// may keep for not decoding — a tile shrunk further (a window narrowed to
+/// less than half) decodes at its new size and lets the large one go. The
+/// pixels themselves are no concern within it: the [Image] samples down with
+/// mipmaps (`FilterQuality.medium`), and nothing is ever drawn from fewer
+/// pixels than shown. A tile that grows decodes at its new height; it keeps
+/// showing its old picture while it does, see [_ThumbnailState._placeheld].
 ImageProvider resizedThumbnail(
   VAlbumClient client,
   String imageUrl, {
   required double displayHeight,
   required double devicePixelRatio,
 }) {
-  var height = (displayHeight * devicePixelRatio).ceil();
+  var needed = (displayHeight * devicePixelRatio).ceil();
+  var held = _decodedHeights[imageUrl];
+  var height = held != null &&
+          held >= needed &&
+          held <= needed * _reusedDecodingBound &&
+          _isDecoding(_decodedAt(client, imageUrl, held))
+      ? held
+      : needed;
   _rememberDecodedHeight(imageUrl, height);
   return _decodedAt(client, imageUrl, height);
+}
+
+/// How many times taller than needed a decoding may be and still be reused,
+/// see [resizedThumbnail] (issue #223).
+const int _reusedDecodingBound = 2;
+
+/// What the [ImageCache] knows of [provider]'s picture, `null` where its key
+/// cannot be told at once.
+///
+/// A [ResizeImage] over a [ThumbnailImage] obtains its key synchronously,
+/// which is what lets the question be asked while a tile builds.
+ImageCacheStatus? _cacheStatus(ImageProvider provider) {
+  Object? key;
+  provider
+      .obtainKey(ImageConfiguration.empty)
+      .then<void>((Object obtained) => key = obtained);
+  return key == null
+      ? null
+      : PaintingBinding.instance.imageCache.statusForKey(key!);
+}
+
+/// Whether the [ImageCache] holds [provider]'s picture — live, cached, or
+/// still being decoded.
+bool _isDecoding(ImageProvider provider) =>
+    _cacheStatus(provider)?.tracked ?? false;
+
+/// Whether [provider]'s picture is decoded and can be shown at once.
+bool _isDecoded(ImageProvider provider) {
+  var status = _cacheStatus(provider);
+  return status != null && status.tracked && !status.pending;
 }
 
 /// The provider decoding the thumbnail of [imageUrl] at [height] pixels.
@@ -332,6 +386,31 @@ class _ThumbnailState extends State<_Thumbnail> {
   /// The stream this tile holds a listener on, see [_Thumbnail].
   ImageStream? _held;
 
+  /// The provider this tile draws, chosen once per change of the widget or
+  /// of its dependencies by [_hold] — [resizedThumbnail] answers from what the
+  /// cache holds, so asking again in [build] might answer differently.
+  late ImageProvider _image;
+
+  /// Whether this tile has shown a picture of [_Thumbnail.imageUrl] (issue
+  /// #223): a new decoding of the same image then keeps the old picture until
+  /// it is ready, and neither shows the placeholder nor fades in again.
+  bool _pictured = false;
+
+  /// The decoding [_image] stands in for until it is ready, see [_hold].
+  ImageStream? _awaited;
+
+  /// The provider of [_awaited].
+  ImageProvider? _awaitedImage;
+
+  /// Switches to the awaited decoding once it is there, see [_hold].
+  late final ImageStreamListener _arrival = ImageStreamListener(
+    (ImageInfo image, bool synchronous) {
+      image.dispose();
+      _arrived();
+    },
+    onError: (Object error, StackTrace? stack) => _arrived(),
+  );
+
   /// Takes the frame and lets go of it again: the picture is drawn by the
   /// [Image] below, this listener is here to be counted, not to paint. An
   /// [ImageInfo] handed to a listener is its own to dispose.
@@ -367,14 +446,58 @@ class _ThumbnailState extends State<_Thumbnail> {
     );
   }
 
+  /// Chooses what this tile draws and holds on to it, see [_Thumbnail].
+  ///
+  /// A tile that has a picture of its image already keeps showing it while a
+  /// new decoding resolves (`gaplessPlayback`, issue #223). A tile that has
+  /// none yet — a *new* tile, which is what a photograph moved into another
+  /// row by a re-layout becomes — borrows the decoding its image was last
+  /// given ([decodedThumbnailHeight]) where that one is finished and the one
+  /// it needs is not: it shows that picture at once, without a placeholder
+  /// or a fade, and changes to its own decoding when it arrives. Only a
+  /// picture this image never had anywhere is waited for.
   void _hold() {
-    var stream =
-        _provider(context).resolve(createLocalImageConfiguration(context));
-    if (stream.key == _held?.key) {
+    var configuration = createLocalImageConfiguration(context);
+    var before = decodedThumbnailHeight(widget.imageUrl);
+    var target = _provider(context);
+    var stream = target.resolve(configuration);
+    if (stream.key != _held?.key) {
+      _held?.removeListener(_listener);
+      _held = stream..addListener(_listener);
+    }
+
+    ImageProvider? standIn;
+    if (!_pictured && before != null && target is ResizeImage) {
+      var borrowed = _decodedAt(widget.client, widget.imageUrl, before);
+      if (borrowed != target && !_isDecoded(target) && _isDecoded(borrowed)) {
+        standIn = borrowed;
+      }
+    }
+    _stopAwaiting();
+    if (standIn == null) {
+      _image = target;
+    } else {
+      _image = standIn;
+      _awaitedImage = target;
+      _awaited = stream..addListener(_arrival);
+    }
+  }
+
+  void _stopAwaiting() {
+    _awaited?.removeListener(_arrival);
+    _awaited = null;
+    _awaitedImage = null;
+  }
+
+  /// The awaited decoding is there (or has failed, which the [Image] then
+  /// reports): draw it, gaplessly, instead of the stand-in.
+  void _arrived() {
+    var target = _awaitedImage;
+    _stopAwaiting();
+    if (!mounted || target == null) {
       return;
     }
-    _held?.removeListener(_listener);
-    _held = stream..addListener(_listener);
+    setState(() => _image = target);
   }
 
   @override
@@ -387,11 +510,16 @@ class _ThumbnailState extends State<_Thumbnail> {
   @override
   void didUpdateWidget(_Thumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      // Another image: the old picture must not stand in for it.
+      _pictured = false;
+    }
     _hold();
   }
 
   @override
   void dispose() {
+    _stopAwaiting();
     _held?.removeListener(_listener);
     _held = null;
     super.dispose();
@@ -399,10 +527,14 @@ class _ThumbnailState extends State<_Thumbnail> {
 
   @override
   Widget build(BuildContext context) => Image(
-        image: _provider(context),
+        image: _image,
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
+        // A tile laid out anew at another height decodes its image anew
+        // (issue #223); until that is ready it goes on showing the picture it
+        // has. Another image is never shown in its place, see [_pictured].
+        gaplessPlayback: _pictured,
         frameBuilder: _placeheld,
       );
 
@@ -421,7 +553,14 @@ class _ThumbnailState extends State<_Thumbnail> {
     int? frame,
     bool wasSynchronouslyLoaded,
   ) {
-    var shown = wasSynchronouslyLoaded || frame != null;
+    var arrived = wasSynchronouslyLoaded || frame != null;
+    // A new decoding of the picture this tile already shows resets the
+    // frame, but the [Image] goes on painting the old one (gapless): the tile
+    // is shown, and stays so without a fade (issue #223).
+    var shown = arrived || _pictured;
+    if (arrived) {
+      _pictured = true;
+    }
     return DecoratedBox(
       decoration: BoxDecoration(
         color: shown ? null : thumbnailPlaceholderColor,

@@ -120,7 +120,7 @@ void main() {
       ..clearLiveImages();
   });
 
-  testWidgets('an editor is offered the entry, right after the duplicates',
+  testWidgets('an editor is offered the entry',
       (tester) async {
     await withFakeImageHttp(() async {
       await pumpAlbum(tester, server(rights: editor, requests: []));
@@ -128,10 +128,6 @@ void main() {
 
       expect(find.byKey(const Key("reanalyze")), findsOneWidget);
       expect(find.text(testL10n.reanalyze), findsOneWidget);
-      var duplicates =
-          tester.getTopLeft(find.byKey(const Key("find-duplicates"))).dy;
-      var reanalyze = tester.getTopLeft(find.byKey(const Key("reanalyze"))).dy;
-      expect(reanalyze, greaterThan(duplicates));
     });
   });
 

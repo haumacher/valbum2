@@ -70,10 +70,20 @@ Future<void> pumpIn(
     if (query["type"] == "devices") {
       return json(threeDevices());
     }
+    // One member, one administrator and one invitation nobody accepted yet,
+    // which both lists answer and the members section shows once (#218).
     if (query["type"] == "invitations") {
-      return json('{"invitations": []}');
+      return json('{"invitations": [{"id": "i1", "role": "view", '
+          '"clearance": "public", "recipient": "Oma", "invitedBy": "haui", '
+          '"expires": "2099-12-24T17:00:00Z"}]}');
     }
-    return json('{"users": []}');
+    return json('{"users": ['
+        '{"name": "haui", "role": "admin", "devices": 1}, '
+        '{"name": "bob", "role": "edit", "clearance": "all", '
+        '"mayShare": true, "devices": 1}, '
+        '{"name": "", "role": "view", "clearance": "public", '
+        '"pending": true, "recipient": "Oma", "invitedBy": "haui", '
+        '"invitation": "i1", "devices": 0}]}');
   });
   await tester.pumpWidget(
     localizedApp(
@@ -113,7 +123,22 @@ void main() {
     expect(find.text(de.devicesHeading), findsOneWidget);
     expect(find.text(de.addDevice), findsOneWidget);
     expect(find.text(de.peopleHeading), findsOneWidget);
-    expect(find.text(de.usersHeading), findsOneWidget);
+    expect(find.text(de.usersLead), findsOneWidget);
+    expect(find.text(de.inviteAction), findsOneWidget);
+    // The members section (issue #218): short role names, a short line of
+    // what is seen and whether links may be shared, the invitation once.
+    expect(find.text(de.roleLine(de.roleWordAdmin)), findsOneWidget);
+    expect(
+      find.text("${de.roleWordEdit} · ${de.permissionSeeingAll} · "
+          "${de.permissionSharingMay}"),
+      findsOneWidget,
+    );
+    expect(
+      find.text("${de.roleWordView} · ${de.permissionSeeingPublic} · "
+          "${de.permissionSharingMayNot}"),
+      findsOneWidget,
+    );
+    expect(find.text(de.invitedForPending("Oma")), findsOneWidget);
     expect(find.text(de.diagnosticsHeading), findsOneWidget);
     expect(find.text(de.diagnosticsLead), findsOneWidget);
 
@@ -374,7 +399,7 @@ void sliceThree() {
         findsOneWidget,
       );
       expect(
-        find.text("Das Album oder der Ordner valbum wurde auf dem Server "
+        find.text("Das Album oder der Ordner „valbum“ wurde auf dem Server "
             "${load.appBase} nicht gefunden."),
         findsOneWidget,
       );
@@ -539,14 +564,19 @@ void sliceTwo() {
     testWidgets('the person a member is, in the users list', (tester) async {
       await tester.pumpWidget(localizedApp(
         Scaffold(
-          body: UsersSection(
+          body: PeopleSection(
+            isAdmin: true,
+            onInvite: () {},
             client: VAlbumClient(
               dataUrl: "http://server/valbum/data",
-              httpClient: MockClient((request) async => json(
-                    '{"users": [{"name": "haui", "role": "admin", '
-                    '"devices": 1, "person": "p-anna", '
-                    '"personName": "Anna"}]}',
-                  )),
+              httpClient: MockClient((request) async =>
+                  request.url.queryParameters["type"] == "invitations"
+                      ? json('{"invitations": []}')
+                      : json(
+                          '{"users": [{"name": "haui", "role": "admin", '
+                          '"devices": 1, "person": "p-anna", '
+                          '"personName": "Anna"}]}',
+                        )),
             ),
           ),
         ),
@@ -931,7 +961,7 @@ void sliceTwo() {
         "wiedergeben (video/mp4).",
       );
       expect(de.videoConversionFailed("x"), startsWith("Der Server konnte"));
-      expect(de.diagnosticsEmpty, "Es wurden keine Probleme festgestellt.");
+      expect(de.diagnosticsEmpty, "Keine Probleme aufgezeichnet.");
     });
 
     testWidgets('the video format the device refuses (#184)', (tester) async {

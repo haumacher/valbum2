@@ -40,27 +40,27 @@ import 'settings.dart';
 import 'urls.dart';
 import 'page_insets.dart';
 
-/// What an invitation promises, said to the person who opened it (issue #85).
-///
-/// The words of the settings, so that what an invitation promises and what the
-/// invited person later reads about themselves are the same, see
-/// [CallerPermission.roleWordYou]. A role the app does not know promises
-/// nothing rather than the wrong thing, and the sentence then simply ends
-/// after the invitation, see [invitationHeadline].
+/// What an invitation offers, said to the person who opened it (issues #85,
+/// #218): the short name of the role, the same word the settings and the
+/// people list use. A role the app does not know offers nothing rather than
+/// the wrong thing, and the sentence then simply ends after the invitation,
+/// see [invitationHeadline].
 String invitationRoleName(AppLocalizations l10n, String role) =>
-    CallerPermission.roleWordYou(l10n, role);
+    CallerPermission.normalizeRole(role).isEmpty
+        ? ""
+        : CallerPermission.roleWord(l10n, role);
 
-/// Who invited, and what they offered.
+/// Who invited, and as what.
 String invitationHeadline(
   AppLocalizations l10n,
   String invitedBy,
   String role,
 ) {
-  var may = invitationRoleName(l10n, role);
+  var as = invitationRoleName(l10n, role);
   var who = userDisplayName(l10n, invitedBy);
-  return may.isEmpty
+  return as.isEmpty
       ? l10n.invitationHeadlinePlain(who)
-      : l10n.invitationHeadlineWithRole(who, may);
+      : l10n.invitationHeadlineWithRole(who, as);
 }
 
 /// The role a new invitation offers unless another is chosen (issue #85).
@@ -538,6 +538,8 @@ class InviteDialogState extends State<InviteDialog> {
     var titles = Theme.of(context).textTheme.titleSmall;
     var refusal = _refusal;
     return [
+      Text(l10n.inviteExplanation),
+      const SizedBox(height: 16),
       // What the invited person may do, see and hand out: the same three
       // choices the administrator changes later, see [PermissionChoices] and
       // issue #85.

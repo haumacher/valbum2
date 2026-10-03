@@ -7,18 +7,13 @@ import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.Rights;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
-import de.haumacher.imageServer.shared.model.AlbumPart;
-import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.IndexProgress;
-import de.haumacher.imageServer.shared.model.MoveOutcome;
-import de.haumacher.imageServer.shared.model.MoveResult;
 import de.haumacher.imageServer.shared.model.PresentFile;
 import de.haumacher.imageServer.shared.model.ShareLinkCreated;
 import de.haumacher.imageServer.shared.model.UploadCheckResult;
 import de.haumacher.imageServer.upload.HashCache;
 import de.haumacher.imageServer.upload.HashIndex;
-import de.haumacher.msgbuf.server.io.WriterAdapter;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -26,7 +21,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -220,74 +214,26 @@ public class TestHashIndex extends ShareTestCase {
 		assertNull("A link is told nothing about the space's index either.", result.getIndexed());
 	}
 
-	// --- The sweep. ---
+	// --- The retired sweep, see issue #219. ---
 
-	public void testTheSweepSetsAsideExactlyTheDuplicates() throws Exception {
+	public void testTheRetiredSweepIsGoneForEveryCallerAndMovesNothing() throws Exception {
 		byte[] open = Files.readAllBytes(_base.resolve(OPEN));
 		assertEquals(HttpServletResponse.SC_OK,
 			upload(INBOX, SharingFixture.ALICE, "copy.jpg", open).status());
 		index();
 
-		MoveResult result = sweep(INBOX, SharingFixture.ALICE);
+		for (String token : new String[] { SharingFixture.ALICE, SharingFixture.BOB, shareToken(), null }) {
+			FakeResponse response = sweepResponse(INBOX, token);
+			assertEquals(response.body(), HttpServletResponse.SC_GONE, response.status());
+			assertEquals(ImageServlet.RETIRED_FIND_DUPLICATES, errorMessage(response));
+		}
 
-		assertEquals("Only the photo that is elsewhere too is named.", 1, result.getOutcomes().size());
-		MoveOutcome outcome = result.getOutcomes().get(0);
-		assertEquals("copy.jpg", outcome.getName());
-		assertTrue("The message must name where the photo already is: " + outcome.getMessage(),
-			outcome.getMessage().contains(SharingFixture.PUBLIC + "/open.jpg"));
-
-		assertFalse("The duplicate must have left the album.",
+		assertTrue("The copy the library holds elsewhere too must stay where it is.",
 			Files.exists(_base.resolve(SharingFixture.CAROLS_ALBUM).resolve("copy.jpg")));
-		assertTrue("The photo that is nowhere else must stay.",
-			Files.exists(_base.resolve(SharingFixture.CAROLS_ALBUM).resolve("carols.jpg")));
-		assertTrue("The original must be untouched.",
-			Arrays.equals(open, Files.readAllBytes(_base.resolve(OPEN))));
-
-		List<String> aside = entries(_base.resolve(UserStore.DIRECTORY_NAME).resolve("duplicates"));
-		assertEquals("Nothing is deleted: the file is set aside under its hash.",
-			Collections.singletonList(HashCache.sha256(open) + "-copy.jpg"), aside);
-
-		restartServer();
+		assertFalse("Nothing is set aside.",
+			Files.exists(_base.resolve(UserStore.DIRECTORY_NAME).resolve(MoveService.DUPLICATES_FOLDER)));
 		AlbumInfo album = album(get(INBOX, "json", SharingFixture.ALICE));
-		assertFalse("The album's sidecar must have lost the part.", names(album).contains("copy.jpg"));
-		assertTrue(names(album).contains("carols.jpg"));
-	}
-
-	public void testTheSweepFindsNothingWhereNothingIsDuplicated() throws Exception {
-		index();
-
-		assertEquals(Collections.emptyList(), sweep(INBOX, SharingFixture.ALICE).getOutcomes());
-	}
-
-	public void testTwoCopiesInOneAlbumAreNotDuplicatesOfTheSpace() throws Exception {
-		// The same contents twice in the very album that is swept: the question is whether the
-		// library has the photo *elsewhere*, and it has not.
-		byte[] photo = photo("twin");
-		assertEquals(HttpServletResponse.SC_OK,
-			upload(INBOX, SharingFixture.ALICE, "twin.jpg", photo).status());
-		Files.copy(_base.resolve(SharingFixture.CAROLS_ALBUM).resolve("twin.jpg"),
-			_base.resolve(SharingFixture.CAROLS_ALBUM).resolve("twin-2.jpg"));
-		index();
-
-		assertEquals(Collections.emptyList(), sweep(INBOX, SharingFixture.ALICE).getOutcomes());
-		assertTrue(Files.exists(_base.resolve(SharingFixture.CAROLS_ALBUM).resolve("twin-2.jpg")));
-	}
-
-	public void testTheSweepNeedsTheEditRight() throws Exception {
-		index();
-
-		FakeResponse response = sweepResponse(INBOX, SharingFixture.BOB);
-
-		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
-		assertEquals(ImageServlet.DUPLICATES_REFUSED, errorMessage(response));
-	}
-
-	public void testAShareLinkMaySweepNothing() throws Exception {
-		index();
-
-		FakeResponse response = sweepResponse("/", shareToken());
-
-		assertEquals(HttpServletResponse.SC_FORBIDDEN, response.status());
+		assertTrue("The album keeps the part.", names(album).contains("copy.jpg"));
 	}
 
 	// --- What indexing is allowed to change. ---
@@ -325,12 +271,6 @@ public class TestHashIndex extends ShareTestCase {
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("action", "check");
 		return post(pathInfo, body.toString(), token, parameters);
-	}
-
-	private MoveResult sweep(String pathInfo, String token) throws Exception {
-		FakeResponse response = sweepResponse(pathInfo, token);
-		assertEquals(body(response), HttpServletResponse.SC_OK, response.status());
-		return MoveResult.readMoveResult(reader(body(response)));
 	}
 
 	private FakeResponse sweepResponse(String pathInfo, String token) throws Exception {
@@ -372,17 +312,6 @@ public class TestHashIndex extends ShareTestCase {
 			}
 		});
 		return names;
-	}
-
-	private static List<String> entries(Path folder) throws Exception {
-		List<String> result = new ArrayList<>();
-		if (!Files.isDirectory(folder)) {
-			return result;
-		}
-		try (Stream<Path> files = Files.list(folder)) {
-			files.map(path -> path.getFileName().toString()).sorted().forEach(result::add);
-		}
-		return result;
 	}
 
 	/** A tiny JPEG with contents of its own, so that no upload finds a duplicate. */
@@ -445,41 +374,6 @@ public class TestHashIndex extends ShareTestCase {
 
 		assertTrue("A photo that went to the trash with its album is not present in the space any more.",
 			check(INBOX, SharingFixture.ALICE, hash).getPresent().isEmpty());
-	}
-
-	/** Probe: the sweep sets aside a duplicate that is a member of a group, and the group of one that remains becomes a plain image. */
-	public void testProbeTheSweepDetachesAGroupMember() throws Exception {
-		byte[] open = Files.readAllBytes(_base.resolve(OPEN));
-		assertEquals(HttpServletResponse.SC_OK,
-			upload(INBOX, SharingFixture.ALICE, "copy.jpg", open).status());
-		AlbumInfo album = album(get(INBOX, "json", SharingFixture.ALICE));
-		ImagePart copy = null, carols = null;
-		for (AlbumPart part : new java.util.ArrayList<>(album.getParts())) {
-			if (part instanceof ImagePart && ((ImagePart) part).getName().equals("copy.jpg")) copy = (ImagePart) part;
-			if (part instanceof ImagePart && ((ImagePart) part).getName().equals("carols.jpg")) carols = (ImagePart) part;
-		}
-		assertNotNull(copy); assertNotNull(carols);
-		album.removePart(copy); album.removePart(carols);
-		ImageGroup group = ImageGroup.create().setRepresentative(0);
-		group.addImage(copy); group.addImage(carols);
-		album.addPart(group);
-		java.io.StringWriter out = new java.io.StringWriter();
-		try (de.haumacher.msgbuf.json.JsonWriter json = new de.haumacher.msgbuf.json.JsonWriter(new WriterAdapter(out))) {
-			album.writeTo(json);
-		}
-		FakeResponse stored = put(INBOX, out.toString(), SharingFixture.ALICE);
-		assertEquals(body(stored), HttpServletResponse.SC_OK, stored.status());
-		index();
-
-		MoveResult result = sweep(INBOX, SharingFixture.ALICE);
-
-		assertEquals(1, result.getOutcomes().size());
-		assertEquals("copy.jpg", result.getOutcomes().get(0).getName());
-		restartServer();
-		AlbumInfo after = album(get(INBOX, "json", SharingFixture.ALICE));
-		assertEquals("The group of one is replaced by its image.", 1, after.getParts().size());
-		assertTrue(after.getParts().get(0) instanceof ImagePart);
-		assertEquals("carols.jpg", ((ImagePart) after.getParts().get(0)).getName());
 	}
 
 }

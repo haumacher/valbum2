@@ -1946,17 +1946,8 @@ class AlbumContentState extends State<AlbumContent>
               _l10n.showTrash,
               (_) => showTrash(),
             ),
-          // Whoever may change this album may have the photos out of it that
-          // the library already holds somewhere else, see issue #118.
-          if (mayEditAlbum)
-            keyedMenuItem(
-              const Key("find-duplicates"),
-              Icons.copy_all,
-              _l10n.findDuplicatesAction,
-              (_) => findDuplicates(),
-            ),
-          // The same editors may have the camera and the position read out of
-          // the files again, which an album described before they existed
+          // Whoever may change this album may have the camera and the position
+          // read out of the files again, which an album described before they existed
           // lacks, see issue #161.
           if (mayEditAlbum)
             keyedMenuItem(
@@ -2178,60 +2169,6 @@ class AlbumContentState extends State<AlbumContent>
     // dimensions for a part whose preview it regenerates.
     widget.albumState.navigator.delegate.forget(widget.albumState.path);
     widget.albumState.reload();
-  }
-
-  /// Sets aside the photos of this album that the library holds elsewhere too,
-  /// the app half of the sweep of issue #118.
-  ///
-  /// Asked first, because it takes photos out of the album the person is
-  /// looking at. Nothing is deleted — every duplicate is renamed into the
-  /// space's own folder — and the confirmation says so, because "find
-  /// duplicates" must not read as "delete duplicates".
-  Future<void> findDuplicates() async {
-    var confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        key: const Key("find-duplicates-dialog"),
-        title: Text(_l10n.findDuplicatesTitle),
-        content: Text(_l10n.findDuplicatesMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(_l10n.cancel),
-          ),
-          ElevatedButton(
-            key: const Key("find-duplicates-confirm"),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(_l10n.findDuplicatesTitle),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
-    MoveResult answer;
-    try {
-      answer = await client.findDuplicates(widget.albumState.path);
-    } catch (error) {
-      if (mounted) {
-        // The server's own reason -- a refusal speaks, see issue #49.
-        showMessage(error is VAlbumException ? error.message : "$error");
-      }
-      return;
-    }
-    if (!mounted) {
-      return;
-    }
-
-    var count = answer.outcomes.length;
-    showMessage(
-        count == 0 ? _l10n.noDuplicatesFound : _l10n.duplicatesSetAside(count));
-    if (count > 0) {
-      widget.albumState.navigator.delegate.forget(widget.albumState.path);
-      widget.albumState.reload();
-    }
   }
 
   /// Reads the camera and the position of the album's photographs from the

@@ -504,9 +504,12 @@ public class ImageServlet extends HttpServlet {
 	/** The message an invitation naming a clearance this build does not know is refused with. */
 	public static final String CLEARANCE_REFUSED = "Unknown clearance; use one of " + Clearances.names() + ".";
 
-	/** The message the duplicate sweep of issue #118 is refused with. */
-	public static final String DUPLICATES_REFUSED =
-		"You may not change this album, so nothing can be set aside from it.";
+	/**
+	 * What the retired duplicate sweep of issue #118 is answered with, see issue #219: it moved
+	 * photographs out of the album.
+	 */
+	public static final String RETIRED_FIND_DUPLICATES =
+		"Finding duplicates was removed: it moved photos out of the album. Nothing was changed.";
 
 	/** The message a share link asking to re-read the photo details is refused with, see issue #161. */
 	public static final String REANALYZE_SHARE_REFUSED =
@@ -2286,60 +2289,6 @@ public class ImageServlet extends HttpServlet {
 		}
 	}
 
-	/**
-	 * Sets aside the photos of the addressed album that lie elsewhere in the space too, see issue
-	 * #118.
-	 *
-	 * <p>
-	 * The sweep that repairs what slipped through while the index was incomplete: every photo of
-	 * this album whose contents are somewhere else in the space as well is renamed into
-	 * <code>{@value de.haumacher.imageServer.auth.UserStore#DIRECTORY_NAME}/{@value MoveService#DUPLICATES_FOLDER}</code>
-	 * — the mechanism of issue #47, hash-prefixed names, nothing deleted — and taken out of the
-	 * album. The answer names, for every photo, where the copy that stays is.
-	 * </p>
-	 *
-	 * <p>
-	 * It needs {@link Rights#EDIT} on the album and nothing more: it changes one album, which is
-	 * what editing an album is. An administrator is not required — whoever may empty this album by
-	 * hand may have the duplicates out of it.
-	 * </p>
-	 */
-	private void findDuplicates(Context context) throws IOException {
-		Caller caller = _auth.caller(context.request());
-		Location location = resolve(context, caller);
-		if (location == null) {
-			return;
-		}
-		PathInfo folder = location.getPath();
-		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folder)) {
-			unauthorized(context, caller, true);
-			return;
-		}
-		if (caller.isShareLink() || !_auth.mayEdit(caller, folder)) {
-			// A share link has no space to compare against, and a visitor has nothing to tidy.
-			refuseMove(context, caller, DUPLICATES_REFUSED, true);
-			return;
-		}
-		if (!folder.toFile().isDirectory()) {
-			error404(context);
-			return;
-		}
-
-		MoveResult result;
-		try {
-			result = new MoveService(_cache, _auth).setAsideDuplicates(folder, _index);
-		} catch (MoveRefused ex) {
-			LOG.warning("Refusing the duplicate sweep in '" + context.request().getPathInfo() + "': "
-				+ ex.getMessage());
-			errorInfo(context, ex.getStatus(), ex.getMessage());
-			return;
-		}
-
-		_index.treeChanged(folder.toFile());
-
-		serveJsonObject(context.response(), result);
-	}
-
 	/** Deletes the temporary files of an upload that is not stored. */
 	private static void discard(List<UploadItem> uploads) {
 		for (UploadItem upload : uploads) {
@@ -4048,7 +3997,8 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		if ("find-duplicates".equals(action)) {
-			findDuplicates(context);
+			// Retired by issue #219, for every caller and before anything is read.
+			retired(context, RETIRED_FIND_DUPLICATES);
 			return;
 		}
 		if ("unlink".equals(action)) {

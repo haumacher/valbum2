@@ -161,28 +161,37 @@ void main() {
   });
 
   group('the sentence the settings show', () {
-    test('says what may be done, what is seen, and whether links may go out',
+    test('says what is seen and whether links may go out, short (#218)',
         () {
       expect(
         CallerPermission.of(auth(role: "edit", clearance: "all", mayShare: true))
             .sentence(testL10n),
-        "You may edit every album of this space; you see all images; "
-        "you may share links.",
+        "Sees: all photos · May share links",
       );
       expect(
         CallerPermission.of(auth(role: "contribute", clearance: "nonPrivate"))
             .sentence(testL10n),
-        "You may add photos to this space; you see all but the private "
-        "images; you may not share links.",
+        "Sees: public and members' photos · May not share links",
       );
       expect(
         CallerPermission.of(auth(role: "view", clearance: "public")).sentence(testL10n),
-        "You may look at this space; you see the public images; you may not "
-        "share links.",
+        "Sees: public photos · May not share links",
       );
       expect(
         CallerPermission.of(auth(role: "admin")).sentence(testL10n),
-        "You manage this server; you see all images; you may share links.",
+        "Sees: all photos · May share links",
+      );
+    });
+
+    test('names a role by a short noun, never a sentence (#218)', () {
+      expect(CallerPermission.roleWord(testL10n, "admin"), "Administrator");
+      expect(CallerPermission.roleWord(testL10n, "edit"), "Editor");
+      expect(CallerPermission.roleWord(testL10n, "contribute"), "Contributor");
+      expect(CallerPermission.roleWord(testL10n, "view"), "Viewer");
+      expect(
+        CallerPermission.of(auth(role: "edit", clearance: "all", mayShare: true))
+            .phrase(testL10n),
+        "Editor · Sees: all photos · May share links",
       );
     });
   });
