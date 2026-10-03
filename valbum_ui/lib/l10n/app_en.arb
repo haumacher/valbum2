@@ -4934,5 +4934,53 @@
   "@noticeNoInbox": {
     "description": "Said by the camera-roll sync where the server names no inbox the device may upload into (issue #226): the device may only look at the albums, or the server is older than the app. Address the reader formally (German: 'Sie', never 'du').",
     "x-translated": "4cb65e91"
+  },
+  "duplicatesMenuEntry": "Photos in several albums",
+  "@duplicatesMenuEntry": {
+    "description": "Menu entry of the start page opening the read-only overview of the photos that lie in more than one album (issue #220); also the page's title while it loads.",
+    "x-translated": "d4d40c95"
+  },
+  "duplicatesPageTitle": "Photos in several albums ({count})",
+  "@duplicatesPageTitle": {
+    "description": "Title of the overview of the photos that lie in more than one album (issue #220); the count is how many such photos there are.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "5a4572f1"
+  },
+  "duplicatesEmpty": "No photo is in more than one album.",
+  "@duplicatesEmpty": {
+    "description": "Said on the overview of photos in several albums (issue #220) when there is none.",
+    "x-translated": "82b6f385"
+  },
+  "duplicatesIndexing": "The library is still being indexed ({done} of {total} folders); photos in folders not indexed yet are missing here.",
+  "@duplicatesIndexing": {
+    "description": "Notice above the overview of photos in several albums (issue #220) while the server is still building its index of the library's photos; done and total count folders. Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "done": {
+        "type": "int"
+      }
+    },
+    "x-translated": "5bd611d7"
+  },
+  "duplicatesCopies": "{count, plural, =1{in 1 album} other{in {count} albums}}",
+  "@duplicatesCopies": {
+    "description": "How many albums one photo lies in, on the overview of photos in several albums (issue #220).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "38d6c56a"
+  },
+  "duplicatesSpaceRoot": "Start page",
+  "@duplicatesSpaceRoot": {
+    "description": "The name shown for a copy lying directly at the root of the library, on the overview of photos in several albums (issue #220).",
+    "x-translated": "1f6caf2c"
   }
 }

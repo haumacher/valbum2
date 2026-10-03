@@ -311,6 +311,17 @@ public class ImageServlet extends HttpServlet {
 	 */
 	public static final String PEOPLE_REFUSED = "The people of this space are its members' business.";
 
+	/**
+	 * What <code>?type=duplicates</code> is refused with to a share link and to an anonymous caller,
+	 * see issue #220: which photographs lie in which albums is an overview of the whole space, and a
+	 * link is handed one album and nothing around it.
+	 */
+	public static final String DUPLICATES_REFUSED =
+		"Which photos lie in several albums is shown to the members of this space only.";
+
+	/** The type of the space-level overview of the photographs in several albums, see issue #220. */
+	public static final String DUPLICATES_TYPE = "duplicates";
+
 	/** What linking somebody else's account to a person is refused with, see issue #128. */
 	public static final String LINK_REFUSED =
 		"Only an administrator says who somebody else is; you may say who you are.";
@@ -942,6 +953,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("contacts".equals(type)) {
 			serveContacts(context, caller);
+			return;
+		}
+		if (DUPLICATES_TYPE.equals(type)) {
+			serveDuplicates(context, caller);
 			return;
 		}
 
@@ -5134,6 +5149,67 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		serveJsonObject(context.response(), _people.toWire());
+	}
+
+	/**
+	 * Answers the photographs of this space that lie in more than one album at
+	 * <code>&lt;data&gt;/?type=duplicates</code>, see issue #220 and {@link Duplicates}.
+	 *
+	 * <p>
+	 * Read-only, and asked of every member, not of editors alone: every copy is answered only where
+	 * the album answers it to this caller — their clearance, the trash, the inbox as
+	 * {@link Inboxes#visibility} shows it to them — so a <code>view</code> member learns nothing
+	 * they could not find by opening the albums, and is spared the search. A share link and an
+	 * anonymous caller are refused (<code>403</code>, {@link #DUPLICATES_REFUSED}): an overview of
+	 * the whole space is no album. Under <code>--auth off</code> everybody is the owner.
+	 * </p>
+	 */
+	private void serveDuplicates(Context context, Caller caller) throws IOException {
+		if (caller.isShareLink() || (!caller.isPaired() && _auth.getMode() != AuthMode.OFF)) {
+			LOG.warning("Refusing the duplicates to " + (caller.isShareLink()
+				? "the share link '" + caller.getShareLabel() + "'" : "an anonymous caller") + ".");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, DUPLICATES_REFUSED);
+			return;
+		}
+		int viewAs;
+		try {
+			viewAs = Privacy.viewAs(context.getParameter(Privacy.VIEW_AS_PARAMETER));
+		} catch (IllegalArgumentException ex) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, VIEW_AS_REFUSED);
+			return;
+		}
+		Path root = _basePath;
+		Duplicates.View view = new Duplicates.View() {
+			@Override
+			public AlbumInfo album(String folder) {
+				PathInfo path = folder.isEmpty() ? new PathInfo(root) : new PathInfo(root, Paths.get(folder));
+				if (!_auth.mayView(caller, path)) {
+					return null;
+				}
+				Resource resource = _cache.lookup(path);
+				return resource instanceof AlbumInfo ? (AlbumInfo) resource : null;
+			}
+
+			@Override
+			public ImagePart photo(String file) {
+				PathInfo path = new PathInfo(root, Paths.get(file));
+				PathInfo folder = path.parent();
+				Resource resource = _cache.lookup(path);
+				if (!(resource instanceof ImagePart)) {
+					return null;
+				}
+				ImagePart image = (ImagePart) resource;
+				if (Inboxes.isInbox(folder.toFile())) {
+					Inboxes.Visibility inbox = Inboxes.visibility(_auth, caller, folder, viewAs);
+					if (!Inboxes.shows(inbox, image, caller.subject())) {
+						return null;
+					}
+				}
+				int clearance = Math.min(_auth.clearance(caller, path), viewAs);
+				return Duplicates.shows(image, clearance, _auth.minRating(caller, path, viewAs)) ? image : null;
+			}
+		};
+		serveJsonObject(context.response(), Duplicates.compute(_index.shared(), _index.progress(), view));
 	}
 
 	/**

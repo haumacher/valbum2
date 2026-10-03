@@ -20,6 +20,7 @@ import 'resource.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'rights.dart';
+import 'routes.dart' show DuplicatesRoute;
 import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
@@ -179,6 +180,13 @@ class ListingView extends StatelessWidget {
     var inbox = link == null && albumState.path.isEmpty && caller != null && caller.hasInbox
         ? caller
         : null;
+    // Which photographs lie in several albums is the space's overview, asked
+    // of the start page by its members -- each of them is answered what they
+    // may see -- and never inside a link, see issue #220. A server without
+    // authentication names nobody but lets everybody edit.
+    var mayAskDuplicates = link == null &&
+        albumState.path.isEmpty &&
+        (CallerInfo.permissionOf(context).named || rightsIn(context).mayEdit);
     return Scaffold(
       // Black like the album pages, so that the way down does not flash from
       // a light page to a dark one, see issue #40.
@@ -246,6 +254,13 @@ class ListingView extends StatelessWidget {
             // nothing to file, see issue #48.
             if (mayChange && self.placement != Placement.none)
               menuItem(Icons.auto_awesome_motion, l10n.applyRule, applyRule),
+            if (mayAskDuplicates)
+              keyedMenuItem(
+                const Key("open-duplicates"),
+                Icons.photo_library_outlined,
+                l10n.duplicatesMenuEntry,
+                (_) => albumState.navigator.go(const DuplicatesRoute()),
+              ),
             if (mayShare(context, albumState.path))
               menuItem(
                 Icons.link,

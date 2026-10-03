@@ -2959,4 +2959,34 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get noticeNoInbox =>
       'The server names no inbox for this device. Ask the administrator for the right to add photos.';
+
+  @override
+  String get duplicatesMenuEntry => 'Photos in several albums';
+
+  @override
+  String duplicatesPageTitle(int count) {
+    return 'Photos in several albums ($count)';
+  }
+
+  @override
+  String get duplicatesEmpty => 'No photo is in more than one album.';
+
+  @override
+  String duplicatesIndexing(int total, int done) {
+    return 'The library is still being indexed ($done of $total folders); photos in folders not indexed yet are missing here.';
+  }
+
+  @override
+  String duplicatesCopies(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'in $count albums',
+      one: 'in 1 album',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get duplicatesSpaceRoot => 'Start page';
 }

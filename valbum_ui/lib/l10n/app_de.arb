@@ -765,8 +765,14 @@
   "peopleLeadInviter": "Ihre Einladungen, die noch niemand angenommen hat.",
   "trashSeveralQuestion": "{count, plural, =1{Ein Foto in den Papierkorb verschieben?} other{{count} Fotos in den Papierkorb verschieben?}}",
   "moveToTrash": "In den Papierkorb verschieben",
+  "inboxTooltip": "Posteingang: {count, plural, =0{nichts wartet} =1{1 Foto wartet} other{{count} Fotos warten}}",
+  "inboxMenuEntry": "Posteingang ({count, plural, =0{nichts wartet} other{{count} warten}})",
   "cameraRollInboxTarget": "Neue Fotos landen im Posteingang des Servers: {name}.",
   "noticeNoInbox": "Der Server gibt keinen Posteingang für dieses Gerät an. Bitten Sie den Administrator um die Berechtigung, Fotos hinzuzufügen.",
-  "inboxTooltip": "Posteingang: {count, plural, =0{nichts wartet} =1{1 Foto wartet} other{{count} Fotos warten}}",
-  "inboxMenuEntry": "Posteingang ({count, plural, =0{nichts wartet} other{{count} warten}})"
+  "duplicatesMenuEntry": "Fotos in mehreren Alben",
+  "duplicatesPageTitle": "Fotos in mehreren Alben ({count})",
+  "duplicatesEmpty": "Kein Foto befindet sich in mehr als einem Album.",
+  "duplicatesIndexing": "Die Bibliothek wird noch indexiert ({done} von {total} Ordnern); Fotos in noch nicht indexierten Ordnern fehlen hier.",
+  "duplicatesCopies": "{count, plural, =1{in 1 Album} other{in {count} Alben}}",
+  "duplicatesSpaceRoot": "Startseite"
 }

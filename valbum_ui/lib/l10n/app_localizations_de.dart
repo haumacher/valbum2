@@ -3000,4 +3000,35 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get noticeNoInbox =>
       'Der Server gibt keinen Posteingang für dieses Gerät an. Bitten Sie den Administrator um die Berechtigung, Fotos hinzuzufügen.';
+
+  @override
+  String get duplicatesMenuEntry => 'Fotos in mehreren Alben';
+
+  @override
+  String duplicatesPageTitle(int count) {
+    return 'Fotos in mehreren Alben ($count)';
+  }
+
+  @override
+  String get duplicatesEmpty =>
+      'Kein Foto befindet sich in mehr als einem Album.';
+
+  @override
+  String duplicatesIndexing(int total, int done) {
+    return 'Die Bibliothek wird noch indexiert ($done von $total Ordnern); Fotos in noch nicht indexierten Ordnern fehlen hier.';
+  }
+
+  @override
+  String duplicatesCopies(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'in $count Alben',
+      one: 'in 1 Album',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get duplicatesSpaceRoot => 'Startseite';
 }

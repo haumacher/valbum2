@@ -1530,6 +1530,72 @@ message IndexProgress {
 	int total;
 }
 
+/**
+ * The photographs of a space that lie in more than one album, see issue #220 and
+ * <code>&lt;data&gt;/?type=duplicates</code>.
+ *
+ * <p>
+ * Read-only: nothing is moved or deleted by asking. Every copy is one the caller may see, exactly
+ * as the album itself would show it to them; a content of which the caller sees fewer than two
+ * copies is no group for them.
+ * </p>
+ */
+message DuplicateList {
+	/**
+	 * The groups, the most copies first, then the newest photograph, then by the path of the first
+	 * copy.
+	 */
+	repeated DuplicateGroup groups;
+
+	/**
+	 * How far the space's hash index has got, see issue #118: while it is incomplete, a copy in a
+	 * folder not indexed yet is simply not known, and the list is what is known so far.
+	 */
+	IndexProgress indexed;
+}
+
+/** One photograph of a {@link DuplicateList}, with every album it lies in. */
+message DuplicateGroup {
+	/**
+	 * The SHA-256 hash (lower-case hex) of the content the group was found by; a stable key, and
+	 * nothing to address. Of a raw photograph standing beside its JPEG (issue #191) one of the two.
+	 */
+	string hash;
+
+	/** The date of the photograph (of its first copy), milliseconds since the epoch, 0 if unknown. */
+	long date;
+
+	/** Every visible copy, at least two, in different albums; the first one stands for the group. */
+	repeated DuplicateCopy copies;
+
+	/**
+	 * The photograph of the first copy, as much as its thumbnail needs: name, kind, date, size,
+	 * orientation and crop &mdash; nothing else of the album's description.
+	 */
+	ImagePart image;
+}
+
+/** One copy of a {@link DuplicateGroup}: a photograph of one album. */
+message DuplicateCopy {
+	/**
+	 * The album's path relative to the root of the caller's space, segments separated by
+	 * <code>/</code>; the empty string for the root itself.
+	 */
+	string album;
+
+	/** The album's title, empty where it has none (the app then shows the folder name). */
+	string title;
+
+	/** The album's {@link AlbumInfo#effectiveDate}, 0 where it has none. */
+	long albumDate;
+
+	/**
+	 * The name of the photograph in the album, the name it is addressed and opened by: of a raw
+	 * standing beside its JPEG (issue #191) the JPEG's, because the two are one photograph.
+	 */
+	string name;
+}
+
 /** A content of an {@link UploadCheckResult} that the space already holds. */
 message PresentFile {
 	/** The SHA-256 hash (lower-case hex) that was asked for. */

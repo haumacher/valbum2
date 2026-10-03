@@ -62,6 +62,15 @@ const String personsSegment = "persons";
 /// once — so no leave guard is registered for it.
 const String trashSegment = "trash";
 
+/// The path segment of the space-level overview of the photographs lying in
+/// more than one album (#220), addressed at the root as `/.duplicates/`.
+///
+/// A leading dot, unlike [personsSegment] and [trashSegment]: no folder of a
+/// library can carry one (the server ignores every such name, issue #173), so
+/// this address shadows no album a library could hold, and a page load of it
+/// is a deep link like any other (its last segment is the trailing slash's).
+const String duplicatesSegment = ".duplicates";
+
 /// One addressable view of the app.
 ///
 /// Every route names the enclosing listing or album by its [albumPath] (the
@@ -309,6 +318,41 @@ class TrashRoute extends VAlbumRoute {
   String toString() => "TrashRoute($path)";
 }
 
+/// The overview of the photographs lying in more than one album, see issue
+/// #220.
+///
+/// A level on the root listing, like the face editor and the trash are on an
+/// album (issue #93): the listing stays mounted beneath it, and the way back
+/// is the app bar's `leading` (issue #100). It changes nothing, so no leave
+/// guard is registered for it.
+class DuplicatesRoute extends VAlbumRoute {
+  const DuplicatesRoute();
+
+  /// It lives at the root of the space.
+  @override
+  List<String> get albumPath => const [];
+
+  @override
+  VAlbumRoute? get up => ListingOrAlbumRoute.root;
+
+  @override
+  List<String> get segments => const [duplicatesSegment, ""];
+
+  /// The overview belongs to the space, not to a folder: re-spelling the path
+  /// of a folder leaves it what it is.
+  @override
+  VAlbumRoute withAlbumPath(List<String> path) => this;
+
+  @override
+  bool operator ==(Object other) => other is DuplicatesRoute;
+
+  @override
+  int get hashCode => duplicatesSegment.hashCode;
+
+  @override
+  String toString() => "DuplicatesRoute($path)";
+}
+
 /// The route the given location denotes.
 ///
 /// [basePath] is the app base the location is relative to (see the library
@@ -332,6 +376,10 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
   segments.removeWhere((segment) => segment.isEmpty);
 
   if (folder) {
+    // `/.duplicates/`, at the root only.
+    if (segments.length == 1 && segments.single == duplicatesSegment) {
+      return const DuplicatesRoute();
+    }
     // `.../<album>/persons/`
     if (segments.isNotEmpty && segments.last == personsSegment) {
       return PersonsRoute(segments.sublist(0, segments.length - 1));

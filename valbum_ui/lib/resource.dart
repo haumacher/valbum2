@@ -3627,6 +3627,266 @@ class IndexProgress extends _JsonObject {
 
 }
 
+///  The photographs of a space that lie in more than one album, see issue #220 and
+///  <code>&lt;data&gt;/?type=duplicates</code>.
+/// 
+///  <p>
+///  Read-only: nothing is moved or deleted by asking. Every copy is one the caller may see, exactly
+///  as the album itself would show it to them; a content of which the caller sees fewer than two
+///  copies is no group for them.
+///  </p>
+class DuplicateList extends _JsonObject {
+	///  The groups, the most copies first, then the newest photograph, then by the path of the first
+	///  copy.
+	List<DuplicateGroup> groups;
+
+	///  How far the space's hash index has got, see issue #118: while it is incomplete, a copy in a
+	///  folder not indexed yet is simply not known, and the list is what is known so far.
+	IndexProgress? indexed;
+
+	/// Creates a DuplicateList.
+	DuplicateList({
+			this.groups = const [], 
+			this.indexed, 
+	});
+
+	/// Parses a DuplicateList from a string source.
+	static DuplicateList? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a DuplicateList instance from the given reader.
+	static DuplicateList read(JsonReader json) {
+		DuplicateList result = DuplicateList();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "DuplicateList";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "groups": {
+				json.expectArray();
+				groups = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = DuplicateGroup.read(json);
+						if (value != null) {
+							groups.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "indexed": {
+				indexed = json.tryNull() ? null : IndexProgress.read(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("groups");
+		json.startArray();
+		for (var _element in groups) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		var _indexed = indexed;
+		if (_indexed != null) {
+			json.addKey("indexed");
+			_indexed.writeContent(json);
+		}
+	}
+
+}
+
+///  One photograph of a {@link DuplicateList}, with every album it lies in.
+class DuplicateGroup extends _JsonObject {
+	///  The SHA-256 hash (lower-case hex) of the content the group was found by; a stable key, and
+	///  nothing to address. Of a raw photograph standing beside its JPEG (issue #191) one of the two.
+	String hash;
+
+	///  The date of the photograph (of its first copy), milliseconds since the epoch, 0 if unknown.
+	int date;
+
+	///  Every visible copy, at least two, in different albums; the first one stands for the group.
+	List<DuplicateCopy> copies;
+
+	///  The photograph of the first copy, as much as its thumbnail needs: name, kind, date, size,
+	///  orientation and crop &mdash; nothing else of the album's description.
+	ImagePart? image;
+
+	/// Creates a DuplicateGroup.
+	DuplicateGroup({
+			this.hash = "", 
+			this.date = 0, 
+			this.copies = const [], 
+			this.image, 
+	});
+
+	/// Parses a DuplicateGroup from a string source.
+	static DuplicateGroup? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a DuplicateGroup instance from the given reader.
+	static DuplicateGroup read(JsonReader json) {
+		DuplicateGroup result = DuplicateGroup();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "DuplicateGroup";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "hash": {
+				hash = json.expectString();
+				break;
+			}
+			case "date": {
+				date = json.expectInt();
+				break;
+			}
+			case "copies": {
+				json.expectArray();
+				copies = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = DuplicateCopy.read(json);
+						if (value != null) {
+							copies.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "image": {
+				image = json.tryNull() ? null : ImagePart.read(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("hash");
+		json.addString(hash);
+
+		json.addKey("date");
+		json.addNumber(date);
+
+		json.addKey("copies");
+		json.startArray();
+		for (var _element in copies) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		var _image = image;
+		if (_image != null) {
+			json.addKey("image");
+			_image.writeContent(json);
+		}
+	}
+
+}
+
+///  One copy of a {@link DuplicateGroup}: a photograph of one album.
+class DuplicateCopy extends _JsonObject {
+	///  The album's path relative to the root of the caller's space, segments separated by
+	///  <code>/</code>; the empty string for the root itself.
+	String album;
+
+	///  The album's title, empty where it has none (the app then shows the folder name).
+	String title;
+
+	///  The album's {@link AlbumInfo#effectiveDate}, 0 where it has none.
+	int albumDate;
+
+	///  The name of the photograph in the album, the name it is addressed and opened by: of a raw
+	///  standing beside its JPEG (issue #191) the JPEG's, because the two are one photograph.
+	String name;
+
+	/// Creates a DuplicateCopy.
+	DuplicateCopy({
+			this.album = "", 
+			this.title = "", 
+			this.albumDate = 0, 
+			this.name = "", 
+	});
+
+	/// Parses a DuplicateCopy from a string source.
+	static DuplicateCopy? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a DuplicateCopy instance from the given reader.
+	static DuplicateCopy read(JsonReader json) {
+		DuplicateCopy result = DuplicateCopy();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "DuplicateCopy";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "album": {
+				album = json.expectString();
+				break;
+			}
+			case "title": {
+				title = json.expectString();
+				break;
+			}
+			case "albumDate": {
+				albumDate = json.expectInt();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("album");
+		json.addString(album);
+
+		json.addKey("title");
+		json.addString(title);
+
+		json.addKey("albumDate");
+		json.addNumber(albumDate);
+
+		json.addKey("name");
+		json.addString(name);
+	}
+
+}
+
 ///  A content of an {@link UploadCheckResult} that the space already holds.
 class PresentFile extends _JsonObject {
 	///  The SHA-256 hash (lower-case hex) that was asked for.

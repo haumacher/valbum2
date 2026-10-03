@@ -2483,6 +2483,22 @@ class VAlbumClient {
     return PersonList.read(JsonReader.fromString(response.body));
   }
 
+  /// The photographs of this space lying in more than one album (#220).
+  ///
+  /// Space-level, asked of the data root: every copy one the caller may see,
+  /// a content seen in one album only being no group. Read-only. A share link
+  /// and an anonymous caller are refused with a 403 carrying the server's own
+  /// sentence.
+  Future<DuplicateList> duplicates() async {
+    var url = "${folderUrl(const [])}?type=duplicates";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
+    }
+    return DuplicateList.read(JsonReader.fromString(response.body));
+  }
+
   /// Adds a person of [name] to the register, answering them (issue #125).
   ///
   /// Immediate and space-level: naming a group of faces in the editor creates

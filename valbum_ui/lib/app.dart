@@ -22,6 +22,7 @@ import 'connectivity.dart';
 import 'contact_session.dart';
 import 'device_code_scanner.dart';
 import 'diagnostics.dart';
+import 'duplicates_view.dart';
 import 'first_screen.dart';
 import 'group_view.dart';
 import 'identify_view.dart';
@@ -1766,6 +1767,12 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
             ListingOrAlbumRoute(album),
             route,
           ],
+        // The overview of the photographs in several albums sits on the start
+        // page, see issue #220.
+        DuplicatesRoute() => [
+            ListingOrAlbumRoute.root,
+            route,
+          ],
       };
 
   /// Watches what sits on top of the pages, see [popRoute].
@@ -1804,6 +1811,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       MemberRoute() => "valbum:member:$album",
       PersonsRoute() => "valbum:persons:$album",
       TrashRoute() => "valbum:trash:$album",
+      DuplicatesRoute() => "valbum:duplicates",
     };
   }
 
@@ -1972,6 +1980,11 @@ class VAlbumState extends State<VAlbumView>
   }
 
   void doLoad() {
+    if (route is DuplicatesRoute) {
+      // A page of the space that asks the server itself, see issue #220: the
+      // listing it stands on is loaded by the level beneath it.
+      return;
+    }
     _resourceFuture = navigator.delegate.resourceAt(path);
   }
 
@@ -1983,6 +1996,9 @@ class VAlbumState extends State<VAlbumView>
 
   @override
   Widget build(BuildContext context) {
+    if (route is DuplicatesRoute) {
+      return DuplicatesView(this);
+    }
     return FutureBuilder<Resource?>(
       future: _resourceFuture,
       builder: (BuildContext context, AsyncSnapshot<Resource?> snapshot) {
@@ -2289,6 +2305,7 @@ class VAlbumState extends State<VAlbumView>
         ListingOrAlbumRoute() => "",
         PersonsRoute() => "",
         TrashRoute() => "",
+        DuplicatesRoute() => "",
       };
 
   /// Every image of the album by its file name, group members included.

@@ -4712,6 +4712,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The server names no inbox for this device. Ask the administrator for the right to add photos.'**
   String get noticeNoInbox;
+
+  /// Menu entry of the start page opening the read-only overview of the photos that lie in more than one album (issue #220); also the page's title while it loads.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos in several albums'**
+  String get duplicatesMenuEntry;
+
+  /// Title of the overview of the photos that lie in more than one album (issue #220); the count is how many such photos there are.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos in several albums ({count})'**
+  String duplicatesPageTitle(int count);
+
+  /// Said on the overview of photos in several albums (issue #220) when there is none.
+  ///
+  /// In en, this message translates to:
+  /// **'No photo is in more than one album.'**
+  String get duplicatesEmpty;
+
+  /// Notice above the overview of photos in several albums (issue #220) while the server is still building its index of the library's photos; done and total count folders. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'The library is still being indexed ({done} of {total} folders); photos in folders not indexed yet are missing here.'**
+  String duplicatesIndexing(int total, int done);
+
+  /// How many albums one photo lies in, on the overview of photos in several albums (issue #220).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{in 1 album} other{in {count} albums}}'**
+  String duplicatesCopies(int count);
+
+  /// The name shown for a copy lying directly at the root of the library, on the overview of photos in several albums (issue #220).
+  ///
+  /// In en, this message translates to:
+  /// **'Start page'**
+  String get duplicatesSpaceRoot;
 }
 
 class _AppLocalizationsDelegate

@@ -47,6 +47,7 @@ import 'persons_view_test.dart'
     show albumOf, authOf, editorClient, pumpEditor, selectFace;
 import 'photo_picker_test.dart' show twoAlbums;
 import 'trash_view_test.dart' as trash;
+import 'duplicates_view_test.dart' as duplicates;
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
 import 'util/l10n.dart';
@@ -666,6 +667,23 @@ void sliceTwo() {
       var en = l10nOf(const Locale("en"));
       expect(find.text(en.trashPageTitle), findsNothing);
       expect(find.text(en.trashPurgeMessage), findsNothing);
+    });
+  });
+
+  group('the photos in several albums speak German (issue #220)', () {
+    testWidgets('the title, a group and the empty page', (tester) async {
+      speakGerman(tester);
+      await withFakeImageHttp(() async {
+        await duplicates.pump(tester, duplicates.server(requests: []));
+      });
+
+      expect(find.text(de.duplicatesPageTitle(2)), findsOneWidget);
+      expect(find.textContaining(de.duplicatesCopies(3)), findsOneWidget);
+      expect(find.text(de.duplicatesSpaceRoot), findsOneWidget);
+      var en = l10nOf(const Locale("en"));
+      expect(find.text(en.duplicatesPageTitle(2)), findsNothing);
+      expect(de.duplicatesEmpty, isNot(en.duplicatesEmpty));
+      expect(de.duplicatesIndexing(10, 3), contains("3"));
     });
   });
 

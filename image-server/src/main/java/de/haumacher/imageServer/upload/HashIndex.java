@@ -285,6 +285,44 @@ public class HashIndex {
 		return search(hash, folder == null ? "" : folder);
 	}
 
+	/**
+	 * Every content that lies in more than one folder of the space, with the paths holding it, see
+	 * issue #220.
+	 *
+	 * <p>
+	 * A path relative to the space root per folder holding the content (one per folder: two copies
+	 * inside one folder are one entry of its sidecar's map), in the order the folders are known.
+	 * A path whose file is gone is left out, and a content left in one folder by that is left out
+	 * too. Nothing is forgotten here: this is a read, and {@link #pathOf(String)} keeps the index
+	 * clean.
+	 * </p>
+	 */
+	public synchronized Map<String, List<String>> shared() {
+		Map<String, List<String>> byHash = new HashMap<>();
+		for (Map.Entry<String, Folder> entry : _folders.entrySet()) {
+			for (Map.Entry<String, String> hash : entry.getValue()._nameByHash.entrySet()) {
+				byHash.computeIfAbsent(hash.getKey(), x -> new ArrayList<>(2))
+					.add(join(entry.getKey(), hash.getValue()));
+			}
+		}
+		Map<String, List<String>> result = new LinkedHashMap<>();
+		for (Map.Entry<String, List<String>> entry : byHash.entrySet()) {
+			if (entry.getValue().size() < 2) {
+				continue;
+			}
+			List<String> present = new ArrayList<>(entry.getValue().size());
+			for (String path : entry.getValue()) {
+				if (Files.isRegularFile(_root.resolve(path))) {
+					present.add(path);
+				}
+			}
+			if (present.size() >= 2) {
+				result.put(entry.getKey(), present);
+			}
+		}
+		return result;
+	}
+
 	/** Whether the given folder path is the given one or lies below it. */
 	private static boolean below(String folder, String ancestor) {
 		return ancestor.isEmpty() || folder.equals(ancestor) || folder.startsWith(ancestor + "/");
