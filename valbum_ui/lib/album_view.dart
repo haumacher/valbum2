@@ -44,7 +44,7 @@ import 'select_mode.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
-import 'trash_view.dart' show hasTrashedImages;
+import 'trash_view.dart' show hasTrashedImages, trashRating;
 import 'video_view.dart';
 
 /// The clearance an album is shown with in the edit mode, see issue #46.
@@ -635,6 +635,46 @@ class AlbumContentState extends State<AlbumContent>
         edit();
         markDirty();
       });
+
+  /// Rates by the rating button for [value] pressed on the tile of [part]
+  /// (issue #224), into the buffer like every edit here.
+  ///
+  /// The button acts on the whole selection where [part] is part of a
+  /// selection of several ([ratingTargets]), otherwise on [part] alone. What
+  /// the pressed tile's button shows decides the new rating for all of them
+  /// ([toggleRating]): its active button resets every one to unrated. A part
+  /// is rated by the image its tile shows, a group by its representative, as
+  /// the tile always rated it. Rating several as trash asks first
+  /// ([confirmTrashing]); a part rated as trash disappears from the grid and
+  /// so leaves the selection.
+  Future<void> rate(AlbumPart part, int value) async {
+    if (part is! AbstractImage) {
+      return;
+    }
+    var rating = toggleRating(layouter.ToImage.toImage(part).rating, value);
+    var targets = [
+      for (var target in ratingTargets<AlbumPart>(part, selection))
+        if (target is AbstractImage) target,
+    ];
+    if (rating == trashRating &&
+        !await confirmTrashing(context, targets.length)) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    editImage(() {
+      for (var target in targets) {
+        layouter.ToImage.toImage(target).rating = rating;
+        if (!isVisiblePart(target, minMinRating)) {
+          selection.remove(target);
+          if (identical(lastClicked, target)) {
+            lastClicked = null;
+          }
+        }
+      }
+    });
+  }
 
   /// Remembers that the album differs from what the server holds.
   void markDirty() => session.dirty = true;
@@ -3194,6 +3234,51 @@ List<Widget> ratingButtons(
         ),
     ];
 
+/// What a tile's rating button acts on (issue #224): the whole [selection]
+/// where [tapped] is part of a selection of several, otherwise [tapped] alone
+/// — the rule every per-tile action of a selection follows (#139, #156, #222).
+///
+/// Compared by identity, as everywhere in the album model.
+List<T> ratingTargets<T>(T tapped, Iterable<T> selection) {
+  var chosen = selection.toList();
+  return chosen.length > 1 && chosen.any((item) => identical(item, tapped))
+      ? chosen
+      : [tapped];
+}
+
+/// Asks before [count] photos are rated as trash in one gesture (issue
+/// #224): "Move n photos to the trash?" — Cancel / Move to trash.
+///
+/// Trash is the one rating easy to hit by accident on a selection; a single
+/// photo is asked nothing, because "Show trash" restores it (#152). Answers
+/// whether to go on. Shared by the album's edit mode and the inbox.
+Future<bool> confirmTrashing(BuildContext context, int count) async {
+  if (count <= 1) {
+    return true;
+  }
+  var l10n = AppLocalizations.of(context)!;
+  var confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      key: const Key("trash-confirm-dialog"),
+      title: Text(l10n.trashSeveralQuestion(count)),
+      actions: [
+        TextButton(
+          key: const Key("trash-confirm-cancel"),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(l10n.cancel),
+        ),
+        ElevatedButton(
+          key: const Key("trash-confirm"),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(l10n.moveToTrash),
+        ),
+      ],
+    ),
+  );
+  return confirmed == true;
+}
+
 /// The tile of an image in the album edit mode: selection and the three
 /// overlay toolbars.
 class ThumbnailEditor extends StatefulWidget {
@@ -3461,9 +3546,10 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         syncIndexPictureOrientation(album.widget.album, image);
       });
 
-  void setRating(int value) => album.editImage(
-        () => image.rating = toggleRating(image.rating, value),
-      );
+  /// Rates by the button for [value]: this tile, or the whole selection
+  /// where this tile is part of one of several, see
+  /// [AlbumContentState.rate] (issue #224).
+  Future<void> setRating(int value) => album.rate(part, value);
 
   /// Sets the privacy level of this tile's album part.
   ///

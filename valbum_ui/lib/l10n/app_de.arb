@@ -779,5 +779,7 @@
   "peopleLeadInviter": "Ihre Einladungen, die noch niemand angenommen hat.",
   "downloadProgress": "Datei {current} von {count}: {received} heruntergeladen",
   "downloadProgressOf": "Datei {current} von {count}: {received} von {total} heruntergeladen",
-  "selectModeLeave": "Den Auswahlmodus verlassen"
+  "selectModeLeave": "Den Auswahlmodus verlassen",
+  "trashSeveralQuestion": "{count, plural, =1{Ein Foto in den Papierkorb verschieben?} other{{count} Fotos in den Papierkorb verschieben?}}",
+  "moveToTrash": "In den Papierkorb verschieben"
 }

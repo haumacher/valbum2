@@ -612,8 +612,8 @@ void main() {
 
   group('deleting as an editor', () {
     testWidgets(
-        'rates the selection -2 at once, asks nothing, posts no '
-        'delete, and the photographs vanish', (tester) async {
+        'rates the selection -2 in one write after one question, posts '
+        'no delete, and the photographs vanish', (tester) async {
       var requests = <http.Request>[];
       await pumpInbox(
         tester,
@@ -632,7 +632,14 @@ void main() {
       await tester.tap(find.byKey(const Key("delete-selection")));
       await tester.pumpAndSettle();
 
+      // Two photographs: the question of a tile's trash button (issue
+      // #224), not the contributor's trash-folder dialog.
       expect(find.byKey(const Key("inbox-delete-dialog")), findsNothing);
+      expect(find.text(testL10n.trashSeveralQuestion(2)), findsOneWidget);
+      expect(requests.where((r) => r.method == "PUT"), isEmpty);
+      await tester.tap(find.byKey(const Key("trash-confirm")));
+      await tester.pumpAndSettle();
+
       expect(requests.where((r) => r.method == "POST"), isEmpty);
       var put = requests.singleWhere((r) => r.method == "PUT");
       var sent = Resource.fromString(put.body) as AlbumInfo;

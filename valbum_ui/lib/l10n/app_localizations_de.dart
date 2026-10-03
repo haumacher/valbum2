@@ -3025,4 +3025,18 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get peopleLeadInviter =>
       'Ihre Einladungen, die noch niemand angenommen hat.';
+
+  @override
+  String trashSeveralQuestion(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos in den Papierkorb verschieben?',
+      one: 'Ein Foto in den Papierkorb verschieben?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get moveToTrash => 'In den Papierkorb verschieben';
 }

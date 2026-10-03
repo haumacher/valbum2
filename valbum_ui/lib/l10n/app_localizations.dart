@@ -4778,6 +4778,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The invitations you sent that nobody has accepted yet.'**
   String get peopleLeadInviter;
+
+  /// Question asked before several selected photos are rated as trash in one gesture (issue #224): a tile's trash button acting on the selection, or the inbox's Delete. The trash is the album's trash bin (German: 'Papierkorb', as in 'Papierkorb anzeigen'); nothing is deleted from disk. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Move 1 photo to the trash?} other{Move {count} photos to the trash?}}'**
+  String trashSeveralQuestion(int count);
+
+  /// Button confirming that several selected photos are rated as trash (issue #224); the other button is Cancel. The trash is the album's trash bin (German: 'Papierkorb').
+  ///
+  /// In en, this message translates to:
+  /// **'Move to trash'**
+  String get moveToTrash;
 }
 
 class _AppLocalizationsDelegate

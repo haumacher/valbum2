@@ -79,6 +79,10 @@ void main() {
       await openMenu(tester);
       await tester.tap(find.byKey(const Key("delete-selection")));
       await tester.pumpAndSettle();
+      // Two photographs: asked first (issue #224).
+      expect(find.text(testL10n.trashSeveralQuestion(2)), findsOneWidget);
+      await tester.tap(find.byKey(const Key("trash-confirm")));
+      await tester.pumpAndSettle();
 
       var puts = requests.where((r) => r.method == "PUT").toList();
       expect(puts, hasLength(1), reason: "one write for the whole day");

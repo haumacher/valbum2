@@ -2983,4 +2983,18 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get peopleLeadInviter =>
       'The invitations you sent that nobody has accepted yet.';
+
+  @override
+  String trashSeveralQuestion(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Move $count photos to the trash?',
+      one: 'Move 1 photo to the trash?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get moveToTrash => 'Move to trash';
 }

@@ -23,12 +23,13 @@
 ///  * tapping a heading selects everything under it, which is how a day (or a
 ///    month) is moved into an album in one gesture;
 ///  * an editor rates a photograph with the album tile's four buttons
-///    ([ratingButtons]), written at once, and **"Delete" is the −2 rating**
-///    (#160): no question and no move — the photograph is hidden from the
-///    inbox like a trashed one from the album grid ([isVisiblePart] at
-///    [minMinRating]) and is restored or purged on the trash page of #152,
-///    which the menu offers ("Show trash") while one exists. A member with
-///    `contribute` alone cannot write the sidecar, sees no rating and deletes
+///    ([ratingButtons]) — on the whole selection where the tile is part of
+///    one of several (#224) — written at once, and **"Delete" is the −2
+///    rating** (#160): no move, and a question only for several photographs
+///    — the photograph is hidden from the inbox like a trashed one from the
+///    album grid ([isVisiblePart] at [minMinRating]) and is restored or
+///    purged on the trash page of #152, which the menu offers ("Show trash")
+///    while one exists. A member with `contribute` alone cannot write the sidecar, sees no rating and deletes
 ///    their own photographs into the trash folder of the space as #131 made
 ///    it, until #159 decides otherwise;
 ///  * a secondary click on a tile opens a menu at the pointer (issue #222):
@@ -524,14 +525,38 @@ class InboxContentState extends State<InboxContent> {
     );
   }
 
-  /// Rates [image] by its rating button for [value] and writes it at once,
-  /// see [writeNow] and [toggleRating] — the album tile's buttons (#160).
+  /// Rates by the rating button for [value] on the tile of [image] and
+  /// writes it at once, see [writeNow] and [toggleRating] — the album tile's
+  /// buttons (#160).
   ///
-  /// A photograph rated as trash leaves the screen with the write (see
-  /// [inboxDays]) and therefore the selection; a refused write brings back
-  /// both.
-  Future<void> rate(ImagePart image, int value) =>
-      rateAll([image], toggleRating(image.rating, value));
+  /// The button acts on the whole selection where [image] is part of a
+  /// selection of several, otherwise on [image] alone ([ratingTargets], issue
+  /// #224), in one write taken back as a whole on a refusal; what the pressed
+  /// tile's button shows decides the rating for all of them. Rating several
+  /// as trash asks first ([confirmTrashing]). A photograph rated as trash
+  /// leaves the screen with the write (see [inboxDays]) and therefore the
+  /// selection; a refused write brings back both.
+  Future<void> rate(ImagePart image, int value) => trashOrRate(
+        ratingTargets(image, selected),
+        toggleRating(image.rating, value),
+      );
+
+  /// Gives [chosen] the rating [rating] in one write, asking first where
+  /// several are rated as trash (issue #224) — refused offline before any
+  /// question is asked.
+  Future<void> trashOrRate(List<ImagePart> chosen, int rating) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    if (rating == trashRating &&
+        !await confirmTrashing(context, chosen.length)) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    await rateAll(chosen, rating);
+  }
 
   /// Gives every one of [chosen] the rating [rating] in one write.
   Future<void> rateAll(List<ImagePart> chosen, int rating) {
@@ -696,8 +721,9 @@ class InboxContentState extends State<InboxContent> {
   /// Deletes the selection.
   ///
   /// For an editor ([mayWrite]) exactly what "delete" is in an album (issue
-  /// #160): every selected photograph is rated −2 and written at once, no
-  /// question asked — it vanishes from the inbox and is restored or purged in
+  /// #160): every selected photograph is rated −2 and written at once — asked
+  /// first where there are several (issue #224, the question of a tile's
+  /// trash button) — it vanishes from the inbox and is restored or purged in
   /// the trash page of issue #152, which the menu offers from then on
   /// ([mayShowTrash]).
   ///
@@ -711,7 +737,7 @@ class InboxContentState extends State<InboxContent> {
       return;
     }
     if (mayWrite) {
-      await rateAll(chosen, trashRating);
+      await trashOrRate(chosen, trashRating);
       return;
     }
     await takeOutIntoTrashFolder(chosen);
