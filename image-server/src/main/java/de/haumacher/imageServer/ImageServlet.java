@@ -5226,6 +5226,11 @@ public class ImageServlet extends HttpServlet {
 				if (picture != null) {
 					return picture;
 				}
+				if (PreviewCache.isVideoName(image.getName())) {
+					// A video not described yet (copied in after its album was cached) is still
+					// a video: the container's MIME table need not know .3gp or .m4v.
+					return videoType(image.getName(), kind);
+				}
 				return context.request().getServletContext().getMimeType(image.getName());
 			}
 		}

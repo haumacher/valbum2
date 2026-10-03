@@ -144,6 +144,23 @@ public class TestVideoContainers extends ShareTestCase {
 		}
 	}
 
+	/**
+	 * A video copied into an album whose listing is already cached — within the same tick of the
+	 * folder's modification time, as on CI — is still served as a video with its type.
+	 */
+	public void testAVideoArrivingAfterTheListingIsServedWithItsType() throws Exception {
+		assertEquals(HttpServletResponse.SC_OK, get(PATH, "json", SharingFixture.ALICE).status());
+		Map<String, String> types = new LinkedHashMap<>();
+		types.put("clip.m4v", "video/mp4");
+		types.put("clip.3gp", "video/3gpp");
+		for (Map.Entry<String, String> entry : types.entrySet()) {
+			copy(entry.getKey());
+			FakeResponse whole = get(PATH + entry.getKey(), null, SharingFixture.ALICE);
+			assertEquals(entry.getKey(), HttpServletResponse.SC_OK, whole.status());
+			assertEquals(entry.getKey(), entry.getValue(), whole.contentType());
+		}
+	}
+
 	public void testTheOriginalIsServedWithItsTypeAndInRanges() throws Exception {
 		Map<String, String> types = new LinkedHashMap<>();
 		types.put("clip.mov", "video/quicktime");
