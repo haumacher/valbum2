@@ -107,6 +107,8 @@ public class HashCache {
 
 	private static final String LINK_MAX_PRIVACY__PROP = "linkMaxPrivacy";
 
+	private static final String LINK_LABEL__PROP = "linkLabel";
+
 	private static final int BUFFER_SIZE = 64 * 1024;
 
 	/** What was recorded for one file of the folder. */
@@ -167,6 +169,8 @@ public class HashCache {
 
 		private final int _maxPrivacy;
 
+		private final String _linkLabel;
+
 		/** Creates an {@link Attribution}; <code>null</code> is the empty string. */
 		public Attribution(String contributor, String label) {
 			this(contributor, label, NO_RATING_FLOOR, NO_PRIVACY_CAP);
@@ -181,10 +185,34 @@ public class HashCache {
 		 *        The highest privacy level the link shows, {@link #NO_PRIVACY_CAP} for none.
 		 */
 		public Attribution(String contributor, String label, int minRating, int maxPrivacy) {
+			this(contributor, label, minRating, maxPrivacy, "");
+		}
+
+		/**
+		 * Creates an {@link Attribution} of an upload through a share link showing one label, see
+		 * issue #213.
+		 *
+		 * @param linkLabel
+		 *        The label whose photographs the link shows, the empty string for none.
+		 */
+		public Attribution(String contributor, String label, int minRating, int maxPrivacy, String linkLabel) {
 			_contributor = contributor == null ? "" : contributor;
 			_label = label == null ? "" : label;
 			_minRating = minRating;
 			_maxPrivacy = maxPrivacy;
+			_linkLabel = linkLabel == null ? "" : linkLabel;
+		}
+
+		/**
+		 * The label whose photographs the share link the file came through shows, see issue #213.
+		 *
+		 * <p>
+		 * A photograph first described from this file carries it, so that the link it came through
+		 * shows it. The empty string for everything that did not come through such a link.
+		 * </p>
+		 */
+		public String getLinkLabel() {
+			return _linkLabel;
 		}
 
 		/** The subject of the uploader, the empty string if none was recorded. */
@@ -220,7 +248,7 @@ public class HashCache {
 
 		/** Whether the upload was recorded with a limit of the link it came through. */
 		public boolean hasLinkLimits() {
-			return _minRating != NO_RATING_FLOOR || _maxPrivacy != NO_PRIVACY_CAP;
+			return _minRating != NO_RATING_FLOOR || _maxPrivacy != NO_PRIVACY_CAP || !_linkLabel.isEmpty();
 		}
 
 		/** Whether anything at all was recorded. */
@@ -501,6 +529,7 @@ public class HashCache {
 		String contributorLabel = "";
 		int minRating = Attribution.NO_RATING_FLOOR;
 		int maxPrivacy = Attribution.NO_PRIVACY_CAP;
+		String linkLabel = "";
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -526,6 +555,9 @@ public class HashCache {
 				case LINK_MAX_PRIVACY__PROP:
 					maxPrivacy = in.nextInt();
 					break;
+				case LINK_LABEL__PROP:
+					linkLabel = in.nextString();
+					break;
 				default:
 					// An entry written by a future version may carry more; it stays readable.
 					in.skipValue();
@@ -533,7 +565,8 @@ public class HashCache {
 			}
 		}
 		in.endObject();
-		return new Entry(size, modified, sha256, new Attribution(contributor, contributorLabel, minRating, maxPrivacy));
+		return new Entry(size, modified, sha256, new Attribution(contributor, contributorLabel, minRating, maxPrivacy,
+			linkLabel));
 	}
 
 	private void store() throws IOException {
@@ -572,6 +605,11 @@ public class HashCache {
 					if (attribution.getMaxPrivacy() != Attribution.NO_PRIVACY_CAP) {
 						out.name(LINK_MAX_PRIVACY__PROP);
 						out.value(attribution.getMaxPrivacy());
+					}
+					if (!attribution.getLinkLabel().isEmpty()) {
+						// The label of the link the file came through, see issue #213.
+						out.name(LINK_LABEL__PROP);
+						out.value(attribution.getLinkLabel());
 					}
 					out.endObject();
 				}

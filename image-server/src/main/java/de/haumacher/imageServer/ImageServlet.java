@@ -63,6 +63,7 @@ import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Invitation;
 import de.haumacher.imageServer.shared.model.InvitationCreated;
 import de.haumacher.imageServer.shared.model.InvitationList;
+import de.haumacher.imageServer.shared.model.LabelChange;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.MediaUrl;
 import de.haumacher.imageServer.shared.model.MemberName;
@@ -385,6 +386,9 @@ public class ImageServlet extends HttpServlet {
 	/** The <code>action</code> that stores the crop of one photograph, see issue #212. */
 	public static final String CROP_ACTION = "crop";
 
+	/** Renames or removes one label on every photograph of an album, see issue #213 and {@link LabelChange}. */
+	public static final String RELABEL_ACTION = "relabel";
+
 	/**
 	 * The parameter of a <code>?type=tn</code> naming the region of the rendition to cut, see issue
 	 * #212 and {@link Crops#token(double[])}.
@@ -530,9 +534,12 @@ public class ImageServlet extends HttpServlet {
 	/** The message an invitation naming a clearance this build does not know is refused with. */
 	public static final String CLEARANCE_REFUSED = "Unknown clearance; use one of " + Clearances.names() + ".";
 
-	/** The message the duplicate sweep of issue #118 is refused with. */
-	public static final String DUPLICATES_REFUSED =
-		"You may not change this album, so nothing can be set aside from it.";
+	/**
+	 * What the retired duplicate sweep of issue #118 is answered with, see issue #219: it moved
+	 * photographs out of the album.
+	 */
+	public static final String RETIRED_FIND_DUPLICATES =
+		"Finding duplicates was removed: it moved photos out of the album. Nothing was changed.";
 
 	/** The message a share link asking to re-read the photo details is refused with, see issue #161. */
 	public static final String REANALYZE_SHARE_REFUSED =
@@ -1011,6 +1018,13 @@ public class ImageServlet extends HttpServlet {
 					return;
 				}
 			}
+			// A photograph without the label a link shows is not there for the link, whichever of
+			// its shapes is asked for -- exactly as one of an inbox, see issue #213.
+			if (!labelShows(caller, resourcePath)) {
+				LOG.warning("Hiding a photograph without the label of the link at '" + pathInfo + "'.");
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Labels.NOT_FOUND);
+				return;
+			}
 
 			if (MEDIA_URL_TYPE.equals(type)) {
 				issueMediaUrl(context, caller, resourcePath, viewAs);
@@ -1479,7 +1493,8 @@ public class ImageServlet extends HttpServlet {
 	 * records the limits that link shows at the target folder, its {@link AuthService#minRating
 	 * rating floor} and its {@link AuthService#clearance privacy level}, so that the photograph is
 	 * described as the link shows it, see issue #214 and
-	 * {@link Contributors#applyLinkLimits(List, File)}. A member's upload records none.
+	 * {@link Contributors#applyLinkLimits(List, File)}, and the label it shows, so that the
+	 * photograph carries it (issue #213). A member's upload records none.
 	 * </p>
 	 */
 	private HashCache.Attribution attribution(Caller caller, PathInfo folderPath) {
@@ -1488,7 +1503,8 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (caller.isShareLink()) {
 			return new HashCache.Attribution(caller.subject(), caller.contributorLabel(),
-				_auth.minRating(caller, folderPath, Privacy.PRIVATE), _auth.clearance(caller, folderPath));
+				_auth.minRating(caller, folderPath, Privacy.PRIVATE), _auth.clearance(caller, folderPath),
+				_auth.photoLabel(caller));
 		}
 		return new HashCache.Attribution(caller.subject(), caller.contributorLabel());
 	}
@@ -2049,6 +2065,12 @@ public class ImageServlet extends HttpServlet {
 					return null;
 				}
 			}
+			if (!labelShows(caller, image)) {
+				LOG.warning("Hiding a photograph without the label of the link in '" + context.request().getPathInfo()
+					+ name + "'.");
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
+				return null;
+			}
 			String refusal = hidden(image, clearance, minRating);
 			if (refusal != null) {
 				imageRefused(context, caller, refusal);
@@ -2485,60 +2507,6 @@ public class ImageServlet extends HttpServlet {
 			default:
 				return "";
 		}
-	}
-
-	/**
-	 * Sets aside the photos of the addressed album that lie elsewhere in the space too, see issue
-	 * #118.
-	 *
-	 * <p>
-	 * The sweep that repairs what slipped through while the index was incomplete: every photo of
-	 * this album whose contents are somewhere else in the space as well is renamed into
-	 * <code>{@value de.haumacher.imageServer.auth.UserStore#DIRECTORY_NAME}/{@value MoveService#DUPLICATES_FOLDER}</code>
-	 * — the mechanism of issue #47, hash-prefixed names, nothing deleted — and taken out of the
-	 * album. The answer names, for every photo, where the copy that stays is.
-	 * </p>
-	 *
-	 * <p>
-	 * It needs {@link Rights#EDIT} on the album and nothing more: it changes one album, which is
-	 * what editing an album is. An administrator is not required — whoever may empty this album by
-	 * hand may have the duplicates out of it.
-	 * </p>
-	 */
-	private void findDuplicates(Context context) throws IOException {
-		Caller caller = _auth.caller(context.request());
-		Location location = resolve(context, caller);
-		if (location == null) {
-			return;
-		}
-		PathInfo folder = location.getPath();
-		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folder)) {
-			unauthorized(context, caller, true);
-			return;
-		}
-		if (caller.isShareLink() || !_auth.mayEdit(caller, folder)) {
-			// A share link has no space to compare against, and a visitor has nothing to tidy.
-			refuseMove(context, caller, DUPLICATES_REFUSED, true);
-			return;
-		}
-		if (!folder.toFile().isDirectory()) {
-			error404(context);
-			return;
-		}
-
-		MoveResult result;
-		try {
-			result = new MoveService(_cache, _auth).setAsideDuplicates(folder, _index);
-		} catch (MoveRefused ex) {
-			LOG.warning("Refusing the duplicate sweep in '" + context.request().getPathInfo() + "': "
-				+ ex.getMessage());
-			errorInfo(context, ex.getStatus(), ex.getMessage());
-			return;
-		}
-
-		_index.treeChanged(folder.toFile());
-
-		serveJsonObject(context.response(), result);
 	}
 
 	/** Deletes the temporary files of an upload that is not stored. */
@@ -3046,6 +3014,24 @@ public class ImageServlet extends HttpServlet {
 			}
 		}
 		String label = request.getLabel() == null ? "" : request.getLabel().trim();
+		String photoLabel = request.getPhotoLabel() == null ? "" : request.getPhotoLabel();
+		if (!photoLabel.isEmpty()) {
+			// Labels belong to one album (issue #213): a link to a folder of folders showing "a
+			// label" would show whatever photographs happen to carry a label of that spelling in
+			// any album below, today's and tomorrow's, which nobody decided.
+			Resource target = _cache.lookup(location.getPath());
+			if (!(target instanceof AlbumInfo)) {
+				LOG.warning("Refusing a label filter on the folder '" + context.request().getPathInfo() + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Labels.LABEL_NEEDS_ALBUM);
+				return;
+			}
+			if (!Labels.of((AlbumInfo) target).contains(photoLabel)) {
+				LOG.warning("Refusing the unknown label '" + photoLabel + "' at '" + context.request().getPathInfo()
+					+ "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Labels.unknownLabel(photoLabel));
+				return;
+			}
+		}
 
 		boolean personal = request.getType() == de.haumacher.imageServer.shared.model.ShareType.PERSONAL;
 		if (!personal) {
@@ -3059,6 +3045,7 @@ public class ImageServlet extends HttpServlet {
 			ShareStore.Issued issued = _auth.getShares().create(location.getOwner(), location.getOwnerPath(),
 				label, expires, maxPrivacy, minRating, rights, caller.getUserName());
 			ShareStore.Link link = issued.getLink();
+			_auth.getShares().setPhotoLabel(link, photoLabel);
 
 			LOG.info("Created the share link " + link + " with " + rights + ".");
 			serveJsonObject(context.response(), ShareLinkCreated.create()
@@ -3108,6 +3095,7 @@ public class ImageServlet extends HttpServlet {
 		ShareStore.IssuedPersonal issued = _auth.getShares().createPersonal(location.getOwner(),
 			location.getOwnerPath(), label, expires, maxPrivacy, minRating, rights, caller.getUserName(), ids);
 		ShareStore.Link link = issued.getIssued().getLink();
+		_auth.getShares().setPhotoLabel(link, photoLabel);
 
 		LOG.info("Created the personal share link " + link + " with " + rights + " for " + entered.size()
 			+ " recipient(s).");
@@ -3774,7 +3762,8 @@ public class ImageServlet extends HttpServlet {
 			.setRights(Rights.onTheWire(rights))
 			.setPath(AuthService.canonical(link))
 			.setCreated(link.getCreated())
-			.setRevoked(link.getRevoked());
+			.setRevoked(link.getRevoked())
+			.setPhotoLabel(link.getPhotoLabel());
 		return PersonalLinks.withRecipients(wire, link, _auth.getContacts());
 	}
 
@@ -4223,12 +4212,17 @@ public class ImageServlet extends HttpServlet {
 			tagFaces(context, true);
 			return;
 		}
+		if (RELABEL_ACTION.equals(action)) {
+			relabel(context);
+			return;
+		}
 		if (CROP_ACTION.equals(action)) {
 			cropImage(context);
 			return;
 		}
 		if ("find-duplicates".equals(action)) {
-			findDuplicates(context);
+			// Retired by issue #219, for every caller and before anything is read.
+			retired(context, RETIRED_FIND_DUPLICATES);
 			return;
 		}
 		if ("unlink".equals(action)) {
@@ -4547,6 +4541,8 @@ public class ImageServlet extends HttpServlet {
 		// An inbox is answered flat and by date; what the client writes back must not freeze that
 		// derived order into the sidecar, see issue #131.
 		boolean rearranged = Inboxes.restoreArrangement(resourcePath.toFile(), resource);
+		// An app older than issue #213 does not know the labels and must not remove them.
+		rearranged |= Labels.keepUnknown(contents, resource, _cache.lookup(resourcePath));
 
 		PathInfo target = resourcePath;
 		String message = "";
@@ -4754,8 +4750,9 @@ public class ImageServlet extends HttpServlet {
 		resource = shown;
 
 		if (jsonRequested(context)) {
-			Resource answer = _privacy.filter(resource, pathInfo, clearance, _auth.minRating(caller, pathInfo, viewAs));
-			answer = withFaces(answer, pathInfo, caller, viewAs);
+			Resource answer = _privacy.filter(resource, pathInfo, clearance, _auth.minRating(caller, pathInfo, viewAs),
+				_auth.photoLabel(caller));
+			answer = withLabels(withFaces(answer, pathInfo, caller, viewAs), caller, viewAs);
 			if (answer instanceof ListingInfo) {
 				// The shared albums of this folder, shown as what they point at, see issue #50.
 				// After the privacy filter: a link is filtered by the clearance on its own target,
@@ -4839,6 +4836,10 @@ public class ImageServlet extends HttpServlet {
 				// What an album answer hides is hidden here too: a single photograph carries the
 				// tags of issue #125 in the cached object, and they are the members' business.
 				resource = Faces.withoutTags((ImagePart) resource);
+			}
+			if (resource instanceof ImagePart && !Faces.maySee(_auth, caller, viewAs)) {
+				// The labels are the members' bookkeeping too, see issue #213.
+				resource = Labels.withoutLabels((ImagePart) resource);
 			}
 			serveJson(context.response(), resource);
 			return;
@@ -5351,6 +5352,79 @@ public class ImageServlet extends HttpServlet {
 	 * picture. The answer is the album as the caller is answered it.
 	 * </p>
 	 */
+	/**
+	 * Renames or removes one label on every photograph of the addressed album, see issue #213.
+	 *
+	 * <p>
+	 * An action rather than a sidecar <code>PUT</code>, because the server must know that it was a
+	 * rename: a share link on this album showing the label is carried along to the new name
+	 * ({@link ShareStore#relabel}), the decision of #213, while a link whose label is removed goes
+	 * on showing that label and therefore nothing. Needs {@link Rights#EDIT}; answers the album as
+	 * the caller is answered it.
+	 * </p>
+	 */
+	private void relabel(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo folderPath = location.getPath();
+		if (caller.isShareLink()) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, Labels.RELABEL_REFUSED);
+			return;
+		}
+		if (!_auth.mayEdit(caller, folderPath)) {
+			if (!identified(caller)) {
+				unauthorized(context, caller, true);
+				return;
+			}
+			LOG.warning("Refusing the label change at '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, Labels.RELABEL_REFUSED);
+			return;
+		}
+		File folder = folderPath.toFile();
+		if (!folder.isDirectory()) {
+			error404(context);
+			return;
+		}
+		LabelChange request;
+		try {
+			request = LabelChange.readLabelChange(json(readBody(context.request())));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable label change: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Labels.RELABEL_UNREADABLE);
+			return;
+		}
+		String from = request.getFrom() == null ? "" : request.getFrom();
+		String to = request.getTo() == null ? "" : request.getTo().trim();
+		if (from.isEmpty()) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Labels.RELABEL_UNREADABLE);
+			return;
+		}
+		Resource resource = _cache.lookup(folderPath);
+		if (!(resource instanceof AlbumInfo)) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Labels.RELABEL_NOT_AN_ALBUM);
+			return;
+		}
+		AlbumInfo album = (AlbumInfo) resource;
+		if (!Labels.of(album).contains(from)) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Labels.nothingLabeled(from));
+			return;
+		}
+		if (!from.equals(to)) {
+			int changed = Labels.relabel(album, from, to);
+			storeSidecar(folder, sidecarOf(album));
+			_cache.invalidate(folderPath);
+			LOG.info((to.isEmpty() ? "Removed the label '" + from + "'" : "Renamed the label '" + from + "' to '" + to + "'")
+				+ " on " + changed + " photograph(s) in '" + folder.getAbsolutePath() + "'.");
+			if (!to.isEmpty() && _auth.getShares() != null) {
+				_auth.getShares().relabel(location.getOwner(), location.getOwnerPath(), from, to);
+			}
+		}
+		answerAlbum(context, folderPath, caller);
+	}
+
 	private void cropImage(Context context) throws IOException {
 		Caller caller = _auth.caller(context.request());
 		Location location = resolve(context, caller);
@@ -5927,8 +6001,9 @@ public class ImageServlet extends HttpServlet {
 		Resource stored = _cache.lookup(folderPath);
 		int viewAs = Privacy.PRIVATE;
 		int clearance = Math.min(_auth.clearance(caller, folderPath), viewAs);
-		Resource answer = _privacy.filter(stored, folderPath, clearance, _auth.minRating(caller, folderPath, viewAs));
-		answer = withFaces(answer, folderPath, caller, viewAs);
+		Resource answer = _privacy.filter(stored, folderPath, clearance, _auth.minRating(caller, folderPath, viewAs),
+			_auth.photoLabel(caller));
+		answer = withLabels(withFaces(answer, folderPath, caller, viewAs), caller, viewAs);
 		serveJson(context.response(), withRights(answer, _auth.rights(caller, folderPath)));
 	}
 
@@ -5948,6 +6023,13 @@ public class ImageServlet extends HttpServlet {
 	 * A listing is untouched: faces belong to photographs and a listing shows folders.
 	 * </p>
 	 */
+	private Resource withLabels(Resource answer, Caller caller, int viewAs) {
+		if (answer instanceof AlbumInfo && !Faces.maySee(_auth, caller, viewAs)) {
+			return Labels.withoutLabels((AlbumInfo) answer);
+		}
+		return answer;
+	}
+
 	private Resource withFaces(Resource answer, PathInfo pathInfo, Caller caller, int viewAs) {
 		if (!(answer instanceof AlbumInfo)) {
 			return answer;
@@ -6092,6 +6174,25 @@ public class ImageServlet extends HttpServlet {
 			return RATING_REFUSED;
 		}
 		return null;
+	}
+
+	/**
+	 * Whether the photograph at the given path is part of the label the caller is shown, see
+	 * {@link AuthService#photoLabel} and issue #213.
+	 *
+	 * <p>
+	 * Always for a caller shown every label. A file the album model does not describe carries no
+	 * label, so a link showing one does not show it; a raw companion addressed by its own name is
+	 * the photograph it belongs to (issue #191).
+	 * </p>
+	 */
+	private boolean labelShows(Caller caller, PathInfo pathInfo) {
+		String label = _auth.photoLabel(caller);
+		if (label.isEmpty()) {
+			return true;
+		}
+		Resource resource = _cache.lookup(pathInfo);
+		return resource instanceof ImagePart && Labels.carries((ImagePart) resource, label);
 	}
 
 	/**

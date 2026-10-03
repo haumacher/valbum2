@@ -1,0 +1,17 @@
+[
+	{ "case": "a section with a shown photo stays", "parts": ["H1 Day", "+"], "shown": ["Day"] },
+	{ "case": "a section with only hidden photos drops", "parts": ["H1 Day", "-", "-"], "shown": [] },
+	{ "case": "an empty section drops in a filtered view", "parts": ["H1 Empty", "H1 Day", "+"], "shown": ["Day"] },
+	{ "case": "a section counts its subsections", "parts": ["H1 Day", "-", "H2 Morning", "+"], "shown": ["Day", "Morning"] },
+	{ "case": "a subsection counts up to the next heading of any level", "parts": ["H1 Day", "+", "H2 Morning", "-", "H2 Noon", "+"], "shown": ["Day", "Noon"] },
+	{ "case": "a subsection ends at the next section", "parts": ["H1 Day", "+", "H2 Evening", "-", "H1 Next", "+"], "shown": ["Day", "Next"] },
+	{ "case": "a section whose subsections show nothing drops with them", "parts": ["H1 Day", "-", "H2 Morning", "-", "H2 Noon", "-", "H1 Next", "+"], "shown": ["Next"] },
+	{ "case": "photos before the first heading belong to no heading", "parts": ["+", "H1 Day", "-"], "shown": [] },
+	{ "case": "a subsection before any section stands on its own", "parts": ["H2 Prelude", "+", "H1 Day", "-"], "shown": ["Prelude"] },
+	{ "case": "level 0 is a section (an older sidecar)", "parts": ["H0 Old", "-", "H2 Sub", "+"], "shown": ["Old", "Sub"] },
+	{ "case": "level 0 ends a subsection like a section", "parts": ["H1 Day", "H2 Sub", "-", "H0 Old", "+"], "shown": ["Old"] },
+	{ "case": "an unknown level reads as a section", "parts": ["H3 Odd", "+", "H2 Sub", "-"], "shown": ["Odd"] },
+	{ "case": "two empty headings in a row drop together", "parts": ["H1 A", "H2 B", "H1 C", "+"], "shown": ["C"] },
+	{ "case": "a heading at the end drops", "parts": ["H1 Day", "+", "H1 Tail"], "shown": ["Day"] },
+	{ "case": "a filter hiding nothing keeps every heading with photos", "parts": ["H1 A", "+", "H2 B", "+", "H1 C", "+"], "shown": ["A", "B", "C"] }
+]

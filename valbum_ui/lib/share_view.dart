@@ -122,6 +122,7 @@ Future<void> shareLinksOf({
   required VAlbumClient client,
   required List<String> path,
   String? label,
+  List<String> photoLabels = const [],
 }) async {
   if (refuseWhileOffline(context)) {
     return;
@@ -137,6 +138,7 @@ Future<void> shareLinksOf({
       client: client,
       path: path,
       label: label,
+      photoLabels: photoLabels,
       mayShowMembers: mayShowMembers,
       mayProveAddresses: mayProveAddresses,
     ),
@@ -156,6 +158,11 @@ class ShareLinkDialog extends StatefulWidget {
 
   /// How the folder is named in the title, its last segment by default.
   final String? label;
+
+  /// The labels of the album being shared, which a link may show the
+  /// photographs of one of (issue #213); empty for a folder of folders and an
+  /// album without labels, where the question is not asked.
+  final List<String> photoLabels;
 
   /// Whether the dialog runs in a browser, which has no phone apps to send a
   /// recipient's link through, see `recipient_send.dart`.
@@ -179,6 +186,7 @@ class ShareLinkDialog extends StatefulWidget {
     required this.client,
     required this.path,
     this.label,
+    this.photoLabels = const [],
     this.mayShowMembers = true,
     this.mayProveAddresses = false,
     this.isWeb = kIsWeb,
@@ -230,6 +238,10 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   /// The rating floor of the new link, the lowest by default: a link shows
   /// what the album holds unless its author says otherwise.
   int _minRating = -2;
+
+  /// The label whose photographs the new link shows, empty for the whole
+  /// album (issue #213).
+  String _photoLabel = "";
 
   /// The rights the new link carries; `view` is always among them.
   Set<String> _picked = const {rightView};
@@ -466,6 +478,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           ? l10n.linkUpToMembers
           : l10n.linkPublicOnly,
       ratingFloorLabel(l10n, link.minRating),
+      if (link.photoLabel.isNotEmpty) l10n.linkShowsLabel(link.photoLabel),
     ];
     var text = parts.join(" · ");
     if (link.revoked.isNotEmpty) {
@@ -585,6 +598,20 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
             disabled: {if (!_mayProve) true},
             disabledReason: _mayProve ? null : l10n.linkTypeNeedsProof,
             onChanged: (value) => setState(() => _group = value),
+          ),
+        // Which photographs: the whole album, or those of one label — asked
+        // only where the album has labels (issue #213).
+        if (widget.photoLabels.isNotEmpty)
+          _choiceRow<String>(
+            key: "link-photo-label",
+            label: l10n.labelFilterHeading,
+            value: _photoLabel,
+            choices: [
+              ("", l10n.labelFilterWholeAlbum),
+              for (var label in widget.photoLabels)
+                (label, l10n.labelFilterOnly(label)),
+            ],
+            onChanged: (value) => setState(() => _photoLabel = value),
           ),
         _choiceRow<LinkExpiry>(
           key: "link-expiry",
@@ -823,6 +850,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           expires: _expiresAt,
           maxPrivacy: _maxPrivacy,
           minRating: _minRating,
+          photoLabel: _photoLabel,
           // What the check boxes show, `view` included: the server closes the
           // set again, so sending it only means that what was shown was sent.
           rights: [

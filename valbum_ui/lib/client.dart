@@ -2114,30 +2114,6 @@ class VAlbumClient {
     );
   }
 
-  /// Sets aside the photos of the album at [path] that lie elsewhere in the
-  /// space too, see issue #118.
-  ///
-  /// The sweep that repairs what slipped through while the index was
-  /// incomplete: nothing is deleted — every duplicate is renamed into the
-  /// space's own folder — and the answer names, for every photo, where the
-  /// copy that stays is.
-  Future<MoveResult> findDuplicates(List<String> path) async {
-    var url = "${folderUrl(path)}?action=find-duplicates";
-    var response = await _http.post(
-      Uri.parse(url),
-      encoding: Encoding.getByName("utf-8"),
-      headers: {"Content-Type": "application/json", ...authHeaders},
-    );
-    if (response.statusCode >= 300) {
-      throw failure(
-        response.statusCode,
-        response.body,
-        platformMessages.doingFindingDuplicates("'${path.join("/")}'"),
-      );
-    }
-    return MoveResult.read(JsonReader.fromString(response.body));
-  }
-
   /// Reads the camera and the position of every photograph below [path] from
   /// the files again and fills what the sidecars lack, see issue #161.
   ///
@@ -2627,6 +2603,27 @@ class VAlbumClient {
   Future<AlbumInfo?> adjustFaces(List<String> path, TagFaces request) async {
     var url = "${folderUrl(path)}?action=adjust-faces";
     var response = await _postBody(url, _jsonOf(request.writeContent));
+    try {
+      var resource = Resource.read(JsonReader.fromString(response));
+      return resource is AlbumInfo ? resource : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Renames the label [from] of the album at [path] to [to] on every
+  /// photograph carrying it, or takes it off every one where [to] is empty
+  /// (issue #213): `?action=relabel` with a [LabelChange].
+  ///
+  /// An action and not the album's `PUT`, because the server has to know that
+  /// it is a rename: a share link showing the label follows it to the new
+  /// name. The answer is the album as this caller is answered it, `null`
+  /// where it cannot be read; a refusal arrives as the thrown
+  /// [VAlbumException] carrying the server's own sentence.
+  Future<AlbumInfo?> relabel(List<String> path, String from, String to) async {
+    var url = "${folderUrl(path)}?action=relabel";
+    var response =
+        await _postBody(url, _jsonOf(LabelChange(from: from, to: to).writeContent));
     try {
       var resource = Resource.read(JsonReader.fromString(response));
       return resource is AlbumInfo ? resource : null;

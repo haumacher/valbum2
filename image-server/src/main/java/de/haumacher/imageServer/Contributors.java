@@ -88,7 +88,8 @@ public final class Contributors {
 	 * loader's fresh parts are given here, so this happens exactly until the album's
 	 * <code>index.json</code> lists the photograph — the first sidecar write of the album stores
 	 * the raised rating, and from then on it is the owner's to change like any other. A raw and
-	 * its JPEG (issue #191) are one part; either file's record counts.
+	 * its JPEG (issue #191) are one part; either file's record counts. A link showing the photographs
+	 * of one label gives the photograph that label, see issue #213.
 	 * </p>
 	 *
 	 * @param images
@@ -116,6 +117,8 @@ public final class Contributors {
 			// Raised, never lowered; capped, never raised.
 			image.setRating(Math.max(image.getRating(), attribution.getMinRating()));
 			image.setPrivacy(Math.min(image.getPrivacy(), attribution.getMaxPrivacy()));
+			// Labeled like the photographs the link shows, see issue #213.
+			Labels.add(image, attribution.getLinkLabel());
 		}
 	}
 

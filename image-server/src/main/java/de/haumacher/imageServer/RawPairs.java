@@ -163,8 +163,7 @@ public final class RawPairs {
 	}
 
 	/**
-	 * The given album with the file of the given name gone from its folder (set aside as a
-	 * duplicate, see {@link MoveService#setAsideDuplicates}): a companion that left is no companion
+	 * The given album with the file of the given name gone from its folder: a companion that left is no companion
 	 * any more, a photograph that left while its companion stays is the raw now, and one without a
 	 * companion leaves the album.
 	 */

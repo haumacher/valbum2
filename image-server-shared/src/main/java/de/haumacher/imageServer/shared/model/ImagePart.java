@@ -66,6 +66,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getCrop() */
 	private static final String CROP__PROP = "crop";
 
+	/** @see #getLabels() */
+	private static final String LABELS__PROP = "labels";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -101,6 +104,8 @@ public class ImagePart extends AbstractImage {
 	private String _raw = "";
 
 	private de.haumacher.imageServer.shared.model.Crop _crop = null;
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.LabelName> _labels = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -686,6 +691,70 @@ public class ImagePart extends AbstractImage {
 		return _crop != null;
 	}
 
+	/**
+	 * The labels of this photograph, see issue #213: the author's sub-views of the album, "the day
+	 * we met Anna and Ben".
+	 *
+	 * <p>
+	 * <b>Stored</b> in <code>index.json</code>, and absent in a sidecar written before this field
+	 * existed, which reads as "none". A photograph may carry several, each once; a label is plain
+	 * text compared exactly, and the labels <em>of an album</em> are the labels its photographs
+	 * carry &mdash; there is no list of them anywhere else. Set in the edit mode and carried by the
+	 * ordinary sidecar <code>PUT</code>; renamed or removed on every photograph of an album at once
+	 * by <code>?action=relabel</code> ({@link LabelChange}), which also carries a share link showing
+	 * the label along. A share link may show the photographs of one label only
+	 * ({@link ShareLink#getPhotoLabel()}), and an upload through such a link carries that label.
+	 * </p>
+	 *
+	 * <p>
+	 * Answered to the members of the space only: a share link, an anonymous visitor and the
+	 * author's preview as the public sees it are answered no label at all.
+	 * </p>
+	 *
+	 * <p>
+	 * A list of messages, not a list of plain strings: the Dart backend of the model generator
+	 * mis-types a <code>repeated string</code> field, see {@link UploadCheck#getHashes()}.
+	 * </p>
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.LabelName> getLabels() {
+		return _labels;
+	}
+
+	/**
+	 * @see #getLabels()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setLabels(java.util.List<? extends de.haumacher.imageServer.shared.model.LabelName> value) {
+		internalSetLabels(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getLabels()} without chain call utility. */
+	protected final void internalSetLabels(java.util.List<? extends de.haumacher.imageServer.shared.model.LabelName> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'labels' cannot be null.");
+		_labels.clear();
+		_labels.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getLabels()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart addLabel(de.haumacher.imageServer.shared.model.LabelName value) {
+		internalAddLabel(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addLabel(de.haumacher.imageServer.shared.model.LabelName)} without chain call utility. */
+	protected final void internalAddLabel(de.haumacher.imageServer.shared.model.LabelName value) {
+		_labels.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getLabels()} list.
+	 */
+	public final void removeLabel(de.haumacher.imageServer.shared.model.LabelName value) {
+		_labels.remove(value);
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -777,6 +846,12 @@ public class ImagePart extends AbstractImage {
 			out.name(CROP__PROP);
 			getCrop().writeTo(out);
 		}
+		out.name(LABELS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.LabelName x : getLabels()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -813,6 +888,14 @@ public class ImagePart extends AbstractImage {
 			break;
 			case RAW__PROP: setRaw(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CROP__PROP: setCrop(de.haumacher.imageServer.shared.model.Crop.readCrop(in)); break;
+			case LABELS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addLabel(de.haumacher.imageServer.shared.model.LabelName.readLabelName(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

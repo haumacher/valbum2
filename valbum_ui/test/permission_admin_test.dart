@@ -182,7 +182,7 @@ void main() {
       expect(find.byKey(const Key("permission-dialog")), findsNothing);
       expect(
         lineOf(tester, "carol"),
-        startsWith("may add photos — sees all images — may share links"),
+        "Contributor · Sees: all photos · May share links",
       );
     });
 
@@ -220,7 +220,7 @@ void main() {
         requests.where((r) => r.url.queryParameters["action"] != null),
         isEmpty,
       );
-      expect(lineOf(tester, "carol"), startsWith("may look"));
+      expect(lineOf(tester, "carol"), startsWith("Viewer"));
     });
   });
 
@@ -287,7 +287,7 @@ void main() {
       await tapVisible(tester, find.byKey(const Key("user-remove-haui")));
       await tapVisible(tester, find.byKey(const Key("remove-user-confirmed")));
 
-      expect(find.byKey(const Key("settings.users.error")), findsOneWidget);
+      expect(find.byKey(const Key("settings.people.error")), findsOneWidget);
       expect(find.text("The last administrator stays."), findsOneWidget);
       // Nobody vanished from the list on a refusal.
       expect(find.byKey(const Key("user-haui")), findsOneWidget);

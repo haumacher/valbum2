@@ -15,6 +15,7 @@ import 'package:valbum_ui/album_layout.dart' as layouter;
 import 'about.dart';
 import 'album_date.dart';
 import 'album_edit.dart';
+import 'album_labels.dart';
 import 'album_model.dart';
 import 'app.dart';
 import 'cache_refresh.dart';
@@ -28,6 +29,7 @@ import 'drag_scroll.dart';
 import 'form_dialog.dart';
 import 'image_properties.dart';
 import 'keyboard_scroll.dart';
+import 'label_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
 import 'move_view.dart';
@@ -379,6 +381,9 @@ class AlbumContentState extends State<AlbumContent>
     }
     setState(() {
       editMode = true;
+      // The edit mode is the whole album, every heading included (issue
+      // #213): the label filter of the view is left behind with it.
+      setLabelFilter(widget.album, null);
       selection
         ..clear()
         ..add(selected);
@@ -575,10 +580,11 @@ class AlbumContentState extends State<AlbumContent>
         // reports is no more "left to right" than the stored one is, and the
         // stored order is the one every reorder of this page speaks. The
         // select mode (issue #209) ranges over what is shown alone: an image
-        // the rating filter hides is not there to be downloaded.
+        // the rating filter or the label chip (#213) hides is not there to be
+        // downloaded.
         ordered: [
           for (var stored
-              in selectMode ? visibleParts(shownAlbum) : widget.album.parts)
+              in selectMode ? shownParts(shownAlbum) : widget.album.parts)
             if (stored is AbstractImage) stored,
         ],
         tapped: part,
@@ -767,7 +773,7 @@ class AlbumContentState extends State<AlbumContent>
   /// tap is no click on an image, so the anchor of a shift-click stays where
   /// it was.
   void toggleHeading(Heading heading) => setState(() {
-        var images = imagesUnder(visibleParts(widget.album), heading);
+        var images = imagesUnder(shownParts(widget.album), heading);
         if (images.every(selection.contains)) {
           images.forEach(selection.remove);
         } else {
@@ -778,7 +784,7 @@ class AlbumContentState extends State<AlbumContent>
   /// Whether everything under the given heading is selected, which lights its
   /// check box; a heading with nothing under it is never lit.
   bool headingSelected(Heading heading) {
-    var images = imagesUnder(visibleParts(widget.album), heading);
+    var images = imagesUnder(shownParts(widget.album), heading);
     return images.isNotEmpty && images.every(selection.contains);
   }
 
@@ -1166,6 +1172,225 @@ class AlbumContentState extends State<AlbumContent>
   /// share link, see [editMode].
   bool get mayMoveSelection => editMode && selection.isNotEmpty;
 
+  /// The label the view shows the photographs of, `null` for all of them
+  /// (issue #213); the edit mode is never filtered by a label.
+  String? get labelFilter => editMode ? null : labelFilterOf(shownAlbum);
+
+  /// The parts the album shows: the rating filter's, and in the view mode
+  /// the label chip's, with the headings under which nothing is shown left
+  /// out wherever a photograph is hidden — the one rule of every filtered
+  /// view (issue #213). The edit mode and an unfiltered view keep every
+  /// heading, empty ones included.
+  List<AlbumPart> shownParts(AlbumInfo self) {
+    var parts = visibleParts(self);
+    if (editMode) {
+      return parts;
+    }
+    var label = labelFilterOf(self);
+    // Unfiltered — no chip, and the rating filter hiding nothing — the album
+    // keeps every heading, empty ones included.
+    var hidesSome = parts.whereType<AbstractImage>().length !=
+        self.parts.whereType<AbstractImage>().length;
+    return label == null && !hidesSome ? parts : labelView(parts, label);
+  }
+
+  /// Whether "Label…" is offered: a selection of the edit mode (issue #213).
+  bool get mayLabelSelection =>
+      editMode && selection.any((part) => part is AbstractImage);
+
+  /// Gives the selected photographs labels or takes labels off them, in the
+  /// edit buffer (issue #213): saved with the album like every other edit.
+  Future<void> labelSelection() async {
+    var parts = [
+      for (var part in widget.album.parts)
+        if (part is AbstractImage && selection.contains(part)) part,
+    ];
+    if (parts.isEmpty) {
+      return;
+    }
+    var changes = await askLabels(
+      context,
+      labels: [for (var entry in albumLabels(widget.album.parts)) entry.label],
+      parts: parts,
+    );
+    if (changes == null || changes.isEmpty || !mounted) {
+      return;
+    }
+    setState(() {
+      var changed = false;
+      changes.forEach((label, carry) {
+        changed |= carry ? addLabel(parts, label) : removeLabel(parts, label);
+      });
+      if (changed) {
+        markDirty();
+      }
+    });
+  }
+
+  /// Filters the view to the photographs of [label], or shows them all again
+  /// where it is the label already shown (issue #213).
+  void toggleLabelFilter(String label) => setState(() {
+        var album = shownAlbum;
+        setLabelFilter(album, labelFilterOf(album) == label ? null : label);
+      });
+
+  /// The chips of the labels of the album above its photographs, each with
+  /// the number of photographs a tap on it shows (issue #213); `null` where
+  /// there is none to show, and always inside a share link — the link is
+  /// already the view, and a link is answered no label.
+  Widget? labelChips(AlbumInfo self) {
+    if (share != null) {
+      return null;
+    }
+    var labels = albumLabels(
+      self.parts,
+      shown: (part) => isVisiblePart(part, self.minRating),
+    );
+    if (labels.isEmpty) {
+      return null;
+    }
+    var active = labelFilterOf(self);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          for (var entry in labels)
+            _labelChip(entry.label, entry.count, active == entry.label),
+        ],
+      ),
+    );
+  }
+
+  Widget _labelChip(String label, int count, bool active) {
+    Widget chip = FilterChip(
+      key: Key("label-chip-$label"),
+      selected: active,
+      showCheckmark: false,
+      backgroundColor: Colors.white12,
+      selectedColor: Colors.white,
+      side: const BorderSide(color: Colors.white38),
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: active ? Colors.black : Colors.white),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            "$count",
+            key: Key("label-count-$label"),
+            style: TextStyle(color: active ? Colors.black54 : Colors.white60),
+          ),
+        ],
+      ),
+      onSelected: (_) => toggleLabelFilter(label),
+    );
+    // On hover only: a long press is the editor's way to the label's menu.
+    chip = Tooltip(
+      message: _l10n.labelChipTooltip(label),
+      triggerMode: TooltipTriggerMode.manual,
+      child: chip,
+    );
+    if (!mayEditAlbum) {
+      return chip;
+    }
+    // An editor renames or removes a label where it is shown: a long press
+    // on a touch screen, a secondary click with a mouse.
+    return Builder(
+      builder: (context) => GestureDetector(
+        onLongPress: () {
+          var box = context.findRenderObject() as RenderBox;
+          _showLabelMenu(label, box.localToGlobal(box.size.center(Offset.zero)));
+        },
+        onSecondaryTapUp: (details) =>
+            _showLabelMenu(label, details.globalPosition),
+        child: chip,
+      ),
+    );
+  }
+
+  Future<void> _showLabelMenu(String label, Offset position) async {
+    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    var action = await showMenu<Future<void> Function()>(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & Size.zero,
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem(
+          key: const Key("label-rename"),
+          value: () => renameLabel(label),
+          child: Text(_l10n.labelRename),
+        ),
+        PopupMenuItem(
+          key: const Key("label-delete"),
+          value: () => deleteLabel(label),
+          child: Text(_l10n.labelDelete),
+        ),
+      ],
+    );
+    if (action != null && mounted) {
+      await action();
+    }
+  }
+
+  /// Renames [label] on every photograph of the album, at once (issue #213):
+  /// the server carries a share link showing it along.
+  Future<void> renameLabel(String label) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var name = await askLabelRename(context, label);
+    if (name == null || !mounted) {
+      return;
+    }
+    await _relabel(label, name);
+  }
+
+  /// Takes [label] off every photograph of the album, at once, after asking
+  /// (issue #213).
+  Future<void> deleteLabel(String label) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    if (!await confirmLabelDelete(context, label) || !mounted) {
+      return;
+    }
+    await _relabel(label, "");
+  }
+
+  Future<void> _relabel(String from, String to) async {
+    var messenger = ScaffoldMessenger.of(context);
+    AlbumInfo? answer;
+    try {
+      answer = await client.relabel(widget.albumState.path, from, to);
+    } catch (error) {
+      if (mounted) {
+        showRefusal(messenger, error);
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      var album = widget.album;
+      if (answer != null) {
+        applyLabelsFrom(album, answer);
+      } else {
+        renameLabelIn(album.parts, from, to);
+      }
+      if (labelFilterOf(album) == from) {
+        setLabelFilter(album, to.isEmpty ? null : to);
+      }
+    });
+  }
+
   /// Whether the menu's move acts on the album itself, see [moveAlbum].
   ///
   /// Nothing at the root of the space: an album is an entry of the listing
@@ -1177,10 +1402,11 @@ class AlbumContentState extends State<AlbumContent>
   /// With the `download` right on the album only: the images of the selection
   /// while the edit mode holds one, and otherwise the view — every image shown
   /// at the rating filter standing, for a member exactly as for a share link,
-  /// photographs and videos alike. What the view does not show is not taken:
-  /// an image below the filter, a member of a group rated below it, and a
-  /// photograph rated as trash (#152), which no filter shows. Always the
-  /// originals.
+  /// photographs and videos alike, and only the photographs of the label chip
+  /// standing (#213). What the view does not show is not taken: an image below
+  /// the filter, a member of a group rated below it or not carrying the chip's
+  /// label, and a photograph rated as trash (#152), which no filter shows.
+  /// Always the originals.
   List<ImagePart> get downloadImages {
     if (!rights.mayDownload || previewing) {
       return const [];
@@ -1188,14 +1414,19 @@ class AlbumContentState extends State<AlbumContent>
     if (editMode && selection.isNotEmpty) {
       return selectedImages(widget.album, selection);
     }
-    return shownImages(visibleParts(shownAlbum).toSet());
+    return shownImages(shownParts(shownAlbum).toSet());
   }
 
   /// The images of [parts] the album shows, see [downloadImages].
-  List<ImagePart> shownImages(Set<AlbumPart> parts) => [
-        for (var image in selectedImages(shownAlbum, parts))
-          if (image.rating >= minRating) image,
-      ];
+  List<ImagePart> shownImages(Set<AlbumPart> parts) {
+    var label = labelFilter;
+    return [
+      for (var image in selectedImages(shownAlbum, parts))
+        if (image.rating >= minRating &&
+            (label == null || carriesLabel(image, label)))
+          image,
+    ];
+  }
 
   /// Fetches [images] — [downloadImages] where none are named — and hands
   /// them to the platform, see `downloads.dart`: one archive named by the
@@ -1716,6 +1947,15 @@ class AlbumContentState extends State<AlbumContent>
               _l10n.downloadSelection(downloadImages.length),
               (_) => downloadSelection(),
             ),
+          // The labels of the selection, the album's sub-views (issue #213):
+          // an edit of the buffer like every other one, saved with it.
+          if (mayLabelSelection)
+            keyedMenuItem(
+              const Key("label-selection"),
+              Icons.label_outline,
+              _l10n.labelSelectionAction,
+              (_) => labelSelection(),
+            ),
           // Some of them, for whoever has no edit mode to select in (#209).
           if (maySelect)
             keyedMenuItem(
@@ -1790,17 +2030,8 @@ class AlbumContentState extends State<AlbumContent>
               _l10n.showTrash,
               (_) => showTrash(),
             ),
-          // Whoever may change this album may have the photos out of it that
-          // the library already holds somewhere else, see issue #118.
-          if (mayEditAlbum)
-            keyedMenuItem(
-              const Key("find-duplicates"),
-              Icons.copy_all,
-              _l10n.findDuplicatesAction,
-              (_) => findDuplicates(),
-            ),
-          // The same editors may have the camera and the position read out of
-          // the files again, which an album described before they existed
+          // Whoever may change this album may have the camera and the position
+          // read out of the files again, which an album described before they existed
           // lacks, see issue #161.
           if (mayEditAlbum)
             keyedMenuItem(
@@ -2024,60 +2255,6 @@ class AlbumContentState extends State<AlbumContent>
     widget.albumState.reload();
   }
 
-  /// Sets aside the photos of this album that the library holds elsewhere too,
-  /// the app half of the sweep of issue #118.
-  ///
-  /// Asked first, because it takes photos out of the album the person is
-  /// looking at. Nothing is deleted — every duplicate is renamed into the
-  /// space's own folder — and the confirmation says so, because "find
-  /// duplicates" must not read as "delete duplicates".
-  Future<void> findDuplicates() async {
-    var confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        key: const Key("find-duplicates-dialog"),
-        title: Text(_l10n.findDuplicatesTitle),
-        content: Text(_l10n.findDuplicatesMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(_l10n.cancel),
-          ),
-          ElevatedButton(
-            key: const Key("find-duplicates-confirm"),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(_l10n.findDuplicatesTitle),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
-    MoveResult answer;
-    try {
-      answer = await client.findDuplicates(widget.albumState.path);
-    } catch (error) {
-      if (mounted) {
-        // The server's own reason -- a refusal speaks, see issue #49.
-        showMessage(error is VAlbumException ? error.message : "$error");
-      }
-      return;
-    }
-    if (!mounted) {
-      return;
-    }
-
-    var count = answer.outcomes.length;
-    showMessage(
-        count == 0 ? _l10n.noDuplicatesFound : _l10n.duplicatesSetAside(count));
-    if (count > 0) {
-      widget.albumState.navigator.delegate.forget(widget.albumState.path);
-      widget.albumState.reload();
-    }
-  }
-
   /// Reads the camera and the position of the album's photographs from the
   /// files again, the app half of `?action=reanalyze` (issue #161).
   ///
@@ -2144,6 +2321,10 @@ class AlbumContentState extends State<AlbumContent>
         client: client,
         path: widget.albumState.path,
         label: "'${widget.album.title}'",
+        // A link may show the photographs of one label (issue #213).
+        photoLabels: [
+          for (var entry in albumLabels(widget.album.parts)) entry.label,
+        ],
       );
 
   /// Says something to the user that no view of its own says.
@@ -2170,7 +2351,7 @@ class AlbumContentState extends State<AlbumContent>
       );
 
   Widget contentView(AlbumInfo self) {
-    var shown = visibleParts(self);
+    var shown = shownParts(self);
     var hidesEverything =
         self.parts.isNotEmpty && !shown.any((part) => part is AbstractImage);
 
@@ -2375,6 +2556,10 @@ class AlbumContentState extends State<AlbumContent>
           ),
         );
       }
+      var chips = labelChips(self);
+      if (chips != null) {
+        result.add(SliverToBoxAdapter(child: chips));
+      }
     }
     // A filter that hides everything says so: an empty black page would look
     // like an empty album.
@@ -2384,7 +2569,11 @@ class AlbumContentState extends State<AlbumContent>
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
             child: Text(
-              AppLocalizations.of(context)!.ratingFilterHidesAll(minRating),
+              labelFilter == null
+                  ? AppLocalizations.of(context)!
+                      .ratingFilterHidesAll(minRating)
+                  : AppLocalizations.of(context)!
+                      .labelFilterHidesAll(labelFilter!),
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 16, color: Colors.white70),
             ),
@@ -2430,7 +2619,7 @@ class AlbumContentState extends State<AlbumContent>
       images = <AbstractImage>[];
     }
 
-    for (var part in visibleParts(self)) {
+    for (var part in shownParts(self)) {
       if (part is AbstractImage) {
         images.add(part);
       } else if (part is Heading) {
@@ -3357,6 +3546,12 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
             value: album.moveSelection,
             child: Text(_l10n.moveSubjectTo(
                 ImageSubject(album.selection.length).asked(_l10n))),
+          ),
+        if (album.mayLabelSelection)
+          PopupMenuItem<void Function()>(
+            key: const Key("tile-context-label"),
+            value: album.labelSelection,
+            child: Text(_l10n.labelSelectionAction),
           ),
         PopupMenuItem<void Function()>(
           key: const Key("tile-context-properties"),

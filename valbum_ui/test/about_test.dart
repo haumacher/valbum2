@@ -126,7 +126,6 @@ void main() {
         "add-heading",
         "persons",
         "show-trash",
-        "find-duplicates",
         "reanalyze",
         "refresh-previews",
         "view-as-public",

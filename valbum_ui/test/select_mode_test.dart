@@ -21,20 +21,23 @@ import 'util/viewer_harness.dart';
 
 /// An album `Inbox` carrying [rights] in two sections: "Morning" holding
 /// `a.jpg` and `b.jpg`, "Evening" holding `c.jpg` (rated -1, which the
-/// standing filter hides), `d.jpg` and the video `e.mp4`.
+/// standing filter hides), `d.jpg` and the video `e.mp4`; `a.jpg` and `d.jpg`
+/// carry the label "Kids" (issue #213).
 String sectionedAlbum(List<String> rights) =>
     '["AlbumInfo", {"path": "Inbox", "title": "Inbox", "subTitle": "", '
     '"rights": [${rights.map((r) => '{"name": "$r"}').join(", ")}], '
     '"parts": ['
     '["Heading", {"text": "Morning", "level": 1}], '
-    '${image("a.jpg", 0, 0)}, ${image("b.jpg", 1, 0)}, '
+    '${image("a.jpg", 0, 0, labels: ["Kids"])}, ${image("b.jpg", 1, 0)}, '
     '["Heading", {"text": "Evening", "level": 1}], '
-    '${image("c.jpg", 2, -1)}, ${image("d.jpg", 3, 0)}, '
+    '${image("c.jpg", 2, -1)}, ${image("d.jpg", 3, 0, labels: ["Kids"])}, '
     '${image("e.mp4", 4, 0, kind: "VIDEO")}'
     ']}]';
 
-String image(String name, int index, int rating, {String kind = "IMAGE"}) =>
+String image(String name, int index, int rating,
+        {String kind = "IMAGE", List<String> labels = const []}) =>
     '["ImagePart", {"kind": "$kind", "name": "$name", '
+    '"labels": [${labels.map((l) => '{"name": "$l"}').join(", ")}], '
     '"date": ${1015113600000 + index * 10000}, "width": 2048, '
     '"height": 1536, "orientation": "IDENTITY", "rating": $rating}]';
 
@@ -271,6 +274,48 @@ void main() {
             rights: const ["view", "download", "contribute"]);
         await openAlbumMenu(tester);
         expect(menuKeys(tester), contains("select-mode"));
+      });
+    });
+  });
+
+  group('under a label chip (issue #213)', () {
+    Future<void> pumpKids(
+        WidgetTester tester, List<http.Request> requests) async {
+      await pumpMember(tester, requests: requests);
+      await tester.tap(find.byKey(const Key("label-chip-Kids")));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the whole view is what the chip shows', (tester) async {
+      installSaver();
+      var requests = <http.Request>[];
+      await withFakeImageHttp(() async {
+        await pumpKids(tester, requests);
+        await openAlbumMenu(tester);
+        expect(find.text(testL10n.downloadSelection(2)), findsOneWidget);
+        await tester.tap(find.byKey(const Key("download-selection")));
+        await tester.pumpAndSettle();
+      });
+      var post =
+          requests.singleWhere((r) => r.url.queryParameters["action"] == "zip");
+      expect(postedNames(post), ["a.jpg", "d.jpg"]);
+    });
+
+    testWidgets('a heading selects what it shows under the chip',
+        (tester) async {
+      await withFakeImageHttp(() async {
+        await pumpKids(tester, []);
+        await enterSelectMode(tester);
+
+        await tester.tap(find.text("Evening"));
+        await tester.pumpAndSettle();
+        expect(markedNames(), ["d.jpg"]);
+        expect(find.byIcon(Icons.check_box), findsOneWidget);
+
+        // A range runs over what the chip shows, b.jpg not among it.
+        await click(tester, "a.jpg");
+        await clickWith(tester, LogicalKeyboardKey.shiftLeft, "d.jpg");
+        expect(markedNames(), ["a.jpg", "d.jpg"]);
       });
     });
   });

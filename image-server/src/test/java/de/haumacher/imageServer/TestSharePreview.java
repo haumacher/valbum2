@@ -361,6 +361,31 @@ public class TestSharePreview extends TestCase {
 			Arrays.equals(preview(HOLIDAYS + "/Rejected", "kept.jpg"), cover.bodyBytes()));
 	}
 
+	/**
+	 * A link showing one label is drawn with a photograph carrying it, never with the album's index
+	 * picture where that one does not, see issue #213.
+	 */
+	public void testALabelDecidesTheCover() throws Exception {
+		single();
+		Path sidecar = _base.resolve(ZOO).resolve("index.json");
+		Files.write(sidecar, new String(Files.readAllBytes(sidecar), StandardCharsets.UTF_8)
+			.replace("{\"name\":\"public.jpg\",", "{\"name\":\"public.jpg\",\"labels\":[{\"name\":\"Day\"}],")
+			.getBytes(StandardCharsets.UTF_8));
+		ShareStore shares = auth("").getShares();
+		ShareStore.Issued issued = shares.create("admin", ZOO, "", "", Privacy.MEMBERS, Ratings.MIN);
+		shares.setPhotoLabel(issued.getLink(), "Day");
+
+		FakeResponse cover = get("/s/" + issued.getToken() + "/cover.jpg");
+		assertEquals(cover.body(), HttpServletResponse.SC_OK, cover.status());
+		assertTrue("The index picture carries no label and gives way to the one that does.",
+			Arrays.equals(preview(ZOO, "public.jpg"), cover.bodyBytes()));
+
+		ShareStore.Issued none = shares.create("admin", ZOO, "", "", Privacy.MEMBERS, Ratings.MIN);
+		shares.setPhotoLabel(none.getLink(), "Night");
+		assertEquals("No photograph carries the label: no cover.", HttpServletResponse.SC_NOT_FOUND,
+			get("/s/" + none.getToken() + "/cover.jpg").status());
+	}
+
 	/** A shared folder is drawn with the picture of its first child that has one. */
 	public void testAFolderIsDrawnWithItsFirstChild() throws Exception {
 		single();

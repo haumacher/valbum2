@@ -13,11 +13,12 @@ CallerPermission perm(String role, {String clearance = "", bool mayShare = false
 
 void main() {
   test("today's roles read as the new words, never as gibberish", () {
-    expect(perm("member").phrase(testL10n), startsWith("may edit the albums"));
-    expect(perm("member").phrase(testL10n), contains("may share links"));
-    expect(perm("guest").phrase(testL10n), startsWith("may look"));
-    expect(perm("guest").phrase(testL10n), contains("sees all but the private images"));
-    expect(perm("admin").phrase(testL10n), contains("sees all images"));
+    expect(perm("member").phrase(testL10n), startsWith("Editor"));
+    expect(perm("member").phrase(testL10n), contains("May share links"));
+    expect(perm("guest").phrase(testL10n), startsWith("Viewer"));
+    expect(perm("guest").phrase(testL10n),
+        contains("Sees: public and members' photos"));
+    expect(perm("admin").phrase(testL10n), contains("Sees: all photos"));
   });
 
   test('a headline for an unknown role promises nothing and ends cleanly', () {
