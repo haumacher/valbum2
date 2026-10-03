@@ -902,10 +902,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showsHeading => 'Shows';
 
   @override
-  String get privacyPublicOnly => 'Public photos only';
+  String get privacyPublicOnly => 'Public photos';
 
   @override
-  String get privacyUpToMembers => 'All photos';
+  String get privacyUpToMembers => 'Also members-only photos';
 
   @override
   String get privacyMembersNote =>
@@ -2952,4 +2952,35 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get cropAreaHint =>
       'Drag to draw, move or resize the frame; tap inside it to apply.';
+
+  @override
+  String get recipientsPickEmail => 'E-mail address from my contacts…';
+
+  @override
+  String get recipientsPickPhone => 'Phone number from my contacts…';
+
+  @override
+  String recipientsPickFailed(String reason) {
+    return 'Could not open the contacts of this phone ($reason).';
+  }
+
+  @override
+  String get addEmailOffer =>
+      'Add your e-mail so we recognise you on other devices.';
+
+  @override
+  String get addEmailOpen => 'Add e-mail';
+
+  @override
+  String get addEmailNotNow => 'Not now';
+
+  @override
+  String get addEmailTitle => 'Add your e-mail';
+
+  @override
+  String get addEmailExplanation =>
+      'We send a code to this address. Once you have confirmed it, you can open your links on other devices with it.';
+
+  @override
+  String get addEmailDone => 'Your e-mail address is saved.';
 }

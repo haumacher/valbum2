@@ -1309,6 +1309,20 @@ message AuthInfo {
 	 * </p>
 	 */
 	InvitationInfo invitation;
+
+	/**
+	 * The ways this server can prove the address of a recipient of a personal link, answered to a
+	 * signed-in member only (issue #211); empty for everybody else.
+	 *
+	 * <p>
+	 * The same entries <code>IdentifyRequired.methods</code> carries: <code>mail-code</code> where
+	 * the server can mail a code (issue #199) and <code>oidc:&lt;provider&gt;</code> with its label
+	 * per provider of OpenID Connect (issue #200). The share dialog offers a link that is proven
+	 * by an address &mdash; an open personal link, the group link &mdash; only where this is not
+	 * empty.
+	 * </p>
+	 */
+	repeated ProofMethod proofMethods;
 }
 
 /**
@@ -1358,6 +1372,17 @@ message ShareInfo {
 	 * </p>
 	 */
 	repeated ProofMethod methods;
+
+	/**
+	 * Whether the contact of this session has an e-mail address saved in the space, proven or not
+	 * (issue #211); <code>false</code> for every caller who is no contact.
+	 *
+	 * <p>
+	 * The app offers "Add your e-mail so we recognise you on other devices" only where this is
+	 * <code>false</code>. Nothing is said about the address itself, and nothing about anybody else.
+	 * </p>
+	 */
+	bool contactHasEmail;
 }
 
 /**
@@ -2531,7 +2556,8 @@ message IdentifyRequired {
 
 	/**
 	 * The ways the server can prove an address here (issue #199): <code>mail-code</code> where the
-	 * server can mail a code and either the link is open or the contact has an e-mail address;
+	 * server can mail a code and either the link is open, the contact has an e-mail address, or the
+	 * token is an addressed link's own (the <code>group</code> link of issue #211);
 	 * <code>oidc:&lt;provider&gt;</code> (issue #200) per configured provider of OpenID Connect where
 	 * the link is open, the contact has an e-mail address, or the token is an addressed link's own
 	 * (whose sign-in must name one of its recipients); empty for a first open, which needs no proof.
@@ -2543,6 +2569,14 @@ message IdentifyRequired {
 
 	/** The member who shared the link, for "… will see your name with the photos you add". */
 	string sharedBy;
+
+	/**
+	 * Whether the token is the own token of an addressed link, the <em>group link</em> of issue #211:
+	 * whoever opens it proves an e-mail address saved with one of the link's recipients (by a mailed
+	 * code typed in, or through a provider of <code>methods</code>) and is that recipient from then on.
+	 * <code>addresses</code> stays empty here, because naming them would reveal the group.
+	 */
+	bool group;
 }
 
 /** A masked address of a contact, see {@link IdentifyRequired#addresses}. */
@@ -2642,8 +2676,10 @@ message OidcExchange {
  * one the space saved with that contact and the request names only which: the masked form
  * {@link IdentifyRequired#addresses} showed, or its position there in {@link #choice}; a typed
  * address is refused. On an open personal link, and for a contact who is already recognised and
- * adds an address, it is any address. The answer is an {@link EmailProofSent}, the same whether the
- * address is known to the space or not.
+ * adds an address, it is any address. On the group link (the own token of an addressed link, issue
+ * #211) it is a typed address too, and a code is mailed only where the space saved it with one of
+ * the link's recipients &mdash; the answer is the same either way. The answer is an {@link EmailProofSent},
+ * the same whether the address is known to the space or not.
  * </p>
  */
 message EmailProof {

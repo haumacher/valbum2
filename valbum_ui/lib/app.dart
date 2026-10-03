@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'add_email.dart';
 import 'album_model.dart';
 import 'album_view.dart';
 import 'background.dart';
@@ -318,9 +319,6 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// that is more than "say who you are", or what a return from a provider
   /// was answered.
   String? _identifyMessage;
-
-  /// Whether [_identify] is the refusal of a group link (issue #211).
-  bool _identifyGroup = false;
 
   /// Whether the return from a provider's sign-in was looked for: once per
   /// page load, the location being read only then.
@@ -642,32 +640,110 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// The `builder` of both [MaterialApp]s of this app, so that the album and
   /// the sign-in screen carry it alike — and inside them, so that the banner
   /// is themed and laid out like everything else.
-  Widget _withInvitationNotice(BuildContext context, Widget? child) {
+  Widget _withInvitationNotice(BuildContext context, Widget? child) =>
+      _withBanners(context, child, emailOffer: false);
+
+  /// The `builder` of the album app: the invitation notice, and in a contact
+  /// session the offer "Add your e-mail" (issue #211, see `add_email.dart`).
+  Widget _withSessionNotices(BuildContext context, Widget? child) =>
+      _withBanners(context, child, emailOffer: _emailOfferShown);
+
+  Widget _withBanners(
+    BuildContext context,
+    Widget? child, {
+    required bool emailOffer,
+  }) {
     var text = _invitationNoticeTextOf(AppLocalizations.of(context)!);
     var below = child ?? const SizedBox.shrink();
-    if (text == null) {
+    if (text == null && !emailOffer) {
       return below;
     }
     return Column(
       children: [
         SafeArea(
           bottom: false,
-          child: MaterialBanner(
-            key: const Key("invitation-notice"),
-            content: Text(text),
-            leading: const Icon(Icons.info_outline),
-            actions: [
-              TextButton(
-                key: const Key("invitation-notice-dismiss"),
-                onPressed: () => setState(() => _invitationNotice = null),
-                child: Text(AppLocalizations.of(context)!.dismiss),
-              ),
+          child: Column(
+            children: [
+              if (text != null)
+                MaterialBanner(
+                  key: const Key("invitation-notice"),
+                  content: Text(text),
+                  leading: const Icon(Icons.info_outline),
+                  actions: [
+                    TextButton(
+                      key: const Key("invitation-notice-dismiss"),
+                      onPressed: () => setState(() => _invitationNotice = null),
+                      child: Text(AppLocalizations.of(context)!.dismiss),
+                    ),
+                  ],
+                ),
+              if (emailOffer)
+                AddEmailBanner(
+                  onAdd: _addEmail,
+                  onDismiss: _dismissEmailOffer,
+                ),
             ],
           ),
         ),
         Expanded(child: below),
       ],
     );
+  }
+
+  /// The contact who added an e-mail address in this page load, so that the
+  /// offer is gone before the next `?type=auth` says so (issue #211).
+  String? _emailAddedFor;
+
+  /// Whether the contact session offers to add an e-mail address: a contact
+  /// without one, a server that can mail a code, and an offer this browser
+  /// has not dismissed in this space, see [offersAddEmail].
+  bool get _emailOfferShown {
+    var share = shareSession;
+    var link = session;
+    var contact = share?.contact;
+    return share != null &&
+        link != null &&
+        contact != null &&
+        offersAddEmail(share.info) &&
+        _emailAddedFor != contact.id &&
+        !contactStore.emailOfferDismissed(link.dataUrl);
+  }
+
+  /// "Not now": the offer is not shown again in this browser and space.
+  void _dismissEmailOffer() {
+    var link = session;
+    if (link == null) {
+      return;
+    }
+    setState(() => contactStore.dismissEmailOffer(link.dataUrl));
+  }
+
+  /// Opens the dialog adding an e-mail address, on the album app's own
+  /// navigator: the banner stands above it.
+  Future<void> _addEmail() async {
+    var navigatorContext = router.navigatorKey.currentContext;
+    var sessionClient = client;
+    var contact = shareSession?.contact;
+    if (navigatorContext == null || sessionClient == null || contact == null) {
+      return;
+    }
+    var answer =
+        await addEmail(context: navigatorContext, client: sessionClient);
+    if (answer == null || !mounted) {
+      return;
+    }
+    setState(() => _emailAddedFor = contact.id);
+    // A recognised contact keeps their credential (the server answers none);
+    // should it answer one, it is kept like any other.
+    if (answer.credential.isNotEmpty) {
+      _credentialArrived(answer);
+    }
+    if (navigatorContext.mounted) {
+      ScaffoldMessenger.maybeOf(navigatorContext)?.showSnackBar(SnackBar(
+        key: const Key("add-email-done"),
+        content: Text(AppLocalizations.of(navigatorContext)!.addEmailDone),
+      ));
+    }
   }
 
   /// Asks the server once what the token in the app base really is.
@@ -705,7 +781,6 @@ class VAlbumAppState extends State<VAlbumApp> {
             // A personal link that does not know who is asking: the
             // identification card, see `identify_view.dart` (issue #202).
             _identify = needs;
-            _identifyGroup = isGroupLink(needs, refusal: refusal.reason);
             // "Say who you are" is what the card itself says; anything more
             // (a link not sent to this contact) in the server's own words.
             _identifyMessage ??= refusal.status == 401 ? null : refusal.message;
@@ -1061,7 +1136,6 @@ class VAlbumAppState extends State<VAlbumApp> {
         onCredential: _identified,
         onSignInStarted: _signInStarted,
         onSwitchPerson: _contactCredential == null ? null : _switchPerson,
-        group: _identifyGroup,
       );
     }
     var refusal = _shareRefusal;
@@ -1182,7 +1256,7 @@ class VAlbumAppState extends State<VAlbumApp> {
           supportedLocales: AppLocalizations.supportedLocales,
           localeListResolutionCallback: resolveAppLocale,
           theme: ThemeData(primarySwatch: Colors.blue),
-          builder: _withInvitationNotice,
+          builder: _withSessionNotices,
           routerDelegate: router,
           routeInformationParser: const VAlbumRouteInformationParser(),
           // Always this app's own provider: it carries the location the app

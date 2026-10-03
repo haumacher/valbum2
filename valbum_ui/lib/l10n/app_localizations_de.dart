@@ -916,10 +916,11 @@ class AppLocalizationsDe extends AppLocalizations {
   String get showsHeading => 'Anzeigen';
 
   @override
-  String get privacyPublicOnly => 'Nur öffentliche Fotos';
+  String get privacyPublicOnly => 'Öffentliche Fotos';
 
   @override
-  String get privacyUpToMembers => 'Alle Fotos';
+  String get privacyUpToMembers =>
+      'Auch Fotos, die nur für Mitglieder sichtbar sind';
 
   @override
   String get privacyMembersNote =>
@@ -2998,4 +2999,35 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get cropAreaHint =>
       'Ziehen Sie, um den Rahmen zu zeichnen, zu verschieben oder in der Größe anzupassen; tippen Sie in den Rahmen, um die Änderung zu übernehmen.';
+
+  @override
+  String get recipientsPickEmail => 'E-Mail-Adresse aus meinen Kontakten…';
+
+  @override
+  String get recipientsPickPhone => 'Telefonnummer aus meinen Kontakten…';
+
+  @override
+  String recipientsPickFailed(String reason) {
+    return 'Die Kontakte dieses Telefons konnten nicht geöffnet werden ($reason).';
+  }
+
+  @override
+  String get addEmailOffer =>
+      'Fügen Sie Ihre E-Mail-Adresse hinzu, damit wir Sie auf anderen Geräten wiedererkennen können.';
+
+  @override
+  String get addEmailOpen => 'E-Mail-Adresse hinzufügen';
+
+  @override
+  String get addEmailNotNow => 'Jetzt nicht';
+
+  @override
+  String get addEmailTitle => 'Fügen Sie Ihre E-Mail-Adresse hinzu';
+
+  @override
+  String get addEmailExplanation =>
+      'Wir senden einen Code an diese Adresse. Sobald Sie diesen bestätigt haben, können Sie damit Ihre Links auf anderen Geräten öffnen.';
+
+  @override
+  String get addEmailDone => 'Ihre E-Mail-Adresse wurde gespeichert.';
 }

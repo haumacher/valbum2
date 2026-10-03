@@ -228,6 +228,22 @@ public class TestOidcLogins extends PersonalLinkTestCase {
 		assertEquals("Nothing was created.", 2, contacts().size());
 	}
 
+	/** Issue #211: a recipient blocked in the space does not come in through the group link either. */
+	public void testABlockedRecipientStaysOutOfTheGroupLink() throws Exception {
+		ShareLinkCreated addressed = created(ZOO, email("Tante Petra", PETRA), email("Onkel Hans", "hans@web.de"));
+		String petra = contactOf(addressed, "Tante Petra");
+		assertTrue(identifyRequired(get("/", "json", addressed.getToken())).isGroup());
+		FakeResponse block = post("/", "{\"contact\":\"" + petra + "\",\"shutOut\":true}", SharingFixture.ALICE,
+			Map.of("action", "block-contact"));
+		assertEquals(block.body(), 200, block.status());
+
+		_issuer.next("petra@gmx.de", Boolean.TRUE, "Petra");
+		FakeResponse refused = signIn(addressed.getToken(), null, true, "");
+		assertEquals(refused.body(), HttpServletResponse.SC_GONE, refused.status());
+		assertEquals(AuthService.CONTACT_SHUT_OUT, errorMessage(refused));
+		assertTrue(contact(petra).getSessions().isEmpty());
+	}
+
 	public void testAFirstOpenNeedsNoProvider() throws Exception {
 		ShareLinkCreated addressed = created(ZOO, email("Tante Petra", PETRA));
 		String own = tokenOf(addressed, "Tante Petra");
@@ -245,11 +261,21 @@ public class TestOidcLogins extends PersonalLinkTestCase {
 		String credential = credential(own);
 		AuthInfo info = auth(getAs("/", "auth", own, credential));
 		assertTrue(names(info.getShare().getMethods()).contains("oidc:google"));
+		assertTrue("She has an e-mail address already (#211).", info.getShare().isContactHasEmail());
+		assertTrue("A link caller is no member.", info.getProofMethods().isEmpty());
 
 		_issuer.next("petra.mueller@gmail.com", Boolean.TRUE, "Petra");
 		ContactCredential added = credential(signIn(own, credential, true, ""));
 		assertEquals("The credential she holds stays.", "", added.getCredential());
 		assertEquals(2, contact(contactOf(addressed, "Tante Petra")).getAddresses().size());
+	}
+
+	/** Issue #211: the share dialog learns which proofs the server offers. */
+	public void testAMemberIsToldTheProofMethods() throws Exception {
+		AuthInfo member = auth(get("/", "auth", SharingFixture.ALICE));
+		assertEquals(List.of("oidc:google"), names(member.getProofMethods()));
+		assertEquals("Google", member.getProofMethods().get(0).getLabel());
+		assertTrue("Never to an anonymous caller.", auth(get("/", "auth", null)).getProofMethods().isEmpty());
 	}
 
 	// --- The state. ---

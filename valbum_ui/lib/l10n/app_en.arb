@@ -1540,12 +1540,12 @@
     "description": "Heading above the choices of what a share link shows",
     "x-translated": "adfade40"
   },
-  "privacyPublicOnly": "Public photos only",
+  "privacyPublicOnly": "Public photos",
   "@privacyPublicOnly": {
     "description": "Choice: the link shows only the photos marked public",
     "x-translated": "3440df6b"
   },
-  "privacyUpToMembers": "All photos",
+  "privacyUpToMembers": "Also members-only photos",
   "@privacyUpToMembers": {
     "description": "Choice of a new share link: it shows every photo a link can show, which is what a member of the space sees (a private photo never)",
     "x-translated": "d9e8bb4a"
@@ -4950,5 +4950,55 @@
   "@cropAreaHint": {
     "description": "Screen-reader label of the picture in the crop editor (issue #212)",
     "x-translated": "a5b5cf0"
+  },
+  "recipientsPickEmail": "E-mail address from my contacts…",
+  "@recipientsPickEmail": {
+    "description": "Entry of the recipient chooser on a phone opening the phone's own contacts picker to pick one e-mail address (issue #201).",
+    "x-translated": "ac199d87"
+  },
+  "recipientsPickPhone": "Phone number from my contacts…",
+  "@recipientsPickPhone": {
+    "description": "Entry of the recipient chooser on a phone opening the phone's own contacts picker to pick one phone number (issue #201).",
+    "x-translated": "fae71aa4"
+  },
+  "recipientsPickFailed": "Could not open the contacts of this phone ({reason}).",
+  "@recipientsPickFailed": {
+    "description": "Said in the recipient chooser where the phone's contacts picker could not be opened; the reason is the platform's own words (issue #201).",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    },
+    "x-translated": "3e554048"
+  },
+  "addEmailOffer": "Add your e-mail so we recognise you on other devices.",
+  "@addEmailOffer": {
+    "description": "Banner of a personal link's session (issue #211) offered to a contact who has no e-mail address saved: adding one lets them prove who they are when they open the link on another device. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "c1aa7a57"
+  },
+  "addEmailOpen": "Add e-mail",
+  "@addEmailOpen": {
+    "description": "Button of the banner 'Add your e-mail' (issue #211) opening the dialog that adds the address.",
+    "x-translated": "196b4595"
+  },
+  "addEmailNotNow": "Not now",
+  "@addEmailNotNow": {
+    "description": "Button of the banner 'Add your e-mail' (issue #211) dismissing it; it is not offered again in this browser.",
+    "x-translated": "b2d7f039"
+  },
+  "addEmailTitle": "Add your e-mail",
+  "@addEmailTitle": {
+    "description": "Title of the dialog adding an e-mail address to the visitor of a personal link (issue #211). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "c8acd418"
+  },
+  "addEmailExplanation": "We send a code to this address. Once you have confirmed it, you can open your links on other devices with it.",
+  "@addEmailExplanation": {
+    "description": "Explanation in the dialog adding an e-mail address (issue #211): a code is mailed, and the confirmed address later proves who the visitor is on another device. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "e6174dd0"
+  },
+  "addEmailDone": "Your e-mail address is saved.",
+  "@addEmailDone": {
+    "description": "Message after an e-mail address was added and confirmed in the dialog 'Add your e-mail' (issue #211). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "d0ff8e0a"
   }
 }

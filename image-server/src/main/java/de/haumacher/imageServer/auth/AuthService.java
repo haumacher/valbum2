@@ -584,9 +584,12 @@ public class AuthService {
 		"This link was already opened in another browser. Open it where you opened it first, or ask the "
 			+ "person who shared it to send it to you again.";
 
-	/** What the own token of a personal link is answered without a credential (issue #198). */
+	/**
+	 * What the own token of an addressed personal link (the group link of issue #211) is answered
+	 * without a credential (issue #198).
+	 */
 	public static final String IDENTIFY_PERSONAL =
-		"This link asks who you are. Open the link you were sent yourself.";
+		"This link asks who you are: confirm the e-mail address it was sent to, or open the link you were sent yourself.";
 
 	/**
 	 * What an open personal link (one without recipients) is answered without a credential: the

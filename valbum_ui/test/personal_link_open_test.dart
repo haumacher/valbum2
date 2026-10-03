@@ -12,7 +12,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/contact_session.dart';
-import 'package:valbum_ui/identify_view.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'util/fixtures.dart';
@@ -56,6 +55,7 @@ http.Response identifyRefusal({
   List<String> masked = const [],
   List<String> methods = const [],
   String sharedBy = "Alice",
+  bool group = false,
 }) {
   var identify = {
     "firstOpen": firstOpen,
@@ -76,6 +76,7 @@ http.Response identifyRefusal({
     ],
     "label": "Summer party",
     "sharedBy": sharedBy,
+    if (group) "group": true,
   };
   return json(
     jsonEncode([
@@ -513,6 +514,7 @@ void main() {
                 "sent yourself.",
             contact: null,
             methods: const ["mail-code", "oidc:google"],
+            group: true,
           ),
           actions: {
             "prove-email": (_) => json('{"address": "p•••@gmx.de", '
@@ -537,15 +539,18 @@ void main() {
       expect(find.byType(AlbumContent), findsOneWidget);
     });
 
-    testWidgets('an open personal link asks for the name as well',
-        (tester) async {
+    testWidgets(
+        'an open personal link asks for the name as well: the field '
+        'decides, never the sentence', (tester) async {
       var h = Harness();
       await h.pump(
         tester,
         personalServer(
           admitted: "cred-4",
           refusal: () => identifyRefusal(
-            message: openLinkRefusal,
+            // A group link's sentence, without `group`: still an open link.
+            message: "This link asks who you are. Open the link you were "
+                "sent yourself.",
             contact: null,
             methods: const ["mail-code"],
           ),
@@ -554,6 +559,216 @@ void main() {
       expect(find.text(testL10n.identifyOpenIntro), findsOneWidget);
       expect(find.byKey(const Key("identify-name")), findsOneWidget);
       expect(find.byKey(const Key("identify-address")), findsOneWidget);
+    });
+  });
+
+  group('"Add your e-mail" in a contact session (#211)', () {
+    /// The `?type=auth` answer of a contact's session with [methods] and
+    /// [hasEmail].
+    String authWith({
+      List<String> methods = const ["mail-code"],
+      bool hasEmail = false,
+    }) =>
+        jsonEncode({
+          "mode": "writes",
+          "writeAllowed": false,
+          "share": {
+            "label": "Summer party",
+            "expires": "",
+            "rights": [
+              {"name": "view"},
+            ],
+            "path": "~alice/2024/Zoo",
+            "type": "PERSONAL",
+            "contact": {"id": "c1", "displayName": "Tante Petra"},
+            "methods": [
+              for (var method in methods) {"name": method, "label": ""},
+            ],
+            "contactHasEmail": hasEmail,
+          },
+        });
+
+    /// A contact session of `cred-1`, the credential held by the browser.
+    http.Response Function(http.Request) contactServer(
+      String auth, {
+      Map<String, http.Response Function(http.Request)> actions = const {},
+    }) =>
+        (request) {
+          var action = request.url.queryParameters["action"];
+          if (action != null) {
+            var answer = actions[action];
+            return answer == null
+                ? json('["ErrorInfo", {"message": "no"}]', 400)
+                : answer(request);
+          }
+          if (request.headers[VAlbumClient.contactHeader] != "cred-1") {
+            return identifyRefusal();
+          }
+          if (request.url.queryParameters["type"] == "auth") {
+            return json(auth);
+          }
+          return json(zooAlbum);
+        };
+
+    Harness recognised() =>
+        Harness()..store.write(dataUrl, "cred-1", remember: true);
+
+    final sent = json('{"address": "p•••@gmx.de", '
+        '"expires": "2027-01-01T00:00:00Z", "attempts": 5}');
+
+    testWidgets('is offered to a contact without an e-mail address',
+        (tester) async {
+      var h = recognised();
+      await h.pump(tester, contactServer(authWith()));
+
+      expect(find.byType(AlbumContent), findsOneWidget);
+      expect(find.byKey(const Key("add-email-offer")), findsOneWidget);
+      expect(find.text(testL10n.addEmailOffer), findsOneWidget);
+    });
+
+    testWidgets(
+        'is not offered with an address saved, without the mailed code, '
+        'or on an anonymous link', (tester) async {
+      for (var auth in [
+        authWith(hasEmail: true),
+        authWith(methods: const ["oidc:google"]),
+        authWith(methods: const []),
+      ]) {
+        var h = recognised();
+        await h.pump(tester, contactServer(auth));
+        expect(find.byType(AlbumContent), findsOneWidget, reason: auth);
+        expect(find.byKey(const Key("add-email-offer")), findsNothing,
+            reason: auth);
+      }
+      var h = Harness();
+      await h.pump(
+        tester,
+        (request) => request.url.queryParameters["type"] == "auth"
+            ? json('{"mode": "writes", "writeAllowed": false, '
+                '"share": {"label": "Zoo", "expires": "", '
+                '"rights": [{"name": "view"}], "path": "~alice/2024/Zoo", '
+                '"methods": [{"name": "mail-code"}]}}')
+            : json(zooAlbum),
+      );
+      expect(find.byType(AlbumContent), findsOneWidget);
+      expect(find.byKey(const Key("add-email-offer")), findsNothing);
+    });
+
+    testWidgets('"Not now" is remembered for the space in this browser',
+        (tester) async {
+      var h = recognised();
+      await h.pump(tester, contactServer(authWith()));
+      await tapKey(tester, "add-email-dismiss");
+
+      expect(find.byKey(const Key("add-email-offer")), findsNothing);
+      expect(h.remembered.values[ContactCredentialStore.emailOfferKey(dataUrl)],
+          "1");
+      // A new page load in the same browser: not offered again.
+      await h.pump(tester, contactServer(authWith()));
+      expect(find.byType(AlbumContent), findsOneWidget);
+      expect(find.byKey(const Key("add-email-offer")), findsNothing);
+      expect(h.requests.where((r) => r.url.queryParameters["action"] != null),
+          isEmpty);
+    });
+
+    testWidgets('adds the address by a mailed code and keeps the credential',
+        (tester) async {
+      var h = recognised();
+      await h.pump(
+        tester,
+        contactServer(authWith(), actions: {
+          "prove-email": (_) => sent,
+          "verify-email": (_) => credential(""),
+        }),
+      );
+      await tapKey(tester, "add-email-open");
+      expect(find.text(testL10n.addEmailTitle), findsOneWidget);
+      await tester.enterText(
+          find.byKey(const Key("add-email-address")), " petra@gmx.de ");
+      await tester.pump();
+      await tapKey(tester, "add-email-send");
+
+      expect(h.bodyOf("prove-email")["address"], "petra@gmx.de");
+      expect(h.lastOf("prove-email").headers[VAlbumClient.contactHeader],
+          "cred-1");
+      expect(find.text(testL10n.identifyCodeSent("p•••@gmx.de")),
+          findsOneWidget);
+      await tester.enterText(find.byKey(const Key("add-email-code")), "123456");
+      await tester.pump();
+      await tapKey(tester, "add-email-verify");
+
+      var verify = h.bodyOf("verify-email");
+      expect(verify["address"], "petra@gmx.de");
+      expect(verify["code"], "123456");
+      expect(find.byKey(const Key("add-email-dialog")), findsNothing);
+      expect(find.byKey(const Key("add-email-offer")), findsNothing);
+      expect(find.text(testL10n.addEmailDone), findsOneWidget);
+      // The session's credential stays what it was.
+      expect(h.store.read(dataUrl), "cred-1");
+      expect(find.byType(AlbumContent), findsOneWidget);
+    });
+
+    testWidgets('a refusal is said in the server\'s words and keeps the dialog',
+        (tester) async {
+      var h = recognised();
+      await h.pump(
+        tester,
+        contactServer(authWith(), actions: {
+          "prove-email": (_) => sent,
+          "verify-email": (_) => json(
+              '["ErrorInfo", {"message": "Another contact of this space '
+              'holds this address."}]',
+              409),
+        }),
+      );
+      await tapKey(tester, "add-email-open");
+      await tester.enterText(
+          find.byKey(const Key("add-email-address")), "petra@gmx.de");
+      await tester.pump();
+      await tapKey(tester, "add-email-send");
+      await tester.enterText(find.byKey(const Key("add-email-code")), "123456");
+      await tester.pump();
+      await tapKey(tester, "add-email-verify");
+
+      expect(find.text("Another contact of this space holds this address."),
+          findsOneWidget);
+      expect(find.byKey(const Key("add-email-dialog")), findsOneWidget);
+      await tapKey(tester, "add-email-cancel");
+      // Still offered: nothing was added.
+      expect(find.byKey(const Key("add-email-offer")), findsOneWidget);
+    });
+
+    testWidgets('is refused offline', (tester) async {
+      var h = recognised();
+      await h.pump(
+        tester,
+        contactServer(authWith(), actions: {"prove-email": (_) => sent}),
+      );
+      await tapKey(tester, "add-email-open");
+      await tester.enterText(
+          find.byKey(const Key("add-email-address")), "petra@gmx.de");
+      await tester.pump();
+      h.offline.goneOffline(null);
+      await tester.pumpAndSettle();
+      await tapKey(tester, "add-email-send");
+
+      expect(find.text(testL10n.offlineRefusal), findsOneWidget);
+      expect(
+          h.requests
+              .where((r) => r.url.queryParameters["action"] == "prove-email"),
+          isEmpty);
+    });
+
+    testWidgets('speaks German', (tester) async {
+      var h = recognised();
+      await h.pump(tester, contactServer(authWith()),
+          locale: const Locale("de"));
+      var de = l10nOf(const Locale("de"));
+      expect(find.text(de.addEmailOffer), findsOneWidget);
+      expect(find.text(de.addEmailNotNow), findsOneWidget);
+      await tapKey(tester, "add-email-open");
+      expect(find.text(de.addEmailTitle), findsOneWidget);
+      expect(find.text(de.addEmailExplanation), findsOneWidget);
     });
   });
 

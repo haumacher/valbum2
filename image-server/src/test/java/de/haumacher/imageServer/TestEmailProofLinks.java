@@ -47,7 +47,8 @@ public class TestEmailProofLinks extends PersonalLinkTestCase {
 		super.setUp();
 		_mailer = new CapturingMailer();
 		_clock = new TestClock();
-		_proofs = new EmailProofs(_mailer, _clock);
+		// The mail of the group link goes out in the background; here at once, to be read.
+		_proofs = new EmailProofs(_mailer, _clock, Runnable::run);
 	}
 
 	/** Every servlet of the test, including one made afresh by {@link #restartServer()}, mails through the same proofs. */
@@ -275,14 +276,192 @@ public class TestEmailProofLinks extends PersonalLinkTestCase {
 		assertTrue(_mailer.sent().isEmpty());
 	}
 
-	public void testTheOwnTokenOfAnAddressedLinkProvesNothing() throws Exception {
-		ShareLinkCreated created = created(ZOO, email("Tante Petra", PETRA));
-		IdentifyRequired required = identifyRequired(get("/", "json", created.getToken()));
-		assertTrue(required.getMethods().isEmpty());
-		FakeResponse refused = prove(created.getToken(), null, "{\"address\":\"petra@gmx.de\"}");
-		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, refused.status());
-		assertEquals(AuthService.IDENTIFY_PERSONAL, errorMessage(refused));
-		assertTrue(_mailer.sent().isEmpty());
+	// --- The group link: the own token of an addressed link, issue #211. ---
+
+	private ShareLinkCreated group() throws Exception {
+		return created(ZOO, email("Tante Petra", PETRA), email("Onkel Hans", "hans@web.de"), phone("Klaus", KLAUS));
+	}
+
+	public void testTheGroupLinkNamesItsMethodsAndNoAddress() throws Exception {
+		ShareLinkCreated created = group();
+		FakeResponse refusal = get("/", "json", created.getToken());
+		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, refusal.status());
+		assertEquals(AuthService.IDENTIFY_PERSONAL, errorMessage(refusal));
+		IdentifyRequired required = identifyRequired(refusal);
+		assertTrue(required.isGroup());
+		assertFalse(required.isFirstOpen());
+		assertNull(required.getContact());
+		assertTrue("Naming them would reveal the group.", required.getAddresses().isEmpty());
+		assertEquals(List.of(EmailProofs.METHOD), names(required.getMethods()));
+		assertFalse(refusal.body(), refusal.body().contains("•••"));
+		assertFalse(refusal.body().contains("gmx"));
+
+		// A recipient's own token and an open link are no group link.
+		String petra = tokenOf(created, "Tante Petra");
+		assertFalse(identifyRequired(get("/", "json", petra)).isGroup());
+		credential(petra);
+		assertFalse(identifyRequired(get("/", "json", petra)).isGroup());
+		assertFalse(identifyRequired(get("/", "json", created("/" + SharingFixture.PUBLIC + "/").getToken())).isGroup());
+	}
+
+	public void testARecipientsAddressOpensTheGroupLink() throws Exception {
+		ShareLinkCreated created = group();
+		String token = created.getToken();
+		String petra = contactOf(created, "Tante Petra");
+
+		FakeResponse sent = prove(token, null, "{\"address\":\"PETRA@gmx.de\"}");
+		assertEquals(sent.body(), 200, sent.status());
+		EmailProofSent answer = EmailProofSent.readEmailProofSent(reader(body(sent)));
+		assertEquals("p•••@gmx.de", answer.getAddress());
+		assertEquals(_clock.instant().plus(EmailProofs.LIFETIME).toString(), answer.getExpires());
+		assertEquals(1, _mailer.sent().size());
+		assertEquals("petra@gmx.de", _mailer.sent().get(0)[0]);
+
+		FakeResponse verified = verify(token, null, "petra@gmx.de", 0, _mailer.lastCode("petra@gmx.de"), true,
+			"Petra");
+		assertEquals(verified.body(), 200, verified.status());
+		ContactCredential credential = ContactCredential.readContactCredential(reader(body(verified)));
+		assertEquals(petra, credential.getContact().getId());
+		assertFalse(credential.getCredential().isEmpty());
+		assertTrue(address(contact(petra), "petra@gmx.de").isProven());
+		assertEquals("The name the space gives her stays.", "Tante Petra", contact(petra).getName());
+		assertEquals("Nobody was created.", 3, contacts().size());
+
+		FakeResponse album = getAs("/", "json", token, credential.getCredential());
+		assertEquals(album.body(), 200, album.status());
+		AuthInfo auth = auth(getAs("/", "auth", token, credential.getCredential()));
+		assertEquals(petra, auth.getShare().getContact().getId());
+		assertEquals("Her credential opens her own link too.", 200,
+			getAs("/", "json", tokenOf(created, "Tante Petra"), credential.getCredential()).status());
+	}
+
+	public void testAStrangersAddressIsAnsweredAlikeAndOpensNothing() throws Exception {
+		ShareLinkCreated created = group();
+		String token = created.getToken();
+
+		FakeResponse member = prove(token, null, "{\"address\":\"petra@gmx.de\"}");
+		FakeResponse stranger = prove(token, null, "{\"address\":\"paul@gmx.de\"}");
+		assertEquals(200, member.status());
+		assertEquals(member.status(), stranger.status());
+		assertEquals("Byte for byte the same answer.", member.body(), stranger.body());
+		assertEquals(member.header("Content-Type"), stranger.header("Content-Type"));
+		assertEquals(member.header("Cache-Control"), stranger.header("Cache-Control"));
+		assertEquals("Only the recipient was mailed.", 1, _mailer.sent().size());
+		assertEquals("petra@gmx.de", _mailer.sent().get(0)[0]);
+
+		// A wrong code is answered alike as well, and no code is right for the stranger.
+		String code = _mailer.lastCode("petra@gmx.de");
+		String wrong = code.equals("000000") ? "111111" : "000000";
+		FakeResponse wrongMember = verify(token, null, "petra@gmx.de", 0, wrong);
+		FakeResponse wrongStranger = verify(token, null, "paul@gmx.de", 0, wrong);
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST, wrongStranger.status());
+		assertEquals(EmailProofs.CODE_WRONG, errorMessage(wrongStranger));
+		assertEquals(wrongMember.body(), wrongStranger.body());
+		for (int n = 0; n < 10; n++) {
+			FakeResponse guess = verify(token, null, "paul@gmx.de", 0, String.format("%06d", n));
+			assertTrue(guess.body(), guess.status() >= 400);
+		}
+		FakeResponse withPetrasCode = verify(token, null, "paul@gmx.de", 0, code);
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST, withPetrasCode.status());
+		assertEquals("Nobody was created.", 3, contacts().size());
+		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, get("/", "json", token).status());
+	}
+
+	public void testAPhoneOnlyRecipientCannotUseTheGroupLink() throws Exception {
+		ShareLinkCreated created = group();
+		String token = created.getToken();
+		FakeResponse number = prove(token, null, "{\"address\":\"" + KLAUS + "\"}");
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST, number.status());
+		assertEquals(ContactStore.addressInvalid(KLAUS), errorMessage(number));
+		FakeResponse guessed = prove(token, null, "{\"address\":\"klaus@web.de\"}");
+		assertEquals(200, guessed.status());
+		assertTrue("No address of his is saved, so nothing goes anywhere.", _mailer.sent().isEmpty());
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST,
+			verify(token, null, "klaus@web.de", 0, "123456").status());
+		assertEquals("His own link stays his.", 200,
+			getAs("/", "json", tokenOf(created, "Klaus"), credential(tokenOf(created, "Klaus"))).status());
+	}
+
+	public void testABlockedOrShutOutRecipientStaysOutOfTheGroupLink() throws Exception {
+		ShareLinkCreated created = group();
+		String token = created.getToken();
+		String petra = contactOf(created, "Tante Petra");
+		String hans = contactOf(created, "Onkel Hans");
+		FakeResponse block = post("/", "{\"contact\":\"" + petra + "\",\"shutOut\":true}", SharingFixture.ALICE,
+			Map.of("action", "block-contact"));
+		assertEquals(block.body(), 200, block.status());
+		FakeResponse shut = post(ZOO, "{\"link\":\"" + created.getLink().getId() + "\",\"contact\":\"" + hans
+			+ "\",\"shutOut\":true}", SharingFixture.ALICE, Map.of("action", "shut-out"));
+		assertEquals(shut.body(), 200, shut.status());
+
+		FakeResponse stranger = prove(token, null, "{\"address\":\"paul@gmx.de\"}");
+		FakeResponse blocked = prove(token, null, "{\"address\":\"petra@gmx.de\"}");
+		FakeResponse shutOut = prove(token, null, "{\"address\":\"hans@web.de\"}");
+		assertEquals(200, blocked.status());
+		assertEquals("Answered as a stranger is.", stranger.body(), blocked.body());
+		assertEquals(200, shutOut.status());
+		assertTrue("Neither was mailed.", _mailer.sent().isEmpty());
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST, verify(token, null, "petra@gmx.de", 0, "123456").status());
+		assertTrue(contact(petra).getSessions().isEmpty());
+		assertTrue(contact(hans).getSessions().isEmpty());
+	}
+
+	public void testTheLimitsHoldOnTheGroupLink() throws Exception {
+		String token = group().getToken();
+		for (int n = 0; n < EmailProofs.PER_ADDRESS; n++) {
+			assertEquals(200, prove(token, null, "{\"address\":\"petra@gmx.de\"}", "10.0.0." + n, null).status());
+			assertEquals(200, prove(token, null, "{\"address\":\"paul@gmx.de\"}", "10.0.1." + n, null).status());
+		}
+		FakeResponse member = prove(token, null, "{\"address\":\"petra@gmx.de\"}", "10.0.2.1", null);
+		FakeResponse stranger = prove(token, null, "{\"address\":\"paul@gmx.de\"}", "10.0.2.2", null);
+		for (FakeResponse refused : new FakeResponse[] { member, stranger }) {
+			assertEquals(429, refused.status());
+			assertEquals(EmailProofs.RATE_LIMITED, errorMessage(refused));
+			assertNotNull(refused.header("Retry-After"));
+		}
+		assertEquals(member.body(), stranger.body());
+		assertEquals(EmailProofs.PER_ADDRESS, _mailer.sent().size());
+
+		// Per client.
+		for (int n = 0; n < EmailProofs.PER_CLIENT; n++) {
+			assertEquals(200, prove(token, null, "{\"address\":\"c" + n + "@web.de\"}", "198.51.100.7", null).status());
+		}
+		assertEquals(429, prove(token, null, "{\"address\":\"hans@web.de\"}", "198.51.100.7", null).status());
+
+		// Per link: every code asked for through it counts, a stranger's as much as a recipient's.
+		int asked = 2 * EmailProofs.PER_ADDRESS + EmailProofs.PER_CLIENT;
+		for (int n = asked; n < EmailProofs.PER_LINK; n++) {
+			assertEquals(200, prove(token, null, "{\"address\":\"v" + n + "@web.de\"}", "10.1.0." + n, null).status());
+		}
+		FakeResponse full = prove(token, null, "{\"address\":\"hans@web.de\"}", "10.2.0.1", null);
+		assertEquals(429, full.status());
+		assertEquals(EmailProofs.RATE_LIMITED, errorMessage(full));
+		assertFalse("Hans got no code.", _mailer.sent().stream().anyMatch(mail -> mail[0].equals("hans@web.de")));
+	}
+
+	public void testACredentialTheGroupLinkDoesNotAdmitMayProveARecipientsAddress() throws Exception {
+		ShareLinkCreated created = group();
+		ShareLinkCreated other = created("/" + SharingFixture.PUBLIC + "/", email("Vera", "vera@web.de"));
+		String vera = credential(tokenOf(other, "Vera"));
+		FakeResponse refused = getAs("/", "json", created.getToken(), vera);
+		assertEquals(HttpServletResponse.SC_FORBIDDEN, refused.status());
+		assertTrue(identifyRequired(refused).isGroup());
+
+		assertEquals(200, prove(created.getToken(), vera, "{\"address\":\"hans@web.de\"}").status());
+		FakeResponse verified = verify(created.getToken(), vera, "hans@web.de", 0, _mailer.lastCode("hans@web.de"));
+		assertEquals(verified.body(), 200, verified.status());
+		assertEquals(contactOf(created, "Onkel Hans"),
+			ContactCredential.readContactCredential(reader(body(verified))).getContact().getId());
+	}
+
+	/** Issue #211: the share dialog learns whether a link can be proven at all. */
+	public void testAMemberIsToldTheProofMethods() throws Exception {
+		assertEquals(List.of(EmailProofs.METHOD),
+			names(auth(get("/", "auth", SharingFixture.ALICE)).getProofMethods()));
+		assertTrue("Never to an anonymous caller.", auth(get("/", "auth", null)).getProofMethods().isEmpty());
+		_proofs = null;
+		assertTrue("Nothing where nothing can be proven.",
+			auth(get("/", "auth", SharingFixture.ALICE)).getProofMethods().isEmpty());
 	}
 
 	public void testNobodyButAPersonalLinkProves() throws Exception {
@@ -304,6 +483,7 @@ public class TestEmailProofLinks extends PersonalLinkTestCase {
 		AuthInfo auth = auth(getAs("/", "auth", token, credential));
 		assertEquals("The app may offer to add an e-mail.", List.of(EmailProofs.METHOD),
 			names(auth.getShare().getMethods()));
+		assertFalse("He has none yet (#211).", auth.getShare().isContactHasEmail());
 
 		assertEquals(200, prove(token, credential, "{\"address\":\"Klaus@Web.de\"}").status());
 		FakeResponse verified = verify(token, credential, "klaus@web.de", 0, _mailer.lastCode("klaus@web.de"), true,
@@ -314,6 +494,7 @@ public class TestEmailProofLinks extends PersonalLinkTestCase {
 		assertEquals(contactOf(created, "Klaus"), answer.getContact().getId());
 		assertTrue(address(contact(answer.getContact().getId()), "klaus@web.de").isProven());
 		assertEquals("Still in.", 200, getAs("/", "json", token, credential).status());
+		assertTrue("Now he has one.", auth(getAs("/", "auth", token, credential)).getShare().isContactHasEmail());
 
 		// In another browser he is now offered the code to that address.
 		IdentifyRequired required = identifyRequired(get("/", "json", token));

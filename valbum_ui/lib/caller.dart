@@ -15,6 +15,7 @@
 /// before this existed.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'l10n/app_localizations.dart';
@@ -313,6 +314,13 @@ class CallerInfo {
   /// `{lon}`, see `mapUrlFor`.
   final String mapUrl;
 
+  /// The names of the ways this server proves a visitor's address
+  /// (`AuthInfo.proofMethods`, issue #211): `mail-code` where it can mail a
+  /// code (#199), `oidc:<provider>` per provider of OpenID Connect (#200).
+  /// Answered to a signed-in member only, and empty where nothing is
+  /// configured — or the server is older than the field.
+  final List<String> proofMethods;
+
   const CallerInfo({
     this.userName = "",
     this.role = "",
@@ -321,6 +329,7 @@ class CallerInfo {
     this.mayShare = false,
     this.faces = false,
     String mapUrl = "",
+    this.proofMethods = const [],
   }) : mapUrl = mapUrl == "" ? defaultMapUrl : mapUrl;
 
   /// What the server answered about this caller.
@@ -332,7 +341,13 @@ class CallerInfo {
         mayShare: info.mayShare,
         faces: info.faces,
         mapUrl: info.mapUrl.trim(),
+        proofMethods: List.unmodifiable(
+            [for (var method in info.proofMethods) method.name]),
       );
+
+  /// Whether this server can prove a visitor's address at all, which an open
+  /// personal link and a group link need (issues #202, #211).
+  bool get mayProveAddresses => proofMethods.isNotEmpty;
 
   /// What this caller may do and see, normalised, see [CallerPermission].
   CallerPermission get permission => CallerPermission.ofFields(
@@ -361,11 +376,12 @@ class CallerInfo {
       other.clearance == clearance &&
       other.mayShare == mayShare &&
       other.faces == faces &&
-      other.mapUrl == mapUrl;
+      other.mapUrl == mapUrl &&
+      listEquals(other.proofMethods, proofMethods);
 
   @override
-  int get hashCode =>
-      Object.hash(userName, role, space, clearance, mayShare, faces, mapUrl);
+  int get hashCode => Object.hash(userName, role, space, clearance, mayShare,
+      faces, mapUrl, Object.hashAll(proofMethods));
 
   @override
   String toString() => "CallerInfo($userName, $role, $space)";

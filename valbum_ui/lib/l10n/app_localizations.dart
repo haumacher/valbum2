@@ -1589,13 +1589,13 @@ abstract class AppLocalizations {
   /// Choice: the link shows only the photos marked public
   ///
   /// In en, this message translates to:
-  /// **'Public photos only'**
+  /// **'Public photos'**
   String get privacyPublicOnly;
 
   /// Choice of a new share link: it shows every photo a link can show, which is what a member of the space sees (a private photo never)
   ///
   /// In en, this message translates to:
-  /// **'All photos'**
+  /// **'Also members-only photos'**
   String get privacyUpToMembers;
 
   /// Explains the ceiling of what any share link can show
@@ -4723,6 +4723,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Drag to draw, move or resize the frame; tap inside it to apply.'**
   String get cropAreaHint;
+
+  /// Entry of the recipient chooser on a phone opening the phone's own contacts picker to pick one e-mail address (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'E-mail address from my contacts…'**
+  String get recipientsPickEmail;
+
+  /// Entry of the recipient chooser on a phone opening the phone's own contacts picker to pick one phone number (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'Phone number from my contacts…'**
+  String get recipientsPickPhone;
+
+  /// Said in the recipient chooser where the phone's contacts picker could not be opened; the reason is the platform's own words (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open the contacts of this phone ({reason}).'**
+  String recipientsPickFailed(String reason);
+
+  /// Banner of a personal link's session (issue #211) offered to a contact who has no e-mail address saved: adding one lets them prove who they are when they open the link on another device. Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Add your e-mail so we recognise you on other devices.'**
+  String get addEmailOffer;
+
+  /// Button of the banner 'Add your e-mail' (issue #211) opening the dialog that adds the address.
+  ///
+  /// In en, this message translates to:
+  /// **'Add e-mail'**
+  String get addEmailOpen;
+
+  /// Button of the banner 'Add your e-mail' (issue #211) dismissing it; it is not offered again in this browser.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get addEmailNotNow;
+
+  /// Title of the dialog adding an e-mail address to the visitor of a personal link (issue #211). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Add your e-mail'**
+  String get addEmailTitle;
+
+  /// Explanation in the dialog adding an e-mail address (issue #211): a code is mailed, and the confirmed address later proves who the visitor is on another device. Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'We send a code to this address. Once you have confirmed it, you can open your links on other devices with it.'**
+  String get addEmailExplanation;
+
+  /// Message after an e-mail address was added and confirmed in the dialog 'Add your e-mail' (issue #211). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Your e-mail address is saved.'**
+  String get addEmailDone;
 }
 
 class _AppLocalizationsDelegate

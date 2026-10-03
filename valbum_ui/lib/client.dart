@@ -2338,35 +2338,6 @@ class VAlbumClient {
     return ContactList.read(JsonReader.fromString(response.body));
   }
 
-  /// Whether this server can prove a visitor's address — by a mailed code
-  /// (#199) or a provider of OpenID Connect (#200) — which an open personal
-  /// link needs (issue #202).
-  ///
-  /// The server names its proof methods to a link's visitor only, so a
-  /// member learns it from what the two proof requests answer *them*: both
-  /// refuse a member, and the refusal tells the two cases apart — `501` while
-  /// nothing is configured (asked first, "whoever asks"), `400` "not here"
-  /// once it is. Nothing is written and nothing is sent. Anything else — an
-  /// older server, a failed transport — counts as "cannot".
-  Future<bool> mayProveAddresses() async {
-    for (var action in const ["prove-email", "oidc-start"]) {
-      var url = "${folderUrl(const [])}?action=$action";
-      try {
-        var response = await _http
-            .post(Uri.parse(url),
-                body: "{}",
-                headers: {"Content-Type": "application/json", ...authHeaders})
-            .timeout(timeout);
-        if (response.statusCode == 400) {
-          return true;
-        }
-      } catch (_) {
-        // Not offered, as far as this client can tell.
-      }
-    }
-    return false;
-  }
-
   /// The first open of a recipient's own link (issue #198): the link
   /// identifies the recipient once, and the answer recognises them from then
   /// on. Sent with the recipient's token as the bearer.

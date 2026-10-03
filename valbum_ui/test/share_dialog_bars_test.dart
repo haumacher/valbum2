@@ -133,13 +133,16 @@ void main() {
   });
 
   group('the form of a new link (issue #205)', () {
-    testWidgets('opens with Never, All photos, every photo and View only',
+    testWidgets('opens with Never, Public photos, every photo and View only',
         (tester) async {
       await openShareDialog(tester);
       await tapKey(tester, "new-link");
 
       expect(shownValue(tester, "link-expiry"), testL10n.expiryNever);
-      expect(shownValue(tester, "link-shows"), testL10n.privacyUpToMembers);
+      // Public by default: a photo is public unless somebody restricted it,
+      // and a link shows the restricted ones only where asked (#205,
+      // corrected by the author).
+      expect(shownValue(tester, "link-shows"), testL10n.privacyPublicOnly);
       expect(shownValue(tester, "link-rating"), testL10n.linkRatingAllButTrash);
       for (var right in const ["download", "contribute"]) {
         expect(
@@ -164,7 +167,7 @@ void main() {
       await tapKey(tester, "link-create");
 
       var body = bodyOf(requests, "share");
-      expect(body, contains('"maxPrivacy":1'));
+      expect(body, isNot(contains('"maxPrivacy":1')));
       expect(body, contains('"minRating":-2'));
       expect(body, isNot(contains('"expires":"2')));
       expect(RegExp('"name":').allMatches(body).length, 1);
@@ -211,11 +214,15 @@ void main() {
         await tester.tap(find.text("share"));
         await tester.pumpAndSettle();
         await tapKey(tester, "new-link");
-        expect(
-          shownValue(tester, "link-shows"),
-          offered ? testL10n.privacyUpToMembers : testL10n.privacyPublicOnly,
-          reason: clearance,
-        );
+        expect(shownValue(tester, "link-shows"), testL10n.privacyPublicOnly,
+            reason: clearance);
+        await tester.tap(find.byKey(const Key("link-shows")));
+        await tester.pumpAndSettle();
+        expect(find.text(testL10n.privacyUpToMembers),
+            offered ? findsWidgets : findsNothing,
+            reason: clearance);
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
         await tapKey(tester, "link-cancel");
         await tapKey(tester, "share-link-close");
       }
@@ -280,7 +287,7 @@ void main() {
       // Tapped where it stands, nothing scrolled.
       await tester.tapAt(create.center);
       await tester.pumpAndSettle();
-      expect(bodyOf(requests, "share"), contains('"maxPrivacy":1'));
+      expect(bodyOf(requests, "share"), isNot(contains('"maxPrivacy":1')));
     });
 
     testWidgets('the default form fits without scrolling', (tester) async {

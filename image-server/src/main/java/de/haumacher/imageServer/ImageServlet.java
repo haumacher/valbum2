@@ -834,8 +834,14 @@ public class ImageServlet extends HttpServlet {
 			// template of the space rides along, see issue #112.
 			AuthInfo info = _auth.authInfo(caller, _basePath, _space).setMapUrl(_mapUrl).setFaces(_faces.isEnabled());
 			if (info.getShare() != null && info.getShare().getContact() != null) {
-				// A recognised contact may add an address, where the server can mail a code (#199).
-				info.getShare().setMethods(addressProof().contactMethods());
+				// A recognised contact may add an address, where the server can mail a code (#199);
+				// whether they have one already decides whether the app offers it (#211).
+				info.getShare().setMethods(addressProof().contactMethods())
+					.setContactHasEmail(AddressProof.hasEmail(caller.getContact()));
+			}
+			if (caller.isPaired()) {
+				// What the share dialog may offer a link that is proven by an address (#211).
+				info.setProofMethods(addressProof().contactMethods());
 			}
 			serveJsonObject(response, info);
 			return;
@@ -1039,6 +1045,9 @@ public class ImageServlet extends HttpServlet {
 		if (gone(context, caller)) {
 			return;
 		}
+		if (inboxHiddenFromLink(context, caller)) {
+			return;
+		}
 		if (refusedFolderName(context, caller)) {
 			return;
 		}
@@ -1074,8 +1083,11 @@ public class ImageServlet extends HttpServlet {
 		File file = resourcePath.toFile();
 		if (!file.isDirectory()) {
 			File parent = file.getParentFile();
-			if (parent == null || !parent.isDirectory()) {
-				error404(context);
+			if (parent == null || !parent.isDirectory()
+				|| (pathInfo != null && pathInfo.endsWith("/") && !baseType.equals("application/json"))) {
+				// No folder to store into: an address naming nothing, answered as a read answers
+				// it, see issues #176 and #215. A folder address is never a file name to upload to.
+				notFound(context, resourcePath);
 				return;
 			}
 			PathInfo folder = resourcePath.parent();
@@ -1357,7 +1369,7 @@ public class ImageServlet extends HttpServlet {
 				return;
 			} else {
 				store(upload, target);
-				hashes.put(target, hash, attribution(caller));
+				hashes.put(target, hash, attribution(caller, folderPath));
 				LOG.info("Storing image: " + target);
 				result = UploadResult.create().addFile(uploaded(name, name, hash, STORED));
 			}
@@ -1410,10 +1422,22 @@ public class ImageServlet extends HttpServlet {
 	 * looked up again: a share link that is renamed or withdrawn afterwards still says who
 	 * contributed, and a user who is renamed keeps what they brought.
 	 * </p>
+	 *
+	 * <p>
+	 * An upload through a share link — an anonymous one or a personal one of issue #198 — also
+	 * records the limits that link shows at the target folder, its {@link AuthService#minRating
+	 * rating floor} and its {@link AuthService#clearance privacy level}, so that the photograph is
+	 * described as the link shows it, see issue #214 and
+	 * {@link Contributors#applyLinkLimits(List, File)}. A member's upload records none.
+	 * </p>
 	 */
-	private static HashCache.Attribution attribution(Caller caller) {
+	private HashCache.Attribution attribution(Caller caller, PathInfo folderPath) {
 		if (caller == null) {
 			return HashCache.Attribution.NONE;
+		}
+		if (caller.isShareLink()) {
+			return new HashCache.Attribution(caller.subject(), caller.contributorLabel(),
+				_auth.minRating(caller, folderPath, Privacy.PRIVATE), _auth.clearance(caller, folderPath));
 		}
 		return new HashCache.Attribution(caller.subject(), caller.contributorLabel());
 	}
@@ -1495,7 +1519,7 @@ public class ImageServlet extends HttpServlet {
 
 				File targetFile = pairName(folder, name, batch, reserved);
 				store(upload, targetFile);
-				hashes.put(targetFile, hash, attribution(caller));
+				hashes.put(targetFile, hash, attribution(caller, folderPath));
 				LOG.info("Storing image: " + targetFile);
 				result.addFile(uploaded(name, targetFile.getName(), hash, STORED));
 			}
@@ -2130,7 +2154,8 @@ public class ImageServlet extends HttpServlet {
 
 		File folder = resourcePath.toFile();
 		if (!folder.isDirectory()) {
-			error404(context);
+			// Answered as a read answers it, see issues #176 and #215.
+			notFound(context, resourcePath);
 			return;
 		}
 
@@ -3850,7 +3875,11 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		if (gone(context, _auth.caller(request))) {
+		Caller postCaller = _auth.caller(request);
+		if (gone(context, postCaller)) {
+			return;
+		}
+		if (inboxHiddenFromLink(context, postCaller)) {
 			return;
 		}
 
@@ -4090,6 +4119,65 @@ public class ImageServlet extends HttpServlet {
 		}
 		LOG.warning("Refusing '" + context.request().getPathInfo() + "': " + caller.getGone());
 		errorInfo(context, HttpServletResponse.SC_GONE, caller.getGone());
+		return true;
+	}
+
+	/**
+	 * Answers a write through a share link that addresses an inbox, or anything in or below one,
+	 * exactly as a read is answered, see issue #215.
+	 *
+	 * <p>
+	 * An inbox does not exist for a share link (issue #135): its listing, its images and their
+	 * every shape are answered <code>404</code> with {@link Inboxes#NOT_FOUND}. A write is answered
+	 * the same — the batch upload, the single-image upload, the hash check, a sidecar or a
+	 * creation below it, and every action — before any right is asked, so that neither a stored
+	 * upload nor a refusal naming a right tells the link that something is there. A member is not
+	 * asked here; what a member may do in an inbox is #135's.
+	 * </p>
+	 *
+	 * <p>
+	 * The folder looked at is the deepest existing folder on the way to the address: the address
+	 * itself, the album a file would be in, the album a new folder would be created in. An address
+	 * the path rules refuse outright is looked at through its parent, so that
+	 * <code>Box/@eaDir/</code> is no way to learn of <code>Box</code> either.
+	 * </p>
+	 *
+	 * @return Whether the request has been answered.
+	 */
+	private boolean inboxHiddenFromLink(Context context, Caller caller) throws IOException {
+		if (!caller.isShareLink()) {
+			return false;
+		}
+		String pathInfo = context.request().getPathInfo();
+		String relative = pathInfo == null || pathInfo.isEmpty() ? "" : pathInfo.substring(1);
+		PathInfo path;
+		try {
+			path = _auth.resolve(caller, _basePath, relative).getPath();
+		} catch (PathRefused ex) {
+			String trimmed = relative.endsWith("/") ? relative.substring(0, relative.length() - 1) : relative;
+			int slash = trimmed.lastIndexOf('/');
+			if (slash < 0) {
+				return false;
+			}
+			try {
+				path = _auth.resolve(caller, _basePath, trimmed.substring(0, slash)).getPath();
+			} catch (PathRefused parentRefused) {
+				return false;
+			}
+		}
+		File folder = path.toFile();
+		File root = path.getBasePath().toFile();
+		while (folder != null && !folder.isDirectory()) {
+			if (folder.equals(root)) {
+				return false;
+			}
+			folder = folder.getParentFile();
+		}
+		if (folder == null || !Inboxes.isInbox(folder)) {
+			return false;
+		}
+		LOG.warning("Hiding the inbox from a share link's write at '" + pathInfo + "'.");
+		errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
 		return true;
 	}
 
