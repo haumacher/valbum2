@@ -1318,7 +1318,7 @@ public class ImageServlet extends HttpServlet {
 				return;
 			} else {
 				store(upload, target);
-				hashes.put(target, hash, attribution(caller));
+				hashes.put(target, hash, attribution(caller, folderPath));
 				LOG.info("Storing image: " + target);
 				result = UploadResult.create().addFile(uploaded(name, name, hash, STORED));
 			}
@@ -1371,10 +1371,22 @@ public class ImageServlet extends HttpServlet {
 	 * looked up again: a share link that is renamed or withdrawn afterwards still says who
 	 * contributed, and a user who is renamed keeps what they brought.
 	 * </p>
+	 *
+	 * <p>
+	 * An upload through a share link — an anonymous one or a personal one of issue #198 — also
+	 * records the limits that link shows at the target folder, its {@link AuthService#minRating
+	 * rating floor} and its {@link AuthService#clearance privacy level}, so that the photograph is
+	 * described as the link shows it, see issue #214 and
+	 * {@link Contributors#applyLinkLimits(List, File)}. A member's upload records none.
+	 * </p>
 	 */
-	private static HashCache.Attribution attribution(Caller caller) {
+	private HashCache.Attribution attribution(Caller caller, PathInfo folderPath) {
 		if (caller == null) {
 			return HashCache.Attribution.NONE;
+		}
+		if (caller.isShareLink()) {
+			return new HashCache.Attribution(caller.subject(), caller.contributorLabel(),
+				_auth.minRating(caller, folderPath, Privacy.PRIVATE), _auth.clearance(caller, folderPath));
 		}
 		return new HashCache.Attribution(caller.subject(), caller.contributorLabel());
 	}
@@ -1456,7 +1468,7 @@ public class ImageServlet extends HttpServlet {
 
 				File targetFile = pairName(folder, name, batch, reserved);
 				store(upload, targetFile);
-				hashes.put(targetFile, hash, attribution(caller));
+				hashes.put(targetFile, hash, attribution(caller, folderPath));
 				LOG.info("Storing image: " + targetFile);
 				result.addFile(uploaded(name, targetFile.getName(), hash, STORED));
 			}

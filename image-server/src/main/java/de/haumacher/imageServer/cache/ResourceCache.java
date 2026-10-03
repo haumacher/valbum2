@@ -371,7 +371,7 @@ public class ResourceCache {
 			if (resource instanceof AlbumInfo || images.length > 0) {
 				AlbumInfo album = resource == null ? createGenericAlbumInfo(path) : (AlbumInfo) resource;
 
-				loadAlbum(album, images, _analysis, zone());
+				loadAlbum(album, dir, images, _analysis, zone());
 
 				// Derived on every read and never stored, see AlbumDate#clearDerived(FolderResource).
 				album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
@@ -675,7 +675,8 @@ public class ResourceCache {
 			return Character.toUpperCase(expanded.charAt(0)) + expanded.substring(1);
 		}
 
-		private static AlbumInfo loadAlbum(AlbumInfo album, File[] files, ImageData.Analysis analysis, ZoneId zone) {
+		private static AlbumInfo loadAlbum(AlbumInfo album, File dir, File[] files, ImageData.Analysis analysis,
+				ZoneId zone) {
 			// Update early to be able to match new images against existing image.
 			UpdateTransient.updateTransient(album);
 
@@ -713,6 +714,9 @@ public class ResourceCache {
 
 				newImages.add(image);
 			}
+
+			// What came through a share link is described so that the link shows it, see #214.
+			Contributors.applyLinkLimits(newImages, dir);
 
 			AlbumUtil.insertSorted(album, newImages);
 

@@ -3,6 +3,8 @@
  */
 package de.haumacher.imageServer.upload;
 
+import de.haumacher.imageServer.auth.Privacy;
+import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.json.JsonWriter;
@@ -66,6 +68,15 @@ import java.util.logging.Logger;
  * re-hashes a changed file keeps it: who put the photo here is not a question the contents answer.
  * </p>
  *
+ * <p>
+ * An upload through a share link records, beside who sent it, the limits of that link
+ * (<code>"linkMinRating"</code>, <code>"linkMaxPrivacy"</code>, issue #214, additive in the same
+ * way and written only for such an upload): the loader describes a photograph the album's
+ * <code>index.json</code> does not list yet with its rating raised to that floor and its privacy
+ * level capped at that level, so that the link it came through shows it, see
+ * {@link de.haumacher.imageServer.Contributors#applyLinkLimits(java.util.List, File)}.
+ * </p>
+ *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class HashCache {
@@ -91,6 +102,10 @@ public class HashCache {
 	private static final String CONTRIBUTOR__PROP = "contributor";
 
 	private static final String CONTRIBUTOR_LABEL__PROP = "contributorLabel";
+
+	private static final String LINK_MIN_RATING__PROP = "linkMinRating";
+
+	private static final String LINK_MAX_PRIVACY__PROP = "linkMaxPrivacy";
 
 	private static final int BUFFER_SIZE = 64 * 1024;
 
@@ -138,14 +153,38 @@ public class HashCache {
 		/** What is recorded for a file nobody uploaded through this server. */
 		public static final Attribution NONE = new Attribution("", "");
 
+		/** {@link #getMinRating()} of an upload that raises no rating: the lowest there is. */
+		public static final int NO_RATING_FLOOR = Ratings.MIN;
+
+		/** {@link #getMaxPrivacy()} of an upload that caps no privacy level: the highest there is. */
+		public static final int NO_PRIVACY_CAP = Privacy.PRIVATE;
+
 		private final String _contributor;
 
 		private final String _label;
 
+		private final int _minRating;
+
+		private final int _maxPrivacy;
+
 		/** Creates an {@link Attribution}; <code>null</code> is the empty string. */
 		public Attribution(String contributor, String label) {
+			this(contributor, label, NO_RATING_FLOOR, NO_PRIVACY_CAP);
+		}
+
+		/**
+		 * Creates an {@link Attribution} of an upload through a share link, see issue #214.
+		 *
+		 * @param minRating
+		 *        The lowest rating the link shows, {@link #NO_RATING_FLOOR} for none.
+		 * @param maxPrivacy
+		 *        The highest privacy level the link shows, {@link #NO_PRIVACY_CAP} for none.
+		 */
+		public Attribution(String contributor, String label, int minRating, int maxPrivacy) {
 			_contributor = contributor == null ? "" : contributor;
 			_label = label == null ? "" : label;
+			_minRating = minRating;
+			_maxPrivacy = maxPrivacy;
 		}
 
 		/** The subject of the uploader, the empty string if none was recorded. */
@@ -156,6 +195,32 @@ public class HashCache {
 		/** What to show as the contributor, the empty string if nothing was recorded. */
 		public String getLabel() {
 			return _label;
+		}
+
+		/**
+		 * The lowest rating the share link the file came through shows, see issue #214.
+		 *
+		 * <p>
+		 * A photograph first described from this file is rated at least this, so that the link it
+		 * came through shows it. {@link #NO_RATING_FLOOR} for everything that did not come through
+		 * a link.
+		 * </p>
+		 */
+		public int getMinRating() {
+			return _minRating;
+		}
+
+		/**
+		 * The highest privacy level the share link the file came through shows, see issue #214;
+		 * {@link #NO_PRIVACY_CAP} for everything that did not come through a link.
+		 */
+		public int getMaxPrivacy() {
+			return _maxPrivacy;
+		}
+
+		/** Whether the upload was recorded with a limit of the link it came through. */
+		public boolean hasLinkLimits() {
+			return _minRating != NO_RATING_FLOOR || _maxPrivacy != NO_PRIVACY_CAP;
 		}
 
 		/** Whether anything at all was recorded. */
@@ -434,6 +499,8 @@ public class HashCache {
 		String sha256 = "";
 		String contributor = "";
 		String contributorLabel = "";
+		int minRating = Attribution.NO_RATING_FLOOR;
+		int maxPrivacy = Attribution.NO_PRIVACY_CAP;
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -453,6 +520,12 @@ public class HashCache {
 				case CONTRIBUTOR_LABEL__PROP:
 					contributorLabel = in.nextString();
 					break;
+				case LINK_MIN_RATING__PROP:
+					minRating = in.nextInt();
+					break;
+				case LINK_MAX_PRIVACY__PROP:
+					maxPrivacy = in.nextInt();
+					break;
 				default:
 					// An entry written by a future version may carry more; it stays readable.
 					in.skipValue();
@@ -460,7 +533,7 @@ public class HashCache {
 			}
 		}
 		in.endObject();
-		return new Entry(size, modified, sha256, new Attribution(contributor, contributorLabel));
+		return new Entry(size, modified, sha256, new Attribution(contributor, contributorLabel, minRating, maxPrivacy));
 	}
 
 	private void store() throws IOException {
@@ -490,6 +563,15 @@ public class HashCache {
 						out.value(attribution.getContributor());
 						out.name(CONTRIBUTOR_LABEL__PROP);
 						out.value(attribution.getLabel());
+					}
+					if (attribution.getMinRating() != Attribution.NO_RATING_FLOOR) {
+						// The floor of the link the file came through, see issue #214.
+						out.name(LINK_MIN_RATING__PROP);
+						out.value(attribution.getMinRating());
+					}
+					if (attribution.getMaxPrivacy() != Attribution.NO_PRIVACY_CAP) {
+						out.name(LINK_MAX_PRIVACY__PROP);
+						out.value(attribution.getMaxPrivacy());
 					}
 					out.endObject();
 				}

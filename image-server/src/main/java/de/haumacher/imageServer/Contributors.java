@@ -10,6 +10,7 @@ import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.upload.HashCache;
 import java.io.File;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -74,6 +75,53 @@ public final class Contributors {
 		}
 		image.setContributor(attribution.getContributor());
 		image.setContributorLabel(attribution.getLabel());
+	}
+
+	/**
+	 * Describes photographs the album's sidecar does not list yet so that the share link they were
+	 * uploaded through shows them, see issue #214.
+	 *
+	 * <p>
+	 * An upload through a link records the link's floor and privacy level beside its attribution
+	 * (see {@link HashCache.Attribution#getMinRating()}); a photograph first described from such a
+	 * file is rated at least that floor and has a privacy level of at most that level. Only the
+	 * loader's fresh parts are given here, so this happens exactly until the album's
+	 * <code>index.json</code> lists the photograph — the first sidecar write of the album stores
+	 * the raised rating, and from then on it is the owner's to change like any other. A raw and
+	 * its JPEG (issue #191) are one part; either file's record counts.
+	 * </p>
+	 *
+	 * @param images
+	 *        The parts the loader has just analysed from files the sidecar does not list.
+	 * @param folder
+	 *        The folder they lie in.
+	 */
+	public static void applyLinkLimits(List<? extends ImagePart> images, File folder) {
+		if (images.isEmpty()) {
+			return;
+		}
+		Map<String, HashCache.Attribution> recorded = HashCache.recorded(folder);
+		if (recorded.isEmpty()) {
+			return;
+		}
+		for (ImagePart image : images) {
+			HashCache.Attribution attribution = limitsOf(recorded, image.getName());
+			if (attribution == null) {
+				String raw = image.getRaw();
+				attribution = raw == null || raw.isEmpty() ? null : limitsOf(recorded, raw);
+			}
+			if (attribution == null) {
+				continue;
+			}
+			// Raised, never lowered; capped, never raised.
+			image.setRating(Math.max(image.getRating(), attribution.getMinRating()));
+			image.setPrivacy(Math.min(image.getPrivacy(), attribution.getMaxPrivacy()));
+		}
+	}
+
+	private static HashCache.Attribution limitsOf(Map<String, HashCache.Attribution> recorded, String name) {
+		HashCache.Attribution attribution = recorded.get(name);
+		return attribution != null && attribution.hasLinkLimits() ? attribution : null;
 	}
 
 	/**
