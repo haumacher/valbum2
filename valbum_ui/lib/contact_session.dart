@@ -111,6 +111,22 @@ class ContactCredentialStore {
   void dismissEmailOffer(String dataUrl) =>
       _guarded(() => remembered.set(emailOfferKey(dataUrl), "1"));
 
+  /// The key under which this browser remembers that the offer to set up a
+  /// way to be recognised elsewhere was dismissed (issue #208).
+  static String signInOfferKey(String dataUrl) =>
+      "valbum.signInOfferDismissed|$dataUrl";
+
+  /// Whether the offer of the sign-in options was dismissed in the space at
+  /// [dataUrl] in this browser; a storage that cannot say counts as "not
+  /// dismissed".
+  bool signInOfferDismissed(String dataUrl) =>
+      _guarded<String?>(() => remembered.get(signInOfferKey(dataUrl))) == "1";
+
+  /// Remembers that the offer of the sign-in options was dismissed in the
+  /// space at [dataUrl]; a failing storage keeps nothing.
+  void dismissSignInOffer(String dataUrl) =>
+      _guarded(() => remembered.set(signInOfferKey(dataUrl), "1"));
+
   /// The credential this browser holds for the space at [dataUrl], `null`
   /// where it holds none — or cannot say.
   String? read(String dataUrl) {

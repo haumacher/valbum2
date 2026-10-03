@@ -4928,6 +4928,216 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Shut out everywhere'**
   String get shutOutEverywhereMark;
+
+  /// Button on the identification card of a personal link (issue #208) that opens a field for a code of an authenticator app; offered only to a contact who set one up. German 'Code aus Ihrer Authenticator-App'.
+  ///
+  /// In en, this message translates to:
+  /// **'Code from your authenticator app'**
+  String get identifyTotp;
+
+  /// Label of the field for the six digits an authenticator app shows (issue #208). German 'Code aus der App'.
+  ///
+  /// In en, this message translates to:
+  /// **'Code from the app'**
+  String get totpCodeLabel;
+
+  /// Banner of a personal link's session (issue #208) offering a contact to set up a way to sign in on another device (an authenticator app). Short. Address the reader formally (German 'Sie').
+  ///
+  /// In en, this message translates to:
+  /// **'Be recognised on your other devices too?'**
+  String get signInOffer;
+
+  /// Button of the banner 'Be recognised on your other devices too?' (issue #208) opening the sign-in options. German 'Einrichten'.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up'**
+  String get signInOfferOpen;
+
+  /// Menu entry of a contact's session of a personal link (issue #208) opening their sign-in options. German 'Anmeldeoptionen…'.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in options…'**
+  String get signInOptionsEntry;
+
+  /// Title of the dialog in which a contact of a personal link sets up an authenticator app (issue #208). German 'Anmeldeoptionen'.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in options'**
+  String get signInOptionsTitle;
+
+  /// Lead of the sign-in options dialog of a contact (issue #208). Address the reader formally (German 'Sie').
+  ///
+  /// In en, this message translates to:
+  /// **'Optional: how you are recognised when you open the link on another device.'**
+  String get signInOptionsLead;
+
+  /// Heading of the authenticator app in the sign-in options (issue #208). German 'Authenticator-App'.
+  ///
+  /// In en, this message translates to:
+  /// **'Authenticator app'**
+  String get authenticatorHeading;
+
+  /// Line of an authenticator app that signs a contact in (issue #208); the date is a day.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up on {date}.'**
+  String authenticatorActiveSince(String date);
+
+  /// Explanation of an authenticator app in the sign-in options (issue #208).
+  ///
+  /// In en, this message translates to:
+  /// **'An app such as Google Authenticator shows a new code every 30 seconds.'**
+  String get authenticatorExplanation;
+
+  /// Button starting the setup of an authenticator app (issue #208). German 'Authenticator-App verwenden'.
+  ///
+  /// In en, this message translates to:
+  /// **'Use an authenticator app'**
+  String get authenticatorSetUp;
+
+  /// Line above the QR code of the authenticator setup on a computer (issue #208). Address the reader formally (German 'Sie').
+  ///
+  /// In en, this message translates to:
+  /// **'Scan this code with your authenticator app.'**
+  String get totpScan;
+
+  /// Line above the setup key under the QR code (issue #208); authenticator apps call the typed secret a 'setup key' (German apps: 'Einrichtungsschlüssel'). Address the reader formally (German 'Sie').
+  ///
+  /// In en, this message translates to:
+  /// **'Or enter this setup key in the app:'**
+  String get totpOrEnterKey;
+
+  /// Line of the authenticator setup on a phone (issue #208), above the button that opens the app. Address the reader formally (German 'Sie').
+  ///
+  /// In en, this message translates to:
+  /// **'Add the entry to the authenticator app on this phone:'**
+  String get totpOnThisPhone;
+
+  /// Button of the authenticator setup on a phone (issue #208) opening the authenticator app with the entry. German 'Zur Authenticator-App hinzufügen'.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to authenticator app'**
+  String get totpAddToApp;
+
+  /// Note under the button that opens the authenticator app (issue #208): not every app handles the link; the app's own menu item is called 'Enter a setup key' (German Google Authenticator: 'Einrichtungsschlüssel eingeben'). Address the reader formally (German 'Sie').
+  ///
+  /// In en, this message translates to:
+  /// **'If no app opens, choose \"Enter a setup key\" in your app.'**
+  String get totpLinkNote;
+
+  /// Button of the authenticator setup on a phone (issue #208) showing the secret to type into the app. German 'Einrichtungsschlüssel anzeigen'.
+  ///
+  /// In en, this message translates to:
+  /// **'Show setup key'**
+  String get totpShowKey;
+
+  /// Line above the code field confirming the authenticator setup (issue #208). Address the reader formally (German 'Sie').
+  ///
+  /// In en, this message translates to:
+  /// **'Then enter the code the app shows.'**
+  String get totpEnterCode;
+
+  /// Snack bar after the setup key of an authenticator app was copied (issue #208).
+  ///
+  /// In en, this message translates to:
+  /// **'Setup key copied.'**
+  String get totpKeyCopied;
+
+  /// Menu entry of a contact in the contacts section (issue #208) showing the contact's authenticator app, to remove it. German 'Anmeldemethoden…'.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in methods…'**
+  String get contactSignInsEntry;
+
+  /// Title of the dialog showing a contact's sign-in methods besides their link (issue #208).
+  ///
+  /// In en, this message translates to:
+  /// **'How {name} signs in'**
+  String contactSignInsTitle(String name);
+
+  /// Line of the sign-in methods dialog of a contact without any (issue #208).
+  ///
+  /// In en, this message translates to:
+  /// **'No passkey and no authenticator app set up.'**
+  String get contactSignInsNone;
+
+  /// Mark in a contact's details line (issue #208): the contact signs in with an authenticator app. German 'Authenticator-App'.
+  ///
+  /// In en, this message translates to:
+  /// **'Authenticator app'**
+  String get contactAuthenticatorMark;
+
+  /// Question before a member removes a contact's authenticator app (issue #208).
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the authenticator app of {name}?'**
+  String contactAuthenticatorRemoveTitle(String name);
+
+  /// Explanation under the question before removing a contact's way to sign in (issue #208).
+  ///
+  /// In en, this message translates to:
+  /// **'Its codes no longer sign in. The contact can set it up again.'**
+  String get contactSignInRemoveMessage;
+
+  /// Button on the identification card of a personal link (issue #204) signing in with a passkey; offered only where somebody the link may let in made one. German 'Mit Passkey anmelden'.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with passkey'**
+  String get identifyPasskey;
+
+  /// Said when the person or the browser declined to make or use a passkey (issue #204).
+  ///
+  /// In en, this message translates to:
+  /// **'No passkey was used.'**
+  String get passkeyCancelled;
+
+  /// Said when the browser failed to make or use a passkey (issue #204); the reason is the browser's own technical name.
+  ///
+  /// In en, this message translates to:
+  /// **'The browser could not use a passkey ({reason}).'**
+  String passkeyFailed(String reason);
+
+  /// Heading of the passkeys in the sign-in options (issue #204). German 'Passkeys'.
+  ///
+  /// In en, this message translates to:
+  /// **'Passkeys'**
+  String get passkeysHeading;
+
+  /// Explanation of a passkey in the sign-in options (issue #204). Address the reader formally (German 'Sie').
+  ///
+  /// In en, this message translates to:
+  /// **'Your phone or browser keeps the passkey and syncs it to your other devices. No password, no code.'**
+  String get passkeyExplanation;
+
+  /// Button creating a passkey (issue #204), the author's own wording. Address the reader formally (German 'Sie').
+  ///
+  /// In en, this message translates to:
+  /// **'Recognise me on my other devices'**
+  String get passkeyAdd;
+
+  /// One passkey in a list (issue #204); the date is the day it was made.
+  ///
+  /// In en, this message translates to:
+  /// **'Passkey from {date}'**
+  String passkeyFrom(String date);
+
+  /// When a passkey last signed in (issue #204); the date is a day.
+  ///
+  /// In en, this message translates to:
+  /// **'Last used on {date}'**
+  String passkeyLastUsed(String date);
+
+  /// How many passkeys a contact has, in the contacts section (issue #204). German '1 Passkey' / '{count} Passkeys'.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 passkey} other{{count} passkeys}}'**
+  String contactPasskeyCount(int count);
+
+  /// Question before a member removes a passkey of a contact (issue #204).
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this passkey of {name}?'**
+  String contactPasskeyRemoveTitle(String name);
 }
 
 class _AppLocalizationsDelegate

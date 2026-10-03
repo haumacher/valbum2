@@ -74,11 +74,24 @@ public class TestServerEnvironment extends TestCase {
 		Map<String, String> env = new HashMap<>(env("VALBUM_SMTP_PASSWORD", "s3cret!"));
 		env.put("VALBUM_PUBLIC_URL", "https://photos.example.org");
 		List<String> lines = Main.environmentReport(ServerEnvironment.read(env));
-		assertEquals(3, lines.size());
+		assertEquals(4, lines.size());
 		assertTrue(lines.toString(), lines.get(0).contains("https://photos.example.org"));
 		assertTrue(lines.toString(), lines.get(1).contains("smtp.example.org"));
 		assertFalse(lines.toString(), lines.toString().contains("s3cret!"));
 		assertTrue(Main.environmentReport(ServerEnvironment.NONE).get(1).contains("not configured"));
+	}
+
+	// --- Passkeys, issue #204. ---
+
+	public void testPasskeysAreOfferedForTheHostOfThePublicAddress() throws Exception {
+		ServerEnvironment environment =
+			ServerEnvironment.read(Map.of("VALBUM_PUBLIC_URL", "https://photos.example.org/valbum"));
+		assertEquals("photos.example.org", environment.passkeys().getRpId());
+		assertEquals("Passkeys: offered for photos.example.org (origin https://photos.example.org)",
+			Main.environmentReport(environment).get(3));
+		assertFalse(ServerEnvironment.NONE.passkeys().isAvailable());
+		assertEquals("Passkeys: not offered (VALBUM_PUBLIC_URL is not set)",
+			Main.environmentReport(ServerEnvironment.NONE).get(3));
 	}
 
 	// --- OpenID Connect, issue #200. ---

@@ -49,7 +49,8 @@ VALBUM_SPACES=auto
 # Where it is set, the addresses the server spells for others (the preview card
 # of a share link posted in a messenger) are built from it; where it is not,
 # from each request, which is right as long as the proxy passes the forwarded
-# host on.
+# host on. Passkeys of personal share links are offered only where it is set:
+# its host is the one a passkey belongs to.
 #
 #   VALBUM_PUBLIC_URL=https://photos.example.org/valbum
 

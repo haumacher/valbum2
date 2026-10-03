@@ -17,6 +17,7 @@ import 'device_code_scanner.dart';
 import 'device_code_scanner_plugin.dart';
 import 'offline.dart';
 import 'offline_file.dart';
+import 'passkeys.dart';
 import 'phone_contacts.dart';
 import 'photo_library.dart';
 import 'notices.dart';
@@ -141,6 +142,10 @@ void executeBackgroundTask(Future<bool> Function() task) =>
 DownloadSaver defaultDownloadSaver() => Platform.isAndroid || Platform.isIOS
     ? const PhotoLibraryDownloadSaver()
     : const FileDialogDownloadSaver();
+
+/// Passkeys are a browser's (issue #204): a share session runs on the web
+/// only, so no other platform has any to offer.
+PasskeyAuthenticator? defaultPasskeyAuthenticator() => null;
 
 /// The phone's address book to pick a recipient from (issue #201): a phone
 /// has one, a desktop has none the app can reach.

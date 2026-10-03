@@ -1448,6 +1448,79 @@ message ShareInfo {
 	 * </p>
 	 */
 	int otherSessions;
+
+	/**
+	 * How the contact of this session may be recognised on another browser besides their link
+	 * (issues #208, #204); <code>null</code> for every caller who is no contact.
+	 */
+	ContactSignIns signIns;
+}
+
+/**
+ * The ways a contact is recognised on another browser besides their link, as the contact sees
+ * them: an authenticator app (issue #208) and passkeys (issue #204).
+ *
+ * <p>
+ * Answered in {@link ShareInfo#signIns} and by the requests that change them
+ * (<code>?action=totp-confirm</code>, <code>?action=remove-sign-in</code>). Neither is ever the
+ * default way in: the identification card offers each only to a contact who set it up.
+ * </p>
+ */
+message ContactSignIns {
+	/** Since when an authenticator app signs the contact in, an ISO-8601 instant; empty while none does. */
+	string authenticator;
+
+	/** The contact's passkeys (issue #204). */
+	repeated ContactPasskey passkeys;
+
+	/**
+	 * Whether the server offers passkeys at all: only with a public address
+	 * (<code>VALBUM_PUBLIC_URL</code>), whose host is the relying party (issue #204).
+	 */
+	bool passkeysOffered;
+}
+
+/**
+ * A passkey ceremony was started (issue #204): the answer of
+ * <code>&lt;data&gt;/?action=passkey-register-start</code> (a contact in their session registers a
+ * passkey) and of <code>&lt;data&gt;/?action=passkey-start</code> (a visitor not recognised yet
+ * signs in with one).
+ */
+message PasskeyOptions {
+	/** What the answer names: single use, for a few minutes, in this space and for this caller. */
+	string ticket;
+
+	/**
+	 * The options for <code>navigator.credentials.create</code> or <code>.get</code> in their JSON
+	 * form (WebAuthn Level 3, binary values base64url), a string the page decodes.
+	 */
+	string options;
+
+	/** Until when the answer is taken, an ISO-8601 instant. */
+	string expires;
+}
+
+/**
+ * The browser's answer to a passkey ceremony (issue #204):
+ * <code>&lt;data&gt;/?action=passkey-register</code> stores the passkey and answers the contact's
+ * {@link ContactSignIns}; <code>&lt;data&gt;/?action=passkey-verify</code> signs a visitor in and
+ * answers a {@link ContactCredential}.
+ */
+message PasskeyResponse {
+	/** The {@link PasskeyOptions#ticket} of the ceremony. */
+	string ticket;
+
+	/**
+	 * What <code>navigator.credentials</code> answered, in the JSON form of a
+	 * <code>PublicKeyCredential</code> (binary values base64url).
+	 */
+	string response;
+
+	/** Whether to remember this browser: 90 days renewed on use, else 24 hours (sign-in only). */
+	bool remember;
+
+	/** The name the contact wants to be greeted by; empty keeps what they had (sign-in only). */
+	string displayName;
 }
 
 /**
@@ -2647,6 +2720,27 @@ message Contact {
 	 * <code>contact:&lt;id&gt;</code>, see issue #203.
 	 */
 	int uploads;
+
+	/**
+	 * Since when an authenticator app signs the contact in, an ISO-8601 instant; empty while none
+	 * does (issue #208). Never the secret.
+	 */
+	string authenticator;
+
+	/** The contact's passkeys (issue #204), in the order they were registered. */
+	repeated ContactPasskey passkeys;
+}
+
+/** A passkey of a contact, see issue #204: when it was made and last used, never a key. */
+message ContactPasskey {
+	/** The credential id, base64url; what <code>?action=remove-sign-in</code> names. */
+	string id;
+
+	/** When it was registered, an ISO-8601 instant. */
+	string created;
+
+	/** When it last signed in, empty while it never did. */
+	string lastUsed;
 }
 
 /** A browser a contact is recognised on, see {@link Contact#sessions} and issue #198. */
@@ -2874,7 +2968,9 @@ message ProofMethod {
 	/**
 	 * The name of the method: <code>mail-code</code> (issue #199), or <code>oidc:&lt;provider&gt;</code>
 	 * for a sign-in through OpenID Connect (issue #200), whose provider id is what
-	 * {@link OidcStart#provider} names.
+	 * {@link OidcStart#provider} names, or <code>totp</code> for a code of an authenticator app
+	 * (issue #208) and <code>passkey</code> for a passkey (issue #204), each named only where a
+	 * contact the link may let in set one up.
 	 */
 	string name;
 
@@ -3016,6 +3112,74 @@ message EmailVerify {
 	 * is recognised already.
 	 */
 	string displayName;
+}
+
+/**
+ * Setting up an authenticator app, the answer of <code>&lt;data&gt;/?action=totp-setup</code> (issue
+ * #208).
+ *
+ * <p>
+ * Asked by a contact in a session of a personal link. The secret is pending until
+ * <code>?action=totp-confirm</code> receives one code of it: a secret that never reached an app
+ * signs nobody in. The app offers the same secret three ways: the {@link #uri} as a link that opens
+ * the authenticator on the same phone, the {@link #secret} to type ("Enter a setup key"), and on a
+ * computer the QR code of the {@link #uri}.
+ * </p>
+ */
+message TotpSetup {
+	/** The secret, Base32 without padding (160 bits, 32 characters). */
+	string secret;
+
+	/**
+	 * The <code>otpauth://totp/&lt;issuer&gt;:&lt;account&gt;?secret=…&amp;issuer=…</code> address
+	 * of the secret, with the defaults spelled out: SHA-1, six digits, thirty seconds.
+	 */
+	string uri;
+
+	/** The name the app files the entry under: the space's. */
+	string issuer;
+
+	/** The name of the entry within the issuer: the contact's. */
+	string account;
+}
+
+/**
+ * A code from an authenticator app (issue #208): <code>&lt;data&gt;/?action=totp-confirm</code>
+ * confirms an app being set up, <code>&lt;data&gt;/?action=totp-verify</code> signs a contact in on
+ * a personal link and answers a {@link ContactCredential}.
+ */
+message TotpCode {
+	/** The six digits the app shows. */
+	string code;
+
+	/**
+	 * On an open personal link and on the group link of issue #211, which name nobody: the e-mail
+	 * address saved with the contact the code is to sign in. Ignored on a recipient's own link.
+	 */
+	string address;
+
+	/** Whether to remember this browser: 90 days renewed on use, else 24 hours. */
+	bool remember;
+
+	/** The name the contact wants to be greeted by; empty keeps what they had. */
+	string displayName;
+}
+
+/**
+ * Removing a way a contact is recognised (issue #208): by the contact themself at
+ * <code>&lt;data&gt;/?action=remove-sign-in</code>, answered with their {@link ContactSignIns}, or by
+ * a member who manages the contacts at <code>&lt;data&gt;/?action=remove-contact-sign-in</code>,
+ * answered with the {@link Contact}.
+ */
+message SignInRemove {
+	/** The id of the contact; ignored where the contact removes their own. */
+	string contact;
+
+	/** <code>totp</code> for the authenticator app, <code>passkey</code> for a passkey (issue #204). */
+	string method;
+
+	/** Which one of several: the {@link ContactPasskey#id} of a passkey; empty for the authenticator app. */
+	string id;
 }
 
 /**

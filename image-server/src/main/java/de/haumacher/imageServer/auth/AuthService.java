@@ -1035,6 +1035,9 @@ public class AuthService {
 	/** The contacts of issue #198, <code>null</code> while {@link AuthMode#OFF}. */
 	private final ContactStore _contacts;
 
+	/** The authenticator apps of the contacts, see issue #208; <code>null</code> while {@link AuthMode#OFF}. */
+	private final TotpSignIns _totp;
+
 	/** Serialises the first opens of personal links, so that only one of two concurrent ones wins. */
 	private final Object _identifyLock = new Object();
 
@@ -1070,6 +1073,7 @@ public class AuthService {
 		_users = mode == AuthMode.OFF ? null : new UserStore(basePath);
 		_shares = mode == AuthMode.OFF ? null : new ShareStore(basePath);
 		_contacts = mode == AuthMode.OFF ? null : new ContactStore(basePath);
+		_totp = _contacts == null ? null : new TotpSignIns(_contacts, java.time.Clock.systemUTC());
 		_deviceCodes = mode == AuthMode.OFF ? null : new DeviceCodeStore(basePath);
 		_media = mode == AuthMode.OFF ? null : new MediaSignatures(basePath);
 		ensureAdminSeat();
@@ -1256,6 +1260,14 @@ public class AuthService {
 	/** The contacts of this space, <code>null</code> while {@link AuthMode#OFF}, see issue #198. */
 	public ContactStore getContacts() {
 		return _contacts;
+	}
+
+	/**
+	 * Signing contacts in with their authenticator apps, see issue #208; <code>null</code> while
+	 * {@link AuthMode#OFF}.
+	 */
+	public TotpSignIns getTotp() {
+		return _totp;
 	}
 
 	/**

@@ -1891,6 +1891,11 @@ class ContactsSectionState extends State<ContactsSection> {
           child: Text(l10n.contactSessionsEntry),
         ),
         PopupMenuItem(
+          key: Key("contact-sign-ins-${contact.id}"),
+          value: () => _signIns(contact),
+          child: Text(l10n.contactSignInsEntry),
+        ),
+        PopupMenuItem(
           key: Key("contact-block-${contact.id}"),
           value: () => _block(contact, !blocked),
           child: Text(blocked ? l10n.letInAgain : l10n.shutOutEverywhere),
@@ -1983,6 +1988,32 @@ class ContactsSectionState extends State<ContactsSection> {
     );
   }
 
+  /// Shows how [contact] signs in besides their link (issues #208, #204),
+  /// each way with "Remove".
+  Future<void> _signIns(Contact contact) async {
+    var client = widget.client;
+    if (client == null) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (context) => ContactSignInsDialog(
+        client: client,
+        contact: contact,
+        onChanged: (changed) {
+          if (mounted) {
+            setState(() {
+              _contacts = [
+                for (var shown in _contacts ?? const <Contact>[])
+                  shown.id == changed.id ? changed : shown,
+              ];
+            });
+          }
+        },
+      ),
+    );
+  }
+
   /// Deletes [contact], after a question naming what goes and what stays.
   Future<void> _delete(Contact contact) async {
     var l10n = AppLocalizations.of(context)!;
@@ -2016,6 +2047,8 @@ String contactDetails(AppLocalizations l10n, Contact contact) {
   return [
     if (contact.blocked.isNotEmpty) l10n.shutOutEverywhereMark,
     l10n.contactSessionCount(live.length),
+    if (contact.authenticator.isNotEmpty) l10n.contactAuthenticatorMark,
+    if (contact.passkeys.isNotEmpty) l10n.contactPasskeyCount(contact.passkeys.length),
     if (contact.uploads > 0) l10n.photosAdded(contact.uploads),
     if (contact.lastSeen.isNotEmpty) l10n.lastSeenOn(dayOf(contact.lastSeen)),
   ].join(" · ");
@@ -2203,6 +2236,144 @@ class _ContactSessionsDialogState extends State<ContactSessionsDialog> {
           ),
         TextButton(
           key: const Key("contact-sessions-close"),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.close),
+        ),
+      ],
+    );
+  }
+}
+
+/// How a contact signs in besides their link: their passkeys (issue #204)
+/// and their authenticator app (issue #208), each with "Remove" after a
+/// question.
+///
+/// Every change is handed to [onChanged], the section behind the dialog.
+class ContactSignInsDialog extends StatefulWidget {
+  final VAlbumClient client;
+
+  final Contact contact;
+
+  final ValueChanged<Contact> onChanged;
+
+  const ContactSignInsDialog({
+    super.key,
+    required this.client,
+    required this.contact,
+    required this.onChanged,
+  });
+
+  @override
+  State<ContactSignInsDialog> createState() => _ContactSignInsDialogState();
+}
+
+class _ContactSignInsDialogState extends State<ContactSignInsDialog> {
+  late Contact _contact = widget.contact;
+
+  String? _problem;
+
+  bool _busy = false;
+
+  Future<void> _remove(String method, {String id = ""}) async {
+    var l10n = AppLocalizations.of(context)!;
+    var confirmed = await confirmHere(
+      context: context,
+      dialogKey: "contact-sign-in-remove-confirm",
+      title: method == "passkey"
+          ? l10n.contactPasskeyRemoveTitle(_contact.name)
+          : l10n.contactAuthenticatorRemoveTitle(_contact.name),
+      message: l10n.contactSignInRemoveMessage,
+      confirmLabel: l10n.remove,
+      confirmKey: "contact-sign-in-remove-confirmed",
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _problem = null;
+    });
+    try {
+      var answer =
+          await widget.client.removeContactSignIn(_contact.id, method, id: id);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _busy = false;
+        _contact = answer;
+      });
+      widget.onChanged(answer);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _problem = refusalMessage(error);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    var problem = _problem;
+    var authenticator = _contact.authenticator;
+    return AlertDialog(
+      key: const Key("contact-sign-ins-dialog"),
+      title: Text(l10n.contactSignInsTitle(_contact.name)),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (problem != null)
+                sectionProblem(
+                    context, problem, const Key("contact-sign-ins-error")),
+              if (authenticator.isEmpty && _contact.passkeys.isEmpty)
+                Text(l10n.contactSignInsNone,
+                    key: const Key("contact-sign-ins-none")),
+              for (var passkey in _contact.passkeys)
+                ListTile(
+                  key: Key("contact-sign-in-passkey-${passkey.id}"),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: const Icon(Icons.key),
+                  title: Text(l10n.passkeyFrom(dayOf(passkey.created))),
+                  subtitle: passkey.lastUsed.isEmpty
+                      ? null
+                      : Text(l10n.passkeyLastUsed(dayOf(passkey.lastUsed))),
+                  trailing: TextButton(
+                    key: Key("contact-sign-in-passkey-remove-${passkey.id}"),
+                    onPressed:
+                        _busy ? null : () => _remove("passkey", id: passkey.id),
+                    child: Text(l10n.remove),
+                  ),
+                ),
+              if (authenticator.isNotEmpty)
+                ListTile(
+                  key: const Key("contact-sign-in-totp"),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: const Icon(Icons.pin_outlined),
+                  title: Text(l10n.authenticatorHeading),
+                  subtitle: Text(
+                      l10n.authenticatorActiveSince(dayOf(authenticator))),
+                  trailing: TextButton(
+                    key: const Key("contact-sign-in-totp-remove"),
+                    onPressed: _busy ? null : () => _remove("totp"),
+                    child: Text(l10n.remove),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key("contact-sign-ins-close"),
           onPressed: () => Navigator.of(context).pop(),
           child: Text(l10n.close),
         ),

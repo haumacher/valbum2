@@ -3120,4 +3120,138 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shutOutEverywhereMark => 'Shut out everywhere';
+
+  @override
+  String get identifyTotp => 'Code from your authenticator app';
+
+  @override
+  String get totpCodeLabel => 'Code from the app';
+
+  @override
+  String get signInOffer => 'Be recognised on your other devices too?';
+
+  @override
+  String get signInOfferOpen => 'Set up';
+
+  @override
+  String get signInOptionsEntry => 'Sign-in options…';
+
+  @override
+  String get signInOptionsTitle => 'Sign-in options';
+
+  @override
+  String get signInOptionsLead =>
+      'Optional: how you are recognised when you open the link on another device.';
+
+  @override
+  String get authenticatorHeading => 'Authenticator app';
+
+  @override
+  String authenticatorActiveSince(String date) {
+    return 'Set up on $date.';
+  }
+
+  @override
+  String get authenticatorExplanation =>
+      'An app such as Google Authenticator shows a new code every 30 seconds.';
+
+  @override
+  String get authenticatorSetUp => 'Use an authenticator app';
+
+  @override
+  String get totpScan => 'Scan this code with your authenticator app.';
+
+  @override
+  String get totpOrEnterKey => 'Or enter this setup key in the app:';
+
+  @override
+  String get totpOnThisPhone =>
+      'Add the entry to the authenticator app on this phone:';
+
+  @override
+  String get totpAddToApp => 'Add to authenticator app';
+
+  @override
+  String get totpLinkNote =>
+      'If no app opens, choose \"Enter a setup key\" in your app.';
+
+  @override
+  String get totpShowKey => 'Show setup key';
+
+  @override
+  String get totpEnterCode => 'Then enter the code the app shows.';
+
+  @override
+  String get totpKeyCopied => 'Setup key copied.';
+
+  @override
+  String get contactSignInsEntry => 'Sign-in methods…';
+
+  @override
+  String contactSignInsTitle(String name) {
+    return 'How $name signs in';
+  }
+
+  @override
+  String get contactSignInsNone =>
+      'No passkey and no authenticator app set up.';
+
+  @override
+  String get contactAuthenticatorMark => 'Authenticator app';
+
+  @override
+  String contactAuthenticatorRemoveTitle(String name) {
+    return 'Remove the authenticator app of $name?';
+  }
+
+  @override
+  String get contactSignInRemoveMessage =>
+      'Its codes no longer sign in. The contact can set it up again.';
+
+  @override
+  String get identifyPasskey => 'Sign in with passkey';
+
+  @override
+  String get passkeyCancelled => 'No passkey was used.';
+
+  @override
+  String passkeyFailed(String reason) {
+    return 'The browser could not use a passkey ($reason).';
+  }
+
+  @override
+  String get passkeysHeading => 'Passkeys';
+
+  @override
+  String get passkeyExplanation =>
+      'Your phone or browser keeps the passkey and syncs it to your other devices. No password, no code.';
+
+  @override
+  String get passkeyAdd => 'Recognise me on my other devices';
+
+  @override
+  String passkeyFrom(String date) {
+    return 'Passkey from $date';
+  }
+
+  @override
+  String passkeyLastUsed(String date) {
+    return 'Last used on $date';
+  }
+
+  @override
+  String contactPasskeyCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count passkeys',
+      one: '1 passkey',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String contactPasskeyRemoveTitle(String name) {
+    return 'Remove this passkey of $name?';
+  }
 }

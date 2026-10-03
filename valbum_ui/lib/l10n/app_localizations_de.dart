@@ -3163,4 +3163,141 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get shutOutEverywhereMark => 'Überall ausgesperrt';
+
+  @override
+  String get identifyTotp => 'Code aus Ihrer Authenticator-App';
+
+  @override
+  String get totpCodeLabel => 'Code aus der App';
+
+  @override
+  String get signInOffer =>
+      'Möchten Sie auch auf Ihren anderen Geräten erkannt werden?';
+
+  @override
+  String get signInOfferOpen => 'Einrichten';
+
+  @override
+  String get signInOptionsEntry => 'Anmeldeoptionen…';
+
+  @override
+  String get signInOptionsTitle => 'Anmeldeoptionen';
+
+  @override
+  String get signInOptionsLead =>
+      'Optional: woran Sie erkannt werden, wenn Sie den Link auf einem anderen Gerät öffnen.';
+
+  @override
+  String get authenticatorHeading => 'Authenticator-App';
+
+  @override
+  String authenticatorActiveSince(String date) {
+    return 'Eingerichtet am $date.';
+  }
+
+  @override
+  String get authenticatorExplanation =>
+      'Eine App wie Google Authenticator zeigt alle 30 Sekunden einen neuen Code an.';
+
+  @override
+  String get authenticatorSetUp => 'Authenticator-App verwenden';
+
+  @override
+  String get totpScan => 'Scannen Sie diesen Code mit Ihrer Authenticator-App.';
+
+  @override
+  String get totpOrEnterKey =>
+      'Oder geben Sie diesen Einrichtungsschlüssel in der App ein:';
+
+  @override
+  String get totpOnThisPhone =>
+      'Fügen Sie den Eintrag der Authenticator-App auf diesem Telefon hinzu:';
+
+  @override
+  String get totpAddToApp => 'Zur Authenticator-App hinzufügen';
+
+  @override
+  String get totpLinkNote =>
+      'Falls sich keine App öffnet, wählen Sie in Ihrer App „Einrichtungsschlüssel eingeben“.';
+
+  @override
+  String get totpShowKey => 'Einrichtungsschlüssel anzeigen';
+
+  @override
+  String get totpEnterCode =>
+      'Geben Sie anschließend den Code ein, den die App anzeigt.';
+
+  @override
+  String get totpKeyCopied => 'Einrichtungsschlüssel kopiert.';
+
+  @override
+  String get contactSignInsEntry => 'Anmeldemethoden…';
+
+  @override
+  String contactSignInsTitle(String name) {
+    return 'Wie sich $name anmeldet';
+  }
+
+  @override
+  String get contactSignInsNone =>
+      'Kein Passkey und keine Authenticator-App eingerichtet.';
+
+  @override
+  String get contactAuthenticatorMark => 'Authenticator-App';
+
+  @override
+  String contactAuthenticatorRemoveTitle(String name) {
+    return 'Authenticator-App von $name entfernen?';
+  }
+
+  @override
+  String get contactSignInRemoveMessage =>
+      'Ihre Codes gelten dann nicht mehr. Der Kontakt kann sie neu einrichten.';
+
+  @override
+  String get identifyPasskey => 'Mit Passkey anmelden';
+
+  @override
+  String get passkeyCancelled => 'Es wurde kein Passkey verwendet.';
+
+  @override
+  String passkeyFailed(String reason) {
+    return 'Der Browser konnte keinen Passkey verwenden ($reason).';
+  }
+
+  @override
+  String get passkeysHeading => 'Passkeys';
+
+  @override
+  String get passkeyExplanation =>
+      'Ihr Telefon oder Browser bewahrt den Passkey auf und überträgt ihn auf Ihre anderen Geräte. Kein Passwort, kein Code.';
+
+  @override
+  String get passkeyAdd => 'Mich auf meinen anderen Geräten erkennen';
+
+  @override
+  String passkeyFrom(String date) {
+    return 'Passkey vom $date';
+  }
+
+  @override
+  String passkeyLastUsed(String date) {
+    return 'Zuletzt verwendet am $date';
+  }
+
+  @override
+  String contactPasskeyCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Passkeys',
+      one: '1 Passkey',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String contactPasskeyRemoveTitle(String name) {
+    return 'Diesen Passkey von $name entfernen?';
+  }
 }

@@ -3181,6 +3181,10 @@ class ShareInfo extends _JsonObject {
 	///  </p>
 	int otherSessions;
 
+	///  How the contact of this session may be recognised on another browser besides their link
+	///  (issues #208, #204); <code>null</code> for every caller who is no contact.
+	ContactSignIns? signIns;
+
 	/// Creates a ShareInfo.
 	ShareInfo({
 			this.label = "", 
@@ -3192,6 +3196,7 @@ class ShareInfo extends _JsonObject {
 			this.methods = const [], 
 			this.contactHasEmail = false, 
 			this.otherSessions = 0, 
+			this.signIns, 
 	});
 
 	/// Parses a ShareInfo from a string source.
@@ -3266,6 +3271,10 @@ class ShareInfo extends _JsonObject {
 				otherSessions = json.expectInt();
 				break;
 			}
+			case "signIns": {
+				signIns = json.tryNull() ? null : ContactSignIns.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3311,6 +3320,256 @@ class ShareInfo extends _JsonObject {
 
 		json.addKey("otherSessions");
 		json.addNumber(otherSessions);
+
+		var _signIns = signIns;
+		if (_signIns != null) {
+			json.addKey("signIns");
+			_signIns.writeContent(json);
+		}
+	}
+
+}
+
+///  The ways a contact is recognised on another browser besides their link, as the contact sees
+///  them: an authenticator app (issue #208) and passkeys (issue #204).
+/// 
+///  <p>
+///  Answered in {@link ShareInfo#signIns} and by the requests that change them
+///  (<code>?action=totp-confirm</code>, <code>?action=remove-sign-in</code>). Neither is ever the
+///  default way in: the identification card offers each only to a contact who set it up.
+///  </p>
+class ContactSignIns extends _JsonObject {
+	///  Since when an authenticator app signs the contact in, an ISO-8601 instant; empty while none does.
+	String authenticator;
+
+	///  The contact's passkeys (issue #204).
+	List<ContactPasskey> passkeys;
+
+	///  Whether the server offers passkeys at all: only with a public address
+	///  (<code>VALBUM_PUBLIC_URL</code>), whose host is the relying party (issue #204).
+	bool passkeysOffered;
+
+	/// Creates a ContactSignIns.
+	ContactSignIns({
+			this.authenticator = "", 
+			this.passkeys = const [], 
+			this.passkeysOffered = false, 
+	});
+
+	/// Parses a ContactSignIns from a string source.
+	static ContactSignIns? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactSignIns instance from the given reader.
+	static ContactSignIns read(JsonReader json) {
+		ContactSignIns result = ContactSignIns();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactSignIns";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "authenticator": {
+				authenticator = json.expectString();
+				break;
+			}
+			case "passkeys": {
+				json.expectArray();
+				passkeys = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ContactPasskey.read(json);
+						if (value != null) {
+							passkeys.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "passkeysOffered": {
+				passkeysOffered = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("authenticator");
+		json.addString(authenticator);
+
+		json.addKey("passkeys");
+		json.startArray();
+		for (var _element in passkeys) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("passkeysOffered");
+		json.addBool(passkeysOffered);
+	}
+
+}
+
+///  A passkey ceremony was started (issue #204): the answer of
+///  <code>&lt;data&gt;/?action=passkey-register-start</code> (a contact in their session registers a
+///  passkey) and of <code>&lt;data&gt;/?action=passkey-start</code> (a visitor not recognised yet
+///  signs in with one).
+class PasskeyOptions extends _JsonObject {
+	///  What the answer names: single use, for a few minutes, in this space and for this caller.
+	String ticket;
+
+	///  The options for <code>navigator.credentials.create</code> or <code>.get</code> in their JSON
+	///  form (WebAuthn Level 3, binary values base64url), a string the page decodes.
+	String options;
+
+	///  Until when the answer is taken, an ISO-8601 instant.
+	String expires;
+
+	/// Creates a PasskeyOptions.
+	PasskeyOptions({
+			this.ticket = "", 
+			this.options = "", 
+			this.expires = "", 
+	});
+
+	/// Parses a PasskeyOptions from a string source.
+	static PasskeyOptions? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PasskeyOptions instance from the given reader.
+	static PasskeyOptions read(JsonReader json) {
+		PasskeyOptions result = PasskeyOptions();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PasskeyOptions";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "ticket": {
+				ticket = json.expectString();
+				break;
+			}
+			case "options": {
+				options = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("ticket");
+		json.addString(ticket);
+
+		json.addKey("options");
+		json.addString(options);
+
+		json.addKey("expires");
+		json.addString(expires);
+	}
+
+}
+
+///  The browser's answer to a passkey ceremony (issue #204):
+///  <code>&lt;data&gt;/?action=passkey-register</code> stores the passkey and answers the contact's
+///  {@link ContactSignIns}; <code>&lt;data&gt;/?action=passkey-verify</code> signs a visitor in and
+///  answers a {@link ContactCredential}.
+class PasskeyResponse extends _JsonObject {
+	///  The {@link PasskeyOptions#ticket} of the ceremony.
+	String ticket;
+
+	///  What <code>navigator.credentials</code> answered, in the JSON form of a
+	///  <code>PublicKeyCredential</code> (binary values base64url).
+	String response;
+
+	///  Whether to remember this browser: 90 days renewed on use, else 24 hours (sign-in only).
+	bool remember;
+
+	///  The name the contact wants to be greeted by; empty keeps what they had (sign-in only).
+	String displayName;
+
+	/// Creates a PasskeyResponse.
+	PasskeyResponse({
+			this.ticket = "", 
+			this.response = "", 
+			this.remember = false, 
+			this.displayName = "", 
+	});
+
+	/// Parses a PasskeyResponse from a string source.
+	static PasskeyResponse? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PasskeyResponse instance from the given reader.
+	static PasskeyResponse read(JsonReader json) {
+		PasskeyResponse result = PasskeyResponse();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PasskeyResponse";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "ticket": {
+				ticket = json.expectString();
+				break;
+			}
+			case "response": {
+				response = json.expectString();
+				break;
+			}
+			case "remember": {
+				remember = json.expectBool();
+				break;
+			}
+			case "displayName": {
+				displayName = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("ticket");
+		json.addString(ticket);
+
+		json.addKey("response");
+		json.addString(response);
+
+		json.addKey("remember");
+		json.addBool(remember);
+
+		json.addKey("displayName");
+		json.addString(displayName);
 	}
 
 }
@@ -6981,6 +7240,13 @@ class Contact extends _JsonObject {
 	///  <code>contact:&lt;id&gt;</code>, see issue #203.
 	int uploads;
 
+	///  Since when an authenticator app signs the contact in, an ISO-8601 instant; empty while none
+	///  does (issue #208). Never the secret.
+	String authenticator;
+
+	///  The contact's passkeys (issue #204), in the order they were registered.
+	List<ContactPasskey> passkeys;
+
 	/// Creates a Contact.
 	Contact({
 			this.id = "", 
@@ -6994,6 +7260,8 @@ class Contact extends _JsonObject {
 			this.blocked = "", 
 			this.sessions = const [], 
 			this.uploads = 0, 
+			this.authenticator = "", 
+			this.passkeys = const [], 
 	});
 
 	/// Parses a Contact from a string source.
@@ -7076,6 +7344,23 @@ class Contact extends _JsonObject {
 				uploads = json.expectInt();
 				break;
 			}
+			case "authenticator": {
+				authenticator = json.expectString();
+				break;
+			}
+			case "passkeys": {
+				json.expectArray();
+				passkeys = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ContactPasskey.read(json);
+						if (value != null) {
+							passkeys.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -7124,6 +7409,84 @@ class Contact extends _JsonObject {
 
 		json.addKey("uploads");
 		json.addNumber(uploads);
+
+		json.addKey("authenticator");
+		json.addString(authenticator);
+
+		json.addKey("passkeys");
+		json.startArray();
+		for (var _element in passkeys) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  A passkey of a contact, see issue #204: when it was made and last used, never a key.
+class ContactPasskey extends _JsonObject {
+	///  The credential id, base64url; what <code>?action=remove-sign-in</code> names.
+	String id;
+
+	///  When it was registered, an ISO-8601 instant.
+	String created;
+
+	///  When it last signed in, empty while it never did.
+	String lastUsed;
+
+	/// Creates a ContactPasskey.
+	ContactPasskey({
+			this.id = "", 
+			this.created = "", 
+			this.lastUsed = "", 
+	});
+
+	/// Parses a ContactPasskey from a string source.
+	static ContactPasskey? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactPasskey instance from the given reader.
+	static ContactPasskey read(JsonReader json) {
+		ContactPasskey result = ContactPasskey();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactPasskey";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "created": {
+				created = json.expectString();
+				break;
+			}
+			case "lastUsed": {
+				lastUsed = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("created");
+		json.addString(created);
+
+		json.addKey("lastUsed");
+		json.addString(lastUsed);
 	}
 
 }
@@ -8031,7 +8394,9 @@ class MaskedAddress extends _JsonObject {
 class ProofMethod extends _JsonObject {
 	///  The name of the method: <code>mail-code</code> (issue #199), or <code>oidc:&lt;provider&gt;</code>
 	///  for a sign-in through OpenID Connect (issue #200), whose provider id is what
-	///  {@link OidcStart#provider} names.
+	///  {@link OidcStart#provider} names, or <code>totp</code> for a code of an authenticator app
+	///  (issue #208) and <code>passkey</code> for a passkey (issue #204), each named only where a
+	///  contact the link may let in set one up.
 	String name;
 
 	///  What to call the method on a button, for a provider of OpenID Connect its name as the server's
@@ -8536,6 +8901,248 @@ class EmailVerify extends _JsonObject {
 
 		json.addKey("displayName");
 		json.addString(displayName);
+	}
+
+}
+
+///  Setting up an authenticator app, the answer of <code>&lt;data&gt;/?action=totp-setup</code> (issue
+///  #208).
+/// 
+///  <p>
+///  Asked by a contact in a session of a personal link. The secret is pending until
+///  <code>?action=totp-confirm</code> receives one code of it: a secret that never reached an app
+///  signs nobody in. The app offers the same secret three ways: the {@link #uri} as a link that opens
+///  the authenticator on the same phone, the {@link #secret} to type ("Enter a setup key"), and on a
+///  computer the QR code of the {@link #uri}.
+///  </p>
+class TotpSetup extends _JsonObject {
+	///  The secret, Base32 without padding (160 bits, 32 characters).
+	String secret;
+
+	///  The <code>otpauth://totp/&lt;issuer&gt;:&lt;account&gt;?secret=…&amp;issuer=…</code> address
+	///  of the secret, with the defaults spelled out: SHA-1, six digits, thirty seconds.
+	String uri;
+
+	///  The name the app files the entry under: the space's.
+	String issuer;
+
+	///  The name of the entry within the issuer: the contact's.
+	String account;
+
+	/// Creates a TotpSetup.
+	TotpSetup({
+			this.secret = "", 
+			this.uri = "", 
+			this.issuer = "", 
+			this.account = "", 
+	});
+
+	/// Parses a TotpSetup from a string source.
+	static TotpSetup? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a TotpSetup instance from the given reader.
+	static TotpSetup read(JsonReader json) {
+		TotpSetup result = TotpSetup();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "TotpSetup";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "secret": {
+				secret = json.expectString();
+				break;
+			}
+			case "uri": {
+				uri = json.expectString();
+				break;
+			}
+			case "issuer": {
+				issuer = json.expectString();
+				break;
+			}
+			case "account": {
+				account = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("secret");
+		json.addString(secret);
+
+		json.addKey("uri");
+		json.addString(uri);
+
+		json.addKey("issuer");
+		json.addString(issuer);
+
+		json.addKey("account");
+		json.addString(account);
+	}
+
+}
+
+///  A code from an authenticator app (issue #208): <code>&lt;data&gt;/?action=totp-confirm</code>
+///  confirms an app being set up, <code>&lt;data&gt;/?action=totp-verify</code> signs a contact in on
+///  a personal link and answers a {@link ContactCredential}.
+class TotpCode extends _JsonObject {
+	///  The six digits the app shows.
+	String code;
+
+	///  On an open personal link and on the group link of issue #211, which name nobody: the e-mail
+	///  address saved with the contact the code is to sign in. Ignored on a recipient's own link.
+	String address;
+
+	///  Whether to remember this browser: 90 days renewed on use, else 24 hours.
+	bool remember;
+
+	///  The name the contact wants to be greeted by; empty keeps what they had.
+	String displayName;
+
+	/// Creates a TotpCode.
+	TotpCode({
+			this.code = "", 
+			this.address = "", 
+			this.remember = false, 
+			this.displayName = "", 
+	});
+
+	/// Parses a TotpCode from a string source.
+	static TotpCode? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a TotpCode instance from the given reader.
+	static TotpCode read(JsonReader json) {
+		TotpCode result = TotpCode();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "TotpCode";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "code": {
+				code = json.expectString();
+				break;
+			}
+			case "address": {
+				address = json.expectString();
+				break;
+			}
+			case "remember": {
+				remember = json.expectBool();
+				break;
+			}
+			case "displayName": {
+				displayName = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("code");
+		json.addString(code);
+
+		json.addKey("address");
+		json.addString(address);
+
+		json.addKey("remember");
+		json.addBool(remember);
+
+		json.addKey("displayName");
+		json.addString(displayName);
+	}
+
+}
+
+///  Removing a way a contact is recognised (issue #208): by the contact themself at
+///  <code>&lt;data&gt;/?action=remove-sign-in</code>, answered with their {@link ContactSignIns}, or by
+///  a member who manages the contacts at <code>&lt;data&gt;/?action=remove-contact-sign-in</code>,
+///  answered with the {@link Contact}.
+class SignInRemove extends _JsonObject {
+	///  The id of the contact; ignored where the contact removes their own.
+	String contact;
+
+	///  <code>totp</code> for the authenticator app, <code>passkey</code> for a passkey (issue #204).
+	String method;
+
+	///  Which one of several: the {@link ContactPasskey#id} of a passkey; empty for the authenticator app.
+	String id;
+
+	/// Creates a SignInRemove.
+	SignInRemove({
+			this.contact = "", 
+			this.method = "", 
+			this.id = "", 
+	});
+
+	/// Parses a SignInRemove from a string source.
+	static SignInRemove? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SignInRemove instance from the given reader.
+	static SignInRemove read(JsonReader json) {
+		SignInRemove result = SignInRemove();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SignInRemove";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			case "method": {
+				method = json.expectString();
+				break;
+			}
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("contact");
+		json.addString(contact);
+
+		json.addKey("method");
+		json.addString(method);
+
+		json.addKey("id");
+		json.addString(id);
 	}
 
 }

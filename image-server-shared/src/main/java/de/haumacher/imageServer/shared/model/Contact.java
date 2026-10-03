@@ -56,6 +56,12 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getUploads() */
 	private static final String UPLOADS__PROP = "uploads";
 
+	/** @see #getAuthenticator() */
+	private static final String AUTHENTICATOR__PROP = "authenticator";
+
+	/** @see #getPasskeys() */
+	private static final String PASSKEYS__PROP = "passkeys";
+
 	private String _id = "";
 
 	private String _name = "";
@@ -77,6 +83,10 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private final java.util.List<de.haumacher.imageServer.shared.model.ContactSession> _sessions = new java.util.ArrayList<>();
 
 	private int _uploads = 0;
+
+	private String _authenticator = "";
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.ContactPasskey> _passkeys = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link Contact} instance.
@@ -354,6 +364,69 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_uploads = value;
 	}
 
+	/**
+	 * Since when an authenticator app signs the contact in, an ISO-8601 instant; empty while none
+	 * does (issue #208). Never the secret.
+	 */
+	public final String getAuthenticator() {
+		return _authenticator;
+	}
+
+	/**
+	 * @see #getAuthenticator()
+	 */
+	public de.haumacher.imageServer.shared.model.Contact setAuthenticator(String value) {
+		internalSetAuthenticator(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getAuthenticator()} without chain call utility. */
+	protected final void internalSetAuthenticator(String value) {
+		_authenticator = value;
+	}
+
+	/**
+	 * The contact's passkeys (issue #204), in the order they were registered.
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.ContactPasskey> getPasskeys() {
+		return _passkeys;
+	}
+
+	/**
+	 * @see #getPasskeys()
+	 */
+	public de.haumacher.imageServer.shared.model.Contact setPasskeys(java.util.List<? extends de.haumacher.imageServer.shared.model.ContactPasskey> value) {
+		internalSetPasskeys(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPasskeys()} without chain call utility. */
+	protected final void internalSetPasskeys(java.util.List<? extends de.haumacher.imageServer.shared.model.ContactPasskey> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'passkeys' cannot be null.");
+		_passkeys.clear();
+		_passkeys.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getPasskeys()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.Contact addPasskey(de.haumacher.imageServer.shared.model.ContactPasskey value) {
+		internalAddPasskey(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addPasskey(de.haumacher.imageServer.shared.model.ContactPasskey)} without chain call utility. */
+	protected final void internalAddPasskey(de.haumacher.imageServer.shared.model.ContactPasskey value) {
+		_passkeys.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getPasskeys()} list.
+	 */
+	public final void removePasskey(de.haumacher.imageServer.shared.model.ContactPasskey value) {
+		_passkeys.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.Contact readContact(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.Contact result = new de.haumacher.imageServer.shared.model.Contact();
@@ -399,6 +472,14 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.endArray();
 		out.name(UPLOADS__PROP);
 		out.value(getUploads());
+		out.name(AUTHENTICATOR__PROP);
+		out.value(getAuthenticator());
+		out.name(PASSKEYS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.ContactPasskey x : getPasskeys()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -429,6 +510,15 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 			}
 			break;
 			case UPLOADS__PROP: setUploads(in.nextInt()); break;
+			case AUTHENTICATOR__PROP: setAuthenticator(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case PASSKEYS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addPasskey(de.haumacher.imageServer.shared.model.ContactPasskey.readContactPasskey(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

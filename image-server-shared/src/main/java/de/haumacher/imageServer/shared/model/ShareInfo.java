@@ -48,6 +48,9 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getOtherSessions() */
 	private static final String OTHER_SESSIONS__PROP = "otherSessions";
 
+	/** @see #getSignIns() */
+	private static final String SIGN_INS__PROP = "signIns";
+
 	private String _label = "";
 
 	private String _expires = "";
@@ -65,6 +68,8 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private boolean _contactHasEmail = false;
 
 	private int _otherSessions = 0;
+
+	private de.haumacher.imageServer.shared.model.ContactSignIns _signIns = null;
 
 	/**
 	 * Creates a {@link ShareInfo} instance.
@@ -333,6 +338,34 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_otherSessions = value;
 	}
 
+	/**
+	 * How the contact of this session may be recognised on another browser besides their link
+	 * (issues #208, #204); <code>null</code> for every caller who is no contact.
+	 */
+	public final de.haumacher.imageServer.shared.model.ContactSignIns getSignIns() {
+		return _signIns;
+	}
+
+	/**
+	 * @see #getSignIns()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareInfo setSignIns(de.haumacher.imageServer.shared.model.ContactSignIns value) {
+		internalSetSignIns(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getSignIns()} without chain call utility. */
+	protected final void internalSetSignIns(de.haumacher.imageServer.shared.model.ContactSignIns value) {
+		_signIns = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getSignIns()} has a value.
+	 */
+	public final boolean hasSignIns() {
+		return _signIns != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareInfo readShareInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareInfo result = new de.haumacher.imageServer.shared.model.ShareInfo();
@@ -376,6 +409,10 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(isContactHasEmail());
 		out.name(OTHER_SESSIONS__PROP);
 		out.value(getOtherSessions());
+		if (hasSignIns()) {
+			out.name(SIGN_INS__PROP);
+			getSignIns().writeTo(out);
+		}
 	}
 
 	@Override
@@ -404,6 +441,7 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			break;
 			case CONTACT_HAS_EMAIL__PROP: setContactHasEmail(in.nextBoolean()); break;
 			case OTHER_SESSIONS__PROP: setOtherSessions(in.nextInt()); break;
+			case SIGN_INS__PROP: setSignIns(de.haumacher.imageServer.shared.model.ContactSignIns.readContactSignIns(in)); break;
 			default: super.readField(in, field);
 		}
 	}

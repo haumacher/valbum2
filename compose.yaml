@@ -28,7 +28,7 @@ services:
       # The heap is a share of the memory (50 % by default); an -Xmx here wins.
       JAVA_OPTS: ""
       # The address the album is reached at from outside (behind a reverse proxy), e.g. for the
-      # preview card of a share link posted in a messenger:
+      # preview card of a share link posted in a messenger; passkeys are offered only with it:
       # VALBUM_PUBLIC_URL: https://photos.example.org/valbum
       # The mail account the 6-digit codes of personal share links are sent through - the only
       # mail the server sends. Use your mail provider's server; without it no code is offered.

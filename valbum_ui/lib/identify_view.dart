@@ -12,8 +12,11 @@
 ///    one card offering the ways the server lists, in this order — a code
 ///    mailed to an address saved with the contact (masked, so nothing is
 ///    typed but the code; on an open link the visitor's own address), then
-///    a sign-in with each provider of OpenID Connect — and where none
-///    applies, the sentence "Ask <sharer> to send you the link again."
+///    a sign-in with each provider of OpenID Connect, then — only where the
+///    server says somebody the link may let in set one up — a passkey (issue
+///    #204, where the browser has passkeys) and a code from an authenticator
+///    app (issue #208); and where none applies, the sentence "Ask <sharer> to
+///    send you the link again."
 ///
 /// What the server says when it refuses is shown in its own words. Every
 /// request is refused offline with the usual reason first. The card never
@@ -29,6 +32,7 @@ import 'client.dart';
 import 'l10n/app_localizations.dart';
 import 'offline.dart';
 import 'page_insets.dart';
+import 'passkeys.dart';
 import 'resource.dart';
 import 'urls.dart';
 
@@ -37,6 +41,13 @@ const String mailCodeMethod = "mail-code";
 
 /// The prefix of a method signing in through OpenID Connect (#200).
 const String oidcMethodPrefix = "oidc:";
+
+/// The name of the method of a code from an authenticator app, see
+/// `TotpSignIns.METHOD` (#208).
+const String totpMethod = "totp";
+
+/// The name of the method of a passkey, see `Passkeys.METHOD` (#204).
+const String passkeyMethod = "passkey";
 
 /// The identification card of a personal share link, see the library.
 class IdentifyScreen extends StatefulWidget {
@@ -89,6 +100,12 @@ class IdentifyScreenState extends State<IdentifyScreen> {
 
   final TextEditingController _code = TextEditingController();
 
+  final TextEditingController _totpCode = TextEditingController();
+
+  /// Whether the field for a code of an authenticator app is open: the way
+  /// is offered behind one tap, never as the default (issue #208).
+  bool _totpOpen = false;
+
   /// "Remember me on this device", ticked by default (the author's decision).
   bool _remember = true;
 
@@ -110,6 +127,7 @@ class IdentifyScreenState extends State<IdentifyScreen> {
     _name.dispose();
     _address.dispose();
     _code.dispose();
+    _totpCode.dispose();
     super.dispose();
   }
 
@@ -182,6 +200,31 @@ class IdentifyScreenState extends State<IdentifyScreen> {
       widget.onCredential(answer);
     });
   }
+
+  Future<void> _verifyTotp() => _run(() async {
+        var answer = await widget.client.totpVerify(TotpCode(
+          code: _totpCode.text.trim(),
+          address: _typesAddress ? _address.text.trim() : "",
+          remember: _remember,
+          displayName: _open ? _name.text.trim() : "",
+        ));
+        widget.onCredential(answer);
+      });
+
+  /// Signs in with a passkey (issue #204): the server's options, the
+  /// browser's passkey, the server's check.
+  Future<void> _signInWithPasskey(AppLocalizations l10n) => _run(() async {
+        var options = await widget.client.passkeyStart();
+        var answer = await usePasskey(
+            l10n, () => passkeyAuthenticator!.get(options.options));
+        var credential = await widget.client.passkeyVerify(PasskeyResponse(
+          ticket: options.ticket,
+          response: answer,
+          remember: _remember,
+          displayName: _open ? _name.text.trim() : "",
+        ));
+        widget.onCredential(credential);
+      });
 
   Future<void> _signIn(String provider) => _run(() async {
         var started = await widget.client.oidcStart(OidcStart(
@@ -314,7 +357,19 @@ class IdentifyScreenState extends State<IdentifyScreen> {
   List<Widget> _proofs(AppLocalizations l10n, String sharer) {
     var methods = [for (var method in _identify.methods) method.name];
     var offered = <Widget>[];
-    if (methods.contains(mailCodeMethod)) {
+    var mail = methods.contains(mailCodeMethod);
+    var totp = methods.contains(totpMethod);
+    if (_typesAddress && _proof == null && (mail || totp)) {
+      // One address field for every way that needs the visitor's address.
+      offered.add(TextField(
+        key: const Key("identify-address"),
+        controller: _address,
+        enabled: !_busy,
+        keyboardType: TextInputType.emailAddress,
+        decoration: InputDecoration(labelText: l10n.identifyAddressLabel),
+      ));
+    }
+    if (mail) {
       offered.addAll(_mailCode(l10n));
     }
     for (var method in _identify.methods) {
@@ -332,6 +387,20 @@ class IdentifyScreenState extends State<IdentifyScreen> {
           label: Text(l10n.identifyContinueWith(name)),
         ),
       ));
+    }
+    if (methods.contains(passkeyMethod) && passkeyAuthenticator != null) {
+      offered.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: OutlinedButton.icon(
+          key: const Key("identify-passkey"),
+          onPressed: _busy ? null : () => _signInWithPasskey(l10n),
+          icon: const Icon(Icons.key),
+          label: Text(l10n.identifyPasskey),
+        ),
+      ));
+    }
+    if (totp) {
+      offered.addAll(_authenticator(l10n));
     }
     return [
       Text(l10n.identifyWhoTitle,
@@ -388,13 +457,6 @@ class IdentifyScreenState extends State<IdentifyScreen> {
     }
     if (_typesAddress) {
       return [
-        TextField(
-          key: const Key("identify-address"),
-          controller: _address,
-          enabled: !_busy,
-          keyboardType: TextInputType.emailAddress,
-          decoration: InputDecoration(labelText: l10n.identifyAddressLabel),
-        ),
         const SizedBox(height: 8),
         FilledButton(
           key: const Key("identify-send-code"),
@@ -424,5 +486,57 @@ class IdentifyScreenState extends State<IdentifyScreen> {
             ),
           ),
     ];
+  }
+
+  /// A code from an authenticator app (issue #208): one button that opens
+  /// the field, then the code; on a link that names nobody the address field
+  /// above says whose app it is.
+  List<Widget> _authenticator(AppLocalizations l10n) {
+    if (!_totpOpen) {
+      return [
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: OutlinedButton.icon(
+            key: const Key("identify-totp"),
+            onPressed: _busy ? null : () => setState(() => _totpOpen = true),
+            icon: const Icon(Icons.pin_outlined),
+            label: Text(l10n.identifyTotp),
+          ),
+        ),
+      ];
+    }
+    return [
+      const SizedBox(height: 16),
+      Text(l10n.identifyTotp, style: Theme.of(context).textTheme.titleSmall),
+      TextField(
+        key: const Key("identify-totp-code"),
+        controller: _totpCode,
+        enabled: !_busy,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(labelText: l10n.totpCodeLabel),
+        onSubmitted: _busy ? null : (_) => _verifyTotp(),
+      ),
+      const SizedBox(height: 8),
+      FilledButton(
+        key: const Key("identify-totp-verify"),
+        onPressed: _busy ? null : _verifyTotp,
+        child: Text(l10n.identifyConfirmCode),
+      ),
+    ];
+  }
+}
+
+/// Runs [ceremony] of the browser's passkeys and answers what it made; a
+/// passkey the person declined, or one the browser could not use, becomes a
+/// refusal in the app's own words.
+Future<String> usePasskey(
+    AppLocalizations l10n, Future<String> Function() ceremony) async {
+  try {
+    return await ceremony();
+  } on PasskeyCancelled {
+    throw VAlbumException(l10n.passkeyCancelled);
+  } on PasskeyFailed catch (failure) {
+    throw VAlbumException(l10n.passkeyFailed(failure.reason));
   }
 }

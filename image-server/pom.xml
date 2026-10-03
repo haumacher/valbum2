@@ -393,6 +393,21 @@
 		     needed. It brings Bouncy Castle (MIT), which pac4j's configuration loads although this
 		     flow never runs it; its JARs are signed, so the server JAR leaves their signature
 		     files out (src/main/assembly/jar-with-dependencies.xml). -->
+		<!-- Passkeys of issue #204: WebAuthn registration and assertion through webauthn4j
+		     (Apache-2.0), on Jackson 3 (Apache-2.0); the published webauthn4j-test emulates an
+		     authenticator and a browser for the tests. -->
+		<dependency>
+			<groupId>com.webauthn4j</groupId>
+			<artifactId>webauthn4j-core</artifactId>
+			<version>0.31.11.RELEASE</version>
+		</dependency>
+		<dependency>
+			<groupId>com.webauthn4j</groupId>
+			<artifactId>webauthn4j-test</artifactId>
+			<version>0.31.11.RELEASE</version>
+			<scope>test</scope>
+		</dependency>
+
 		<dependency>
 			<groupId>org.pac4j</groupId>
 			<artifactId>pac4j-oidc</artifactId>

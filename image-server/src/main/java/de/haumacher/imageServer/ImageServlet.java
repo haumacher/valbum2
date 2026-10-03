@@ -34,6 +34,7 @@ import de.haumacher.imageServer.faces.PeopleStore;
 import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.oidc.OidcLogins;
 import de.haumacher.imageServer.oidc.OidcProvider;
+import de.haumacher.imageServer.passkeys.Passkeys;
 import de.haumacher.imageServer.raw.NoEmbeddedPreviewException;
 import de.haumacher.imageServer.raw.RawFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -629,6 +630,9 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private OidcLogins _oidc = OidcLogins.NONE;
 
+	/** Passkeys of the contacts, see issue #204. */
+	private Passkeys _passkeys = Passkeys.NONE;
+
 	/** The transcoded sidecars of the videos this server shows, see issue #74. */
 	private final VideoRenditions _videos = new VideoRenditions();
 
@@ -832,9 +836,38 @@ public class ImageServlet extends HttpServlet {
 		_oidc = oidc == null ? OidcLogins.NONE : oidc;
 	}
 
+	/** The authentication of this servlet's space. */
+	AuthService getAuth() {
+		return _auth;
+	}
+
+	/**
+	 * Installs passkeys, see issue #204; before, none is offered and every passkey request is
+	 * answered {@link Passkeys#NOT_CONFIGURED}.
+	 */
+	public void setPasskeys(Passkeys passkeys) {
+		_passkeys = passkeys == null ? Passkeys.NONE : passkeys;
+	}
+
+	/** The requests of an authenticator app (issue #208) and of passkeys (issue #204). */
+	private SignInActions signInActions() {
+		return new SignInActions(this, _auth, issuer(), _passkeys, _space);
+	}
+
+	/**
+	 * The name an authenticator app files this space's entry under (issue #208): the space's name,
+	 * else its folder in a server of several spaces, else the application's.
+	 */
+	private String issuer() {
+		if (!_spaceName.trim().isEmpty()) {
+			return _spaceName.trim();
+		}
+		return _space.isEmpty() ? "VAlbum" : _space;
+	}
+
 	/** Who may prove which address, with the proofs this servlet was given. */
-	private AddressProof addressProof() {
-		return new AddressProof(_auth, _proofs, _oidc, _spaceName);
+	AddressProof addressProof() {
+		return new AddressProof(_auth, _proofs, _oidc, _spaceName, _passkeys);
 	}
 
 	@Override
@@ -925,7 +958,9 @@ public class ImageServlet extends HttpServlet {
 					.setContactHasEmail(AddressProof.hasEmail(caller.getContact()))
 					// "Also signed in on n other browsers", see issue #203.
 					.setOtherSessions(_auth.getContacts().otherSessions(caller.getContact().getId(),
-						caller.getSession() == null ? "" : caller.getSession().getId()));
+						caller.getSession() == null ? "" : caller.getSession().getId()))
+					// How else they are recognised on another browser, see issue #208.
+					.setSignIns(SignInActions.signIns(caller.getContact(), _passkeys));
 			}
 			if (caller.isPaired()) {
 				// What the share dialog may offer a link that is proven by an address (#211).
@@ -3671,7 +3706,7 @@ public class ImageServlet extends HttpServlet {
 	 *
 	 * @return The caller, <code>null</code> where the request was answered.
 	 */
-	private Caller contactManager(Context context) throws IOException {
+	Caller contactManager(Context context) throws IOException {
 		Caller caller = _auth.caller(context.request());
 		if (caller.isShareLink()) {
 			LOG.warning("Refusing to manage the contacts through the share link '" + caller.getShareLabel() + "'.");
@@ -3804,7 +3839,7 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/** One contact as <code>?type=contacts</code> lists it, see issue #203. */
-	private Contact contactOnTheWire(ContactStore.Contact contact) {
+	Contact contactOnTheWire(ContactStore.Contact contact) {
 		return PersonalLinks.contact(contact, _auth.getShares(), contributions().count());
 	}
 
@@ -4407,6 +4442,10 @@ public class ImageServlet extends HttpServlet {
 			oidcExchange(context);
 			return;
 		}
+		if (signInActions().handle(action, context)) {
+			// An authenticator app (#208): set up by a contact, used by a visitor not recognised yet.
+			return;
+		}
 
 		Caller postCaller = _auth.caller(request);
 		if (gone(context, postCaller)) {
@@ -4624,7 +4663,7 @@ public class ImageServlet extends HttpServlet {
 	 * {@link AuthService#refusal(Caller, boolean)}.
 	 * </p>
 	 */
-	private void unauthorized(Context context, Caller caller, boolean write) throws IOException {
+	void unauthorized(Context context, Caller caller, boolean write) throws IOException {
 		String message = _auth.refusal(caller, write);
 		LOG.warning("Refusing " + (write ? "write" : "read") + " access to '" + context.request().getPathInfo()
 			+ "': " + message);
@@ -4660,7 +4699,7 @@ public class ImageServlet extends HttpServlet {
 	 *
 	 * @return Whether the request was answered here.
 	 */
-	private boolean gone(Context context, Caller caller) throws IOException {
+	boolean gone(Context context, Caller caller) throws IOException {
 		if (caller.mustIdentify()) {
 			// A personal link that does not know who is asking opens nothing, on every endpoint,
 			// "?type=auth" included: the refusal says how to become somebody, see issue #198.
@@ -4832,7 +4871,7 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/** Answers with the given status and an {@link ErrorInfo} body carrying the given message. */
-	private static void errorInfo(Context context, int status, String message) throws IOException {
+	static void errorInfo(Context context, int status, String message) throws IOException {
 		HttpServletResponse response = context.response();
 		allowCrossOrigin(response);
 		response.setStatus(status);
@@ -5009,7 +5048,7 @@ public class ImageServlet extends HttpServlet {
 	 * is written to disk.
 	 * </p>
 	 */
-	private static byte[] readBody(HttpServletRequest request) throws IOException {
+	static byte[] readBody(HttpServletRequest request) throws IOException {
 		try (InputStream in = request.getInputStream()) {
 			ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 			Util.transfer(in, buffer);
@@ -6732,7 +6771,7 @@ public class ImageServlet extends HttpServlet {
 	 * asked for.
 	 * </p>
 	 */
-	private static void serveJsonObject(HttpServletResponse response, de.haumacher.msgbuf.data.DataObject object)
+	static void serveJsonObject(HttpServletResponse response, de.haumacher.msgbuf.data.DataObject object)
 			throws IOException {
 		response.setContentType("application/json");
 		response.setCharacterEncoding("utf-8");

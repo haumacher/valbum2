@@ -10,6 +10,7 @@ import de.haumacher.imageServer.shared.model.AddressKind;
 import de.haumacher.imageServer.shared.model.Contact;
 import de.haumacher.imageServer.shared.model.ContactAddress;
 import de.haumacher.imageServer.shared.model.ContactList;
+import de.haumacher.imageServer.shared.model.ContactPasskey;
 import de.haumacher.imageServer.shared.model.ContactSession;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.IdentifyRequired;
@@ -117,9 +118,14 @@ public final class PersonalLinks {
 			.setCreatedBy(contact.getCreatedBy())
 			.setFirstSeen(contact.getFirstSeen())
 			.setLastSeen(contact.getLastSeen())
-			.setBlocked(contact.getBlocked());
+			.setBlocked(contact.getBlocked())
+			// Whether an authenticator app signs them in (#208), never its secret.
+			.setAuthenticator(contact.getAuthenticator() == null ? "" : contact.getAuthenticator().getSince());
 		for (ContactStore.Address address : contact.getAddresses()) {
 			result.addAddresse(address(address));
+		}
+		for (ContactStore.Passkey passkey : contact.getPasskeys()) {
+			result.addPasskey(passkey(passkey));
 		}
 		for (ContactStore.Session session : contact.getSessions()) {
 			result.addSession(ContactSession.create()
@@ -131,6 +137,14 @@ public final class PersonalLinks {
 				.setLastUsed(session.getLastUsed()));
 		}
 		return result;
+	}
+
+	/** One passkey on the wire (issue #204): when it was made and last used, never its key. */
+	public static ContactPasskey passkey(ContactStore.Passkey passkey) {
+		return ContactPasskey.create()
+			.setId(passkey.getId())
+			.setCreated(passkey.getCreated())
+			.setLastUsed(passkey.getLastUsed());
 	}
 
 	/** One address on the wire. */

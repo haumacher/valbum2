@@ -2483,6 +2483,69 @@ class VAlbumClient {
   Future<ContactCredential> oidcExchange(OidcExchange request) =>
       _postCredential("oidc-exchange", _jsonOf(request.writeContent));
 
+  /// Signs in on a personal link with a code of an authenticator app (issue
+  /// #208), answering the credential a right code issues.
+  Future<ContactCredential> totpVerify(TotpCode request) =>
+      _postCredential("totp-verify", _jsonOf(request.writeContent));
+
+  /// Starts setting up an authenticator app for the contact of this session
+  /// (issue #208): the secret is pending until [totpConfirm].
+  Future<TotpSetup> totpSetup() async {
+    var url = "${folderUrl(const [])}?action=totp-setup";
+    var response = await _postBody(url, "{}");
+    return TotpSetup.read(JsonReader.fromString(response));
+  }
+
+  /// Confirms the authenticator app being set up by one of its codes (issue
+  /// #208); answers the contact's ways to sign in.
+  Future<ContactSignIns> totpConfirm(String code) =>
+      _postSignIns("totp-confirm", _jsonOf(TotpCode(code: code).writeContent));
+
+  /// Removes one of the contact's own ways to sign in (issue #208).
+  Future<ContactSignIns> removeSignIn(String method, {String id = ""}) =>
+      _postSignIns("remove-sign-in",
+          _jsonOf(SignInRemove(method: method, id: id).writeContent));
+
+  /// Removes a way a contact signs in, as a member who manages the contacts
+  /// (issue #208); answers the contact.
+  Future<Contact> removeContactSignIn(String contact, String method,
+          {String id = ""}) =>
+      _postContact(
+          "remove-contact-sign-in",
+          _jsonOf(SignInRemove(contact: contact, method: method, id: id)
+              .writeContent));
+
+  /// Starts registering a passkey for the contact of this session (issue
+  /// #204): the options for `navigator.credentials.create`.
+  Future<PasskeyOptions> passkeyRegisterStart() =>
+      _postPasskeyOptions("passkey-register-start");
+
+  /// Stores the passkey the browser made (issue #204); answers the contact's
+  /// ways to sign in.
+  Future<ContactSignIns> passkeyRegister(PasskeyResponse request) =>
+      _postSignIns("passkey-register", _jsonOf(request.writeContent));
+
+  /// Starts a sign-in with a passkey on a personal link (issue #204): the
+  /// options for `navigator.credentials.get`.
+  Future<PasskeyOptions> passkeyStart() => _postPasskeyOptions("passkey-start");
+
+  /// Signs in with the passkey the browser used (issue #204), answering the
+  /// credential.
+  Future<ContactCredential> passkeyVerify(PasskeyResponse request) =>
+      _postCredential("passkey-verify", _jsonOf(request.writeContent));
+
+  Future<PasskeyOptions> _postPasskeyOptions(String action) async {
+    var url = "${folderUrl(const [])}?action=$action";
+    var response = await _postBody(url, "{}");
+    return PasskeyOptions.read(JsonReader.fromString(response));
+  }
+
+  Future<ContactSignIns> _postSignIns(String action, String body) async {
+    var url = "${folderUrl(const [])}?action=$action";
+    var response = await _postBody(url, body);
+    return ContactSignIns.read(JsonReader.fromString(response));
+  }
+
   /// Posts one of the requests answering a [ContactCredential].
   Future<ContactCredential> _postCredential(String action, String body) async {
     var url = "${folderUrl(const [])}?action=$action";

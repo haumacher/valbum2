@@ -527,7 +527,20 @@ public class Main {
 			? "not configured (" + ServerEnvironment.SMTP_HOST + "), no address can be proven by mail"
 			: "sent through " + environment.getMail()));
 		lines.add(oidcReport(environment));
+		lines.add(passkeyReport(environment));
 		return lines;
+	}
+
+	/**
+	 * The line that says whether passkeys are offered, see issue #204: only with a public address,
+	 * whose host is the relying party.
+	 */
+	static String passkeyReport(ServerEnvironment environment) {
+		de.haumacher.imageServer.passkeys.Passkeys passkeys = environment.passkeys();
+		if (!passkeys.isAvailable()) {
+			return "Passkeys: not offered (" + ServerEnvironment.PUBLIC_URL + " is not set)";
+		}
+		return "Passkeys: offered for " + passkeys.getRpId() + " (origin " + passkeys.getOrigin() + ")";
 	}
 
 	/**
@@ -561,6 +574,8 @@ public class Main {
 		// One sign-in through OpenID Connect for the whole server: one callback serves every space,
 		// see issue #200.
 		de.haumacher.imageServer.oidc.OidcLogins oidc = environment.oidcLogins();
+		// One relying party for the whole server: the host of the public address, see issue #204.
+		de.haumacher.imageServer.passkeys.Passkeys passkeys = environment.passkeys();
 		final Server server = new Server();
 
 		HttpConfiguration config = new HttpConfiguration();
@@ -588,6 +603,7 @@ public class Main {
 				spaces.single().getConfig());
 			data.setEmailProofs(proofs);
 			data.setOidcLogins(oidc);
+			data.setPasskeys(passkeys);
 			// Every photo of the space knows its hash from here on, see issue #118: one low
 			// priority thread that reads the library once and then keeps out of the way.
 			data.startIndexing();
@@ -604,6 +620,7 @@ public class Main {
 			front.startIndexing();
 			front.setEmailProofs(proofs);
 			front.setOidcLogins(oidc);
+			front.setPasskeys(passkeys);
 			sharePreview(app, spaces, front::dataOf, environment);
 			webapp.addServlet(new ServletHolder(front), STATIC_PREFIX + "/*");
 		}

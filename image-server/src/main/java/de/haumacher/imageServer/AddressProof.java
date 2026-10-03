@@ -8,10 +8,12 @@ import de.haumacher.imageServer.auth.AuthService.Caller;
 import de.haumacher.imageServer.auth.AuthService.Identification;
 import de.haumacher.imageServer.auth.ContactStore;
 import de.haumacher.imageServer.auth.ShareStore;
+import de.haumacher.imageServer.auth.TotpSignIns;
 import de.haumacher.imageServer.mail.CodeMail;
 import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.oidc.OidcLogins;
 import de.haumacher.imageServer.oidc.OidcProvider;
+import de.haumacher.imageServer.passkeys.Passkeys;
 import de.haumacher.imageServer.shared.model.ContactCredential;
 import de.haumacher.imageServer.shared.model.EmailProofSent;
 import de.haumacher.imageServer.shared.model.ProofMethod;
@@ -21,6 +23,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.logging.Logger;
 
 /**
@@ -65,6 +68,13 @@ import java.util.logging.Logger;
  * masked choice above, because the token says whose link it is; an address of another recipient of
  * the same link is refused like a stranger's ("this link was shared with someone else") &mdash;
  * that person has a link of their own.
+ * </p>
+ *
+ * <p>
+ * <b>A passkey (issue #204) and an authenticator app (issue #208)</b> prove no address but the
+ * contact themself; they end in the same step ({@link #identified}), are named in the methods only
+ * where a contact the link may let in set one up, and on the links that name nobody every failure is
+ * answered alike ({@link #verifyPasskey}, {@link #verifyTotp}).
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -150,11 +160,14 @@ final class AddressProof {
 
 	private final String _spaceName;
 
-	AddressProof(AuthService auth, EmailProofs proofs, OidcLogins oidc, String spaceName) {
+	private final Passkeys _passkeys;
+
+	AddressProof(AuthService auth, EmailProofs proofs, OidcLogins oidc, String spaceName, Passkeys passkeys) {
 		_auth = auth;
 		_proofs = proofs;
 		_oidc = oidc;
 		_spaceName = spaceName;
+		_passkeys = passkeys;
 	}
 
 	/** Whether a code can be mailed at all. */
@@ -220,8 +233,142 @@ final class AddressProof {
 			}
 			addProviders(result);
 		}
+		// A passkey (#204) and an authenticator app (#208) only where a contact this link may let in
+		// set one up: never the default way in, and never offered to somebody who has none.
+		if (kind != null && _passkeys.isAvailable()
+			&& anyCandidate(identification, kind, contact -> !contact.getPasskeys().isEmpty())) {
+			result.add(ProofMethod.create().setName(Passkeys.METHOD));
+		}
+		if (kind != null && anyCandidate(identification, kind, contact -> contact.getAuthenticator() != null)) {
+			result.add(ProofMethod.create().setName(TotpSignIns.METHOD));
+		}
 		return result;
 	}
+
+	/**
+	 * Whether a contact the given refusal may let in has what the given test asks for: on a
+	 * recipient's own link that recipient, on the group link one of its recipients, on an open link
+	 * anybody of the space &mdash; each neither blocked nor shut out of the link.
+	 */
+	private boolean anyCandidate(Identification identification, Kind kind,
+			Predicate<ContactStore.Contact> test) {
+		ShareStore.Link link = identification.getLink();
+		ContactStore contacts = _auth.getContacts();
+		switch (kind) {
+			case RECIPIENT:
+				return admissible(link, identification.getContact()) && test.test(identification.getContact());
+			case ADDRESSED:
+				for (ShareStore.Recipient recipient : link.getRecipients()) {
+					ContactStore.Contact contact = contacts.get(recipient.getContact());
+					if (admissible(link, contact) && test.test(contact)) {
+						return true;
+					}
+				}
+				return false;
+			case OPEN:
+				for (ContactStore.Contact contact : contacts.getContacts()) {
+					if (admissible(link, contact) && test.test(contact)) {
+						return true;
+					}
+				}
+				return false;
+			default:
+				return false;
+		}
+	}
+
+	private static boolean admissible(ShareStore.Link link, ContactStore.Contact contact) {
+		return contact != null && !contact.isBlocked() && !link.isShutOut(contact.getId());
+	}
+
+	/**
+	 * Signs the caller in by a code of an authenticator app, see issue #208, and answers the
+	 * credential a right code issues: the same step as a proven address.
+	 *
+	 * <p>
+	 * On a recipient's own link the code is that recipient's. On an open link and on the group link
+	 * of issue #211, which name nobody, the request names the contact by an e-mail address saved with
+	 * them &mdash; on the group link with one of its recipients &mdash; and whatever is wrong (no such
+	 * contact, no authenticator, a wrong or a used code) is answered the one sentence
+	 * {@link TotpSignIns#CODE_WRONG}, so that the answer says nothing about whose address it is.
+	 * </p>
+	 */
+	ContactCredential verifyTotp(Caller caller, String code, String address, String client, boolean remember,
+			String displayName) throws TotpSignIns.Refused, AuthService.Refused, IOException {
+		Identification identification = caller.getIdentification();
+		Kind kind = identification == null ? null : kind(identification);
+		if (kind == null) {
+			throw new AuthService.Refused(HttpServletResponse.SC_BAD_REQUEST, TOTP_NOT_HERE);
+		}
+		ShareStore.Link link = identification.getLink();
+		TotpSignIns totp = _auth.getTotp();
+		ContactStore.Contact contact;
+		if (kind == Kind.RECIPIENT) {
+			contact = _auth.getContacts().get(identification.getContact().getId());
+			if (contact == null) {
+				throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.RECIPIENT_GONE);
+			}
+			totp.verify(contact, null, code, client);
+		} else {
+			String email = typed(address);
+			contact = kind == Kind.OPEN ? _auth.getContacts().byEmail(email) : recipientHolding(link, email);
+			totp.verify(contact, TotpSignIns.addressKey(link.getId(), email), code, client);
+		}
+		return identified(link, contact, remember, displayName, "a code of their authenticator app");
+	}
+
+	/**
+	 * What the given refusal binds a passkey sign-in to (issue #204): the space, the link and whom
+	 * it asks for; <code>null</code> for a caller who signs in with nothing here.
+	 */
+	static String passkeyBinding(String space, Caller caller) {
+		Identification identification = caller.getIdentification();
+		Kind kind = identification == null ? null : kind(identification);
+		if (kind == null) {
+			return null;
+		}
+		ContactStore.Contact contact = kind == Kind.RECIPIENT ? identification.getContact() : null;
+		return "sign-in:" + space + ":" + identification.getLink().getId() + ":" + kind + ":"
+			+ (contact == null ? "" : contact.getId());
+	}
+
+	/**
+	 * Signs the caller in by a passkey, see issue #204, and answers the credential: the same step as
+	 * a proven address. The passkey must be one of the space's contacts' whom the link asks for
+	 * &mdash; on a recipient's own link that recipient, on the group link one of its recipients, on
+	 * an open link anybody &mdash; and every failure is the one {@link Passkeys#SIGN_IN_REFUSED}.
+	 */
+	ContactCredential verifyPasskey(Caller caller, String space, String ticket, String response, boolean remember,
+			String displayName) throws Passkeys.Refused, AuthService.Refused, IOException {
+		String binding = passkeyBinding(space, caller);
+		if (binding == null) {
+			throw new AuthService.Refused(HttpServletResponse.SC_BAD_REQUEST, PASSKEY_NOT_HERE);
+		}
+		Identification identification = caller.getIdentification();
+		Kind kind = kind(identification);
+		ShareStore.Link link = identification.getLink();
+		ContactStore contacts = _auth.getContacts();
+		Passkeys.Asserted asserted = _passkeys.check(binding, ticket, response, contacts::byPasskey, contact -> {
+			switch (kind) {
+				case RECIPIENT:
+					return contact.getId().equals(identification.getContact().getId());
+				case ADDRESSED:
+					return link.recipient(contact.getId()) != null;
+				default:
+					return true;
+			}
+		});
+		contacts.usedPasskey(asserted.getContact().getId(), asserted.getId(), asserted.getCounter(),
+			asserted.isBackupState(), _passkeys.now());
+		return identified(link, contacts.get(asserted.getContact().getId()), remember, displayName, "a passkey");
+	}
+
+	/** What a passkey sign-in is refused outside a personal link that asks who this is. */
+	static final String PASSKEY_NOT_HERE = "A passkey signs in on a personal share link that asks who you are.";
+
+	/** What a request for a code of an authenticator app is refused outside a personal link that asks who this is. */
+	static final String TOTP_NOT_HERE =
+		"A code of an authenticator app signs in on a personal share link that asks who you are.";
 
 	/**
 	 * The methods <code>ShareInfo.methods</code> names for a recognised contact, and
@@ -487,6 +634,33 @@ final class AddressProof {
 				.setRemember(session != null && session.isRemember())
 				.setContact(AuthService.contactInfo(contact));
 		}
+		return issue(link, contact, remember, displayName, how);
+	}
+
+	/**
+	 * What a proven identity makes of a visitor who is not recognised yet, the step every way in
+	 * ends with &mdash; a mailed code, a provider (issue #200), an authenticator app (issue #208), a
+	 * passkey (issue #204): the given contact, unless they are shut out of the link or out of the
+	 * space, gets a credential through the given link.
+	 *
+	 * @throws AuthService.Refused
+	 *         <code>410</code> {@link AuthService#CONTACT_SHUT_OUT} for a contact shut out,
+	 *         {@link AuthService#RECIPIENT_GONE} for one deleted meanwhile.
+	 */
+	ContactCredential identified(ShareStore.Link link, ContactStore.Contact contact, boolean remember,
+			String displayName, String how) throws AuthService.Refused, IOException {
+		if (contact == null) {
+			throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.RECIPIENT_GONE);
+		}
+		if (contact.isBlocked() || link.isShutOut(contact.getId())) {
+			throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.CONTACT_SHUT_OUT);
+		}
+		return issue(link, contact, remember, displayName, how);
+	}
+
+	private ContactCredential issue(ShareStore.Link link, ContactStore.Contact contact, boolean remember,
+			String displayName, String how) throws AuthService.Refused, IOException {
+		ContactStore contacts = _auth.getContacts();
 		ContactStore.Issued issued = contacts.issue(contact.getId(), link.getId(), remember, displayName);
 		if (issued == null) {
 			throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.RECIPIENT_GONE);

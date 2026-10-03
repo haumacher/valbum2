@@ -13,6 +13,8 @@ import 'connectivity.dart';
 import 'contact_session.dart';
 import 'device_code_scanner.dart';
 import 'offline.dart';
+import 'passkeys.dart';
+import 'passkeys_web.dart';
 import 'phone_contacts.dart';
 import 'photo_library.dart';
 import 'notices.dart';
@@ -82,6 +84,9 @@ void executeBackgroundTask(Future<bool> Function() task) {}
 /// Where a downloaded original goes in a browser: the browser's downloads,
 /// see [BrowserDownloadSaver].
 DownloadSaver defaultDownloadSaver() => const BrowserDownloadSaver();
+
+/// The passkeys of this browser (issue #204), `null` where it offers none.
+PasskeyAuthenticator? defaultPasskeyAuthenticator() => browserPasskeys();
 
 /// A browser has no address book to pick a recipient from (issue #201).
 PhoneContacts? defaultPhoneContacts() => null;

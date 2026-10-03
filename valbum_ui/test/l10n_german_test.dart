@@ -26,6 +26,8 @@ import 'package:valbum_ui/video_view.dart';
 import 'package:valbum_ui/add_email.dart';
 import 'package:valbum_ui/downloads.dart';
 import 'package:valbum_ui/select_mode.dart';
+import 'package:valbum_ui/passkeys.dart';
+import 'package:valbum_ui/sign_in_options.dart';
 import 'package:valbum_ui/album_view.dart';
 import 'package:valbum_ui/camera_roll.dart';
 import 'package:valbum_ui/camera_roll_view.dart';
@@ -759,6 +761,7 @@ void sliceTwo() {
                 methods: [
                   ProofMethod(name: "mail-code"),
                   ProofMethod(name: "oidc:google", label: "Google"),
+                  ProofMethod(name: "totp"),
                 ],
                 contact: ContactInfo(id: "c1", displayName: "Petra"),
                 sharedBy: "Alice",
@@ -777,7 +780,56 @@ void sliceTwo() {
         expect(find.text(de.identifySendCodeTo("p•••@gmx.de")), findsOneWidget);
         expect(find.text(de.identifyContinueWith("Google")), findsOneWidget);
         expect(find.text(de.identifyRemember), findsOneWidget);
+        expect(find.text(de.identifyTotp), findsOneWidget);
       });
+    });
+
+    testWidgets('the passkeys of the sign-in options (#204)', (tester) async {
+      passkeyAuthenticator = _NoPasskeys();
+      addTearDown(() => passkeyAuthenticator = null);
+      await tester.pumpWidget(localizedApp(
+        Scaffold(
+          body: SignInOptionsDialog(
+            client: clientReturning("{}"),
+            signIns: ContactSignIns(passkeysOffered: true, passkeys: [
+              ContactPasskey(id: "p1", created: "2026-10-01T10:00:00Z"),
+            ]),
+          ),
+        ),
+        locale: const Locale("de"),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text(de.passkeysHeading), findsOneWidget);
+      expect(find.text("Mich auf meinen anderen Geräten erkennen"),
+          findsOneWidget);
+      expect(find.textContaining("Passkey vom"), findsOneWidget);
+      expect(find.text(de.authenticatorSetUp), findsOneWidget);
+    });
+
+    testWidgets('the setup of an authenticator app (#208)', (tester) async {
+      tester.view.physicalSize = const Size(400, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var code = TextEditingController();
+      addTearDown(code.dispose);
+      await tester.pumpWidget(localizedApp(
+        Scaffold(
+          body: SingleChildScrollView(
+            child: TotpSetupView(
+              setup: TotpSetup(secret: "ABCDEFGH", uri: "otpauth://totp/x"),
+              code: code,
+              busy: false,
+              onConfirm: () {},
+            ),
+          ),
+        ),
+        locale: const Locale("de"),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text("Zur Authenticator-App hinzufügen"), findsOneWidget);
+      expect(find.text(de.totpOnThisPhone), findsOneWidget);
+      expect(find.text(de.totpShowKey), findsOneWidget);
+      expect(find.text(de.totpEnterCode), findsOneWidget);
     });
 
     testWidgets('the offer "Add your e-mail" (#211)', (tester) async {
@@ -1113,4 +1165,14 @@ void sliceTwo() {
     expect(de.inviteDialogTitle, isNot(en.inviteDialogTitle));
     expect(de.photoLibraryTitle, isNot(en.photoLibraryTitle));
   });
+}
+
+/// A browser with passkeys that never makes one: the German test reads the
+/// words only.
+class _NoPasskeys extends PasskeyAuthenticator {
+  @override
+  Future<String> create(String options) async => throw const PasskeyCancelled();
+
+  @override
+  Future<String> get(String options) async => throw const PasskeyCancelled();
 }

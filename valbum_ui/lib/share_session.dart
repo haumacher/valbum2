@@ -54,12 +54,17 @@ class ShareSession {
   /// where the session is no contact's.
   final Future<void> Function(BuildContext context)? onSignOutOthers;
 
+  /// Opens the contact's sign-in options: an authenticator app (issue #208).
+  /// `null` where the session is no contact's.
+  final Future<void> Function(BuildContext context)? onSignInOptions;
+
   const ShareSession({
     required this.url,
     required this.info,
     required this.writeAllowed,
     this.onSwitchPerson,
     this.onSignOutOthers,
+    this.onSignInOptions,
   });
 
   /// Who the server takes the visitor of a personal link to be, `null` for
@@ -134,8 +139,8 @@ class ShareSessionScope extends InheritedWidget {
 
 /// The entries a menu of a personal link's session ends with (issue #202):
 /// whom the server takes the visitor to be, "Also signed in on n other
-/// browsers — sign out others" where they are (issue #203), and "Not you?
-/// Switch person".
+/// browsers — sign out others" where they are (issue #203), "Sign-in
+/// options…" (issue #208), and "Not you? Switch person".
 ///
 /// Empty in every other session, so that a menu simply spreads it in.
 List<PopupMenuEntry<void Function(BuildContext)>> switchPersonEntries(
@@ -170,6 +175,20 @@ List<PopupMenuEntry<void Function(BuildContext)>> switchPersonEntries(
             Flexible(
               child: Text(l10n.otherSessionsSignOut(session.info.otherSessions)),
             ),
+          ],
+        ),
+      ),
+    if (session.info.signIns != null && session.onSignInOptions != null)
+      PopupMenuItem<void Function(BuildContext)>(
+        key: const Key("sign-in-options"),
+        value: session.onSignInOptions,
+        child: Row(
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Icon(Icons.devices, color: Colors.blueAccent),
+            ),
+            Flexible(child: Text(l10n.signInOptionsEntry)),
           ],
         ),
       ),

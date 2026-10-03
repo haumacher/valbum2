@@ -253,6 +253,15 @@ class ContactServer {
         if (body["shutOut"] == true) {
           contact["sessions"] = const [];
         }
+      case "remove-contact-sign-in":
+        if (body["method"] == "totp") {
+          contact["authenticator"] = "";
+        } else {
+          contact["passkeys"] = [
+            for (var p in (contact["passkeys"] as List? ?? const []))
+              if (p["id"] != body["id"]) p,
+          ];
+        }
       case "delete-contact":
         contacts = {
           "contacts": [
@@ -528,6 +537,81 @@ void main() {
               "Only a member who may share links manages the contacts of the space."),
           findsOneWidget);
       expect(find.text("Tante Petra"), findsOneWidget);
+    });
+
+    testWidgets('shows a contact\'s authenticator app and removes it',
+        (tester) async {
+      var server = ContactServer();
+      var petra = contactOf(server.contacts, "c1");
+      petra["authenticator"] = "2026-05-04T10:00:00Z";
+      await pumpContacts(tester, server);
+      expect(textOf(tester, "contact-details-c1"),
+          contains(testL10n.contactAuthenticatorMark));
+      expect(textOf(tester, "contact-details-c2"),
+          isNot(contains(testL10n.contactAuthenticatorMark)));
+
+      await openMenu(tester, "c1", "sign-ins");
+      expect(find.byKey(const Key("contact-sign-ins-dialog")), findsOneWidget);
+      expect(
+          find.text(testL10n
+              .authenticatorActiveSince(dayOf("2026-05-04T10:00:00Z"))),
+          findsOneWidget);
+      await tapKey(tester, "contact-sign-in-totp-remove");
+      expect(find.text(testL10n.contactAuthenticatorRemoveTitle("Tante Petra")),
+          findsOneWidget);
+      await tapKey(tester, "contact-sign-in-remove-confirmed");
+
+      expect(server.bodyOf("remove-contact-sign-in"),
+          {"contact": "c1", "method": "totp", "id": ""});
+      expect(find.byKey(const Key("contact-sign-ins-none")), findsOneWidget);
+      await tapKey(tester, "contact-sign-ins-close");
+      expect(textOf(tester, "contact-details-c1"),
+          isNot(contains(testL10n.contactAuthenticatorMark)));
+    });
+
+    testWidgets('shows a contact\'s passkeys and removes one', (tester) async {
+      var server = ContactServer();
+      contactOf(server.contacts, "c1")["passkeys"] = [
+        {
+          "id": "pk1",
+          "created": "2026-05-04T10:00:00Z",
+          "lastUsed": "2026-05-06T10:00:00Z",
+        },
+        {"id": "pk2", "created": "2026-05-05T10:00:00Z"},
+      ];
+      await pumpContacts(tester, server);
+      expect(textOf(tester, "contact-details-c1"),
+          contains(testL10n.contactPasskeyCount(2)));
+
+      await openMenu(tester, "c1", "sign-ins");
+      expect(find.text(testL10n.passkeyFrom(dayOf("2026-05-04T10:00:00Z"))),
+          findsOneWidget);
+      expect(
+          find.text(
+              testL10n.passkeyLastUsed(dayOf("2026-05-06T10:00:00Z"))),
+          findsOneWidget);
+      await tapKey(tester, "contact-sign-in-passkey-remove-pk1");
+      expect(find.text(testL10n.contactPasskeyRemoveTitle("Tante Petra")),
+          findsOneWidget);
+      await tapKey(tester, "contact-sign-in-remove-confirmed");
+      expect(server.bodyOf("remove-contact-sign-in"),
+          {"contact": "c1", "method": "passkey", "id": "pk1"});
+      expect(find.byKey(const Key("contact-sign-in-passkey-pk1")), findsNothing);
+      expect(find.byKey(const Key("contact-sign-in-passkey-pk2")), findsOneWidget);
+    });
+
+    testWidgets('a cancelled removal of an authenticator sends nothing',
+        (tester) async {
+      var server = ContactServer();
+      contactOf(server.contacts, "c1")["authenticator"] =
+          "2026-05-04T10:00:00Z";
+      await pumpContacts(tester, server);
+      await openMenu(tester, "c1", "sign-ins");
+      await tapKey(tester, "contact-sign-in-totp-remove");
+      await tester.tap(find.text(testL10n.cancel));
+      await tester.pumpAndSettle();
+      expect(server.count("remove-contact-sign-in"), 0);
+      expect(find.byKey(const Key("contact-sign-in-totp")), findsOneWidget);
     });
 
     testWidgets('a member without the share flag reads and changes nothing',

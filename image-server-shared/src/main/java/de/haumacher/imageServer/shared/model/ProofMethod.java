@@ -37,7 +37,9 @@ public class ProofMethod extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/**
 	 * The name of the method: <code>mail-code</code> (issue #199), or <code>oidc:&lt;provider&gt;</code>
 	 * for a sign-in through OpenID Connect (issue #200), whose provider id is what
-	 * {@link OidcStart#getProvider()} names.
+	 * {@link OidcStart#getProvider()} names, or <code>totp</code> for a code of an authenticator app
+	 * (issue #208) and <code>passkey</code> for a passkey (issue #204), each named only where a
+	 * contact the link may let in set one up.
 	 */
 	public final String getName() {
 		return _name;

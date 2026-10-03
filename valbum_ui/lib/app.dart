@@ -44,6 +44,7 @@ import 'resource.dart';
 import 'routes.dart';
 import 'settings.dart';
 import 'share_session.dart';
+import 'sign_in_options.dart';
 import 'sign_in_form.dart';
 import 'trash_view.dart';
 import 'upload_progress.dart';
@@ -650,17 +651,23 @@ class VAlbumAppState extends State<VAlbumApp> {
 
   /// The `builder` of the album app: the invitation notice, and in a contact
   /// session the offer "Add your e-mail" (issue #211, see `add_email.dart`).
-  Widget _withSessionNotices(BuildContext context, Widget? child) =>
-      _withBanners(context, child, emailOffer: _emailOfferShown);
+  Widget _withSessionNotices(BuildContext context, Widget? child) {
+    var emailOffer = _emailOfferShown;
+    // One offer at a time: the sign-in options (issue #208) once the e-mail
+    // address is settled.
+    return _withBanners(context, child,
+        emailOffer: emailOffer, signInOffer: !emailOffer && _signInOfferShown);
+  }
 
   Widget _withBanners(
     BuildContext context,
     Widget? child, {
     required bool emailOffer,
+    bool signInOffer = false,
   }) {
     var text = _invitationNoticeTextOf(AppLocalizations.of(context)!);
     var below = child ?? const SizedBox.shrink();
-    if (text == null && !emailOffer) {
+    if (text == null && !emailOffer && !signInOffer) {
       return below;
     }
     return Column(
@@ -687,6 +694,11 @@ class VAlbumAppState extends State<VAlbumApp> {
                   onAdd: _addEmail,
                   onDismiss: _dismissEmailOffer,
                 ),
+              if (signInOffer)
+                SignInOfferBanner(
+                  onOpen: _openSignInOffer,
+                  onDismiss: _dismissSignInOffer,
+                ),
             ],
           ),
         ),
@@ -712,6 +724,38 @@ class VAlbumAppState extends State<VAlbumApp> {
         offersAddEmail(share.info) &&
         _emailAddedFor != contact.id &&
         !contactStore.emailOfferDismissed(link.dataUrl);
+  }
+
+  /// Whether the contact session offers its sign-in options (issue #208): a
+  /// contact who set up nothing yet, and an offer this browser has not
+  /// dismissed in this space, see [offersSignInOptions].
+  bool get _signInOfferShown {
+    var share = shareSession;
+    var link = session;
+    return share != null &&
+        link != null &&
+        offersSignInOptions(share.info) &&
+        !contactStore.signInOfferDismissed(link.dataUrl);
+  }
+
+  /// "Not now" on the offer of the sign-in options: not shown again here.
+  void _dismissSignInOffer() {
+    var link = session;
+    if (link == null) {
+      return;
+    }
+    setState(() => contactStore.dismissSignInOffer(link.dataUrl));
+  }
+
+  /// "Set up" on the offer: the sign-in options, on the album app's own
+  /// navigator. Opened once is answered: the offer is not shown again.
+  Future<void> _openSignInOffer() async {
+    var navigatorContext = router.navigatorKey.currentContext;
+    if (navigatorContext == null) {
+      return;
+    }
+    _dismissSignInOffer();
+    await _openSignInOptions(navigatorContext);
   }
 
   /// "Not now": the offer is not shown again in this browser and space.
@@ -836,9 +880,39 @@ class VAlbumAppState extends State<VAlbumApp> {
         writeAllowed: answer.writeAllowed,
         onSwitchPerson: share.contact == null ? null : _switchPerson,
         onSignOutOthers: share.contact == null ? null : _signOutOthers,
+        onSignInOptions: share.contact == null ? null : _openSignInOptions,
       );
     });
   }
+
+  /// "Sign-in options…" (issue #208): the contact of this session sets up or
+  /// removes an authenticator app; what changed is kept in the session.
+  Future<void> _openSignInOptions(BuildContext context) async {
+    var current = shareSession;
+    var speaker = client;
+    var signIns = current?.info.signIns;
+    if (current == null || speaker == null || signIns == null) {
+      return;
+    }
+    var answer = await showSignInOptions(
+        context: context, client: speaker, signIns: signIns);
+    if (answer == null || !mounted) {
+      return;
+    }
+    current.info.signIns = answer;
+    setState(() => shareSession = _sameSession(current));
+  }
+
+  /// The same session again, for a change of its [ShareSession.info] to be
+  /// seen by the widgets that read it.
+  ShareSession _sameSession(ShareSession current) => ShareSession(
+        url: current.url,
+        info: current.info,
+        writeAllowed: current.writeAllowed,
+        onSwitchPerson: current.onSwitchPerson,
+        onSignOutOthers: current.onSignOutOthers,
+        onSignInOptions: current.onSignInOptions,
+      );
 
   /// "Also signed in on n other browsers — sign out others" (issue #203):
   /// the contact of this session signs out every other browser, which limits
@@ -867,15 +941,7 @@ class VAlbumAppState extends State<VAlbumApp> {
       return;
     }
     current.info.otherSessions = 0;
-    setState(() {
-      shareSession = ShareSession(
-        url: current.url,
-        info: current.info,
-        writeAllowed: current.writeAllowed,
-        onSwitchPerson: current.onSwitchPerson,
-        onSignOutOthers: current.onSignOutOthers,
-      );
-    });
+    setState(() => shareSession = _sameSession(current));
     messenger?.showSnackBar(SnackBar(content: Text(l10n.otherSessionsEnded)));
   }
 

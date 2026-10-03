@@ -8,6 +8,7 @@ import de.haumacher.imageServer.mail.MailSettings;
 import de.haumacher.imageServer.mail.SmtpMailer;
 import de.haumacher.imageServer.oidc.OidcLogins;
 import de.haumacher.imageServer.oidc.OidcProvider;
+import de.haumacher.imageServer.passkeys.Passkeys;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Clock;
@@ -142,6 +143,14 @@ public final class ServerEnvironment {
 	/** The mail account, <code>null</code> where none is configured. */
 	public MailSettings getMail() {
 		return _mail;
+	}
+
+	/**
+	 * The passkeys this environment allows, see issue #204: {@link Passkeys#NONE} without
+	 * {@link #getPublicUrl()}, whose host is the relying party.
+	 */
+	public Passkeys passkeys() {
+		return _publicUrl == null ? Passkeys.NONE : new Passkeys(_publicUrl, Clock.systemUTC());
 	}
 
 	/** The proof by mailed code this environment allows: {@link EmailProofs#NONE} without a mail account. */

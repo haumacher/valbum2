@@ -5192,5 +5192,220 @@
   "@shutOutEverywhereMark": {
     "description": "Mark of a contact who is shut out of every link of the space, in the contacts section (issue #203). German 'Überall ausgesperrt'.",
     "x-translated": "b84ffeb7"
+  },
+  "identifyTotp": "Code from your authenticator app",
+  "@identifyTotp": {
+    "description": "Button on the identification card of a personal link (issue #208) that opens a field for a code of an authenticator app; offered only to a contact who set one up. German 'Code aus Ihrer Authenticator-App'.",
+    "x-translated": "86a21bb7"
+  },
+  "totpCodeLabel": "Code from the app",
+  "@totpCodeLabel": {
+    "description": "Label of the field for the six digits an authenticator app shows (issue #208). German 'Code aus der App'.",
+    "x-translated": "2d025112"
+  },
+  "signInOffer": "Be recognised on your other devices too?",
+  "@signInOffer": {
+    "description": "Banner of a personal link's session (issue #208) offering a contact to set up a way to sign in on another device (an authenticator app). Short. Address the reader formally (German 'Sie').",
+    "x-translated": "62fb1f1b"
+  },
+  "signInOfferOpen": "Set up",
+  "@signInOfferOpen": {
+    "description": "Button of the banner 'Be recognised on your other devices too?' (issue #208) opening the sign-in options. German 'Einrichten'.",
+    "x-translated": "b457ae63"
+  },
+  "signInOptionsEntry": "Sign-in options…",
+  "@signInOptionsEntry": {
+    "description": "Menu entry of a contact's session of a personal link (issue #208) opening their sign-in options. German 'Anmeldeoptionen…'.",
+    "x-translated": "3a13c6e9"
+  },
+  "signInOptionsTitle": "Sign-in options",
+  "@signInOptionsTitle": {
+    "description": "Title of the dialog in which a contact of a personal link sets up an authenticator app (issue #208). German 'Anmeldeoptionen'.",
+    "x-translated": "982b6e26"
+  },
+  "signInOptionsLead": "Optional: how you are recognised when you open the link on another device.",
+  "@signInOptionsLead": {
+    "description": "Lead of the sign-in options dialog of a contact (issue #208). Address the reader formally (German 'Sie').",
+    "x-translated": "fb72e70f"
+  },
+  "authenticatorHeading": "Authenticator app",
+  "@authenticatorHeading": {
+    "description": "Heading of the authenticator app in the sign-in options (issue #208). German 'Authenticator-App'.",
+    "x-translated": "b90726fa"
+  },
+  "authenticatorActiveSince": "Set up on {date}.",
+  "@authenticatorActiveSince": {
+    "description": "Line of an authenticator app that signs a contact in (issue #208); the date is a day.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    },
+    "x-translated": "af56c40b"
+  },
+  "authenticatorExplanation": "An app such as Google Authenticator shows a new code every 30 seconds.",
+  "@authenticatorExplanation": {
+    "description": "Explanation of an authenticator app in the sign-in options (issue #208).",
+    "x-translated": "120275bc"
+  },
+  "authenticatorSetUp": "Use an authenticator app",
+  "@authenticatorSetUp": {
+    "description": "Button starting the setup of an authenticator app (issue #208). German 'Authenticator-App verwenden'.",
+    "x-translated": "4ae26769"
+  },
+  "totpScan": "Scan this code with your authenticator app.",
+  "@totpScan": {
+    "description": "Line above the QR code of the authenticator setup on a computer (issue #208). Address the reader formally (German 'Sie').",
+    "x-translated": "4499b350"
+  },
+  "totpOrEnterKey": "Or enter this setup key in the app:",
+  "@totpOrEnterKey": {
+    "description": "Line above the setup key under the QR code (issue #208); authenticator apps call the typed secret a 'setup key' (German apps: 'Einrichtungsschlüssel'). Address the reader formally (German 'Sie').",
+    "x-translated": "9fc5fc85"
+  },
+  "totpOnThisPhone": "Add the entry to the authenticator app on this phone:",
+  "@totpOnThisPhone": {
+    "description": "Line of the authenticator setup on a phone (issue #208), above the button that opens the app. Address the reader formally (German 'Sie').",
+    "x-translated": "eea43c7e"
+  },
+  "totpAddToApp": "Add to authenticator app",
+  "@totpAddToApp": {
+    "description": "Button of the authenticator setup on a phone (issue #208) opening the authenticator app with the entry. German 'Zur Authenticator-App hinzufügen'.",
+    "x-translated": "20c2074b"
+  },
+  "totpLinkNote": "If no app opens, choose \"Enter a setup key\" in your app.",
+  "@totpLinkNote": {
+    "description": "Note under the button that opens the authenticator app (issue #208): not every app handles the link; the app's own menu item is called 'Enter a setup key' (German Google Authenticator: 'Einrichtungsschlüssel eingeben'). Address the reader formally (German 'Sie').",
+    "x-translated": "d109b331"
+  },
+  "totpShowKey": "Show setup key",
+  "@totpShowKey": {
+    "description": "Button of the authenticator setup on a phone (issue #208) showing the secret to type into the app. German 'Einrichtungsschlüssel anzeigen'.",
+    "x-translated": "227f2da4"
+  },
+  "totpEnterCode": "Then enter the code the app shows.",
+  "@totpEnterCode": {
+    "description": "Line above the code field confirming the authenticator setup (issue #208). Address the reader formally (German 'Sie').",
+    "x-translated": "760d83d8"
+  },
+  "totpKeyCopied": "Setup key copied.",
+  "@totpKeyCopied": {
+    "description": "Snack bar after the setup key of an authenticator app was copied (issue #208).",
+    "x-translated": "5d45133c"
+  },
+  "contactSignInsEntry": "Sign-in methods…",
+  "@contactSignInsEntry": {
+    "description": "Menu entry of a contact in the contacts section (issue #208) showing the contact's authenticator app, to remove it. German 'Anmeldemethoden…'.",
+    "x-translated": "347602ff"
+  },
+  "contactSignInsTitle": "How {name} signs in",
+  "@contactSignInsTitle": {
+    "description": "Title of the dialog showing a contact's sign-in methods besides their link (issue #208).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "d64f5f20"
+  },
+  "contactSignInsNone": "No passkey and no authenticator app set up.",
+  "@contactSignInsNone": {
+    "description": "Line of the sign-in methods dialog of a contact without any (issue #208).",
+    "x-translated": "1347405a"
+  },
+  "contactAuthenticatorMark": "Authenticator app",
+  "@contactAuthenticatorMark": {
+    "description": "Mark in a contact's details line (issue #208): the contact signs in with an authenticator app. German 'Authenticator-App'.",
+    "x-translated": "b90726fa"
+  },
+  "contactAuthenticatorRemoveTitle": "Remove the authenticator app of {name}?",
+  "@contactAuthenticatorRemoveTitle": {
+    "description": "Question before a member removes a contact's authenticator app (issue #208).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "2189350e"
+  },
+  "contactSignInRemoveMessage": "Its codes no longer sign in. The contact can set it up again.",
+  "@contactSignInRemoveMessage": {
+    "description": "Explanation under the question before removing a contact's way to sign in (issue #208).",
+    "x-translated": "2a618982"
+  },
+  "identifyPasskey": "Sign in with passkey",
+  "@identifyPasskey": {
+    "description": "Button on the identification card of a personal link (issue #204) signing in with a passkey; offered only where somebody the link may let in made one. German 'Mit Passkey anmelden'.",
+    "x-translated": "242f4058"
+  },
+  "passkeyCancelled": "No passkey was used.",
+  "@passkeyCancelled": {
+    "description": "Said when the person or the browser declined to make or use a passkey (issue #204).",
+    "x-translated": "3e872a80"
+  },
+  "passkeyFailed": "The browser could not use a passkey ({reason}).",
+  "@passkeyFailed": {
+    "description": "Said when the browser failed to make or use a passkey (issue #204); the reason is the browser's own technical name.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    },
+    "x-translated": "28c6c023"
+  },
+  "passkeysHeading": "Passkeys",
+  "@passkeysHeading": {
+    "description": "Heading of the passkeys in the sign-in options (issue #204). German 'Passkeys'.",
+    "x-translated": "bbcb157e"
+  },
+  "passkeyExplanation": "Your phone or browser keeps the passkey and syncs it to your other devices. No password, no code.",
+  "@passkeyExplanation": {
+    "description": "Explanation of a passkey in the sign-in options (issue #204). Address the reader formally (German 'Sie').",
+    "x-translated": "9db1341b"
+  },
+  "passkeyAdd": "Recognise me on my other devices",
+  "@passkeyAdd": {
+    "description": "Button creating a passkey (issue #204), the author's own wording. Address the reader formally (German 'Sie').",
+    "x-translated": "eebe7945"
+  },
+  "passkeyFrom": "Passkey from {date}",
+  "@passkeyFrom": {
+    "description": "One passkey in a list (issue #204); the date is the day it was made.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    },
+    "x-translated": "5ae07876"
+  },
+  "passkeyLastUsed": "Last used on {date}",
+  "@passkeyLastUsed": {
+    "description": "When a passkey last signed in (issue #204); the date is a day.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    },
+    "x-translated": "dfb20410"
+  },
+  "contactPasskeyCount": "{count, plural, =1{1 passkey} other{{count} passkeys}}",
+  "@contactPasskeyCount": {
+    "description": "How many passkeys a contact has, in the contacts section (issue #204). German '1 Passkey' / '{count} Passkeys'.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "ae03b4cf"
+  },
+  "contactPasskeyRemoveTitle": "Remove this passkey of {name}?",
+  "@contactPasskeyRemoveTitle": {
+    "description": "Question before a member removes a passkey of a contact (issue #204).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "dab86fe0"
   }
 }

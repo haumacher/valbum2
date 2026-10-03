@@ -150,6 +150,16 @@ public class SpaceServlet extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Installs the one passkey relying party of this server in every space, see issue #204: one
+	 * instance, because its ceremonies are bound to the space they were started in.
+	 */
+	public void setPasskeys(de.haumacher.imageServer.passkeys.Passkeys passkeys) {
+		for (ImageServlet servlet : _data.values()) {
+			servlet.setPasskeys(passkeys);
+		}
+	}
+
 	@Override
 	public void init(ServletConfig config) throws ServletException {
 		super.init(config);
