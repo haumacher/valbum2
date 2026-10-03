@@ -47,4 +47,27 @@
     </application>
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Sending a recipient their own personal share link through the sharer's own apps
+         (issue #201): url_launcher opens mailto:, sms: and https://wa.me/ with ACTION_VIEW, and
+         Android 11+ shows the app only the handlers it declared it looks for. The share sheet
+         ("Other app…") is ACTION_SEND. No contacts permission is asked for anything. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="mailto"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="sms"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
 </manifest>

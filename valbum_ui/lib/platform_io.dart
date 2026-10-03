@@ -12,6 +12,7 @@ import 'downloads.dart';
 import 'background_workmanager.dart';
 import 'connectivity.dart';
 import 'connectivity_plugin.dart';
+import 'contact_session.dart';
 import 'device_code_scanner.dart';
 import 'device_code_scanner_plugin.dart';
 import 'offline.dart';
@@ -220,3 +221,9 @@ Future<List<String>> hostResolution(String host) async {
   }
   return lines;
 }
+
+/// Where who one is on a personal share link is kept off the web: in memory
+/// (issue #202). A link is opened in a browser there, so the app never runs a
+/// link session of its own and has nothing to remember.
+ContactCredentialStore defaultContactCredentialStore() =>
+    ContactCredentialStore.memory();

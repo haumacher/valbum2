@@ -4309,6 +4309,366 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Free software under the GNU Affero General Public License, version 3 or later.'**
   String get aboutLicense;
+
+  /// Line under the title of the identification card of a personal share link (issue #202): who shared the album. The sharer is a member's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared by {sharer}'**
+  String identifySharedBy(String sharer);
+
+  /// Intro of the first open of a recipient's own personal share link (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'This link was sent to you. Please confirm your name.'**
+  String get identifyFirstOpenIntro;
+
+  /// Label of the name field a visitor of a personal share link confirms or types (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Your name'**
+  String get identifyNameLabel;
+
+  /// Notice at the first open of a personal share link (issue #202): the sharer sees the visitor's name on their uploads. The sharer is a member's name. Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'With the photos you add, {sharer} will see your name.'**
+  String identifyNotice(String sharer);
+
+  /// The notice of identifyNotice where the server names no sharer (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'The person who shared this album will see your name with the photos you add.'**
+  String get identifyNoticeNobody;
+
+  /// Check box on the identification card of a personal share link (issue #202): ticked keeps the visitor recognised in this browser for about 90 days, unticked until the browser closes. German e.g. 'Auf diesem Gerät an mich erinnern'.
+  ///
+  /// In en, this message translates to:
+  /// **'Remember me on this device'**
+  String get identifyRemember;
+
+  /// Button confirming the name at the first open of a personal share link (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get identifyContinue;
+
+  /// Title of the identification card of a personal share link opened in a browser that does not recognise the visitor (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Who are you?'**
+  String get identifyWhoTitle;
+
+  /// Intro of the identification card of a recipient's own personal link that was opened before (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'This link was already opened in another browser. Confirm that it is you to open the album here.'**
+  String get identifyRecipientIntro;
+
+  /// Intro of the identification card of an open personal share link (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'This album is shared with everybody who says who they are. Confirm your e-mail address to open it.'**
+  String get identifyOpenIntro;
+
+  /// Button on the identification card (issue #202): mails a six-digit code to one of the visitor's saved addresses, shown masked (e.g. p•••@gmx.de).
+  ///
+  /// In en, this message translates to:
+  /// **'Send a code to {address}'**
+  String identifySendCodeTo(String address);
+
+  /// Field of the identification card of an open personal link (issue #202): the address the code is mailed to. Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Your e-mail address'**
+  String get identifyAddressLabel;
+
+  /// Button mailing a code to the address typed on the identification card (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Send code'**
+  String get identifySendCode;
+
+  /// Line on the identification card after a code was mailed (issue #202); the address is shown masked.
+  ///
+  /// In en, this message translates to:
+  /// **'A code was sent to {address}.'**
+  String identifyCodeSent(String address);
+
+  /// Field of the six-digit code mailed to the visitor (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Code from the e-mail'**
+  String get identifyCodeLabel;
+
+  /// Button checking the mailed code on the identification card (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get identifyConfirmCode;
+
+  /// Button on the identification card signing in through a provider of OpenID Connect (issue #202), e.g. 'Continue with Google'. The provider is a proper name.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue with {provider}'**
+  String identifyContinueWith(String provider);
+
+  /// What a visitor of a personal link is told where no way to prove who they are applies (issue #202). The sharer is a member's name. Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Ask {sharer} to send you the link again.'**
+  String identifyAskAgain(String sharer);
+
+  /// identifyAskAgain where the server names no sharer (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Ask the person who shared it to send you the link again.'**
+  String get identifyAskAgainNobody;
+
+  /// Line in the menu of a personal share link's session (issue #202): whom the server takes the visitor to be.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in as {name}'**
+  String signedInAsContact(String name);
+
+  /// Menu entry and button of a personal share link's session (issue #202): the visitor is not the person the browser recognised (e.g. a family tablet passed around) and switches to being somebody else. 'Not you?' asks whether the reader is really that person (German e.g. 'Nicht Sie? Person wechseln'). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Not you? Switch person'**
+  String get switchPerson;
+
+  /// Label of the link-type row of the share-link form (issues #201/#202).
+  ///
+  /// In en, this message translates to:
+  /// **'Who may open it'**
+  String get linkTypeHeading;
+
+  /// Link type: an anonymous share link, the default (issues #201/#202). Wording decided by the author; the parenthesis qualifies the link, e.g. German 'Jeder mit dem Link (anonym)'.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with the link (anonymous)'**
+  String get linkTypeAnonymous;
+
+  /// Link type: an open personal link, whose visitors prove an e-mail address (issues #201/#202). Wording decided by the author; the parenthesis qualifies the link like its sibling 'Anyone with the link (anonymous)', e.g. German 'Jeder mit dem Link (personalisiert)'.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with the link (personalized)'**
+  String get linkTypeOpenPersonal;
+
+  /// Link type: a personal link sent to chosen recipients only (issues #201/#202). Wording decided by the author.
+  ///
+  /// In en, this message translates to:
+  /// **'Selected contacts'**
+  String get linkTypeSelected;
+
+  /// Why the open personal link type is not offered (issues #201/#202).
+  ///
+  /// In en, this message translates to:
+  /// **'\"Personalized\" needs a mail account or Google sign-in on the server.'**
+  String get linkTypeNeedsProof;
+
+  /// Heading of the recipient chooser of a personal share link (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Recipients'**
+  String get recipientsHeading;
+
+  /// Hint of the search field over the space's contacts in the recipient chooser (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Search contacts'**
+  String get recipientsSearch;
+
+  /// The recipient chooser when the space has no contacts (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'No contacts yet.'**
+  String get recipientsNoContacts;
+
+  /// The recipient chooser when the search matches no contact (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'No contact matches.'**
+  String get recipientsNoMatch;
+
+  /// Helper under the recipient chooser while nobody is chosen (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Choose at least one recipient.'**
+  String get recipientsNeeded;
+
+  /// Entry at the end of the recipient chooser adding a contact by name and e-mail (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'New contact'**
+  String get newContact;
+
+  /// Name field of a new contact in the recipient chooser (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get newContactName;
+
+  /// E-mail field of a new contact in the recipient chooser (issue #202). Pasting 'Name <address>' fills both fields.
+  ///
+  /// In en, this message translates to:
+  /// **'E-mail'**
+  String get newContactEmail;
+
+  /// Tooltip of the button removing a new contact from the recipient chooser (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get newContactRemove;
+
+  /// Error of a new contact's e-mail field (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Not an e-mail address'**
+  String get newContactInvalid;
+
+  /// Note of the recipient chooser when a typed address belongs to an existing contact (issue #202), who is ticked instead. Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Already in your contacts as {name}; ticked.'**
+  String newContactAlready(String name);
+
+  /// Heading of the result of a personal share link with recipients (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Send each recipient their own link'**
+  String get recipientLinksHeading;
+
+  /// Note under the recipients' links after creating a personal link (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Each link is shown only now and identifies its recipient. Send it through your own mail program or chat.'**
+  String get recipientLinksOnce;
+
+  /// Line opening the mail program with a recipient's own link (issues #201/#202).
+  ///
+  /// In en, this message translates to:
+  /// **'E-mail to {address}'**
+  String sendEmailTo(String address);
+
+  /// Line opening WhatsApp with a recipient's own link (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'WhatsApp to {number}'**
+  String sendWhatsAppTo(String number);
+
+  /// Line opening the SMS app with a recipient's own link (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'SMS to {number}'**
+  String sendSmsTo(String number);
+
+  /// Line opening the system share sheet with a recipient's own link (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'Other app…'**
+  String get sendOtherApp;
+
+  /// Line copying a recipient's own link (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get copyLinkAction;
+
+  /// Subject of the mail carrying a personal share link (issues #201/#202); the sharer can edit it in their mail program.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos: {album}'**
+  String shareMessageSubject(String album);
+
+  /// Default text of the message carrying a recipient's own link (issues #201/#202); the sharer edits it in their own app. Keep the line breaks.
+  ///
+  /// In en, this message translates to:
+  /// **'Hello {name},\n\nhere are the photos of {album}:\n{link}\n'**
+  String shareMessageBody(String album, String name, String link);
+
+  /// Snack bar when no app opens a mailto:, WhatsApp or SMS link (issues #201/#202).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing on this device opens this link.'**
+  String get launchFailed;
+
+  /// How the list of share links names an open personal link (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Personalized'**
+  String get linkPersonalOpen;
+
+  /// How the list of share links counts the recipients of a personal link (issue #202).
+  ///
+  /// In en, this message translates to:
+  /// **'Recipients: {count}'**
+  String linkRecipientCount(int count);
+
+  /// Button beside a recipient of a personal link: a fresh link of their own, the old one stops working (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'Send again'**
+  String get sendAgain;
+
+  /// Heading after 'Send again' (issue #201); the name is the contact's.
+  ///
+  /// In en, this message translates to:
+  /// **'A fresh link for {name}'**
+  String sendAgainHeading(String name);
+
+  /// Note after 'Send again' (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'The earlier link of this recipient no longer works.'**
+  String get sendAgainNote;
+
+  /// Label of the second row under 'Selected contacts' in the share-link form (issue #211): one link per person, or one link for the whole group.
+  ///
+  /// In en, this message translates to:
+  /// **'How it is sent'**
+  String get linkDeliveryHeading;
+
+  /// Choice under 'Selected contacts' (issue #211): every recipient gets a link of their own, which recognises them at once. The default. Wording decided by the author.
+  ///
+  /// In en, this message translates to:
+  /// **'A link for each person'**
+  String get linkDeliveryEach;
+
+  /// Choice under 'Selected contacts' (issue #211): one link for all recipients, each of whom confirms their e-mail address once. Wording decided by the author.
+  ///
+  /// In en, this message translates to:
+  /// **'One link for the group'**
+  String get linkDeliveryGroup;
+
+  /// Line after creating a group link (issue #211): opens the mail program with every recipient in BCC and the one link in the body.
+  ///
+  /// In en, this message translates to:
+  /// **'E-mail to all recipients'**
+  String get groupLinkMailAll;
+
+  /// Note under a group link after it was created (issue #211).
+  ///
+  /// In en, this message translates to:
+  /// **'Whoever opens it confirms their e-mail address once, by a code or by signing in.'**
+  String get groupLinkNote;
+
+  /// Heading over the per-person links of the recipients of a group link who have no e-mail address (issue #211).
+  ///
+  /// In en, this message translates to:
+  /// **'These recipients have no e-mail address, so the group link cannot recognise them. Send them their own link:'**
+  String get groupLinkWithoutEmail;
+
+  /// Default text of the message carrying a group link to all recipients (issue #211); the sharer edits it in their own mail program. Keep the line breaks.
+  ///
+  /// In en, this message translates to:
+  /// **'Hello,\n\nhere are the photos of {album}:\n{link}\n'**
+  String shareMessageBodyGroup(String album, String link);
+
+  /// Intro of the identification card of a group link (issue #211): the visitor types their own address and gets a code, or signs in. Address the reader formally, as the whole app does (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'This link was sent to a group. Confirm your e-mail address to open it.'**
+  String get identifyGroupIntro;
 }
 
 class _AppLocalizationsDelegate

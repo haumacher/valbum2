@@ -52,6 +52,7 @@ const List<String> convertedFiles = [
   "lib/client.dart",
   "lib/connectivity.dart",
   "lib/connectivity_plugin.dart",
+  "lib/contact_session.dart",
   "lib/device_code_payload.dart",
   "lib/device_code_scanner.dart",
   "lib/device_code_scanner_plugin.dart",
@@ -61,6 +62,7 @@ const List<String> convertedFiles = [
   "lib/first_screen.dart",
   "lib/form_dialog.dart",
   "lib/group_view.dart",
+  "lib/identify_view.dart",
   "lib/image_properties.dart",
   "lib/image_transform.dart",
   "lib/image_view.dart",
@@ -89,6 +91,8 @@ const List<String> convertedFiles = [
   "lib/platform.dart",
   "lib/platform_io.dart",
   "lib/platform_web.dart",
+  "lib/recipient_chooser.dart",
+  "lib/recipient_send.dart",
   "lib/rights.dart",
   "lib/routes.dart",
   "lib/settings.dart",
@@ -118,6 +122,10 @@ const Map<String, String> allowedLiterals = {
   // can show the name field; never shown instead of it, see issue #89.
   "This code signs in a user who has no name yet. Choose the name you want "
       "to be known by in this space.": "protocol constant, matched not shown",
+  // The server's refusal of an open personal link, matched to tell it from a
+  // group link's while the server does not say which (issues #202, #211).
+  "This link asks who you are: it opens once you have confirmed your e-mail "
+      "address.": "protocol constant, matched not shown",
   // `toString()` of a value class: a debugger reads these, never a user.
   r"CallerPermission(${}, ${}, ${})": "toString()",
   r"CallerInfo(${}, ${}, ${})": "toString()",

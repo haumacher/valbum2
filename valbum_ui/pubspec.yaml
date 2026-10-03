@@ -87,6 +87,10 @@ dependencies:
   # the desktop's picker of an upload (`lib/media_picker.dart`, issue #197),
   # filtered by the types the server takes.
   file_selector: ^1.0.3
+  # The system share sheet of "Other app…" when a personal link is sent to a
+  # recipient (issue #201); reached only through `lib/recipient_send.dart`.
+  # BSD-3-Clause.
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:

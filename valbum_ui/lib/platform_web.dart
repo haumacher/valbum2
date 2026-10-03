@@ -10,6 +10,7 @@ import 'background.dart';
 import 'client.dart';
 import 'downloads.dart';
 import 'connectivity.dart';
+import 'contact_session.dart';
 import 'device_code_scanner.dart';
 import 'offline.dart';
 import 'photo_library.dart';
@@ -177,3 +178,35 @@ Future<List<String>> hostResolution(String host) async => [
       "Lookup $host: name resolution cannot be asked in a browser; the page "
           "sees only whether the request went through.",
     ];
+
+/// Where this browser keeps who it is on a personal share link (issue #202):
+/// `localStorage` for a visitor who asked to be remembered, `sessionStorage`
+/// otherwise, see `contact_session.dart`.
+ContactCredentialStore defaultContactCredentialStore() =>
+    ContactCredentialStore(
+      remembered: _BrowserStorageArea("localStorage"),
+      session: _BrowserStorageArea("sessionStorage"),
+    );
+
+/// One of the browser's two storage areas, reached anew on every access: in a
+/// private window or with site data blocked, merely *naming* the area throws,
+/// which [ContactCredentialStore] catches.
+class _BrowserStorageArea implements StorageArea {
+  final String _name;
+
+  _BrowserStorageArea(this._name);
+
+  JSObject get _area => globalContext[_name] as JSObject;
+
+  @override
+  String? get(String key) =>
+      (_area.callMethod<JSAny?>("getItem".toJS, key.toJS) as JSString?)?.toDart;
+
+  @override
+  void set(String key, String value) =>
+      _area.callMethod<JSAny?>("setItem".toJS, key.toJS, value.toJS);
+
+  @override
+  void remove(String key) =>
+      _area.callMethod<JSAny?>("removeItem".toJS, key.toJS);
+}

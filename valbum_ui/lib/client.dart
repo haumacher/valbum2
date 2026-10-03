@@ -34,7 +34,13 @@ class VAlbumException implements Exception {
   /// composed from the status.
   final String? reason;
 
-  const VAlbumException(this.message, {this.status, this.url, this.reason});
+  /// What a personal share link needs before it lets the caller in, `null`
+  /// on every other refusal (issue #198): the [ErrorInfo.identify] of the
+  /// answer, which `identify_view.dart` turns into the identification card.
+  final IdentifyRequired? identify;
+
+  const VAlbumException(this.message,
+      {this.status, this.url, this.reason, this.identify});
 
   @override
   String toString() => message;
@@ -753,6 +759,19 @@ class VAlbumClient {
   /// refuses an anonymous write, see [pair].
   final String? token;
 
+  /// The contact credential of a personal share link's session, `null`
+  /// everywhere else (issue #202).
+  ///
+  /// Sent beside the link's token as [contactHeader] on every request of this
+  /// client — never as a bearer and never in an address, so that neither a
+  /// log line nor a URL ever carries it — see [authHeaders] and
+  /// `contact_session.dart`.
+  final String? contact;
+
+  /// The header a [contact] credential travels in (`AuthService.CONTACT_HEADER`
+  /// on the server).
+  static const String contactHeader = "X-VAlbum-Contact";
+
   /// The name of the user this device is signed in as, empty for "the library
   /// owner" (who has no name of their own) and while nobody is signed in.
   ///
@@ -801,6 +820,7 @@ class VAlbumClient {
   VAlbumClient({
     required this.dataUrl,
     this.token,
+    this.contact,
     this.userName = "",
     http.Client? httpClient,
     this.cache,
@@ -823,6 +843,7 @@ class VAlbumClient {
   VAlbumClient withDataUrl(String dataUrl) => VAlbumClient(
         dataUrl: dataUrl,
         token: token,
+        contact: contact,
         userName: userName,
         httpClient: _transport,
         cache: cache,
@@ -837,6 +858,7 @@ class VAlbumClient {
   VAlbumClient withToken(String? token, {String? userName}) => VAlbumClient(
         dataUrl: dataUrl,
         token: token,
+        contact: contact,
         userName: userName ?? this.userName,
         httpClient: _transport,
         cache: cache,
@@ -845,12 +867,35 @@ class VAlbumClient {
         timeout: timeout,
       );
 
-  /// The authorization header of every request, empty while unpaired.
+  /// The same client, recognised as the given contact from now on, see
+  /// [contact]; `null` forgets who the session is (issue #202).
+  VAlbumClient withContact(String? contact) => VAlbumClient(
+        dataUrl: dataUrl,
+        token: token,
+        contact: contact,
+        userName: userName,
+        httpClient: _transport,
+        cache: cache,
+        offlineState: offlineState,
+        log: log,
+        timeout: timeout,
+      );
+
+  /// The authorization headers of every request, empty while unpaired: the
+  /// bearer, and beside it the [contact] credential of a personal link's
+  /// session.
   Map<String, String> get authHeaders {
     var value = token;
-    return value == null || value.isEmpty
-        ? const {}
-        : {"Authorization": "Bearer $value"};
+    var person = contact;
+    if ((value == null || value.isEmpty) && (person == null || person.isEmpty)) {
+      // The same constant as ever: an image provider keyed by its headers
+      // finds what it cached under them.
+      return const {};
+    }
+    return {
+      if (value != null && value.isNotEmpty) "Authorization": "Bearer $value",
+      if (person != null && person.isNotEmpty) contactHeader: person,
+    };
   }
 
   /// Who the cached copies of this device belong to, see
@@ -2264,6 +2309,97 @@ class VAlbumClient {
     return ShareLinkList.read(JsonReader.fromString(response));
   }
 
+  /// Sends one recipient of a personal link a fresh link of their own
+  /// (issue #198's `resend`): the earlier one is void from then on, and the
+  /// answer carries the one fresh [RecipientLink].
+  Future<ShareLinkCreated> resend(
+      List<String> path, String link, String contact) async {
+    var url = "${folderUrl(path)}?action=resend";
+    var response = await _postBody(
+        url,
+        _jsonOf(ShareResend(link: link, contact: contact).writeContent));
+    return ShareLinkCreated.read(JsonReader.fromString(response));
+  }
+
+  /// The contacts of this space (issue #198), answered to every signed-in
+  /// member: who a personal link can be sent to, see
+  /// `recipient_chooser.dart`.
+  Future<ContactList> contacts() async {
+    var url = "${folderUrl(const [])}?type=contacts";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
+    }
+    return ContactList.read(JsonReader.fromString(response.body));
+  }
+
+  /// Whether this server can prove a visitor's address — by a mailed code
+  /// (#199) or a provider of OpenID Connect (#200) — which an open personal
+  /// link needs (issue #202).
+  ///
+  /// The server names its proof methods to a link's visitor only, so a
+  /// member learns it from what the two proof requests answer *them*: both
+  /// refuse a member, and the refusal tells the two cases apart — `501` while
+  /// nothing is configured (asked first, "whoever asks"), `400` "not here"
+  /// once it is. Nothing is written and nothing is sent. Anything else — an
+  /// older server, a failed transport — counts as "cannot".
+  Future<bool> mayProveAddresses() async {
+    for (var action in const ["prove-email", "oidc-start"]) {
+      var url = "${folderUrl(const [])}?action=$action";
+      try {
+        var response = await _http
+            .post(Uri.parse(url),
+                body: "{}",
+                headers: {"Content-Type": "application/json", ...authHeaders})
+            .timeout(timeout);
+        if (response.statusCode == 400) {
+          return true;
+        }
+      } catch (_) {
+        // Not offered, as far as this client can tell.
+      }
+    }
+    return false;
+  }
+
+  /// The first open of a recipient's own link (issue #198): the link
+  /// identifies the recipient once, and the answer recognises them from then
+  /// on. Sent with the recipient's token as the bearer.
+  Future<ContactCredential> identify(ContactIdentify request) =>
+      _postCredential("identify", _jsonOf(request.writeContent));
+
+  /// Asks the server to mail a code proving an address (issue #199).
+  Future<EmailProofSent> proveEmail(EmailProof request) async {
+    var url = "${folderUrl(const [])}?action=prove-email";
+    var response = await _postBody(url, _jsonOf(request.writeContent));
+    return EmailProofSent.read(JsonReader.fromString(response));
+  }
+
+  /// Proves an address with the mailed code (issue #199).
+  Future<ContactCredential> verifyEmail(EmailVerify request) =>
+      _postCredential("verify-email", _jsonOf(request.writeContent));
+
+  /// Starts a sign-in through OpenID Connect (issue #200): the page then
+  /// navigates to [OidcStarted.url] and keeps [OidcStarted.binding].
+  Future<OidcStarted> oidcStart(OidcStart request) async {
+    var url = "${folderUrl(const [])}?action=oidc-start";
+    var response = await _postBody(url, _jsonOf(request.writeContent));
+    return OidcStarted.read(JsonReader.fromString(response));
+  }
+
+  /// Finishes a sign-in through OpenID Connect with the code the callback
+  /// put behind `#oidc=` (issue #200).
+  Future<ContactCredential> oidcExchange(OidcExchange request) =>
+      _postCredential("oidc-exchange", _jsonOf(request.writeContent));
+
+  /// Posts one of the requests answering a [ContactCredential].
+  Future<ContactCredential> _postCredential(String action, String body) async {
+    var url = "${folderUrl(const [])}?action=$action";
+    var response = await _postBody(url, body);
+    return ContactCredential.read(JsonReader.fromString(response));
+  }
+
   /// Posts the given share link as JSON, answering the body of the answer.
   Future<String> _postJson(String url, ShareLink value) =>
       _postBody(url, _jsonOf(value.writeContent));
@@ -2685,16 +2821,27 @@ class VAlbumClient {
     String what, {
     String? url,
   }) {
-    var message = errorMessage(body);
+    var info = errorInfoOf(body);
+    var message = info == null || info.message.isEmpty ? null : info.message;
     if (message != null) {
       return VAlbumException(message,
-          status: status, url: url, reason: message);
+          status: status, url: url, reason: message, identify: info?.identify);
     }
     return VAlbumException(
       platformMessages.httpFailure(what, status),
       status: status,
       url: url,
     );
+  }
+
+  /// The [ErrorInfo] of a refusal's body, `null` if the body is not one.
+  static ErrorInfo? errorInfoOf(String body) {
+    try {
+      var resource = Resource.read(JsonReader.fromString(body));
+      return resource is ErrorInfo ? resource : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// The message of an [ErrorInfo] body, `null` if the body is not one.

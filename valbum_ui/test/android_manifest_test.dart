@@ -28,4 +28,18 @@ void main() {
       contains("package de.haumacher.valbum;"),
     );
   });
+
+  // A recipient's own personal link goes out through the sharer's own apps
+  // (issue #201): Android 11+ lets the app see only the handlers it declares,
+  // and nothing about it asks for the address book.
+  test('the manifest declares the apps a personal link is sent through', () {
+    var manifest =
+        File("android/app/src/main/AndroidManifest.xml").readAsStringSync();
+    expect(manifest, contains("<queries>"));
+    for (var scheme in ["mailto", "sms", "https"]) {
+      expect(manifest, contains('android:scheme="$scheme"'));
+    }
+    expect(manifest, contains("android.intent.action.SEND"));
+    expect(manifest, isNot(contains("READ_CONTACTS")));
+  });
 }

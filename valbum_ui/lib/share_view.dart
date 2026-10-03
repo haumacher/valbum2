@@ -12,6 +12,7 @@
 /// see [mayShareFolder].
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -23,6 +24,8 @@ import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show dayOf;
 import 'offline.dart';
+import 'recipient_chooser.dart';
+import 'recipient_send.dart';
 import 'resource.dart';
 import 'rights.dart';
 import 'share_session.dart' show ratingFloorLabel, ratingName;
@@ -81,6 +84,30 @@ enum LinkExpiry {
       };
 }
 
+/// Who may open a new link, the first question of its form (issues #201 and
+/// #202): one dropdown with three plain choices, the author's labels.
+enum LinkKind {
+  /// "Anyone with the link (anonymous)": the link as it always was, the
+  /// default.
+  anonymous,
+
+  /// "Anyone with the link (personalized)": an open personal link, whose
+  /// visitors prove an address (#199/#200) — offered only where the server
+  /// can prove one.
+  open,
+
+  /// "Selected contacts": a personal link with recipients, each sent a link
+  /// of their own; the only choice showing the recipient chooser.
+  selected;
+
+  /// How the choice is named on the screen.
+  String labelOf(AppLocalizations l10n) => switch (this) {
+        LinkKind.anonymous => l10n.linkTypeAnonymous,
+        LinkKind.open => l10n.linkTypeOpenPersonal,
+        LinkKind.selected => l10n.linkTypeSelected,
+      };
+}
+
 /// The three states of the share-link dialog, each with its own buttons.
 enum _LinkDialogState { list, form, result }
 
@@ -127,6 +154,10 @@ class ShareLinkDialog extends StatefulWidget {
   /// How the folder is named in the title, its last segment by default.
   final String? label;
 
+  /// Whether the dialog runs in a browser, which has no phone apps to send a
+  /// recipient's link through, see `recipient_send.dart`.
+  final bool isWeb;
+
   /// Whether the creator may hand out a link showing what members see.
   ///
   /// False for a creator whose own clearance is public: the server refuses a
@@ -140,6 +171,7 @@ class ShareLinkDialog extends StatefulWidget {
     required this.path,
     this.label,
     this.mayShowMembers = true,
+    this.isWeb = kIsWeb,
   });
 
   @override
@@ -189,6 +221,28 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
 
   /// The rights the new link carries; `view` is always among them.
   Set<String> _picked = const {rightView};
+
+  /// Who may open the new link, see [LinkKind].
+  LinkKind _kind = LinkKind.anonymous;
+
+  /// Whether the server can prove a visitor's address, which an open
+  /// personal link needs; `null` while it is being asked, see
+  /// [VAlbumClient.mayProveAddresses].
+  bool? _mayProve;
+
+  /// The recipients of a link for [LinkKind.selected].
+  List<ShareRecipient> _recipients = const [];
+
+  /// Whether a link for [LinkKind.selected] goes out as one link for the
+  /// whole group rather than a link for each person, the default (#211).
+  bool _group = false;
+
+  /// Whether the link just created is to be sent as a group link.
+  bool _createdAsGroup = false;
+
+  /// The name of the recipient a fresh link was just made for by "Send
+  /// again", `null` for a link that was just created.
+  String? _resentTo;
 
   /// The folder's path in the coordinates the links are spelled in.
   String get ownerPath => ownerPathOf(widget.path);
@@ -288,7 +342,10 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
             ),
             ElevatedButton(
               key: const Key("link-create"),
-              onPressed: _busy ? null : _create,
+              onPressed: _busy ||
+                      (_kind == LinkKind.selected && _recipients.isEmpty)
+                  ? null
+                  : _create,
               child: Text(l10n.createLink),
             ),
           ],
@@ -299,7 +356,12 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
               onPressed: () {
                 setState(() {
                   _created = null;
+                  _resentTo = null;
                   _label.clear();
+                  _kind = LinkKind.anonymous;
+                  _recipients = const [];
+                  _group = false;
+                  _createdAsGroup = false;
                 });
                 _load();
               },
@@ -335,7 +397,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(l10n.noLinksYet, key: const Key("share-link-none")),
         ),
-      for (var link in links)
+      for (var link in links) ...[
         ListTile(
           key: Key("link-${link.id}"),
           contentPadding: EdgeInsets.zero,
@@ -353,6 +415,23 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
                   onPressed: _busy ? null : () => _withdraw(link),
                 ),
         ),
+        // Who a personal link went to, each with "Send again" where the
+        // link is this folder's own and live (issue #201).
+        if (!_inherited(link) && link.revoked.isEmpty)
+          for (var recipient in link.recipients)
+            ListTile(
+              key: Key("recipient-${link.id}-${recipient.contact}"),
+              dense: true,
+              contentPadding: const EdgeInsets.only(left: 40),
+              leading: const Icon(Icons.person_outline),
+              title: Text(recipient.name),
+              trailing: TextButton(
+                key: Key("resend-${link.id}-${recipient.contact}"),
+                onPressed: _busy ? null : () => _resend(link, recipient),
+                child: Text(l10n.sendAgain),
+              ),
+            ),
+      ],
     ];
   }
 
@@ -363,6 +442,10 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   /// What a link shows and how long it lives, in one paragraph.
   String _describe(AppLocalizations l10n, ShareLink link) {
     var parts = [
+      if (link.type == ShareType.personal)
+        link.recipients.isEmpty
+            ? l10n.linkPersonalOpen
+            : l10n.linkRecipientCount(link.recipients.length),
       _rightsOf(l10n, link),
       link.expires.isEmpty
           ? l10n.linkNeverExpires
@@ -411,9 +494,22 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           dense: true,
           leading: const Icon(Icons.add_link),
           title: Text(AppLocalizations.of(context)!.newLinkTile),
-          onTap: _busy ? null : () => setState(() => _creating = true),
+          onTap: _busy ? null : _openForm,
         ),
       ];
+
+  /// Opens the form of a new link, and asks the server once whether it can
+  /// prove a visitor's address, see [_mayProve].
+  void _openForm() {
+    setState(() => _creating = true);
+    if (_mayProve == null) {
+      widget.client.mayProveAddresses().then((value) {
+        if (mounted) {
+          setState(() => _mayProve = value);
+        }
+      });
+    }
+  }
 
   /// The form of a new link: the label, then one compact row per question
   /// (issue #205).
@@ -449,6 +545,44 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
 
   /// The questions below the label, one row each.
   List<Widget> _questions(AppLocalizations l10n) => [
+        _choiceRow<LinkKind>(
+          key: "link-type",
+          label: l10n.linkTypeHeading,
+          value: _kind,
+          choices: [
+            for (var kind in LinkKind.values) (kind, kind.labelOf(l10n)),
+          ],
+          disabled: {if (_mayProve != true) LinkKind.open},
+          disabledReason: _mayProve == false ? l10n.linkTypeNeedsProof : null,
+          onChanged: (value) => setState(() => _kind = value),
+        ),
+        if (_kind == LinkKind.selected)
+          _row(
+            label: l10n.recipientsHeading,
+            helper: _recipients.isEmpty ? l10n.recipientsNeeded : null,
+            child: RecipientChooser(
+              client: widget.client,
+              enabled: !_busy,
+              onChanged: (value) => setState(() => _recipients = value),
+            ),
+          ),
+        // A link for each person (the default), or one for the group whose
+        // visitors each prove an address once — so only where the server
+        // can prove one (issue #211).
+        if (_kind == LinkKind.selected)
+          _choiceRow<bool>(
+            key: "link-delivery",
+            label: l10n.linkDeliveryHeading,
+            value: _group,
+            choices: [
+              (false, l10n.linkDeliveryEach),
+              (true, l10n.linkDeliveryGroup),
+            ],
+            disabled: {if (_mayProve != true) true},
+            disabledReason:
+                _mayProve == false ? l10n.linkTypeNeedsProof : null,
+            onChanged: (value) => setState(() => _group = value),
+          ),
         _choiceRow<LinkExpiry>(
           key: "link-expiry",
           label: l10n.expiresHeading,
@@ -538,6 +672,8 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
     String? helper,
     required T value,
     required List<(T, String)> choices,
+    Set<T> disabled = const {},
+    String? disabledReason,
     required ValueChanged<T> onChanged,
   }) =>
       _row(
@@ -549,11 +685,22 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
             value: value,
             isDense: true,
             isExpanded: true,
+            // Variable heights in the open menu, where a choice that is not
+            // offered carries its reason; the closed row stays one line.
+            itemHeight: null,
+            selectedItemBuilder: (context) => [
+              for (var (_, text) in choices)
+                Text(text, overflow: TextOverflow.ellipsis),
+            ],
             items: [
               for (var (choice, text) in choices)
                 DropdownMenuItem<T>(
                   value: choice,
-                  child: Text(text, overflow: TextOverflow.ellipsis),
+                  // Shown and not offered, with the reason under it.
+                  enabled: !disabled.contains(choice),
+                  child: disabled.contains(choice)
+                      ? _disabledChoice(text, disabledReason)
+                      : Text(text, overflow: TextOverflow.ellipsis),
                 ),
             ],
             // One choice is no choice: shown, and not offered.
@@ -567,6 +714,28 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           ),
         ),
       );
+
+  /// A choice of a dropdown that is shown and not offered: dimmed, and the
+  /// [reason] under it where there is one (issues #201/#202).
+  Widget _disabledChoice(String text, String? reason) {
+    var dim = Theme.of(context).disabledColor;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text, style: TextStyle(color: dim)),
+          if (reason != null)
+            Text(
+              reason,
+              key: const Key("link-type-reason"),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: dim),
+            ),
+        ],
+      ),
+    );
+  }
 
   /// One row of the form: [child] under the question's [label].
   Widget _row({
@@ -631,6 +800,9 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
 
   /// Creates the link and shows its URL, once.
   Future<void> _create() async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
     setState(() {
       _busy = true;
       _refusal = null;
@@ -640,6 +812,10 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
       answer = await widget.client.share(
         widget.path,
         ShareLink(
+          type: _kind == LinkKind.anonymous
+              ? ShareType.anonymous
+              : ShareType.personal,
+          recipients: _kind == LinkKind.selected ? _recipients : const [],
           label: _label.text.trim(),
           expires: _expiresAt,
           maxPrivacy: _maxPrivacy,
@@ -670,6 +846,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
       _busy = false;
       _creating = false;
       _created = answer;
+      _createdAsGroup = _kind == LinkKind.selected && _group;
     });
   }
 
@@ -677,6 +854,12 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   List<Widget> _createdSection(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var created = _created!;
+    if (_createdAsGroup && _resentTo == null) {
+      return _groupSection(context, created);
+    }
+    if (created.recipients.isNotEmpty) {
+      return _recipientsSection(context, created);
+    }
     var url = absoluteServerUrl(widget.client.dataUrl, created.url);
     return [
       Text(l10n.theLinkHeading, style: Theme.of(context).textTheme.titleSmall),
@@ -697,6 +880,116 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
       const SizedBox(height: 16),
       Text(l10n.shareLinkOnce, key: const Key("share-link-once")),
     ];
+  }
+
+  /// How the shared folder is named in the message carrying a link.
+  String get _albumName {
+    var given = widget.label;
+    if (given != null && given.trim().isNotEmpty) {
+      return given.trim();
+    }
+    return widget.path.isEmpty
+        ? AppLocalizations.of(context)!.shareWholeSpace
+        : widget.path.last;
+  }
+
+  /// The links of a personal link's recipients, each with the ways to send
+  /// it (issues #201/#202): every one shown exactly once.
+  List<Widget> _recipientsSection(
+    BuildContext context,
+    ShareLinkCreated created,
+  ) {
+    var l10n = AppLocalizations.of(context)!;
+    var resent = _resentTo;
+    return [
+      Text(
+        resent == null
+            ? l10n.recipientLinksHeading
+            : l10n.sendAgainHeading(resent),
+        style: Theme.of(context).textTheme.titleSmall,
+      ),
+      for (var recipient in created.recipients)
+        RecipientSendLines(
+          recipient: recipient,
+          url: absoluteServerUrl(widget.client.dataUrl, recipient.url),
+          album: _albumName,
+          isWeb: widget.isWeb,
+        ),
+      const SizedBox(height: 16),
+      Text(
+        resent == null ? l10n.recipientLinksOnce : l10n.sendAgainNote,
+        key: const Key("recipient-links-once"),
+      ),
+    ];
+  }
+
+  /// A group link (issue #211): the link's own address, one mail to every
+  /// recipient with an e-mail address and the link to copy — and for those
+  /// without one, whom the group link cannot recognise, their own links.
+  List<Widget> _groupSection(BuildContext context, ShareLinkCreated created) {
+    var l10n = AppLocalizations.of(context)!;
+    var url = absoluteServerUrl(widget.client.dataUrl, created.url);
+    bool hasEmail(RecipientLink recipient) => recipient.addresses
+        .any((address) => address.kind == AddressKind.email);
+    var addresses = [
+      for (var recipient in created.recipients)
+        for (var address in recipient.addresses)
+          if (address.kind == AddressKind.email) address.value,
+    ];
+    var without = [
+      for (var recipient in created.recipients)
+        if (!hasEmail(recipient)) recipient,
+    ];
+    return [
+      Text(l10n.linkDeliveryGroup,
+          style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: 8),
+      SelectableText(url, key: const Key("share-link-url")),
+      GroupSendLines(addresses: addresses, url: url, album: _albumName),
+      Text(l10n.groupLinkNote, key: const Key("group-link-note")),
+      if (without.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        Text(l10n.groupLinkWithoutEmail,
+            key: const Key("group-link-without-email")),
+        for (var recipient in without)
+          RecipientSendLines(
+            recipient: recipient,
+            url: absoluteServerUrl(widget.client.dataUrl, recipient.url),
+            album: _albumName,
+            isWeb: widget.isWeb,
+          ),
+      ],
+    ];
+  }
+
+  /// "Send again" (#198's `resend`): a fresh link of their own for one
+  /// recipient, the earlier one void, shown with the ways to send it.
+  Future<void> _resend(ShareLink link, ShareRecipient recipient) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _refusal = null;
+    });
+    try {
+      var answer =
+          await widget.client.resend(widget.path, link.id, recipient.contact);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _created = answer;
+          _resentTo = recipient.name;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _refusal = error is VAlbumException ? error.message : "$error";
+        });
+      }
+    }
   }
 
   Future<void> _copy(String url) async {

@@ -4516,5 +4516,394 @@
   "@aboutLicense": {
     "description": "The licence line of the About dialog (the legalese under the version). The licence name is a proper name; keep 'GNU Affero General Public License' untranslated.",
     "x-translated": "70c433b4"
+  },
+  "identifySharedBy": "Shared by {sharer}",
+  "@identifySharedBy": {
+    "description": "Line under the title of the identification card of a personal share link (issue #202): who shared the album. The sharer is a member's name.",
+    "placeholders": {
+      "sharer": {
+        "type": "String"
+      }
+    },
+    "x-translated": "3b7d3b03"
+  },
+  "identifyFirstOpenIntro": "This link was sent to you. Please confirm your name.",
+  "@identifyFirstOpenIntro": {
+    "description": "Intro of the first open of a recipient's own personal share link (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "a950d70f"
+  },
+  "identifyNameLabel": "Your name",
+  "@identifyNameLabel": {
+    "description": "Label of the name field a visitor of a personal share link confirms or types (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "772f8ccc"
+  },
+  "identifyNotice": "With the photos you add, {sharer} will see your name.",
+  "@identifyNotice": {
+    "description": "Notice at the first open of a personal share link (issue #202): the sharer sees the visitor's name on their uploads. The sharer is a member's name. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "placeholders": {
+      "sharer": {
+        "type": "String"
+      }
+    },
+    "x-translated": "19354d9d"
+  },
+  "identifyNoticeNobody": "The person who shared this album will see your name with the photos you add.",
+  "@identifyNoticeNobody": {
+    "description": "The notice of identifyNotice where the server names no sharer (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "8cd3681d"
+  },
+  "identifyRemember": "Remember me on this device",
+  "@identifyRemember": {
+    "description": "Check box on the identification card of a personal share link (issue #202): ticked keeps the visitor recognised in this browser for about 90 days, unticked until the browser closes. German e.g. 'Auf diesem Gerät an mich erinnern'.",
+    "x-translated": "28142b47"
+  },
+  "identifyContinue": "Continue",
+  "@identifyContinue": {
+    "description": "Button confirming the name at the first open of a personal share link (issue #202).",
+    "x-translated": "ea954889"
+  },
+  "identifyWhoTitle": "Who are you?",
+  "@identifyWhoTitle": {
+    "description": "Title of the identification card of a personal share link opened in a browser that does not recognise the visitor (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "34e0cc80"
+  },
+  "identifyRecipientIntro": "This link was already opened in another browser. Confirm that it is you to open the album here.",
+  "@identifyRecipientIntro": {
+    "description": "Intro of the identification card of a recipient's own personal link that was opened before (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "1f0d4f33"
+  },
+  "identifyOpenIntro": "This album is shared with everybody who says who they are. Confirm your e-mail address to open it.",
+  "@identifyOpenIntro": {
+    "description": "Intro of the identification card of an open personal share link (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "9f53fc7e"
+  },
+  "identifySendCodeTo": "Send a code to {address}",
+  "@identifySendCodeTo": {
+    "description": "Button on the identification card (issue #202): mails a six-digit code to one of the visitor's saved addresses, shown masked (e.g. p•••@gmx.de).",
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    },
+    "x-translated": "374c131"
+  },
+  "identifyAddressLabel": "Your e-mail address",
+  "@identifyAddressLabel": {
+    "description": "Field of the identification card of an open personal link (issue #202): the address the code is mailed to. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "2ed604c1"
+  },
+  "identifySendCode": "Send code",
+  "@identifySendCode": {
+    "description": "Button mailing a code to the address typed on the identification card (issue #202).",
+    "x-translated": "eaa17db6"
+  },
+  "identifyCodeSent": "A code was sent to {address}.",
+  "@identifyCodeSent": {
+    "description": "Line on the identification card after a code was mailed (issue #202); the address is shown masked.",
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    },
+    "x-translated": "ff697c4c"
+  },
+  "identifyCodeLabel": "Code from the e-mail",
+  "@identifyCodeLabel": {
+    "description": "Field of the six-digit code mailed to the visitor (issue #202).",
+    "x-translated": "ed0239bc"
+  },
+  "identifyConfirmCode": "Confirm",
+  "@identifyConfirmCode": {
+    "description": "Button checking the mailed code on the identification card (issue #202).",
+    "x-translated": "406e9ad8"
+  },
+  "identifyContinueWith": "Continue with {provider}",
+  "@identifyContinueWith": {
+    "description": "Button on the identification card signing in through a provider of OpenID Connect (issue #202), e.g. 'Continue with Google'. The provider is a proper name.",
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    },
+    "x-translated": "ab0f549"
+  },
+  "identifyAskAgain": "Ask {sharer} to send you the link again.",
+  "@identifyAskAgain": {
+    "description": "What a visitor of a personal link is told where no way to prove who they are applies (issue #202). The sharer is a member's name. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "placeholders": {
+      "sharer": {
+        "type": "String"
+      }
+    },
+    "x-translated": "ca53049e"
+  },
+  "identifyAskAgainNobody": "Ask the person who shared it to send you the link again.",
+  "@identifyAskAgainNobody": {
+    "description": "identifyAskAgain where the server names no sharer (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "f638be76"
+  },
+  "signedInAsContact": "Signed in as {name}",
+  "@signedInAsContact": {
+    "description": "Line in the menu of a personal share link's session (issue #202): whom the server takes the visitor to be.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "c9ec14b8"
+  },
+  "switchPerson": "Not you? Switch person",
+  "@switchPerson": {
+    "description": "Menu entry and button of a personal share link's session (issue #202): the visitor is not the person the browser recognised (e.g. a family tablet passed around) and switches to being somebody else. 'Not you?' asks whether the reader is really that person (German e.g. 'Nicht Sie? Person wechseln'). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "49d0a28d"
+  },
+  "linkTypeHeading": "Who may open it",
+  "@linkTypeHeading": {
+    "description": "Label of the link-type row of the share-link form (issues #201/#202).",
+    "x-translated": "6b836401"
+  },
+  "linkTypeAnonymous": "Anyone with the link (anonymous)",
+  "@linkTypeAnonymous": {
+    "description": "Link type: an anonymous share link, the default (issues #201/#202). Wording decided by the author; the parenthesis qualifies the link, e.g. German 'Jeder mit dem Link (anonym)'.",
+    "x-translated": "a8c1bc04"
+  },
+  "linkTypeOpenPersonal": "Anyone with the link (personalized)",
+  "@linkTypeOpenPersonal": {
+    "description": "Link type: an open personal link, whose visitors prove an e-mail address (issues #201/#202). Wording decided by the author; the parenthesis qualifies the link like its sibling 'Anyone with the link (anonymous)', e.g. German 'Jeder mit dem Link (personalisiert)'.",
+    "x-translated": "280e3e4c"
+  },
+  "linkTypeSelected": "Selected contacts",
+  "@linkTypeSelected": {
+    "description": "Link type: a personal link sent to chosen recipients only (issues #201/#202). Wording decided by the author.",
+    "x-translated": "25a6d1b0"
+  },
+  "linkTypeNeedsProof": "\"Personalized\" needs a mail account or Google sign-in on the server.",
+  "@linkTypeNeedsProof": {
+    "description": "Why the open personal link type is not offered (issues #201/#202).",
+    "x-translated": "de5ecd7c"
+  },
+  "recipientsHeading": "Recipients",
+  "@recipientsHeading": {
+    "description": "Heading of the recipient chooser of a personal share link (issue #202).",
+    "x-translated": "5b3b3114"
+  },
+  "recipientsSearch": "Search contacts",
+  "@recipientsSearch": {
+    "description": "Hint of the search field over the space's contacts in the recipient chooser (issue #202).",
+    "x-translated": "84c88c5c"
+  },
+  "recipientsNoContacts": "No contacts yet.",
+  "@recipientsNoContacts": {
+    "description": "The recipient chooser when the space has no contacts (issue #202).",
+    "x-translated": "a3e8a99b"
+  },
+  "recipientsNoMatch": "No contact matches.",
+  "@recipientsNoMatch": {
+    "description": "The recipient chooser when the search matches no contact (issue #202).",
+    "x-translated": "40882810"
+  },
+  "recipientsNeeded": "Choose at least one recipient.",
+  "@recipientsNeeded": {
+    "description": "Helper under the recipient chooser while nobody is chosen (issue #202).",
+    "x-translated": "e57e4458"
+  },
+  "newContact": "New contact",
+  "@newContact": {
+    "description": "Entry at the end of the recipient chooser adding a contact by name and e-mail (issue #202).",
+    "x-translated": "64cdb93d"
+  },
+  "newContactName": "Name",
+  "@newContactName": {
+    "description": "Name field of a new contact in the recipient chooser (issue #202).",
+    "x-translated": "fe11d138"
+  },
+  "newContactEmail": "E-mail",
+  "@newContactEmail": {
+    "description": "E-mail field of a new contact in the recipient chooser (issue #202). Pasting 'Name <address>' fills both fields.",
+    "x-translated": "a764a29d"
+  },
+  "newContactRemove": "Remove",
+  "@newContactRemove": {
+    "description": "Tooltip of the button removing a new contact from the recipient chooser (issue #202).",
+    "x-translated": "6f2c1806"
+  },
+  "newContactInvalid": "Not an e-mail address",
+  "@newContactInvalid": {
+    "description": "Error of a new contact's e-mail field (issue #202).",
+    "x-translated": "b96ea89f"
+  },
+  "newContactAlready": "Already in your contacts as {name}; ticked.",
+  "@newContactAlready": {
+    "description": "Note of the recipient chooser when a typed address belongs to an existing contact (issue #202), who is ticked instead. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "a0ca9d62"
+  },
+  "recipientLinksHeading": "Send each recipient their own link",
+  "@recipientLinksHeading": {
+    "description": "Heading of the result of a personal share link with recipients (issue #202).",
+    "x-translated": "3114e835"
+  },
+  "recipientLinksOnce": "Each link is shown only now and identifies its recipient. Send it through your own mail program or chat.",
+  "@recipientLinksOnce": {
+    "description": "Note under the recipients' links after creating a personal link (issue #202). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "9c6c18c4"
+  },
+  "sendEmailTo": "E-mail to {address}",
+  "@sendEmailTo": {
+    "description": "Line opening the mail program with a recipient's own link (issues #201/#202).",
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    },
+    "x-translated": "ae27640"
+  },
+  "sendWhatsAppTo": "WhatsApp to {number}",
+  "@sendWhatsAppTo": {
+    "description": "Line opening WhatsApp with a recipient's own link (issue #201).",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    },
+    "x-translated": "9b35dcb7"
+  },
+  "sendSmsTo": "SMS to {number}",
+  "@sendSmsTo": {
+    "description": "Line opening the SMS app with a recipient's own link (issue #201).",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    },
+    "x-translated": "293c328"
+  },
+  "sendOtherApp": "Other app…",
+  "@sendOtherApp": {
+    "description": "Line opening the system share sheet with a recipient's own link (issue #201).",
+    "x-translated": "7dc0e675"
+  },
+  "copyLinkAction": "Copy link",
+  "@copyLinkAction": {
+    "description": "Line copying a recipient's own link (issue #202).",
+    "x-translated": "1eb17cb0"
+  },
+  "shareMessageSubject": "Photos: {album}",
+  "@shareMessageSubject": {
+    "description": "Subject of the mail carrying a personal share link (issues #201/#202); the sharer can edit it in their mail program.",
+    "placeholders": {
+      "album": {
+        "type": "String"
+      }
+    },
+    "x-translated": "38cdf86f"
+  },
+  "shareMessageBody": "Hello {name},\n\nhere are the photos of {album}:\n{link}\n",
+  "@shareMessageBody": {
+    "description": "Default text of the message carrying a recipient's own link (issues #201/#202); the sharer edits it in their own app. Keep the line breaks.",
+    "placeholders": {
+      "album": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      }
+    },
+    "x-translated": "4da9ab86"
+  },
+  "launchFailed": "Nothing on this device opens this link.",
+  "@launchFailed": {
+    "description": "Snack bar when no app opens a mailto:, WhatsApp or SMS link (issues #201/#202).",
+    "x-translated": "8398ff01"
+  },
+  "linkPersonalOpen": "Personalized",
+  "@linkPersonalOpen": {
+    "description": "How the list of share links names an open personal link (issue #202).",
+    "x-translated": "5d8aa01c"
+  },
+  "linkRecipientCount": "Recipients: {count}",
+  "@linkRecipientCount": {
+    "description": "How the list of share links counts the recipients of a personal link (issue #202).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "d0246bf8"
+  },
+  "sendAgain": "Send again",
+  "@sendAgain": {
+    "description": "Button beside a recipient of a personal link: a fresh link of their own, the old one stops working (issue #201).",
+    "x-translated": "4feae27e"
+  },
+  "sendAgainHeading": "A fresh link for {name}",
+  "@sendAgainHeading": {
+    "description": "Heading after 'Send again' (issue #201); the name is the contact's.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "c212ce43"
+  },
+  "sendAgainNote": "The earlier link of this recipient no longer works.",
+  "@sendAgainNote": {
+    "description": "Note after 'Send again' (issue #201).",
+    "x-translated": "2f517a45"
+  },
+  "linkDeliveryHeading": "How it is sent",
+  "@linkDeliveryHeading": {
+    "description": "Label of the second row under 'Selected contacts' in the share-link form (issue #211): one link per person, or one link for the whole group.",
+    "x-translated": "ec840b1a"
+  },
+  "linkDeliveryEach": "A link for each person",
+  "@linkDeliveryEach": {
+    "description": "Choice under 'Selected contacts' (issue #211): every recipient gets a link of their own, which recognises them at once. The default. Wording decided by the author.",
+    "x-translated": "cf3d5973"
+  },
+  "linkDeliveryGroup": "One link for the group",
+  "@linkDeliveryGroup": {
+    "description": "Choice under 'Selected contacts' (issue #211): one link for all recipients, each of whom confirms their e-mail address once. Wording decided by the author.",
+    "x-translated": "4b5fd8eb"
+  },
+  "groupLinkMailAll": "E-mail to all recipients",
+  "@groupLinkMailAll": {
+    "description": "Line after creating a group link (issue #211): opens the mail program with every recipient in BCC and the one link in the body.",
+    "x-translated": "487faf6c"
+  },
+  "groupLinkNote": "Whoever opens it confirms their e-mail address once, by a code or by signing in.",
+  "@groupLinkNote": {
+    "description": "Note under a group link after it was created (issue #211).",
+    "x-translated": "71b5665f"
+  },
+  "groupLinkWithoutEmail": "These recipients have no e-mail address, so the group link cannot recognise them. Send them their own link:",
+  "@groupLinkWithoutEmail": {
+    "description": "Heading over the per-person links of the recipients of a group link who have no e-mail address (issue #211).",
+    "x-translated": "3203c3fd"
+  },
+  "shareMessageBodyGroup": "Hello,\n\nhere are the photos of {album}:\n{link}\n",
+  "@shareMessageBodyGroup": {
+    "description": "Default text of the message carrying a group link to all recipients (issue #211); the sharer edits it in their own mail program. Keep the line breaks.",
+    "placeholders": {
+      "album": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      }
+    },
+    "x-translated": "f5fb3ecb"
+  },
+  "identifyGroupIntro": "This link was sent to a group. Confirm your e-mail address to open it.",
+  "@identifyGroupIntro": {
+    "description": "Intro of the identification card of a group link (issue #211): the visitor types their own address and gets a code, or signs in. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "b7749790"
   }
 }

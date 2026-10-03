@@ -26,6 +26,7 @@ import 'package:valbum_ui/video_view.dart';
 import 'package:valbum_ui/album_view.dart';
 import 'package:valbum_ui/camera_roll.dart';
 import 'package:valbum_ui/camera_roll_view.dart';
+import 'package:valbum_ui/identify_view.dart';
 import 'package:valbum_ui/image_properties.dart';
 import 'package:valbum_ui/inbox_view.dart';
 import 'package:valbum_ui/manage_view.dart';
@@ -359,8 +360,7 @@ void sliceThree() {
       );
     });
 
-    testWidgets('the page of a load that failed (issue #176)',
-        (tester) async {
+    testWidgets('the page of a load that failed (issue #176)', (tester) async {
       speakGerman(tester);
       await load.pumpAt(
         tester,
@@ -644,6 +644,50 @@ void sliceTwo() {
       expect(find.text(de.shareBackToAlbum), findsOneWidget);
     });
 
+    testWidgets('the card of a personal link (#202)', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      // The cover is a network image: fetched through the fake, so that the
+      // shared client of `NetworkImage` is the fake for the tests after it.
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(
+          localizedApp(
+            IdentifyScreen(
+              client: clientReturning("{}"),
+              session: const SessionUrl(
+                kind: SessionKind.share,
+                token: "t",
+                dataUrl: "http://server/valbum/data",
+                basePath: "/valbum/s/t/",
+              ),
+              identify: IdentifyRequired(
+                addresses: [
+                  MaskedAddress(kind: AddressKind.email, masked: "p•••@gmx.de"),
+                ],
+                methods: [
+                  ProofMethod(name: "mail-code"),
+                  ProofMethod(name: "oidc:google", label: "Google"),
+                ],
+                contact: ContactInfo(id: "c1", displayName: "Petra"),
+                sharedBy: "Alice",
+                label: "Sommerfest",
+              ),
+              onCredential: (_) {},
+              onSignInStarted: (_, __) {},
+            ),
+            locale: const Locale("de"),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text(de.identifyWhoTitle), findsOneWidget);
+        expect(find.text(de.identifySharedBy("Alice")), findsOneWidget);
+        expect(find.text(de.identifySendCodeTo("p•••@gmx.de")), findsOneWidget);
+        expect(find.text(de.identifyContinueWith("Google")), findsOneWidget);
+        expect(find.text(de.identifyRemember), findsOneWidget);
+      });
+    });
+
     testWidgets('the share-link dialog', (tester) async {
       await tester.binding.setSurfaceSize(const Size(900, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -676,6 +720,9 @@ void sliceTwo() {
       expect(find.text(de.privacyUpToMembers), findsOneWidget);
       expect(find.text(de.linkRatingAllButTrash), findsOneWidget);
       expect(find.text(de.linkRightsHelp), findsOneWidget);
+      // Who may open it (issues #201/#202), the anonymous link the default.
+      expect(find.text(de.linkTypeHeading), findsOneWidget);
+      expect(find.text(de.linkTypeAnonymous), findsWidgets);
       // One bar, set from the state (issue #206): Cancel and Create.
       expect(find.text(de.cancel), findsOneWidget);
       expect(find.text(de.createLink), findsOneWidget);
@@ -819,7 +866,8 @@ void sliceTwo() {
           localizedApp(
             VideoView(
               videoUrl: "http://server/valbum/data/album/clip.mp4",
-              renditionUrl: "http://server/valbum/data/album/clip.mp4?type=video",
+              renditionUrl:
+                  "http://server/valbum/data/album/clip.mp4?type=video",
               probeRendition: pending,
               posterUrl: "http://server/valbum/data/album/clip.mp4?type=tn",
               wait: (delay) => Completer<void>().future,
@@ -861,7 +909,8 @@ void sliceTwo() {
           localizedApp(
             VideoView(
               videoUrl: "http://server/valbum/data/album/clip.mp4",
-              renditionUrl: "http://server/valbum/data/album/clip.mp4?type=video",
+              renditionUrl:
+                  "http://server/valbum/data/album/clip.mp4?type=video",
               probeRendition: ready,
               posterUrl: "http://server/valbum/data/album/clip.mp4?type=tn",
               createController: (
