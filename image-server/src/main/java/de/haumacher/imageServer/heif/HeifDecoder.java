@@ -40,7 +40,7 @@ import javax.imageio.stream.ImageOutputStream;
  *
  * <p>
  * Neither ImageIO nor the bundled FFmpeg libraries read HEIF (FFmpeg demuxes it from 7.1 on, the
- * presets ship 5.1), but every HEIC a phone writes is plain HEVC inside: one picture, or a grid of
+ * presets 1.5.9 ship 6.0), but every HEIC a phone writes is plain HEVC inside: one picture, or a grid of
  * tiles (a 4032&nbsp;&times;&nbsp;3024 photograph is 48 tiles of 512&nbsp;&times;&nbsp;512). So
  * the container is read in Java ({@link HeifFile}), the tiles are handed to the program's native
  * <code>hevc</code> decoder as one Annex&nbsp;B stream — each tile its own picture, its parameter
@@ -65,10 +65,11 @@ import javax.imageio.stream.ImageOutputStream;
  * delimiter, the configuration OBUs of its <code>av1C</code>, its OBUs), to a software AV1 decoder
  * of the program — <code>libdav1d</code> or <code>libaom-av1</code>, whichever it has; the native
  * <code>av1</code> decoder decodes only through a hardware accelerator and is never asked. The
- * FFmpeg 5.1 of the JavaCPP 1.5.8 presets the packages carry has neither, on any packaged platform
- * (its build enables no libaom and no dav1d; the presets enable libaom from 1.5.9 on), so there
- * {@link #av1Unavailability()} says so and an AVIF is listed, kept and downloaded, and its preview
- * answers that reason. An alpha channel (<code>auxl</code>) is decoded the same way into a second
+ * FFmpeg 6.0 of the JavaCPP presets 1.5.9 the packages carry has <code>libaom-av1</code> (libaom
+ * 3.6, BSD-2-Clause) on every packaged platform (issue #210; the 5.1 of the presets 1.5.8 had no
+ * software AV1 decoder at all). A program without one makes {@link #av1Unavailability()} say so,
+ * and an AVIF is listed, kept and downloaded all the same, its preview answering that reason. An
+ * alpha channel (<code>auxl</code>) is decoded the same way into a second
  * raster and the picture shown on {@link PreviewCache#TRANSPARENT_BACKGROUND}, as issue #190 shows
  * transparency; a 10 or 12 bit picture is brought to 8 bits by the program's <code>scale</code>.
  * </p>

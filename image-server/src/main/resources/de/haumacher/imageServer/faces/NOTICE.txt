@@ -22,9 +22,11 @@ below.  Neither model was trained, modified or re-exported by this project.
 
   Why the 2022mar revision and not the newer 2023mar one: the newer graph needs
   an OpenCV DNN of 4.8 or later, and the bundled org.bytedeco:opencv of the
-  JavaCPP presets 1.5.8 this server builds against is OpenCV 4.6.0, which
-  refuses to load it ("eltwise_layer.cpp:251: inputs[vecIdx][j] ==
-  inputs[i][j]").  When the JavaCPP presets are upgraded, exchanging the file and
+  JavaCPP presets 1.5.9 this server builds against is OpenCV 4.7.0, which
+  refuses it on a picture whose sides are not multiples of 32
+  ("nary_eltwise_layers.cpp:139: shape[i] == 1 || outShape[i] == 1"; the
+  OpenCV 4.6.0 of the presets 1.5.8 refused it at every size).  When the
+  JavaCPP presets reach OpenCV 4.8, exchanging the file and
   the model stamp in FaceDetection is all that is needed -- every album is
   re-indexed by itself, because the stamp is part of what .vacache/faces.json is
   keyed by.
@@ -69,7 +71,7 @@ below.  Neither model was trained, modified or re-exported by this project.
   its terms, unmodified, with this notice as the required attribution.
 
   A quantised revision of the same model (int8, about 9.9 MB) is published beside
-  it and loads on OpenCV 4.6.0 as well; it is not used here, because the
+  it and loaded on OpenCV 4.6.0 as well; it is not used here, because the
   unquantised weights are what the accuracy of a family library should rest on.
 
 

@@ -24,10 +24,9 @@ import junit.framework.TestCase;
  *
  * <p>
  * The structure is read without a decoder. The pixels need a software AV1 decoder in the FFmpeg
- * program, which the bundled FFmpeg 5.1 does not have (see {@link HeifDecoder}); those tests run
- * where one is there — the program named by the system property {@value #PROGRAM_PROPERTY}, e.g.
- * the <code>ffmpeg</code> of an unpacked <code>org.bytedeco:ffmpeg:6.0-1.5.9</code> platform jar —
- * and say loudly that they were skipped otherwise.
+ * program, which the bundled FFmpeg 6.0 of the presets 1.5.9 has on every packaged platform
+ * (<code>libaom-av1</code>, issue #210); a machine whose program has none fails those tests with
+ * the server's own sentence, see {@link #assertAv1Decoder()}.
  * </p>
  */
 @SuppressWarnings("javadoc")
@@ -36,9 +35,6 @@ public class TestAvifDecoder extends TestCase {
 	/** Where the AVIF fixtures lie. */
 	public static final File FIXTURES = new File("src/test/fixtures/avif");
 
-	/** The system property naming an FFmpeg program with a software AV1 decoder. */
-	public static final String PROGRAM_PROPERTY = "valbum.test.av1Ffmpeg";
-
 	@Override
 	protected void tearDown() throws Exception {
 		HeifDecoder.setProgramLocator(null);
@@ -46,33 +42,58 @@ public class TestAvifDecoder extends TestCase {
 	}
 
 	/**
-	 * Whether AV1 can be decoded in this test: the program of {@value #PROGRAM_PROPERTY} put in place
-	 * where it is set; a loud line where nothing can.
+	 * Fails with the server's own sentence where the bundled program cannot decode AV1: since the
+	 * presets 1.5.9 it can on every packaged platform (issue #210), so a machine where it cannot is
+	 * a machine the packages would not serve AVIF on either.
 	 */
-	public static boolean av1Decoder(String test) {
-		String program = System.getProperty(PROGRAM_PROPERTY);
-		if (program != null && !program.isBlank()) {
-			HeifDecoder.setProgramLocator(() -> program);
-		}
+	public static void assertAv1Decoder() {
 		String unavailable = HeifDecoder.av1Unavailability();
 		if (unavailable != null) {
-			System.err.println("SKIPPED " + test + ": " + unavailable + " Set -D" + PROGRAM_PROPERTY
-				+ "=<an ffmpeg with libdav1d or libaom-av1> to run it.");
-			return false;
+			fail("The bundled FFmpeg must decode AV1 (libdav1d or libaom-av1, issue #210): " + unavailable);
 		}
-		return true;
 	}
 
-	public void testTheBundledProgramSaysWhyItCannotDecodeAv1() {
-		String unavailable = HeifDecoder.av1Unavailability();
-		if (unavailable != null) {
-			assertTrue(unavailable, unavailable.startsWith("AVIF pictures cannot be decoded on this server"));
-			assertTrue(unavailable, unavailable.contains("AV1 decoder"));
-		}
-		// HEVC is not affected.
+	/**
+	 * Puts an FFmpeg "program" in place that has an HEVC decoder and no AV1 decoder, the bundled
+	 * FFmpeg 5.1 of the presets 1.5.8 as far as {@link HeifDecoder} asks: a shell script answering
+	 * <code>-decoders</code>.
+	 */
+	public static void installProgramWithoutAv1(java.nio.file.Path directory) throws IOException {
+		java.nio.file.Path program = directory.resolve("ffmpeg-without-av1");
+		java.nio.file.Files.writeString(program, "#!/bin/sh\n"
+			+ "echo ' V....D av1                  Alliance for Open Media AV1'\n"
+			+ "echo ' VFS..D hevc                 HEVC (High Efficiency Video Coding)'\n");
+		program.toFile().setExecutable(true);
+		HeifDecoder.setProgramLocator(() -> program.toString());
+	}
+
+	public void testTheBundledProgramDecodesAv1() {
+		assertAv1Decoder();
 		assertNull(HeifDecoder.unavailability());
-		assertEquals(unavailable, CodedPictures.unavailability("x.AVIF"));
+		assertNull(CodedPictures.unavailability("x.AVIF"));
 		assertNull(CodedPictures.unavailability("x.heic"));
+	}
+
+	/**
+	 * A program without a software AV1 decoder (the native <code>av1</code> one needs a hardware
+	 * accelerator and does not count) says why, and HEIC is not affected.
+	 */
+	public void testAProgramWithoutAnAv1DecoderSaysWhy() throws IOException {
+		java.nio.file.Path directory = java.nio.file.Files.createTempDirectory("no-av1");
+		try {
+			installProgramWithoutAv1(directory);
+			String unavailable = HeifDecoder.av1Unavailability();
+			assertNotNull(unavailable);
+			assertTrue(unavailable, unavailable.startsWith("AVIF pictures cannot be decoded on this server"));
+			assertTrue(unavailable, unavailable.contains("no software AV1 decoder"));
+			assertNull(HeifDecoder.unavailability());
+			assertEquals(unavailable, CodedPictures.unavailability("x.AVIF"));
+			assertNull(CodedPictures.unavailability("x.heic"));
+		} finally {
+			HeifDecoder.setProgramLocator(null);
+			java.nio.file.Files.delete(directory.resolve("ffmpeg-without-av1"));
+			java.nio.file.Files.delete(directory);
+		}
 	}
 
 	public void testTheStructureIsReadWithoutADecoder() throws IOException {
@@ -158,17 +179,13 @@ public class TestAvifDecoder extends TestCase {
 	}
 
 	public void testSingle() throws IOException {
-		if (!av1Decoder(getName())) {
-			return;
-		}
+		assertAv1Decoder();
 		File file = new File(FIXTURES, "single.avif");
 		assertQuadrants(HeifDecoder.decodeRaw(file, HeifFile.read(file), 96, 64));
 	}
 
 	public void testGridAndRegion() throws IOException {
-		if (!av1Decoder(getName())) {
-			return;
-		}
+		assertAv1Decoder();
 		File file = new File(FIXTURES, "grid.avif");
 		HeifFile heif = HeifFile.read(file);
 		assertQuadrants(HeifDecoder.decodeRaw(file, heif, 180, 120));
@@ -179,9 +196,7 @@ public class TestAvifDecoder extends TestCase {
 	}
 
 	public void testRotatedOnce() throws IOException {
-		if (!av1Decoder(getName())) {
-			return;
-		}
+		assertAv1Decoder();
 		File file = new File(FIXTURES, "rotated.avif");
 		HeifFile heif = HeifFile.read(file);
 		BufferedImage raw = HeifDecoder.decodeRaw(file, heif, 180, 120);
@@ -203,9 +218,7 @@ public class TestAvifDecoder extends TestCase {
 	}
 
 	public void testAlphaIsShownOnWhite() throws IOException {
-		if (!av1Decoder(getName())) {
-			return;
-		}
+		assertAv1Decoder();
 		File file = new File(FIXTURES, "alpha.avif");
 		HeifFile heif = HeifFile.read(file);
 		BufferedImage raw = HeifDecoder.decodeRaw(file, heif, 96, 64);
@@ -226,9 +239,7 @@ public class TestAvifDecoder extends TestCase {
 	}
 
 	public void testTenBit() throws IOException {
-		if (!av1Decoder(getName())) {
-			return;
-		}
+		assertAv1Decoder();
 		File file = new File(FIXTURES, "ten-bit.avif");
 		assertQuadrants(HeifDecoder.decodeRaw(file, HeifFile.read(file), 96, 64));
 	}

@@ -9,8 +9,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The little of the ELF format {@link TestDebianPackageLibraries} needs: the shared libraries an
- * executable or a library asks the dynamic loader for.
+ * The little of the ELF format this server needs: the shared libraries an executable or a library
+ * asks the dynamic loader for, and the name a library answers to.
+ *
+ * <p>
+ * {@link VideoRenditions#program(List)} reads the soname of the libraries the bundled FFmpeg ships
+ * under another file name (issue #210), and <code>TestDebianPackageLibraries</code> the needed
+ * libraries of every native the packages carry.
+ * </p>
  *
  * <p>
  * Hand-written on purpose. Reading a handful of header fields is less than a dependency costs, and
@@ -33,6 +39,8 @@ class Elf {
 	private static final long DT_NULL = 0;
 
 	private static final long DT_NEEDED = 1;
+
+	private static final long DT_SONAME = 14;
 
 	private final ByteBuffer _data;
 
@@ -63,14 +71,31 @@ class Elf {
 	 *        The whole file; {@link #isElf(byte[])} must have said yes.
 	 */
 	static List<String> needed(byte[] content) {
+		return of(content).dynamic(DT_NEEDED);
+	}
+
+	/**
+	 * The <code>DT_SONAME</code> of the given ELF file, the name the dynamic loader knows a library
+	 * by, <code>null</code> where it names none.
+	 *
+	 * @param content
+	 *        The whole file; {@link #isElf(byte[])} must have said yes.
+	 */
+	static String soname(byte[] content) {
+		List<String> names = of(content).dynamic(DT_SONAME);
+		return names.isEmpty() ? null : names.get(0);
+	}
+
+	private static Elf of(byte[] content) {
 		int addressSize = content[4];
 		boolean wide = addressSize == 2;
 		ByteOrder order = content[5] == 2 ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN;
 		ByteBuffer data = ByteBuffer.wrap(content).order(order);
-		return new Elf(data, wide).readNeeded();
+		return new Elf(data, wide);
 	}
 
-	private List<String> readNeeded() {
+	/** The strings of the dynamic entries of the given tag, in the order the file lists them. */
+	private List<String> dynamic(long wanted) {
 		long sectionHeaderOffset = _wide ? _data.getLong(0x28) : unsigned(_data.getInt(0x20));
 		int entrySize = _data.getShort(_wide ? 0x3A : 0x2E) & 0xFFFF;
 		int entryCount = _data.getShort(_wide ? 0x3C : 0x30) & 0xFFFF;
@@ -99,7 +124,7 @@ class Elf {
 				if (tag == DT_NULL) {
 					break;
 				}
-				if (tag == DT_NEEDED) {
+				if (tag == wanted) {
 					result.add(string(strings + value));
 				}
 			}

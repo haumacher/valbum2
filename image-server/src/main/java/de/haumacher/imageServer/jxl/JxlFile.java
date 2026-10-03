@@ -51,8 +51,8 @@ import org.brotli.dec.BrotliInputStream;
  * <p>
  * <b>The decoder.</b> The pixels are decoded by JXLatte, a JPEG XL decoder in pure Java (MIT,
  * vendored as the module <code>jxlatte</code>), because no decoder the server bundles reads JPEG
- * XL — neither ImageIO, nor TwelveMonkeys, nor the FFmpeg 5.1 or the OpenCV 4.6 of the JavaCPP
- * presets — and a JNI binding of libjxl would add a native library to every package. JXLatte
+ * XL — neither ImageIO, nor TwelveMonkeys, nor the FFmpeg 6.0 (built without libjxl) or the
+ * OpenCV 4.7 of the JavaCPP presets 1.5.9 — and a JNI binding of libjxl would add a native library to every package. JXLatte
  * decodes every still picture of the format (VarDCT and Modular, lossy and lossless, a JPEG
  * recompressed losslessly) to the same pixels as libjxl's <code>djxl</code> within one level; of an
  * animation it decodes the first frame, which is what a preview shows.

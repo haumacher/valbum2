@@ -56,8 +56,23 @@ is_elf() {
 	[ "$(head -c 4 "$1" | tail -c 3)" = ELF ]
 }
 
+# What VideoRenditions.linkSonames does before the child process starts (#210): a library the
+# artifact stores under its unversioned name (libva.so) is linked beside it under the soname the
+# others ask for (libva.so.2). The soname is the one string of the file that is its own name plus
+# a version - the image carries no readelf to read DT_SONAME the way the server does.
+for file in "$FFMPEG"/lib*.so; do
+	if [ -f "$file" ] && [ ! -L "$file" ] && is_elf "$file"; then
+		name=$(basename "$file")
+		soname=$(grep -ao "$name\.[0-9][0-9.]*" "$file" | head -n 1 || true)
+		if [ -n "$soname" ] && [ ! -e "$FFMPEG/$soname" ]; then
+			ln -s "$name" "$FFMPEG/$soname"
+			echo "check-libraries: linked $soname -> $name, as the server does."
+		fi
+	fi
+done
+
 for file in "$FFMPEG"/*; do
-	if [ -f "$file" ] && is_elf "$file"; then
+	if [ -f "$file" ] && [ ! -L "$file" ] && is_elf "$file"; then
 		chmod +x "$file"
 		check "$file" "$FFMPEG:$JAVACPP"
 	fi

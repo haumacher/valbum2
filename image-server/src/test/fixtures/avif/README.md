@@ -26,6 +26,7 @@ FFMPEG=/path/to/ffmpeg python3 image-server/src/test/fixtures/avif/generate.py
 ```
 
 libheif (ImageMagick's `convert x.avif -background white -alpha remove x.png`) reads all five as
-described, which is the independent check that the container is what it claims. The same program
-decodes them in the tests: `mvn verify -Dvalbum.test.av1Ffmpeg=/path/to/ffmpeg` runs the AVIF
-pixel tests, which the bundled FFmpeg 5.1 (no software AV1 decoder) skips with a line saying so.
+described, which is the independent check that the container is what it claims. The tests decode
+them with the bundled FFmpeg 6.0 (JavaCPP presets 1.5.9, `libaom-av1`, issue #210), the program
+the server runs, and fail with the server's own sentence on a machine whose program has no
+software AV1 decoder.

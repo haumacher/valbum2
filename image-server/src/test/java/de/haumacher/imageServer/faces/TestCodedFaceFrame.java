@@ -42,9 +42,7 @@ public class TestCodedFaceFrame extends TestCase {
 	}
 
 	public void testARotatedAvif() throws Exception {
-		if (!TestAvifDecoder.av1Decoder(getName())) {
-			return;
-		}
+		TestAvifDecoder.assertAv1Decoder();
 		// irot 1: the shown top left (red) is the stored top right.
 		assertFrame(new File(TestAvifDecoder.FIXTURES, "rotated.avif"), Orientation.ROT_R, 180, 120,
 			new double[] { 0.55, 0.05, 0.4, 0.4 });

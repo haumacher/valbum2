@@ -536,6 +536,13 @@ public final class FaceDetection {
 	public static final String OPENCV_JAVA = "opencv_java";
 
 	/**
+	 * The soname version of the bundled OpenCV's libraries as JavaCPP spells it behind a library's
+	 * name: <code>@.407</code> for OpenCV 4.7 of the JavaCPP presets 1.5.9 (issue #210), whose
+	 * files are <code>libopencv_core.so.407</code> and so on.
+	 */
+	static final String OPENCV_SOVERSION = "@.407";
+
+	/**
 	 * The native libraries the official OpenCV Java bindings need on Linux, in an order in which
 	 * every one comes after everything it links: the closure of {@value #OPENCV_JAVA} inside the
 	 * <code>org.bytedeco:opencv</code> artifact, spelled as JavaCPP names a library
@@ -551,33 +558,34 @@ public final class FaceDetection {
 	 * </p>
 	 */
 	public static final List<String> OPENCV_JAVA_CLOSURE = List.of(
-		"opencv_core@.406",
-		"opencv_bioinspired@.406",
-		"opencv_flann@.406",
-		"opencv_imgproc@.406",
-		"opencv_ml@.406",
-		"opencv_phase_unwrapping@.406",
-		"opencv_dnn@.406",
-		"opencv_features2d@.406",
-		"opencv_img_hash@.406",
-		"opencv_imgcodecs@.406",
-		"opencv_photo@.406",
-		"opencv_plot@.406",
-		"opencv_barcode@.406",
-		"opencv_calib3d@.406",
-		"opencv_text@.406",
-		"opencv_videoio@.406",
-		"opencv_wechat_qrcode@.406",
-		"opencv_xfeatures2d@.406",
-		"opencv_xphoto@.406",
-		"opencv_aruco@.406",
-		"opencv_objdetect@.406",
-		"opencv_structured_light@.406",
-		"opencv_video@.406",
-		"opencv_bgsegm@.406",
-		"opencv_face@.406",
-		"opencv_tracking@.406",
-		"opencv_ximgproc@.406",
+		"opencv_core" + OPENCV_SOVERSION,
+		"opencv_bioinspired" + OPENCV_SOVERSION,
+		"opencv_flann" + OPENCV_SOVERSION,
+		"opencv_imgproc" + OPENCV_SOVERSION,
+		"opencv_ml" + OPENCV_SOVERSION,
+		"opencv_phase_unwrapping" + OPENCV_SOVERSION,
+		"opencv_dnn" + OPENCV_SOVERSION,
+		"opencv_features2d" + OPENCV_SOVERSION,
+		"opencv_img_hash" + OPENCV_SOVERSION,
+		"opencv_imgcodecs" + OPENCV_SOVERSION,
+		"opencv_photo" + OPENCV_SOVERSION,
+		"opencv_plot" + OPENCV_SOVERSION,
+		"opencv_barcode" + OPENCV_SOVERSION,
+		"opencv_calib3d" + OPENCV_SOVERSION,
+		"opencv_text" + OPENCV_SOVERSION,
+		"opencv_videoio" + OPENCV_SOVERSION,
+		"opencv_wechat_qrcode" + OPENCV_SOVERSION,
+		"opencv_xfeatures2d" + OPENCV_SOVERSION,
+		"opencv_xphoto" + OPENCV_SOVERSION,
+		// OpenCV 4.7 moved ArUco into objdetect, which aruco links since (issue #210).
+		"opencv_objdetect" + OPENCV_SOVERSION,
+		"opencv_aruco" + OPENCV_SOVERSION,
+		"opencv_structured_light" + OPENCV_SOVERSION,
+		"opencv_video" + OPENCV_SOVERSION,
+		"opencv_bgsegm" + OPENCV_SOVERSION,
+		"opencv_face" + OPENCV_SOVERSION,
+		"opencv_tracking" + OPENCV_SOVERSION,
+		"opencv_ximgproc" + OPENCV_SOVERSION,
 		OPENCV_JAVA);
 
 	/**

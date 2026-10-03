@@ -40,8 +40,8 @@ import javax.imageio.ImageIO;
  * <code>src/test/fixtures/jxl/README.md</code>: four quadrants (red, green, blue, yellow from the
  * top left) once upright, an EXIF block with a date, a camera and a position. A JPEG XL picture is
  * decoded everywhere (the decoder is Java); an AVIF needs a software AV1 decoder in the FFmpeg
- * program, which the bundled one lacks, so its pixel tests run only where one is named, see
- * {@link TestAvifDecoder#av1Decoder(String)}.
+ * program, which the bundled one has since the presets 1.5.9 (issue #210), see
+ * {@link TestAvifDecoder#assertAv1Decoder()}.
  * </p>
  */
 @SuppressWarnings("javadoc")
@@ -108,9 +108,7 @@ public class TestAvifJxl extends ShareTestCase {
 	}
 
 	public void testEveryAvifPreviewIsAnUprightJpeg() throws Exception {
-		if (!TestAvifDecoder.av1Decoder(getName())) {
-			return;
-		}
+		TestAvifDecoder.assertAv1Decoder();
 		for (String name : AVIFS) {
 			copy(AVIF, name);
 		}
@@ -130,9 +128,7 @@ public class TestAvifJxl extends ShareTestCase {
 		assertTrue(display.isFile());
 		assertTrue(CacheRefresh.isGenerated(display.getName()));
 
-		if (!TestAvifDecoder.av1Decoder(getName())) {
-			return;
-		}
+		TestAvifDecoder.assertAv1Decoder();
 		copy(AVIF, "rotated.avif");
 		copy(AVIF, "alpha.avif");
 		assertPicture(get(PATH + "rotated.avif", ImageServlet.DISPLAY_TYPE, SharingFixture.ALICE), 120, 180);
@@ -201,12 +197,10 @@ public class TestAvifJxl extends ShareTestCase {
 		assertTrue(Arrays.equals(fixture(AVIF, "grid.avif"), original.bodyBytes()));
 	}
 
-	public void testTheBundledProgramSaysItHasNoAv1Decoder() throws Exception {
+	public void testAProgramWithoutAnAv1DecoderSaysSoOnThePreview() throws Exception {
+		TestAvifDecoder.installProgramWithoutAv1(_base);
 		String unavailable = HeifDecoder.av1Unavailability();
-		if (unavailable == null) {
-			// A program with an AV1 decoder: nothing to say.
-			return;
-		}
+		assertNotNull(unavailable);
 		copy(AVIF, "single.avif");
 		FakeResponse preview = get(PATH + "single.avif", "tn", SharingFixture.ALICE);
 		assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, preview.status());

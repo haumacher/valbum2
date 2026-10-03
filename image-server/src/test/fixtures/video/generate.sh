@@ -3,7 +3,7 @@
 # (org.bytedeco:ffmpeg, the LGPL build: libopenh264 for H.264, h263, aac, libopencore_amrnb,
 # mpeg2video, mjpeg, ac3, libopus, libvpx).
 #
-#   FFMPEG_DIR=~/.javacpp/cache/ffmpeg-5.1.2-1.5.8-linux-x86_64.jar/org/bytedeco/ffmpeg/linux-x86_64 \
+#   FFMPEG_DIR=~/.javacpp/cache/ffmpeg-6.0-1.5.9-linux-x86_64.jar/org/bytedeco/ffmpeg/linux-x86_64 \
 #     sh image-server/src/test/fixtures/video/generate.sh
 #
 # The directory is where JavaCPP extracted the program the first time the server (or a test) ran
