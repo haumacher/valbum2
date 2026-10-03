@@ -487,8 +487,13 @@ int ratingOf(AbstractImage image) => ToImage.toImage(image).rating;
 
 /// Whether the given image passes the album's rating filter — and its label
 /// filter, so that the viewer pages through what the grid shows (issue #213).
+///
+/// A photograph of a collection that is gone (issue #221) is never paged to:
+/// there is nothing to show of it.
 bool isVisible(AbstractImage image, int minRating) =>
-    ratingOf(image) >= minRating && shownByLabelFilter(image);
+    ratingOf(image) >= minRating &&
+    shownByLabelFilter(image) &&
+    !ToImage.toImage(image).missing;
 
 /// The next image passing the rating filter, `null` if there is none.
 AbstractImage? nextVisible(AbstractImage image, int minRating) =>

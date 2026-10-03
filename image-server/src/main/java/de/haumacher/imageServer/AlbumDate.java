@@ -264,7 +264,8 @@ public final class AlbumDate {
 		}
 		if (resource instanceof AlbumInfo) {
 			AlbumInfo album = (AlbumInfo) resource;
-			if (album.getKind() != de.haumacher.imageServer.shared.model.AlbumKind.ALBUM) {
+			if (album.getKind() == de.haumacher.imageServer.shared.model.AlbumKind.INBOX) {
+				// A collection is the one kind that is stored, see issue #221.
 				// Whether a folder is the inbox is decided by where it lies (space.json), never by
 				// what its sidecar says, see issue #226: an older sidecar loses the word here.
 				album.setKind(de.haumacher.imageServer.shared.model.AlbumKind.ALBUM);

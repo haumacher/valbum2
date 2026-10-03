@@ -1,0 +1,23 @@
+["AlbumInfo", {
+  "path": "Best",
+  "kind": "COLLECTION",
+  "title": "Best",
+  "subTitle": "",
+  "parts": [
+    ["Heading", {"text": "Highlights", "level": 1}],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "a.jpg", "date": 1015113600000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 1,
+      "ref": {"hash": "aaaa", "path": "Inbox/a.jpg"}
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "x.jpg", "date": 1015113610000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0,
+      "ref": {"hash": "xxxx", "path": "2020 Trip/x.jpg"}
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "gone.jpg", "missing": true,
+      "ref": {"hash": "gggg", "path": "Old/gone.jpg"}
+    }]
+  ]
+}]

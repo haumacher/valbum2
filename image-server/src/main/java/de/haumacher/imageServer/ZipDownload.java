@@ -55,12 +55,26 @@ final class ZipDownload {
 	 * </p>
 	 */
 	static void write(OutputStream out, List<File> files) throws IOException {
+		java.util.Map<String, File> named = new java.util.LinkedHashMap<>();
+		for (File file : files) {
+			named.put(file.getName(), file);
+		}
+		write(out, named);
+	}
+
+	/**
+	 * Writes the given files as the entries of one archive, each under the name it is given by: a
+	 * photograph of a collection is named as the collection names it (issue #221), where two
+	 * albums may hold two files of one name.
+	 */
+	static void write(OutputStream out, java.util.Map<String, File> files) throws IOException {
 		ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8);
 		zip.setMethod(ZipOutputStream.DEFLATED);
 		zip.setLevel(Deflater.NO_COMPRESSION);
 		byte[] buffer = new byte[64 * 1024];
-		for (File file : files) {
-			ZipEntry entry = new ZipEntry(file.getName());
+		for (java.util.Map.Entry<String, File> named : files.entrySet()) {
+			File file = named.getValue();
+			ZipEntry entry = new ZipEntry(named.getKey());
 			entry.setTime(file.lastModified());
 			zip.putNextEntry(entry);
 			try (InputStream in = new FileInputStream(file)) {

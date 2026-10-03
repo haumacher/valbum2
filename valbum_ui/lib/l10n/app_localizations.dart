@@ -3213,6 +3213,12 @@ abstract class AppLocalizations {
   /// **'moving to {target}'**
   String doingMoving(String target);
 
+  /// Names what the app was doing when a request failed (adding photos to a collection, i.e. a virtual album of references)
+  ///
+  /// In en, this message translates to:
+  /// **'adding to the collection {target}'**
+  String doingCollecting(String target);
+
   /// Names what the app was doing when a request failed
   ///
   /// In en, this message translates to:
@@ -4928,6 +4934,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Shut out everywhere'**
   String get shutOutEverywhereMark;
+
+  /// Menu entry of a folder listing creating a collection: an album that references photos lying in other albums instead of holding files (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'New collection'**
+  String get createCollection;
+
+  /// Title of the dialog creating a collection (an album of references to photos of other albums, issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'New collection'**
+  String get newCollectionTitle;
+
+  /// Hint in the dialog creating a collection (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'A collection shows photos of other albums without copying them.'**
+  String get newCollectionHint;
+
+  /// Line of the move picker on a collection, which cannot be the target of a move (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'A collection holds no files; photos are added to it with “Add to collection”.'**
+  String get collectionTakesNoMove;
+
+  /// Line of the add-to-collection picker on a folder that is no collection (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'Photos are added to a collection — open one or create one.'**
+  String get pickerNeedsCollection;
+
+  /// Entry of the add-to-collection picker creating a collection in the folder shown (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'Create new collection…'**
+  String get createNewCollection;
+
+  /// Said when Add to collection is asked with nothing selected (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'Select the photos to add first.'**
+  String get nothingToCollect;
+
+  /// Title of the dialog choosing the collection photos are added to (a collection references photos of other albums, issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'Add to collection'**
+  String get addToCollectionTitle;
+
+  /// Confirm button of the add-to-collection picker (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Add 1 photo here} other{Add {count} photos here}}'**
+  String addToCollectionConfirm(int count);
+
+  /// Summary after adding photos to a collection; target is the quoted collection path (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Nothing was added to {target}.} =1{Added 1 photo to {target}.} other{Added {count} photos to {target}.}}'**
+  String addedToCollection(int count, String target);
+
+  /// Placeholder tile of a collection for a referenced photo that was deleted or purged from the space (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'This photo is no longer in the library'**
+  String get collectionPhotoMissing;
+
+  /// Menu entry and confirm button taking selected photos out of a collection; the photos stay in their albums (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from collection'**
+  String get removeFromCollection;
+
+  /// Title of the confirmation before photos are taken out of a collection (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Remove 1 photo from this collection?} other{Remove {count} photos from this collection?}}'**
+  String removeFromCollectionQuestion(int count);
+
+  /// Explanation in the confirmation before photos are taken out of a collection (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'The photos are removed from this collection. They stay in their albums.'**
+  String get removeFromCollectionExplanation;
+
+  /// Said after photos were taken out of a collection (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Removed 1 photo from the collection.} other{Removed {count} photos from the collection.}}'**
+  String removedFromCollection(int count);
+
+  /// Menu entry adding the selected photo(s) to a collection, i.e. a virtual album referencing photos without copying them (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'Add to collection…'**
+  String get addToCollection;
+
+  /// The line of the image properties naming the album folder a photo shown in a collection lies in (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'In album: {album}'**
+  String propertySource(String album);
 }
 
 class _AppLocalizationsDelegate

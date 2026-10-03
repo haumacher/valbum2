@@ -35,6 +35,25 @@ public enum AlbumKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 	 */
 	INBOX("INBOX"),
 
+	/**
+	 * A collection, see issue #221: an album whose parts <em>reference</em> photographs lying in
+	 * other albums of the space instead of holding files of its own ("best of 2026").
+	 *
+	 * <p>
+	 * Unlike {@link #INBOX} this kind is <b>stored</b> in <code>index.json</code>: it is written
+	 * once, when the collection is created by a sidecar <code>PUT</code> carrying it, and never
+	 * changed afterwards &mdash; an album never becomes a collection nor the other way round, whatever
+	 * a later <code>PUT</code> says. Every {@link ImagePart} of a collection carries a
+	 * {@link ImagePart#ref reference}, resolved by its content hash through the space's hash index
+	 * (issue #118), so that it survives a move or a rename of the photograph's album. Order,
+	 * headings, the album picture and the labels are the collection's own; everything else a
+	 * photograph says &mdash; its turn, crop, description, rating, privacy, time and faces &mdash;
+	 * is the photograph's own, answered from and written to the album it lies in. Nothing is ever
+	 * copied on disk.
+	 * </p>
+	 */
+	COLLECTION("COLLECTION"),
+
 	;
 
 	private final String _protocolName;
@@ -59,6 +78,7 @@ public enum AlbumKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 		switch (protocolName) {
 			case "ALBUM": return ALBUM;
 			case "INBOX": return INBOX;
+			case "COLLECTION": return COLLECTION;
 		}
 		return ALBUM;
 	}
@@ -78,6 +98,7 @@ public enum AlbumKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 		switch (this) {
 			case ALBUM: out.value(1); break;
 			case INBOX: out.value(2); break;
+			case COLLECTION: out.value(3); break;
 			default: out.value(0);
 		}
 	}
@@ -87,6 +108,7 @@ public enum AlbumKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 		switch (in.nextInt()) {
 			case 1: return ALBUM;
 			case 2: return INBOX;
+			case 3: return COLLECTION;
 			default: return ALBUM;
 		}
 	}
