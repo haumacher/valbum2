@@ -301,7 +301,7 @@ public class TestPersonalLinks extends PersonalLinkTestCase {
 					headers(there.getIssued().getToken(), credential), parameters), response.response());
 				assertEquals(response.body(), HttpServletResponse.SC_UNAUTHORIZED, response.status());
 				identifyRequired(response);
-				assertEquals(AuthService.IDENTIFY_PERSONAL, errorMessage(response));
+				assertEquals(AuthService.IDENTIFY_OPEN, errorMessage(response));
 			} finally {
 				servlet.destroy();
 			}

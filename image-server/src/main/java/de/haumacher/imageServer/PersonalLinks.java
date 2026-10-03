@@ -14,6 +14,7 @@ import de.haumacher.imageServer.shared.model.ContactSession;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.IdentifyRequired;
 import de.haumacher.imageServer.shared.model.MaskedAddress;
+import de.haumacher.imageServer.shared.model.ProofMethod;
 import de.haumacher.imageServer.shared.model.ShareLink;
 import de.haumacher.imageServer.shared.model.ShareRecipient;
 import de.haumacher.imageServer.shared.model.ShareType;
@@ -146,11 +147,11 @@ public final class PersonalLinks {
 	 *
 	 * <p>
 	 * The contact's addresses are masked, and named only where the token presented was the
-	 * contact's own and was opened before: whoever holds it is asked to prove one of them. A first
-	 * open names the contact to confirm and no address at all.
+	 * contact's own and was opened before: whoever holds it is asked to prove one of them, by one of
+	 * the given methods (issue #199). A first open names the contact to confirm and no address at all.
 	 * </p>
 	 */
-	public static ErrorInfo identifyRequired(AuthService.Identification identification) {
+	public static ErrorInfo identifyRequired(AuthService.Identification identification, List<ProofMethod> methods) {
 		ShareStore.Link link = identification.getLink();
 		IdentifyRequired result = IdentifyRequired.create()
 			.setFirstOpen(identification.isFirstOpen())
@@ -165,7 +166,8 @@ public final class PersonalLinks {
 				}
 			}
 		}
-		// No proof of an address is built yet: the mailed code is #199, OpenID Connect #200.
+		// The mailed code of issue #199 where the server can send one; OpenID Connect is #200.
+		result.setMethods(methods);
 		return ErrorInfo.create().setMessage(identification.getMessage()).setIdentify(result);
 	}
 }

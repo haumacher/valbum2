@@ -27,3 +27,14 @@ services:
       VALBUM_OPTS: ""                 # e.g. "--preview-threads 1" or "--admin-code ABCD-EFGH"
       # The heap is a share of the memory (50 % by default); an -Xmx here wins.
       JAVA_OPTS: ""
+      # The address the album is reached at from outside (behind a reverse proxy), e.g. for the
+      # preview card of a share link posted in a messenger:
+      # VALBUM_PUBLIC_URL: https://photos.example.org/valbum
+      # The mail account the 6-digit codes of personal share links are sent through - the only
+      # mail the server sends. Use your mail provider's server; without it no code is offered.
+      # VALBUM_SMTP_HOST: smtp.example.org
+      # VALBUM_SMTP_PORT: "587"
+      # VALBUM_SMTP_USER: album@example.org
+      # VALBUM_SMTP_PASSWORD: secret
+      # VALBUM_SMTP_FROM: album@example.org
+      # VALBUM_SMTP_TLS: starttls     # starttls (port 587) | tls (port 465)

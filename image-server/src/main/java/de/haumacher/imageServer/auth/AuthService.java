@@ -588,6 +588,13 @@ public class AuthService {
 	public static final String IDENTIFY_PERSONAL =
 		"This link asks who you are. Open the link you were sent yourself.";
 
+	/**
+	 * What an open personal link (one without recipients) is answered without a credential: the
+	 * visitor proves an e-mail address, see issue #199.
+	 */
+	public static final String IDENTIFY_OPEN =
+		"This link asks who you are: it opens once you have confirmed your e-mail address.";
+
 	/** What a contact a personal link does not admit is answered (issue #198). */
 	public static final String NOT_A_RECIPIENT = "This link was not sent to you.";
 
@@ -1408,8 +1415,8 @@ public class AuthService {
 			return Caller.identify(new Identification(HttpServletResponse.SC_UNAUTHORIZED, IDENTIFY_REQUIRED,
 				share, recipient, contact));
 		}
-		return Caller.identify(
-			new Identification(HttpServletResponse.SC_UNAUTHORIZED, IDENTIFY_PERSONAL, share, null, null));
+		return Caller.identify(new Identification(HttpServletResponse.SC_UNAUTHORIZED,
+			share.isAddressed() ? IDENTIFY_PERSONAL : IDENTIFY_OPEN, share, null, null));
 	}
 
 	/**

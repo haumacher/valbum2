@@ -85,6 +85,9 @@ public class TestSharePreview extends TestCase {
 
 	private SpaceServlet _front;
 
+	/** The configured public address, see issue #199; <code>null</code> for none. */
+	private String _publicUrl;
+
 	@Override
 	protected void setUp() throws Exception {
 		super.setUp();
@@ -443,6 +446,38 @@ public class TestSharePreview extends TestCase {
 		assertFalse(body(get("/bob/s/" + token + "/")).contains("og:"));
 	}
 
+	// --- The configured public address (issue #199). ---
+
+	/**
+	 * Where <code>VALBUM_PUBLIC_URL</code> says where the album is reached from outside, the card
+	 * spells its addresses from it and not from the request: behind a proxy that rewrites the path
+	 * the request's own context path would name nothing out there.
+	 */
+	public void testAPublicAddressSpellsTheCard() throws Exception {
+		_publicUrl = "https://photos.example.org/album";
+		single();
+		String token = share("", ZOO, Privacy.MEMBERS, Ratings.MIN);
+
+		String html = body(get("/s/" + token + "/"));
+		assertTrue(html, html.contains(
+			"<meta property=\"og:url\" content=\"https://photos.example.org/album/s/" + token + "/\">"));
+		assertTrue(html, html.contains("<meta property=\"og:image\" content=\"https://photos.example.org/album/s/"
+			+ token + "/cover.jpg\">"));
+		assertTrue("The page's own base stays relative: " + html,
+			html.contains("<base href=\"/valbum/s/" + token + "/\">"));
+	}
+
+	/** A space's card under the public address. */
+	public void testAPublicAddressSpellsASpacesCard() throws Exception {
+		_publicUrl = "https://photos.example.org";
+		multi("alice", "bob");
+		String token = share("alice", ZOO, Privacy.MEMBERS, Ratings.MIN);
+
+		String html = body(get("/alice/s/" + token + "/"));
+		assertTrue(html, html.contains(
+			"<meta property=\"og:url\" content=\"https://photos.example.org/alice/s/" + token + "/\">"));
+	}
+
 	// --- Nothing is written. ---
 
 	/** A card and a cover read; they never write a sidecar and never touch an original. */
@@ -470,6 +505,7 @@ public class TestSharePreview extends TestCase {
 		data.init(TestSpaces.config());
 		_data.put("", data);
 		SharePreview preview = new SharePreview(_spaces, _data::get);
+		preview.setPublicUrl(_publicUrl);
 		_app.setPageDecorator(preview);
 		_app.setSessionResource(preview);
 		_app.init(TestSpaces.config());
@@ -490,6 +526,7 @@ public class TestSharePreview extends TestCase {
 		_app.setBaseSegments(_spaces.segments());
 		_front = new SpaceServlet(_spaces, _app);
 		SharePreview preview = new SharePreview(_spaces, _front::dataOf);
+		preview.setPublicUrl(_publicUrl);
 		_app.setPageDecorator(preview);
 		_app.setSessionResource(preview);
 		_front.init(TestSpaces.config());

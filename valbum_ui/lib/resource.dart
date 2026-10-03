@@ -2852,6 +2852,15 @@ class ShareInfo extends _JsonObject {
 	///  </p>
 	ContactInfo? contact;
 
+	///  The ways the contact of this session may prove a further address, see issue #199.
+	/// 
+	///  <p>
+	///  Answered beside {@link #contact} only: <code>mail-code</code> where the server can mail a
+	///  code, so that the app offers "Add your e-mail so we recognise you on other devices"; empty
+	///  where it cannot, and for every caller who is no contact.
+	///  </p>
+	List<ProofMethod> methods;
+
 	/// Creates a ShareInfo.
 	ShareInfo({
 			this.label = "", 
@@ -2860,6 +2869,7 @@ class ShareInfo extends _JsonObject {
 			this.path = "", 
 			this.type = ShareType.anonymous, 
 			this.contact, 
+			this.methods = const [], 
 	});
 
 	/// Parses a ShareInfo from a string source.
@@ -2913,6 +2923,19 @@ class ShareInfo extends _JsonObject {
 				contact = json.tryNull() ? null : ContactInfo.read(json);
 				break;
 			}
+			case "methods": {
+				json.expectArray();
+				methods = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ProofMethod.read(json);
+						if (value != null) {
+							methods.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -2945,6 +2968,13 @@ class ShareInfo extends _JsonObject {
 			json.addKey("contact");
 			_contact.writeContent(json);
 		}
+
+		json.addKey("methods");
+		json.startArray();
+		for (var _element in methods) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 }
@@ -6128,7 +6158,8 @@ class Contact extends _JsonObject {
 	///  When the contact was entered, an ISO-8601 instant.
 	String created;
 
-	///  The member who entered the contact.
+	///  The member who entered the contact; <code>link:&lt;share id&gt;</code> for the visitor of an
+	///  open personal link who entered themselves by proving an address (issue #199).
 	String createdBy;
 
 	///  When the contact first opened a link, empty while they never did.
@@ -6735,8 +6766,8 @@ class ContactCredential extends _JsonObject {
 ///  Carried by the {@link ErrorInfo#identify} of the <code>401</code> answered on every endpoint,
 ///  <code>?type=auth</code> included, and never with the album. {@link #firstOpen} says that the presented token is a recipient's own link
 ///  that was never opened: <code>?action=identify</code> accepts it. Otherwise the caller proves an
-///  address by one of the {@link #methods} &mdash; none in this build, which leaves "ask the sharer
-///  to send the link again".
+///  address by one of the {@link #methods} (a mailed code, issue #199); where there is none, what is
+///  left is "ask the sharer to send the link again".
 ///  </p>
 class IdentifyRequired extends _JsonObject {
 	///  Whether the token is a recipient's own link that has not been opened yet.
@@ -6748,7 +6779,9 @@ class IdentifyRequired extends _JsonObject {
 	///  The contact's addresses, masked (<code>p•••@gmx.de</code>); empty for a first open.
 	List<MaskedAddress> addresses;
 
-	///  The ways the server can prove an address of the contact; empty in this build.
+	///  The ways the server can prove an address here (issue #199): <code>mail-code</code> where the
+	///  server can mail a code and either the link is open or the contact has an e-mail address;
+	///  empty for a first open, which needs no proof.
 	List<ProofMethod> methods;
 
 	///  The label of the link.
@@ -6924,7 +6957,7 @@ class MaskedAddress extends _JsonObject {
 
 }
 
-///  A way to prove an address, see {@link IdentifyRequired#methods}: <code>mail-code</code>, <code>oidc:google</code>, …
+///  A way to prove an address, see {@link IdentifyRequired#methods}: <code>mail-code</code> (issue #199), <code>oidc:google</code>, …
 class ProofMethod extends _JsonObject {
 	///  The name of the method.
 	String name;
@@ -6966,6 +6999,241 @@ class ProofMethod extends _JsonObject {
 
 		json.addKey("name");
 		json.addString(name);
+	}
+
+}
+
+///  Asking for a code that proves an e-mail address, <code>&lt;data&gt;/?action=prove-email</code> (issue #199).
+/// 
+///  <p>
+///  Sent on a personal share link. With a recipient's own link that was opened before, the address is
+///  one the space saved with that contact and the request names only which: the masked form
+///  {@link IdentifyRequired#addresses} showed, or its position there in {@link #choice}; a typed
+///  address is refused. On an open personal link, and for a contact who is already recognised and
+///  adds an address, it is any address. The answer is an {@link EmailProofSent}, the same whether the
+///  address is known to the space or not.
+///  </p>
+class EmailProof extends _JsonObject {
+	///  The address, or on a recipient's own link the masked form of one of the contact's addresses.
+	String address;
+
+	///  On a recipient's own link, the position of the address in {@link IdentifyRequired#addresses},
+	///  counted from <code>1</code>; <code>0</code> where {@link #address} names it.
+	int choice;
+
+	/// Creates a EmailProof.
+	EmailProof({
+			this.address = "", 
+			this.choice = 0, 
+	});
+
+	/// Parses a EmailProof from a string source.
+	static EmailProof? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a EmailProof instance from the given reader.
+	static EmailProof read(JsonReader json) {
+		EmailProof result = EmailProof();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "EmailProof";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "address": {
+				address = json.expectString();
+				break;
+			}
+			case "choice": {
+				choice = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("address");
+		json.addString(address);
+
+		json.addKey("choice");
+		json.addNumber(choice);
+	}
+
+}
+
+///  A code was mailed, the answer of <code>?action=prove-email</code> (issue #199).
+class EmailProofSent extends _JsonObject {
+	///  The address the code went to, masked.
+	String address;
+
+	///  When the code runs out, an ISO-8601 instant.
+	String expires;
+
+	///  How many attempts the code allows.
+	int attempts;
+
+	/// Creates a EmailProofSent.
+	EmailProofSent({
+			this.address = "", 
+			this.expires = "", 
+			this.attempts = 0, 
+	});
+
+	/// Parses a EmailProofSent from a string source.
+	static EmailProofSent? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a EmailProofSent instance from the given reader.
+	static EmailProofSent read(JsonReader json) {
+		EmailProofSent result = EmailProofSent();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "EmailProofSent";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "address": {
+				address = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			case "attempts": {
+				attempts = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("address");
+		json.addString(address);
+
+		json.addKey("expires");
+		json.addString(expires);
+
+		json.addKey("attempts");
+		json.addNumber(attempts);
+	}
+
+}
+
+///  Proving an e-mail address with the mailed code, <code>&lt;data&gt;/?action=verify-email</code> (issue #199).
+/// 
+///  <p>
+///  Names the address exactly as {@link EmailProof} did and carries the code. Success marks the
+///  address proven and answers a {@link ContactCredential}: for a visitor not yet recognised a fresh
+///  credential (on an open personal link the contact holding the address, or a new one); for a
+///  contact who is recognised already the address is added to them and the credential they hold
+///  stays, so the answer's {@link ContactCredential#credential} is empty.
+///  </p>
+class EmailVerify extends _JsonObject {
+	///  The address, as {@link EmailProof#address} named it.
+	String address;
+
+	///  The position of the address, as {@link EmailProof#choice} named it.
+	int choice;
+
+	///  The six digits of the mail.
+	String code;
+
+	///  Whether to remember this browser: 90 days renewed on use, else 24 hours.
+	bool remember;
+
+	///  The name the contact wants to be greeted by; empty keeps what they had. A visitor of an open
+	///  link who is nobody yet is entered under it (else under the address); ignored where the caller
+	///  is recognised already.
+	String displayName;
+
+	/// Creates a EmailVerify.
+	EmailVerify({
+			this.address = "", 
+			this.choice = 0, 
+			this.code = "", 
+			this.remember = false, 
+			this.displayName = "", 
+	});
+
+	/// Parses a EmailVerify from a string source.
+	static EmailVerify? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a EmailVerify instance from the given reader.
+	static EmailVerify read(JsonReader json) {
+		EmailVerify result = EmailVerify();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "EmailVerify";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "address": {
+				address = json.expectString();
+				break;
+			}
+			case "choice": {
+				choice = json.expectInt();
+				break;
+			}
+			case "code": {
+				code = json.expectString();
+				break;
+			}
+			case "remember": {
+				remember = json.expectBool();
+				break;
+			}
+			case "displayName": {
+				displayName = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("address");
+		json.addString(address);
+
+		json.addKey("choice");
+		json.addNumber(choice);
+
+		json.addKey("code");
+		json.addString(code);
+
+		json.addKey("remember");
+		json.addBool(remember);
+
+		json.addKey("displayName");
+		json.addString(displayName);
 	}
 
 }

@@ -32,9 +32,11 @@ import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.faces.PeopleStore;
 import de.haumacher.imageServer.heif.HeifDecoder;
 import de.haumacher.imageServer.heif.HeifFile;
+import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.raw.NoEmbeddedPreviewException;
 import de.haumacher.imageServer.raw.RawFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.CacheRefreshed;
 import de.haumacher.imageServer.shared.model.ContactCredential;
 import de.haumacher.imageServer.shared.model.ContactIdentify;
@@ -45,6 +47,8 @@ import de.haumacher.imageServer.shared.model.DeviceCodeCreated;
 import de.haumacher.imageServer.shared.model.DeviceCodeRequest;
 import de.haumacher.imageServer.shared.model.DeviceEntry;
 import de.haumacher.imageServer.shared.model.DeviceList;
+import de.haumacher.imageServer.shared.model.EmailProof;
+import de.haumacher.imageServer.shared.model.EmailVerify;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FaceAssignment;
 import de.haumacher.imageServer.shared.model.FaceInfo;
@@ -500,6 +504,20 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private final String _mapUrl;
 
+	/**
+	 * The name of the space this servlet serves as the code mail of issue #199 says it: its
+	 * <code>space.json</code> name, the folder name in a multi-space server, empty where neither
+	 * says one (the mail then names the program).
+	 */
+	private final String _spaceName;
+
+	/**
+	 * The proof of an e-mail address by a mailed code, see issue #199: one instance for the whole
+	 * server, so that its rate limits count across every space; {@link EmailProofs#NONE} where no
+	 * mail account is configured, and in every test that does not install one.
+	 */
+	private EmailProofs _proofs = EmailProofs.NONE;
+
 	/** The transcoded sidecars of the videos this server shows, see issue #74. */
 	private final VideoRenditions _videos = new VideoRenditions();
 
@@ -655,6 +673,7 @@ public class ImageServlet extends HttpServlet {
 			throws IOException {
 		_space = space == null ? "" : space;
 		_mapUrl = config == null ? SpaceStore.DEFAULT_MAP_URL : config.getMapUrl();
+		_spaceName = config == null ? "" : config.getName();
 		_basePath = basePath.toPath();
 		boolean facesEnabled = config != null && config.isFacesEnabled();
 		_people = new PeopleStore(_basePath);
@@ -673,6 +692,19 @@ public class ImageServlet extends HttpServlet {
 			LOG.warning("The space '" + (_space.isEmpty() ? basePath.getName() : _space)
 				+ "' asked for face detection, which this machine cannot do: " + noFaces);
 		}
+	}
+
+	/**
+	 * Installs the proof of an e-mail address by a mailed code, see issue #199; before, every proof
+	 * is answered {@link EmailProofs#NOT_CONFIGURED}.
+	 */
+	public void setEmailProofs(EmailProofs proofs) {
+		_proofs = proofs == null ? EmailProofs.NONE : proofs;
+	}
+
+	/** Who may prove which address, with the proof this servlet was given. */
+	private AddressProof addressProof() {
+		return new AddressProof(_auth, _proofs, _spaceName);
 	}
 
 	@Override
@@ -744,8 +776,12 @@ public class ImageServlet extends HttpServlet {
 			}
 			// Always answerable: this is how an unpaired app learns that it must pair. The map
 			// template of the space rides along, see issue #112.
-			serveJsonObject(response,
-				_auth.authInfo(caller, _basePath, _space).setMapUrl(_mapUrl).setFaces(_faces.isEnabled()));
+			AuthInfo info = _auth.authInfo(caller, _basePath, _space).setMapUrl(_mapUrl).setFaces(_faces.isEnabled());
+			if (info.getShare() != null && info.getShare().getContact() != null) {
+				// A recognised contact may add an address, where the server can mail a code (#199).
+				info.getShare().setMethods(addressProof().contactMethods());
+			}
+			serveJsonObject(response, info);
 			return;
 		}
 		if ("invitations".equals(type)) {
@@ -2804,6 +2840,124 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Mails a code that proves an e-mail address, <code>&lt;data&gt;/?action=prove-email</code>,
+	 * see issue #199.
+	 *
+	 * <p>
+	 * The body is an {@link EmailProof}, the answer an {@link EmailProofSent} &mdash; the same
+	 * whether or not the space knows the address. Who may name which address is
+	 * {@link AddressProof}'s decision; the code, its rate limits and its mail are
+	 * {@link EmailProofs}'.
+	 * </p>
+	 */
+	private void proveEmail(Context context) throws IOException {
+		Caller caller = proofCaller(context);
+		if (caller == null) {
+			return;
+		}
+		EmailProof request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = EmailProof.readEmailProof(new JsonReader(new ReaderAdapter(
+				new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unreadable request for a code: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AddressProof.PROOF_UNREADABLE);
+			return;
+		}
+		AddressProof proof = addressProof();
+		try {
+			AddressProof.Target target = proof.target(caller, request.getAddress(), request.getChoice());
+			serveJsonObject(context.response(), proof.prove(target, context.request().getRemoteAddr(),
+				context.request().getHeader("Accept-Language")));
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing a request for a code: " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+		} catch (EmailProofs.Refused ex) {
+			proofRefused(context, ex);
+		}
+	}
+
+	/**
+	 * Proves an e-mail address with the mailed code, <code>&lt;data&gt;/?action=verify-email</code>,
+	 * see issue #199.
+	 *
+	 * <p>
+	 * The body is an {@link EmailVerify}; the answer the {@link ContactCredential} the proven address
+	 * makes of the caller, see {@link AddressProof#verify}.
+	 * </p>
+	 */
+	private void verifyEmail(Context context) throws IOException {
+		Caller caller = proofCaller(context);
+		if (caller == null) {
+			return;
+		}
+		EmailVerify request;
+		try {
+			byte[] contents = readBody(context.request());
+			request = EmailVerify.readEmailVerify(new JsonReader(new ReaderAdapter(
+				new InputStreamReader(new ByteArrayInputStream(contents), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unreadable code: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AddressProof.PROOF_UNREADABLE);
+			return;
+		}
+		AddressProof proof = addressProof();
+		try {
+			AddressProof.Target target = proof.target(caller, request.getAddress(), request.getChoice());
+			serveJsonObject(context.response(), proof.verify(caller, target, request.getCode(),
+				context.request().getRemoteAddr(), request.isRemember(), request.getDisplayName()));
+		} catch (AuthService.Refused ex) {
+			LOG.warning("Refusing a code: " + ex.getMessage());
+			errorInfo(context, ex.getStatus(), ex.getMessage());
+		} catch (EmailProofs.Refused ex) {
+			proofRefused(context, ex);
+		}
+	}
+
+	/**
+	 * The caller of a proof request, <code>null</code> where the response is complete.
+	 *
+	 * <p>
+	 * A link that is gone is answered so first; then a server without a mail account
+	 * {@link EmailProofs#NOT_CONFIGURED}, whoever asks; then a caller with nothing to prove here
+	 * what it is answered anywhere &mdash; the refusal of its personal link, or
+	 * {@link AddressProof#PROOF_NOT_HERE}.
+	 * </p>
+	 */
+	private Caller proofCaller(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (caller.isShareGone()) {
+			gone(context, caller);
+			return null;
+		}
+		if (!_proofs.isAvailable()) {
+			LOG.warning("Refusing a proof of an address: no mail account is configured.");
+			errorInfo(context, HttpServletResponse.SC_NOT_IMPLEMENTED, EmailProofs.NOT_CONFIGURED);
+			return null;
+		}
+		if (!AddressProof.mayProve(caller)) {
+			if (caller.mustIdentify()) {
+				gone(context, caller);
+			} else {
+				LOG.warning("Refusing a proof of an address outside a personal link.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AddressProof.PROOF_NOT_HERE);
+			}
+			return null;
+		}
+		return caller;
+	}
+
+	/** Answers a refused code, with the time to wait where waiting helps. */
+	private static void proofRefused(Context context, EmailProofs.Refused ex) throws IOException {
+		LOG.warning("Refusing a code: " + ex.getMessage());
+		if (ex.getRetryAfter() > 0) {
+			context.response().setHeader("Retry-After", Long.toString(ex.getRetryAfter()));
+		}
+		errorInfo(context, ex.getStatus(), ex.getMessage());
+	}
+
+	/**
 	 * The share link a management request about a personal link names, <code>null</code> if the
 	 * response is complete, see issue #198.
 	 *
@@ -3482,6 +3636,15 @@ public class ImageServlet extends HttpServlet {
 			identify(context);
 			return;
 		}
+		if ("prove-email".equals(action)) {
+			// A personal link that does not know who is asking may also prove an address, #199.
+			proveEmail(context);
+			return;
+		}
+		if ("verify-email".equals(action)) {
+			verifyEmail(context);
+			return;
+		}
 
 		if (gone(context, _auth.caller(request))) {
 			return;
@@ -3702,7 +3865,7 @@ public class ImageServlet extends HttpServlet {
 	 *
 	 * @return Whether the request was answered here.
 	 */
-	private static boolean gone(Context context, Caller caller) throws IOException {
+	private boolean gone(Context context, Caller caller) throws IOException {
 		if (caller.mustIdentify()) {
 			// A personal link that does not know who is asking opens nothing, on every endpoint,
 			// "?type=auth" included: the refusal says how to become somebody, see issue #198.
@@ -3711,7 +3874,7 @@ public class ImageServlet extends HttpServlet {
 			HttpServletResponse response = context.response();
 			allowCrossOrigin(response);
 			response.setStatus(identification.getStatus());
-			serveJson(response, PersonalLinks.identifyRequired(identification));
+			serveJson(response, PersonalLinks.identifyRequired(identification, addressProof().methods(identification)));
 			return true;
 		}
 		if (!caller.isShareGone()) {

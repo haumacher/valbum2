@@ -108,6 +108,9 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 
 	private final Function<String, ImageServlet> _data;
 
+	/** See {@link #setPublicUrl(String)}. */
+	private String _publicUrl;
+
 	/**
 	 * Creates a {@link SharePreview}.
 	 *
@@ -123,6 +126,14 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 	public SharePreview(Spaces spaces, Function<String, ImageServlet> data) {
 		_spaces = spaces;
 		_data = data;
+	}
+
+	/**
+	 * The configured public address of the album's context root (<code>VALBUM_PUBLIC_URL</code>,
+	 * issue #199), <code>null</code> to spell the card's addresses from each request as before.
+	 */
+	public void setPublicUrl(String publicUrl) {
+		_publicUrl = publicUrl;
 	}
 
 	// --- The cover. ---
@@ -225,8 +236,7 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		if (shown == null) {
 			return html;
 		}
-		String url = origin(request) + contextPath(request) + appBase + "/" + ShareStore.URL_SEGMENT + "/" + token
-			+ "/";
+		String url = root(request) + appBase + "/" + ShareStore.URL_SEGMENT + "/" + token + "/";
 		String title = title(shown, link);
 		StringBuilder tags = new StringBuilder();
 		tags.append("\n<title>").append(escape(title)).append("</title>\n");
@@ -317,6 +327,18 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 			result.append(':').append(port);
 		}
 		return result.toString();
+	}
+
+	/**
+	 * The absolute address of the album's context root, as a messenger must be told it: the
+	 * configured public address where there is one (issue #199), else the request's own
+	 * {@link #origin(HttpServletRequest) surface} and context path.
+	 */
+	String root(HttpServletRequest request) {
+		if (_publicUrl != null) {
+			return _publicUrl;
+		}
+		return origin(request) + contextPath(request);
 	}
 
 	private static String contextPath(HttpServletRequest request) {

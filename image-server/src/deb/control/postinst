@@ -16,6 +16,16 @@ case "$1" in
 				--gecos "VAlbum album server" "$VALBUM_USER"
 		fi
 
+		# The configuration holds the mail password since issue #199: readable by
+		# root and the server's group only (it was world-readable before). It is a
+		# conffile, so an edited one is kept by dpkg as it is; only its group and
+		# mode are set here, on every install and upgrade, never its contents.
+		CONFIG=${VALBUM_CONFIG:-/etc/default/valbum}
+		if [ -f "$CONFIG" ]; then
+			chgrp "$VALBUM_GROUP" "$CONFIG"
+			chmod 0640 "$CONFIG"
+		fi
+
 		# Hand the default library folder to the server user. Only the folder
 		# itself, and only while it is still root-owned: a library the user
 		# pointed somewhere else, or one already owned, is never touched.
