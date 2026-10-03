@@ -5,12 +5,15 @@ library;
 
 import 'dart:convert';
 
+import 'package:contact_pick/contact_pick.dart';
 import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/about.dart' as about;
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/phone_contacts.dart' as phone;
 import 'package:valbum_ui/recipient_chooser.dart';
 import 'package:valbum_ui/recipient_send.dart' as send;
 import 'package:valbum_ui/resource.dart';
@@ -567,5 +570,185 @@ void main() {
     expect(find.text(testL10n.sendAgainHeading("Tante Petra")), findsOneWidget);
     expect(find.text(testL10n.sendAgainNote), findsOneWidget);
     expect(find.byKey(const Key("send-email-c1-0")), findsOneWidget);
+  });
+
+  // Issue #201: a recipient picked out of the phone's address book, one
+  // address or number per pick, through the plugin's channel.
+  group("the phone's contacts", () {
+    /// What the next picks answer, in order; `null` is a cancel.
+    late List<Map<String, String>?> picks;
+    late List<Object?> asked;
+
+    setUp(() {
+      picks = [];
+      asked = [];
+      phone.phoneContacts = const phone.PluginPhoneContacts();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(contactPickChannel, (call) async {
+        expect(call.method, contactPickMethod);
+        asked.add((call.arguments as Map)["kind"]);
+        return picks.removeAt(0);
+      });
+    });
+
+    tearDown(() {
+      phone.phoneContacts = null;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(contactPickChannel, null);
+    });
+
+    Future<void> openChooser(WidgetTester tester, Server server,
+        {bool isWeb = false}) async {
+      await pumpDialog(tester, server, isWeb: isWeb);
+      await tapKey(tester, "new-link");
+      await chooseFrom(tester, "link-type", testL10n.linkTypeSelected);
+    }
+
+    List<dynamic> createdRecipients(WidgetTester tester, Server server) =>
+        server.bodyOf("share")["recipients"] as List;
+
+    testWidgets('a picked e-mail address becomes a recipient', (tester) async {
+      var server = Server();
+      await openChooser(tester, server);
+      expect(createEnabled(tester), isFalse);
+      picks = [
+        {"name": "Erna Schmidt", "value": "erna@gmx.de"},
+      ];
+      await tapKey(tester, "recipient-pick-email");
+
+      expect(asked, ["email"]);
+      expect(find.text("Erna Schmidt"), findsOneWidget);
+      expect(createEnabled(tester), isTrue);
+      await tapKey(tester, "link-create");
+      var recipient = createdRecipients(tester, server).single;
+      expect(recipient["name"], "Erna Schmidt");
+      expect(recipient["addresses"], [
+        {"kind": "EMAIL", "value": "erna@gmx.de", "proven": false},
+      ]);
+    });
+
+    testWidgets('a picked phone number is taken as the phone holds it',
+        (tester) async {
+      var server = Server();
+      await openChooser(tester, server);
+      picks = [
+        {"name": "Opa", "value": "+49 171 2345678"},
+      ];
+      await tapKey(tester, "recipient-pick-phone");
+
+      expect(asked, ["phone"]);
+      await tapKey(tester, "link-create");
+      var recipient = createdRecipients(tester, server).single;
+      expect(recipient["name"], "Opa");
+      expect(recipient["addresses"], [
+        {"kind": "PHONE", "value": "+49 171 2345678", "proven": false},
+      ]);
+    });
+
+    testWidgets('picking again for the same name adds the address',
+        (tester) async {
+      var server = Server();
+      await openChooser(tester, server);
+      picks = [
+        {"name": "Opa", "value": "opa@web.de"},
+        {"name": "opa", "value": "0171 2345678"},
+        {"name": "Opa", "value": "opa@web.de"},
+      ];
+      await tapKey(tester, "recipient-pick-email");
+      await tapKey(tester, "recipient-pick-phone");
+      await tapKey(tester, "recipient-pick-email");
+
+      expect(find.byKey(const Key("recipient-picked-1")), findsNothing);
+      await tapKey(tester, "link-create");
+      var recipient = createdRecipients(tester, server).single;
+      expect(recipient["name"], "Opa");
+      expect(recipient["addresses"], [
+        {"kind": "EMAIL", "value": "opa@web.de", "proven": false},
+        {"kind": "PHONE", "value": "0171 2345678", "proven": false},
+      ]);
+    });
+
+    testWidgets("a known contact's address ticks that contact",
+        (tester) async {
+      var server = Server();
+      await openChooser(tester, server);
+      picks = [
+        {"name": "Bernd", "value": "+49 170 12345"},
+        {"name": "Petra", "value": "Petra@GMX.de"},
+      ];
+      await tapKey(tester, "recipient-pick-phone");
+      await tapKey(tester, "recipient-pick-email");
+
+      bool ticked(String id) => tester
+          .widget<CheckboxListTile>(find.byKey(Key("recipient-contact-$id")))
+          .value!;
+      expect(ticked("c1"), isTrue);
+      expect(ticked("c2"), isTrue);
+      expect(
+          find.text(testL10n.newContactAlready("Tante Petra")), findsOneWidget);
+      expect(find.byKey(const Key("recipient-picked-0")), findsNothing);
+      await tapKey(tester, "link-create");
+      expect([for (var r in createdRecipients(tester, server)) r["contact"]],
+          unorderedEquals(["c1", "c2"]));
+    });
+
+    testWidgets('a cancelled pick adds nothing', (tester) async {
+      await openChooser(tester, Server());
+      picks = [null];
+      await tapKey(tester, "recipient-pick-email");
+
+      expect(asked, ["email"]);
+      expect(find.byKey(const Key("recipient-picked-0")), findsNothing);
+      expect(createEnabled(tester), isFalse);
+    });
+
+    testWidgets('a picker that cannot open says why', (tester) async {
+      await openChooser(tester, Server());
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(contactPickChannel, (call) async {
+        throw PlatformException(
+            code: "NO_PICKER", message: "No contacts app.");
+      });
+      await tapKey(tester, "recipient-pick-email");
+
+      expect(find.text(testL10n.recipientsPickFailed("No contacts app.")),
+          findsOneWidget);
+      expect(createEnabled(tester), isFalse);
+    });
+
+    testWidgets('a removed pick is no recipient', (tester) async {
+      await openChooser(tester, Server());
+      picks = [
+        {"name": "Erna", "value": "erna@gmx.de"},
+      ];
+      await tapKey(tester, "recipient-pick-email");
+      await tapKey(tester, "recipient-picked-remove-0");
+
+      expect(find.byKey(const Key("recipient-picked-0")), findsNothing);
+      expect(createEnabled(tester), isFalse);
+    });
+
+    testWidgets('the web offers no address book', (tester) async {
+      await openChooser(tester, Server(), isWeb: true);
+      expect(find.byKey(const Key("recipient-pick-email")), findsNothing);
+      expect(find.byKey(const Key("recipient-pick-phone")), findsNothing);
+    });
+
+    testWidgets('the entries speak German', (tester) async {
+      await pumpDialog(tester, Server(),
+          isWeb: false, locale: const Locale("de"));
+      var de = l10nOf(const Locale("de"));
+      await tapKey(tester, "new-link");
+      await chooseFrom(tester, "link-type", de.linkTypeSelected);
+      expect(find.text("E-Mail-Adresse aus meinen Kontakten…"), findsOneWidget);
+      expect(find.text("Telefonnummer aus meinen Kontakten…"), findsOneWidget);
+    });
+
+    testWidgets('a machine without an address book offers none',
+        (tester) async {
+      phone.phoneContacts = null;
+      await openChooser(tester, Server());
+      expect(find.byKey(const Key("recipient-pick-email")), findsNothing);
+    });
   });
 }

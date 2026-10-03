@@ -63,6 +63,11 @@ dependencies:
   # repository, reached only through `lib/photo_library_manager.dart`.
   media_location:
     path: packages/media_location
+  # One e-mail address or phone number picked in the phone's own contacts
+  # picker, without the contacts permission (issue #201); a plugin of this
+  # repository, reached only through `lib/phone_contacts.dart`.
+  contact_pick:
+    path: packages/contact_pick
   # Keeping the screen on while an upload runs (issue #63); reached only through
   # `lib/wakelock_plugin.dart`.
   wakelock_plus: ^1.8.0

@@ -24,6 +24,7 @@ import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show dayOf;
 import 'offline.dart';
+import 'phone_contacts.dart';
 import 'recipient_chooser.dart';
 import 'recipient_send.dart';
 import 'resource.dart';
@@ -562,6 +563,8 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
             child: RecipientChooser(
               client: widget.client,
               enabled: !_busy,
+              // The phone's address book, never on the web (issue #201).
+              phoneContacts: widget.isWeb ? null : phoneContacts,
               onChanged: (value) => setState(() => _recipients = value),
             ),
           ),

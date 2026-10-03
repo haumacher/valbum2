@@ -4520,6 +4520,24 @@ abstract class AppLocalizations {
   /// **'Remove'**
   String get newContactRemove;
 
+  /// Entry of the recipient chooser on a phone opening the phone's own contacts picker to pick one e-mail address (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'E-mail address from my contacts…'**
+  String get recipientsPickEmail;
+
+  /// Entry of the recipient chooser on a phone opening the phone's own contacts picker to pick one phone number (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'Phone number from my contacts…'**
+  String get recipientsPickPhone;
+
+  /// Said in the recipient chooser where the phone's contacts picker could not be opened; the reason is the platform's own words (issue #201).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open the contacts of this phone ({reason}).'**
+  String recipientsPickFailed(String reason);
+
   /// Error of a new contact's e-mail field (issue #202).
   ///
   /// In en, this message translates to:

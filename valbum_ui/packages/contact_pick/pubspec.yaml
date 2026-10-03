@@ -1,0 +1,23 @@
+name: contact_pick
+description: >-
+  One e-mail address or phone number picked in the phone's own contacts
+  picker, without the contacts permission (issue #201). Part of VAlbum2, not
+  published.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: de.haumacher.valbum.contact_pick
+        pluginClass: ContactPickPlugin
+      ios:
+        pluginClass: ContactPickPlugin

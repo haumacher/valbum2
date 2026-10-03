@@ -13,7 +13,17 @@
 ///  3. an address that already belongs to a contact is not entered twice:
 ///     the chooser says "already in your contacts as …" and ticks that
 ///     contact instead; a name left empty is named by the address on the
-///     server.
+///     server;
+///  4. on a phone (issue #201, the author's decision of 2026-10-03), **"E-mail
+///     address from my contacts…"** and **"Phone number from my contacts…"**:
+///     the system's own picker hands back one address or number with the
+///     contact's name, and no contacts permission is held (see
+///     `phone_contacts.dart`). The pick becomes a new recipient with that
+///     name and address — unless a space contact already holds the address,
+///     which is then ticked as in 3. Picking again for the **same name**
+///     (ignoring case) adds the address to that recipient instead of making a
+///     second one, so "Oma" picked once by e-mail and once by phone is one
+///     contact with both; a pick without a name is a recipient of its own.
 ///
 /// What comes out is a list of [ShareRecipient]s — an existing contact by
 /// its id, a new one by name and address — handed to [onChanged] on every
@@ -24,6 +34,8 @@ import 'package:flutter/material.dart';
 
 import 'client.dart';
 import 'l10n/app_localizations.dart';
+import 'phone_contacts.dart';
+import 'photo_library.dart' show platformErrorText;
 import 'resource.dart';
 
 /// One address of a pasted line: the name before it (empty where none was
@@ -104,6 +116,27 @@ class _Draft {
   }
 }
 
+/// A recipient picked out of the phone's address book: the name it gave and
+/// every address picked for that name.
+class _Picked {
+  final String name;
+  final List<ContactAddress> addresses;
+
+  _Picked(this.name, this.addresses);
+}
+
+/// What an address is compared by: an e-mail address ignoring case, a phone
+/// number by its digits and a leading `+` (`00` read as `+`), so
+/// `+49 170 12345` meets the `+4917012345` the server stores.
+String _addressKey(AddressKind kind, String value) {
+  var trimmed = value.trim().toLowerCase();
+  if (kind != AddressKind.phone) {
+    return trimmed;
+  }
+  var digits = trimmed.replaceAll(RegExp(r"[^0-9+]"), "");
+  return digits.startsWith("00") ? "+${digits.substring(2)}" : digits;
+}
+
 /// The chooser of a personal link's recipients, see the library.
 class RecipientChooser extends StatefulWidget {
   final VAlbumClient client;
@@ -114,11 +147,16 @@ class RecipientChooser extends StatefulWidget {
   /// Whether the chooser takes input; false while the link is being made.
   final bool enabled;
 
+  /// The phone's address book to pick from, `null` where there is none (the
+  /// web, the desktop): the two entries of issue #201 are then not offered.
+  final PhoneContacts? phoneContacts;
+
   const RecipientChooser({
     super.key,
     required this.client,
     required this.onChanged,
     this.enabled = true,
+    this.phoneContacts,
   });
 
   @override
@@ -139,6 +177,12 @@ class RecipientChooserState extends State<RecipientChooser> {
 
   /// The new contacts being entered.
   final List<_Draft> _drafts = [];
+
+  /// The recipients picked out of the phone's address book.
+  final List<_Picked> _picked = [];
+
+  /// Why the phone's picker could not be opened, `null` while it could.
+  String? _pickError;
 
   /// The last "already in your contacts as …", `null` while there is none.
   String? _already;
@@ -190,11 +234,13 @@ class RecipientChooserState extends State<RecipientChooser> {
     ];
   }
 
-  /// The contact holding [address], `null` where none does.
-  Contact? _holding(String address) {
-    var wanted = address.trim().toLowerCase();
+  /// The contact holding [address] (an e-mail address unless [kind] says
+  /// otherwise), `null` where none does.
+  Contact? _holding(String address, [AddressKind kind = AddressKind.email]) {
+    var wanted = _addressKey(kind, address);
     for (var contact in _contacts ?? const <Contact>[]) {
-      if (contact.addresses.any((held) => held.value.toLowerCase() == wanted)) {
+      if (contact.addresses.any((held) =>
+          held.kind == kind && _addressKey(kind, held.value) == wanted)) {
         return contact;
       }
     }
@@ -215,6 +261,8 @@ class RecipientChooserState extends State<RecipientChooser> {
                 ),
               ],
             ),
+        for (var picked in _picked)
+          ShareRecipient(name: picked.name, addresses: List.of(picked.addresses)),
       ];
 
   void _changed() => widget.onChanged(recipients);
@@ -240,6 +288,65 @@ class RecipientChooserState extends State<RecipientChooser> {
       _drafts.remove(draft);
       draft.dispose();
     });
+    _changed();
+  }
+
+  /// Opens the phone's picker for one address of [kind], see the library.
+  Future<void> _pick(AddressKind kind) async {
+    var contacts = widget.phoneContacts;
+    if (contacts == null) {
+      return;
+    }
+    PickedAddress? picked;
+    try {
+      picked = await contacts.pick(kind);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _pickError = platformErrorText(error));
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    if (picked == null) {
+      setState(() => _pickError = null);
+      return;
+    }
+    _took(picked);
+  }
+
+  /// [picked] becomes a recipient, see the library.
+  void _took(PickedAddress picked) {
+    var address = picked.address;
+    var holder = _holding(address.value, address.kind);
+    setState(() {
+      _pickError = null;
+      if (holder != null) {
+        _ticked.add(holder.id);
+        _already = holder.name;
+        return;
+      }
+      var name = picked.name.trim();
+      var same = name.isEmpty
+          ? null
+          : _picked
+              .where((other) => other.name.toLowerCase() == name.toLowerCase())
+              .firstOrNull;
+      if (same == null) {
+        _picked.add(_Picked(name, [address]));
+      } else if (!same.addresses.any((held) =>
+          held.kind == address.kind &&
+          _addressKey(held.kind, held.value) ==
+              _addressKey(address.kind, address.value))) {
+        same.addresses.add(address);
+      }
+    });
+    _changed();
+  }
+
+  void _removePicked(_Picked picked) {
+    setState(() => _picked.remove(picked));
     _changed();
   }
 
@@ -365,7 +472,57 @@ class RecipientChooserState extends State<RecipientChooser> {
           enabled: enabled,
           onTap: _addDraft,
         ),
+        for (var i = 0; i < _picked.length; i++) _pickedRow(l10n, i),
+        if (widget.phoneContacts != null) ...[
+          ListTile(
+            key: const Key("recipient-pick-email"),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.contact_mail_outlined),
+            title: Text(l10n.recipientsPickEmail),
+            enabled: enabled,
+            onTap: () => _pick(AddressKind.email),
+          ),
+          ListTile(
+            key: const Key("recipient-pick-phone"),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.contact_phone_outlined),
+            title: Text(l10n.recipientsPickPhone),
+            enabled: enabled,
+            onTap: () => _pick(AddressKind.phone),
+          ),
+          if (_pickError != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                l10n.recipientsPickFailed(_pickError!),
+                key: const Key("recipient-pick-error"),
+              ),
+            ),
+        ],
       ],
+    );
+  }
+
+  /// The [i]th recipient picked out of the phone's address book: its name
+  /// and every address picked for it.
+  Widget _pickedRow(AppLocalizations l10n, int i) {
+    var picked = _picked[i];
+    var addresses = [for (var address in picked.addresses) address.value];
+    return ListTile(
+      key: Key("recipient-picked-$i"),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.person_outline),
+      title: Text(picked.name.isEmpty ? addresses.first : picked.name),
+      subtitle: Text(addresses.join(", "), overflow: TextOverflow.ellipsis),
+      trailing: IconButton(
+        key: Key("recipient-picked-remove-$i"),
+        icon: const Icon(Icons.close),
+        tooltip: l10n.newContactRemove,
+        onPressed: widget.enabled ? () => _removePicked(picked) : null,
+      ),
     );
   }
 

@@ -767,5 +767,8 @@
   "addEmailNotNow": "Jetzt nicht",
   "addEmailTitle": "Fügen Sie Ihre E-Mail-Adresse hinzu",
   "addEmailExplanation": "Wir senden einen Code an diese Adresse. Sobald Sie diesen bestätigt haben, können Sie damit Ihre Links auf anderen Geräten öffnen.",
-  "addEmailDone": "Ihre E-Mail-Adresse wurde gespeichert."
+  "addEmailDone": "Ihre E-Mail-Adresse wurde gespeichert.",
+  "recipientsPickEmail": "E-Mail-Adresse aus meinen Kontakten…",
+  "recipientsPickPhone": "Telefonnummer aus meinen Kontakten…",
+  "recipientsPickFailed": "Die Kontakte dieses Telefons konnten nicht geöffnet werden ({reason})."
 }

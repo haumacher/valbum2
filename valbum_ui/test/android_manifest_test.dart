@@ -42,4 +42,24 @@ void main() {
     expect(manifest, contains("android.intent.action.SEND"));
     expect(manifest, isNot(contains("READ_CONTACTS")));
   });
+
+  // A recipient picked out of the phone's address book (issue #201) needs no
+  // permission: `ACTION_PICK` on the e-mail or phone rows hands back one row
+  // with a read grant for that row alone. Nothing the plugin merges into the
+  // app asks for the address book either, and nothing needs a `<queries>`
+  // entry, because an implicit intent started for a result is not subject to
+  // package visibility — the plugin starts the picker without resolving it.
+  test('picking a contact asks for no permission', () {
+    var plugin =
+        File("packages/contact_pick/android/src/main/AndroidManifest.xml")
+            .readAsStringSync();
+    expect(plugin, isNot(contains("uses-permission")));
+    expect(plugin, isNot(contains("READ_CONTACTS")));
+    var code = File("packages/contact_pick/android/src/main/java/de/haumacher/"
+            "valbum/contact_pick/ContactPickPlugin.java")
+        .readAsStringSync();
+    expect(code, contains("Intent.ACTION_PICK"));
+    expect(code, isNot(contains("resolveActivity")));
+    expect(code, isNot(contains("queryIntentActivities")));
+  });
 }
