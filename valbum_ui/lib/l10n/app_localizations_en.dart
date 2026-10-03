@@ -2827,6 +2827,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newContactRemove => 'Remove';
 
   @override
+  String get recipientsPickEmail => 'E-mail address from my contacts…';
+
+  @override
+  String get recipientsPickPhone => 'Phone number from my contacts…';
+
+  @override
+  String recipientsPickFailed(String reason) {
+    return 'Could not open the contacts of this phone ($reason).';
+  }
+
+  @override
   String get newContactInvalid => 'Not an e-mail address';
 
   @override

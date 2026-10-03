@@ -737,6 +737,8 @@
   "newContactName": "Name",
   "newContactEmail": "E-Mail",
   "newContactRemove": "Entfernen",
+  "recipientsPickEmail": "E-Mail-Adresse aus meinen Kontakten…",
+  "recipientsPickPhone": "Telefonnummer aus meinen Kontakten…",
   "newContactInvalid": "Keine E-Mail-Adresse",
   "newContactAlready": "Bereits in Ihren Kontakten als {name} gespeichert; markiert.",
   "recipientLinksHeading": "Jedem Empfänger seinen eigenen Link senden",
@@ -750,6 +752,7 @@
   "shareMessageBody": "Hallo {name},\n\nhier sind die Fotos aus dem {album}:\n{link}\n",
   "launchFailed": "Auf diesem Gerät lässt sich dieser Link mit keiner Anwendung öffnen.",
   "linkPersonalOpen": "Personalisiert",
+  "linkRecipientCount": "Empfänger: {count}",
   "sendAgain": "Erneut senden",
   "sendAgainHeading": "Ein neuer Link für {name}",
   "sendAgainNote": "Der frühere Link dieses Empfängers funktioniert nicht mehr.",
@@ -761,5 +764,5 @@
   "groupLinkWithoutEmail": "Diese Empfänger haben keine E-Mail-Adresse, sodass der Gruppenlink sie nicht erkennen kann. Senden Sie ihnen einen eigenen Link:",
   "shareMessageBodyGroup": "Hallo,\n\nhier sind die Fotos aus dem {album}:\n{link}\n",
   "identifyGroupIntro": "Dieser Link wurde an eine Gruppe gesendet. Bestätigen Sie Ihre E-Mail-Adresse, um ihn zu öffnen.",
-  "linkRecipientCount": "Empfänger: {count}"
+  "recipientsPickFailed": "Die Kontakte dieses Telefons konnten nicht geöffnet werden ({reason})."
 }

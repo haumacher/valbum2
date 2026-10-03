@@ -17,6 +17,7 @@ import 'device_code_scanner.dart';
 import 'device_code_scanner_plugin.dart';
 import 'offline.dart';
 import 'offline_file.dart';
+import 'phone_contacts.dart';
 import 'photo_library.dart';
 import 'notices.dart';
 import 'photo_library_manager.dart';
@@ -140,6 +141,12 @@ void executeBackgroundTask(Future<bool> Function() task) =>
 DownloadSaver defaultDownloadSaver() => Platform.isAndroid || Platform.isIOS
     ? const PhotoLibraryDownloadSaver()
     : const FileDialogDownloadSaver();
+
+/// The phone's address book to pick a recipient from (issue #201): a phone
+/// has one, a desktop has none the app can reach.
+PhoneContacts? defaultPhoneContacts() => Platform.isAndroid || Platform.isIOS
+    ? const PluginPhoneContacts()
+    : null;
 
 /// Saves a download into the photo library of a phone, see
 /// [saveToPhotoLibrary].

@@ -13,6 +13,7 @@ import 'connectivity.dart';
 import 'contact_session.dart';
 import 'device_code_scanner.dart';
 import 'offline.dart';
+import 'phone_contacts.dart';
 import 'photo_library.dart';
 import 'notices.dart';
 import 'wakelock.dart';
@@ -81,6 +82,9 @@ void executeBackgroundTask(Future<bool> Function() task) {}
 /// Where a downloaded original goes in a browser: the browser's downloads,
 /// see [BlobDownloadSaver].
 DownloadSaver defaultDownloadSaver() => const BlobDownloadSaver();
+
+/// A browser has no address book to pick a recipient from (issue #201).
+PhoneContacts? defaultPhoneContacts() => null;
 
 /// Hands a download to the browser as a blob, under the file's own name
 /// (issue #164).

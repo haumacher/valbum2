@@ -4727,6 +4727,26 @@
     "description": "Tooltip of the button removing a new contact from the recipient chooser (issue #202).",
     "x-translated": "6f2c1806"
   },
+  "recipientsPickEmail": "E-mail address from my contacts…",
+  "@recipientsPickEmail": {
+    "description": "Entry of the recipient chooser on a phone opening the phone's own contacts picker to pick one e-mail address (issue #201).",
+    "x-translated": "ac199d87"
+  },
+  "recipientsPickPhone": "Phone number from my contacts…",
+  "@recipientsPickPhone": {
+    "description": "Entry of the recipient chooser on a phone opening the phone's own contacts picker to pick one phone number (issue #201).",
+    "x-translated": "fae71aa4"
+  },
+  "recipientsPickFailed": "Could not open the contacts of this phone ({reason}).",
+  "@recipientsPickFailed": {
+    "description": "Said in the recipient chooser where the phone's contacts picker could not be opened; the reason is the platform's own words (issue #201).",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    },
+    "x-translated": "3e554048"
+  },
   "newContactInvalid": "Not an e-mail address",
   "@newContactInvalid": {
     "description": "Error of a new contact's e-mail field (issue #202).",
