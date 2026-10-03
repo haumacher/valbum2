@@ -1451,33 +1451,6 @@ class AppLocalizationsDe extends AppLocalizations {
   String get showFewerImages => 'Weniger Bilder anzeigen';
 
   @override
-  String get findDuplicatesAction => 'Duplikate suchen...';
-
-  @override
-  String get findDuplicatesTitle => 'Duplikate suchen';
-
-  @override
-  String get findDuplicatesMessage =>
-      'Jedes Foto dieses Albums, das die Bibliothek bereits an anderer Stelle besitzt, wird aus dem Album entfernt und in einem eigenen Ordner der Bibliothek abgelegt. Es wird nichts gelöscht, und die andere Kopie bleibt an ihrem Platz.';
-
-  @override
-  String get noDuplicatesFound =>
-      'Kein Foto dieses Albums liegt noch anderswo in der Bibliothek.';
-
-  @override
-  String duplicatesSetAside(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other:
-          '$count Fotos wurden beiseitegelegt; die verbleibenden Kopien liegen an anderer Stelle der Bibliothek.',
-      one:
-          '1 Foto wurde beiseitegelegt; die verbleibende Kopie liegt an anderer Stelle der Bibliothek.',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String get reanalyze => 'Fotodetails erneut einlesen';
 
   @override
@@ -2040,11 +2013,6 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String doingFiling(String folder) {
     return 'Ablegen in $folder';
-  }
-
-  @override
-  String doingFindingDuplicates(String folder) {
-    return 'Suchen nach Duplikaten in $folder';
   }
 
   @override

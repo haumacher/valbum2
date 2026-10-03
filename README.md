@@ -33,8 +33,8 @@ Where the project is heading is in [ROADMAP.md](ROADMAP.md).
 - **Nothing is deleted, with two exceptions:**
   - an administrator **purges** the photos rated "Trash" on an album's trash page;
   - deleting an album that holds no picture removes the empty folder.
-- **Everything else is a rename.** A deleted album goes to `.valbum/trash/`, a duplicate a move or
-  a duplicate search finds to `.valbum/duplicates/`, a replaced upload to `.valbum/replaced/` — all
+- **Everything else is a rename.** A deleted album goes to `.valbum/trash/`, a duplicate a move
+  finds to `.valbum/duplicates/`, a replaced upload to `.valbum/replaced/` — all
   inside the library, where you can take them back by hand.
 - **Albums that look like albums.** Rows fill the page width, landscape and portrait shots mixed.
 
@@ -349,7 +349,6 @@ and whether it may add photos. The link is shown once — treat it like a passwo
   *Restore* brings one back, an administrator's *Purge…* deletes them from disk.
 - **Deleting an album**: *Delete album…* moves it into the space's trash folder (an empty one is
   removed).
-- **Duplicates**: *Find duplicates...* sets aside the album's photos that are elsewhere in the space.
 - **Downloading**: *Download original* in the photo viewer; a selection in the edit mode downloads
   as one zip (a phone saves the photos one by one).
 

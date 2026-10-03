@@ -2369,36 +2369,6 @@
     "description": "Menu entry raising the rating an image needs to be shown",
     "x-translated": "24c28956"
   },
-  "findDuplicatesAction": "Find duplicates...",
-  "@findDuplicatesAction": {
-    "description": "Menu entry looking for photos the library already holds elsewhere",
-    "x-translated": "448a0349"
-  },
-  "findDuplicatesTitle": "Find duplicates",
-  "@findDuplicatesTitle": {
-    "description": "Title of the question asked before duplicates are set aside",
-    "x-translated": "3677fb5f"
-  },
-  "findDuplicatesMessage": "Every photo of this album that the library already holds somewhere else is taken out of the album and kept aside in the library's own folder. Nothing is deleted, and the other copy stays where it is.",
-  "@findDuplicatesMessage": {
-    "description": "Explains what looking for duplicates does",
-    "x-translated": "dbfcdca1"
-  },
-  "noDuplicatesFound": "No photo of this album is anywhere else in the library.",
-  "@noDuplicatesFound": {
-    "description": "Said when the duplicate sweep found nothing",
-    "x-translated": "1f54eb65"
-  },
-  "duplicatesSetAside": "{count, plural, =1{1 photo was set aside; the copy that stays is elsewhere in the library.} other{{count} photos were set aside; the copies that stay are elsewhere in the library.}}",
-  "@duplicatesSetAside": {
-    "description": "Says how many photos the duplicate sweep took out of the album",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    },
-    "x-translated": "4b29b612"
-  },
   "reanalyze": "Re-read photo details",
   "@reanalyze": {
     "description": "Menu entry and dialog title of reading the camera and the position of an album's photos from the files again",
@@ -3314,16 +3284,6 @@
       }
     },
     "x-translated": "9b80bb2"
-  },
-  "doingFindingDuplicates": "looking for duplicates in {folder}",
-  "@doingFindingDuplicates": {
-    "description": "Names what the app was doing when a request failed",
-    "placeholders": {
-      "folder": {
-        "type": "String"
-      }
-    },
-    "x-translated": "63d77e3d"
   },
   "doingReanalyzing": "re-reading the photo details in {folder}",
   "@doingReanalyzing": {

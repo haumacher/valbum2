@@ -1430,33 +1430,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showFewerImages => 'Show fewer images';
 
   @override
-  String get findDuplicatesAction => 'Find duplicates...';
-
-  @override
-  String get findDuplicatesTitle => 'Find duplicates';
-
-  @override
-  String get findDuplicatesMessage =>
-      'Every photo of this album that the library already holds somewhere else is taken out of the album and kept aside in the library\'s own folder. Nothing is deleted, and the other copy stays where it is.';
-
-  @override
-  String get noDuplicatesFound =>
-      'No photo of this album is anywhere else in the library.';
-
-  @override
-  String duplicatesSetAside(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other:
-          '$count photos were set aside; the copies that stay are elsewhere in the library.',
-      one:
-          '1 photo was set aside; the copy that stays is elsewhere in the library.',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String get reanalyze => 'Re-read photo details';
 
   @override
@@ -2014,11 +1987,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String doingFiling(String folder) {
     return 'filing in $folder';
-  }
-
-  @override
-  String doingFindingDuplicates(String folder) {
-    return 'looking for duplicates in $folder';
   }
 
   @override

@@ -129,7 +129,7 @@ class CameraRollConfig {
   /// yet, so a first sync over an existing library would upload photos it
   /// already has. The run waits instead and says so, and the section offers
   /// *Sync anyway* for whoever would rather have the photos now and the
-  /// duplicates later — the sweep of issue #118 takes them out again.
+  /// duplicates later.
   final bool syncWhileIndexing;
 
   /// Whether the sync only runs on an unmetered network (issue #36).

@@ -2456,36 +2456,6 @@ abstract class AppLocalizations {
   /// **'Show fewer images'**
   String get showFewerImages;
 
-  /// Menu entry looking for photos the library already holds elsewhere
-  ///
-  /// In en, this message translates to:
-  /// **'Find duplicates...'**
-  String get findDuplicatesAction;
-
-  /// Title of the question asked before duplicates are set aside
-  ///
-  /// In en, this message translates to:
-  /// **'Find duplicates'**
-  String get findDuplicatesTitle;
-
-  /// Explains what looking for duplicates does
-  ///
-  /// In en, this message translates to:
-  /// **'Every photo of this album that the library already holds somewhere else is taken out of the album and kept aside in the library\'s own folder. Nothing is deleted, and the other copy stays where it is.'**
-  String get findDuplicatesMessage;
-
-  /// Said when the duplicate sweep found nothing
-  ///
-  /// In en, this message translates to:
-  /// **'No photo of this album is anywhere else in the library.'**
-  String get noDuplicatesFound;
-
-  /// Says how many photos the duplicate sweep took out of the album
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 photo was set aside; the copy that stays is elsewhere in the library.} other{{count} photos were set aside; the copies that stay are elsewhere in the library.}}'**
-  String duplicatesSetAside(int count);
-
   /// Menu entry and dialog title of reading the camera and the position of an album's photos from the files again
   ///
   /// In en, this message translates to:
@@ -3313,12 +3283,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'filing in {folder}'**
   String doingFiling(String folder);
-
-  /// Names what the app was doing when a request failed
-  ///
-  /// In en, this message translates to:
-  /// **'looking for duplicates in {folder}'**
-  String doingFindingDuplicates(String folder);
 
   /// Names what the app was doing when a request failed
   ///
