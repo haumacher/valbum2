@@ -53,7 +53,10 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
   Future<ui.Codec> _load(ImageDecoderCallback decode) async {
     Uint8List bytes;
     try {
-      bytes = await client.thumbnailBytes(imageUrl);
+      bytes = await thumbnailByteCache.fetch(
+        thumbnailBytesKey(client, imageUrl),
+        () => client.thumbnailBytes(imageUrl),
+      );
     } catch (error) {
       // The stream must be told, or the image widget waits forever.
       PaintingBinding.instance.imageCache.evict(this);
@@ -67,7 +70,8 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
   }
 
   /// Two providers are the same image when they name the same URL on the same
-  /// server with the same identity: a token change must re-fetch.
+  /// server with the same identity: a token change must re-fetch. The
+  /// [thumbnailByteCache] is keyed the same way, see [thumbnailBytesKey].
   @override
   bool operator ==(Object other) =>
       other is ThumbnailImage &&
@@ -83,6 +87,149 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
   @override
   String toString() => "ThumbnailImage($url)";
 }
+
+/// The key of the thumbnail of [imageUrl] in the [thumbnailByteCache]
+/// (issue #225): the [client] itself — by identity — and the thumbnail's
+/// address, which names the server.
+///
+/// The client is the identity it asks with: a member's device token, a share
+/// link's token in a share session (a client of its own), none for an
+/// anonymous caller — its token is fixed for its lifetime, a sign-in or a
+/// session makes a new one. What the server answered one client is therefore
+/// never handed to another, not even to one with the same token: the bytes
+/// are a convenience for the client that fetched them, never shared state.
+ThumbnailBytesKey thumbnailBytesKey(VAlbumClient client, String imageUrl) =>
+    (client: client, url: client.thumbnailUrl(imageUrl));
+
+/// A key of the [thumbnailByteCache], see [thumbnailBytesKey]. A record
+/// compares its fields with `==`, and a [VAlbumClient]'s `==` is identity.
+typedef ThumbnailBytesKey = ({VAlbumClient client, String url});
+
+/// The encoded bytes of the thumbnails fetched last, so that a thumbnail
+/// decoded at a new size is not downloaded again (issue #225).
+///
+/// A tile decodes its thumbnail at the height it is drawn at
+/// ([resizedThumbnail]), through a [ResizeImage] — and a [ResizeImage]
+/// resolves its inner [ThumbnailImage] *outside* the [ImageCache]: every new
+/// height (a tile that grew, a resized window, the viewer's underlay at a size
+/// no tile drew) loaded the thumbnail anew, which was a second request for
+/// bytes that had arrived moments ago. The server answers a thumbnail without
+/// any cache header or validator, so a browser's HTTP cache cannot answer it
+/// either; the request reached the server on every platform.
+///
+/// These are the bytes as they came over the wire — a JPEG of some 50 to
+/// 150 KB — kept least recently used first and bounded by their total size,
+/// [limit] bytes; every decoding of every size is made from them. A request
+/// already on its way is shared, so two decodings asked for at once cost one
+/// download. A failure is never kept: the next decoding asks again.
+///
+/// The offline cache (`offline.dart`, issue #31) is not asked here: it is the
+/// fallback of a *failed* request, network first, and must not answer while
+/// the server is there — after "Refresh previews" it still holds the old
+/// pictures. It is filled and read by [VAlbumClient.thumbnailBytes] as
+/// before, behind this cache.
+class ThumbnailByteCache {
+  /// The most bytes this cache holds, see [ThumbnailByteCache].
+  final int limit;
+
+  ThumbnailByteCache({this.limit = defaultThumbnailByteLimit});
+
+  /// Insertion-ordered: an entry that is read moves to the end, so the first
+  /// entry is the one longest untouched.
+  final Map<ThumbnailBytesKey, Uint8List> _bytes =
+      <ThumbnailBytesKey, Uint8List>{};
+
+  /// The downloads on their way, see [fetch].
+  final Map<ThumbnailBytesKey, Future<Uint8List>> _pending =
+      <ThumbnailBytesKey, Future<Uint8List>>{};
+
+  int _size = 0;
+
+  /// Counts [clear]s, so that a download that started before one is not kept
+  /// after it.
+  int _generation = 0;
+
+  /// The number of bytes held.
+  int get size => _size;
+
+  /// The number of thumbnails held.
+  int get length => _bytes.length;
+
+  /// Whether the bytes under [key] are held.
+  bool contains(ThumbnailBytesKey key) => _bytes.containsKey(key);
+
+  /// The bytes under [key]: held ones at once, else those of the download
+  /// already on its way, else those [download] answers — which are then kept.
+  Future<Uint8List> fetch(
+      ThumbnailBytesKey key, Future<Uint8List> Function() download) {
+    var held = _bytes.remove(key);
+    if (held != null) {
+      _bytes[key] = held;
+      return SynchronousFuture<Uint8List>(held);
+    }
+    var pending = _pending[key];
+    if (pending != null) {
+      return pending;
+    }
+    var generation = _generation;
+    var started = download();
+    var future = started.then((bytes) {
+      if (generation == _generation) {
+        _pending.remove(key);
+        put(key, bytes);
+      }
+      return bytes;
+    }, onError: (Object error, StackTrace stack) {
+      if (generation == _generation) {
+        _pending.remove(key);
+      }
+      Error.throwWithStackTrace(error, stack);
+    });
+    _pending[key] = future;
+    return future;
+  }
+
+  /// Keeps [bytes] under [key], dropping the least recently used thumbnails
+  /// until all of them fit into [limit]. Nothing is kept that alone exceeds
+  /// it, and nothing empty.
+  void put(ThumbnailBytesKey key, Uint8List bytes) {
+    var old = _bytes.remove(key);
+    if (old != null) {
+      _size -= old.length;
+    }
+    if (bytes.isEmpty || bytes.length > limit) {
+      return;
+    }
+    while (_size + bytes.length > limit) {
+      var oldest = _bytes.keys.first;
+      _size -= _bytes.remove(oldest)!.length;
+    }
+    _bytes[key] = bytes;
+    _size += bytes.length;
+  }
+
+  /// Forgets every thumbnail, and every download on its way, see
+  /// `forgetDecodedThumbnails` (issue #98).
+  void clear() {
+    _bytes.clear();
+    _pending.clear();
+    _size = 0;
+    _generation++;
+  }
+}
+
+/// The bound of the [thumbnailByteCache]: 16 MB, the bytes of some one to
+/// three hundred thumbnails — several screens of tiles, which is what a
+/// re-layout or the viewer's underlay asks for again.
+const int defaultThumbnailByteLimit = 16 * 1024 * 1024;
+
+/// The one [ThumbnailByteCache] every [ThumbnailImage] loads through.
+final ThumbnailByteCache thumbnailByteCache = ThumbnailByteCache();
+
+/// Forgets the encoded bytes of every thumbnail, see [ThumbnailByteCache]:
+/// "Refresh previews" (issue #98) does, so that the new pictures are
+/// downloaded, and so does every test that must not be answered by the last.
+void forgetThumbnailBytes() => thumbnailByteCache.clear();
 
 /// The crop of one face of an image, fetched through [client] (issue #126).
 ///

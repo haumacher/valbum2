@@ -44,6 +44,7 @@ import 'select_mode.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
+import 'thumbnails.dart';
 import 'trash_view.dart' show hasTrashedImages, trashRating;
 import 'video_view.dart';
 
@@ -124,7 +125,9 @@ PopupMenuItem<void Function(BuildContext)> keyedMenuItem(
 /// [ImageCache.clear] alone is not enough either: a mounted tile holds a
 /// listener on its stream (see `thumbnails.dart`), which makes its image a
 /// *live* one, and a live image is handed out again without being fetched.
-/// Both halves therefore go.
+/// Both halves therefore go — and the encoded bytes the tiles are decoded
+/// from (`ThumbnailByteCache`, issue #225), or the new decodings would be
+/// made of the old pictures.
 ///
 /// The cost is that the listing's index pictures and the albums visited before
 /// are decoded again as they are shown. That is a few dozen decodes, once, for
@@ -133,6 +136,7 @@ void forgetDecodedThumbnails() {
   var cache = PaintingBinding.instance.imageCache;
   cache.clear();
   cache.clearLiveImages();
+  forgetThumbnailBytes();
 }
 
 /// The icon the app shows the given privacy level by, `null` for
