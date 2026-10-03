@@ -85,8 +85,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get signOut => 'Sign out';
 
   @override
-  String get signedOutMessage =>
-      'This device no longer identifies itself to the server.';
+  String get signedOutMessage => 'This device is signed out.';
 
   @override
   String get userNameHelp =>
@@ -152,8 +151,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'This server does not know this invitation. Ask for a new one, or type the plain server address.';
 
   @override
-  String invitationHeadlineWithRole(String invitedBy, String may) {
-    return '$invitedBy invited you to this album server: $may.';
+  String invitationHeadlineWithRole(String invitedBy, String role) {
+    return '$invitedBy invited you to this album server as $role.';
   }
 
   @override
@@ -162,11 +161,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get peopleHeading => 'People';
+  String get peopleHeading => 'Members';
 
   @override
   String get inviteExplanation =>
-      'An invitation is a single-use link that creates one account on this server. Send it to the person it is for, and to nobody else.';
+      'A single-use link that creates one account in this space. Send it only to the person it is for.';
 
   @override
   String get inviteAction => 'Invite…';
@@ -503,7 +502,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'This may be your only signed-in device, and the server could not be asked. If it is, you need a recovery code from your administrator, your backup code, or a restart of the server to get back in.';
 
   @override
-  String get permissionMayHeading => 'May';
+  String get permissionMayHeading => 'Role';
 
   @override
   String get permissionSeesHeading => 'Sees';
@@ -513,7 +512,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mayShareLinksExplanation =>
-      'May hand out links that open an album for whoever holds them.';
+      'Links open an album for whoever holds them.';
 
   @override
   String get roleExplanationEdit =>
@@ -527,34 +526,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get roleExplanationView => 'May look at the albums, and nothing more.';
 
   @override
-  String get clearanceExplanationAll =>
-      'Sees every image, the private ones included.';
-
-  @override
-  String get clearanceExplanationNonPrivate =>
-      'Sees every image that is not marked private.';
-
-  @override
-  String get clearanceExplanationPublic =>
-      'Sees only the images marked public.';
-
-  @override
   String permissionDialogTitle(String user) {
     return 'What $user may do';
   }
 
   @override
-  String get usersHeading => 'Users';
-
-  @override
   String get usersLead =>
-      'Everybody who has an account on this server, and what they may do and see in it.';
+      'Everybody with an account in this space, and the invitations nobody has accepted yet.';
 
   @override
   String get recoveryCodeTooltip => 'Recovery code';
 
   @override
-  String get changePermissionTooltip => 'Change what they may do';
+  String get changePermissionTooltip => 'Change permission';
 
   @override
   String removeUserTitle(String user) {
@@ -577,12 +561,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get withdrawInvitationTitle => 'Withdraw this invitation?';
 
   @override
-  String get withdrawPendingUserMessage =>
-      'The link stops working, and the seat it was holding goes.';
-
-  @override
-  String get withdrawInvitationMessage =>
-      'The link stops working. Somebody who already accepted it keeps their account.';
+  String get withdrawInvitationMessage => 'The invitation link stops working.';
 
   @override
   String invitedByUser(String user) {
@@ -616,20 +595,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get openInvitationsHeading => 'Open invitations';
-
-  @override
   String get noOpenInvitations => 'No invitation is waiting to be accepted.';
-
-  @override
-  String invitationPermissionBy(String permission, String user) {
-    return '$permission — invited by $user';
-  }
-
-  @override
-  String forRecipient(String recipient) {
-    return 'for $recipient';
-  }
 
   @override
   String get expiresNever => 'expires: never';
@@ -641,90 +607,47 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String expiresOnDay(String day) {
-    return 'expires $day';
+    return 'expires on $day';
   }
 
   @override
-  String permissionSentence(String doing, String seeing, String sharing) {
-    return '$doing; $seeing; $sharing.';
-  }
+  String get permissionSeeingAll => 'Sees: all photos';
 
   @override
-  String get permissionDoingAdmin => 'You manage this server';
+  String get permissionSeeingNonPrivate => 'Sees: public and members\' photos';
 
   @override
-  String get permissionDoingEdit => 'You may edit every album of this space';
+  String get permissionSeeingPublic => 'Sees: public photos';
 
   @override
-  String get permissionDoingContribute => 'You may add photos to this space';
+  String get permissionSharingMay => 'May share links';
 
   @override
-  String get permissionDoingView => 'You may look at this space';
+  String get permissionSharingMayNot => 'May not share links';
 
   @override
-  String get permissionDoingNone => 'You are not signed in';
+  String get roleWordAdmin => 'Administrator';
 
   @override
-  String get permissionSeeingAll => 'you see all images';
+  String get roleWordEdit => 'Editor';
 
   @override
-  String get permissionSeeingNonPrivate => 'you see all but the private images';
+  String get roleWordContribute => 'Contributor';
 
   @override
-  String get permissionSeeingPublic => 'you see the public images';
+  String get roleWordView => 'Viewer';
 
   @override
-  String get permissionSharingMay => 'you may share links';
+  String get roleWordUnknown => 'Unknown role';
 
   @override
-  String get permissionSharingMayNot => 'you may not share links';
+  String get clearanceWordAll => 'All photos';
 
   @override
-  String permissionPhrase(String role, String clearance, String sharing) {
-    return '$role — $clearance — $sharing';
-  }
+  String get clearanceWordNonPrivate => 'Public and members\' photos';
 
   @override
-  String get permissionPhraseMayShare => 'may share links';
-
-  @override
-  String get permissionPhraseNoLinks => 'no links';
-
-  @override
-  String get roleWordAdmin => 'manages this server';
-
-  @override
-  String get roleWordEdit => 'may edit the albums';
-
-  @override
-  String get roleWordContribute => 'may add photos';
-
-  @override
-  String get roleWordView => 'may look';
-
-  @override
-  String get roleWordUnknown => 'unknown role';
-
-  @override
-  String get roleWordYouAdmin => 'you manage this server';
-
-  @override
-  String get roleWordYouEdit => 'you may edit the albums';
-
-  @override
-  String get roleWordYouContribute => 'you may add photos';
-
-  @override
-  String get roleWordYouView => 'you may look at the albums';
-
-  @override
-  String get clearanceWordAll => 'sees all images';
-
-  @override
-  String get clearanceWordNonPrivate => 'sees all but the private images';
-
-  @override
-  String get clearanceWordPublic => 'sees the public images';
+  String get clearanceWordPublic => 'Public photos';
 
   @override
   String get serverUrlEmpty =>
@@ -968,11 +891,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get invitationSignedInNote =>
-      'This device is signed in; your albums are yours from now on.';
+  String get invitationSignedInNote => 'This device is signed in.';
 
   @override
-  String get openYourAlbums => 'Open your albums';
+  String get openYourAlbums => 'Open the albums';
 
   @override
   String get invitationChooseName => 'Choose the name you want to be known by.';
@@ -1506,33 +1428,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get showFewerImages => 'Show fewer images';
-
-  @override
-  String get findDuplicatesAction => 'Find duplicates...';
-
-  @override
-  String get findDuplicatesTitle => 'Find duplicates';
-
-  @override
-  String get findDuplicatesMessage =>
-      'Every photo of this album that the library already holds somewhere else is taken out of the album and kept aside in the library\'s own folder. Nothing is deleted, and the other copy stays where it is.';
-
-  @override
-  String get noDuplicatesFound =>
-      'No photo of this album is anywhere else in the library.';
-
-  @override
-  String duplicatesSetAside(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other:
-          '$count photos were set aside; the copies that stay are elsewhere in the library.',
-      one:
-          '1 photo was set aside; the copy that stays is elsewhere in the library.',
-    );
-    return '$_temp0';
-  }
 
   @override
   String get reanalyze => 'Re-read photo details';
@@ -2092,11 +1987,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String doingFiling(String folder) {
     return 'filing in $folder';
-  }
-
-  @override
-  String doingFindingDuplicates(String folder) {
-    return 'looking for duplicates in $folder';
   }
 
   @override
@@ -2983,4 +2873,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get addEmailDone => 'Your e-mail address is saved.';
+
+  @override
+  String get peopleLeadInviter =>
+      'The invitations you sent that nobody has accepted yet.';
 }

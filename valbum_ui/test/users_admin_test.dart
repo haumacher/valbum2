@@ -66,24 +66,32 @@ void main() {
       MockClient((request) async => serverFor("admin")(request)),
     );
 
-    expect(find.byKey(usersSectionKey), findsOneWidget);
+    expect(find.byKey(peopleSectionKey), findsOneWidget);
     expect(find.byKey(const Key("user-haui")), findsOneWidget);
     expect(find.byKey(const Key("user-bob")), findsOneWidget);
     expect(find.byKey(const Key("user-carol")), findsOneWidget);
     // What each of them may do and see, in words (issue #85).
+    // Short: the role's name, what is seen, whether links may be shared
+    // (issue #218) — and the rest on a line of its own.
     expect(
       tester.widget<Text>(find.byKey(const Key("user-permission-bob"))).data,
-      "may edit the albums — sees all images — may share links — "
+      "Editor · Sees: all photos · May share links",
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const Key("user-details-bob"))).data,
       "library: bob — 1 device — since Feb 3, 2026",
     );
     expect(
       tester.widget<Text>(find.byKey(const Key("user-permission-carol"))).data,
-      "may look — sees the public images — no links — library: carol — "
-      "0 devices — since Mar 4, 2026",
+      "Viewer · Sees: public photos · May not share links",
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const Key("user-details-carol"))).data,
+      "library: carol — 0 devices — since Mar 4, 2026",
     );
     expect(
       tester.widget<Text>(find.byKey(const Key("user-permission-haui"))).data,
-      startsWith("manages this server — sees all images — may share links"),
+      "Administrator · Sees: all photos · May share links",
     );
   });
 
@@ -137,7 +145,8 @@ void main() {
     expect(find.text("Only the administrator may."), findsOneWidget);
   });
 
-  testWidgets('a member is shown no user list at all', (tester) async {
+  testWidgets('a member is shown no users, only their own invitations',
+      (tester) async {
     var requests = <http.Request>[];
     await pumpSettings(
       tester,
@@ -150,7 +159,10 @@ void main() {
       }),
     );
 
-    expect(find.byKey(usersSectionKey), findsNothing);
+    // The members section is there, with the way to invite, but the users
+    // are the administrator's to read.
+    expect(find.byKey(peopleSectionKey), findsOneWidget);
+    expect(find.byKey(const Key("user-carol")), findsNothing);
     expect(
       requests.any((r) => r.url.queryParameters["type"] == "users"),
       isFalse,

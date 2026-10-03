@@ -751,26 +751,6 @@ public class TestInbox extends TestCase {
 		assertTrue(new File(trash(), "Inbox/b1.jpg").isFile());
 	}
 
-	/** The duplicate sweep of issue #118 acts per photograph, in an inbox as anywhere. */
-	public void testTheDuplicateSweepTakesOnePhotographOutOfARememberedGroup() throws Exception {
-		groupedInbox();
-		// The same picture as b1.jpg, in an album of its own: that is what makes it a duplicate.
-		Files.createDirectories(_base.resolve("Trip"));
-		Files.copy(_base.resolve("Inbox/b1.jpg"), _base.resolve("Trip/kept.jpg"));
-		sidecar("Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("kept.jpg", 0) + "]}]");
-		_servlet.index().indexNow();
-
-		MoveResult result = post("find-duplicates", "/Inbox/", null);
-
-		assertEquals(1, result.getOutcomes().size());
-		assertEquals("b1.jpg", result.getOutcomes().get(0).getName());
-		assertFalse(_base.resolve("Inbox/b1.jpg").toFile().exists());
-		assertTrue("The other member of the remembered group stays.", _base.resolve("Inbox/b2.jpg").toFile().isFile());
-
-		AlbumInfo stored = (AlbumInfo) Resource.readResource(reader(read("Inbox/index.json")));
-		assertEquals(Arrays.asList("a.jpg", "b2.jpg"), imageNames(stored));
-	}
-
 	/** An inbox whose sidecar remembers a group of two behind its flat answer. */
 	private void groupedInbox() throws IOException {
 		image("Inbox/a.jpg", Color.RED);
@@ -780,15 +760,6 @@ public class TestInbox extends TestCase {
 			+ part("a.jpg", day("2026-03-01")) + ","
 			+ group(image("b1.jpg", day("2026-02-01")), image("b2.jpg", day("2026-03-03")))
 			+ "]}]");
-	}
-
-	private MoveResult post(String action, String pathInfo, String token) throws Exception {
-		Map<String, String> parameters = new HashMap<>();
-		parameters.put("action", action);
-		FakeResponse response = new FakeResponse();
-		_servlet.doPost(request(pathInfo, "application/json", "{}", token, parameters), response.response());
-		assertEquals("The " + action + " failed: " + response.body(), HttpServletResponse.SC_OK, response.status());
-		return MoveResult.readMoveResult(reader(response.body()));
 	}
 
 	// --- Helpers. ---

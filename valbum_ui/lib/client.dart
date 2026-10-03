@@ -2086,30 +2086,6 @@ class VAlbumClient {
     );
   }
 
-  /// Sets aside the photos of the album at [path] that lie elsewhere in the
-  /// space too, see issue #118.
-  ///
-  /// The sweep that repairs what slipped through while the index was
-  /// incomplete: nothing is deleted — every duplicate is renamed into the
-  /// space's own folder — and the answer names, for every photo, where the
-  /// copy that stays is.
-  Future<MoveResult> findDuplicates(List<String> path) async {
-    var url = "${folderUrl(path)}?action=find-duplicates";
-    var response = await _http.post(
-      Uri.parse(url),
-      encoding: Encoding.getByName("utf-8"),
-      headers: {"Content-Type": "application/json", ...authHeaders},
-    );
-    if (response.statusCode >= 300) {
-      throw failure(
-        response.statusCode,
-        response.body,
-        platformMessages.doingFindingDuplicates("'${path.join("/")}'"),
-      );
-    }
-    return MoveResult.read(JsonReader.fromString(response.body));
-  }
-
   /// Reads the camera and the position of every photograph below [path] from
   /// the files again and fills what the sidecars lack, see issue #161.
   ///

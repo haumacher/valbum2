@@ -1,4 +1,5 @@
-/// Tests of the open-invitations section of the server settings (issue #55):
+/// Tests of the invitations in the members section of the server settings
+/// (issues #55, #218), for an inviter who is not the administrator:
 /// what is still pending, withdrawing one, and the list picking up what was
 /// just issued.
 library;
@@ -106,26 +107,29 @@ void main() {
       MockClient((request) async => serverFor()(request)),
     );
 
-    expect(find.byKey(invitationsSectionKey), findsOneWidget);
-    expect(find.byKey(const Key("invitation-i1")), findsOneWidget);
-    expect(find.byKey(const Key("invitation-i2")), findsOneWidget);
+    expect(find.byKey(peopleSectionKey), findsOneWidget);
+    expect(find.byKey(const Key("user-pending-i1")), findsOneWidget);
+    expect(find.byKey(const Key("user-pending-i2")), findsOneWidget);
     // An accepted and a withdrawn invitation are not pending.
-    expect(find.byKey(const Key("invitation-i3")), findsNothing);
-    expect(find.byKey(const Key("invitation-i4")), findsNothing);
+    expect(find.byKey(const Key("user-pending-i3")), findsNothing);
+    expect(find.byKey(const Key("user-pending-i4")), findsNothing);
 
     // What the invited person will be allowed, in the words the settings use
     // about the caller themselves (issue #85).
     expect(
-      find.text("may edit the albums — sees all images — may share links — "
-          "invited by bob"),
+      find.text("Editor · Sees: all photos · May share links"),
       findsOneWidget,
     );
     expect(find.textContaining("Aunt Mary"), findsOneWidget);
-    expect(find.textContaining("expires Dec 24, 2099"), findsOneWidget);
+    expect(
+      find.text("invited by bob — since Sep 13, 2026 — Aunt Mary — "
+          "expires on Dec 24, 2099"),
+      findsOneWidget,
+    );
     // An invitation without an instant lives forever, and says so.
     expect(find.textContaining("expires: never"), findsOneWidget);
     expect(
-      find.text("may look — sees the public images — no links"),
+      find.text("Viewer · Sees: public photos · May not share links"),
       findsOneWidget,
     );
   });
@@ -156,9 +160,9 @@ void main() {
       }),
     );
 
-    await tapVisible(tester, find.byKey(const Key("invitation-revoke-i1")));
-    expect(find.byKey(const Key("uninvite-confirm")), findsOneWidget);
-    await tester.tap(find.byKey(const Key("uninvite-confirmed")));
+    await tapVisible(tester, find.byKey(const Key("user-withdraw-pending-i1")));
+    expect(find.byKey(const Key("withdraw-user-confirm")), findsOneWidget);
+    await tester.tap(find.byKey(const Key("withdraw-user-confirmed")));
     await tester.pumpAndSettle();
 
     var uninvite = requests.last;
@@ -167,8 +171,8 @@ void main() {
     expect(uninvite.body, contains('"id":"i1"'));
 
     // The withdrawn one is no longer pending; the other one stays.
-    expect(find.byKey(const Key("invitation-i1")), findsNothing);
-    expect(find.byKey(const Key("invitation-i2")), findsOneWidget);
+    expect(find.byKey(const Key("user-pending-i1")), findsNothing);
+    expect(find.byKey(const Key("user-pending-i2")), findsOneWidget);
   });
 
   testWidgets('a refused list shows why, instead of nothing', (tester) async {
@@ -180,7 +184,7 @@ void main() {
           )(request)),
     );
 
-    expect(find.byKey(const Key("settings.invitations.error")), findsOneWidget);
+    expect(find.byKey(const Key("settings.people.error")), findsOneWidget);
     expect(find.text("Not yours to see."), findsOneWidget);
   });
 
@@ -193,7 +197,7 @@ void main() {
           )(request)),
     );
 
-    expect(find.byKey(const Key("settings.invitations.empty")), findsOneWidget);
+    expect(find.byKey(const Key("settings.people.empty")), findsOneWidget);
   });
 
   testWidgets('the list reads itself again after an invitation was issued',
@@ -212,7 +216,7 @@ void main() {
           )(request)),
     );
 
-    expect(find.byKey(const Key("settings.invitations.empty")), findsOneWidget);
+    expect(find.byKey(const Key("settings.people.empty")), findsOneWidget);
 
     await tapVisible(tester, find.byKey(inviteButtonKey));
     await tester.tap(find.byKey(const Key("invite-create")));
@@ -221,7 +225,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(listings, 2);
-    expect(find.byKey(const Key("invitation-i9")), findsOneWidget);
+    expect(find.byKey(const Key("user-pending-i9")), findsOneWidget);
     expect(find.textContaining("New one"), findsOneWidget);
   });
 }

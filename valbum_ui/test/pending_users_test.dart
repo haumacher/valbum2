@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:valbum_ui/manage_view.dart';
 import 'package:valbum_ui/settings.dart';
 
 import 'devices_test.dart'
@@ -89,12 +90,17 @@ void main() {
       tester
           .widget<Text>(find.byKey(const Key("user-permission-pending-i1")))
           .data,
-      "may look — sees the public images — no links — invited by haui — "
-      "since Sep 13, 2026",
+      "Viewer · Sees: public photos · May not share links",
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key("user-details-pending-i1")))
+          .data,
+      "invited by haui — since Sep 13, 2026",
     );
     // The memento stays beside the name once the person has chosen one.
     expect(
-      tester.widget<Text>(find.byKey(const Key("user-permission-bob"))).data,
+      tester.widget<Text>(find.byKey(const Key("user-details-bob"))).data,
       contains("invited for Uncle Bob"),
     );
   });
@@ -141,5 +147,64 @@ void main() {
     expect(uninvite.body, contains('"id":"i1"'));
     expect(find.byKey(const Key("user-pending-i1")), findsNothing);
     expect(find.byKey(const Key("user-pending-i2")), findsOneWidget);
+  });
+
+  testWidgets(
+      'one list: every invitation once, completed by the invitation list, '
+      'and "Invite…" at its end (issue #218)', (tester) async {
+    await pumpSettings(
+      tester,
+      await adminSettings(),
+      MockClient((request) async {
+        var query = request.url.queryParameters;
+        if (query["type"] == "invitations") {
+          // Both lists answer the open invitation i1, and an accepted one
+          // that is nobody's pending seat any more.
+          return json('{"invitations": ['
+              '{"id": "i1", "role": "view", "clearance": "public", '
+              '"recipient": "Grandma", "invitedBy": "haui", '
+              '"note": "Come and look", "expires": "2099-12-24T17:00:00Z", '
+              '"created": "2026-09-13T10:00:00Z"}, '
+              '{"id": "i0", "role": "edit", "clearance": "all", '
+              '"invitedBy": "haui", "used": "2026-02-03T09:00:00Z", '
+              '"usedBy": "bob"}]}');
+        }
+        return serverFor([])(request);
+      }),
+    );
+
+    // One section, no second list of invitations beside it.
+    expect(find.byKey(peopleSectionKey), findsOneWidget);
+    expect(find.text("Members"), findsOneWidget);
+    expect(find.text("Open invitations"), findsNothing);
+    // The invitation stands once, as its pending seat, with what only the
+    // invitation list knows: its note and its expiry.
+    expect(find.byKey(const Key("user-pending-i1")), findsOneWidget);
+    expect(find.text("Invited for Grandma (pending)"), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key("user-details-pending-i1")))
+          .data,
+      "invited by haui — since Sep 13, 2026 — Come and look — "
+      "expires on Dec 24, 2099",
+    );
+    // An accepted invitation is its user, not a row of its own.
+    expect(find.byKey(const Key("user-pending-i0")), findsNothing);
+    expect(find.byKey(const Key("user-bob")), findsOneWidget);
+
+    // "Invite…" ends the list: below every row of it.
+    var invite = find.byKey(inviteButtonKey);
+    expect(invite, findsOneWidget);
+    expect(find.text("Invite…"), findsOneWidget);
+    var inviteTop = tester.getTopLeft(invite).dy;
+    for (var key in const [
+      "user-haui",
+      "user-bob",
+      "user-pending-i1",
+      "user-pending-i2",
+    ]) {
+      expect(tester.getTopLeft(find.byKey(Key(key))).dy, lessThan(inviteTop),
+          reason: "$key stands below Invite…");
+    }
   });
 }

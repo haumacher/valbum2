@@ -143,7 +143,7 @@ void main() {
           )(request)),
     );
 
-    expect(find.byKey(const Key("invitation-i1")), findsOneWidget);
+    expect(find.byKey(const Key("user-pending-i1")), findsOneWidget);
     expect(find.textContaining("for Grandma"), findsOneWidget);
     expect(find.textContaining("Come and look"), findsOneWidget);
   });

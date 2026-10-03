@@ -163,8 +163,7 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(permissionLineKey)).data,
-        "You may edit every album of this space; you see all images; "
-        "you may share links.",
+        "Sees: all photos · May share links",
       );
     });
 
@@ -179,8 +178,7 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(permissionLineKey)).data,
-        "You may add photos to this space; you see all but the private "
-        "images; you may not share links.",
+        "Sees: public and members' photos · May not share links",
       );
     });
 
@@ -195,8 +193,7 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(permissionLineKey)).data,
-        "You may look at this space; you see the public images; you may not "
-        "share links.",
+        "Sees: public photos · May not share links",
       );
     });
 
