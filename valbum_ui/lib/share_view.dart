@@ -219,11 +219,13 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   /// Only [privacyPublic] and [privacyMembers] are offered: the server clamps
   /// a link's clearance to `min(members, maxPrivacy)`, so a third choice
   /// would promise something no link ever shows — a private photo is never
-  /// handed out through a link. "All photos" ([privacyMembers]) by default,
-  /// because a photo is public only where somebody said so and a link of
-  /// public photos would show nothing (issue #205) — unless the creator does
-  /// not see those photos themselves, see [ShareLinkDialog.mayShowMembers].
-  late int _maxPrivacy = widget.mayShowMembers ? privacyMembers : privacyPublic;
+  /// handed out through a link. [privacyPublic] by default: a photo is public
+  /// unless somebody marked it "members" or "private", so the public photos
+  /// are every photo nobody restricted, and a link shows the restricted ones
+  /// only where its author asks for them (issue #205, corrected by the
+  /// author: the first version defaulted to the members' level and so handed
+  /// exactly the photos marked "members only" to whoever holds a link).
+  late int _maxPrivacy = privacyPublic;
 
   /// The rating floor of the new link, the lowest by default: a link shows
   /// what the album holds unless its author says otherwise.

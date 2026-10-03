@@ -752,7 +752,7 @@ void sliceTwo() {
       expect(find.text(de.privacyMembersNote), findsOneWidget);
       // The compact form of issue #205, its defaults in German.
       expect(find.text(de.expiryNever), findsOneWidget);
-      expect(find.text(de.privacyUpToMembers), findsOneWidget);
+      expect(find.text(de.privacyPublicOnly), findsOneWidget);
       expect(find.text(de.linkRatingAllButTrash), findsOneWidget);
       expect(find.text(de.linkRightsHelp), findsOneWidget);
       // Who may open it (issues #201/#202), the anonymous link the default.

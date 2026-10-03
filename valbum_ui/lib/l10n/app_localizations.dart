@@ -1586,16 +1586,16 @@ abstract class AppLocalizations {
   /// **'Shows'**
   String get showsHeading;
 
-  /// Choice: the link shows only the photos marked public
+  /// Choice of a new share link, the default: it shows the public photos, which is every photo nobody marked members-only or private
   ///
   /// In en, this message translates to:
-  /// **'Public photos only'**
+  /// **'Public photos'**
   String get privacyPublicOnly;
 
-  /// Choice of a new share link: it shows every photo a link can show, which is what a member of the space sees (a private photo never)
+  /// Choice of a new share link: besides the public photos it also shows the photos marked visible to members only (a private photo never)
   ///
   /// In en, this message translates to:
-  /// **'All photos'**
+  /// **'Also members-only photos'**
   String get privacyUpToMembers;
 
   /// Explains the ceiling of what any share link can show

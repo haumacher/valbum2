@@ -248,8 +248,6 @@
   "linkLabelHelp": "Was dieser Link ist, für Ihre eigene Liste.",
   "expiresHeading": "Ablaufdatum",
   "showsHeading": "Anzeigen",
-  "privacyPublicOnly": "Nur öffentliche Fotos",
-  "privacyUpToMembers": "Alle Fotos",
   "privacyMembersNote": "Ein privates Foto wird niemals über einen Link angezeigt.",
   "lowestRatingHeading": "Niedrigste Bewertung",
   "linkRightsHelp": "Das Anzeigen ist immer erlaubt, das Bearbeiten niemals.",
@@ -737,6 +735,9 @@
   "newContactName": "Name",
   "newContactEmail": "E-Mail",
   "newContactRemove": "Entfernen",
+  "recipientsPickEmail": "E-Mail-Adresse aus meinen Kontakten…",
+  "recipientsPickPhone": "Telefonnummer aus meinen Kontakten…",
+  "recipientsPickFailed": "Die Kontakte dieses Telefons konnten nicht geöffnet werden ({reason}).",
   "newContactInvalid": "Keine E-Mail-Adresse",
   "newContactAlready": "Bereits in Ihren Kontakten als {name} gespeichert; markiert.",
   "recipientLinksHeading": "Jedem Empfänger seinen eigenen Link senden",
@@ -768,7 +769,6 @@
   "addEmailTitle": "Fügen Sie Ihre E-Mail-Adresse hinzu",
   "addEmailExplanation": "Wir senden einen Code an diese Adresse. Sobald Sie diesen bestätigt haben, können Sie damit Ihre Links auf anderen Geräten öffnen.",
   "addEmailDone": "Ihre E-Mail-Adresse wurde gespeichert.",
-  "recipientsPickEmail": "E-Mail-Adresse aus meinen Kontakten…",
-  "recipientsPickPhone": "Telefonnummer aus meinen Kontakten…",
-  "recipientsPickFailed": "Die Kontakte dieses Telefons konnten nicht geöffnet werden ({reason})."
+  "privacyPublicOnly": "Öffentliche Fotos",
+  "privacyUpToMembers": "Auch Fotos, die nur für Mitglieder sichtbar sind"
 }

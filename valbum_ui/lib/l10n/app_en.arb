@@ -1540,15 +1540,15 @@
     "description": "Heading above the choices of what a share link shows",
     "x-translated": "adfade40"
   },
-  "privacyPublicOnly": "Public photos only",
+  "privacyPublicOnly": "Public photos",
   "@privacyPublicOnly": {
-    "description": "Choice: the link shows only the photos marked public",
-    "x-translated": "3440df6b"
+    "description": "Choice of a new share link, the default: it shows the public photos, which is every photo nobody marked members-only or private",
+    "x-translated": "a1d9a451"
   },
-  "privacyUpToMembers": "All photos",
+  "privacyUpToMembers": "Also members-only photos",
   "@privacyUpToMembers": {
-    "description": "Choice of a new share link: it shows every photo a link can show, which is what a member of the space sees (a private photo never)",
-    "x-translated": "d9e8bb4a"
+    "description": "Choice of a new share link: besides the public photos it also shows the photos marked visible to members only (a private photo never)",
+    "x-translated": "ec1b2ce6"
   },
   "privacyMembersNote": "A private photo is never shown through a link.",
   "@privacyMembersNote": {

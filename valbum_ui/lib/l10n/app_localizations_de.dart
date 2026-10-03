@@ -916,10 +916,11 @@ class AppLocalizationsDe extends AppLocalizations {
   String get showsHeading => 'Anzeigen';
 
   @override
-  String get privacyPublicOnly => 'Nur öffentliche Fotos';
+  String get privacyPublicOnly => 'Öffentliche Fotos';
 
   @override
-  String get privacyUpToMembers => 'Alle Fotos';
+  String get privacyUpToMembers =>
+      'Auch Fotos, die nur für Mitglieder sichtbar sind';
 
   @override
   String get privacyMembersNote =>

@@ -902,10 +902,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showsHeading => 'Shows';
 
   @override
-  String get privacyPublicOnly => 'Public photos only';
+  String get privacyPublicOnly => 'Public photos';
 
   @override
-  String get privacyUpToMembers => 'All photos';
+  String get privacyUpToMembers => 'Also members-only photos';
 
   @override
   String get privacyMembersNote =>
