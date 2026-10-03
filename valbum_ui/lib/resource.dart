@@ -1064,6 +1064,33 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	List<FaceTag> tags;
 
+	///  The raw file shot beside this photograph, see issue #191: the plain file name of a
+	///  <code>.dng</code>, <code>.cr2</code>, <code>.cr3</code>, <code>.nef</code>, <code>.arw</code>,
+	///  <code>.orf</code>, <code>.rw2</code> or <code>.raf</code> in the same folder, the empty string
+	///  where there is none.
+	/// 
+	///  <p>
+	///  A raw file and the JPEG (or HEIC/HEIF) of the same base name, compared ignoring case, are
+	///  <em>the same photograph</em> (the author's decision on #191): one entry of the album, whose
+	///  {@link #name} is the JPEG and whose companion is named here. Everything that acts on the photo
+	///  acts on both files &mdash; a move, the delete into the trash, the purge, the zip &mdash; while
+	///  the hashes, the duplicates and a replacement of #167 take each file on its own. The listing
+	///  never shows the companion as a tile of its own; the original of the raw is addressed by its
+	///  own name, <code>&lt;album&gt;/&lt;raw&gt;</code>, and answered under the rights, the privacy
+	///  and the rating of this photograph.
+	///  </p>
+	/// 
+	///  <p>
+	///  <b>Stored</b> in <code>index.json</code>, and absent in a sidecar written before this field
+	///  existed, which reads as "none". A part whose companion is gone is answered without one, a
+	///  part whose own file is gone and whose companion is still there is answered as the raw (its
+	///  edits kept), and a raw whose base name matches a listed JPEG that claims no raw is paired with
+	///  it on the next read &mdash; derived on every read and written back by the album's next
+	///  ordinary write, reading never writes. A raw without a JPEG of its name is a photograph of its
+	///  own, shown through the JPEG preview it carries, and carries no companion.
+	///  </p>
+	String raw;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -1087,6 +1114,7 @@ class ImagePart extends AbstractImage {
 			this.contributorLabel = "", 
 			this.faces = const [], 
 			this.tags = const [], 
+			this.raw = "", 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1185,6 +1213,10 @@ class ImagePart extends AbstractImage {
 				}
 				break;
 			}
+			case "raw": {
+				raw = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1248,6 +1280,9 @@ class ImagePart extends AbstractImage {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("raw");
+		json.addString(raw);
 	}
 
 	@override
@@ -2265,9 +2300,19 @@ class ErrorInfo extends Resource {
 	///  The error message.
 	String message;
 
+	///  What a personal share link needs to know before it lets the caller in, see issue #198.
+	/// 
+	///  <p>
+	///  Set on the <code>401</code>/<code>403</code> a personal link answers a caller it does not
+	///  recognise; <code>null</code> on every other refusal. It rides on the {@link ErrorInfo} rather
+	///  than being a kind of its own, so that every client keeps reading the {@link #message}.
+	///  </p>
+	IdentifyRequired? identify;
+
 	/// Creates a ErrorInfo.
 	ErrorInfo({
 			this.message = "", 
+			this.identify, 
 	});
 
 	/// Parses a ErrorInfo from a string source.
@@ -2292,6 +2337,10 @@ class ErrorInfo extends Resource {
 				message = json.expectString();
 				break;
 			}
+			case "identify": {
+				identify = json.tryNull() ? null : IdentifyRequired.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -2302,6 +2351,12 @@ class ErrorInfo extends Resource {
 
 		json.addKey("message");
 		json.addString(message);
+
+		var _identify = identify;
+		if (_identify != null) {
+			json.addKey("identify");
+			_identify.writeContent(json);
+		}
 	}
 
 	@override
@@ -2785,12 +2840,26 @@ class ShareInfo extends _JsonObject {
 	///  The canonical <code>~&lt;owner&gt;/&lt;path&gt;</code> of the link's target, so the app can name it.
 	String path;
 
+	///  Whether the link is anonymous or personal, see {@link ShareType} and issue #198.
+	ShareType type;
+
+	///  The contact this session is, <code>null</code> for an anonymous link (issue #198).
+	/// 
+	///  <p>
+	///  Set exactly where a personal link was opened with a contact credential that it admits: who
+	///  the server takes the caller to be, and therefore whom it attributes their uploads to. The
+	///  app names them ("Not you?") and nothing more is said about the contact.
+	///  </p>
+	ContactInfo? contact;
+
 	/// Creates a ShareInfo.
 	ShareInfo({
 			this.label = "", 
 			this.expires = "", 
 			this.rights = const [], 
 			this.path = "", 
+			this.type = ShareType.anonymous, 
+			this.contact, 
 	});
 
 	/// Parses a ShareInfo from a string source.
@@ -2836,6 +2905,14 @@ class ShareInfo extends _JsonObject {
 				path = json.expectString();
 				break;
 			}
+			case "type": {
+				type = readShareType(json);
+				break;
+			}
+			case "contact": {
+				contact = json.tryNull() ? null : ContactInfo.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -2859,6 +2936,77 @@ class ShareInfo extends _JsonObject {
 
 		json.addKey("path");
 		json.addString(path);
+
+		json.addKey("type");
+		writeShareType(json, type);
+
+		var _contact = contact;
+		if (_contact != null) {
+			json.addKey("contact");
+			_contact.writeContent(json);
+		}
+	}
+
+}
+
+///  The contact a session of a personal link is, see {@link ShareInfo#contact} and issue #198.
+class ContactInfo extends _JsonObject {
+	///  The id of the contact in the space's register.
+	String id;
+
+	///  The name to greet the contact by: their own display name, else the name the space gives them.
+	/// 
+	///  <p>
+	///  The space's name is what the sharer wrote into the address field the link was sent with, so
+	///  it is no secret to the recipient; the contact's own name replaces it once they gave one.
+	///  </p>
+	String displayName;
+
+	/// Creates a ContactInfo.
+	ContactInfo({
+			this.id = "", 
+			this.displayName = "", 
+	});
+
+	/// Parses a ContactInfo from a string source.
+	static ContactInfo? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactInfo instance from the given reader.
+	static ContactInfo read(JsonReader json) {
+		ContactInfo result = ContactInfo();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactInfo";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "displayName": {
+				displayName = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("displayName");
+		json.addString(displayName);
 	}
 
 }
@@ -5259,6 +5407,20 @@ class ShareLink extends _JsonObject {
 	///  When the link was withdrawn, an ISO-8601 instant; empty while the link is live.
 	String revoked;
 
+	///  Whether the link is anonymous (the default) or personal, see issue #198.
+	/// 
+	///  <p>
+	///  An anonymous link with {@link #recipients} is refused.
+	///  </p>
+	ShareType type;
+
+	///  Who an addressed personal link was sent to, see {@link ShareRecipient} and issue #198.
+	/// 
+	///  <p>
+	///  Empty for an anonymous and for an open personal link.
+	///  </p>
+	List<ShareRecipient> recipients;
+
 	/// Creates a ShareLink.
 	ShareLink({
 			this.id = "", 
@@ -5271,6 +5433,8 @@ class ShareLink extends _JsonObject {
 			this.createdBy = "", 
 			this.created = "", 
 			this.revoked = "", 
+			this.type = ShareType.anonymous, 
+			this.recipients = const [], 
 	});
 
 	/// Parses a ShareLink from a string source.
@@ -5340,6 +5504,23 @@ class ShareLink extends _JsonObject {
 				revoked = json.expectString();
 				break;
 			}
+			case "type": {
+				type = readShareType(json);
+				break;
+			}
+			case "recipients": {
+				json.expectArray();
+				recipients = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ShareRecipient.read(json);
+						if (value != null) {
+							recipients.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -5381,6 +5562,16 @@ class ShareLink extends _JsonObject {
 
 		json.addKey("revoked");
 		json.addString(revoked);
+
+		json.addKey("type");
+		writeShareType(json, type);
+
+		json.addKey("recipients");
+		json.startArray();
+		for (var _element in recipients) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 }
@@ -5465,11 +5656,22 @@ class ShareLinkCreated extends _JsonObject {
 	///  The link's path on this server: <code>&lt;context&gt;/s/&lt;token&gt;/</code>.
 	String url;
 
+	///  For an addressed personal link, one link of their own per recipient (issue #198).
+	/// 
+	///  <p>
+	///  Answered exactly once, like {@link #token}: by <code>?action=share</code> for every
+	///  recipient and by <code>?action=resend</code> for the one recipient sent to again. The link's
+	///  own {@link #token} opens nothing without a contact credential; these are what the sharer
+	///  sends.
+	///  </p>
+	List<RecipientLink> recipients;
+
 	/// Creates a ShareLinkCreated.
 	ShareLinkCreated({
 			this.link, 
 			this.token = "", 
 			this.url = "", 
+			this.recipients = const [], 
 	});
 
 	/// Parses a ShareLinkCreated from a string source.
@@ -5502,6 +5704,19 @@ class ShareLinkCreated extends _JsonObject {
 				url = json.expectString();
 				break;
 			}
+			case "recipients": {
+				json.expectArray();
+				recipients = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = RecipientLink.read(json);
+						if (value != null) {
+							recipients.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -5521,6 +5736,1236 @@ class ShareLinkCreated extends _JsonObject {
 
 		json.addKey("url");
 		json.addString(url);
+
+		json.addKey("recipients");
+		json.startArray();
+		for (var _element in recipients) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  The kind of a share link, see {@link ShareLink#type} and issue #198.
+enum ShareType {
+	///  Whoever holds the link opens it, as every link did before issue #198; the default, and what a
+	///  link stored without a type is.
+	anonymous,
+	///  The person behind the link says who they are: a contact of the space.
+	/// 
+	///  <p>
+	///  With {@link ShareLink#recipients} it is <em>addressed</em>: only those contacts get in, each
+	///  through a link of their own. Without, it is <em>open</em>: anybody who proves an address gets
+	///  in (issues #199 and #200), and a contact the space already recognises does.
+	///  </p>
+	personal,
+}
+
+/// Writes a value of ShareType to a JSON stream.
+void writeShareType(JsonSink json, ShareType value) {
+	switch (value) {
+		case ShareType.anonymous: json.addString("ANONYMOUS"); break;
+		case ShareType.personal: json.addString("PERSONAL"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of ShareType from a JSON stream.
+ShareType readShareType(JsonReader json) {
+	switch (json.expectString()) {
+		case "ANONYMOUS": return ShareType.anonymous;
+		case "PERSONAL": return ShareType.personal;
+		default: return ShareType.anonymous;
+	}
+}
+
+///  A recipient of a personal share link, see {@link ShareLink#recipients} and issue #198.
+/// 
+///  <p>
+///  In a request either an existing contact named by {@link #contact}, or a new one described by
+///  {@link #name} and {@link #addresses}; a new contact whose address the register already holds
+///  <em>is</em> that contact. In an answer the contact as the register knows it, and what became of
+///  the recipient's own link &mdash; never its token.
+///  </p>
+class ShareRecipient extends _JsonObject {
+	///  The id of the contact; empty in a request describing a new one.
+	String contact;
+
+	///  The name the space gives the contact; a new contact without one is named by its first address.
+	String name;
+
+	///  The contact's addresses: what a new contact is created with, and what it holds.
+	List<ContactAddress> addresses;
+
+	///  When the recipient's current link was issued, an ISO-8601 instant; answered by the server.
+	String issued;
+
+	///  When the recipient's current link was first opened, empty while it was not; answered by the server.
+	String opened;
+
+	///  When the contact was shut out of this link, empty while they are not; answered by the server.
+	String shutOut;
+
+	/// Creates a ShareRecipient.
+	ShareRecipient({
+			this.contact = "", 
+			this.name = "", 
+			this.addresses = const [], 
+			this.issued = "", 
+			this.opened = "", 
+			this.shutOut = "", 
+	});
+
+	/// Parses a ShareRecipient from a string source.
+	static ShareRecipient? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ShareRecipient instance from the given reader.
+	static ShareRecipient read(JsonReader json) {
+		ShareRecipient result = ShareRecipient();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ShareRecipient";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "addresses": {
+				json.expectArray();
+				addresses = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ContactAddress.read(json);
+						if (value != null) {
+							addresses.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "issued": {
+				issued = json.expectString();
+				break;
+			}
+			case "opened": {
+				opened = json.expectString();
+				break;
+			}
+			case "shutOut": {
+				shutOut = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("contact");
+		json.addString(contact);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("addresses");
+		json.startArray();
+		for (var _element in addresses) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("issued");
+		json.addString(issued);
+
+		json.addKey("opened");
+		json.addString(opened);
+
+		json.addKey("shutOut");
+		json.addString(shutOut);
+	}
+
+}
+
+///  The link of one recipient of a personal share link, answered exactly once (issue #198).
+class RecipientLink extends _JsonObject {
+	///  The id of the contact the link is for.
+	String contact;
+
+	///  The name the space gives the contact.
+	String name;
+
+	///  The contact's addresses, so that the app can offer a <code>mailto:</code> or a chat per address.
+	List<ContactAddress> addresses;
+
+	///  The recipient's own token, answered exactly once and never stored.
+	String token;
+
+	///  The recipient's own link on this server: <code>&lt;context&gt;[/&lt;space&gt;]/s/&lt;token&gt;/</code>.
+	String url;
+
+	/// Creates a RecipientLink.
+	RecipientLink({
+			this.contact = "", 
+			this.name = "", 
+			this.addresses = const [], 
+			this.token = "", 
+			this.url = "", 
+	});
+
+	/// Parses a RecipientLink from a string source.
+	static RecipientLink? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a RecipientLink instance from the given reader.
+	static RecipientLink read(JsonReader json) {
+		RecipientLink result = RecipientLink();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "RecipientLink";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "addresses": {
+				json.expectArray();
+				addresses = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ContactAddress.read(json);
+						if (value != null) {
+							addresses.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "token": {
+				token = json.expectString();
+				break;
+			}
+			case "url": {
+				url = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("contact");
+		json.addString(contact);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("addresses");
+		json.startArray();
+		for (var _element in addresses) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("token");
+		json.addString(token);
+
+		json.addKey("url");
+		json.addString(url);
+	}
+
+}
+
+///  What an address of a contact is, see {@link ContactAddress} and issue #198.
+enum AddressKind {
+	///  An e-mail address, stored lower-cased.
+	email,
+	///  A phone number, stored in E.164 (<code>+4917…</code>) where the input says its country, else as given.
+	phone,
+}
+
+/// Writes a value of AddressKind to a JSON stream.
+void writeAddressKind(JsonSink json, AddressKind value) {
+	switch (value) {
+		case AddressKind.email: json.addString("EMAIL"); break;
+		case AddressKind.phone: json.addString("PHONE"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of AddressKind from a JSON stream.
+AddressKind readAddressKind(JsonReader json) {
+	switch (json.expectString()) {
+		case "EMAIL": return AddressKind.email;
+		case "PHONE": return AddressKind.phone;
+		default: return AddressKind.email;
+	}
+}
+
+///  One way to reach a contact, see {@link Contact#addresses} and issue #198.
+class ContactAddress extends _JsonObject {
+	///  E-mail or phone.
+	AddressKind kind;
+
+	///  The address, normalised by the server.
+	/// 
+	///  <p>
+	///  In a request an e-mail address may be written in the full form
+	///  <code>Tante Petra &lt;petra@gmx.de&gt;</code>; the name then names a new contact that has none.
+	///  </p>
+	String value;
+
+	///  Whether the contact proved the address (#199, #200), rather than the sharer giving it; answered by the server.
+	bool proven;
+
+	/// Creates a ContactAddress.
+	ContactAddress({
+			this.kind = AddressKind.email, 
+			this.value = "", 
+			this.proven = false, 
+	});
+
+	/// Parses a ContactAddress from a string source.
+	static ContactAddress? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactAddress instance from the given reader.
+	static ContactAddress read(JsonReader json) {
+		ContactAddress result = ContactAddress();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactAddress";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "kind": {
+				kind = readAddressKind(json);
+				break;
+			}
+			case "value": {
+				value = json.expectString();
+				break;
+			}
+			case "proven": {
+				proven = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("kind");
+		writeAddressKind(json, kind);
+
+		json.addKey("value");
+		json.addString(value);
+
+		json.addKey("proven");
+		json.addBool(proven);
+	}
+
+}
+
+///  A person behind a personal share link: a contact of the space, see issue #198.
+/// 
+///  <p>
+///  A contact is not a user: no role, no device, no clearance. What they may see and do is exactly
+///  what the link they opened allows. Stored in <code>&lt;space&gt;/.valbum/contacts.json</code> and
+///  answered by <code>&lt;data&gt;/?type=contacts</code> to every signed-in member of the space
+///  &mdash; "when you share photos, you also share contacts" &mdash; and never to a link or an
+///  anonymous caller.
+///  </p>
+class Contact extends _JsonObject {
+	///  The id of the contact; an upload of theirs is attributed to <code>contact:&lt;id&gt;</code>.
+	String id;
+
+	///  The name the space gives the contact ("Tante Petra"); what their uploads are labelled with.
+	String name;
+
+	///  The name the contact gave themselves at the first open, empty while they gave none.
+	String displayName;
+
+	///  The contact's addresses, no two contacts sharing one.
+	List<ContactAddress> addresses;
+
+	///  When the contact was entered, an ISO-8601 instant.
+	String created;
+
+	///  The member who entered the contact.
+	String createdBy;
+
+	///  When the contact first opened a link, empty while they never did.
+	String firstSeen;
+
+	///  When the contact was last seen, to the hour; empty while they never were.
+	String lastSeen;
+
+	///  When the contact was shut out of every link of the space, empty while they are not.
+	String blocked;
+
+	///  The browsers the contact is recognised on: their contact credentials, never a secret.
+	List<ContactSession> sessions;
+
+	/// Creates a Contact.
+	Contact({
+			this.id = "", 
+			this.name = "", 
+			this.displayName = "", 
+			this.addresses = const [], 
+			this.created = "", 
+			this.createdBy = "", 
+			this.firstSeen = "", 
+			this.lastSeen = "", 
+			this.blocked = "", 
+			this.sessions = const [], 
+	});
+
+	/// Parses a Contact from a string source.
+	static Contact? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a Contact instance from the given reader.
+	static Contact read(JsonReader json) {
+		Contact result = Contact();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "Contact";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "displayName": {
+				displayName = json.expectString();
+				break;
+			}
+			case "addresses": {
+				json.expectArray();
+				addresses = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ContactAddress.read(json);
+						if (value != null) {
+							addresses.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "created": {
+				created = json.expectString();
+				break;
+			}
+			case "createdBy": {
+				createdBy = json.expectString();
+				break;
+			}
+			case "firstSeen": {
+				firstSeen = json.expectString();
+				break;
+			}
+			case "lastSeen": {
+				lastSeen = json.expectString();
+				break;
+			}
+			case "blocked": {
+				blocked = json.expectString();
+				break;
+			}
+			case "sessions": {
+				json.expectArray();
+				sessions = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ContactSession.read(json);
+						if (value != null) {
+							sessions.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("displayName");
+		json.addString(displayName);
+
+		json.addKey("addresses");
+		json.startArray();
+		for (var _element in addresses) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("created");
+		json.addString(created);
+
+		json.addKey("createdBy");
+		json.addString(createdBy);
+
+		json.addKey("firstSeen");
+		json.addString(firstSeen);
+
+		json.addKey("lastSeen");
+		json.addString(lastSeen);
+
+		json.addKey("blocked");
+		json.addString(blocked);
+
+		json.addKey("sessions");
+		json.startArray();
+		for (var _element in sessions) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  A browser a contact is recognised on, see {@link Contact#sessions} and issue #198.
+class ContactSession extends _JsonObject {
+	///  The id of the session.
+	String id;
+
+	///  The id of the share link the session was opened through.
+	String link;
+
+	///  When the session began, an ISO-8601 instant.
+	String created;
+
+	///  When the session ends, an ISO-8601 instant.
+	String expires;
+
+	///  Whether the contact asked to be remembered: 90 days renewed on use, else 24 hours.
+	bool remember;
+
+	///  When the session was last used, to the hour.
+	String lastUsed;
+
+	/// Creates a ContactSession.
+	ContactSession({
+			this.id = "", 
+			this.link = "", 
+			this.created = "", 
+			this.expires = "", 
+			this.remember = false, 
+			this.lastUsed = "", 
+	});
+
+	/// Parses a ContactSession from a string source.
+	static ContactSession? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactSession instance from the given reader.
+	static ContactSession read(JsonReader json) {
+		ContactSession result = ContactSession();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactSession";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "link": {
+				link = json.expectString();
+				break;
+			}
+			case "created": {
+				created = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			case "remember": {
+				remember = json.expectBool();
+				break;
+			}
+			case "lastUsed": {
+				lastUsed = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("link");
+		json.addString(link);
+
+		json.addKey("created");
+		json.addString(created);
+
+		json.addKey("expires");
+		json.addString(expires);
+
+		json.addKey("remember");
+		json.addBool(remember);
+
+		json.addKey("lastUsed");
+		json.addString(lastUsed);
+	}
+
+}
+
+///  The register of contacts of a space, answered by <code>&lt;data&gt;/?type=contacts</code> (issue #198).
+class ContactList extends _JsonObject {
+	///  Every contact, in the order they were entered.
+	List<Contact> contacts;
+
+	/// Creates a ContactList.
+	ContactList({
+			this.contacts = const [], 
+	});
+
+	/// Parses a ContactList from a string source.
+	static ContactList? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactList instance from the given reader.
+	static ContactList read(JsonReader json) {
+		ContactList result = ContactList();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactList";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "contacts": {
+				json.expectArray();
+				contacts = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = Contact.read(json);
+						if (value != null) {
+							contacts.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("contacts");
+		json.startArray();
+		for (var _element in contacts) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  Sending one recipient of a personal link a fresh link, <code>&lt;folder&gt;/?action=resend</code> (issue #198).
+/// 
+///  <p>
+///  The recipient's earlier link is void from then on, and the answer is a {@link ShareLinkCreated}
+///  carrying the one fresh {@link RecipientLink}.
+///  </p>
+class ShareResend extends _JsonObject {
+	///  The id of the share link.
+	String link;
+
+	///  The id of the contact to send again to; a recipient of the link.
+	String contact;
+
+	/// Creates a ShareResend.
+	ShareResend({
+			this.link = "", 
+			this.contact = "", 
+	});
+
+	/// Parses a ShareResend from a string source.
+	static ShareResend? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ShareResend instance from the given reader.
+	static ShareResend read(JsonReader json) {
+		ShareResend result = ShareResend();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ShareResend";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "link": {
+				link = json.expectString();
+				break;
+			}
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("link");
+		json.addString(link);
+
+		json.addKey("contact");
+		json.addString(contact);
+	}
+
+}
+
+///  Shutting a contact out of one link, <code>&lt;folder&gt;/?action=shut-out</code>, or out of the
+///  whole space, <code>&lt;data&gt;/?action=block-contact</code> (issue #198).
+/// 
+///  <p>
+///  Either ends the matching contact credentials at once; <code>shutOut: false</code> lets the
+///  contact in again (and issues nothing: a link to them is sent again with
+///  <code>?action=resend</code>).
+///  </p>
+class ContactShutOut extends _JsonObject {
+	///  The id of the share link; ignored by <code>?action=block-contact</code>.
+	String link;
+
+	///  The id of the contact.
+	String contact;
+
+	///  Whether the contact is shut out, or let in again.
+	bool shutOut;
+
+	/// Creates a ContactShutOut.
+	ContactShutOut({
+			this.link = "", 
+			this.contact = "", 
+			this.shutOut = false, 
+	});
+
+	/// Parses a ContactShutOut from a string source.
+	static ContactShutOut? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactShutOut instance from the given reader.
+	static ContactShutOut read(JsonReader json) {
+		ContactShutOut result = ContactShutOut();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactShutOut";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "link": {
+				link = json.expectString();
+				break;
+			}
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			case "shutOut": {
+				shutOut = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("link");
+		json.addString(link);
+
+		json.addKey("contact");
+		json.addString(contact);
+
+		json.addKey("shutOut");
+		json.addBool(shutOut);
+	}
+
+}
+
+///  The first open of a recipient's own link, <code>&lt;data&gt;/?action=identify</code> (issue #198).
+/// 
+///  <p>
+///  Sent with the recipient's token as the bearer: the link identifies the recipient once, and the
+///  answer is a {@link ContactCredential} that recognises them from then on.
+///  </p>
+class ContactIdentify extends _JsonObject {
+	///  Whether to remember this browser: 90 days renewed on use, else 24 hours.
+	bool remember;
+
+	///  The name the contact wants to be greeted by; empty keeps what the space calls them.
+	String displayName;
+
+	/// Creates a ContactIdentify.
+	ContactIdentify({
+			this.remember = false, 
+			this.displayName = "", 
+	});
+
+	/// Parses a ContactIdentify from a string source.
+	static ContactIdentify? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactIdentify instance from the given reader.
+	static ContactIdentify read(JsonReader json) {
+		ContactIdentify result = ContactIdentify();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactIdentify";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "remember": {
+				remember = json.expectBool();
+				break;
+			}
+			case "displayName": {
+				displayName = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("remember");
+		json.addBool(remember);
+
+		json.addKey("displayName");
+		json.addString(displayName);
+	}
+
+}
+
+///  A contact credential, answered once by <code>?action=identify</code> (issue #198).
+/// 
+///  <p>
+///  Sent beside the link's token as the header <code>X-VAlbum-Contact: &lt;credential&gt;</code> on
+///  every request of a personal link's session, and never as a bearer: it opens no endpoint by
+///  itself, only the personal links of its space that admit the contact.
+///  </p>
+class ContactCredential extends _JsonObject {
+	///  The credential, answered exactly once and stored only as a hash.
+	String credential;
+
+	///  When it ends, an ISO-8601 instant; renewed on use where {@link #remember} holds.
+	String expires;
+
+	///  Whether it is remembered for 90 days.
+	bool remember;
+
+	///  The contact it identifies.
+	ContactInfo? contact;
+
+	/// Creates a ContactCredential.
+	ContactCredential({
+			this.credential = "", 
+			this.expires = "", 
+			this.remember = false, 
+			this.contact, 
+	});
+
+	/// Parses a ContactCredential from a string source.
+	static ContactCredential? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactCredential instance from the given reader.
+	static ContactCredential read(JsonReader json) {
+		ContactCredential result = ContactCredential();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactCredential";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "credential": {
+				credential = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			case "remember": {
+				remember = json.expectBool();
+				break;
+			}
+			case "contact": {
+				contact = json.tryNull() ? null : ContactInfo.read(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("credential");
+		json.addString(credential);
+
+		json.addKey("expires");
+		json.addString(expires);
+
+		json.addKey("remember");
+		json.addBool(remember);
+
+		var _contact = contact;
+		if (_contact != null) {
+			json.addKey("contact");
+			_contact.writeContent(json);
+		}
+	}
+
+}
+
+///  The refusal of a personal link to a caller the server does not recognise (issue #198).
+/// 
+///  <p>
+///  Carried by the {@link ErrorInfo#identify} of the <code>401</code> answered on every endpoint,
+///  <code>?type=auth</code> included, and never with the album. {@link #firstOpen} says that the presented token is a recipient's own link
+///  that was never opened: <code>?action=identify</code> accepts it. Otherwise the caller proves an
+///  address by one of the {@link #methods} &mdash; none in this build, which leaves "ask the sharer
+///  to send the link again".
+///  </p>
+class IdentifyRequired extends _JsonObject {
+	///  Whether the token is a recipient's own link that has not been opened yet.
+	bool firstOpen;
+
+	///  Whose own link the token is, <code>null</code> for the link's own token.
+	ContactInfo? contact;
+
+	///  The contact's addresses, masked (<code>p•••@gmx.de</code>); empty for a first open.
+	List<MaskedAddress> addresses;
+
+	///  The ways the server can prove an address of the contact; empty in this build.
+	List<ProofMethod> methods;
+
+	///  The label of the link.
+	String label;
+
+	///  The member who shared the link, for "… will see your name with the photos you add".
+	String sharedBy;
+
+	/// Creates a IdentifyRequired.
+	IdentifyRequired({
+			this.firstOpen = false, 
+			this.contact, 
+			this.addresses = const [], 
+			this.methods = const [], 
+			this.label = "", 
+			this.sharedBy = "", 
+	});
+
+	/// Parses a IdentifyRequired from a string source.
+	static IdentifyRequired? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a IdentifyRequired instance from the given reader.
+	static IdentifyRequired read(JsonReader json) {
+		IdentifyRequired result = IdentifyRequired();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "IdentifyRequired";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "firstOpen": {
+				firstOpen = json.expectBool();
+				break;
+			}
+			case "contact": {
+				contact = json.tryNull() ? null : ContactInfo.read(json);
+				break;
+			}
+			case "addresses": {
+				json.expectArray();
+				addresses = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = MaskedAddress.read(json);
+						if (value != null) {
+							addresses.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "methods": {
+				json.expectArray();
+				methods = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ProofMethod.read(json);
+						if (value != null) {
+							methods.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "label": {
+				label = json.expectString();
+				break;
+			}
+			case "sharedBy": {
+				sharedBy = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("firstOpen");
+		json.addBool(firstOpen);
+
+		var _contact = contact;
+		if (_contact != null) {
+			json.addKey("contact");
+			_contact.writeContent(json);
+		}
+
+		json.addKey("addresses");
+		json.startArray();
+		for (var _element in addresses) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("methods");
+		json.startArray();
+		for (var _element in methods) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("label");
+		json.addString(label);
+
+		json.addKey("sharedBy");
+		json.addString(sharedBy);
+	}
+
+}
+
+///  A masked address of a contact, see {@link IdentifyRequired#addresses}.
+class MaskedAddress extends _JsonObject {
+	///  E-mail or phone.
+	AddressKind kind;
+
+	///  The address with most of it masked.
+	String masked;
+
+	/// Creates a MaskedAddress.
+	MaskedAddress({
+			this.kind = AddressKind.email, 
+			this.masked = "", 
+	});
+
+	/// Parses a MaskedAddress from a string source.
+	static MaskedAddress? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a MaskedAddress instance from the given reader.
+	static MaskedAddress read(JsonReader json) {
+		MaskedAddress result = MaskedAddress();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "MaskedAddress";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "kind": {
+				kind = readAddressKind(json);
+				break;
+			}
+			case "masked": {
+				masked = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("kind");
+		writeAddressKind(json, kind);
+
+		json.addKey("masked");
+		json.addString(masked);
+	}
+
+}
+
+///  A way to prove an address, see {@link IdentifyRequired#methods}: <code>mail-code</code>, <code>oidc:google</code>, …
+class ProofMethod extends _JsonObject {
+	///  The name of the method.
+	String name;
+
+	/// Creates a ProofMethod.
+	ProofMethod({
+			this.name = "", 
+	});
+
+	/// Parses a ProofMethod from a string source.
+	static ProofMethod? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ProofMethod instance from the given reader.
+	static ProofMethod read(JsonReader json) {
+		ProofMethod result = ProofMethod();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ProofMethod";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
 	}
 
 }

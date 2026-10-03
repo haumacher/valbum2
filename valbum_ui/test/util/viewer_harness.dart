@@ -32,12 +32,14 @@ ImagePart viewerImagePart(
   ImageKind kind = ImageKind.image,
   String contributor = "",
   String contributorLabel = "",
+  String raw = "",
 }) =>
     ImagePart(
       name: name,
       kind: kind,
       contributor: contributor,
       contributorLabel: contributorLabel,
+      raw: raw,
       width: 2000,
       height: 1000,
     );
@@ -300,7 +302,8 @@ ImageProvider shownPicture(WidgetTester tester) =>
     tester.widget<Image>(find.byKey(const Key("image-picture"))).image;
 
 /// The URL the viewer's picture is fetched from.
-String shownPictureUrl(WidgetTester tester) => providerUrl(shownPicture(tester));
+String shownPictureUrl(WidgetTester tester) =>
+    providerUrl(shownPicture(tester));
 
 /// The URL a provider of the viewer fetches from.
 String providerUrl(ImageProvider provider) => switch (provider) {

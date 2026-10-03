@@ -73,8 +73,29 @@ public class ShareStore {
 	 */
 	public static final String URL_SEGMENT = "s";
 
-	/** The version this build writes, see {@link ShareStore}. */
-	public static final int VERSION = 1;
+	/**
+	 * The version this build writes, see {@link ShareStore}.
+	 *
+	 * <p>
+	 * Version 2 (issue #198) adds the <code>type</code> of a link and, for a personal one, its
+	 * <code>recipients</code> and <code>shutOut</code> lists; a link without a type is anonymous, so
+	 * a version 1 file reads unchanged:
+	 * </p>
+	 *
+	 * <pre>
+	 * {"id":"…", …, "type":"personal",
+	 *  "recipients":[{"contact":"&lt;contact id&gt;","tokenHash":"&lt;64 hex&gt;","voided":["&lt;64 hex&gt;"],
+	 *    "issued":"…","opened":""}],
+	 *  "shutOut":[{"contact":"&lt;contact id&gt;","at":"…"}]}
+	 * </pre>
+	 */
+	public static final int VERSION = 2;
+
+	/** The stored type of an anonymous link; a link without a type is one. */
+	public static final String ANONYMOUS = "anonymous";
+
+	/** The stored type of a personal link, see issue #198. */
+	public static final String PERSONAL = "personal";
 
 	/** The number of random bytes a token is built from, as for a device token. */
 	private static final int TOKEN_BYTES = 32;
@@ -110,6 +131,101 @@ public class ShareStore {
 
 	private static final String REVOKED__PROP = "revoked";
 
+	private static final String TYPE__PROP = "type";
+
+	private static final String RECIPIENTS__PROP = "recipients";
+
+	private static final String SHUT_OUT__PROP = "shutOut";
+
+	/**
+	 * A recipient of an addressed personal link and their own link, see issue #198.
+	 *
+	 * <p>
+	 * The recipient's token is stored as its hash, like the link's own. Sending again replaces it
+	 * and keeps the old hash among the {@link #getVoided() voided} ones, so that the old link is told
+	 * apart from one that never existed.
+	 * </p>
+	 */
+	public static final class Recipient {
+
+		private final String _contact;
+
+		private String _tokenHash;
+
+		private final List<String> _voided = new ArrayList<>();
+
+		private String _issued;
+
+		private String _opened;
+
+		Recipient(String contact, String tokenHash, String issued, String opened) {
+			_contact = contact;
+			_tokenHash = tokenHash;
+			_issued = issued;
+			_opened = opened;
+		}
+
+		/** The id of the contact, see {@link ContactStore}. */
+		public String getContact() {
+			return _contact;
+		}
+
+		String getTokenHash() {
+			return _tokenHash;
+		}
+
+		/** The hashes of the recipient's earlier tokens. */
+		List<String> getVoided() {
+			return _voided;
+		}
+
+		/** When the current token was issued. */
+		public String getIssued() {
+			return _issued;
+		}
+
+		/** When the current token was first opened, empty while it was not. */
+		public String getOpened() {
+			return _opened;
+		}
+
+		/** Whether the current token was opened: it identifies nobody any more. */
+		public boolean isOpened() {
+			return !_opened.isEmpty();
+		}
+	}
+
+	/** What a token presented to this store is, see {@link ShareStore#match(String)}. */
+	public static final class Match {
+
+		private final Link _link;
+
+		private final Recipient _recipient;
+
+		private final boolean _voided;
+
+		Match(Link link, Recipient recipient, boolean voided) {
+			_link = link;
+			_recipient = recipient;
+			_voided = voided;
+		}
+
+		/** The link the token belongs to. */
+		public Link getLink() {
+			return _link;
+		}
+
+		/** The recipient whose own token it is, <code>null</code> for the link's own token. */
+		public Recipient getRecipient() {
+			return _recipient;
+		}
+
+		/** Whether it is a recipient's token that was replaced by sending again. */
+		public boolean isVoided() {
+			return _voided;
+		}
+	}
+
 	/** A single share link, see {@link ShareStore}. */
 	public static final class Link {
 
@@ -136,6 +252,12 @@ public class ShareStore {
 		private final String _createdBy;
 
 		private String _revoked;
+
+		private String _type = ANONYMOUS;
+
+		private final List<Recipient> _recipients = new ArrayList<>();
+
+		private final java.util.Map<String, String> _shutOut = new java.util.LinkedHashMap<>();
 
 		/** Creates a {@link Link} that allows looking and downloading. */
 		public Link(String id, String tokenHash, String owner, String path, String label, String expires,
@@ -296,6 +418,62 @@ public class ShareStore {
 			return !isRevoked() && !isExpired(Instant.now());
 		}
 
+		/** {@link ShareStore#ANONYMOUS} or {@link ShareStore#PERSONAL}, see issue #198. */
+		public String getType() {
+			return _type;
+		}
+
+		/** Whether the person behind this link is a contact of the space, see issue #198. */
+		public boolean isPersonal() {
+			return PERSONAL.equals(_type);
+		}
+
+		/** Whether this is a personal link that only its recipients open. */
+		public boolean isAddressed() {
+			return isPersonal() && !_recipients.isEmpty();
+		}
+
+		/** The recipients of an addressed link, empty for every other. */
+		public List<Recipient> getRecipients() {
+			return Collections.unmodifiableList(_recipients);
+		}
+
+		/** The recipient that is the given contact, <code>null</code> if they are none. */
+		public Recipient recipient(String contact) {
+			for (Recipient recipient : _recipients) {
+				if (recipient.getContact().equals(contact)) {
+					return recipient;
+				}
+			}
+			return null;
+		}
+
+		/** When the given contact was shut out of this link, empty while they are not. */
+		public String shutOutAt(String contact) {
+			String at = _shutOut.get(contact);
+			return at == null ? "" : at;
+		}
+
+		/** Whether the given contact is shut out of this link. */
+		public boolean isShutOut(String contact) {
+			return _shutOut.containsKey(contact);
+		}
+
+		/**
+		 * Whether this link lets the given contact in, see issue #198.
+		 *
+		 * <p>
+		 * A personal link only; an addressed one only its recipients; and never a contact shut out of
+		 * it. Whether the link is live is a question of its own.
+		 * </p>
+		 */
+		public boolean admits(String contact) {
+			if (!isPersonal() || isShutOut(contact)) {
+				return false;
+			}
+			return !isAddressed() || recipient(contact) != null;
+		}
+
 		/** How an attribution names a contribution made through this link, see issue #53. */
 		public String getSubject() {
 			return "token:" + _id;
@@ -427,17 +605,158 @@ public class ShareStore {
 	 * @return <code>null</code> if the token is not one this server issued.
 	 */
 	public synchronized Link lookup(String token) {
+		Match match = match(token);
+		return match == null || match.isVoided() ? null : match.getLink();
+	}
+
+	/**
+	 * What the given token is: the own token of a link, or the token of one of its recipients
+	 * (issue #198), current or voided.
+	 *
+	 * @return <code>null</code> if the token is not one this server issued.
+	 */
+	public synchronized Match match(String token) {
 		if (token == null || token.isEmpty()) {
 			return null;
 		}
 		byte[] hash = UserStore.hash(token).getBytes(StandardCharsets.US_ASCII);
 		for (Link link : _links) {
 			// Constant-time comparison: the hash of a guessed token must not be probed by timing.
-			if (MessageDigest.isEqual(hash, link.getTokenHash().getBytes(StandardCharsets.US_ASCII))) {
-				return link;
+			if (same(hash, link.getTokenHash())) {
+				return new Match(link, null, false);
+			}
+			for (Recipient recipient : link._recipients) {
+				if (same(hash, recipient.getTokenHash())) {
+					return new Match(link, recipient, false);
+				}
+				for (String voided : recipient.getVoided()) {
+					if (same(hash, voided)) {
+						return new Match(link, recipient, true);
+					}
+				}
 			}
 		}
 		return null;
+	}
+
+	private static boolean same(byte[] hash, String stored) {
+		return !stored.isEmpty() && MessageDigest.isEqual(hash, stored.getBytes(StandardCharsets.US_ASCII));
+	}
+
+	/** A newly created personal link, with its own token and one token per recipient. */
+	public static final class IssuedPersonal {
+
+		private final Issued _issued;
+
+		private final java.util.Map<String, String> _tokens;
+
+		IssuedPersonal(Issued issued, java.util.Map<String, String> tokens) {
+			_issued = issued;
+			_tokens = tokens;
+		}
+
+		/** The link and its own token. */
+		public Issued getIssued() {
+			return _issued;
+		}
+
+		/** The token of every recipient, by contact id, in the order of the recipients. */
+		public java.util.Map<String, String> getTokens() {
+			return _tokens;
+		}
+	}
+
+	/**
+	 * Issues a personal link, see issue #198.
+	 *
+	 * @param recipients
+	 *        The ids of the contacts it is sent to, without repetition; empty for an open link.
+	 */
+	public synchronized IssuedPersonal createPersonal(String owner, String path, String label, String expires,
+			int maxPrivacy, int minRating, java.util.Collection<String> rights, String createdBy,
+			List<String> recipients) throws IOException {
+		String token = newToken();
+		String now = Instant.now().toString();
+		Link link = new Link(freeId(), UserStore.hash(token), owner, path, label, expires, maxPrivacy, minRating,
+			rights, createdBy, now, "");
+		link._type = PERSONAL;
+		java.util.Map<String, String> tokens = new java.util.LinkedHashMap<>();
+		for (String contact : recipients) {
+			if (tokens.containsKey(contact)) {
+				continue;
+			}
+			String own = newToken();
+			link._recipients.add(new Recipient(contact, UserStore.hash(own), now, ""));
+			tokens.put(contact, own);
+		}
+		_links.add(link);
+		store();
+		return new IssuedPersonal(new Issued(link, token), tokens);
+	}
+
+	/**
+	 * Marks the given recipient's current token as opened: it identifies nobody any more.
+	 *
+	 * @return Whether this call opened it; <code>false</code> if it was opened before, which is
+	 *         how only one of two concurrent first opens wins.
+	 */
+	public synchronized boolean open(Link link, Recipient recipient) throws IOException {
+		if (recipient.isOpened() || !link._recipients.contains(recipient)) {
+			return false;
+		}
+		recipient._opened = Instant.now().toString();
+		store();
+		return true;
+	}
+
+	/** Takes back {@link #open(Link, Recipient)}, for an identification that could not be finished. */
+	synchronized void reopen(Recipient recipient) throws IOException {
+		recipient._opened = "";
+		store();
+	}
+
+	/**
+	 * Voids the given recipient's token and issues a fresh one, see issue #198.
+	 *
+	 * @return The fresh token, <code>null</code> if the contact is no recipient of the link.
+	 */
+	public synchronized String resend(String linkId, String contact) throws IOException {
+		Link link = get(linkId);
+		Recipient recipient = link == null ? null : link.recipient(contact);
+		if (recipient == null) {
+			return null;
+		}
+		String token = newToken();
+		recipient._voided.add(recipient._tokenHash);
+		recipient._tokenHash = UserStore.hash(token);
+		recipient._issued = Instant.now().toString();
+		recipient._opened = "";
+		store();
+		return token;
+	}
+
+	/**
+	 * Shuts the given contact out of the given personal link, or lets them in again (issue #198).
+	 *
+	 * @return The link, <code>null</code> if there is none of that id.
+	 */
+	public synchronized Link shutOut(String linkId, String contact, boolean shutOut) throws IOException {
+		Link link = get(linkId);
+		if (link == null) {
+			return null;
+		}
+		boolean changed = shutOut ? link._shutOut.putIfAbsent(contact, Instant.now().toString()) == null
+			: link._shutOut.remove(contact) != null;
+		if (changed) {
+			store();
+		}
+		return link;
+	}
+
+	private String newToken() {
+		byte[] bytes = new byte[TOKEN_BYTES];
+		_random.nextBytes(bytes);
+		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 	}
 
 	/**
@@ -462,9 +781,7 @@ public class ShareStore {
 	/** Issues a link that knows who handed it out, see issue #84. */
 	public synchronized Issued create(String owner, String path, String label, String expires, int maxPrivacy,
 			int minRating, java.util.Collection<String> rights, String createdBy) throws IOException {
-		byte[] bytes = new byte[TOKEN_BYTES];
-		_random.nextBytes(bytes);
-		String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+		String token = newToken();
 
 		Link link = new Link(freeId(), UserStore.hash(token), owner, path, label, expires, maxPrivacy, minRating,
 			rights, createdBy, Instant.now().toString(), "");
@@ -565,6 +882,9 @@ public class ShareStore {
 		String createdBy = "";
 		String revoked = "";
 		java.util.List<String> rights = null;
+		String type = ANONYMOUS;
+		List<Recipient> recipients = new ArrayList<>();
+		java.util.Map<String, String> shutOut = new java.util.LinkedHashMap<>();
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -610,6 +930,23 @@ public class ShareStore {
 				case REVOKED__PROP:
 					revoked = in.nextString();
 					break;
+				case TYPE__PROP:
+					type = in.nextString();
+					break;
+				case RECIPIENTS__PROP:
+					in.beginArray();
+					while (in.hasNext()) {
+						recipients.add(readRecipient(in));
+					}
+					in.endArray();
+					break;
+				case SHUT_OUT__PROP:
+					in.beginArray();
+					while (in.hasNext()) {
+						readShutOut(in, shutOut);
+					}
+					in.endArray();
+					break;
 				default:
 					in.skipValue();
 					break;
@@ -617,8 +954,80 @@ public class ShareStore {
 		}
 		in.endObject();
 		// A link written before issue #83 says nothing about its rights: it allowed looking.
-		return new Link(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating,
+		Link link = new Link(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating,
 			rights == null ? Rights.READ_ONLY : rights, createdBy, created, revoked);
+		if (PERSONAL.equals(type)) {
+			link._type = PERSONAL;
+			link._recipients.addAll(recipients);
+			link._shutOut.putAll(shutOut);
+		} else if (!ANONYMOUS.equals(type)) {
+			// A type this build does not know is no anonymous link: it must not open to everybody.
+			LOG.warning("The share link '" + id + "' has the unknown type '" + type + "'; it opens nothing.");
+			link._type = type;
+		}
+		return link;
+	}
+
+	private static Recipient readRecipient(JsonReader in) throws IOException {
+		String contact = "";
+		String tokenHash = "";
+		String issued = "";
+		String opened = "";
+		List<String> voided = new ArrayList<>();
+		in.beginObject();
+		while (in.hasNext()) {
+			switch (in.nextName()) {
+				case "contact":
+					contact = in.nextString();
+					break;
+				case TOKEN_HASH__PROP:
+					tokenHash = in.nextString();
+					break;
+				case "issued":
+					issued = in.nextString();
+					break;
+				case "opened":
+					opened = in.nextString();
+					break;
+				case "voided":
+					in.beginArray();
+					while (in.hasNext()) {
+						voided.add(in.nextString());
+					}
+					in.endArray();
+					break;
+				default:
+					in.skipValue();
+					break;
+			}
+		}
+		in.endObject();
+		Recipient result = new Recipient(contact, tokenHash, issued, opened);
+		result._voided.addAll(voided);
+		return result;
+	}
+
+	private static void readShutOut(JsonReader in, java.util.Map<String, String> shutOut) throws IOException {
+		String contact = "";
+		String at = "";
+		in.beginObject();
+		while (in.hasNext()) {
+			switch (in.nextName()) {
+				case "contact":
+					contact = in.nextString();
+					break;
+				case "at":
+					at = in.nextString();
+					break;
+				default:
+					in.skipValue();
+					break;
+			}
+		}
+		in.endObject();
+		if (!contact.isEmpty()) {
+			shutOut.put(contact, at);
+		}
 	}
 
 	/**
@@ -760,6 +1169,43 @@ public class ShareStore {
 		out.value(link.getCreated());
 		out.name(REVOKED__PROP);
 		out.value(link.getRevoked());
+		if (!ANONYMOUS.equals(link.getType())) {
+			// An anonymous link is written as every link was before issue #198.
+			out.name(TYPE__PROP);
+			out.value(link.getType());
+			out.name(RECIPIENTS__PROP);
+			out.beginArray();
+			for (Recipient recipient : link._recipients) {
+				out.beginObject();
+				out.name("contact");
+				out.value(recipient.getContact());
+				out.name(TOKEN_HASH__PROP);
+				out.value(recipient.getTokenHash());
+				out.name("voided");
+				out.beginArray();
+				for (String voided : recipient.getVoided()) {
+					out.value(voided);
+				}
+				out.endArray();
+				out.name("issued");
+				out.value(recipient.getIssued());
+				out.name("opened");
+				out.value(recipient.getOpened());
+				out.endObject();
+			}
+			out.endArray();
+			out.name(SHUT_OUT__PROP);
+			out.beginArray();
+			for (java.util.Map.Entry<String, String> entry : link._shutOut.entrySet()) {
+				out.beginObject();
+				out.name("contact");
+				out.value(entry.getKey());
+				out.name("at");
+				out.value(entry.getValue());
+				out.endObject();
+			}
+			out.endArray();
+		}
 		out.endObject();
 	}
 }

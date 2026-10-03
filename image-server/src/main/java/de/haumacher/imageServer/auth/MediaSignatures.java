@@ -88,6 +88,19 @@ public final class MediaSignatures {
 	/** The subject kind of a share link. */
 	public static final String SHARE = "s";
 
+	/**
+	 * The subject kind of a session of a personal link, see issue #198.
+	 *
+	 * <p>
+	 * Its id is the link's id and the contact session's id joined by {@link #CONTACT_SEPARATOR}: the
+	 * signed address is served as that very session, which is still a link <em>and</em> a person.
+	 * </p>
+	 */
+	public static final String CONTACT = "c";
+
+	/** What joins the link's and the session's id in a {@link #CONTACT} signature; no base64url character. */
+	public static final String CONTACT_SEPARATOR = "~";
+
 	private static final String ALGORITHM = "HmacSHA256";
 
 	private static final int SECRET_BYTES = 32;
@@ -267,7 +280,8 @@ public final class MediaSignatures {
 		}
 		String subjectKind = parts[0];
 		String id = parts[1];
-		if (!(DEVICE.equals(subjectKind) || SHARE.equals(subjectKind)) || id.isEmpty()) {
+		if (!(DEVICE.equals(subjectKind) || SHARE.equals(subjectKind) || CONTACT.equals(subjectKind))
+			|| id.isEmpty()) {
 			return INVALID;
 		}
 		long expires;

@@ -793,9 +793,11 @@ public class MoveService {
 	private MoveOutcome moveImage(Entry entry, AlbumInfo sourceAlbum, AlbumInfo targetAlbum, File sourceFolder,
 			File targetFolder, HashCache targetHashes, HashCache sourceHashes, Path space) throws IOException {
 		ImagePart image = entry._image;
+		File raw = RawPairs.companion(sourceFolder, image);
 		Landing landing = landFile(image.getName(), sourceFolder, targetFolder, targetHashes, sourceHashes, space);
 
 		detach(sourceAlbum, image);
+		carryRaw(image, raw, landing, targetAlbum, targetFolder, targetHashes, sourceHashes, space);
 		if (landing._existing != null) {
 			return outcome(entry._name, landing._existing, duplicate(landing._existing));
 		}
@@ -804,6 +806,42 @@ public class MoveService {
 		image.setGroup(null);
 		targetAlbum.addPart(image);
 		return outcome(entry._name, landing._newName, "");
+	}
+
+	/**
+	 * Moves the raw companion of a photograph that has just landed after it, see issue #191: a raw
+	 * and its JPEG are one photograph, and what acts on the one acts on both.
+	 *
+	 * <p>
+	 * The raw asks for the base name the photograph landed under (<code>IMG_1-2.JPG</code> takes
+	 * <code>IMG_1-2.CR2</code> along), so the pair stays a pair, and it is a file of its own for
+	 * everything else: its own hash, its own free name, and set aside on its own where the target
+	 * already holds its contents. The part names the companion as it landed, or none where it was
+	 * set aside; a photograph that was itself set aside hands a raw that landed to the target's copy
+	 * of it where that one has none.
+	 * </p>
+	 */
+	private void carryRaw(ImagePart image, File raw, Landing landing, AlbumInfo targetAlbum, File targetFolder,
+			HashCache targetHashes, HashCache sourceHashes, Path space) throws IOException {
+		if (raw == null) {
+			image.setRaw("");
+			return;
+		}
+		String photoName = landing._existing != null ? landing._existing : landing._newName;
+		String wanted = RawPairs.withBaseOf(raw.getName(), photoName);
+		Landing rawLanding = landFile(raw.getName(), wanted, raw.getParentFile(), targetFolder, targetHashes,
+			sourceHashes, space);
+		String landed = rawLanding._existing != null ? "" : rawLanding._newName;
+		if (landing._existing != null) {
+			image.setRaw("");
+			UpdateTransient.updateTransient(targetAlbum);
+			ImagePart copy = targetAlbum.getImageByName().get(landing._existing);
+			if (copy != null && copy.getRaw().isEmpty() && !landed.isEmpty()) {
+				copy.setRaw(landed);
+			}
+			return;
+		}
+		image.setRaw(landed);
 	}
 
 	/**
@@ -822,7 +860,9 @@ public class MoveService {
 		int setAside = 0;
 		for (ImagePart member : members) {
 			String asked = member.getName();
+			File raw = RawPairs.companion(sourceFolder, member);
 			Landing landing = landFile(asked, sourceFolder, targetFolder, targetHashes, sourceHashes, space);
+			carryRaw(member, raw, landing, targetAlbum, targetFolder, targetHashes, sourceHashes, space);
 			if (landing._existing != null) {
 				setAside++;
 				group.removeImage(member);
@@ -895,6 +935,15 @@ public class MoveService {
 	 */
 	private Landing landFile(String name, File sourceFolder, File targetFolder, HashCache targetHashes,
 			HashCache sourceHashes, Path space) throws IOException {
+		return landFile(name, name, sourceFolder, targetFolder, targetHashes, sourceHashes, space);
+	}
+
+	/**
+	 * Renames one file into the target folder under the given wanted name (or a free one beside it),
+	 * see {@link #landFile(String, File, File, HashCache, HashCache, Path)}.
+	 */
+	private Landing landFile(String name, String wanted, File sourceFolder, File targetFolder,
+			HashCache targetHashes, HashCache sourceHashes, Path space) throws IOException {
 		File file = new File(sourceFolder, name);
 		String hash = sourceHashes.hashByName().get(name);
 		if (hash == null) {
@@ -913,7 +962,7 @@ public class MoveService {
 			return new Landing(null, existing);
 		}
 
-		File moved = ImageServlet.freeName(targetFolder, name);
+		File moved = ImageServlet.freeName(targetFolder, wanted);
 		Files.move(file.toPath(), moved.toPath());
 		targetHashes.put(moved, hash, attribution);
 		LOG.info("Moved image '" + file + "' to '" + moved + "'.");
@@ -1204,10 +1253,9 @@ public class MoveService {
 				try {
 					File aside = setAside(space, hash, name);
 					Files.move(file.toPath(), aside.toPath());
-					ImagePart image = album.getImageByName().get(name);
-					if (image != null) {
-						detach(album, image);
-					}
+					// One file of a raw pair is a file of its own here, see issue #191: the
+					// photograph stays as long as one of its two files does.
+					RawPairs.fileLeft(album, name);
 					changed = true;
 					LOG.info("The library already holds '" + file + "' as '" + elsewhere + "'; set aside as '"
 						+ aside + "'.");

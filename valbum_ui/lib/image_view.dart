@@ -71,7 +71,9 @@ const Duration _snapBackDuration = Duration(milliseconds: 150);
 /// expected to decode it, so the caller who may have the original is shown the
 /// server's **display rendition** instead (`?type=display`, a full-size JPEG
 /// asking the same `download` right), on every platform alike. "Download
-/// original" still saves the original itself.
+/// original" still saves the original itself. A raw photograph standing alone
+/// (issue #191) is shown the same way, by the rendition of the JPEG preview it
+/// carries.
 ImageProvider viewerPicture(
   VAlbumClient client,
   String imageUrl, {
@@ -605,9 +607,20 @@ class ImageViewState extends State<ImageView>
 
   /// Fetches the original of the shown picture and hands it to the platform,
   /// see `downloads.dart`.
-  Future<void> downloadOriginal() => runDownload(context, () async {
-        var file = await widget.client
-            .downloadOriginal("${widget.baseUrl}/${part.name}");
+  Future<void> downloadOriginal() => downloadFile(part.name);
+
+  /// Whether the photograph shown has a raw file shot beside it (issue #191),
+  /// which "Download raw file" saves.
+  bool get mayDownloadRaw => mayDownloadOriginal && part.raw.isNotEmpty;
+
+  /// Saves the raw companion of the photograph shown, see [mayDownloadRaw]:
+  /// the server answers it by its own name under the photograph's rights.
+  Future<void> downloadRaw() => downloadFile(part.raw);
+
+  /// Saves the original file of the given name of this album onto the device.
+  Future<void> downloadFile(String name) => runDownload(context, () async {
+        var file =
+            await widget.client.downloadOriginal("${widget.baseUrl}/$name");
         var outcome = await downloadSaver.save(file);
         return DownloadResult(
           count: outcome == SaveOutcome.saved ? 1 : 0,
@@ -1326,8 +1339,8 @@ class ImageViewState extends State<ImageView>
     }
     var image = part;
     var original = picture is NetworkImage;
-    // A HEIC, an AVIF or a JPEG XL picture is shown by its display rendition,
-    // never by the original (#186, #193).
+    // A HEIC, an AVIF, a JPEG XL picture or a raw is shown by its display
+    // rendition, never by the original (#186, #191, #193).
     var display = original && needsDisplayRendition(dataUrl);
     var url = display
         ? client.displayUrl(dataUrl)
@@ -1341,8 +1354,8 @@ class ImageViewState extends State<ImageView>
       [
         display
             ? "Tried: the display rendition (?type=display), because the "
-                "original is a HEIC/HEIF, AVIF or JPEG XL picture the platform "
-                "cannot be expected to decode"
+                "original is a HEIC/HEIF, AVIF, JPEG XL or raw picture the "
+                "platform cannot be expected to decode"
             : original
                 ? "Tried: the original, because this caller may download it"
                 : "Tried: the preview (?type=tn), because this caller may not "
@@ -2219,6 +2232,22 @@ class ImageViewState extends State<ImageView>
                       child: Icon(Icons.download, color: Colors.blueAccent),
                     ),
                     Flexible(child: Text(l10n.viewerDownload)),
+                  ],
+                ),
+              ),
+            // The raw shot beside the photograph is the same photograph, and
+            // its second original (#191).
+            if (mayDownloadRaw)
+              PopupMenuItem<void Function(BuildContext)>(
+                key: const Key("viewer-download-raw"),
+                value: (_) => downloadRaw(),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(right: 16),
+                      child: Icon(Icons.raw_on, color: Colors.blueAccent),
+                    ),
+                    Flexible(child: Text(l10n.viewerDownloadRaw)),
                   ],
                 ),
               ),

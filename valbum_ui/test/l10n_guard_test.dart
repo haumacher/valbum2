@@ -183,28 +183,34 @@ const Map<String, String> allowedLiterals = {
   r"Original: ${} (${})": "diagnostics log",
   r"Picture could not be shown: ${} in ${}": "diagnostics log",
   "Tried: the original, because this caller may download it": "diagnostics log",
-  "Tried: the preview (?type=tn), because this caller may not download the original": "diagnostics log",
-  "Tried: the display rendition (?type=display), because the original is a HEIC/HEIF, AVIF or JPEG XL picture the platform cannot be expected to decode": "diagnostics log",
+  "Tried: the preview (?type=tn), because this caller may not download the original":
+      "diagnostics log",
+  "Tried: the display rendition (?type=display), because the original is a HEIC/HEIF, AVIF, JPEG XL or raw picture the platform cannot be expected to decode":
+      "diagnostics log",
   r"URL: ${}": "diagnostics log",
   r"Lookup ${} ${}: ${}": "diagnostics log",
   r"Lookup ${} ${} failed: ${}": "diagnostics log",
   r"web, ${}": "diagnostics log",
-  r"Lookup ${}: name resolution cannot be asked in a browser; the page sees only whether the request went through.": "diagnostics log",
+  r"Lookup ${}: name resolution cannot be asked in a browser; the page sees only whether the request went through.":
+      "diagnostics log",
   r"Connection test failed: ${}": "diagnostics log",
   r"Data URL: ${}": "diagnostics log",
   r"Root listing: ${}": "diagnostics log",
   r"Sign-in: ${}": "diagnostics log",
   r"No host in '${}' (${})": "diagnostics log",
   r"No host in '${}'": "diagnostics log",
-  r"the server was still making the playable version after ${} asks": "diagnostics log",
+  r"the server was still making the playable version after ${} asks":
+      "diagnostics log",
   "the server could not be reached": "diagnostics log",
   "the server refused the file": "diagnostics log",
-  "the server delivered the file and the platform refused it": "diagnostics log",
+  "the server delivered the file and the platform refused it":
+      "diagnostics log",
   "the browser fetched the video without the sign-in and was refused":
       "diagnostics log",
   "Media address: refused, the player was handed nothing": "diagnostics log",
   r"Media address: signed for the browser's player${}${}": "diagnostics log",
-  "the server delivers the file and the player could not fetch it": "diagnostics log",
+  "the server delivers the file and the player could not fetch it":
+      "diagnostics log",
   r"the player neither started nor failed within ${} s": "diagnostics log",
   "the player failed and the server could not be asked": "diagnostics log",
   "no playable version is asked for here": "diagnostics log",
@@ -212,8 +218,10 @@ const Map<String, String> allowedLiterals = {
   "the playable version was refused (see below)": "diagnostics log",
   "the server makes a playable version of this video": "diagnostics log",
   "the person chose to play the original": "diagnostics log",
-  r"Video: the playable version was refused, the original plays instead: ${} in ${}": "diagnostics log",
-  "Tried first: the playable version (?type=video), because the server makes one for every video": "diagnostics log",
+  r"Video: the playable version was refused, the original plays instead: ${} in ${}":
+      "diagnostics log",
+  "Tried first: the playable version (?type=video), because the server makes one for every video":
+      "diagnostics log",
   "Then: the original, which plays": "diagnostics log",
   "an album": "diagnostics log",
   r"Player: ${}, ${}, duration ${}, buffered up to ${}${}": "diagnostics log",
@@ -222,7 +230,8 @@ const Map<String, String> allowedLiterals = {
   r"Tried: the original, because ${}": "diagnostics log",
   "Server answered: not asked (no probe)": "diagnostics log",
   r"Playable version before: ${}": "diagnostics log",
-  r"Asked: ${} times, waiting the server's Retry-After (${} s) in between": "diagnostics log",
+  r"Asked: ${} times, waiting the server's Retry-After (${} s) in between":
+      "diagnostics log",
   "Platform error: none reported": "diagnostics log",
   r"Waited: ${} s for the player to start": "diagnostics log",
   r"Diagnosis: ${}": "diagnostics log",
@@ -293,8 +302,7 @@ const Map<String, String> allowedLiterals = {
   "yyyy-MM-dd HH:mm:ss": "a date format pattern, not a text",
   // The regular expression of `nameDate`, pinned by the shared fixture
   // `image-server/src/test/fixtures/name-dates.json` (issue #102).
-  r"(?<!\d)(?<y1>\d{4})(?<m1>\d{2})(?<d1>\d{2})[_\- ]?":
-      "a regular expression",
+  r"(?<!\d)(?<y1>\d{4})(?<m1>\d{2})(?<d1>\d{2})[_\- ]?": "a regular expression",
   r"|(?<!\d)(?<y2>\d{4})-(?<m2>\d{2})-(?<d2>\d{2})(?: at |[_ T])":
       "a regular expression",
   // Two adjacent literals of `isLegalFolderName`, which the scanner joins:

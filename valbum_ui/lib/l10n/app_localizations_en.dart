@@ -1939,6 +1939,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String propertyRaw(String name) {
+    return 'Raw file: $name';
+  }
+
+  @override
   String propertyLocation(String latitude, String longitude) {
     return 'Location: $latitude, $longitude';
   }
@@ -1986,6 +1991,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get viewerDownload => 'Download original';
+
+  @override
+  String get viewerDownloadRaw => 'Download raw file';
 
   @override
   String downloadSelection(int count) {

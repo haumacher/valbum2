@@ -3224,6 +3224,12 @@ abstract class AppLocalizations {
   /// **'Camera: {camera}'**
   String propertyCamera(String camera);
 
+  /// The line naming the raw file (a camera's unprocessed .CR2, .NEF, .DNG …) shot beside the photograph, which is the same photograph
+  ///
+  /// In en, this message translates to:
+  /// **'Raw file: {name}'**
+  String propertyRaw(String name);
+
   /// The line naming where an image was taken, in decimal degrees
   ///
   /// In en, this message translates to:
@@ -3313,6 +3319,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Download original'**
   String get viewerDownload;
+
+  /// Entry of the viewer's menu saving the raw file (a camera's unprocessed .CR2, .NEF, .DNG …) shot beside the photograph shown onto the device
+  ///
+  /// In en, this message translates to:
+  /// **'Download raw file'**
+  String get viewerDownloadRaw;
 
   /// Entry of the album menu saving the original files of the selected photographs onto the device, as one zip archive where the device keeps files
   ///

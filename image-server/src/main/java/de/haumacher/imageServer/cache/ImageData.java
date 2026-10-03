@@ -13,6 +13,7 @@ import com.drew.metadata.MetadataException;
 import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.drew.metadata.exif.GpsDirectory;
+import com.drew.metadata.exif.PanasonicRawIFD0Directory;
 import com.drew.metadata.gif.GifHeaderDirectory;
 import com.drew.metadata.jpeg.JpegCommentDirectory;
 import com.drew.metadata.jpeg.JpegDirectory;
@@ -26,6 +27,8 @@ import com.drew.metadata.webp.WebpDirectory;
 import com.drew.metadata.xmp.XmpDirectory;
 import de.haumacher.imageServer.coded.CodedPicture;
 import de.haumacher.imageServer.coded.CodedPictures;
+import de.haumacher.imageServer.raw.EmbeddedPreview;
+import de.haumacher.imageServer.raw.RawFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.GeoLocation;
 import de.haumacher.imageServer.shared.model.ImageKind;
@@ -177,6 +180,9 @@ public class ImageData extends ImagePart {
 			// HEIC/HEIF (#186), AVIF and JPEG XL (#193).
 			return analyzeHeif(result, file, more, zone);
 		}
+		if (RawFile.isRaw(file)) {
+			return analyzeRaw(result, file, more, zone == null ? ZoneId.systemDefault() : zone);
+		}
 		if (VideoProbe.handles(file.getName())) {
 			return analyzeProbed(result, file, zone == null ? ZoneId.systemDefault() : zone);
 		}
@@ -285,9 +291,28 @@ public class ImageData extends ImagePart {
 
 	/** The EXIF orientation code the given metadata say, <code>1</code> where they say none. */
 	private static int exifOrientation(Metadata metadata) throws MetadataException {
+		return orientationCode(metadata);
+	}
+
+	/**
+	 * The EXIF orientation code the given metadata say, <code>1</code> where they say none: the one
+	 * reading the analysis, the preview and the face index share.
+	 *
+	 * <p>
+	 * The orientation of the EXIF IFD0, and for a Panasonic RW2, whose IFD0 metadata-extractor reads
+	 * as a directory of its own, that one's (issue #191).
+	 * </p>
+	 */
+	public static int orientationCode(Metadata metadata) throws MetadataException {
 		ExifIFD0Directory exifIFD0Directory = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
-		return exifIFD0Directory == null || !exifIFD0Directory.containsTag(ExifIFD0Directory.TAG_ORIENTATION) ? 1
-			: exifIFD0Directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
+		if (exifIFD0Directory != null && exifIFD0Directory.containsTag(ExifIFD0Directory.TAG_ORIENTATION)) {
+			return exifIFD0Directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
+		}
+		PanasonicRawIFD0Directory panasonic = metadata.getFirstDirectoryOfType(PanasonicRawIFD0Directory.class);
+		if (panasonic != null && panasonic.containsTag(PanasonicRawIFD0Directory.TagOrientation)) {
+			return panasonic.getInt(PanasonicRawIFD0Directory.TagOrientation);
+		}
+		return 1;
 	}
 
 	/** The size of a video as it is shown: its track's size, turned by the container's rotation. */
@@ -324,6 +349,10 @@ public class ImageData extends ImagePart {
 	 * </p>
 	 */
 	public static Metadata readMetadata(File file) throws ImageProcessingException, IOException {
+		if (RawFile.isRaw(file)) {
+			// Read in place, and a CR3 at all, see RawFile#metadata(File) and issue #191.
+			return RawFile.metadata(file);
+		}
 		if (WebpMetadata.isWebp(file)) {
 			// Without reading the picture into the heap, issue #207.
 			return WebpMetadata.read(file);
@@ -397,6 +426,69 @@ public class ImageData extends ImagePart {
 		}
 		result.setDate(date.getTime());
 		return result;
+	}
+
+	/**
+	 * Describes a raw photograph, see issue #191 and {@link RawFile}.
+	 *
+	 * <p>
+	 * Dated, named and placed by the EXIF its TIFF structure carries, as a JPEG is; its size is that
+	 * of the JPEG preview it carries &mdash; the picture this server shows of it &mdash; turned by
+	 * the raw's own orientation. A raw that carries no preview is listed all the same, so that its
+	 * tile says why nothing is shown (the preview request is answered
+	 * {@link RawFile#noPreview(String)}); its size is then the sensor's as its tags say it, or 3:2
+	 * where they say nothing.
+	 * </p>
+	 */
+	private static ImageData analyzeRaw(ImageData result, File file, Analysis more, ZoneId zone)
+			throws IOException, ImageProcessingException, MetadataException {
+		Metadata metadata = readMetadata(file);
+		result.setDate(result.date(metadata, file, zone).getTime());
+		result.setCamera(camera(metadata));
+		result.setLocation(location(metadata));
+		result.setKind(ImageKind.IMAGE);
+		EmbeddedPreview jpeg;
+		try {
+			jpeg = RawFile.embedded(file);
+		} catch (IOException ex) {
+			LOG.warning("Cannot read the structure of the raw file '" + file + "': " + ex.getMessage());
+			jpeg = null;
+		}
+		int rawWidth;
+		int rawHeight;
+		if (jpeg != null) {
+			rawWidth = jpeg.getWidth();
+			rawHeight = jpeg.getHeight();
+		} else {
+			int[] sensor = sensorSize(metadata);
+			rawWidth = sensor[0];
+			rawHeight = sensor[1];
+		}
+		Orientation tx = Orientations.fromCode(exifOrientation(metadata));
+		result.setWidth(Orientations.width(tx, rawWidth, rawHeight));
+		result.setHeight(Orientations.height(tx, rawWidth, rawHeight));
+		more.read(result, metadata, rawWidth, rawHeight);
+		return result;
+	}
+
+	/** The size of a raw's sensor picture as its tags say it, 3:2 where they say nothing. */
+	private static int[] sensorSize(Metadata metadata) {
+		for (ExifSubIFDDirectory exif : metadata.getDirectoriesOfType(ExifSubIFDDirectory.class)) {
+			Integer width = exif.getInteger(ExifSubIFDDirectory.TAG_EXIF_IMAGE_WIDTH);
+			Integer height = exif.getInteger(ExifSubIFDDirectory.TAG_EXIF_IMAGE_HEIGHT);
+			if (width != null && height != null && width > 0 && height > 0) {
+				return new int[] { width, height };
+			}
+		}
+		ExifIFD0Directory ifd0 = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
+		if (ifd0 != null) {
+			Integer width = ifd0.getInteger(ExifIFD0Directory.TAG_IMAGE_WIDTH);
+			Integer height = ifd0.getInteger(ExifIFD0Directory.TAG_IMAGE_HEIGHT);
+			if (width != null && height != null && width > 0 && height > 0) {
+				return new int[] { width, height };
+			}
+		}
+		return new int[] { 1500, 1000 };
 	}
 
 	private static ImageData analyzeHeif(ImageData result, File file, Analysis more, ZoneId zone)
@@ -480,7 +572,7 @@ public class ImageData extends ImagePart {
 	 *         usable.
 	 */
 	private Date date(Metadata metadata, File file, ZoneId zone) {
-		ExifSubIFDDirectory directory = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
+		ExifSubIFDDirectory directory = exifDirectory(metadata);
 		if (directory != null) {
 			Date wallAsUtc = directory.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL,
 				directory.getString(ExifSubIFDDirectory.TAG_SUBSECOND_TIME_ORIGINAL), UTC);
@@ -510,6 +602,29 @@ public class ImageData extends ImagePart {
 			return named;
 		}
 		return new Date(file.lastModified());
+	}
+
+	/**
+	 * The EXIF directory that carries the recording time: the first that names a
+	 * <code>DateTimeOriginal</code>, else the first there is.
+	 *
+	 * <p>
+	 * metadata-extractor reads every <code>SubIFDs</code> entry of a TIFF-based raw (a DNG's preview
+	 * and sensor IFDs, issue #191) into a directory of the same type as the EXIF IFD, ahead of it, so
+	 * the first of that type need not be the one with the date.
+	 * </p>
+	 */
+	private static ExifSubIFDDirectory exifDirectory(Metadata metadata) {
+		ExifSubIFDDirectory first = null;
+		for (ExifSubIFDDirectory directory : metadata.getDirectoriesOfType(ExifSubIFDDirectory.class)) {
+			if (directory.containsTag(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL)) {
+				return directory;
+			}
+			if (first == null) {
+				first = directory;
+			}
+		}
+		return first;
 	}
 
 	/**
@@ -678,6 +793,15 @@ public class ImageData extends ImagePart {
 		if (exifIFD0Directory != null) {
 			String label = cameraLabel(exifIFD0Directory.getString(ExifIFD0Directory.TAG_MAKE),
 				exifIFD0Directory.getString(ExifIFD0Directory.TAG_MODEL));
+			if (!label.isEmpty()) {
+				return label;
+			}
+		}
+		// The IFD0 of a Panasonic RW2 is a directory of its own, see issue #191.
+		PanasonicRawIFD0Directory panasonic = metadata.getFirstDirectoryOfType(PanasonicRawIFD0Directory.class);
+		if (panasonic != null) {
+			String label = cameraLabel(panasonic.getString(PanasonicRawIFD0Directory.TagMake),
+				panasonic.getString(PanasonicRawIFD0Directory.TagModel));
 			if (!label.isEmpty()) {
 				return label;
 			}

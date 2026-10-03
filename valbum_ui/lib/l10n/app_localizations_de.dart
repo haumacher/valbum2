@@ -1968,6 +1968,11 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String propertyRaw(String name) {
+    return 'Rohdatei: $name';
+  }
+
+  @override
   String propertyLocation(String latitude, String longitude) {
     return 'Standort: $latitude, $longitude';
   }
@@ -2017,6 +2022,9 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get viewerDownload => 'Original herunterladen';
+
+  @override
+  String get viewerDownloadRaw => 'Rohdatei herunterladen';
 
   @override
   String downloadSelection(int count) {

@@ -66,6 +66,12 @@ import org.w3c.dom.Node;
  * </p>
  *
  * <p>
+ * <b>A raw photograph</b> (issue #191) is opened as the largest JPEG preview it carries, read in place
+ * out of the raw file ({@link de.haumacher.imageServer.raw.RawFile}): its raw raster is that JPEG's
+ * picture as stored, which the raw's own EXIF orientation turns upright.
+ * </p>
+ *
+ * <p>
  * Nothing here ever writes: an original is read and never touched.
  * </p>
  */
@@ -118,6 +124,9 @@ public final class PictureReader implements AutoCloseable {
 
 	private final ImageReader _reader;
 
+	/** The image of the reader that is the picture: 0, but for the TIFF preview of a raw. */
+	private final int _index;
+
 	private final int _width;
 
 	private final int _height;
@@ -129,11 +138,16 @@ public final class PictureReader implements AutoCloseable {
 	private final long _wholeBytes;
 
 	private PictureReader(File file, ImageInputStream in, ImageReader reader) throws IOException {
+		this(file, in, reader, 0);
+	}
+
+	private PictureReader(File file, ImageInputStream in, ImageReader reader, int index) throws IOException {
 		_file = file;
 		_in = in;
 		_reader = reader;
-		int frameWidth = reader.getWidth(0);
-		int frameHeight = reader.getHeight(0);
+		_index = index;
+		int frameWidth = reader.getWidth(index);
+		int frameHeight = reader.getHeight(index);
 		Rectangle frame = null;
 		int width = frameWidth;
 		int height = frameHeight;
@@ -170,6 +184,9 @@ public final class PictureReader implements AutoCloseable {
 	 *         Where the file cannot be read or no reader knows its format.
 	 */
 	public static PictureReader open(File file) throws IOException {
+		if (de.haumacher.imageServer.raw.RawFile.isRaw(file)) {
+			return openRaw(file);
+		}
 		ImageInputStream in = ImageIO.createImageInputStream(file);
 		if (in == null) {
 			throw new IOException("Cannot open image data of '" + file.getName() + "'.");
@@ -184,6 +201,38 @@ public final class PictureReader implements AutoCloseable {
 				// Only a GIF's metadata are asked, for where its first frame lies on the canvas.
 				reader.setInput(in, true, !"gif".equalsIgnoreCase(reader.getFormatName()));
 				return new PictureReader(file, in, reader);
+			} catch (IOException | RuntimeException ex) {
+				reader.dispose();
+				throw ex;
+			}
+		} catch (IOException | RuntimeException ex) {
+			in.close();
+			throw ex;
+		}
+	}
+
+	/**
+	 * Opens a raw photograph as the preview it carries, see issue #191: its JPEG read in place, or
+	 * the uncompressed TIFF image a DNG of Android's carries, through the TIFF reader of the JDK. One
+	 * without a preview is refused with a sentence that says so.
+	 */
+	private static PictureReader openRaw(File file) throws IOException {
+		de.haumacher.imageServer.raw.EmbeddedPreview preview = de.haumacher.imageServer.raw.RawFile.require(file);
+		ImageInputStream in = de.haumacher.imageServer.raw.RawFile.open(file, preview);
+		if (in == null) {
+			throw new IOException("Cannot open image data of '" + file.getName() + "'.");
+		}
+		try {
+			boolean tiff = preview.getTiffIndex() >= 0;
+			Iterator<ImageReader> readers =
+				ImageIO.getImageReadersByFormatName(tiff ? "tiff" : "jpeg");
+			if (!readers.hasNext()) {
+				throw new IOException("No image reader for the preview of '" + file.getName() + "'.");
+			}
+			ImageReader reader = readers.next();
+			try {
+				reader.setInput(in, !tiff, true);
+				return new PictureReader(file, in, reader, tiff ? preview.getTiffIndex() : 0);
 			} catch (IOException | RuntimeException ex) {
 				reader.dispose();
 				throw ex;
@@ -259,7 +308,7 @@ public final class PictureReader implements AutoCloseable {
 		if (n > 1) {
 			param.setSourceSubsampling(n, n, 0, 0);
 		}
-		return _reader.read(0, param);
+		return _reader.read(_index, param);
 	}
 
 	/**

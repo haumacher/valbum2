@@ -51,7 +51,7 @@ import junit.framework.TestCase;
 @SuppressWarnings("javadoc")
 public abstract class SpaceTestCase extends TestCase {
 
-	private static final String BOUNDARY = "----valbumLinkTestBoundary";
+	protected static final String BOUNDARY = "----valbumLinkTestBoundary";
 
 	/** A folder to move things into. */
 	protected static final String TRIPS = "Trips";
@@ -251,7 +251,7 @@ public abstract class SpaceTestCase extends TestCase {
 			parameters);
 	}
 
-	private static byte[] multipart(LinkedHashMap<String, byte[]> files) throws IOException {
+	protected static byte[] multipart(LinkedHashMap<String, byte[]> files) throws IOException {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		for (Map.Entry<String, byte[]> file : files.entrySet()) {
 			out.write(("--" + BOUNDARY + "\r\n").getBytes(StandardCharsets.UTF_8));

@@ -246,10 +246,29 @@ String extensionOf(String name) {
 /// it its `ImageDecoder` (Chromium); a JPEG XL is decoded by Safari alone.
 const Set<String> displayRenditionExtensions = {"heic", "heif", "avif", "jxl"};
 
-/// Whether [name] is a picture whose original the platform cannot be
-/// expected to show, see [displayRenditionExtensions].
+/// The extensions of the raw photographs the server takes (issue #191,
+/// `PreviewCache.RAW_EXTENSIONS`).
+const Set<String> rawExtensions = {
+  "dng",
+  "cr2",
+  "cr3",
+  "nef",
+  "arw",
+  "orf",
+  "rw2",
+  "raf",
+};
+
+/// Whether [name] is a raw photograph (issue #191): no browser and no app
+/// decoder shows one, so the viewer shows the server's display rendition of
+/// the JPEG preview it carries, as for a HEIC.
+bool isRawName(String name) => rawExtensions.contains(extensionOf(name));
+
+/// Whether the original of [name] needs the server's display rendition
+/// (`?type=display`) to be shown: a picture of [displayRenditionExtensions]
+/// (#186, #193) or a raw (#191).
 bool needsDisplayRendition(String name) =>
-    displayRenditionExtensions.contains(extensionOf(name));
+    displayRenditionExtensions.contains(extensionOf(name)) || isRawName(name);
 
 /// The greatest number of files one request carries, see [UploadBatching].
 const int uploadBatchFiles = 25;
@@ -889,11 +908,10 @@ class VAlbumClient {
   /// The URL delivering the original of the image at the given URL.
   String originalUrl(String imageUrl) => imageUrl;
 
-  /// The URL of the display rendition of the HEIC/HEIF, AVIF or JPEG XL
-  /// picture at [imageUrl] (issues #186, #193): a full-size JPEG of it,
-  /// upright, which every platform can decode, see
-  /// [displayRenditionExtensions]. It asks the `download` right, as the
-  /// original does.
+  /// The URL of the display rendition of the HEIC/HEIF, AVIF, JPEG XL or raw
+  /// picture at [imageUrl] (issues #186, #191, #193): a full-size JPEG of it,
+  /// upright, which every platform can decode, see [needsDisplayRendition].
+  /// It asks the `download` right, as the original does.
   String displayUrl(String imageUrl) => "$imageUrl?type=display";
 
   /// The URL of the playback rendition of the video at [imageUrl] (issue #74).
@@ -1541,8 +1559,7 @@ class VAlbumClient {
       uri,
       multipartBody,
       handle: handle,
-      onTransferred: (transferred) =>
-          onTransferred(transferred, contentLength),
+      onTransferred: (transferred) => onTransferred(transferred, contentLength),
     );
     request.headers.addAll(multipart.headers);
     request.headers.addAll(authHeaders);
@@ -1960,8 +1977,8 @@ class VAlbumClient {
                   ? UploadPhase.waiting
                   : UploadPhase.transferring,
               within,
-              sent: confirmed +
-                  imagesSentOf(batchLengths, sentBytes, totalBytes),
+              sent:
+                  confirmed + imagesSentOf(batchLengths, sentBytes, totalBytes),
             );
           },
           handle: handle,

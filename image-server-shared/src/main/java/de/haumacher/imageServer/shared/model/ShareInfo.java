@@ -33,6 +33,12 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getPath() */
 	private static final String PATH__PROP = "path";
 
+	/** @see #getType() */
+	private static final String TYPE__PROP = "type";
+
+	/** @see #getContact() */
+	private static final String CONTACT__PROP = "contact";
+
 	private String _label = "";
 
 	private String _expires = "";
@@ -40,6 +46,10 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private final java.util.List<de.haumacher.imageServer.shared.model.RightName> _rights = new java.util.ArrayList<>();
 
 	private String _path = "";
+
+	private de.haumacher.imageServer.shared.model.ShareType _type = de.haumacher.imageServer.shared.model.ShareType.ANONYMOUS;
+
+	private de.haumacher.imageServer.shared.model.ContactInfo _contact = null;
 
 	/**
 	 * Creates a {@link ShareInfo} instance.
@@ -152,6 +162,60 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_path = value;
 	}
 
+	/**
+	 * Whether the link is anonymous or personal, see {@link ShareType} and issue #198.
+	 */
+	public final de.haumacher.imageServer.shared.model.ShareType getType() {
+		return _type;
+	}
+
+	/**
+	 * @see #getType()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareInfo setType(de.haumacher.imageServer.shared.model.ShareType value) {
+		internalSetType(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getType()} without chain call utility. */
+	protected final void internalSetType(de.haumacher.imageServer.shared.model.ShareType value) {
+		if (value == null) throw new IllegalArgumentException("Property 'type' cannot be null.");
+		_type = value;
+	}
+
+	/**
+	 * The contact this session is, <code>null</code> for an anonymous link (issue #198).
+	 *
+	 * <p>
+	 * Set exactly where a personal link was opened with a contact credential that it admits: who
+	 * the server takes the caller to be, and therefore whom it attributes their uploads to. The
+	 * app names them ("Not you?") and nothing more is said about the contact.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.ContactInfo getContact() {
+		return _contact;
+	}
+
+	/**
+	 * @see #getContact()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareInfo setContact(de.haumacher.imageServer.shared.model.ContactInfo value) {
+		internalSetContact(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getContact()} without chain call utility. */
+	protected final void internalSetContact(de.haumacher.imageServer.shared.model.ContactInfo value) {
+		_contact = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getContact()} has a value.
+	 */
+	public final boolean hasContact() {
+		return _contact != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareInfo readShareInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareInfo result = new de.haumacher.imageServer.shared.model.ShareInfo();
@@ -179,6 +243,12 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.endArray();
 		out.name(PATH__PROP);
 		out.value(getPath());
+		out.name(TYPE__PROP);
+		getType().writeTo(out);
+		if (hasContact()) {
+			out.name(CONTACT__PROP);
+			getContact().writeTo(out);
+		}
 	}
 
 	@Override
@@ -195,6 +265,8 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			}
 			break;
 			case PATH__PROP: setPath(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case TYPE__PROP: setType(de.haumacher.imageServer.shared.model.ShareType.readShareType(in)); break;
+			case CONTACT__PROP: setContact(de.haumacher.imageServer.shared.model.ContactInfo.readContactInfo(in)); break;
 			default: super.readField(in, field);
 		}
 	}

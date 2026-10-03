@@ -8,10 +8,12 @@ import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.auth.UserStore.Login;
 import de.haumacher.imageServer.auth.UserStore.User;
 import de.haumacher.imageServer.shared.model.AuthInfo;
+import de.haumacher.imageServer.shared.model.ContactInfo;
 import de.haumacher.imageServer.shared.model.InvitationInfo;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.ShareInfo;
+import de.haumacher.imageServer.shared.model.ShareType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -561,6 +563,112 @@ public class AuthService {
 
 	private static final String BEARER_PREFIX = "Bearer ";
 
+	/**
+	 * The header a session of a personal link carries its contact credential in, see issue #198.
+	 *
+	 * <p>
+	 * Beside the bearer, never instead of it: <code>Authorization: Bearer &lt;link token&gt;</code>
+	 * names the link, <code>X-VAlbum-Contact: &lt;credential&gt;</code> the person. A credential
+	 * presented as a bearer is a token this server does not know, so it never opens anything by
+	 * itself, and a credential beside an anonymous link is ignored.
+	 * </p>
+	 */
+	public static final String CONTACT_HEADER = "X-VAlbum-Contact";
+
+	/** What the first open of a recipient's own link is answered before it is confirmed, see issue #198. */
+	public static final String IDENTIFY_FIRST =
+		"This link was sent to you. Confirm who you are to open it.";
+
+	/** What a recipient's link that was opened before is answered without a credential (issue #198). */
+	public static final String IDENTIFY_REQUIRED =
+		"This link was already opened in another browser. Open it where you opened it first, or ask the "
+			+ "person who shared it to send it to you again.";
+
+	/** What the own token of a personal link is answered without a credential (issue #198). */
+	public static final String IDENTIFY_PERSONAL =
+		"This link asks who you are. Open the link you were sent yourself.";
+
+	/** What a contact a personal link does not admit is answered (issue #198). */
+	public static final String NOT_A_RECIPIENT = "This link was not sent to you.";
+
+	/** What a contact shut out of a link or of the space is answered (issue #198). */
+	public static final String CONTACT_SHUT_OUT = "You can no longer open this link.";
+
+	/** What a recipient's token that was replaced by sending again is answered (issue #198). */
+	public static final String RECIPIENT_LINK_REPLACED =
+		"This link was replaced by a newer one. Open the latest link you were sent.";
+
+	/** What a recipient's token is answered whose contact the space no longer knows (issue #198). */
+	public static final String RECIPIENT_GONE = "The person this link was sent to is no longer known here.";
+
+	/** What a link of a kind this build does not know is answered. */
+	public static final String LINK_TYPE_UNKNOWN = "This link is of a kind this server does not know.";
+
+	/** What <code>?action=identify</code> is answered where there is nothing to confirm (issue #198). */
+	public static final String IDENTIFY_NOTHING =
+		"There is nothing to confirm here: open the link you were sent to say who you are.";
+
+	/**
+	 * Why a caller of a personal link is not let in yet, see issue #198.
+	 *
+	 * <p>
+	 * Answered on every endpoint with its {@link #getStatus() status} and the refusal of the
+	 * protocol's <code>IdentifyRequired</code>, never with the album; <code>?action=identify</code>
+	 * accepts a {@link #isFirstOpen() first open}.
+	 * </p>
+	 */
+	public static final class Identification {
+
+		private final int _status;
+
+		private final String _message;
+
+		private final ShareStore.Link _link;
+
+		private final ShareStore.Recipient _recipient;
+
+		private final ContactStore.Contact _contact;
+
+		Identification(int status, String message, ShareStore.Link link, ShareStore.Recipient recipient,
+				ContactStore.Contact contact) {
+			_status = status;
+			_message = message;
+			_link = link;
+			_recipient = recipient;
+			_contact = contact;
+		}
+
+		/** The HTTP status to answer. */
+		public int getStatus() {
+			return _status;
+		}
+
+		/** The sentence to answer. */
+		public String getMessage() {
+			return _message;
+		}
+
+		/** The link the caller presented. */
+		public ShareStore.Link getLink() {
+			return _link;
+		}
+
+		/** The recipient whose own token was presented, <code>null</code> for the link's own token. */
+		public ShareStore.Recipient getRecipient() {
+			return _recipient;
+		}
+
+		/** The contact of {@link #getRecipient()}, <code>null</code> where there is none. */
+		public ContactStore.Contact getContact() {
+			return _contact;
+		}
+
+		/** Whether the presented token is a recipient's own link that was never opened. */
+		public boolean isFirstOpen() {
+			return _recipient != null && !_recipient.isOpened();
+		}
+	}
+
 	/** How a request identified itself, see {@link AuthService#caller(HttpServletRequest)}. */
 	public static final class Caller {
 
@@ -587,6 +695,12 @@ public class AuthService {
 		private User _invited;
 
 		private String _invitationGone;
+
+		private ContactStore.Contact _contact;
+
+		private ContactStore.Session _session;
+
+		private Identification _identification;
 
 		private Caller(User user, UserStore.Device device, boolean tokenPresented, String refusal,
 				ShareStore.Link share, String gone) {
@@ -682,6 +796,49 @@ public class AuthService {
 		}
 
 		/**
+		 * A caller of a personal link that admits the contact their credential identifies (issue #198).
+		 *
+		 * <p>
+		 * A share link in every respect &mdash; the link's permission and nothing else &mdash; plus
+		 * the person: an upload of theirs is attributed to them.
+		 * </p>
+		 */
+		static Caller contact(ShareStore.Link share, ContactStore.Contact contact, ContactStore.Session session) {
+			Caller result = new Caller(null, null, true, null, share, null);
+			result._contact = contact;
+			result._session = session;
+			return result;
+		}
+
+		/** A caller of a personal link who is not let in yet, see {@link Identification}. */
+		static Caller identify(Identification identification) {
+			Caller result =
+				new Caller(null, null, true, identification.getMessage(), identification.getLink(), null);
+			result._identification = identification;
+			return result;
+		}
+
+		/** The contact this caller is, <code>null</code> for everybody but a session of a personal link. */
+		public ContactStore.Contact getContact() {
+			return _contact;
+		}
+
+		/** The contact credential's session, <code>null</code> wherever {@link #getContact()} is. */
+		public ContactStore.Session getSession() {
+			return _session;
+		}
+
+		/** Why this caller of a personal link is not let in yet, <code>null</code> for everybody else. */
+		public Identification getIdentification() {
+			return _identification;
+		}
+
+		/** Whether this caller presented a personal link that does not let them in yet. */
+		public boolean mustIdentify() {
+			return _identification != null;
+		}
+
+		/**
 		 * A caller holding a share link that expired or was withdrawn.
 		 *
 		 * <p>
@@ -722,6 +879,10 @@ public class AuthService {
 		 * </p>
 		 */
 		public String subject() {
+			if (_contact != null) {
+				// A person, not a link: what a contact brings is theirs, whichever link it came by.
+				return _contact.getSubject();
+			}
 			if (_share != null) {
 				return _share.getSubject();
 			}
@@ -749,6 +910,10 @@ public class AuthService {
 		 * </p>
 		 */
 		public String contributorLabel() {
+			if (_contact != null) {
+				// Copied at the upload, so a renamed or deleted contact keeps the label, see #198.
+				return _contact.getName();
+			}
 			if (_share != null) {
 				return getShareLabel();
 			}
@@ -854,6 +1019,12 @@ public class AuthService {
 
 	private final ShareStore _shares;
 
+	/** The contacts of issue #198, <code>null</code> while {@link AuthMode#OFF}. */
+	private final ContactStore _contacts;
+
+	/** Serialises the first opens of personal links, so that only one of two concurrent ones wins. */
+	private final Object _identifyLock = new Object();
+
 	private final DeviceCodeStore _deviceCodes;
 
 	/** The signed media addresses of issue #185, <code>null</code> while {@link AuthMode#OFF}. */
@@ -885,6 +1056,7 @@ public class AuthService {
 		_inviteMode = inviteMode;
 		_users = mode == AuthMode.OFF ? null : new UserStore(basePath);
 		_shares = mode == AuthMode.OFF ? null : new ShareStore(basePath);
+		_contacts = mode == AuthMode.OFF ? null : new ContactStore(basePath);
 		_deviceCodes = mode == AuthMode.OFF ? null : new DeviceCodeStore(basePath);
 		_media = mode == AuthMode.OFF ? null : new MediaSignatures(basePath);
 		ensureAdminSeat();
@@ -1068,6 +1240,11 @@ public class AuthService {
 		return _shares;
 	}
 
+	/** The contacts of this space, <code>null</code> while {@link AuthMode#OFF}, see issue #198. */
+	public ContactStore getContacts() {
+		return _contacts;
+	}
+
 	/** The device codes of this server, <code>null</code> while {@link AuthMode#OFF}. */
 	public DeviceCodeStore getDeviceCodes() {
 		return _deviceCodes;
@@ -1118,7 +1295,8 @@ public class AuthService {
 		Login login = _users.lookup(token);
 		if (login == null) {
 			// Not a device token; it may still be a share link of issue #51.
-			ShareStore.Link share = _shares.lookup(token);
+			ShareStore.Match match = _shares.match(token);
+			ShareStore.Link share = match == null ? null : match.getLink();
 			if (share == null) {
 				// Nor a share link; it may still be an invitation of issue #52, which since issue
 				// #89 is a code of the device code store. The share store is asked first because a
@@ -1141,6 +1319,15 @@ public class AuthService {
 			if (share.isExpired(java.time.Instant.now())) {
 				return Caller.shareGone(share, LINK_EXPIRED);
 			}
+			if (match.isVoided()) {
+				return Caller.shareGone(share, RECIPIENT_LINK_REPLACED);
+			}
+			if (share.isPersonal()) {
+				return personalCaller(share, match.getRecipient(), request.getHeader(CONTACT_HEADER));
+			}
+			if (!ShareStore.ANONYMOUS.equals(share.getType())) {
+				return Caller.shareGone(share, LINK_TYPE_UNKNOWN);
+			}
 			return Caller.shareLink(share);
 		}
 		if (!Roles.isKnown(login.getUser().getRole())) {
@@ -1149,6 +1336,125 @@ public class AuthService {
 			return Caller.rejected(ROLE_REFUSED);
 		}
 		return Caller.signedIn(login.getUser(), login.getDevice());
+	}
+
+	/**
+	 * Identifies the caller of a personal link, see issue #198.
+	 *
+	 * <p>
+	 * The rules, in the order they apply:
+	 * </p>
+	 * <ul>
+	 * <li>A recipient's own token that was never opened identifies its recipient &mdash; unless the
+	 * credential beside it is that very contact's, which simply opens it. A credential of somebody
+	 * else does not keep the recipient out: on the family tablet the next person opening their own
+	 * link is the next person. The caller is not let in until <code>?action=identify</code>.</li>
+	 * <li>A credential that this link admits lets its contact in, whatever token of the link came
+	 * with it.</li>
+	 * <li>Anybody else is asked who they are: a recipient's token that was opened before names its
+	 * contact's masked addresses, the link's own token names nobody, and a credential the link does
+	 * not admit is told so.</li>
+	 * </ul>
+	 * <p>
+	 * A contact shut out of the link or out of the space is answered <code>410</code> wherever the
+	 * server knows who they are.
+	 * </p>
+	 */
+	private Caller personalCaller(ShareStore.Link share, ShareStore.Recipient recipient, String credential) {
+		ContactStore.Recognized recognized = _contacts.recognize(credential);
+		if (recipient != null && !recipient.isOpened()
+			&& (recognized == null || !recognized.getContact().getId().equals(recipient.getContact()))) {
+			ContactStore.Contact contact = _contacts.get(recipient.getContact());
+			if (contact == null) {
+				return Caller.shareGone(share, RECIPIENT_GONE);
+			}
+			if (contact.isBlocked() || share.isShutOut(contact.getId())) {
+				return Caller.shareGone(share, CONTACT_SHUT_OUT);
+			}
+			return Caller.identify(
+				new Identification(HttpServletResponse.SC_UNAUTHORIZED, IDENTIFY_FIRST, share, recipient, contact));
+		}
+		if (recognized != null) {
+			ContactStore.Contact contact = recognized.getContact();
+			if (share.admits(contact.getId())) {
+				if (recipient != null && !recipient.isOpened()) {
+					// The recipient's own link, opened in a browser that already knows them: it is
+					// opened now, and identifies nobody else after this.
+					try {
+						_shares.open(share, recipient);
+					} catch (IOException ex) {
+						LOG.log(java.util.logging.Level.WARNING,
+							"Cannot mark the link of " + contact + " as opened: " + ex.getMessage());
+					}
+				}
+				return Caller.contact(share, contact, recognized.getSession());
+			}
+			if (share.isShutOut(contact.getId())) {
+				return Caller.shareGone(share, CONTACT_SHUT_OUT);
+			}
+			if (recipient == null) {
+				return Caller.identify(
+					new Identification(HttpServletResponse.SC_FORBIDDEN, NOT_A_RECIPIENT, share, null, null));
+			}
+		}
+		if (recipient != null) {
+			ContactStore.Contact contact = _contacts.get(recipient.getContact());
+			if (contact == null) {
+				return Caller.shareGone(share, RECIPIENT_GONE);
+			}
+			if (contact.isBlocked() || share.isShutOut(contact.getId())) {
+				return Caller.shareGone(share, CONTACT_SHUT_OUT);
+			}
+			return Caller.identify(new Identification(HttpServletResponse.SC_UNAUTHORIZED, IDENTIFY_REQUIRED,
+				share, recipient, contact));
+		}
+		return Caller.identify(
+			new Identification(HttpServletResponse.SC_UNAUTHORIZED, IDENTIFY_PERSONAL, share, null, null));
+	}
+
+	/**
+	 * The first open of a recipient's own link: it identifies them, see issue #198.
+	 *
+	 * <p>
+	 * The recipient's token is marked opened and a contact credential is issued, in one step that
+	 * only one of two concurrent first opens wins &mdash; the other is answered as any later open
+	 * is. The credential is the answer, once.
+	 * </p>
+	 *
+	 * @throws Refused
+	 *         <code>400</code> {@link #IDENTIFY_NOTHING} for a caller that presented no recipient's
+	 *         link that was never opened; the caller's own {@link Identification} for a first open
+	 *         that somebody else won.
+	 */
+	public ContactStore.Issued identify(Caller caller, boolean remember, String displayName)
+			throws Refused, IOException {
+		Identification identification = caller.getIdentification();
+		if (identification == null || !identification.isFirstOpen()) {
+			if (identification != null) {
+				throw new Refused(identification.getStatus(), identification.getMessage());
+			}
+			throw new Refused(HttpServletResponse.SC_BAD_REQUEST, IDENTIFY_NOTHING);
+		}
+		ShareStore.Link link = identification.getLink();
+		ShareStore.Recipient recipient = identification.getRecipient();
+		synchronized (_identifyLock) {
+			if (!_shares.open(link, recipient)) {
+				throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, IDENTIFY_REQUIRED);
+			}
+			try {
+				ContactStore.Issued issued =
+					_contacts.issue(recipient.getContact(), link.getId(), remember, displayName);
+				if (issued == null) {
+					_shares.reopen(recipient);
+					throw new Refused(HttpServletResponse.SC_GONE, RECIPIENT_GONE);
+				}
+				return issued;
+			} catch (IOException ex) {
+				// No credential, no first open: the link stays the recipient's to open.
+				_shares.reopen(recipient);
+				throw ex;
+			}
+		}
 	}
 
 	/** The bearer token of the given request, <code>null</code> if it carries none. */
@@ -1195,7 +1501,13 @@ public class AuthService {
 		if (_media == null) {
 			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_URL_ANONYMOUS);
 		}
-		if (caller.isShareLink() && !caller.isShareGone()) {
+		if (caller.getContact() != null && !caller.isShareGone()) {
+			// A session of a personal link signs as the link and the browser together, so that the
+			// signed address is served as that very session would be, see issue #198.
+			return _media.sign(path, kind, MediaSignatures.CONTACT,
+				caller.getShare().getId() + MediaSignatures.CONTACT_SEPARATOR + caller.getSession().getId(), expires);
+		}
+		if (caller.isShareLink() && !caller.isShareGone() && !caller.mustIdentify()) {
 			return _media.sign(path, kind, MediaSignatures.SHARE, caller.getShare().getId(), expires);
 		}
 		if (caller.isPaired() && !caller.getDeviceId().isEmpty()) {
@@ -1242,9 +1554,13 @@ public class AuthService {
 				break;
 		}
 		String id = verified.getId();
+		if (MediaSignatures.CONTACT.equals(verified.getSubjectKind())) {
+			return contactMediaCaller(id);
+		}
 		if (MediaSignatures.SHARE.equals(verified.getSubjectKind())) {
 			ShareStore.Link share = _shares.get(id);
-			if (share == null) {
+			if (share == null || !ShareStore.ANONYMOUS.equals(share.getType())) {
+				// A personal link never signs as the link alone, see signMedia.
 				throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_SIGNED_OUT);
 			}
 			if (share.isRevoked()) {
@@ -1266,6 +1582,30 @@ public class AuthService {
 		return Caller.signedIn(user, device);
 	}
 
+	/** The caller a media signature of a contact session is served as, see {@link #mediaCaller}. */
+	private Caller contactMediaCaller(String id) throws Refused {
+		int separator = id.indexOf(MediaSignatures.CONTACT_SEPARATOR);
+		ShareStore.Link share = separator < 0 ? null : _shares.get(id.substring(0, separator));
+		ContactStore.Recognized session = separator < 0 ? null : _contacts.session(id.substring(separator + 1));
+		if (share == null || session == null || session.getSession().isExpired(java.time.Instant.now())) {
+			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_SIGNED_OUT);
+		}
+		if (share.isRevoked()) {
+			return Caller.shareGone(share, LINK_REVOKED);
+		}
+		if (share.isExpired(java.time.Instant.now())) {
+			return Caller.shareGone(share, LINK_EXPIRED);
+		}
+		ContactStore.Contact contact = session.getContact();
+		if (contact.isBlocked() || share.isShutOut(contact.getId())) {
+			return Caller.shareGone(share, CONTACT_SHUT_OUT);
+		}
+		if (!share.admits(contact.getId())) {
+			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_SIGNED_OUT);
+		}
+		return Caller.contact(share, contact, session.getSession());
+	}
+
 	/** Whether the given caller may read. */
 	public boolean readAllowed(Caller caller) {
 		if (caller.hasInvalidToken()) {
@@ -1275,7 +1615,7 @@ public class AuthService {
 			// A live link reads, in a migrated library too: LIBRARY_REFUSED tells people to open a
 			// share link they were given, and this is them doing it, see issue #51. What the link
 			// may do where it points at is still the grant's business, see #rights(Caller, PathInfo).
-			return !caller.isShareGone();
+			return !caller.isShareGone() && !caller.mustIdentify();
 		}
 		return _mode != AuthMode.ALL || caller.isPaired();
 	}
@@ -1356,7 +1696,7 @@ public class AuthService {
 		if (_mode == AuthMode.OFF) {
 			return Rights.ALL;
 		}
-		if (caller.hasInvalidToken() || caller.isShareGone()) {
+		if (caller.hasInvalidToken() || caller.isShareGone() || caller.mustIdentify()) {
 			return Rights.NONE;
 		}
 		if (caller.isShareLink()) {
@@ -2176,13 +2516,23 @@ public class AuthService {
 			LOG.warning("Cannot ask the target of " + share + ": " + ex.getMessage());
 			rights = Rights.NONE;
 		}
+		ShareInfo info = ShareInfo.create()
+			.setLabel(share.getLabel())
+			.setExpires(share.getExpires())
+			.setRights(Rights.onTheWire(rights))
+			.setPath(canonical(share))
+			.setType(share.isPersonal() ? ShareType.PERSONAL : ShareType.ANONYMOUS);
+		if (caller.getContact() != null) {
+			info.setContact(contactInfo(caller.getContact()));
+		}
 		return result
 			.setWriteAllowed(rights.contains(Rights.CONTRIBUTE))
-			.setShare(ShareInfo.create()
-				.setLabel(share.getLabel())
-				.setExpires(share.getExpires())
-				.setRights(Rights.onTheWire(rights))
-				.setPath(canonical(share)));
+			.setShare(info);
+	}
+
+	/** The given contact as a session is told about them, see {@link ContactInfo} and issue #198. */
+	public static ContactInfo contactInfo(ContactStore.Contact contact) {
+		return ContactInfo.create().setId(contact.getId()).setDisplayName(contact.greeting());
 	}
 
 	/**

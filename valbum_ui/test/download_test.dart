@@ -45,6 +45,9 @@ class RecordingSaver extends DownloadSaver {
 final Uint8List originalBytes =
     Uint8List.fromList([0xFF, 0xD8, 1, 2, 3, 0xFF, 0xD9]);
 
+/// The bytes of the raw companion the fake server answers (issue #191).
+final Uint8List rawBytes = Uint8List.fromList([0x49, 0x49, 0x2A, 0, 1, 2]);
+
 /// The bytes of the archive the fake server answers.
 final Uint8List zipBytes = Uint8List.fromList(utf8.encode("PK-archive"));
 
@@ -82,6 +85,11 @@ VAlbumClient viewerClient(
               http.Response.bytes(originalBytes, 200,
                   headers: {"content-type": "image/jpeg"});
         }
+        if (request.url.path == "/valbum/data/album/a.CR2" &&
+            request.url.query.isEmpty) {
+          return http.Response.bytes(rawBytes, 200,
+              headers: {"content-type": "image/x-canon-cr2"});
+        }
         return http.Response("No such resource: ${request.url.path}", 404);
       })),
     );
@@ -93,8 +101,9 @@ Future<void> pumpViewer(
   ShareSession? share,
   bool offline = false,
   ImageKind kind = ImageKind.image,
+  String raw = "",
 }) async {
-  var image = viewerImagePart("a.jpg", kind: kind);
+  var image = viewerImagePart("a.jpg", kind: kind, raw: raw);
   viewerAlbum([image], rights: rights);
   fakeImageRequests();
   await pumpViewerHarness(
@@ -200,6 +209,46 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key("viewer-download")), findsOneWidget);
       expect(find.text(testL10n.viewerDownload), findsOneWidget);
+    });
+
+    testWidgets('offers the raw beside the photograph as a second entry',
+        (tester) async {
+      // A raw and the JPEG of its name are one photograph (issue #191).
+      var saver = installSaver();
+      var requests = <http.Request>[];
+      await pumpViewer(tester, viewerClient(requests), raw: "a.CR2");
+
+      await tester.tap(find.byKey(const Key("viewer-menu")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key("viewer-download")), findsOneWidget);
+      expect(find.text(testL10n.viewerDownloadRaw), findsOneWidget);
+      await tester.tap(find.byKey(const Key("viewer-download-raw")));
+      await tester.pumpAndSettle();
+
+      var fetch = requests.single;
+      expect(fetch.url.toString(), "$viewerBaseUrl/a.CR2");
+      expect(fetch.headers["Authorization"], "Bearer tok-7");
+      var file = saver.saved.single;
+      expect(file.name, "a.CR2");
+      expect(file.bytes, rawBytes);
+      expect(file.contentType, "image/x-canon-cr2");
+    });
+
+    testWidgets('offers no raw where the photograph has none', (tester) async {
+      await pumpViewer(tester, viewerClient([]));
+
+      await tester.tap(find.byKey(const Key("viewer-menu")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key("viewer-download-raw")), findsNothing);
+    });
+
+    testWidgets('offers no raw to a caller who may only look', (tester) async {
+      await pumpViewer(tester, viewerClient([]),
+          rights: const ["view"], raw: "a.CR2");
+
+      await tester.tap(find.byKey(const Key("viewer-menu")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key("viewer-download-raw")), findsNothing);
     });
 
     testWidgets('offers nothing to a caller who may only look', (tester) async {

@@ -232,6 +232,31 @@ public class TestSharePreview extends TestCase {
 			Arrays.equals(preview(ZOO, "members.jpg"), cover.bodyBytes()));
 	}
 
+	/**
+	 * A recipient's own link of a personal share (issue #198) carries the card too, and fetching it
+	 * &mdash; which is what a messenger does with every link posted &mdash; opens nothing: the
+	 * recipient's first open is still theirs.
+	 */
+	public void testARecipientsOwnLinkCarriesTheCardAndStaysUnopened() throws Exception {
+		single();
+		de.haumacher.imageServer.auth.ContactStore contacts = auth("").getContacts();
+		de.haumacher.imageServer.auth.ContactStore.Contact petra = contacts.enter(contacts.read("", "Tante Petra",
+			java.util.Collections.singletonList(new String[] { "email", "petra@gmx.de" })), "admin");
+		ShareStore.IssuedPersonal issued = auth("").getShares().createPersonal("admin", ZOO, "", "", Privacy.MEMBERS,
+			Ratings.MIN, java.util.Arrays.asList("view"), "admin", java.util.Arrays.asList(petra.getId()));
+		String token = issued.getTokens().get(petra.getId());
+
+		String html = body(get("/s/" + token + "/"));
+		assertTrue(html, html.contains("<meta property=\"og:title\" content=\"Zoo\">"));
+		assertTrue(html, html.contains("/s/" + token + "/cover.jpg"));
+		FakeResponse cover = get("/s/" + token + "/cover.jpg");
+		assertEquals(cover.body(), HttpServletResponse.SC_OK, cover.status());
+		assertTrue(Arrays.equals(preview(ZOO, "members.jpg"), cover.bodyBytes()));
+		assertTrue("Neither the page nor the cover opened her link.",
+			issued.getIssued().getLink().getRecipients().get(0).getOpened().isEmpty());
+		assertTrue(contacts.get(petra.getId()).getSessions().isEmpty());
+	}
+
 	/** An index picture the link may not show falls back to the first image it may show. */
 	public void testAHiddenIndexPictureFallsBackToTheFirstVisibleImage() throws Exception {
 		single();
