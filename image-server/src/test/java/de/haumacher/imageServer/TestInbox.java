@@ -21,8 +21,10 @@ import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.MoveResult;
+import de.haumacher.imageServer.shared.model.PresentFile;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ShareLinkCreated;
+import de.haumacher.imageServer.shared.model.UploadCheckResult;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
@@ -77,6 +79,10 @@ public class TestInbox extends TestCase {
 	private static final String BOB_TOKEN = "bob-token";
 
 	private static final String DAVE_TOKEN = "dave-token";
+
+	private static final String CAROL_TOKEN = "carol-token";
+
+	private static final String TRIP = "/2026-05-01 Trip/";
 
 	/** How issue #53 names the contributions of the user <code>bob</code>. */
 	private static final String BOB = "user:bob";
@@ -464,6 +470,113 @@ public class TestInbox extends TestCase {
 		assertEquals(Inboxes.INBOX_NOT_SHARED, errorMessage(response));
 	}
 
+	// --- What the hash check says about an inbox, see issue #216. ---
+
+	public void testTheSpaceWideCheckNamesTheInboxToAnEditor() throws Exception {
+		ImageServlet servlet = indexedInbox();
+		assertEquals(present("bob1.jpg", "Inbox/bob1.jpg", "other2.jpg", "Inbox/other2.jpg"),
+			check(servlet, TRIP, ALICE_TOKEN, "bob1.jpg", "other2.jpg"));
+		assertEquals("At the inbox itself, bare names as ever.",
+			present("bob1.jpg", "bob1.jpg", "other2.jpg", "other2.jpg"),
+			check(servlet, "/Inbox/", ALICE_TOKEN, "bob1.jpg", "other2.jpg"));
+	}
+
+	public void testAContributorIsNamedTheirOwnAndToldOnlyThatTheRestIsThere() throws Exception {
+		ImageServlet servlet = indexedInbox();
+		assertEquals("Somebody else's photograph is present without a path: not uploaded again, not located.",
+			present("bob1.jpg", "Inbox/bob1.jpg", "other2.jpg", ""),
+			check(servlet, TRIP, BOB_TOKEN, "bob1.jpg", "other2.jpg"));
+		assertEquals(present("bob1.jpg", "bob1.jpg", "other2.jpg", ""),
+			check(servlet, "/Inbox/", BOB_TOKEN, "bob1.jpg", "other2.jpg"));
+	}
+
+	public void testAContributorWithNothingInTheInboxIsNamedNothingThere() throws Exception {
+		ImageServlet servlet = indexedInbox();
+		assertEquals(present("bob1.jpg", "", "other2.jpg", ""),
+			check(servlet, TRIP, CAROL_TOKEN, "bob1.jpg", "other2.jpg"));
+		assertEquals("The inbox may be added to, so it may be asked.",
+			present("bob1.jpg", "", "other2.jpg", ""),
+			check(servlet, "/Inbox/", CAROL_TOKEN, "bob1.jpg", "other2.jpg"));
+	}
+
+	public void testAViewerLearnsNoPathInAnInboxAndCannotAskTheInbox() throws Exception {
+		ImageServlet servlet = indexedInbox();
+		assertEquals(present("bob1.jpg", "", "other2.jpg", ""),
+			check(servlet, TRIP, DAVE_TOKEN, "bob1.jpg", "other2.jpg"));
+
+		FakeResponse inbox = checkResponse(servlet, "/Inbox/", DAVE_TOKEN, "bob1.jpg");
+		assertEquals("Asked like a read: there is nothing at this address.",
+			HttpServletResponse.SC_NOT_FOUND, inbox.status());
+		assertEquals(Inboxes.NOT_FOUND, errorMessage(inbox));
+	}
+
+	public void testAnAnonymousCallerLearnsNoPathInAnInboxAndCannotAskTheInbox() throws Exception {
+		ImageServlet servlet = indexedInbox();
+		assertEquals(present("bob1.jpg", "", "other2.jpg", ""),
+			check(servlet, TRIP, null, "bob1.jpg", "other2.jpg"));
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, checkResponse(servlet, "/Inbox/", null, "bob1.jpg").status());
+	}
+
+	public void testAShareLinkLearnsNothingOfAnInbox() throws Exception {
+		ImageServlet servlet = indexedInbox();
+		String token = shareToken(servlet, "/");
+		assertEquals("A link is confined to its folder, which holds none of these.",
+			present(), check(servlet, "/", token, "bob1.jpg", "other2.jpg"));
+
+		FakeResponse inbox = checkResponse(servlet, "/Inbox/", token, "bob1.jpg");
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, inbox.status());
+		assertEquals(Inboxes.NOT_FOUND, errorMessage(inbox));
+	}
+
+	/** The inbox of {@link #sharedInbox()}, indexed by a servlet that asks for sign-in to write. */
+	private ImageServlet indexedInbox() throws Exception {
+		sharedInbox();
+		ImageServlet servlet = servlet(AuthMode.WRITES);
+		servlet.index().indexNow();
+		return servlet;
+	}
+
+	/** What the check answers for the given photographs of the inbox, by their names in the inbox. */
+	private Map<String, String> check(ImageServlet servlet, String pathInfo, String token, String... inboxNames)
+			throws Exception {
+		FakeResponse response = checkResponse(servlet, pathInfo, token, inboxNames);
+		assertEquals("The check failed: " + response.body(), HttpServletResponse.SC_OK, response.status());
+		Map<String, String> byHash = new HashMap<>();
+		for (String name : inboxNames) {
+			byHash.put(sha256(_base.resolve("Inbox").resolve(name).toFile()), name);
+		}
+		Map<String, String> result = new HashMap<>();
+		for (PresentFile present : UploadCheckResult
+			.readUploadCheckResult(reader(response.body())).getPresent()) {
+			result.put(byHash.get(present.getHash()), present.getName());
+		}
+		return result;
+	}
+
+	private FakeResponse checkResponse(ImageServlet servlet, String pathInfo, String token, String... inboxNames)
+			throws Exception {
+		StringBuilder body = new StringBuilder("{\"hashes\":[");
+		for (int n = 0; n < inboxNames.length; n++) {
+			body.append(n == 0 ? "" : ",").append("{\"hash\":\"")
+				.append(sha256(_base.resolve("Inbox").resolve(inboxNames[n]).toFile())).append("\"}");
+		}
+		body.append("]}");
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", "check");
+		FakeResponse response = new FakeResponse();
+		servlet.doPost(request(pathInfo, "application/json", body.toString(), token, parameters), response.response());
+		return response;
+	}
+
+	/** The expected answer of {@link #check(ImageServlet, String, String, String...)}: pairs of name and answer. */
+	private static Map<String, String> present(String... nameAndAnswer) {
+		Map<String, String> result = new HashMap<>();
+		for (int n = 0; n < nameAndAnswer.length; n += 2) {
+			result.put(nameAndAnswer[n], nameAndAnswer[n + 1]);
+		}
+		return result;
+	}
+
 	// --- Deleting a single photograph. ---
 
 	public void testAPhotographIsMovedIntoTheAlbumItHasInTheTrash() throws Exception {
@@ -705,6 +818,7 @@ public class TestInbox extends TestCase {
 		alice.addDevice(new Device("Alice's phone", UserStore.hash(ALICE_TOKEN), Instant.now().toString()));
 		store.addUser(user("bob", BOB_TOKEN, Roles.CONTRIBUTE));
 		store.addUser(user("dave", DAVE_TOKEN, Roles.VIEW));
+		store.addUser(user("carol", CAROL_TOKEN, Roles.CONTRIBUTE));
 		store.store();
 	}
 
