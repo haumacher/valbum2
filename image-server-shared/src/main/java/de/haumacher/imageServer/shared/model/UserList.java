@@ -82,7 +82,7 @@ public class UserList extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * How many share links were withdrawn along with a removed user (issue #84).
+	 * How many share links were deleted along with a removed user (issues #84, #217).
 	 *
 	 * <p>
 	 * Answered by <code>&lt;data&gt;/?action=remove-user</code> only, and <code>0</code>

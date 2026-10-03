@@ -9,7 +9,7 @@ import de.haumacher.imageServer.shared.model.ShareLinkCreated;
 /**
  * Review probe of #198: a contact session is a link session and nothing more — it reaches no
  * register, no management action and no edit, whatever the link lets it contribute — and a
- * withdrawn link shuts its contacts out at once.
+ * deleted link shuts its contacts out at once.
  */
 @SuppressWarnings("javadoc")
 public class TestPersonalLinksReviewProbe extends PersonalLinkTestCase {
@@ -44,7 +44,7 @@ public class TestPersonalLinksReviewProbe extends PersonalLinkTestCase {
 		assertEquals(200, getAs("/", "json", token, credential).status());
 	}
 
-	public void testAWithdrawnLinkShutsItsContactsOutAtOnce() throws Exception {
+	public void testADeletedLinkShutsItsContactsOutAtOnce() throws Exception {
 		ShareLinkCreated link = created(ZOO, email("Tante Petra", PETRA));
 		String token = tokenOf(link, "Tante Petra");
 		String credential = credential(token);
@@ -55,9 +55,12 @@ public class TestPersonalLinksReviewProbe extends PersonalLinkTestCase {
 
 		for (String type : new String[] { "json", "auth" }) {
 			FakeResponse response = getAs("/", type, token, credential);
-			assertEquals(type + ": " + response.body(), 410, response.status());
+			FakeResponse never = getAs("/", type, "never-issued", credential);
+			assertEquals(type + ": " + response.body(), never.status(), response.status());
+			assertEquals(type, never.body(), response.body());
 		}
+		assertEquals(401, getAs("/", "json", token, credential).status());
 		FakeResponse again = identify(token, true);
-		assertTrue("identify after withdrawal: " + again.status(), again.status() >= 400);
+		assertTrue("identify after deletion: " + again.status(), again.status() >= 400);
 	}
 }

@@ -198,7 +198,7 @@ public class ImageServlet extends HttpServlet {
 
 	/** The message a grant or revoke naming a share-link token is refused with, see issue #51. */
 	public static final String SHARE_GRANT_REFUSED =
-		"The grant of a share link belongs to the link: create one with ?action=share and withdraw it with "
+		"The grant of a share link belongs to the link: create one with ?action=share and delete it with "
 			+ "?action=unshare.";
 
 	/** The message an unreadable grant is refused with. */
@@ -1434,7 +1434,7 @@ public class ImageServlet extends HttpServlet {
 	 * <p>
 	 * The caller's {@link Caller#subject() subject} — the very string a grant is made out to — and
 	 * the label to show for it. Both are copied into the hash sidecar at the upload and never
-	 * looked up again: a share link that is renamed or withdrawn afterwards still says who
+	 * looked up again: a share link that is renamed or deleted afterwards still says who
 	 * contributed, and a user who is renamed keeps what they brought.
 	 * </p>
 	 *
@@ -2665,7 +2665,7 @@ public class ImageServlet extends HttpServlet {
 	 *
 	 * <p>
 	 * The links on the folder and on every folder above it within the space, the nearest one first,
-	 * withdrawn ones included and marked as such. Only the owner of the space and the administrator
+	 * expired ones included; a deleted one is gone (issue #217). Only the owner of the space and the administrator
 	 * may ask, exactly as for the grants — and no answer ever carries a token: the token is shown
 	 * once, when the link is made, and never again.
 	 * </p>
@@ -2708,7 +2708,7 @@ public class ImageServlet extends HttpServlet {
 	 *
 	 * <p>
 	 * The token travels back exactly once, in the {@link ShareLinkCreated}: this server keeps its
-	 * hash and can never show it again. A lost link is withdrawn and made anew.
+	 * hash and can never show it again. A lost link is deleted and made anew.
 	 * </p>
 	 */
 	private void createShare(Context context) throws IOException {
@@ -3237,7 +3237,7 @@ public class ImageServlet extends HttpServlet {
 	 * response is complete, see issue #198.
 	 *
 	 * <p>
-	 * The same rights as withdrawing it: the share flag, and the link the caller's own or the
+	 * The same rights as deleting it: the share flag, and the link the caller's own or the
 	 * caller an administrator; a link of somebody else's is a link this request never saw.
 	 * </p>
 	 */
@@ -3388,13 +3388,15 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * Withdraws a share link of the addressed folder at
-	 * <code>&lt;folder&gt;/?action=unshare</code>, see issue #51.
+	 * Deletes a share link of the addressed folder at
+	 * <code>&lt;folder&gt;/?action=unshare</code>, see issues #51 and #217.
 	 *
 	 * <p>
-	 * The record is marked withdrawn and kept — a management screen shows what became of a link
-	 * somebody handed out, see issue #55 — and the grant is removed, which is what actually closes
-	 * the door: the next request with that token is answered <code>410 Gone</code>.
+	 * Deleting deletes, as if the link had never been made: the record goes from the store and from
+	 * every list, its token and its recipients' tokens are from then on tokens this server never
+	 * issued, and the contact sessions opened through it end ({@link AuthService#deleteLink}). The
+	 * wire name stays <code>unshare</code>, which every app built since issue #51 sends, and so does
+	 * the answer, a {@link ShareLinkList} holding the link as it was before it was deleted.
 	 * </p>
 	 */
 	private void removeShare(Context context) throws IOException {
@@ -3408,7 +3410,7 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		if (!_auth.mayShareLinks(caller)) {
-			LOG.warning("Refusing to withdraw a share link of '" + location.getOwner() + "'.");
+			LOG.warning("Refusing to delete a share link of '" + location.getOwner() + "'.");
 			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.SHARING_REFUSED);
 			return;
 		}
@@ -3423,14 +3425,15 @@ public class ImageServlet extends HttpServlet {
 		if (link == null || !link.covers(location.getOwner(), location.getOwnerPath()) || !mine(caller, link)) {
 			// A link of somebody else's, or of no folder above this one, is a link this request
 			// never saw: it is told that there is none, not whose it is.
-			LOG.warning("Refusing to withdraw the unknown share link '" + id + "'.");
+			LOG.warning("Refusing to delete the unknown share link '" + id + "'.");
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.SHARE_UNKNOWN);
 			return;
 		}
 
-		shares.revoke(link.getId());
-		LOG.info("Withdrew the share link " + link + ".");
-		serveJsonObject(context.response(), ShareLinkList.create().addLink(onTheWire(link)));
+		ShareLink wire = onTheWire(link);
+		_auth.deleteLink(link.getId());
+		LOG.info("Deleted the share link " + link + ".");
+		serveJsonObject(context.response(), ShareLinkList.create().addLink(wire));
 	}
 
 	/**
@@ -3542,7 +3545,6 @@ public class ImageServlet extends HttpServlet {
 			.setRights(Rights.onTheWire(rights))
 			.setPath(AuthService.canonical(link))
 			.setCreated(link.getCreated())
-			.setRevoked(link.getRevoked())
 			.setPhotoLabel(link.getPhotoLabel());
 		return PersonalLinks.withRecipients(wire, link, _auth.getContacts());
 	}
@@ -4154,7 +4156,7 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * Answers a caller whose share link expired or was withdrawn with <code>410 Gone</code>.
+	 * Answers a caller whose share link expired or is otherwise closed to them with <code>410 Gone</code>.
 	 *
 	 * <p>
 	 * On every endpoint, <code>?type=auth</code> included: the app asks who it is, is told that the

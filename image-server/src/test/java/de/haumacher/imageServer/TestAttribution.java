@@ -101,7 +101,7 @@ public class TestAttribution extends ShareTestCase {
 
 		ImagePart image = image(album(get(ZOO, "json", SharingFixture.ALICE)), "guests.jpg");
 		assertEquals("token:" + id, image.getContributor());
-		assertEquals("A withdrawn link still says who contributed.", "Party", image.getContributorLabel());
+		assertEquals("A deleted link still says who contributed.", "Party", image.getContributorLabel());
 	}
 
 	public void testAnAnonymousUploadOnAServerWithoutAuthentication() throws Exception {

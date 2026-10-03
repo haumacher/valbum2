@@ -60,7 +60,6 @@ public class TestShareStore extends TestCase {
 		assertEquals("2030-01-01T00:00:00Z", link.getExpires());
 		assertEquals(Privacy.PUBLIC, link.getMaxPrivacy());
 		assertEquals(0, link.getMinRating());
-		assertEquals("", link.getRevoked());
 		assertEquals("token:" + link.getId(), link.getSubject());
 	}
 
@@ -73,35 +72,38 @@ public class TestShareStore extends TestCase {
 		assertTrue(contents, contents.contains(UserStore.hash(issued.getToken())));
 	}
 
-	public void testLookupFindsALiveLinkAndNotARevokedOne() throws Exception {
+	public void testLookupFindsALiveLinkAndNotADeletedOne() throws Exception {
 		ShareStore store = new ShareStore(_base);
 		Issued live = store.create("alice", "A", "live", "", Privacy.PUBLIC, Ratings.MIN);
 		Issued dead = store.create("alice", "B", "dead", "", Privacy.PUBLIC, Ratings.MIN);
-		store.revoke(dead.getLink().getId());
+		store.delete(dead.getLink().getId());
 
 		assertEquals(live.getLink().getId(), store.lookup(live.getToken()).getId());
 		assertTrue(store.lookup(live.getToken()).isLive());
-		// A withdrawn link is still found: the caller is told that it was withdrawn, which is a
-		// different answer from a token nobody ever issued.
-		assertNotNull(store.lookup(dead.getToken()));
-		assertTrue(store.lookup(dead.getToken()).isRevoked());
-		assertFalse(store.lookup(dead.getToken()).isLive());
+		// A deleted link is a token nobody ever issued, see issue #217.
+		assertNull(store.lookup(dead.getToken()));
+		assertNull(store.match(dead.getToken()));
 		assertNull(store.lookup("no-such-token"));
 	}
 
-	public void testRevokeMarksOneAndSurvivesAReload() throws Exception {
+	public void testDeleteRemovesTheRecordAndSurvivesAReload() throws Exception {
 		ShareStore store = new ShareStore(_base);
 		Issued first = store.create("alice", "A", "", "", Privacy.PUBLIC, Ratings.MIN);
 		Issued second = store.create("alice", "B", "", "", Privacy.PUBLIC, Ratings.MIN);
 
-		Link revoked = store.revoke(second.getLink().getId());
-		assertNotNull(revoked);
-		assertFalse(revoked.getRevoked().isEmpty());
+		Link deleted = store.delete(second.getLink().getId());
+		assertNotNull(deleted);
+		assertEquals(second.getLink().getId(), deleted.getId());
+
+		String contents = new String(Files.readAllBytes(store.getFile()), StandardCharsets.UTF_8);
+		assertFalse("The record is gone from the file: " + contents, contents.contains(second.getLink().getId()));
+		assertFalse(contents, contents.contains(UserStore.hash(second.getToken())));
 
 		ShareStore reloaded = new ShareStore(_base);
-		assertFalse(reloaded.get(first.getLink().getId()).isRevoked());
-		assertTrue(reloaded.get(second.getLink().getId()).isRevoked());
-		assertNull("Withdrawing a link that does not exist is no error.", reloaded.revoke("nothing"));
+		assertNotNull(reloaded.get(first.getLink().getId()));
+		assertNull(reloaded.get(second.getLink().getId()));
+		assertEquals(1, reloaded.getLinks().size());
+		assertNull("Deleting a link that does not exist is no error.", reloaded.delete("nothing"));
 	}
 
 	public void testExpiry() throws Exception {

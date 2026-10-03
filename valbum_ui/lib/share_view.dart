@@ -145,7 +145,7 @@ Future<void> shareLinksOf({
   );
 }
 
-/// Lists, withdraws and creates the share links covering one folder.
+/// Lists, deletes and creates the share links covering one folder.
 ///
 /// A dialog of its own: a new link asks five questions (label, expiry,
 /// privacy ceiling, rating floor, rights), and who is offered it at all is
@@ -288,7 +288,12 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
       var answer = await widget.client.shares(widget.path);
       if (mounted) {
         setState(() {
-          _links = answer.links;
+          // A server built before issue #217 still answers the links it
+          // kept as withdrawn; a deleted link is gone, so they are not shown.
+          _links = [
+            for (var link in answer.links)
+              if (link.revoked.isEmpty) link,
+          ];
           _error = null;
         });
       }
@@ -366,10 +371,10 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
             ),
             ElevatedButton(
               key: const Key("link-create"),
-              onPressed: _busy ||
-                      (_kind == LinkKind.selected && _recipients.isEmpty)
-                  ? null
-                  : _create,
+              onPressed:
+                  _busy || (_kind == LinkKind.selected && _recipients.isEmpty)
+                      ? null
+                      : _create,
               child: Text(l10n.createLink),
             ),
           ],
@@ -430,18 +435,18 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           leading: Icon(_inherited(link) ? Icons.arrow_upward : Icons.link),
           title: Text(link.label.isEmpty ? l10n.linkNoLabel : link.label),
           subtitle: Text(_describe(l10n, link)),
-          trailing: _inherited(link) || link.revoked.isNotEmpty
+          trailing: _inherited(link)
               ? null
               : IconButton(
-                  key: Key("withdraw-${link.id}"),
-                  icon: const Icon(Icons.link_off),
-                  tooltip: l10n.withdrawTooltip,
-                  onPressed: _busy ? null : () => _withdraw(link),
+                  key: Key("delete-link-${link.id}"),
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: l10n.deleteLinkTooltip,
+                  onPressed: _busy ? null : () => _delete(link),
                 ),
         ),
         // Who a personal link went to, each with "Send again" where the
-        // link is this folder's own and live (issue #201).
-        if (!_inherited(link) && link.revoked.isEmpty)
+        // link is this folder's own (issue #201).
+        if (!_inherited(link))
           for (var recipient in link.recipients)
             ListTile(
               key: Key("recipient-${link.id}-${recipient.contact}"),
@@ -459,7 +464,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
     ];
   }
 
-  /// Whether the given link was made further up and can only be withdrawn
+  /// Whether the given link was made further up and can only be deleted
   /// there.
   bool _inherited(ShareLink link) => link.path != ownerPath;
 
@@ -481,9 +486,6 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
       if (link.photoLabel.isNotEmpty) l10n.linkShowsLabel(link.photoLabel),
     ];
     var text = parts.join(" · ");
-    if (link.revoked.isNotEmpty) {
-      return "$text\n${l10n.linkWithdrawnOn(_day(link.revoked))}";
-    }
     if (_inherited(link)) {
       return "$text\n${l10n.linkInheritedFrom(_pathLabel(l10n, link.path))}";
     }
@@ -500,9 +502,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
         if (link.rights.any((held) => held.name == right))
           rightLabel(l10n, right),
     ];
-    return names.isEmpty
-        ? rightLabel(l10n, rightView)
-        : names.join(", ");
+    return names.isEmpty ? rightLabel(l10n, rightView) : names.join(", ");
   }
 
   /// The day of an ISO-8601 instant, in the viewer's own time zone.
@@ -760,7 +760,8 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
             Text(
               reason,
               key: const Key("link-type-reason"),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: dim),
+              style:
+                  Theme.of(context).textTheme.bodySmall?.copyWith(color: dim),
             ),
         ],
       ),
@@ -960,8 +961,8 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   List<Widget> _groupSection(BuildContext context, ShareLinkCreated created) {
     var l10n = AppLocalizations.of(context)!;
     var url = absoluteServerUrl(widget.client.dataUrl, created.url);
-    bool hasEmail(RecipientLink recipient) => recipient.addresses
-        .any((address) => address.kind == AddressKind.email);
+    bool hasEmail(RecipientLink recipient) =>
+        recipient.addresses.any((address) => address.kind == AddressKind.email);
     var addresses = [
       for (var recipient in created.recipients)
         for (var address in recipient.addresses)
@@ -1030,30 +1031,26 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
     messenger.showSnackBar(SnackBar(content: Text(said)));
   }
 
-  /// Withdraws a link, after asking: a link somebody already has stops
-  /// working the moment this is done.
-  Future<void> _withdraw(ShareLink link) async {
-    var outer = AppLocalizations.of(context)!;
-    var name = link.label.isEmpty
-        ? outer.withdrawLinkThisLink
-        : "'${link.label}'";
+  /// Deletes a link, after asking once (issue #217): it is gone as if it had
+  /// never been made, and whoever has it can no longer open it.
+  Future<void> _delete(ShareLink link) async {
     var confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         var l10n = AppLocalizations.of(context)!;
         return AlertDialog(
-          key: const Key("withdraw-confirm"),
-          title: Text(l10n.withdrawLinkTitle),
-          content: Text(l10n.withdrawLinkMessage(name)),
+          key: const Key("delete-link-confirm"),
+          title: Text(l10n.deleteLinkTitle),
+          content: Text(deleteLinkQuestion(l10n, link)),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
               child: Text(l10n.cancel),
             ),
             ElevatedButton(
-              key: const Key("withdraw-confirm-ok"),
+              key: const Key("delete-link-confirm-ok"),
               onPressed: () => Navigator.of(context).pop(true),
-              child: Text(l10n.withdraw),
+              child: Text(l10n.delete),
             ),
           ],
         );
@@ -1083,4 +1080,17 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
     setState(() => _busy = false);
     await _load();
   }
+}
+
+/// The one question confirming that [link] is deleted (issue #217): what it is
+/// called, and what happens — whoever has it can no longer open it, and for a
+/// personal link the links of its recipients go with it while the contacts
+/// stay.
+String deleteLinkQuestion(AppLocalizations l10n, ShareLink link) {
+  var question = link.label.isEmpty
+      ? l10n.deleteLinkUnnamed
+      : l10n.deleteLinkNamed("'${link.label}'");
+  return link.type == ShareType.personal
+      ? "$question ${l10n.deleteLinkPersonalNote}"
+      : question;
 }

@@ -855,6 +855,36 @@ public class ContactStore {
 	}
 
 	/**
+	 * Ends every session opened through the given share link, of every contact, see issue #217.
+	 *
+	 * <p>
+	 * The link was deleted: the browsers that came in through it are signed out of it. The contacts
+	 * themselves stay, with their names, addresses and the sessions they opened through other
+	 * links.
+	 * </p>
+	 *
+	 * @return How many sessions were ended.
+	 */
+	public synchronized int endSessionsOfLink(String link) throws IOException {
+		if (link == null || link.isEmpty()) {
+			return 0;
+		}
+		int ended = 0;
+		for (Contact contact : _contacts) {
+			for (Iterator<Session> it = contact._sessions.iterator(); it.hasNext();) {
+				if (link.equals(it.next().getLink())) {
+					it.remove();
+					ended++;
+				}
+			}
+		}
+		if (ended > 0) {
+			store();
+		}
+		return ended;
+	}
+
+	/**
 	 * Gives the given contact another name in the space.
 	 *
 	 * <p>

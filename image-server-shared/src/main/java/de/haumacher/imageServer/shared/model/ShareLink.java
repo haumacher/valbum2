@@ -7,7 +7,8 @@ package de.haumacher.imageServer.shared.model;
  * Sent to <code>&lt;folder&gt;/?action=share</code> to create one, where the target is taken from
  * the URL and whatever the body says about {@link #getPath()} is ignored; answered by
  * <code>&lt;folder&gt;/?type=shares</code> and by <code>&lt;folder&gt;/?action=unshare</code>,
- * which names the link to withdraw by its {@link #getId()}.
+ * which names the link to delete by its {@link #getId()} and answers it as it was before it was
+ * deleted (issue #217).
  * </p>
  *
  * <p>
@@ -314,7 +315,8 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * When the link was withdrawn, an ISO-8601 instant; empty while the link is live.
+	 * Always empty since issue #217: a deleted link is gone and never answered. Kept so that an app
+	 * built before reads every link as live.
 	 */
 	public final String getRevoked() {
 		return _revoked;

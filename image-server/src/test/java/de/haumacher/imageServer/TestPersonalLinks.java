@@ -53,7 +53,7 @@ public class TestPersonalLinks extends PersonalLinkTestCase {
 		assertFalse(old.isPersonal());
 		assertTrue(old.getRecipients().isEmpty());
 		assertEquals("Grandma", old.getLabel());
-		assertTrue(store.get("oldLink2").isRevoked());
+		assertNull("A link an earlier build withdrew is deleted (#217).", store.get("oldLink2"));
 
 		FakeResponse album = get("/", "json", "an-old-share-link-token");
 		assertEquals("An anonymous link opens what it opened: " + album.body(), 200, album.status());
@@ -75,9 +75,11 @@ public class TestPersonalLinks extends PersonalLinkTestCase {
 		assertEquals("What is read is what is written.", first, shareStoreContents());
 		assertTrue(first, first.contains("\"oldLink1\""));
 		assertTrue(first, first.contains("\"type\":\"personal\""));
-		assertFalse("An anonymous link is written as before: " + first,
-			first.substring(0, first.indexOf("oldLink2")).contains("\"type\""));
-		assertEquals(2, again.getLinks().get(2).getRecipients().size());
+		assertTrue("An anonymous link is written as before: " + first,
+			first.substring(0, first.indexOf("\"type\"")).contains("\"oldLink1\""));
+		assertFalse("A withdrawn record is gone with the next write (#217): " + first, first.contains("oldLink2"));
+		assertFalse(first, first.contains("\"revoked\""));
+		assertEquals(2, again.getLinks().get(1).getRecipients().size());
 	}
 
 	public void testAnAnonymousLinkWithRecipientsIsRefused() throws Exception {
@@ -463,7 +465,8 @@ public class TestPersonalLinks extends PersonalLinkTestCase {
 			assertTrue(refusal.body(), resource instanceof ErrorInfo);
 			assertFalse(refusal.body(), ((ErrorInfo) resource).getMessage().isEmpty());
 		}
-		assertEquals(AuthService.LINK_REVOKED, errorMessage(refusals.get(refusals.size() - 1)));
+		// A deleted link's token is one nobody ever issued (#217).
+		assertEquals(AuthService.TOKEN_REFUSED, errorMessage(refusals.get(refusals.size() - 1)));
 	}
 
 	// --- Helpers. ---

@@ -1117,6 +1117,11 @@
     "description": "Shown when a share link is pasted where a server is asked for",
     "x-translated": "d415a5ec"
   },
+  "shareLinkNotValid": "This link is not valid. Ask whoever sent it to you for a new one.",
+  "@shareLinkNotValid": {
+    "description": "The page a visitor sees who opens a share link this server does not know — deleted, or never made (issue #217). Address the reader formally (German 'Sie').",
+    "x-translated": "8fcaa25d"
+  },
   "close": "Close",
   "@close": {
     "description": "Button closing a dialog",
@@ -1314,10 +1319,10 @@
     "description": "Stands in the list for a share link its author gave no label",
     "x-translated": "627ae1b7"
   },
-  "withdrawTooltip": "Withdraw…",
-  "@withdrawTooltip": {
-    "description": "Tooltip of the button withdrawing a share link: the link stops working (German 'Zurückziehen…', never 'Abheben').",
-    "x-translated": "7c48e79a"
+  "deleteLinkTooltip": "Delete link…",
+  "@deleteLinkTooltip": {
+    "description": "Tooltip of the button deleting a share link (issue #217): the link is gone as if it had never been made. German 'Link löschen…', never 'Abheben' or 'Zurückziehen'.",
+    "x-translated": "8111abb9"
   },
   "linkNeverExpires": "never expires",
   "@linkNeverExpires": {
@@ -1334,27 +1339,16 @@
     "description": "Part of a link's description: it shows only public photos",
     "x-translated": "e006069f"
   },
-  "linkWithdrawnOn": "withdrawn {day}",
-  "@linkWithdrawnOn": {
-    "description": "Says on which day a share link was taken back",
-    "placeholders": {
-      "day": {
-        "type": "String",
-        "example": "12 Mar 2024"
-      }
-    },
-    "x-translated": "bc15fa80"
-  },
-  "linkInheritedFrom": "inherited from {folder}, withdraw it there",
+  "linkInheritedFrom": "inherited from {folder}, delete it there",
   "@linkInheritedFrom": {
-    "description": "Says that a link was made on a folder further up",
+    "description": "Says that a link was made on a folder further up and is deleted there",
     "placeholders": {
       "folder": {
         "type": "String",
         "example": "'Holidays'"
       }
     },
-    "x-translated": "d145e9ed"
+    "x-translated": "f75d7a8e"
   },
   "shareWholeSpace": "the whole space",
   "@shareWholeSpace": {
@@ -1442,36 +1436,41 @@
     "description": "Heading above the URL of a share link that was just made",
     "x-translated": "8207d7d7"
   },
-  "shareLinkOnce": "Copy it now: the server keeps only its fingerprint and can never show it again. A lost link is withdrawn and made anew.",
+  "shareLinkOnce": "Copy it now: the server keeps only its fingerprint and can never show it again. A lost link is deleted and made anew.",
   "@shareLinkOnce": {
     "description": "Warns that the share link URL is shown exactly once",
-    "x-translated": "ce285204"
+    "x-translated": "9537c940"
   },
   "linkCopied": "The link was copied.",
   "@linkCopied": {
     "description": "Said after the share link URL went to the clipboard",
     "x-translated": "71e4a312"
   },
-  "withdrawLinkTitle": "Withdraw the link?",
-  "@withdrawLinkTitle": {
-    "description": "Title of the dialog confirming that a share link is taken back",
-    "x-translated": "fa6bf55f"
+  "deleteLinkTitle": "Delete link",
+  "@deleteLinkTitle": {
+    "description": "Title of the dialog confirming that a share link is deleted (issue #217). German 'Link löschen'.",
+    "x-translated": "8eb3cbe2"
   },
-  "withdrawLinkMessage": "Anybody holding {link} stops seeing the album at once. This cannot be undone; a new link can be made instead.",
-  "@withdrawLinkMessage": {
-    "description": "Explains what taking a share link back does",
+  "deleteLinkNamed": "Delete the link {link}? Whoever has it can no longer open it.",
+  "@deleteLinkNamed": {
+    "description": "The question confirming that a share link with a label is deleted: it is gone at once, as if it had never been made (issue #217). Address the reader formally (German 'Sie'); 'delete' is 'löschen'.",
     "placeholders": {
       "link": {
         "type": "String",
-        "example": "'For grandma'"
+        "example": "'Oma'"
       }
     },
-    "x-translated": "ffa9ad1b"
+    "x-translated": "7c636c2d"
   },
-  "withdrawLinkThisLink": "this link",
-  "@withdrawLinkThisLink": {
-    "description": "How a share link with no label is named in the withdraw question",
-    "x-translated": "df922c9"
+  "deleteLinkUnnamed": "Delete this link? Whoever has it can no longer open it.",
+  "@deleteLinkUnnamed": {
+    "description": "The question confirming that a share link without a label is deleted: it is gone at once, as if it had never been made (issue #217). Address the reader formally (German 'Sie'); 'delete' is 'löschen'.",
+    "x-translated": "374262b3"
+  },
+  "deleteLinkPersonalNote": "The links sent to its recipients stop working too. The contacts stay.",
+  "@deleteLinkPersonalNote": {
+    "description": "Added to the delete question of a personal share link (issue #217): the own links of its recipients die with it, while the people stay in the contacts of the space.",
+    "x-translated": "22f7fa98"
   },
   "invitationGuestNote": "A guest has no albums of their own: their library is what others share with them.",
   "@invitationGuestNote": {

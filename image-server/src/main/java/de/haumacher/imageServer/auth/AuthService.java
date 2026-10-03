@@ -81,6 +81,12 @@ public class AuthService {
 		"The device this media address was made for is no longer signed in at the server. Sign in again with a code.";
 
 	/**
+	 * The message a media address of a share link is refused with whose link this server does not
+	 * know (any more): a deleted link is one that was never made, see issue #217.
+	 */
+	public static final String MEDIA_LINK_UNKNOWN = "The link this media address was made for is not valid.";
+
+	/**
 	 * The message a pairing carrying the retired pairing secret is refused with, see issue #89.
 	 *
 	 * <p>
@@ -171,9 +177,6 @@ public class AuthService {
 
 	/** The message a caller of an expired share link is refused with, see issue #51. */
 	public static final String LINK_EXPIRED = "This link has expired.";
-
-	/** The message a caller of a withdrawn share link is refused with. */
-	public static final String LINK_REVOKED = "This link was withdrawn.";
 
 	/** The message a caller of an expired invitation is refused with, see issue #52. */
 	public static final String INVITATION_EXPIRED = "This invitation has expired.";
@@ -1255,6 +1258,39 @@ public class AuthService {
 		return _contacts;
 	}
 
+	/**
+	 * Deletes the share link of the given id, as if it had never been made, see issue #217.
+	 *
+	 * <p>
+	 * Its record and the tokens of its recipients go ({@link ShareStore#delete(String)}), and the
+	 * contact sessions opened through it end; the contacts stay, and so does the attribution of what
+	 * was uploaded through it, which was copied at the upload (issue #53).
+	 * </p>
+	 *
+	 * @return The deleted link, <code>null</code> if there is none of that id.
+	 */
+	public ShareStore.Link deleteLink(String id) throws IOException {
+		if (_shares == null) {
+			return null;
+		}
+		ShareStore.Link link = _shares.delete(id);
+		if (link != null) {
+			endSessionsOf(link);
+		}
+		return link;
+	}
+
+	/** Ends the contact sessions opened through the given deleted link. */
+	private void endSessionsOf(ShareStore.Link link) throws IOException {
+		if (_contacts == null) {
+			return;
+		}
+		int ended = _contacts.endSessionsOfLink(link.getId());
+		if (ended > 0) {
+			LOG.info("Ended " + ended + " contact session(s) opened through the deleted link " + link + ".");
+		}
+	}
+
 	/** The device codes of this server, <code>null</code> while {@link AuthMode#OFF}. */
 	public DeviceCodeStore getDeviceCodes() {
 		return _deviceCodes;
@@ -1322,9 +1358,6 @@ public class AuthService {
 				}
 				User invited = _users.getInvited(invitation.getId());
 				return Caller.invitation(invitation, invited, invitationGone(invitation, invited));
-			}
-			if (share.isRevoked()) {
-				return Caller.shareGone(share, LINK_REVOKED);
 			}
 			if (share.isExpired(java.time.Instant.now())) {
 				return Caller.shareGone(share, LINK_EXPIRED);
@@ -1569,12 +1602,13 @@ public class AuthService {
 		}
 		if (MediaSignatures.SHARE.equals(verified.getSubjectKind())) {
 			ShareStore.Link share = _shares.get(id);
-			if (share == null || !ShareStore.ANONYMOUS.equals(share.getType())) {
+			if (share == null) {
+				// Deleted, or never made: the same thing since issue #217.
+				throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_LINK_UNKNOWN);
+			}
+			if (!ShareStore.ANONYMOUS.equals(share.getType())) {
 				// A personal link never signs as the link alone, see signMedia.
 				throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_SIGNED_OUT);
-			}
-			if (share.isRevoked()) {
-				return Caller.shareGone(share, LINK_REVOKED);
 			}
 			if (share.isExpired(java.time.Instant.now())) {
 				return Caller.shareGone(share, LINK_EXPIRED);
@@ -1596,12 +1630,13 @@ public class AuthService {
 	private Caller contactMediaCaller(String id) throws Refused {
 		int separator = id.indexOf(MediaSignatures.CONTACT_SEPARATOR);
 		ShareStore.Link share = separator < 0 ? null : _shares.get(id.substring(0, separator));
+		if (separator >= 0 && share == null) {
+			// Deleted, or never made: the same thing since issue #217.
+			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_LINK_UNKNOWN);
+		}
 		ContactStore.Recognized session = separator < 0 ? null : _contacts.session(id.substring(separator + 1));
 		if (share == null || session == null || session.getSession().isExpired(java.time.Instant.now())) {
 			throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, MEDIA_SIGNED_OUT);
-		}
-		if (share.isRevoked()) {
-			return Caller.shareGone(share, LINK_REVOKED);
 		}
 		if (share.isExpired(java.time.Instant.now())) {
 			return Caller.shareGone(share, LINK_EXPIRED);
@@ -3335,12 +3370,13 @@ public class AuthService {
 	 *
 	 * <p>
 	 * Their tokens stop working at once, which is what "remove" has to mean, and every share link
-	 * they handed out is withdrawn with them (issue #84). Nothing of theirs is deleted from the
+	 * they handed out is deleted with them (issues #84, #217), as {@link #deleteLink(String)} deletes
+	 * one. Nothing of theirs is deleted from the
 	 * album tree: what they uploaded belongs to the space, and their name stays in the attribution
 	 * of issue #53 as a record of who brought a photo here.
 	 * </p>
 	 *
-	 * @return How many share links were withdrawn along with them.
+	 * @return How many share links were deleted along with them.
 	 * @throws Refused
 	 *         If the user is not removed; nothing was changed in that case.
 	 */
@@ -3361,7 +3397,13 @@ public class AuthService {
 			_users.store();
 			// What they handed out goes with them: a share link of theirs must not outlive the
 			// account it was made from, see issue #84.
-			int revoked = _shares == null ? 0 : _shares.revokeCreatedBy(name);
+			int revoked = 0;
+			if (_shares != null) {
+				for (ShareStore.Link link : _shares.deleteCreatedBy(name)) {
+					endSessionsOf(link);
+					revoked++;
+				}
+			}
 			// And what they put in the post: an invitation nobody accepted yet dies with the
 			// account that vouched for it, see revokeInvitationsOf (issue #89).
 			int withdrawn = revokeInvitationsOf(name);

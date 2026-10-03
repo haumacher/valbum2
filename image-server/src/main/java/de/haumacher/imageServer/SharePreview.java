@@ -60,8 +60,9 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * <p>
- * The cover obeys every rule of the link it hangs below: a link that expired or was withdrawn
- * answers <code>410</code> here as it does on every other endpoint, the clearance is
+ * The cover obeys every rule of the link it hangs below: a link that expired answers
+ * <code>410</code> here as it does on every other endpoint, and a deleted one is a token this space
+ * never issued (issue #217), answered <code>410</code> {@link #COVER_UNKNOWN}; the clearance is
  * <code>min(members, maxPrivacy)</code> and the rating limit is the link's, both applied by the
  * {@link PrivacyFilter} — an index picture the link may not show falls back to the first image it
  * may show, and a link that may show no image at all answers <code>404</code> and its page carries
@@ -155,10 +156,6 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 			refuse(response, HttpServletResponse.SC_GONE, COVER_UNKNOWN);
 			return true;
 		}
-		if (link.isRevoked()) {
-			refuse(response, HttpServletResponse.SC_GONE, AuthService.LINK_REVOKED);
-			return true;
-		}
 		if (link.isExpired(Instant.now())) {
 			refuse(response, HttpServletResponse.SC_GONE, AuthService.LINK_EXPIRED);
 			return true;
@@ -188,7 +185,7 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		response.setContentType(contentType(preview));
 		response.setHeader("Access-Control-Allow-Origin", "*");
 		// A session answer is never stored: the very same address means something else behind
-		// another token, and a withdrawn link must not be replayed from a cache.
+		// another token, and a deleted link must not be replayed from a cache.
 		response.setHeader("Cache-Control", "no-store");
 		response.setHeader("Vary", "Authorization");
 		response.setContentLengthLong(preview.length());

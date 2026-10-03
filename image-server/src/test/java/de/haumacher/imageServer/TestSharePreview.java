@@ -411,17 +411,17 @@ public class TestSharePreview extends TestCase {
 			Arrays.equals(preview(HOLIDAYS + "/Rejected", "rejected.jpg"), cover.bodyBytes()));
 	}
 
-	/** A withdrawn link is gone at the cover, too, and its page carries no card. */
-	public void testAWithdrawnLinkIsGone() throws Exception {
+	/** A deleted link is unknown at the cover, too, and its page carries no card (#217). */
+	public void testADeletedLinkIsGone() throws Exception {
 		single();
 		String token = share("", ZOO, Privacy.MEMBERS, Ratings.MIN);
 		assertEquals(HttpServletResponse.SC_OK, get("/s/" + token + "/cover.jpg").status());
 
-		auth("").getShares().revoke(auth("").getShares().lookup(token).getId());
+		auth("").deleteLink(auth("").getShares().lookup(token).getId());
 
 		FakeResponse cover = get("/s/" + token + "/cover.jpg");
 		assertEquals(HttpServletResponse.SC_GONE, cover.status());
-		assertEquals(AuthService.LINK_REVOKED, error(cover).getMessage());
+		assertEquals("As if it had never been made.", SharePreview.COVER_UNKNOWN, error(cover).getMessage());
 
 		FakeResponse page = get("/s/" + token + "/");
 		assertEquals("The page still serves; the application says what became of the link.",
@@ -736,12 +736,12 @@ public class TestSharePreview extends TestCase {
 		assertTrue(get("/s/" + token + "/").body().contains("og:image"));
 	}
 
-	/** Probe: two links on one album are independent — withdrawing one leaves the other's card whole. */
-	public void testProbeWithdrawingOneLinkLeavesTheOtherWhole() throws Exception {
+	/** Probe: two links on one album are independent — deleting one leaves the other's card whole. */
+	public void testProbeDeletingOneLinkLeavesTheOtherWhole() throws Exception {
 		single();
 		String first = share("", ZOO, Privacy.MEMBERS, Ratings.MIN);
 		String second = share("", ZOO, Privacy.PUBLIC, Ratings.MIN);
-		auth("").getShares().revoke(auth("").getShares().lookup(first).getId());
+		auth("").deleteLink(auth("").getShares().lookup(first).getId());
 
 		assertEquals(HttpServletResponse.SC_GONE, get("/s/" + first + "/cover.jpg").status());
 		FakeResponse cover = get("/s/" + second + "/cover.jpg");

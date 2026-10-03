@@ -595,13 +595,15 @@ public class TestEmailProofLinks extends PersonalLinkTestCase {
 		assertEquals(AddressProof.PROOF_UNREADABLE, errorMessage(unreadable));
 	}
 
-	public void testARevokedLinkIsGone() throws Exception {
+	public void testADeletedLinkIsATokenNobodyIssued() throws Exception {
 		ShareLinkCreated open = created(ZOO);
-		FakeResponse revoked = post(ZOO, "{\"id\":\"" + open.getLink().getId() + "\"}", SharingFixture.ALICE,
+		FakeResponse deleted = post(ZOO, "{\"id\":\"" + open.getLink().getId() + "\"}", SharingFixture.ALICE,
 			Map.of("action", "unshare"));
-		assertEquals(revoked.body(), 200, revoked.status());
+		assertEquals(deleted.body(), 200, deleted.status());
 		FakeResponse gone = prove(open.getToken(), null, "{\"address\":\"vera@web.de\"}");
-		assertEquals(HttpServletResponse.SC_GONE, gone.status());
+		FakeResponse never = prove("never-issued", null, "{\"address\":\"vera@web.de\"}");
+		assertEquals(never.status(), gone.status());
+		assertEquals(never.body(), gone.body());
 	}
 
 	// --- Helpers. ---
