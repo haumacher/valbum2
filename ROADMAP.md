@@ -239,6 +239,19 @@ in a separate service, and abuse and law (the DSA, GDPR) come first. Open questi
 
 ## Decisions log
 
+- **2026-10-03** — 2.10.0 released (tag `valbum-2.10.0` on 6cb332d). **Formats:** HEIC/HEIF (#186,
+  decoded with the bundled FFmpeg), AVIF (#193, after the JavaCPP 1.5.9 upgrade #210), JPEG XL (#193,
+  JXLatte), WebP/GIF (#190, #207's decode budget), raw photos through their embedded JPEG with a raw and
+  its JPEG one photo (#191), .mov/.m4v/.3gp (#189) and camcorder containers (#192); an unsupported file
+  is refused alone, never the whole upload. **Sharing:** personal share links (#195: contacts, per-person
+  and group links #211, mailed codes #199, Google #200, authenticator app #208, passkeys #204, owner
+  screens #203, the app side #201/#202), labeled sub-views (#213), a link deleted is gone (#217), its
+  default back to the public photos (#205, the author's correction), uploads through a link stay
+  visible to it (#214). **Albums:** photo crop (#212), virtual collections (#221), one inbox per space
+  behind an app-bar badge (#226), the duplicate sweep retired (#219) for a read-only overview (#220),
+  download of the view with a select mode, streamed (#209). **Also:** About dialog (#187), licence
+  AGPL-3.0-or-later, status-bar insets (#188), one members section and a German review (#218), and
+  the stale-cache race behind a red CI (77daae6).
 - **2026-09-29** — 2.9.1 released (tag `valbum-2.9.1` on 1bcd098), with two fixes reported against
   2.9.0: videos in the browser play from a short-lived signed address (#185; the video element
   cannot send the sign-in), and a pasted `valbum-device://` code link is taken wherever a server or
