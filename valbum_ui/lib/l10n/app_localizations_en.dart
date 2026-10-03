@@ -2700,4 +2700,227 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aboutLicense =>
       'Free software under the GNU Affero General Public License, version 3 or later.';
+
+  @override
+  String identifySharedBy(String sharer) {
+    return 'Shared by $sharer';
+  }
+
+  @override
+  String get identifyFirstOpenIntro =>
+      'This link was sent to you. Please confirm your name.';
+
+  @override
+  String get identifyNameLabel => 'Your name';
+
+  @override
+  String identifyNotice(String sharer) {
+    return 'With the photos you add, $sharer will see your name.';
+  }
+
+  @override
+  String get identifyNoticeNobody =>
+      'The person who shared this album will see your name with the photos you add.';
+
+  @override
+  String get identifyRemember => 'Remember me on this device';
+
+  @override
+  String get identifyContinue => 'Continue';
+
+  @override
+  String get identifyWhoTitle => 'Who are you?';
+
+  @override
+  String get identifyRecipientIntro =>
+      'This link was already opened in another browser. Confirm that it is you to open the album here.';
+
+  @override
+  String get identifyOpenIntro =>
+      'This album is shared with everybody who says who they are. Confirm your e-mail address to open it.';
+
+  @override
+  String identifySendCodeTo(String address) {
+    return 'Send a code to $address';
+  }
+
+  @override
+  String get identifyAddressLabel => 'Your e-mail address';
+
+  @override
+  String get identifySendCode => 'Send code';
+
+  @override
+  String identifyCodeSent(String address) {
+    return 'A code was sent to $address.';
+  }
+
+  @override
+  String get identifyCodeLabel => 'Code from the e-mail';
+
+  @override
+  String get identifyConfirmCode => 'Confirm';
+
+  @override
+  String identifyContinueWith(String provider) {
+    return 'Continue with $provider';
+  }
+
+  @override
+  String identifyAskAgain(String sharer) {
+    return 'Ask $sharer to send you the link again.';
+  }
+
+  @override
+  String get identifyAskAgainNobody =>
+      'Ask the person who shared it to send you the link again.';
+
+  @override
+  String signedInAsContact(String name) {
+    return 'Signed in as $name';
+  }
+
+  @override
+  String get switchPerson => 'Not you? Switch person';
+
+  @override
+  String get linkTypeHeading => 'Who may open it';
+
+  @override
+  String get linkTypeAnonymous => 'Anyone with the link (anonymous)';
+
+  @override
+  String get linkTypeOpenPersonal => 'Anyone with the link (personalized)';
+
+  @override
+  String get linkTypeSelected => 'Selected contacts';
+
+  @override
+  String get linkTypeNeedsProof =>
+      '\"Personalized\" needs a mail account or Google sign-in on the server.';
+
+  @override
+  String get recipientsHeading => 'Recipients';
+
+  @override
+  String get recipientsSearch => 'Search contacts';
+
+  @override
+  String get recipientsNoContacts => 'No contacts yet.';
+
+  @override
+  String get recipientsNoMatch => 'No contact matches.';
+
+  @override
+  String get recipientsNeeded => 'Choose at least one recipient.';
+
+  @override
+  String get newContact => 'New contact';
+
+  @override
+  String get newContactName => 'Name';
+
+  @override
+  String get newContactEmail => 'E-mail';
+
+  @override
+  String get newContactRemove => 'Remove';
+
+  @override
+  String get newContactInvalid => 'Not an e-mail address';
+
+  @override
+  String newContactAlready(String name) {
+    return 'Already in your contacts as $name; ticked.';
+  }
+
+  @override
+  String get recipientLinksHeading => 'Send each recipient their own link';
+
+  @override
+  String get recipientLinksOnce =>
+      'Each link is shown only now and identifies its recipient. Send it through your own mail program or chat.';
+
+  @override
+  String sendEmailTo(String address) {
+    return 'E-mail to $address';
+  }
+
+  @override
+  String sendWhatsAppTo(String number) {
+    return 'WhatsApp to $number';
+  }
+
+  @override
+  String sendSmsTo(String number) {
+    return 'SMS to $number';
+  }
+
+  @override
+  String get sendOtherApp => 'Other app…';
+
+  @override
+  String get copyLinkAction => 'Copy link';
+
+  @override
+  String shareMessageSubject(String album) {
+    return 'Photos: $album';
+  }
+
+  @override
+  String shareMessageBody(String album, String name, String link) {
+    return 'Hello $name,\n\nhere are the photos of $album:\n$link\n';
+  }
+
+  @override
+  String get launchFailed => 'Nothing on this device opens this link.';
+
+  @override
+  String get linkPersonalOpen => 'Personalized';
+
+  @override
+  String linkRecipientCount(int count) {
+    return 'Recipients: $count';
+  }
+
+  @override
+  String get sendAgain => 'Send again';
+
+  @override
+  String sendAgainHeading(String name) {
+    return 'A fresh link for $name';
+  }
+
+  @override
+  String get sendAgainNote =>
+      'The earlier link of this recipient no longer works.';
+
+  @override
+  String get linkDeliveryHeading => 'How it is sent';
+
+  @override
+  String get linkDeliveryEach => 'A link for each person';
+
+  @override
+  String get linkDeliveryGroup => 'One link for the group';
+
+  @override
+  String get groupLinkMailAll => 'E-mail to all recipients';
+
+  @override
+  String get groupLinkNote =>
+      'Whoever opens it confirms their e-mail address once, by a code or by signing in.';
+
+  @override
+  String get groupLinkWithoutEmail =>
+      'These recipients have no e-mail address, so the group link cannot recognise them. Send them their own link:';
+
+  @override
+  String shareMessageBodyGroup(String album, String link) {
+    return 'Hello,\n\nhere are the photos of $album:\n$link\n';
+  }
+
+  @override
+  String get identifyGroupIntro =>
+      'This link was sent to a group. Confirm your e-mail address to open it.';
 }

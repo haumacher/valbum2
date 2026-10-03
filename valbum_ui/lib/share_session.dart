@@ -44,11 +44,21 @@ class ShareSession {
   /// Whether the link allows contributions, see [AuthInfo.writeAllowed].
   final bool writeAllowed;
 
+  /// Forgets who this browser is on a personal link and asks again: "Not
+  /// you? Switch person" (issue #202). `null` where the session is no
+  /// contact's.
+  final VoidCallback? onSwitchPerson;
+
   const ShareSession({
     required this.url,
     required this.info,
     required this.writeAllowed,
+    this.onSwitchPerson,
   });
+
+  /// Who the server takes the visitor of a personal link to be, `null` for
+  /// an anonymous link (issue #198).
+  ContactInfo? get contact => info.contact;
 
   /// The token every request of this session carries.
   String get token => url.token;
@@ -114,6 +124,45 @@ class ShareSessionScope extends InheritedWidget {
   @override
   bool updateShouldNotify(ShareSessionScope oldWidget) =>
       session != oldWidget.session;
+}
+
+/// The entries a menu of a personal link's session ends with (issue #202):
+/// whom the server takes the visitor to be, and "Not you? Switch person".
+///
+/// Empty in every other session, so that a menu simply spreads it in.
+List<PopupMenuEntry<void Function(BuildContext)>> switchPersonEntries(
+  BuildContext context,
+) {
+  var session = ShareSession.of(context);
+  var contact = session?.contact;
+  var switchPerson = session?.onSwitchPerson;
+  if (contact == null || switchPerson == null) {
+    return const [];
+  }
+  var l10n = AppLocalizations.of(context)!;
+  return [
+    const PopupMenuDivider(),
+    PopupMenuItem<void Function(BuildContext)>(
+      enabled: false,
+      child: Text(
+        l10n.signedInAsContact(contact.displayName),
+        key: const Key("contact-line"),
+      ),
+    ),
+    PopupMenuItem<void Function(BuildContext)>(
+      key: const Key("switch-person"),
+      value: (_) => switchPerson(),
+      child: Row(
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(right: 16),
+            child: Icon(Icons.switch_account, color: Colors.blueAccent),
+          ),
+          Flexible(child: Text(l10n.switchPerson)),
+        ],
+      ),
+    ),
+  ];
 }
 
 /// Whether the app is running inside a share link.
@@ -219,21 +268,37 @@ class ShareGoneScreen extends StatelessWidget {
   /// such way on (a share link).
   final VoidCallback? onContinue;
 
-  const ShareGoneScreen({super.key, required this.message, this.onContinue});
+  /// Forgets who this browser is on a personal link and asks again, `null`
+  /// where it is nobody (issue #202).
+  final VoidCallback? onSwitchPerson;
+
+  const ShareGoneScreen({
+    super.key,
+    required this.message,
+    this.onContinue,
+    this.onSwitchPerson,
+  });
 
   @override
   Widget build(BuildContext context) => SharePlainPage(
         key: const Key("share-gone"),
         icon: Icons.link_off,
         message: message,
-        action: onContinue == null
-            ? null
-            : FilledButton.icon(
+        action: onContinue != null
+            ? FilledButton.icon(
                 key: const Key("invitation-continue"),
                 onPressed: onContinue,
                 icon: const Icon(Icons.home),
                 label: Text(AppLocalizations.of(context)!.shareContinueToStart),
-              ),
+              )
+            : onSwitchPerson != null
+                ? FilledButton.icon(
+                    key: const Key("share-switch-person"),
+                    onPressed: onSwitchPerson,
+                    icon: const Icon(Icons.switch_account),
+                    label: Text(AppLocalizations.of(context)!.switchPerson),
+                  )
+                : null,
       );
 }
 

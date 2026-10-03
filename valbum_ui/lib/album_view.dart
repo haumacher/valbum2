@@ -1740,6 +1740,9 @@ class AlbumContentState extends State<AlbumContent>
             menuItem(Icons.settings, _l10n.serverMenuEntry, openServerSettings),
           // What this app is, the last entry of every main menu — and the one
           // a visitor of a share link most wants to find (#187).
+          // Who a personal link's visitor is, and the way to be somebody else
+          // (issue #202).
+          ...switchPersonEntries(context),
           aboutMenuItem(_l10n),
         ]),
       ];

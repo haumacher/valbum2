@@ -18,10 +18,12 @@ import 'camera_roll.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
 import 'connectivity.dart';
+import 'contact_session.dart';
 import 'device_code_scanner.dart';
 import 'diagnostics.dart';
 import 'first_screen.dart';
 import 'group_view.dart';
+import 'identify_view.dart';
 import 'image_view.dart';
 import 'inbox_view.dart';
 import 'invitation.dart';
@@ -152,6 +154,11 @@ class VAlbumApp extends StatefulWidget {
   /// invitation that died in the meantime (issue #88). Tests inject it.
   final void Function(String url)? openUrl;
 
+  /// Where this browser keeps who it is on a personal share link (issue
+  /// #202): `localStorage`/`sessionStorage` on the web, see
+  /// `contact_session.dart`. Tests inject one to read what the app stored.
+  final ContactCredentialStore? contactStore;
+
   /// Watchers of the router's [Navigator], beside the app's own.
   ///
   /// Empty in the app; a test installs a `NavigatorObserver` here to see what
@@ -176,6 +183,7 @@ class VAlbumApp extends StatefulWidget {
     this.location,
     this.rewriteLocation,
     this.openUrl,
+    this.contactStore,
     this.navigatorObservers = const [],
   });
 
@@ -291,6 +299,33 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// The client the app talks to the server with, `null` if none is set up.
   VAlbumClient? client;
 
+  /// Where this browser keeps who it is on a personal link, see
+  /// [VAlbumApp.contactStore].
+  late final ContactCredentialStore contactStore = widget.contactStore ??
+      (widget.client != null
+          ? ContactCredentialStore.memory()
+          : defaultContactCredentialStore());
+
+  /// The contact credential a share session sends beside its token, `null`
+  /// where this browser holds none for the link's space (issue #202).
+  String? _contactCredential;
+
+  /// What a personal link said it needs before it opens, `null` while it
+  /// needs nothing — or the link is no personal one (issue #202).
+  IdentifyRequired? _identify;
+
+  /// The server's sentence to show over the identification card: a refusal
+  /// that is more than "say who you are", or what a return from a provider
+  /// was answered.
+  String? _identifyMessage;
+
+  /// Whether [_identify] is the refusal of a group link (issue #211).
+  bool _identifyGroup = false;
+
+  /// Whether the return from a provider's sign-in was looked for: once per
+  /// page load, the location being read only then.
+  bool _signInReturned = false;
+
   /// The token session the app was opened at, see [VAlbumApp.session].
   late final SessionUrl? _session = widget.session ?? _detectSession();
 
@@ -392,7 +427,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// A refused link session waits for nothing: it shows the plain page of
   /// [_startupScreen] instead of the app.
   bool get _readyForTheRouter {
-    if (_shareRefusal != null) {
+    if (_shareRefusal != null || _identify != null) {
       return false;
     }
     if (invitation != null) {
@@ -507,6 +542,10 @@ class VAlbumAppState extends State<VAlbumApp> {
     settings.addListener(_settingsChanged);
     _initialRouteInformation;
     _readInvitationNotice();
+    var opened = session;
+    if (opened != null && opened.isShare) {
+      _contactCredential = contactStore.read(opened.dataUrl);
+    }
     _syncClient();
     if (session != null) {
       // A link session asks one question before it shows anything: is this
@@ -648,13 +687,32 @@ class VAlbumAppState extends State<VAlbumApp> {
   ///    plain page of [_startupScreen].
   Future<void> _confirmSession() async {
     var link = session!;
+    if (link.isShare) {
+      await _returnFromSignIn(link);
+      if (!mounted) {
+        return;
+      }
+    }
     var probe = client!;
     AuthInfo answer;
     try {
       answer = await probe.authInfo();
     } on VAlbumException catch (refusal) {
       if (mounted) {
-        setState(() => _shareRefusal = refusal);
+        var needs = refusal.identify;
+        setState(() {
+          if (needs != null && link.isShare) {
+            // A personal link that does not know who is asking: the
+            // identification card, see `identify_view.dart` (issue #202).
+            _identify = needs;
+            _identifyGroup = isGroupLink(needs, refusal: refusal.reason);
+            // "Say who you are" is what the card itself says; anything more
+            // (a link not sent to this contact) in the server's own words.
+            _identifyMessage ??= refusal.status == 401 ? null : refusal.message;
+          } else {
+            _shareRefusal = refusal;
+          }
+        });
       }
       return;
     } catch (error) {
@@ -681,12 +739,99 @@ class VAlbumAppState extends State<VAlbumApp> {
       return;
     }
     setState(() {
+      _identify = null;
+      _identifyMessage = null;
       shareSession = ShareSession(
         url: link,
         info: share,
         writeAllowed: answer.writeAllowed,
+        onSwitchPerson: share.contact == null ? null : _switchPerson,
       );
     });
+  }
+
+  /// Finishes a sign-in with a provider of OpenID Connect that came back to
+  /// this link as `<link base>#oidc=<code>` (issue #200), before the link is
+  /// asked who this is.
+  ///
+  /// The code is taken out of the address at once, so that a reload or a
+  /// bookmark never carries it, and exchanged with the binding the start
+  /// kept in this tab. A refusal is said over the card the link answers next.
+  Future<void> _returnFromSignIn(SessionUrl link) async {
+    if (_signInReturned) {
+      return;
+    }
+    _signInReturned = true;
+    var location = widget.location ?? (kIsWeb ? Uri.base : null);
+    var code = location == null ? null : oidcCodeOf(location);
+    if (code == null) {
+      return;
+    }
+    _rewriteLocation(withoutFragment(location!));
+    var pending = contactStore.pendingSignIn(link.dataUrl);
+    contactStore.dropSignIn(link.dataUrl);
+    if (pending == null) {
+      return;
+    }
+    try {
+      var answer = await client!.oidcExchange(
+        OidcExchange(code: code, binding: pending.binding),
+      );
+      _credentialArrived(answer, remember: pending.remember);
+    } on VAlbumException catch (refusal) {
+      _identifyMessage = refusal.message;
+    } catch (error) {
+      _identifyMessage = "$error";
+    }
+  }
+
+  /// Keeps a credential the server answered and asks the link again as that
+  /// contact (issue #202).
+  void _credentialArrived(ContactCredential answer, {bool? remember}) {
+    var link = session!;
+    var credential = answer.credential;
+    if (credential.isNotEmpty) {
+      contactStore.write(link.dataUrl, credential,
+          remember: remember ?? answer.remember);
+      _contactCredential = credential;
+    }
+    _syncClient();
+  }
+
+  /// The identification card answered a credential: open the link as that
+  /// contact.
+  void _identified(ContactCredential answer) {
+    setState(() {
+      _identifyMessage = null;
+      _credentialArrived(answer);
+    });
+    _confirmSession();
+  }
+
+  /// A sign-in through a provider leaves the page: keep what its return
+  /// needs, then go (issue #200).
+  void _signInStarted(OidcStarted started, bool remember) {
+    contactStore.keepSignIn(
+      session!.dataUrl,
+      PendingSignIn(binding: started.binding, remember: remember),
+    );
+    _openUrl(started.url);
+  }
+
+  /// "Not you? Switch person": forgets who this browser is for the link's
+  /// space and asks the link again, which then shows the card (issue #202).
+  void _switchPerson() {
+    var link = session!;
+    contactStore.clear(link.dataUrl);
+    setState(() {
+      _contactCredential = null;
+      shareSession = null;
+      _shareRefusal = null;
+      _identify = null;
+      _identifyMessage = null;
+      _syncClient();
+    });
+    _confirmSession();
   }
 
   /// The token in the app base is no session of this server: start as usual.
@@ -760,12 +905,17 @@ class VAlbumAppState extends State<VAlbumApp> {
       // stored device token is consulted, and the session's token is never
       // written to the store. Nothing is cached either — a visitor's session
       // leaves nothing on the device it was opened on.
-      if (client?.dataUrl == link.dataUrl && client?.token == link.token) {
+      if (client?.dataUrl == link.dataUrl &&
+          client?.token == link.token &&
+          client?.contact == _contactCredential) {
         return;
       }
       var sessionClient = VAlbumClient(
         dataUrl: link.dataUrl,
         token: link.token,
+        // Who this browser is on a personal link, beside the link's token and
+        // never instead of it, see `contact_session.dart`.
+        contact: _contactCredential,
         httpClient: _transport,
         offlineState: offlineState,
         log: diagnostics,
@@ -899,6 +1049,21 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// The splash while the stored server URL is being read, the server setup
   /// once it turns out that no server is configured.
   Widget _startupScreen(BuildContext context) {
+    var needs = _identify;
+    var link = shareLink;
+    if (needs != null && link != null && client != null) {
+      return IdentifyScreen(
+        key: ValueKey(needs),
+        client: client!,
+        session: link,
+        identify: needs,
+        message: _identifyMessage,
+        onCredential: _identified,
+        onSignInStarted: _signInStarted,
+        onSwitchPerson: _contactCredential == null ? null : _switchPerson,
+        group: _identifyGroup,
+      );
+    }
     var refusal = _shareRefusal;
     if (refusal != null) {
       // A link that is gone says so and offers nothing else: there is no
@@ -910,6 +1075,11 @@ class VAlbumAppState extends State<VAlbumApp> {
       return ShareGoneScreen(
         message: refusal.message,
         onContinue: invite == null ? null : () => _openUrl(invite.appBase),
+        // A contact shut out, or a link replaced, on a tablet somebody else
+        // may be holding: the way to be somebody else (issue #202).
+        onSwitchPerson: shareLink != null && _contactCredential != null
+            ? _switchPerson
+            : null,
       );
     }
     var invite = invitation;

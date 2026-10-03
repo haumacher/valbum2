@@ -2744,4 +2744,229 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get aboutLicense =>
       'Freie Software unter der GNU Affero General Public License, Version 3 oder höher.';
+
+  @override
+  String identifySharedBy(String sharer) {
+    return 'Geteilt von $sharer';
+  }
+
+  @override
+  String get identifyFirstOpenIntro =>
+      'Dieser Link wurde Ihnen zugesandt. Bitte bestätigen Sie Ihren Namen.';
+
+  @override
+  String get identifyNameLabel => 'Ihr Name';
+
+  @override
+  String identifyNotice(String sharer) {
+    return 'Bei den Fotos, die Sie hinzufügen, sieht $sharer Ihren Namen.';
+  }
+
+  @override
+  String get identifyNoticeNobody =>
+      'Die Person, die dieses Album freigegeben hat, sieht Ihren Namen bei den Fotos, die Sie hinzufügen.';
+
+  @override
+  String get identifyRemember => 'Auf diesem Gerät angemeldet bleiben';
+
+  @override
+  String get identifyContinue => 'Weiter';
+
+  @override
+  String get identifyWhoTitle => 'Wer bist du?';
+
+  @override
+  String get identifyRecipientIntro =>
+      'Dieser Link wurde bereits in einem anderen Browser geöffnet. Bestätigen Sie, dass Sie es sind, um das Album hier zu öffnen.';
+
+  @override
+  String get identifyOpenIntro =>
+      'Dieses Album wird mit allen geteilt, die sich identifizieren. Bestätige deine E-Mail-Adresse, um es zu öffnen.';
+
+  @override
+  String identifySendCodeTo(String address) {
+    return 'Code an $address senden';
+  }
+
+  @override
+  String get identifyAddressLabel => 'Ihre E-Mail-Adresse';
+
+  @override
+  String get identifySendCode => 'Code senden';
+
+  @override
+  String identifyCodeSent(String address) {
+    return 'Ein Code wurde an $address gesendet.';
+  }
+
+  @override
+  String get identifyCodeLabel => 'Code aus der E-Mail';
+
+  @override
+  String get identifyConfirmCode => 'Bestätigen';
+
+  @override
+  String identifyContinueWith(String provider) {
+    return 'Mit $provider fortfahren';
+  }
+
+  @override
+  String identifyAskAgain(String sharer) {
+    return 'Bitten Sie $sharer, Ihnen den Link erneut zu senden.';
+  }
+
+  @override
+  String get identifyAskAgainNobody =>
+      'Bitten Sie die Person, die den Beitrag geteilt hat, Ihnen den Link erneut zu senden.';
+
+  @override
+  String signedInAsContact(String name) {
+    return 'Angemeldet als $name';
+  }
+
+  @override
+  String get switchPerson => 'Nicht Sie? Person wechseln';
+
+  @override
+  String get linkTypeHeading => 'Wer darf es öffnen?';
+
+  @override
+  String get linkTypeAnonymous => 'Jeder mit dem Link (anonym)';
+
+  @override
+  String get linkTypeOpenPersonal => 'Jeder mit dem Link (personalisiert)';
+
+  @override
+  String get linkTypeSelected => 'Ausgewählte Kontakte';
+
+  @override
+  String get linkTypeNeedsProof =>
+      'Für „Personalisiert“ ist ein E-Mail-Konto oder eine Google-Anmeldung auf dem Server erforderlich.';
+
+  @override
+  String get recipientsHeading => 'Empfänger';
+
+  @override
+  String get recipientsSearch => 'Kontakte suchen';
+
+  @override
+  String get recipientsNoContacts => 'Noch keine Kontakte.';
+
+  @override
+  String get recipientsNoMatch => 'Es wurde kein Kontakt gefunden.';
+
+  @override
+  String get recipientsNeeded => 'Wählen Sie mindestens einen Empfänger aus.';
+
+  @override
+  String get newContact => 'Neuer Kontakt';
+
+  @override
+  String get newContactName => 'Name';
+
+  @override
+  String get newContactEmail => 'E-Mail';
+
+  @override
+  String get newContactRemove => 'Entfernen';
+
+  @override
+  String get newContactInvalid => 'Keine E-Mail-Adresse';
+
+  @override
+  String newContactAlready(String name) {
+    return 'Bereits in Ihren Kontakten als $name gespeichert; markiert.';
+  }
+
+  @override
+  String get recipientLinksHeading =>
+      'Jedem Empfänger seinen eigenen Link senden';
+
+  @override
+  String get recipientLinksOnce =>
+      'Jeder Link wird erst jetzt angezeigt und gibt den jeweiligen Empfänger an. Versenden Sie ihn über Ihr eigenes E-Mail-Programm oder per Chat.';
+
+  @override
+  String sendEmailTo(String address) {
+    return 'E-Mail an $address';
+  }
+
+  @override
+  String sendWhatsAppTo(String number) {
+    return 'WhatsApp an $number';
+  }
+
+  @override
+  String sendSmsTo(String number) {
+    return 'SMS an $number';
+  }
+
+  @override
+  String get sendOtherApp => 'Andere App…';
+
+  @override
+  String get copyLinkAction => 'Link kopieren';
+
+  @override
+  String shareMessageSubject(String album) {
+    return 'Fotos: $album';
+  }
+
+  @override
+  String shareMessageBody(String album, String name, String link) {
+    return 'Hallo $name,\n\nhier sind die Fotos aus dem $album:\n$link\n';
+  }
+
+  @override
+  String get launchFailed =>
+      'Auf diesem Gerät lässt sich dieser Link mit keiner Anwendung öffnen.';
+
+  @override
+  String get linkPersonalOpen => 'Personalisiert';
+
+  @override
+  String linkRecipientCount(int count) {
+    return 'Empfänger: $count';
+  }
+
+  @override
+  String get sendAgain => 'Erneut senden';
+
+  @override
+  String sendAgainHeading(String name) {
+    return 'Ein neuer Link für $name';
+  }
+
+  @override
+  String get sendAgainNote =>
+      'Der frühere Link dieses Empfängers funktioniert nicht mehr.';
+
+  @override
+  String get linkDeliveryHeading => 'So wird der Link versendet';
+
+  @override
+  String get linkDeliveryEach => 'Ein Link für jede Person';
+
+  @override
+  String get linkDeliveryGroup => 'Ein Link für die Gruppe';
+
+  @override
+  String get groupLinkMailAll => 'E-Mail an alle Empfänger';
+
+  @override
+  String get groupLinkNote =>
+      'Wer den Link öffnet, bestätigt seine E-Mail-Adresse einmalig, entweder durch Eingabe eines Codes oder durch Einloggen.';
+
+  @override
+  String get groupLinkWithoutEmail =>
+      'Diese Empfänger haben keine E-Mail-Adresse, sodass der Gruppenlink sie nicht erkennen kann. Senden Sie ihnen einen eigenen Link:';
+
+  @override
+  String shareMessageBodyGroup(String album, String link) {
+    return 'Hallo,\n\nhier sind die Fotos aus dem $album:\n$link\n';
+  }
+
+  @override
+  String get identifyGroupIntro =>
+      'Dieser Link wurde an eine Gruppe gesendet. Bestätigen Sie Ihre E-Mail-Adresse, um ihn zu öffnen.';
 }
