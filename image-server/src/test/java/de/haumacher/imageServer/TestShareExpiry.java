@@ -36,14 +36,22 @@ public class TestShareExpiry extends ShareTestCase {
 		assertGone(move("/", "/", token, "public.jpg"), AuthService.LINK_EXPIRED);
 	}
 
-	public void testAWithdrawnLinkSaysSo() throws Exception {
+	public void testADeletedLinkIsATokenNobodyKnows() throws Exception {
 		String token = zooToken(Rights.VIEW);
-		new ShareStore(_base).revoke(idOf(token));
+		new ShareStore(_base).delete(idOf(token));
 		restartServer();
 
-		assertGone(get("/", "json", token), AuthService.LINK_REVOKED);
-		assertGone(get("/public.jpg", "tn", token), AuthService.LINK_REVOKED);
-		assertGone(get("/", "auth", token), AuthService.LINK_REVOKED);
+		// Answered exactly like a token this server never issued, see issue #217: no 410, no reason.
+		String never = "not-a-token-this-server-ever-issued";
+		for (String type : new String[] { "json", "auth" }) {
+			FakeResponse deleted = get("/", type, token);
+			FakeResponse unknown = get("/", type, never);
+			assertEquals(type, unknown.status(), deleted.status());
+			assertEquals(type, unknown.body(), deleted.body());
+		}
+		FakeResponse thumbnail = get("/public.jpg", "tn", token);
+		assertEquals(get("/public.jpg", "tn", never).status(), thumbnail.status());
+		assertTrue("Never 410: " + thumbnail.status(), thumbnail.status() != HttpServletResponse.SC_GONE);
 	}
 
 	public void testAnUnknownTokenIsStillATokenNobodyKnows() throws Exception {

@@ -755,9 +755,12 @@ class VAlbumAppState extends State<VAlbumApp> {
   ///  * what the URL said it is — the session is confirmed and the app runs
   ///    inside the link ([ShareSessionScope]) or shows the welcome screen of
   ///    the invitation ([InvitationWelcomeScreen]);
-  ///  * neither — the token in the URL is not a session of this server (a
-  ///    hand-made path, a link of another server), so it is abandoned and the
-  ///    app starts as it always does, from the settings of this device;
+  ///  * neither — the token in the URL is not a session of this server. A
+  ///    share link the server does not know — deleted, which since issue #217
+  ///    is the same as never made, or of another server — is a link that is
+  ///    not valid, and the visitor is told so on the plain page of a gone
+  ///    link; an invitation address is abandoned and the app starts as it
+  ///    always does, from the settings of this device;
   ///  * a refusal — a `410` for a link or an invitation that expired, was
   ///    withdrawn or was used up, and every other failure, which becomes the
   ///    plain page of [_startupScreen].
@@ -810,7 +813,13 @@ class VAlbumAppState extends State<VAlbumApp> {
     }
     var share = answer.share;
     if (share == null) {
-      _abandonSession();
+      // No link of this server: deleted (issue #217) or never made, which a
+      // visitor cannot tell apart and need not. The server says nothing
+      // about a token it does not know, so the sentence is the app's own.
+      setState(() => _shareRefusal = VAlbumException(
+            platformMessages.shareLinkNotValid,
+            status: 410,
+          ));
       return;
     }
     setState(() {
@@ -1985,6 +1994,11 @@ class VAlbumState extends State<VAlbumView>
     var message = refusal?.message ?? "${error ?? l10n.noDataLoaded}";
     if (refusal?.status == 410) {
       return ShareGoneScreen(message: message);
+    }
+    if (refusal?.status == 401 && refusal?.identify == null) {
+      // The link was deleted while it was open (issue #217): its token is one
+      // the server never issued, refused with words meant for a device.
+      return ShareGoneScreen(message: l10n.shareLinkNotValid);
     }
     if (refusal?.status == 404) {
       return ShareConfinedScreen(message: message, onHome: navigator.home);

@@ -46,7 +46,7 @@ public class TestLibraryLitterShares extends ShareTestCase {
 		}
 	}
 
-	public void testItsOwnerSeesAndWithdrawsItAtTheAlbumAbove() throws Exception {
+	public void testItsOwnerSeesAndDeletesItAtTheAlbumAbove() throws Exception {
 		String token = issue("alice", LITTER, "DSM", "", Privacy.PUBLIC, 0);
 		String id = idOf(token);
 		String album = "/" + SharingFixture.ZOO + "/";
@@ -56,8 +56,9 @@ public class TestLibraryLitterShares extends ShareTestCase {
 
 		FakeResponse response = unshare(album, SharingFixture.ALICE, id);
 		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
-		assertEquals("Withdrawn, it is gone like any withdrawn link.", HttpServletResponse.SC_GONE,
+		assertEquals("Deleted, it is gone like any deleted link.", HttpServletResponse.SC_UNAUTHORIZED,
 			get("/", "json", token).status());
+		assertNull(link(links(shares(album, SharingFixture.ALICE)), id));
 	}
 
 	public void testALinkOnTheAlbumItselfIsListedAsBefore() throws Exception {

@@ -328,10 +328,12 @@ public class TestMediaUrls extends ShareTestCase {
 		FakeResponse original = issue("/clip.mp4", "original", token);
 		assertEquals("A link without download gets no original.", HttpServletResponse.SC_FORBIDDEN, original.status());
 
-		FakeResponse withdrawn = unshare(ZOO, SharingFixture.ALICE, id);
-		assertEquals(withdrawn.body(), HttpServletResponse.SC_OK, withdrawn.status());
-		assertEquals("A withdrawn link is gone, on the signed address too.", HttpServletResponse.SC_GONE,
-			media("/clip.mp4", "teaser", url.getMedia(), "bytes=0-0").status());
+		FakeResponse deleted = unshare(ZOO, SharingFixture.ALICE, id);
+		assertEquals(deleted.body(), HttpServletResponse.SC_OK, deleted.status());
+		FakeResponse refused = media("/clip.mp4", "teaser", url.getMedia(), "bytes=0-0");
+		assertEquals("A deleted link is gone, on the signed address too.", HttpServletResponse.SC_UNAUTHORIZED,
+			refused.status());
+		assertEquals(AuthService.MEDIA_LINK_UNKNOWN, errorMessage(refused));
 	}
 
 	// --- The secret. ---

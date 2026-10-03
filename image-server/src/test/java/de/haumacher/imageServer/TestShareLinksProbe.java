@@ -46,18 +46,18 @@ public class TestShareLinksProbe extends ShareTestCase {
 		assertTrue(get("/rejected.jpg", "tn", link.getToken()).status() >= 400);
 	}
 
-	/** A link of a contributor with the flag cannot be withdrawn by an editor without it. */
-	public void testOnlyMakerOrAdminWithdraw() throws Exception {
+	/** A link of a contributor with the flag cannot be deleted by an editor without it. */
+	public void testOnlyMakerOrAdminDelete() throws Exception {
 		FakeResponse made = share(ZOO, SharingFixture.BOB, shareBody("Bobs", "", 0, 0, "view"));
 		assertEquals(made.body(), HttpServletResponse.SC_OK, made.status());
 		ShareLinkCreated link = ShareLinkCreated.readShareLinkCreated(reader(made.body()));
 		FakeResponse byCarol = post(ZOO, "{\"id\":\"" + link.getLink().getId() + "\"}", SharingFixture.CAROL,
 			java.util.Collections.singletonMap("action", "unshare"));
-		assertTrue("carol may not withdraw bob's link: " + byCarol.status(), byCarol.status() >= 400);
+		assertTrue("carol may not delete bob's link: " + byCarol.status(), byCarol.status() >= 400);
 		assertEquals("The link still opens.", HttpServletResponse.SC_OK, get("/", "json", link.getToken()).status());
 		FakeResponse byAlice = post(ZOO, "{\"id\":\"" + link.getLink().getId() + "\"}", SharingFixture.ALICE,
 			java.util.Collections.singletonMap("action", "unshare"));
 		assertEquals(byAlice.body(), HttpServletResponse.SC_OK, byAlice.status());
-		assertEquals(HttpServletResponse.SC_GONE, get("/", "json", link.getToken()).status());
+		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, get("/", "json", link.getToken()).status());
 	}
 }

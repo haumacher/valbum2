@@ -662,6 +662,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'This is a link to a shared album, not a sign-in. Open it in a browser to see what was shared with you.';
 
   @override
+  String get shareLinkNotValid =>
+      'This link is not valid. Ask whoever sent it to you for a new one.';
+
+  @override
   String get close => 'Close';
 
   @override
@@ -782,7 +786,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get linkNoLabel => '(no label)';
 
   @override
-  String get withdrawTooltip => 'Withdraw…';
+  String get deleteLinkTooltip => 'Delete link…';
 
   @override
   String get linkNeverExpires => 'never expires';
@@ -794,13 +798,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get linkPublicOnly => 'public only';
 
   @override
-  String linkWithdrawnOn(String day) {
-    return 'withdrawn $day';
-  }
-
-  @override
   String linkInheritedFrom(String folder) {
-    return 'inherited from $folder, withdraw it there';
+    return 'inherited from $folder, delete it there';
   }
 
   @override
@@ -856,21 +855,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shareLinkOnce =>
-      'Copy it now: the server keeps only its fingerprint and can never show it again. A lost link is withdrawn and made anew.';
+      'Copy it now: the server keeps only its fingerprint and can never show it again. A lost link is deleted and made anew.';
 
   @override
   String get linkCopied => 'The link was copied.';
 
   @override
-  String get withdrawLinkTitle => 'Withdraw the link?';
+  String get deleteLinkTitle => 'Delete link';
 
   @override
-  String withdrawLinkMessage(String link) {
-    return 'Anybody holding $link stops seeing the album at once. This cannot be undone; a new link can be made instead.';
+  String deleteLinkNamed(String link) {
+    return 'Delete the link $link? Whoever has it can no longer open it.';
   }
 
   @override
-  String get withdrawLinkThisLink => 'this link';
+  String get deleteLinkUnnamed =>
+      'Delete this link? Whoever has it can no longer open it.';
+
+  @override
+  String get deleteLinkPersonalNote =>
+      'The links sent to its recipients stop working too. The contacts stay.';
 
   @override
   String get invitationGuestNote =>

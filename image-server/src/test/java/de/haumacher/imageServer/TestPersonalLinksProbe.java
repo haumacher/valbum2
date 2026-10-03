@@ -80,9 +80,10 @@ public class TestPersonalLinksProbe extends PersonalLinkTestCase {
 		MediaUrl url = mediaUrl("/clip.mp4", token, credential(token));
 
 		assertEquals(HttpServletResponse.SC_OK, unshare(ZOO, SharingFixture.ALICE, created.getLink().getId()).status());
-		FakeResponse revoked = played("/clip.mp4", url);
-		assertEquals(HttpServletResponse.SC_GONE, revoked.status());
-		assertEquals(AuthService.LINK_REVOKED, errorMessage(revoked));
+		FakeResponse deleted = played("/clip.mp4", url);
+		assertEquals("A deleted link signs nothing any more (#217).", HttpServletResponse.SC_UNAUTHORIZED,
+			deleted.status());
+		assertEquals(AuthService.MEDIA_LINK_UNKNOWN, errorMessage(deleted));
 	}
 
 	// --- Folders, moves and limits. ---
@@ -154,7 +155,7 @@ public class TestPersonalLinksProbe extends PersonalLinkTestCase {
 		assertTrue(new ContactStore(_base).get(contactOf(created, "Tante Petra")).getSessions().isEmpty());
 	}
 
-	public void testRemovingTheSharerWithdrawsTheirPersonalLinks() throws Exception {
+	public void testRemovingTheSharerDeletesTheirPersonalLinks() throws Exception {
 		FakeResponse response = sharePersonal(ZOO, SharingFixture.BOB, email("Tante Petra", PETRA));
 		assertEquals(response.body(), 200, response.status());
 		ShareLinkCreated created = created(response);
@@ -165,7 +166,7 @@ public class TestPersonalLinksProbe extends PersonalLinkTestCase {
 		parameters.put("action", "remove-user");
 		assertEquals(200, post("/", "{\"name\":\"bob\"}", SharingFixture.ALICE, parameters).status());
 
-		assertEquals(HttpServletResponse.SC_GONE, getAs("/", "json", token, credential).status());
+		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, getAs("/", "json", token, credential).status());
 		assertEquals("The contact stays; the register is the space's.", 1,
 			contactList(get("/", "contacts", SharingFixture.ALICE)).getContacts().size());
 	}

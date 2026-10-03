@@ -68,7 +68,7 @@ public class TestShareProbe extends ShareTestCase {
 		assertEquals(HttpServletResponse.SC_OK,
 			unshare("/" + SharingFixture.ZOO + "/", SharingFixture.ALICE, neighbours.getLink().getId()).status());
 
-		assertEquals(HttpServletResponse.SC_GONE, get("/", "json", neighbours.getToken()).status());
+		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, get("/", "json", neighbours.getToken()).status());
 		assertEquals("The other link is untouched.", HttpServletResponse.SC_OK,
 			get("/", "json", family.getToken()).status());
 	}

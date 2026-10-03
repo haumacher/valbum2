@@ -49,8 +49,15 @@ import java.util.logging.Logger;
  * <pre>
  * {"version":1,"links":[{"id":"a1b2c3d4","tokenHash":"&lt;64 hex chars&gt;","owner":"alice",
  *   "path":"2024/2024-05-01 Zoo","label":"Grandma","expires":"2026-12-24T00:00:00Z",
- *   "maxPrivacy":0,"minRating":0,"created":"2026-09-12T10:11:12Z","revoked":""}]}
+ *   "maxPrivacy":0,"minRating":0,"created":"2026-09-12T10:11:12Z"}]}
  * </pre>
+ *
+ * <p>
+ * <b>A deleted link is gone</b> (issue #217): {@link #delete(String)} takes its record out of the
+ * file, and its token is from then on one this server never issued. A record an earlier build kept
+ * as withdrawn (<code>"revoked"</code> not empty) is read as deleted &mdash; dropped on load, so it
+ * is never listed and never opens anything, and gone from the file with the next write.
+ * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
@@ -129,6 +136,10 @@ public class ShareStore {
 
 	private static final String CREATED__PROP = "created";
 
+	/**
+	 * The withdrawal an earlier build stored; a record carrying one is dropped on load, see
+	 * {@link ShareStore}.
+	 */
 	private static final String REVOKED__PROP = "revoked";
 
 	private static final String TYPE__PROP = "type";
@@ -253,8 +264,6 @@ public class ShareStore {
 
 		private final String _createdBy;
 
-		private String _revoked;
-
 		private String _type = ANONYMOUS;
 
 		private String _photoLabel = "";
@@ -263,24 +272,10 @@ public class ShareStore {
 
 		private final java.util.Map<String, String> _shutOut = new java.util.LinkedHashMap<>();
 
-		/** Creates a {@link Link} that allows looking and downloading. */
-		public Link(String id, String tokenHash, String owner, String path, String label, String expires,
-				int maxPrivacy, int minRating, String created, String revoked) {
-			this(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating, Rights.READ_ONLY, created,
-				revoked);
-		}
-
-		/** Creates a {@link Link} carrying what it allows, see issue #83. */
-		public Link(String id, String tokenHash, String owner, String path, String label, String expires,
-				int maxPrivacy, int minRating, java.util.Collection<String> rights, String created,
-				String revoked) {
-			this(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating, rights, "", created, revoked);
-		}
-
 		/** Creates a {@link Link} that knows who handed it out, see issue #84. */
 		public Link(String id, String tokenHash, String owner, String path, String label, String expires,
 				int maxPrivacy, int minRating, java.util.Collection<String> rights, String createdBy,
-				String created, String revoked) {
+				String created) {
 			_createdBy = createdBy == null ? "" : createdBy;
 			_rights = Rights.closure(rights);
 			_id = id;
@@ -292,7 +287,6 @@ public class ShareStore {
 			_maxPrivacy = maxPrivacy;
 			_minRating = minRating;
 			_created = created;
-			_revoked = revoked;
 		}
 
 		/**
@@ -300,7 +294,7 @@ public class ShareStore {
 		 *
 		 * <p>
 		 * A link belongs to whoever handed it out: they and an administrator of the space see it
-		 * and may withdraw it, and removing them takes it back. The empty string for a link stored
+		 * and may delete it, and removing them takes it back. The empty string for a link stored
 		 * before this field existed — nobody's, so only an administrator manages it.
 		 * </p>
 		 */
@@ -342,7 +336,7 @@ public class ShareStore {
 		 * Where this link points after its folder was renamed, see issue #130.
 		 *
 		 * <p>
-		 * The one thing about a link that ever changes besides its withdrawal, and it changes
+		 * The one thing about a link that ever changes, and it changes
 		 * nothing the link <em>allows</em>: the folder it was handed out on is the same folder,
 		 * spelled the way it is spelled now. What a link may do and show stays frozen at what it
 		 * was created with, see {@link ShareStore}.
@@ -381,21 +375,6 @@ public class ShareStore {
 			return _created;
 		}
 
-		/** When the link was withdrawn, an ISO-8601 instant; empty while it is live. */
-		public String getRevoked() {
-			return _revoked;
-		}
-
-		/** See {@link #getRevoked()}. */
-		void setRevoked(String revoked) {
-			_revoked = revoked;
-		}
-
-		/** Whether this link was withdrawn. */
-		public boolean isRevoked() {
-			return !_revoked.isEmpty();
-		}
-
 		/**
 		 * Whether this link's lifetime has run out at the given moment.
 		 *
@@ -419,7 +398,7 @@ public class ShareStore {
 
 		/** Whether this link opens anything at all right now. */
 		public boolean isLive() {
-			return !isRevoked() && !isExpired(Instant.now());
+			return !isExpired(Instant.now());
 		}
 
 		/**
@@ -504,13 +483,13 @@ public class ShareStore {
 
 		/**
 		 * Whether this link covers the given path in the given space, which is where it is listed
-		 * and withdrawn.
+		 * and deleted.
 		 *
 		 * <p>
 		 * A link an earlier build made on what is no part of the library now (a NAS's
 		 * <code>@eaDir</code>, issue #173) opens nothing, and no address reaches its folder: it is
 		 * managed at the deepest folder above it that is still part of the library, so that its
-		 * owner can see it and withdraw it.
+		 * owner can see it and delete it.
 		 * </p>
 		 */
 		public boolean covers(String owner, String path) {
@@ -519,7 +498,7 @@ public class ShareStore {
 
 		@Override
 		public String toString() {
-			return getSubject() + "@" + _owner + "/" + _path + (isRevoked() ? " (revoked)" : "");
+			return getSubject() + "@" + _owner + "/" + _path;
 		}
 	}
 
@@ -597,8 +576,8 @@ public class ShareStore {
 	 * first.
 	 *
 	 * <p>
-	 * Revoked links are listed too, marked as such: a management screen shows what happened to a
-	 * link somebody handed out, see issue #55.
+	 * An expired link is listed too: it still is a link, and only deleting it removes it. A deleted
+	 * one is not, there being no record of it any more (issue #217).
 	 * </p>
 	 */
 	public synchronized List<Link> covering(String owner, String path) {
@@ -616,8 +595,9 @@ public class ShareStore {
 	 * The link the given token opens, whether it is live or not.
 	 *
 	 * <p>
-	 * A dead link is answered too, and deliberately: the caller is told that the link expired or was
-	 * withdrawn, which is a different thing from a token nobody ever issued.
+	 * An expired link is answered too, and deliberately: the caller is told that the link expired,
+	 * which is a different thing from a token nobody ever issued. A deleted link is such a token
+	 * (issue #217).
 	 * </p>
 	 *
 	 * @return <code>null</code> if the token is not one this server issued.
@@ -696,7 +676,7 @@ public class ShareStore {
 		String token = newToken();
 		String now = Instant.now().toString();
 		Link link = new Link(freeId(), UserStore.hash(token), owner, path, label, expires, maxPrivacy, minRating,
-			rights, createdBy, now, "");
+			rights, createdBy, now);
 		link._type = PERSONAL;
 		java.util.Map<String, String> tokens = new java.util.LinkedHashMap<>();
 		for (String contact : recipients) {
@@ -736,8 +716,7 @@ public class ShareStore {
 	 * <p>
 	 * The decision of #213: a link was handed out on the photographs of a label, and a rename
 	 * changes how the author spells that set, not which photographs it holds. A link that froze the
-	 * old spelling would silently show nothing after the rename. A withdrawn link is rewritten too,
-	 * as {@link #rename(String, String, String)} does with its path.
+	 * old spelling would silently show nothing after the rename.
 	 * </p>
 	 *
 	 * @param owner
@@ -856,31 +835,33 @@ public class ShareStore {
 		String token = newToken();
 
 		Link link = new Link(freeId(), UserStore.hash(token), owner, path, label, expires, maxPrivacy, minRating,
-			rights, createdBy, Instant.now().toString(), "");
+			rights, createdBy, Instant.now().toString());
 		_links.add(link);
 		store();
 		return new Issued(link, token);
 	}
 
 	/**
-	 * Marks the link of the given id as withdrawn.
+	 * Deletes the link of the given id, as if it had never been made (issue #217).
 	 *
 	 * <p>
-	 * The record stays: a withdrawn link is shown as withdrawn, and its id is never handed out
-	 * again. The link is the permission (issue #83), so withdrawing it is what closes the door.
+	 * The record goes, and with it the tokens of its recipients: the link is the permission (issue
+	 * #83), so deleting it is what closes the door, and its token is from then on one this server
+	 * never issued. What was uploaded through it keeps its attribution, which was copied at the
+	 * upload (issue #53); the contacts it reached stay contacts of the space. Ending the contact
+	 * sessions opened through it is the {@link ContactStore}'s part, see
+	 * {@link ContactStore#endSessionsOfLink(String)}.
 	 * </p>
 	 *
-	 * @return The link, <code>null</code> if there is none of that id.
+	 * @return The deleted link, <code>null</code> if there is none of that id.
 	 */
-	public synchronized Link revoke(String id) throws IOException {
+	public synchronized Link delete(String id) throws IOException {
 		Link link = get(id);
 		if (link == null) {
 			return null;
 		}
-		if (!link.isRevoked()) {
-			link.setRevoked(Instant.now().toString());
-			store();
-		}
+		_links.remove(link);
+		store();
 		return link;
 	}
 
@@ -923,7 +904,10 @@ public class ShareStore {
 				case LINKS__PROP:
 					in.beginArray();
 					while (in.hasNext()) {
-						result.add(readLink(in));
+						Link link = readLink(in);
+						if (link != null) {
+							result.add(link);
+						}
 					}
 					in.endArray();
 					break;
@@ -941,6 +925,10 @@ public class ShareStore {
 		return result;
 	}
 
+	/**
+	 * Reads one record; <code>null</code> for one an earlier build kept as withdrawn, which is a
+	 * deleted link since issue #217.
+	 */
 	private static Link readLink(JsonReader in) throws IOException {
 		String id = "";
 		String tokenHash = "";
@@ -1029,9 +1017,14 @@ public class ShareStore {
 			}
 		}
 		in.endObject();
+		if (!revoked.isEmpty()) {
+			// Withdrawn by an earlier build: deleted now, and gone from the file with the next write.
+			LOG.info("Dropping the share link '" + id + "' withdrawn on " + revoked + ": a withdrawn link is deleted.");
+			return null;
+		}
 		// A link written before issue #83 says nothing about its rights: it allowed looking.
 		Link link = new Link(id, tokenHash, owner, path, label, expires, maxPrivacy, minRating,
-			rights == null ? Rights.READ_ONLY : rights, createdBy, created, revoked);
+			rights == null ? Rights.READ_ONLY : rights, createdBy, created);
 		// A link written before issue #213 says nothing about a label: it shows the whole album.
 		link._photoLabel = photoLabel;
 		if (PERSONAL.equals(type)) {
@@ -1119,11 +1112,6 @@ public class ShareStore {
 	 * is the whole of "keeping the references".
 	 * </p>
 	 *
-	 * <p>
-	 * A revoked link is rewritten too: its record is kept to say what happened to it, and a record
-	 * that names a folder which no longer exists says less than the truth.
-	 * </p>
-	 *
 	 * @param owner
 	 *        The space the folder lies in, see {@link Link#getOwner()}.
 	 * @param oldPath
@@ -1159,7 +1147,7 @@ public class ShareStore {
 	}
 
 	/**
-	 * Withdraws every live link the given user handed out, see issue #84.
+	 * Deletes every link the given user handed out, see issues #84 and #217.
 	 *
 	 * <p>
 	 * Removing somebody takes back what they gave away: a link is a door they opened, and it must
@@ -1167,23 +1155,23 @@ public class ShareStore {
 	 * alone — they were not this user's to lose.
 	 * </p>
 	 *
-	 * @return How many links were withdrawn.
+	 * @return The deleted links.
 	 */
-	public synchronized int revokeCreatedBy(String user) throws IOException {
+	public synchronized List<Link> deleteCreatedBy(String user) throws IOException {
+		List<Link> deleted = new ArrayList<>();
 		if (user == null || user.isEmpty()) {
-			return 0;
+			return deleted;
 		}
-		int revoked = 0;
-		for (Link link : getLinks()) {
-			if (user.equals(link.getCreatedBy()) && !link.isRevoked()) {
-				link.setRevoked(Instant.now().toString());
-				revoked++;
+		for (Link link : _links) {
+			if (user.equals(link.getCreatedBy())) {
+				deleted.add(link);
 			}
 		}
-		if (revoked > 0) {
+		if (!deleted.isEmpty()) {
+			_links.removeAll(deleted);
 			store();
 		}
-		return revoked;
+		return deleted;
 	}
 
 	/** Writes this store to disk, atomically: a crash never leaves a half-written store. */
@@ -1245,8 +1233,6 @@ public class ShareStore {
 		out.value(link.getCreatedBy());
 		out.name(CREATED__PROP);
 		out.value(link.getCreated());
-		out.name(REVOKED__PROP);
-		out.value(link.getRevoked());
 		if (!link.getPhotoLabel().isEmpty()) {
 			// A link showing the whole album is written as every link was before issue #213.
 			out.name(PHOTO_LABEL__PROP);

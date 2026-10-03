@@ -272,7 +272,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key("link-all")), findsOneWidget);
-      expect(find.byKey(const Key("withdraw-all")), findsNothing);
+      expect(find.byKey(const Key("delete-link-all")), findsNothing);
       expect(find.textContaining("inherited"), findsOneWidget);
       expect(find.textContaining("whole space"), findsOneWidget);
 

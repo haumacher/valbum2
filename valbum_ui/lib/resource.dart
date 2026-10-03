@@ -5141,7 +5141,7 @@ class UserList extends _JsonObject {
 	///  The users, in the order they were created.
 	List<UserEntry> users;
 
-	///  How many share links were withdrawn along with a removed user (issue #84).
+	///  How many share links were deleted along with a removed user (issues #84, #217).
 	/// 
 	///  <p>
 	///  Answered by <code>&lt;data&gt;/?action=remove-user</code> only, and <code>0</code>
@@ -5675,7 +5675,8 @@ class GroupRename extends _JsonObject {
 ///  Sent to <code>&lt;folder&gt;/?action=share</code> to create one, where the target is taken from
 ///  the URL and whatever the body says about {@link #path} is ignored; answered by
 ///  <code>&lt;folder&gt;/?type=shares</code> and by <code>&lt;folder&gt;/?action=unshare</code>,
-///  which names the link to withdraw by its {@link #id}.
+///  which names the link to delete by its {@link #id} and answers it as it was before it was
+///  deleted (issue #217).
 ///  </p>
 /// 
 ///  <p>
@@ -5720,7 +5721,8 @@ class ShareLink extends _JsonObject {
 	///  When the link was created, an ISO-8601 instant; answered by the server.
 	String created;
 
-	///  When the link was withdrawn, an ISO-8601 instant; empty while the link is live.
+	///  Always empty since issue #217: a deleted link is gone and never answered. Kept so that an app
+	///  built before reads every link as live.
 	String revoked;
 
 	///  Whether the link is anonymous (the default) or personal, see issue #198.

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/resource.dart' show ShareLink, ShareType;
 
 import 'util/fixtures.dart';
 import 'util/l10n.dart';
@@ -378,24 +379,10 @@ void main() {
       expect(find.text("Zoo"), findsOneWidget);
     });
 
-    testWidgets('falls back to an ordinary start when the token is no link',
+    testWidgets('says that a link the server does not know is not valid',
         (tester) async {
-      await pumpLinkSession(tester, (request) {
-        if (request.url.queryParameters["type"] == "auth") {
-          return json(authOfNobody);
-        }
-        return json(sharedAlbum(rights: const ["edit"]));
-      });
-
-      // No link to name, and the ordinary app is on the screen: the album
-      // shows and the settings are reachable again.
-      expect(find.byKey(const Key("share-label")), findsNothing);
-      expect(find.byKey(const Key("share-gone")), findsNothing);
-      expect(find.text("Zoo"), findsWidgets);
-    });
-
-    testWidgets('reads the device again when the token is no link',
-        (tester) async {
+      // A deleted link is a token the server never issued (issue #217): no
+      // reason comes back, so the page says it in the app's own words.
       var run = await pumpLinkSession(tester, (request) {
         if (request.url.queryParameters["type"] == "auth") {
           return json(authOfNobody);
@@ -403,11 +390,28 @@ void main() {
         return json(sharedAlbum(rights: const ["edit"]));
       });
 
-      // The ordinary start is the fallback, and it *is* the ordinary start:
-      // the stored server URL and the stored token are read after all.
-      expect(run.store.urlReads, greaterThan(0));
-      expect(run.store.tokenReads, greaterThan(0));
-      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byKey(const Key("share-gone")), findsOneWidget);
+      expect(find.text(testL10n.shareLinkNotValid), findsOneWidget);
+      expect(find.text("Zoo"), findsNothing);
+      expect(find.byIcon(Icons.settings), findsNothing);
+      // Nothing of the device is read for a link that is not one.
+      expect(run.store.wasRead, isFalse);
+    });
+
+    testWidgets('says the link is not valid when it is deleted while open',
+        (tester) async {
+      await pumpLinkSession(tester, (request) {
+        if (request.url.queryParameters["type"] == "auth") {
+          return json(authOfLink());
+        }
+        // The token is unknown now, refused with the words for a device.
+        return refusal(
+            401, "This device is no longer signed in at the server.");
+      });
+
+      expect(find.byKey(const Key("share-gone")), findsOneWidget);
+      expect(find.text(testL10n.shareLinkNotValid), findsOneWidget);
+      expect(find.textContaining("device"), findsNothing);
     });
   });
 
@@ -426,25 +430,51 @@ void main() {
       );
       expect(find.textContaining("never expires"), findsOneWidget);
       expect(find.textContaining("public only"), findsOneWidget);
-      // The inherited one says where it was made, and offers no withdrawal.
+      // The inherited one says where it was made, and offers no delete.
       expect(
-        find.textContaining("inherited from '2024', withdraw it there"),
+        find.textContaining("inherited from '2024', delete it there"),
         findsOneWidget,
       );
-      expect(find.byKey(const Key("withdraw-l1")), findsOneWidget);
-      expect(find.byKey(const Key("withdraw-l2")), findsNothing);
+      expect(find.byKey(const Key("delete-link-l1")), findsOneWidget);
+      expect(find.byKey(const Key("delete-link-l2")), findsNothing);
     });
 
-    testWidgets('withdraws a link by its id, after asking', (tester) async {
+    testWidgets(
+        'deletes a link by its id after asking once, and the list no '
+        'longer shows it (issue #217)', (tester) async {
       var requests = <http.Request>[];
+      var deleted = false;
       await pumpLinkDialog(
         tester,
-        ownerClient(ownerAnswers, requests: requests),
+        ownerClient((request) {
+          if (request.url.queryParameters["action"] == "unshare") {
+            deleted = true;
+          }
+          if (deleted && request.url.queryParameters["type"] == "shares") {
+            return json(sharesAnswer.replaceFirst(
+                RegExp(r'\{"id": "l1".*?"revoked": ""\}, '), ""));
+          }
+          return ownerAnswers(request);
+        }, requests: requests),
       );
+      expect(find.byKey(const Key("link-l1")), findsOneWidget);
 
-      await tapKey(tester, "withdraw-l1");
-      expect(find.byKey(const Key("withdraw-confirm")), findsOneWidget);
-      await tapKey(tester, "withdraw-confirm-ok");
+      await tapKey(tester, "delete-link-l1");
+      expect(find.byKey(const Key("delete-link-confirm")), findsOneWidget);
+      expect(find.text("Delete link"), findsOneWidget);
+      expect(
+        find.text("Delete the link 'Party'? Whoever has it can no longer "
+            "open it."),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key("delete-link-confirm-ok")),
+          matching: find.text("Delete"),
+        ),
+        findsOneWidget,
+      );
+      await tapKey(tester, "delete-link-confirm-ok");
 
       expect(bodyOf(requests, "unshare"), contains('"id":"l1"'));
       expect(
@@ -453,6 +483,100 @@ void main() {
             pathOf(request) == "/valbum/data/2024/Zoo/"),
         isTrue,
       );
+      // Gone, not marked: no entry, no "withdrawn" line.
+      expect(find.byKey(const Key("link-l1")), findsNothing);
+      expect(find.byKey(const Key("link-l2")), findsOneWidget);
+      expect(find.textContaining("withdrawn"), findsNothing);
+    });
+
+    testWidgets('asks the delete question in German', (tester) async {
+      await tester.pumpWidget(localizedApp(
+        Scaffold(
+          body: ShareLinkDialog(
+            client: ownerClient(ownerAnswers),
+            path: const ["2024", "Zoo"],
+          ),
+        ),
+        locale: const Locale("de"),
+      ));
+      await tester.pumpAndSettle();
+
+      await tapKey(tester, "delete-link-l1");
+      expect(find.text("Link löschen"), findsOneWidget);
+      expect(
+        find.text("Den Link 'Party' löschen? Wer ihn hat, kann ihn nicht mehr "
+            "öffnen."),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key("delete-link-confirm-ok")),
+          matching: find.text("Löschen"),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining("Abheben"), findsNothing);
+      expect(find.textContaining("zurückzieh"), findsNothing);
+    });
+
+    testWidgets('names what a personal link takes along', (tester) async {
+      var l10n = testL10n;
+      var personal = ShareLink(
+        id: "p1",
+        label: "",
+        type: ShareType.personal,
+      );
+      expect(
+        deleteLinkQuestion(l10n, personal),
+        "Delete this link? Whoever has it can no longer open it. "
+        "The links sent to its recipients stop working too. "
+        "The contacts stay.",
+      );
+      expect(
+        deleteLinkQuestion(l10nOf(const Locale("de")), personal),
+        "Diesen Link löschen? Wer ihn hat, kann ihn nicht mehr öffnen. "
+        "Auch die an die Empfänger gesendeten Links funktionieren nicht mehr. "
+        "Die Kontakte bleiben bestehen.",
+      );
+    });
+
+    testWidgets('says a refused delete in the server\'s words', (tester) async {
+      const reason = "There is no share link of that id on this album.";
+      await pumpLinkDialog(
+        tester,
+        ownerClient((request) {
+          if (request.url.queryParameters["action"] == "unshare") {
+            return refusal(404, reason);
+          }
+          return ownerAnswers(request);
+        }),
+      );
+
+      await tapKey(tester, "delete-link-l1");
+      await tapKey(tester, "delete-link-confirm-ok");
+
+      expect(find.byKey(const Key("share-link-refusal")), findsOneWidget);
+      expect(find.text(reason), findsOneWidget);
+      expect(find.byKey(const Key("link-l1")), findsOneWidget);
+    });
+
+    testWidgets('shows no link an older server kept as withdrawn',
+        (tester) async {
+      await pumpLinkDialog(
+        tester,
+        ownerClient((request) {
+          if (request.url.queryParameters["type"] == "shares") {
+            return json(sharesAnswer.replaceFirst(
+                '"created": "2026-09-01T10:00:00Z", "revoked": ""',
+                '"created": "2026-09-01T10:00:00Z", '
+                    '"revoked": "2026-09-02T10:00:00Z"'));
+          }
+          return ownerAnswers(request);
+        }),
+      );
+
+      expect(find.byKey(const Key("link-l1")), findsNothing);
+      expect(find.byKey(const Key("link-l2")), findsOneWidget);
     });
 
     testWidgets('creates a link with what the form shows', (tester) async {

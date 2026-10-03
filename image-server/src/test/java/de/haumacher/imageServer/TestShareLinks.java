@@ -139,7 +139,7 @@ public class TestShareLinks extends ShareTestCase {
 			"token:" + idOf(contributing), image.getContributor());
 	}
 
-	// --- Expiry, withdrawal and removal. ---
+	// --- Expiry, deletion and removal. ---
 
 	public void testAnExpiredLinkIsGoneOnEveryEndpoint() throws Exception {
 		String token = issue("alice", SharingFixture.ZOO, "Yesterday", "2020-01-01T00:00:00Z",
@@ -147,17 +147,28 @@ public class TestShareLinks extends ShareTestCase {
 		assertGoneEverywhere(token, AuthService.LINK_EXPIRED);
 	}
 
-	public void testAWithdrawnLinkIsGoneOnEveryEndpoint() throws Exception {
+	public void testADeletedLinkIsNeverListedAndOpensNothing() throws Exception {
 		String token = token(create(SharingFixture.ALICE, 0, Rights.VIEW));
+		String id = idOf(token);
 		assertEquals(HttpServletResponse.SC_OK, get("/", "json", token).status());
+		assertEquals(1, listed(SharingFixture.ALICE).size());
 
-		assertEquals(HttpServletResponse.SC_OK, unshare(ZOO, SharingFixture.ALICE, idOf(token)).status());
+		FakeResponse deleted = unshare(ZOO, SharingFixture.ALICE, id);
+		assertEquals(body(deleted), HttpServletResponse.SC_OK, deleted.status());
+		assertEquals("The list no longer shows it, at once.", 0, listed(SharingFixture.ALICE).size());
 		restartServer();
 
-		assertGoneEverywhere(token, AuthService.LINK_REVOKED);
+		assertEquals("Nor after a restart.", 0, listed(SharingFixture.ALICE).size());
+		FakeResponse refused = get("/", "json", token);
+		assertEquals("Its token is one nobody ever issued (#217).", HttpServletResponse.SC_UNAUTHORIZED,
+			refused.status());
+		assertEquals(AuthService.TOKEN_REFUSED, errorMessage(refused));
+		FakeResponse again = unshare(ZOO, SharingFixture.ALICE, id);
+		assertEquals("Deleted twice is a link that is not there.", HttpServletResponse.SC_NOT_FOUND, again.status());
+		assertEquals(AuthService.SHARE_UNKNOWN, errorMessage(again));
 	}
 
-	public void testRemovingAUserWithdrawsTheirLinks() throws Exception {
+	public void testRemovingAUserDeletesTheirLinks() throws Exception {
 		String bobs = token(create(SharingFixture.BOB, 0, Rights.VIEW));
 		String alices = token(create(SharingFixture.ALICE, 0, Rights.VIEW));
 		assertEquals(HttpServletResponse.SC_OK, get("/", "json", bobs).status());
@@ -167,10 +178,11 @@ public class TestShareLinks extends ShareTestCase {
 		assertEquals("The answer says how many doors were closed.", 1,
 			UserList.readUserList(reader(body(response))).getRevokedLinks());
 
+		assertEquals("Not even an administrator sees it any more.", 1, listed(SharingFixture.ALICE).size());
 		restartServer();
-		assertEquals("What bob handed out goes with bob.", HttpServletResponse.SC_GONE,
+		assertEquals("What bob handed out goes with bob, as if never made.", HttpServletResponse.SC_UNAUTHORIZED,
 			get("/", "json", bobs).status());
-		assertEquals(AuthService.LINK_REVOKED, errorMessage(get("/", "json", bobs)));
+		assertEquals(AuthService.TOKEN_REFUSED, errorMessage(get("/", "json", bobs)));
 		assertEquals("Nobody else's link is touched.", HttpServletResponse.SC_OK,
 			get("/", "json", alices).status());
 	}
@@ -187,7 +199,7 @@ public class TestShareLinks extends ShareTestCase {
 			listed(SharingFixture.ALICE).size());
 	}
 
-	public void testOnlyTheMakerOrAnAdminWithdrawsALink() throws Exception {
+	public void testOnlyTheMakerOrAnAdminDeletesALink() throws Exception {
 		String bobs = idOf(token(create(SharingFixture.BOB, 0, Rights.VIEW)));
 
 		// Another user with the flag is told there is no such link, not whose it is.
@@ -196,7 +208,7 @@ public class TestShareLinks extends ShareTestCase {
 		assertEquals(HttpServletResponse.SC_NOT_FOUND, refused.status());
 		assertEquals(AuthService.SHARE_UNKNOWN, errorMessage(refused));
 
-		assertEquals("Its maker withdraws it.", HttpServletResponse.SC_OK,
+		assertEquals("Its maker deletes it.", HttpServletResponse.SC_OK,
 			unshare(ZOO, SharingFixture.BOB, bobs).status());
 
 		String alices = idOf(token(create(SharingFixture.BOB, 0, Rights.VIEW)));

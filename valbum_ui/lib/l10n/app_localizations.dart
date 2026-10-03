@@ -1172,6 +1172,12 @@ abstract class AppLocalizations {
   /// **'This is a link to a shared album, not a sign-in. Open it in a browser to see what was shared with you.'**
   String get shareLinkRefusal;
 
+  /// The page a visitor sees who opens a share link this server does not know — deleted, or never made (issue #217). Address the reader formally (German 'Sie').
+  ///
+  /// In en, this message translates to:
+  /// **'This link is not valid. Ask whoever sent it to you for a new one.'**
+  String get shareLinkNotValid;
+
   /// Button closing a dialog
   ///
   /// In en, this message translates to:
@@ -1382,11 +1388,11 @@ abstract class AppLocalizations {
   /// **'(no label)'**
   String get linkNoLabel;
 
-  /// Tooltip of the button withdrawing a share link: the link stops working (German 'Zurückziehen…', never 'Abheben').
+  /// Tooltip of the button deleting a share link (issue #217): the link is gone as if it had never been made. German 'Link löschen…', never 'Abheben' or 'Zurückziehen'.
   ///
   /// In en, this message translates to:
-  /// **'Withdraw…'**
-  String get withdrawTooltip;
+  /// **'Delete link…'**
+  String get deleteLinkTooltip;
 
   /// Part of a link's description: it has no expiry
   ///
@@ -1406,16 +1412,10 @@ abstract class AppLocalizations {
   /// **'public only'**
   String get linkPublicOnly;
 
-  /// Says on which day a share link was taken back
+  /// Says that a link was made on a folder further up and is deleted there
   ///
   /// In en, this message translates to:
-  /// **'withdrawn {day}'**
-  String linkWithdrawnOn(String day);
-
-  /// Says that a link was made on a folder further up
-  ///
-  /// In en, this message translates to:
-  /// **'inherited from {folder}, withdraw it there'**
+  /// **'inherited from {folder}, delete it there'**
   String linkInheritedFrom(String folder);
 
   /// How a link covering the root of a space names its folder
@@ -1517,7 +1517,7 @@ abstract class AppLocalizations {
   /// Warns that the share link URL is shown exactly once
   ///
   /// In en, this message translates to:
-  /// **'Copy it now: the server keeps only its fingerprint and can never show it again. A lost link is withdrawn and made anew.'**
+  /// **'Copy it now: the server keeps only its fingerprint and can never show it again. A lost link is deleted and made anew.'**
   String get shareLinkOnce;
 
   /// Said after the share link URL went to the clipboard
@@ -1526,23 +1526,29 @@ abstract class AppLocalizations {
   /// **'The link was copied.'**
   String get linkCopied;
 
-  /// Title of the dialog confirming that a share link is taken back
+  /// Title of the dialog confirming that a share link is deleted (issue #217). German 'Link löschen'.
   ///
   /// In en, this message translates to:
-  /// **'Withdraw the link?'**
-  String get withdrawLinkTitle;
+  /// **'Delete link'**
+  String get deleteLinkTitle;
 
-  /// Explains what taking a share link back does
+  /// The question confirming that a share link with a label is deleted: it is gone at once, as if it had never been made (issue #217). Address the reader formally (German 'Sie'); 'delete' is 'löschen'.
   ///
   /// In en, this message translates to:
-  /// **'Anybody holding {link} stops seeing the album at once. This cannot be undone; a new link can be made instead.'**
-  String withdrawLinkMessage(String link);
+  /// **'Delete the link {link}? Whoever has it can no longer open it.'**
+  String deleteLinkNamed(String link);
 
-  /// How a share link with no label is named in the withdraw question
+  /// The question confirming that a share link without a label is deleted: it is gone at once, as if it had never been made (issue #217). Address the reader formally (German 'Sie'); 'delete' is 'löschen'.
   ///
   /// In en, this message translates to:
-  /// **'this link'**
-  String get withdrawLinkThisLink;
+  /// **'Delete this link? Whoever has it can no longer open it.'**
+  String get deleteLinkUnnamed;
+
+  /// Added to the delete question of a personal share link (issue #217): the own links of its recipients die with it, while the people stay in the contacts of the space.
+  ///
+  /// In en, this message translates to:
+  /// **'The links sent to its recipients stop working too. The contacts stay.'**
+  String get deleteLinkPersonalNote;
 
   /// Explains the retired guest role on the welcome screen of an invitation
   ///
