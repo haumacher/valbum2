@@ -51,6 +51,9 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getInvitation() */
 	private static final String INVITATION__PROP = "invitation";
 
+	/** @see #getProofMethods() */
+	private static final String PROOF_METHODS__PROP = "proofMethods";
+
 	private String _mode = "";
 
 	private String _deviceName = "";
@@ -74,6 +77,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private de.haumacher.imageServer.shared.model.ShareInfo _share = null;
 
 	private de.haumacher.imageServer.shared.model.InvitationInfo _invitation = null;
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> _proofMethods = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link AuthInfo} instance.
@@ -389,6 +394,57 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		return _invitation != null;
 	}
 
+	/**
+	 * The ways this server can prove the address of a recipient of a personal link, answered to a
+	 * signed-in member only (issue #211); empty for everybody else.
+	 *
+	 * <p>
+	 * The same entries <code>IdentifyRequired.methods</code> carries: <code>mail-code</code> where
+	 * the server can mail a code (issue #199) and <code>oidc:&lt;provider&gt;</code> with its label
+	 * per provider of OpenID Connect (issue #200). The share dialog offers a link that is proven
+	 * by an address &mdash; an open personal link, the group link &mdash; only where this is not
+	 * empty.
+	 * </p>
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> getProofMethods() {
+		return _proofMethods;
+	}
+
+	/**
+	 * @see #getProofMethods()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setProofMethods(java.util.List<? extends de.haumacher.imageServer.shared.model.ProofMethod> value) {
+		internalSetProofMethods(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getProofMethods()} without chain call utility. */
+	protected final void internalSetProofMethods(java.util.List<? extends de.haumacher.imageServer.shared.model.ProofMethod> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'proofMethods' cannot be null.");
+		_proofMethods.clear();
+		_proofMethods.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getProofMethods()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo addProofMethod(de.haumacher.imageServer.shared.model.ProofMethod value) {
+		internalAddProofMethod(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addProofMethod(de.haumacher.imageServer.shared.model.ProofMethod)} without chain call utility. */
+	protected final void internalAddProofMethod(de.haumacher.imageServer.shared.model.ProofMethod value) {
+		_proofMethods.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getProofMethods()} list.
+	 */
+	public final void removeProofMethod(de.haumacher.imageServer.shared.model.ProofMethod value) {
+		_proofMethods.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.AuthInfo readAuthInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.AuthInfo result = new de.haumacher.imageServer.shared.model.AuthInfo();
@@ -432,6 +488,12 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			out.name(INVITATION__PROP);
 			getInvitation().writeTo(out);
 		}
+		out.name(PROOF_METHODS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.ProofMethod x : getProofMethods()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -449,6 +511,14 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case FACES__PROP: setFaces(in.nextBoolean()); break;
 			case SHARE__PROP: setShare(de.haumacher.imageServer.shared.model.ShareInfo.readShareInfo(in)); break;
 			case INVITATION__PROP: setInvitation(de.haumacher.imageServer.shared.model.InvitationInfo.readInvitationInfo(in)); break;
+			case PROOF_METHODS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addProofMethod(de.haumacher.imageServer.shared.model.ProofMethod.readProofMethod(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

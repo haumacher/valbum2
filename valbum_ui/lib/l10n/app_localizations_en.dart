@@ -2934,4 +2934,24 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get identifyGroupIntro =>
       'This link was sent to a group. Confirm your e-mail address to open it.';
+
+  @override
+  String get addEmailOffer =>
+      'Add your e-mail so we recognise you on other devices.';
+
+  @override
+  String get addEmailOpen => 'Add e-mail';
+
+  @override
+  String get addEmailNotNow => 'Not now';
+
+  @override
+  String get addEmailTitle => 'Add your e-mail';
+
+  @override
+  String get addEmailExplanation =>
+      'We send a code to this address. Once you have confirmed it, you can open your links on other devices with it.';
+
+  @override
+  String get addEmailDone => 'Your e-mail address is saved.';
 }

@@ -38,37 +38,6 @@ const String mailCodeMethod = "mail-code";
 /// The prefix of a method signing in through OpenID Connect (#200).
 const String oidcMethodPrefix = "oidc:";
 
-/// The refusal of an open personal link (`AuthService.IDENTIFY_OPEN`), which
-/// [isGroupLink] tells from a group link's while the server names neither.
-const String openLinkRefusal =
-    "This link asks who you are: it opens once you have confirmed your e-mail address.";
-
-/// Whether [needs] is the refusal of a **group link** (issue #211): the own
-/// token of a personal link with recipients, which any recipient opens by
-/// proving an address of theirs.
-///
-/// The server says so in `IdentifyRequired.group`, a field of a server
-/// package built in parallel; this build's model does not know it yet, so it
-/// is read through a guarded accessor and, where absent, decided from what
-/// such a refusal looks like: no recipient's own link, no first open, no
-/// masked address, a way to prove one — and not the open link's own sentence
-/// ([refusal] is the server's message).
-bool isGroupLink(IdentifyRequired needs, {String? refusal}) {
-  try {
-    var group = (needs as dynamic).group;
-    if (group is bool) {
-      return group;
-    }
-  } catch (_) {
-    // The field is not in this build's model: decide by the shape below.
-  }
-  return !needs.firstOpen &&
-      needs.contact == null &&
-      needs.addresses.isEmpty &&
-      needs.methods.isNotEmpty &&
-      refusal != openLinkRefusal;
-}
-
 /// The identification card of a personal share link, see the library.
 class IdentifyScreen extends StatefulWidget {
   /// The client of the session: the link's token as the bearer, and beside it
@@ -92,11 +61,6 @@ class IdentifyScreen extends StatefulWidget {
   /// app keeps its binding and navigates.
   final void Function(OidcStarted started, bool remember) onSignInStarted;
 
-  /// Whether the link is a group link (#211): one address for all the
-  /// recipients of a personal link, each proving an address of theirs once,
-  /// see [isGroupLink].
-  final bool group;
-
   /// Forgets the credential this browser holds and asks again, `null` where
   /// it holds none (issue #202): "Not you? Switch person".
   final VoidCallback? onSwitchPerson;
@@ -110,7 +74,6 @@ class IdentifyScreen extends StatefulWidget {
     required this.onSignInStarted,
     this.message,
     this.onSwitchPerson,
-    this.group = false,
   });
 
   @override
@@ -152,8 +115,12 @@ class IdentifyScreenState extends State<IdentifyScreen> {
 
   IdentifyRequired get _identify => widget.identify;
 
+  /// Whether the link is a group link (#211): one address for all the
+  /// recipients of a personal link, each proving an address of theirs once.
+  bool get _group => _identify.group;
+
   /// Whether the link is an open personal link: no recipient's own link.
-  bool get _open => _identify.contact == null && !widget.group;
+  bool get _open => _identify.contact == null && !_group;
 
   /// Whether the visitor types the address the code goes to: an open link,
   /// and a group link, which never shows whom it was sent to (#211).
@@ -370,7 +337,7 @@ class IdentifyScreenState extends State<IdentifyScreen> {
       Text(l10n.identifyWhoTitle,
           style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
-      Text(widget.group
+      Text(_group
           ? l10n.identifyGroupIntro
           : _open
               ? l10n.identifyOpenIntro

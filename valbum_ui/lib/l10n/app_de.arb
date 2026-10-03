@@ -737,8 +737,6 @@
   "newContactName": "Name",
   "newContactEmail": "E-Mail",
   "newContactRemove": "Entfernen",
-  "recipientsPickEmail": "E-Mail-Adresse aus meinen Kontakten…",
-  "recipientsPickPhone": "Telefonnummer aus meinen Kontakten…",
   "newContactInvalid": "Keine E-Mail-Adresse",
   "newContactAlready": "Bereits in Ihren Kontakten als {name} gespeichert; markiert.",
   "recipientLinksHeading": "Jedem Empfänger seinen eigenen Link senden",
@@ -764,5 +762,13 @@
   "groupLinkWithoutEmail": "Diese Empfänger haben keine E-Mail-Adresse, sodass der Gruppenlink sie nicht erkennen kann. Senden Sie ihnen einen eigenen Link:",
   "shareMessageBodyGroup": "Hallo,\n\nhier sind die Fotos aus dem {album}:\n{link}\n",
   "identifyGroupIntro": "Dieser Link wurde an eine Gruppe gesendet. Bestätigen Sie Ihre E-Mail-Adresse, um ihn zu öffnen.",
+  "addEmailOffer": "Fügen Sie Ihre E-Mail-Adresse hinzu, damit wir Sie auf anderen Geräten wiedererkennen können.",
+  "addEmailOpen": "E-Mail-Adresse hinzufügen",
+  "addEmailNotNow": "Jetzt nicht",
+  "addEmailTitle": "Fügen Sie Ihre E-Mail-Adresse hinzu",
+  "addEmailExplanation": "Wir senden einen Code an diese Adresse. Sobald Sie diesen bestätigt haben, können Sie damit Ihre Links auf anderen Geräten öffnen.",
+  "addEmailDone": "Ihre E-Mail-Adresse wurde gespeichert.",
+  "recipientsPickEmail": "E-Mail-Adresse aus meinen Kontakten…",
+  "recipientsPickPhone": "Telefonnummer aus meinen Kontakten…",
   "recipientsPickFailed": "Die Kontakte dieses Telefons konnten nicht geöffnet werden ({reason})."
 }

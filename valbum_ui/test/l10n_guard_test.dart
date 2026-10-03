@@ -36,6 +36,7 @@ const List<String> generatedArbs = ["lib/l10n/app_de.arb"];
 const List<String> convertedFiles = [
   "lib/about.dart",
   "lib/album_date.dart",
+  "lib/add_email.dart",
   "lib/album_edit.dart",
   "lib/album_layout.dart",
   "lib/album_model.dart",
@@ -123,10 +124,6 @@ const Map<String, String> allowedLiterals = {
   // can show the name field; never shown instead of it, see issue #89.
   "This code signs in a user who has no name yet. Choose the name you want "
       "to be known by in this space.": "protocol constant, matched not shown",
-  // The server's refusal of an open personal link, matched to tell it from a
-  // group link's while the server does not say which (issues #202, #211).
-  "This link asks who you are: it opens once you have confirmed your e-mail "
-      "address.": "protocol constant, matched not shown",
   // `toString()` of a value class: a debugger reads these, never a user.
   r"CallerPermission(${}, ${}, ${})": "toString()",
   r"CallerInfo(${}, ${}, ${})": "toString()",

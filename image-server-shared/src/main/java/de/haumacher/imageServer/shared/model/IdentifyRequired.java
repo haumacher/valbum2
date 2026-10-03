@@ -41,6 +41,9 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 	/** @see #getSharedBy() */
 	private static final String SHARED_BY__PROP = "sharedBy";
 
+	/** @see #isGroup() */
+	private static final String GROUP__PROP = "group";
+
 	private boolean _firstOpen = false;
 
 	private de.haumacher.imageServer.shared.model.ContactInfo _contact = null;
@@ -52,6 +55,8 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 	private String _label = "";
 
 	private String _sharedBy = "";
+
+	private boolean _group = false;
 
 	/**
 	 * Creates a {@link IdentifyRequired} instance.
@@ -153,7 +158,8 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 
 	/**
 	 * The ways the server can prove an address here (issue #199): <code>mail-code</code> where the
-	 * server can mail a code and either the link is open or the contact has an e-mail address;
+	 * server can mail a code and either the link is open, the contact has an e-mail address, or the
+	 * token is an addressed link's own (the <code>group</code> link of issue #211);
 	 * <code>oidc:&lt;provider&gt;</code> (issue #200) per configured provider of OpenID Connect where
 	 * the link is open, the contact has an e-mail address, or the token is an addressed link's own
 	 * (whose sign-in must name one of its recipients); empty for a first open, which needs no proof.
@@ -237,6 +243,29 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 		_sharedBy = value;
 	}
 
+	/**
+	 * Whether the token is the own token of an addressed link, the <em>group link</em> of issue #211:
+	 * whoever opens it proves an e-mail address saved with one of the link's recipients (by a mailed
+	 * code typed in, or through a provider of <code>methods</code>) and is that recipient from then on.
+	 * <code>addresses</code> stays empty here, because naming them would reveal the group.
+	 */
+	public final boolean isGroup() {
+		return _group;
+	}
+
+	/**
+	 * @see #isGroup()
+	 */
+	public de.haumacher.imageServer.shared.model.IdentifyRequired setGroup(boolean value) {
+		internalSetGroup(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isGroup()} without chain call utility. */
+	protected final void internalSetGroup(boolean value) {
+		_group = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.IdentifyRequired readIdentifyRequired(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.IdentifyRequired result = new de.haumacher.imageServer.shared.model.IdentifyRequired();
@@ -274,6 +303,8 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 		out.value(getLabel());
 		out.name(SHARED_BY__PROP);
 		out.value(getSharedBy());
+		out.name(GROUP__PROP);
+		out.value(isGroup());
 	}
 
 	@Override
@@ -299,6 +330,7 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 			break;
 			case LABEL__PROP: setLabel(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SHARED_BY__PROP: setSharedBy(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case GROUP__PROP: setGroup(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}

@@ -130,6 +130,7 @@ Future<void> shareLinksOf({
   // navigator. Nobody said → nothing is withheld on a guess.
   var caller = CallerInfo.maybeOf(context);
   var mayShowMembers = caller == null || caller.permission.seesMembers;
+  var mayProveAddresses = caller?.mayProveAddresses ?? false;
   await showFormDialog<void>(
     context: context,
     builder: (context) => ShareLinkDialog(
@@ -137,6 +138,7 @@ Future<void> shareLinksOf({
       path: path,
       label: label,
       mayShowMembers: mayShowMembers,
+      mayProveAddresses: mayProveAddresses,
     ),
   );
 }
@@ -166,12 +168,19 @@ class ShareLinkDialog extends StatefulWidget {
   /// `shareAboveClearance`), so "All photos" is not offered at all.
   final bool mayShowMembers;
 
+  /// Whether the server can prove a visitor's address — by a mailed code
+  /// (#199) or a provider of OpenID Connect (#200) — which an open personal
+  /// link and a group link need (issues #202, #211): `AuthInfo.proofMethods`
+  /// of the one `?type=auth`, see [CallerInfo.mayProveAddresses].
+  final bool mayProveAddresses;
+
   const ShareLinkDialog({
     super.key,
     required this.client,
     required this.path,
     this.label,
     this.mayShowMembers = true,
+    this.mayProveAddresses = false,
     this.isWeb = kIsWeb,
   });
 
@@ -227,9 +236,9 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   LinkKind _kind = LinkKind.anonymous;
 
   /// Whether the server can prove a visitor's address, which an open
-  /// personal link needs; `null` while it is being asked, see
-  /// [VAlbumClient.mayProveAddresses].
-  bool? _mayProve;
+  /// personal link and a group link need, see
+  /// [ShareLinkDialog.mayProveAddresses].
+  bool get _mayProve => widget.mayProveAddresses;
 
   /// The recipients of a link for [LinkKind.selected].
   List<ShareRecipient> _recipients = const [];
@@ -499,18 +508,8 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
         ),
       ];
 
-  /// Opens the form of a new link, and asks the server once whether it can
-  /// prove a visitor's address, see [_mayProve].
-  void _openForm() {
-    setState(() => _creating = true);
-    if (_mayProve == null) {
-      widget.client.mayProveAddresses().then((value) {
-        if (mounted) {
-          setState(() => _mayProve = value);
-        }
-      });
-    }
-  }
+  /// Opens the form of a new link.
+  void _openForm() => setState(() => _creating = true);
 
   /// The form of a new link: the label, then one compact row per question
   /// (issue #205).
@@ -553,8 +552,8 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           choices: [
             for (var kind in LinkKind.values) (kind, kind.labelOf(l10n)),
           ],
-          disabled: {if (_mayProve != true) LinkKind.open},
-          disabledReason: _mayProve == false ? l10n.linkTypeNeedsProof : null,
+          disabled: {if (!_mayProve) LinkKind.open},
+          disabledReason: _mayProve ? null : l10n.linkTypeNeedsProof,
           onChanged: (value) => setState(() => _kind = value),
         ),
         if (_kind == LinkKind.selected)
@@ -581,9 +580,8 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
               (false, l10n.linkDeliveryEach),
               (true, l10n.linkDeliveryGroup),
             ],
-            disabled: {if (_mayProve != true) true},
-            disabledReason:
-                _mayProve == false ? l10n.linkTypeNeedsProof : null,
+            disabled: {if (!_mayProve) true},
+            disabledReason: _mayProve ? null : l10n.linkTypeNeedsProof,
             onChanged: (value) => setState(() => _group = value),
           ),
         _choiceRow<LinkExpiry>(

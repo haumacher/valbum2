@@ -95,6 +95,22 @@ class ContactCredentialStore {
   /// The key of the [PendingSignIn] of the space serving [dataUrl].
   static String signInKey(String dataUrl) => "valbum.oidc|$dataUrl";
 
+  /// The key under which this browser remembers that the offer "Add your
+  /// e-mail" was dismissed in the space serving [dataUrl] (issue #211).
+  static String emailOfferKey(String dataUrl) =>
+      "valbum.addEmailDismissed|$dataUrl";
+
+  /// Whether the offer "Add your e-mail" was dismissed in the space at
+  /// [dataUrl] in this browser: it is shown once, until it is dismissed. A
+  /// storage that cannot say counts as "not dismissed".
+  bool emailOfferDismissed(String dataUrl) =>
+      _guarded<String?>(() => remembered.get(emailOfferKey(dataUrl))) == "1";
+
+  /// Remembers in the [remembered] area that the offer "Add your e-mail" was
+  /// dismissed in the space at [dataUrl]; a failing storage keeps nothing.
+  void dismissEmailOffer(String dataUrl) =>
+      _guarded(() => remembered.set(emailOfferKey(dataUrl), "1"));
+
   /// The credential this browser holds for the space at [dataUrl], `null`
   /// where it holds none — or cannot say.
   String? read(String dataUrl) {

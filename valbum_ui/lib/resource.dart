@@ -2685,6 +2685,18 @@ class AuthInfo extends _JsonObject {
 	///  </p>
 	InvitationInfo? invitation;
 
+	///  The ways this server can prove the address of a recipient of a personal link, answered to a
+	///  signed-in member only (issue #211); empty for everybody else.
+	/// 
+	///  <p>
+	///  The same entries <code>IdentifyRequired.methods</code> carries: <code>mail-code</code> where
+	///  the server can mail a code (issue #199) and <code>oidc:&lt;provider&gt;</code> with its label
+	///  per provider of OpenID Connect (issue #200). The share dialog offers a link that is proven
+	///  by an address &mdash; an open personal link, the group link &mdash; only where this is not
+	///  empty.
+	///  </p>
+	List<ProofMethod> proofMethods;
+
 	/// Creates a AuthInfo.
 	AuthInfo({
 			this.mode = "", 
@@ -2699,6 +2711,7 @@ class AuthInfo extends _JsonObject {
 			this.faces = false, 
 			this.share, 
 			this.invitation, 
+			this.proofMethods = const [], 
 	});
 
 	/// Parses a AuthInfo from a string source.
@@ -2767,6 +2780,19 @@ class AuthInfo extends _JsonObject {
 				invitation = json.tryNull() ? null : InvitationInfo.read(json);
 				break;
 			}
+			case "proofMethods": {
+				json.expectArray();
+				proofMethods = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ProofMethod.read(json);
+						if (value != null) {
+							proofMethods.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -2816,6 +2842,13 @@ class AuthInfo extends _JsonObject {
 			json.addKey("invitation");
 			_invitation.writeContent(json);
 		}
+
+		json.addKey("proofMethods");
+		json.startArray();
+		for (var _element in proofMethods) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 }
@@ -2862,6 +2895,15 @@ class ShareInfo extends _JsonObject {
 	///  </p>
 	List<ProofMethod> methods;
 
+	///  Whether the contact of this session has an e-mail address saved in the space, proven or not
+	///  (issue #211); <code>false</code> for every caller who is no contact.
+	/// 
+	///  <p>
+	///  The app offers "Add your e-mail so we recognise you on other devices" only where this is
+	///  <code>false</code>. Nothing is said about the address itself, and nothing about anybody else.
+	///  </p>
+	bool contactHasEmail;
+
 	/// Creates a ShareInfo.
 	ShareInfo({
 			this.label = "", 
@@ -2871,6 +2913,7 @@ class ShareInfo extends _JsonObject {
 			this.type = ShareType.anonymous, 
 			this.contact, 
 			this.methods = const [], 
+			this.contactHasEmail = false, 
 	});
 
 	/// Parses a ShareInfo from a string source.
@@ -2937,6 +2980,10 @@ class ShareInfo extends _JsonObject {
 				}
 				break;
 			}
+			case "contactHasEmail": {
+				contactHasEmail = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -2976,6 +3023,9 @@ class ShareInfo extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("contactHasEmail");
+		json.addBool(contactHasEmail);
 	}
 
 }
@@ -6781,7 +6831,8 @@ class IdentifyRequired extends _JsonObject {
 	List<MaskedAddress> addresses;
 
 	///  The ways the server can prove an address here (issue #199): <code>mail-code</code> where the
-	///  server can mail a code and either the link is open or the contact has an e-mail address;
+	///  server can mail a code and either the link is open, the contact has an e-mail address, or the
+	///  token is an addressed link's own (the <code>group</code> link of issue #211);
 	///  <code>oidc:&lt;provider&gt;</code> (issue #200) per configured provider of OpenID Connect where
 	///  the link is open, the contact has an e-mail address, or the token is an addressed link's own
 	///  (whose sign-in must name one of its recipients); empty for a first open, which needs no proof.
@@ -6793,6 +6844,12 @@ class IdentifyRequired extends _JsonObject {
 	///  The member who shared the link, for "… will see your name with the photos you add".
 	String sharedBy;
 
+	///  Whether the token is the own token of an addressed link, the <em>group link</em> of issue #211:
+	///  whoever opens it proves an e-mail address saved with one of the link's recipients (by a mailed
+	///  code typed in, or through a provider of <code>methods</code>) and is that recipient from then on.
+	///  <code>addresses</code> stays empty here, because naming them would reveal the group.
+	bool group;
+
 	/// Creates a IdentifyRequired.
 	IdentifyRequired({
 			this.firstOpen = false, 
@@ -6801,6 +6858,7 @@ class IdentifyRequired extends _JsonObject {
 			this.methods = const [], 
 			this.label = "", 
 			this.sharedBy = "", 
+			this.group = false, 
 	});
 
 	/// Parses a IdentifyRequired from a string source.
@@ -6863,6 +6921,10 @@ class IdentifyRequired extends _JsonObject {
 				sharedBy = json.expectString();
 				break;
 			}
+			case "group": {
+				group = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -6899,6 +6961,9 @@ class IdentifyRequired extends _JsonObject {
 
 		json.addKey("sharedBy");
 		json.addString(sharedBy);
+
+		json.addKey("group");
+		json.addBool(group);
 	}
 
 }
@@ -7243,8 +7308,10 @@ class OidcExchange extends _JsonObject {
 ///  one the space saved with that contact and the request names only which: the masked form
 ///  {@link IdentifyRequired#addresses} showed, or its position there in {@link #choice}; a typed
 ///  address is refused. On an open personal link, and for a contact who is already recognised and
-///  adds an address, it is any address. The answer is an {@link EmailProofSent}, the same whether the
-///  address is known to the space or not.
+///  adds an address, it is any address. On the group link (the own token of an addressed link, issue
+///  #211) it is a typed address too, and a code is mailed only where the space saved it with one of
+///  the link's recipients &mdash; the answer is the same either way. The answer is an {@link EmailProofSent},
+///  the same whether the address is known to the space or not.
 ///  </p>
 class EmailProof extends _JsonObject {
 	///  The address, or on a recipient's own link the masked form of one of the contact's addresses.

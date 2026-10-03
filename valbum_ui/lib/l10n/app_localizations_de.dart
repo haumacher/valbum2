@@ -2980,4 +2980,24 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get identifyGroupIntro =>
       'Dieser Link wurde an eine Gruppe gesendet. Bestätigen Sie Ihre E-Mail-Adresse, um ihn zu öffnen.';
+
+  @override
+  String get addEmailOffer =>
+      'Fügen Sie Ihre E-Mail-Adresse hinzu, damit wir Sie auf anderen Geräten wiedererkennen können.';
+
+  @override
+  String get addEmailOpen => 'E-Mail-Adresse hinzufügen';
+
+  @override
+  String get addEmailNotNow => 'Jetzt nicht';
+
+  @override
+  String get addEmailTitle => 'Fügen Sie Ihre E-Mail-Adresse hinzu';
+
+  @override
+  String get addEmailExplanation =>
+      'Wir senden einen Code an diese Adresse. Sobald Sie diesen bestätigt haben, können Sie damit Ihre Links auf anderen Geräten öffnen.';
+
+  @override
+  String get addEmailDone => 'Ihre E-Mail-Adresse wurde gespeichert.';
 }

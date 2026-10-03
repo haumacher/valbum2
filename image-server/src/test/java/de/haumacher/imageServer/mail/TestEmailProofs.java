@@ -10,6 +10,9 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import junit.framework.TestCase;
@@ -228,6 +231,67 @@ public class TestEmailProofs extends TestCase {
 
 	interface Action {
 		void run() throws Exception;
+	}
+
+	// --- The quiet code of the group link, issue #211. ---
+
+	public void testAQuietCodeIsNeverWaitedFor() throws Exception {
+		CountDownLatch release = new CountDownLatch(1);
+		CountDownLatch delivered = new CountDownLatch(1);
+		List<String> to = new ArrayList<>();
+		EmailProofs proofs = new EmailProofs((address, subject, text) -> {
+			try {
+				release.await(10, TimeUnit.SECONDS);
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+			}
+			synchronized (to) {
+				to.add(address);
+			}
+			delivered.countDown();
+		}, _clock);
+		EmailProofs.Sent sent = proofs.sendQuietly("group:L", "petra@gmx.de", "L", "1.2.3.4",
+			(code, minutes) -> CodeMail.of(CodeMail.ENGLISH, "Family", code, minutes), true);
+		assertEquals(_clock.instant().plus(EmailProofs.LIFETIME), sent.getExpires());
+		synchronized (to) {
+			assertTrue("Answered while the mail server still takes its time.", to.isEmpty());
+		}
+		release.countDown();
+		assertTrue(delivered.await(10, TimeUnit.SECONDS));
+		assertEquals(List.of("petra@gmx.de"), to);
+	}
+
+	public void testAFailedQuietMailIsNoRefusal() throws Exception {
+		EmailProofs proofs = new EmailProofs((address, subject, text) -> {
+			throw new java.io.IOException("The mail server is down.");
+		}, _clock, Runnable::run);
+		proofs.sendQuietly("group:L", "petra@gmx.de", "L", "1.2.3.4",
+			(code, minutes) -> CodeMail.of(CodeMail.ENGLISH, "Family", code, minutes), true);
+	}
+
+	public void testNoCodeIsRightForADecoy() throws Exception {
+		AtomicReference<String> made = new AtomicReference<>();
+		EmailProofs.Sent sent = _proofs.sendQuietly("group:L", "paul@gmx.de", "L", "1.2.3.4", (code, minutes) -> {
+			made.set(code);
+			return CodeMail.of(CodeMail.ENGLISH, "Family", code, minutes);
+		}, false);
+		assertEquals(_clock.instant().plus(EmailProofs.LIFETIME), sent.getExpires());
+		assertTrue("Nothing was mailed.", _smtp.getReceived().isEmpty());
+		for (int n = 0; n < EmailProofs.ATTEMPTS; n++) {
+			assertRefused(EmailProofs.CODE_WRONG,
+				() -> _proofs.verify("group:L", "paul@gmx.de", made.get(), "1.2.3.4"));
+		}
+		assertRefused(EmailProofs.CODE_VOID, () -> _proofs.verify("group:L", "paul@gmx.de", made.get(), "1.2.3.4"));
+	}
+
+	public void testADecoyCountsAgainstTheLimits() throws Exception {
+		for (int n = 0; n < EmailProofs.PER_ADDRESS; n++) {
+			_proofs.sendQuietly("group:L" + n, "paul@gmx.de", "L" + n, "10.0.0." + n,
+				(code, minutes) -> CodeMail.of(CodeMail.ENGLISH, "Family", code, minutes), false);
+		}
+		assertRefused(EmailProofs.RATE_LIMITED, () -> _proofs.sendQuietly("group:X", "paul@gmx.de", "X", "10.0.1.1",
+			(code, minutes) -> CodeMail.of(CodeMail.ENGLISH, "Family", code, minutes), true));
+		assertTrue(_smtp.getReceived().isEmpty());
 	}
 
 	private static EmailProofs.Refused assertRefused(String message, Action action) {

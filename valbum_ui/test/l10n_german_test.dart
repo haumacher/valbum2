@@ -23,6 +23,7 @@ import 'package:valbum_ui/photo_picker_view.dart';
 import 'package:valbum_ui/resource.dart';
 import 'package:valbum_ui/video_view.dart';
 
+import 'package:valbum_ui/add_email.dart';
 import 'package:valbum_ui/album_view.dart';
 import 'package:valbum_ui/camera_roll.dart';
 import 'package:valbum_ui/camera_roll_view.dart';
@@ -686,6 +687,40 @@ void sliceTwo() {
         expect(find.text(de.identifyContinueWith("Google")), findsOneWidget);
         expect(find.text(de.identifyRemember), findsOneWidget);
       });
+    });
+
+    testWidgets('the offer "Add your e-mail" (#211)', (tester) async {
+      await tester.pumpWidget(
+        localizedApp(
+          Scaffold(
+            body: Builder(
+              builder: (context) => Column(
+                children: [
+                  AddEmailBanner(
+                    onAdd: () => addEmail(
+                      context: context,
+                      client: clientReturning("{}"),
+                    ),
+                    onDismiss: () {},
+                  ),
+                ],
+              ),
+            ),
+          ),
+          locale: const Locale("de"),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(de.addEmailOffer), findsOneWidget);
+      expect(find.text(de.addEmailNotNow), findsOneWidget);
+      expect(find.text(de.addEmailOpen), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key("add-email-open")));
+      await tester.pumpAndSettle();
+      expect(find.text(de.addEmailTitle), findsOneWidget);
+      expect(find.text(de.addEmailExplanation), findsOneWidget);
+      expect(find.text(de.identifyAddressLabel), findsOneWidget);
+      expect(find.text(de.identifySendCode), findsOneWidget);
     });
 
     testWidgets('the share-link dialog', (tester) async {
