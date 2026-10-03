@@ -385,7 +385,7 @@ public final class Inboxes {
 		.thenComparing(ImagePart::getName, String.CASE_INSENSITIVE_ORDER);
 
 	/** Whether the named image of the given folder was contributed by the given subject. */
-	private static boolean contributedBy(File folder, String name, String subject) {
+	static boolean contributedBy(File folder, String name, String subject) {
 		if (subject == null || subject.isEmpty() || name == null || name.isEmpty()) {
 			return false;
 		}

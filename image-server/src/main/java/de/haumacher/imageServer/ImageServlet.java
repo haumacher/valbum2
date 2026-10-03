@@ -124,6 +124,7 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -2094,6 +2095,13 @@ public class ImageServlet extends HttpServlet {
 	 * A share link is the exception and stays confined to the folder it was made for: a link sees
 	 * no more of the space than its folder, and that includes what it may learn about it.
 	 * </p>
+	 *
+	 * <p>
+	 * An inbox is answered as a read answers it (issue #216): addressed by a caller who may not see
+	 * it, the check is <code>404</code> with {@link Inboxes#NOT_FOUND}; a photograph in an inbox the
+	 * caller may not see that photograph of is present without a path, see
+	 * {@link #presentName(Caller, Path, String, Map)}.
+	 * </p>
 	 */
 	private void checkUploads(Context context) throws IOException {
 		Caller caller = _auth.caller(context.request());
@@ -2117,6 +2125,15 @@ public class ImageServlet extends HttpServlet {
 		if (!folder.isDirectory()) {
 			// Answered as a read answers it, see issues #176 and #215.
 			notFound(context, resourcePath);
+			return;
+		}
+		Inboxes.Visibility here = Inboxes.isInbox(folder)
+			? Inboxes.visibility(_auth, caller, resourcePath, Privacy.PRIVATE)
+			: Inboxes.Visibility.FULL;
+		if (here == Inboxes.Visibility.NONE) {
+			// An inbox the caller may not read is not there for them, see issues #135 and #216.
+			LOG.warning("Hiding the inbox from a hash check at '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
 			return;
 		}
 
@@ -2147,11 +2164,19 @@ public class ImageServlet extends HttpServlet {
 		if (!confined) {
 			result.setIndexed(_index.progress());
 		}
+		Map<String, Inboxes.Visibility> inboxes = new HashMap<>();
 		for (ContentHash asked : check.getHashes()) {
 			String name = nameByHash.get(asked.getHash());
-			if (name == null && !confined) {
+			if (name != null) {
+				if (here == Inboxes.Visibility.OWN && !Inboxes.contributedBy(folder, name, caller.subject())) {
+					name = "";
+				}
+			} else if (!confined) {
 				// Anywhere in the space, named by the path it is at, see PresentFile#name.
 				name = _index.pathOf(asked.getHash());
+				if (name != null) {
+					name = presentName(caller, resourcePath.getBasePath(), name, inboxes);
+				}
 			}
 			if (name != null) {
 				result.addPresent(PresentFile.create().setHash(asked.getHash()).setName(name));
@@ -2159,6 +2184,48 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * How a photograph the space's {@link HashIndex} found is named to the given caller, see issue
+	 * #216.
+	 *
+	 * <p>
+	 * By its path, unless it lies in an inbox the caller may not see that photograph of (issue
+	 * #135: a <code>view</code> member sees no inbox, a <code>contribute</code> member only their
+	 * own contributions). Then it is answered present <em>without a path</em> (an empty name), not
+	 * absent: absent would have the camera-roll sync upload the photograph again — a duplicate the
+	 * owner later finds — while "already in the library somewhere" tells the caller nothing they
+	 * do not hold already, the contents being their own.
+	 * </p>
+	 *
+	 * @param path
+	 *        The path relative to the space root the index answered.
+	 * @param inboxes
+	 *        What the caller sees of the folders asked so far in this request.
+	 */
+	private String presentName(Caller caller, Path spaceRoot, String path, Map<String, Inboxes.Visibility> inboxes) {
+		int slash = path.lastIndexOf('/');
+		if (slash < 0) {
+			// Directly in the space root, which is never an inbox.
+			return path;
+		}
+		String folderPath = path.substring(0, slash);
+		Inboxes.Visibility visibility = inboxes.computeIfAbsent(folderPath, key -> {
+			PathInfo folder = new PathInfo(spaceRoot, Paths.get(key));
+			return Inboxes.isInbox(folder.toFile())
+				? Inboxes.visibility(_auth, caller, folder, Privacy.PRIVATE)
+				: Inboxes.Visibility.FULL;
+		});
+		switch (visibility) {
+			case FULL:
+				return path;
+			case OWN:
+				return Inboxes.contributedBy(spaceRoot.resolve(folderPath).toFile(), path.substring(slash + 1),
+					caller.subject()) ? path : "";
+			default:
+				return "";
+		}
 	}
 
 	/**
