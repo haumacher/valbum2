@@ -795,8 +795,14 @@ public class ImageServlet extends HttpServlet {
 			// template of the space rides along, see issue #112.
 			AuthInfo info = _auth.authInfo(caller, _basePath, _space).setMapUrl(_mapUrl).setFaces(_faces.isEnabled());
 			if (info.getShare() != null && info.getShare().getContact() != null) {
-				// A recognised contact may add an address, where the server can mail a code (#199).
-				info.getShare().setMethods(addressProof().contactMethods());
+				// A recognised contact may add an address, where the server can mail a code (#199);
+				// whether they have one already decides whether the app offers it (#211).
+				info.getShare().setMethods(addressProof().contactMethods())
+					.setContactHasEmail(AddressProof.hasEmail(caller.getContact()));
+			}
+			if (caller.isPaired()) {
+				// What the share dialog may offer a link that is proven by an address (#211).
+				info.setProofMethods(addressProof().contactMethods());
 			}
 			serveJsonObject(response, info);
 			return;

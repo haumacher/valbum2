@@ -8,8 +8,10 @@ package de.haumacher.imageServer.shared.model;
  * one the space saved with that contact and the request names only which: the masked form
  * {@link IdentifyRequired#getAddresses()} showed, or its position there in {@link #getChoice()}; a typed
  * address is refused. On an open personal link, and for a contact who is already recognised and
- * adds an address, it is any address. The answer is an {@link EmailProofSent}, the same whether the
- * address is known to the space or not.
+ * adds an address, it is any address. On the group link (the own token of an addressed link, issue
+ * #211) it is a typed address too, and a code is mailed only where the space saved it with one of
+ * the link's recipients &mdash; the answer is the same either way. The answer is an {@link EmailProofSent},
+ * the same whether the address is known to the space or not.
  * </p>
  */
 public class EmailProof extends de.haumacher.msgbuf.data.AbstractDataObject {

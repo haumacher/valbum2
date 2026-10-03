@@ -148,7 +148,8 @@ public final class PersonalLinks {
 	 * <p>
 	 * The contact's addresses are masked, and named only where the token presented was the
 	 * contact's own and was opened before: whoever holds it is asked to prove one of them, by one of
-	 * the given methods (issue #199). A first open names the contact to confirm and no address at all.
+	 * the given methods (issue #199). A first open names the contact to confirm and no address at all,
+ * and the own token of an addressed link &mdash; the group link of issue #211 &mdash; names nobody.
 	 * </p>
 	 */
 	public static ErrorInfo identifyRequired(AuthService.Identification identification, List<ProofMethod> methods) {
@@ -156,7 +157,9 @@ public final class PersonalLinks {
 		IdentifyRequired result = IdentifyRequired.create()
 			.setFirstOpen(identification.isFirstOpen())
 			.setLabel(link.getLabel())
-			.setSharedBy(link.getCreatedBy());
+			.setSharedBy(link.getCreatedBy())
+			// The group link of issue #211 names no address: that would reveal the group.
+			.setGroup(AddressProof.isGroup(identification));
 		ContactStore.Contact contact = identification.getContact();
 		if (contact != null) {
 			result.setContact(AuthService.contactInfo(contact));

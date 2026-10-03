@@ -42,6 +42,9 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getMethods() */
 	private static final String METHODS__PROP = "methods";
 
+	/** @see #isContactHasEmail() */
+	private static final String CONTACT_HAS_EMAIL__PROP = "contactHasEmail";
+
 	private String _label = "";
 
 	private String _expires = "";
@@ -55,6 +58,8 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private de.haumacher.imageServer.shared.model.ContactInfo _contact = null;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> _methods = new java.util.ArrayList<>();
+
+	private boolean _contactHasEmail = false;
 
 	/**
 	 * Creates a {@link ShareInfo} instance.
@@ -270,6 +275,32 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_methods.remove(value);
 	}
 
+	/**
+	 * Whether the contact of this session has an e-mail address saved in the space, proven or not
+	 * (issue #211); <code>false</code> for every caller who is no contact.
+	 *
+	 * <p>
+	 * The app offers "Add your e-mail so we recognise you on other devices" only where this is
+	 * <code>false</code>. Nothing is said about the address itself, and nothing about anybody else.
+	 * </p>
+	 */
+	public final boolean isContactHasEmail() {
+		return _contactHasEmail;
+	}
+
+	/**
+	 * @see #isContactHasEmail()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareInfo setContactHasEmail(boolean value) {
+		internalSetContactHasEmail(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isContactHasEmail()} without chain call utility. */
+	protected final void internalSetContactHasEmail(boolean value) {
+		_contactHasEmail = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareInfo readShareInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareInfo result = new de.haumacher.imageServer.shared.model.ShareInfo();
@@ -309,6 +340,8 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(CONTACT_HAS_EMAIL__PROP);
+		out.value(isContactHasEmail());
 	}
 
 	@Override
@@ -335,6 +368,7 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
+			case CONTACT_HAS_EMAIL__PROP: setContactHasEmail(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}
