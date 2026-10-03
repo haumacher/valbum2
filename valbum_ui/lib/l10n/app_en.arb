@@ -4905,5 +4905,35 @@
   "@identifyGroupIntro": {
     "description": "Intro of the identification card of a group link (issue #211): the visitor types their own address and gets a code, or signs in. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
     "x-translated": "b7749790"
+  },
+  "addEmailOffer": "Add your e-mail so we recognise you on other devices.",
+  "@addEmailOffer": {
+    "description": "Banner of a personal link's session (issue #211) offered to a contact who has no e-mail address saved: adding one lets them prove who they are when they open the link on another device. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "c1aa7a57"
+  },
+  "addEmailOpen": "Add e-mail",
+  "@addEmailOpen": {
+    "description": "Button of the banner 'Add your e-mail' (issue #211) opening the dialog that adds the address.",
+    "x-translated": "196b4595"
+  },
+  "addEmailNotNow": "Not now",
+  "@addEmailNotNow": {
+    "description": "Button of the banner 'Add your e-mail' (issue #211) dismissing it; it is not offered again in this browser.",
+    "x-translated": "b2d7f039"
+  },
+  "addEmailTitle": "Add your e-mail",
+  "@addEmailTitle": {
+    "description": "Title of the dialog adding an e-mail address to the visitor of a personal link (issue #211). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "c8acd418"
+  },
+  "addEmailExplanation": "We send a code to this address. Once you have confirmed it, you can open your links on other devices with it.",
+  "@addEmailExplanation": {
+    "description": "Explanation in the dialog adding an e-mail address (issue #211): a code is mailed, and the confirmed address later proves who the visitor is on another device. Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "e6174dd0"
+  },
+  "addEmailDone": "Your e-mail address is saved.",
+  "@addEmailDone": {
+    "description": "Message after an e-mail address was added and confirmed in the dialog 'Add your e-mail' (issue #211). Address the reader formally, as the whole app does (German: 'Sie', never 'du').",
+    "x-translated": "d0ff8e0a"
   }
 }

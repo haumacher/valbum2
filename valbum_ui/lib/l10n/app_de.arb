@@ -750,6 +750,7 @@
   "shareMessageBody": "Hallo {name},\n\nhier sind die Fotos aus dem {album}:\n{link}\n",
   "launchFailed": "Auf diesem Gerät lässt sich dieser Link mit keiner Anwendung öffnen.",
   "linkPersonalOpen": "Personalisiert",
+  "linkRecipientCount": "Empfänger: {count}",
   "sendAgain": "Erneut senden",
   "sendAgainHeading": "Ein neuer Link für {name}",
   "sendAgainNote": "Der frühere Link dieses Empfängers funktioniert nicht mehr.",
@@ -761,5 +762,10 @@
   "groupLinkWithoutEmail": "Diese Empfänger haben keine E-Mail-Adresse, sodass der Gruppenlink sie nicht erkennen kann. Senden Sie ihnen einen eigenen Link:",
   "shareMessageBodyGroup": "Hallo,\n\nhier sind die Fotos aus dem {album}:\n{link}\n",
   "identifyGroupIntro": "Dieser Link wurde an eine Gruppe gesendet. Bestätigen Sie Ihre E-Mail-Adresse, um ihn zu öffnen.",
-  "linkRecipientCount": "Empfänger: {count}"
+  "addEmailOffer": "Fügen Sie Ihre E-Mail-Adresse hinzu, damit wir Sie auf anderen Geräten wiedererkennen können.",
+  "addEmailOpen": "E-Mail-Adresse hinzufügen",
+  "addEmailNotNow": "Jetzt nicht",
+  "addEmailTitle": "Fügen Sie Ihre E-Mail-Adresse hinzu",
+  "addEmailExplanation": "Wir senden einen Code an diese Adresse. Sobald Sie diesen bestätigt haben, können Sie damit Ihre Links auf anderen Geräten öffnen.",
+  "addEmailDone": "Ihre E-Mail-Adresse wurde gespeichert."
 }

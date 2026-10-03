@@ -13,6 +13,7 @@ import 'package:valbum_ui/about.dart' as about;
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/recipient_chooser.dart';
 import 'package:valbum_ui/recipient_send.dart' as send;
+import 'package:valbum_ui/resource.dart';
 
 import 'util/l10n.dart';
 
@@ -63,9 +64,9 @@ String createdAnswer(List<Map<String, Object>> recipients) => jsonEncode({
 class Server {
   final requests = <http.Request>[];
 
-  /// What the two proof probes answer: 501 without a mail account or
-  /// provider, 400 ("not here") once there is one.
-  int proof = 501;
+  /// Whether the caller's `?type=auth` names a proof method
+  /// (`AuthInfo.proofMethods`, #211), handed to the dialog as its caller does.
+  bool mayProve = false;
 
   String created = createdAnswer(const []);
 
@@ -81,14 +82,17 @@ class Server {
     if (type == "contacts") {
       return json(contactsAnswer);
     }
-    if (action == "prove-email" || action == "oidc-start") {
-      return refusal(proof, "probe");
-    }
     if (action == "share" || action == "resend") {
       return json(created);
     }
     return refusal(404, "No such resource");
   }
+
+  /// The proof requests sent: the dialog learns the methods from
+  /// `?type=auth` and never probes for them.
+  Iterable<http.Request> get proofRequests => requests.where((request) =>
+      const ["prove-email", "verify-email", "oidc-start"]
+          .contains(request.url.queryParameters["action"]));
 
   Map<String, dynamic> bodyOf(String action) => jsonDecode(requests
       .lastWhere((request) => request.url.queryParameters["action"] == action)
@@ -120,12 +124,14 @@ Future<void> pumpDialog(
           path: const ["2024", "Zoo"],
           label: "Zoo",
           isWeb: isWeb,
+          mayProveAddresses: server.mayProve,
         ),
       ),
       locale: locale,
     ),
   ));
   await tester.pumpAndSettle();
+  addTearDown(() => expect(server.proofRequests, isEmpty));
 }
 
 Future<void> tapKey(WidgetTester tester, String key) async {
@@ -183,7 +189,7 @@ void main() {
 
     testWidgets('personalized is disabled with its reason without a proof',
         (tester) async {
-      var server = Server()..proof = 501;
+      var server = Server()..mayProve = false;
       await pumpDialog(tester, server);
       await tapKey(tester, "new-link");
       await tapKey(tester, "link-type");
@@ -203,7 +209,7 @@ void main() {
     testWidgets('personalized creates a personal link without recipients',
         (tester) async {
       var server = Server()
-        ..proof = 400
+        ..mayProve = true
         ..created = '{"link": {"id": "L2", "type": "PERSONAL"}, '
             '"token": "t2", "url": "/valbum/s/t2/"}';
       await pumpDialog(tester, server);
@@ -216,6 +222,68 @@ void main() {
       expect(body["type"], "PERSONAL");
       expect(body["recipients"] ?? const [], isEmpty);
       expect(find.text("http://server/valbum/s/t2/"), findsOneWidget);
+    });
+
+    testWidgets(
+        'the proof methods are the ones ?type=auth names the caller, '
+        'and nothing is probed', (tester) async {
+      tester.view.physicalSize = const Size(1200, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      for (var (methods, offered) in const [
+        (<String>[], false),
+        (["mail-code"], true),
+        (["oidc:google"], true),
+      ]) {
+        var server = Server();
+        var caller = CallerInfo.of(AuthInfo(
+          userName: "alice",
+          role: "edit",
+          mayShare: true,
+          proofMethods: [
+            for (var name in methods)
+              ProofMethod(name: name, label: name == "oidc:google" ? "G" : ""),
+          ],
+        ));
+        expect(caller.proofMethods, methods);
+        expect(caller.mayProveAddresses, offered);
+        await tester.pumpWidget(OfflineScope(
+          state: OfflineState(),
+          cache: MemoryOfflineCache(),
+          child: localizedApp(CallerScope(
+            caller: caller,
+            child: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => shareLinksOf(
+                    context: context,
+                    client: VAlbumClient(
+                      dataUrl: dataUrl,
+                      token: "device",
+                      httpClient: MockClient(
+                          (request) async => server.answer(request)),
+                    ),
+                    path: const ["2024", "Zoo"],
+                  ),
+                  child: const Text("share"),
+                ),
+              ),
+            ),
+          )),
+        ));
+        await tester.tap(find.text("share"));
+        await tester.pumpAndSettle();
+        await tapKey(tester, "new-link");
+        await tapKey(tester, "link-type");
+        expect(find.byKey(const Key("link-type-reason")),
+            offered ? findsNothing : findsOneWidget,
+            reason: "$methods");
+        await tester.tap(find.text(testL10n.linkTypeAnonymous).last);
+        await tester.pumpAndSettle();
+        expect(server.proofRequests, isEmpty);
+        await tapKey(tester, "link-cancel");
+        await tapKey(tester, "share-link-close");
+      }
     });
 
     testWidgets('only selected contacts shows the chooser and needs one',
@@ -438,7 +506,7 @@ void main() {
     testWidgets(
         'one link for the group: one mail in BCC, and own links for '
         'those without an address', (tester) async {
-      var server = Server()..proof = 400;
+      var server = Server()..mayProve = true;
       await create(tester, server);
       await chooseFrom(tester, "link-delivery", testL10n.linkDeliveryGroup);
       await tapKey(tester, "link-create");
@@ -456,7 +524,7 @@ void main() {
     });
 
     testWidgets('the group choice needs a proof on the server', (tester) async {
-      var server = Server()..proof = 501;
+      var server = Server()..mayProve = false;
       await create(tester, server);
       await tapKey(tester, "link-delivery");
       expect(find.byKey(const Key("link-type-reason")), findsOneWidget);
