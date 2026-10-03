@@ -66,17 +66,18 @@ const Duration _snapBackDuration = Duration(milliseconds: 150);
 /// issue #101 must produce the *same* [ImageProvider]: an [ImageCache] key
 /// that differs by a hair turns a prefetched neighbour into a second download.
 ///
-/// A HEIC/HEIF original is never handed to the image codec (issue #186):
-/// Chrome, Firefox and the desktop cannot decode it, so the caller who may
-/// have the original is shown the server's **display rendition** instead
-/// (`?type=display`, a full-size JPEG asking the same `download` right), on
-/// every platform alike. "Download original" still saves the HEIC itself.
+/// A HEIC/HEIF, AVIF or JPEG XL original is never handed to the image codec
+/// (issues #186, #193, [displayRenditionExtensions]): the platform cannot be
+/// expected to decode it, so the caller who may have the original is shown the
+/// server's **display rendition** instead (`?type=display`, a full-size JPEG
+/// asking the same `download` right), on every platform alike. "Download
+/// original" still saves the original itself.
 ImageProvider viewerPicture(
   VAlbumClient client,
   String imageUrl, {
   required bool mayDownload,
 }) {
-  if (mayDownload && isHeifName(imageUrl)) {
+  if (mayDownload && needsDisplayRendition(imageUrl)) {
     return NetworkImage(client.displayUrl(imageUrl),
         headers: client.authHeaders);
   }
@@ -1325,8 +1326,9 @@ class ImageViewState extends State<ImageView>
     }
     var image = part;
     var original = picture is NetworkImage;
-    // A HEIC is shown by its display rendition, never by the original (#186).
-    var display = original && isHeifName(dataUrl);
+    // A HEIC, an AVIF or a JPEG XL picture is shown by its display rendition,
+    // never by the original (#186, #193).
+    var display = original && needsDisplayRendition(dataUrl);
     var url = display
         ? client.displayUrl(dataUrl)
         : original
@@ -1339,7 +1341,8 @@ class ImageViewState extends State<ImageView>
       [
         display
             ? "Tried: the display rendition (?type=display), because the "
-                "original is a HEIC/HEIF the platform cannot be expected to decode"
+                "original is a HEIC/HEIF, AVIF or JPEG XL picture the platform "
+                "cannot be expected to decode"
             : original
                 ? "Tried: the original, because this caller may download it"
                 : "Tried: the preview (?type=tn), because this caller may not "

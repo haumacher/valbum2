@@ -184,7 +184,7 @@ const Map<String, String> allowedLiterals = {
   r"Picture could not be shown: ${} in ${}": "diagnostics log",
   "Tried: the original, because this caller may download it": "diagnostics log",
   "Tried: the preview (?type=tn), because this caller may not download the original": "diagnostics log",
-  "Tried: the display rendition (?type=display), because the original is a HEIC/HEIF the platform cannot be expected to decode": "diagnostics log",
+  "Tried: the display rendition (?type=display), because the original is a HEIC/HEIF, AVIF or JPEG XL picture the platform cannot be expected to decode": "diagnostics log",
   r"URL: ${}": "diagnostics log",
   r"Lookup ${} ${}: ${}": "diagnostics log",
   r"Lookup ${} ${} failed: ${}": "diagnostics log",

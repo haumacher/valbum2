@@ -13,6 +13,8 @@ import com.drew.metadata.png.PngDirectory;
 import com.drew.metadata.webp.WebpDirectory;
 import de.haumacher.imageServer.cache.ImageData;
 import de.haumacher.imageServer.cache.VideoProbe;
+import de.haumacher.imageServer.coded.CodedPicture;
+import de.haumacher.imageServer.coded.CodedPictures;
 import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.heif.HeifDecoder;
 import de.haumacher.imageServer.heif.HeifFile;
@@ -87,6 +89,10 @@ public class PreviewCache {
 
 	private static final String HEIF = "heif";
 
+	private static final String AVIF = "avif";
+
+	private static final String JXL = "jxl";
+
 	private static final String WEBP = "webp";
 
 	private static final String GIF = "gif";
@@ -103,7 +109,7 @@ public class PreviewCache {
 	 * refused at the upload and never listed.
 	 */
 	public static final Set<String> SUPPORTED_EXTENSIONS =
-		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, WEBP, GIF, HEIC, HEIF, MP4, MOV, M4V, THREE_GP, MTS, M2TS, AVI,
+		Collections.unmodifiableSet(new HashSet<>(Arrays.asList(JPG, JPEG, PNG, WEBP, GIF, HEIC, HEIF, AVIF, JXL, MP4, MOV, M4V, THREE_GP, MTS, M2TS, AVI,
 			MKV, WEBM)));
 
 	/**
@@ -336,10 +342,11 @@ public class PreviewCache {
 
 	/**
 	 * Whether the given original has a display rendition: a format no browser and no app can be
-	 * expected to decode, which is a HEIC/HEIF photograph and nothing else (issue #186).
+	 * expected to decode, which is a HEIC/HEIF photograph (issue #186), an AVIF or a JPEG XL picture
+	 * (issue #193), see {@link CodedPictures}, and nothing else.
 	 */
 	public static boolean needsDisplay(File file) {
-		return HeifFile.isHeif(file);
+		return CodedPictures.handles(file);
 	}
 
 	/**
@@ -364,11 +371,11 @@ public class PreviewCache {
 		if (!upToDate(file, display)) {
 			generate(file, display, tmp -> {
 				try {
-					HeifFile heif = HeifFile.read(file);
+					CodedPicture heif = CodedPictures.read(file);
 					int width = heif.getDisplayWidth();
 					int height = heif.getDisplayHeight();
 					double scale = Math.min(1.0, ((double) DISPLAY_LONG_SIDE) / Math.max(width, height));
-					HeifDecoder.writeUprightJpeg(file, heif, Math.max(1, (int) Math.round(width * scale)),
+					heif.writeUprightJpeg(file, Math.max(1, (int) Math.round(width * scale)),
 						Math.max(1, (int) Math.round(height * scale)), tmp);
 				} catch (IOException ex) {
 					throw new PreviewException("Cannot create the display rendition of '" + file.getName() + "': "
@@ -406,6 +413,8 @@ public class PreviewCache {
 				break;
 			case HEIC:
 			case HEIF:
+			case AVIF:
+			case JXL:
 				try {
 					createHeifPreview(file, tmp);
 				} catch (IOException ex) {
@@ -655,9 +664,15 @@ public class PreviewCache {
 	 * them back into the raw raster by the same table, so both frames agree for a HEIC as for a
 	 * JPEG (issue #142).
 	 * </p>
+	 *
+	 * <p>
+	 * An AVIF takes the same path with the program's AV1 decoder, and a JPEG XL picture is decoded
+	 * by {@link de.haumacher.imageServer.jxl.JxlFile}, which samples the whole picture down to the
+	 * raster asked for (issue #193); both are a {@link CodedPicture}.
+	 * </p>
 	 */
 	private static void createHeifPreview(File file, File previewCache) throws IOException {
-		HeifFile heif = HeifFile.read(file);
+		CodedPicture heif = CodedPictures.read(file);
 		Orientation orientation = heif.getOrientation();
 		int displayWidth = heif.getDisplayWidth();
 		int displayHeight = heif.getDisplayHeight();
@@ -669,7 +684,7 @@ public class PreviewCache {
 		int rawWidth = swapped ? previewHeight : previewWidth;
 		int rawHeight = swapped ? previewWidth : previewHeight;
 
-		BufferedImage raw = HeifDecoder.decodeRaw(file, heif, rawWidth, rawHeight);
+		BufferedImage raw = heif.decodeRaw(file, rawWidth, rawHeight);
 		BufferedImage copy = new BufferedImage(previewWidth, previewHeight, BufferedImage.TYPE_INT_RGB);
 		Graphics2D g = copy.createGraphics();
 		try {

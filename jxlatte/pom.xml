@@ -1,0 +1,57 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<!--
+		JXLatte, the pure-Java JPEG XL decoder of Leo Izen (MIT, see LICENSE and README.md),
+		vendored unchanged because it is published on no Maven repository (issue #193).
+	-->
+	<artifactId>jxlatte</artifactId>
+	<name>JXLatte (vendored)</name>
+
+	<parent>
+		<groupId>de.haumacher</groupId>
+		<artifactId>valbum2</artifactId>
+		<version>2.10.0-SNAPSHOT</version>
+	</parent>
+
+	<licenses>
+		<license>
+			<name>MIT License</name>
+			<url>https://opensource.org/licenses/MIT</url>
+			<distribution>repo</distribution>
+		</license>
+	</licenses>
+
+	<properties>
+		<!-- Foreign code, kept exactly as upstream wrote it: no lint, no format. -->
+		<spotless.check.skip>true</spotless.check.skip>
+		<spotless.apply.skip>true</spotless.apply.skip>
+	</properties>
+
+	<build>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+			</resource>
+			<!-- The MIT licence asks its notice to travel with every copy, the server's JAR included. -->
+			<resource>
+				<directory>${basedir}</directory>
+				<includes>
+					<include>LICENSE</include>
+				</includes>
+				<targetPath>META-INF/jxlatte</targetPath>
+			</resource>
+		</resources>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<showWarnings>false</showWarnings>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+</project>

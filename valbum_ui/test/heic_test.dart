@@ -37,10 +37,21 @@ void main() {
     });
 
     test('knows a HEIC by its extension in any case', () {
-      expect(isHeifName("a.heic"), isTrue);
-      expect(isHeifName("a.HeIf"), isTrue);
-      expect(isHeifName("a.jpg"), isFalse);
-      expect(isHeifName("heic"), isFalse);
+      expect(needsDisplayRendition("a.heic"), isTrue);
+      expect(needsDisplayRendition("a.HeIf"), isTrue);
+      expect(needsDisplayRendition("a.jpg"), isFalse);
+      expect(needsDisplayRendition("heic"), isFalse);
+    });
+
+    test('shows an AVIF and a JPEG XL by the display rendition (#193)', () {
+      var client = VAlbumClient(dataUrl: "http://server/valbum/data");
+      for (var name in ["x.avif", "X.AVIF", "y.jxl", "Y.JXL"]) {
+        expect(needsDisplayRendition(name), isTrue);
+        var picture = viewerPicture(client, "$base/$name", mayDownload: true);
+        expect((picture as NetworkImage).url, "$base/$name?type=display");
+        expect(viewerPicture(client, "$base/$name", mayDownload: false),
+            isA<ThumbnailImage>());
+      }
     });
   });
 

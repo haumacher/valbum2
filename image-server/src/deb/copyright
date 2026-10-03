@@ -20,5 +20,7 @@ License: AGPL-3.0-or-later
  and in the LICENSE file of the source repository.
 Comment:
  The libraries bundled in /usr/share/valbum/valbum.jar (Jetty, FFmpeg, OpenCV,
- the face models and others) keep their own licences; the face models' sources,
- hashes and licences are listed in the NOTICE.txt beside them inside the jar.
+ the JPEG XL decoder JXLatte (MIT, its notice in META-INF/jxlatte/LICENSE inside
+ the jar), the face models and others) keep their own licences; the face models'
+ sources, hashes and licences are listed in the NOTICE.txt beside them inside the
+ jar.

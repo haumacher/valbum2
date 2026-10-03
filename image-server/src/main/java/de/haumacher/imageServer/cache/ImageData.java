@@ -24,7 +24,8 @@ import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 import com.drew.metadata.png.PngDirectory;
 import com.drew.metadata.webp.WebpDirectory;
 import com.drew.metadata.xmp.XmpDirectory;
-import de.haumacher.imageServer.heif.HeifFile;
+import de.haumacher.imageServer.coded.CodedPicture;
+import de.haumacher.imageServer.coded.CodedPictures;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.GeoLocation;
 import de.haumacher.imageServer.shared.model.ImageKind;
@@ -172,7 +173,8 @@ public class ImageData extends ImagePart {
 			throws ImageProcessingException, IOException, MetadataException {
 		ImageData result = new ImageData(album, file, file.getName());
 
-		if (HeifFile.isHeif(file)) {
+		if (CodedPictures.handles(file)) {
+			// HEIC/HEIF (#186), AVIF and JPEG XL (#193).
 			return analyzeHeif(result, file, more, zone);
 		}
 		if (VideoProbe.handles(file.getName())) {
@@ -361,12 +363,12 @@ public class ImageData extends ImagePart {
 	 * Describes a HEIC/HEIF photograph, see issue #186.
 	 *
 	 * <p>
-	 * The container is read by {@link HeifFile}, never metadata-extractor's own HEIF reader (which
+	 * The container is read by {@link de.haumacher.imageServer.heif.HeifFile}, never metadata-extractor's own HEIF reader (which
 	 * answers the size of whichever <code>ispe</code> it meets first, a tile's or a thumbnail's);
 	 * its EXIF and XMP items are handed to the very readers a JPEG's are, so the date, the camera,
 	 * the position and the face import of issue #129 are read as they are for a JPEG. The size is
 	 * the picture as shown, the container's <code>irot</code>/<code>imir</code> applied; the EXIF
-	 * orientation inside is not read, see {@link HeifFile#getOrientation()}. Nothing is decoded,
+	 * orientation inside is not read, see {@link de.haumacher.imageServer.heif.HeifFile#getOrientation()}. Nothing is decoded,
 	 * so a server that cannot decode HEVC still lists the photograph.
 	 * </p>
 	 */
@@ -399,7 +401,7 @@ public class ImageData extends ImagePart {
 
 	private static ImageData analyzeHeif(ImageData result, File file, Analysis more, ZoneId zone)
 			throws IOException {
-		HeifFile heif = HeifFile.read(file);
+		CodedPicture heif = CodedPictures.read(file);
 		Metadata metadata = heif.metadata();
 		result.setDate(result.date(metadata, file, zone == null ? ZoneId.systemDefault() : zone).getTime());
 		result.setCamera(camera(metadata));

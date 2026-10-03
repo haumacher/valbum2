@@ -354,6 +354,21 @@
 			<version>3.15.2</version>
 		</dependency>
 
+		<!-- The JPEG XL decoder of issue #193: JXLatte (MIT), pure Java, vendored as the module
+		     'jxlatte' because no Maven repository carries it; and the Brotli decoder (MIT, pure
+		     Java) for the compressed 'brob' metadata boxes a JPEG XL file may carry its Exif and
+		     XMP in. Neither brings a native library. -->
+		<dependency>
+			<groupId>de.haumacher</groupId>
+			<artifactId>jxlatte</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.brotli</groupId>
+			<artifactId>dec</artifactId>
+			<version>0.1.2</version>
+		</dependency>
+
 		<dependency>
 		    <groupId>org.apache.commons</groupId>
 		    <artifactId>commons-fileupload2-jakarta</artifactId>

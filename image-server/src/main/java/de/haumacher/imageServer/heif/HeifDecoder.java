@@ -3,8 +3,11 @@
  */
 package de.haumacher.imageServer.heif;
 
+import de.haumacher.imageServer.PictureReader;
+import de.haumacher.imageServer.PreviewCache;
 import de.haumacher.imageServer.VideoRenditions;
 import de.haumacher.imageServer.shared.model.Orientation;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.io.BufferedReader;
@@ -18,14 +21,22 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 
 /**
- * Decodes the pixels of a HEIC/HEIF photograph with the FFmpeg program the server already bundles,
- * see issue #186.
+ * Decodes the pixels of a HEIC/HEIF photograph (issue #186) or an AVIF picture (issue #193) with
+ * the FFmpeg program the server already bundles.
  *
  * <p>
  * Neither ImageIO nor the bundled FFmpeg libraries read HEIF (FFmpeg demuxes it from 7.1 on, the
@@ -46,6 +57,20 @@ import java.util.logging.Logger;
  * path); its <code>hevc</code> decoder is part of the LGPL build on every packaged platform, so no
  * library is added to any package. Where the program cannot be run, {@link #unavailability()} says
  * why and every decode throws with that reason; the server goes on listing the photograph.
+ * </p>
+ *
+ * <p>
+ * <b>AVIF.</b> An AVIF is the same container with AV1 coded items: the tiles are handed over as one
+ * low-overhead OBU stream (<code>-f obu</code>), each tile a temporal unit of its own (a temporal
+ * delimiter, the configuration OBUs of its <code>av1C</code>, its OBUs), to a software AV1 decoder
+ * of the program — <code>libdav1d</code> or <code>libaom-av1</code>, whichever it has; the native
+ * <code>av1</code> decoder decodes only through a hardware accelerator and is never asked. The
+ * FFmpeg 5.1 of the JavaCPP 1.5.8 presets the packages carry has neither, on any packaged platform
+ * (its build enables no libaom and no dav1d; the presets enable libaom from 1.5.9 on), so there
+ * {@link #av1Unavailability()} says so and an AVIF is listed, kept and downloaded, and its preview
+ * answers that reason. An alpha channel (<code>auxl</code>) is decoded the same way into a second
+ * raster and the picture shown on {@link PreviewCache#TRANSPARENT_BACKGROUND}, as issue #190 shows
+ * transparency; a 10 or 12 bit picture is brought to 8 bits by the program's <code>scale</code>.
  * </p>
  */
 public final class HeifDecoder {
@@ -71,7 +96,16 @@ public final class HeifDecoder {
 
 	private static volatile String _unavailable;
 
+	/** Why AV1 cannot be decoded, <code>null</code> where it can; asked with {@link #_unavailable}. */
+	private static volatile String _av1Unavailable;
+
+	/** The software AV1 decoder of the program, <code>null</code> without one. */
+	private static volatile String _av1Decoder;
+
 	private static volatile boolean _checked;
+
+	/** The software AV1 decoders FFmpeg may carry, the preferred first. */
+	private static final List<String> AV1_DECODERS = List.of("libdav1d", "libaom-av1");
 
 	private static final Object LOCK = new Object();
 
@@ -89,6 +123,8 @@ public final class HeifDecoder {
 		synchronized (LOCK) {
 			_locator = locator == null ? BUNDLED : locator;
 			_unavailable = null;
+			_av1Unavailable = null;
+			_av1Decoder = null;
 			_checked = false;
 		}
 	}
@@ -102,27 +138,67 @@ public final class HeifDecoder {
 	 * </p>
 	 */
 	public static String unavailability() {
+		check();
+		return _unavailable;
+	}
+
+	/**
+	 * Why AVIF pictures cannot be decoded here, <code>null</code> when they can: the program is
+	 * there with a software AV1 decoder or it is not, see the class comment.
+	 */
+	public static String av1Unavailability() {
+		check();
+		return _av1Unavailable;
+	}
+
+	/** Why the given picture cannot be decoded here, <code>null</code> when it can. */
+	public static String unavailability(HeifFile heif) {
+		return heif.isAv1() ? av1Unavailability() : unavailability();
+	}
+
+	private static void check() {
 		if (_checked) {
-			return _unavailable;
+			return;
 		}
 		synchronized (LOCK) {
 			if (!_checked) {
+				String hevc;
+				String av1;
+				String av1Decoder = null;
 				try {
 					String program = program();
-					if (!hasHevcDecoder(program)) {
-						throw new IOException("The bundled FFmpeg has no HEVC decoder.");
+					Set<String> decoders = decoders(program);
+					if (decoders.contains("hevc")) {
+						hevc = null;
+						LOG.info("HEIC/HEIF photographs are decoded with '" + program + "'.");
+					} else {
+						hevc = "HEIC/HEIF photographs cannot be decoded on this server: The bundled FFmpeg has no HEVC decoder.";
 					}
-					LOG.info("HEIC/HEIF photographs are decoded with '" + program + "'.");
-					_unavailable = null;
+					for (String candidate : AV1_DECODERS) {
+						if (decoders.contains(candidate)) {
+							av1Decoder = candidate;
+							break;
+						}
+					}
+					if (av1Decoder != null) {
+						av1 = null;
+						LOG.info("AVIF pictures are decoded with '" + program + "' (" + av1Decoder + ").");
+					} else {
+						av1 = "AVIF pictures cannot be decoded on this server: the bundled FFmpeg has no software AV1 decoder (libdav1d or libaom-av1).";
+						LOG.warning(av1);
+					}
 				} catch (Throwable ex) {
 					// Every Throwable: a missing native library arrives as an Error.
 					String message = ex.getMessage() == null ? ex.getClass().getName() : ex.getMessage();
-					LOG.log(Level.WARNING, "HEIC/HEIF photographs cannot be decoded: " + message, ex);
-					_unavailable = "HEIC/HEIF photographs cannot be decoded on this server: " + message;
+					LOG.log(Level.WARNING, "HEIC/HEIF and AVIF photographs cannot be decoded: " + message, ex);
+					hevc = "HEIC/HEIF photographs cannot be decoded on this server: " + message;
+					av1 = "AVIF pictures cannot be decoded on this server: " + message;
 				}
+				_unavailable = hevc;
+				_av1Unavailable = av1;
+				_av1Decoder = av1Decoder;
 				_checked = true;
 			}
-			return _unavailable;
 		}
 	}
 
@@ -140,19 +216,20 @@ public final class HeifDecoder {
 		}
 	}
 
-	private static boolean hasHevcDecoder(String program) throws IOException {
+	/** The video decoders the program has, by name. */
+	private static Set<String> decoders(String program) throws IOException {
 		ProcessBuilder builder = VideoRenditions.program(List.of(program, "-hide_banner", "-decoders"));
 		builder.redirectErrorStream(true);
 		Process process = builder.start();
-		boolean found = false;
+		Set<String> found = new HashSet<>();
 		try (BufferedReader reader =
 			new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
 			String line;
 			while ((line = reader.readLine()) != null) {
 				// " VFS..D hevc                 HEVC (High Efficiency Video Coding)"
 				String[] columns = line.trim().split("\\s+");
-				if (columns.length >= 2 && columns[0].startsWith("V") && "hevc".equals(columns[1])) {
-					found = true;
+				if (columns.length >= 2 && columns[0].length() == 6 && columns[0].startsWith("V")) {
+					found.add(columns[1]);
 				}
 			}
 		}
@@ -180,16 +257,49 @@ public final class HeifDecoder {
 	public static BufferedImage decodeRaw(File file, HeifFile heif, int left, int top, int width, int height,
 			int outWidth, int outHeight) throws IOException {
 		check(left, top, width, height, heif);
-		List<String> command = command(heif, left, top, width, height, outWidth, outHeight, null);
+		BufferedImage result = new BufferedImage(outWidth, outHeight, BufferedImage.TYPE_3BYTE_BGR);
+		byte[] pixels = ((DataBufferByte) result.getRaster().getDataBuffer()).getData();
+		decodePlane(file, heif, heif.getImage(), left, top, width, height, outWidth, outHeight, pixels, false);
+		HeifFile.Plane alpha = heif.getAlpha();
+		if (alpha != null) {
+			byte[] coverage = new byte[outWidth * outHeight];
+			decodePlane(file, heif, alpha, left, top, width, height, outWidth, outHeight, coverage, true);
+			onBackground(pixels, coverage, heif.isPremultiplied());
+		}
+		return result;
+	}
+
+	private static void decodePlane(File file, HeifFile heif, HeifFile.Plane plane, int left, int top, int width,
+			int height, int outWidth, int outHeight, byte[] pixels, boolean gray) throws IOException {
+		List<String> command = command(heif, plane, left, top, width, height, outWidth, outHeight, null, gray);
 		command.add("-f");
 		command.add("rawvideo");
 		command.add("-pix_fmt");
-		command.add("bgr24");
+		command.add(gray ? "gray" : "bgr24");
 		command.add("pipe:1");
-		BufferedImage result = new BufferedImage(outWidth, outHeight, BufferedImage.TYPE_3BYTE_BGR);
-		byte[] pixels = ((DataBufferByte) result.getRaster().getDataBuffer()).getData();
-		run(file, heif, command, pixels);
-		return result;
+		run(file, heif, plane, command, pixels);
+	}
+
+	/**
+	 * Shows the given BGR pixels on {@link PreviewCache#TRANSPARENT_BACKGROUND} by the given alpha
+	 * values, one per pixel; colours premultiplied with their alpha where said so.
+	 */
+	static void onBackground(byte[] bgr, byte[] alpha, boolean premultiplied) {
+		int background = PreviewCache.TRANSPARENT_BACKGROUND.getRGB();
+		int[] ground = { background & 0xFF, (background >> 8) & 0xFF, (background >> 16) & 0xFF };
+		for (int n = 0; n < alpha.length; n++) {
+			int a = alpha[n] & 0xFF;
+			if (a == 255) {
+				continue;
+			}
+			for (int c = 0; c < 3; c++) {
+				int at = 3 * n + c;
+				int value = bgr[at] & 0xFF;
+				int shown = premultiplied ? value + ground[c] * (255 - a) / 255
+					: (value * a + ground[c] * (255 - a) + 127) / 255;
+				bgr[at] = (byte) Math.min(255, shown);
+			}
+		}
 	}
 
 	/**
@@ -213,8 +323,12 @@ public final class HeifDecoder {
 	/** Writes the given photograph turned by the given orientation, see the method above. */
 	static void writeUprightJpeg(File file, HeifFile heif, Orientation orientation, int outWidth, int outHeight,
 			File target) throws IOException {
-		List<String> command = command(heif, 0, 0, heif.getRawWidth(), heif.getRawHeight(), outWidth, outHeight,
-			orientation);
+		if (heif.getAlpha() != null) {
+			writeComposedJpeg(file, heif, orientation, outWidth, outHeight, target);
+			return;
+		}
+		List<String> command = command(heif, heif.getImage(), 0, 0, heif.getRawWidth(), heif.getRawHeight(),
+			outWidth, outHeight, orientation, false);
 		command.add("-c:v");
 		command.add("mjpeg");
 		command.add("-q:v");
@@ -223,9 +337,61 @@ public final class HeifDecoder {
 		command.add("mjpeg");
 		command.add("-y");
 		command.add(target.getAbsolutePath());
-		run(file, heif, command, null);
+		run(file, heif, heif.getImage(), command, null);
 		if (!target.isFile() || target.length() == 0) {
 			throw new IOException("FFmpeg wrote no picture of '" + file.getName() + "'.");
+		}
+	}
+
+	/** What a pixel of the display rendition of a picture with alpha holds in the heap. */
+	private static final int COMPOSED_BYTES_PER_PIXEL = 8;
+
+	/**
+	 * The display rendition of a picture with an alpha channel: the program cannot show one raster
+	 * on another fed through one pipe, so the colour and the alpha raster are decoded at the size
+	 * asked for, composed and turned here, and written as a JPEG. What that holds in the heap — a
+	 * raster of the display size three times over — is reserved from the decode budget of
+	 * {@link PictureReader} (issue #207).
+	 */
+	private static void writeComposedJpeg(File file, HeifFile heif, Orientation orientation, int outWidth,
+			int outHeight, File target) throws IOException {
+		boolean swapped = HeifFile.swaps(orientation);
+		int rawWidth = swapped ? outHeight : outWidth;
+		int rawHeight = swapped ? outWidth : outHeight;
+		try (PictureReader.Reservation reservation = PictureReader.reserve(file.getName(), "a picture with transparency",
+			outWidth, outHeight, ((long) outWidth) * outHeight * COMPOSED_BYTES_PER_PIXEL)) {
+			BufferedImage raw = decodeRaw(file, heif, 0, 0, heif.getRawWidth(), heif.getRawHeight(), rawWidth,
+				rawHeight);
+			BufferedImage upright = new BufferedImage(outWidth, outHeight, BufferedImage.TYPE_3BYTE_BGR);
+			Graphics2D g = upright.createGraphics();
+			try {
+				g.setTransform(PreviewCache.orientationTransform(orientation, rawWidth, rawHeight));
+				g.drawImage(raw, null, 0, 0);
+			} finally {
+				g.dispose();
+			}
+			writeJpeg(upright, target);
+		}
+	}
+
+	/** Writes the given raster as a JPEG of the quality of the program's <code>-q:v 2</code>. */
+	public static void writeJpeg(BufferedImage image, File target) throws IOException {
+		Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpeg");
+		if (!writers.hasNext()) {
+			throw new IOException("No JPEG writer.");
+		}
+		ImageWriter writer = writers.next();
+		try (ImageOutputStream out = ImageIO.createImageOutputStream(target)) {
+			if (out == null) {
+				throw new IOException("Cannot write '" + target + "'.");
+			}
+			writer.setOutput(out);
+			ImageWriteParam param = writer.getDefaultWriteParam();
+			param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+			param.setCompressionQuality(0.92f);
+			writer.write(null, new IIOImage(image, null, null), param);
+		} finally {
+			writer.dispose();
 		}
 	}
 
@@ -243,9 +409,9 @@ public final class HeifDecoder {
 	 * @param turn
 	 *        The orientation to apply after the crop, <code>null</code> for the raw raster.
 	 */
-	static List<String> command(HeifFile heif, int left, int top, int width, int height, int outWidth,
-			int outHeight, Orientation turn) throws IOException {
-		String unavailable = unavailability();
+	static List<String> command(HeifFile heif, HeifFile.Plane plane, int left, int top, int width, int height,
+			int outWidth, int outHeight, Orientation turn, boolean gray) throws IOException {
+		String unavailable = plane.isAv1() ? av1Unavailability() : unavailability();
 		if (unavailable != null) {
 			throw new IOException(unavailable);
 		}
@@ -256,24 +422,37 @@ public final class HeifDecoder {
 		command.add("error");
 		command.add("-threads");
 		command.add(Integer.toString(Math.max(1, Runtime.getRuntime().availableProcessors() / 2)));
-		command.add("-f");
-		command.add("hevc");
+		if (plane.isAv1()) {
+			command.add("-c:v");
+			command.add(_av1Decoder);
+			command.add("-f");
+			command.add("obu");
+		} else {
+			command.add("-f");
+			command.add("hevc");
+		}
 		command.add("-i");
 		command.add("pipe:0");
 		command.add("-frames:v");
 		command.add("1");
 		command.add("-an");
 		command.add("-vf");
-		command.add(filters(heif, left, top, width, height, outWidth, outHeight, turn));
+		command.add(filters(heif, plane, left, top, width, height, outWidth, outHeight, turn, gray));
 		return command;
 	}
 
 	/** The filter graph, see the class comment. */
 	static String filters(HeifFile heif, int left, int top, int width, int height, int outWidth, int outHeight,
 			Orientation turn) {
+		return filters(heif, heif.getImage(), left, top, width, height, outWidth, outHeight, turn, false);
+	}
+
+	/** The filter graph of the given plane of the picture, see the class comment. */
+	static String filters(HeifFile heif, HeifFile.Plane plane, int left, int top, int width, int height,
+			int outWidth, int outHeight, Orientation turn, boolean gray) {
 		StringBuilder graph = new StringBuilder();
-		if (heif.getColumns() > 1 || heif.getRows() > 1) {
-			graph.append("tile=").append(heif.getColumns()).append('x').append(heif.getRows()).append(',');
+		if (plane.getColumns() > 1 || plane.getRows() > 1) {
+			graph.append("tile=").append(plane.getColumns()).append('x').append(plane.getRows()).append(',');
 		}
 		graph.append("crop=w=").append(width).append(":h=").append(height)
 			.append(":x=").append(heif.getCropLeft() + left)
@@ -286,15 +465,20 @@ public final class HeifDecoder {
 			}
 		}
 		graph.append(",scale=w=").append(outWidth).append(":h=").append(outHeight).append(":flags=area");
-		Boolean fullRange = heif.getFullRange();
+		Boolean fullRange = plane.getFullRange();
 		if (fullRange != null) {
 			graph.append(":in_range=").append(fullRange.booleanValue() ? "full" : "limited");
 		}
-		String matrix = matrix(heif.getMatrix());
+		String matrix = matrix(plane.getMatrix());
 		if (matrix != null) {
 			graph.append(":in_color_matrix=").append(matrix);
 		}
-		graph.append(turn == null ? ",format=bgr24" : ",format=yuvj420p");
+		if (gray) {
+			// An alpha channel is a coverage, never a colour: every value as coded.
+			graph.append(":out_range=full,format=gray");
+		} else {
+			graph.append(turn == null ? ",format=bgr24" : ",format=yuvj420p");
+		}
 		return graph.toString();
 	}
 
@@ -350,7 +534,8 @@ public final class HeifDecoder {
 	 * Runs the program, feeding it the coded tiles and reading what it answers into the given
 	 * buffer (<code>null</code> where it writes a file).
 	 */
-	private static void run(File file, HeifFile heif, List<String> command, byte[] pixels) throws IOException {
+	private static void run(File file, HeifFile heif, HeifFile.Plane plane, List<String> command, byte[] pixels)
+			throws IOException {
 		ProcessBuilder builder = VideoRenditions.program(command);
 		Process process = builder.start();
 		Deque<String> tail = new ArrayDeque<>();
@@ -360,7 +545,7 @@ public final class HeifDecoder {
 		IOException[] feedFailure = new IOException[1];
 		Thread feeder = new Thread(() -> {
 			try (OutputStream in = process.getOutputStream()) {
-				feed(file, heif, in);
+				feed(file, plane, in);
 			} catch (IOException ex) {
 				feedFailure[0] = ex;
 			}
@@ -388,21 +573,35 @@ public final class HeifDecoder {
 					LOG.warning("FFmpeg failed to decode '" + file.getName() + "' with exit code " + status + ":\n"
 						+ String.join("\n", tail));
 				}
-				throw new IOException("Cannot decode the HEIC/HEIF photograph '" + file.getName() + "'"
+				throw new IOException("Cannot decode the " + kind(plane) + " '" + file.getName() + "'"
 					+ (last.isEmpty() ? "." : ": " + last));
 			}
 		}
 		if (pixels != null && read != pixels.length) {
-			throw new IOException("Cannot decode the HEIC/HEIF photograph '" + file.getName() + "': "
+			throw new IOException("Cannot decode the " + kind(plane) + " '" + file.getName() + "': "
 				+ read + " of " + pixels.length + " bytes decoded.");
 		}
 	}
 
-	/** The coded pictures as one Annex B stream: per tile its parameter sets, then its units. */
-	static void feed(File file, HeifFile heif, OutputStream out) throws IOException {
+	private static String kind(HeifFile.Plane plane) {
+		return plane.isAv1() ? "AVIF picture" : "HEIC/HEIF photograph";
+	}
+
+	/** The temporal delimiter OBU that begins every temporal unit of an AV1 stream. */
+	private static final byte[] TEMPORAL_DELIMITER = { 0x12, 0x00 };
+
+	/**
+	 * The coded pictures as one stream: for HEVC an Annex B stream, per tile its parameter sets,
+	 * then its units; for AV1 a low-overhead OBU stream, per tile a temporal delimiter, its
+	 * configuration OBUs and its OBUs as stored.
+	 */
+	static void feed(File file, HeifFile.Plane plane, OutputStream out) throws IOException {
 		byte[] startCode = { 0, 0, 0, 1 };
 		try (RandomAccessFile in = new RandomAccessFile(file, "r")) {
-			for (HeifFile.Tile tile : heif.getTiles()) {
+			for (HeifFile.Tile tile : plane.getTiles()) {
+				if (plane.isAv1()) {
+					out.write(TEMPORAL_DELIMITER);
+				}
 				out.write(tile._parameterSets);
 				byte[] data = tile._inline;
 				if (data == null) {
@@ -420,6 +619,10 @@ public final class HeifDecoder {
 						in.readFully(data, at, (int) tile._lengths[n]);
 						at += (int) tile._lengths[n];
 					}
+				}
+				if (plane.isAv1()) {
+					out.write(data);
+					continue;
 				}
 				int at = 0;
 				int lengthSize = tile._lengthSize;
