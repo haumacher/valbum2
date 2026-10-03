@@ -444,24 +444,105 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
                   onPressed: _busy ? null : () => _delete(link),
                 ),
         ),
-        // Who a personal link went to, each with "Send again" where the
-        // link is this folder's own (issue #201).
-        if (!_inherited(link))
+        // Who a personal link went to and who came in through it, each
+        // with when and what they added, "Send again" for a recipient and
+        // "Shut out" for both, where the link is this folder's own (issues
+        // #201, #203).
+        if (!_inherited(link)) ...[
           for (var recipient in link.recipients)
             ListTile(
               key: Key("recipient-${link.id}-${recipient.contact}"),
               dense: true,
               contentPadding: const EdgeInsets.only(left: 40),
-              leading: const Icon(Icons.person_outline),
+              leading: Icon(recipient.shutOut.isEmpty
+                  ? Icons.person_outline
+                  : Icons.person_off_outlined),
               title: Text(recipient.name),
-              trailing: TextButton(
-                key: Key("resend-${link.id}-${recipient.contact}"),
-                onPressed: _busy ? null : () => _resend(link, recipient),
-                child: Text(l10n.sendAgain),
+              subtitle: Text(
+                recipientState(l10n, recipient),
+                key: Key("recipient-state-${link.id}-${recipient.contact}"),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(
+                    key: Key("resend-${link.id}-${recipient.contact}"),
+                    onPressed: _busy ? null : () => _resend(link, recipient),
+                    child: Text(l10n.sendAgain),
+                  ),
+                  _shutOutButton(l10n, link, recipient.contact,
+                      recipient.shutOut.isNotEmpty),
+                ],
               ),
             ),
+          for (var visitor in link.visitors)
+            ListTile(
+              key: Key("visitor-${link.id}-${visitor.contact}"),
+              dense: true,
+              contentPadding: const EdgeInsets.only(left: 40),
+              leading: Icon(visitor.shutOut.isEmpty
+                  ? Icons.person_pin_outlined
+                  : Icons.person_off_outlined),
+              title: Text(visitor.name),
+              subtitle: Text(
+                visitorState(l10n, visitor),
+                key: Key("visitor-state-${link.id}-${visitor.contact}"),
+              ),
+              trailing: _shutOutButton(
+                  l10n, link, visitor.contact, visitor.shutOut.isNotEmpty),
+            ),
+        ],
       ],
     ];
+  }
+
+  /// "Shut out of this link", or "Let in again" for a contact who is
+  /// (issue #203): no question asked, because it is undone by the same
+  /// button.
+  Widget _shutOutButton(
+      AppLocalizations l10n, ShareLink link, String contact, bool isShutOut) {
+    return IconButton(
+      key: Key("shut-out-${link.id}-$contact"),
+      icon: Icon(isShutOut ? Icons.lock_open : Icons.block),
+      tooltip: isShutOut ? l10n.letInAgain : l10n.shutOutOfLink,
+      onPressed: _busy ? null : () => _shutOut(link, contact, !isShutOut),
+    );
+  }
+
+  /// Shuts [contact] out of [link], or lets them in again (issue #203), and
+  /// shows the link as the server answers it.
+  Future<void> _shutOut(ShareLink link, String contact, bool shutOut) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _refusal = null;
+    });
+    try {
+      var answer =
+          await widget.client.shutOut(widget.path, link.id, contact, shutOut);
+      if (!mounted) {
+        return;
+      }
+      var changed = answer.links.isEmpty ? null : answer.links.first;
+      setState(() {
+        _busy = false;
+        if (changed != null) {
+          _links = [
+            for (var shown in _links ?? const <ShareLink>[])
+              shown.id == changed.id ? changed : shown,
+          ];
+        }
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _refusal = error is VAlbumException ? error.message : "$error";
+        });
+      }
+    }
   }
 
   /// Whether the given link was made further up and can only be deleted
@@ -471,10 +552,17 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   /// What a link shows and how long it lives, in one paragraph.
   String _describe(AppLocalizations l10n, ShareLink link) {
     var parts = [
-      if (link.type == ShareType.personal)
-        link.recipients.isEmpty
-            ? l10n.linkPersonalOpen
-            : l10n.linkRecipientCount(link.recipients.length),
+      // The type of the link first (issue #203): anonymous, personal and
+      // open, or sent to selected contacts — which it stays when every
+      // recipient was deleted from the contacts.
+      if (link.type != ShareType.personal)
+        l10n.linkAnonymous
+      else if (link.recipients.isNotEmpty)
+        l10n.linkRecipientCount(link.recipients.length)
+      else if (link.addressed)
+        l10n.linkTypeSelected
+      else
+        l10n.linkPersonalOpen,
       _rightsOf(l10n, link),
       link.expires.isEmpty
           ? l10n.linkNeverExpires
@@ -1080,6 +1168,46 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
     setState(() => _busy = false);
     await _load();
   }
+}
+
+/// What the link list says about a recipient of a personal link (issue
+/// #203): whether and when they first opened it, when they were last seen,
+/// how many photos they added, and whether they are shut out.
+String recipientState(AppLocalizations l10n, ShareRecipient recipient) {
+  var first = recipient.firstOpened.isNotEmpty
+      ? recipient.firstOpened
+      : recipient.opened;
+  return _personState(l10n,
+      first: first,
+      last: recipient.lastSeen,
+      uploads: recipient.uploads,
+      shutOut: recipient.shutOut);
+}
+
+/// What the link list says about a visitor of an open personal link (issue
+/// #203), in the words of [recipientState].
+String visitorState(AppLocalizations l10n, LinkVisitor visitor) =>
+    _personState(l10n,
+        first: visitor.firstSeen,
+        last: visitor.lastSeen,
+        uploads: visitor.uploads,
+        shutOut: visitor.shutOut);
+
+String _personState(
+  AppLocalizations l10n, {
+  required String first,
+  required String last,
+  required int uploads,
+  required String shutOut,
+}) {
+  var parts = [
+    if (shutOut.isNotEmpty) l10n.shutOutMark,
+    first.isEmpty ? l10n.recipientNotOpened : l10n.openedOn(dayOf(first)),
+    if (last.isNotEmpty && dayOf(last) != dayOf(first))
+      l10n.lastSeenOn(dayOf(last)),
+    if (uploads > 0) l10n.photosAdded(uploads),
+  ];
+  return parts.join(" · ");
 }
 
 /// The one question confirming that [link] is deleted (issue #217): what it is

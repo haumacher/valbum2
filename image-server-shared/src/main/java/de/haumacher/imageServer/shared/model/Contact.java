@@ -53,6 +53,9 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getSessions() */
 	private static final String SESSIONS__PROP = "sessions";
 
+	/** @see #getUploads() */
+	private static final String UPLOADS__PROP = "uploads";
+
 	private String _id = "";
 
 	private String _name = "";
@@ -72,6 +75,8 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _blocked = "";
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.ContactSession> _sessions = new java.util.ArrayList<>();
+
+	private int _uploads = 0;
 
 	/**
 	 * Creates a {@link Contact} instance.
@@ -327,6 +332,28 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_sessions.remove(value);
 	}
 
+	/**
+	 * How many photographs the contact added that the space still holds, through any link: the
+	 * entries of the space's <code>.hashes.json</code> sidecars attributed to
+	 * <code>contact:&lt;id&gt;</code>, see issue #203.
+	 */
+	public final int getUploads() {
+		return _uploads;
+	}
+
+	/**
+	 * @see #getUploads()
+	 */
+	public de.haumacher.imageServer.shared.model.Contact setUploads(int value) {
+		internalSetUploads(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getUploads()} without chain call utility. */
+	protected final void internalSetUploads(int value) {
+		_uploads = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.Contact readContact(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.Contact result = new de.haumacher.imageServer.shared.model.Contact();
@@ -370,6 +397,8 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(UPLOADS__PROP);
+		out.value(getUploads());
 	}
 
 	@Override
@@ -399,6 +428,7 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
+			case UPLOADS__PROP: setUploads(in.nextInt()); break;
 			default: super.readField(in, field);
 		}
 	}

@@ -77,6 +77,13 @@ import java.util.logging.Logger;
  * {@link de.haumacher.imageServer.Contributors#applyLinkLimits(java.util.List, File)}.
  * </p>
  *
+ * <p>
+ * An upload by a contact through a personal link also records the id of that link
+ * (<code>"contributorLink"</code>, issue #203, additive in the same way), so that the owner of the
+ * link is told how many photographs each person added through it, see
+ * {@link de.haumacher.imageServer.Contributions}.
+ * </p>
+ *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class HashCache {
@@ -108,6 +115,8 @@ public class HashCache {
 	private static final String LINK_MAX_PRIVACY__PROP = "linkMaxPrivacy";
 
 	private static final String LINK_LABEL__PROP = "linkLabel";
+
+	private static final String CONTRIBUTOR_LINK__PROP = "contributorLink";
 
 	private static final int BUFFER_SIZE = 64 * 1024;
 
@@ -171,6 +180,8 @@ public class HashCache {
 
 		private final String _linkLabel;
 
+		private final String _link;
+
 		/** Creates an {@link Attribution}; <code>null</code> is the empty string. */
 		public Attribution(String contributor, String label) {
 			this(contributor, label, NO_RATING_FLOOR, NO_PRIVACY_CAP);
@@ -196,6 +207,19 @@ public class HashCache {
 		 *        The label whose photographs the link shows, the empty string for none.
 		 */
 		public Attribution(String contributor, String label, int minRating, int maxPrivacy, String linkLabel) {
+			this(contributor, label, minRating, maxPrivacy, linkLabel, "");
+		}
+
+		/**
+		 * Creates an {@link Attribution} of an upload by a contact through a personal share link,
+		 * see issue #203.
+		 *
+		 * @param link
+		 *        The id of the share link the contact came through, the empty string for none.
+		 */
+		public Attribution(String contributor, String label, int minRating, int maxPrivacy, String linkLabel,
+				String link) {
+			_link = link == null ? "" : link;
 			_contributor = contributor == null ? "" : contributor;
 			_label = label == null ? "" : label;
 			_minRating = minRating;
@@ -213,6 +237,20 @@ public class HashCache {
 		 */
 		public String getLinkLabel() {
 			return _linkLabel;
+		}
+
+		/**
+		 * The id of the personal share link a contact uploaded the file through, see issue #203.
+		 *
+		 * <p>
+		 * Recorded beside <code>contact:&lt;id&gt;</code>, so that the owner of a link is told how
+		 * many photographs each of its recipients and visitors added through it. The empty string for
+		 * everything else: an anonymous link's subject <code>token:&lt;id&gt;</code> names its link
+		 * already, and a member uses none.
+		 * </p>
+		 */
+		public String getLink() {
+			return _link;
 		}
 
 		/** The subject of the uploader, the empty string if none was recorded. */
@@ -530,6 +568,7 @@ public class HashCache {
 		int minRating = Attribution.NO_RATING_FLOOR;
 		int maxPrivacy = Attribution.NO_PRIVACY_CAP;
 		String linkLabel = "";
+		String link = "";
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -558,6 +597,9 @@ public class HashCache {
 				case LINK_LABEL__PROP:
 					linkLabel = in.nextString();
 					break;
+				case CONTRIBUTOR_LINK__PROP:
+					link = in.nextString();
+					break;
 				default:
 					// An entry written by a future version may carry more; it stays readable.
 					in.skipValue();
@@ -566,7 +608,7 @@ public class HashCache {
 		}
 		in.endObject();
 		return new Entry(size, modified, sha256, new Attribution(contributor, contributorLabel, minRating, maxPrivacy,
-			linkLabel));
+			linkLabel, link));
 	}
 
 	private void store() throws IOException {
@@ -610,6 +652,11 @@ public class HashCache {
 						// The label of the link the file came through, see issue #213.
 						out.name(LINK_LABEL__PROP);
 						out.value(attribution.getLinkLabel());
+					}
+					if (!attribution.getLink().isEmpty()) {
+						// The personal link a contact uploaded the file through, see issue #203.
+						out.name(CONTRIBUTOR_LINK__PROP);
+						out.value(attribution.getLink());
 					}
 					out.endObject();
 				}

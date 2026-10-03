@@ -4748,6 +4748,186 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Start page'**
   String get duplicatesSpaceRoot;
+
+  /// The type of an anonymous share link in the list of links (issue #203). German 'Anonym'.
+  ///
+  /// In en, this message translates to:
+  /// **'Anonymous'**
+  String get linkAnonymous;
+
+  /// In the list of share links: a recipient of a personal link who never opened it (issue #203). German 'Noch nicht geöffnet'.
+  ///
+  /// In en, this message translates to:
+  /// **'Not opened yet'**
+  String get recipientNotOpened;
+
+  /// In the list of share links: when a recipient or visitor first opened the personal link; {day} is a date (issue #203). German 'Geöffnet am {day}'.
+  ///
+  /// In en, this message translates to:
+  /// **'Opened {day}'**
+  String openedOn(String day);
+
+  /// When a contact was last seen (a personal link opened); {day} is a date (issue #203). German 'Zuletzt da am {day}'.
+  ///
+  /// In en, this message translates to:
+  /// **'Last seen {day}'**
+  String lastSeenOn(String day);
+
+  /// How many photos a contact added through a personal link (issue #203). German '1 Foto hinzugefügt' / '{count} Fotos hinzugefügt'.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo added} other{{count} photos added}}'**
+  String photosAdded(int count);
+
+  /// In the list of share links: the contact is shut out of this link (issue #203). German 'Ausgesperrt'.
+  ///
+  /// In en, this message translates to:
+  /// **'Shut out'**
+  String get shutOutMark;
+
+  /// Tooltip of the button shutting a contact out of one personal link (issue #203). German 'Von diesem Link aussperren'.
+  ///
+  /// In en, this message translates to:
+  /// **'Shut out of this link'**
+  String get shutOutOfLink;
+
+  /// Button or menu entry letting a shut-out contact in again (issue #203). German 'Wieder zulassen'.
+  ///
+  /// In en, this message translates to:
+  /// **'Let in again'**
+  String get letInAgain;
+
+  /// Heading of the section of the server settings listing the contacts of the space: the people personal links went to (issue #203). German 'Kontakte'.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts'**
+  String get contactsHeading;
+
+  /// Explains the contacts section of the server settings (issue #203). Short; German with 'Sie'.
+  ///
+  /// In en, this message translates to:
+  /// **'The people your personal links were sent to or opened by. Every member sees them.'**
+  String get contactsLead;
+
+  /// The contacts section has nothing to list (issue #203).
+  ///
+  /// In en, this message translates to:
+  /// **'No contacts yet.'**
+  String get noContacts;
+
+  /// Menu entry: give a contact another name (issue #203). German 'Umbenennen…'.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename…'**
+  String get contactRename;
+
+  /// Title of the dialog renaming a contact (issue #203). German 'Kontakt umbenennen'.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename contact'**
+  String get contactRenameTitle;
+
+  /// Note in the dialog renaming a contact: the name copied onto their uploads stays (issue #203).
+  ///
+  /// In en, this message translates to:
+  /// **'Photos already added keep the old name.'**
+  String get contactRenameNote;
+
+  /// Menu entry: show the browsers a contact is signed in on, to end them (issue #203). German 'Angemeldete Browser…'.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed-in browsers…'**
+  String get contactSessionsEntry;
+
+  /// On how many browsers a contact is signed in (issue #203). German 'Nicht angemeldet' / 'In 1 Browser angemeldet' / 'In {count} Browsern angemeldet'.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Not signed in} =1{Signed in on 1 browser} other{Signed in on {count} browsers}}'**
+  String contactSessionCount(int count);
+
+  /// Title of the dialog listing the browsers a contact is signed in on; {name} is the contact (issue #203). German 'Browser von {name}'.
+  ///
+  /// In en, this message translates to:
+  /// **'Browsers of {name}'**
+  String contactSessionsTitle(String name);
+
+  /// When a browser session of a contact began; {day} is a date (issue #203). German 'Seit {day}'.
+  ///
+  /// In en, this message translates to:
+  /// **'Since {day}'**
+  String contactSessionSince(String day);
+
+  /// Which share link a browser session of a contact was opened through; {label} is the link's label (issue #203). German 'über „{label}“'.
+  ///
+  /// In en, this message translates to:
+  /// **'via \'{label}\''**
+  String contactSessionVia(String label);
+
+  /// The contact has no browser session (issue #203). German 'Nirgends angemeldet.'.
+  ///
+  /// In en, this message translates to:
+  /// **'Not signed in anywhere.'**
+  String get noContactSessions;
+
+  /// Button ending one browser session of a contact: that browser is signed out (issue #203). German 'Beenden'.
+  ///
+  /// In en, this message translates to:
+  /// **'End'**
+  String get endSession;
+
+  /// Button ending every browser session of a contact (issue #203). German 'Alle beenden'.
+  ///
+  /// In en, this message translates to:
+  /// **'End all'**
+  String get endAllSessions;
+
+  /// Menu entry shutting a contact out of every link of the space, and the mark of a contact who is (issue #203). German 'Von allen Links aussperren' for the entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Shut out of every link'**
+  String get shutOutEverywhere;
+
+  /// Title of the question before a contact is deleted; {name} is the contact (issue #203). German '{name} löschen?'.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {name}?'**
+  String deleteContactTitle(String name);
+
+  /// What deleting a contact does and what stays (issue #203). Short; German with 'Sie'.
+  ///
+  /// In en, this message translates to:
+  /// **'Their addresses and sign-ins are deleted, and the links sent to them stop working. Photos they added stay and keep their name.'**
+  String get deleteContactMessage;
+
+  /// Tooltip of the mark beside an address the contact proved (by a code or a sign-in) (issue #203). German 'Vom Kontakt bestätigt'.
+  ///
+  /// In en, this message translates to:
+  /// **'Proven by the contact'**
+  String get contactProvenAddress;
+
+  /// The name a contact gave themself, beside the name the space gives them (issue #203). German 'Eigener Name: {name}'.
+  ///
+  /// In en, this message translates to:
+  /// **'Own name: {name}'**
+  String contactOwnName(String name);
+
+  /// Menu entry of a visitor of a personal link who is signed in on further browsers: signs those out (issue #203). German with 'Sie': 'Auch in 1 anderen Browser angemeldet – andere abmelden'.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Also signed in on 1 other browser — sign out others} other{Also signed in on {count} other browsers — sign out others}}'**
+  String otherSessionsSignOut(int count);
+
+  /// Said after a visitor of a personal link signed out their other browsers (issue #203). German with 'Sie'.
+  ///
+  /// In en, this message translates to:
+  /// **'Your other browsers are signed out.'**
+  String get otherSessionsEnded;
+
+  /// Mark of a contact who is shut out of every link of the space, in the contacts section (issue #203). German 'Überall ausgesperrt'.
+  ///
+  /// In en, this message translates to:
+  /// **'Shut out everywhere'**
+  String get shutOutEverywhereMark;
 }
 
 class _AppLocalizationsDelegate

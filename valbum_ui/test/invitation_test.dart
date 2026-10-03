@@ -563,6 +563,10 @@ void main() {
           if (query["type"] == "invitations") {
             return json('{"invitations": []}');
           }
+          // Every member reads the contacts of the space (issue #203).
+          if (query["type"] == "contacts") {
+            return json('{"contacts": []}');
+          }
           return refusal(
             403,
             "The administrator invites people on this server. "

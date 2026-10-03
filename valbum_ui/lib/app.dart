@@ -835,8 +835,48 @@ class VAlbumAppState extends State<VAlbumApp> {
         info: share,
         writeAllowed: answer.writeAllowed,
         onSwitchPerson: share.contact == null ? null : _switchPerson,
+        onSignOutOthers: share.contact == null ? null : _signOutOthers,
       );
     });
+  }
+
+  /// "Also signed in on n other browsers — sign out others" (issue #203):
+  /// the contact of this session signs out every other browser, which limits
+  /// a forwarded link opened before the real recipient. Said in a snack bar,
+  /// a refusal in the server's own words.
+  Future<void> _signOutOthers(BuildContext context) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var messenger = ScaffoldMessenger.maybeOf(context);
+    var l10n = AppLocalizations.of(context)!;
+    var current = shareSession;
+    var speaker = client;
+    if (current == null || speaker == null) {
+      return;
+    }
+    try {
+      await speaker.endOtherSessions();
+    } catch (error) {
+      messenger?.showSnackBar(SnackBar(
+          content:
+              Text(error is VAlbumException ? error.message : "$error")));
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    current.info.otherSessions = 0;
+    setState(() {
+      shareSession = ShareSession(
+        url: current.url,
+        info: current.info,
+        writeAllowed: current.writeAllowed,
+        onSwitchPerson: current.onSwitchPerson,
+        onSignOutOthers: current.onSignOutOthers,
+      );
+    });
+    messenger?.showSnackBar(SnackBar(content: Text(l10n.otherSessionsEnded)));
   }
 
   /// Finishes a sign-in with a provider of OpenID Connect that came back to

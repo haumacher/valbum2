@@ -98,6 +98,28 @@ public class TestHashCacheFormat extends TestCase {
 		assertEquals("bob", recorded.get("bobs.jpg").getLabel());
 	}
 
+	public void testTheLinkOfAContactsUploadSurvivesARoundTrip() throws Exception {
+		File image = photo("petras.jpg");
+		HashCache written = new HashCache(_folder.toFile());
+		written.put(image, HashCache.sha256(image),
+			new HashCache.Attribution("contact:p1", "Tante Petra", -2, 0, "", "link1"));
+		written.flush();
+		assertTrue(contents(), contents().contains("\"contributorLink\":\"link1\""));
+
+		HashCache.Attribution read = HashCache.recorded(_folder.toFile()).get("petras.jpg");
+		assertEquals("contact:p1", read.getContributor());
+		assertEquals("link1", read.getLink());
+	}
+
+	public void testAMembersUploadRecordsNoLink() throws Exception {
+		File image = photo("bobs.jpg");
+		HashCache written = new HashCache(_folder.toFile());
+		written.put(image, HashCache.sha256(image), new HashCache.Attribution("user:bob", "bob"));
+		written.flush();
+		assertFalse(contents(), contents().contains("contributorLink"));
+		assertEquals("", new HashCache(_folder.toFile()).attributionOf("bobs.jpg").getLink());
+	}
+
 	public void testAContributorWithoutALabelIsRecordedAllTheSame() throws Exception {
 		File image = photo("anon.jpg");
 		HashCache written = new HashCache(_folder.toFile());

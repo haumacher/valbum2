@@ -45,6 +45,9 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #isContactHasEmail() */
 	private static final String CONTACT_HAS_EMAIL__PROP = "contactHasEmail";
 
+	/** @see #getOtherSessions() */
+	private static final String OTHER_SESSIONS__PROP = "otherSessions";
+
 	private String _label = "";
 
 	private String _expires = "";
@@ -60,6 +63,8 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> _methods = new java.util.ArrayList<>();
 
 	private boolean _contactHasEmail = false;
+
+	private int _otherSessions = 0;
 
 	/**
 	 * Creates a {@link ShareInfo} instance.
@@ -301,6 +306,33 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_contactHasEmail = value;
 	}
 
+	/**
+	 * On how many other browsers the contact of this session is signed in, see issue #203;
+	 * <code>0</code> for every caller who is no contact.
+	 *
+	 * <p>
+	 * The live contact credentials of the contact besides the one this request came with. The app
+	 * offers "Also signed in on n other browsers &mdash; sign out others" where it is not
+	 * <code>0</code>, which <code>&lt;data&gt;/?action=end-other-sessions</code> does.
+	 * </p>
+	 */
+	public final int getOtherSessions() {
+		return _otherSessions;
+	}
+
+	/**
+	 * @see #getOtherSessions()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareInfo setOtherSessions(int value) {
+		internalSetOtherSessions(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getOtherSessions()} without chain call utility. */
+	protected final void internalSetOtherSessions(int value) {
+		_otherSessions = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareInfo readShareInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareInfo result = new de.haumacher.imageServer.shared.model.ShareInfo();
@@ -342,6 +374,8 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.endArray();
 		out.name(CONTACT_HAS_EMAIL__PROP);
 		out.value(isContactHasEmail());
+		out.name(OTHER_SESSIONS__PROP);
+		out.value(getOtherSessions());
 	}
 
 	@Override
@@ -369,6 +403,7 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			}
 			break;
 			case CONTACT_HAS_EMAIL__PROP: setContactHasEmail(in.nextBoolean()); break;
+			case OTHER_SESSIONS__PROP: setOtherSessions(in.nextInt()); break;
 			default: super.readField(in, field);
 		}
 	}

@@ -71,6 +71,11 @@ void main() {
         if (query["type"] == "devices") {
           return json(devices(const ["d1", "d2"], "d2"));
         }
+        // Every signed-in member reads the contacts of the space, a guest
+        // too (issue #203); they manage none.
+        if (query["type"] == "contacts") {
+          return json('{"contacts": [{"id": "c1", "name": "Oma"}]}');
+        }
         return json('["ErrorInfo", {"message": "refused"}]', status: 403);
       }),
     );
@@ -85,6 +90,8 @@ void main() {
     expect(asked.where((q) => q["type"] == "invitations"), isEmpty);
     expect(asked.where((q) => q["type"] == "groups"), isEmpty);
     expect(find.text("refused"), findsNothing);
+    expect(find.byKey(const Key("contact-c1")), findsOneWidget);
+    expect(find.byKey(const Key("contact-menu-c1")), findsNothing);
   });
 
   testWidgets('a signed-out device asks for no device list', (tester) async {

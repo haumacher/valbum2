@@ -67,6 +67,12 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getPhotoLabel() */
 	private static final String PHOTO_LABEL__PROP = "photoLabel";
 
+	/** @see #isAddressed() */
+	private static final String ADDRESSED__PROP = "addressed";
+
+	/** @see #getVisitors() */
+	private static final String VISITORS__PROP = "visitors";
+
 	private String _id = "";
 
 	private String _label = "";
@@ -92,6 +98,10 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private final java.util.List<de.haumacher.imageServer.shared.model.ShareRecipient> _recipients = new java.util.ArrayList<>();
 
 	private String _photoLabel = "";
+
+	private boolean _addressed = false;
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.LinkVisitor> _visitors = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link ShareLink} instance.
@@ -438,6 +448,76 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_photoLabel = value;
 	}
 
+	/**
+	 * Whether the link is a personal link only its recipients open, see issue #203; answered by the
+	 * server.
+	 *
+	 * <p>
+	 * Stays true when every recipient was deleted from the space's contacts: an addressed link never
+	 * becomes open by losing its recipients.
+	 * </p>
+	 */
+	public final boolean isAddressed() {
+		return _addressed;
+	}
+
+	/**
+	 * @see #isAddressed()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink setAddressed(boolean value) {
+		internalSetAddressed(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isAddressed()} without chain call utility. */
+	protected final void internalSetAddressed(boolean value) {
+		_addressed = value;
+	}
+
+	/**
+	 * Who came in through a personal link without being one of its {@link #getRecipients()}: the
+	 * visitors of an open personal link, see issue #203; answered by the server, empty for every
+	 * other link.
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.LinkVisitor> getVisitors() {
+		return _visitors;
+	}
+
+	/**
+	 * @see #getVisitors()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink setVisitors(java.util.List<? extends de.haumacher.imageServer.shared.model.LinkVisitor> value) {
+		internalSetVisitors(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getVisitors()} without chain call utility. */
+	protected final void internalSetVisitors(java.util.List<? extends de.haumacher.imageServer.shared.model.LinkVisitor> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'visitors' cannot be null.");
+		_visitors.clear();
+		_visitors.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getVisitors()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink addVisitor(de.haumacher.imageServer.shared.model.LinkVisitor value) {
+		internalAddVisitor(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addVisitor(de.haumacher.imageServer.shared.model.LinkVisitor)} without chain call utility. */
+	protected final void internalAddVisitor(de.haumacher.imageServer.shared.model.LinkVisitor value) {
+		_visitors.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getVisitors()} list.
+	 */
+	public final void removeVisitor(de.haumacher.imageServer.shared.model.LinkVisitor value) {
+		_visitors.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareLink readShareLink(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareLink result = new de.haumacher.imageServer.shared.model.ShareLink();
@@ -487,6 +567,14 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.endArray();
 		out.name(PHOTO_LABEL__PROP);
 		out.value(getPhotoLabel());
+		out.name(ADDRESSED__PROP);
+		out.value(isAddressed());
+		out.name(VISITORS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.LinkVisitor x : getVisitors()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -519,6 +607,15 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 			}
 			break;
 			case PHOTO_LABEL__PROP: setPhotoLabel(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case ADDRESSED__PROP: setAddressed(in.nextBoolean()); break;
+			case VISITORS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addVisitor(de.haumacher.imageServer.shared.model.LinkVisitor.readLinkVisitor(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

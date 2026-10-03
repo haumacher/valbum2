@@ -95,6 +95,17 @@ public class ShareStore {
 	 *    "issued":"…","opened":""}],
 	 *  "shutOut":[{"contact":"&lt;contact id&gt;","at":"…"}]}
 	 * </pre>
+	 *
+	 * <p>
+	 * Issue #203 adds, without a version bump because both are additive, <code>"addressed":true</code>
+	 * on a link only its recipients open (read as true wherever a link has recipients, so that a
+	 * link whose recipients were all deleted stays closed), and <code>"visitors"</code>, who came in
+	 * through a personal link and when:
+	 * </p>
+	 *
+	 * <pre>
+	 *  "visitors":[{"contact":"&lt;contact id&gt;","first":"…","last":"…"}]
+	 * </pre>
 	 */
 	public static final int VERSION = 2;
 
@@ -149,6 +160,39 @@ public class ShareStore {
 	private static final String SHUT_OUT__PROP = "shutOut";
 
 	private static final String PHOTO_LABEL__PROP = "photoLabel";
+
+	private static final String ADDRESSED__PROP = "addressed";
+
+	private static final String VISITORS__PROP = "visitors";
+
+	/**
+	 * When a contact came in through a personal link, see issue #203.
+	 *
+	 * <p>
+	 * Written down at most every {@link ContactStore#USE_GRANULARITY}, like the use of a credential.
+	 * </p>
+	 */
+	public static final class Visit {
+
+		private final String _first;
+
+		private String _last;
+
+		Visit(String first, String last) {
+			_first = first;
+			_last = last;
+		}
+
+		/** When the contact first came in through the link. */
+		public String getFirst() {
+			return _first;
+		}
+
+		/** When the contact last came in through the link, to {@link ContactStore#USE_GRANULARITY}. */
+		public String getLast() {
+			return _last;
+		}
+	}
 
 	/**
 	 * A recipient of an addressed personal link and their own link, see issue #198.
@@ -271,6 +315,10 @@ public class ShareStore {
 		private final List<Recipient> _recipients = new ArrayList<>();
 
 		private final java.util.Map<String, String> _shutOut = new java.util.LinkedHashMap<>();
+
+		private boolean _addressed;
+
+		private final java.util.Map<String, Visit> _visitors = new java.util.LinkedHashMap<>();
 
 		/** Creates a {@link Link} that knows who handed it out, see issue #84. */
 		public Link(String id, String tokenHash, String owner, String path, String label, String expires,
@@ -427,7 +475,19 @@ public class ShareStore {
 
 		/** Whether this is a personal link that only its recipients open. */
 		public boolean isAddressed() {
-			return isPersonal() && !_recipients.isEmpty();
+			// A link whose recipients were all deleted from the contacts stays addressed: it never
+			// opens to whoever proves an address by losing them (issue #203).
+			return isPersonal() && (_addressed || !_recipients.isEmpty());
+		}
+
+		/** When the given contact came in through this link, <code>null</code> if they never did (issue #203). */
+		public Visit visitOf(String contact) {
+			return _visitors.get(contact);
+		}
+
+		/** Every contact who came in through this link, by contact id, in the order they first did. */
+		public java.util.Map<String, Visit> getVisitors() {
+			return Collections.unmodifiableMap(_visitors);
 		}
 
 		/** The recipients of an addressed link, empty for every other. */
@@ -678,6 +738,7 @@ public class ShareStore {
 		Link link = new Link(freeId(), UserStore.hash(token), owner, path, label, expires, maxPrivacy, minRating,
 			rights, createdBy, now);
 		link._type = PERSONAL;
+		link._addressed = !recipients.isEmpty();
 		java.util.Map<String, String> tokens = new java.util.LinkedHashMap<>();
 		for (String contact : recipients) {
 			if (tokens.containsKey(contact)) {
@@ -802,6 +863,72 @@ public class ShareStore {
 			store();
 		}
 		return link;
+	}
+
+	/**
+	 * Notes that the given contact came in through the given personal link, see issue #203.
+	 *
+	 * <p>
+	 * Written at most every {@link ContactStore#USE_GRANULARITY} per link and contact, so that a
+	 * session of a hundred requests is one write.
+	 * </p>
+	 */
+	public synchronized void visited(Link link, String contact) throws IOException {
+		if (!_links.contains(link) || contact == null || contact.isEmpty()) {
+			return;
+		}
+		Instant now = Instant.now();
+		Visit visit = link._visitors.get(contact);
+		if (visit != null) {
+			Instant last;
+			try {
+				last = Instant.parse(visit._last);
+			} catch (java.time.DateTimeException ex) {
+				last = Instant.EPOCH;
+			}
+			if (java.time.Duration.between(last, now).compareTo(ContactStore.USE_GRANULARITY) < 0) {
+				return;
+			}
+			visit._last = now.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
+		} else {
+			String at = now.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
+			link._visitors.put(contact, new Visit(at, at));
+		}
+		store();
+	}
+
+	/**
+	 * Forgets the given contact on every link, see issue #203: they were deleted from the space.
+	 *
+	 * <p>
+	 * Their own link of every personal link goes with its voided predecessors &mdash; from then on
+	 * tokens nobody issued &mdash; and so do their visits and their shutting out. A link that loses
+	 * its last recipient stays addressed, see {@link Link#isAddressed()}.
+	 * </p>
+	 *
+	 * @return How many links mentioned the contact.
+	 */
+	public synchronized int forgetContact(String contact) throws IOException {
+		int changed = 0;
+		for (Link link : _links) {
+			boolean mentioned = false;
+			for (java.util.Iterator<Recipient> it = link._recipients.iterator(); it.hasNext();) {
+				if (it.next().getContact().equals(contact)) {
+					link._addressed = true;
+					it.remove();
+					mentioned = true;
+				}
+			}
+			mentioned |= link._shutOut.remove(contact) != null;
+			mentioned |= link._visitors.remove(contact) != null;
+			if (mentioned) {
+				changed++;
+			}
+		}
+		if (changed > 0) {
+			store();
+		}
+		return changed;
 	}
 
 	private String newToken() {
@@ -946,6 +1073,8 @@ public class ShareStore {
 		String photoLabel = "";
 		List<Recipient> recipients = new ArrayList<>();
 		java.util.Map<String, String> shutOut = new java.util.LinkedHashMap<>();
+		boolean addressed = false;
+		java.util.Map<String, Visit> visitors = new java.util.LinkedHashMap<>();
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -1011,6 +1140,16 @@ public class ShareStore {
 					}
 					in.endArray();
 					break;
+				case ADDRESSED__PROP:
+					addressed = in.nextBoolean();
+					break;
+				case VISITORS__PROP:
+					in.beginArray();
+					while (in.hasNext()) {
+						readVisit(in, visitors);
+					}
+					in.endArray();
+					break;
 				default:
 					in.skipValue();
 					break;
@@ -1031,6 +1170,8 @@ public class ShareStore {
 			link._type = PERSONAL;
 			link._recipients.addAll(recipients);
 			link._shutOut.putAll(shutOut);
+			link._addressed = addressed || !recipients.isEmpty();
+			link._visitors.putAll(visitors);
 		} else if (!ANONYMOUS.equals(type)) {
 			// A type this build does not know is no anonymous link: it must not open to everybody.
 			LOG.warning("The share link '" + id + "' has the unknown type '" + type + "'; it opens nothing.");
@@ -1076,6 +1217,33 @@ public class ShareStore {
 		Recipient result = new Recipient(contact, tokenHash, issued, opened);
 		result._voided.addAll(voided);
 		return result;
+	}
+
+	private static void readVisit(JsonReader in, java.util.Map<String, Visit> visitors) throws IOException {
+		String contact = "";
+		String first = "";
+		String last = "";
+		in.beginObject();
+		while (in.hasNext()) {
+			switch (in.nextName()) {
+				case "contact":
+					contact = in.nextString();
+					break;
+				case "first":
+					first = in.nextString();
+					break;
+				case "last":
+					last = in.nextString();
+					break;
+				default:
+					in.skipValue();
+					break;
+			}
+		}
+		in.endObject();
+		if (!contact.isEmpty()) {
+			visitors.put(contact, new Visit(first, last.isEmpty() ? first : last));
+		}
 	}
 
 	private static void readShutOut(JsonReader in, java.util.Map<String, String> shutOut) throws IOException {
@@ -1274,6 +1442,25 @@ public class ShareStore {
 				out.endObject();
 			}
 			out.endArray();
+			if (link.isAddressed()) {
+				out.name(ADDRESSED__PROP);
+				out.value(true);
+			}
+			if (!link._visitors.isEmpty()) {
+				out.name(VISITORS__PROP);
+				out.beginArray();
+				for (java.util.Map.Entry<String, Visit> entry : link._visitors.entrySet()) {
+					out.beginObject();
+					out.name("contact");
+					out.value(entry.getKey());
+					out.name("first");
+					out.value(entry.getValue().getFirst());
+					out.name("last");
+					out.value(entry.getValue().getLast());
+					out.endObject();
+				}
+				out.endArray();
+			}
 		}
 		out.endObject();
 	}

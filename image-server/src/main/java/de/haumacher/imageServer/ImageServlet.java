@@ -40,8 +40,12 @@ import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.CacheRefreshed;
+import de.haumacher.imageServer.shared.model.Contact;
 import de.haumacher.imageServer.shared.model.ContactCredential;
+import de.haumacher.imageServer.shared.model.ContactDelete;
 import de.haumacher.imageServer.shared.model.ContactIdentify;
+import de.haumacher.imageServer.shared.model.ContactRename;
+import de.haumacher.imageServer.shared.model.ContactSessionEnd;
 import de.haumacher.imageServer.shared.model.ContactShutOut;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
@@ -75,6 +79,7 @@ import de.haumacher.imageServer.shared.model.OidcExchange;
 import de.haumacher.imageServer.shared.model.OidcStart;
 import de.haumacher.imageServer.shared.model.OidcStarted;
 import de.haumacher.imageServer.shared.model.Orientation;
+import de.haumacher.imageServer.shared.model.OtherSessionsEnded;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.PersonCreate;
@@ -580,6 +585,9 @@ public class ImageServlet extends HttpServlet {
 	private Path _basePath;
 	private ResourceCache _cache;
 
+	/** What the contributors of the space added, counted for the owner screens of issue #203. */
+	private Contributions _contributions;
+
 	/** The space this servlet serves, see {@link #ImageServlet(File, AuthService, String)}. */
 	private final String _space;
 
@@ -914,7 +922,10 @@ public class ImageServlet extends HttpServlet {
 				// A recognised contact may add an address, where the server can mail a code (#199);
 				// whether they have one already decides whether the app offers it (#211).
 				info.getShare().setMethods(addressProof().contactMethods())
-					.setContactHasEmail(AddressProof.hasEmail(caller.getContact()));
+					.setContactHasEmail(AddressProof.hasEmail(caller.getContact()))
+					// "Also signed in on n other browsers", see issue #203.
+					.setOtherSessions(_auth.getContacts().otherSessions(caller.getContact().getId(),
+						caller.getSession() == null ? "" : caller.getSession().getId()));
 			}
 			if (caller.isPaired()) {
 				// What the share dialog may offer a link that is proven by an address (#211).
@@ -1538,7 +1549,9 @@ public class ImageServlet extends HttpServlet {
 		if (caller.isShareLink()) {
 			return new HashCache.Attribution(caller.subject(), caller.contributorLabel(),
 				_auth.minRating(caller, folderPath, Privacy.PRIVATE), _auth.clearance(caller, folderPath),
-				_auth.photoLabel(caller));
+				_auth.photoLabel(caller),
+				// The personal link a contact came through, counted for its owner (issue #203).
+				caller.getContact() != null ? caller.getShare().getId() : "");
 		}
 		return new HashCache.Attribution(caller.subject(), caller.contributorLabel());
 	}
@@ -2945,11 +2958,16 @@ public class ImageServlet extends HttpServlet {
 		ShareLinkList result = ShareLinkList.create();
 		ShareStore shares = _auth.getShares();
 		if (shares != null) {
+			// Counted once, and only where a personal link is listed (issue #203).
+			Contributions.Counts counts = null;
 			for (ShareStore.Link link : shares.covering(location.getOwner(), location.getOwnerPath())) {
 				// A link belongs to whoever handed it out; an administrator of the space sees them
 				// all, because keeping the space in order is what an administrator is for (#84).
 				if (mine(caller, link)) {
-					result.addLink(onTheWire(link));
+					if (counts == null && link.isPersonal()) {
+						counts = contributions().count();
+					}
+					result.addLink(onTheWire(link, counts));
 				}
 			}
 		}
@@ -3180,7 +3198,9 @@ public class ImageServlet extends HttpServlet {
 			unauthorized(context, caller, false);
 			return;
 		}
-		serveJsonObject(context.response(), PersonalLinks.contacts(_auth.getContacts()));
+		ContactStore contacts = _auth.getContacts();
+		serveJsonObject(context.response(), PersonalLinks.contacts(contacts, _auth.getShares(),
+			contacts == null ? Contributions.Counts.NONE : contributions().count()));
 	}
 
 	/**
@@ -3601,7 +3621,8 @@ public class ImageServlet extends HttpServlet {
 		} else {
 			LOG.info("Let " + contact + " into the share link " + link + " again.");
 		}
-		serveJsonObject(context.response(), ShareLinkList.create().addLink(onTheWire(link)));
+		serveJsonObject(context.response(),
+			ShareLinkList.create().addLink(onTheWire(link, contributions().count())));
 	}
 
 	/**
@@ -3634,7 +3655,183 @@ public class ImageServlet extends HttpServlet {
 		}
 		LOG.info((request.isShutOut() ? "Shut " + contact + " out of" : "Let " + contact + " into")
 			+ " every link of the space, by '" + caller.getUserName() + "'.");
-		serveJsonObject(context.response(), PersonalLinks.contact(contact));
+		serveJsonObject(context.response(), contactOnTheWire(contact));
+	}
+
+	/**
+	 * Whether the caller of the given request may manage the contacts of the space, see issue #203;
+	 * answers the refusal where not.
+	 *
+	 * <p>
+	 * The rights of <code>?action=block-contact</code> (issue #198): a signed-in member with the
+	 * share flag, the register being the space's and shared by every member who shares. A share
+	 * link &mdash; a contact's session included &mdash; is refused, an anonymous caller asked to
+	 * sign in.
+	 * </p>
+	 *
+	 * @return The caller, <code>null</code> where the request was answered.
+	 */
+	private Caller contactManager(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing to manage the contacts through the share link '" + caller.getShareLabel() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, PersonalLinks.CONTACTS_MANAGE_REFUSED);
+			return null;
+		}
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return null;
+		}
+		if (!_auth.mayShareLinks(caller) || _auth.getContacts() == null) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, PersonalLinks.CONTACTS_MANAGE_REFUSED);
+			return null;
+		}
+		return caller;
+	}
+
+	/**
+	 * Gives a contact another name in the space at <code>&lt;data&gt;/?action=rename-contact</code>,
+	 * see issue #203.
+	 *
+	 * <p>
+	 * What their uploads are labelled with was copied at the upload and stays. Answered with the
+	 * contact as <code>?type=contacts</code> lists it.
+	 * </p>
+	 */
+	private void renameContact(Context context) throws IOException {
+		Caller caller = contactManager(context);
+		if (caller == null) {
+			return;
+		}
+		ContactRename request;
+		try {
+			request = ContactRename.readContactRename(new JsonReader(new ReaderAdapter(
+				new InputStreamReader(new ByteArrayInputStream(readBody(context.request())), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.UNREADABLE);
+			return;
+		}
+		if (request.getName().trim().isEmpty()) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.CONTACT_NAME_REQUIRED);
+			return;
+		}
+		ContactStore.Contact contact;
+		try {
+			contact = _auth.getContacts().rename(request.getContact(), request.getName());
+		} catch (ContactStore.Refused ex) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.CONTACT_NAME_REQUIRED);
+			return;
+		}
+		if (contact == null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, ContactStore.unknownContact(request.getContact()));
+			return;
+		}
+		LOG.info("Renamed " + contact + ", by '" + caller.getUserName() + "'.");
+		serveJsonObject(context.response(), contactOnTheWire(contact));
+	}
+
+	/**
+	 * Ends one browser session of a contact, or all of them, at
+	 * <code>&lt;data&gt;/?action=end-contact-session</code>, see issue #203.
+	 *
+	 * <p>
+	 * The credential of that session opens nothing from then on. Answered with the contact.
+	 * </p>
+	 */
+	private void endContactSession(Context context) throws IOException {
+		Caller caller = contactManager(context);
+		if (caller == null) {
+			return;
+		}
+		ContactSessionEnd request;
+		try {
+			request = ContactSessionEnd.readContactSessionEnd(new JsonReader(new ReaderAdapter(
+				new InputStreamReader(new ByteArrayInputStream(readBody(context.request())), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.UNREADABLE);
+			return;
+		}
+		ContactStore contacts = _auth.getContacts();
+		ContactStore.Contact contact = contacts.get(request.getContact());
+		if (contact == null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, ContactStore.unknownContact(request.getContact()));
+			return;
+		}
+		if (request.getSession().isEmpty()) {
+			int ended = contacts.endSessions(contact.getId(), null);
+			LOG.info("Ended " + ended + " session(s) of " + contact + ", by '" + caller.getUserName() + "'.");
+		} else if (contacts.endSession(contact.getId(), request.getSession())) {
+			LOG.info("Ended a session of " + contact + ", by '" + caller.getUserName() + "'.");
+		} else {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PersonalLinks.SESSION_UNKNOWN);
+			return;
+		}
+		serveJsonObject(context.response(), contactOnTheWire(contact));
+	}
+
+	/**
+	 * Deletes a contact from the space at <code>&lt;data&gt;/?action=delete-contact</code>, see
+	 * issue #203.
+	 *
+	 * <p>
+	 * Deleting deletes ({@link AuthService#deleteContact(String)}): name, addresses and sessions go,
+	 * and their own links with them; what they uploaded keeps the name copied at the upload.
+	 * Answered with the contact as it was.
+	 * </p>
+	 */
+	private void deleteContact(Context context) throws IOException {
+		Caller caller = contactManager(context);
+		if (caller == null) {
+			return;
+		}
+		ContactDelete request;
+		try {
+			request = ContactDelete.readContactDelete(new JsonReader(new ReaderAdapter(
+				new InputStreamReader(new ByteArrayInputStream(readBody(context.request())), StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.UNREADABLE);
+			return;
+		}
+		ContactStore.Contact contact = _auth.getContacts().get(request.getContact());
+		if (contact == null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, ContactStore.unknownContact(request.getContact()));
+			return;
+		}
+		Contact answer = contactOnTheWire(contact);
+		_auth.deleteContact(contact.getId());
+		LOG.info("Deleted " + contact + ", by '" + caller.getUserName() + "'.");
+		serveJsonObject(context.response(), answer);
+	}
+
+	/** One contact as <code>?type=contacts</code> lists it, see issue #203. */
+	private Contact contactOnTheWire(ContactStore.Contact contact) {
+		return PersonalLinks.contact(contact, _auth.getShares(), contributions().count());
+	}
+
+	/**
+	 * Signs a contact out of every browser but this one at
+	 * <code>&lt;data&gt;/?action=end-other-sessions</code>, see issue #203.
+	 *
+	 * <p>
+	 * Asked by the contact themself, in a session of a personal link: "Also signed in on 1 other
+	 * browser &mdash; sign out others", which limits a forwarded link opened before the real
+	 * recipient. Nobody else may: a member ends a contact's sessions one by one, and an anonymous
+	 * link has no person to sign out. Answered with how many were ended.
+	 * </p>
+	 */
+	private void endOtherSessions(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (caller.getContact() == null || caller.getSession() == null) {
+			if (!caller.isPaired() && !caller.isShareLink()) {
+				unauthorized(context, caller, true);
+				return;
+			}
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, PersonalLinks.OTHER_SESSIONS_REFUSED);
+			return;
+		}
+		int ended = _auth.getContacts().endOtherSessions(caller.getContact().getId(), caller.getSession().getId());
+		LOG.info("Signed " + caller.getContact() + " out of " + ended + " other browser(s), at their request.");
+		serveJsonObject(context.response(), OtherSessionsEnded.create().setEnded(ended));
 	}
 
 	private static ContactShutOut readShutOut(Context context) throws IOException {
@@ -3795,6 +3992,14 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 */
 	private ShareLink onTheWire(ShareStore.Link link) {
+		return onTheWire(link, null);
+	}
+
+	/**
+	 * The given share link as the protocol carries it, with how many photographs each of its
+	 * recipients and visitors added (issue #203); <code>null</code> counts none.
+	 */
+	private ShareLink onTheWire(ShareStore.Link link, Contributions.Counts counts) {
 		Set<String> rights = link.getRights();
 		ShareLink wire = ShareLink.create()
 			.setId(link.getId())
@@ -3807,7 +4012,16 @@ public class ImageServlet extends HttpServlet {
 			.setPath(AuthService.canonical(link))
 			.setCreated(link.getCreated())
 			.setPhotoLabel(link.getPhotoLabel());
-		return PersonalLinks.withRecipients(wire, link, _auth.getContacts());
+		return PersonalLinks.withRecipients(wire, link, _auth.getContacts(),
+			counts == null ? Contributions.Counts.NONE : counts);
+	}
+
+	/** What the contributors of the space added, see {@link Contributions}. */
+	private synchronized Contributions contributions() {
+		if (_contributions == null) {
+			_contributions = new Contributions(_basePath);
+		}
+		return _contributions;
 	}
 
 	/**
@@ -4314,6 +4528,22 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("block-contact".equals(action)) {
 			blockContact(context);
+			return;
+		}
+		if ("rename-contact".equals(action)) {
+			renameContact(context);
+			return;
+		}
+		if ("end-contact-session".equals(action)) {
+			endContactSession(context);
+			return;
+		}
+		if ("delete-contact".equals(action)) {
+			deleteContact(context);
+			return;
+		}
+		if ("end-other-sessions".equals(action)) {
+			endOtherSessions(context);
 			return;
 		}
 		if ("unshare".equals(action)) {

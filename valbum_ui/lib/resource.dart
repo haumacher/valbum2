@@ -3171,6 +3171,16 @@ class ShareInfo extends _JsonObject {
 	///  </p>
 	bool contactHasEmail;
 
+	///  On how many other browsers the contact of this session is signed in, see issue #203;
+	///  <code>0</code> for every caller who is no contact.
+	/// 
+	///  <p>
+	///  The live contact credentials of the contact besides the one this request came with. The app
+	///  offers "Also signed in on n other browsers &mdash; sign out others" where it is not
+	///  <code>0</code>, which <code>&lt;data&gt;/?action=end-other-sessions</code> does.
+	///  </p>
+	int otherSessions;
+
 	/// Creates a ShareInfo.
 	ShareInfo({
 			this.label = "", 
@@ -3181,6 +3191,7 @@ class ShareInfo extends _JsonObject {
 			this.contact, 
 			this.methods = const [], 
 			this.contactHasEmail = false, 
+			this.otherSessions = 0, 
 	});
 
 	/// Parses a ShareInfo from a string source.
@@ -3251,6 +3262,10 @@ class ShareInfo extends _JsonObject {
 				contactHasEmail = json.expectBool();
 				break;
 			}
+			case "otherSessions": {
+				otherSessions = json.expectInt();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3293,6 +3308,9 @@ class ShareInfo extends _JsonObject {
 
 		json.addKey("contactHasEmail");
 		json.addBool(contactHasEmail);
+
+		json.addKey("otherSessions");
+		json.addNumber(otherSessions);
 	}
 
 }
@@ -6046,6 +6064,20 @@ class ShareLink extends _JsonObject {
 	///  </p>
 	String photoLabel;
 
+	///  Whether the link is a personal link only its recipients open, see issue #203; answered by the
+	///  server.
+	/// 
+	///  <p>
+	///  Stays true when every recipient was deleted from the space's contacts: an addressed link never
+	///  becomes open by losing its recipients.
+	///  </p>
+	bool addressed;
+
+	///  Who came in through a personal link without being one of its {@link #recipients}: the
+	///  visitors of an open personal link, see issue #203; answered by the server, empty for every
+	///  other link.
+	List<LinkVisitor> visitors;
+
 	/// Creates a ShareLink.
 	ShareLink({
 			this.id = "", 
@@ -6061,6 +6093,8 @@ class ShareLink extends _JsonObject {
 			this.type = ShareType.anonymous, 
 			this.recipients = const [], 
 			this.photoLabel = "", 
+			this.addressed = false, 
+			this.visitors = const [], 
 	});
 
 	/// Parses a ShareLink from a string source.
@@ -6151,6 +6185,23 @@ class ShareLink extends _JsonObject {
 				photoLabel = json.expectString();
 				break;
 			}
+			case "addressed": {
+				addressed = json.expectBool();
+				break;
+			}
+			case "visitors": {
+				json.expectArray();
+				visitors = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = LinkVisitor.read(json);
+						if (value != null) {
+							visitors.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -6205,6 +6256,119 @@ class ShareLink extends _JsonObject {
 
 		json.addKey("photoLabel");
 		json.addString(photoLabel);
+
+		json.addKey("addressed");
+		json.addBool(addressed);
+
+		json.addKey("visitors");
+		json.startArray();
+		for (var _element in visitors) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  A contact who came in through a personal link, see {@link ShareLink#visitors} and issue #203.
+class LinkVisitor extends _JsonObject {
+	///  The id of the contact.
+	String contact;
+
+	///  The name the space gives the contact.
+	String name;
+
+	///  When the contact first came in through the link, an ISO-8601 instant.
+	String firstSeen;
+
+	///  When the contact last came in through the link, to the hour.
+	String lastSeen;
+
+	///  How many photographs the contact added through the link that the space still holds: the
+	///  entries of the <code>.hashes.json</code> sidecars attributed to the contact and recorded with
+	///  this link.
+	int uploads;
+
+	///  When the contact was shut out of this link, empty while they are not.
+	String shutOut;
+
+	/// Creates a LinkVisitor.
+	LinkVisitor({
+			this.contact = "", 
+			this.name = "", 
+			this.firstSeen = "", 
+			this.lastSeen = "", 
+			this.uploads = 0, 
+			this.shutOut = "", 
+	});
+
+	/// Parses a LinkVisitor from a string source.
+	static LinkVisitor? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a LinkVisitor instance from the given reader.
+	static LinkVisitor read(JsonReader json) {
+		LinkVisitor result = LinkVisitor();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "LinkVisitor";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "firstSeen": {
+				firstSeen = json.expectString();
+				break;
+			}
+			case "lastSeen": {
+				lastSeen = json.expectString();
+				break;
+			}
+			case "uploads": {
+				uploads = json.expectInt();
+				break;
+			}
+			case "shutOut": {
+				shutOut = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("contact");
+		json.addString(contact);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("firstSeen");
+		json.addString(firstSeen);
+
+		json.addKey("lastSeen");
+		json.addString(lastSeen);
+
+		json.addKey("uploads");
+		json.addNumber(uploads);
+
+		json.addKey("shutOut");
+		json.addString(shutOut);
 	}
 
 }
@@ -6440,6 +6604,17 @@ class ShareRecipient extends _JsonObject {
 	///  When the contact was shut out of this link, empty while they are not; answered by the server.
 	String shutOut;
 
+	///  When the recipient first came in through this link, an ISO-8601 instant; empty while they
+	///  never did. Unlike {@link #opened} it is kept when the link is sent again (issue #203).
+	String firstOpened;
+
+	///  When the recipient last came in through this link, to the hour; empty while they never did (issue #203).
+	String lastSeen;
+
+	///  How many photographs the recipient added through this link that the space still holds, see
+	///  {@link LinkVisitor#uploads} and issue #203.
+	int uploads;
+
 	/// Creates a ShareRecipient.
 	ShareRecipient({
 			this.contact = "", 
@@ -6448,6 +6623,9 @@ class ShareRecipient extends _JsonObject {
 			this.issued = "", 
 			this.opened = "", 
 			this.shutOut = "", 
+			this.firstOpened = "", 
+			this.lastSeen = "", 
+			this.uploads = 0, 
 	});
 
 	/// Parses a ShareRecipient from a string source.
@@ -6501,6 +6679,18 @@ class ShareRecipient extends _JsonObject {
 				shutOut = json.expectString();
 				break;
 			}
+			case "firstOpened": {
+				firstOpened = json.expectString();
+				break;
+			}
+			case "lastSeen": {
+				lastSeen = json.expectString();
+				break;
+			}
+			case "uploads": {
+				uploads = json.expectInt();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -6530,6 +6720,15 @@ class ShareRecipient extends _JsonObject {
 
 		json.addKey("shutOut");
 		json.addString(shutOut);
+
+		json.addKey("firstOpened");
+		json.addString(firstOpened);
+
+		json.addKey("lastSeen");
+		json.addString(lastSeen);
+
+		json.addKey("uploads");
+		json.addNumber(uploads);
 	}
 
 }
@@ -6777,6 +6976,11 @@ class Contact extends _JsonObject {
 	///  The browsers the contact is recognised on: their contact credentials, never a secret.
 	List<ContactSession> sessions;
 
+	///  How many photographs the contact added that the space still holds, through any link: the
+	///  entries of the space's <code>.hashes.json</code> sidecars attributed to
+	///  <code>contact:&lt;id&gt;</code>, see issue #203.
+	int uploads;
+
 	/// Creates a Contact.
 	Contact({
 			this.id = "", 
@@ -6789,6 +6993,7 @@ class Contact extends _JsonObject {
 			this.lastSeen = "", 
 			this.blocked = "", 
 			this.sessions = const [], 
+			this.uploads = 0, 
 	});
 
 	/// Parses a Contact from a string source.
@@ -6867,6 +7072,10 @@ class Contact extends _JsonObject {
 				}
 				break;
 			}
+			case "uploads": {
+				uploads = json.expectInt();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -6912,6 +7121,9 @@ class Contact extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("uploads");
+		json.addNumber(uploads);
 	}
 
 }
@@ -6936,6 +7148,9 @@ class ContactSession extends _JsonObject {
 	///  When the session was last used, to the hour.
 	String lastUsed;
 
+	///  The label of the link the session was opened through, empty where it has none or is gone (issue #203).
+	String linkLabel;
+
 	/// Creates a ContactSession.
 	ContactSession({
 			this.id = "", 
@@ -6944,6 +7159,7 @@ class ContactSession extends _JsonObject {
 			this.expires = "", 
 			this.remember = false, 
 			this.lastUsed = "", 
+			this.linkLabel = "", 
 	});
 
 	/// Parses a ContactSession from a string source.
@@ -6988,6 +7204,10 @@ class ContactSession extends _JsonObject {
 				lastUsed = json.expectString();
 				break;
 			}
+			case "linkLabel": {
+				linkLabel = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -7013,6 +7233,9 @@ class ContactSession extends _JsonObject {
 
 		json.addKey("lastUsed");
 		json.addString(lastUsed);
+
+		json.addKey("linkLabel");
+		json.addString(linkLabel);
 	}
 
 }
@@ -7209,6 +7432,233 @@ class ContactShutOut extends _JsonObject {
 
 		json.addKey("shutOut");
 		json.addBool(shutOut);
+	}
+
+}
+
+///  Gives a contact another name in the space, <code>&lt;data&gt;/?action=rename-contact</code>
+///  (issue #203).
+/// 
+///  <p>
+///  What their uploads are labelled with was copied at the upload and stays. Answered with the
+///  {@link Contact}.
+///  </p>
+class ContactRename extends _JsonObject {
+	///  The id of the contact.
+	String contact;
+
+	///  The new name; a blank one is refused.
+	String name;
+
+	/// Creates a ContactRename.
+	ContactRename({
+			this.contact = "", 
+			this.name = "", 
+	});
+
+	/// Parses a ContactRename from a string source.
+	static ContactRename? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactRename instance from the given reader.
+	static ContactRename read(JsonReader json) {
+		ContactRename result = ContactRename();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactRename";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("contact");
+		json.addString(contact);
+
+		json.addKey("name");
+		json.addString(name);
+	}
+
+}
+
+///  Ends a browser session of a contact, <code>&lt;data&gt;/?action=end-contact-session</code>
+///  (issue #203).
+/// 
+///  <p>
+///  The credential of that session opens nothing from then on; the contact is asked who they are
+///  the next time that browser opens a link. Answered with the {@link Contact}.
+///  </p>
+class ContactSessionEnd extends _JsonObject {
+	///  The id of the contact.
+	String contact;
+
+	///  The id of the session, see {@link ContactSession#id}; empty ends every session of the contact.
+	String session;
+
+	/// Creates a ContactSessionEnd.
+	ContactSessionEnd({
+			this.contact = "", 
+			this.session = "", 
+	});
+
+	/// Parses a ContactSessionEnd from a string source.
+	static ContactSessionEnd? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactSessionEnd instance from the given reader.
+	static ContactSessionEnd read(JsonReader json) {
+		ContactSessionEnd result = ContactSessionEnd();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactSessionEnd";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			case "session": {
+				session = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("contact");
+		json.addString(contact);
+
+		json.addKey("session");
+		json.addString(session);
+	}
+
+}
+
+///  Deletes a contact from the space, <code>&lt;data&gt;/?action=delete-contact</code> (issue
+///  #203).
+/// 
+///  <p>
+///  Deleting deletes: the contact's name, addresses and sessions go from the register, their own
+///  links of every personal link become tokens nobody issued, and the links they were sent stay
+///  closed to everybody else. What they uploaded keeps the name that was copied onto it at the
+///  upload. Answered with the {@link Contact} as it was.
+///  </p>
+class ContactDelete extends _JsonObject {
+	///  The id of the contact.
+	String contact;
+
+	/// Creates a ContactDelete.
+	ContactDelete({
+			this.contact = "", 
+	});
+
+	/// Parses a ContactDelete from a string source.
+	static ContactDelete? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContactDelete instance from the given reader.
+	static ContactDelete read(JsonReader json) {
+		ContactDelete result = ContactDelete();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContactDelete";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("contact");
+		json.addString(contact);
+	}
+
+}
+
+///  What <code>&lt;data&gt;/?action=end-other-sessions</code> did, asked by a contact in a session
+///  of a personal link (issue #203): their other browsers are signed out.
+class OtherSessionsEnded extends _JsonObject {
+	///  How many sessions were ended.
+	int ended;
+
+	/// Creates a OtherSessionsEnded.
+	OtherSessionsEnded({
+			this.ended = 0, 
+	});
+
+	/// Parses a OtherSessionsEnded from a string source.
+	static OtherSessionsEnded? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a OtherSessionsEnded instance from the given reader.
+	static OtherSessionsEnded read(JsonReader json) {
+		OtherSessionsEnded result = OtherSessionsEnded();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "OtherSessionsEnded";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "ended": {
+				ended = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("ended");
+		json.addNumber(ended);
 	}
 
 }

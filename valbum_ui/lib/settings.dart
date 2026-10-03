@@ -1397,6 +1397,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         ),
       ..._devicesSection(),
       ..._inviteSection(l10n),
+      ..._contactsSection(),
     ];
   }
 
@@ -1512,6 +1513,26 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         isAdmin: role == roleAdmin,
         generation: _invitationGeneration,
         onInvite: _invite,
+      ),
+    ];
+  }
+
+  /// The contacts of this space, beside its members (issue #203).
+  ///
+  /// Every signed-in member reads them — a space shares its contacts the way
+  /// it shares its photos (#195) — and whoever may share links manages them,
+  /// the share flag the server asks for the same requests.
+  List<Widget> _contactsSection() {
+    var settings = widget.settings;
+    var client = _managementClient();
+    var role = identity?.role ?? "";
+    if (!settings.signedIn || client == null || role.isEmpty) {
+      return const [];
+    }
+    return [
+      ContactsSection(
+        client: client,
+        mayManage: role == roleAdmin || (identity?.mayShare ?? false),
       ),
     ];
   }

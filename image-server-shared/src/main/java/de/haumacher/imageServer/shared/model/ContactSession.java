@@ -33,6 +33,9 @@ public class ContactSession extends de.haumacher.msgbuf.data.AbstractDataObject 
 	/** @see #getLastUsed() */
 	private static final String LAST_USED__PROP = "lastUsed";
 
+	/** @see #getLinkLabel() */
+	private static final String LINK_LABEL__PROP = "linkLabel";
+
 	private String _id = "";
 
 	private String _link = "";
@@ -44,6 +47,8 @@ public class ContactSession extends de.haumacher.msgbuf.data.AbstractDataObject 
 	private boolean _remember = false;
 
 	private String _lastUsed = "";
+
+	private String _linkLabel = "";
 
 	/**
 	 * Creates a {@link ContactSession} instance.
@@ -174,6 +179,26 @@ public class ContactSession extends de.haumacher.msgbuf.data.AbstractDataObject 
 		_lastUsed = value;
 	}
 
+	/**
+	 * The label of the link the session was opened through, empty where it has none or is gone (issue #203).
+	 */
+	public final String getLinkLabel() {
+		return _linkLabel;
+	}
+
+	/**
+	 * @see #getLinkLabel()
+	 */
+	public de.haumacher.imageServer.shared.model.ContactSession setLinkLabel(String value) {
+		internalSetLinkLabel(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getLinkLabel()} without chain call utility. */
+	protected final void internalSetLinkLabel(String value) {
+		_linkLabel = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ContactSession readContactSession(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ContactSession result = new de.haumacher.imageServer.shared.model.ContactSession();
@@ -201,6 +226,8 @@ public class ContactSession extends de.haumacher.msgbuf.data.AbstractDataObject 
 		out.value(isRemember());
 		out.name(LAST_USED__PROP);
 		out.value(getLastUsed());
+		out.name(LINK_LABEL__PROP);
+		out.value(getLinkLabel());
 	}
 
 	@Override
@@ -212,6 +239,7 @@ public class ContactSession extends de.haumacher.msgbuf.data.AbstractDataObject 
 			case EXPIRES__PROP: setExpires(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case REMEMBER__PROP: setRemember(in.nextBoolean()); break;
 			case LAST_USED__PROP: setLastUsed(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case LINK_LABEL__PROP: setLinkLabel(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

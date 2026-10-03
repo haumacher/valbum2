@@ -2399,6 +2399,60 @@ class VAlbumClient {
     return ContactList.read(JsonReader.fromString(response.body));
   }
 
+  /// Shuts the contact out of one personal link, or lets them in again
+  /// (issue #198's `shut-out`, offered by #203's link list); answers the link
+  /// as the list shows it.
+  Future<ShareLinkList> shutOut(
+      List<String> path, String link, String contact, bool shutOut) async {
+    var url = "${folderUrl(path)}?action=shut-out";
+    var response = await _postBody(
+        url,
+        _jsonOf(ContactShutOut(link: link, contact: contact, shutOut: shutOut)
+            .writeContent));
+    return ShareLinkList.read(JsonReader.fromString(response));
+  }
+
+  /// Shuts the contact out of every link of the space, or lets them in again
+  /// (issue #198's `block-contact`); answers the contact.
+  Future<Contact> blockContact(String contact, bool shutOut) =>
+      _postContact("block-contact",
+          _jsonOf(ContactShutOut(contact: contact, shutOut: shutOut).writeContent));
+
+  /// Gives a contact another name in the space (issue #203); answers the
+  /// contact.
+  Future<Contact> renameContact(String contact, String name) => _postContact(
+      "rename-contact",
+      _jsonOf(ContactRename(contact: contact, name: name).writeContent));
+
+  /// Ends one browser session of a contact, or every one where [session] is
+  /// empty (issue #203); answers the contact.
+  Future<Contact> endContactSession(String contact, {String session = ""}) =>
+      _postContact(
+          "end-contact-session",
+          _jsonOf(ContactSessionEnd(contact: contact, session: session)
+              .writeContent));
+
+  /// Deletes a contact from the space (issue #203); answers the contact as
+  /// it was.
+  Future<Contact> deleteContact(String contact) => _postContact(
+      "delete-contact", _jsonOf(ContactDelete(contact: contact).writeContent));
+
+  /// Posts one of the contact requests of the space, answering a [Contact].
+  Future<Contact> _postContact(String action, String body) async {
+    var url = "${folderUrl(const [])}?action=$action";
+    var response = await _postBody(url, body);
+    return Contact.read(JsonReader.fromString(response));
+  }
+
+  /// Signs the contact of this session out of every other browser (issue
+  /// #203): "Also signed in on n other browsers — sign out others". Asked
+  /// in a session of a personal link only; answers how many were ended.
+  Future<int> endOtherSessions() async {
+    var url = "${folderUrl(const [])}?action=end-other-sessions";
+    var response = await _postBody(url, "{}");
+    return OtherSessionsEnded.read(JsonReader.fromString(response)).ended;
+  }
+
   /// The first open of a recipient's own link (issue #198): the link
   /// identifies the recipient once, and the answer recognises them from then
   /// on. Sent with the recipient's token as the bearer.

@@ -1436,6 +1436,18 @@ message ShareInfo {
 	 * </p>
 	 */
 	bool contactHasEmail;
+
+	/**
+	 * On how many other browsers the contact of this session is signed in, see issue #203;
+	 * <code>0</code> for every caller who is no contact.
+	 *
+	 * <p>
+	 * The live contact credentials of the contact besides the one this request came with. The app
+	 * offers "Also signed in on n other browsers &mdash; sign out others" where it is not
+	 * <code>0</code>, which <code>&lt;data&gt;/?action=end-other-sessions</code> does.
+	 * </p>
+	 */
+	int otherSessions;
 }
 
 /**
@@ -2378,6 +2390,51 @@ message ShareLink {
 	 * </p>
 	 */
 	string photoLabel;
+
+	/**
+	 * Whether the link is a personal link only its recipients open, see issue #203; answered by the
+	 * server.
+	 *
+	 * <p>
+	 * Stays true when every recipient was deleted from the space's contacts: an addressed link never
+	 * becomes open by losing its recipients.
+	 * </p>
+	 */
+	bool addressed;
+
+	/**
+	 * Who came in through a personal link without being one of its {@link #recipients}: the
+	 * visitors of an open personal link, see issue #203; answered by the server, empty for every
+	 * other link.
+	 */
+	repeated LinkVisitor visitors;
+}
+
+/**
+ * A contact who came in through a personal link, see {@link ShareLink#visitors} and issue #203.
+ */
+message LinkVisitor {
+	/** The id of the contact. */
+	string contact;
+
+	/** The name the space gives the contact. */
+	string name;
+
+	/** When the contact first came in through the link, an ISO-8601 instant. */
+	string firstSeen;
+
+	/** When the contact last came in through the link, to the hour. */
+	string lastSeen;
+
+	/**
+	 * How many photographs the contact added through the link that the space still holds: the
+	 * entries of the <code>.hashes.json</code> sidecars attributed to the contact and recorded with
+	 * this link.
+	 */
+	int uploads;
+
+	/** When the contact was shut out of this link, empty while they are not. */
+	string shutOut;
 }
 
 /**
@@ -2474,6 +2531,21 @@ message ShareRecipient {
 
 	/** When the contact was shut out of this link, empty while they are not; answered by the server. */
 	string shutOut;
+
+	/**
+	 * When the recipient first came in through this link, an ISO-8601 instant; empty while they
+	 * never did. Unlike {@link #opened} it is kept when the link is sent again (issue #203).
+	 */
+	string firstOpened;
+
+	/** When the recipient last came in through this link, to the hour; empty while they never did (issue #203). */
+	string lastSeen;
+
+	/**
+	 * How many photographs the recipient added through this link that the space still holds, see
+	 * {@link LinkVisitor#uploads} and issue #203.
+	 */
+	int uploads;
 }
 
 /**
@@ -2568,6 +2640,13 @@ message Contact {
 
 	/** The browsers the contact is recognised on: their contact credentials, never a secret. */
 	repeated ContactSession sessions;
+
+	/**
+	 * How many photographs the contact added that the space still holds, through any link: the
+	 * entries of the space's <code>.hashes.json</code> sidecars attributed to
+	 * <code>contact:&lt;id&gt;</code>, see issue #203.
+	 */
+	int uploads;
 }
 
 /** A browser a contact is recognised on, see {@link Contact#sessions} and issue #198. */
@@ -2589,6 +2668,9 @@ message ContactSession {
 
 	/** When the session was last used, to the hour. */
 	string lastUsed;
+
+	/** The label of the link the session was opened through, empty where it has none or is gone (issue #203). */
+	string linkLabel;
 }
 
 /** The register of contacts of a space, answered by <code>&lt;data&gt;/?type=contacts</code> (issue #198). */
@@ -2632,6 +2714,65 @@ message ContactShutOut {
 
 	/** Whether the contact is shut out, or let in again. */
 	bool shutOut;
+}
+
+/**
+ * Gives a contact another name in the space, <code>&lt;data&gt;/?action=rename-contact</code>
+ * (issue #203).
+ *
+ * <p>
+ * What their uploads are labelled with was copied at the upload and stays. Answered with the
+ * {@link Contact}.
+ * </p>
+ */
+message ContactRename {
+	/** The id of the contact. */
+	string contact;
+
+	/** The new name; a blank one is refused. */
+	string name;
+}
+
+/**
+ * Ends a browser session of a contact, <code>&lt;data&gt;/?action=end-contact-session</code>
+ * (issue #203).
+ *
+ * <p>
+ * The credential of that session opens nothing from then on; the contact is asked who they are
+ * the next time that browser opens a link. Answered with the {@link Contact}.
+ * </p>
+ */
+message ContactSessionEnd {
+	/** The id of the contact. */
+	string contact;
+
+	/** The id of the session, see {@link ContactSession#id}; empty ends every session of the contact. */
+	string session;
+}
+
+/**
+ * Deletes a contact from the space, <code>&lt;data&gt;/?action=delete-contact</code> (issue
+ * #203).
+ *
+ * <p>
+ * Deleting deletes: the contact's name, addresses and sessions go from the register, their own
+ * links of every personal link become tokens nobody issued, and the links they were sent stay
+ * closed to everybody else. What they uploaded keeps the name that was copied onto it at the
+ * upload. Answered with the {@link Contact} as it was.
+ * </p>
+ */
+message ContactDelete {
+	/** The id of the contact. */
+	string contact;
+}
+
+/**
+ * What <code>&lt;data&gt;/?action=end-other-sessions</code> did, asked by a contact in a session
+ * of a personal link (issue #203): their other browsers are signed out.
+ */
+message OtherSessionsEnded {
+	/** How many sessions were ended. */
+	int ended;
 }
 
 /**

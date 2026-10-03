@@ -4982,5 +4982,215 @@
   "@duplicatesSpaceRoot": {
     "description": "The name shown for a copy lying directly at the root of the library, on the overview of photos in several albums (issue #220).",
     "x-translated": "1f6caf2c"
+  },
+  "linkAnonymous": "Anonymous",
+  "@linkAnonymous": {
+    "description": "The type of an anonymous share link in the list of links (issue #203). German 'Anonym'.",
+    "x-translated": "40c06f0d"
+  },
+  "recipientNotOpened": "Not opened yet",
+  "@recipientNotOpened": {
+    "description": "In the list of share links: a recipient of a personal link who never opened it (issue #203). German 'Noch nicht geöffnet'.",
+    "x-translated": "c07c7d8c"
+  },
+  "openedOn": "Opened {day}",
+  "@openedOn": {
+    "description": "In the list of share links: when a recipient or visitor first opened the personal link; {day} is a date (issue #203). German 'Geöffnet am {day}'.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "May 3, 2026"
+      }
+    },
+    "x-translated": "272b35a3"
+  },
+  "lastSeenOn": "Last seen {day}",
+  "@lastSeenOn": {
+    "description": "When a contact was last seen (a personal link opened); {day} is a date (issue #203). German 'Zuletzt da am {day}'.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "May 3, 2026"
+      }
+    },
+    "x-translated": "35f23b5"
+  },
+  "photosAdded": "{count, plural, =1{1 photo added} other{{count} photos added}}",
+  "@photosAdded": {
+    "description": "How many photos a contact added through a personal link (issue #203). German '1 Foto hinzugefügt' / '{count} Fotos hinzugefügt'.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    },
+    "x-translated": "f087ab00"
+  },
+  "shutOutMark": "Shut out",
+  "@shutOutMark": {
+    "description": "In the list of share links: the contact is shut out of this link (issue #203). German 'Ausgesperrt'.",
+    "x-translated": "b7f6e806"
+  },
+  "shutOutOfLink": "Shut out of this link",
+  "@shutOutOfLink": {
+    "description": "Tooltip of the button shutting a contact out of one personal link (issue #203). German 'Von diesem Link aussperren'.",
+    "x-translated": "19200066"
+  },
+  "letInAgain": "Let in again",
+  "@letInAgain": {
+    "description": "Button or menu entry letting a shut-out contact in again (issue #203). German 'Wieder zulassen'.",
+    "x-translated": "546e84da"
+  },
+  "contactsHeading": "Contacts",
+  "@contactsHeading": {
+    "description": "Heading of the section of the server settings listing the contacts of the space: the people personal links went to (issue #203). German 'Kontakte'.",
+    "x-translated": "ca367725"
+  },
+  "contactsLead": "The people your personal links were sent to or opened by. Every member sees them.",
+  "@contactsLead": {
+    "description": "Explains the contacts section of the server settings (issue #203). Short; German with 'Sie'.",
+    "x-translated": "f5b75ac9"
+  },
+  "noContacts": "No contacts yet.",
+  "@noContacts": {
+    "description": "The contacts section has nothing to list (issue #203).",
+    "x-translated": "a3e8a99b"
+  },
+  "contactRename": "Rename…",
+  "@contactRename": {
+    "description": "Menu entry: give a contact another name (issue #203). German 'Umbenennen…'.",
+    "x-translated": "f98d1653"
+  },
+  "contactRenameTitle": "Rename contact",
+  "@contactRenameTitle": {
+    "description": "Title of the dialog renaming a contact (issue #203). German 'Kontakt umbenennen'.",
+    "x-translated": "4eaef96f"
+  },
+  "contactRenameNote": "Photos already added keep the old name.",
+  "@contactRenameNote": {
+    "description": "Note in the dialog renaming a contact: the name copied onto their uploads stays (issue #203).",
+    "x-translated": "c0249dbf"
+  },
+  "contactSessionsEntry": "Signed-in browsers…",
+  "@contactSessionsEntry": {
+    "description": "Menu entry: show the browsers a contact is signed in on, to end them (issue #203). German 'Angemeldete Browser…'.",
+    "x-translated": "53965b27"
+  },
+  "contactSessionCount": "{count, plural, =0{Not signed in} =1{Signed in on 1 browser} other{Signed in on {count} browsers}}",
+  "@contactSessionCount": {
+    "description": "On how many browsers a contact is signed in (issue #203). German 'Nicht angemeldet' / 'In 1 Browser angemeldet' / 'In {count} Browsern angemeldet'.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    },
+    "x-translated": "3198814c"
+  },
+  "contactSessionsTitle": "Browsers of {name}",
+  "@contactSessionsTitle": {
+    "description": "Title of the dialog listing the browsers a contact is signed in on; {name} is the contact (issue #203). German 'Browser von {name}'.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "cfadd206"
+  },
+  "contactSessionSince": "Since {day}",
+  "@contactSessionSince": {
+    "description": "When a browser session of a contact began; {day} is a date (issue #203). German 'Seit {day}'.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "May 3, 2026"
+      }
+    },
+    "x-translated": "10d461ca"
+  },
+  "contactSessionVia": "via '{label}'",
+  "@contactSessionVia": {
+    "description": "Which share link a browser session of a contact was opened through; {label} is the link's label (issue #203). German 'über „{label}“'.",
+    "placeholders": {
+      "label": {
+        "type": "String",
+        "example": "Summer party"
+      }
+    },
+    "x-translated": "77d1c220"
+  },
+  "noContactSessions": "Not signed in anywhere.",
+  "@noContactSessions": {
+    "description": "The contact has no browser session (issue #203). German 'Nirgends angemeldet.'.",
+    "x-translated": "d2f1eecb"
+  },
+  "endSession": "End",
+  "@endSession": {
+    "description": "Button ending one browser session of a contact: that browser is signed out (issue #203). German 'Beenden'.",
+    "x-translated": "38b17551"
+  },
+  "endAllSessions": "End all",
+  "@endAllSessions": {
+    "description": "Button ending every browser session of a contact (issue #203). German 'Alle beenden'.",
+    "x-translated": "b1783df6"
+  },
+  "shutOutEverywhere": "Shut out of every link",
+  "@shutOutEverywhere": {
+    "description": "Menu entry shutting a contact out of every link of the space, and the mark of a contact who is (issue #203). German 'Von allen Links aussperren' for the entry.",
+    "x-translated": "878207b"
+  },
+  "deleteContactTitle": "Delete {name}?",
+  "@deleteContactTitle": {
+    "description": "Title of the question before a contact is deleted; {name} is the contact (issue #203). German '{name} löschen?'.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "55ed4859"
+  },
+  "deleteContactMessage": "Their addresses and sign-ins are deleted, and the links sent to them stop working. Photos they added stay and keep their name.",
+  "@deleteContactMessage": {
+    "description": "What deleting a contact does and what stays (issue #203). Short; German with 'Sie'.",
+    "x-translated": "de1a052c"
+  },
+  "contactProvenAddress": "Proven by the contact",
+  "@contactProvenAddress": {
+    "description": "Tooltip of the mark beside an address the contact proved (by a code or a sign-in) (issue #203). German 'Vom Kontakt bestätigt'.",
+    "x-translated": "f8e37133"
+  },
+  "contactOwnName": "Own name: {name}",
+  "@contactOwnName": {
+    "description": "The name a contact gave themself, beside the name the space gives them (issue #203). German 'Eigener Name: {name}'.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "2e623bcb"
+  },
+  "otherSessionsSignOut": "{count, plural, =1{Also signed in on 1 other browser — sign out others} other{Also signed in on {count} other browsers — sign out others}}",
+  "@otherSessionsSignOut": {
+    "description": "Menu entry of a visitor of a personal link who is signed in on further browsers: signs those out (issue #203). German with 'Sie': 'Auch in 1 anderen Browser angemeldet – andere abmelden'.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    },
+    "x-translated": "12778a00"
+  },
+  "otherSessionsEnded": "Your other browsers are signed out.",
+  "@otherSessionsEnded": {
+    "description": "Said after a visitor of a personal link signed out their other browsers (issue #203). German with 'Sie'.",
+    "x-translated": "119cc7b8"
+  },
+  "shutOutEverywhereMark": "Shut out everywhere",
+  "@shutOutEverywhereMark": {
+    "description": "Mark of a contact who is shut out of every link of the space, in the contacts section (issue #203). German 'Überall ausgesperrt'.",
+    "x-translated": "b84ffeb7"
   }
 }

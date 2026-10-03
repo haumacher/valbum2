@@ -13,6 +13,7 @@ import de.haumacher.imageServer.shared.model.ContactList;
 import de.haumacher.imageServer.shared.model.ContactSession;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.IdentifyRequired;
+import de.haumacher.imageServer.shared.model.LinkVisitor;
 import de.haumacher.imageServer.shared.model.MaskedAddress;
 import de.haumacher.imageServer.shared.model.ProofMethod;
 import de.haumacher.imageServer.shared.model.ShareLink;
@@ -51,6 +52,20 @@ public final class PersonalLinks {
 	/** What an unreadable request about a recipient or a contact is refused with. */
 	public static final String UNREADABLE = "The request about a contact cannot be read.";
 
+	/** What a request to manage the contacts is refused to a caller who is no member with the share flag (issue #203). */
+	public static final String CONTACTS_MANAGE_REFUSED =
+		"Only a member who may share links manages the contacts of the space.";
+
+	/** What a blank name for a contact is refused with (issue #203). */
+	public static final String CONTACT_NAME_REQUIRED = "A contact needs a name.";
+
+	/** What a request for a session the contact does not have is refused with (issue #203). */
+	public static final String SESSION_UNKNOWN = "This browser session of the contact does not exist (any more).";
+
+	/** What "sign out others" is refused to a caller who is no contact (issue #203). */
+	public static final String OTHER_SESSIONS_REFUSED =
+		"Only a person who opened a personal link signs out their other browsers.";
+
 	/** What a recipient shut out of the whole space is refused with as a new recipient. */
 	public static String contactBlocked(String name) {
 		return "'" + name + "' is shut out of every link of this space.";
@@ -62,10 +77,31 @@ public final class PersonalLinks {
 
 	/** The register as <code>?type=contacts</code> answers it. */
 	public static ContactList contacts(ContactStore store) {
+		return contacts(store, null, Contributions.Counts.NONE);
+	}
+
+	/**
+	 * The register as <code>?type=contacts</code> answers it since issue #203: with how many
+	 * photographs each contact added and the label of the link each session was opened through.
+	 */
+	public static ContactList contacts(ContactStore store, ShareStore shares, Contributions.Counts counts) {
 		ContactList result = ContactList.create();
 		if (store != null) {
 			for (ContactStore.Contact contact : store.getContacts()) {
-				result.addContact(contact(contact));
+				result.addContact(contact(contact, shares, counts));
+			}
+		}
+		return result;
+	}
+
+	/** One contact as members are told about them, with what issue #203 adds. */
+	public static Contact contact(ContactStore.Contact contact, ShareStore shares, Contributions.Counts counts) {
+		Contact result = contact(contact);
+		result.setUploads(counts.of(contact.getSubject()));
+		if (shares != null) {
+			for (ContactSession session : result.getSessions()) {
+				ShareStore.Link link = shares.get(session.getLink());
+				session.setLinkLabel(link == null ? "" : link.getLabel());
 			}
 		}
 		return result;
@@ -128,18 +164,58 @@ public final class PersonalLinks {
 
 	/** Adds what is peculiar to a personal link to its wire form. */
 	public static ShareLink withRecipients(ShareLink wire, ShareStore.Link link, ContactStore contacts) {
+		return withRecipients(wire, link, contacts, Contributions.Counts.NONE);
+	}
+
+	/**
+	 * Adds what is peculiar to a personal link to its wire form, with who came in through it, when,
+	 * and how many photographs each added (issue #203).
+	 */
+	public static ShareLink withRecipients(ShareLink wire, ShareStore.Link link, ContactStore contacts,
+			Contributions.Counts counts) {
 		wire.setType(link.isPersonal() ? ShareType.PERSONAL : ShareType.ANONYMOUS);
+		wire.setAddressed(link.isAddressed());
+		java.util.Set<String> recipients = new java.util.HashSet<>();
 		for (ShareStore.Recipient recipient : link.getRecipients()) {
-			ContactStore.Contact contact = contacts == null ? null : contacts.get(recipient.getContact());
+			String id = recipient.getContact();
+			recipients.add(id);
+			ContactStore.Contact contact = contacts == null ? null : contacts.get(id);
+			ShareStore.Visit visit = link.visitOf(id);
 			wire.addRecipient(ShareRecipient.create()
-				.setContact(recipient.getContact())
+				.setContact(id)
 				.setName(contact == null ? "" : contact.getName())
 				.setAddresses(addresses(contact))
 				.setIssued(recipient.getIssued())
 				.setOpened(recipient.getOpened())
-				.setShutOut(link.shutOutAt(recipient.getContact())));
+				.setShutOut(link.shutOutAt(id))
+				.setFirstOpened(visit != null ? visit.getFirst() : recipient.getOpened())
+				.setLastSeen(visit != null ? visit.getLast() : "")
+				.setUploads(counts.of(subject(id), link.getId())));
+		}
+		for (java.util.Map.Entry<String, ShareStore.Visit> entry : link.getVisitors().entrySet()) {
+			String id = entry.getKey();
+			if (recipients.contains(id)) {
+				continue;
+			}
+			ContactStore.Contact contact = contacts == null ? null : contacts.get(id);
+			if (contact == null) {
+				// Deleted from the space: as if they had never come.
+				continue;
+			}
+			wire.addVisitor(LinkVisitor.create()
+				.setContact(id)
+				.setName(contact.getName())
+				.setFirstSeen(entry.getValue().getFirst())
+				.setLastSeen(entry.getValue().getLast())
+				.setUploads(counts.of(contact.getSubject(), link.getId()))
+				.setShutOut(link.shutOutAt(id)));
 		}
 		return wire;
+	}
+
+	/** How an attribution names a contact of the given id. */
+	private static String subject(String contactId) {
+		return "contact:" + contactId;
 	}
 
 	/**

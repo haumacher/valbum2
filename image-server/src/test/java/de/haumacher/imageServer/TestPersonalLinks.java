@@ -471,16 +471,6 @@ public class TestPersonalLinks extends PersonalLinkTestCase {
 
 	// --- Helpers. ---
 
-	private static ImagePart image(FakeResponse response, String name) throws Exception {
-		for (de.haumacher.imageServer.shared.model.AlbumPart part : album(response).getParts()) {
-			if (part instanceof ImagePart && ((ImagePart) part).getName().equals(name)) {
-				return (ImagePart) part;
-			}
-		}
-		fail("No image '" + name + "' in " + response.body());
-		return null;
-	}
-
 	static void deleteTree(Path root) throws Exception {
 		try (java.util.stream.Stream<Path> walk = Files.walk(root)) {
 			walk.sorted(java.util.Comparator.reverseOrder()).forEach(path -> path.toFile().delete());

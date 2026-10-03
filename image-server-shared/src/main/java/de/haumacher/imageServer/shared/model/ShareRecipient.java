@@ -40,6 +40,15 @@ public class ShareRecipient extends de.haumacher.msgbuf.data.AbstractDataObject 
 	/** @see #getShutOut() */
 	private static final String SHUT_OUT__PROP = "shutOut";
 
+	/** @see #getFirstOpened() */
+	private static final String FIRST_OPENED__PROP = "firstOpened";
+
+	/** @see #getLastSeen() */
+	private static final String LAST_SEEN__PROP = "lastSeen";
+
+	/** @see #getUploads() */
+	private static final String UPLOADS__PROP = "uploads";
+
 	private String _contact = "";
 
 	private String _name = "";
@@ -51,6 +60,12 @@ public class ShareRecipient extends de.haumacher.msgbuf.data.AbstractDataObject 
 	private String _opened = "";
 
 	private String _shutOut = "";
+
+	private String _firstOpened = "";
+
+	private String _lastSeen = "";
+
+	private int _uploads = 0;
 
 	/**
 	 * Creates a {@link ShareRecipient} instance.
@@ -203,6 +218,68 @@ public class ShareRecipient extends de.haumacher.msgbuf.data.AbstractDataObject 
 		_shutOut = value;
 	}
 
+	/**
+	 * When the recipient first came in through this link, an ISO-8601 instant; empty while they
+	 * never did. Unlike {@link #getOpened()} it is kept when the link is sent again (issue #203).
+	 */
+	public final String getFirstOpened() {
+		return _firstOpened;
+	}
+
+	/**
+	 * @see #getFirstOpened()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareRecipient setFirstOpened(String value) {
+		internalSetFirstOpened(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getFirstOpened()} without chain call utility. */
+	protected final void internalSetFirstOpened(String value) {
+		_firstOpened = value;
+	}
+
+	/**
+	 * When the recipient last came in through this link, to the hour; empty while they never did (issue #203).
+	 */
+	public final String getLastSeen() {
+		return _lastSeen;
+	}
+
+	/**
+	 * @see #getLastSeen()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareRecipient setLastSeen(String value) {
+		internalSetLastSeen(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getLastSeen()} without chain call utility. */
+	protected final void internalSetLastSeen(String value) {
+		_lastSeen = value;
+	}
+
+	/**
+	 * How many photographs the recipient added through this link that the space still holds, see
+	 * {@link LinkVisitor#getUploads()} and issue #203.
+	 */
+	public final int getUploads() {
+		return _uploads;
+	}
+
+	/**
+	 * @see #getUploads()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareRecipient setUploads(int value) {
+		internalSetUploads(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getUploads()} without chain call utility. */
+	protected final void internalSetUploads(int value) {
+		_uploads = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareRecipient readShareRecipient(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareRecipient result = new de.haumacher.imageServer.shared.model.ShareRecipient();
@@ -234,6 +311,12 @@ public class ShareRecipient extends de.haumacher.msgbuf.data.AbstractDataObject 
 		out.value(getOpened());
 		out.name(SHUT_OUT__PROP);
 		out.value(getShutOut());
+		out.name(FIRST_OPENED__PROP);
+		out.value(getFirstOpened());
+		out.name(LAST_SEEN__PROP);
+		out.value(getLastSeen());
+		out.name(UPLOADS__PROP);
+		out.value(getUploads());
 	}
 
 	@Override
@@ -252,6 +335,9 @@ public class ShareRecipient extends de.haumacher.msgbuf.data.AbstractDataObject 
 			case ISSUED__PROP: setIssued(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case OPENED__PROP: setOpened(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SHUT_OUT__PROP: setShutOut(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case FIRST_OPENED__PROP: setFirstOpened(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case LAST_SEEN__PROP: setLastSeen(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case UPLOADS__PROP: setUploads(in.nextInt()); break;
 			default: super.readField(in, field);
 		}
 	}

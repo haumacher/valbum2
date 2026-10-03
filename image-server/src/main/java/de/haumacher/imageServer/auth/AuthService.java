@@ -1280,6 +1280,30 @@ public class AuthService {
 		return link;
 	}
 
+	/**
+	 * Deletes the contact of the given id from the space, as if they had never been entered, see
+	 * issue #203.
+	 *
+	 * <p>
+	 * Their record goes with their addresses and sessions ({@link ContactStore#delete(String)}), and
+	 * every link forgets them ({@link ShareStore#forgetContact(String)}): their own links are from
+	 * then on tokens nobody issued. What they uploaded keeps the name that was copied at the upload.
+	 * </p>
+	 *
+	 * @return The deleted contact, <code>null</code> if there is none of that id.
+	 */
+	public ContactStore.Contact deleteContact(String id) throws IOException {
+		if (_contacts == null) {
+			return null;
+		}
+		ContactStore.Contact contact = _contacts.delete(id);
+		if (contact != null) {
+			int links = _shares.forgetContact(contact.getId());
+			LOG.info("Deleted the contact " + contact + "; " + links + " link(s) forgot them.");
+		}
+		return contact;
+	}
+
 	/** Ends the contact sessions opened through the given deleted link. */
 	private void endSessionsOf(ShareStore.Link link) throws IOException {
 		if (_contacts == null) {
@@ -1429,6 +1453,13 @@ public class AuthService {
 						LOG.log(java.util.logging.Level.WARNING,
 							"Cannot mark the link of " + contact + " as opened: " + ex.getMessage());
 					}
+				}
+				try {
+					// Who came in through the link and when, for its owner (issue #203).
+					_shares.visited(share, contact.getId());
+				} catch (IOException ex) {
+					LOG.log(java.util.logging.Level.WARNING,
+						"Cannot note the visit of " + contact + " to the link " + share + ": " + ex.getMessage());
 				}
 				return Caller.contact(share, contact, recognized.getSession());
 			}

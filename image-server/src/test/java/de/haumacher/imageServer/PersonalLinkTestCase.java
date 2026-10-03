@@ -182,6 +182,19 @@ public abstract class PersonalLinkTestCase extends ShareTestCase {
 		return result;
 	}
 
+	/** The image of the given name in the album the response answers. */
+	protected static de.haumacher.imageServer.shared.model.ImagePart image(FakeResponse response, String name)
+			throws Exception {
+		for (de.haumacher.imageServer.shared.model.AlbumPart part : album(response).getParts()) {
+			if (part instanceof de.haumacher.imageServer.shared.model.ImagePart
+				&& ((de.haumacher.imageServer.shared.model.ImagePart) part).getName().equals(name)) {
+				return (de.haumacher.imageServer.shared.model.ImagePart) part;
+			}
+		}
+		fail("No image '" + name + "' in " + response.body());
+		return null;
+	}
+
 	protected static ContactList contactList(FakeResponse response) throws Exception {
 		return ContactList.readContactList(reader(body(response)));
 	}

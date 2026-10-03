@@ -2989,4 +2989,135 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get duplicatesSpaceRoot => 'Start page';
+
+  @override
+  String get linkAnonymous => 'Anonymous';
+
+  @override
+  String get recipientNotOpened => 'Not opened yet';
+
+  @override
+  String openedOn(String day) {
+    return 'Opened $day';
+  }
+
+  @override
+  String lastSeenOn(String day) {
+    return 'Last seen $day';
+  }
+
+  @override
+  String photosAdded(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photos added',
+      one: '1 photo added',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get shutOutMark => 'Shut out';
+
+  @override
+  String get shutOutOfLink => 'Shut out of this link';
+
+  @override
+  String get letInAgain => 'Let in again';
+
+  @override
+  String get contactsHeading => 'Contacts';
+
+  @override
+  String get contactsLead =>
+      'The people your personal links were sent to or opened by. Every member sees them.';
+
+  @override
+  String get noContacts => 'No contacts yet.';
+
+  @override
+  String get contactRename => 'Rename…';
+
+  @override
+  String get contactRenameTitle => 'Rename contact';
+
+  @override
+  String get contactRenameNote => 'Photos already added keep the old name.';
+
+  @override
+  String get contactSessionsEntry => 'Signed-in browsers…';
+
+  @override
+  String contactSessionCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Signed in on $count browsers',
+      one: 'Signed in on 1 browser',
+      zero: 'Not signed in',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String contactSessionsTitle(String name) {
+    return 'Browsers of $name';
+  }
+
+  @override
+  String contactSessionSince(String day) {
+    return 'Since $day';
+  }
+
+  @override
+  String contactSessionVia(String label) {
+    return 'via \'$label\'';
+  }
+
+  @override
+  String get noContactSessions => 'Not signed in anywhere.';
+
+  @override
+  String get endSession => 'End';
+
+  @override
+  String get endAllSessions => 'End all';
+
+  @override
+  String get shutOutEverywhere => 'Shut out of every link';
+
+  @override
+  String deleteContactTitle(String name) {
+    return 'Delete $name?';
+  }
+
+  @override
+  String get deleteContactMessage =>
+      'Their addresses and sign-ins are deleted, and the links sent to them stop working. Photos they added stay and keep their name.';
+
+  @override
+  String get contactProvenAddress => 'Proven by the contact';
+
+  @override
+  String contactOwnName(String name) {
+    return 'Own name: $name';
+  }
+
+  @override
+  String otherSessionsSignOut(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Also signed in on $count other browsers — sign out others',
+      one: 'Also signed in on 1 other browser — sign out others',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get otherSessionsEnded => 'Your other browsers are signed out.';
+
+  @override
+  String get shutOutEverywhereMark => 'Shut out everywhere';
 }

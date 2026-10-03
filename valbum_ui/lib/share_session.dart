@@ -49,11 +49,17 @@ class ShareSession {
   /// contact's.
   final VoidCallback? onSwitchPerson;
 
+  /// Signs the contact of this session out of their other browsers: "Also
+  /// signed in on n other browsers — sign out others" (issue #203). `null`
+  /// where the session is no contact's.
+  final Future<void> Function(BuildContext context)? onSignOutOthers;
+
   const ShareSession({
     required this.url,
     required this.info,
     required this.writeAllowed,
     this.onSwitchPerson,
+    this.onSignOutOthers,
   });
 
   /// Who the server takes the visitor of a personal link to be, `null` for
@@ -127,7 +133,9 @@ class ShareSessionScope extends InheritedWidget {
 }
 
 /// The entries a menu of a personal link's session ends with (issue #202):
-/// whom the server takes the visitor to be, and "Not you? Switch person".
+/// whom the server takes the visitor to be, "Also signed in on n other
+/// browsers — sign out others" where they are (issue #203), and "Not you?
+/// Switch person".
 ///
 /// Empty in every other session, so that a menu simply spreads it in.
 List<PopupMenuEntry<void Function(BuildContext)>> switchPersonEntries(
@@ -149,6 +157,22 @@ List<PopupMenuEntry<void Function(BuildContext)>> switchPersonEntries(
         key: const Key("contact-line"),
       ),
     ),
+    if (session!.info.otherSessions > 0 && session.onSignOutOthers != null)
+      PopupMenuItem<void Function(BuildContext)>(
+        key: const Key("sign-out-others"),
+        value: session.onSignOutOthers,
+        child: Row(
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Icon(Icons.devices_other, color: Colors.blueAccent),
+            ),
+            Flexible(
+              child: Text(l10n.otherSessionsSignOut(session.info.otherSessions)),
+            ),
+          ],
+        ),
+      ),
     PopupMenuItem<void Function(BuildContext)>(
       key: const Key("switch-person"),
       value: (_) => switchPerson(),

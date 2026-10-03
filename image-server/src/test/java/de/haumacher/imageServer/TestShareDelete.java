@@ -6,7 +6,6 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.ContactStore;
 import de.haumacher.imageServer.auth.ShareStore;
-import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ShareLink;
 import de.haumacher.imageServer.shared.model.ShareLinkCreated;
@@ -145,15 +144,5 @@ public class TestShareDelete extends PersonalLinkTestCase {
 		assertFalse(contents, contents.contains("oldLink2"));
 		assertFalse(contents, contents.contains("\"revoked\""));
 		assertTrue(contents, contents.contains("oldLink1"));
-	}
-
-	private static ImagePart image(FakeResponse response, String name) throws Exception {
-		for (AlbumPart part : album(response).getParts()) {
-			if (part instanceof ImagePart && ((ImagePart) part).getName().equals(name)) {
-				return (ImagePart) part;
-			}
-		}
-		fail("No image '" + name + "' in " + response.body());
-		return null;
 	}
 }

@@ -1740,3 +1740,473 @@ class PeopleSectionState extends State<PeopleSection> {
     }
   }
 }
+
+/// The key of the contacts section of the server settings (issue #203).
+const Key contactsSectionKey = Key("settings.contacts");
+
+/// The contacts of this space (issue #203): the people personal links were
+/// sent to or opened by, beside the members of [PeopleSection].
+///
+/// Every signed-in member reads the register — "when you share photos, you
+/// also share contacts" (#195) — and whoever may share links ([mayManage],
+/// the share flag the server checks the same way) renames a contact, ends the
+/// browsers they are signed in on, shuts them out of every link and deletes
+/// them. Every action asks the server at once and shows the contact as it
+/// answers; a refusal is said in the server's words.
+class ContactsSection extends StatefulWidget {
+  final VAlbumClient? client;
+
+  /// Whether the caller may manage the contacts: the share flag of their
+  /// permission (or the administrator's).
+  final bool mayManage;
+
+  const ContactsSection({
+    super.key,
+    required this.client,
+    required this.mayManage,
+  });
+
+  @override
+  State<ContactsSection> createState() => ContactsSectionState();
+}
+
+class ContactsSectionState extends State<ContactsSection> {
+  /// The contacts, `null` while they are read.
+  List<Contact>? _contacts;
+
+  /// The server's reason for the last refusal, `null` while all is well.
+  String? _problem;
+
+  /// Whether a request of this section is running.
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    var client = widget.client;
+    if (client == null) {
+      return;
+    }
+    try {
+      var answer = await client.contacts();
+      if (mounted) {
+        setState(() {
+          _contacts = answer.contacts;
+          _problem = null;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _contacts = const [];
+          _problem = refusalMessage(error);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    var contacts = _contacts;
+    var problem = _problem;
+    return Column(
+      key: contactsSectionKey,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...sectionHead(context, l10n.contactsHeading, l10n.contactsLead),
+        if (contacts == null && widget.client != null)
+          sectionProgress(l10n.askingServer),
+        if (problem != null)
+          sectionProblem(
+              context, problem, const Key("settings.contacts.error")),
+        if (contacts != null && contacts.isEmpty && problem == null)
+          Text(l10n.noContacts, key: const Key("settings.contacts.empty")),
+        for (var contact in contacts ?? const <Contact>[])
+          _tile(l10n, contact),
+      ],
+    );
+  }
+
+  Widget _tile(AppLocalizations l10n, Contact contact) {
+    var blocked = contact.blocked.isNotEmpty;
+    return ListTile(
+      key: Key("contact-${contact.id}"),
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(blocked ? Icons.person_off_outlined : Icons.contact_mail),
+      title: Text(contact.name),
+      subtitle: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (contact.displayName.trim().isNotEmpty &&
+              contact.displayName.trim() != contact.name.trim())
+            Text(l10n.contactOwnName(contact.displayName.trim())),
+          for (var address in contact.addresses)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: Text(address.value)),
+                if (address.proven)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Tooltip(
+                      message: l10n.contactProvenAddress,
+                      child: Icon(
+                        Icons.verified,
+                        size: 14,
+                        key: Key("contact-proven-${contact.id}-${address.value}"),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          Text(contactDetails(l10n, contact),
+              key: Key("contact-details-${contact.id}")),
+        ],
+      ),
+      trailing: widget.mayManage ? _menu(l10n, contact) : null,
+    );
+  }
+
+  Widget _menu(AppLocalizations l10n, Contact contact) {
+    var blocked = contact.blocked.isNotEmpty;
+    return PopupMenuButton<void Function()>(
+      key: Key("contact-menu-${contact.id}"),
+      enabled: !_busy,
+      onSelected: (action) => action(),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          key: Key("contact-rename-${contact.id}"),
+          value: () => _rename(contact),
+          child: Text(l10n.contactRename),
+        ),
+        PopupMenuItem(
+          key: Key("contact-sessions-${contact.id}"),
+          value: () => _sessions(contact),
+          child: Text(l10n.contactSessionsEntry),
+        ),
+        PopupMenuItem(
+          key: Key("contact-block-${contact.id}"),
+          value: () => _block(contact, !blocked),
+          child: Text(blocked ? l10n.letInAgain : l10n.shutOutEverywhere),
+        ),
+        PopupMenuItem(
+          key: Key("contact-delete-${contact.id}"),
+          value: () => _delete(contact),
+          child: Text(l10n.deleteEllipsis),
+        ),
+      ],
+    );
+  }
+
+  /// Runs one request of this section and shows the contact it answers in
+  /// the place of the one shown; `null` from [request] removes it.
+  Future<void> _act(
+    Contact contact,
+    Future<Contact?> Function(VAlbumClient client) request,
+  ) async {
+    var client = widget.client;
+    if (client == null) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _problem = null;
+    });
+    Contact? answer;
+    try {
+      answer = await request(client);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _problem = refusalMessage(error);
+        });
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _contacts = [
+        for (var shown in _contacts ?? const <Contact>[])
+          if (shown.id != contact.id)
+            shown
+          else if (answer != null)
+            answer,
+      ];
+    });
+  }
+
+  Future<void> _rename(Contact contact) async {
+    var name = await showFormDialog<String>(
+      context: context,
+      builder: (context) => ContactRenameDialog(name: contact.name),
+    );
+    if (name == null || name.trim().isEmpty || !mounted) {
+      return;
+    }
+    await _act(contact, (client) => client.renameContact(contact.id, name));
+  }
+
+  Future<void> _block(Contact contact, bool shutOut) =>
+      _act(contact, (client) => client.blockContact(contact.id, shutOut));
+
+  Future<void> _sessions(Contact contact) async {
+    var client = widget.client;
+    if (client == null) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (context) => ContactSessionsDialog(
+        client: client,
+        contact: contact,
+        onChanged: (changed) {
+          if (mounted) {
+            setState(() {
+              _contacts = [
+                for (var shown in _contacts ?? const <Contact>[])
+                  shown.id == changed.id ? changed : shown,
+              ];
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  /// Deletes [contact], after a question naming what goes and what stays.
+  Future<void> _delete(Contact contact) async {
+    var l10n = AppLocalizations.of(context)!;
+    var confirmed = await confirmHere(
+      context: context,
+      dialogKey: "delete-contact-confirm",
+      title: l10n.deleteContactTitle(contact.name),
+      message: l10n.deleteContactMessage,
+      confirmLabel: l10n.delete,
+      confirmKey: "delete-contact-confirmed",
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    await _act(contact, (client) async {
+      await client.deleteContact(contact.id);
+      return null;
+    });
+  }
+}
+
+/// The line under a contact's addresses (issue #203): shut out, on how many
+/// browsers they are signed in, how many photos they added, and when they
+/// were last seen.
+String contactDetails(AppLocalizations l10n, Contact contact) {
+  var now = DateTime.now();
+  var live = [
+    for (var session in contact.sessions)
+      if (_liveAt(session.expires, now)) session,
+  ];
+  return [
+    if (contact.blocked.isNotEmpty) l10n.shutOutEverywhereMark,
+    l10n.contactSessionCount(live.length),
+    if (contact.uploads > 0) l10n.photosAdded(contact.uploads),
+    if (contact.lastSeen.isNotEmpty) l10n.lastSeenOn(dayOf(contact.lastSeen)),
+  ].join(" · ");
+}
+
+bool _liveAt(String expires, DateTime now) {
+  try {
+    return DateTime.parse(expires).isAfter(now);
+  } catch (_) {
+    return true;
+  }
+}
+
+/// Asks for a contact's new name (issue #203); pops the name, or nothing.
+class ContactRenameDialog extends StatefulWidget {
+  /// The name the contact has now.
+  final String name;
+
+  const ContactRenameDialog({super.key, required this.name});
+
+  @override
+  State<ContactRenameDialog> createState() => _ContactRenameDialogState();
+}
+
+class _ContactRenameDialogState extends State<ContactRenameDialog> {
+  late final TextEditingController _name =
+      TextEditingController(text: widget.name);
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _done() {
+    var name = _name.text.trim();
+    if (name.isNotEmpty) {
+      Navigator.of(context).pop(name);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return FormDialogFrame(
+      key: const Key("contact-rename-dialog"),
+      title: Text(l10n.contactRenameTitle),
+      fields: [
+        TextField(
+          key: const Key("contact-rename-field"),
+          controller: _name,
+          autofocus: true,
+          decoration: InputDecoration(labelText: l10n.nameLabel),
+          onSubmitted: (_) => _done(),
+        ),
+        const SizedBox(height: 8),
+        Text(l10n.contactRenameNote),
+      ],
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        FilledButton(
+          key: const Key("contact-rename-save"),
+          onPressed: _done,
+          child: Text(l10n.save),
+        ),
+      ],
+    );
+  }
+}
+
+/// The browsers a contact is signed in on, each with "End", and "End all"
+/// (issue #203).
+///
+/// Ending one signs that browser out: the next time it opens a personal link
+/// the contact is asked who they are. Every change is handed to [onChanged],
+/// the section behind the dialog.
+class ContactSessionsDialog extends StatefulWidget {
+  final VAlbumClient client;
+
+  final Contact contact;
+
+  final ValueChanged<Contact> onChanged;
+
+  const ContactSessionsDialog({
+    super.key,
+    required this.client,
+    required this.contact,
+    required this.onChanged,
+  });
+
+  @override
+  State<ContactSessionsDialog> createState() => _ContactSessionsDialogState();
+}
+
+class _ContactSessionsDialogState extends State<ContactSessionsDialog> {
+  late Contact _contact = widget.contact;
+
+  String? _problem;
+
+  bool _busy = false;
+
+  Future<void> _end({String session = ""}) async {
+    setState(() {
+      _busy = true;
+      _problem = null;
+    });
+    try {
+      var answer = await widget.client
+          .endContactSession(_contact.id, session: session);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _busy = false;
+        _contact = answer;
+      });
+      widget.onChanged(answer);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _problem = refusalMessage(error);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    var now = DateTime.now();
+    var sessions = [
+      for (var session in _contact.sessions)
+        if (_liveAt(session.expires, now)) session,
+    ];
+    var problem = _problem;
+    return AlertDialog(
+      key: const Key("contact-sessions-dialog"),
+      title: Text(l10n.contactSessionsTitle(_contact.name)),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (problem != null)
+                sectionProblem(
+                    context, problem, const Key("contact-sessions-error")),
+              if (sessions.isEmpty)
+                Text(l10n.noContactSessions,
+                    key: const Key("contact-sessions-none")),
+              for (var session in sessions)
+                ListTile(
+                  key: Key("contact-session-${session.id}"),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: const Icon(Icons.web),
+                  title: Text(l10n.contactSessionSince(dayOf(session.created))),
+                  subtitle: Text([
+                    if (session.lastUsed.isNotEmpty)
+                      l10n.lastSeenOn(dayOf(session.lastUsed)),
+                    if (session.linkLabel.isNotEmpty)
+                      l10n.contactSessionVia(session.linkLabel),
+                  ].join(" · ")),
+                  trailing: TextButton(
+                    key: Key("contact-session-end-${session.id}"),
+                    onPressed: _busy ? null : () => _end(session: session.id),
+                    child: Text(l10n.endSession),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        if (sessions.length > 1)
+          TextButton(
+            key: const Key("contact-sessions-end-all"),
+            onPressed: _busy ? null : () => _end(),
+            child: Text(l10n.endAllSessions),
+          ),
+        TextButton(
+          key: const Key("contact-sessions-close"),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.close),
+        ),
+      ],
+    );
+  }
+}

@@ -885,6 +885,90 @@ public class ContactStore {
 	}
 
 	/**
+	 * Ends one session of the given contact, see issue #203: that browser is signed out.
+	 *
+	 * @return Whether there was such a session.
+	 */
+	public synchronized boolean endSession(String contactId, String sessionId) throws IOException {
+		Contact contact = get(contactId);
+		if (contact == null || sessionId == null) {
+			return false;
+		}
+		for (Iterator<Session> it = contact._sessions.iterator(); it.hasNext();) {
+			if (it.next().getId().equals(sessionId)) {
+				it.remove();
+				store();
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Ends every session of the given contact but the given one, see issue #203: "sign out others".
+	 *
+	 * @return How many were ended.
+	 */
+	public synchronized int endOtherSessions(String contactId, String keepSessionId) throws IOException {
+		Contact contact = get(contactId);
+		if (contact == null) {
+			return 0;
+		}
+		int ended = 0;
+		for (Iterator<Session> it = contact._sessions.iterator(); it.hasNext();) {
+			if (!it.next().getId().equals(keepSessionId)) {
+				it.remove();
+				ended++;
+			}
+		}
+		if (ended > 0) {
+			store();
+		}
+		return ended;
+	}
+
+	/**
+	 * On how many browsers besides the given session the given contact is signed in: their live
+	 * sessions, see issue #203.
+	 */
+	public synchronized int otherSessions(String contactId, String sessionId) {
+		Contact contact = get(contactId);
+		if (contact == null) {
+			return 0;
+		}
+		Instant now = Instant.now();
+		int result = 0;
+		for (Session session : contact._sessions) {
+			if (!session.getId().equals(sessionId) && !session.isExpired(now)) {
+				result++;
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Deletes the given contact from the register, see issue #203.
+	 *
+	 * <p>
+	 * Deleting deletes: their name, addresses and sessions go, so every credential of theirs is
+	 * from then on one this space never issued. What they uploaded keeps the name that was copied
+	 * onto it at the upload (issue #53); what the share links remember of them is the
+	 * {@link ShareStore}'s part, see {@link ShareStore#forgetContact(String)}.
+	 * </p>
+	 *
+	 * @return The deleted contact, <code>null</code> if there is none.
+	 */
+	public synchronized Contact delete(String contactId) throws IOException {
+		Contact contact = get(contactId);
+		if (contact == null) {
+			return null;
+		}
+		_contacts.remove(contact);
+		store();
+		return contact;
+	}
+
+	/**
 	 * Gives the given contact another name in the space.
 	 *
 	 * <p>
