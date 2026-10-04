@@ -3187,7 +3187,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
         child: SelectableTile(
           selected: state.isSelected(part),
           onTap: () => state.handleTap(part),
-          onLongPress: () => state.toggleSelection(part),
+          onToggle: () => state.toggleSelection(part),
           child: imageThumbnail(image),
         ),
       );

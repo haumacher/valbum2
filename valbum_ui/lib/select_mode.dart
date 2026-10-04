@@ -61,7 +61,8 @@ PreferredSizeWidget selectModeAppBar({
 /// selected, and the gestures of the selection.
 ///
 /// A tap is a click of the edit mode ([onTap] reads the modifier keys); a
-/// long press toggles, which is a finger's way to a multiple selection.
+/// tap on the mark and a long press toggle ([onToggle]), so a multiple
+/// selection needs no modifier key and no long press.
 class SelectableTile extends StatelessWidget {
   /// Whether the photograph is selected.
   final bool selected;
@@ -69,8 +70,9 @@ class SelectableTile extends StatelessWidget {
   /// A click on the tile.
   final VoidCallback onTap;
 
-  /// A long press on the tile.
-  final VoidCallback onLongPress;
+  /// A tap on the mark, and a long press on the tile: adds the photograph to
+  /// the selection or takes it out, leaving the rest of the selection alone.
+  final VoidCallback onToggle;
 
   /// The thumbnail.
   final Widget child;
@@ -79,14 +81,14 @@ class SelectableTile extends StatelessWidget {
     super.key,
     required this.selected,
     required this.onTap,
-    required this.onLongPress,
+    required this.onToggle,
     required this.child,
   });
 
   @override
   Widget build(BuildContext context) => GestureDetector(
         onTap: onTap,
-        onLongPress: onLongPress,
+        onLongPress: onToggle,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -101,15 +103,26 @@ class SelectableTile extends StatelessWidget {
                 ),
               ),
             Positioned(
-              top: 4,
-              right: 4,
-              child: IgnorePointer(
-                child: Icon(
-                  selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                  key: Key(selected ? "select-mark-on" : "select-mark-off"),
-                  size: 24,
-                  color: selected ? Colors.amberAccent : Colors.white70,
-                  shadows: const [Shadow(color: Colors.black, blurRadius: 4)],
+              top: 0,
+              right: 0,
+              child: GestureDetector(
+                key: const Key("select-mark"),
+                behavior: HitTestBehavior.opaque,
+                onTap: onToggle,
+                // A target a finger finds, the mark in its corner.
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 4, 12),
+                  child: Icon(
+                    selected
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    key: Key(selected ? "select-mark-on" : "select-mark-off"),
+                    size: 24,
+                    color: selected ? Colors.amberAccent : Colors.white70,
+                    shadows: const [
+                      Shadow(color: Colors.black, blurRadius: 4),
+                    ],
+                  ),
                 ),
               ),
             ),

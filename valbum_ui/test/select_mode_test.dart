@@ -157,6 +157,33 @@ void main() {
       });
     });
 
+    testWidgets('a tap on the mark adds or removes that photo alone',
+        (tester) async {
+      await withFakeImageHttp(() async {
+        await pumpMember(tester);
+        await enterSelectMode(tester);
+
+        Future<void> tapMark(String name) async {
+          await tester.ensureVisible(tile(name));
+          await tester.pumpAndSettle();
+          await tester.tap(find.descendant(
+              of: tile(name), matching: find.byKey(const Key("select-mark"))));
+          await tester.pumpAndSettle();
+        }
+
+        await click(tester, "a.jpg");
+        await tapMark("b.jpg");
+        await tapMark("d.jpg");
+        expect(markedNames(), ["a.jpg", "b.jpg", "d.jpg"]);
+        expect(countText(tester), testL10n.selectedCount(3));
+        await tapMark("a.jpg");
+        expect(markedNames(), ["b.jpg", "d.jpg"]);
+        // The rest of the tile is still a plain click.
+        await click(tester, "e.mp4");
+        expect(markedNames(), ["e.mp4"]);
+      });
+    });
+
     testWidgets('ctrl toggles and shift takes the shown range', (tester) async {
       await withFakeImageHttp(() async {
         await pumpMember(tester);
