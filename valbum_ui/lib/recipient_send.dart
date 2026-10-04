@@ -91,7 +91,7 @@ class RecipientSendLines extends StatelessWidget {
     var l10n = AppLocalizations.of(context)!;
     var id = recipient.contact;
     var subject = l10n.shareMessageSubject(album);
-    var body = l10n.shareMessageBody(recipient.name, album, url);
+    var body = l10n.shareMessageBody(album, recipient.name, url);
     var emails = [
       for (var address in recipient.addresses)
         if (address.kind == AddressKind.email) address.value,

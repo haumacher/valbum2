@@ -93,9 +93,12 @@ class Server {
 
   /// The proof requests sent: the dialog learns the methods from
   /// `?type=auth` and never probes for them.
-  Iterable<http.Request> get proofRequests => requests.where((request) =>
-      const ["prove-email", "verify-email", "oidc-start"]
-          .contains(request.url.queryParameters["action"]));
+  Iterable<http.Request> get proofRequests =>
+      requests.where((request) => const [
+            "prove-email",
+            "verify-email",
+            "oidc-start"
+          ].contains(request.url.queryParameters["action"]));
 
   Map<String, dynamic> bodyOf(String action) => jsonDecode(requests
       .lastWhere((request) => request.url.queryParameters["action"] == action)
@@ -263,8 +266,8 @@ void main() {
                     client: VAlbumClient(
                       dataUrl: dataUrl,
                       token: "device",
-                      httpClient: MockClient(
-                          (request) async => server.answer(request)),
+                      httpClient:
+                          MockClient((request) async => server.answer(request)),
                     ),
                     path: const ["2024", "Zoo"],
                   ),
@@ -478,6 +481,10 @@ void main() {
           testL10n.shareMessageSubject("Zoo"));
       expect(petra.queryParameters["body"],
           contains("http://server/valbum/s/r-c1/"));
+      // The greeting names the recipient and the text the album, never the
+      // other way round (the generated method takes the album first).
+      expect(petra.queryParameters["body"], startsWith("Hello Tante Petra,"));
+      expect(petra.queryParameters["body"], contains("photos of Zoo:"));
       expect(petra.toString(), isNot(contains("+")),
           reason: "a blank is %20, never a plus");
       expect(launched[1].path, "oma@web.de");
@@ -668,8 +675,7 @@ void main() {
       ]);
     });
 
-    testWidgets("a known contact's address ticks that contact",
-        (tester) async {
+    testWidgets("a known contact's address ticks that contact", (tester) async {
       var server = Server();
       await openChooser(tester, server);
       picks = [
@@ -706,8 +712,7 @@ void main() {
       await openChooser(tester, Server());
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(contactPickChannel, (call) async {
-        throw PlatformException(
-            code: "NO_PICKER", message: "No contacts app.");
+        throw PlatformException(code: "NO_PICKER", message: "No contacts app.");
       });
       await tapKey(tester, "recipient-pick-email");
 
