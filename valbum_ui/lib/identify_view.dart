@@ -245,7 +245,9 @@ class IdentifyScreenState extends State<IdentifyScreen> {
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var theme = Theme.of(context);
-    var label = _identify.label.trim();
+    // The shared album's title (#104's rule); the link's label is its
+    // maker's alone and never shown here.
+    var title = _identify.title.trim();
     var sharer = _identify.sharedBy.trim();
     return Scaffold(
       key: const Key("identify-screen"),
@@ -272,7 +274,7 @@ class IdentifyScreenState extends State<IdentifyScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  label.isEmpty ? l10n.sharedAlbumFallback : label,
+                  title.isEmpty ? l10n.sharedAlbumFallback : title,
                   key: const Key("identify-label"),
                   style: theme.textTheme.headlineSmall,
                   textAlign: TextAlign.center,

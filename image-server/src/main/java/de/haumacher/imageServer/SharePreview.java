@@ -8,6 +8,7 @@ import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.Spaces;
+import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -395,21 +396,56 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		return shares == null ? null : shares.lookup(token);
 	}
 
+	/**
+	 * The title the given link's visitor is told the shared folder by, <code>""</code> where it
+	 * is gone.
+	 *
+	 * <p>
+	 * The rule of the card ({@link #title(Resource, ShareStore.Link)}), never the link's label,
+	 * which is its maker's alone: the identify card of a personal link (issue #198) names what it
+	 * opens by this.
+	 * </p>
+	 *
+	 * @param cache
+	 *        The cache the space is served from.
+	 * @param root
+	 *        The root folder of the link's space.
+	 */
+	public static String linkTitle(ResourceCache cache, Path root, ShareStore.Link link) {
+		PathInfo path = path(root, link);
+		if (path == null || !path.isDirectory()) {
+			return "";
+		}
+		Resource resource = cache.lookup(path);
+		if (resource == null) {
+			return "";
+		}
+		// The title of a folder does not depend on what the link may see of it; a link opens no
+		// inbox, see issue #131.
+		Resource shown = Inboxes.filter(resource, Inboxes.Visibility.NONE, "");
+		return shown == null ? "" : title(shown, link);
+	}
+
 	/** Where the given link points, in the coordinates of its space. */
 	private static PathInfo path(Spaces.Space space, ShareStore.Link link) {
+		return path(space.getRoot(), link);
+	}
+
+	/** Where the given link points, below the given space root. */
+	private static PathInfo path(Path root, ShareStore.Link link) {
 		String relative = link.getPath();
 		if (!LibraryFiles.isLibraryPath(relative)) {
 			// No part of the library any more, see AuthService#resolveShared and issue #173.
 			return null;
 		}
 		if (relative.isEmpty()) {
-			return new PathInfo(space.getRoot());
+			return new PathInfo(root);
 		}
 		Path path = Paths.get(relative).normalize();
 		if (path.isAbsolute() || path.startsWith("..") || path.toString().isEmpty()) {
 			return null;
 		}
-		return new PathInfo(space.getRoot(), path);
+		return new PathInfo(root, path);
 	}
 
 	/** What the given link shows of its target, filtered as every answer of it is. */

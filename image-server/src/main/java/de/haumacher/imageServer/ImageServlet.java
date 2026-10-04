@@ -5032,7 +5032,8 @@ public class ImageServlet extends HttpServlet {
 			HttpServletResponse response = context.response();
 			allowCrossOrigin(response);
 			response.setStatus(identification.getStatus());
-			serveJson(response, PersonalLinks.identifyRequired(identification, addressProof().methods(identification)));
+			serveJson(response, PersonalLinks.identifyRequired(identification, addressProof().methods(identification),
+				SharePreview.linkTitle(_cache, _basePath, identification.getLink())));
 			return true;
 		}
 		if (!caller.isShareGone()) {

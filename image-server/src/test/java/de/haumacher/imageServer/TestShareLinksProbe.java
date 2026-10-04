@@ -30,7 +30,7 @@ public class TestShareLinksProbe extends ShareTestCase {
 		// The link caller knows what it is.
 		AuthInfo info = AuthInfo.readAuthInfo(reader(get("/", "auth", link.getToken()).body()));
 		assertNotNull(info.getShare());
-		assertEquals("All", info.getShare().getLabel());
+		assertEquals("The label is its maker's alone.", "", info.getShare().getLabel());
 		assertEquals("", info.getUserName());
 	}
 

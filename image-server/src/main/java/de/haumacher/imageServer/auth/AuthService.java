@@ -2619,8 +2619,8 @@ public class AuthService {
 			LOG.warning("Cannot ask the target of " + share + ": " + ex.getMessage());
 			rights = Rights.NONE;
 		}
+		// The label is its maker's alone and never told to a visitor of the link.
 		ShareInfo info = ShareInfo.create()
-			.setLabel(share.getLabel())
 			.setExpires(share.getExpires())
 			.setRights(Rights.onTheWire(rights))
 			.setPath(canonical(share))
