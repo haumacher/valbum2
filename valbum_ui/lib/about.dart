@@ -39,8 +39,21 @@ const String buildVersion = String.fromEnvironment("VALBUM_VERSION");
 String shownVersion = buildVersion;
 
 /// Opens [url] outside the app; a test replaces it.
-Future<bool> Function(Uri url) openExternalUrl =
-    (url) => launchUrl(url, mode: LaunchMode.externalApplication);
+Future<bool> Function(Uri url) openExternalUrl = (url) => launchUrl(
+      url,
+      mode: LaunchMode.externalApplication,
+      webOnlyWindowName: externalWindowName(url),
+    );
+
+/// The window a browser opens [url] in: a web page in a new one, every other
+/// scheme (`mailto:`, `sms:`, `tel:`) in this one.
+///
+/// A browser hands such an address to the program registered for it and
+/// stays on the page, but opened in a new window it leaves that window open
+/// and empty behind the mail program. url_launcher does this for Safari
+/// alone; `_top` does it everywhere. Ignored off the web.
+String? externalWindowName(Uri url) =>
+    url.scheme == "http" || url.scheme == "https" ? null : "_top";
 
 /// Shows the About dialog over [context].
 void showAbout(BuildContext context) {

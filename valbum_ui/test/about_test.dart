@@ -65,6 +65,14 @@ void expectAboutDialog() {
 }
 
 void main() {
+  test('a mail or a text opens in this window, a web page in a new one', () {
+    expect(externalWindowName(Uri.parse("mailto:petra@gmx.de?subject=x")),
+        "_top");
+    expect(externalWindowName(Uri.parse("sms:+4917012345?body=x")), "_top");
+    expect(externalWindowName(Uri.parse("https://wa.me/4917012345")), isNull);
+    expect(externalWindowName(Uri.parse("https://github.com/x")), isNull);
+  });
+
   setUp(withEmptyImageCache);
 
   testWidgets('the listing menu ends with About', (tester) async {
