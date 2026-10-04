@@ -43,6 +43,10 @@ class GroupView extends StatelessWidget {
   /// Opens the given member of the group in the viewer ("detail mode").
   final void Function(ImagePart image) onShowDetail;
 
+  /// What the way [onUp] is called where it does not lead to the album —
+  /// back to the overview of the photographs in several albums (#231).
+  final String? upTooltip;
+
   const GroupView({
     super.key,
     required this.client,
@@ -50,6 +54,7 @@ class GroupView extends StatelessWidget {
     required this.group,
     required this.onUp,
     required this.onShowDetail,
+    this.upTooltip,
   });
 
   /// The title of the album the group belongs to, as in the GWT client.
@@ -63,7 +68,7 @@ class GroupView extends StatelessWidget {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          tooltip: AppLocalizations.of(context)!.backToAlbum,
+          tooltip: upTooltip ?? AppLocalizations.of(context)!.backToAlbum,
           onPressed: onUp,
         ),
       ),
@@ -180,6 +185,9 @@ class GroupDetailView extends StatelessWidget {
   /// [ImageView.onEdited].
   final VoidCallback? onEdited;
 
+  /// See [ImageView.upTooltip].
+  final String? upTooltip;
+
   const GroupDetailView({
     super.key,
     required this.client,
@@ -192,6 +200,7 @@ class GroupDetailView extends StatelessWidget {
     this.editPath,
     this.editing = false,
     this.onEdited,
+    this.upTooltip,
   });
 
   @override
@@ -204,6 +213,7 @@ class GroupDetailView extends StatelessWidget {
       image: image,
       onShowImage: onShowImage,
       onUp: onUp,
+      upTooltip: upTooltip,
       // No "down" out of the detail view, and no rating filter: the group
       // shows all of its alternatives.
       minRating: noMinRating,

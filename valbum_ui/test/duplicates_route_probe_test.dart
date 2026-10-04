@@ -26,4 +26,21 @@ void main() {
     expect(parseRoute(Uri.parse(route.path)), route);
     expect(route.up, const ListingOrAlbumRoute(["A"]));
   });
+
+  test('the alternatives and a member at the root of the space (#231)', () {
+    for (var route in const <VAlbumRoute>[
+      AlternativesRoute([], "IMG 1.jpg", fromDuplicates: true),
+      MemberRoute([], "IMG 1.jpg", "IMG 2.jpg", fromDuplicates: true),
+    ]) {
+      expect(parseRoute(Uri.parse(route.path)), route);
+      expect(route.up, const DuplicatesRoute());
+    }
+  });
+
+  test('an image called like the reserved segment stays an image', () {
+    expect(parseRoute(Uri.parse("/.duplicates/A/alternatives")),
+        const ImageRoute(["A"], "alternatives", fromDuplicates: true));
+    expect(parseRoute(Uri.parse("/A/alternatives")),
+        const ImageRoute(["A"], "alternatives"));
+  });
 }

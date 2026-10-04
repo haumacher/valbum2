@@ -423,4 +423,168 @@ void main() {
       expect(requests.length, before);
     });
   });
+
+  group('the alternatives of a group seen from the overview (#231)', () {
+    const alternatives =
+        AlternativesRoute([bestFolder], "front.jpg", fromDuplicates: true);
+    const member = MemberRoute([bestFolder], "front.jpg", "beach.jpg",
+        fromDuplicates: true);
+
+    test('are addressed below /.duplicates/ and read back', () {
+      expect(Uri.decodeComponent(alternatives.path),
+          "/.duplicates/$bestFolder/front.jpg/alternatives/");
+      expect(Uri.decodeComponent(member.path),
+          "/.duplicates/$bestFolder/front.jpg/alternatives/beach.jpg");
+      for (var route in <VAlbumRoute>[
+        alternatives,
+        member,
+        const AlternativesRoute([], "a b.jpg", fromDuplicates: true),
+        const MemberRoute([], "a b.jpg", "c d.jpg", fromDuplicates: true),
+        const AlternativesRoute(["2020", "Rom Tour"], "a b.jpg",
+            fromDuplicates: true),
+        const MemberRoute(["2020", "Rom Tour"], "a b.jpg", "c d.jpg",
+            fromDuplicates: true),
+      ]) {
+        expect(parseRoute(Uri.parse(route.path)), route);
+        expect(
+            parseRoute(routeToUri(route, basePath: "/valbum/"),
+                basePath: "/valbum/"),
+            route);
+        expect(route.up, const DuplicatesRoute());
+        expect(route.fromDuplicates, isTrue);
+      }
+    });
+
+    test('are other routes than the album\'s own', () {
+      const plainAlternatives = AlternativesRoute([bestFolder], "front.jpg");
+      const plainMember = MemberRoute([bestFolder], "front.jpg", "beach.jpg");
+      expect(alternatives, isNot(plainAlternatives));
+      expect(member, isNot(plainMember));
+      expect(alternatives.hashCode, isNot(plainAlternatives.hashCode));
+      expect(parseRoute(Uri.parse(plainAlternatives.path)), plainAlternatives);
+      expect(parseRoute(Uri.parse(plainMember.path)), plainMember);
+      expect(plainAlternatives.up, const ListingOrAlbumRoute([bestFolder]));
+      expect(plainMember.up, const ListingOrAlbumRoute([bestFolder]));
+      expect(plainAlternatives.fromDuplicates, isFalse);
+    });
+
+    test('pass the flag on', () {
+      expect(alternatives.member("beach.jpg"), member);
+      expect(member.withMember("front.jpg"),
+          const MemberRoute([bestFolder], "front.jpg", "front.jpg",
+              fromDuplicates: true));
+      expect(member.alternatives, alternatives);
+      expect(alternatives.withAlbumPath(["X"]),
+          const AlternativesRoute(["X"], "front.jpg", fromDuplicates: true));
+      expect(member.withAlbumPath(["X"]),
+          const MemberRoute(["X"], "front.jpg", "beach.jpg",
+              fromDuplicates: true));
+    });
+
+    test('sit on the overview', () {
+      expect(VAlbumRouterDelegate.levelsOf(alternatives),
+          [ListingOrAlbumRoute.root, const DuplicatesRoute(), alternatives]);
+      expect(VAlbumRouterDelegate.levelsOf(member), [
+        ListingOrAlbumRoute.root,
+        const DuplicatesRoute(),
+        alternatives,
+        member,
+      ]);
+      expect(
+          VAlbumRouterDelegate.levelsOf(
+              const MemberRoute([bestFolder], "front.jpg", "beach.jpg")),
+          const [
+            ListingOrAlbumRoute([bestFolder]),
+            AlternativesRoute([bestFolder], "front.jpg"),
+            MemberRoute([bestFolder], "front.jpg", "beach.jpg"),
+          ]);
+    });
+
+    /// The representative of the group in "Best of" is one copy.
+    String groupOverview() => list([
+          groupJson("h3", [
+            copy(bestFolder, "Best of", "front.jpg"),
+            copy(tripFolder, "Trip", "IMG_1.jpg"),
+          ]),
+        ]);
+
+    Future<List<http.Request>> openAlternatives(WidgetTester tester) async {
+      var requests = <http.Request>[];
+      await pump(
+          tester, server(requests: requests, duplicates: groupOverview));
+      await tester.tap(
+          find.byKey(const ValueKey("duplicates-copy-$bestFolder/front.jpg")));
+      await tester.pumpAndSettle();
+      expect(routeOf(tester),
+          const ImageRoute([bestFolder], "front.jpg", fromDuplicates: true));
+
+      await tester.tap(find.byTooltip(testL10n.showAlternatives));
+      await tester.pumpAndSettle();
+      expect(routeOf(tester), alternatives);
+      expect(find.byKey(const ValueKey("group-tile-beach.jpg")),
+          findsOneWidget);
+      return requests;
+    }
+
+    void expectOverviewAgain(WidgetTester tester, List<http.Request> requests) {
+      expect(routeOf(tester), const DuplicatesRoute());
+      expect(find.byKey(const ValueKey("duplicates-group-h3")), findsOneWidget);
+      expect(duplicatesAsked(requests), 1,
+          reason: "The overview stayed mounted beneath the group.");
+    }
+
+    testWidgets('the alternatives lead back to the overview', (tester) async {
+      var requests = await openAlternatives(tester);
+
+      await tester.tap(find.byTooltip(testL10n.duplicatesBack));
+      await tester.pumpAndSettle();
+
+      expectOverviewAgain(tester, requests);
+    });
+
+    testWidgets('the system\'s back button leaves the alternatives there',
+        (tester) async {
+      var requests = await openAlternatives(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expectOverviewAgain(tester, requests);
+    });
+
+    testWidgets('a member leads back to the overview, after paging',
+        (tester) async {
+      var requests = await openAlternatives(tester);
+
+      await tester.tap(find.byKey(const ValueKey("group-tile-beach.jpg")));
+      await tester.pumpAndSettle();
+      expect(routeOf(tester), member);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(routeOf(tester),
+          const MemberRoute([bestFolder], "front.jpg", "front.jpg",
+              fromDuplicates: true));
+
+      await tester.tap(find.byTooltip(testL10n.duplicatesBack));
+      await tester.pumpAndSettle();
+
+      expectOverviewAgain(tester, requests);
+    });
+
+    testWidgets('a deep link to a member builds the same pages',
+        (tester) async {
+      var requests = <http.Request>[];
+      await pump(
+          tester, server(requests: requests, duplicates: groupOverview),
+          route: member);
+      expect(routeOf(tester), member);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(routeOf(tester), const DuplicatesRoute());
+      expect(find.byKey(const ValueKey("duplicates-group-h3")), findsOneWidget);
+    });
+  });
 }

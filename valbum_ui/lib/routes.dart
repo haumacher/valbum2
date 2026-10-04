@@ -19,6 +19,8 @@
 /// | `/2005-08-24 Blumen/IMG_0417.JPG/alternatives/IMG_0418.JPG` | [MemberRoute]          |
 /// | `/.duplicates/`                              | [DuplicatesRoute]                         |
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG` | [ImageRoute] seen from the overview     |
+/// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG/alternatives/` | [AlternativesRoute] seen from the overview |
+/// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG/alternatives/IMG_0418.JPG` | [MemberRoute] seen from the overview |
 ///
 /// A folder or album is therefore addressed **with** a trailing slash and an
 /// image **without** one, exactly as the GWT client did. The segment
@@ -108,6 +110,15 @@ sealed class VAlbumRoute {
   /// when a link leads to the same album, see issue #50.
   VAlbumRoute withAlbumPath(List<String> path);
 
+  /// Whether this view of an image was reached from the overview of the
+  /// photographs in several albums and leads back there, see
+  /// [DuplicatesRoute] (issues #228, #231).
+  ///
+  /// Only the views of an image carry it — the viewer ([ImageRoute]), the
+  /// alternatives of its group ([AlternativesRoute]) and one of their members
+  /// ([MemberRoute]) — and a step from one of them to another passes it on.
+  bool get fromDuplicates => false;
+
   /// The location of this route below the app base, e.g. `/a/b.jpg`.
   String get path => "/${Uri(pathSegments: segments).path}";
 }
@@ -165,6 +176,7 @@ class ImageRoute extends VAlbumRoute {
 
   /// Whether the viewer was opened from the overview of the photographs in
   /// several albums and returns there, see [DuplicatesRoute].
+  @override
   final bool fromDuplicates;
 
   const ImageRoute(this.albumPath, this.name, {this.fromDuplicates = false});
@@ -205,6 +217,10 @@ class ImageRoute extends VAlbumRoute {
 }
 
 /// The "alternatives" view of the group represented by an image.
+///
+/// Reached from a viewer opened from the overview of the photographs in
+/// several albums ([fromDuplicates], issue #231), it is addressed below
+/// `/.duplicates/` like that viewer and leads back to the overview.
 class AlternativesRoute extends VAlbumRoute {
   @override
   final List<String> albumPath;
@@ -212,35 +228,58 @@ class AlternativesRoute extends VAlbumRoute {
   /// The file name of the image whose group is shown.
   final String name;
 
-  const AlternativesRoute(this.albumPath, this.name);
+  @override
+  final bool fromDuplicates;
 
-  /// The album, not the image the group is shown for (issue #79).
+  const AlternativesRoute(this.albumPath, this.name,
+      {this.fromDuplicates = false});
+
+  /// One member of this group, seen from where the group is.
+  MemberRoute member(String member) =>
+      MemberRoute(albumPath, name, member, fromDuplicates: fromDuplicates);
+
+  /// The album, not the image the group is shown for (issue #79) — or the
+  /// overview it was reached from (issue #231).
   ///
   /// The group overview is still reached from the album's tile; it is only no
   /// longer on the way *out*, where it used to add a stop nobody asked for.
   @override
-  VAlbumRoute? get up => ListingOrAlbumRoute(albumPath);
+  VAlbumRoute? get up =>
+      fromDuplicates ? const DuplicatesRoute() : ListingOrAlbumRoute(albumPath);
 
   @override
-  List<String> get segments => [...albumPath, name, alternativesSegment, ""];
+  List<String> get segments => [
+        if (fromDuplicates) duplicatesSegment,
+        ...albumPath,
+        name,
+        alternativesSegment,
+        "",
+      ];
 
   @override
-  VAlbumRoute withAlbumPath(List<String> path) => AlternativesRoute(path, name);
+  VAlbumRoute withAlbumPath(List<String> path) =>
+      AlternativesRoute(path, name, fromDuplicates: fromDuplicates);
 
   @override
   bool operator ==(Object other) =>
       other is AlternativesRoute &&
       name == other.name &&
+      fromDuplicates == other.fromDuplicates &&
       listEquals(albumPath, other.albumPath);
 
   @override
-  int get hashCode => Object.hash(Object.hashAll(albumPath), name);
+  int get hashCode =>
+      Object.hash(Object.hashAll(albumPath), name, fromDuplicates);
 
   @override
   String toString() => "AlternativesRoute($path)";
 }
 
 /// One image of a group, shown in the viewer in "detail mode".
+///
+/// Like [AlternativesRoute], it keeps the way back to the overview of the
+/// photographs in several albums where it was reached from there
+/// ([fromDuplicates], issue #231).
 class MemberRoute extends VAlbumRoute {
   @override
   final List<String> albumPath;
@@ -251,32 +290,54 @@ class MemberRoute extends VAlbumRoute {
   /// The file name of the group member shown.
   final String member;
 
-  const MemberRoute(this.albumPath, this.name, this.member);
+  @override
+  final bool fromDuplicates;
 
-  /// The album, in one step (issue #79).
+  const MemberRoute(this.albumPath, this.name, this.member,
+      {this.fromDuplicates = false});
+
+  /// Another member of the same group, seen from where this one is.
+  MemberRoute withMember(String other) =>
+      MemberRoute(albumPath, name, other, fromDuplicates: fromDuplicates);
+
+  /// The alternatives view of the group this member belongs to.
+  AlternativesRoute get alternatives =>
+      AlternativesRoute(albumPath, name, fromDuplicates: fromDuplicates);
+
+  /// The album, in one step (issue #79) — or the overview it was reached
+  /// from (issue #231).
   ///
   /// Looking at one shot of a scene and leaving it means leaving the group:
   /// the way out used to lead through the alternatives view and the
   /// representative's own viewer before the album appeared.
   @override
-  VAlbumRoute? get up => ListingOrAlbumRoute(albumPath);
+  VAlbumRoute? get up =>
+      fromDuplicates ? const DuplicatesRoute() : ListingOrAlbumRoute(albumPath);
 
   @override
-  List<String> get segments =>
-      [...albumPath, name, alternativesSegment, member];
+  List<String> get segments => [
+        if (fromDuplicates) duplicatesSegment,
+        ...albumPath,
+        name,
+        alternativesSegment,
+        member,
+      ];
 
   @override
-  VAlbumRoute withAlbumPath(List<String> path) => MemberRoute(path, name, member);
+  VAlbumRoute withAlbumPath(List<String> path) =>
+      MemberRoute(path, name, member, fromDuplicates: fromDuplicates);
 
   @override
   bool operator ==(Object other) =>
       other is MemberRoute &&
       name == other.name &&
       member == other.member &&
+      fromDuplicates == other.fromDuplicates &&
       listEquals(albumPath, other.albumPath);
 
   @override
-  int get hashCode => Object.hash(Object.hashAll(albumPath), name, member);
+  int get hashCode =>
+      Object.hash(Object.hashAll(albumPath), name, member, fromDuplicates);
 
   @override
   String toString() => "MemberRoute($path)";
@@ -402,6 +463,37 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
   var folder = segments.isNotEmpty && segments.last.isEmpty;
   segments.removeWhere((segment) => segment.isEmpty);
 
+  // `/.duplicates/<album>/<image>[/alternatives/[<member>]]`: a view of an
+  // image reached from the overview of the photographs in several albums,
+  // see issues #228 and #231. No folder of a library carries a leading dot,
+  // so this shadows no image.
+  if (segments.length >= 2 && segments.first == duplicatesSegment) {
+    var rest = segments.sublist(1);
+    if (folder) {
+      if (rest.length >= 2 && rest.last == alternativesSegment) {
+        return AlternativesRoute(
+          rest.sublist(0, rest.length - 2),
+          rest[rest.length - 2],
+          fromDuplicates: true,
+        );
+      }
+    } else if (rest.length >= 3 &&
+        rest[rest.length - 2] == alternativesSegment) {
+      return MemberRoute(
+        rest.sublist(0, rest.length - 3),
+        rest[rest.length - 3],
+        rest.last,
+        fromDuplicates: true,
+      );
+    } else {
+      return ImageRoute(
+        rest.sublist(0, rest.length - 1),
+        rest.last,
+        fromDuplicates: true,
+      );
+    }
+  }
+
   if (folder) {
     // `/.duplicates/`, at the root only.
     if (segments.length == 1 && segments.single == duplicatesSegment) {
@@ -425,17 +517,6 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
 
   if (segments.isEmpty) {
     return ListingOrAlbumRoute.root;
-  }
-
-  // `/.duplicates/<album>/<image>`: a viewer opened from the overview of the
-  // photographs in several albums, see issue #228. No folder of a library
-  // carries a leading dot, so this shadows no image.
-  if (segments.length >= 2 && segments.first == duplicatesSegment) {
-    return ImageRoute(
-      segments.sublist(1, segments.length - 1),
-      segments.last,
-      fromDuplicates: true,
-    );
   }
 
   // `.../<image>/alternatives/<member>`

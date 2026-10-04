@@ -1861,13 +1861,26 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
             ListingOrAlbumRoute(album),
             route,
           ],
+        // The alternatives of a group and a member of it, reached from such
+        // a viewer, sit on the overview the same way, see issue #231.
+        AlternativesRoute(fromDuplicates: true) => [
+            ListingOrAlbumRoute.root,
+            const DuplicatesRoute(),
+            route,
+          ],
+        MemberRoute(fromDuplicates: true) => [
+            ListingOrAlbumRoute.root,
+            const DuplicatesRoute(),
+            route.alternatives,
+            route,
+          ],
         AlternativesRoute(albumPath: var album) => [
             ListingOrAlbumRoute(album),
             route,
           ],
-        MemberRoute(albumPath: var album, name: var name) => [
+        MemberRoute(albumPath: var album) => [
             ListingOrAlbumRoute(album),
-            AlternativesRoute(album, name),
+            route.alternatives,
             route,
           ],
         // The face editor sits on its album exactly as the viewer does, so
@@ -1922,7 +1935,10 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       ListingOrAlbumRoute() => "valbum:album:$album",
       ImageRoute(fromDuplicates: true) => "valbum:duplicates-image:$album",
       ImageRoute() => "valbum:image:$album",
+      AlternativesRoute(fromDuplicates: true) =>
+        "valbum:duplicates-alternatives:$album",
       AlternativesRoute() => "valbum:alternatives:$album",
+      MemberRoute(fromDuplicates: true) => "valbum:duplicates-member:$album",
       MemberRoute() => "valbum:member:$album",
       PersonsRoute() => "valbum:persons:$album",
       TrashRoute() => "valbum:trash:$album",
@@ -2373,13 +2389,13 @@ class VAlbumState extends State<VAlbumView>
         baseUrl: baseUrl,
         group: group,
         onUp: navigator.up,
-        onShowDetail: (member) => navigator.go(
-          MemberRoute(path, name, member.name),
-        ),
+        onShowDetail: (member) => navigator.go(current.member(member.name)),
+        upTooltip: duplicatesUpTooltip,
       );
     }
 
-    var memberName = (current as MemberRoute).member;
+    var memberRoute = current as MemberRoute;
+    var memberName = memberRoute.member;
     var members = group.images.where((image) => image.name == memberName);
     if (members.isEmpty) {
       return buildMessage(
@@ -2398,9 +2414,9 @@ class VAlbumState extends State<VAlbumView>
       editPath: path,
       editing: editing,
       onEdited: () => navigator.delegate.editSession(path).dirty = true,
-      onShowImage: (next) => navigator.go(
-        MemberRoute(path, name, next.thumbnailName),
-      ),
+      onShowImage: (next) =>
+          navigator.go(memberRoute.withMember(next.thumbnailName)),
+      upTooltip: duplicatesUpTooltip,
       isRepresentative: identical(group.images[group.representative], member),
       // Picking the representative is an edit of the album, saved with the
       // other edits from the album view the edit mode was entered in.
@@ -2472,11 +2488,7 @@ class VAlbumState extends State<VAlbumView>
         onUp: navigator.up,
         // A viewer opened from the overview of the photographs in several
         // albums leads back there, and says so (issue #228).
-        upTooltip: switch (route) {
-          ImageRoute(fromDuplicates: true) =>
-            AppLocalizations.of(context)!.duplicatesBack,
-          _ => null,
-        },
+        upTooltip: duplicatesUpTooltip,
         // Where a photo of one's own can be taken back out of somebody else's
         // album, see issue #53: the album this route names is the folder the
         // move is posted to.
@@ -2508,9 +2520,22 @@ class VAlbumState extends State<VAlbumView>
     navigator.reload();
   }
 
+  /// What the way up of a view of an image is called where it leads back to
+  /// the overview of the photographs in several albums (issues #228, #231),
+  /// `null` where it leads to the album.
+  String? get duplicatesUpTooltip => route.fromDuplicates
+      ? AppLocalizations.of(context)!.duplicatesBack
+      : null;
+
   /// Opens the "alternatives" view listing all images of the given group.
-  void showGroupView(ImageGroup group) =>
-      navigator.go(AlternativesRoute(path, group.thumbnailName));
+  ///
+  /// The way back of a viewer opened from the overview of the photographs in
+  /// several albums is kept: the alternatives lead back there too (#231).
+  void showGroupView(ImageGroup group) => navigator.go(AlternativesRoute(
+        path,
+        group.thumbnailName,
+        fromDuplicates: route.fromDuplicates,
+      ));
 
   /// An [ErrorInfo] answered with a success status: the server's message is
   /// all there is, shown by the same page as every failed load.
