@@ -889,6 +889,36 @@ List<ImagePart> selectedImages(AlbumInfo album, Set<AlbumPart> selection) {
   return result;
 }
 
+/// The originals a download of [selection] takes, in the album's order.
+///
+/// Like [selectedImages], except that a group chosen as a whole is its
+/// representative alone: a group hides the alternatives that did not make
+/// it, and a download takes what the album shows. An alternative is
+/// downloaded by itself, from the viewer or where it was chosen on its own.
+List<ImagePart> downloadedImages(
+    AlbumInfo album, Set<AlbumPart> selection) {
+  var chosen = Set<AlbumPart>.identity()..addAll(selection);
+  var result = <ImagePart>[];
+  for (var part in album.parts) {
+    if (part is ImagePart) {
+      if (chosen.contains(part)) {
+        result.add(part);
+      }
+    } else if (part is ImageGroup) {
+      if (chosen.contains(part)) {
+        result.add(part.images[part.representative]);
+      } else {
+        for (var image in part.images) {
+          if (chosen.contains(image)) {
+            result.add(image);
+          }
+        }
+      }
+    }
+  }
+  return result;
+}
+
 /// The images of the album that were taken by the same camera as [reference]
 /// (issue #78).
 ///

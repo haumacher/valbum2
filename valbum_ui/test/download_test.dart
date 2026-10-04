@@ -195,7 +195,8 @@ String inboxWith(List<String> rights) {
 }
 
 /// An album `Inbox` carrying [rights] whose photographs are rated: `a.jpg`
-/// at 0, `b.jpg` at 1, the group `g1.jpg`/`g2.jpg` at 0 and `c.jpg` at -1,
+/// at 0, `b.jpg` at 1, the group `g1.jpg`/`g2.mp4` (represented by `g2.mp4`)
+/// at 0 and `c.jpg` at -1,
 /// which the standing filter (0) hides (issue #209).
 String ratedAlbum(List<String> rights) =>
     '["AlbumInfo", {"path": "Inbox", "title": "Inbox", "subTitle": "", '
@@ -205,7 +206,7 @@ String ratedAlbum(List<String> rights) =>
     '"width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0}], '
     '["ImagePart", {"kind": "IMAGE", "name": "b.jpg", "date": 1015113610000, '
     '"width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 1}], '
-    '["ImageGroup", {"representative": 0, "images": ['
+    '["ImageGroup", {"representative": 1, "images": ['
     '{"kind": "IMAGE", "name": "g1.jpg", "date": 1015113620000, '
     '"width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0}, '
     '{"kind": "VIDEO", "name": "g2.mp4", "date": 1015113630000, '
@@ -612,16 +613,16 @@ void main() {
       await withFakeImageHttp(() async {
         await pumpSelection(tester, requests,
             rights: const ["view", "download"], album: ratedAlbum);
-        expect(await openEntry(tester), "Download 4 originals");
+        expect(await openEntry(tester), "Download 3 originals");
         await tester.tap(find.byKey(const Key("download-selection")));
         await tester.pumpAndSettle();
       });
 
-      // Photographs and videos alike, a group as its members, never the
-      // photograph the filter hides.
+      // Photographs and videos alike, a group as its representative alone
+      // (#230), never the photograph the filter hides.
       var post =
           requests.singleWhere((r) => r.url.queryParameters["action"] == "zip");
-      expect(postedNames(post), ["a.jpg", "b.jpg", "g1.jpg", "g2.mp4"]);
+      expect(postedNames(post), ["a.jpg", "b.jpg", "g2.mp4"]);
       expect(saver.saved.single.name, "Inbox.zip");
     });
 
@@ -638,14 +639,14 @@ void main() {
         await openAlbumMenu(tester);
         await tester.tap(find.text(testL10n.showMoreImages));
         await tester.pumpAndSettle();
-        expect(await openEntry(tester), "Download 5 originals");
+        expect(await openEntry(tester), "Download 4 originals");
       });
     });
 
     testWidgets('is offered to an editor without a selection', (tester) async {
       await withFakeImageHttp(() async {
         await pumpSelection(tester, [], album: ratedAlbum, select: false);
-        expect(await openEntry(tester), "Download 4 originals");
+        expect(await openEntry(tester), "Download 3 originals");
       });
     });
 
@@ -692,7 +693,7 @@ void main() {
           .singleWhere((r) => r.url.queryParameters["action"] == "zip-ticket");
       expect(ticket.method, "POST");
       expect(ticket.headers["Authorization"], "Bearer tok-9");
-      expect(postedNames(ticket), ["a.jpg", "b.jpg", "g1.jpg", "g2.mp4"]);
+      expect(postedNames(ticket), ["a.jpg", "b.jpg", "g2.mp4"]);
       expect(requests.where((r) => r.url.queryParameters["action"] == "zip"),
           isEmpty);
       var (name, address) = saver.addresses.single;

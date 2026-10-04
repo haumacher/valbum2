@@ -1529,9 +1529,9 @@ class AlbumContentState extends State<AlbumContent>
   /// at the rating filter standing, for a member exactly as for a share link,
   /// photographs and videos alike, and only the photographs of the label chip
   /// standing (#213). What the view does not show is not taken: an image below
-  /// the filter, a member of a group rated below it or not carrying the chip's
-  /// label, and a photograph rated as trash (#152), which no filter shows.
-  /// Always the originals.
+  /// the filter, the alternatives of a group — a group is its representative
+  /// alone, the photograph its tile shows (#230) — and a photograph rated as
+  /// trash (#152), which no filter shows. Always the originals.
   List<ImagePart> get downloadImages {
     if (!rights.mayDownload || previewing) {
       return const [];
@@ -1539,21 +1539,31 @@ class AlbumContentState extends State<AlbumContent>
     // A photograph of a collection that is gone has no original (#221).
     if (editMode && selection.isNotEmpty) {
       return [
-        for (var image in selectedImages(widget.album, selection))
+        for (var image in downloadedImages(widget.album, selection))
           if (!image.missing) image,
       ];
     }
     return shownImages(shownParts(shownAlbum).toSet());
   }
 
-  /// The images of [parts] the album shows, see [downloadImages].
+  /// The images of [parts] the album shows, see [downloadImages]: a group is
+  /// its representative, which is what its tile shows (and rates it by).
   List<ImagePart> shownImages(Set<AlbumPart> parts) {
     var label = labelFilter;
+    var representatives = Set<ImagePart>.identity()
+      ..addAll([
+        for (var part in parts)
+          if (part is ImageGroup) part.images[part.representative],
+      ]);
     return [
-      for (var image in selectedImages(shownAlbum, parts))
+      for (var image in downloadedImages(shownAlbum, parts))
         if (image.rating >= minRating &&
             !image.missing &&
-            (label == null || carriesLabel(image, label)))
+            // A group is shown under the chip when one of its members
+            // carries the label (#213); its tile is still the representative.
+            (label == null ||
+                representatives.contains(image) ||
+                carriesLabel(image, label)))
           image,
     ];
   }
