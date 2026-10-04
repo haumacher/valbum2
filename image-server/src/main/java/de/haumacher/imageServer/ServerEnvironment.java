@@ -155,7 +155,7 @@ public final class ServerEnvironment {
 
 	/** The proof by mailed code this environment allows: {@link EmailProofs#NONE} without a mail account. */
 	public EmailProofs emailProofs() {
-		return _mail == null ? EmailProofs.NONE : new EmailProofs(new SmtpMailer(_mail), Clock.systemUTC());
+		return _mail == null ? EmailProofs.NONE : new EmailProofs(new SmtpMailer(_mail), Clock.systemUTC(), _publicUrl);
 	}
 
 	/**

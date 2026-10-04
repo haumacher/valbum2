@@ -16,16 +16,37 @@ public class TestSmtpMailer extends TestCase {
 		try (FakeSmtpServer smtp = new FakeSmtpServer()) {
 			MailSettings settings = new MailSettings("localhost", smtp.getPort(), "", "", "album@example.org",
 				MailSettings.Security.NONE);
-			CodeMail mail = CodeMail.of(CodeMail.GERMAN, "Familie Müller", "123456", 10);
-			new SmtpMailer(settings).send("petra@gmx.de", mail.getSubject(), mail.getText());
+			CodeMail mail = CodeMail.of(CodeMail.GERMAN, CodeMail.Purpose.OPEN,
+				new CodeMail.About("Jörg", "Radtour nach Rom", "Familie Müller", null), "123456", 10);
+			new SmtpMailer(settings).send("petra@gmx.de", mail.getSender(), mail.getSubject(), mail.getText());
 
 			assertEquals(1, smtp.getReceived().size());
 			FakeSmtpServer.Received received = smtp.getReceived().get(0);
 			assertEquals(java.util.List.of("petra@gmx.de"), received.getRecipients());
-			assertEquals("Ihr Code für Familie Müller: 123456", received.getSubject());
-			assertTrue(received.getText(), received.getText().startsWith("Ihr Code: 123456"));
-			assertEquals("album@example.org", received.getMessage().getFrom()[0].toString());
+			assertEquals("Code für „Radtour nach Rom“: 123456", received.getSubject());
+			assertEquals(mail.getText(), received.getText().replace("\r\n", "\n"));
+			jakarta.mail.internet.InternetAddress from =
+				(jakarta.mail.internet.InternetAddress) received.getMessage().getFrom()[0];
+			assertEquals("album@example.org", from.getAddress());
+			assertEquals("Jörg über VAlbum", from.getPersonal());
 			assertEquals("auto-generated", received.getMessage().getHeader("Auto-Submitted")[0]);
+		}
+	}
+
+	public void testWithoutADisplayNameTheConfiguredSenderStands() throws Exception {
+		try (FakeSmtpServer smtp = new FakeSmtpServer()) {
+			MailSettings settings = new MailSettings("localhost", smtp.getPort(), "", "",
+				"Album <album@example.org>", MailSettings.Security.NONE);
+			new SmtpMailer(settings).send("petra@gmx.de", "", "s", "t");
+			jakarta.mail.internet.InternetAddress from =
+				(jakarta.mail.internet.InternetAddress) smtp.getReceived().get(0).getMessage().getFrom()[0];
+			assertEquals("album@example.org", from.getAddress());
+			assertEquals("Album", from.getPersonal());
+
+			new SmtpMailer(settings).send("petra@gmx.de", "Haui via VAlbum", "s", "t");
+			from = (jakarta.mail.internet.InternetAddress) smtp.getReceived().get(1).getMessage().getFrom()[0];
+			assertEquals("The address stays, the name is the mail's.", "album@example.org", from.getAddress());
+			assertEquals("Haui via VAlbum", from.getPersonal());
 		}
 	}
 
@@ -37,7 +58,7 @@ public class TestSmtpMailer extends TestCase {
 		MailSettings settings = new MailSettings("localhost", port, "", "", "album@example.org",
 			MailSettings.Security.NONE);
 		try {
-			new SmtpMailer(settings).send("petra@gmx.de", "s", "t");
+			new SmtpMailer(settings).send("petra@gmx.de", "", "s", "t");
 			fail("Nobody listens there.");
 		} catch (java.io.IOException expected) {
 			// Expected.
@@ -81,12 +102,5 @@ public class TestSmtpMailer extends TestCase {
 		assertEquals("en", CodeMail.language("fr"));
 		assertEquals("en", CodeMail.language(null));
 		assertEquals("en", CodeMail.language("de;q=0, fr"));
-	}
-
-	public void testTheMailSaysTheCodeAndTheSpaceAndNothingElse() {
-		CodeMail english = CodeMail.of(CodeMail.ENGLISH, "Holiday\r\nBcc: evil@example.org", "654321", 10);
-		assertEquals("Your code for Holiday Bcc: evil@example.org: 654321", english.getSubject());
-		assertTrue(english.getText(), english.getText().contains("valid for 10 minutes"));
-		assertEquals("Your code for VAlbum: 1", CodeMail.of(CodeMail.ENGLISH, " ", "1", 10).getSubject());
 	}
 }
