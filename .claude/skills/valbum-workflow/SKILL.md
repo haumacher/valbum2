@@ -6,7 +6,7 @@ description: The working method for developing VAlbum2 — orchestrating sub-age
 # The VAlbum2 working method
 
 This skill is the meta-knowledge of how a session on this repository should run. It complements,
-never duplicates, `CLAUDE.md` (build facts, gotchas, conventions) and `CONTRIBUTING.md` (the
+never duplicates, `CLAUDE.md` (build facts, conventions), `faq/` (one non-obvious fact per file) and `CONTRIBUTING.md` (the
 public build instructions). Read both first, then `ROADMAP.md` — the direction record (vision,
 phases, decisions log). The GitHub issue tracker **is** the work queue; each issue names its
 roadmap phase (see §1 and §8).
