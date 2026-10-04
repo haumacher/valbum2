@@ -74,28 +74,6 @@ class ShareSession {
   /// The token every request of this session carries.
   String get token => url.token;
 
-  /// How the link is named on the screen.
-  ///
-  /// The label the author gave it, and where they gave it none the name of
-  /// the album it opens — the last segment of the canonical
-  /// `~<owner>/<path>` of [ShareInfo.path]. A link to the root of a space has
-  /// neither, and is named by what it is.
-  String labelOf(AppLocalizations l10n) {
-    var given = info.label.trim();
-    if (given.isNotEmpty) {
-      return given;
-    }
-    var target = targetName;
-    return target.isEmpty ? l10n.sharedAlbumFallback : target;
-  }
-
-  /// The name of the album the link opens, empty if the link opens a whole
-  /// space.
-  String get targetName {
-    var segments = splitCanonicalPath(info.path);
-    return segments.isEmpty ? "" : segments.last;
-  }
-
   /// What the link allows, with the implications of issue #49 applied.
   Rights get rights => Rights.ofNames([for (var r in info.rights) r.name]);
 

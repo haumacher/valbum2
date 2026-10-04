@@ -178,6 +178,65 @@ public class TestPersonalLinks extends PersonalLinkTestCase {
 		assertFalse("The listing says when it was opened.", listed.getRecipients().get(0).getOpened().isEmpty());
 	}
 
+	// --- The label is its maker's alone. ---
+
+	public void testTheIdentifyCardNamesTheAlbumNeverTheLabel() throws Exception {
+		String rom = "2024/2024-06-01 Rom";
+		SharingFixture.album(_base, rom, "Radtour nach Rom",
+			"[\"ImagePart\",{\"name\":\"a.jpg\",\"width\":4,\"height\":3}]", "a.jpg");
+		String secret = "Oma secret";
+		FakeResponse response = share("/" + rom + "/", SharingFixture.ALICE,
+			personalBody(secret, email("Tante Petra", PETRA)));
+		assertEquals(response.body(), 200, response.status());
+		ShareLinkCreated created = created(response);
+		String petra = tokenOf(created, "Tante Petra");
+
+		// The first open of a recipient's own link.
+		FakeResponse first = get("/", "json", petra);
+		assertTitleNotLabel(first, "Radtour nach Rom", secret);
+		assertTrue(identifyRequired(first).isFirstOpen());
+
+		// A later open.
+		String credential = credential(petra);
+		FakeResponse later = get("/", "auth", petra);
+		assertTitleNotLabel(later, "Radtour nach Rom", secret);
+		assertFalse(identifyRequired(later).isFirstOpen());
+
+		// The group link: the addressed link's own token.
+		FakeResponse group = get("/", "json", created.getToken());
+		assertTitleNotLabel(group, "Radtour nach Rom", secret);
+		assertTrue(identifyRequired(group).isGroup());
+
+		// The contact's session.
+		FakeResponse session = getAs("/", "auth", petra, credential);
+		assertEquals(session.body(), 200, session.status());
+		assertFalse("The label is never told to a visitor: " + session.body(), session.body().contains(secret));
+		assertEquals("", auth(session).getShare().getLabel());
+
+		// The owner's list still names it.
+		ShareLink listed = links(shares("/" + rom + "/", SharingFixture.ALICE)).getLinks().get(0);
+		assertEquals(secret, listed.getLabel());
+	}
+
+	public void testAnUntitledAlbumIsNamedByItsFolder() throws Exception {
+		String rom = "2024/2024-05-01 Rom";
+		SharingFixture.album(_base, rom, "",
+			"[\"ImagePart\",{\"name\":\"a.jpg\",\"width\":4,\"height\":3}]", "a.jpg");
+		// An open personal link: nobody addressed.
+		FakeResponse response = share("/" + rom + "/", SharingFixture.ALICE, personalBody("Oma secret"));
+		assertEquals(response.body(), 200, response.status());
+
+		assertTitleNotLabel(get("/", "json", created(response).getToken()), "2024-05-01 Rom", "Oma secret");
+	}
+
+	private static void assertTitleNotLabel(FakeResponse response, String title, String label) throws Exception {
+		assertEquals(response.body(), HttpServletResponse.SC_UNAUTHORIZED, response.status());
+		IdentifyRequired required = identifyRequired(response);
+		assertEquals(title, required.getTitle());
+		assertEquals("", required.getLabel());
+		assertFalse("The label is private to the link's maker: " + response.body(), response.body().contains(label));
+	}
+
 	public void testALinksOwnTokenNeedsACredential() throws Exception {
 		ShareLinkCreated created = created(ZOO, email("Tante Petra", PETRA));
 

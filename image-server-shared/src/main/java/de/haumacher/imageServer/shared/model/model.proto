@@ -1458,7 +1458,10 @@ message AuthInfo {
  * </p>
  */
 message ShareInfo {
-	/** The label the link was created with, empty if it was created without one. */
+	/**
+	 * Retired, always empty: the label of a link is private to its maker and never told to its
+	 * visitors (the owner's list of links, <code>?type=shares</code>, still carries it).
+	 */
 	string label;
 
 	/** When the link expires, an ISO-8601 instant; empty if it never does. */
@@ -3009,8 +3012,17 @@ message IdentifyRequired {
 	 */
 	repeated ProofMethod methods;
 
-	/** The label of the link. */
+	/**
+	 * Retired, always empty: the label of a link is private to its maker and never told to its
+	 * visitors. Kept for the wire compatibility of older apps; see {@link #title}.
+	 */
 	string label;
+
+	/**
+	 * The title of the shared album or folder, by the rule of the link's card (issue #104): its
+	 * title, else its folder name; empty where the shared folder is gone.
+	 */
+	string title;
 
 	/** The member who shared the link, for "… will see your name with the photos you add". */
 	string sharedBy;

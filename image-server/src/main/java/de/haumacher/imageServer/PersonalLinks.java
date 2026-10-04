@@ -241,12 +241,17 @@ public final class PersonalLinks {
 	 * the given methods (issue #199). A first open names the contact to confirm and no address at all,
  * and the own token of an addressed link &mdash; the group link of issue #211 &mdash; names nobody.
 	 * </p>
+	 *
+	 * @param title
+	 *        The title of the shared folder, see {@link SharePreview#linkTitle}; never the label.
 	 */
-	public static ErrorInfo identifyRequired(AuthService.Identification identification, List<ProofMethod> methods) {
+	public static ErrorInfo identifyRequired(AuthService.Identification identification, List<ProofMethod> methods,
+			String title) {
 		ShareStore.Link link = identification.getLink();
 		IdentifyRequired result = IdentifyRequired.create()
 			.setFirstOpen(identification.isFirstOpen())
-			.setLabel(link.getLabel())
+			// The label is its maker's alone; the visitor is told the shared folder's title.
+			.setTitle(title)
 			.setSharedBy(link.getCreatedBy())
 			// The group link of issue #211 names no address: that would reveal the group.
 			.setGroup(AddressProof.isGroup(identification));

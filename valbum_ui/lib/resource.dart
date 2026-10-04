@@ -3257,7 +3257,8 @@ class AuthInfo extends _JsonObject {
 ///  server, on the way out.
 ///  </p>
 class ShareInfo extends _JsonObject {
-	///  The label the link was created with, empty if it was created without one.
+	///  Retired, always empty: the label of a link is private to its maker and never told to its
+	///  visitors (the owner's list of links, <code>?type=shares</code>, still carries it).
 	String label;
 
 	///  When the link expires, an ISO-8601 instant; empty if it never does.
@@ -8332,8 +8333,13 @@ class IdentifyRequired extends _JsonObject {
 	///  (whose sign-in must name one of its recipients); empty for a first open, which needs no proof.
 	List<ProofMethod> methods;
 
-	///  The label of the link.
+	///  Retired, always empty: the label of a link is private to its maker and never told to its
+	///  visitors. Kept for the wire compatibility of older apps; see {@link #title}.
 	String label;
+
+	///  The title of the shared album or folder, by the rule of the link's card (issue #104): its
+	///  title, else its folder name; empty where the shared folder is gone.
+	String title;
 
 	///  The member who shared the link, for "… will see your name with the photos you add".
 	String sharedBy;
@@ -8351,6 +8357,7 @@ class IdentifyRequired extends _JsonObject {
 			this.addresses = const [], 
 			this.methods = const [], 
 			this.label = "", 
+			this.title = "", 
 			this.sharedBy = "", 
 			this.group = false, 
 	});
@@ -8411,6 +8418,10 @@ class IdentifyRequired extends _JsonObject {
 				label = json.expectString();
 				break;
 			}
+			case "title": {
+				title = json.expectString();
+				break;
+			}
 			case "sharedBy": {
 				sharedBy = json.expectString();
 				break;
@@ -8452,6 +8463,9 @@ class IdentifyRequired extends _JsonObject {
 
 		json.addKey("label");
 		json.addString(label);
+
+		json.addKey("title");
+		json.addString(title);
 
 		json.addKey("sharedBy");
 		json.addString(sharedBy);

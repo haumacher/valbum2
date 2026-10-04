@@ -38,6 +38,9 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 	/** @see #getLabel() */
 	private static final String LABEL__PROP = "label";
 
+	/** @see #getTitle() */
+	private static final String TITLE__PROP = "title";
+
 	/** @see #getSharedBy() */
 	private static final String SHARED_BY__PROP = "sharedBy";
 
@@ -53,6 +56,8 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 	private final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> _methods = new java.util.ArrayList<>();
 
 	private String _label = "";
+
+	private String _title = "";
 
 	private String _sharedBy = "";
 
@@ -204,7 +209,8 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 	}
 
 	/**
-	 * The label of the link.
+	 * Retired, always empty: the label of a link is private to its maker and never told to its
+	 * visitors. Kept for the wire compatibility of older apps; see {@link #getTitle()}.
 	 */
 	public final String getLabel() {
 		return _label;
@@ -221,6 +227,27 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 	/** Internal setter for {@link #getLabel()} without chain call utility. */
 	protected final void internalSetLabel(String value) {
 		_label = value;
+	}
+
+	/**
+	 * The title of the shared album or folder, by the rule of the link's card (issue #104): its
+	 * title, else its folder name; empty where the shared folder is gone.
+	 */
+	public final String getTitle() {
+		return _title;
+	}
+
+	/**
+	 * @see #getTitle()
+	 */
+	public de.haumacher.imageServer.shared.model.IdentifyRequired setTitle(String value) {
+		internalSetTitle(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getTitle()} without chain call utility. */
+	protected final void internalSetTitle(String value) {
+		_title = value;
 	}
 
 	/**
@@ -301,6 +328,8 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 		out.endArray();
 		out.name(LABEL__PROP);
 		out.value(getLabel());
+		out.name(TITLE__PROP);
+		out.value(getTitle());
 		out.name(SHARED_BY__PROP);
 		out.value(getSharedBy());
 		out.name(GROUP__PROP);
@@ -329,6 +358,7 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 			}
 			break;
 			case LABEL__PROP: setLabel(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case TITLE__PROP: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SHARED_BY__PROP: setSharedBy(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case GROUP__PROP: setGroup(in.nextBoolean()); break;
 			default: super.readField(in, field);

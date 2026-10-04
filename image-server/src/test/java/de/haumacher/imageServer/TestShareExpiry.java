@@ -66,7 +66,7 @@ public class TestShareExpiry extends ShareTestCase {
 
 		AuthInfo info = auth(get("/", "auth", token));
 		assertNotNull("The app learns from this that it is inside a share link.", info.getShare());
-		assertEquals("Grandma", info.getShare().getLabel());
+		assertEquals("The label is its maker's alone.", "", info.getShare().getLabel());
 		assertEquals("2030-01-01T00:00:00Z", info.getShare().getExpires());
 		assertEquals("" + SharingFixture.ZOO, info.getShare().getPath());
 		assertEquals(Arrays.asList(Rights.VIEW, Rights.DOWNLOAD), names(info.getShare().getRights()));

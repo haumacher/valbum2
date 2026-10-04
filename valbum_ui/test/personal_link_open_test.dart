@@ -56,6 +56,7 @@ http.Response identifyRefusal({
   List<String> methods = const [],
   String sharedBy = "Alice",
   bool group = false,
+  String title = "Radtour nach Rom",
 }) {
   var identify = {
     "firstOpen": firstOpen,
@@ -74,7 +75,10 @@ http.Response identifyRefusal({
           "label": method.startsWith("oidc:") ? "Google" : "",
         },
     ],
+    // The link's label is its maker's; a server never sends it any more, and
+    // an older one that does is not shown (the title is).
     "label": "Summer party",
+    "title": title,
     "sharedBy": sharedBy,
     if (group) "group": true,
   };
@@ -194,6 +198,22 @@ List<String> offeredWays(WidgetTester tester) {
 
 void main() {
   group('the first open of a recipient\'s own link', () {
+    testWidgets('names an untitled album by the fallback, never the label',
+        (tester) async {
+      var h = Harness();
+      await h.pump(
+        tester,
+        personalServer(
+          admitted: "cred-1",
+          refusal: () => identifyRefusal(firstOpen: true, title: ""),
+        ),
+      );
+
+      var heading = tester.widget<Text>(find.byKey(const Key("identify-label")));
+      expect(heading.data, testL10n.sharedAlbumFallback);
+      expect(find.text("Summer party"), findsNothing);
+    });
+
     testWidgets('shows the name and the notice, and remembers the credential',
         (tester) async {
       var h = Harness();
@@ -207,7 +227,9 @@ void main() {
       );
 
       expect(find.byKey(const Key("identify-screen")), findsOneWidget);
-      expect(find.text("Summer party"), findsOneWidget);
+      expect(find.text("Radtour nach Rom"), findsOneWidget);
+      expect(find.text("Summer party"), findsNothing,
+          reason: "the label is private to the link's maker");
       expect(find.text(testL10n.identifySharedBy("Alice")), findsOneWidget);
       expect(find.text(testL10n.identifyNotice("Alice")), findsOneWidget);
       var name =

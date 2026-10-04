@@ -81,7 +81,8 @@ public class ShareInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The label the link was created with, empty if it was created without one.
+	 * Retired, always empty: the label of a link is private to its maker and never told to its
+	 * visitors (the owner's list of links, <code>?type=shares</code>, still carries it).
 	 */
 	public final String getLabel() {
 		return _label;
