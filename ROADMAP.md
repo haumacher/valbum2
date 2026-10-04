@@ -239,6 +239,13 @@ in a separate service, and abuse and law (the DSA, GDPR) come first. Open questi
 
 ## Decisions log
 
+- **2026-10-04** — 2.10.1 released (tag `valbum-2.10.1` on b887597), fixes and polish reported
+  against 2.10.0: the share mail greeted the album instead of the recipient (444419f); a link's label
+  never reaches its visitor, the welcome card names the album (#229); the code mail names the album, the
+  sharer and the server (#232); `mailto:`/`sms:` open in the same window (371a51f); "Photos in several
+  albums" returns to its list from the viewer and the alternatives and deletes a copy into its album's
+  trash (#228, #231); a downloaded group is its representative alone (#230); the select mode's mark
+  toggles one photo (098b5ee).
 - **2026-10-03** — 2.10.0 released (tag `valbum-2.10.0` on 6cb332d). **Formats:** HEIC/HEIF (#186,
   decoded with the bundled FFmpeg), AVIF (#193, after the JavaCPP 1.5.9 upgrade #210), JPEG XL (#193,
   JXLatte), WebP/GIF (#190, #207's decode budget), raw photos through their embedded JPEG with a raw and
