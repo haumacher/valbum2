@@ -17,8 +17,11 @@ public interface Mailer {
 	 *
 	 * @param to
 	 *        The recipient, a normalised e-mail address.
+	 * @param sender
+	 *        The display name of the sender (issue #232), the address being the configured one;
+	 *        empty or <code>null</code> keeps the configured sender as it is.
 	 * @throws IOException
 	 *         If the mail could not be handed to the mail server.
 	 */
-	void send(String to, String subject, String text) throws IOException;
+	void send(String to, String sender, String subject, String text) throws IOException;
 }

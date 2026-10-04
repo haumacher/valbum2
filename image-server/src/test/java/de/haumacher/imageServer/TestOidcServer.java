@@ -7,6 +7,7 @@ import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.InviteMode;
 import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.Spaces;
+import de.haumacher.imageServer.mail.FakeSmtpServer;
 import de.haumacher.imageServer.oidc.MockOidcIssuer;
 import de.haumacher.imageServer.shared.model.ContactCredential;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -15,6 +16,7 @@ import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ShareLinkCreated;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
+import jakarta.mail.internet.InternetAddress;
 import java.io.File;
 import java.io.StringReader;
 import java.net.ServerSocket;
@@ -75,6 +77,10 @@ public class TestOidcServer extends TestCase {
 	}
 
 	private void start(boolean configured) throws Exception {
+		start(configured, Map.of());
+	}
+
+	private void start(boolean configured, Map<String, String> more) throws Exception {
 		int port;
 		try (ServerSocket socket = new ServerSocket(0)) {
 			port = socket.getLocalPort();
@@ -87,6 +93,7 @@ public class TestOidcServer extends TestCase {
 			env.put("VALBUM_OIDC_GOOGLE_CLIENT_SECRET", MockOidcIssuer.SECRET);
 			env.put("VALBUM_OIDC_GOOGLE_DISCOVERY_URL", _issuer.discoveryUrl());
 		}
+		env.putAll(more);
 		Spaces spaces = Spaces.detect(_base, null, AuthMode.WRITES, InviteMode.MEMBERS);
 		_server = Main.createServer(port, "/valbum", _base.toFile(), null, spaces, ServerEnvironment.read(env));
 		_server.start();
@@ -132,6 +139,32 @@ public class TestOidcServer extends TestCase {
 		assertEquals("text/html;charset=utf-8", again.headers().firstValue("Content-Type").orElse("").replace(" ", "")
 			.toLowerCase());
 		assertEquals(404, get(_root + "/oidc/elsewhere", null, null).statusCode());
+	}
+
+	/** The code mail of a space names that space's own app base in its footer, see issue #232. */
+	public void testTheCodeMailNamesTheSpacesAppBase() throws Exception {
+		try (FakeSmtpServer smtp = new FakeSmtpServer()) {
+			start(false, Map.of(
+				"VALBUM_PUBLIC_URL", "https://fotos.example.org/valbum",
+				"VALBUM_SMTP_HOST", "localhost",
+				"VALBUM_SMTP_PORT", Integer.toString(smtp.getPort()),
+				"VALBUM_SMTP_TLS", "none",
+				"VALBUM_SMTP_FROM", "album@example.org"));
+			String data = _root + "/family/data/";
+			HttpResponse<String> shared = post(data + "2024/2024-05-01%20Zoo/?action=share",
+				PersonalLinkTestCase.personalBody("Party"), SharingFixture.ALICE, null);
+			assertEquals(shared.body(), 200, shared.statusCode());
+			String token = ShareLinkCreated.readShareLinkCreated(reader(shared.body())).getToken();
+
+			HttpResponse<String> proved = post(data + "?action=prove-email", "{\"address\":\"vera@web.de\"}",
+				token, null);
+			assertEquals(proved.body(), 200, proved.statusCode());
+			FakeSmtpServer.Received received = smtp.getReceived().get(0);
+			String text = received.getText().replace("\r\n", "\n");
+			assertTrue(text, text.endsWith("\n–\nFamily · https://fotos.example.org/valbum/family/\n"));
+			assertTrue(text, text.contains("\nalice shared the album “Zoo” with you.\n"));
+			assertEquals("alice via VAlbum", ((InternetAddress) received.getMessage().getFrom()[0]).getPersonal());
+		}
 	}
 
 	public void testWithoutAProviderTheCallbackIsNotThere() throws Exception {

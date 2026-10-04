@@ -32,11 +32,11 @@ public final class SmtpMailer implements Mailer {
 	}
 
 	@Override
-	public void send(String to, String subject, String text) throws IOException {
+	public void send(String to, String sender, String subject, String text) throws IOException {
 		Session session = Session.getInstance(_settings.sessionProperties());
 		try {
 			MimeMessage message = new MimeMessage(session);
-			message.setFrom(new InternetAddress(_settings.getFrom(), true));
+			message.setFrom(from(sender));
 			message.setRecipient(Message.RecipientType.TO, new InternetAddress(to, true));
 			message.setSubject(subject, "UTF-8");
 			message.setText(text, "UTF-8");
@@ -53,5 +53,17 @@ public final class SmtpMailer implements Mailer {
 		} catch (MessagingException ex) {
 			throw new IOException("Cannot send a mail through " + _settings + ": " + ex.getMessage(), ex);
 		}
+	}
+
+	/**
+	 * The configured sender address under the given display name (issue #232), encoded as UTF-8
+	 * where it needs to be; the configured sender as it is where there is no display name.
+	 */
+	private InternetAddress from(String sender) throws MessagingException, IOException {
+		InternetAddress configured = new InternetAddress(_settings.getFrom(), true);
+		if (sender == null || sender.isBlank()) {
+			return configured;
+		}
+		return new InternetAddress(configured.getAddress(), sender, "UTF-8");
 	}
 }

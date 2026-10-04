@@ -23,6 +23,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.logging.Logger;
 
@@ -162,12 +163,23 @@ final class AddressProof {
 
 	private final Passkeys _passkeys;
 
-	AddressProof(AuthService auth, EmailProofs proofs, OidcLogins oidc, String spaceName, Passkeys passkeys) {
+	private final Function<ShareStore.Link, String> _titles;
+
+	/**
+	 * Creates {@link AddressProof}.
+	 *
+	 * @param titles
+	 *        The title a link's visitor is told the shared folder by ({@link SharePreview#linkTitle}),
+	 *        which the code mail names (issue #232).
+	 */
+	AddressProof(AuthService auth, EmailProofs proofs, OidcLogins oidc, String spaceName, Passkeys passkeys,
+			Function<ShareStore.Link, String> titles) {
 		_auth = auth;
 		_proofs = proofs;
 		_oidc = oidc;
 		_spaceName = spaceName;
 		_passkeys = passkeys;
+		_titles = titles;
 	}
 
 	/** Whether a code can be mailed at all. */
@@ -482,10 +494,21 @@ final class AddressProof {
 		return found;
 	}
 
-	/** Mails a code for the given target. */
-	EmailProofSent prove(Target target, String client, String acceptLanguage) throws EmailProofs.Refused {
+	/**
+	 * Mails a code for the given target.
+	 *
+	 * @param spaceBase
+	 *        Where the space's application is mounted below the context root (<code>""</code> or
+	 *        <code>/&lt;space&gt;</code>), which the mail's footer names below the public address.
+	 */
+	EmailProofSent prove(Target target, String client, String acceptLanguage, String spaceBase)
+			throws EmailProofs.Refused {
 		String language = CodeMail.language(acceptLanguage);
-		EmailProofs.MailText text = (code, minutes) -> CodeMail.of(language, _spaceName, code, minutes);
+		// Who shared what, as the members know it: nothing the requester typed (issue #232).
+		CodeMail.About about = new CodeMail.About(target._link.getCreatedBy(), _titles.apply(target._link), _spaceName,
+			appAddress(_proofs.getPublicUrl(), spaceBase));
+		CodeMail.Purpose purpose = target._kind == Kind.ADD ? CodeMail.Purpose.ADD_ADDRESS : CodeMail.Purpose.OPEN;
+		EmailProofs.MailText text = (code, minutes) -> CodeMail.of(language, purpose, about, code, minutes);
 		EmailProofs.Sent sent;
 		if (target._kind == Kind.ADDRESSED) {
 			// The group link: the same work and the same answer for a recipient and a stranger.
@@ -502,6 +525,14 @@ final class AddressProof {
 			.setAddress(new ContactStore.Address(ContactStore.EMAIL, target._email, false).masked())
 			.setExpires(sent.getExpires().toString())
 			.setAttempts(EmailProofs.ATTEMPTS);
+	}
+
+	/** The public address of the space's application, <code>null</code> without a public address. */
+	static String appAddress(String publicUrl, String spaceBase) {
+		if (publicUrl == null) {
+			return null;
+		}
+		return publicUrl + (spaceBase == null ? "" : spaceBase) + "/";
 	}
 
 	/**

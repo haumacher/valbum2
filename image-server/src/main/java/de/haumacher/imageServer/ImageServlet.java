@@ -878,7 +878,8 @@ public class ImageServlet extends HttpServlet {
 
 	/** Who may prove which address, with the proofs this servlet was given. */
 	AddressProof addressProof() {
-		return new AddressProof(_auth, _proofs, _oidc, _spaceName, _passkeys);
+		return new AddressProof(_auth, _proofs, _oidc, _spaceName, _passkeys,
+			link -> SharePreview.linkTitle(_cache, _basePath, link));
 	}
 
 	@Override
@@ -3641,7 +3642,7 @@ public class ImageServlet extends HttpServlet {
 		try {
 			AddressProof.Target target = proof.target(caller, request.getAddress(), request.getChoice());
 			serveJsonObject(context.response(), proof.prove(target, context.request().getRemoteAddr(),
-				context.request().getHeader("Accept-Language")));
+				context.request().getHeader("Accept-Language"), spaceBase(context)));
 		} catch (AuthService.Refused ex) {
 			LOG.warning("Refusing a request for a code: " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());
@@ -4314,11 +4315,21 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private String appUrl(Context context, String segment, String token) {
 		String contextPath = context.getContextPath() == null ? "" : context.getContextPath();
+		return contextPath + spaceBase(context) + "/" + segment + "/" + token + "/";
+	}
+
+	/**
+	 * Where this space's application is mounted below the context root, without a trailing slash:
+	 * <code>""</code> on a single-space server, <code>/&lt;space&gt;</code> on a multi-space one,
+	 * also for a request that came through the alias of a library moved into a space (see
+	 * {@link #appUrl(Context, String, String)}).
+	 */
+	String spaceBase(Context context) {
 		String base = appBase(context);
 		if (base.isEmpty() && !_space.isEmpty()) {
 			base = "/" + _space;
 		}
-		return contextPath + base + "/" + segment + "/" + token + "/";
+		return base;
 	}
 
 	/**

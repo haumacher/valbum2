@@ -92,7 +92,7 @@ public final class EmailProofs {
 	public static final String MAIL_FAILED = "The code could not be sent. Try again later.";
 
 	/** An instance that sends nothing: every proof is {@link #NOT_CONFIGURED}. */
-	public static final EmailProofs NONE = new EmailProofs(null, Clock.systemUTC());
+	public static final EmailProofs NONE = new EmailProofs(null, Clock.systemUTC(), (String) null);
 
 	/** Why a code was not sent or not accepted. */
 	public static final class Refused extends Exception {
@@ -160,6 +160,8 @@ public final class EmailProofs {
 
 	private final Executor _background;
 
+	private final String _publicUrl;
+
 	private final SecureRandom _random = new SecureRandom();
 
 	private final Map<String, Pending> _pending = new HashMap<>();
@@ -179,19 +181,41 @@ public final class EmailProofs {
 	 *        What sends the mail, <code>null</code> where none is configured.
 	 * @param clock
 	 *        The time, which a test turns forward.
+	 * @param publicUrl
+	 *        The public address of the album's context root (<code>VALBUM_PUBLIC_URL</code>), which
+	 *        the mail names in its footer (issue #232), <code>null</code> where none is configured.
 	 */
+	public EmailProofs(Mailer mailer, Clock clock, String publicUrl) {
+		this(mailer, clock, mailer == null ? Runnable::run : backgroundMailer(), publicUrl);
+	}
+
+	/** Creates {@link EmailProofs} without a public address. */
 	public EmailProofs(Mailer mailer, Clock clock) {
-		this(mailer, clock, mailer == null ? Runnable::run : backgroundMailer());
+		this(mailer, clock, (String) null);
+	}
+
+	/** Creates {@link EmailProofs} without a public address, see {@link #EmailProofs(Mailer, Clock, Executor, String)}. */
+	public EmailProofs(Mailer mailer, Clock clock, Executor background) {
+		this(mailer, clock, background, null);
 	}
 
 	/**
 	 * Creates {@link EmailProofs} that send the mails of {@link #sendQuietly} through the given
 	 * executor; a test hands over <code>Runnable::run</code> to read them at once.
 	 */
-	public EmailProofs(Mailer mailer, Clock clock, Executor background) {
+	public EmailProofs(Mailer mailer, Clock clock, Executor background, String publicUrl) {
 		_mailer = mailer;
 		_clock = clock;
 		_background = background;
+		_publicUrl = publicUrl;
+	}
+
+	/**
+	 * The public address of the album's context root the mail names (<code>VALBUM_PUBLIC_URL</code>,
+	 * without a trailing slash), <code>null</code> where none is configured.
+	 */
+	public String getPublicUrl() {
+		return _publicUrl;
 	}
 
 	/** One low-priority daemon thread that sends the mails nobody waits for. */
@@ -232,7 +256,7 @@ public final class EmailProofs {
 		Instant expires = register(key, address, link, client, code, false);
 		CodeMail text = mail.of(code, LIFETIME.toMinutes());
 		try {
-			_mailer.send(address, text.getSubject(), text.getText());
+			_mailer.send(address, text.getSender(), text.getSubject(), text.getText());
 		} catch (IOException ex) {
 			LOG.warning("Cannot mail a code: " + ex.getMessage());
 			synchronized (this) {
@@ -296,7 +320,7 @@ public final class EmailProofs {
 			try {
 				_background.execute(() -> {
 					try {
-						_mailer.send(address, text.getSubject(), text.getText());
+						_mailer.send(address, text.getSender(), text.getSubject(), text.getText());
 					} catch (IOException | RuntimeException ex) {
 						LOG.log(Level.WARNING, "Cannot mail a code in the background: " + ex.getMessage());
 					}

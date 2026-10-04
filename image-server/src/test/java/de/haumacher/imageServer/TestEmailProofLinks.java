@@ -5,8 +5,17 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.auth.Clearances;
 import de.haumacher.imageServer.auth.ContactStore;
+import de.haumacher.imageServer.auth.Roles;
+import de.haumacher.imageServer.auth.UserStore;
+import de.haumacher.imageServer.auth.UserStore.Device;
+import de.haumacher.imageServer.auth.UserStore.User;
 import de.haumacher.imageServer.mail.EmailProofs;
+import de.haumacher.imageServer.mail.FakeSmtpServer;
+import de.haumacher.imageServer.mail.MailSettings;
+import de.haumacher.imageServer.mail.SmtpMailer;
+import de.haumacher.imageServer.mail.TestEmailProofs;
 import de.haumacher.imageServer.mail.TestEmailProofs.CapturingMailer;
 import de.haumacher.imageServer.mail.TestEmailProofs.TestClock;
 import de.haumacher.imageServer.shared.model.AuthInfo;
@@ -17,9 +26,11 @@ import de.haumacher.imageServer.shared.model.EmailProofSent;
 import de.haumacher.imageServer.shared.model.IdentifyRequired;
 import de.haumacher.imageServer.shared.model.ProofMethod;
 import de.haumacher.imageServer.shared.model.ShareLinkCreated;
+import jakarta.mail.internet.InternetAddress;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -580,10 +591,90 @@ public class TestEmailProofLinks extends PersonalLinkTestCase {
 		String token = created(ZOO).getToken();
 		assertEquals(200, prove(token, null, "{\"address\":\"vera@web.de\"}", "192.0.2.9", "de-DE,de;q=0.9").status());
 		String[] mail = _mailer.sent().get(0);
-		assertTrue(mail[1], mail[1].startsWith("Ihr Code für VAlbum: "));
+		assertTrue(mail[1], mail[1].startsWith("Code für „Zoo“: "));
+		assertTrue(mail[2], mail[2].contains("alice hat das Album „Zoo“ mit Ihnen geteilt."));
 		assertTrue(mail[2], mail[2].contains("10 Minuten"));
+		assertTrue(mail[2], mail[2].endsWith("\n–\nVAlbum\n"));
+		assertEquals("alice über VAlbum", mail[3]);
 		assertEquals(200, prove(token, null, "{\"address\":\"vera@web.de\"}", "192.0.2.9", "en").status());
-		assertTrue(_mailer.sent().get(1)[1].startsWith("Your code for VAlbum: "));
+		assertTrue(_mailer.sent().get(1)[1].startsWith("Code for “Zoo”: "));
+		assertEquals("alice via VAlbum", _mailer.sent().get(1)[3]);
+	}
+
+	// --- Who shared what, through a real SMTP conversation, issue #232. ---
+
+	private static final String RADTOUR = "2024/2024-06-01 Radtour nach Rom";
+
+	private static final String HAUI = "haui-token";
+
+	/** A link on the album "Radtour nach Rom" made by the member "haui", mailing through a fake SMTP server. */
+	private FakeSmtpServer radtour() throws Exception {
+		SharingFixture.album(_base, RADTOUR, "Radtour nach Rom",
+			"[\"ImagePart\",{\"name\":\"rom.jpg\",\"width\":4,\"height\":3}]", "rom.jpg");
+		UserStore users = new UserStore(_base);
+		User haui = new User("haui", Roles.EDIT, "", Instant.now().toString(), Clearances.ALL, true);
+		haui.addDevice(new Device("Haui's phone", UserStore.hash(HAUI), Instant.now().toString()));
+		users.addUser(haui);
+		users.store();
+		FakeSmtpServer smtp = new FakeSmtpServer();
+		_proofs = new EmailProofs(new SmtpMailer(new MailSettings("localhost", smtp.getPort(), "", "",
+			"album@example.org", MailSettings.Security.NONE)), _clock, Runnable::run, "https://fotos.example.org/valbum");
+		restartServer();
+		return smtp;
+	}
+
+	public void testTheMailSaysWhoSharedWhichAlbum() throws Exception {
+		try (FakeSmtpServer smtp = radtour()) {
+			FakeResponse response = sharePersonal("/" + RADTOUR + "/", HAUI);
+			assertEquals(response.body(), 200, response.status());
+			String token = created(response).getToken();
+
+			assertEquals(200,
+				prove(token, null, "{\"address\":\"vera@web.de\"}", "192.0.2.9", "de-DE,de;q=0.9").status());
+			FakeSmtpServer.Received received = smtp.getReceived().get(0);
+			String text = received.getText().replace("\r\n", "\n");
+			String code = TestEmailProofs.codeIn(text);
+			assertEquals("Code für „Radtour nach Rom“: " + code, received.getSubject());
+			InternetAddress from = (InternetAddress) received.getMessage().getFrom()[0];
+			assertEquals("haui über VAlbum", from.getPersonal());
+			assertEquals("album@example.org", from.getAddress());
+			assertEquals("Hallo,\n\nhaui hat das Album „Radtour nach Rom“ mit Ihnen geteilt.\n"
+				+ "Geben Sie diesen Code auf der Seite ein, die danach gefragt hat:\n\n    " + code + "\n\n"
+				+ "Der Code gilt 10 Minuten und nur einmal.\n\n"
+				+ "Haben Sie keinen Code angefordert? Dann können Sie diese E-Mail\n"
+				+ "einfach ignorieren – ohne den Code kann niemand das Album öffnen.\n\n"
+				+ "–\nVAlbum · https://fotos.example.org/valbum/\n", text);
+			assertFalse("Nothing the requester typed.", text.contains("vera"));
+
+			assertEquals(200, verify(token, null, "vera@web.de", 0, code).status());
+		}
+	}
+
+	public void testTheMailOfAnAddedAddressSaysWhoShares() throws Exception {
+		try (FakeSmtpServer smtp = radtour()) {
+			FakeResponse response = sharePersonal("/" + RADTOUR + "/", HAUI, phone("Klaus", KLAUS));
+			assertEquals(response.body(), 200, response.status());
+			ShareLinkCreated created = created(response);
+			String token = tokenOf(created, "Klaus");
+			String credential = credential(token);
+
+			assertEquals(200,
+				prove(token, credential, "{\"address\":\"klaus@web.de\"}", "192.0.2.9", "en-GB").status());
+			FakeSmtpServer.Received received = smtp.getReceived().get(0);
+			String text = received.getText().replace("\r\n", "\n");
+			String code = TestEmailProofs.codeIn(text);
+			assertEquals("Code for “Radtour nach Rom”: " + code, received.getSubject());
+			assertEquals("haui via VAlbum", ((InternetAddress) received.getMessage().getFrom()[0]).getPersonal());
+			assertEquals("Hello,\n\nThis code confirms your e-mail address for the photos haui shares with you:\n\n"
+				+ "    " + code + "\n\n"
+				+ "The code is valid for 10 minutes and works once.\n\n"
+				+ "Didn't ask for a code? Then simply ignore this mail –\n"
+				+ "without the code the address is not saved.\n\n"
+				+ "–\nVAlbum · https://fotos.example.org/valbum/\n", text);
+
+			FakeResponse verified = verify(token, credential, "klaus@web.de", 0, code, true, "");
+			assertEquals(verified.body(), 200, verified.status());
+		}
 	}
 
 	public void testAnAddressThatIsNoneIsRefused() throws Exception {

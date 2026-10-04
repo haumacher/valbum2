@@ -65,6 +65,13 @@ public class TestServerEnvironment extends TestCase {
 		assertEquals(MailSettings.Security.NONE, ServerEnvironment.read(env).getMail().getSecurity());
 	}
 
+	public void testTheCodeMailNamesThePublicAddress() throws Exception {
+		assertNull(ServerEnvironment.read(env("VALBUM_SMTP_PORT", "2525")).emailProofs().getPublicUrl());
+		assertEquals("https://photos.example.org/valbum",
+			ServerEnvironment.read(env("VALBUM_PUBLIC_URL", "https://photos.example.org/valbum/")).emailProofs()
+				.getPublicUrl());
+	}
+
 	public void testThePublicUrlLosesItsTrailingSlash() throws Exception {
 		assertEquals("https://photos.example.org/valbum",
 			ServerEnvironment.read(Map.of("VALBUM_PUBLIC_URL", "https://photos.example.org/valbum/")).getPublicUrl());
