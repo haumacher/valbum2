@@ -4983,6 +4983,52 @@
     "description": "The name shown for a copy lying directly at the root of the library, on the overview of photos in several albums (issue #220).",
     "x-translated": "1f6caf2c"
   },
+  "duplicatesBack": "Back to the photos in several albums",
+  "@duplicatesBack": {
+    "description": "Tooltip of the way out of the viewer when it was opened from the overview of photos in several albums (issue #228); it returns to that overview.",
+    "x-translated": "425b0cef"
+  },
+  "duplicatesDeleteTooltip": "Move to the trash of this album",
+  "@duplicatesDeleteTooltip": {
+    "description": "Tooltip of the button beside one copy of a photo on the overview of photos in several albums (issue #228): rates that copy as trash in that album only. German: 'Papierkorb'.",
+    "x-translated": "57f5bb79"
+  },
+  "duplicatesDeleteTitle": "Move to the trash?",
+  "@duplicatesDeleteTitle": {
+    "description": "Title of the question before a copy of a photo is moved to its album's trash from the overview of photos in several albums (issue #228). German: 'Papierkorb'.",
+    "x-translated": "9f06c074"
+  },
+  "duplicatesDeleteQuestion": "Move the photo '{name}' in '{album}' to the trash? It can be restored from the trash of that album.",
+  "@duplicatesDeleteQuestion": {
+    "description": "The question before one copy of a photo is rated as trash in its album, asked on the overview of photos in several albums (issue #228); name is the photo's file name, album the album's title. The other copies stay. Address the reader formally (German: 'Sie', never 'du'); German: 'Papierkorb'.",
+    "placeholders": {
+      "album": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "71c14f6f"
+  },
+  "duplicatesDeleteConfirm": "Move to trash",
+  "@duplicatesDeleteConfirm": {
+    "description": "Confirming button of the question before a copy of a photo is moved to its album's trash (issue #228). German: 'In den Papierkorb'.",
+    "x-translated": "9df97b09"
+  },
+  "duplicatesDeleted": "Moved the photo '{name}' to the trash of '{album}'.",
+  "@duplicatesDeleted": {
+    "description": "Said after one copy of a photo was rated as trash in its album from the overview of photos in several albums (issue #228); name is the file name, album the album's title. German: 'Papierkorb'.",
+    "placeholders": {
+      "album": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    },
+    "x-translated": "14c8f15f"
+  },
   "linkAnonymous": "Anonymous",
   "@linkAnonymous": {
     "description": "The type of an anonymous share link in the list of links (issue #203). German 'Anonym'.",

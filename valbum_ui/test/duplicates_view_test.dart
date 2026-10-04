@@ -231,7 +231,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-          routeOf(tester), const ImageRoute(["2023-07-01 Trip"], "IMG_1.jpg"));
+          routeOf(tester),
+          const ImageRoute(["2023-07-01 Trip"], "IMG_1.jpg",
+              fromDuplicates: true));
     });
 
     testWidgets('opens the first album from the thumbnail', (tester) async {
@@ -242,7 +244,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-          routeOf(tester), const ImageRoute(["2023-07-01 Trip"], "IMG_1.jpg"));
+          routeOf(tester),
+          const ImageRoute(["2023-07-01 Trip"], "IMG_1.jpg",
+              fromDuplicates: true));
     });
 
     testWidgets('says so when no photo is in two albums', (tester) async {

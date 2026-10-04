@@ -3033,6 +3033,29 @@ class AppLocalizationsDe extends AppLocalizations {
   String get duplicatesSpaceRoot => 'Startseite';
 
   @override
+  String get duplicatesBack => 'Zurück zu den Fotos in mehreren Alben';
+
+  @override
+  String get duplicatesDeleteTooltip =>
+      'In den Papierkorb dieses Albums verschieben';
+
+  @override
+  String get duplicatesDeleteTitle => 'In den Papierkorb verschieben?';
+
+  @override
+  String duplicatesDeleteQuestion(String album, String name) {
+    return 'Das Foto „$name“ in „$album“ in den Papierkorb verschieben? Es kann aus dem Papierkorb dieses Albums wiederhergestellt werden.';
+  }
+
+  @override
+  String get duplicatesDeleteConfirm => 'In den Papierkorb verschieben';
+
+  @override
+  String duplicatesDeleted(String album, String name) {
+    return 'Das Foto „$name“ wurde in den Papierkorb von „$album“ verschoben.';
+  }
+
+  @override
   String get linkAnonymous => 'Anonym';
 
   @override

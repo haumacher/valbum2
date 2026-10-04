@@ -300,6 +300,11 @@ class ImageView extends StatefulWidget {
   /// Leaves the viewer, back to the album (or to the alternatives view).
   final VoidCallback? onUp;
 
+  /// The tooltip of the way out, [AppLocalizations.backToAlbum] where `null`:
+  /// a viewer opened from the overview of the photographs in several albums
+  /// leads back there and says so (issue #228).
+  final String? upTooltip;
+
   /// The minimum rating an image must have to be shown.
   ///
   /// Defaults to the [AlbumInfo.minRating] of the album owning the image.
@@ -363,6 +368,7 @@ class ImageView extends StatefulWidget {
     required this.onShowImage,
     this.onShowGroup,
     this.onUp,
+    this.upTooltip,
     this.minRating,
     this.actions = const [],
     this.albumPath,
@@ -732,6 +738,10 @@ class ImageViewState extends State<ImageView>
     setState(() => _editPersons = true);
     _loadPeople();
   }
+
+  /// What `Escape` does: leaves the edit-persons mode where it is on, and
+  /// the viewer otherwise, as `ArrowUp` does (issue #228).
+  void leaveOnEscape() => editPersons ? leaveEditPersons() : showParent();
 
   /// Leaves the mode, by the Done control and by `Escape`.
   void leaveEditPersons() {
@@ -1504,8 +1514,9 @@ class ImageViewState extends State<ImageView>
           // Not a touch-only feature: a long press is what a phone has, `e`
           // is what a keyboard has (issue #80).
           const SingleActivator(LogicalKeyboardKey.keyE): editDescription,
-          // The way out of the edit-persons mode a keyboard has (issue #147).
-          const SingleActivator(LogicalKeyboardKey.escape): leaveEditPersons,
+          // The way out of the edit-persons mode a keyboard has (issue #147),
+          // and outside it the way out of the viewer (issue #228).
+          const SingleActivator(LogicalKeyboardKey.escape): leaveOnEscape,
         },
         child: Focus(
           autofocus: true,
@@ -2465,7 +2476,11 @@ class ImageViewState extends State<ImageView>
       Positioned(
         left: insets.left + 8,
         top: insets.top + 8,
-        child: overlayButton(Icons.arrow_back, l10n.backToAlbum, showParent),
+        child: overlayButton(
+          Icons.arrow_back,
+          widget.upTooltip ?? l10n.backToAlbum,
+          showParent,
+        ),
       ),
       if (previous != null)
         Positioned(

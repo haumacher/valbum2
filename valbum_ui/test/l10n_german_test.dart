@@ -706,6 +706,29 @@ void sliceTwo() {
       expect(de.duplicatesEmpty, isNot(en.duplicatesEmpty));
       expect(de.duplicatesIndexing(10, 3), contains("3"));
     });
+
+    testWidgets('the delete of a copy (issue #228)', (tester) async {
+      speakGerman(tester);
+      await withFakeImageHttp(() async {
+        await duplicates.pump(tester, duplicates.server(requests: []));
+      });
+
+      expect(find.byTooltip(de.duplicatesDeleteTooltip), findsWidgets);
+      await tester.tap(find
+          .byKey(const ValueKey("duplicates-delete-2023-07-01 Trip/IMG_1.jpg")));
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.duplicatesDeleteTitle), findsOneWidget);
+      expect(find.text(de.duplicatesDeleteQuestion("Trip", "IMG_1.jpg")),
+          findsOneWidget);
+      expect(de.duplicatesDeleteQuestion("Trip", "IMG_1.jpg"),
+          contains("Papierkorb"));
+      expect(find.text(de.duplicatesDeleteConfirm), findsOneWidget);
+      var en = l10nOf(const Locale("en"));
+      expect(find.text(en.duplicatesDeleteTitle), findsNothing);
+      expect(de.duplicatesDeleted("Trip", "IMG_1.jpg"), contains("„Trip“"));
+      expect(de.duplicatesBack, isNot(en.duplicatesBack));
+    });
   });
 
   group('slice 2 speaks German', () {

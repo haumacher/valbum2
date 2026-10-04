@@ -775,6 +775,11 @@
   "duplicatesIndexing": "Die Bibliothek wird noch indexiert ({done} von {total} Ordnern); Fotos in noch nicht indexierten Ordnern fehlen hier.",
   "duplicatesCopies": "{count, plural, =1{in 1 Album} other{in {count} Alben}}",
   "duplicatesSpaceRoot": "Startseite",
+  "duplicatesDeleteTooltip": "In den Papierkorb dieses Albums verschieben",
+  "duplicatesDeleteTitle": "In den Papierkorb verschieben?",
+  "duplicatesDeleteQuestion": "Das Foto „{name}“ in „{album}“ in den Papierkorb verschieben? Es kann aus dem Papierkorb dieses Albums wiederhergestellt werden.",
+  "duplicatesDeleteConfirm": "In den Papierkorb verschieben",
+  "duplicatesDeleted": "Das Foto „{name}“ wurde in den Papierkorb von „{album}“ verschoben.",
   "linkAnonymous": "Anonym",
   "recipientNotOpened": "Noch nicht geöffnet",
   "openedOn": "Geöffnet am {day}",
@@ -826,10 +831,10 @@
   "totpKeyCopied": "Einrichtungsschlüssel kopiert.",
   "contactSignInsEntry": "Anmeldemethoden…",
   "contactSignInsTitle": "Wie sich {name} anmeldet",
+  "contactSignInsNone": "Kein Passkey und keine Authenticator-App eingerichtet.",
   "contactAuthenticatorMark": "Authenticator-App",
   "contactAuthenticatorRemoveTitle": "Authenticator-App von {name} entfernen?",
   "contactSignInRemoveMessage": "Ihre Codes gelten dann nicht mehr. Der Kontakt kann sie neu einrichten.",
-  "contactSignInsNone": "Kein Passkey und keine Authenticator-App eingerichtet.",
   "identifyPasskey": "Mit Passkey anmelden",
   "passkeyCancelled": "Es wurde kein Passkey verwendet.",
   "passkeyFailed": "Der Browser konnte keinen Passkey verwenden ({reason}).",
@@ -857,5 +862,6 @@
   "removeFromCollectionExplanation": "Die Fotos werden aus dieser Sammlung entfernt. Sie verbleiben in ihren Alben.",
   "removedFromCollection": "{count, plural, =1{1 Foto wurde aus der Sammlung entfernt.} other{{count} Fotos wurden aus der Sammlung entfernt.}}",
   "addToCollection": "Zur Sammlung hinzufügen…",
-  "propertySource": "Im Album: {album}"
+  "propertySource": "Im Album: {album}",
+  "duplicatesBack": "Zurück zu den Fotos in mehreren Alben"
 }

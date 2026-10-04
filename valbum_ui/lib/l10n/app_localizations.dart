@@ -4749,6 +4749,42 @@ abstract class AppLocalizations {
   /// **'Start page'**
   String get duplicatesSpaceRoot;
 
+  /// Tooltip of the way out of the viewer when it was opened from the overview of photos in several albums (issue #228); it returns to that overview.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to the photos in several albums'**
+  String get duplicatesBack;
+
+  /// Tooltip of the button beside one copy of a photo on the overview of photos in several albums (issue #228): rates that copy as trash in that album only. German: 'Papierkorb'.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to the trash of this album'**
+  String get duplicatesDeleteTooltip;
+
+  /// Title of the question before a copy of a photo is moved to its album's trash from the overview of photos in several albums (issue #228). German: 'Papierkorb'.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to the trash?'**
+  String get duplicatesDeleteTitle;
+
+  /// The question before one copy of a photo is rated as trash in its album, asked on the overview of photos in several albums (issue #228); name is the photo's file name, album the album's title. The other copies stay. Address the reader formally (German: 'Sie', never 'du'); German: 'Papierkorb'.
+  ///
+  /// In en, this message translates to:
+  /// **'Move the photo \'{name}\' in \'{album}\' to the trash? It can be restored from the trash of that album.'**
+  String duplicatesDeleteQuestion(String album, String name);
+
+  /// Confirming button of the question before a copy of a photo is moved to its album's trash (issue #228). German: 'In den Papierkorb'.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to trash'**
+  String get duplicatesDeleteConfirm;
+
+  /// Said after one copy of a photo was rated as trash in its album from the overview of photos in several albums (issue #228); name is the file name, album the album's title. German: 'Papierkorb'.
+  ///
+  /// In en, this message translates to:
+  /// **'Moved the photo \'{name}\' to the trash of \'{album}\'.'**
+  String duplicatesDeleted(String album, String name);
+
   /// The type of an anonymous share link in the list of links (issue #203). German 'Anonym'.
   ///
   /// In en, this message translates to:

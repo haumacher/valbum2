@@ -4,9 +4,19 @@
 /// A space-level page (`/.duplicates/`, see [DuplicatesRoute]) on the root
 /// listing, reached from the start page's ⋮ menu. One row per photograph:
 /// its thumbnail and every album it lies in, each of them opening that album
-/// at the photograph (the viewer route). **Nothing is moved or deleted** —
-/// the server answers `?type=duplicates` read-only, every copy one the caller
-/// may see, and this page only shows it.
+/// at the photograph. The viewer opened here sits on this page (issue #228:
+/// `/.duplicates/<album>/<name>`, an [ImageRoute] with `fromDuplicates`), so
+/// its way back — the app bar, `Escape`, the system's and the browser's back
+/// button — returns to this page as it was left, scroll offset and all.
+///
+/// The server answers `?type=duplicates` read-only, every copy one the caller
+/// may see. An editor may take one copy out from here (issue #228, key
+/// `duplicates-delete-<album>/<name>`): what "Delete" of a photograph is for an
+/// editor since #224 — the copy is rated as trash (−2) in **its** album, after
+/// a question, written through the album's ordinary sidecar PUT. Nothing is
+/// moved and no file is touched; the photograph waits in that album's trash
+/// (#152), from where it is restored, and a photograph rated as trash is no
+/// copy any more, so the overview is asked again afterwards.
 ///
 /// It needs the server and nothing else: offline it says so with the usual
 /// refusal and offers the retry, the cache holding no copy of it. While the
@@ -18,13 +28,17 @@ import 'package:flutter/material.dart' hide Orientation;
 
 import 'album_date.dart';
 import 'app.dart';
+import 'caller.dart';
 import 'client.dart';
 import 'l10n/app_localizations.dart';
+import 'move_view.dart' show showRefusal;
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'page_insets.dart';
 import 'resource.dart';
+import 'rights.dart';
 import 'routes.dart';
+import 'trash_view.dart' show trashRating;
 
 /// The side of a group's thumbnail, in logical pixels.
 const double duplicatesThumbnailSize = 112;
@@ -41,6 +55,29 @@ String duplicateAlbumName(DuplicateCopy copy) {
   }
   var path = duplicateAlbumPath(copy);
   return path.isEmpty ? "" : path.last;
+}
+
+/// The path of a copy's file below the space root, `album/name`: what names a
+/// copy in the keys of this page.
+String duplicateFilePath(DuplicateCopy copy) =>
+    copy.album.isEmpty ? copy.name : "${copy.album}/${copy.name}";
+
+/// The image of [album] named [name], a group member found by itself;
+/// `null` where the album holds none of that name.
+ImagePart? duplicateImageIn(AlbumInfo album, String name) {
+  for (var part in album.parts) {
+    var images = switch (part) {
+      ImagePart() => [part],
+      ImageGroup() => part.images,
+      _ => const <ImagePart>[],
+    };
+    for (var image in images) {
+      if (image.name == name) {
+        return image;
+      }
+    }
+  }
+  return null;
 }
 
 /// The overview page of the photographs in several albums.
@@ -64,8 +101,9 @@ class DuplicatesViewState extends State<DuplicatesView> {
   /// Whether the server is being asked.
   bool _loading = false;
 
-  /// Whether the first load was started, see [didChangeDependencies].
-  bool _started = false;
+  /// The reload counter of the router the page was last loaded at, see
+  /// [didChangeDependencies].
+  int? _version;
 
   AppLocalizations get _l10n => AppLocalizations.of(context)!;
 
@@ -74,8 +112,13 @@ class DuplicatesViewState extends State<DuplicatesView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_started) {
-      _started = true;
+    // Asked once, and again only where something reloaded the route — a
+    // photograph taken back out of its album in a viewer opened here, say.
+    // Coming back from such a viewer is no reason: the page stayed mounted
+    // beneath it as it was (issue #228).
+    var version = VAlbumNavigator.of(context).version;
+    if (_version != version) {
+      _version = version;
       load();
     }
   }
@@ -121,11 +164,98 @@ class DuplicatesViewState extends State<DuplicatesView> {
     }
   }
 
-  /// Opens the album of [copy] at its photograph.
+  /// Opens the album of [copy] at its photograph, in a viewer that leads
+  /// back to this page (issue #228).
   void open(DuplicateCopy copy) {
     widget.albumState.navigator.go(
-      ImageRoute(duplicateAlbumPath(copy), copy.name),
+      ImageRoute(duplicateAlbumPath(copy), copy.name, fromDuplicates: true),
     );
+  }
+
+  /// Whether the caller may take a copy out of its album: whoever may edit
+  /// the albums of the space — every album alike, a role being the space's
+  /// (#83) — and everybody where the server names nobody (`--auth off`).
+  bool get mayDelete => offeredRights(
+        Rights.unanswered,
+        CallerInfo.permissionOf(context),
+      ).mayEdit;
+
+  /// The name [copy]'s album is spoken of by in a sentence.
+  String _albumWord(DuplicateCopy copy) {
+    var name = duplicateAlbumName(copy);
+    return name.isEmpty ? _l10n.duplicatesSpaceRoot : name;
+  }
+
+  /// Moves [copy] to the trash of its own album, after asking: the copy is
+  /// rated as trash there, exactly as "Delete" of a photograph is for an
+  /// editor (#224), and nothing else of that album changes.
+  Future<void> delete(DuplicateCopy copy) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var album = _albumWord(copy);
+    var confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key("duplicates-delete-dialog"),
+        title: Text(_l10n.duplicatesDeleteTitle),
+        content: Text(_l10n.duplicatesDeleteQuestion(album, copy.name)),
+        actions: [
+          TextButton(
+            key: const Key("duplicates-delete-cancel"),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(_l10n.cancel),
+          ),
+          ElevatedButton(
+            key: const Key("duplicates-delete-confirm"),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(_l10n.duplicatesDeleteConfirm),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    // Asked again: the connection may have gone while the question stood.
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+    var path = duplicateAlbumPath(copy);
+    try {
+      // The album as the server holds it now, not a copy the router may have
+      // kept: only the one rating is changed in what is written back.
+      var resource = await client.loadResource(path);
+      if (resource is! AlbumInfo) {
+        throw VAlbumException(_l10n.noSuchImage(copy.name));
+      }
+      var image = duplicateImageIn(resource, copy.name);
+      if (image == null) {
+        throw VAlbumException(_l10n.noSuchImage(copy.name));
+      }
+      image.rating = trashRating;
+      await client.saveAlbum(path, resource);
+    } catch (error) {
+      if (mounted) {
+        // The server's own reason, nothing changed (issue #49).
+        showRefusal(messenger, error);
+      }
+      return;
+    }
+    // The album holds something else now: the next visit asks the server.
+    widget.albumState.navigator.delegate.forget(path);
+    if (!mounted) {
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        key: const Key("duplicates-deleted"),
+        content: Text(_l10n.duplicatesDeleted(album, copy.name)),
+      ),
+    );
+    // A photograph rated as trash is no copy: the group shrinks or goes.
+    await load();
   }
 
   @override
@@ -286,7 +416,7 @@ class DuplicatesViewState extends State<DuplicatesView> {
   Widget _copy(DuplicateCopy copy) {
     var name = duplicateAlbumName(copy);
     var date = albumDateLabel(copy.albumDate);
-    var file = copy.album.isEmpty ? copy.name : "${copy.album}/${copy.name}";
+    var file = duplicateFilePath(copy);
     return ListTile(
       key: ValueKey("duplicates-copy-$file"),
       dense: true,
@@ -294,7 +424,19 @@ class DuplicatesViewState extends State<DuplicatesView> {
       leading: const Icon(Icons.photo_album_outlined),
       title: Text(name.isEmpty ? _l10n.duplicatesSpaceRoot : name),
       subtitle: Text([if (date != null) date, file].join(" · ")),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (mayDelete)
+            IconButton(
+              key: ValueKey("duplicates-delete-$file"),
+              icon: const Icon(Icons.delete_outline),
+              tooltip: _l10n.duplicatesDeleteTooltip,
+              onPressed: () => delete(copy),
+            ),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
       onTap: () => open(copy),
     );
   }

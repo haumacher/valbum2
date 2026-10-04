@@ -1849,6 +1849,14 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// thumbnails held live and its scroll offset untouched, see issue #93.
   static List<VAlbumRoute> levelsOf(VAlbumRoute route) => switch (route) {
         ListingOrAlbumRoute() => [route],
+        // A viewer opened from the overview of the photographs in several
+        // albums sits on the overview, which stays mounted beneath it and is
+        // where the way back leads, see issue #228.
+        ImageRoute(fromDuplicates: true) => [
+            ListingOrAlbumRoute.root,
+            const DuplicatesRoute(),
+            route,
+          ],
         ImageRoute(albumPath: var album) => [
             ListingOrAlbumRoute(album),
             route,
@@ -1912,6 +1920,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     var album = _pathKey(level.albumPath);
     return switch (level) {
       ListingOrAlbumRoute() => "valbum:album:$album",
+      ImageRoute(fromDuplicates: true) => "valbum:duplicates-image:$album",
       ImageRoute() => "valbum:image:$album",
       AlternativesRoute() => "valbum:alternatives:$album",
       MemberRoute() => "valbum:member:$album",
@@ -2461,6 +2470,13 @@ class VAlbumState extends State<VAlbumView>
         onShowImage: showImage,
         onShowGroup: showGroupView,
         onUp: navigator.up,
+        // A viewer opened from the overview of the photographs in several
+        // albums leads back there, and says so (issue #228).
+        upTooltip: switch (route) {
+          ImageRoute(fromDuplicates: true) =>
+            AppLocalizations.of(context)!.duplicatesBack,
+          _ => null,
+        },
         // Where a photo of one's own can be taken back out of somebody else's
         // album, see issue #53: the album this route names is the folder the
         // move is posted to.
@@ -2767,8 +2783,13 @@ class VAlbumState extends State<VAlbumView>
   void reload() => navigator.reload();
 
   /// Displays the given image (of the album currently loaded).
-  void showImage(AbstractImage image) =>
-      navigator.go(ImageRoute(path, image.thumbnailName));
+  ///
+  /// Paging keeps where the viewer was opened from: a viewer of the overview
+  /// of the photographs in several albums still leads back there (#228).
+  void showImage(AbstractImage image) => navigator.go(switch (route) {
+        ImageRoute current => current.withName(image.thumbnailName),
+        _ => ImageRoute(path, image.thumbnailName),
+      });
 
   /// Opens the viewer on the given part of the album.
   Future<void> pushPart(AbstractImage image, String name) async =>

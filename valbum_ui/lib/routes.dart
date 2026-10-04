@@ -17,6 +17,8 @@
 /// | `/2005-08-24 Blumen/IMG_0417.JPG`            | [ImageRoute]                              |
 /// | `/2005-08-24 Blumen/IMG_0417.JPG/alternatives/` | [AlternativesRoute]                    |
 /// | `/2005-08-24 Blumen/IMG_0417.JPG/alternatives/IMG_0418.JPG` | [MemberRoute]          |
+/// | `/.duplicates/`                              | [DuplicatesRoute]                         |
+/// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG` | [ImageRoute] seen from the overview     |
 ///
 /// A folder or album is therefore addressed **with** a trailing slash and an
 /// image **without** one, exactly as the GWT client did. The segment
@@ -146,6 +148,14 @@ class ListingOrAlbumRoute extends VAlbumRoute {
 ///
 /// If the image belongs to an `ImageGroup`, the viewer shows the group (and
 /// offers the way down to its [AlternativesRoute]), as the GWT client did.
+///
+/// A viewer opened from the overview of the photographs in several albums
+/// ([fromDuplicates], issue #228) is the same viewer of the same album — it
+/// loads that album and pages through it — but it sits on the overview rather
+/// than on its album: it is addressed below `/.duplicates/`
+/// (`/.duplicates/2023 Trip/IMG_1.jpg`), and its way [up] (the app bar, the
+/// `Escape` key, the system's and the browser's back button) leads back to the
+/// overview, which stays mounted beneath it.
 class ImageRoute extends VAlbumRoute {
   @override
   final List<String> albumPath;
@@ -153,25 +163,42 @@ class ImageRoute extends VAlbumRoute {
   /// The file name of the image within its album.
   final String name;
 
-  const ImageRoute(this.albumPath, this.name);
+  /// Whether the viewer was opened from the overview of the photographs in
+  /// several albums and returns there, see [DuplicatesRoute].
+  final bool fromDuplicates;
+
+  const ImageRoute(this.albumPath, this.name, {this.fromDuplicates = false});
+
+  /// Another image of the same album, seen from where this one is: paging in
+  /// a viewer opened from the overview keeps its way back to the overview.
+  ImageRoute withName(String other) =>
+      ImageRoute(albumPath, other, fromDuplicates: fromDuplicates);
 
   @override
-  VAlbumRoute? get up => ListingOrAlbumRoute(albumPath);
+  VAlbumRoute? get up =>
+      fromDuplicates ? const DuplicatesRoute() : ListingOrAlbumRoute(albumPath);
 
   @override
-  List<String> get segments => [...albumPath, name];
+  List<String> get segments => [
+        if (fromDuplicates) duplicatesSegment,
+        ...albumPath,
+        name,
+      ];
 
   @override
-  VAlbumRoute withAlbumPath(List<String> path) => ImageRoute(path, name);
+  VAlbumRoute withAlbumPath(List<String> path) =>
+      ImageRoute(path, name, fromDuplicates: fromDuplicates);
 
   @override
   bool operator ==(Object other) =>
       other is ImageRoute &&
       name == other.name &&
+      fromDuplicates == other.fromDuplicates &&
       listEquals(albumPath, other.albumPath);
 
   @override
-  int get hashCode => Object.hash(Object.hashAll(albumPath), name);
+  int get hashCode =>
+      Object.hash(Object.hashAll(albumPath), name, fromDuplicates);
 
   @override
   String toString() => "ImageRoute($path)";
@@ -398,6 +425,17 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
 
   if (segments.isEmpty) {
     return ListingOrAlbumRoute.root;
+  }
+
+  // `/.duplicates/<album>/<image>`: a viewer opened from the overview of the
+  // photographs in several albums, see issue #228. No folder of a library
+  // carries a leading dot, so this shadows no image.
+  if (segments.length >= 2 && segments.first == duplicatesSegment) {
+    return ImageRoute(
+      segments.sublist(1, segments.length - 1),
+      segments.last,
+      fromDuplicates: true,
+    );
   }
 
   // `.../<image>/alternatives/<member>`

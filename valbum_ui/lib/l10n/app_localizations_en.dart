@@ -2991,6 +2991,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get duplicatesSpaceRoot => 'Start page';
 
   @override
+  String get duplicatesBack => 'Back to the photos in several albums';
+
+  @override
+  String get duplicatesDeleteTooltip => 'Move to the trash of this album';
+
+  @override
+  String get duplicatesDeleteTitle => 'Move to the trash?';
+
+  @override
+  String duplicatesDeleteQuestion(String album, String name) {
+    return 'Move the photo \'$name\' in \'$album\' to the trash? It can be restored from the trash of that album.';
+  }
+
+  @override
+  String get duplicatesDeleteConfirm => 'Move to trash';
+
+  @override
+  String duplicatesDeleted(String album, String name) {
+    return 'Moved the photo \'$name\' to the trash of \'$album\'.';
+  }
+
+  @override
   String get linkAnonymous => 'Anonymous';
 
   @override
