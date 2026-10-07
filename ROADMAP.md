@@ -239,6 +239,20 @@ in a separate service, and abuse and law (the DSA, GDPR) come first. Open questi
 
 ## Decisions log
 
+- **2026-10-08** — 2.11.0 released (tag `valbum-2.11.0` on 076e5a5).
+  - **One identity (#233):** members sign in on a new browser with an authenticator app, passkeys, a mailed code or Google, as contacts of share links do. A member's proof on any link signs the member in and never creates a contact, and an address belongs to one principal (the author: "one identity, no merge").
+  - **Places (#234):** an offline GeoNames gazetteer turns a photo's position into its place, from the country down to a nearby landmark. Places are derived on read, never stored, and named in the viewer's language; the files are fetched per country and refreshed every 90 days.
+  - **The library maintains itself:**
+    - photos copied in by hand are noticed without a restart, by watches and a minute's sweep of directory times (#235);
+    - every album is brought up to date in the background before its first visit: previews, covers, faces, places and all video renditions, newest first, with requests always going first (#236);
+    - `replace-originals` finds photos the phone renamed, through an index that lives only for the run (#237).
+  - **Arranging:**
+    - a device's own upload target, ending after a week by default (#240);
+    - starred albums with 2×2 tiles (#239);
+    - "Group by…" for headings by day, town or region, also on a selection (#238);
+    - saved searches: a search over a folder by persons, dates, places, labels, rating, kind, text and camera, saved as a live album kind that stores only its query (#227, the author's reversal of "never stored").
+  - **Also:** face suggestions refresh on Save, an opaque label chip, and CI pinned to Maven 3.9.16 through `./mvnw` after GitHub's runners moved to Maven 4 (faq/maven-4.md).
+  - **Follow-ups:** #241–#245.
 - **2026-10-04** — 2.10.1 released (tag `valbum-2.10.1` on b887597), fixes and polish reported
   against 2.10.0: the share mail greeted the album instead of the recipient (444419f); a link's label
   never reaches its visitor, the welcome card names the album (#229); the code mail names the album, the
