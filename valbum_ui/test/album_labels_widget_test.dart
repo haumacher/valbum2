@@ -7,6 +7,7 @@ library;
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/rendering.dart' show RenderPhysicalShape;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:jsontool/jsontool.dart';
@@ -161,6 +162,34 @@ void main() {
     expect(find.text("Day 2"), findsOneWidget);
     expect(server.requests.where((r) => r.method != "GET"), isEmpty,
         reason: "a filter is a view, nothing is written");
+  });
+
+  testWidgets("a chip that is not selected is dark under its white text",
+      (tester) async {
+    var server = FakeLabelServer();
+    await pumpAlbum(tester, server);
+
+    // What the eye sees is the chip's own decoration composed over the
+    // Material it sits on, which Material 3 paints in the theme's light
+    // surface: a translucent decoration shows that surface, not the black
+    // page.
+    Color seen(Finder chipFinder) {
+      var shape = tester.renderObject<RenderPhysicalShape>(find
+          .descendant(of: chipFinder, matching: find.byType(PhysicalShape))
+          .first);
+      var ink = tester
+          .widget<Ink>(
+              find.descendant(of: chipFinder, matching: find.byType(Ink)))
+          .decoration as ShapeDecoration;
+      return Color.alphaBlend(ink.color!, shape.color);
+    }
+
+    expect(seen(chip("Day")).computeLuminance(), lessThan(0.1));
+    await tester.tap(chip("Day"));
+    await tester.pumpAndSettle();
+    expect(seen(chip("Day")).computeLuminance(), greaterThan(0.8),
+        reason: "the selected chip is white under its black text");
+    expect(seen(chip("Party")).computeLuminance(), lessThan(0.1));
   });
 
   testWidgets("an unfiltered view keeps an empty heading, a filtered one not",

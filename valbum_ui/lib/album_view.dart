@@ -1394,7 +1394,10 @@ class AlbumContentState extends State<AlbumContent>
       key: Key("label-chip-$label"),
       selected: active,
       showCheckmark: false,
-      backgroundColor: Colors.white12,
+      // Opaque: Material 3 lays a chip on a Material in the theme's light
+      // surface, which a translucent colour lets through instead of the
+      // black page — white text on near white.
+      backgroundColor: Color.alphaBlend(Colors.white12, Colors.black),
       selectedColor: Colors.white,
       side: const BorderSide(color: Colors.white38),
       label: Row(
