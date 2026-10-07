@@ -3725,4 +3725,82 @@ class AppLocalizationsDe extends AppLocalizations {
   String noticeUploadTargetFollowed(String before, String album) {
     return 'Das Album „$before“ heißt jetzt „$album“; neue Fotos landen dort.';
   }
+
+  @override
+  String get groupByAction => 'Gruppieren nach…';
+
+  @override
+  String get groupByTitle => 'Gruppieren nach';
+
+  @override
+  String get groupByScopeAlbum => 'Gilt für das gesamte Album.';
+
+  @override
+  String groupByScopeChoiceSelection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Ausgewählte Fotos ($count)',
+      one: 'Ausgewähltes Foto (1)',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get groupByScopeChoiceAlbum => 'Gesamtes Album';
+
+  @override
+  String get groupBySectionKey => 'Abschnitte nach';
+
+  @override
+  String get groupBySubsectionKey => 'Unterabschnitte nach';
+
+  @override
+  String get groupByKeyNone => 'Keine';
+
+  @override
+  String get groupByKeyDay => 'Tag';
+
+  @override
+  String get groupByKeyTown => 'Ort';
+
+  @override
+  String get groupByKeyDistrict => 'Stadtteil';
+
+  @override
+  String get groupByKeyRegion => 'Region';
+
+  @override
+  String get groupByKeyCountry => 'Land';
+
+  @override
+  String get groupByKeyFeature => 'Sehenswürdigkeit';
+
+  @override
+  String get groupByKeyDayAndTown => 'Tag und Ort';
+
+  @override
+  String get groupByModeReplace => 'Überschriften ersetzen';
+
+  @override
+  String get groupByModeAddSubsections =>
+      'Abschnitte beibehalten, Unterabschnitte hinzufügen';
+
+  @override
+  String groupByWillReplace(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Die bereits vorhandenen $count Überschriften werden ersetzt.',
+      one: 'Die bereits vorhandene Überschrift wird ersetzt.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get groupByNothingKeyed =>
+      'Keines dieser Fotos enthält diese Informationen: kein Datum oder keine Position mit einem Ort dieser Art in der Nähe. Es wird keine Überschrift erstellt.';
+
+  @override
+  String get groupByPreview => 'Zu erstellende Überschriften';
 }

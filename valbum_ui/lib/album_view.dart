@@ -28,6 +28,7 @@ import 'crop_editor.dart';
 import 'downloads.dart';
 import 'drag_scroll.dart';
 import 'form_dialog.dart';
+import 'group_by_dialog.dart';
 import 'image_properties.dart';
 import 'keyboard_scroll.dart';
 import 'label_dialog.dart';
@@ -850,6 +851,32 @@ class AlbumContentState extends State<AlbumContent>
       return;
     }
     setState(markDirty);
+  }
+
+  /// Makes the album's headings from its photos, by day or place (issue
+  /// #238): on the selection where there is one, on the whole album
+  /// otherwise, see `group_by.dart`. The dialog previews the headings; what
+  /// it applies goes into the edit buffer like every other edit, so Save
+  /// writes it and Cancel takes it back, and from then on they are ordinary
+  /// headings.
+  Future<void> groupBy() async {
+    var plan = await showGroupByDialog(
+      context: context,
+      parts: widget.album.parts,
+      selection: selection,
+      // What the edit mode shows, see [shownParts].
+      minRating: widget.album.minRating,
+    );
+    if (plan == null || plan.isEmpty || !mounted) {
+      return;
+    }
+    editImage(() {
+      widget.album.parts = plan.parts;
+      AlbumInitializer().init(widget.album);
+      // A heading that was replaced is no part of the album any more.
+      var kept = Set<AlbumPart>.identity()..addAll(plan.parts);
+      selection.removeWhere((part) => part is Heading && !kept.contains(part));
+    });
   }
 
   /// Adds every image of one camera to the selection (issue #78).
@@ -2186,6 +2213,15 @@ class AlbumContentState extends State<AlbumContent>
             ),
           if (editMode)
             menuItem(Icons.sort, _l10n.sortByDate, (_) => sortByDate()),
+          // The headings made from the photos (issue #238), into the buffer
+          // like the other heading actions beside it.
+          if (editMode && holdsImages)
+            keyedMenuItem(
+              const Key("group-by"),
+              Icons.segment,
+              _l10n.groupByAction,
+              (_) => groupBy(),
+            ),
           menuLabel(
             _l10n.minRatingLabel,
             "≥ $minRating",

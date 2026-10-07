@@ -68,6 +68,8 @@ const List<String> convertedFiles = [
   "lib/drag_scroll.dart",
   "lib/first_screen.dart",
   "lib/form_dialog.dart",
+  "lib/group_by.dart",
+  "lib/group_by_dialog.dart",
   "lib/group_view.dart",
   "lib/identify_view.dart",
   "lib/image_properties.dart",

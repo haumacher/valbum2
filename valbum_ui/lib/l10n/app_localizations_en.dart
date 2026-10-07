@@ -3674,4 +3674,81 @@ class AppLocalizationsEn extends AppLocalizations {
   String noticeUploadTargetFollowed(String before, String album) {
     return 'The album \'$before\' is now \'$album\'; new photos go there.';
   }
+
+  @override
+  String get groupByAction => 'Group by…';
+
+  @override
+  String get groupByTitle => 'Group by';
+
+  @override
+  String get groupByScopeAlbum => 'Applies to the whole album.';
+
+  @override
+  String groupByScopeChoiceSelection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Selected photos ($count)',
+      one: 'Selected photo (1)',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get groupByScopeChoiceAlbum => 'Whole album';
+
+  @override
+  String get groupBySectionKey => 'Sections by';
+
+  @override
+  String get groupBySubsectionKey => 'Subsections by';
+
+  @override
+  String get groupByKeyNone => 'None';
+
+  @override
+  String get groupByKeyDay => 'Day';
+
+  @override
+  String get groupByKeyTown => 'Town';
+
+  @override
+  String get groupByKeyDistrict => 'District';
+
+  @override
+  String get groupByKeyRegion => 'Region';
+
+  @override
+  String get groupByKeyCountry => 'Country';
+
+  @override
+  String get groupByKeyFeature => 'Landmark';
+
+  @override
+  String get groupByKeyDayAndTown => 'Day and town';
+
+  @override
+  String get groupByModeReplace => 'Replace the headings';
+
+  @override
+  String get groupByModeAddSubsections => 'Keep the sections, add subsections';
+
+  @override
+  String groupByWillReplace(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'The $count headings already there are replaced.',
+      one: 'The heading already there is replaced.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get groupByNothingKeyed =>
+      'None of these photos has this information: no date, or no position with a place of this kind nearby. No heading is created.';
+
+  @override
+  String get groupByPreview => 'Headings to create';
 }
