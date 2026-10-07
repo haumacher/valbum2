@@ -183,6 +183,20 @@ message AlbumInfo extends FolderResource {
 	/** Description of the image used to display this whole album in a listing. */
 	ThumbnailInfo indexPicture;
 
+	/**
+	 * Whether this album stands out in the folder it lies in, see issue #239.
+	 *
+	 * <p>
+	 * A statement of whoever may edit the album, stored in its own <code>index.json</code> and
+	 * written by the ordinary sidecar <code>PUT</code>, like its {@link #title}. The listing above
+	 * answers it on the album's tile ({@link FolderInfo#starred}), which the app draws four times
+	 * the size of an ordinary one. A sidecar written before the field reads as not starred. An
+	 * album and a collection carry it alike; an inbox is never a tile of a listing, so a star on it
+	 * is shown nowhere.
+	 * </p>
+	 */
+	bool starred;
+
 	/** The list of images in this album. */
 	repeated AlbumPart parts;
 	
@@ -1114,6 +1128,18 @@ message ListingInfo extends FolderResource {
 	 */
 	string index;
 	
+	/**
+	 * Whether this folder stands out in the folder above it, see issue #239.
+	 *
+	 * <p>
+	 * The counterpart of {@link AlbumInfo#starred} for a folder of folders (a holiday made of
+	 * several albums): stored in this folder's own <code>index.json</code> beside its
+	 * {@link #title}, and answered on its tile in the listing above ({@link FolderInfo#starred}).
+	 * A folder without a sidecar is not starred; starring it is what writes one.
+	 * </p>
+	 */
+	bool starred;
+	
 	/** Description of the folders within this {@link ListingInfo}. */
 	repeated FolderInfo folders;
 }
@@ -1231,6 +1257,18 @@ message FolderInfo {
 	 * </p>
 	 */
 	string link;
+
+	/**
+	 * Whether this entry is starred, see issue #239: the app draws its tile 2&times;2.
+	 *
+	 * <p>
+	 * Read from the entry's own sidecar at listing time like its {@link #title}
+	 * ({@link AlbumInfo#starred} for an album or a collection, {@link ListingInfo#starred} for a
+	 * folder of folders), never stored in the listing's sidecar: the entries of a listing are
+	 * cleared before it is written. An entry without a sidecar is not starred.
+	 * </p>
+	 */
+	bool starred;
 }
 
 /** Part of a {@link FolderInfo} describing the thumbnail image for displaying this folder in a {@link ListingInfo}. */

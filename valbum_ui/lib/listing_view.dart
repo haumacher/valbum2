@@ -1,6 +1,8 @@
 /// The folder listing view and the dialogs creating albums and folders.
 library;
 
+import 'dart:math' as math;
+
 import 'package:date_field/date_field.dart';
 import 'package:flutter/material.dart';
 
@@ -15,6 +17,7 @@ import 'crop.dart';
 import 'form_dialog.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
+import 'listing_layout.dart';
 import 'move_view.dart';
 import 'resource.dart';
 import 'offline.dart';
@@ -260,6 +263,15 @@ class ListingView extends StatelessWidget {
               ),
             if (mayChange)
               menuItem(Icons.tune, l10n.folderProperties, editFolder),
+            // Whether this folder stands out in the one above it (#239); the
+            // root of a space lies in no folder.
+            if (mayChange && albumState.path.isNotEmpty)
+              keyedMenuItem(
+                const Key("toggle-star"),
+                self.starred ? Icons.star_border : Icons.star,
+                self.starred ? l10n.removeStarAction : l10n.addStarAction,
+                toggleStar,
+              ),
             // Only where there is a rule to apply: a folder without one has
             // nothing to file, see issue #48.
             if (mayChange && self.placement != Placement.none)
@@ -325,8 +337,16 @@ class ListingView extends StatelessWidget {
                     double preferredImageSpace =
                         preferredImageWidth + 2 * imageBorder;
                     double imagesPerRowFrag = maxWidth / preferredImageSpace;
-                    var imagesPerRow = imagesPerRowFrag.round();
-                    bool underflow = self.folders.length < imagesPerRow;
+                    // At least one column, however narrow the window.
+                    var imagesPerRow = math.max(1, imagesPerRowFrag.round());
+                    // A starred tile takes two columns of the first row
+                    // (issue #239), so a few tiles fill a row sooner.
+                    var cellsUsed = self.folders.fold<int>(
+                      0,
+                      (sum, folder) =>
+                          sum + (folder.starred && imagesPerRow >= 2 ? 2 : 1),
+                    );
+                    bool underflow = cellsUsed < imagesPerRow;
                     double difference = underflow
                         ? 0
                         : maxWidth - imagesPerRow * preferredImageSpace;
@@ -347,6 +367,7 @@ class ListingView extends StatelessWidget {
                         self,
                         imageSpace - 2 * imageBorder,
                         imageBorder,
+                        imagesPerRow,
                       ),
                     );
                   },
@@ -393,79 +414,143 @@ class ListingView extends StatelessWidget {
     );
   }
 
-  Wrap buildFolderList(
+  /// The tiles of the folder, in a grid of [columns] columns, each
+  /// [imageWidth] wide and a starred one twice that and twice as high (issue
+  /// #239), see [tileCells].
+  TileGrid buildFolderList(
     BuildContext context,
     ListingInfo self,
     double imageWidth,
     double imageBorder,
+    int columns,
   ) {
-    return Wrap(
-      // The newest first, the undated behind them by name -- the order the
-      // server sends a listing in since issue #48, applied here as well, so
-      // that an older server and the offline cache read the same way.
-      children: sortedFolders(self.folders).map((folder) {
-        return Padding(
-          padding: EdgeInsets.all(imageBorder),
-          child: GestureDetector(
-            onTap: () => albumState.showElement(folder.name),
-            // A listing tile had no menu of its own; the long press is the
-            // touch idiom the album already uses to reach a tile's tools, and
-            // this menu holds only what a tile can do, see issue #47.
-            onLongPressStart: (details) =>
-                showTileMenu(context, folder, details.globalPosition),
-            child: SizedBox(
-              width: imageWidth,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: buildFolderWidget(folder, imageWidth),
-                  ),
-                  Text(
-                    folder.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  // When the album is, between its title and its subtitle --
-                  // the date the server derived, never one read off the
-                  // folder name here, and no line at all where nothing says
-                  // when the album happened, see issue #107.
-                  //
-                  // Only an album has a date: a folder of folders carries an
-                  // `effectiveDate` too, but that is the key its listing is
-                  // sorted by -- a folder named `2026` sorts with the year it
-                  // names -- and showing it read "2026 - Jan 1 2026", see
-                  // issue #133.
-                  if (folderHasDate(folder))
-                    Text(
-                      albumDateLabel(folder.effectiveDate)!,
-                      key: const Key("folder-date"),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white60,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  if (folder.subTitle.isNotEmpty)
-                    Text(
-                      folder.subTitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white70,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                ],
-              ),
-            ),
+    // The newest first, the undated behind them by name -- the order the
+    // server sends a listing in since issue #48, applied here as well, so
+    // that an older server and the offline cache read the same way.
+    var folders = sortedFolders(self.folders);
+    var cells = tileCells([for (var folder in folders) folder.starred], columns);
+    return TileGrid(
+      key: const Key("listing-tiles"),
+      cellWidth: imageWidth + 2 * imageBorder,
+      cells: cells,
+      children: [
+        for (var n = 0; n < folders.length; n++)
+          buildTile(
+            context,
+            folders[n],
+            cells[n],
+            // A large tile spans the gutter between its columns too.
+            cells[n].width * (imageWidth + 2 * imageBorder) - 2 * imageBorder,
+            imageBorder,
           ),
-        );
-      }).toList(),
+      ],
     );
   }
+
+  /// One tile of the listing: the picture, the title, the date and the
+  /// subtitle, the picture [width] wide and as high.
+  ///
+  /// The tile of a starred entry (issue #239) carries a star in the corner of
+  /// its picture, and its title is set larger: the tile is twice as wide.
+  Widget buildTile(
+    BuildContext context,
+    FolderInfo folder,
+    TileCell cell,
+    double width,
+    double imageBorder,
+  ) {
+    var large = cell.isLarge;
+    return Padding(
+      key: ValueKey<String>("tile-${folder.name}"),
+      padding: EdgeInsets.all(imageBorder),
+      child: GestureDetector(
+        onTap: () => albumState.showElement(folder.name),
+        // A listing tile had no menu of its own; the long press is the
+        // touch idiom the album already uses to reach a tile's tools, and
+        // this menu holds only what a tile can do, see issue #47.
+        onLongPressStart: (details) =>
+            showTileMenu(context, folder, details.globalPosition),
+        child: SizedBox(
+          width: width,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: folder.starred
+                    ? Stack(
+                        children: [
+                          buildFolderWidget(folder, width),
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: starBadge(context, large),
+                          ),
+                        ],
+                      )
+                    : buildFolderWidget(folder, width),
+              ),
+              Text(
+                folder.title,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  fontSize: large ? 18 : null,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              // When the album is, between its title and its subtitle --
+              // the date the server derived, never one read off the
+              // folder name here, and no line at all where nothing says
+              // when the album happened, see issue #107.
+              //
+              // Only an album has a date: a folder of folders carries an
+              // `effectiveDate` too, but that is the key its listing is
+              // sorted by -- a folder named `2026` sorts with the year it
+              // names -- and showing it read "2026 - Jan 1 2026", see
+              // issue #133.
+              if (folderHasDate(folder))
+                Text(
+                  albumDateLabel(folder.effectiveDate)!,
+                  key: const Key("folder-date"),
+                  style: TextStyle(
+                    fontSize: large ? 14 : 12,
+                    color: Colors.white60,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              if (folder.subTitle.isNotEmpty)
+                Text(
+                  folder.subTitle,
+                  style: TextStyle(
+                    fontSize: large ? 14 : 12,
+                    color: Colors.white70,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The small star in the corner of a starred tile, see issue #239.
+  Widget starBadge(BuildContext context, bool large) => Tooltip(
+        message: AppLocalizations.of(context)!.starredBadge,
+        child: Container(
+          key: const Key("star-badge"),
+          padding: const EdgeInsets.all(3),
+          decoration: const BoxDecoration(
+            color: Colors.black54,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.star,
+            color: Colors.amber,
+            size: large ? 28 : 20,
+          ),
+        ),
+      );
 
   /// The picture of one tile.
   ///
@@ -581,6 +666,20 @@ class ListingView extends StatelessWidget {
               title: Text(l10n.useNoFolderPicture),
             ),
           ),
+        // A star is the entry's own property (issue #239), and the right to
+        // set it is the right to edit the entry; whoever may edit this folder
+        // may edit what lies in it.
+        if (mayMove)
+          PopupMenuItem<String>(
+            key: const Key("toggle-star"),
+            value: "star",
+            child: ListTile(
+              leading: Icon(folder.starred ? Icons.star_border : Icons.star),
+              title: Text(
+                folder.starred ? l10n.removeStarAction : l10n.addStarAction,
+              ),
+            ),
+          ),
         // Deleting an entry is an edit of *this* folder, exactly as moving one
         // out of it is, and it is offered under the same condition (#109).
         if (mayMove)
@@ -607,6 +706,10 @@ class ListingView extends StatelessWidget {
     }
     if (chosen == "no-folder-picture") {
       await setFolderPicture(context, "");
+      return;
+    }
+    if (chosen == "star") {
+      await toggleChildStar(context, folder);
       return;
     }
     if (chosen == "delete") {
@@ -652,6 +755,8 @@ class ListingView extends StatelessWidget {
       title: listing.title,
       placement: listing.placement,
       index: name,
+      // The folder's own star stays what it was (issue #239).
+      starred: listing.starred,
       folders: listing.folders,
     );
     try {
@@ -666,6 +771,105 @@ class ListingView extends StatelessWidget {
       albumState.navigator.delegate.forget(self.sublist(0, self.length - 1));
     }
     albumState.reload();
+  }
+
+  /// Stars the entry [folder] of this listing, or takes its star away, see
+  /// issue #239.
+  ///
+  /// The star is the entry's own property, stored in the entry's own sidecar,
+  /// so the entry is read and written back with the one field changed --
+  /// the ordinary property save its own menu uses, see [toggleStar]. Where
+  /// the save renames the entry's folder (its properties compose another
+  /// name, issue #130), the server says so and the listing shows the new
+  /// name.
+  Future<void> toggleChildStar(BuildContext context, FolderInfo folder) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+    var childPath = [...albumState.path, folder.name];
+    CreateResult? written;
+    try {
+      var child = await client.loadResource(childPath);
+      if (child is AlbumInfo) {
+        written = await client.saveAlbum(
+            childPath, child..starred = !folder.starred);
+      } else if (child is ListingInfo) {
+        written = await client.saveListing(
+            childPath, child..starred = !folder.starred);
+      }
+    } catch (error) {
+      showRefusal(messenger, error);
+      return;
+    }
+    if (written == null) {
+      // Nothing there that could carry a star: the listing is stale.
+      albumState.reload();
+      return;
+    }
+    // What the session holds of the entry is not what it is now -- and not
+    // where it is, if it was renamed.
+    albumState.navigator.delegate.forgetTree(childPath);
+    albumState.reload();
+    if (written.message.isNotEmpty) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(written.message),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
+  /// Stars the folder being shown, or takes its star away, see issue #239:
+  /// its tile in the listing above is drawn 2×2.
+  ///
+  /// Written like its properties, see [editFolder]: what was loaded, with the
+  /// one field changed.
+  void toggleStar(BuildContext context) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+    var stored = ListingInfo(
+      path: listing.path,
+      title: listing.title,
+      placement: listing.placement,
+      index: listing.index,
+      starred: !listing.starred,
+      folders: listing.folders,
+    );
+    CreateResult written;
+    try {
+      written = await client.saveListing(albumState.path, stored);
+    } catch (error) {
+      showRefusal(messenger, error);
+      return;
+    }
+    followWritten(written, messenger);
+  }
+
+  /// Shows the folder where it is after its sidecar was written, see
+  /// [editFolder]: the listing above shows its tile, which has changed, and a
+  /// rename (issue #130) has moved the folder away from the address shown.
+  void followWritten(CreateResult written, ScaffoldMessengerState messenger) {
+    var self = albumState.path;
+    var delegate = albumState.navigator.delegate;
+    if (self.isNotEmpty) {
+      delegate.forget(self.sublist(0, self.length - 1));
+    }
+    if (written.message.isEmpty) {
+      albumState.reload();
+      return;
+    }
+    delegate.forgetTree(self);
+    albumState.showPath(splitPath(written.path));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(written.message),
+        duration: const Duration(seconds: 6),
+      ),
+    );
   }
 
   /// Opens the share-link dialog on the folder at [path], see issue #51.
@@ -815,6 +1019,8 @@ class ListingView extends StatelessWidget {
       // Carried along untouched: the folder's own picture is chosen on a tile
       // (issue #110), and writing the title must not take it away.
       index: listing.index,
+      // So is its star, which is set from the menu (issue #239).
+      starred: listing.starred,
       folders: listing.folders,
     );
 

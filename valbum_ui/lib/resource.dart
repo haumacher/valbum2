@@ -434,6 +434,18 @@ class AlbumInfo extends FolderResource {
 	///  Description of the image used to display this whole album in a listing.
 	ThumbnailInfo? indexPicture;
 
+	///  Whether this album stands out in the folder it lies in, see issue #239.
+	/// 
+	///  <p>
+	///  A statement of whoever may edit the album, stored in its own <code>index.json</code> and
+	///  written by the ordinary sidecar <code>PUT</code>, like its {@link #title}. The listing above
+	///  answers it on the album's tile ({@link FolderInfo#starred}), which the app draws four times
+	///  the size of an ordinary one. A sidecar written before the field reads as not starred. An
+	///  album and a collection carry it alike; an inbox is never a tile of a listing, so a star on it
+	///  is shown nowhere.
+	///  </p>
+	bool starred;
+
 	///  The list of images in this album.
 	List<AlbumPart> parts;
 
@@ -456,6 +468,7 @@ class AlbumInfo extends FolderResource {
 			this.effectiveDate = 0, 
 			this.facesPending = false, 
 			this.indexPicture, 
+			this.starred = false, 
 			this.parts = const [], 
 			this.imageByName = const {}, 
 			this.minRating = 0, 
@@ -507,6 +520,10 @@ class AlbumInfo extends FolderResource {
 				indexPicture = json.tryNull() ? null : ThumbnailInfo.read(json);
 				break;
 			}
+			case "starred": {
+				starred = json.expectBool();
+				break;
+			}
 			case "parts": {
 				json.expectArray();
 				parts = [];
@@ -551,6 +568,9 @@ class AlbumInfo extends FolderResource {
 			json.addKey("indexPicture");
 			_indexPicture.writeContent(json);
 		}
+
+		json.addKey("starred");
+		json.addBool(starred);
 
 		json.addKey("parts");
 		json.startArray();
@@ -2481,6 +2501,16 @@ class ListingInfo extends FolderResource {
 	///  </p>
 	String index;
 
+	///  Whether this folder stands out in the folder above it, see issue #239.
+	/// 
+	///  <p>
+	///  The counterpart of {@link AlbumInfo#starred} for a folder of folders (a holiday made of
+	///  several albums): stored in this folder's own <code>index.json</code> beside its
+	///  {@link #title}, and answered on its tile in the listing above ({@link FolderInfo#starred}).
+	///  A folder without a sidecar is not starred; starring it is what writes one.
+	///  </p>
+	bool starred;
+
 	///  Description of the folders within this {@link ListingInfo}.
 	List<FolderInfo> folders;
 
@@ -2491,6 +2521,7 @@ class ListingInfo extends FolderResource {
 			this.title = "", 
 			this.placement = Placement.none, 
 			this.index = "", 
+			this.starred = false, 
 			this.folders = const [], 
 	});
 
@@ -2524,6 +2555,10 @@ class ListingInfo extends FolderResource {
 				index = json.expectString();
 				break;
 			}
+			case "starred": {
+				starred = json.expectBool();
+				break;
+			}
 			case "folders": {
 				json.expectArray();
 				folders = [];
@@ -2553,6 +2588,9 @@ class ListingInfo extends FolderResource {
 
 		json.addKey("index");
 		json.addString(index);
+
+		json.addKey("starred");
+		json.addBool(starred);
 
 		json.addKey("folders");
 		json.startArray();
@@ -2671,6 +2709,16 @@ class FolderInfo extends _JsonObject {
 	///  </p>
 	String link;
 
+	///  Whether this entry is starred, see issue #239: the app draws its tile 2&times;2.
+	/// 
+	///  <p>
+	///  Read from the entry's own sidecar at listing time like its {@link #title}
+	///  ({@link AlbumInfo#starred} for an album or a collection, {@link ListingInfo#starred} for a
+	///  folder of folders), never stored in the listing's sidecar: the entries of a listing are
+	///  cleared before it is written. An entry without a sidecar is not starred.
+	///  </p>
+	bool starred;
+
 	/// Creates a FolderInfo.
 	FolderInfo({
 			this.name = "", 
@@ -2681,6 +2729,7 @@ class FolderInfo extends _JsonObject {
 			this.imageCount = 0, 
 			this.indexPicture, 
 			this.link = "", 
+			this.starred = false, 
 	});
 
 	/// Parses a FolderInfo from a string source.
@@ -2733,6 +2782,10 @@ class FolderInfo extends _JsonObject {
 				link = json.expectString();
 				break;
 			}
+			case "starred": {
+				starred = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -2767,6 +2820,9 @@ class FolderInfo extends _JsonObject {
 
 		json.addKey("link");
 		json.addString(link);
+
+		json.addKey("starred");
+		json.addBool(starred);
 	}
 
 }

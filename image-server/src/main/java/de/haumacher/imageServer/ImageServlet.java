@@ -5569,6 +5569,8 @@ public class ImageServlet extends HttpServlet {
 			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.COLLECTION)
 			.setTitle(received.getTitle())
 			.setSubTitle(received.getSubTitle())
+			// Whether the collection stands out in its folder is its own statement (#239).
+			.setStarred(received.isStarred())
 			.setDate(received.getDate())
 			.setParts(parts);
 		if (cover != null) {
@@ -5900,6 +5902,7 @@ public class ImageServlet extends HttpServlet {
 				.setKind(album.getKind())
 				.setTitle(album.getTitle())
 				.setSubTitle(album.getSubTitle())
+				.setStarred(album.isStarred())
 				.setDate(album.getDate())
 				.setEffectiveDate(album.getEffectiveDate())
 				// How far the face index has got is not a question of who is asking either, and
@@ -5917,6 +5920,7 @@ public class ImageServlet extends HttpServlet {
 				.setPlacement(listing.getPlacement())
 				// The choice of issue #110 rides along with every copy of a listing.
 				.setIndex(listing.getIndex())
+				.setStarred(listing.isStarred())
 				.setFolders(listing.getFolders());
 		} else {
 			return resource;
@@ -7365,7 +7369,8 @@ public class ImageServlet extends HttpServlet {
 			return listing;
 		}
 		return ListingInfo.create().setTitle(listing.getTitle()).setPlacement(listing.getPlacement())
-			.setIndex(listing.getIndex()).setFolders(result).setRights(listing.getRights());
+			.setIndex(listing.getIndex()).setStarred(listing.isStarred()).setFolders(result)
+			.setRights(listing.getRights());
 	}
 
 	private FolderInfo collectionCover(FolderInfo folder, PathInfo childPath, Caller caller, int viewAs, String label) {
@@ -7394,6 +7399,7 @@ public class ImageServlet extends HttpServlet {
 			.setImageCount(folder.getImageCount())
 			.setTitle(folder.getTitle())
 			.setSubTitle(folder.getSubTitle())
+			.setStarred(folder.isStarred())
 			.setLink(folder.getLink())
 			.setEffectiveDate(folder.getEffectiveDate());
 		if (shown != null) {

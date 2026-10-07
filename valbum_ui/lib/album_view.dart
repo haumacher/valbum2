@@ -1886,6 +1886,52 @@ class AlbumContentState extends State<AlbumContent>
     followStored(stored, messenger);
   }
 
+  /// Stars the album, or takes its star away, see issue #239: its tile in the
+  /// folder above is drawn 2×2.
+  ///
+  /// A property of the album like its title, and handled as
+  /// [editProperties] handles that: inside an edit session the change goes
+  /// into the buffer and is written with the album; outside of one it is
+  /// written at once, and a refused write takes it back and says the
+  /// server's own reason.
+  Future<void> toggleStar() async {
+    var album = widget.album;
+    var editing = session.editMode;
+    if (!editing && refuseWhileOffline(context)) {
+      return;
+    }
+    var before = album.starred;
+    setState(() {
+      album.starred = !before;
+      if (editing) {
+        markDirty();
+      }
+    });
+    if (editing) {
+      return;
+    }
+    var messenger = ScaffoldMessenger.of(context);
+    CreateResult stored;
+    try {
+      stored = await client.saveAlbum(widget.albumState.path, album);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => album.starred = before);
+      showRefusal(messenger, error);
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    // The tile in the listing above is what has changed.
+    var path = widget.albumState.path;
+    widget.albumState.navigator.delegate
+        .forget(path.sublist(0, path.length - 1));
+    followStored(stored, messenger);
+  }
+
   String get albumUrl => "${widget.baseUrl}/${widget.album.path}";
 
   /// The name of the folder this album lives in, empty at the root.
@@ -2059,6 +2105,17 @@ class AlbumContentState extends State<AlbumContent>
               Icons.tune,
               _l10n.albumProperties,
               (_) => editProperties(),
+            ),
+          // Whether the album -- or the collection -- stands out in the folder
+          // it lies in (issue #239); an album at the root lies in none.
+          if (mayEditAlbum && widget.albumState.path.isNotEmpty)
+            keyedMenuItem(
+              const Key("toggle-star"),
+              widget.album.starred ? Icons.star_border : Icons.star,
+              widget.album.starred
+                  ? _l10n.removeStarAction
+                  : _l10n.addStarAction,
+              (_) => toggleStar(),
             ),
           // One entry, two meanings, told apart by what there is to move: the
           // selection while the edit mode holds one, the album itself

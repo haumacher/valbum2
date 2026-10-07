@@ -24,6 +24,9 @@ public class ListingInfo extends FolderResource {
 	/** @see #getIndex() */
 	private static final String INDEX__PROP = "index";
 
+	/** @see #isStarred() */
+	private static final String STARRED__PROP = "starred";
+
 	/** @see #getFolders() */
 	private static final String FOLDERS__PROP = "folders";
 
@@ -32,6 +35,8 @@ public class ListingInfo extends FolderResource {
 	private de.haumacher.imageServer.shared.model.Placement _placement = de.haumacher.imageServer.shared.model.Placement.NONE;
 
 	private String _index = "";
+
+	private boolean _starred = false;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.FolderInfo> _folders = new java.util.ArrayList<>();
 
@@ -137,6 +142,33 @@ public class ListingInfo extends FolderResource {
 	}
 
 	/**
+	 * Whether this folder stands out in the folder above it, see issue #239.
+	 *
+	 * <p>
+	 * The counterpart of {@link AlbumInfo#isStarred()} for a folder of folders (a holiday made of
+	 * several albums): stored in this folder's own <code>index.json</code> beside its
+	 * {@link #getTitle()}, and answered on its tile in the listing above ({@link FolderInfo#isStarred()}).
+	 * A folder without a sidecar is not starred; starring it is what writes one.
+	 * </p>
+	 */
+	public final boolean isStarred() {
+		return _starred;
+	}
+
+	/**
+	 * @see #isStarred()
+	 */
+	public de.haumacher.imageServer.shared.model.ListingInfo setStarred(boolean value) {
+		internalSetStarred(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isStarred()} without chain call utility. */
+	protected final void internalSetStarred(boolean value) {
+		_starred = value;
+	}
+
+	/**
 	 * Description of the folders within this {@link ListingInfo}.
 	 */
 	public final java.util.List<de.haumacher.imageServer.shared.model.FolderInfo> getFolders() {
@@ -217,6 +249,8 @@ public class ListingInfo extends FolderResource {
 		getPlacement().writeTo(out);
 		out.name(INDEX__PROP);
 		out.value(getIndex());
+		out.name(STARRED__PROP);
+		out.value(isStarred());
 		out.name(FOLDERS__PROP);
 		out.beginArray();
 		for (de.haumacher.imageServer.shared.model.FolderInfo x : getFolders()) {
@@ -231,6 +265,7 @@ public class ListingInfo extends FolderResource {
 			case TITLE__PROP: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case PLACEMENT__PROP: setPlacement(de.haumacher.imageServer.shared.model.Placement.readPlacement(in)); break;
 			case INDEX__PROP: setIndex(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case STARRED__PROP: setStarred(in.nextBoolean()); break;
 			case FOLDERS__PROP: {
 				in.beginArray();
 				while (in.hasNext()) {

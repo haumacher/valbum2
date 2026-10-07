@@ -951,6 +951,9 @@ public class ResourceCache {
 					}
 					folderInfo.setTitle(albumInfo.getTitle());
 					folderInfo.setSubTitle(albumInfo.getSubTitle());
+					// Whether the tile stands out, read from the sidecar like the title, see
+					// issue #239.
+					folderInfo.setStarred(albumInfo.isStarred());
 					// A cropped photograph is shown cut, and the tile asks for its region, see
 					// ThumbnailInfo#getCrop() and issue #212.
 					folderInfo.setIndexPicture(de.haumacher.imageServer.Crops.withRegion(albumInfo,
@@ -961,6 +964,7 @@ public class ResourceCache {
 					ListingInfo listingInfo = (ListingInfo) folderResource;
 					folderInfo.setKind(FolderKind.FOLDER);
 					folderInfo.setTitle(listingInfo.getTitle());
+					folderInfo.setStarred(listingInfo.isStarred());
 					// A folder holds no photograph of its own; it is shown by the picture of the
 					// child it chose, resolved through the sidecars alone, see issue #110.
 					ThumbnailInfo cover = FolderCover.of(folder, listingInfo);

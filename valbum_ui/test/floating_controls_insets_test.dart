@@ -17,6 +17,7 @@ library;
 
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:valbum_ui/listing_layout.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'album_menu_actions_test.dart' show pumpAlbum;
@@ -188,7 +189,7 @@ void main() {
       });
       expectInSafeArea(tester, tappableControls(), "a control of the listing");
       // The tiles are laid out between the side insets.
-      var tiles = tester.getRect(find.byType(Wrap).first);
+      var tiles = tester.getRect(find.byType(TileGrid).first);
       expect(tiles.left, greaterThanOrEqualTo(leftInset - 0.01));
       expect(tiles.right, lessThanOrEqualTo(screen.width - rightInset + 0.01));
     });

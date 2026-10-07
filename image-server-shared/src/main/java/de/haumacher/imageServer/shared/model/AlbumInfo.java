@@ -36,6 +36,9 @@ public class AlbumInfo extends FolderResource {
 	/** @see #getIndexPicture() */
 	private static final String INDEX_PICTURE__PROP = "indexPicture";
 
+	/** @see #isStarred() */
+	private static final String STARRED__PROP = "starred";
+
 	/** @see #getParts() */
 	private static final String PARTS__PROP = "parts";
 
@@ -52,6 +55,8 @@ public class AlbumInfo extends FolderResource {
 	private boolean _facesPending = false;
 
 	private de.haumacher.imageServer.shared.model.ThumbnailInfo _indexPicture = null;
+
+	private boolean _starred = false;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.AlbumPart> _parts = new java.util.ArrayList<>();
 
@@ -264,6 +269,35 @@ public class AlbumInfo extends FolderResource {
 	}
 
 	/**
+	 * Whether this album stands out in the folder it lies in, see issue #239.
+	 *
+	 * <p>
+	 * A statement of whoever may edit the album, stored in its own <code>index.json</code> and
+	 * written by the ordinary sidecar <code>PUT</code>, like its {@link #getTitle()}. The listing above
+	 * answers it on the album's tile ({@link FolderInfo#isStarred()}), which the app draws four times
+	 * the size of an ordinary one. A sidecar written before the field reads as not starred. An
+	 * album and a collection carry it alike; an inbox is never a tile of a listing, so a star on it
+	 * is shown nowhere.
+	 * </p>
+	 */
+	public final boolean isStarred() {
+		return _starred;
+	}
+
+	/**
+	 * @see #isStarred()
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo setStarred(boolean value) {
+		internalSetStarred(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isStarred()} without chain call utility. */
+	protected final void internalSetStarred(boolean value) {
+		_starred = value;
+	}
+
+	/**
 	 * The list of images in this album.
 	 */
 	public final java.util.List<de.haumacher.imageServer.shared.model.AlbumPart> getParts() {
@@ -421,6 +455,8 @@ public class AlbumInfo extends FolderResource {
 			out.name(INDEX_PICTURE__PROP);
 			getIndexPicture().writeTo(out);
 		}
+		out.name(STARRED__PROP);
+		out.value(isStarred());
 		out.name(PARTS__PROP);
 		out.beginArray();
 		for (de.haumacher.imageServer.shared.model.AlbumPart x : getParts()) {
@@ -439,6 +475,7 @@ public class AlbumInfo extends FolderResource {
 			case EFFECTIVE_DATE__PROP: setEffectiveDate(in.nextLong()); break;
 			case FACES_PENDING__PROP: setFacesPending(in.nextBoolean()); break;
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
+			case STARRED__PROP: setStarred(in.nextBoolean()); break;
 			case PARTS__PROP: {
 				in.beginArray();
 				while (in.hasNext()) {

@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('de'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// The name of the application, shown as the window or browser tab title
@@ -2690,6 +2690,24 @@ abstract class AppLocalizations {
   /// **'Use no folder picture'**
   String get useNoFolderPicture;
 
+  /// Menu entry starring an album, collection or folder, so that its tile is shown four times as large in the folder above (issue #239)
+  ///
+  /// In en, this message translates to:
+  /// **'Add star'**
+  String get addStarAction;
+
+  /// Menu entry taking the star of an album, collection or folder away again (issue #239)
+  ///
+  /// In en, this message translates to:
+  /// **'Remove star'**
+  String get removeStarAction;
+
+  /// Tooltip of the small star on the tile of a starred album or folder (issue #239)
+  ///
+  /// In en, this message translates to:
+  /// **'Starred'**
+  String get starredBadge;
+
   /// Said where a library holds nothing
   ///
   /// In en, this message translates to:
@@ -3139,11 +3157,7 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'File {current} of {count}: {received} of {total} downloaded'**
   String downloadProgressOf(
-    int current,
-    String total,
-    int count,
-    String received,
-  );
+      int current, String total, int count, String received);
 
   /// Entry of the album menu, for a visitor who may download but not edit, starting a mode in which photographs are selected to download some of them
   ///
@@ -5759,9 +5773,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
 }
