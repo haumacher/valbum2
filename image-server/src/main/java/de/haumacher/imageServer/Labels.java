@@ -160,6 +160,8 @@ public final class Labels {
 		}
 		AlbumInfo result = AlbumInfo.create()
 			.setKind(album.getKind())
+			// What a saved search looks for is not a question of who is asking (#227).
+			.setQuery(album.getQuery())
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
 			.setStarred(album.isStarred())

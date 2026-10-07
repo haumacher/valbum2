@@ -467,6 +467,12 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 			return data.collectionForLink(path, (AlbumInfo) resource, Math.min(Privacy.MEMBERS, link.getMaxPrivacy()),
 				Ratings.withoutTrash(link.getMinRating()), link.getPhotoLabel());
 		}
+		if (PhotoSearch.isSearch(resource)) {
+			// A saved search shows its matches as the link sees them in their own albums, see issue
+			// #227; the references are kept here so that the card finds the file.
+			return data.searchForLink(path, (AlbumInfo) resource, Math.min(Privacy.MEMBERS, link.getMaxPrivacy()),
+				Ratings.withoutTrash(link.getMinRating()), link.getPhotoLabel());
+		}
 		// A link never shows the inbox, see issue #131; no listing holds it as an entry, see #226.
 		Resource shown = Inboxes.filter(resource, Inboxes.Visibility.NONE, "");
 		if (shown == null) {
@@ -566,8 +572,9 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 	private static double[] region(PathInfo path, Resource shown, File image) {
 		if (shown instanceof AlbumInfo) {
 			ImagePart part = Crops.findImage((AlbumInfo) shown, image.getName());
-			if (PhotoCollections.isCollection(shown)) {
-				// A part of a collection is named by the collection, not by its file, see #221.
+			if (PhotoCollections.isCollection(shown) || PhotoSearch.isSearch(shown)) {
+				// A part of a collection is named by the collection, not by its file, see #221, and
+				// one of a saved search by its path below the folder searched, see #227.
 				part = null;
 				for (AlbumPart candidate : ((AlbumInfo) shown).getParts()) {
 					if (candidate instanceof ImagePart && ((ImagePart) candidate).getRef() != null

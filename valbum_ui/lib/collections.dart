@@ -64,7 +64,10 @@ Iterable<ImagePart> _imagesOf(Iterable<AlbumPart> parts) sync* {
 /// server wrote the change there (issue #221), and the album must show it when
 /// it is opened next.
 void forgetSources(VAlbumRouterDelegate? delegate, AlbumInfo album) {
-  if (delegate == null || !isCollection(album)) {
+  // A saved search writes to the albums its photographs lie in as well
+  // (issue #227).
+  if (delegate == null ||
+      !(isCollection(album) || album.kind == AlbumKind.search)) {
     return;
   }
   var seen = <String>{};

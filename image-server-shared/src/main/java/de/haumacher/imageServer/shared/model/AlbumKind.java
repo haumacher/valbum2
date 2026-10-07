@@ -54,6 +54,23 @@ public enum AlbumKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 	 */
 	COLLECTION("COLLECTION"),
 
+	/**
+	 * A saved search, see issue #227: an album that holds nothing but a {@link AlbumInfo#query}
+	 * and shows, whenever it is opened, the photographs of the space that match it.
+	 *
+	 * <p>
+	 * Like {@link #COLLECTION} this kind is <b>stored</b> in <code>index.json</code>, written once
+	 * when the saved search is created and never changed afterwards. Its sidecar holds the query,
+	 * the title, the date, the star and the chosen album picture &mdash; never a part and never a
+	 * reference: the parts are answered live, each photograph as its own album shows it to the
+	 * caller, named by its path below the folder the search looks in (the folder the saved search
+	 * lies in, the root of the space for one at the root). Everything a photograph says &mdash; its
+	 * turn, crop, description, rating, privacy, labels &mdash; is the photograph's own, answered
+	 * from and written to the album it lies in.
+	 * </p>
+	 */
+	SEARCH("SEARCH"),
+
 	;
 
 	private final String _protocolName;
@@ -79,6 +96,7 @@ public enum AlbumKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case "ALBUM": return ALBUM;
 			case "INBOX": return INBOX;
 			case "COLLECTION": return COLLECTION;
+			case "SEARCH": return SEARCH;
 		}
 		return ALBUM;
 	}
@@ -99,6 +117,7 @@ public enum AlbumKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case ALBUM: out.value(1); break;
 			case INBOX: out.value(2); break;
 			case COLLECTION: out.value(3); break;
+			case SEARCH: out.value(4); break;
 			default: out.value(0);
 		}
 	}
@@ -109,6 +128,7 @@ public enum AlbumKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case 1: return ALBUM;
 			case 2: return INBOX;
 			case 3: return COLLECTION;
+			case 4: return SEARCH;
 			default: return ALBUM;
 		}
 	}

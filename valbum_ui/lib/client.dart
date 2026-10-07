@@ -39,8 +39,13 @@ class VAlbumException implements Exception {
   /// answer, which `identify_view.dart` turns into the identification card.
   final IdentifyRequired? identify;
 
-  const VAlbumException(this.message,
-      {this.status, this.url, this.reason, this.identify});
+  const VAlbumException(
+    this.message, {
+    this.status,
+    this.url,
+    this.reason,
+    this.identify,
+  });
 
   @override
   String toString() => message;
@@ -86,12 +91,12 @@ class UploadFile {
 
   /// The same file, with its contents' hash attached.
   UploadFile withHash(String hash) => UploadFile(
-        name: name,
-        length: length,
-        openRead: openRead,
-        sha256: hash,
-        blob: blob,
-      );
+    name: name,
+    length: length,
+    openRead: openRead,
+    sha256: hash,
+    blob: blob,
+  );
 }
 
 /// A file to be taken out of the album (issues #164, #209): what it is called
@@ -388,8 +393,7 @@ String interruptedUploadMessage(
   required int onServer,
   required int total,
   required int remaining,
-}) =>
-    "$cause: ${l10n.uploadInterruptedCounts(total, onServer, remaining)}";
+}) => "$cause: ${l10n.uploadInterruptedCounts(total, onServer, remaining)}";
 
 /// An upload that stopped after some of its batches had arrived, see
 /// [VAlbumClient.uploadNew] and issue #63.
@@ -552,10 +556,10 @@ class UploadProgress {
 
   /// What the dialog shows before the upload has reported anything.
   factory UploadProgress.start(int images) => UploadProgress(
-        phase: UploadPhase.preparing,
-        imagesDone: images > 0 ? 1 : 0,
-        imagesTotal: images,
-      );
+    phase: UploadPhase.preparing,
+    imagesDone: images > 0 ? 1 : 0,
+    imagesTotal: images,
+  );
 
   /// Whether the wheel can show a value, or has to spin.
   bool get determinate => phase == UploadPhase.transferring;
@@ -565,12 +569,15 @@ class UploadProgress {
 
   /// The one line the dialog shows, see [uploadImageCountMessage].
   String lineOf(AppLocalizations l10n) => switch (phase) {
-        UploadPhase.preparing => l10n.uploadPreparing(imagesTotal, imagesDone),
-        UploadPhase.asking => uploadAskingMessage(l10n),
-        UploadPhase.transferring =>
-          uploadImageCountMessage(l10n, imagesSent, imagesTotal),
-        UploadPhase.waiting => uploadWaitingMessage(l10n),
-      };
+    UploadPhase.preparing => l10n.uploadPreparing(imagesTotal, imagesDone),
+    UploadPhase.asking => uploadAskingMessage(l10n),
+    UploadPhase.transferring => uploadImageCountMessage(
+      l10n,
+      imagesSent,
+      imagesTotal,
+    ),
+    UploadPhase.waiting => uploadWaitingMessage(l10n),
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -586,7 +593,8 @@ class UploadProgress {
       Object.hash(phase, imagesDone, imagesSent, imagesTotal, fraction);
 
   @override
-  String toString() => "UploadProgress(${phase.name}, "
+  String toString() =>
+      "UploadProgress(${phase.name}, "
       "$imagesDone/$imagesTotal, sent: $imagesSent, $fraction)";
 }
 
@@ -877,45 +885,45 @@ class VAlbumClient {
   /// `ServerSettings`: only the URL changes, the transport (a fake one, in a
   /// test) stays the same.
   VAlbumClient withDataUrl(String dataUrl) => VAlbumClient(
-        dataUrl: dataUrl,
-        token: token,
-        contact: contact,
-        userName: userName,
-        httpClient: _transport,
-        cache: cache,
-        offlineState: offlineState,
-        log: log,
-        timeout: timeout,
-      );
+    dataUrl: dataUrl,
+    token: token,
+    contact: contact,
+    userName: userName,
+    httpClient: _transport,
+    cache: cache,
+    offlineState: offlineState,
+    log: log,
+    timeout: timeout,
+  );
 
   /// The same client, identifying itself with the given token from now on.
   ///
   /// `null` drops the token: the client talks to the server anonymously again.
   VAlbumClient withToken(String? token, {String? userName}) => VAlbumClient(
-        dataUrl: dataUrl,
-        token: token,
-        contact: contact,
-        userName: userName ?? this.userName,
-        httpClient: _transport,
-        cache: cache,
-        offlineState: offlineState,
-        log: log,
-        timeout: timeout,
-      );
+    dataUrl: dataUrl,
+    token: token,
+    contact: contact,
+    userName: userName ?? this.userName,
+    httpClient: _transport,
+    cache: cache,
+    offlineState: offlineState,
+    log: log,
+    timeout: timeout,
+  );
 
   /// The same client, recognised as the given contact from now on, see
   /// [contact]; `null` forgets who the session is (issue #202).
   VAlbumClient withContact(String? contact) => VAlbumClient(
-        dataUrl: dataUrl,
-        token: token,
-        contact: contact,
-        userName: userName,
-        httpClient: _transport,
-        cache: cache,
-        offlineState: offlineState,
-        log: log,
-        timeout: timeout,
-      );
+    dataUrl: dataUrl,
+    token: token,
+    contact: contact,
+    userName: userName,
+    httpClient: _transport,
+    cache: cache,
+    offlineState: offlineState,
+    log: log,
+    timeout: timeout,
+  );
 
   /// The authorization headers of every request, empty while unpaired: the
   /// bearer, and beside it the [contact] credential of a personal link's
@@ -957,16 +965,15 @@ class VAlbumClient {
     OfflineCache? cache,
     OfflineState? offlineState,
     DiagnosticsLog? log,
-  }) =>
-      VAlbumClient(
-        dataUrl: deriveDataUrl(Uri.base, isWeb: kIsWeb),
-        token: token,
-        userName: userName,
-        httpClient: httpClient,
-        cache: cache,
-        offlineState: offlineState,
-        log: log,
-      );
+  }) => VAlbumClient(
+    dataUrl: deriveDataUrl(Uri.base, isWeb: kIsWeb),
+    token: token,
+    userName: userName,
+    httpClient: httpClient,
+    cache: cache,
+    offlineState: offlineState,
+    log: log,
+  );
 
   /// The URL of the resource at the given path (a list of folder names).
   String baseUrl(List<String> path) =>
@@ -1053,16 +1060,19 @@ class VAlbumClient {
       "teaser" => "teaser",
       _ => throw ArgumentError.value(url, "url", "no video file"),
     };
-    var asked = uri.replace(
-      queryParameters: {"type": "media-url", "for": kind},
-    ).toString();
+    var asked = uri
+        .replace(queryParameters: {"type": "media-url", "for": kind})
+        .toString();
     var response = await _http
         .get(Uri.parse(asked), headers: authHeaders)
         .timeout(timeout);
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingLoading("'${maskUrl(asked)}'"),
-          url: asked);
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingLoading("'${maskUrl(asked)}'"),
+        url: asked,
+      );
     }
     var answer = MediaUrl.read(JsonReader.fromString(response.body));
     var separator = url.contains("?") ? "&" : "?";
@@ -1107,8 +1117,11 @@ class VAlbumClient {
       return entry.bytes;
     }
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingLoading("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingLoading("'$url'"),
+      );
     }
     await cache?.putThumbnail(url, response.bodyBytes, user: cacheUser);
     return response.bodyBytes;
@@ -1131,14 +1144,14 @@ class VAlbumClient {
   Future<SourceAnswer> probeSource(String url) async {
     http.Response response;
     try {
-      response = await _transport.get(
-        Uri.parse(url),
-        headers: {...authHeaders, "Range": "bytes=0-0"},
-      ).timeout(timeout);
+      response = await _transport
+          .get(Uri.parse(url), headers: {...authHeaders, "Range": "bytes=0-0"})
+          .timeout(timeout);
     } catch (error) {
       return SourceAnswer(
-        transportError:
-            isTransportFailure(error) ? transportMessage(error) : "$error",
+        transportError: isTransportFailure(error)
+            ? transportMessage(error)
+            : "$error",
       );
     }
     offlineState?.online();
@@ -1148,9 +1161,11 @@ class VAlbumClient {
       status: status,
       reason: response.reasonPhrase,
       contentType: headers["content-type"],
-      contentLength: int.tryParse(headers["content-length"] ?? "") ??
+      contentLength:
+          int.tryParse(headers["content-length"] ?? "") ??
           response.bodyBytes.length,
-      totalLength: SourceAnswer.totalOf(headers["content-range"]) ??
+      totalLength:
+          SourceAnswer.totalOf(headers["content-range"]) ??
           (status == 200
               ? int.tryParse(headers["content-length"] ?? "")
               : null),
@@ -1248,9 +1263,12 @@ class VAlbumClient {
     if (response.statusCode != 200) {
       // An answer, whatever its status: the server is there, so nothing
       // cached stands in for it — a 404 is "not found", never "offline".
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingLoading("'$uri'"),
-          url: uri);
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingLoading("'$uri'"),
+        url: uri,
+      );
     }
     // Parsed before it is cached: an answer that is not album data must not
     // become the cached copy of this album.
@@ -1300,8 +1318,11 @@ class VAlbumClient {
       );
     }
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingLoading("'$uri'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingLoading("'$uri'"),
+      );
     }
     return parseResource(response.body, uri);
   }
@@ -1380,8 +1401,11 @@ class VAlbumClient {
       return entry.bytes;
     }
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingLoading("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingLoading("'$url'"),
+      );
     }
     await cache?.putThumbnail(url, response.bodyBytes, user: cacheUser);
     return response.bodyBytes;
@@ -1393,10 +1417,10 @@ class VAlbumClient {
   /// error are answers, and answers are shown as they are.
   /// What a transport failure says, without the exception's own decoration.
   static String transportMessage(Object error) => switch (error) {
-        http.ClientException(message: var message) => message,
-        TimeoutException() => platformMessages.noAnswerInTime,
-        _ => error.toString(),
-      };
+    http.ClientException(message: var message) => message,
+    TimeoutException() => platformMessages.noAnswerInTime,
+    _ => error.toString(),
+  };
 
   static bool isTransportFailure(Object error) =>
       error is http.ClientException ||
@@ -1412,8 +1436,11 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingStoring("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingStoring("'$url'"),
+      );
     }
   }
 
@@ -1455,8 +1482,11 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingStoring("'$asked'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingStoring("'$asked'"),
+      );
     }
     return _createResult(response.body, asked);
   }
@@ -1504,8 +1534,11 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingCreating("'$asked'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingCreating("'$asked'"),
+      );
     }
 
     return _createResult(response.body, asked);
@@ -1552,10 +1585,12 @@ class VAlbumClient {
     int status;
     String body;
     try {
-      (status: status, body: body) =
-          files.isNotEmpty && files.every((file) => file.blob != null)
-              ? await _sendBlobs(uri, files, transferred, handle)
-              : await _sendStreamed(uri, files, transferred, handle);
+      (
+        status: status,
+        body: body,
+      ) = files.isNotEmpty && files.every((file) => file.blob != null)
+          ? await _sendBlobs(uri, files, transferred, handle)
+          : await _sendStreamed(uri, files, transferred, handle);
     } catch (error) {
       // A cancelled upload fails the body stream (or aborts the browser's
       // request); whatever the transport made of that is not worth quoting,
@@ -1594,7 +1629,8 @@ class VAlbumClient {
       // left with a bare status.
       var suspects = [
         for (var file in files)
-          if (!olderServerExtensions.contains(extensionOf(file.name))) file.name
+          if (!olderServerExtensions.contains(extensionOf(file.name)))
+            file.name,
       ];
       var names =
           (suspects.isEmpty ? [for (var file in files) file.name] : suspects)
@@ -1764,8 +1800,11 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     return UploadCheckResult.read(JsonReader.fromString(response.body));
   }
@@ -1803,8 +1842,11 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingMoving("'$target'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingMoving("'$target'"),
+      );
     }
     return MoveResult.read(JsonReader.fromString(response.body));
   }
@@ -1839,10 +1881,62 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingCollecting("'$target'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingCollecting("'$target'"),
+      );
     }
     return MoveResult.read(JsonReader.fromString(response.body));
+  }
+
+  /// The photographs below the folder at [path] that match [query], see issue
+  /// #227: the search view, never stored.
+  ///
+  /// The answer is an album of [AlbumKind.search] whose photographs are each
+  /// as the caller is shown them in their own album, named by their path
+  /// below the folder, so `<path>/<name>` addresses the photograph itself. At
+  /// a saved search the server searches where the saved search looks. Members
+  /// only: a share link and an anonymous caller are refused with the server's
+  /// own sentence, as is a query this server cannot read.
+  Future<AlbumInfo> search(List<String> path, SearchQuery query) async {
+    var url = "${folderUrl(path)}?action=search";
+    var body = StringBuffer();
+    query.writeContent(jsonStringWriter(body));
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    var resource = Resource.read(JsonReader.fromString(response.body));
+    if (resource is! AlbumInfo) {
+      throw VAlbumException(platformMessages.doingAsking("'$url'"));
+    }
+    return resource;
+  }
+
+  /// What the search view offers to choose from below the folder at [path]:
+  /// the persons, places, labels and cameras of the photographs the caller
+  /// may see there, see issue #227.
+  Future<SearchOptions> searchOptions(List<String> path) async {
+    var url = "${folderUrl(path)}?type=search-options";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    return SearchOptions.read(JsonReader.fromString(response.body));
   }
 
   /// Deletes the named entries of the folder at [path], see issue #109.
@@ -1945,20 +2039,24 @@ class VAlbumClient {
 
     var hashed = <UploadFile>[];
     for (var file in files) {
-      onProgress?.call(UploadProgress(
-        phase: UploadPhase.preparing,
-        imagesDone: hashed.length + 1,
-        imagesTotal: files.length,
-      ));
+      onProgress?.call(
+        UploadProgress(
+          phase: UploadPhase.preparing,
+          imagesDone: hashed.length + 1,
+          imagesTotal: files.length,
+        ),
+      );
       hashed.add(
         file.sha256 != null ? file : file.withHash(await _hashOf(file)),
       );
     }
-    onProgress?.call(UploadProgress(
-      phase: UploadPhase.asking,
-      imagesDone: 0,
-      imagesTotal: files.length,
-    ));
+    onProgress?.call(
+      UploadProgress(
+        phase: UploadPhase.asking,
+        imagesDone: 0,
+        imagesTotal: files.length,
+      ),
+    );
 
     var known = <String>{};
     var presentIn = <String>[];
@@ -2008,19 +2106,21 @@ class VAlbumClient {
 
     var pending = [
       for (var file in hashed)
-        if (!known.contains(file.sha256)) file
+        if (!known.contains(file.sha256)) file,
     ];
     var skipped = hashed.length - pending.length;
     if (pending.isEmpty) {
       // Nothing to transfer: everything the person picked is already there.
       // The wheel is full because the work is done, not because a value said
       // so — the caller closes the dialog, see issue #59.
-      onProgress?.call(const UploadProgress(
-        phase: UploadPhase.transferring,
-        imagesDone: 0,
-        imagesTotal: 0,
-        fraction: 1,
-      ));
+      onProgress?.call(
+        const UploadProgress(
+          phase: UploadPhase.transferring,
+          imagesDone: 0,
+          imagesTotal: 0,
+          fraction: 1,
+        ),
+      );
       return UploadSummary(
         stored: 0,
         present: skipped,
@@ -2065,13 +2165,15 @@ class VAlbumClient {
       if (count > sentImages) {
         sentImages = count;
       }
-      onProgress?.call(UploadProgress(
-        phase: phase,
-        imagesDone: confirmed,
-        imagesTotal: images,
-        fraction: value,
-        imagesSent: sentImages,
-      ));
+      onProgress?.call(
+        UploadProgress(
+          phase: phase,
+          imagesDone: confirmed,
+          imagesTotal: images,
+          fraction: value,
+          imagesSent: sentImages,
+        ),
+      );
     }
 
     for (var index = 0; index < batches.length; index++) {
@@ -2137,11 +2239,12 @@ class VAlbumClient {
         );
       }
 
-      var batchStored =
-          result.files.where((file) => file.status != uploadPresent).length;
+      var batchStored = result.files
+          .where((file) => file.status != uploadPresent)
+          .length;
       storedHashes.addAll([
         for (var file in result.files)
-          if (file.status != uploadPresent && file.hash.isNotEmpty) file.hash
+          if (file.status != uploadPresent && file.hash.isNotEmpty) file.hash,
       ]);
       stored += batchStored;
       present += result.files.length - batchStored;
@@ -2149,11 +2252,7 @@ class VAlbumClient {
       sentFiles += batch.length;
       // Only now, with the answer in hand, are these images on the server.
       confirmed += batchImages;
-      report(
-        UploadPhase.transferring,
-        confirmed / images,
-        finished: last,
-      );
+      report(UploadPhase.transferring, confirmed / images, finished: last);
     }
     return UploadSummary(
       stored: stored,
@@ -2221,8 +2320,9 @@ class VAlbumClient {
     if (isTransportFailure(error)) {
       return uploadConnectionLost(platformMessages);
     }
-    var message =
-        error is VAlbumException ? error.message : error.toString().trim();
+    var message = error is VAlbumException
+        ? error.message
+        : error.toString().trim();
     message = message.trim();
     while (message.endsWith(".") || message.endsWith("!")) {
       message = message.substring(0, message.length - 1).trimRight();
@@ -2252,9 +2352,11 @@ class VAlbumClient {
       if (response.statusCode < 300) {
         return null;
       }
-      return failure(response.statusCode, response.body,
-              platformMessages.doingLoadingImage)
-          .message;
+      return failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingLoadingImage,
+      ).message;
     } catch (_) {
       return null;
     }
@@ -2288,8 +2390,9 @@ class VAlbumClient {
   /// `download=1`, to send it as an attachment under its own name.
   Future<String> originalAddress(String url) async {
     var value = token;
-    var address =
-        value == null || value.isEmpty ? url : (await signMediaUrl(url)).url;
+    var address = value == null || value.isEmpty
+        ? url
+        : (await signMediaUrl(url)).url;
     return "$address${address.contains("?") ? "&" : "?"}download=1";
   }
 
@@ -2306,21 +2409,19 @@ class VAlbumClient {
     List<String> path,
     List<String> names,
     String archiveName,
-  ) =>
-      DownloadSource(
-        name: archiveName,
-        open: () {
-          var url = "${folderUrl(path)}?action=zip";
-          return _openDownload(
-            http.Request("POST", Uri.parse(url))
-              ..headers
-                  .addAll({"Content-Type": "application/json", ...authHeaders})
-              ..body = _namesBody(names),
-            url,
-          );
-        },
-        address: () => archiveAddress(path, names),
+  ) => DownloadSource(
+    name: archiveName,
+    open: () {
+      var url = "${folderUrl(path)}?action=zip";
+      return _openDownload(
+        http.Request("POST", Uri.parse(url))
+          ..headers.addAll({"Content-Type": "application/json", ...authHeaders})
+          ..body = _namesBody(names),
+        url,
       );
+    },
+    address: () => archiveAddress(path, names),
+  );
 
   /// The address a browser downloads the archive of [names] in the album at
   /// [path] from by itself (issue #209).
@@ -2334,16 +2435,21 @@ class VAlbumClient {
   /// [signMediaUrl] appends to the address it was asked for.
   Future<String> archiveAddress(List<String> path, List<String> names) async {
     var url = "${folderUrl(path)}?action=zip-ticket";
-    var response = await _http.post(
-      Uri.parse(url),
-      encoding: Encoding.getByName("utf-8"),
-      body: _namesBody(names),
-      headers: {"Content-Type": "application/json", ...authHeaders},
-    ).timeout(timeout);
+    var response = await _http
+        .post(
+          Uri.parse(url),
+          encoding: Encoding.getByName("utf-8"),
+          body: _namesBody(names),
+          headers: {"Content-Type": "application/json", ...authHeaders},
+        )
+        .timeout(timeout);
     if (response.statusCode != 200) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingLoading("'$url'"),
-          url: url);
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingLoading("'$url'"),
+        url: url,
+      );
     }
     var answer = MediaUrl.read(JsonReader.fromString(response.body));
     var ticket = Uri.parse(answer.url).queryParameters["ticket"] ?? "";
@@ -2369,12 +2475,17 @@ class VAlbumClient {
   /// chunks are handed on as they arrive (issue #209). A refusal is read —
   /// an `ErrorInfo` of a few dozen bytes — and thrown with its sentence.
   Future<DownloadStream> _openDownload(
-      http.BaseRequest request, String url) async {
+    http.BaseRequest request,
+    String url,
+  ) async {
     var response = await _http.send(request);
     if (response.statusCode != 200) {
       var body = await response.stream.bytesToString();
-      throw failure(response.statusCode, body,
-          platformMessages.doingLoading("'${maskUrl(url)}'"));
+      throw failure(
+        response.statusCode,
+        body,
+        platformMessages.doingLoading("'${maskUrl(url)}'"),
+      );
     }
     var type = response.headers["content-type"];
     return DownloadStream(
@@ -2396,8 +2507,11 @@ class VAlbumClient {
     var url = "${folderUrl(path)}?type=shares";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     return ShareLinkList.read(JsonReader.fromString(response.body));
   }
@@ -2430,10 +2544,15 @@ class VAlbumClient {
   /// (issue #198's `resend`): the earlier one is void from then on, and the
   /// answer carries the one fresh [RecipientLink].
   Future<ShareLinkCreated> resend(
-      List<String> path, String link, String contact) async {
+    List<String> path,
+    String link,
+    String contact,
+  ) async {
     var url = "${folderUrl(path)}?action=resend";
     var response = await _postBody(
-        url, _jsonOf(ShareResend(link: link, contact: contact).writeContent));
+      url,
+      _jsonOf(ShareResend(link: link, contact: contact).writeContent),
+    );
     return ShareLinkCreated.read(JsonReader.fromString(response));
   }
 
@@ -2444,8 +2563,11 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=contacts";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     return ContactList.read(JsonReader.fromString(response.body));
   }
@@ -2454,39 +2576,55 @@ class VAlbumClient {
   /// (issue #198's `shut-out`, offered by #203's link list); answers the link
   /// as the list shows it.
   Future<ShareLinkList> shutOut(
-      List<String> path, String link, String contact, bool shutOut) async {
+    List<String> path,
+    String link,
+    String contact,
+    bool shutOut,
+  ) async {
     var url = "${folderUrl(path)}?action=shut-out";
     var response = await _postBody(
-        url,
-        _jsonOf(ContactShutOut(link: link, contact: contact, shutOut: shutOut)
-            .writeContent));
+      url,
+      _jsonOf(
+        ContactShutOut(
+          link: link,
+          contact: contact,
+          shutOut: shutOut,
+        ).writeContent,
+      ),
+    );
     return ShareLinkList.read(JsonReader.fromString(response));
   }
 
   /// Shuts the contact out of every link of the space, or lets them in again
   /// (issue #198's `block-contact`); answers the contact.
-  Future<Contact> blockContact(String contact, bool shutOut) =>
-      _postContact("block-contact",
-          _jsonOf(ContactShutOut(contact: contact, shutOut: shutOut).writeContent));
+  Future<Contact> blockContact(String contact, bool shutOut) => _postContact(
+    "block-contact",
+    _jsonOf(ContactShutOut(contact: contact, shutOut: shutOut).writeContent),
+  );
 
   /// Gives a contact another name in the space (issue #203); answers the
   /// contact.
   Future<Contact> renameContact(String contact, String name) => _postContact(
-      "rename-contact",
-      _jsonOf(ContactRename(contact: contact, name: name).writeContent));
+    "rename-contact",
+    _jsonOf(ContactRename(contact: contact, name: name).writeContent),
+  );
 
   /// Ends one browser session of a contact, or every one where [session] is
   /// empty (issue #203); answers the contact.
   Future<Contact> endContactSession(String contact, {String session = ""}) =>
       _postContact(
-          "end-contact-session",
-          _jsonOf(ContactSessionEnd(contact: contact, session: session)
-              .writeContent));
+        "end-contact-session",
+        _jsonOf(
+          ContactSessionEnd(contact: contact, session: session).writeContent,
+        ),
+      );
 
   /// Deletes a contact from the space (issue #203); answers the contact as
   /// it was.
   Future<Contact> deleteContact(String contact) => _postContact(
-      "delete-contact", _jsonOf(ContactDelete(contact: contact).writeContent));
+    "delete-contact",
+    _jsonOf(ContactDelete(contact: contact).writeContent),
+  );
 
   /// Posts one of the contact requests of the space, answering a [Contact].
   Future<Contact> _postContact(String action, String body) async {
@@ -2554,27 +2692,38 @@ class VAlbumClient {
 
   /// Removes one of the contact's own ways to sign in (issue #208).
   Future<ContactSignIns> removeSignIn(String method, {String id = ""}) =>
-      _postSignIns("remove-sign-in",
-          _jsonOf(SignInRemove(method: method, id: id).writeContent));
+      _postSignIns(
+        "remove-sign-in",
+        _jsonOf(SignInRemove(method: method, id: id).writeContent),
+      );
 
   /// Removes a way a member signs in, as the administrator (issue #233):
   /// their authenticator app, a passkey, an address; answers the users.
-  Future<UserList> removeUserSignIn(String user, String method,
-      {String id = ""}) async {
+  Future<UserList> removeUserSignIn(
+    String user,
+    String method, {
+    String id = "",
+  }) async {
     var url = "${folderUrl(const [])}?action=remove-user-sign-in";
-    var response = await _postBody(url,
-        _jsonOf(SignInRemove(user: user, method: method, id: id).writeContent));
+    var response = await _postBody(
+      url,
+      _jsonOf(SignInRemove(user: user, method: method, id: id).writeContent),
+    );
     return UserList.read(JsonReader.fromString(response));
   }
 
   /// Removes a way a contact signs in, as a member who manages the contacts
   /// (issue #208); answers the contact.
-  Future<Contact> removeContactSignIn(String contact, String method,
-          {String id = ""}) =>
-      _postContact(
-          "remove-contact-sign-in",
-          _jsonOf(SignInRemove(contact: contact, method: method, id: id)
-              .writeContent));
+  Future<Contact> removeContactSignIn(
+    String contact,
+    String method, {
+    String id = "",
+  }) => _postContact(
+    "remove-contact-sign-in",
+    _jsonOf(
+      SignInRemove(contact: contact, method: method, id: id).writeContent,
+    ),
+  );
 
   /// Starts registering a passkey for the contact of this session (issue
   /// #204): the options for `navigator.credentials.create`.
@@ -2638,8 +2787,11 @@ class VAlbumClient {
       headers: {"Content-Type": "application/json", ...authHeaders},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     return response.body;
   }
@@ -2655,8 +2807,11 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=people";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     return PersonList.read(JsonReader.fromString(response.body));
   }
@@ -2671,8 +2826,11 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=duplicates";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     return DuplicateList.read(JsonReader.fromString(response.body));
   }
@@ -2688,8 +2846,11 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=catch-up";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     return CatchUpStatus.read(JsonReader.fromString(response.body));
   }
@@ -2702,8 +2863,10 @@ class VAlbumClient {
   /// carries is refused with the server's own sentence (409).
   Future<Person> createPerson(String name) async {
     var url = "${folderUrl(const [])}?action=create-person";
-    var response =
-        await _postBody(url, _jsonOf(PersonCreate(name: name).writeContent));
+    var response = await _postBody(
+      url,
+      _jsonOf(PersonCreate(name: name).writeContent),
+    );
     return Person.read(JsonReader.fromString(response));
   }
 
@@ -2715,7 +2878,9 @@ class VAlbumClient {
   Future<Person> renamePerson(String id, String name) async {
     var url = "${folderUrl(const [])}?action=rename-person";
     var response = await _postBody(
-        url, _jsonOf(PersonRename(id: id, name: name).writeContent));
+      url,
+      _jsonOf(PersonRename(id: id, name: name).writeContent),
+    );
     return Person.read(JsonReader.fromString(response));
   }
 
@@ -2726,7 +2891,9 @@ class VAlbumClient {
   Future<Person> mergePersons(String into, String from) async {
     var url = "${folderUrl(const [])}?action=merge-persons";
     var response = await _postBody(
-        url, _jsonOf(PersonMerge(into: into, from: from).writeContent));
+      url,
+      _jsonOf(PersonMerge(into: into, from: from).writeContent),
+    );
     return Person.read(JsonReader.fromString(response));
   }
 
@@ -2745,7 +2912,9 @@ class VAlbumClient {
   Future<Person> linkPerson(String id, String user) async {
     var url = "${folderUrl(const [])}?action=link-person";
     var response = await _postBody(
-        url, _jsonOf(PersonLink(id: id, user: user).writeContent));
+      url,
+      _jsonOf(PersonLink(id: id, user: user).writeContent),
+    );
     return Person.read(JsonReader.fromString(response));
   }
 
@@ -2768,7 +2937,9 @@ class VAlbumClient {
   ) async {
     var url = "${folderUrl(path)}?action=tag-faces";
     var response = await _postBody(
-        url, _jsonOf(TagFaces(faces: assignments).writeContent));
+      url,
+      _jsonOf(TagFaces(faces: assignments).writeContent),
+    );
     try {
       var resource = Resource.read(JsonReader.fromString(response));
       return resource is AlbumInfo ? resource : null;
@@ -2789,10 +2960,15 @@ class VAlbumClient {
   /// is answered it, `null` where it cannot be read; a refusal arrives as the
   /// thrown [VAlbumException] carrying the server's own sentence.
   Future<AlbumInfo?> cropImage(
-      List<String> path, String name, Crop? crop) async {
+    List<String> path,
+    String name,
+    Crop? crop,
+  ) async {
     var url = "${folderUrl(path)}?action=crop";
     var response = await _postBody(
-        url, _jsonOf(ImagePart(name: name, crop: crop).writeTo));
+      url,
+      _jsonOf(ImagePart(name: name, crop: crop).writeTo),
+    );
     try {
       var resource = Resource.read(JsonReader.fromString(response));
       return resource is AlbumInfo ? resource : null;
@@ -2833,8 +3009,10 @@ class VAlbumClient {
   /// [VAlbumException] carrying the server's own sentence.
   Future<AlbumInfo?> relabel(List<String> path, String from, String to) async {
     var url = "${folderUrl(path)}?action=relabel";
-    var response =
-        await _postBody(url, _jsonOf(LabelChange(from: from, to: to).writeContent));
+    var response = await _postBody(
+      url,
+      _jsonOf(LabelChange(from: from, to: to).writeContent),
+    );
     try {
       var resource = Resource.read(JsonReader.fromString(response));
       return resource is AlbumInfo ? resource : null;
@@ -2853,8 +3031,11 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=devices";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     return DeviceList.read(JsonReader.fromString(response.body));
   }
@@ -2896,7 +3077,9 @@ class VAlbumClient {
   Future<DeviceCodeCreated> deviceCode({String userName = ""}) async {
     var url = "${folderUrl(const [])}?action=device-code";
     var response = await _postBody(
-        url, _jsonOf(DeviceCodeRequest(userName: userName).writeContent));
+      url,
+      _jsonOf(DeviceCodeRequest(userName: userName).writeContent),
+    );
     return DeviceCodeCreated.read(JsonReader.fromString(response));
   }
 
@@ -2940,8 +3123,11 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=users";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     return UserList.read(JsonReader.fromString(response.body));
   }
@@ -2955,10 +3141,7 @@ class VAlbumClient {
   /// that sentence.
   Future<UserList> setPermission(UserPermission permission) async {
     var url = "${folderUrl(const [])}?action=set-permission";
-    var response = await _postBody(
-      url,
-      _jsonOf(permission.writeContent),
-    );
+    var response = await _postBody(url, _jsonOf(permission.writeContent));
     return UserList.read(JsonReader.fromString(response));
   }
 
@@ -3003,8 +3186,11 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=invitations";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     return InvitationList.read(JsonReader.fromString(response.body));
   }
@@ -3080,8 +3266,11 @@ class VAlbumClient {
       headers: const {"Content-Type": "application/json"},
     );
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingSigningIn("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingSigningIn("'$url'"),
+      );
     }
     return PairResponse.read(JsonReader.fromString(response.body));
   }
@@ -3095,8 +3284,11 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?type=auth";
     var response = await _http.get(Uri.parse(url), headers: authHeaders);
     if (response.statusCode >= 300) {
-      throw failure(response.statusCode, response.body,
-          platformMessages.doingAsking("'$url'"));
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
     }
     // The answer an unknown path is served with is HTML, not auth data, see
     // [parseResource]: that is the wrong server URL speaking, not a bug.
@@ -3124,8 +3316,13 @@ class VAlbumClient {
     var info = errorInfoOf(body);
     var message = info == null || info.message.isEmpty ? null : info.message;
     if (message != null) {
-      return VAlbumException(message,
-          status: status, url: url, reason: message, identify: info?.identify);
+      return VAlbumException(
+        message,
+        status: status,
+        url: url,
+        reason: message,
+        identify: info?.identify,
+      );
     }
     return VAlbumException(
       platformMessages.httpFailure(what, status),
@@ -3191,8 +3388,8 @@ class _CountingRequest extends http.BaseRequest {
     this._body, {
     required void Function(int transferred) onTransferred,
     UploadHandle? handle,
-  })  : _onTransferred = onTransferred,
-        _handle = handle;
+  }) : _onTransferred = onTransferred,
+       _handle = handle;
 
   @override
   http.ByteStream finalize() {
@@ -3296,8 +3493,9 @@ class _ObservedTransport extends http.BaseClient {
       reason: response.reasonPhrase,
       contentType: response.headers["content-type"],
       contentLength: response.contentLength ?? body.length,
-      message:
-          VAlbumClient.errorMessage(utf8.decode(body, allowMalformed: true)),
+      message: VAlbumClient.errorMessage(
+        utf8.decode(body, allowMalformed: true),
+      ),
       bearer: bearer,
     );
     return http.StreamedResponse(

@@ -39,6 +39,9 @@ public class AlbumInfo extends FolderResource {
 	/** @see #isStarred() */
 	private static final String STARRED__PROP = "starred";
 
+	/** @see #getQuery() */
+	private static final String QUERY__PROP = "query";
+
 	/** @see #getParts() */
 	private static final String PARTS__PROP = "parts";
 
@@ -57,6 +60,8 @@ public class AlbumInfo extends FolderResource {
 	private de.haumacher.imageServer.shared.model.ThumbnailInfo _indexPicture = null;
 
 	private boolean _starred = false;
+
+	private de.haumacher.imageServer.shared.model.SearchQuery _query = null;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.AlbumPart> _parts = new java.util.ArrayList<>();
 
@@ -298,6 +303,40 @@ public class AlbumInfo extends FolderResource {
 	}
 
 	/**
+	 * What a saved search ({@link AlbumKind#SEARCH}, issue #227) looks for; <code>null</code> for
+	 * every other kind of album.
+	 *
+	 * <p>
+	 * <b>Stored</b> in the saved search's <code>index.json</code>, and the one thing it stores
+	 * besides its title, date, star and picture. Answered to whoever may see the saved search, so
+	 * that an editor can change it ("Edit search") with an ordinary sidecar <code>PUT</code>.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.SearchQuery getQuery() {
+		return _query;
+	}
+
+	/**
+	 * @see #getQuery()
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo setQuery(de.haumacher.imageServer.shared.model.SearchQuery value) {
+		internalSetQuery(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getQuery()} without chain call utility. */
+	protected final void internalSetQuery(de.haumacher.imageServer.shared.model.SearchQuery value) {
+		_query = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getQuery()} has a value.
+	 */
+	public final boolean hasQuery() {
+		return _query != null;
+	}
+
+	/**
 	 * The list of images in this album.
 	 */
 	public final java.util.List<de.haumacher.imageServer.shared.model.AlbumPart> getParts() {
@@ -457,6 +496,10 @@ public class AlbumInfo extends FolderResource {
 		}
 		out.name(STARRED__PROP);
 		out.value(isStarred());
+		if (hasQuery()) {
+			out.name(QUERY__PROP);
+			getQuery().writeTo(out);
+		}
 		out.name(PARTS__PROP);
 		out.beginArray();
 		for (de.haumacher.imageServer.shared.model.AlbumPart x : getParts()) {
@@ -476,6 +519,7 @@ public class AlbumInfo extends FolderResource {
 			case FACES_PENDING__PROP: setFacesPending(in.nextBoolean()); break;
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			case STARRED__PROP: setStarred(in.nextBoolean()); break;
+			case QUERY__PROP: setQuery(de.haumacher.imageServer.shared.model.SearchQuery.readSearchQuery(in)); break;
 			case PARTS__PROP: {
 				in.beginArray();
 				while (in.hasNext()) {
