@@ -327,7 +327,9 @@ public class TestCacheRefresh extends TestCase {
 	/** The one preview of the given album's cache directory. */
 	private File onlyPreview(String folder) {
 		File cacheDir = new File(new File(_base.toFile(), folder), PreviewCache.CACHE_DIRECTORY_NAME);
-		File[] previews = cacheDir.listFiles((dir, name) -> name.startsWith(PreviewCache.PREVIEW_PREFIX));
+		// The record of the original beside it is no second preview, see issue #235.
+		File[] previews = cacheDir.listFiles((dir, name) -> name.startsWith(PreviewCache.PREVIEW_PREFIX)
+			&& !name.endsWith(PreviewCache.SOURCE_SUFFIX));
 		assertNotNull("No cache directory at " + cacheDir, previews);
 		assertEquals("Expected exactly one preview.", 1, previews.length);
 		return previews[0];

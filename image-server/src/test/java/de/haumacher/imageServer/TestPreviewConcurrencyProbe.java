@@ -111,7 +111,10 @@ public class TestPreviewConcurrencyProbe extends TestCase {
 		assertEquals("preview-z.jpg", preview.getName());
 		assertFalse("The leftover must be gone.", leftover.exists());
 		assertColor(file, Color.BLUE);
-		assertEquals("Nothing but the preview in the cache directory.", 1, cacheDir.list().length);
+		// The preview and the record of the original it was made from, see issue #235.
+		assertEquals("Nothing but the preview in the cache directory.",
+			new java.util.TreeSet<>(java.util.Arrays.asList("preview-z.jpg", "preview-z.jpg" + PreviewCache.SOURCE_SUFFIX)),
+			new java.util.TreeSet<>(java.util.Arrays.asList(cacheDir.list())));
 	}
 
 	/** A video and an image with the same base name are two previews with different names. */

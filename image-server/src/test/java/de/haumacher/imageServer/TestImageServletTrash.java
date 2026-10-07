@@ -197,7 +197,9 @@ public class TestImageServletTrash extends TestCase {
 		assertFalse("The original is gone from disk.", _base.resolve("Trip/a.jpg").toFile().exists());
 		assertFalse("Nothing went to the trash folder.", trash().exists());
 		assertEquals(Arrays.asList(".vacache/face-a.jpg-1.jpg-f0123456789ab.jpg",
-			".vacache/face-b.jpg-f0123456789ab.jpg", ".vacache/faces.json", ".vacache/preview-b.jpg"),
+			".vacache/face-b.jpg-f0123456789ab.jpg", ".vacache/faces.json", ".vacache/preview-b.jpg",
+			// The record of the original b.jpg's preview was made from stays with it, see issue #235.
+			".vacache/preview-b.jpg" + PreviewCache.SOURCE_SUFFIX),
 			cacheFiles("Trip"));
 		assertTrue(_base.resolve("Trip/b.jpg").toFile().isFile());
 		assertFalse("The hash entry is gone.", read(_base.resolve("Trip/.hashes.json")).contains("\"a.jpg\""));

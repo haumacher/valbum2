@@ -10,6 +10,7 @@ import com.drew.metadata.MetadataException;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.cache.RemovalNotification;
 import de.haumacher.imageServer.AlbumDate;
 import de.haumacher.imageServer.Contributors;
 import de.haumacher.imageServer.FolderCover;
@@ -43,7 +44,11 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.FileSystems;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.text.DateFormat;
@@ -54,9 +59,12 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -82,6 +90,60 @@ public class ResourceCache {
 	private static final String SEP = "[-_\\.]";
 	static final Pattern DATE_PATTERN = Pattern.compile(
 			"(" + "\\d{4}" + ")" + SEP + "(" + "\\d{2}" + ")" + SEP + "(" + "\\d{2}" + ")");
+
+	/** How many folders a cache holds, and so how many folders it watches at most, see issue #235. */
+	public static final int MAX_FOLDERS = 1000;
+
+	/**
+	 * Who is told about folders this cache notices, see {@link FolderObserver}.
+	 */
+	private static final List<FolderObserver> OBSERVERS = new CopyOnWriteArrayList<>();
+
+	/** Whether the failure to watch a folder has been reported in this process. */
+	private static final AtomicBoolean UNWATCHED_REPORTED = new AtomicBoolean();
+
+	/**
+	 * Is told about the folders a {@link ResourceCache} notices, see issue #235.
+	 *
+	 * <p>
+	 * The cache learns about the library anyway &mdash; it loads folders and its directory watcher
+	 * reports what changed in them &mdash; and the background work of a space (hashing, see
+	 * {@link de.haumacher.imageServer.upload.HashIndex}) wants to hear of exactly that, so that a
+	 * folder copied in by hand is taken care of without a restart. Called on a request thread or on
+	 * the watcher's thread, so an observer only takes note and never works.
+	 * </p>
+	 */
+	public interface FolderObserver {
+
+		/**
+		 * The given folder was loaded or changed.
+		 *
+		 * @param tree
+		 *        Whether everything below it is new as well: a folder that appeared in a watched one
+		 *        (the folders inside it are watched by nobody yet), or a watcher that lost events.
+		 */
+		void folderNoticed(File folder, boolean tree);
+	}
+
+	/** Tells the given observer about every folder any cache notices from now on. */
+	public static void addObserver(FolderObserver observer) {
+		OBSERVERS.add(observer);
+	}
+
+	/** Stops telling the given observer. */
+	public static void removeObserver(FolderObserver observer) {
+		OBSERVERS.remove(observer);
+	}
+
+	static void notice(File folder, boolean tree) {
+		for (FolderObserver observer : OBSERVERS) {
+			try {
+				observer.folderNoticed(folder, tree);
+			} catch (RuntimeException ex) {
+				Loader.LOG.log(Level.WARNING, "An observer failed on '" + folder + "': " + ex.getMessage(), ex);
+			}
+		}
+	}
 
 	private Loader _loader;
 
@@ -118,8 +180,39 @@ public class ResourceCache {
 	 *        server's zone, asked at every analysis.
 	 */
 	public ResourceCache(ImageData.Analysis analysis, ZoneId zone) throws IOException {
-		_loader = new Loader(analysis, zone);
-		_cache = CacheBuilder.newBuilder().maximumSize(1000).build(_loader);
+		this(analysis, zone, MAX_FOLDERS);
+	}
+
+	/**
+	 * Creates a {@link ResourceCache} holding at most the given number of folders; for the tests.
+	 *
+	 * <p>
+	 * A folder is watched for exactly as long as it is held: its watch is released when it leaves
+	 * the cache, so the watches of a large library are bounded by this number and never grow
+	 * towards the system's limit, see issue #235.
+	 * </p>
+	 */
+	ResourceCache(ImageData.Analysis analysis, ZoneId zone, int maxFolders) throws IOException {
+		_loader = new Loader(analysis, zone, maxFolders);
+		_cache = CacheBuilder.newBuilder().maximumSize(maxFolders)
+			.removalListener((RemovalNotification<PathInfo, Resource> removal) -> _loader.removed(removal.getKey(), removal.wasEvicted()))
+			.build(_loader);
+		_loader.attach(_cache);
+	}
+
+	/** How many folders are watched right now, for the tests. */
+	int watchCount() {
+		return _loader.watchCount();
+	}
+
+	/** How many folders are held right now, for the tests. */
+	long size() {
+		return _cache.size();
+	}
+
+	/** Processes what the watcher reported, as a request would before it is answered; for the tests. */
+	void processEvents() {
+		_loader.processEvents(_cache);
 	}
 
 	/**
@@ -260,6 +353,12 @@ public class ResourceCache {
 
 	public Resource lookup(PathInfo pathInfo) {
 		_loader.processEvents(_cache);
+		PathInfo folder = pathInfo.toFile().isDirectory() || pathInfo.isRoot() ? pathInfo : pathInfo.parent();
+		if (_cache.getIfPresent(folder) != null && !_loader.current(folder)) {
+			// A folder nobody watches (the watch could not be registered, or was lost) and whose
+			// modification stamp moved: read again, see issue #235.
+			invalidate(_cache, folder);
+		}
 		if (!pathInfo.toFile().exists() && Inboxes.isInbox(pathInfo.toFile())) {
 			// The inbox of the space before its first upload, see issue #226: an empty inbox,
 			// answered without writing and without caching anything -- the first upload creates
@@ -295,7 +394,45 @@ public class ResourceCache {
 
 		private final WatchService _watcher;
 
-		private final Map<WatchKey, PathInfo> _watchedDirs = new HashMap<>();
+		/**
+		 * The folder each watch is on; with {@link #_byPath}, {@link #_stamps} and
+		 * {@link #_orphans} guarded by this loader, see issue #235.
+		 */
+		private final Map<WatchKey, PathInfo> _byKey = new HashMap<>();
+
+		/** The watch on each watched folder. */
+		private final Map<PathInfo, WatchKey> _byPath = new HashMap<>();
+
+		/**
+		 * The modification stamp of each held folder when it was loaded: what tells a folder that
+		 * could not be watched has changed, see {@link #current(PathInfo)}.
+		 */
+		private final Map<PathInfo, Long> _stamps = new HashMap<>();
+
+		/**
+		 * Folders whose watch is kept although they left the cache, oldest first.
+		 *
+		 * <p>
+		 * A folder dropped because it changed (its watch reported something, or the servlet wrote
+		 * its sidecar) is read again with the next request; until then its watch stays, so that a
+		 * copy going on in it, or a new folder appearing in it, is still noticed. Counted against the
+		 * limit of watches and released oldest first, see {@link #_maxWatches}. A folder the cache
+		 * evicts for room loses its watch at once.
+		 * </p>
+		 */
+		private final Set<PathInfo> _orphans = new LinkedHashSet<>();
+
+		/** How many folders are watched at most: the size of the cache. */
+		private final int _maxWatches;
+
+		/** The cache this loader fills, for the watcher's thread. */
+		private volatile LoadingCache<PathInfo, Resource> _cache;
+
+		/** Serialises the handling of watch events between the watcher's thread and requests. */
+		private final Object _events = new Object();
+
+		/** The thread waiting for watch events, started with the first watch. */
+		private Thread _pump;
 
 		/** What is taken over out of a photograph that is analysed here, see issue #129. */
 		private final ImageData.Analysis _analysis;
@@ -306,10 +443,146 @@ public class ResourceCache {
 		/**
 		 * Creates a {@link ResourceCache.Loader}.
 		 */
-		public Loader(ImageData.Analysis analysis, ZoneId zone) throws IOException {
+		public Loader(ImageData.Analysis analysis, ZoneId zone, int maxWatches) throws IOException {
 			_analysis = analysis == null ? ImageData.Analysis.NONE : analysis;
 			_zone = zone;
+			_maxWatches = maxWatches;
 			_watcher = FileSystems.getDefault().newWatchService();
+		}
+
+		void attach(LoadingCache<PathInfo, Resource> cache) {
+			_cache = cache;
+		}
+
+		synchronized int watchCount() {
+			return _byPath.size();
+		}
+
+		/**
+		 * Watches the given folder, before it is read, so that no change after the read is missed.
+		 */
+		private void watch(PathInfo path, File dir) {
+			synchronized (this) {
+				_stamps.put(path, dir.lastModified());
+				_orphans.remove(path);
+				try {
+					WatchKey key = dir.toPath().register(_watcher, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
+					PathInfo before = _byKey.put(key, path);
+					if (before != null && !before.equals(path)) {
+						// The same directory under another name (a link): one watch, the latest name.
+						_byPath.remove(before);
+					}
+					_byPath.put(path, key);
+					trim();
+					startPump();
+				} catch (ClosedWatchServiceException ex) {
+					// The cache is closed; nothing more is watched.
+				} catch (NoSuchFileException ex) {
+					// Gone meanwhile; the read says so.
+				} catch (IOException ex) {
+					unwatch(path);
+					_stamps.put(path, dir.lastModified());
+					reportUnwatched(dir, ex);
+				}
+			}
+		}
+
+		private static void reportUnwatched(File dir, IOException ex) {
+			if (UNWATCHED_REPORTED.compareAndSet(false, true)) {
+				LOG.log(Level.WARNING, "Cannot watch the folder '" + dir + "' for changes: " + ex.getMessage()
+					+ ". The system's limit of directory watches is probably reached"
+					+ " (Linux: raise fs.inotify.max_user_watches). A folder that cannot be watched is checked"
+					+ " by its modification time whenever it is opened instead. Further folders that cannot be"
+					+ " watched are logged at FINE only.");
+			} else {
+				LOG.log(Level.FINE, "Cannot watch the folder '" + dir + "' for changes: " + ex.getMessage());
+			}
+		}
+
+		/** Releases watches of folders that left the cache while more are held than allowed. */
+		private void trim() {
+			java.util.Iterator<PathInfo> oldest = _orphans.iterator();
+			while (_byPath.size() > _maxWatches && oldest.hasNext()) {
+				PathInfo orphan = oldest.next();
+				oldest.remove();
+				cancel(orphan);
+			}
+		}
+
+		/** Forgets the watch of the given folder and cancels it. */
+		private void unwatch(PathInfo path) {
+			_orphans.remove(path);
+			_stamps.remove(path);
+			cancel(path);
+		}
+
+		private void cancel(PathInfo path) {
+			WatchKey key = _byPath.remove(path);
+			if (key != null) {
+				_byKey.remove(key);
+				key.cancel();
+			}
+		}
+
+		/**
+		 * The cache dropped the given folder: its watch goes with it when it was evicted for room,
+		 * and stays a while when it was dropped for a change, see {@link #_orphans} and issue #235.
+		 */
+		synchronized void removed(PathInfo path, boolean evicted) {
+			WatchKey key = _byPath.get(path);
+			if (!evicted && key != null && key.isValid()) {
+				_orphans.add(path);
+				trim();
+			} else {
+				unwatch(path);
+			}
+		}
+
+		/**
+		 * Whether what is held for the given folder can still be trusted without reading it again:
+		 * its watch is alive, or its modification stamp is the one it was loaded with.
+		 */
+		synchronized boolean current(PathInfo path) {
+			WatchKey key = _byPath.get(path);
+			if (key != null && key.isValid() && !_orphans.contains(path)) {
+				return true;
+			}
+			Long stamp = _stamps.get(path);
+			return stamp != null && stamp.longValue() == path.toFile().lastModified();
+		}
+
+		/**
+		 * Starts the thread that waits for watch events, so that a change is noticed when it happens
+		 * and not only with the next request, see issue #235.
+		 */
+		private void startPump() {
+			if (_pump != null) {
+				return;
+			}
+			_pump = new Thread(this::pump, "resource-watch");
+			_pump.setDaemon(true);
+			_pump.start();
+		}
+
+		private void pump() {
+			while (true) {
+				WatchKey key;
+				try {
+					key = _watcher.take();
+				} catch (ClosedWatchServiceException | InterruptedException ex) {
+					return;
+				}
+				LoadingCache<PathInfo, Resource> cache = _cache;
+				try {
+					synchronized (_events) {
+						handle(cache, key);
+					}
+				} catch (ClosedWatchServiceException ex) {
+					return;
+				} catch (RuntimeException ex) {
+					LOG.log(Level.WARNING, "Cannot process a change of the library: " + ex.getMessage(), ex);
+				}
+			}
 		}
 
 		/** See {@link ResourceCache#zone()}. */
@@ -333,40 +606,80 @@ public class ResourceCache {
 		}
 
 		public void processEvents(LoadingCache<PathInfo, Resource> cache) {
-			while (true) {
-				WatchKey key = _watcher.poll();
-				if (key == null) {
-					break;
+			synchronized (_events) {
+				while (true) {
+					WatchKey key;
+					try {
+						key = _watcher.poll();
+					} catch (ClosedWatchServiceException ex) {
+						return;
+					}
+					if (key == null) {
+						break;
+					}
+					handle(cache, key);
 				}
-				if (!key.isValid()) {
+			}
+		}
+
+		/**
+		 * Handles what one watch reported: the folder is read again with the next request, its watch
+		 * stays, and whoever does background work for the library hears of new photographs and new
+		 * folders, see {@link FolderObserver}.
+		 */
+		private void handle(LoadingCache<PathInfo, Resource> cache, WatchKey key) {
+			PathInfo path;
+			synchronized (this) {
+				path = _byKey.get(key);
+			}
+			List<WatchEvent<?>> events = key.pollEvents();
+			if (path == null) {
+				key.cancel();
+				return;
+			}
+			File dir = path.toFile();
+			boolean changed = false;
+			for (WatchEvent<?> event : events) {
+				if (event.kind() == OVERFLOW) {
+					notice(dir, true);
 					continue;
 				}
-
-				PathInfo path = _watchedDirs.remove(key);
-				if (path != null) {
-					// The listing above describes this folder from its contents, see
-					// ResourceCache#invalidate(PathInfo).
-					invalidate(cache, path);
+				File child = new File(dir, ((Path) event.context()).toString());
+				if (event.kind() == ENTRY_DELETE || LibraryFiles.isIgnored(child)) {
+					continue;
 				}
-				key.cancel();
+				if (event.kind() == ENTRY_CREATE && child.isDirectory()) {
+					// Nobody watches inside a new folder yet: all of it is new.
+					notice(child, true);
+				} else if (!changed && ACCEPTED.contains(Util.suffix(child.getName()))) {
+					changed = true;
+					notice(dir, false);
+				}
+			}
+
+			// The listing above describes this folder from its contents, see
+			// ResourceCache#invalidate(PathInfo). The watch stays, see #_orphans.
+			invalidate(cache, path);
+			synchronized (this) {
+				if (!key.reset() && path.equals(_byKey.get(key))) {
+					// The folder is gone.
+					unwatch(path);
+				}
 			}
 		}
 
 		private Resource loadDir(PathInfo path) {
 			File dir = path.toFile();
 
+			if (dir.isDirectory()) {
+				watch(path, dir);
+			}
+
 			FolderResource resource = loadDirIndex(dir);
 
 			File[] images = dir.listFiles(IMAGES);
 			if (images == null) {
 				return ErrorInfo.create().setMessage("Cannot list folder.");
-			}
-
-			try {
-				WatchKey key = dir.toPath().register(_watcher, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
-				_watchedDirs.put(key, path);
-			} catch (IOException ex) {
-				LOG.log(Level.WARNING, "Cannot register directory watcher on '" + dir + "'.", ex);
 			}
 
 			if (resource instanceof AlbumInfo || images.length > 0
@@ -390,6 +703,12 @@ public class ResourceCache {
 
 				// Who uploaded which photo, from the hash sidecar beside them, see issue #53.
 				Contributors.derive(album, dir);
+
+				if (images.length > 0) {
+					// A folder that was copied in by hand is hashed when it is first looked at, see
+					// issue #235.
+					notice(dir, false);
+				}
 				return album;
 			} else {
 				ListingInfo listing = resource == null ? createGenericListingInfo(path) : (ListingInfo) resource;

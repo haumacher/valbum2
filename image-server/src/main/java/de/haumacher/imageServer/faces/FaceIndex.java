@@ -208,6 +208,18 @@ public class FaceIndex {
 	private final ConcurrentHashMap<String, String> _failed = new ConcurrentHashMap<>();
 
 	/**
+	 * The albums whose {@value PreviewCache#CACHE_DIRECTORY_NAME} cannot be written, by absolute
+	 * path, see issue #235.
+	 *
+	 * <p>
+	 * What is found there could not be stored, so looking would be redone on every listing of the
+	 * album, for ever. Remembered for the lifetime of the process, said once (see
+	 * {@link de.haumacher.imageServer.pipeline.ReadOnlyFolders}), and never queued again.
+	 * </p>
+	 */
+	private final Set<String> _unwritable = ConcurrentHashMap.newKeySet();
+
+	/**
 	 * One lock per album folder, for the two writers of its {@link FaceCache}, see issue #155.
 	 *
 	 * <p>
@@ -390,6 +402,9 @@ public class FaceIndex {
 			indexer = _indexer;
 		}
 		String key = folder.getAbsolutePath();
+		if (_unwritable.contains(key)) {
+			return;
+		}
 		if (_queued.putIfAbsent(key, Boolean.TRUE) != null) {
 			return;
 		}
@@ -418,6 +433,13 @@ public class FaceIndex {
 		}
 		java.util.Arrays.sort(images, (left, right) -> left.getName().compareTo(right.getName()));
 
+		if (!writable(folder)) {
+			// Nothing found here could be stored: not looked at, and not queued again, see issue #235.
+			return;
+		}
+
+		// Hashed under the folder's lock: what the hash pass did already is taken over, see
+		// HashCache and issue #235.
 		HashCache hashes = new HashCache(folder);
 		Map<String, String> hashByName;
 		try {
@@ -1583,8 +1605,31 @@ public class FaceIndex {
 		return false;
 	}
 
+	/**
+	 * Whether what is found in the given album can be stored in its
+	 * {@value PreviewCache#CACHE_DIRECTORY_NAME}; remembers and reports an album where it cannot, see
+	 * {@link #_unwritable}.
+	 */
+	private boolean writable(File folder) {
+		String key = folder.getAbsolutePath();
+		if (_unwritable.contains(key)) {
+			return false;
+		}
+		File cacheDir = new File(folder, PreviewCache.CACHE_DIRECTORY_NAME);
+		if (de.haumacher.imageServer.pipeline.ReadOnlyFolders.writable(cacheDir.isDirectory() ? cacheDir : folder)) {
+			return true;
+		}
+		_unwritable.add(key);
+		de.haumacher.imageServer.pipeline.ReadOnlyFolders.report(folder, "its previews and faces");
+		return false;
+	}
+
 	private boolean missing(ImagePart image, File folder, FaceCache cache, Map<String, String> hashByName) {
 		if (!isPhotograph(image)) {
+			return false;
+		}
+		if (_unwritable.contains(folder.getAbsolutePath())) {
+			// Nothing found there could be stored; nothing is pending that would ever arrive.
 			return false;
 		}
 		if (_failed.containsKey(new File(folder, image.getName()).getAbsolutePath())) {

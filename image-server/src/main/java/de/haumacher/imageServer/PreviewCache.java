@@ -218,6 +218,12 @@ public class PreviewCache {
 	public static final String TMP_SUFFIX = ".tmp";
 
 	/**
+	 * What the record of the original a generated file was made from is named after, behind the
+	 * generated file's own name, see {@link #upToDate(File, File)} and issue #235.
+	 */
+	public static final String SOURCE_SUFFIX = ".source";
+
+	/**
 	 * How many previews may be generated at the same time.
 	 *
 	 * <p>
@@ -631,14 +637,81 @@ public class PreviewCache {
 	 * The temporary file a generation writes is never mistaken for a preview: it is named
 	 * {@value #TMP_SUFFIX} behind the preview's own name and nothing ever looks it up.
 	 * </p>
+	 *
+	 * <p>
+	 * Beyond that, a preview is fresh exactly while the original has the size and the modification
+	 * stamp it had when the preview was made, as recorded beside it ({@link #recordOf(File)}, issue
+	 * #235). "The original is not newer than the preview" is not enough: a preview made while the
+	 * original was still being copied would stay for ever once <code>cp -p</code> or
+	 * <code>rsync -t</code> set the original's old stamp at the end of the copy. A preview made
+	 * before the record existed has none and is judged by that old rule, unchanged: nothing is
+	 * regenerated for an upgrade (on a large library that would be hours of work), and such a
+	 * preview gets its record the next time it is made, e.g. after
+	 * <code>?action=refresh-cache</code>.
+	 * </p>
 	 */
-	private static boolean upToDate(File file, File previewCache) {
+	static boolean upToDate(File file, File previewCache) {
 		if (!previewCache.exists()) {
 			return false;
 		}
 		long previewTime = previewCache.lastModified();
-		return file.lastModified() <= previewTime && previewTime >= LAST_UPDATE;
+		if (previewTime < LAST_UPDATE) {
+			return false;
+		}
+		File record = recordOf(previewCache);
+		if (!record.exists()) {
+			// Made before records were kept, see above.
+			return file.lastModified() <= previewTime;
+		}
+		long[] source = readRecord(record);
+		return source != null && source[0] == file.length() && source[1] == file.lastModified();
 	}
+
+	/**
+	 * Where the record of the original the given generated file was made from lies, see
+	 * {@link #upToDate(File, File)}.
+	 */
+	public static File recordOf(File generated) {
+		return new File(generated.getParentFile(), generated.getName() + SOURCE_SUFFIX);
+	}
+
+	/** The record of the given original as it is now: <code>{"size":..,"modified":..}</code>. */
+	static String record(File source) {
+		return record(source.length(), source.lastModified());
+	}
+
+	static String record(long size, long modified) {
+		return "{\"size\":" + size + ",\"modified\":" + modified + "}";
+	}
+
+	/**
+	 * The size and modification stamp the given record names, <code>null</code> if it cannot be
+	 * read: then the preview counts as stale and is made again.
+	 */
+	static long[] readRecord(File record) {
+		String text;
+		try {
+			text = new String(Files.readAllBytes(record.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+		} catch (IOException ex) {
+			return null;
+		}
+		java.util.regex.Matcher size = RECORD_SIZE.matcher(text);
+		java.util.regex.Matcher modified = RECORD_MODIFIED.matcher(text);
+		if (!size.find() || !modified.find()) {
+			return null;
+		}
+		try {
+			return new long[] { Long.parseLong(size.group(1)), Long.parseLong(modified.group(1)) };
+		} catch (NumberFormatException ex) {
+			return null;
+		}
+	}
+
+	private static final java.util.regex.Pattern RECORD_SIZE =
+		java.util.regex.Pattern.compile("\"size\"\\s*:\\s*(-?\\d+)");
+
+	private static final java.util.regex.Pattern RECORD_MODIFIED =
+		java.util.regex.Pattern.compile("\"modified\"\\s*:\\s*(-?\\d+)");
 
 	/**
 	 * Generates the preview, or waits for the generation somebody else has already started.
@@ -721,14 +794,27 @@ public class PreviewCache {
 				cacheDir.mkdirs();
 			}
 			File tmp = new File(cacheDir, previewCache.getName() + TMP_SUFFIX);
+			// The original as it is before it is read: if it changes while it is read (a copy still
+			// going on), the record no longer matches and the preview is made again, see upToDate.
+			String source = record(file);
+			File record = recordOf(previewCache);
 			hook.generationStarted(file);
 			try {
 				maker.make(tmp);
+				// No moment with the new preview and the old record: the old one goes first.
+				Files.deleteIfExists(record.toPath());
 				try {
 					moveIntoPlace(tmp, previewCache);
 				} catch (IOException ex) {
 					throw new PreviewException("Cannot store the preview of '" + fileName + "'.", ex);
 				}
+				try {
+					Files.write(record.toPath(), source.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+				} catch (IOException ex) {
+					LOG.log(Level.WARNING, "Cannot record the original of '" + previewCache + "': " + ex.getMessage());
+				}
+			} catch (IOException ex) {
+				throw new PreviewException("Cannot replace the record of '" + previewCache + "'.", ex);
 			} finally {
 				// Nothing half-written is left behind; after the move there is nothing to delete.
 				tmp.delete();

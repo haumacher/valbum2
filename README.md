@@ -404,6 +404,18 @@ docker compose exec valbum valbum-admin create-space family --name "The Family"
 | `replace-originals <folder>` | Puts downloaded originals in the place of the copies older phone apps uploaded without their position; each copy is kept in `.valbum/replaced/`. `--dry-run` only reports. |
 | `migrate-to-user`, `migrate-to-spaces` | For libraries from before spaces existed. |
 
+### Importing an existing library
+
+Copy the folders into a space, even while the server runs; no rescan or restart is needed. A few
+seconds after a folder stops changing, the server knows its photos (duplicates, the app's sync,
+collections).
+
+- Run `chown -R valbum:valbum <library>` afterwards: the server writes small files (`index.json`,
+  `.hashes.json`, `.vacache/`) next to the photos. A folder it cannot write is named once in the log.
+- Prefer `rsync -a` or `cp -a`; they keep the file dates that photos without EXIF are sorted by.
+- Thumbnails are made when first viewed; with faces on, detection runs in the background for a while.
+- If the log says folders cannot be watched, raise `fs.inotify.max_user_watches`.
+
 ### Server options
 
 Set in `VALBUM_OPTS` (or given to `java -jar`, see [For developers](#for-developers)).

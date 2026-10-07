@@ -6,6 +6,7 @@ package de.haumacher.imageServer.upload;
 import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.pipeline.FolderPipeline;
 import de.haumacher.imageServer.shared.model.IndexProgress;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.json.JsonWriter;
@@ -31,10 +32,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -109,6 +109,18 @@ import java.util.logging.Logger;
  * folder renamed behind the index's back — is caught on the way out: {@link #pathOf(String)}
  * checks that the file it found is really there and forgets it if it is not, so the index never
  * points at a photo that is gone.
+ * </p>
+ *
+ * <h2>Photos copied in while the server runs</h2>
+ *
+ * <p>
+ * The background pass is the first {@link FolderPipeline.Step step} of the space's
+ * {@link FolderPipeline}, see issue #235: besides the walk at start-up, every folder the
+ * {@link ResourceCache} notices &mdash; loaded by a request, reported changed by its watch, or new
+ * in a watched folder &mdash; is brought into the index once it stood still for a moment, on the
+ * same thread. A library copied into the space while the server runs is hashed without a restart.
+ * Hashing a folder happens under the folder's lock in {@link HashCache}, so the face pass and an
+ * upload never hash it a second time nor lose what this pass wrote.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -195,7 +207,11 @@ public class HashIndex {
 
 	private boolean _complete;
 
-	private ExecutorService _indexer;
+	/** The background work of the space; hashing is its first step, see issue #235. */
+	private final FolderPipeline _pipeline;
+
+	/** How often each folder had files hashed by this index, for the tests. */
+	private final Map<String, Integer> _hashRuns = new ConcurrentHashMap<>();
 
 	private CountDownLatch _pass;
 
@@ -214,7 +230,52 @@ public class HashIndex {
 		_root = root.toAbsolutePath().normalize();
 		_file = _root.resolve(UserStore.DIRECTORY_NAME).resolve(FILE_NAME);
 		load();
+		_pipeline = new FolderPipeline(_root, "hash-index " + _root.getFileName());
+		_pipeline.addStep(new HashStep());
 		INSTANCES.add(this);
+	}
+
+	/** The name of the hashing step in the {@link FolderPipeline}. */
+	public static final String STEP = "hash";
+
+	/**
+	 * The background work of this space, see {@link FolderPipeline}; hashing is its first step,
+	 * and further steps are added behind it.
+	 */
+	public FolderPipeline pipeline() {
+		return _pipeline;
+	}
+
+	/**
+	 * How many times files of the given folder (relative to the space root) were hashed by this
+	 * index; for the tests.
+	 */
+	public int hashRuns(String folder) {
+		return _hashRuns.getOrDefault(folder, 0);
+	}
+
+	/** Hashing as a {@link FolderPipeline.Step}. */
+	private final class HashStep implements FolderPipeline.Step {
+
+		@Override
+		public String name() {
+			return STEP;
+		}
+
+		@Override
+		public boolean trustsRecord() {
+			// Asking the sidecar is as cheap as asking the record, and it is the truth.
+			return false;
+		}
+
+		@Override
+		public FolderPipeline.Outcome run(File folder) throws IOException {
+			if (images(folder).length == 0) {
+				return FolderPipeline.Outcome.DONE;
+			}
+			index(folder);
+			return HashCache.isInMemory(folder) ? FolderPipeline.Outcome.UNWRITABLE : FolderPipeline.Outcome.DONE;
+		}
 	}
 
 	/** The root of the space this index answers for. */
@@ -402,18 +463,12 @@ public class HashIndex {
 	 * </p>
 	 */
 	public synchronized void start() {
-		if (_indexer != null) {
+		if (!_pipeline.start()) {
 			return;
 		}
-		_indexer = Executors.newSingleThreadExecutor(runnable -> {
-			Thread thread = new Thread(runnable, "hash-index " + _root.getFileName());
-			thread.setDaemon(true);
-			thread.setPriority(Thread.MIN_PRIORITY);
-			return thread;
-		});
 		_pass = new CountDownLatch(1);
 		CountDownLatch pass = _pass;
-		_indexer.execute(() -> {
+		_pipeline.execute(() -> {
 			try {
 				indexNow();
 			} finally {
@@ -481,13 +536,9 @@ public class HashIndex {
 				LOG.info("Indexing of '" + _root + "' stopped after " + _done + " folder(s).");
 				return;
 			}
-			try {
-				index(folder);
-			} catch (IOException | RuntimeException ex) {
-				// One unreadable folder is not a reason to leave the rest of the library unknown.
-				LOG.log(Level.WARNING,
-					"Cannot index '" + folder.getAbsolutePath() + "': " + ex.getMessage(), ex);
-			}
+			// Every step of the space's pipeline, hashing first; one unreadable folder is not a
+			// reason to leave the rest of the library unknown, see FolderPipeline#process(File).
+			_pipeline.process(folder);
 			synchronized (this) {
 				_done++;
 				persist(false);
@@ -514,6 +565,8 @@ public class HashIndex {
 			_complete = true;
 			persist(true);
 		}
+		_pipeline.retain(walked);
+		_pipeline.flush();
 		LOG.info("Indexed " + _total + " folder(s) of '" + _root + "'.");
 	}
 
@@ -539,6 +592,9 @@ public class HashIndex {
 			// The first build of the index is where a library that was filled by other means is
 			// hashed, once; the sidecar is written, so a later pass finds it done.
 			cache.refresh();
+			if (cache.hashed() > 0) {
+				_hashRuns.merge(path, 1, Integer::sum);
+			}
 			cache.flush();
 			hashByName = cache.storedHashByName();
 		}
@@ -586,19 +642,7 @@ public class HashIndex {
 
 	/** Stops the background pass; what is done is written. */
 	public void shutdown() {
-		ExecutorService indexer;
-		synchronized (this) {
-			indexer = _indexer;
-			_indexer = null;
-		}
-		if (indexer != null) {
-			indexer.shutdownNow();
-			try {
-				indexer.awaitTermination(2, TimeUnit.SECONDS);
-			} catch (InterruptedException ex) {
-				Thread.currentThread().interrupt();
-			}
-		}
+		_pipeline.shutdown();
 		synchronized (this) {
 			persist(true);
 		}
@@ -613,7 +657,7 @@ public class HashIndex {
 			return;
 		}
 		File sidecar = new File(folder, HashCache.FILE_NAME);
-		if (!sidecar.isFile()) {
+		if (!sidecar.isFile() && !HashCache.isInMemory(folder)) {
 			if (_folders.remove(path) != null) {
 				_lookupStale = true;
 				_dirty = true;
