@@ -58,6 +58,9 @@ public class CacheRefresh {
 	 * <code>face-&lt;name&gt;-&lt;index&gt;.jpg</code>, see issue #124.</li>
 	 * <li>Anything of those under its {@value PreviewCache#TMP_SUFFIX} name — a leftover of a
 	 * server that was killed between writing and moving.</li>
+	 * <li>The record of the original any of those was made from, under its name and
+	 * {@value PreviewCache#SOURCE_SUFFIX}, see {@link PreviewCache#recordOf(File)} and issue
+	 * #235.</li>
 	 * </ul>
 	 *
 	 * <p>
@@ -66,9 +69,7 @@ public class CacheRefresh {
 	 * </p>
 	 */
 	public static boolean isGenerated(String name) {
-		String plain = name.endsWith(PreviewCache.TMP_SUFFIX)
-			? name.substring(0, name.length() - PreviewCache.TMP_SUFFIX.length())
-			: name;
+		String plain = plain(name);
 		if (plain.startsWith(PreviewCache.PREVIEW_PREFIX)) {
 			return plain.length() > PreviewCache.PREVIEW_PREFIX.length();
 		}
@@ -92,6 +93,20 @@ public class CacheRefresh {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * The name of the generated file the given name is, or is the temporary name or the record of,
+	 * see {@link #isGenerated(String)}.
+	 */
+	public static String plain(String name) {
+		String plain = name.endsWith(PreviewCache.TMP_SUFFIX)
+			? name.substring(0, name.length() - PreviewCache.TMP_SUFFIX.length())
+			: name;
+		if (plain.endsWith(PreviewCache.SOURCE_SUFFIX)) {
+			plain = plain.substring(0, plain.length() - PreviewCache.SOURCE_SUFFIX.length());
+		}
+		return plain;
 	}
 
 	/**

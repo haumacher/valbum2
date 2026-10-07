@@ -436,7 +436,8 @@ public class DeleteService {
 	 * renditions ({@link VideoRenditions.Kind#fileName(String)}) and the face crops of either naming
 	 * (<code>face-&lt;name&gt;-f&lt;12 hex&gt;.jpg</code>, <code>face-&lt;name&gt;-&lt;n&gt;.jpg</code>), the
 	 * previews of its crops (<code>preview-&lt;name&gt;-c&lt;12 hex&gt;.&lt;type&gt;</code>, issue #212),
-	 * each also under its {@value PreviewCache#TMP_SUFFIX} name. A file of another photograph whose
+	 * each also under its {@value PreviewCache#TMP_SUFFIX} name and with its
+	 * {@value PreviewCache#SOURCE_SUFFIX} record (issue #235). A file of another photograph whose
 	 * name merely begins with this one's is never matched.
 	 * </p>
 	 */
@@ -462,9 +463,8 @@ public class DeleteService {
 			if (!file.isFile() || Files.isSymbolicLink(file.toPath()) || !CacheRefresh.isGenerated(fileName)) {
 				continue;
 			}
-			String plain = fileName.endsWith(PreviewCache.TMP_SUFFIX)
-				? fileName.substring(0, fileName.length() - PreviewCache.TMP_SUFFIX.length())
-				: fileName;
+			// The temporary name and the record of the original count as the file, see issue #235.
+			String plain = CacheRefresh.plain(fileName);
 			if (exact.contains(plain)
 				|| (plain.startsWith(cropPrefix) && CROP_KEY.matcher(plain.substring(cropPrefix.length())).matches())
 				|| (plain.startsWith(cutPrefix) && CUT_KEY.matcher(plain.substring(cutPrefix.length())).matches())) {

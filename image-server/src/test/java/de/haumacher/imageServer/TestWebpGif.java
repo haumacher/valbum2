@@ -113,7 +113,8 @@ public class TestWebpGif extends ShareTestCase {
 		for (String file : cache.list()) {
 			assertTrue("Everything generated is named so that a refresh finds it: " + file,
 				CacheRefresh.isGenerated(file));
-			assertTrue("A JPEG preview: " + file, file.endsWith(".jpg"));
+			// A preview's record of its original belongs to it, see issue #235.
+			assertTrue("A JPEG preview: " + file, CacheRefresh.plain(file).endsWith(".jpg"));
 		}
 	}
 

@@ -3,9 +3,11 @@
  */
 package de.haumacher.imageServer.upload;
 
+import com.google.common.util.concurrent.Striped;
 import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.pipeline.ReadOnlyFolders;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
@@ -25,8 +27,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -84,6 +90,26 @@ import java.util.logging.Logger;
  * {@link de.haumacher.imageServer.Contributions}.
  * </p>
  *
+ * <h2>One writer per folder</h2>
+ *
+ * <p>
+ * The upload, the move, the check, the background hash pass and the face pass all keep a
+ * {@link HashCache} of the same folder, possibly at the same time (issue #235). Each of them reads
+ * the sidecar, works and writes it back; written naively, the last writer would drop what the
+ * others recorded meanwhile, and two of them would hash the same new files twice. So every
+ * {@link #refresh()} and every {@link #flush()} runs under one lock per folder, and each first
+ * reads the sidecar again and lays its own changes on top of what it finds: a file another writer
+ * hashed meanwhile is taken over and not hashed again, an attribution another writer recorded is
+ * kept, and what this instance recorded is added. What a refresh hashed is written at once, still
+ * under the lock, so that whoever comes next finds it done.
+ * </p>
+ *
+ * <p>
+ * A folder the server's user cannot write into keeps what was hashed in memory for the life of the
+ * process instead, and says so once, see {@link ReadOnlyFolders}: its photos are known to the index
+ * all the same and are not hashed again on every look.
+ * </p>
+ *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class HashCache {
@@ -119,6 +145,40 @@ public class HashCache {
 	private static final String CONTRIBUTOR_LINK__PROP = "contributorLink";
 
 	private static final int BUFFER_SIZE = 64 * 1024;
+
+	/** One lock per folder (striped), held while a sidecar is re-read, hashed into and written. */
+	private static final Striped<Lock> LOCKS = Striped.lock(256);
+
+	/**
+	 * What was hashed in folders that could not be written, by the folder's absolute path, see
+	 * {@link ReadOnlyFolders}.
+	 */
+	private static final Map<String, Map<String, Entry>> IN_MEMORY = new ConcurrentHashMap<>();
+
+	/** Observes hashing and writing, for the tests. */
+	public interface Hook {
+
+		/** The given file was just hashed by a {@link #refresh()}. */
+		default void hashed(File file) {
+			// Nothing.
+		}
+
+		/** The sidecar of the given folder was just written. */
+		default void written(File folder) {
+			// Nothing.
+		}
+	}
+
+	private static final Hook NO_HOOK = new Hook() {
+		// Nothing at all.
+	};
+
+	private static volatile Hook hook = NO_HOOK;
+
+	/** Installs a {@link Hook}, <code>null</code> to remove it; for the tests. */
+	public static void setHook(Hook newHook) {
+		hook = newHook == null ? NO_HOOK : newHook;
+	}
 
 	/** What was recorded for one file of the folder. */
 	private static final class Entry {
@@ -307,7 +367,25 @@ public class HashCache {
 	/** The recorded entries by file name, in the order they were read or added. */
 	private Map<String, Entry> _entries = new LinkedHashMap<>();
 
-	private boolean _dirty;
+	/** Names this instance recorded through {@link #put(File, String, Attribution)}. */
+	private final Set<String> _put = new HashSet<>();
+
+	/** Names this instance hashed in a {@link #refresh()} and has not written yet. */
+	private final Set<String> _hashed = new HashSet<>();
+
+	/** Names this instance found gone in a {@link #refresh()} and has not written yet. */
+	private final Set<String> _gone = new HashSet<>();
+
+	/** Whether the sidecar could not be read and has to be written anew. */
+	private boolean _broken;
+
+	/** The size and modification stamp of the sidecar as last read or written, see {@link #reread()}. */
+	private long _readSize = -1;
+
+	private long _readModified = -1;
+
+	/** How many files the last {@link #refresh()} hashed. */
+	private int _lastHashed;
 
 	/**
 	 * Loads the {@link HashCache} of the given album folder.
@@ -370,10 +448,13 @@ public class HashCache {
 	 * </p>
 	 */
 	public void put(File file, String sha256, Attribution attribution) {
-		_entries.put(file.getName(),
+		String name = file.getName();
+		_entries.put(name,
 			new Entry(file.length(), file.lastModified(), sha256, attribution == null ? Attribution.NONE
 				: attribution));
-		_dirty = true;
+		_put.add(name);
+		_hashed.remove(name);
+		_gone.remove(name);
 	}
 
 	/**
@@ -418,46 +499,178 @@ public class HashCache {
 	/**
 	 * Brings the cache in line with the folder: hashes new and changed files, forgets vanished
 	 * ones.
+	 *
+	 * <p>
+	 * Under the folder's lock, after reading the sidecar again: what another writer hashed
+	 * meanwhile is not hashed twice. What this call hashed is written at once, see
+	 * {@link HashCache}.
+	 * </p>
 	 */
 	public void refresh() throws IOException {
-		File[] files = _folder.listFiles(f -> f.isFile() && ResourceCache.isImage(f));
-		if (files == null) {
-			throw new IOException("Cannot list folder: " + _folder.getAbsolutePath());
-		}
-
-		Map<String, Entry> update = new LinkedHashMap<>();
-		for (File file : files) {
-			String name = file.getName();
-			Entry entry = _entries.get(name);
-			if (entry == null) {
-				entry = new Entry(file.length(), file.lastModified(), sha256(file), Attribution.NONE);
-				_dirty = true;
-			} else if (!entry.matches(file)) {
-				// The contents changed behind the server's back; who put the file here did not.
-				entry = entry.rehashed(file.length(), file.lastModified(), sha256(file));
-				_dirty = true;
+		boolean wrote;
+		int hashed = 0;
+		Lock lock = LOCKS.get(key(_folder));
+		lock.lock();
+		try {
+			File[] files = _folder.listFiles(f -> f.isFile() && ResourceCache.isImage(f));
+			if (files == null) {
+				throw new IOException("Cannot list folder: " + _folder.getAbsolutePath());
 			}
-			update.put(name, entry);
+			reread();
+
+			Map<String, Entry> update = new LinkedHashMap<>();
+			for (File file : files) {
+				String name = file.getName();
+				Entry entry = _entries.get(name);
+				if (entry == null) {
+					entry = new Entry(file.length(), file.lastModified(), sha256(file), Attribution.NONE);
+					_hashed.add(name);
+					hashed++;
+					hook.hashed(file);
+				} else if (!entry.matches(file)) {
+					// The contents changed behind the server's back; who put the file here did not.
+					entry = entry.rehashed(file.length(), file.lastModified(), sha256(file));
+					_hashed.add(name);
+					hashed++;
+					hook.hashed(file);
+				}
+				update.put(name, entry);
+			}
+			for (String name : _entries.keySet()) {
+				if (!update.containsKey(name)) {
+					// Removed from the folder behind the server's back.
+					_gone.add(name);
+					_put.remove(name);
+					_hashed.remove(name);
+				}
+			}
+			_entries = update;
+			wrote = hashed > 0 && write();
+		} finally {
+			lock.unlock();
 		}
-		if (update.size() != _entries.size()) {
-			// Files were removed from the folder behind the server's back.
-			_dirty = true;
+		_lastHashed = hashed;
+		if (wrote) {
+			written();
 		}
-		_entries = update;
+	}
+
+	/** How many files the last {@link #refresh()} had to hash; zero when everything was known. */
+	public int hashed() {
+		return _lastHashed;
+	}
+
+	/** Whether this instance holds anything the sidecar does not. */
+	private boolean dirty() {
+		return _broken || !_put.isEmpty() || !_hashed.isEmpty() || !_gone.isEmpty();
 	}
 
 	/** Writes the cache back to its sidecar file, if anything changed. */
 	public void flush() throws IOException {
-		if (!_dirty) {
+		if (!dirty()) {
 			return;
 		}
-		store();
-		_dirty = false;
+		boolean wrote;
+		Lock lock = LOCKS.get(key(_folder));
+		lock.lock();
+		try {
+			reread();
+			wrote = write();
+		} finally {
+			lock.unlock();
+		}
+		if (wrote) {
+			written();
+		}
+	}
 
+	/** Tells who has to know that the sidecar was just written. */
+	private void written() {
+		hook.written(_folder);
 		// This is the one place a hash sidecar is ever written — the upload, the move and the
 		// lazy fill of a check all end here — so it is the one place the space-wide index of
 		// issue #118 has to hear about, and no writer has to know that the index exists.
 		HashIndex.sidecarWritten(_folder);
+	}
+
+	/**
+	 * Reads the sidecar again, if somebody else wrote it since, and lays what this instance changed
+	 * on top of it; called under the folder's lock.
+	 */
+	private void reread() {
+		File file = _file;
+		if (file.length() == _readSize && file.lastModified() == _readModified) {
+			// Nobody wrote it since it was read or written here: what is held is what is there.
+			return;
+		}
+		Map<String, Entry> merged = loadEntries();
+		for (String name : _put) {
+			merged.put(name, _entries.get(name));
+		}
+		for (String name : _hashed) {
+			Entry mine = _entries.get(name);
+			if (mine == null) {
+				continue;
+			}
+			Entry theirs = merged.get(name);
+			File image = new File(_folder, name);
+			if (theirs == null || !theirs.matches(image)) {
+				merged.put(name, theirs == null ? mine : theirs.rehashed(mine._size, mine._modified, mine._sha256));
+			}
+		}
+		for (String name : _gone) {
+			if (!new File(_folder, name).exists()) {
+				merged.remove(name);
+			}
+		}
+		_entries = merged;
+	}
+
+	/**
+	 * Writes what is held, under the folder's lock.
+	 *
+	 * @return Whether the sidecar was written; <code>false</code> for a folder the server cannot
+	 *         write into, whose entries are then kept in memory, see {@link ReadOnlyFolders}.
+	 */
+	private boolean write() throws IOException {
+		String key = key(_folder);
+		try {
+			store();
+		} catch (IOException ex) {
+			if (ReadOnlyFolders.writable(_folder)) {
+				throw ex;
+			}
+			IN_MEMORY.put(key, new LinkedHashMap<>(_entries));
+			ReadOnlyFolders.report(_folder, "its photo hashes (" + FILE_NAME + ")");
+			clean();
+			return false;
+		}
+		if (IN_MEMORY.remove(key) != null) {
+			ReadOnlyFolders.writtenAgain(_folder);
+		}
+		clean();
+		_readSize = _file.length();
+		_readModified = _file.lastModified();
+		return true;
+	}
+
+	private void clean() {
+		_put.clear();
+		_hashed.clear();
+		_gone.clear();
+		_broken = false;
+	}
+
+	/**
+	 * Whether hashes of the given folder are held in memory only, because the folder cannot be
+	 * written, see {@link ReadOnlyFolders}.
+	 */
+	public static boolean isInMemory(File folder) {
+		return IN_MEMORY.containsKey(key(folder));
+	}
+
+	private static String key(File folder) {
+		return folder.toPath().toAbsolutePath().normalize().toString();
 	}
 
 	/**
@@ -513,18 +726,38 @@ public class HashCache {
 	}
 
 	private void load() {
-		if (!_file.exists()) {
-			return;
+		_entries = loadEntries();
+	}
+
+	/**
+	 * What the sidecar says, with what is held in memory for a folder that cannot be written laid
+	 * over it; remembers the stamp of what was read.
+	 */
+	private Map<String, Entry> loadEntries() {
+		Map<String, Entry> result = new LinkedHashMap<>();
+		_readSize = _file.length();
+		_readModified = _file.lastModified();
+		if (_file.exists()) {
+			try (Reader reader = new InputStreamReader(Files.newInputStream(_file.toPath()), StandardCharsets.UTF_8)) {
+				result = readEntries(new JsonReader(new ReaderAdapter(reader)));
+			} catch (IOException | RuntimeException ex) {
+				// A cache can always be rebuilt; a broken one must never stop an upload.
+				LOG.log(Level.WARNING,
+					"Rebuilding the unreadable hash cache '" + _file.getAbsolutePath() + "': " + ex.getMessage());
+				result = new LinkedHashMap<>();
+				_broken = true;
+			}
 		}
-		try (Reader reader = new InputStreamReader(Files.newInputStream(_file.toPath()), StandardCharsets.UTF_8)) {
-			_entries = readEntries(new JsonReader(new ReaderAdapter(reader)));
-		} catch (IOException | RuntimeException ex) {
-			// A cache can always be rebuilt; a broken one must never stop an upload.
-			LOG.log(Level.WARNING,
-				"Rebuilding the unreadable hash cache '" + _file.getAbsolutePath() + "': " + ex.getMessage());
-			_entries = new LinkedHashMap<>();
-			_dirty = true;
+		Map<String, Entry> memory = IN_MEMORY.get(key(_folder));
+		if (memory != null) {
+			for (Map.Entry<String, Entry> held : memory.entrySet()) {
+				Entry stored = result.get(held.getKey());
+				if (stored == null || !stored.matches(new File(_folder, held.getKey()))) {
+					result.put(held.getKey(), held.getValue());
+				}
+			}
 		}
+		return result;
 	}
 
 	private static Map<String, Entry> readEntries(JsonReader in) throws IOException {
