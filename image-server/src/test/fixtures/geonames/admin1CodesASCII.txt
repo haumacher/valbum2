@@ -1,0 +1,4 @@
+CH.ZH	Zurich	Zurich	2657895
+DE.01	Baden-Wurttemberg	Baden-Wurttemberg	2953481
+FR.11	Île-de-France	Ile-de-France	3012874
+FR.44	Grand Est	Grand Est	11071622

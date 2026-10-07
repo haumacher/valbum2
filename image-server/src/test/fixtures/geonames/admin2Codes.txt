@@ -1,0 +1,6 @@
+DE.01.083	Freiburg Region	Freiburg Region	2925180
+DE.01.082	Karlsruhe Region	Karlsruhe Region	3214104
+DE.01.081	Regierungsbezirk Stuttgart	Regierungsbezirk Stuttgart	3214105
+DE.01.084	Tübingen Region	Tuebingen Region	3214106
+FR.11.75	Paris	Paris	2968815
+FR.44.67	Bas-Rhin	Bas-Rhin	3034720
