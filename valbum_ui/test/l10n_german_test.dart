@@ -493,6 +493,31 @@ void sliceThree() {
     });
   });
 
+  test('the words of the upload target are German (issue #240)', () {
+    var en = l10nOf(const Locale("en"));
+    var day = DateTime(2026, 10, 14);
+    expect(uploadTargetDay(day, de), isNot(uploadTargetDay(day, en)),
+        reason: "the end date is written in the app's locale");
+    for (var (german, english) in [
+      (de.uploadTargetHeading, en.uploadTargetHeading),
+      (de.uploadTargetChoose, en.uploadTargetChoose),
+      (de.uploadTargetBackToInbox, en.uploadTargetBackToInbox),
+      (de.uploadTargetLineUntil("M", "D"), en.uploadTargetLineUntil("M", "D")),
+      (
+        noticeText(UploadTargetExpired("M", day), de),
+        noticeText(UploadTargetExpired("M", day), en)
+      ),
+      (
+        noticeText(const UploadTargetGone("M"), de),
+        noticeText(const UploadTargetGone("M"), en)
+      ),
+    ]) {
+      expect(german, isNot(english));
+    }
+    expect(de.uploadTargetLineUntil("Mallorca", "Mi., 14. Okt."),
+        allOf(contains("Mallorca"), contains("Mi., 14. Okt.")));
+  });
+
   test('the German words of slice 3 are not the English ones', () {
     var en = l10nOf(const Locale("en"));
     expect(de.albumProperties, isNot(en.albumProperties));

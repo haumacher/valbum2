@@ -25,6 +25,7 @@ import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
 import 'thumbnails.dart';
+import 'upload_target_view.dart';
 
 /// The edge length (in CSS pixels) of the square folder preview the retired
 /// GWT client rendered its index pictures into.
@@ -299,6 +300,10 @@ class ListingView extends StatelessWidget {
         children: [
           // Says plainly when the tiles below are the copy from the cache.
           OfflineBanner(onRetry: albumState.reload),
+          // Where new photos of this device go while that is not the inbox,
+          // with the one tap back to it (issue #240); on the start page.
+          if (albumState.path.isEmpty && link == null)
+            const UploadTargetBanner(),
           // An empty folder says what it is, rather than showing a black
           // page with nothing but the app bar on it, see issue #56.
           if (self.folders.isEmpty)

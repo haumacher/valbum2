@@ -5592,6 +5592,144 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Other work'**
   String get catchUpStepOther;
+
+  /// Heading of the settings section choosing where new photos of this device go (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'Upload new photos to'**
+  String get uploadTargetHeading;
+
+  /// Explains the setting choosing where new photos go (camera-roll sync and uploads into the inbox), issue #240. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'New photos of this device go to the inbox of the space. For a while, say a holiday, they can go straight to an album instead. Only this device changes; other devices keep filling the inbox.'**
+  String get uploadTargetExplanation;
+
+  /// Says that new photos of this device go to the inbox of the space (issue #240). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'New photos go to the inbox.'**
+  String get uploadTargetToInbox;
+
+  /// Says that new photos of this device go to the named album, which has no end date (issue #240). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'New photos go to \'{album}\'.'**
+  String uploadTargetLine(String album);
+
+  /// Says that new photos of this device go to the named album until the given day (issue #240). The date is formatted already, e.g. 'Sun, Oct 12'. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'New photos go to \'{album}\' (until {date}).'**
+  String uploadTargetLineUntil(String album, String date);
+
+  /// Button opening the album picker for where new photos go (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'Choose album...'**
+  String get uploadTargetChoose;
+
+  /// Title of the album picker choosing where new photos of this device go (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'Upload new photos to...'**
+  String get uploadTargetPickerTitle;
+
+  /// Confirm button of the album picker choosing where new photos go (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'Upload here'**
+  String get uploadTargetPickHere;
+
+  /// Shown in the album picker on an album the user may not add photos to, which therefore cannot be chosen as the upload target (issue #240). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'You may not add photos to this album.'**
+  String get uploadTargetNoContribute;
+
+  /// Button sending new photos to the inbox again instead of the chosen album (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'Back to inbox'**
+  String get uploadTargetBackToInbox;
+
+  /// Button changing the day after which new photos go to the inbox again (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'Change end date'**
+  String get uploadTargetChangeEnd;
+
+  /// Title of the dialog setting the end date of the chosen upload album (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'New photos go to \'{album}\''**
+  String uploadTargetDialogTitle(String album);
+
+  /// The end date of the chosen upload album; the date is formatted already, e.g. 'Sun, Oct 12' (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'Until {date}'**
+  String uploadTargetUntil(String date);
+
+  /// Says that the chosen upload album has no end date, and is the button removing it (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'No end date'**
+  String get uploadTargetNoEnd;
+
+  /// Button giving the chosen upload album an end date (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'Set an end date'**
+  String get uploadTargetSetEnd;
+
+  /// Explains the end date of the chosen upload album (issue #240). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'After the end date this device returns to the inbox by itself, so that a forgotten album does not swallow the next month\'s photos.'**
+  String get uploadTargetEndExplanation;
+
+  /// Button confirming the chosen upload album and its end date (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get uploadTargetSave;
+
+  /// Said after an upload or a sync that sent the photos to the chosen album rather than to the inbox (issue #240)
+  ///
+  /// In en, this message translates to:
+  /// **'The new photos went to \'{album}\'.'**
+  String uploadTargetWentTo(String album);
+
+  /// Said once when the end date of the chosen upload album has passed (issue #240). The date is formatted already. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading to \'{album}\' ended on {date}; new photos go to the inbox again.'**
+  String noticeUploadTargetExpired(String album, String date);
+
+  /// Said when the chosen upload album was deleted, or renamed or moved where it cannot be followed; the photos went to the inbox instead (issue #240). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'The album \'{album}\' is no longer there; new photos go to the inbox.'**
+  String noticeUploadTargetGone(String album);
+
+  /// Said when the user lost the right to add photos to the chosen upload album; the photos went to the inbox instead (issue #240). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'You may no longer add photos to \'{album}\'; new photos go to the inbox.'**
+  String noticeUploadTargetRefused(String album);
+
+  /// Said when the chosen upload album is not an album any more (e.g. a collection); the photos went to the inbox instead (issue #240). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'The album \'{album}\' takes no photos; new photos go to the inbox.'**
+  String noticeUploadTargetNotAlbum(String album);
+
+  /// Said when the chosen upload album was renamed or moved and the app followed it (issue #240). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'The album \'{before}\' is now \'{album}\'; new photos go there.'**
+  String noticeUploadTargetFollowed(String before, String album);
 }
 
 class _AppLocalizationsDelegate

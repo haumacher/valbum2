@@ -3627,4 +3627,96 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get catchUpStepOther => 'Sonstige Arbeiten';
+
+  @override
+  String get uploadTargetHeading => 'Neue Fotos hochladen nach';
+
+  @override
+  String get uploadTargetExplanation =>
+      'Neue Fotos dieses Geräts landen im Posteingang des Bereichs. Für eine Weile, etwa im Urlaub, können sie stattdessen direkt in ein Album gehen. Das gilt nur für dieses Gerät; andere Geräte füllen weiter den Posteingang.';
+
+  @override
+  String get uploadTargetToInbox => 'Neue Fotos landen im Posteingang.';
+
+  @override
+  String uploadTargetLine(String album) {
+    return 'Neue Fotos landen in „$album“.';
+  }
+
+  @override
+  String uploadTargetLineUntil(String album, String date) {
+    return 'Neue Fotos landen in „$album“ (bis $date).';
+  }
+
+  @override
+  String get uploadTargetChoose => 'Album auswählen...';
+
+  @override
+  String get uploadTargetPickerTitle => 'Neue Fotos hochladen nach...';
+
+  @override
+  String get uploadTargetPickHere => 'Hier hochladen';
+
+  @override
+  String get uploadTargetNoContribute =>
+      'Sie dürfen diesem Album keine Fotos hinzufügen.';
+
+  @override
+  String get uploadTargetBackToInbox => 'Zurück zum Posteingang';
+
+  @override
+  String get uploadTargetChangeEnd => 'Enddatum ändern';
+
+  @override
+  String uploadTargetDialogTitle(String album) {
+    return 'Neue Fotos landen in „$album“';
+  }
+
+  @override
+  String uploadTargetUntil(String date) {
+    return 'Bis $date';
+  }
+
+  @override
+  String get uploadTargetNoEnd => 'Kein Enddatum';
+
+  @override
+  String get uploadTargetSetEnd => 'Enddatum festlegen';
+
+  @override
+  String get uploadTargetEndExplanation =>
+      'Nach dem Enddatum kehrt dieses Gerät von selbst in den Posteingang zurück, damit ein vergessenes Album nicht die Fotos der nächsten Monate verschlingt.';
+
+  @override
+  String get uploadTargetSave => 'Speichern';
+
+  @override
+  String uploadTargetWentTo(String album) {
+    return 'Die neuen Fotos sind in „$album“ gelandet.';
+  }
+
+  @override
+  String noticeUploadTargetExpired(String album, String date) {
+    return 'Das Hochladen nach „$album“ endete am $date; neue Fotos landen wieder im Posteingang.';
+  }
+
+  @override
+  String noticeUploadTargetGone(String album) {
+    return 'Das Album „$album“ gibt es nicht mehr; neue Fotos landen im Posteingang.';
+  }
+
+  @override
+  String noticeUploadTargetRefused(String album) {
+    return 'Sie dürfen „$album“ keine Fotos mehr hinzufügen; neue Fotos landen im Posteingang.';
+  }
+
+  @override
+  String noticeUploadTargetNotAlbum(String album) {
+    return '„$album“ nimmt keine Fotos auf; neue Fotos landen im Posteingang.';
+  }
+
+  @override
+  String noticeUploadTargetFollowed(String before, String album) {
+    return 'Das Album „$before“ heißt jetzt „$album“; neue Fotos landen dort.';
+  }
 }

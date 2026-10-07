@@ -200,6 +200,14 @@ class UploadSummary {
   /// file.
   final List<RefusedFile> refused;
 
+  /// The content hashes of the files the server stored, in the order it
+  /// answered them (issue #240).
+  ///
+  /// What a later upload finds an album by when its folder was renamed or
+  /// moved: the hash index answers where a photo is now, see
+  /// `upload_target.dart`.
+  final List<String> storedHashes;
+
   const UploadSummary({
     required this.stored,
     required this.present,
@@ -208,6 +216,7 @@ class UploadSummary {
     this.indexed,
     this.deferred = false,
     this.refused = const [],
+    this.storedHashes = const [],
   });
 
   /// The number of files the upload was asked to transfer.
@@ -2025,6 +2034,7 @@ class VAlbumClient {
     var stored = 0;
     var present = skipped;
     var refused = <RefusedFile>[];
+    var storedHashes = <String>[];
     var sentFiles = 0;
     var images = pending.length;
     var confirmed = 0;
@@ -2129,6 +2139,10 @@ class VAlbumClient {
 
       var batchStored =
           result.files.where((file) => file.status != uploadPresent).length;
+      storedHashes.addAll([
+        for (var file in result.files)
+          if (file.status != uploadPresent && file.hash.isNotEmpty) file.hash
+      ]);
       stored += batchStored;
       present += result.files.length - batchStored;
       refused.addAll(result.refused);
@@ -2147,6 +2161,7 @@ class VAlbumClient {
       presentIn: presentIn,
       indexed: indexed,
       refused: refused,
+      storedHashes: storedHashes,
     );
   }
 

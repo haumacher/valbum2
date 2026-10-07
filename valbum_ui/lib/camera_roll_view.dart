@@ -17,6 +17,7 @@ import 'l10n/app_localizations.dart';
 import 'notices.dart';
 import 'photo_library.dart';
 import 'settings.dart';
+import 'upload_target_view.dart';
 
 /// The key of the switch enabling the sync, so that a test can address it.
 const Key cameraRollSwitchKey = Key("cameraRoll.enabled");
@@ -179,6 +180,10 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     AppLocalizations l10n,
   ) {
     var inbox = CallerInfo.maybeOf(context)?.inbox;
+    // For a while the photos may go to an album instead (issue #240); the
+    // line says so, and the section above it changes it.
+    var targetScope = UploadTargetScope.maybeOf(context);
+    var target = targetScope?.targets.targetOf(targetScope.dataUrl);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -225,15 +230,19 @@ class _CameraRollSectionState extends State<CameraRollSection> {
         _sources(sync, available),
         const SizedBox(height: 8),
         // Where the photos go is the server's word, never a choice of this
-        // device (issue #226): the one inbox of the space, named here.
+        // device (issue #226): the one inbox of the space, named here --
+        // unless this device sends them to an album for a while (#240).
         if (inbox != null && inbox.isNotEmpty)
           Row(
             children: [
-              const Icon(Icons.inbox, size: 20),
+              Icon(target == null ? Icons.inbox : Icons.drive_folder_upload,
+                  size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  l10n.cameraRollInboxTarget(inbox),
+                  target == null
+                      ? l10n.cameraRollInboxTarget(inbox)
+                      : uploadTargetLine(target, l10n),
                   key: cameraRollInboxKey,
                 ),
               ),
@@ -552,6 +561,16 @@ String cameraRollLine(CameraRollStatus status, AppLocalizations l10n) {
 
 String _lastRunLine(CameraRollStatus status, AppLocalizations l10n) {
   var line = _syncedLine(status, l10n);
+  // Where the photos went when that was an album, and what became of the
+  // album they were meant for (issue #240).
+  var target = status.lastTarget;
+  if (target != null && status.lastStored > 0) {
+    line = "$line ${l10n.uploadTargetWentTo(target)}";
+  }
+  var targetNotice = status.targetNotice;
+  if (targetNotice != null) {
+    line = "$line ${noticeText(targetNotice, l10n)}";
+  }
   var skipped = status.lastSkipped;
   if (skipped.isEmpty) {
     return line;

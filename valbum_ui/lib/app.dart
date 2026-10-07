@@ -48,6 +48,8 @@ import 'sign_in_options.dart';
 import 'sign_in_form.dart';
 import 'trash_view.dart';
 import 'upload_progress.dart';
+import 'upload_target.dart';
+import 'upload_target_view.dart';
 import 'urls.dart';
 import 'wakelock.dart';
 import 'page_insets.dart';
@@ -270,7 +272,15 @@ class VAlbumAppState extends State<VAlbumApp> {
     isOffline: () => offlineState.offline,
     scheduler: backgroundScheduler,
     connectivity: connectivity,
+    // The same targets the start page and the settings show (issue #240):
+    // a run that clears or follows one is seen there at once.
+    targets: uploadTargets,
   );
+
+  /// Where new photos of this device go besides the inbox, per server
+  /// (issue #240), kept in the same store as the camera-roll configuration.
+  late final UploadTargets uploadTargets =
+      UploadTargets(store: settings.store);
 
   /// The network the device is on, see [ConnectivitySource] (issue #36).
   ///
@@ -594,6 +604,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     // badge on the start page says how much (issue #226).
     cameraRoll.addListener(_cameraRollChanged);
     settingsLoaded.then((_) => _finishMemberSignIn());
+    settingsLoaded.then((_) => uploadTargets.load());
     settingsLoaded.then((_) => cameraRoll.load()).then((_) {
       if (mounted) {
         cameraRoll.start();
@@ -1209,6 +1220,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     settings.removeListener(_settingsChanged);
     cameraRoll.removeListener(_cameraRollChanged);
     cameraRoll.dispose();
+    uploadTargets.dispose();
     connectivity.dispose();
     if (widget.photoLibrary == null) {
       photoLibrary.dispose();
@@ -1405,9 +1417,15 @@ class VAlbumAppState extends State<VAlbumApp> {
                   child: CallerScope(
                     caller: caller,
                     refresh: _refreshCaller,
-                    child: _readyForTheRouter && client != null
-                        ? _albumApp(client!)
-                        : _beforeTheRouter(),
+                    // A share link never sets a target (issue #240): inside
+                    // a session there is no server of the device's own.
+                    child: UploadTargetScope(
+                      targets: uploadTargets,
+                      client: session == null ? client : null,
+                      child: _readyForTheRouter && client != null
+                          ? _albumApp(client!)
+                          : _beforeTheRouter(),
+                    ),
                   ),
                 ),
               ),
@@ -2847,25 +2865,31 @@ class VAlbumState extends State<VAlbumView>
     }
 
     var messenger = ScaffoldMessenger.of(context);
+    // An upload into the inbox is an upload of new photos, and goes where
+    // this device sends them (issue #240): the inbox, or for a while the
+    // album chosen instead — with the fallback to the inbox where that album
+    // refuses. An upload into any other album goes into that album.
+    var route = await _routeOf(path);
+    Future<UploadSummary> attempt(List<String> into) => client.uploadNew(
+          into,
+          uploads,
+          onProgress: (report) {
+            // Only what the server has confirmed: the preparing phase counts
+            // the file it is hashing, which is nothing anybody received, see
+            // [UploadProgress.imagesDone]. The dialog counts the images *sent*
+            // (issue #194), but a failure speaks of what is on the server —
+            // the dialog's "sent" and the failure's "on the server" are two
+            // words for two numbers, and only the second one is a promise.
+            if (report.phase != UploadPhase.preparing) {
+              shown = report.imagesDone;
+            }
+            progress.value = report;
+          },
+          handle: handle,
+        );
     UploadSummary summary;
     try {
-      summary = await client.uploadNew(
-        path,
-        uploads,
-        onProgress: (report) {
-          // Only what the server has confirmed: the preparing phase counts
-          // the file it is hashing, which is nothing anybody received, see
-          // [UploadProgress.imagesDone]. The dialog counts the images *sent*
-          // (issue #194), but a failure speaks of what is on the server —
-          // the dialog's "sent" and the failure's "on the server" are two
-          // words for two numbers, and only the second one is a promise.
-          if (report.phase != UploadPhase.preparing) {
-            shown = report.imagesDone;
-          }
-          progress.value = report;
-        },
-        handle: handle,
-      );
+      summary = await (route == null ? attempt(path) : route.send(attempt));
     } catch (error) {
       closeDialog();
       progress.dispose();
@@ -2912,13 +2936,25 @@ class VAlbumState extends State<VAlbumView>
       print("upload complete: ${summary.messageOf(l10n)}");
     }
 
+    var said = summary.messageOf(l10n);
+    // Where the photos went, when that is not the inbox the user is looking
+    // at, and why, when the album they were meant for refused (issue #240).
+    var routeNotice = route?.notice;
+    if (routeNotice != null) {
+      said = "$said ${noticeText(routeNotice, l10n)}";
+    }
+    var target = route?.target;
+    if (target != null && summary.stored > 0) {
+      said = "$said ${l10n.uploadTargetWentTo(target.name)}";
+    }
     _tell(
       messenger,
       SnackBar(
-        content: Text(summary.messageOf(l10n)),
+        content: Text(said),
         // A file that was not taken is named, which takes longer to read
-        // (issue #186).
-        duration: Duration(seconds: summary.refused.isEmpty ? 4 : 10),
+        // (issue #186), and so is where the photos went.
+        duration: Duration(
+            seconds: summary.refused.isEmpty && route?.notice == null ? 4 : 10),
       ),
     );
 
@@ -2933,6 +2969,25 @@ class VAlbumState extends State<VAlbumView>
       return;
     }
     reload();
+  }
+
+  /// The route an upload into [path] takes, `null` where [path] is not the
+  /// inbox of the space (issue #240): only new photos follow the upload
+  /// target, and an upload into the inbox is that.
+  Future<UploadRoute?> _routeOf(List<String> path) async {
+    var scope = UploadTargetScope.maybeOf(context);
+    var inbox = CallerInfo.maybeOf(context)?.inboxPath ?? const <String>[];
+    if (scope == null ||
+        scope.client == null ||
+        inbox.isEmpty ||
+        !listEquals(inbox, path)) {
+      return null;
+    }
+    return UploadRoute.open(
+      targets: scope.targets,
+      client: client,
+      inbox: inbox,
+    );
   }
 
   /// Shows [bar], unless the messenger is gone with the screen.

@@ -115,6 +115,8 @@ const List<String> convertedFiles = [
   "lib/thumbnails.dart",
   "lib/trash_view.dart",
   "lib/upload_progress.dart",
+  "lib/upload_target.dart",
+  "lib/upload_target_view.dart",
   "lib/urls.dart",
   "lib/video_view.dart",
   "lib/wakelock.dart",

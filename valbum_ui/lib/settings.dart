@@ -36,6 +36,7 @@ import 'offline.dart';
 import 'platform.dart';
 import 'resource.dart';
 import 'sign_in_form.dart';
+import 'upload_target_view.dart';
 import 'urls.dart';
 import 'page_insets.dart';
 
@@ -98,6 +99,18 @@ abstract class SettingsStore {
 
   /// Stores what a background sync run did.
   Future<void> saveBackgroundRun(String json);
+
+  /// Where new photos of this device go, per server, as stored JSON, or
+  /// `null` (issue #240).
+  ///
+  /// A third blob of its own: a setting of this device, never of the space,
+  /// keyed by the server's data URL, so that pointing the app at another
+  /// server does not carry an album path there. A store that holds none sends
+  /// everything to the inbox, as before, see [UploadTargetStorage].
+  Future<String?> loadUploadTargets();
+
+  /// Stores where new photos of this device go.
+  Future<void> saveUploadTargets(String json);
 }
 
 /// A [SettingsStore] keeping the value in memory only, used by tests.
@@ -120,6 +133,9 @@ class InMemorySettingsStore extends SettingsStore {
   /// The stored report of the last background run, see
   /// [SettingsStore.loadBackgroundRun].
   String? backgroundRun;
+
+  /// The stored upload targets, see [SettingsStore.loadUploadTargets].
+  String? uploadTargets;
 
   InMemorySettingsStore([
     this.value,
@@ -172,6 +188,12 @@ class InMemorySettingsStore extends SettingsStore {
 
   @override
   Future<void> saveBackgroundRun(String json) async => backgroundRun = json;
+
+  @override
+  Future<String?> loadUploadTargets() async => uploadTargets;
+
+  @override
+  Future<void> saveUploadTargets(String json) async => uploadTargets = json;
 }
 
 /// The [SettingsStore] of the app, backed by `shared_preferences`.
@@ -197,6 +219,10 @@ class PreferencesSettingsStore extends SettingsStore {
   /// The preferences key the report of the last background run is stored
   /// under, see [SettingsStore.loadBackgroundRun].
   static const String backgroundRunKey = "cameraRollBackground";
+
+  /// The preferences key the upload targets are stored under, see
+  /// [SettingsStore.loadUploadTargets].
+  static const String uploadTargetsKey = "uploadTargets";
 
   const PreferencesSettingsStore();
 
@@ -256,6 +282,18 @@ class PreferencesSettingsStore extends SettingsStore {
   @override
   Future<void> saveBackgroundRun(String json) async =>
       (await SharedPreferences.getInstance()).setString(backgroundRunKey, json);
+
+  @override
+  Future<String?> loadUploadTargets() async {
+    var preferences = await SharedPreferences.getInstance();
+    // Written by the background isolate as well (issue #240): read afresh.
+    await preferences.reload();
+    return preferences.getString(uploadTargetsKey);
+  }
+
+  @override
+  Future<void> saveUploadTargets(String json) async =>
+      (await SharedPreferences.getInstance()).setString(uploadTargetsKey, json);
 }
 
 /// The server URL the app uses, and the way it is changed.
@@ -1220,6 +1258,9 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
               const SizedBox(height: 24),
               const Divider(),
               ..._signInSection(l10n, settings),
+              // Where new photos go (issue #240): on the web as well, where
+              // the upload into the inbox follows it.
+              const UploadTargetSection(),
               if (!widget.isWeb) const CameraRollSection(),
               ..._cacheSection(l10n),
               ..._diagnosticsSection(l10n, settings),

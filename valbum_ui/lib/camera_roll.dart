@@ -1,6 +1,7 @@
 /// Camera-roll sync (issue #30): new photos on the device flow into the inbox
 /// of the space on the server — the one the server names in `?type=auth`
-/// (issue #226), never one this app chooses.
+/// (issue #226), never one this app chooses — or, for a while, into the album
+/// this device was told to send them to, see `upload_target.dart` (#240).
 ///
 /// The engine is [CameraRollSync]. It is a state machine with exactly one run
 /// at a time:
@@ -36,6 +37,7 @@ import 'photo_library.dart';
 import 'resource.dart';
 import 'notices.dart';
 import 'settings.dart';
+import 'upload_target.dart';
 
 /// What a guest is answered instead of a camera-roll sync, see issue #54.
 ///
@@ -423,6 +425,17 @@ class CameraRollStatus {
   /// batch, exactly as past a photo the server already had.
   final List<String> lastSkipped;
 
+  /// What the last run has to say about where the photos went (issue #240):
+  /// the album they were meant for ended or was followed; `null` otherwise.
+  ///
+  /// Said by the run that found out, and by that run only: the target is
+  /// cleared or updated with it, so the next run has nothing to say.
+  final AppNotice? targetNotice;
+
+  /// The album the last successful run sent the photos to, `null` for the
+  /// inbox (issue #240).
+  final String? lastTarget;
+
   const CameraRollStatus({
     this.phase = CameraRollPhase.disabled,
     this.done = 0,
@@ -437,6 +450,8 @@ class CameraRollStatus {
     this.indexingDone,
     this.indexingTotal,
     this.lastSkipped = const [],
+    this.targetNotice,
+    this.lastTarget,
   });
 
   /// Whether the run is waiting for the server to finish indexing (issue #118).
@@ -468,6 +483,7 @@ class CameraRollStatus {
     int? indexingDone,
     int? indexingTotal,
     List<String>? lastSkipped,
+    AppNotice? targetNotice,
   }) =>
       CameraRollStatus(
         phase: phase ?? this.phase,
@@ -485,6 +501,9 @@ class CameraRollStatus {
         indexingDone: indexingDone,
         indexingTotal: indexingTotal,
         lastSkipped: lastSkipped ?? this.lastSkipped,
+        // Like [message]: what the last run said belongs to that run.
+        targetNotice: targetNotice,
+        lastTarget: lastTarget,
       );
 }
 
@@ -572,6 +591,10 @@ class CameraRollSync extends ChangeNotifier {
   /// Builds the delay timers, injected for the same reason.
   final TimerFactory timerFactory;
 
+  /// Where the photos go besides the inbox (issue #240): the upload target of
+  /// this device, read from the same [store] before every run.
+  final UploadTargets targets;
+
   CameraRollConfig _config = CameraRollConfig.disabled;
   CameraRollStatus _status = const CameraRollStatus();
   bool _loaded = false;
@@ -608,7 +631,10 @@ class CameraRollSync extends ChangeNotifier {
     this.interval = const Duration(minutes: 15),
     DateTime Function()? clock,
     TimerFactory? timerFactory,
-  })  : callerOf = callerOf ?? _nobody,
+    UploadTargets? targets,
+  })  : targets =
+            targets ?? UploadTargets(store: store, clock: clock ?? DateTime.now),
+        callerOf = callerOf ?? _nobody,
         isOffline = isOffline ?? _never,
         scheduler = scheduler ?? const UnavailableBackgroundScheduler(),
         connectivity = connectivity ?? const UnknownConnectivity(),
@@ -991,6 +1017,15 @@ class CameraRollSync extends ChangeNotifier {
       _fail(notice: const NoInboxForCaller(), retry: caller == null);
       return;
     }
+    // Where the photos go: the inbox, or the album this device was told to
+    // send them to for a while (issue #240). Read from the store, never asked
+    // of the server — a run with nothing new still asks the server nothing;
+    // a target that is gone is found out by the upload's own requests.
+    var route = await UploadRoute.open(
+      targets: targets,
+      client: client,
+      inbox: inbox,
+    );
     List<String> sources;
     try {
       sources = await _sources();
@@ -999,7 +1034,7 @@ class CameraRollSync extends ChangeNotifier {
       return;
     }
     if (sources.isEmpty) {
-      _succeed(0, 0, const []);
+      _succeed(0, 0, const [], const [], route);
       return;
     }
     var stored = 0;
@@ -1072,8 +1107,8 @@ class CameraRollSync extends ChangeNotifier {
           ];
           if (fresh.isNotEmpty) {
             Future<UploadSummary> send(List<PhotoItem> items) =>
-                client.uploadNew(
-                  inbox,
+                route.send((path) => client.uploadNew(
+                  path,
                   [for (var item in items) item.upload],
                   // While the server is still reading the library it cannot
                   // say that a photo is already in some album, and a first
@@ -1081,7 +1116,7 @@ class CameraRollSync extends ChangeNotifier {
                   // The run waits -- unless the user said otherwise, see
                   // issue #118.
                   waitForIndex: !_config.syncWhileIndexing,
-                );
+                ));
             Future<UploadSummary> transfer() =>
                 _sendSkippingUnsupported(fresh, send);
 
@@ -1128,7 +1163,7 @@ class CameraRollSync extends ChangeNotifier {
         }
       }
     }
-    _succeed(stored, present, presentIn, skipped);
+    _succeed(stored, present, presentIn, skipped, route);
   }
 
   /// Sends [items] by [send], and where the server refuses the batch as
@@ -1169,6 +1204,7 @@ class CameraRollSync extends ChangeNotifier {
       var present = 0;
       var presentIn = <String>[];
       var refused = <RefusedFile>[];
+      var storedHashes = <String>[];
       IndexProgress? indexed;
       for (var item in items) {
         var summary = await _sendSkippingUnsupported([item], send);
@@ -1180,6 +1216,7 @@ class CameraRollSync extends ChangeNotifier {
         presentIn
             .addAll(summary.presentIn.where((p) => !presentIn.contains(p)));
         refused.addAll(summary.refused);
+        storedHashes.addAll(summary.storedHashes);
         indexed = summary.indexed ?? indexed;
       }
       return UploadSummary(
@@ -1188,6 +1225,7 @@ class CameraRollSync extends ChangeNotifier {
         presentIn: presentIn,
         indexed: indexed,
         refused: refused,
+        storedHashes: storedHashes,
       );
     }
   }
@@ -1252,8 +1290,13 @@ class CameraRollSync extends ChangeNotifier {
     ));
   }
 
-  void _succeed(int stored, int present, List<String> presentIn,
-      [List<String> skipped = const []]) {
+  void _succeed(
+    int stored,
+    int present,
+    List<String> presentIn,
+    List<String> skipped,
+    UploadRoute route,
+  ) {
     _attempt = 0;
     _retryTimer?.cancel();
     _retryTimer = null;
@@ -1264,6 +1307,8 @@ class CameraRollSync extends ChangeNotifier {
       lastPresent: present,
       lastPresentIn: presentIn,
       lastSkipped: skipped,
+      targetNotice: route.notice,
+      lastTarget: route.target?.name,
     ));
   }
 

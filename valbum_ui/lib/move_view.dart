@@ -540,7 +540,11 @@ class PickedTarget {
   /// The album to create in [path] before moving, `null` for a plain move.
   final AlbumInfo? newAlbum;
 
-  const PickedTarget(this.path, {this.newAlbum});
+  /// The title of the album the picker was confirmed on, empty where it has
+  /// none or the folder is no album (issue #240 names the target by it).
+  final String title;
+
+  const PickedTarget(this.path, {this.newAlbum, this.title = ""});
 }
 
 /// The one line the picker names a folder with, see issue #113.
@@ -610,6 +614,14 @@ class FolderPicker extends StatefulWidget {
   /// The title of the dialog, "Move to…" where none is given.
   final String? title;
 
+  /// Whether only an album the caller may add photos to can be confirmed
+  /// (issue #240): the upload target of a device is chosen with this picker,
+  /// and an album that refuses the upload is no target.
+  ///
+  /// A move needs no such limit here — the server refuses it with its own
+  /// reason, entry by entry.
+  final bool requireContribute;
+
   const FolderPicker({
     super.key,
     required this.client,
@@ -620,6 +632,7 @@ class FolderPicker extends StatefulWidget {
     this.newAlbumDate,
     this.targetIsCollection = false,
     this.title,
+    this.requireContribute = false,
   });
 
   @override
@@ -649,6 +662,10 @@ class FolderPickerState extends State<FolderPicker> {
   /// Whether the folder shown is a collection (a leaf too), see issue #221.
   bool _collection = false;
 
+  /// The album shown, `null` for a folder of folders and while nothing is
+  /// shown: its title and its rights, see [FolderPicker.requireContribute].
+  AlbumInfo? _album;
+
   @override
   void initState() {
     super.initState();
@@ -664,6 +681,7 @@ class FolderPickerState extends State<FolderPicker> {
       _listing = null;
       _leaf = false;
       _collection = false;
+      _album = null;
     });
     Resource? resource;
     try {
@@ -687,6 +705,7 @@ class FolderPickerState extends State<FolderPicker> {
         _folders = resource.folders;
       } else if (resource is AlbumInfo) {
         _leaf = true;
+        _album = resource;
         _collection = resource.kind == AlbumKind.collection;
       } else {
         _error = AppLocalizations.of(context)!.folderCannotBeShown;
@@ -717,7 +736,22 @@ class FolderPickerState extends State<FolderPicker> {
   bool get _mayConfirm => _known &&
       (widget.targetIsCollection
           ? _collection
-          : _leaf == widget.targetIsAlbum && !_collection);
+          : _leaf == widget.targetIsAlbum && !_collection) &&
+      !_contributeMissing;
+
+  /// Whether the album shown refuses what [FolderPicker.requireContribute]
+  /// asks for. The rights the album was answered with decide, the caller's
+  /// role where it was answered none, see [offeredRights].
+  bool get _contributeMissing {
+    var album = _album;
+    if (!widget.requireContribute || album == null) {
+      return false;
+    }
+    return !offeredRights(
+      Rights.of(album),
+      CallerInfo.permissionOf(context),
+    ).mayContribute;
+  }
 
   /// Whether a collection may be created in the folder shown, see #221.
   bool _mayCreateCollectionHere(BuildContext context) =>
@@ -785,7 +819,8 @@ class FolderPickerState extends State<FolderPicker> {
             // A folder of the wrong kind cannot be picked; the line in the
             // list says why, see issue #113.
             onPressed: _mayConfirm
-                ? () => Navigator.of(context).pop(PickedTarget(_path))
+                ? () => Navigator.of(context)
+                    .pop(PickedTarget(_path, title: _album?.title ?? ""))
                 : null,
             child: Text(widget.confirmLabel(_path)),
           ),
@@ -814,6 +849,13 @@ class FolderPickerState extends State<FolderPicker> {
             key: const Key("picker-leaf"),
             leading: const Icon(Icons.photo_album),
             title: Text(albumHoldsNoFolders(l10n)),
+          ),
+        // An album the caller may not add to is no upload target (#240).
+        if (_known && _leaf && !_collection && _contributeMissing)
+          ListTile(
+            key: const Key("picker-no-contribute"),
+            leading: const Icon(Icons.block),
+            title: Text(l10n.uploadTargetNoContribute),
           ),
         // A collection takes no file and no folder: photographs are added to
         // it by reference, see issue #221.
