@@ -5769,5 +5769,148 @@
   "@totpQrSemantics": {
     "description": "What a screen reader says of the QR code that sets up an authenticator app (issue #233)",
     "x-translated": "77eeb339"
+  },
+  "catchUpHeading": "Preparing the albums",
+  "@catchUpHeading": {
+    "description": "Title of the admin's line in the server settings showing how far the server has got preparing previews, covers, faces, places and videos in the background (issue #236)",
+    "x-translated": "8ea0fcb0"
+  },
+  "catchUpAsking": "Asking the server…",
+  "@catchUpAsking": {
+    "description": "Line of the preparation progress while the server's first answer is outstanding (issue #236)",
+    "x-translated": "72d5478f"
+  },
+  "catchUpUnavailable": "The progress cannot be read: {reason}",
+  "@catchUpUnavailable": {
+    "description": "Line of the preparation progress when the server could not be asked; the reason is the server's or the transport's own sentence (issue #236)",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "The server cannot be reached."
+      }
+    },
+    "x-translated": "5262a805"
+  },
+  "catchUpProgress": "Albums prepared: {done} of {total}",
+  "@catchUpProgress": {
+    "description": "The progress of the background preparation of the albums (issue #236)",
+    "placeholders": {
+      "done": {
+        "type": "int",
+        "example": "12"
+      },
+      "total": {
+        "type": "int",
+        "example": "4711"
+      }
+    },
+    "x-translated": "fedcc9af"
+  },
+  "catchUpComplete": "{total, plural, =0{No albums to prepare} =1{The 1 album is prepared} other{All {total} albums are prepared}}",
+  "@catchUpComplete": {
+    "description": "The background preparation of the albums has nothing left to do (issue #236)",
+    "placeholders": {
+      "total": {
+        "type": "int",
+        "example": "4711"
+      }
+    },
+    "x-translated": "7d923c8a"
+  },
+  "catchUpIdle": "Nothing to do right now.",
+  "@catchUpIdle": {
+    "description": "Detail of the preparation progress: the server is idle (issue #236)",
+    "x-translated": "b06772e8"
+  },
+  "catchUpNow": "Now: {step} in {folder}",
+  "@catchUpNow": {
+    "description": "Detail of the preparation progress: what the server is doing and in which folder (issue #236)",
+    "placeholders": {
+      "step": {
+        "type": "String",
+        "example": "Faces"
+      },
+      "folder": {
+        "type": "String",
+        "example": "2024/2024-05-01 Zoo"
+      }
+    },
+    "x-translated": "abb5c4f8"
+  },
+  "catchUpYielding": "Paused while photos are being shown to somebody.",
+  "@catchUpYielding": {
+    "description": "Detail of the preparation progress: the background waits because requests are being served, which always go first (issue #236)",
+    "x-translated": "6505b376"
+  },
+  "catchUpVideos": "{count, plural, =0{No video waiting} =1{1 video waiting} other{{count} videos waiting}}",
+  "@catchUpVideos": {
+    "description": "Detail of the preparation progress: how many videos still wait for their renditions (issue #236)",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    },
+    "x-translated": "1fe7d319"
+  },
+  "catchUpNoFailure": "Nothing failed.",
+  "@catchUpNoFailure": {
+    "description": "Detail of the preparation progress: no step failed (issue #236)",
+    "x-translated": "6851791"
+  },
+  "catchUpFailure": "Last failure in {folder}: {failure}",
+  "@catchUpFailure": {
+    "description": "Detail of the preparation progress: the last failure, verbatim as the server words it, and its folder (issue #236)",
+    "placeholders": {
+      "folder": {
+        "type": "String",
+        "example": "2023/Broken"
+      },
+      "failure": {
+        "type": "String",
+        "example": "previews: IMG_1.jpg: Cannot create image preview."
+      }
+    },
+    "x-translated": "b9233e3b"
+  },
+  "catchUpRoot": "the top folder",
+  "@catchUpRoot": {
+    "description": "Name of the root folder of the space in the details of the preparation progress (issue #236)",
+    "x-translated": "210b390"
+  },
+  "catchUpStepHash": "Fingerprints",
+  "@catchUpStepHash": {
+    "description": "Name of a background step: computing the content hashes of the photos (issue #236)",
+    "x-translated": "95cab708"
+  },
+  "catchUpStepPreviews": "Previews",
+  "@catchUpStepPreviews": {
+    "description": "Name of a background step: making the thumbnails of the photos (issue #236)",
+    "x-translated": "c41818de"
+  },
+  "catchUpStepCover": "Album covers",
+  "@catchUpStepCover": {
+    "description": "Name of a background step: making the pictures of the album tiles (issue #236)",
+    "x-translated": "20e7b73f"
+  },
+  "catchUpStepFaces": "Faces",
+  "@catchUpStepFaces": {
+    "description": "Name of a background step: looking for faces (issue #236)",
+    "x-translated": "91c008f"
+  },
+  "catchUpStepPlaces": "Places",
+  "@catchUpStepPlaces": {
+    "description": "Name of a background step: finding where the photos were taken (issue #236)",
+    "x-translated": "f9036963"
+  },
+  "catchUpStepVideos": "Videos",
+  "@catchUpStepVideos": {
+    "description": "Name of a background step: making the playback renditions and teasers of videos (issue #236)",
+    "x-translated": "2e066104"
+  },
+  "catchUpStepOther": "Other work",
+  "@catchUpStepOther": {
+    "description": "Name of a background step the app does not know (issue #236)",
+    "x-translated": "ed54a9c"
   }
 }

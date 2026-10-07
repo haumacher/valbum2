@@ -2662,6 +2662,23 @@ class VAlbumClient {
     return DuplicateList.read(JsonReader.fromString(response.body));
   }
 
+  /// How far the server has got preparing the albums of this space in the
+  /// background (#236): albums done of all, the step and folder it is at, the
+  /// videos still waiting and the last failure.
+  ///
+  /// The administrator's question: everybody else is refused with the
+  /// server's own sentence. Read-only, and cheap enough to ask every few
+  /// seconds.
+  Future<CatchUpStatus> catchUp() async {
+    var url = "${folderUrl(const [])}?type=catch-up";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(response.statusCode, response.body,
+          platformMessages.doingAsking("'$url'"));
+    }
+    return CatchUpStatus.read(JsonReader.fromString(response.body));
+  }
+
   /// Adds a person of [name] to the register, answering them (issue #125).
   ///
   /// Immediate and space-level: naming a group of faces in the editor creates

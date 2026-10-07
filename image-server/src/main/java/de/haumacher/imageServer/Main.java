@@ -80,6 +80,10 @@ public class Main {
 			"How many thumbnails are generated at the same time (issue #69); the default is the "
 				+ "number of processors, and the system property 'valbum.previewThreads' does the "
 				+ "same. Serving an already cached thumbnail is never throttled");
+		parser.addArgument("--sweep-seconds").type(type).help(
+			"How often every folder of the library is checked for changes nobody browsed (issue #236): "
+				+ "one stat per folder, so that photos copied in by hand are hashed and prepared without a "
+				+ "restart; the default is 60");
 		parser.addArgument("--pairing-secret").help(
 			"Retired by issue #89; the server refuses to start when it is given. Use --admin-code, "
 				+ "or let the server print a fresh sign-in code for the administrator at start-up");
@@ -359,6 +363,11 @@ public class Main {
 		Integer previewThreads = ns.get("preview_threads");
 		if (previewThreads != null) {
 			PreviewCache.setPermitCount(previewThreads.intValue());
+		}
+
+		Integer sweepSeconds = ns.get("sweep_seconds");
+		if (sweepSeconds != null) {
+			de.haumacher.imageServer.pipeline.FolderPipeline.setDefaultSweepMillis(sweepSeconds.longValue() * 1000);
 		}
 
 		String adminCode = ns.getString("admin_code");

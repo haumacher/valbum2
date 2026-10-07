@@ -37,6 +37,7 @@ import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.oidc.OidcLogins;
 import de.haumacher.imageServer.oidc.OidcProvider;
 import de.haumacher.imageServer.passkeys.Passkeys;
+import de.haumacher.imageServer.pipeline.Background;
 import de.haumacher.imageServer.places.PhotoPlaces;
 import de.haumacher.imageServer.places.PlaceNames;
 import de.haumacher.imageServer.places.Places;
@@ -338,6 +339,13 @@ public class ImageServlet extends HttpServlet {
 
 	/** The type of the space-level overview of the photographs in several albums, see issue #220. */
 	public static final String DUPLICATES_TYPE = "duplicates";
+
+	/** The type of the progress of the background work of the space, see issue #236. */
+	public static final String CATCH_UP_TYPE = "catch-up";
+
+	/** What <code>?type=catch-up</code> is refused with to everybody but an administrator. */
+	public static final String CATCH_UP_REFUSED =
+		"How far the server has got preparing the albums is shown to the administrator of this space only.";
 
 	/** What linking somebody else's account to a person is refused with, see issue #128. */
 	public static final String LINK_REFUSED =
@@ -729,11 +737,21 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 */
 	public void startIndexing() {
+		// Behind hashing, everything an album needs before its first visit, newest album first:
+		// previews, the cover, faces where they are on, places, and the videos last, see issue #236.
+		// The face index has no walk of its own any more; an album opened before the background
+		// reached it is still queued by its listing.
+		synchronized (this) {
+			if (!_catchUpInstalled) {
+				CatchUp.install(_index.pipeline(), _basePath, _faces, _videos, _placesStep);
+				_catchUpInstalled = true;
+			}
+		}
 		_index.start();
-		// Whoever switched faces on for this space gets them looked for, on a thread of its own,
-		// see issue #124.
-		_faces.start();
 	}
+
+	/** Whether {@link #startIndexing()} added the steps of issue #236. */
+	private boolean _catchUpInstalled;
 
 	/** Where the places of the photographs come from, see issue #234; <code>null</code> for none. */
 	private volatile Places _places;
@@ -1058,6 +1076,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (DUPLICATES_TYPE.equals(type)) {
 			serveDuplicates(context, caller);
+			return;
+		}
+		if (CATCH_UP_TYPE.equals(type)) {
+			serveCatchUp(context, caller);
 			return;
 		}
 
@@ -2791,6 +2813,9 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		int removed = CacheRefresh.refresh(folder);
+		// Made again in the background, before anybody asks, see issue #236.
+		_index.pipeline().forget(folder);
+		_index.pipeline().notice(folder, false);
 		// A rendition that failed once is never tried again while the server runs; the whole point
 		// of throwing it away is that it is made afresh, see issue #74.
 		_videos.forget(CacheRefresh.cacheDir(folder));
@@ -5933,6 +5958,33 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		String type = context.getParameter("type");
+		if (makes(type)) {
+			// Somebody waits for this: the background work gives way until it is answered, see
+			// issue #236.
+			Background.requestStarted();
+			try {
+				serveMade(context, pathInfo, caller, viewAs, type);
+			} finally {
+				Background.requestEnded();
+			}
+			return;
+		}
+		serveMade(context, pathInfo, caller, viewAs, type);
+	}
+
+	/**
+	 * Whether a request of the given type may make something a person waits for: a thumbnail, a
+	 * display rendition, a face crop, a video rendition.
+	 */
+	private static boolean makes(String type) {
+		return "tn".equals(type) || DISPLAY_TYPE.equals(type) || FACE_TYPE.equals(type)
+			|| VideoRenditions.Kind.PLAYBACK.parameter().equals(type)
+			|| VideoRenditions.Kind.TEASER.parameter().equals(type);
+	}
+
+	/** Delivers an image that is no JSON answer: see {@link #serveImage}. */
+	private void serveMade(Context context, PathInfo pathInfo, Caller caller, int viewAs, String type)
+			throws IOException {
 		if ("tn".equals(type)) {
 			double[] region = null;
 			String cropParameter = context.getParameter(CROP_PARAMETER);
@@ -6109,6 +6161,29 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		serveJsonObject(context.response(), _people.toWire());
+	}
+
+	/**
+	 * Answers how far the background work of this space has got at
+	 * <code>&lt;data&gt;/?type=catch-up</code>, see issue #236 and {@link CatchUp}.
+	 *
+	 * <p>
+	 * The administrator's question, like the user list: a caller who is not signed in is asked to
+	 * sign in (a share link is refused, it has nothing to sign in as), and a member who is no
+	 * administrator is refused with {@link #CATCH_UP_REFUSED}.
+	 * </p>
+	 */
+	private void serveCatchUp(Context context, Caller caller) throws IOException {
+		if (_auth.getMode() != AuthMode.OFF && !caller.isPaired()) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		if (!_auth.maySeeUsers(caller)) {
+			LOG.warning("Refusing the background progress to '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, CATCH_UP_REFUSED);
+			return;
+		}
+		serveJsonObject(context.response(), CatchUp.status(_index.pipeline()));
 	}
 
 	/**

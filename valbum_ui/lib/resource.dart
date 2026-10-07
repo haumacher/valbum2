@@ -4387,6 +4387,188 @@ class IndexProgress extends _JsonObject {
 
 }
 
+///  How far the server has got bringing the albums of a space up to date in the background, see
+///  issue #236: <code>&lt;data&gt;/?type=catch-up</code>, answered to an administrator of the space
+///  only.
+/// 
+///  <p>
+///  Read-only and derived from what the server is doing at the moment it is asked; nothing of it is
+///  stored. Counted since the server started: a restart walks the library again, quickly where
+///  everything is done already.
+///  </p>
+class CatchUpStatus extends _JsonObject {
+	///  How many albums had their photo steps run (previews, cover, faces, places).
+	int albumsDone;
+
+	///  How many albums the background knows of: every folder holding photos or videos.
+	int albumsTotal;
+
+	///  The step running now, {@link CatchUpStep#IDLE} while nothing runs.
+	CatchUpStep step;
+
+	///  The folder the step runs on, relative to the root of the space; empty while idle.
+	String folder;
+
+	///  How many videos still wait for their teaser or playback rendition.
+	int videosRemaining;
+
+	///  What failed last, as the server words it ("previews: IMG_1.jpg: &lt;reason&gt;"); empty while
+	///  nothing failed. A failure is retried when its folder changes, never in a loop.
+	String failure;
+
+	///  Where {@link #failure} happened, relative to the root of the space.
+	String failureFolder;
+
+	///  Whether the background waits because requests are being served (they always go first).
+	bool yielding;
+
+	/// Creates a CatchUpStatus.
+	CatchUpStatus({
+			this.albumsDone = 0, 
+			this.albumsTotal = 0, 
+			this.step = CatchUpStep.idle, 
+			this.folder = "", 
+			this.videosRemaining = 0, 
+			this.failure = "", 
+			this.failureFolder = "", 
+			this.yielding = false, 
+	});
+
+	/// Parses a CatchUpStatus from a string source.
+	static CatchUpStatus? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a CatchUpStatus instance from the given reader.
+	static CatchUpStatus read(JsonReader json) {
+		CatchUpStatus result = CatchUpStatus();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "CatchUpStatus";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "albumsDone": {
+				albumsDone = json.expectInt();
+				break;
+			}
+			case "albumsTotal": {
+				albumsTotal = json.expectInt();
+				break;
+			}
+			case "step": {
+				step = readCatchUpStep(json);
+				break;
+			}
+			case "folder": {
+				folder = json.expectString();
+				break;
+			}
+			case "videosRemaining": {
+				videosRemaining = json.expectInt();
+				break;
+			}
+			case "failure": {
+				failure = json.expectString();
+				break;
+			}
+			case "failureFolder": {
+				failureFolder = json.expectString();
+				break;
+			}
+			case "yielding": {
+				yielding = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("albumsDone");
+		json.addNumber(albumsDone);
+
+		json.addKey("albumsTotal");
+		json.addNumber(albumsTotal);
+
+		json.addKey("step");
+		writeCatchUpStep(json, step);
+
+		json.addKey("folder");
+		json.addString(folder);
+
+		json.addKey("videosRemaining");
+		json.addNumber(videosRemaining);
+
+		json.addKey("failure");
+		json.addString(failure);
+
+		json.addKey("failureFolder");
+		json.addString(failureFolder);
+
+		json.addKey("yielding");
+		json.addBool(yielding);
+	}
+
+}
+
+///  A step of the background work, see {@link CatchUpStatus#step}.
+enum CatchUpStep {
+	///  Nothing runs; the first constant, and what a client that does not know a value reads.
+	idle,
+	///  The content hashes of a folder's photos, see issue #235.
+	hash,
+	///  The previews of an album's photos, and the display renditions of HEIC and raw pictures.
+	previews,
+	///  The picture of an album's tile, and of the tiles of the folders above it.
+	cover,
+	///  Looking for faces, where the space has them on.
+	faces,
+	///  Where the photos were taken, see issue #234.
+	places,
+	///  The teaser or the playback rendition of a video.
+	videos,
+	///  A step this description does not name.
+	other,
+}
+
+/// Writes a value of CatchUpStep to a JSON stream.
+void writeCatchUpStep(JsonSink json, CatchUpStep value) {
+	switch (value) {
+		case CatchUpStep.idle: json.addString("IDLE"); break;
+		case CatchUpStep.hash: json.addString("HASH"); break;
+		case CatchUpStep.previews: json.addString("PREVIEWS"); break;
+		case CatchUpStep.cover: json.addString("COVER"); break;
+		case CatchUpStep.faces: json.addString("FACES"); break;
+		case CatchUpStep.places: json.addString("PLACES"); break;
+		case CatchUpStep.videos: json.addString("VIDEOS"); break;
+		case CatchUpStep.other: json.addString("OTHER"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of CatchUpStep from a JSON stream.
+CatchUpStep readCatchUpStep(JsonReader json) {
+	switch (json.expectString()) {
+		case "IDLE": return CatchUpStep.idle;
+		case "HASH": return CatchUpStep.hash;
+		case "PREVIEWS": return CatchUpStep.previews;
+		case "COVER": return CatchUpStep.cover;
+		case "FACES": return CatchUpStep.faces;
+		case "PLACES": return CatchUpStep.places;
+		case "VIDEOS": return CatchUpStep.videos;
+		case "OTHER": return CatchUpStep.other;
+		default: return CatchUpStep.idle;
+	}
+}
+
 ///  The photographs of a space that lie in more than one album, see issue #220 and
 ///  <code>&lt;data&gt;/?type=duplicates</code>.
 /// 

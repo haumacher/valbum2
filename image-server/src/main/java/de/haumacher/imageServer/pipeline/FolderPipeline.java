@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.pipeline;
 
+import de.haumacher.imageServer.AlbumDate;
 import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
@@ -25,9 +26,11 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -84,8 +87,29 @@ import java.util.logging.Logger;
  * </p>
  *
  * <pre>
- * {"version":1,"folders":{"2020/Trip":{"fingerprint":"&lt;hex&gt;","done":["hash"]}}}
+ * {"version":2,"folders":{"2020/Trip":{"fingerprint":"&lt;hex&gt;","done":["hash","previews"],
+ *   "units":{"videos":["teaser:a.mp4"]}}}}
  * </pre>
+ *
+ * <p>
+ * <code>units</code> (version 2, issue #236) holds what a {@link UnitStep} finished of a folder
+ * for that fingerprint, one entry per unit, so that a restart resumes in the middle of an album.
+ * It is left out where it is empty, and a file of version 1, which has none, reads as it always
+ * did.
+ * </p>
+ *
+ * <h2>Stages, and the catch-up of issue #236</h2>
+ *
+ * <p>
+ * Every step belongs to a {@link Stage}. The walk at start-up runs the {@link Stage#INDEX} steps
+ * of every folder first (hashing: the camera-roll sync waits for a complete index, and must not
+ * wait for previews and faces), then hands the folders to {@link #catchUp(List)}, newest album
+ * first ({@link #newestFirst(List)}), whose {@link Stage#PHOTOS} steps (previews, the cover, faces,
+ * places) run one folder per task. A noticed folder runs both stages at once. The units of the
+ * {@link Stage#VIDEOS} steps (a teaser or a playback rendition each) wait in a queue of their own
+ * and run, one unit per task, only while no photo work is queued or due: a long video queue never
+ * holds up the photographs of another album, and a new album is held up by one transcode at most.
+ * </p>
  *
  * <p>
  * A step that {@link Step#trustsRecord() trusts} that record is skipped for a folder whose
@@ -104,8 +128,8 @@ public class FolderPipeline {
 	/** The name of the progress file below the space's own folder. */
 	public static final String FILE_NAME = "pipeline.json";
 
-	/** The version of {@value #FILE_NAME} this build writes. */
-	public static final int VERSION = 1;
+	/** The version of {@value #FILE_NAME} this build writes; 2 added the units, see issue #236. */
+	public static final int VERSION = 2;
 
 	/** How long a noticed folder must stay unchanged before it is worked on. */
 	public static final long QUIET_MILLIS = 3000;
@@ -120,6 +144,20 @@ public class FolderPipeline {
 	private static final String FINGERPRINT__PROP = "fingerprint";
 
 	private static final String DONE__PROP = "done";
+
+	private static final String UNITS__PROP = "units";
+
+	/** When a step runs, see {@link FolderPipeline}. */
+	public enum Stage {
+		/** What the index of the space needs: run for every folder before anything else. */
+		INDEX,
+
+		/** What an album needs to be shown without waiting: previews, cover, faces, places. */
+		PHOTOS,
+
+		/** Videos, by {@link UnitStep units}, behind every photo of every album. */
+		VIDEOS
+	}
 
 	/** What a {@link Step} did with a folder. */
 	public enum Outcome {
@@ -144,8 +182,19 @@ public class FolderPipeline {
 		 * still run; the step itself {@link FolderPipeline#notice(File, boolean) notices} the folder
 		 * again when what it waits for arrives, so nothing polls.
 		 */
-		WAITING
+		WAITING,
+
+		/**
+		 * A unit of a {@link UnitStep} was put aside for something more urgent (a request's
+		 * transcode, issue #236). It is not done, stays first in its queue and runs again after
+		 * {@link FolderPipeline#AGAIN_MILLIS}; the photo steps go on meanwhile. From a step that is no
+		 * {@link UnitStep}, the same as {@link #WAITING}.
+		 */
+		AGAIN
 	}
+
+	/** How long the units wait after one was put aside, see {@link Outcome#AGAIN}. */
+	public static final long AGAIN_MILLIS = 1000;
 
 	/**
 	 * One kind of work done to every folder, see {@link FolderPipeline}.
@@ -175,6 +224,119 @@ public class FolderPipeline {
 		default boolean trustsRecord() {
 			return true;
 		}
+
+		/** When the step runs, see {@link Stage}. */
+		default Stage stage() {
+			return Stage.PHOTOS;
+		}
+	}
+
+	/**
+	 * A step of {@link Stage#VIDEOS}: its work in a folder comes in units that run one at a time,
+	 * each recorded when it is finished, so that a restart resumes in the middle of an album.
+	 */
+	public interface UnitStep extends Step {
+
+		@Override
+		default Stage stage() {
+			return Stage.VIDEOS;
+		}
+
+		/** The units of work the given folder holds, in the order they are to run; cheap. */
+		List<String> units(File folder);
+
+		/**
+		 * Does one unit; does nothing (cheaply) where it is done.
+		 *
+		 * <p>
+		 * {@link Outcome#WAITING} leaves the unit undone for this pass; it runs again when the
+		 * folder is worked on again.
+		 * </p>
+		 */
+		Outcome runUnit(File folder, String unit) throws IOException;
+
+		/** What the given unit is the work for, which the status counts, see {@link Status#getVideos()}. */
+		default String itemOf(String unit) {
+			return unit;
+		}
+
+		@Override
+		default Outcome run(File folder) throws IOException {
+			Outcome result = Outcome.DONE;
+			for (String unit : units(folder)) {
+				Outcome outcome = runUnit(folder, unit);
+				if (outcome == Outcome.UNWRITABLE) {
+					return outcome;
+				}
+				if (outcome != Outcome.DONE) {
+					result = outcome;
+				}
+			}
+			return result;
+		}
+	}
+
+	/** What the background work of the space is doing, see {@link #status()}. */
+	public static final class Status {
+
+		final int _done;
+
+		final int _total;
+
+		final String _step;
+
+		final String _folder;
+
+		final int _videos;
+
+		final String _failure;
+
+		final String _failureFolder;
+
+		Status(int done, int total, String step, String folder, int videos, String failure, String failureFolder) {
+			_done = done;
+			_total = total;
+			_step = step;
+			_folder = folder;
+			_videos = videos;
+			_failure = failure;
+			_failureFolder = failureFolder;
+		}
+
+		/** The albums whose photo steps ran since the start, of {@link #getTotal()}. */
+		public int getDone() {
+			return _done;
+		}
+
+		/** The albums the pass knows of: every folder holding images it walked or noticed. */
+		public int getTotal() {
+			return _total;
+		}
+
+		/** The step running now, <code>null</code> while nothing runs. */
+		public String getStep() {
+			return _step;
+		}
+
+		/** The folder it runs on, relative to the space root; <code>null</code> while nothing runs. */
+		public String getFolder() {
+			return _folder;
+		}
+
+		/** How many videos still wait for a unit of a {@link UnitStep}. */
+		public int getVideos() {
+			return _videos;
+		}
+
+		/** Why the last step that failed failed, <code>null</code> if none did. */
+		public String getFailure() {
+			return _failure;
+		}
+
+		/** Where the last step that failed failed, relative to the space root. */
+		public String getFailureFolder() {
+			return _failureFolder;
+		}
 	}
 
 	/** What is recorded about one folder. */
@@ -184,9 +346,43 @@ public class FolderPipeline {
 
 		final Set<String> _done;
 
+		/** What each {@link UnitStep} finished here for the fingerprint, by step name. */
+		final Map<String, Set<String>> _units;
+
 		Record(String fingerprint, Set<String> done) {
+			this(fingerprint, done, new LinkedHashMap<>());
+		}
+
+		Record(String fingerprint, Set<String> done, Map<String, Set<String>> units) {
 			_fingerprint = fingerprint;
 			_done = done;
+			_units = units;
+		}
+	}
+
+	/** The units of one {@link UnitStep} waiting to run in one folder. */
+	private static final class Units {
+
+		final File _folder;
+
+		final String _path;
+
+		final String _fingerprint;
+
+		final UnitStep _step;
+
+		final Deque<String> _units;
+
+		boolean _failed;
+
+		boolean _unwritable;
+
+		Units(File folder, String path, String fingerprint, UnitStep step, Deque<String> units) {
+			_folder = folder;
+			_path = path;
+			_fingerprint = fingerprint;
+			_step = step;
+			_units = units;
 		}
 	}
 
@@ -239,6 +435,32 @@ public class FolderPipeline {
 
 	private ScheduledExecutorService _executor;
 
+	/** The folders waiting for their {@link Stage#PHOTOS} steps, in order; guarded by this. */
+	private final Map<String, File> _photoQueue = new LinkedHashMap<>();
+
+	/** The {@link UnitStep} work waiting, by step + "\n" + path, in order; guarded by this. */
+	private final Map<String, Units> _unitQueue = new LinkedHashMap<>();
+
+	/** Whether a task of {@link #work()} is queued on the thread; guarded by this. */
+	private boolean _workScheduled;
+
+	/** Before when no unit runs, see {@link Outcome#AGAIN}; guarded by this. */
+	private long _unitsAfter;
+
+	/** The folders holding images the pass knows of, see {@link Status#getTotal()}; guarded by this. */
+	private final Set<String> _known = new LinkedHashSet<>();
+
+	/** The ones of {@link #_known} whose photo steps ran; guarded by this. */
+	private final Set<String> _settled = new HashSet<>();
+
+	private volatile String _currentStep;
+
+	private volatile String _currentFolder;
+
+	private volatile String _failure;
+
+	private volatile String _failureFolder;
+
 	private final ResourceCache.FolderObserver _observer = this::notice;
 
 	/**
@@ -255,8 +477,16 @@ public class FolderPipeline {
 		load();
 	}
 
-	/** Adds a step behind the ones there are. */
+	/**
+	 * Adds a step behind the ones there are.
+	 *
+	 * @throws IllegalArgumentException
+	 *         For a step of {@link Stage#VIDEOS} that is no {@link UnitStep}.
+	 */
 	public void addStep(Step step) {
+		if (step.stage() == Stage.VIDEOS && !(step instanceof UnitStep)) {
+			throw new IllegalArgumentException("A step of the stage " + Stage.VIDEOS + " works in units: " + step.name());
+		}
 		_steps.add(step);
 	}
 
@@ -298,6 +528,11 @@ public class FolderPipeline {
 			return thread;
 		});
 		ResourceCache.addObserver(_observer);
+		// The first look at the folders, before anything else runs: what changes from now on is
+		// what the next sweep finds.
+		_executor.execute(() -> sweep(true));
+		long every = Math.max(1, _sweepMillis);
+		_executor.scheduleWithFixedDelay(() -> sweep(false), every, every, TimeUnit.MILLISECONDS);
 		return true;
 	}
 
@@ -322,6 +557,10 @@ public class FolderPipeline {
 			executor = _executor;
 			_executor = null;
 			_pending.clear();
+			// Nothing is lost: the next walk finds the same work again, and what is done is recorded.
+			_photoQueue.clear();
+			_unitQueue.clear();
+			_workScheduled = false;
 		}
 		if (executor != null) {
 			executor.shutdownNow();
@@ -335,8 +574,8 @@ public class FolderPipeline {
 	}
 
 	/**
-	 * Waits until nothing is waiting for its quiet period and nothing is being worked on; for the
-	 * tests.
+	 * Waits until nothing is waiting for its quiet period, nothing is queued and nothing is being
+	 * worked on; for the tests.
 	 */
 	public boolean awaitIdle(long timeoutMillis) throws InterruptedException {
 		long end = System.currentTimeMillis() + timeoutMillis;
@@ -345,7 +584,7 @@ public class FolderPipeline {
 			boolean pending;
 			synchronized (this) {
 				executor = _executor;
-				pending = !_pending.isEmpty();
+				pending = !idle();
 			}
 			if (executor == null) {
 				return true;
@@ -361,7 +600,7 @@ public class FolderPipeline {
 					return false;
 				}
 				synchronized (this) {
-					if (_pending.isEmpty()) {
+					if (idle()) {
 						return true;
 					}
 				}
@@ -369,6 +608,197 @@ public class FolderPipeline {
 			Thread.sleep(20);
 		}
 		return false;
+	}
+
+	/** Whether nothing waits; called while synchronized. */
+	private boolean idle() {
+		return _pending.isEmpty() && _photoQueue.isEmpty() && _unitQueue.isEmpty() && !_workScheduled;
+	}
+
+	// --- The sweep. ---
+
+	/**
+	 * How often the folders of a space are swept by default, see {@link #sweep(boolean)}: a minute.
+	 *
+	 * <p>
+	 * A sweep of a folder nothing happened in is one <code>stat</code> of it, so a sweep of 10 000
+	 * folders costs a few milliseconds (measured, see issue #236), and once a minute is nothing. A
+	 * minute is also about as long as one may wait before photos copied into an unbrowsed folder are
+	 * hashed: the camera-roll sync of the app uploads what the index does not know.
+	 * </p>
+	 */
+	public static final long DEFAULT_SWEEP_MILLIS = 60_000;
+
+	private static volatile long _defaultSweepMillis = DEFAULT_SWEEP_MILLIS;
+
+	/** Sets how often the pipelines started from now on sweep, see <code>--sweep-seconds</code>. */
+	public static void setDefaultSweepMillis(long millis) {
+		if (millis < 1) {
+			throw new IllegalArgumentException("A sweep needs a positive interval: " + millis);
+		}
+		_defaultSweepMillis = millis;
+	}
+
+	private long _sweepMillis = _defaultSweepMillis;
+
+	/** Sets how often this pipeline sweeps, before {@link #start()}; for the tests. */
+	public void setSweepMillis(long millis) {
+		_sweepMillis = millis;
+	}
+
+	/** How the sweep looks at the disk; a seam, so that a test can count what it asks. */
+	public interface Disk {
+
+		/** The modification time of the given directory, <code>0</code> if it is gone. */
+		long modified(File directory);
+
+		/** The directories directly in the given one that are part of the library. */
+		File[] folders(File directory);
+	}
+
+	/** The disk itself. */
+	public static final Disk DISK = new Disk() {
+		@Override
+		public long modified(File directory) {
+			return directory.lastModified();
+		}
+
+		@Override
+		public File[] folders(File directory) {
+			File[] result = directory.listFiles(f -> f.isDirectory() && !LibraryFiles.isIgnored(f));
+			return result == null ? new File[0] : result;
+		}
+	};
+
+	private Disk _disk = DISK;
+
+	/** Replaces how the sweep looks at the disk; for the tests. */
+	public void setDisk(Disk disk) {
+		_disk = disk;
+	}
+
+	/** What the last sweep found of a folder. */
+	private static final class Seen {
+
+		final long _modified;
+
+		final File[] _folders;
+
+		Seen(long modified, File[] folders) {
+			_modified = modified;
+			_folders = folders;
+		}
+	}
+
+	/** What the last sweep found, by path; <code>null</code> before the first. Pipeline thread only. */
+	private Map<String, Seen> _seen;
+
+	/**
+	 * Looks at the modification time of every folder of the space, see issue #236.
+	 *
+	 * <p>
+	 * The directory watches of the {@link ResourceCache} are the fast path, but only for folders a
+	 * request loaded, and they are bounded (the operating system grants a limited number). This is
+	 * the guarantee for everything else: a library copied in while nobody browses is hashed and
+	 * prepared all the same. A folder's modification time changes when an entry is added to it,
+	 * removed or renamed in it; a folder whose time moved since the last sweep is noticed (with the
+	 * usual quiet period), a new folder is noticed with everything below it, and a folder that is
+	 * gone is forgotten ({@link #gone(String)}).
+	 * </p>
+	 *
+	 * <p>
+	 * Cheap: one <code>stat</code> per folder; a folder is listed only when its time moved, and no
+	 * file is ever opened or even looked at here. Runs on the pipeline's thread; a round that falls
+	 * while requests are being served is left out, as everything in the background gives way to
+	 * them. The first look at start-up never waits: it is the baseline the walk is compared with. A
+	 * file changed in place (written over
+	 * without a new name) leaves its folder's time alone; that is what the watches are for.
+	 * </p>
+	 *
+	 * @param baseline
+	 *        Whether this is the first look, which notices nothing.
+	 */
+	void sweep(boolean baseline) {
+		if (!baseline && Background.busy()) {
+			// Requests are being served: this round is left out, never waited for, so that it holds
+			// up nothing else on this thread; the next one comes an interval later.
+			return;
+		}
+		Map<String, Seen> before = _seen;
+		Map<String, Seen> now = new HashMap<>();
+		Set<String> fresh = new HashSet<>();
+		Deque<File> pending = new ArrayDeque<>();
+		pending.add(_root.toFile());
+		while (!pending.isEmpty()) {
+			if (Thread.currentThread().isInterrupted()) {
+				return;
+			}
+			File folder = pending.removeFirst();
+			String path = relative(folder);
+			if (path == null || (!path.isEmpty() && !LibraryFiles.isLibraryPath(path))) {
+				continue;
+			}
+			long modified = _disk.modified(folder);
+			if (modified == 0) {
+				continue;
+			}
+			Seen last = before == null ? null : before.get(path);
+			File[] folders;
+			if (last != null && last._modified == modified) {
+				folders = last._folders;
+			} else {
+				folders = _disk.folders(folder);
+				if (!baseline && before != null) {
+					if (last == null) {
+						fresh.add(path);
+						if (!fresh.contains(parentOf(path))) {
+							// New, and everything below it with it.
+							notice(folder, true);
+						}
+					} else {
+						notice(folder, false);
+					}
+				}
+			}
+			now.put(path, new Seen(modified, folders));
+			pending.addAll(Arrays.asList(folders));
+		}
+		if (!baseline && before != null) {
+			for (String path : before.keySet()) {
+				if (!now.containsKey(path)) {
+					gone(path);
+				}
+			}
+		}
+		_seen = now;
+		synchronized (this) {
+			persist(false);
+		}
+	}
+
+	private static String parentOf(String path) {
+		int slash = path.lastIndexOf('/');
+		return slash < 0 ? "" : path.substring(0, slash);
+	}
+
+	/**
+	 * Forgets a folder that is gone (deleted, or moved away; where it went is new and noticed): its
+	 * record, its queued work, its place in the status. Nothing of it counts as failed.
+	 */
+	synchronized void gone(String path) {
+		if (_records.remove(path) != null) {
+			_dirty = true;
+		}
+		_pending.remove(path);
+		_photoQueue.remove(path);
+		_known.remove(path);
+		_settled.remove(path);
+		_unitQueue.values().removeIf(work -> work._path.equals(path));
+		_skipped.keySet().removeIf(key -> key.endsWith("\n" + path));
+		if (path.equals(_failureFolder)) {
+			_failure = null;
+			_failureFolder = null;
+		}
 	}
 
 	// --- Noticing. ---
@@ -453,11 +883,23 @@ public class FolderPipeline {
 				}
 			}
 			if (ready) {
-				for (File folder : folders) {
-					if (Thread.currentThread().isInterrupted()) {
-						return;
+				if (pending._tree) {
+					// A tree copied in: indexed at once, its albums brought up to date newest first,
+					// before what the walk at start-up still has in its queue.
+					for (File folder : folders) {
+						if (Thread.currentThread().isInterrupted()) {
+							return;
+						}
+						process(folder, Stage.INDEX);
 					}
-					process(folder);
+					queueFirst(newestFirst(folders));
+				} else {
+					for (File folder : folders) {
+						if (Thread.currentThread().isInterrupted()) {
+							return;
+						}
+						process(folder);
+					}
 				}
 			}
 		}
@@ -476,27 +918,53 @@ public class FolderPipeline {
 	// --- The work. ---
 
 	/**
-	 * Runs every step on the given folder, in the calling thread.
+	 * Runs the {@link Stage#INDEX} and {@link Stage#PHOTOS} steps on the given folder, in the
+	 * calling thread, and queues the units of its {@link Stage#VIDEOS} steps.
 	 *
 	 * <p>
-	 * What the walk at start-up and a noticed folder both end in. A folder without images is
-	 * skipped by no step here: whether there is anything to do is each step's own question.
+	 * What a noticed folder ends in. A folder without images is skipped by no step here: whether
+	 * there is anything to do is each step's own question.
 	 * </p>
 	 */
 	public void process(File folder) {
+		process(folder, Stage.PHOTOS);
+	}
+
+	/**
+	 * Runs the steps up to the given stage on the given folder, in the calling thread; the
+	 * {@link Stage#VIDEOS} steps are queued, never run here.
+	 */
+	public void process(File folder, Stage upTo) {
 		String path = relative(folder);
-		if (path == null || !folder.isDirectory()) {
+		if (path == null) {
+			return;
+		}
+		if (!folder.isDirectory()) {
+			// Gone meanwhile: deleted, or moved by hand to where it is new and noticed.
+			gone(path);
 			return;
 		}
 		String fingerprint = fingerprint(Arrays.asList(folder));
 		Set<String> done = new LinkedHashSet<>();
+		Map<String, Set<String>> units = new LinkedHashMap<>();
 		synchronized (this) {
 			Record record = _records.get(path);
 			if (record != null && record._fingerprint.equals(fingerprint)) {
 				done.addAll(record._done);
+				for (Map.Entry<String, Set<String>> entry : record._units.entrySet()) {
+					units.put(entry.getKey(), new LinkedHashSet<>(entry.getValue()));
+				}
 			}
 		}
+		boolean stopped = false;
 		for (Step step : _steps) {
+			if (step.stage() == Stage.VIDEOS || step.stage().compareTo(upTo) > 0) {
+				continue;
+			}
+			if (Thread.currentThread().isInterrupted()) {
+				stopped = true;
+				break;
+			}
 			String name = step.name();
 			if (step.trustsRecord() && done.contains(name)) {
 				continue;
@@ -507,24 +975,33 @@ public class FolderPipeline {
 				// Failed or not storable for exactly these contents in this process already.
 				done.remove(name);
 				if (skipped.endsWith(Outcome.FAILED.name())) {
+					stopped = true;
 					break;
 				}
 				continue;
 			}
 			Outcome outcome;
+			boolean threw = false;
+			_currentStep = name;
+			_currentFolder = path;
 			try {
 				outcome = step.run(folder);
 			} catch (IOException | RuntimeException ex) {
 				LOG.log(Level.WARNING, "Step '" + name + "' failed on '" + folder.getAbsolutePath() + "': "
 					+ ex.getMessage(), ex);
 				outcome = Outcome.FAILED;
+				threw = true;
+				failed(path, name + ": " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()));
+			} finally {
+				_currentStep = null;
+				_currentFolder = null;
 			}
 			if (outcome == Outcome.DONE) {
 				_skipped.remove(skipKey);
 				done.add(name);
 				continue;
 			}
-			if (outcome == Outcome.WAITING) {
+			if (outcome == Outcome.WAITING || outcome == Outcome.AGAIN) {
 				_skipped.remove(skipKey);
 				done.remove(name);
 				continue;
@@ -535,16 +1012,375 @@ public class FolderPipeline {
 				ReadOnlyFolders.report(folder, "the results of '" + name + "'");
 				continue;
 			}
+			if (!threw) {
+				failed(path, name + ": " + "failed");
+			}
+			stopped = true;
 			break;
 		}
+		boolean photos = upTo.compareTo(Stage.PHOTOS) >= 0;
+		List<Units> work = photos && !stopped ? unitsOf(folder, path, fingerprint, done, units) : new ArrayList<>();
 		synchronized (this) {
 			Record before = _records.get(path);
-			if (before == null || !before._fingerprint.equals(fingerprint) || !before._done.equals(done)) {
-				_records.put(path, new Record(fingerprint, done));
+			if (before == null || !before._fingerprint.equals(fingerprint) || !before._done.equals(done)
+				|| !before._units.equals(units)) {
+				_records.put(path, new Record(fingerprint, done, units));
 				_dirty = true;
+			}
+			if (photos) {
+				_photoQueue.remove(path);
+				if (hasImages(folder)) {
+					_known.add(path);
+					_settled.add(path);
+				}
+				for (Units each : work) {
+					_unitQueue.put(each._step.name() + "\n" + path, each);
+				}
+				scheduleWork();
 			}
 			persist(false);
 		}
+	}
+
+	/**
+	 * Tells the status about a failure a step did not fail for: one photograph of an album that
+	 * cannot be read does not hold up the album, and is said all the same.
+	 */
+	public void reportFailure(File folder, String reason) {
+		String path = relative(folder);
+		failed(path == null ? folder.getAbsolutePath() : path, reason);
+	}
+
+	/** Remembers the last failure, for the status. */
+	private void failed(String path, String reason) {
+		_failure = reason;
+		_failureFolder = path;
+	}
+
+	/**
+	 * The units of the {@link UnitStep}s still to do in the given folder; a step with nothing left
+	 * is recorded as done in the given set.
+	 */
+	private List<Units> unitsOf(File folder, String path, String fingerprint, Set<String> done,
+			Map<String, Set<String>> finished) {
+		List<Units> result = new ArrayList<>();
+		for (Step step : _steps) {
+			if (step.stage() != Stage.VIDEOS) {
+				continue;
+			}
+			String name = step.name();
+			if (step.trustsRecord() && done.contains(name)) {
+				continue;
+			}
+			String skipped = _skipped.get(name + "\n" + path);
+			if (skipped != null && skipped.startsWith(fingerprint)) {
+				continue;
+			}
+			UnitStep unitStep = (UnitStep) step;
+			Deque<String> open = new ArrayDeque<>();
+			Set<String> already = finished.getOrDefault(name, Collections.emptySet());
+			for (String unit : unitStep.units(folder)) {
+				if (!already.contains(unit)) {
+					open.add(unit);
+				}
+			}
+			if (open.isEmpty()) {
+				done.add(name);
+				finished.remove(name);
+				continue;
+			}
+			done.remove(name);
+			result.add(new Units(folder, path, fingerprint, unitStep, open));
+		}
+		return result;
+	}
+
+	/** Whether the given folder holds an image or a video. */
+	private static boolean hasImages(File folder) {
+		File[] files = folder.listFiles(f -> f.isFile() && ResourceCache.isImage(f));
+		return files != null && files.length > 0;
+	}
+
+	// --- The catch-up of issue #236. ---
+
+	/**
+	 * Queues the {@link Stage#PHOTOS} steps of the given folders behind what is queued, in the given
+	 * order; the walk at start-up hands over the library here, see {@link #newestFirst(List)}.
+	 */
+	public synchronized void catchUp(List<File> folders) {
+		for (File folder : folders) {
+			String path = relative(folder);
+			if (path == null) {
+				continue;
+			}
+			_photoQueue.put(path, folder);
+			_known.add(path);
+		}
+		scheduleWork();
+	}
+
+	/**
+	 * Counts the given folders among the albums of the status before their photo steps are queued:
+	 * while the walk at start-up hashes, the admin sees how many albums there are to prepare.
+	 */
+	public synchronized void know(List<File> folders) {
+		for (File folder : folders) {
+			String path = relative(folder);
+			if (path != null) {
+				_known.add(path);
+			}
+		}
+	}
+
+	/** Queues the given folders in front of what is queued, in the given order. */
+	private synchronized void queueFirst(List<File> folders) {
+		Map<String, File> queue = new LinkedHashMap<>();
+		for (File folder : folders) {
+			String path = relative(folder);
+			if (path != null) {
+				queue.put(path, folder);
+				if (hasImages(folder)) {
+					_known.add(path);
+					_settled.remove(path);
+				}
+			}
+		}
+		for (Map.Entry<String, File> entry : _photoQueue.entrySet()) {
+			queue.putIfAbsent(entry.getKey(), entry.getValue());
+		}
+		_photoQueue.clear();
+		_photoQueue.putAll(queue);
+		scheduleWork();
+	}
+
+	/**
+	 * The given folders, the newest album first: by the date the listing shows them by
+	 * (<code>AlbumDate.ofFolder</code>, read from the sidecar and the name, no image opened),
+	 * descending; undated ones last, each group by path.
+	 */
+	public static List<File> newestFirst(List<File> folders) {
+		Map<File, Long> dates = new HashMap<>();
+		for (File folder : folders) {
+			long date;
+			try {
+				date = AlbumDate.ofFolder(ResourceCache.sidecar(folder), folder.getName()).millis();
+			} catch (RuntimeException ex) {
+				date = 0;
+			}
+			dates.put(folder, Long.valueOf(date));
+		}
+		List<File> result = new ArrayList<>(folders);
+		result.sort(Comparator.comparing((File f) -> dates.get(f)).reversed()
+			.thenComparing(File::getAbsolutePath));
+		return result;
+	}
+
+	/** Queues a task of {@link #work()} unless one is queued or there is nothing; while synchronized. */
+	private void scheduleWork() {
+		if (_workScheduled || _executor == null || (_photoQueue.isEmpty() && _unitQueue.isEmpty())) {
+			return;
+		}
+		try {
+			long delay = _photoQueue.isEmpty() ? _unitsAfter - System.currentTimeMillis() : 0;
+			if (delay > 0) {
+				_executor.schedule(this::work, delay, TimeUnit.MILLISECONDS);
+			} else {
+				_executor.execute(this::work);
+			}
+			_workScheduled = true;
+		} catch (RejectedExecutionException ex) {
+			// Stopping.
+		}
+	}
+
+	/**
+	 * One piece of queued work: the photo steps of the next folder, else one unit of the videos.
+	 *
+	 * <p>
+	 * One piece per task, so that a folder whose quiet period ended is worked on before the next
+	 * piece: ticks are due earlier than the task queued after this one.
+	 * </p>
+	 */
+	private void work() {
+		File folder = null;
+		boolean unit = false;
+		synchronized (this) {
+			_workScheduled = false;
+			if (!_photoQueue.isEmpty()) {
+				Map.Entry<String, File> first = _photoQueue.entrySet().iterator().next();
+				_photoQueue.remove(first.getKey());
+				folder = first.getValue();
+			} else {
+				unit = !_unitQueue.isEmpty() && System.currentTimeMillis() >= _unitsAfter;
+			}
+		}
+		if (folder != null) {
+			process(folder);
+		} else if (unit) {
+			runUnit();
+		}
+		synchronized (this) {
+			persist(false);
+			if (!Thread.currentThread().isInterrupted()) {
+				scheduleWork();
+			}
+		}
+	}
+
+	/**
+	 * Runs everything queued in the calling thread: the photo steps, then every unit; for the tests
+	 * and for a pipeline that was never started.
+	 */
+	public void drain() {
+		while (!Thread.currentThread().isInterrupted()) {
+			File folder = null;
+			boolean unit;
+			long wait;
+			synchronized (this) {
+				if (!_photoQueue.isEmpty()) {
+					Map.Entry<String, File> first = _photoQueue.entrySet().iterator().next();
+					_photoQueue.remove(first.getKey());
+					folder = first.getValue();
+				}
+				unit = !_unitQueue.isEmpty();
+				wait = _unitsAfter - System.currentTimeMillis();
+			}
+			if (folder != null) {
+				process(folder);
+			} else if (unit) {
+				if (wait > 0) {
+					try {
+						Thread.sleep(wait);
+					} catch (InterruptedException ex) {
+						Thread.currentThread().interrupt();
+						break;
+					}
+				}
+				runUnit();
+			} else {
+				break;
+			}
+		}
+		flush();
+	}
+
+	/** Runs the next unit of the first {@link UnitStep} work queued. */
+	private void runUnit() {
+		Units work;
+		String unit;
+		String key;
+		synchronized (this) {
+			if (_unitQueue.isEmpty()) {
+				return;
+			}
+			Map.Entry<String, Units> first = _unitQueue.entrySet().iterator().next();
+			key = first.getKey();
+			work = first.getValue();
+			unit = work._units.peekFirst();
+			if (unit == null) {
+				_unitQueue.remove(key);
+				return;
+			}
+		}
+		if (!fingerprint(Arrays.asList(work._folder)).equals(work._fingerprint)) {
+			// Changed since it was queued: dropped, and worked on anew once it stands still.
+			synchronized (this) {
+				_unitQueue.remove(key, work);
+			}
+			notice(work._folder, false);
+			return;
+		}
+		String name = work._step.name();
+		Outcome outcome;
+		String reason = null;
+		_currentStep = name;
+		_currentFolder = work._path;
+		try {
+			outcome = work._step.runUnit(work._folder, unit);
+		} catch (IOException | RuntimeException ex) {
+			LOG.log(Level.WARNING, "Step '" + name + "' failed on '" + unit + "' in '"
+				+ work._folder.getAbsolutePath() + "': " + ex.getMessage(), ex);
+			outcome = Outcome.FAILED;
+			reason = ex.getMessage();
+		} finally {
+			_currentStep = null;
+			_currentFolder = null;
+		}
+		if (Thread.currentThread().isInterrupted()) {
+			// Stopping: the unit is not done, and the next start does it.
+			return;
+		}
+		synchronized (this) {
+			if (outcome == Outcome.AGAIN) {
+				// Put aside for something more urgent: first in the queue still, a moment later.
+				_unitsAfter = System.currentTimeMillis() + AGAIN_MILLIS;
+				return;
+			}
+			work._units.remove(unit);
+			Record record = _records.get(work._path);
+			boolean current = record != null && record._fingerprint.equals(work._fingerprint);
+			switch (outcome) {
+				case DONE:
+					if (current) {
+						record._units.computeIfAbsent(name, x -> new LinkedHashSet<>()).add(unit);
+						_dirty = true;
+					}
+					break;
+				case FAILED:
+					work._failed = true;
+					failed(work._path, name + ": " + work._step.itemOf(unit) + (reason == null ? "" : ": " + reason));
+					break;
+				case UNWRITABLE:
+					work._unwritable = true;
+					work._units.clear();
+					ReadOnlyFolders.report(work._folder, "the results of '" + name + "'");
+					break;
+				case WAITING:
+				default:
+					// Not done in this pass; done when the folder is worked on again.
+					break;
+			}
+			if (work._units.isEmpty()) {
+				_unitQueue.remove(key, work);
+				if (work._failed || work._unwritable) {
+					_skipped.put(key, work._fingerprint + " "
+						+ (work._unwritable ? Outcome.UNWRITABLE : Outcome.FAILED).name());
+				} else if (current && complete(record, work)) {
+					record._done.add(name);
+					record._units.remove(name);
+					_dirty = true;
+				}
+			}
+		}
+	}
+
+	/** Whether every unit of the given work's step is recorded for the folder. */
+	private static boolean complete(Record record, Units work) {
+		Set<String> finished = record._units.getOrDefault(work._step.name(), Collections.emptySet());
+		for (String unit : work._step.units(work._folder)) {
+			if (!finished.contains(unit)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** What the background work of the space is doing, see issue #236. */
+	public synchronized Status status() {
+		int done = 0;
+		for (String path : _known) {
+			if (_settled.contains(path)) {
+				done++;
+			}
+		}
+		Set<String> videos = new HashSet<>();
+		for (Units work : _unitQueue.values()) {
+			for (String unit : work._units) {
+				videos.add(work._path + "/" + work._step.itemOf(unit));
+			}
+		}
+		return new Status(done, _known.size(), _currentStep, _currentFolder, videos.size(), _failure,
+			_failureFolder);
 	}
 
 	/** Whether the given step is recorded as done for the given folder as it is now. */
@@ -559,6 +1395,20 @@ public class FolderPipeline {
 		if (_records.keySet().removeIf(path -> !paths.contains(path))) {
 			_dirty = true;
 		}
+		_known.retainAll(paths);
+		_settled.retainAll(paths);
+	}
+
+	/**
+	 * Forgets what is recorded about the given folder, so that every step runs on it again when it
+	 * is worked on next: its generated files were thrown away, see <code>?action=refresh-cache</code>.
+	 */
+	public synchronized void forget(File folder) {
+		String path = relative(folder);
+		if (path != null && _records.remove(path) != null) {
+			_dirty = true;
+		}
+		_skipped.keySet().removeIf(key -> key.endsWith("\n" + path));
 	}
 
 	/**
@@ -674,6 +1524,7 @@ public class FolderPipeline {
 	private static Record readRecord(JsonReader in) throws IOException {
 		String fingerprint = null;
 		Set<String> done = new LinkedHashSet<>();
+		Map<String, Set<String>> units = new LinkedHashMap<>();
 		in.beginObject();
 		while (in.hasNext()) {
 			switch (in.nextName()) {
@@ -687,13 +1538,29 @@ public class FolderPipeline {
 					}
 					in.endArray();
 					break;
+				case UNITS__PROP:
+					in.beginObject();
+					while (in.hasNext()) {
+						String step = in.nextName();
+						Set<String> finished = new LinkedHashSet<>();
+						in.beginArray();
+						while (in.hasNext()) {
+							finished.add(in.nextString());
+						}
+						in.endArray();
+						if (!finished.isEmpty()) {
+							units.put(step, finished);
+						}
+					}
+					in.endObject();
+					break;
 				default:
 					in.skipValue();
 					break;
 			}
 		}
 		in.endObject();
-		return fingerprint == null ? null : new Record(fingerprint, done);
+		return fingerprint == null ? null : new Record(fingerprint, done, units);
 	}
 
 	/** Writes the progress file now, whatever the clock says. */
@@ -741,6 +1608,20 @@ public class FolderPipeline {
 						out.value(step);
 					}
 					out.endArray();
+					Map<String, Set<String>> units = entry.getValue()._units;
+					if (!units.isEmpty()) {
+						out.name(UNITS__PROP);
+						out.beginObject();
+						for (Map.Entry<String, Set<String>> step : units.entrySet()) {
+							out.name(step.getKey());
+							out.beginArray();
+							for (String unit : step.getValue()) {
+								out.value(unit);
+							}
+							out.endArray();
+						}
+						out.endObject();
+					}
 					out.endObject();
 				}
 				out.endObject();

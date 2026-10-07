@@ -269,6 +269,12 @@ public class HashIndex {
 		}
 
 		@Override
+		public FolderPipeline.Stage stage() {
+			// The camera-roll sync waits for a complete index; it must not wait for previews.
+			return FolderPipeline.Stage.INDEX;
+		}
+
+		@Override
 		public FolderPipeline.Outcome run(File folder) throws IOException {
 			if (images(folder).length == 0) {
 				return FolderPipeline.Outcome.DONE;
@@ -470,7 +476,7 @@ public class HashIndex {
 		CountDownLatch pass = _pass;
 		_pipeline.execute(() -> {
 			try {
-				indexNow();
+				walk(false);
 			} finally {
 				pass.countDown();
 			}
@@ -491,13 +497,25 @@ public class HashIndex {
 	}
 
 	/**
-	 * Indexes the whole space in the calling thread, hashing what no sidecar knows.
+	 * Indexes the whole space in the calling thread, hashing what no sidecar knows, and runs every
+	 * further step of the {@link FolderPipeline} but the videos on every folder, newest album first.
 	 *
 	 * <p>
-	 * What {@link #start()} runs in the background, and what a test drives synchronously.
+	 * What a test drives synchronously; {@link #start()} runs the same walk in the background and
+	 * leaves everything behind hashing to the pipeline's queue, see {@link FolderPipeline#catchUp(List)}.
 	 * </p>
 	 */
 	public void indexNow() {
+		walk(true);
+	}
+
+	/**
+	 * The walk over the whole space: hashing first, newest album first, then the other steps.
+	 *
+	 * @param inline
+	 *        Whether the steps behind hashing run here, in the calling thread, rather than queued.
+	 */
+	private void walk(boolean inline) {
 		List<File> folders;
 		try {
 			folders = tree(_root.toFile());
@@ -512,6 +530,9 @@ public class HashIndex {
 				withImages.add(folder);
 			}
 		}
+		// The newest albums are the ones looked at first, see issue #236.
+		withImages = FolderPipeline.newestFirst(withImages);
+		_pipeline.know(withImages);
 		Set<String> walked = new HashSet<>();
 		for (File folder : folders) {
 			walked.add(relative(folder));
@@ -536,9 +557,9 @@ public class HashIndex {
 				LOG.info("Indexing of '" + _root + "' stopped after " + _done + " folder(s).");
 				return;
 			}
-			// Every step of the space's pipeline, hashing first; one unreadable folder is not a
-			// reason to leave the rest of the library unknown, see FolderPipeline#process(File).
-			_pipeline.process(folder);
+			// Hashing, and whatever else the index needs; one unreadable folder is not a reason to
+			// leave the rest of the library unknown, see FolderPipeline#process(File).
+			_pipeline.process(folder, FolderPipeline.Stage.INDEX);
 			synchronized (this) {
 				_done++;
 				persist(false);
@@ -568,6 +589,19 @@ public class HashIndex {
 		_pipeline.retain(walked);
 		_pipeline.flush();
 		LOG.info("Indexed " + _total + " folder(s) of '" + _root + "'.");
+
+		// Behind the index, everything an album needs before its first visit, see issue #236.
+		if (inline) {
+			for (File folder : withImages) {
+				if (Thread.currentThread().isInterrupted()) {
+					return;
+				}
+				_pipeline.process(folder);
+			}
+			_pipeline.flush();
+		} else {
+			_pipeline.catchUp(withImages);
+		}
 	}
 
 	/** Brings one folder into the index, hashing what its sidecar does not know yet. */

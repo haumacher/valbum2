@@ -408,14 +408,16 @@ docker compose exec valbum valbum-admin create-space family --name "The Family"
 
 ### Importing an existing library
 
-Copy the folders into a space, even while the server runs; no rescan or restart is needed. A few
-seconds after a folder stops changing, the server knows its photos (duplicates, the app's sync,
+Copy the folders into a space, even while the server runs; no rescan or restart is needed. Within
+a minute after a folder stops changing, the server knows its photos (duplicates, the app's sync,
 collections).
 
 - Run `chown -R valbum:valbum <library>` afterwards: the server writes small files (`index.json`,
   `.hashes.json`, `.vacache/`) next to the photos. A folder it cannot write is named once in the log.
 - Prefer `rsync -a` or `cp -a`; they keep the file dates that photos without EXIF are sorted by.
-- Thumbnails are made when first viewed; with faces on, detection runs in the background for a while.
+- Then the server prepares every album in the background, newest first: thumbnails, covers, faces
+  (if on), places, and last the video renditions. It pauses while photos are being viewed. An
+  administrator sees the progress in the app's *Album server* settings.
 - If the log says folders cannot be watched, raise `fs.inotify.max_user_watches`.
 
 ### Server options
@@ -431,6 +433,7 @@ Set in `VALBUM_OPTS` (or given to `java -jar`, see [For developers](#for-develop
 | `--spaces auto\|single\|multi` | One space or several; `auto` follows the folders | `auto` |
 | `--admin-code <code>` | A fixed sign-in code for an administrator without a device (8 characters of `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, dashes allowed) | a fresh one per start |
 | `--preview-threads <n>` | Thumbnails made at the same time | number of processors |
+| `--sweep-seconds <n>` | How often every folder is checked for changes made by hand | `60` |
 | `--webroot <dir>` | Serve the web app from a directory instead of the bundled one | bundled |
 
 Each `valbum-admin` command is also a flag (`create-space` is `--create-space`, its `--name` is

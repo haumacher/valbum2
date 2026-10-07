@@ -3543,4 +3543,88 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get totpQrSemantics =>
       'Einrichtungscode für eine Authenticator-App als QR-Code';
+
+  @override
+  String get catchUpHeading => 'Vorbereitung der Alben';
+
+  @override
+  String get catchUpAsking => 'Anfrage an den Server…';
+
+  @override
+  String catchUpUnavailable(String reason) {
+    return 'Der Fortschritt kann nicht gelesen werden: $reason';
+  }
+
+  @override
+  String catchUpProgress(int done, int total) {
+    return 'Vorbereitete Alben: $done von $total';
+  }
+
+  @override
+  String catchUpComplete(int total) {
+    String _temp0 = intl.Intl.pluralLogic(
+      total,
+      locale: localeName,
+      other: 'Alle $total Alben sind vorbereitet',
+      one: 'Das eine Album ist vorbereitet',
+      zero: 'Keine Alben vorzubereiten',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get catchUpIdle => 'Derzeit gibt es nichts zu tun.';
+
+  @override
+  String catchUpNow(String step, String folder) {
+    return 'Aktuell: $step in $folder';
+  }
+
+  @override
+  String get catchUpYielding =>
+      'Pausiert, solange jemandem Fotos gezeigt werden.';
+
+  @override
+  String catchUpVideos(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Videos warten',
+      one: '1 Video wartet',
+      zero: 'Kein Video wartet',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get catchUpNoFailure => 'Es ist nichts fehlgeschlagen.';
+
+  @override
+  String catchUpFailure(String folder, String failure) {
+    return 'Letzter Fehler in $folder: $failure';
+  }
+
+  @override
+  String get catchUpRoot => 'dem obersten Ordner';
+
+  @override
+  String get catchUpStepHash => 'Fingerabdrücke';
+
+  @override
+  String get catchUpStepPreviews => 'Vorschauen';
+
+  @override
+  String get catchUpStepCover => 'Albumcover';
+
+  @override
+  String get catchUpStepFaces => 'Gesichter';
+
+  @override
+  String get catchUpStepPlaces => 'Orte';
+
+  @override
+  String get catchUpStepVideos => 'Videos';
+
+  @override
+  String get catchUpStepOther => 'Sonstige Arbeiten';
 }

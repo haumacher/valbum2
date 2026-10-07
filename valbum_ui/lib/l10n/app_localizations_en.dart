@@ -3494,4 +3494,88 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get totpQrSemantics =>
       'Setup code for an authenticator app, as a QR code';
+
+  @override
+  String get catchUpHeading => 'Preparing the albums';
+
+  @override
+  String get catchUpAsking => 'Asking the server…';
+
+  @override
+  String catchUpUnavailable(String reason) {
+    return 'The progress cannot be read: $reason';
+  }
+
+  @override
+  String catchUpProgress(int done, int total) {
+    return 'Albums prepared: $done of $total';
+  }
+
+  @override
+  String catchUpComplete(int total) {
+    String _temp0 = intl.Intl.pluralLogic(
+      total,
+      locale: localeName,
+      other: 'All $total albums are prepared',
+      one: 'The 1 album is prepared',
+      zero: 'No albums to prepare',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get catchUpIdle => 'Nothing to do right now.';
+
+  @override
+  String catchUpNow(String step, String folder) {
+    return 'Now: $step in $folder';
+  }
+
+  @override
+  String get catchUpYielding =>
+      'Paused while photos are being shown to somebody.';
+
+  @override
+  String catchUpVideos(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count videos waiting',
+      one: '1 video waiting',
+      zero: 'No video waiting',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get catchUpNoFailure => 'Nothing failed.';
+
+  @override
+  String catchUpFailure(String folder, String failure) {
+    return 'Last failure in $folder: $failure';
+  }
+
+  @override
+  String get catchUpRoot => 'the top folder';
+
+  @override
+  String get catchUpStepHash => 'Fingerprints';
+
+  @override
+  String get catchUpStepPreviews => 'Previews';
+
+  @override
+  String get catchUpStepCover => 'Album covers';
+
+  @override
+  String get catchUpStepFaces => 'Faces';
+
+  @override
+  String get catchUpStepPlaces => 'Places';
+
+  @override
+  String get catchUpStepVideos => 'Videos';
+
+  @override
+  String get catchUpStepOther => 'Other work';
 }

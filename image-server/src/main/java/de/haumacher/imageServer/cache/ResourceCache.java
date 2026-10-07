@@ -300,6 +300,16 @@ public class ResourceCache {
 	}
 
 	/**
+	 * The picture the given folder's tile shows in the listing above it, exactly as that listing
+	 * answers it: its {@link ThumbnailInfo#getImage() image} relative to the folder, a crop where
+	 * the photograph is cropped; <code>null</code> where the tile shows none. For the background
+	 * work of issue #236, which makes the tile's preview before anybody opens the listing.
+	 */
+	public static ThumbnailInfo tilePicture(File folder) {
+		return Loader.loadFolderInfo(folder).getIndexPicture();
+	}
+
+	/**
 	 * Forgets what is cached for the given folder, for everything below it and for the folder
 	 * above it.
 	 *

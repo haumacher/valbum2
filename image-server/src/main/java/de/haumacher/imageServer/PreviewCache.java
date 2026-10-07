@@ -351,8 +351,7 @@ public class PreviewCache {
 		String suffix = Util.suffix(fileName);
 		String imageType = imageType(suffix);
 
-		File cacheDir = new File(file.getParentFile(), CACHE_DIRECTORY_NAME);
-		File previewCache = new File(cacheDir, PREVIEW_PREFIX + fileName + (suffix.equals(imageType) ? "" : "." + imageType));
+		File previewCache = previewFile(file);
 		if (!upToDate(file, previewCache)) {
 			if (!SUPPORTED_EXTENSIONS.contains(suffix)) {
 				throw new PreviewException("Unsupported format: " + fileName);
@@ -360,6 +359,15 @@ public class PreviewCache {
 			generate(file, previewCache, tmp -> makePreview(file, tmp, suffix, imageType));
 		}
 		return previewCache;
+	}
+
+	/** Where the preview of the given original lies, made or not, see {@link #createPreview(File)}. */
+	public static File previewFile(File file) {
+		String fileName = file.getName();
+		String suffix = Util.suffix(fileName);
+		String imageType = imageType(suffix);
+		File cacheDir = new File(file.getParentFile(), CACHE_DIRECTORY_NAME);
+		return new File(cacheDir, PREVIEW_PREFIX + fileName + (suffix.equals(imageType) ? "" : "." + imageType));
 	}
 
 	/** What follows <code>preview-&lt;name&gt;</code> in the name of a cut preview, see issue #212. */
