@@ -5744,6 +5744,126 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The album \'{before}\' is now \'{album}\'; new photos go there.'**
   String noticeUploadTargetFollowed(String before, String album);
+
+  /// Menu entry of an album in the edit mode that creates the album's headings from its photos, by day or place (issue #238)
+  ///
+  /// In en, this message translates to:
+  /// **'Group by…'**
+  String get groupByAction;
+
+  /// Title of the dialog creating an album's headings from its photos, by day or place (issue #238)
+  ///
+  /// In en, this message translates to:
+  /// **'Group by'**
+  String get groupByTitle;
+
+  /// Says that the grouping dialog acts on every photo of the album, because nothing is selected
+  ///
+  /// In en, this message translates to:
+  /// **'Applies to the whole album.'**
+  String get groupByScopeAlbum;
+
+  /// Choice of the grouping dialog: create the headings only among the selected photos; the number is how many are selected
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Selected photo (1)} other{Selected photos ({count})}}'**
+  String groupByScopeChoiceSelection(int count);
+
+  /// Choice of the grouping dialog: create the headings for every photo of the album, not only the selected ones
+  ///
+  /// In en, this message translates to:
+  /// **'Whole album'**
+  String get groupByScopeChoiceAlbum;
+
+  /// Label of the choice what the album's sections (level-1 headings) are made by: a day, a town, a country …
+  ///
+  /// In en, this message translates to:
+  /// **'Sections by'**
+  String get groupBySectionKey;
+
+  /// Label of the choice what the album's subsections (level-2 headings, inside a section) are made by
+  ///
+  /// In en, this message translates to:
+  /// **'Subsections by'**
+  String get groupBySubsectionKey;
+
+  /// Choice of the grouping dialog: no subsections at all
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get groupByKeyNone;
+
+  /// Choice of the grouping dialog: one heading per calendar day the photos were taken on
+  ///
+  /// In en, this message translates to:
+  /// **'Day'**
+  String get groupByKeyDay;
+
+  /// Choice of the grouping dialog: one heading per city, town or village the photos were taken in
+  ///
+  /// In en, this message translates to:
+  /// **'Town'**
+  String get groupByKeyTown;
+
+  /// Choice of the grouping dialog: one heading per part of town (city district) the photos were taken in
+  ///
+  /// In en, this message translates to:
+  /// **'District'**
+  String get groupByKeyDistrict;
+
+  /// Choice of the grouping dialog: one heading per region (a state, a province) the photos were taken in
+  ///
+  /// In en, this message translates to:
+  /// **'Region'**
+  String get groupByKeyRegion;
+
+  /// Choice of the grouping dialog: one heading per country the photos were taken in
+  ///
+  /// In en, this message translates to:
+  /// **'Country'**
+  String get groupByKeyCountry;
+
+  /// Choice of the grouping dialog: one heading per named place close by where the photos were taken (a park, a lake, a castle, a church)
+  ///
+  /// In en, this message translates to:
+  /// **'Landmark'**
+  String get groupByKeyFeature;
+
+  /// Choice of the grouping dialog: one heading per town visited on each day, reading like 'Mon, 14 Jul 2026 – Florence'
+  ///
+  /// In en, this message translates to:
+  /// **'Day and town'**
+  String get groupByKeyDayAndTown;
+
+  /// Choice of the grouping dialog: the headings already there are removed and new ones written
+  ///
+  /// In en, this message translates to:
+  /// **'Replace the headings'**
+  String get groupByModeReplace;
+
+  /// Choice of the grouping dialog: the level-1 headings already there stay, and subsections are created inside each of them
+  ///
+  /// In en, this message translates to:
+  /// **'Keep the sections, add subsections'**
+  String get groupByModeAddSubsections;
+
+  /// Warning of the grouping dialog that existing headings in the album (or the selection) will be removed
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The heading already there is replaced.} other{The {count} headings already there are replaced.}}'**
+  String groupByWillReplace(int count);
+
+  /// Said in the grouping dialog when no photo can be grouped by the chosen key
+  ///
+  /// In en, this message translates to:
+  /// **'None of these photos has this information: no date, or no position with a place of this kind nearby. No heading is created.'**
+  String get groupByNothingKeyed;
+
+  /// Label above the list of headings the grouping dialog would create, each with its number of photos
+  ///
+  /// In en, this message translates to:
+  /// **'Headings to create'**
+  String get groupByPreview;
 }
 
 class _AppLocalizationsDelegate

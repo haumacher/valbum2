@@ -163,8 +163,11 @@ void main() {
         expect(landscape.rating, -1);
         expect(tile("landscape.jpg"), findsNothing);
 
-        // Widening the filter brings it back.
+        // Widening the filter brings it back. The edit mode's menu is long
+        // enough to scroll in the test's window.
         await tester.tap(find.byIcon(Icons.more_vert));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byIcon(Icons.add_circle_outline));
         await tester.pumpAndSettle();
         await tester.tap(find.byIcon(Icons.add_circle_outline));
         await tester.pumpAndSettle();

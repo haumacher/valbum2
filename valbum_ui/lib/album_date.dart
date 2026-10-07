@@ -203,6 +203,31 @@ String albumFolderName(DateTime? date, String title) {
 /// dates of what lies in it.
 String listingFolderName(String title) => title.trim();
 
+/// The wall clock of a recording time, [ImagePart.date] in milliseconds since
+/// the epoch: the device's own zone, the one every date of the app is shown
+/// in. A test replaces it to cut days in a zone other than the one it runs in.
+typedef LocalTime = DateTime Function(int millis);
+
+/// The wall clock of [millis] in the device's zone, see [LocalTime].
+DateTime deviceLocalTime(int millis) =>
+    DateTime.fromMillisecondsSinceEpoch(millis);
+
+/// The calendar day a photograph taken at [date] (milliseconds since the
+/// epoch) belongs to: local midnight of that day, `null` for `0`, which means
+/// "no recording time known".
+///
+/// The day is the one of the device's zone ([localTime]), not of the server
+/// nor of UTC: the server stores an instant (issue #183) and knows no zone to
+/// cut a day at. The inbox's day headings (#136) and the "Group by…" of
+/// issue #238 cut days by this one rule.
+DateTime? localDayOf(int date, {LocalTime localTime = deviceLocalTime}) {
+  if (date == 0) {
+    return null;
+  }
+  var taken = localTime(date);
+  return DateTime(taken.year, taken.month, taken.day);
+}
+
 /// Whether [name] may be the name of a folder on disk.
 ///
 /// A name that is a path (`a/b`), a name that is a navigation step (`.`,

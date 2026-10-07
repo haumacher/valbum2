@@ -62,6 +62,7 @@ import 'package:intl/intl.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 
 import 'about.dart';
+import 'album_date.dart' show localDayOf;
 import 'album_edit.dart';
 import 'album_model.dart';
 import 'album_view.dart';
@@ -233,11 +234,7 @@ List<InboxDay> inboxDays(
     if (!isVisiblePart(image, minRating)) {
       return;
     }
-    DateTime? day;
-    if (image.date != 0) {
-      var taken = DateTime.fromMillisecondsSinceEpoch(image.date);
-      day = DateTime(taken.year, taken.month, taken.day);
-    }
+    var day = localDayOf(image.date);
     var key = day == null ? "" : _dayKeyFormat.format(day);
     if (!byDay.containsKey(key)) {
       order.add(key);
