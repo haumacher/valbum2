@@ -441,7 +441,13 @@ class PersonsContentState extends State<PersonsContent>
   /// decided about a face that is still in the answer stays in the buffer;
   /// everything else goes, because there is nothing left to say it about.
   void _read(AlbumInfo album) {
-    var kept = Map<String, String>.from(placement);
+    // Only what is still unsaved is kept: a face whose place the server
+    // already has takes the new answer, so a suggestion that names just
+    // given make possible shows up at once (and a stale guess goes).
+    var kept = {
+      for (var entry in placement.entries)
+        if (stored[entry.key] != entry.value) entry.key: entry.value,
+    };
     stored.clear();
     placement.clear();
     selection.clear();

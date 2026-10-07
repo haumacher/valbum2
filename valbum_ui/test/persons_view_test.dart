@@ -509,6 +509,53 @@ void main() {
     });
   });
 
+  group("after a Save", () {
+    testWidgets("the suggestions the new names lead to are shown at once",
+        (tester) async {
+      // A new person: the server knows nobody like d.jpg#0 until somebody
+      // names a face of hers; then it suggests her for the other one.
+      var images = [
+        ...defaultImages,
+        imageOf("d.jpg", [faceOf(0, cluster: "c4")]),
+      ];
+      var saved = false;
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(images: images),
+          albumNow: () => saved
+              ? albumOf(images: [
+                  imageOf("a.jpg", [
+                    faceOf(0,
+                        cluster: "c1", person: "p-anna", state: "CONFIRMED"),
+                    faceOf(1, cluster: "c1", y: 0.5),
+                  ]),
+                  ...defaultImages.sublist(1),
+                  imageOf("d.jpg", [faceOf(0, cluster: "c4", person: "p-anna")]),
+                ])
+              : albumOf(images: images),
+          post: (request) {
+            saved = true;
+            return json("{}");
+          },
+        ),
+      );
+      expect(header("suggest:p-anna"), findsNothing);
+
+      await dragFaceTo(tester, "a.jpg#0", header("person:p-anna"));
+      await saveEditor(tester);
+
+      expect(header("suggest:p-anna"), findsOneWidget,
+          reason: "the server's new suggestion replaces the old guess");
+      expect(tester.getTopLeft(faceTile("d.jpg#0")).dy,
+          greaterThan(tester.getTopLeft(header("suggest:p-anna")).dy),
+          reason: "the face stands under the suggestion");
+    });
+  });
+
   group("dragging", () {
     testWidgets("onto a person confirms that face and leaves the other",
         (tester) async {
