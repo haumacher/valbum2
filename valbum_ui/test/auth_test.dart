@@ -213,7 +213,7 @@ void main() {
       expect(
         request.body,
         '{"secret":"","deviceName":"Phone","userName":"","invitation":"",'
-        '"deviceCode":"ABCD-EFGH"}',
+        '"deviceCode":"ABCD-EFGH","totpCode":""}',
       );
     });
 
@@ -408,7 +408,7 @@ void main() {
       expect(
         pair.body,
         '{"secret":"","deviceName":"Kamera","userName":"","invitation":"",'
-        '"deviceCode":"ABCD-EFGH"}',
+        '"deviceCode":"ABCD-EFGH","totpCode":""}',
       );
       // The code is never kept on the device: it was spent.
       expect(

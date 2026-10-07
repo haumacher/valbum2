@@ -24,6 +24,7 @@ import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'settings.dart';
+import 'sign_in_options.dart' show showSignInOptions;
 import 'urls.dart';
 
 /// The reason a request was refused, as it is shown to the user.
@@ -191,12 +192,20 @@ String backupCodeMade(AppLocalizations l10n, String made) =>
 /// the code is still signed in. The danger is one's **last** device, and the
 /// question names the ways back there are, in words, rather than letting the
 /// door fall shut in silence.
+///
+/// The ways a member set up to sign in on a new browser are ways back too
+/// (issue #233): an authenticator app, a passkey, a proven e-mail address.
 String lastDeviceWarning(
   AppLocalizations l10n, {
   required bool isAdmin,
   required bool hasBackupCode,
+  ContactSignIns? signIns,
 }) {
   var ways = <String>[
+    if (signIns != null && signIns.authenticator.isNotEmpty)
+      l10n.wayAuthenticator,
+    if (signIns != null && signIns.passkeys.isNotEmpty) l10n.wayPasskey,
+    if (signIns != null && signIns.addresses.isNotEmpty) l10n.wayEmailAddress,
     if (hasBackupCode) l10n.wayBackupCode,
     isAdmin ? l10n.wayRecoveryFromOtherAdmin : l10n.wayRecoveryFromAdmin,
     if (isAdmin) l10n.wayServerRestart,
@@ -204,6 +213,21 @@ String lastDeviceWarning(
   var last = ways.removeLast();
   var spelled = ways.isEmpty ? last : l10n.waysOrLast(ways.join(", "), last);
   return l10n.lastDeviceWarning(spelled);
+}
+
+/// The key of "Ways to sign in…" in the devices section (issue #233).
+const Key memberSignInsKey = Key("settings.signIns");
+
+/// What a member's ways to sign in are, in one line (issue #233).
+String signInsSummary(AppLocalizations l10n, ContactSignIns signIns) {
+  var parts = <String>[
+    if (signIns.authenticator.isNotEmpty) l10n.authenticatorHeading,
+    if (signIns.passkeys.isNotEmpty) l10n.contactPasskeyCount(signIns.passkeys.length),
+    for (var address in signIns.addresses) address.value,
+  ];
+  return parts.isEmpty
+      ? l10n.noMemberSignIns
+      : l10n.memberSignInsState(parts.join(", "));
 }
 
 /// What the warning says when the devices could not even be read.
@@ -237,6 +261,7 @@ Future<bool> confirmLastSignOut({
           l10n,
           isAdmin: role == roleAdmin,
           hasBackupCode: (devices?.backupCodeCreated ?? "").isNotEmpty,
+          signIns: devices?.signIns,
         );
   var confirmed = await confirmHere(
     context: context,
@@ -351,6 +376,10 @@ class DevicesSectionState extends State<DevicesSection> {
   /// (issue #92); never the code, which the server cannot show again.
   String _backupCodeCreated = "";
 
+  /// The member's ways to sign in on a new browser besides a code (issue
+  /// #233), `null` from a server that does not say.
+  ContactSignIns? _signIns;
+
   /// The server's reason for the last refusal, `null` while all is well.
   String? _problem;
 
@@ -361,6 +390,37 @@ class DevicesSectionState extends State<DevicesSection> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  /// "Ways to sign in…" (issue #233): the dialog a contact uses, for the
+  /// member's own authenticator app, passkeys and addresses.
+  Future<void> _openSignIns() async {
+    var signIns = _signIns;
+    if (signIns == null) {
+      return;
+    }
+    List<ProofMethod> methods;
+    try {
+      methods = (await widget.client.authInfo()).proofMethods;
+    } catch (_) {
+      methods = const [];
+    }
+    if (!mounted) {
+      return;
+    }
+    var answer = await showSignInOptions(
+      context: context,
+      client: widget.client,
+      signIns: signIns,
+      member: true,
+      proofMethods: methods,
+    );
+    if (answer != null && mounted) {
+      setState(() {
+        _signIns = answer;
+        widget.onDevices?.call(_list);
+      });
+    }
   }
 
   Future<void> _load() async {
@@ -386,6 +446,7 @@ class DevicesSectionState extends State<DevicesSection> {
   void _took(DeviceList answer) {
     _devices = answer.devices;
     _backupCodeCreated = answer.backupCodeCreated;
+    _signIns = answer.signIns;
     _problem = null;
     widget.onDevices?.call(answer);
   }
@@ -395,6 +456,7 @@ class DevicesSectionState extends State<DevicesSection> {
   DeviceList get _list => DeviceList(
         devices: _devices ?? const [],
         backupCodeCreated: _backupCodeCreated,
+        signIns: _signIns,
       );
 
   @override
@@ -446,8 +508,33 @@ class DevicesSectionState extends State<DevicesSection> {
           ),
         ),
         ..._backupCodeLines(l10n),
+        ..._signInLines(l10n),
       ],
     );
+  }
+
+  /// The member's ways to sign in on a new browser (issue #233): what there
+  /// is, and the button to the dialog that changes it.
+  List<Widget> _signInLines(AppLocalizations l10n) {
+    var signIns = _signIns;
+    if (signIns == null) {
+      return const [];
+    }
+    return [
+      const SizedBox(height: 16),
+      Text(signInsSummary(l10n, signIns),
+          key: const Key("settings.signIns.state")),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          key: memberSignInsKey,
+          onPressed: _busy ? null : _openSignIns,
+          icon: const Icon(Icons.key),
+          label: Text(l10n.memberSignInsEntry),
+        ),
+      ),
+    ];
   }
 
   /// The backup code: whether there is one, and the two things one can do
@@ -606,6 +693,7 @@ class DevicesSectionState extends State<DevicesSection> {
                   l10n,
                   isAdmin: widget.role == roleAdmin,
                   hasBackupCode: _backupCodeCreated.isNotEmpty,
+                  signIns: _signIns,
                 )
               : l10n.signOutThisDeviceMessage)
           : l10n.removeDeviceMessage(device.name),
@@ -987,10 +1075,16 @@ class DeviceCodeQr extends StatelessWidget {
   /// How large the code is drawn, see [deviceCodeQrSize].
   final double size;
 
+  /// What a screen reader says of the code, `null` for a device code's: the
+  /// widget draws other codes too, such as an authenticator app's setup
+  /// (issue #233).
+  final String? semanticsLabel;
+
   const DeviceCodeQr({
     super.key,
     required this.payload,
     this.size = deviceCodeQrSize,
+    this.semanticsLabel,
   });
 
   @override
@@ -1013,8 +1107,8 @@ class DeviceCodeQr extends StatelessWidget {
             // level tolerates a reflection without making the modules small.
             errorCorrectionLevel: QrErrorCorrectLevel.M,
             version: QrVersions.auto,
-            semanticsLabel: AppLocalizations.of(context)!
-                .deviceCodeQrSemantics,
+            semanticsLabel: semanticsLabel ??
+                AppLocalizations.of(context)!.deviceCodeQrSemantics,
           ),
         ),
       );
@@ -1545,6 +1639,14 @@ class PeopleSectionState extends State<PeopleSection> {
           // Somebody who lost every device they had gets the same code as
           // everybody else, made by an administrator (issue #89).
           if (named && user.name.isNotEmpty) ...[
+            // How they sign in on a new browser besides a code (issue #233).
+            if (!HeldSignIns.ofUser(user).isEmpty)
+              IconButton(
+                key: Key("user-sign-ins-${user.name}"),
+                icon: const Icon(Icons.key),
+                tooltip: l10n.userSignInsTooltip,
+                onPressed: _busy ? null : () => _signIns(user),
+              ),
             IconButton(
               key: Key("user-recovery-${user.name}"),
               icon: const Icon(Icons.key_outlined),
@@ -1614,6 +1716,16 @@ class PeopleSectionState extends State<PeopleSection> {
     var user = row.user!;
     parts.add(l10n.librarySpace(spaceDisplayName(l10n, user.space)));
     parts.add(l10n.deviceCount(user.devices));
+    var signIns = HeldSignIns.ofUser(user);
+    if (!signIns.isEmpty) {
+      parts.add(signInsSummary(
+          l10n,
+          ContactSignIns(
+            authenticator: signIns.authenticator,
+            passkeys: signIns.passkeys,
+            addresses: signIns.addresses,
+          )));
+    }
     if (user.recipient.trim().isNotEmpty) {
       // The inviter's memento stays beside the name: "who is 'bob42' again?"
       parts.add(l10n.invitedForRecipient(user.recipient.trim()));
@@ -1622,6 +1734,26 @@ class PeopleSectionState extends State<PeopleSection> {
       parts.add(l10n.sinceDay(dayOf(user.created)));
     }
     return parts.join(" — ");
+  }
+
+  /// Shows how [user] signs in besides a code, each way with "Remove"
+  /// (issue #233).
+  Future<void> _signIns(UserEntry user) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => UserSignInsDialog(
+        client: widget.client!,
+        user: user,
+        onChanged: (answer) {
+          if (mounted) {
+            setState(() {
+              _users = answer.users;
+              _problem = null;
+            });
+          }
+        },
+      ),
+    );
   }
 
   /// Shows a code signing a device of [user] in, for somebody who lost theirs
@@ -2244,12 +2376,53 @@ class _ContactSessionsDialogState extends State<ContactSessionsDialog> {
   }
 }
 
+/// The ways somebody signs in that a member who manages them may remove: an
+/// authenticator app, passkeys, and — for a member — proven addresses.
+@immutable
+class HeldSignIns {
+  /// Whose they are, as the titles name them.
+  final String name;
+
+  /// Since when an authenticator app signs them in, empty for none.
+  final String authenticator;
+
+  final List<ContactPasskey> passkeys;
+
+  final List<ContactAddress> addresses;
+
+  const HeldSignIns({
+    required this.name,
+    required this.authenticator,
+    required this.passkeys,
+    this.addresses = const [],
+  });
+
+  /// A contact's (issues #204, #208).
+  factory HeldSignIns.ofContact(Contact contact) => HeldSignIns(
+        name: contact.name,
+        authenticator: contact.authenticator,
+        passkeys: contact.passkeys,
+      );
+
+  /// A member's (issue #233).
+  factory HeldSignIns.ofUser(UserEntry user) => HeldSignIns(
+        name: user.name,
+        authenticator: user.authenticator,
+        passkeys: user.passkeys,
+        addresses: user.addresses,
+      );
+
+  /// Whether there is anything to remove.
+  bool get isEmpty =>
+      authenticator.isEmpty && passkeys.isEmpty && addresses.isEmpty;
+}
+
 /// How a contact signs in besides their link: their passkeys (issue #204)
 /// and their authenticator app (issue #208), each with "Remove" after a
 /// question.
 ///
 /// Every change is handed to [onChanged], the section behind the dialog.
-class ContactSignInsDialog extends StatefulWidget {
+class ContactSignInsDialog extends StatelessWidget {
   final VAlbumClient client;
 
   final Contact contact;
@@ -2264,27 +2437,103 @@ class ContactSignInsDialog extends StatefulWidget {
   });
 
   @override
-  State<ContactSignInsDialog> createState() => _ContactSignInsDialogState();
+  Widget build(BuildContext context) => HeldSignInsDialog(
+        keyPrefix: "contact",
+        signIns: HeldSignIns.ofContact(contact),
+        removeMessage: AppLocalizations.of(context)!.contactSignInRemoveMessage,
+        remove: (method, id) async {
+          var answer =
+              await client.removeContactSignIn(contact.id, method, id: id);
+          onChanged(answer);
+          return HeldSignIns.ofContact(answer);
+        },
+      );
 }
 
-class _ContactSignInsDialogState extends State<ContactSignInsDialog> {
-  late Contact _contact = widget.contact;
+/// How a member signs in on a new browser besides a code (issue #233), as
+/// the administrator sees and removes it.
+class UserSignInsDialog extends StatelessWidget {
+  final VAlbumClient client;
+
+  final UserEntry user;
+
+  /// Hands the users the server answered to the section behind the dialog.
+  final ValueChanged<UserList> onChanged;
+
+  const UserSignInsDialog({
+    super.key,
+    required this.client,
+    required this.user,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) => HeldSignInsDialog(
+        keyPrefix: "user",
+        signIns: HeldSignIns.ofUser(user),
+        removeMessage: AppLocalizations.of(context)!.userSignInRemoveMessage,
+        remove: (method, id) async {
+          var answer = await client.removeUserSignIn(user.name, method, id: id);
+          onChanged(answer);
+          var changed = answer.users
+              .where((entry) => entry.name == user.name)
+              .firstOrNull;
+          return changed == null
+              ? HeldSignIns(name: user.name, authenticator: "", passkeys: const [])
+              : HeldSignIns.ofUser(changed);
+        },
+      );
+}
+
+/// The ways somebody signs in, each with "Remove" after a question: the one
+/// dialog of a contact's (issues #204, #208) and a member's (issue #233).
+class HeldSignInsDialog extends StatefulWidget {
+  /// What the keys of this dialog start with: `contact` or `user`.
+  final String keyPrefix;
+
+  final HeldSignIns signIns;
+
+  /// What the question before a removal says.
+  final String removeMessage;
+
+  /// Removes one way (`totp`, `passkey`, `email` with its id) and answers
+  /// what is left.
+  final Future<HeldSignIns> Function(String method, String id) remove;
+
+  const HeldSignInsDialog({
+    super.key,
+    required this.keyPrefix,
+    required this.signIns,
+    required this.removeMessage,
+    required this.remove,
+  });
+
+  @override
+  State<HeldSignInsDialog> createState() => _HeldSignInsDialogState();
+}
+
+class _HeldSignInsDialogState extends State<HeldSignInsDialog> {
+  late HeldSignIns _signIns = widget.signIns;
 
   String? _problem;
 
   bool _busy = false;
 
+  String get _p => widget.keyPrefix;
+
   Future<void> _remove(String method, {String id = ""}) async {
     var l10n = AppLocalizations.of(context)!;
     var confirmed = await confirmHere(
       context: context,
-      dialogKey: "contact-sign-in-remove-confirm",
+      dialogKey: "$_p-sign-in-remove-confirm",
       title: method == "passkey"
-          ? l10n.contactPasskeyRemoveTitle(_contact.name)
-          : l10n.contactAuthenticatorRemoveTitle(_contact.name),
-      message: l10n.contactSignInRemoveMessage,
+          ? l10n.contactPasskeyRemoveTitle(_signIns.name)
+          : method == "email"
+              ? l10n.signInAddressRemoveTitle(id, _signIns.name)
+              : l10n.contactAuthenticatorRemoveTitle(_signIns.name),
+      message: widget.removeMessage,
       confirmLabel: l10n.remove,
-      confirmKey: "contact-sign-in-remove-confirmed",
+      confirmKey: "$_p-sign-in-remove-confirmed",
     );
     if (confirmed != true || !mounted) {
       return;
@@ -2294,16 +2543,14 @@ class _ContactSignInsDialogState extends State<ContactSignInsDialog> {
       _problem = null;
     });
     try {
-      var answer =
-          await widget.client.removeContactSignIn(_contact.id, method, id: id);
+      var answer = await widget.remove(method, id);
       if (!mounted) {
         return;
       }
       setState(() {
         _busy = false;
-        _contact = answer;
+        _signIns = answer;
       });
-      widget.onChanged(answer);
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -2318,10 +2565,10 @@ class _ContactSignInsDialogState extends State<ContactSignInsDialog> {
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var problem = _problem;
-    var authenticator = _contact.authenticator;
+    var authenticator = _signIns.authenticator;
     return AlertDialog(
-      key: const Key("contact-sign-ins-dialog"),
-      title: Text(l10n.contactSignInsTitle(_contact.name)),
+      key: Key("$_p-sign-ins-dialog"),
+      title: Text(l10n.contactSignInsTitle(_signIns.name)),
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
@@ -2330,14 +2577,12 @@ class _ContactSignInsDialogState extends State<ContactSignInsDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (problem != null)
-                sectionProblem(
-                    context, problem, const Key("contact-sign-ins-error")),
-              if (authenticator.isEmpty && _contact.passkeys.isEmpty)
-                Text(l10n.contactSignInsNone,
-                    key: const Key("contact-sign-ins-none")),
-              for (var passkey in _contact.passkeys)
+                sectionProblem(context, problem, Key("$_p-sign-ins-error")),
+              if (_signIns.isEmpty)
+                Text(l10n.contactSignInsNone, key: Key("$_p-sign-ins-none")),
+              for (var passkey in _signIns.passkeys)
                 ListTile(
-                  key: Key("contact-sign-in-passkey-${passkey.id}"),
+                  key: Key("$_p-sign-in-passkey-${passkey.id}"),
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   leading: const Icon(Icons.key),
@@ -2346,7 +2591,7 @@ class _ContactSignInsDialogState extends State<ContactSignInsDialog> {
                       ? null
                       : Text(l10n.passkeyLastUsed(dayOf(passkey.lastUsed))),
                   trailing: TextButton(
-                    key: Key("contact-sign-in-passkey-remove-${passkey.id}"),
+                    key: Key("$_p-sign-in-passkey-remove-${passkey.id}"),
                     onPressed:
                         _busy ? null : () => _remove("passkey", id: passkey.id),
                     child: Text(l10n.remove),
@@ -2354,7 +2599,7 @@ class _ContactSignInsDialogState extends State<ContactSignInsDialog> {
                 ),
               if (authenticator.isNotEmpty)
                 ListTile(
-                  key: const Key("contact-sign-in-totp"),
+                  key: Key("$_p-sign-in-totp"),
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   leading: const Icon(Icons.pin_outlined),
@@ -2362,8 +2607,22 @@ class _ContactSignInsDialogState extends State<ContactSignInsDialog> {
                   subtitle: Text(
                       l10n.authenticatorActiveSince(dayOf(authenticator))),
                   trailing: TextButton(
-                    key: const Key("contact-sign-in-totp-remove"),
+                    key: Key("$_p-sign-in-totp-remove"),
                     onPressed: _busy ? null : () => _remove("totp"),
+                    child: Text(l10n.remove),
+                  ),
+                ),
+              for (var address in _signIns.addresses)
+                ListTile(
+                  key: Key("$_p-sign-in-address-${address.value}"),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: const Icon(Icons.alternate_email),
+                  title: Text(address.value),
+                  trailing: TextButton(
+                    key: Key("$_p-sign-in-address-remove-${address.value}"),
+                    onPressed:
+                        _busy ? null : () => _remove("email", id: address.value),
                     child: Text(l10n.remove),
                   ),
                 ),
@@ -2373,7 +2632,7 @@ class _ContactSignInsDialogState extends State<ContactSignInsDialog> {
       ),
       actions: [
         TextButton(
-          key: const Key("contact-sign-ins-close"),
+          key: Key("$_p-sign-ins-close"),
           onPressed: () => Navigator.of(context).pop(),
           child: Text(l10n.close),
         ),

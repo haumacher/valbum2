@@ -8,7 +8,9 @@ import de.haumacher.imageServer.auth.AuthService.Caller;
 import de.haumacher.imageServer.auth.AuthService.Identification;
 import de.haumacher.imageServer.auth.ContactStore;
 import de.haumacher.imageServer.auth.ShareStore;
+import de.haumacher.imageServer.auth.SignInHolder;
 import de.haumacher.imageServer.auth.TotpSignIns;
+import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.mail.CodeMail;
 import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.oidc.OidcLogins;
@@ -16,6 +18,7 @@ import de.haumacher.imageServer.oidc.OidcProvider;
 import de.haumacher.imageServer.passkeys.Passkeys;
 import de.haumacher.imageServer.shared.model.ContactCredential;
 import de.haumacher.imageServer.shared.model.EmailProofSent;
+import de.haumacher.imageServer.shared.model.PairResponse;
 import de.haumacher.imageServer.shared.model.ProofMethod;
 import jakarta.mail.internet.AddressException;
 import jakarta.mail.internet.InternetAddress;
@@ -113,8 +116,20 @@ final class AddressProof {
 		 * The own token of an addressed link (the group link of issue #211), or a credential such a
 		 * link does not admit: only an address of one of the link's recipients proves anything here.
 		 */
-		ADDRESSED;
+		ADDRESSED,
+
+		/**
+		 * The sign-in form, without a link (issue #233): a caller who holds nothing proves an address
+		 * of a member and is signed in as them. The answer is the same whether or not it is one.
+		 */
+		MEMBER,
+
+		/** A signed-in member adding an address to sign in with (issue #233). */
+		MEMBER_ADD;
 	}
+
+	/** What a proof is refused with on the sign-in form that names no member (any more). */
+	static final String NO_MEMBER_ADDRESS = "No member of this space signs in with this address.";
 
 	/** What a provider's address is answered that is not the one the link was sent to (issue #200). */
 	static final String SHARED_WITH_SOMEONE_ELSE =
@@ -131,11 +146,24 @@ final class AddressProof {
 
 		final String _email;
 
+		/** The member adding an address, for {@link Kind#MEMBER_ADD}. */
+		final UserStore.User _user;
+
 		Target(Kind kind, ShareStore.Link link, ContactStore.Contact contact, String email) {
+			this(kind, link, contact, email, null);
+		}
+
+		Target(Kind kind, ShareStore.Link link, ContactStore.Contact contact, String email, UserStore.User user) {
 			_kind = kind;
 			_link = link;
 			_contact = contact;
 			_email = email;
+			_user = user;
+		}
+
+		/** Whether the target is one of the sign-in form or the member's own, without a link. */
+		boolean isMember() {
+			return _kind == Kind.MEMBER || _kind == Kind.MEMBER_ADD;
 		}
 
 		/** The scope a code is sent and checked in: the same caller, the same link, the same person. */
@@ -147,6 +175,10 @@ final class AddressProof {
 					return "open:" + _link.getId();
 				case ADDRESSED:
 					return "group:" + _link.getId();
+				case MEMBER:
+					return "member";
+				case MEMBER_ADD:
+					return "user:" + _user.getName();
 				default:
 					return "contact:" + _contact.getId();
 			}
@@ -191,8 +223,8 @@ final class AddressProof {
 	 * Whether the given caller has an address to prove here; where not, the servlet answers what it
 	 * answers the caller anywhere.
 	 */
-	static boolean mayProve(Caller caller) {
-		if (caller.getContact() != null) {
+	boolean mayProve(Caller caller) {
+		if (caller.getContact() != null || memberKind(caller) != null) {
 			return true;
 		}
 		Identification identification = caller.getIdentification();
@@ -223,12 +255,31 @@ final class AddressProof {
 	}
 
 	/**
+	 * What a caller without a link proves (issue #233): a signed-in member their own address, a
+	 * caller who holds nothing a member's to sign in; <code>null</code> for everybody else.
+	 */
+	Kind memberKind(Caller caller) {
+		if (caller.isShareLink() || caller.getInvitation() != null || caller.getContact() != null
+			|| _auth.getUsers() == null || caller.getIdentification() != null) {
+			return null;
+		}
+		if (caller.isPaired()) {
+			return caller.getUser() == null ? null : Kind.MEMBER_ADD;
+		}
+		return Kind.MEMBER;
+	}
+
+	/**
 	 * What the given caller may prove through a provider (issue #200), <code>null</code> for
 	 * nothing: what a code proves.
 	 */
-	static Kind providerKind(Caller caller) {
+	Kind providerKind(Caller caller) {
 		if (caller.getContact() != null) {
 			return Kind.ADD;
+		}
+		Kind member = memberKind(caller);
+		if (member != null) {
+			return member;
 		}
 		Identification identification = caller.getIdentification();
 		return identification == null ? null : kind(identification);
@@ -248,10 +299,11 @@ final class AddressProof {
 		// A passkey (#204) and an authenticator app (#208) only where a contact this link may let in
 		// set one up: never the default way in, and never offered to somebody who has none.
 		if (kind != null && _passkeys.isAvailable()
-			&& anyCandidate(identification, kind, contact -> !contact.getPasskeys().isEmpty())) {
+			&& anyCandidate(identification, kind, holder -> !holder.getSignIns().getPasskeys().isEmpty())) {
 			result.add(ProofMethod.create().setName(Passkeys.METHOD));
 		}
-		if (kind != null && anyCandidate(identification, kind, contact -> contact.getAuthenticator() != null)) {
+		if (kind != null
+			&& anyCandidate(identification, kind, holder -> holder.getSignIns().getAuthenticator() != null)) {
 			result.add(ProofMethod.create().setName(TotpSignIns.METHOD));
 		}
 		return result;
@@ -262,8 +314,11 @@ final class AddressProof {
 	 * recipient's own link that recipient, on the group link one of its recipients, on an open link
 	 * anybody of the space &mdash; each neither blocked nor shut out of the link.
 	 */
-	private boolean anyCandidate(Identification identification, Kind kind,
-			Predicate<ContactStore.Contact> test) {
+	private boolean anyCandidate(Identification identification, Kind kind, Predicate<SignInHolder> test) {
+		if ((kind == Kind.OPEN || kind == Kind.ADDRESSED) && anyMember(test)) {
+			// A member's proof signs the member in on any link (issue #233).
+			return true;
+		}
 		ShareStore.Link link = identification.getLink();
 		ContactStore contacts = _auth.getContacts();
 		switch (kind) {
@@ -289,6 +344,39 @@ final class AddressProof {
 		}
 	}
 
+	private boolean anyMember(Predicate<SignInHolder> test) {
+		if (_auth.getUsers() == null) {
+			return false;
+		}
+		for (UserStore.User user : _auth.getUsers().getUsers()) {
+			if (!user.isPending() && test.test(user)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** The member holding the given normalised e-mail address, <code>null</code> for none. */
+	private UserStore.User memberHolding(String email) {
+		return _auth.getUsers() == null || email == null ? null : _auth.getUsers().byEmail(email);
+	}
+
+	/**
+	 * Signs the caller in as the given member, the end of every proof that names a member (issue
+	 * #233): a new device of theirs, answered in {@link ContactCredential#getMember()}; no contact is
+	 * created or identified.
+	 */
+	private ContactCredential member(UserStore.User user, String deviceName, String how)
+			throws AuthService.Refused, IOException {
+		PairResponse signedIn;
+		try {
+			signedIn = _auth.signInMember(user, deviceName, how);
+		} catch (AuthService.PairRefused ex) {
+			throw new AuthService.Refused(ex.getStatus(), ex.getMessage());
+		}
+		return ContactCredential.create().setCredential("").setMember(signedIn);
+	}
+
 	private static boolean admissible(ShareStore.Link link, ContactStore.Contact contact) {
 		return contact != null && !contact.isBlocked() && !link.isShutOut(contact.getId());
 	}
@@ -306,7 +394,7 @@ final class AddressProof {
 	 * </p>
 	 */
 	ContactCredential verifyTotp(Caller caller, String code, String address, String client, boolean remember,
-			String displayName) throws TotpSignIns.Refused, AuthService.Refused, IOException {
+			String displayName, String deviceName) throws TotpSignIns.Refused, AuthService.Refused, IOException {
 		Identification identification = caller.getIdentification();
 		Kind kind = identification == null ? null : kind(identification);
 		if (kind == null) {
@@ -323,6 +411,12 @@ final class AddressProof {
 			totp.verify(contact, null, code, client);
 		} else {
 			String email = typed(address);
+			UserStore.User member = memberHolding(email);
+			if (member != null) {
+				// A member's address names the member, on any link (issue #233).
+				totp.verify(_auth.getUsers(), member, TotpSignIns.addressKey(link.getId(), email), code, client);
+				return member(member, deviceName, "a code of their authenticator app");
+			}
 			contact = kind == Kind.OPEN ? _auth.getContacts().byEmail(email) : recipientHolding(link, email);
 			totp.verify(contact, TotpSignIns.addressKey(link.getId(), email), code, client);
 		}
@@ -351,7 +445,7 @@ final class AddressProof {
 	 * an open link anybody &mdash; and every failure is the one {@link Passkeys#SIGN_IN_REFUSED}.
 	 */
 	ContactCredential verifyPasskey(Caller caller, String space, String ticket, String response, boolean remember,
-			String displayName) throws Passkeys.Refused, AuthService.Refused, IOException {
+			String displayName, String deviceName) throws Passkeys.Refused, AuthService.Refused, IOException {
 		String binding = passkeyBinding(space, caller);
 		if (binding == null) {
 			throw new AuthService.Refused(HttpServletResponse.SC_BAD_REQUEST, PASSKEY_NOT_HERE);
@@ -360,7 +454,15 @@ final class AddressProof {
 		Kind kind = kind(identification);
 		ShareStore.Link link = identification.getLink();
 		ContactStore contacts = _auth.getContacts();
-		Passkeys.Asserted asserted = _passkeys.check(binding, ticket, response, contacts::byPasskey, contact -> {
+		UserStore users = _auth.getUsers();
+		// A contact's passkey, or a member's, which signs the member in on any link (issue #233).
+		Passkeys.Asserted<SignInHolder> asserted = _passkeys.check(binding, ticket, response, id -> {
+			ContactStore.Contact holder = contacts.byPasskey(id);
+			return holder != null || users == null ? holder : users.byPasskey(id);
+		}, holder -> {
+			if (!(holder instanceof ContactStore.Contact contact)) {
+				return true;
+			}
 			switch (kind) {
 				case RECIPIENT:
 					return contact.getId().equals(identification.getContact().getId());
@@ -370,9 +472,17 @@ final class AddressProof {
 					return true;
 			}
 		});
-		contacts.usedPasskey(asserted.getContact().getId(), asserted.getId(), asserted.getCounter(),
-			asserted.isBackupState(), _passkeys.now());
-		return identified(link, contacts.get(asserted.getContact().getId()), remember, displayName, "a passkey");
+		if (asserted.getHolder() instanceof UserStore.User member) {
+			if (!users.usedPasskey(member, asserted.getId(), asserted.getCounter(), asserted.isBackupState(),
+				_passkeys.now())) {
+				throw new AuthService.Refused(HttpServletResponse.SC_FORBIDDEN, Passkeys.SIGN_IN_REFUSED);
+			}
+			return member(member, deviceName, "a passkey");
+		}
+		ContactStore.Contact contact = (ContactStore.Contact) asserted.getHolder();
+		contacts.usedPasskey(contact, asserted.getId(), asserted.getCounter(), asserted.isBackupState(),
+			_passkeys.now());
+		return identified(link, contacts.get(contact.getId()), remember, displayName, "a passkey");
 	}
 
 	/** What a passkey sign-in is refused outside a personal link that asks who this is. */
@@ -408,10 +518,13 @@ final class AddressProof {
 	 * prove, the address itself to come from the provider. <code>null</code> for a caller who
 	 * proves nothing here.
 	 */
-	static Target providerTarget(Caller caller) {
+	Target providerTarget(Caller caller) {
 		Kind kind = providerKind(caller);
 		if (kind == null) {
 			return null;
+		}
+		if (kind == Kind.MEMBER || kind == Kind.MEMBER_ADD) {
+			return new Target(kind, null, null, null, caller.getUser());
 		}
 		if (kind == Kind.ADD) {
 			return new Target(kind, caller.getShare(), caller.getContact(), null);
@@ -440,6 +553,10 @@ final class AddressProof {
 	Target target(Caller caller, String address, int choice) throws AuthService.Refused {
 		if (caller.getContact() != null) {
 			return new Target(Kind.ADD, caller.getShare(), caller.getContact(), typed(address));
+		}
+		Kind member = memberKind(caller);
+		if (member != null) {
+			return new Target(member, null, null, typed(address), caller.getUser());
 		}
 		Identification identification = caller.getIdentification();
 		Kind kind = kind(identification);
@@ -504,6 +621,9 @@ final class AddressProof {
 	EmailProofSent prove(Target target, String client, String acceptLanguage, String spaceBase)
 			throws EmailProofs.Refused {
 		String language = CodeMail.language(acceptLanguage);
+		if (target.isMember()) {
+			return proveMember(target, client, language, spaceBase);
+		}
 		// Who shared what, as the members know it: nothing the requester typed (issue #232).
 		CodeMail.About about = new CodeMail.About(target._link.getCreatedBy(), _titles.apply(target._link), _spaceName,
 			appAddress(_proofs.getPublicUrl(), spaceBase));
@@ -513,13 +633,42 @@ final class AddressProof {
 		if (target._kind == Kind.ADDRESSED) {
 			// The group link: the same work and the same answer for a recipient and a stranger.
 			ContactStore.Contact holder = recipientHolding(target._link, target._email);
-			boolean deliver = holder != null && !holder.isBlocked() && !target._link.isShutOut(holder.getId());
+			// A member's address is mailed too: their proof signs them in (issue #233).
+			boolean deliver = (holder != null && !holder.isBlocked() && !target._link.isShutOut(holder.getId()))
+				|| memberHolding(target._email) != null;
 			sent = _proofs.sendQuietly(target.scope(), target._email, target._link.getId(), client, text, deliver);
 			LOG.info((deliver ? "Mailing a code" : "Mailing no code to an address that is no admitted recipient's")
 				+ " through the group link " + target._link.getId() + ".");
 		} else {
 			sent = _proofs.send(target.scope(), target._email, target._link.getId(), client, text);
 			LOG.info("Mailed a code through the share link " + target._link.getId() + " (" + target._kind + ").");
+		}
+		return EmailProofSent.create()
+			.setAddress(new ContactStore.Address(ContactStore.EMAIL, target._email, false).masked())
+			.setExpires(sent.getExpires().toString())
+			.setAttempts(EmailProofs.ATTEMPTS);
+	}
+
+	/**
+	 * Mails a code without a link (issue #233): to a member signing a new browser in &mdash; the
+	 * same work and the same answer whether or not a member holds the address, as on the group
+	 * link &mdash;, or to a signed-in member adding an address.
+	 */
+	private EmailProofSent proveMember(Target target, String client, String language, String spaceBase)
+			throws EmailProofs.Refused {
+		CodeMail.About about = new CodeMail.About("", "", _spaceName, appAddress(_proofs.getPublicUrl(), spaceBase));
+		EmailProofs.Sent sent;
+		if (target._kind == Kind.MEMBER) {
+			EmailProofs.MailText text = (code, minutes) -> CodeMail.of(language, CodeMail.Purpose.SIGN_IN, about,
+				code, minutes);
+			sent = _proofs.sendQuietly(target.scope(), target._email, "member", client, text,
+				memberHolding(target._email) != null);
+			LOG.info("Mailing a code for the sign-in form, or none to an address of nobody.");
+		} else {
+			EmailProofs.MailText text = (code, minutes) -> CodeMail.of(language, CodeMail.Purpose.MEMBER_ADDRESS,
+				about, code, minutes);
+			sent = _proofs.send(target.scope(), target._email, target.scope(), client, text);
+			LOG.info("Mailed a code to an address '" + target._user.getName() + "' adds.");
 		}
 		return EmailProofSent.create()
 			.setAddress(new ContactStore.Address(ContactStore.EMAIL, target._email, false).masked())
@@ -542,8 +691,12 @@ final class AddressProof {
 	 *        Who asks; a recognised contact keeps their credential.
 	 */
 	ContactCredential verify(Caller caller, Target target, String code, String client, boolean remember,
-			String displayName) throws EmailProofs.Refused, AuthService.Refused, IOException {
+			String displayName, String deviceName) throws EmailProofs.Refused, AuthService.Refused, IOException {
 		_proofs.verify(target.scope(), target._email, code, client);
+		ContactCredential member = asMember(target, deviceName, "a proven address");
+		if (member != null) {
+			return member;
+		}
 		Target resolved = target._kind == Kind.ADDRESSED ? recipientTarget(target._link, target._email, "a code")
 			: target;
 		return proven(caller, resolved, remember, displayName, "a proven address");
@@ -592,7 +745,12 @@ final class AddressProof {
 	 *         for, and every refusal a proven address meets.
 	 */
 	ContactCredential provenByProvider(Caller caller, Target target, String email, boolean remember,
-			String displayName, OidcProvider provider) throws AuthService.Refused, IOException {
+			String displayName, OidcProvider provider, String deviceName) throws AuthService.Refused, IOException {
+		ContactCredential member = asMember(new Target(target._kind, target._link, target._contact, email,
+			target._user), deviceName, "an address " + provider + " confirmed");
+		if (member != null) {
+			return member;
+		}
 		ShareStore.Link link = target._link;
 		Target resolved;
 		switch (target._kind) {
@@ -617,6 +775,41 @@ final class AddressProof {
 				break;
 		}
 		return proven(caller, resolved, remember, displayName, "an address " + provider + " confirmed");
+	}
+
+	/**
+	 * What a proven address makes of the caller where it is about a member (issue #233), <code>null</code>
+	 * where it is about a contact: one identity, so a member's address signs the member in on any
+	 * path and never creates or identifies a contact; a member adds an address of their own; the
+	 * sign-in form signs nobody in by an address no member holds.
+	 *
+	 * @throws AuthService.Refused
+	 *         <code>409</code> where a member adds an address somebody else holds,
+	 *         <code>403</code> {@link #NO_MEMBER_ADDRESS} on the sign-in form for nobody's address.
+	 */
+	private ContactCredential asMember(Target target, String deviceName, String how)
+			throws AuthService.Refused, IOException {
+		if (target._kind == Kind.ADD) {
+			// A contact's own: refused by the register where the address is a member's.
+			return null;
+		}
+		if (target._kind == Kind.MEMBER_ADD) {
+			String refusal = _auth.getUsers().addAddress(target._user, target._email, java.time.Instant.now());
+			if (refusal != null) {
+				LOG.info("Refusing an address '" + target._user.getName() + "' proved: " + refusal);
+				throw new AuthService.Refused(HttpServletResponse.SC_CONFLICT, refusal);
+			}
+			LOG.info("Added " + how + " to '" + target._user.getName() + "'.");
+			return ContactCredential.create().setCredential("");
+		}
+		UserStore.User holder = memberHolding(target._email);
+		if (holder != null) {
+			return member(holder, deviceName, how);
+		}
+		if (target._kind == Kind.MEMBER) {
+			throw new AuthService.Refused(HttpServletResponse.SC_FORBIDDEN, NO_MEMBER_ADDRESS);
+		}
+		return null;
 	}
 
 	private static boolean holdsEmail(ContactStore.Contact contact, String email) {

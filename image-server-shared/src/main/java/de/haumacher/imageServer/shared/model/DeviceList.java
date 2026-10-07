@@ -22,9 +22,14 @@ public class DeviceList extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getBackupCodeCreated() */
 	private static final String BACKUP_CODE_CREATED__PROP = "backupCodeCreated";
 
+	/** @see #getSignIns() */
+	private static final String SIGN_INS__PROP = "signIns";
+
 	private final java.util.List<de.haumacher.imageServer.shared.model.DeviceEntry> _devices = new java.util.ArrayList<>();
 
 	private String _backupCodeCreated = "";
+
+	private de.haumacher.imageServer.shared.model.ContactSignIns _signIns = null;
 
 	/**
 	 * Creates a {@link DeviceList} instance.
@@ -104,6 +109,36 @@ public class DeviceList extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_backupCodeCreated = value;
 	}
 
+	/**
+	 * The caller's own ways to sign in on a new browser besides a code (issue #233): their
+	 * authenticator app and their passkeys, which they set up and remove with the actions a contact
+	 * uses (<code>totp-setup</code>, <code>passkey-register</code>, <code>remove-sign-in</code>);
+	 * what the sign-out warning names among the ways back.
+	 */
+	public final de.haumacher.imageServer.shared.model.ContactSignIns getSignIns() {
+		return _signIns;
+	}
+
+	/**
+	 * @see #getSignIns()
+	 */
+	public de.haumacher.imageServer.shared.model.DeviceList setSignIns(de.haumacher.imageServer.shared.model.ContactSignIns value) {
+		internalSetSignIns(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getSignIns()} without chain call utility. */
+	protected final void internalSetSignIns(de.haumacher.imageServer.shared.model.ContactSignIns value) {
+		_signIns = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getSignIns()} has a value.
+	 */
+	public final boolean hasSignIns() {
+		return _signIns != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.DeviceList readDeviceList(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.DeviceList result = new de.haumacher.imageServer.shared.model.DeviceList();
@@ -127,6 +162,10 @@ public class DeviceList extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.endArray();
 		out.name(BACKUP_CODE_CREATED__PROP);
 		out.value(getBackupCodeCreated());
+		if (hasSignIns()) {
+			out.name(SIGN_INS__PROP);
+			getSignIns().writeTo(out);
+		}
 	}
 
 	@Override
@@ -141,6 +180,7 @@ public class DeviceList extends de.haumacher.msgbuf.data.AbstractDataObject {
 			}
 			break;
 			case BACKUP_CODE_CREATED__PROP: setBackupCodeCreated(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case SIGN_INS__PROP: setSignIns(de.haumacher.imageServer.shared.model.ContactSignIns.readContactSignIns(in)); break;
 			default: super.readField(in, field);
 		}
 	}

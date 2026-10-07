@@ -26,13 +26,21 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'client.dart';
+import 'contact_session.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show DeviceCodeQr, dayOf;
-import 'identify_view.dart' show usePasskey;
+import 'identify_view.dart' show oidcMethodPrefix, usePasskey;
 import 'offline.dart';
 import 'passkeys.dart';
 import 'resource.dart';
+import 'settings.dart' show defaultDeviceName;
+import 'sign_in_form.dart'
+    show
+        leaveForProvider,
+        memberSignInStore,
+        pageLocation,
+        providerReturnRefusal;
 
 /// Opens an app link such as `otpauth://` in place: on the web the page
 /// navigates to it, so that the system hands it to the app that registered
@@ -44,6 +52,31 @@ Future<bool> Function(Uri url) openAppLink =
 /// QR code first. A narrow screen is a phone, which cannot scan itself.
 bool totpSetupIsWide(BuildContext context) =>
     MediaQuery.sizeOf(context).width >= 600;
+
+/// The number of digits a code of an authenticator app has.
+const int totpCodeDigits = 6;
+
+/// What a field of an authenticator app's code keeps of what is typed or
+/// pasted (issue #233): its digits — the app shows them as `123 456` —, at
+/// most [totpCodeDigits] of them.
+final TextInputFormatter totpCodeFormatter =
+    TextInputFormatter.withFunction((oldValue, newValue) {
+  var digits = newValue.text.replaceAll(RegExp("[^0-9]"), "");
+  if (digits.length > totpCodeDigits) {
+    digits = digits.substring(0, totpCodeDigits);
+  }
+  if (digits == newValue.text) {
+    return newValue;
+  }
+  return TextEditingValue(
+    text: digits,
+    selection: TextSelection.collapsed(offset: digits.length),
+  );
+});
+
+/// Whether [text] is a whole code of an authenticator app.
+bool isTotpCode(String text) =>
+    RegExp("^[0-9]{$totpCodeDigits}\$").hasMatch(text.trim());
 
 /// The setup key in groups of four, as authenticator apps show it.
 String groupedSetupKey(String secret) {
@@ -106,11 +139,17 @@ Future<ContactSignIns?> showSignInOptions({
   required BuildContext context,
   required VAlbumClient client,
   required ContactSignIns signIns,
+  bool member = false,
+  List<ProofMethod> proofMethods = const [],
 }) =>
     showFormDialog<ContactSignIns>(
       context: context,
-      builder: (context) =>
-          SignInOptionsDialog(client: client, signIns: signIns),
+      builder: (context) => SignInOptionsDialog(
+        client: client,
+        signIns: signIns,
+        member: member,
+        proofMethods: proofMethods,
+      ),
     );
 
 /// The contact's own sign-in options: the authenticator app, set up or
@@ -123,10 +162,20 @@ class SignInOptionsDialog extends StatefulWidget {
   /// What the server said the contact has.
   final ContactSignIns signIns;
 
+  /// Whether these are a signed-in member's (issue #233): the same dialog,
+  /// with the member's own lead and their e-mail addresses.
+  final bool member;
+
+  /// How a member may prove an address here (`mail-code`, `oidc:<id>`), as
+  /// `AuthInfo.proofMethods` says; empty for a contact.
+  final List<ProofMethod> proofMethods;
+
   const SignInOptionsDialog({
     super.key,
     required this.client,
     required this.signIns,
+    this.member = false,
+    this.proofMethods = const [],
   });
 
   @override
@@ -144,6 +193,15 @@ class SignInOptionsDialogState extends State<SignInOptionsDialog> {
 
   final TextEditingController _code = TextEditingController();
 
+  /// The address a member adds (issue #233), `null` while none is added.
+  TextEditingController? _address;
+
+  /// The code mailed to [_address].
+  final TextEditingController _addressCode = TextEditingController();
+
+  /// Whether a code was mailed to [_address].
+  bool _addressSent = false;
+
   bool _busy = false;
 
   String? _error;
@@ -151,8 +209,67 @@ class SignInOptionsDialogState extends State<SignInOptionsDialog> {
   @override
   void dispose() {
     _code.dispose();
+    _address?.dispose();
+    _addressCode.dispose();
     super.dispose();
   }
+
+  /// Mails a code to the address being added, or confirms it (issue #233).
+  Future<void> _addAddress() => _run(() async {
+        var address = _address!.text.trim();
+        if (!_addressSent) {
+          await widget.client.proveEmail(EmailProof(address: address));
+          if (mounted) {
+            setState(() => _addressSent = true);
+          }
+          return;
+        }
+        await widget.client.verifyEmail(
+            EmailVerify(address: address, code: _addressCode.text.trim()));
+        var devices = await widget.client.devices();
+        if (mounted) {
+          setState(() {
+            _signIns = devices.signIns ?? _signIns;
+            _changed = true;
+            _address?.dispose();
+            _address = null;
+            _addressSent = false;
+            _addressCode.clear();
+          });
+        }
+      });
+
+  Future<void> _removeAddress(String address) => _run(() async {
+        var answer = await widget.client
+            .removeSignIn(emailSignInMethod, id: address);
+        if (mounted) {
+          setState(() {
+            _signIns = answer;
+            _changed = true;
+          });
+        }
+      });
+
+  /// "Link Google account" (issue #233): the page leaves for the provider and
+  /// comes back to the application, which keeps the address it proved.
+  Future<void> _linkProvider(ProofMethod method, AppLocalizations l10n) =>
+      _run(() async {
+        var started = await widget.client.oidcStart(OidcStart(
+            provider: method.name.substring(oidcMethodPrefix.length)));
+        var refusal = providerReturnRefusal(l10n, started);
+        if (refusal != null) {
+          throw VAlbumException(refusal);
+        }
+        memberSignInStore.keepMemberSignIn(PendingMemberSignIn(
+          dataUrl: widget.client.dataUrl,
+          binding: started.binding,
+          deviceName: defaultDeviceName(l10n),
+          adding: true,
+        ));
+        leaveForProvider(started.url);
+      });
+
+  void _update(VoidCallback change) => setState(change);
 
   Future<void> _run(Future<void> Function() request) async {
     if (refuseWhileOffline(context)) {
@@ -248,7 +365,8 @@ class SignInOptionsDialogState extends State<SignInOptionsDialog> {
       key: const Key("sign-in-options-dialog"),
       title: Text(l10n.signInOptionsTitle),
       fields: [
-        Text(l10n.signInOptionsLead),
+        Text(widget.member ? l10n.signInOptionsMemberLead : l10n.signInOptionsLead),
+        if (widget.member) ..._addresses(l10n),
         if (_passkeysOffered) ...[
           const SizedBox(height: 16),
           Text(l10n.passkeysHeading,
@@ -341,6 +459,102 @@ class SignInOptionsDialogState extends State<SignInOptionsDialog> {
   }
 }
 
+extension on SignInOptionsDialogState {
+  /// A member's e-mail addresses (issue #233): each signs them in by a mailed
+  /// code or a provider; added by a proof, removed here.
+  List<Widget> _addresses(AppLocalizations l10n) {
+    var mail = widget.proofMethods.any((method) => method.name == "mail-code");
+    var providers = widget.proofMethods
+        .where((method) => method.name.startsWith(oidcMethodPrefix))
+        .toList();
+    var address = _address;
+    // Offered only where this server can prove an address — a mail account,
+    // a provider in the browser — as passkeys are only where it has them.
+    // Addresses proven before stay listed, to be removed.
+    var offered = mail || providers.isNotEmpty && pageLocation() != null;
+    if (!offered && _signIns.addresses.isEmpty) {
+      return const [];
+    }
+    return [
+      const SizedBox(height: 16),
+      Text(l10n.memberAddressesHeading,
+          style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: 4),
+      if (offered) Text(l10n.memberAddressesExplanation),
+      for (var entry in _signIns.addresses)
+        ListTile(
+          key: Key("sign-in-address-${entry.value}"),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          leading: const Icon(Icons.alternate_email),
+          title: Text(entry.value),
+          trailing: IconButton(
+            key: Key("sign-in-address-remove-${entry.value}"),
+            tooltip: l10n.remove,
+            icon: const Icon(Icons.delete_outline),
+            onPressed: _busy ? null : () => _removeAddress(entry.value),
+          ),
+        ),
+      if (address != null) ...[
+        TextField(
+          key: const Key("sign-in-address-field"),
+          controller: address,
+          enabled: !_busy && !_addressSent,
+          keyboardType: TextInputType.emailAddress,
+          decoration: InputDecoration(labelText: l10n.identifyAddressLabel),
+        ),
+        if (_addressSent)
+          TextField(
+            key: const Key("sign-in-address-code"),
+            controller: _addressCode,
+            enabled: !_busy,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(labelText: l10n.identifyCodeLabel),
+          ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: FilledButton(
+            key: const Key("sign-in-address-send"),
+            onPressed: _busy ? null : _addAddress,
+            child: Text(_addressSent
+                ? l10n.identifyConfirmCode
+                : l10n.identifySendCode),
+          ),
+        ),
+      ],
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          if (mail && address == null)
+            OutlinedButton.icon(
+              key: const Key("sign-in-address-add"),
+              onPressed: _busy
+                  ? null
+                  : () => _update(() => _address = TextEditingController()),
+              icon: const Icon(Icons.alternate_email),
+              label: Text(l10n.memberAddAddress),
+            ),
+          for (var method in providers)
+            if (pageLocation() != null)
+              OutlinedButton(
+              key: Key("sign-in-link-${method.name}"),
+              onPressed: _busy ? null : () => _linkProvider(method, l10n),
+              child: Text(l10n.memberLinkProvider(method.label.isEmpty
+                  ? method.name.substring(oidcMethodPrefix.length)
+                  : method.label)),
+            ),
+        ],
+      ),
+    ];
+  }
+}
+
+/// The method name of a member's e-mail address in a [SignInRemove].
+const String emailSignInMethod = "email";
+
 /// The method name of an authenticator app in a [SignInRemove].
 const String totpSignInMethod = "totp";
 
@@ -392,6 +606,7 @@ class _TotpSetupViewState extends State<TotpSetupView> {
               key: const Key("totp-qr"),
               payload: setup.uri,
               size: 180,
+              semanticsLabel: l10n.totpQrSemantics,
             ),
           ),
           const SizedBox(height: 8),
@@ -428,16 +643,19 @@ class _TotpSetupViewState extends State<TotpSetupView> {
           controller: widget.code,
           enabled: !widget.busy,
           keyboardType: TextInputType.number,
+          inputFormatters: [totpCodeFormatter],
           decoration: InputDecoration(labelText: l10n.totpCodeLabel),
           onChanged: (_) => setState(() {}),
-          onSubmitted: widget.busy ? null : (_) => widget.onConfirm(),
+          onSubmitted: widget.busy || !isTotpCode(widget.code.text)
+              ? null
+              : (_) => widget.onConfirm(),
         ),
         const SizedBox(height: 8),
         Align(
           alignment: AlignmentDirectional.centerEnd,
           child: FilledButton(
             key: const Key("totp-confirm"),
-            onPressed: widget.busy || widget.code.text.trim().isEmpty
+            onPressed: widget.busy || !isTotpCode(widget.code.text)
                 ? null
                 : widget.onConfirm,
             child: Text(l10n.identifyConfirmCode),

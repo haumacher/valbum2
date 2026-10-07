@@ -30,9 +30,14 @@ public class OidcExchange extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getBinding() */
 	private static final String BINDING__PROP = "binding";
 
+	/** @see #getDeviceName() */
+	private static final String DEVICE_NAME__PROP = "deviceName";
+
 	private String _code = "";
 
 	private String _binding = "";
+
+	private String _deviceName = "";
 
 	/**
 	 * Creates a {@link OidcExchange} instance.
@@ -83,6 +88,27 @@ public class OidcExchange extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_binding = value;
 	}
 
+	/**
+	 * The name of this browser as a member's device, where the proof names a member and signs them
+	 * in (issue #233, see {@link ContactCredential#getMember()}); empty for "Unnamed device".
+	 */
+	public final String getDeviceName() {
+		return _deviceName;
+	}
+
+	/**
+	 * @see #getDeviceName()
+	 */
+	public de.haumacher.imageServer.shared.model.OidcExchange setDeviceName(String value) {
+		internalSetDeviceName(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getDeviceName()} without chain call utility. */
+	protected final void internalSetDeviceName(String value) {
+		_deviceName = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.OidcExchange readOidcExchange(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.OidcExchange result = new de.haumacher.imageServer.shared.model.OidcExchange();
@@ -102,6 +128,8 @@ public class OidcExchange extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getCode());
 		out.name(BINDING__PROP);
 		out.value(getBinding());
+		out.name(DEVICE_NAME__PROP);
+		out.value(getDeviceName());
 	}
 
 	@Override
@@ -109,6 +137,7 @@ public class OidcExchange extends de.haumacher.msgbuf.data.AbstractDataObject {
 		switch (field) {
 			case CODE__PROP: setCode(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case BINDING__PROP: setBinding(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case DEVICE_NAME__PROP: setDeviceName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

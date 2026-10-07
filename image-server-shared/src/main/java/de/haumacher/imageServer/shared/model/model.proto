@@ -1287,6 +1287,29 @@ message PairRequest {
 	 * </p>
 	 */
 	string deviceCode;
+
+	/**
+	 * A code of the member's authenticator app, see issue #233: with {@link #userName} naming the
+	 * member, the way a member signs a new browser in where no device of theirs is at hand.
+	 *
+	 * <p>
+	 * The rules of a contact's code (issue #208): the app must have been confirmed, a code works
+	 * once, and five wrong codes within fifteen minutes lock the name for fifteen minutes. An
+	 * unknown name is answered exactly like a wrong code. Read only where {@link #deviceCode} is
+	 * empty; success is what redeeming a code is &mdash; a new device of that member, answered as a
+	 * {@link PairResponse}.
+	 * </p>
+	 */
+	string totpCode;
+
+	/**
+	 * A member's passkey, see issue #233: the answer to the ceremony
+	 * <code>?action=passkey-start</code> starts for a caller that holds nothing, which names nobody
+	 * &mdash; the passkey names the member. Only the {@link PasskeyResponse#ticket} and
+	 * {@link PasskeyResponse#response} are read. Read only where {@link #deviceCode} and
+	 * {@link #totpCode} are empty; a contact's passkey signs nobody in here.
+	 */
+	PasskeyResponse passkey;
 }
 
 /** Answer to a successful {@link PairRequest}. */
@@ -1446,6 +1469,15 @@ message AuthInfo {
 	 * </p>
 	 */
 	int inboxCount;
+
+	/**
+	 * The ways a member signs a new browser in besides a code (issue #233), answered to everybody,
+	 * signed in or not, so that the sign-in form offers exactly these: <code>totp</code> (name or
+	 * e-mail address and a code of the authenticator app), <code>passkey</code> (only with a public
+	 * address), <code>mail-code</code> (where the server can mail a code) and
+	 * <code>oidc:&lt;provider&gt;</code> per provider of OpenID Connect.
+	 */
+	repeated ProofMethod signInMethods;
 }
 
 /**
@@ -1531,7 +1563,9 @@ message ShareInfo {
 
 /**
  * The ways a contact is recognised on another browser besides their link, as the contact sees
- * them: an authenticator app (issue #208) and passkeys (issue #204).
+ * them: an authenticator app (issue #208) and passkeys (issue #204). Since issue #233 the same for
+ * a member, who signs a new browser in with them ({@link DeviceList#signIns}); the requests that
+ * change them serve both, and pick the holder from the caller.
  *
  * <p>
  * Answered in {@link ShareInfo#signIns} and by the requests that change them
@@ -1551,6 +1585,15 @@ message ContactSignIns {
 	 * (<code>VALBUM_PUBLIC_URL</code>), whose host is the relying party (issue #204).
 	 */
 	bool passkeysOffered;
+
+	/**
+	 * A member's proven e-mail addresses (issue #233): each signs them in through a mailed code or a
+	 * provider of OpenID Connect, on the sign-in form and on any link. Added by a proof
+	 * (<code>?action=prove-email</code>/<code>verify-email</code>, <code>oidc-start</code>), removed by
+	 * <code>?action=remove-sign-in</code> with the method <code>email</code> and the address as id.
+	 * Empty for a contact, whose addresses the contact's own requests answer.
+	 */
+	repeated ContactAddress addresses;
 }
 
 /**
@@ -1594,6 +1637,12 @@ message PasskeyResponse {
 
 	/** The name the contact wants to be greeted by; empty keeps what they had (sign-in only). */
 	string displayName;
+
+	/**
+	 * The name of this browser as a member's device, where the proof names a member and signs them
+	 * in (issue #233, see {@link ContactCredential#member}); empty for "Unnamed device".
+	 */
+	string deviceName;
 }
 
 /**
@@ -2248,6 +2297,19 @@ message UserEntry {
 	 * </p>
 	 */
 	string personName;
+
+	/**
+	 * Since when an authenticator app signs this user in on a new browser, an ISO-8601 instant;
+	 * empty while none does (issue #233). Never the secret. Answered to the administrator, who may
+	 * remove it (<code>?action=remove-user-sign-in</code>).
+	 */
+	string authenticator;
+
+	/** This user's passkeys (issue #233), in the order they were registered; never a key. */
+	repeated ContactPasskey passkeys;
+
+	/** This user's proven e-mail addresses (issue #233), each a way to sign in. */
+	repeated ContactAddress addresses;
 }
 
 /**
@@ -2329,6 +2391,14 @@ message DeviceList {
 	 * </p>
 	 */
 	string backupCodeCreated;
+
+	/**
+	 * The caller's own ways to sign in on a new browser besides a code (issue #233): their
+	 * authenticator app and their passkeys, which they set up and remove with the actions a contact
+	 * uses (<code>totp-setup</code>, <code>passkey-register</code>, <code>remove-sign-in</code>);
+	 * what the sign-out warning names among the ways back.
+	 */
+	ContactSignIns signIns;
 }
 
 /**
@@ -2979,6 +3049,15 @@ message ContactCredential {
 
 	/** The contact it identifies. */
 	ContactInfo contact;
+
+	/**
+	 * Set where the proof named a member rather than a contact (issue #233): the browser is signed
+	 * in as that member &mdash; a new device, exactly as redeeming a code adds one &mdash; and
+	 * {@link #credential} is empty. One identity: a member's address, authenticator app or passkey
+	 * never creates or identifies a contact, on any link. The app stores the token as a code
+	 * redemption stores it and continues as the member.
+	 */
+	PairResponse member;
 }
 
 /**
@@ -3089,6 +3168,7 @@ message OidcStart {
 	 * Ignored where the caller is recognised already.
 	 */
 	string displayName;
+
 }
 
 /** A sign-in through OpenID Connect was started, the answer of <code>?action=oidc-start</code> (issue #200). */
@@ -3105,6 +3185,14 @@ message OidcStarted {
 
 	/** Until when the sign-in may be finished, an ISO-8601 instant. */
 	string expires;
+
+	/**
+	 * The page the browser comes back to, <code>#oidc=&lt;code&gt;</code> appended (issue #233):
+	 * spelled from <code>VALBUM_PUBLIC_URL</code>. A page whose own address has another origin cannot
+	 * finish the sign-in &mdash; what it kept for the return lies in its own storage &mdash; and
+	 * says so before it leaves rather than after.
+	 */
+	string returnUrl;
 }
 
 /**
@@ -3125,6 +3213,12 @@ message OidcExchange {
 
 	/** The {@link OidcStarted#binding} of the start. */
 	string binding;
+
+	/**
+	 * The name of this browser as a member's device, where the proof names a member and signs them
+	 * in (issue #233, see {@link ContactCredential#member}); empty for "Unnamed device".
+	 */
+	string deviceName;
 }
 
 /**
@@ -3194,6 +3288,12 @@ message EmailVerify {
 	 * is recognised already.
 	 */
 	string displayName;
+
+	/**
+	 * The name of this browser as a member's device, where the proof names a member and signs them
+	 * in (issue #233, see {@link ContactCredential#member}); empty for "Unnamed device".
+	 */
+	string deviceName;
 }
 
 /**
@@ -3245,6 +3345,12 @@ message TotpCode {
 
 	/** The name the contact wants to be greeted by; empty keeps what they had. */
 	string displayName;
+
+	/**
+	 * The name of this browser as a member's device, where the proof names a member and signs them
+	 * in (issue #233, see {@link ContactCredential#member}); empty for "Unnamed device".
+	 */
+	string deviceName;
 }
 
 /**
@@ -3257,10 +3363,22 @@ message SignInRemove {
 	/** The id of the contact; ignored where the contact removes their own. */
 	string contact;
 
-	/** <code>totp</code> for the authenticator app, <code>passkey</code> for a passkey (issue #204). */
+	/**
+	 * The name of the user whose way to sign in the administrator removes, at
+	 * <code>?action=remove-user-sign-in</code> (issue #233); ignored everywhere else.
+	 */
+	string user;
+
+	/**
+	 * <code>totp</code> for the authenticator app, <code>passkey</code> for a passkey (issue #204),
+	 * <code>email</code> for a member's proven e-mail address (issue #233).
+	 */
 	string method;
 
-	/** Which one of several: the {@link ContactPasskey#id} of a passkey; empty for the authenticator app. */
+	/**
+	 * Which one of several: the {@link ContactPasskey#id} of a passkey, the address of an
+	 * <code>email</code>; empty for the authenticator app.
+	 */
 	string id;
 }
 

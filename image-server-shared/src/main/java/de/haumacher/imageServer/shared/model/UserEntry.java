@@ -61,6 +61,15 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getPersonName() */
 	private static final String PERSON_NAME__PROP = "personName";
 
+	/** @see #getAuthenticator() */
+	private static final String AUTHENTICATOR__PROP = "authenticator";
+
+	/** @see #getPasskeys() */
+	private static final String PASSKEYS__PROP = "passkeys";
+
+	/** @see #getAddresses() */
+	private static final String ADDRESSES__PROP = "addresses";
+
 	private String _name = "";
 
 	private String _role = "";
@@ -86,6 +95,12 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _person = "";
 
 	private String _personName = "";
+
+	private String _authenticator = "";
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.ContactPasskey> _passkeys = new java.util.ArrayList<>();
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.ContactAddress> _addresses = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link UserEntry} instance.
@@ -394,6 +409,112 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_personName = value;
 	}
 
+	/**
+	 * Since when an authenticator app signs this user in on a new browser, an ISO-8601 instant;
+	 * empty while none does (issue #233). Never the secret. Answered to the administrator, who may
+	 * remove it (<code>?action=remove-user-sign-in</code>).
+	 */
+	public final String getAuthenticator() {
+		return _authenticator;
+	}
+
+	/**
+	 * @see #getAuthenticator()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setAuthenticator(String value) {
+		internalSetAuthenticator(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getAuthenticator()} without chain call utility. */
+	protected final void internalSetAuthenticator(String value) {
+		_authenticator = value;
+	}
+
+	/**
+	 * This user's passkeys (issue #233), in the order they were registered; never a key.
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.ContactPasskey> getPasskeys() {
+		return _passkeys;
+	}
+
+	/**
+	 * @see #getPasskeys()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setPasskeys(java.util.List<? extends de.haumacher.imageServer.shared.model.ContactPasskey> value) {
+		internalSetPasskeys(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPasskeys()} without chain call utility. */
+	protected final void internalSetPasskeys(java.util.List<? extends de.haumacher.imageServer.shared.model.ContactPasskey> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'passkeys' cannot be null.");
+		_passkeys.clear();
+		_passkeys.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getPasskeys()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry addPasskey(de.haumacher.imageServer.shared.model.ContactPasskey value) {
+		internalAddPasskey(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addPasskey(de.haumacher.imageServer.shared.model.ContactPasskey)} without chain call utility. */
+	protected final void internalAddPasskey(de.haumacher.imageServer.shared.model.ContactPasskey value) {
+		_passkeys.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getPasskeys()} list.
+	 */
+	public final void removePasskey(de.haumacher.imageServer.shared.model.ContactPasskey value) {
+		_passkeys.remove(value);
+	}
+
+	/**
+	 * This user's proven e-mail addresses (issue #233), each a way to sign in.
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.ContactAddress> getAddresses() {
+		return _addresses;
+	}
+
+	/**
+	 * @see #getAddresses()
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry setAddresses(java.util.List<? extends de.haumacher.imageServer.shared.model.ContactAddress> value) {
+		internalSetAddresses(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getAddresses()} without chain call utility. */
+	protected final void internalSetAddresses(java.util.List<? extends de.haumacher.imageServer.shared.model.ContactAddress> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'addresses' cannot be null.");
+		_addresses.clear();
+		_addresses.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getAddresses()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.UserEntry addAddresse(de.haumacher.imageServer.shared.model.ContactAddress value) {
+		internalAddAddresse(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addAddresse(de.haumacher.imageServer.shared.model.ContactAddress)} without chain call utility. */
+	protected final void internalAddAddresse(de.haumacher.imageServer.shared.model.ContactAddress value) {
+		_addresses.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getAddresses()} list.
+	 */
+	public final void removeAddresse(de.haumacher.imageServer.shared.model.ContactAddress value) {
+		_addresses.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.UserEntry readUserEntry(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.UserEntry result = new de.haumacher.imageServer.shared.model.UserEntry();
@@ -435,6 +556,20 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getPerson());
 		out.name(PERSON_NAME__PROP);
 		out.value(getPersonName());
+		out.name(AUTHENTICATOR__PROP);
+		out.value(getAuthenticator());
+		out.name(PASSKEYS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.ContactPasskey x : getPasskeys()) {
+			x.writeTo(out);
+		}
+		out.endArray();
+		out.name(ADDRESSES__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.ContactAddress x : getAddresses()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -453,6 +588,23 @@ public class UserEntry extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case INVITATION__PROP: setInvitation(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case PERSON__PROP: setPerson(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case PERSON_NAME__PROP: setPersonName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case AUTHENTICATOR__PROP: setAuthenticator(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case PASSKEYS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addPasskey(de.haumacher.imageServer.shared.model.ContactPasskey.readContactPasskey(in));
+				}
+				in.endArray();
+			}
+			break;
+			case ADDRESSES__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addAddresse(de.haumacher.imageServer.shared.model.ContactAddress.readContactAddress(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

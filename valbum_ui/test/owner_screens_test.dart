@@ -562,7 +562,7 @@ void main() {
       await tapKey(tester, "contact-sign-in-remove-confirmed");
 
       expect(server.bodyOf("remove-contact-sign-in"),
-          {"contact": "c1", "method": "totp", "id": ""});
+          {"contact": "c1", "user": "", "method": "totp", "id": ""});
       expect(find.byKey(const Key("contact-sign-ins-none")), findsOneWidget);
       await tapKey(tester, "contact-sign-ins-close");
       expect(textOf(tester, "contact-details-c1"),
@@ -595,7 +595,7 @@ void main() {
           findsOneWidget);
       await tapKey(tester, "contact-sign-in-remove-confirmed");
       expect(server.bodyOf("remove-contact-sign-in"),
-          {"contact": "c1", "method": "passkey", "id": "pk1"});
+          {"contact": "c1", "user": "", "method": "passkey", "id": "pk1"});
       expect(find.byKey(const Key("contact-sign-in-passkey-pk1")), findsNothing);
       expect(find.byKey(const Key("contact-sign-in-passkey-pk2")), findsOneWidget);
     });

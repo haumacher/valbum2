@@ -60,6 +60,9 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getInboxCount() */
 	private static final String INBOX_COUNT__PROP = "inboxCount";
 
+	/** @see #getSignInMethods() */
+	private static final String SIGN_IN_METHODS__PROP = "signInMethods";
+
 	private String _mode = "";
 
 	private String _deviceName = "";
@@ -89,6 +92,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _inbox = "";
 
 	private int _inboxCount = 0;
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> _signInMethods = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link AuthInfo} instance.
@@ -510,6 +515,52 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_inboxCount = value;
 	}
 
+	/**
+	 * The ways a member signs a new browser in besides a code (issue #233), answered to everybody,
+	 * signed in or not, so that the sign-in form offers exactly these: <code>totp</code> (name or
+	 * e-mail address and a code of the authenticator app), <code>passkey</code> (only with a public
+	 * address), <code>mail-code</code> (where the server can mail a code) and
+	 * <code>oidc:&lt;provider&gt;</code> per provider of OpenID Connect.
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> getSignInMethods() {
+		return _signInMethods;
+	}
+
+	/**
+	 * @see #getSignInMethods()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setSignInMethods(java.util.List<? extends de.haumacher.imageServer.shared.model.ProofMethod> value) {
+		internalSetSignInMethods(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getSignInMethods()} without chain call utility. */
+	protected final void internalSetSignInMethods(java.util.List<? extends de.haumacher.imageServer.shared.model.ProofMethod> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'signInMethods' cannot be null.");
+		_signInMethods.clear();
+		_signInMethods.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getSignInMethods()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo addSignInMethod(de.haumacher.imageServer.shared.model.ProofMethod value) {
+		internalAddSignInMethod(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addSignInMethod(de.haumacher.imageServer.shared.model.ProofMethod)} without chain call utility. */
+	protected final void internalAddSignInMethod(de.haumacher.imageServer.shared.model.ProofMethod value) {
+		_signInMethods.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getSignInMethods()} list.
+	 */
+	public final void removeSignInMethod(de.haumacher.imageServer.shared.model.ProofMethod value) {
+		_signInMethods.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.AuthInfo readAuthInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.AuthInfo result = new de.haumacher.imageServer.shared.model.AuthInfo();
@@ -563,6 +614,12 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getInbox());
 		out.name(INBOX_COUNT__PROP);
 		out.value(getInboxCount());
+		out.name(SIGN_IN_METHODS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.ProofMethod x : getSignInMethods()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -590,6 +647,14 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			break;
 			case INBOX__PROP: setInbox(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case INBOX_COUNT__PROP: setInboxCount(in.nextInt()); break;
+			case SIGN_IN_METHODS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addSignInMethod(de.haumacher.imageServer.shared.model.ProofMethod.readProofMethod(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

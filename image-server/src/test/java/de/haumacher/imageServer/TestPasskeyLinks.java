@@ -269,9 +269,10 @@ public class TestPasskeyLinks extends PersonalLinkTestCase {
 	}
 
 	public void testOnlyARecognisedContactRegisters() throws Exception {
-		FakeResponse member = post("/", "{}", SharingFixture.ALICE, Map.of("action", "passkey-register-start"));
-		assertEquals(HttpServletResponse.SC_FORBIDDEN, member.status());
-		assertEquals(SignInActions.SIGN_INS_REFUSED, errorMessage(member));
+		// A signed-in member registers their own since issue #233, see TestMemberSignIns.
+		FakeResponse link = post("/", "{}", zooToken("view"), Map.of("action", "passkey-register-start"));
+		assertEquals(HttpServletResponse.SC_FORBIDDEN, link.status());
+		assertEquals(SignInActions.SIGN_INS_REFUSED, errorMessage(link));
 		FakeResponse nobody = post("/", "{}", null, Map.of("action", "passkey-register-start"));
 		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, nobody.status());
 		FakeResponse notHere = post("/", "{}", SharingFixture.ALICE, Map.of("action", "passkey-start"));

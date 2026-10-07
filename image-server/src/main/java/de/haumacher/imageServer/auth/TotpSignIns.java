@@ -16,11 +16,14 @@ import java.util.Map;
 import java.util.logging.Logger;
 
 /**
- * Signing a contact in with a code from their authenticator app, see issue #208.
+ * Signing in with a code from an authenticator app, see issue #208: a contact of a personal link,
+ * and a member on a new browser (issue #233).
  *
  * <p>
- * The algorithm is {@link Totp}; the secret and the last step used lie on the contact in the
- * {@link ContactStore}. This decides what a code may do:
+ * The algorithm is {@link Totp}; the secret and the last step used lie on the
+ * {@link SignInHolder} in its {@link SignInRegister} &mdash; the contact in the
+ * {@link ContactStore}, the member in the {@link UserStore}. This decides what a code may do, the
+ * same for both:
  * </p>
  * <ul>
  * <li><b>Setting up</b>: a fresh secret is pending, and a pending secret signs nobody in; the first
@@ -28,10 +31,11 @@ import java.util.logging.Logger;
  * <li><b>Replay</b>: a code accepted once is refused for the rest of its window, and so is any code
  * of an earlier step.</li>
  * <li><b>Guessing</b>: {@link #FAILURES} wrong codes within {@link #LOCK} lock the authenticator of
- * that contact for {@link #LOCK}. Where a code names its contact by a typed address (an open link,
- * the group link of issue #211), the lock is kept per address whether or not it is a contact's, so
- * that the answers are the same for a stranger's address; {@link #WRONG_PER_CLIENT} wrong codes per
- * client within an hour stop trying address after address.</li>
+ * that holder for {@link #LOCK}. Where a code names its holder by something typed &mdash; an address
+ * on an open link or the group link of issue #211, a user name on the sign-in form &mdash; the lock
+ * is kept per typed value whether or not it is anybody's, so that the answers are the same for a
+ * stranger; {@link #WRONG_PER_CLIENT} wrong codes per client within an hour stop trying one after
+ * another. A contact's key and a member's never meet, see {@link SignInHolder#getSignInKey()}.</li>
  * </ul>
  * <p>
  * Every refusal of a code is the one sentence {@link #CODE_WRONG}, whatever was wrong. The locks
@@ -92,6 +96,7 @@ public class TotpSignIns {
 		}
 	}
 
+	/** The register of {@link #setUp(String)} and its kin, which name a contact by id. */
 	private final ContactStore _contacts;
 
 	private final SecureRandom _random = new SecureRandom();
@@ -104,7 +109,13 @@ public class TotpSignIns {
 
 	private final Map<String, Deque<Instant>> _wrongPerClient = new HashMap<>();
 
-	/** Creates the {@link TotpSignIns} of the given register. */
+	/**
+	 * Creates the {@link TotpSignIns} of a space.
+	 *
+	 * @param contacts
+	 *        The register the methods naming a contact by id go to; <code>null</code> where every
+	 *        call names its register.
+	 */
 	public TotpSignIns(ContactStore contacts, Clock clock) {
 		_contacts = contacts;
 		_clock = clock;
@@ -121,31 +132,32 @@ public class TotpSignIns {
 	}
 
 	/**
-	 * Starts setting up an authenticator app for the given contact: a fresh secret, pending until
-	 * {@link #confirm}.
+	 * Starts setting up an authenticator app for the given holder: a fresh secret, pending until
+	 * {@link #confirm(SignInRegister, SignInHolder, String, String)}.
 	 *
-	 * @return The secret in Base32, <code>null</code> for a contact that is gone.
+	 * @return The secret in Base32, <code>null</code> for a holder that is gone.
 	 */
-	public String setUp(String contactId) throws IOException {
+	public String setUp(SignInRegister register, SignInHolder holder) throws IOException {
 		String secret = Totp.newSecret(_random);
-		return _contacts.startTotp(contactId, secret, _clock.instant()) == null ? null : secret;
+		Instant now = _clock.instant();
+		return holder != null && register.change(holder, signIns -> signIns.startTotp(secret, now)) ? secret : null;
 	}
 
 	/**
-	 * Confirms the authenticator app being set up for the given contact by one of its codes: from
-	 * then on its codes sign the contact in.
+	 * Confirms the authenticator app being set up for the given holder by one of its codes: from
+	 * then on its codes sign the holder in.
 	 *
 	 * @throws Refused
 	 *         <code>409</code> {@link #NOTHING_TO_CONFIRM} where nothing is being set up,
 	 *         {@link #CODE_WRONG} and {@link #LOCKED} as for a sign-in.
 	 */
-	public void confirm(String contactId, String code, String client) throws Refused, IOException {
-		ContactStore.Contact contact = _contacts.get(contactId);
-		ContactStore.Authenticator pending = contact == null ? null : contact.getPendingAuthenticator();
+	public void confirm(SignInRegister register, SignInHolder holder, String code, String client)
+			throws Refused, IOException {
+		SignIns.Authenticator pending = holder == null ? null : holder.getSignIns().getPendingAuthenticator();
 		if (pending == null) {
 			throw new Refused(409, NOTHING_TO_CONFIRM, 0);
 		}
-		String key = contactKey(contactId);
+		String key = holder.getSignInKey();
 		long step;
 		synchronized (this) {
 			Instant now = _clock.instant();
@@ -155,63 +167,95 @@ public class TotpSignIns {
 				fail(key, client, now);
 			}
 		}
-		if (!_contacts.confirmTotp(contactId, pending.getSecret(), step, _clock.instant())) {
+		Instant now = _clock.instant();
+		if (!register.change(holder, signIns -> signIns.confirmTotp(pending.getSecret(), step, now))) {
 			throw new Refused(409, NOTHING_TO_CONFIRM, 0);
 		}
 		cleared(key);
-		LOG.info("An authenticator app signs in " + contact + " from now on.");
+		LOG.info("An authenticator app signs in " + key + " from now on.");
 	}
 
 	/**
-	 * Checks a code of the given contact's authenticator app and uses it up.
+	 * Checks a code of the given holder's authenticator app and uses it up.
 	 *
-	 * @param contact
-	 *        The contact the code is to sign in, <code>null</code> where the request names nobody this
-	 *        space knows (a stranger's typed address): refused exactly as a wrong code.
+	 * @param register
+	 *        The register holding the holder.
+	 * @param holder
+	 *        The holder the code is to sign in, <code>null</code> where the request names nobody this
+	 *        space knows (a stranger's typed address, an unknown user name): refused exactly as a
+	 *        wrong code.
 	 * @param lockKey
-	 *        What the lock is kept under where the request named the contact by a typed address,
-	 *        see {@link #addressKey(String, String)}; <code>null</code> for the contact itself.
+	 *        What the lock is kept under where the request named the holder by something typed, see
+	 *        {@link #addressKey(String, String)} and {@link #nameKey(String)}; <code>null</code> for
+	 *        the holder itself.
 	 * @param client
 	 *        The client address, for {@link #WRONG_PER_CLIENT}.
 	 * @throws Refused
 	 *         <code>400</code> {@link #CODE_WRONG} for a code that signs nobody in,
 	 *         <code>429</code> {@link #LOCKED} while locked.
 	 */
-	public void verify(ContactStore.Contact contact, String lockKey, String code, String client)
+	public void verify(SignInRegister register, SignInHolder holder, String lockKey, String code, String client)
 			throws Refused, IOException {
-		String key = lockKey != null ? lockKey : contactKey(contact.getId());
-		ContactStore.Authenticator active = contact == null ? null : contact.getAuthenticator();
+		String own = holder == null ? null : holder.getSignInKey();
+		String key = lockKey != null ? lockKey : own;
+		SignIns.Authenticator active = holder == null ? null : holder.getSignIns().getAuthenticator();
 		long step;
 		synchronized (this) {
 			Instant now = _clock.instant();
 			checkLocks(key, client, now);
-			if (contact != null && lockKey != null) {
-				// A contact named by an address is locked by their own guesses too.
-				checkLock(contactKey(contact.getId()), now);
+			if (holder != null && lockKey != null) {
+				// A holder named by something typed is locked by their own guesses too.
+				checkLock(own, now);
 			}
 			step = active == null ? -1 : Totp.match(active.getSecret(), code, Totp.step(now));
 			if (step < 0) {
-				if (contact != null && lockKey != null) {
-					record(_failures, contactKey(contact.getId()), now);
+				if (holder != null && lockKey != null) {
+					record(_failures, own, now);
 				}
 				fail(key, client, now);
 			}
 		}
-		if (!_contacts.useTotpStep(contact.getId(), active.getSecret(), step)) {
+		if (!register.change(holder, signIns -> signIns.useTotpStep(active.getSecret(), step))) {
 			// Replayed: the code is right but was used already. Not counted as a guess.
-			LOG.info("Refusing a code of " + contact + " that was used already.");
+			LOG.info("Refusing a code of " + own + " that was used already.");
 			throw new Refused(400, CODE_WRONG, 0);
 		}
 		cleared(key);
 		if (lockKey != null) {
-			cleared(contactKey(contact.getId()));
+			cleared(own);
 		}
 	}
 
-	/** Removes the authenticator app of the given contact. */
+	/** Removes the authenticator app of the given holder. */
+	public boolean remove(SignInRegister register, SignInHolder holder) throws IOException {
+		if (holder == null) {
+			return false;
+		}
+		cleared(holder.getSignInKey());
+		return register.change(holder, SignIns::removeTotp);
+	}
+
+	// --- A contact, named by id in the register of the constructor. ---
+
+	/** {@link #setUp(SignInRegister, SignInHolder)} for the contact of the given id. */
+	public String setUp(String contactId) throws IOException {
+		return setUp(_contacts, _contacts.get(contactId));
+	}
+
+	/** {@link #confirm(SignInRegister, SignInHolder, String, String)} for the contact of the given id. */
+	public void confirm(String contactId, String code, String client) throws Refused, IOException {
+		confirm(_contacts, _contacts.get(contactId), code, client);
+	}
+
+	/** {@link #verify(SignInRegister, SignInHolder, String, String, String)} for a contact. */
+	public void verify(ContactStore.Contact contact, String lockKey, String code, String client)
+			throws Refused, IOException {
+		verify(_contacts, contact, lockKey, code, client);
+	}
+
+	/** {@link #remove(SignInRegister, SignInHolder)} for the contact of the given id. */
 	public boolean remove(String contactId) throws IOException {
-		cleared(contactKey(contactId));
-		return _contacts.removeTotp(contactId);
+		return remove(_contacts, _contacts.get(contactId));
 	}
 
 	/** The lock key of a contact named by a typed address on the given link. */
@@ -219,8 +263,13 @@ public class TotpSignIns {
 		return "address:" + linkId + ":" + address;
 	}
 
-	private static String contactKey(String contactId) {
-		return "contact:" + contactId;
+	/**
+	 * The lock key of a member named by a typed user name on the sign-in form (issue #233): kept
+	 * whether or not anybody is called so, so that an unknown name is answered exactly like a wrong
+	 * code.
+	 */
+	public static String nameKey(String name) {
+		return "name:" + name;
 	}
 
 	private void checkLocks(String key, String client, Instant now) throws Refused {

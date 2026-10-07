@@ -7,11 +7,13 @@ import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.auth.UserStore.Login;
 import de.haumacher.imageServer.auth.UserStore.User;
+import de.haumacher.imageServer.passkeys.Passkeys;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.ContactInfo;
 import de.haumacher.imageServer.shared.model.InvitationInfo;
 import de.haumacher.imageServer.shared.model.PairRequest;
 import de.haumacher.imageServer.shared.model.PairResponse;
+import de.haumacher.imageServer.shared.model.PasskeyResponse;
 import de.haumacher.imageServer.shared.model.ShareInfo;
 import de.haumacher.imageServer.shared.model.ShareType;
 import jakarta.servlet.http.HttpServletRequest;
@@ -971,6 +973,11 @@ public class AuthService {
 			return _tokenPresented && _user == null && _share == null;
 		}
 
+		/** The signed-in user, <code>null</code> for everybody else. */
+		public User getUser() {
+			return _user;
+		}
+
 		/** The name of the signed-in user, the empty string for an anonymous caller. */
 		public String getUserName() {
 			return _user == null ? "" : _user.getName();
@@ -1074,6 +1081,18 @@ public class AuthService {
 		_shares = mode == AuthMode.OFF ? null : new ShareStore(basePath);
 		_contacts = mode == AuthMode.OFF ? null : new ContactStore(basePath);
 		_totp = _contacts == null ? null : new TotpSignIns(_contacts, java.time.Clock.systemUTC());
+		if (_users != null && _contacts != null) {
+			// One identity (issue #233): an address belongs to one principal at most, a contact or a
+			// member, and every addition to either register holds this one lock while it checks.
+			Object addresses = new Object();
+			UserStore users = _users;
+			ContactStore contacts = _contacts;
+			users.guardAddresses(addresses, email -> contacts.byEmail(email) != null);
+			contacts.guardAddresses(addresses, email -> {
+				User member = users.byEmail(email);
+				return member == null ? null : member.getName();
+			});
+		}
 		_deviceCodes = mode == AuthMode.OFF ? null : new DeviceCodeStore(basePath);
 		_media = mode == AuthMode.OFF ? null : new MediaSignatures(basePath);
 		ensureAdminSeat();
@@ -2657,10 +2676,23 @@ public class AuthService {
 
 		private final int _status;
 
+		private final long _retryAfter;
+
 		/** Creates a {@link PairRefused}. */
 		public PairRefused(int status, String message) {
+			this(status, message, 0);
+		}
+
+		/** Creates a {@link PairRefused} that says how long to wait. */
+		public PairRefused(int status, String message, long retryAfter) {
 			super(message);
 			_status = status;
+			_retryAfter = retryAfter;
+		}
+
+		/** Seconds to wait, <code>0</code> where waiting does not help. */
+		public long getRetryAfter() {
+			return _retryAfter;
 		}
 
 		/** The HTTP status to answer with. */
@@ -2697,6 +2729,25 @@ public class AuthService {
 	 *         If the server does not pair at all, or the code is not one that still works.
 	 */
 	public PairResponse pair(PairRequest request) throws PairRefused, IOException {
+		return pair(request, null, Passkeys.NONE, "");
+	}
+
+	/**
+	 * Signs a device in, see {@link #pair(PairRequest)}, by a code &mdash; or, since issue #233, as
+	 * a member who proves themself with what they set up instead: a code of their authenticator
+	 * app ({@link PairRequest#getTotpCode()} with the name or a proven e-mail address in
+	 * {@link PairRequest#getUserName()}), or a passkey ({@link PairRequest#getPasskey()}). Every way
+	 * ends in the same step, a new device of that member ({@link #signInMember}).
+	 *
+	 * @param client
+	 *        The client address, for the limits of the authenticator app.
+	 * @param passkeys
+	 *        The passkeys of the server.
+	 * @param space
+	 *        The segment of the space, which a passkey ceremony is bound to.
+	 */
+	public PairResponse pair(PairRequest request, String client, Passkeys passkeys, String space)
+			throws PairRefused, IOException {
 		if (_mode == AuthMode.OFF) {
 			throw new PairRefused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
 		}
@@ -2708,13 +2759,32 @@ public class AuthService {
 		if (!deviceCode.isEmpty()) {
 			return addDevice(request, deviceCode);
 		}
+		if (!blank(request.getTotpCode())) {
+			return pairByTotp(request, client);
+		}
+		PasskeyResponse passkey = request.getPasskey();
+		if (passkey != null && !blank(passkey.getTicket())) {
+			return pairByPasskey(request, passkey, passkeys, space);
+		}
 		if (!blank(request.getSecret())) {
 			// An app from before issue #89; it is told what replaced the secret, not that it is
 			// wrong, see SECRET_RETIRED.
 			throw new PairRefused(HttpServletResponse.SC_GONE, SECRET_RETIRED);
 		}
+		if (!blank(request.getUserName())) {
+			// A name and no code: the sign-in form's authenticator app sent nothing to check
+			// (issue #233); told what a member signs in with, not about the server's start-up.
+			throw new PairRefused(HttpServletResponse.SC_BAD_REQUEST, MEMBER_CODE_REQUIRED);
+		}
 		throw new PairRefused(HttpServletResponse.SC_BAD_REQUEST, CODE_REQUIRED);
 	}
+
+	/**
+	 * What a pairing is refused with that names a user but carries no code at all (issue #233):
+	 * neither a sign-in code nor a code of an authenticator app.
+	 */
+	public static final String MEMBER_CODE_REQUIRED =
+		"Enter the six-digit code your authenticator app shows, or a sign-in code from one of your devices.";
 
 	/**
 	 * Issues a device code for the caller's own next device, see issue #65.
@@ -2952,17 +3022,121 @@ public class AuthService {
 			UserStore.Device device = user.getDevices().get(user.getDevices().size() - 1);
 			// Used up before the answer: a single-use code must not survive its own success.
 			_deviceCodes.markUsed(record.getId(), device.getId());
-			if (_basePath != null && !user.getSpace().isEmpty()) {
-				spaceRoot(user, _basePath);
-			}
-			LOG.info("Added the device '" + device.getName() + "' of '" + user.getName() + "' by " + record + ".");
-			return PairResponse.create()
-				.setToken(token)
-				.setDeviceName(device.getName())
-				.setUserName(user.getName())
-				.setRole(user.getRole())
-				.setSpace(user.getSpace());
+			return signedIn(user, token, record.toString());
 		}
+	}
+
+	/** What a member's authenticator app is refused with where the server has none (auth off). */
+	public static final String MEMBER_TOTP_REFUSED = "This server signs nobody in with an authenticator app.";
+
+	/** What a passkey sign-in or a proven address is refused with where it names no member any more. */
+	public static final String MEMBER_GONE = "This sign-in names nobody here any more.";
+
+	/** What a member's passkey sign-in is bound to (issue #233): the space, and no link. */
+	public static String memberPasskeyBinding(String space) {
+		return "member-sign-in:" + space;
+	}
+
+	/**
+	 * Signs a device in as the member a code of their authenticator app names (issue #233).
+	 *
+	 * <p>
+	 * The member is named by their name or by a proven e-mail address of theirs. An unknown name is
+	 * answered exactly like a wrong code, and the lock is kept per typed name as well as on the
+	 * member, as on a link that names nobody (issue #208).
+	 * </p>
+	 */
+	private PairResponse pairByTotp(PairRequest request, String client) throws PairRefused, IOException {
+		if (_totp == null) {
+			throw new PairRefused(HttpServletResponse.SC_FORBIDDEN, MEMBER_TOTP_REFUSED);
+		}
+		String typed = request.getUserName() == null ? "" : request.getUserName().trim();
+		User user = memberNamed(typed);
+		try {
+			_totp.verify(_users, user, TotpSignIns.nameKey(typed.toLowerCase(java.util.Locale.ROOT)),
+				request.getTotpCode(), client);
+		} catch (TotpSignIns.Refused ex) {
+			LOG.warning("Refusing a code of an authenticator app on the sign-in form: " + ex.getMessage());
+			throw new PairRefused(ex.getStatus(), ex.getMessage(), ex.getRetryAfter());
+		}
+		return signInMember(user, request.getDeviceName(), "a code of their authenticator app");
+	}
+
+	/**
+	 * The member a typed name or e-mail address names, <code>null</code> for nobody: never a pending
+	 * invitation, never the nameless seat of a space.
+	 */
+	public User memberNamed(String typed) {
+		if (_users == null || typed == null || typed.trim().isEmpty()) {
+			return null;
+		}
+		String value = typed.trim();
+		if (value.indexOf('@') >= 0) {
+			try {
+				return _users.byEmail(ContactStore.normalize(ContactStore.EMAIL, value));
+			} catch (ContactStore.Refused ex) {
+				return null;
+			}
+		}
+		return _users.getUser(value);
+	}
+
+	/** Signs a device in as the member whose passkey the browser used (issue #233). */
+	private PairResponse pairByPasskey(PairRequest request, PasskeyResponse answer, Passkeys passkeys, String space)
+			throws PairRefused, IOException {
+		Passkeys.Asserted<User> asserted;
+		try {
+			// Looked up among the members alone: a contact's passkey signs nobody in as a member.
+			asserted = passkeys.check(memberPasskeyBinding(space), answer.getTicket(), answer.getResponse(),
+				_users::byPasskey, user -> !user.isPending() && !user.getName().isEmpty(),
+				Passkeys.MEMBER_SIGN_IN_REFUSED);
+		} catch (Passkeys.Refused ex) {
+			LOG.warning("Refusing a passkey on the sign-in form: " + ex.getMessage());
+			throw new PairRefused(ex.getStatus(), ex.getMessage());
+		}
+		User user = asserted.getHolder();
+		if (!_users.usedPasskey(user, asserted.getId(), asserted.getCounter(), asserted.isBackupState(),
+			passkeys.now())) {
+			throw new PairRefused(HttpServletResponse.SC_FORBIDDEN, Passkeys.MEMBER_SIGN_IN_REFUSED);
+		}
+		return signInMember(user, request.getDeviceName(), "a passkey");
+	}
+
+	/**
+	 * Signs a new device in as the given member, the step every proof of a member ends in (issue
+	 * #233): a code of their authenticator app, a passkey, a proven address &mdash; on the sign-in
+	 * form and on any link alike. Exactly what redeeming a code does: a new device of theirs, its
+	 * token answered once.
+	 *
+	 * @throws PairRefused
+	 *         <code>410</code> {@link #MEMBER_GONE} for a member removed meanwhile.
+	 */
+	public PairResponse signInMember(User user, String deviceName, String how) throws PairRefused, IOException {
+		if (_users == null) {
+			throw new PairRefused(HttpServletResponse.SC_FORBIDDEN, PAIRING_DISABLED);
+		}
+		synchronized (_users) {
+			if (user == null || user.isPending() || user.getName().isEmpty() || _users.getUser(user.getName()) != user) {
+				throw new PairRefused(HttpServletResponse.SC_GONE, MEMBER_GONE);
+			}
+			String token = _users.addDevice(user, deviceName);
+			return signedIn(user, token, how);
+		}
+	}
+
+	/** The answer of a sign-in that just added the last device of the given user. */
+	private PairResponse signedIn(User user, String token, String how) {
+		UserStore.Device device = user.getDevices().get(user.getDevices().size() - 1);
+		if (_basePath != null && !user.getSpace().isEmpty()) {
+			spaceRoot(user, _basePath);
+		}
+		LOG.info("Added the device '" + device.getName() + "' of '" + user.getName() + "' by " + how + ".");
+		return PairResponse.create()
+			.setToken(token)
+			.setDeviceName(device.getName())
+			.setUserName(user.getName())
+			.setRole(user.getRole())
+			.setSpace(user.getSpace());
 	}
 
 	/**

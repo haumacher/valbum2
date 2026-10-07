@@ -5282,6 +5282,174 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'In album: {album}'**
   String propertySource(String album);
+
+  /// Opens the ways a member signs a new browser in besides a sign-in code, on the sign-in form (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Other ways to sign in…'**
+  String get otherWaysToSignIn;
+
+  /// Said on the sign-in form where the server offers a member no way in besides a code (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'This server offers no other way to sign in.'**
+  String get noOtherWaysToSignIn;
+
+  /// Switches the sign-in form back to the sign-in code (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Use a sign-in code'**
+  String get signInWithCode;
+
+  /// Switches the sign-in form to a code mailed to a member's proven address (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Send me a code by e-mail'**
+  String get memberSendCodeByEmail;
+
+  /// The field naming the member whose authenticator app signs them in, on the sign-in form (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Your user name or e-mail address'**
+  String get memberNameOrEmailLabel;
+
+  /// Said after a code was asked for on the sign-in form; the same whether or not the address is known (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'If this address is one of a member here, a code is on its way.'**
+  String get memberCodeSent;
+
+  /// Said where a proven address named no member on the sign-in form (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'This address signs nobody in here.'**
+  String get memberAddressSignsNobodyIn;
+
+  /// The lead of a member's own sign-in options (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Optional: how you sign in on a new device without a code from another device of yours.'**
+  String get signInOptionsMemberLead;
+
+  /// The heading of a member's proven e-mail addresses in their sign-in options (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'E-mail addresses'**
+  String get memberAddressesHeading;
+
+  /// Explains a member's proven addresses (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'With a confirmed address you sign in by a code sent to it, or with the account it belongs to, on the sign-in page and on every shared link.'**
+  String get memberAddressesExplanation;
+
+  /// Starts adding an e-mail address to a member's ways to sign in (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Add e-mail address'**
+  String get memberAddAddress;
+
+  /// Proves the address of an account of a provider such as Google as a member's way to sign in (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Link {provider} account'**
+  String memberLinkProvider(String provider);
+
+  /// Said when a member comes back from a provider whose address was added (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'The address was added to your ways to sign in.'**
+  String get memberAddressAdded;
+
+  /// A way back after signing out of the last device, in a list (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'your authenticator app'**
+  String get wayAuthenticator;
+
+  /// A way back after signing out of the last device, in a list (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'a passkey'**
+  String get wayPasskey;
+
+  /// A way back after signing out of the last device, in a list (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'a code sent to your e-mail address'**
+  String get wayEmailAddress;
+
+  /// The state of a member's ways to sign in where there is none (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'No other way to sign in set up: no authenticator app, no passkey, no e-mail address.'**
+  String get noMemberSignIns;
+
+  /// The state of a member's ways to sign in, listed (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Also signs you in: {ways}'**
+  String memberSignInsState(String ways);
+
+  /// Opens a member's own ways to sign in on a new device (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Ways to sign in…'**
+  String get memberSignInsEntry;
+
+  /// Opens how a member signs in besides a code, for the administrator (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Ways to sign in'**
+  String get userSignInsTooltip;
+
+  /// The question before the administrator removes a member's way to sign in (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'It no longer signs this member in. The member can set it up again.'**
+  String get userSignInRemoveMessage;
+
+  /// The title of the question before removing a member's e-mail address (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the address {address} of {name}?'**
+  String signInAddressRemoveTitle(String address, String name);
+
+  /// Refusal before a sign-in with a provider such as Google off the web: nothing would come back (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Signing in with another account works in a browser only.'**
+  String get providerNeedsBrowser;
+
+  /// Refusal before a sign-in with a provider leaves a page whose address differs from the server's public address (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'This sign-in would come back to {address}, not to this page, and could not be finished here. Open {address} in the browser and sign in there.'**
+  String providerReturnsElsewhere(String address);
+
+  /// Said when the app comes back from a provider but this tab kept nothing of a start (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'This page came back from a sign-in it did not start. Start the sign-in again.'**
+  String get providerReturnUnknown;
+
+  /// Refused before sending where the code of an authenticator app is not six digits (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the six digits your authenticator app shows.'**
+  String get totpCodeIncomplete;
+
+  /// Refused before sending where the sign-in form's authenticator app names nobody (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your user name or e-mail address.'**
+  String get memberNameRequired;
+
+  /// What a screen reader says of the QR code that sets up an authenticator app (issue #233)
+  ///
+  /// In en, this message translates to:
+  /// **'Setup code for an authenticator app, as a QR code'**
+  String get totpQrSemantics;
 }
 
 class _AppLocalizationsDelegate

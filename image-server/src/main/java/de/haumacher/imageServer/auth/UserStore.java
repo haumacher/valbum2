@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -48,6 +49,16 @@ import java.util.logging.Logger;
  * </pre>
  *
  * <p>
+ * Since issue #233 a user may carry the ways they sign in on a new browser besides a code, as
+ * optional fields shaped like a contact's in <code>contacts.json</code>: <code>totp</code> and
+ * <code>totpPending</code> (an authenticator app), <code>passkeys</code>, and <code>addresses</code>
+ * (proven e-mail addresses, with the instant they were proven as <code>since</code>), each written
+ * only where there is one, so that a store without any reads and writes exactly as before. The
+ * secret of an authenticator app is stored as it is &mdash; the server computes the codes from it
+ * &mdash; which makes this file as sensitive as the server's own settings.
+ * </p>
+ *
+ * <p>
  * The device {@link Device#getId() id} arrived with issue #55, and it did so without a version
  * step: a device of a store written before it simply has none, and gets a free one on the first
  * {@link #load()}, which writes the store back once (the same move the {@link #LEGACY_FILE_NAME}
@@ -65,7 +76,7 @@ import java.util.logging.Logger;
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
-public class UserStore {
+public class UserStore implements SignInRegister {
 
 	private static final Logger LOG = Logger.getLogger(UserStore.class.getName());
 
@@ -154,6 +165,8 @@ public class UserStore {
 
 	private static final String RECIPIENT__PROP = "recipient";
 
+	private static final String ADDRESSES__PROP = "addresses";
+
 	/** The number of random bytes a device id is built from; it is a name, not a secret. */
 	private static final int ID_BYTES = 6;
 
@@ -225,7 +238,7 @@ public class UserStore {
 	}
 
 	/** A person using this server, the principal of every authenticated request. */
-	public static final class User {
+	public static final class User implements SignInHolder {
 
 		private String _name;
 
@@ -248,6 +261,12 @@ public class UserStore {
 		private String _recipient = "";
 
 		private final List<Device> _devices = new ArrayList<>();
+
+		/** How this user signs in on a new browser besides a code (issue #233). */
+		private SignIns _signIns = new SignIns();
+
+		/** The user's proven e-mail addresses (issue #233). */
+		private final List<ContactStore.Address> _addresses = new ArrayList<>();
 
 		/** Creates a {@link User} with what their role implies, see {@link Clearances#ofRole(String)}. */
 		public User(String name, String role, String space, String created) {
@@ -462,6 +481,53 @@ public class UserStore {
 		public boolean removeDevice(Device device) {
 			return _devices.remove(device);
 		}
+
+		/**
+		 * The authenticator app and the passkeys this user signs in with on a new browser, besides a
+		 * code (issue #233); changed by the {@link UserStore} alone.
+		 */
+		@Override
+		public SignIns getSignIns() {
+			return _signIns;
+		}
+
+		/**
+		 * The user's proven e-mail addresses, in the order they were proven (issue #233): each signs
+		 * them in through a mailed code or a provider, and none is ever a contact's.
+		 */
+		public List<ContactStore.Address> getAddresses() {
+			return Collections.unmodifiableList(new ArrayList<>(_addresses));
+		}
+
+		/** Whether the user holds the given normalised e-mail address. */
+		public boolean holdsEmail(String email) {
+			for (ContactStore.Address address : _addresses) {
+				if (address.getValue().equals(email)) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		/** <code>user:&lt;name&gt;</code>: never a contact's key, which is <code>contact:&lt;id&gt;</code>. */
+		@Override
+		public String getSignInKey() {
+			return "user:" + _name;
+		}
+
+		@Override
+		public String getSignInName() {
+			return _name;
+		}
+
+		/**
+		 * Names the space as well: one relying party serves every space of a server, and the same
+		 * name in two spaces is two people.
+		 */
+		@Override
+		public String passkeyHandle(String space) {
+			return "user:" + space + ":" + _name;
+		}
 	}
 
 	/** A device together with the user it belongs to, see {@link UserStore#lookup(String)}. */
@@ -493,6 +559,12 @@ public class UserStore {
 	private final Path _legacyFile;
 
 	private final SecureRandom _random = new SecureRandom();
+
+	/** See {@link #guardAddresses}. */
+	private Object _addressLock = new Object();
+
+	/** See {@link #guardAddresses}. */
+	private Predicate<String> _contactHolds = email -> false;
 
 	private List<User> _users = new ArrayList<>();
 
@@ -969,6 +1041,8 @@ public class UserStore {
 		String note = "";
 		String recipient = "";
 		List<Device> devices = new ArrayList<>();
+		List<ContactStore.Address> addresses = new ArrayList<>();
+		SignIns signIns = new SignIns();
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -1010,8 +1084,22 @@ public class UserStore {
 					}
 					in.endArray();
 					break;
+				case ADDRESSES__PROP:
+					in.beginArray();
+					while (in.hasNext()) {
+						ContactStore.Address address = ContactStore.readAddress(in);
+						if (!address.getValue().isEmpty()) {
+							addresses.add(address);
+						}
+					}
+					in.endArray();
+					break;
 				default:
-					in.skipValue();
+					// A store written before issue #233 has none of these: nobody there signs in
+					// with an authenticator app or a passkey.
+					if (!signIns.read(key, in)) {
+						in.skipValue();
+					}
 					break;
 			}
 		}
@@ -1030,6 +1118,8 @@ public class UserStore {
 		for (Device device : devices) {
 			result.addDevice(device);
 		}
+		result._signIns = signIns;
+		result._addresses.addAll(addresses);
 		return result;
 	}
 
@@ -1134,7 +1224,134 @@ public class UserStore {
 			out.endObject();
 		}
 		out.endArray();
+		// Written only where there is one, so that a store without any reads as before.
+		if (!user._addresses.isEmpty()) {
+			out.name(ADDRESSES__PROP);
+			out.beginArray();
+			for (ContactStore.Address address : user._addresses) {
+				ContactStore.writeAddress(out, address);
+			}
+			out.endArray();
+		}
+		user._signIns.write(out);
 		out.endObject();
+	}
+
+	// --- Ways to sign in on a new browser (issue #233). ---
+
+	/**
+	 * Changes the ways of the given user to sign in, while they are one of this store's and no
+	 * pending invitation (who signs in with nothing but its code).
+	 */
+	@Override
+	public synchronized boolean change(SignInHolder holder, Predicate<SignIns> change) throws IOException {
+		User user = holder instanceof User given && holds(given) ? given : null;
+		if (user == null || user.isPending() || !change.test(user._signIns)) {
+			return false;
+		}
+		store();
+		return true;
+	}
+
+	/**
+	 * The user holding the passkey of the given credential id, <code>null</code> if no user here
+	 * does; never a pending one.
+	 */
+	@Override
+	public synchronized User byPasskey(String id) {
+		for (User user : _users) {
+			if (!user.isPending() && user._signIns.passkey(id) != null) {
+				return user;
+			}
+		}
+		return null;
+	}
+
+	/** The member holding the given normalised e-mail address, <code>null</code> if no member does. */
+	public synchronized User byEmail(String email) {
+		if (email == null || email.isEmpty()) {
+			return null;
+		}
+		for (User user : _users) {
+			if (!user.isPending() && user.holdsEmail(email)) {
+				return user;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Makes the members' addresses and the contacts' one set (issue #233), see
+	 * {@link ContactStore#guardAddresses}.
+	 *
+	 * @param lock
+	 *        The lock every addition of an address to either register holds.
+	 * @param contactHolds
+	 *        Whether a contact holds a normalised e-mail address.
+	 */
+	public void guardAddresses(Object lock, Predicate<String> contactHolds) {
+		_addressLock = lock;
+		_contactHolds = contactHolds;
+	}
+
+	/** What a member's proof of an address a contact holds is refused with (issue #233). */
+	public static String contactAddress(String address) {
+		return "The address " + address + " belongs to a contact of this space. Delete that contact, then "
+			+ "add the address again.";
+	}
+
+	/** What a member's proof of an address another member holds is refused with (issue #233). */
+	public static String otherMemberAddress(String address) {
+		return "The address " + address + " belongs to another member of this space.";
+	}
+
+	/**
+	 * Adds a proven e-mail address to the given user (issue #233).
+	 *
+	 * @return <code>null</code> where it is theirs now, else why not: a contact holds it
+	 *         ({@link #contactAddress}), another member does ({@link #otherMemberAddress}), the user
+	 *         is gone.
+	 */
+	public String addAddress(User user, String email, Instant now) throws IOException {
+		synchronized (_addressLock) {
+			if (_contactHolds.test(email)) {
+				return contactAddress(email);
+			}
+			synchronized (this) {
+				User holder = byEmail(email);
+				if (holder != null) {
+					return holder == user ? null : otherMemberAddress(email);
+				}
+				if (!holds(user) || user.isPending()) {
+					return DEVICE_USER_GONE;
+				}
+				user._addresses.add(new ContactStore.Address(ContactStore.EMAIL, email, true,
+					now.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString()));
+				store();
+				return null;
+			}
+		}
+	}
+
+	/** Removes an e-mail address of the given user; answers whether they had it. */
+	public synchronized boolean removeAddress(User user, String email) throws IOException {
+		if (!holds(user) || !user._addresses.removeIf(address -> address.getValue().equals(email))) {
+			return false;
+		}
+		store();
+		return true;
+	}
+
+	/** What an address is refused for whose user is gone. */
+	private static final String DEVICE_USER_GONE = "This user is no longer here.";
+
+	private boolean holds(User user) {
+		for (User own : _users) {
+			if (own == user) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Whether the given file name belongs to this server rather than to a user's library. */

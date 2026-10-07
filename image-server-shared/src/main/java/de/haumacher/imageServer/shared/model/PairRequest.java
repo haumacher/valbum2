@@ -30,6 +30,12 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getDeviceCode() */
 	private static final String DEVICE_CODE__PROP = "deviceCode";
 
+	/** @see #getTotpCode() */
+	private static final String TOTP_CODE__PROP = "totpCode";
+
+	/** @see #getPasskey() */
+	private static final String PASSKEY__PROP = "passkey";
+
 	private String _secret = "";
 
 	private String _deviceName = "";
@@ -39,6 +45,10 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _invitation = "";
 
 	private String _deviceCode = "";
+
+	private String _totpCode = "";
+
+	private de.haumacher.imageServer.shared.model.PasskeyResponse _passkey = null;
 
 	/**
 	 * Creates a {@link PairRequest} instance.
@@ -201,6 +211,66 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_deviceCode = value;
 	}
 
+	/**
+	 * A code of the member's authenticator app, see issue #233: with {@link #getUserName()} naming the
+	 * member, the way a member signs a new browser in where no device of theirs is at hand.
+	 *
+	 * <p>
+	 * The rules of a contact's code (issue #208): the app must have been confirmed, a code works
+	 * once, and five wrong codes within fifteen minutes lock the name for fifteen minutes. An
+	 * unknown name is answered exactly like a wrong code. Read only where {@link #getDeviceCode()} is
+	 * empty; success is what redeeming a code is &mdash; a new device of that member, answered as a
+	 * {@link PairResponse}.
+	 * </p>
+	 */
+	public final String getTotpCode() {
+		return _totpCode;
+	}
+
+	/**
+	 * @see #getTotpCode()
+	 */
+	public de.haumacher.imageServer.shared.model.PairRequest setTotpCode(String value) {
+		internalSetTotpCode(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getTotpCode()} without chain call utility. */
+	protected final void internalSetTotpCode(String value) {
+		_totpCode = value;
+	}
+
+	/**
+	 * A member's passkey, see issue #233: the answer to the ceremony
+	 * <code>?action=passkey-start</code> starts for a caller that holds nothing, which names nobody
+	 * &mdash; the passkey names the member. Only the {@link PasskeyResponse#getTicket()} and
+	 * {@link PasskeyResponse#getResponse()} are read. Read only where {@link #getDeviceCode()} and
+	 * {@link #getTotpCode()} are empty; a contact's passkey signs nobody in here.
+	 */
+	public final de.haumacher.imageServer.shared.model.PasskeyResponse getPasskey() {
+		return _passkey;
+	}
+
+	/**
+	 * @see #getPasskey()
+	 */
+	public de.haumacher.imageServer.shared.model.PairRequest setPasskey(de.haumacher.imageServer.shared.model.PasskeyResponse value) {
+		internalSetPasskey(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPasskey()} without chain call utility. */
+	protected final void internalSetPasskey(de.haumacher.imageServer.shared.model.PasskeyResponse value) {
+		_passkey = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getPasskey()} has a value.
+	 */
+	public final boolean hasPasskey() {
+		return _passkey != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.PairRequest readPairRequest(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.PairRequest result = new de.haumacher.imageServer.shared.model.PairRequest();
@@ -226,6 +296,12 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getInvitation());
 		out.name(DEVICE_CODE__PROP);
 		out.value(getDeviceCode());
+		out.name(TOTP_CODE__PROP);
+		out.value(getTotpCode());
+		if (hasPasskey()) {
+			out.name(PASSKEY__PROP);
+			getPasskey().writeTo(out);
+		}
 	}
 
 	@Override
@@ -236,6 +312,8 @@ public class PairRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case USER_NAME__PROP: setUserName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case INVITATION__PROP: setInvitation(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case DEVICE_CODE__PROP: setDeviceCode(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case TOTP_CODE__PROP: setTotpCode(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case PASSKEY__PROP: setPasskey(de.haumacher.imageServer.shared.model.PasskeyResponse.readPasskeyResponse(in)); break;
 			default: super.readField(in, field);
 		}
 	}

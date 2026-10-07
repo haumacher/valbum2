@@ -30,6 +30,9 @@ public class PasskeyResponse extends de.haumacher.msgbuf.data.AbstractDataObject
 	/** @see #getDisplayName() */
 	private static final String DISPLAY_NAME__PROP = "displayName";
 
+	/** @see #getDeviceName() */
+	private static final String DEVICE_NAME__PROP = "deviceName";
+
 	private String _ticket = "";
 
 	private String _response = "";
@@ -37,6 +40,8 @@ public class PasskeyResponse extends de.haumacher.msgbuf.data.AbstractDataObject
 	private boolean _remember = false;
 
 	private String _displayName = "";
+
+	private String _deviceName = "";
 
 	/**
 	 * Creates a {@link PasskeyResponse} instance.
@@ -128,6 +133,27 @@ public class PasskeyResponse extends de.haumacher.msgbuf.data.AbstractDataObject
 		_displayName = value;
 	}
 
+	/**
+	 * The name of this browser as a member's device, where the proof names a member and signs them
+	 * in (issue #233, see {@link ContactCredential#getMember()}); empty for "Unnamed device".
+	 */
+	public final String getDeviceName() {
+		return _deviceName;
+	}
+
+	/**
+	 * @see #getDeviceName()
+	 */
+	public de.haumacher.imageServer.shared.model.PasskeyResponse setDeviceName(String value) {
+		internalSetDeviceName(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getDeviceName()} without chain call utility. */
+	protected final void internalSetDeviceName(String value) {
+		_deviceName = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.PasskeyResponse readPasskeyResponse(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.PasskeyResponse result = new de.haumacher.imageServer.shared.model.PasskeyResponse();
@@ -151,6 +177,8 @@ public class PasskeyResponse extends de.haumacher.msgbuf.data.AbstractDataObject
 		out.value(isRemember());
 		out.name(DISPLAY_NAME__PROP);
 		out.value(getDisplayName());
+		out.name(DEVICE_NAME__PROP);
+		out.value(getDeviceName());
 	}
 
 	@Override
@@ -160,6 +188,7 @@ public class PasskeyResponse extends de.haumacher.msgbuf.data.AbstractDataObject
 			case RESPONSE__PROP: setResponse(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case REMEMBER__PROP: setRemember(in.nextBoolean()); break;
 			case DISPLAY_NAME__PROP: setDisplayName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case DEVICE_NAME__PROP: setDeviceName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

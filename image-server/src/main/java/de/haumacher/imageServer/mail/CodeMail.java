@@ -46,7 +46,13 @@ public final class CodeMail {
 		OPEN,
 
 		/** A contact recognised already adds an address to themself. */
-		ADD_ADDRESS;
+		ADD_ADDRESS,
+
+		/** A member signs a new browser in on the sign-in form, without a link (issue #233). */
+		SIGN_IN,
+
+		/** A signed-in member adds an address to sign in with (issue #233). */
+		MEMBER_ADDRESS;
 	}
 
 	/**
@@ -135,7 +141,12 @@ public final class CodeMail {
 		String sender = sharer.isEmpty() ? DEFAULT_SPACE_NAME : sharer + " über " + DEFAULT_SPACE_NAME;
 		String subject = "Code für " + (title.isEmpty() ? about._space : "„" + title + "“") + ": " + code;
 		StringBuilder text = new StringBuilder("Hallo,\n\n");
-		if (purpose == Purpose.ADD_ADDRESS) {
+		if (purpose == Purpose.SIGN_IN) {
+			text.append("mit diesem Code melden Sie sich bei ").append(about._space).append(" an:\n");
+		} else if (purpose == Purpose.MEMBER_ADDRESS) {
+			text.append("mit diesem Code bestätigen Sie Ihre E-Mail-Adresse für die Anmeldung bei ")
+				.append(about._space).append(":\n");
+		} else if (purpose == Purpose.ADD_ADDRESS) {
 			text.append("mit diesem Code bestätigen Sie Ihre E-Mail-Adresse für die Fotos, die ")
 				.append(sharer.isEmpty() ? "mit Ihnen geteilt werden" : sharer + " mit Ihnen teilt").append(":\n");
 		} else {
@@ -150,8 +161,10 @@ public final class CodeMail {
 		text.append("\n    ").append(code).append("\n\n");
 		text.append("Der Code gilt ").append(minutes).append(" Minuten und nur einmal.\n\n");
 		text.append("Haben Sie keinen Code angefordert? Dann können Sie diese E-Mail\n");
-		text.append(purpose == Purpose.ADD_ADDRESS ? "einfach ignorieren – ohne den Code wird die Adresse nicht gespeichert.\n"
-			: "einfach ignorieren – ohne den Code kann niemand das Album öffnen.\n");
+		text.append(purpose == Purpose.SIGN_IN ? "einfach ignorieren – ohne den Code meldet sich niemand an.\n"
+			: purpose == Purpose.ADD_ADDRESS || purpose == Purpose.MEMBER_ADDRESS
+				? "einfach ignorieren – ohne den Code wird die Adresse nicht gespeichert.\n"
+				: "einfach ignorieren – ohne den Code kann niemand das Album öffnen.\n");
 		footer(text, about);
 		return new CodeMail(sender, subject, text.toString());
 	}
@@ -162,7 +175,12 @@ public final class CodeMail {
 		String sender = sharer.isEmpty() ? DEFAULT_SPACE_NAME : sharer + " via " + DEFAULT_SPACE_NAME;
 		String subject = "Code for " + (title.isEmpty() ? about._space : "“" + title + "”") + ": " + code;
 		StringBuilder text = new StringBuilder("Hello,\n\n");
-		if (purpose == Purpose.ADD_ADDRESS) {
+		if (purpose == Purpose.SIGN_IN) {
+			text.append("This code signs you in to ").append(about._space).append(":\n");
+		} else if (purpose == Purpose.MEMBER_ADDRESS) {
+			text.append("This code confirms your e-mail address for signing in to ").append(about._space)
+				.append(":\n");
+		} else if (purpose == Purpose.ADD_ADDRESS) {
 			text.append("This code confirms your e-mail address for the photos ")
 				.append(sharer.isEmpty() ? "shared with you" : sharer + " shares with you").append(":\n");
 		} else {
@@ -177,8 +195,10 @@ public final class CodeMail {
 		text.append("\n    ").append(code).append("\n\n");
 		text.append("The code is valid for ").append(minutes).append(" minutes and works once.\n\n");
 		text.append("Didn't ask for a code? Then simply ignore this mail –\n");
-		text.append(purpose == Purpose.ADD_ADDRESS ? "without the code the address is not saved.\n"
-			: "without the code nobody can open the album.\n");
+		text.append(purpose == Purpose.SIGN_IN ? "without the code nobody signs in.\n"
+			: purpose == Purpose.ADD_ADDRESS || purpose == Purpose.MEMBER_ADDRESS
+				? "without the code the address is not saved.\n"
+				: "without the code nobody can open the album.\n");
 		footer(text, about);
 		return new CodeMail(sender, subject, text.toString());
 	}

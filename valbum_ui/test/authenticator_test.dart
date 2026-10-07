@@ -199,15 +199,33 @@ void main() {
       expect(find.byKey(const Key("identify-totp-code")), findsNothing,
           reason: "Behind one tap, never the default.");
       await tapKey(tester, "identify-totp");
+      // Incomplete: said here and never sent (issue #233).
+      await tester.enterText(find.byKey(const Key("identify-totp-code")), "12");
+      await tapKey(tester, "identify-totp-verify");
+      expect(find.text(testL10n.totpCodeIncomplete), findsOneWidget);
+      expect(
+          h.requests.where((request) =>
+              request.url.queryParameters["action"] == "totp-verify"),
+          isEmpty);
+      // At most six digits are taken.
       await tester.enterText(
-          find.byKey(const Key("identify-totp-code")), "123 456");
+          find.byKey(const Key("identify-totp-code")), "123 456 789");
+      expect(
+          tester
+              .widget<TextField>(find.byKey(const Key("identify-totp-code")))
+              .controller!
+              .text,
+          "123456");
       await tapKey(tester, "identify-totp-verify");
 
       expect(h.bodyOf("totp-verify"), {
-        "code": "123 456",
+        // The blank the app shows is no part of the code (issue #233).
+        "code": "123456",
         "address": "",
         "remember": true,
         "displayName": "",
+        // The browser's name, should the code be a member's (issue #233).
+        "deviceName": "Android phone",
       });
       expect(h.remembered.values.values, ["cred-2"]);
       expect(find.byType(AlbumContent), findsOneWidget);
@@ -293,6 +311,9 @@ void main() {
         (tester) async {
       await pumpSetup(tester, 1000);
       expect(find.byKey(const Key("totp-qr")), findsOneWidget);
+      // An authenticator app's setup, not a device code (issue #233).
+      expect(find.bySemanticsLabel(testL10n.totpQrSemantics), findsOneWidget);
+      expect(find.bySemanticsLabel(testL10n.deviceCodeQrSemantics), findsNothing);
       expect(find.byKey(const Key("totp-open-app")), findsNothing);
       expect(find.byKey(const Key("totp-setup-key")), findsOneWidget);
       expect(
@@ -343,8 +364,24 @@ void main() {
       expect(find.byKey(const Key("totp-qr")), findsOneWidget);
       expect(find.byKey(const Key("totp-setup-key")), findsOneWidget);
 
-      await tester.enterText(find.byKey(const Key("totp-code")), "654321");
+      await tester.enterText(find.byKey(const Key("totp-code")), "65432");
       await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key("totp-confirm")))
+              .onPressed,
+          isNull,
+          reason: "five digits are no code yet");
+      await tester.enterText(
+          find.byKey(const Key("totp-code")), "654321654321");
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<TextField>(find.byKey(const Key("totp-code")))
+              .controller!
+              .text,
+          "654321",
+          reason: "a code has six digits");
       await tapKey(tester, "totp-confirm");
       var confirm = requests.lastWhere(
           (request) => request.url.queryParameters["action"] == "totp-confirm");

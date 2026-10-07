@@ -21,6 +21,9 @@ public class SignInRemove extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getContact() */
 	private static final String CONTACT__PROP = "contact";
 
+	/** @see #getUser() */
+	private static final String USER__PROP = "user";
+
 	/** @see #getMethod() */
 	private static final String METHOD__PROP = "method";
 
@@ -28,6 +31,8 @@ public class SignInRemove extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private static final String ID__PROP = "id";
 
 	private String _contact = "";
+
+	private String _user = "";
 
 	private String _method = "";
 
@@ -63,7 +68,29 @@ public class SignInRemove extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * <code>totp</code> for the authenticator app, <code>passkey</code> for a passkey (issue #204).
+	 * The name of the user whose way to sign in the administrator removes, at
+	 * <code>?action=remove-user-sign-in</code> (issue #233); ignored everywhere else.
+	 */
+	public final String getUser() {
+		return _user;
+	}
+
+	/**
+	 * @see #getUser()
+	 */
+	public de.haumacher.imageServer.shared.model.SignInRemove setUser(String value) {
+		internalSetUser(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getUser()} without chain call utility. */
+	protected final void internalSetUser(String value) {
+		_user = value;
+	}
+
+	/**
+	 * <code>totp</code> for the authenticator app, <code>passkey</code> for a passkey (issue #204),
+	 * <code>email</code> for a member's proven e-mail address (issue #233).
 	 */
 	public final String getMethod() {
 		return _method;
@@ -83,7 +110,8 @@ public class SignInRemove extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * Which one of several: the {@link ContactPasskey#getId()} of a passkey; empty for the authenticator app.
+	 * Which one of several: the {@link ContactPasskey#getId()} of a passkey, the address of an
+	 * <code>email</code>; empty for the authenticator app.
 	 */
 	public final String getId() {
 		return _id;
@@ -119,6 +147,8 @@ public class SignInRemove extends de.haumacher.msgbuf.data.AbstractDataObject {
 		super.writeFields(out);
 		out.name(CONTACT__PROP);
 		out.value(getContact());
+		out.name(USER__PROP);
+		out.value(getUser());
 		out.name(METHOD__PROP);
 		out.value(getMethod());
 		out.name(ID__PROP);
@@ -129,6 +159,7 @@ public class SignInRemove extends de.haumacher.msgbuf.data.AbstractDataObject {
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
 			case CONTACT__PROP: setContact(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case USER__PROP: setUser(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case METHOD__PROP: setMethod(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case ID__PROP: setId(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);

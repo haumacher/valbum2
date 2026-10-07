@@ -34,6 +34,9 @@ import 'offline.dart';
 import 'page_insets.dart';
 import 'passkeys.dart';
 import 'resource.dart';
+import 'settings.dart' show defaultDeviceName;
+import 'sign_in_form.dart' show pageLocation, providerReturnRefusal;
+import 'sign_in_options.dart' show isTotpCode, totpCodeFormatter;
 import 'urls.dart';
 
 /// The name of the mailed-code method, see `EmailProofs.METHOD` (#199).
@@ -69,8 +72,15 @@ class IdentifyScreen extends StatefulWidget {
   final void Function(ContactCredential credential) onCredential;
 
   /// Takes a sign-in through a provider that is about to leave the page: the
-  /// app keeps its binding and navigates.
-  final void Function(OidcStarted started, bool remember) onSignInStarted;
+  /// app keeps its binding — and the device name the return needs, should
+  /// the address be a member's (issue #233) — and navigates.
+  final void Function(OidcStarted started, bool remember, String deviceName)
+      onSignInStarted;
+
+  /// The name this device is stored under (the one a code redemption
+  /// offers), `null` or empty where none is: a proof that names a member
+  /// signs this browser in under it (issue #233).
+  final String? deviceName;
 
   /// Forgets the credential this browser holds and asks again, `null` where
   /// it holds none (issue #202): "Not you? Switch person".
@@ -85,6 +95,7 @@ class IdentifyScreen extends StatefulWidget {
     required this.onSignInStarted,
     this.message,
     this.onSwitchPerson,
+    this.deviceName,
   });
 
   @override
@@ -196,17 +207,36 @@ class IdentifyScreenState extends State<IdentifyScreen> {
         code: _code.text.trim(),
         remember: _remember,
         displayName: _open ? _name.text.trim() : "",
+        deviceName: _deviceName,
       ));
       widget.onCredential(answer);
     });
   }
 
+  /// This browser's name as a member's device, where the proof names a
+  /// member and signs them in (issue #233).
+  ///
+  /// The name this device is stored under, as a code redemption offers it,
+  /// else the suggestion for this platform.
+  String get _deviceName {
+    var stored = widget.deviceName?.trim() ?? "";
+    return stored.isNotEmpty
+        ? stored
+        : defaultDeviceName(AppLocalizations.of(context)!);
+  }
+
   Future<void> _verifyTotp() => _run(() async {
+        if (!isTotpCode(_totpCode.text)) {
+          // Said here: an incomplete code is no guess worth sending.
+          throw VAlbumException(
+              AppLocalizations.of(context)!.totpCodeIncomplete);
+        }
         var answer = await widget.client.totpVerify(TotpCode(
           code: _totpCode.text.trim(),
           address: _typesAddress ? _address.text.trim() : "",
           remember: _remember,
           displayName: _open ? _name.text.trim() : "",
+          deviceName: _deviceName,
         ));
         widget.onCredential(answer);
       });
@@ -222,17 +252,28 @@ class IdentifyScreenState extends State<IdentifyScreen> {
           response: answer,
           remember: _remember,
           displayName: _open ? _name.text.trim() : "",
+          deviceName: _deviceName,
         ));
         widget.onCredential(credential);
       });
 
   Future<void> _signIn(String provider) => _run(() async {
+        var l10n = AppLocalizations.of(context)!;
+        var deviceName = _deviceName;
         var started = await widget.client.oidcStart(OidcStart(
           provider: provider,
           remember: _remember,
           displayName: _open ? _name.text.trim() : "",
         ));
-        widget.onSignInStarted(started, _remember);
+        // A page that cannot come back here says so now (issue #233); off the
+        // web, where a test runs, nothing leaves.
+        if (pageLocation() != null) {
+          var refusal = providerReturnRefusal(l10n, started);
+          if (refusal != null) {
+            throw VAlbumException(refusal);
+          }
+        }
+        widget.onSignInStarted(started, _remember, deviceName);
       });
 
   /// The address of the link's cover (#104): the shared album's picture,
@@ -516,6 +557,7 @@ class IdentifyScreenState extends State<IdentifyScreen> {
         enabled: !_busy,
         autofocus: true,
         keyboardType: TextInputType.number,
+        inputFormatters: [totpCodeFormatter],
         decoration: InputDecoration(labelText: l10n.totpCodeLabel),
         onSubmitted: _busy ? null : (_) => _verifyTotp(),
       ),

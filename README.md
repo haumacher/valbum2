@@ -267,10 +267,15 @@ is more variables of its own name: `VALBUM_OIDC_<NAME>_CLIENT_ID`, `_CLIENT_SECR
 A visitor of a personal link may set up a passkey ("Recognise me on my other devices") or an
 authenticator app (Google Authenticator, the iOS Passwords app, any TOTP app) under "Sign-in
 options…" in the link's menu, and then sign in on another device with it. Neither is the default.
+A member does the same under *Settings → My devices → Ways to sign in*, and may add an e-mail
+address (a mailed code) or a Google account there; the sign-in page then offers each of these
+beside the sign-in code. An address belongs to one person: a member's address signs in the member,
+also on a share link, and is never a contact's.
 Passkeys need `VALBUM_PUBLIC_URL`: its host is the one a passkey belongs to, so changing the host
 later invalidates them (an `http` address works for `localhost` only). An authenticator app needs no
-setting; its secrets are stored readably in `<space>/.valbum/contacts.json` — the server computes
-the codes from them — so keep that file, and backups of it, as private as `/etc/default/valbum`.
+setting; its secrets are stored readably in `<space>/.valbum/contacts.json` and
+`<space>/.valbum/users.json` — the server computes the codes from them — so keep both files, and
+backups of them, as private as `/etc/default/valbum`.
 
 ### Updating
 
@@ -515,10 +520,12 @@ angeboten (siehe [Sign-in with Google](#sign-in-with-google)).
 
 **Passkey und Authenticator-App.** Besucher eines persönlichen Links können unter
 "Anmeldeoptionen…" einen Passkey oder eine Authenticator-App einrichten und sich damit auf einem
-anderen Gerät anmelden. Passkeys gibt es nur mit `VALBUM_PUBLIC_URL` (sie gehören zu deren Host);
+anderen Gerät anmelden. Mitglieder richten dasselbe unter *Einstellungen → Meine Geräte →
+Anmeldewege* ein, dazu eine E-Mail-Adresse oder ein Google-Konto; die Anmeldeseite bietet sie dann
+neben dem Anmelde-Code an. Passkeys gibt es nur mit `VALBUM_PUBLIC_URL` (sie gehören zu deren Host);
 für die App ist nichts einzustellen. Ihre Geheimnisse liegen lesbar in
-`<bereich>/.valbum/contacts.json` — diese Datei (und ihre Sicherungen) so vertraulich behandeln wie
-`/etc/default/valbum`.
+`<bereich>/.valbum/contacts.json` und `<bereich>/.valbum/users.json` — diese Dateien (und ihre
+Sicherungen) so vertraulich behandeln wie `/etc/default/valbum`.
 
 **Anmelden.** Beim Start schreibt der Server einen Anmelde-Code für den Administrator ins Log
 (`journalctl -u valbum` bzw. das Container-Log), solange der noch kein Gerät hat. Der Code gilt zehn

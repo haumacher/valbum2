@@ -475,12 +475,14 @@ public class TestEmailProofLinks extends PersonalLinkTestCase {
 			auth(get("/", "auth", SharingFixture.ALICE)).getProofMethods().isEmpty());
 	}
 
-	public void testNobodyButAPersonalLinkProves() throws Exception {
-		for (String token : new String[] { zooToken(), SharingFixture.ALICE, null }) {
-			FakeResponse refused = prove(token, null, "{\"address\":\"vera@web.de\"}");
-			assertEquals(refused.body(), HttpServletResponse.SC_BAD_REQUEST, refused.status());
-			assertEquals(AddressProof.PROOF_NOT_HERE, errorMessage(refused));
-		}
+	public void testNobodyButAPersonalLinkOrAMemberProves() throws Exception {
+		// An anonymous link proves nothing; a member (their own address) and a caller holding
+		// nothing (the sign-in form) do since issue #233, see TestMemberAddresses.
+		FakeResponse refused = prove(zooToken(), null, "{\"address\":\"vera@web.de\"}");
+		assertEquals(refused.body(), HttpServletResponse.SC_BAD_REQUEST, refused.status());
+		assertEquals(AddressProof.PROOF_NOT_HERE, errorMessage(refused));
+		assertEquals("The sign-in form answers alike, and mails nobody's address nothing.", 200,
+			prove(null, null, "{\"address\":\"vera@web.de\"}").status());
 		assertTrue(_mailer.sent().isEmpty());
 	}
 

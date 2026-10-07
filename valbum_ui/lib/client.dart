@@ -2542,6 +2542,16 @@ class VAlbumClient {
       _postSignIns("remove-sign-in",
           _jsonOf(SignInRemove(method: method, id: id).writeContent));
 
+  /// Removes a way a member signs in, as the administrator (issue #233):
+  /// their authenticator app, a passkey, an address; answers the users.
+  Future<UserList> removeUserSignIn(String user, String method,
+      {String id = ""}) async {
+    var url = "${folderUrl(const [])}?action=remove-user-sign-in";
+    var response = await _postBody(url,
+        _jsonOf(SignInRemove(user: user, method: method, id: id).writeContent));
+    return UserList.read(JsonReader.fromString(response));
+  }
+
   /// Removes a way a contact signs in, as a member who manages the contacts
   /// (issue #208); answers the contact.
   Future<Contact> removeContactSignIn(String contact, String method,
@@ -3005,11 +3015,19 @@ class VAlbumClient {
   ///
   /// Never carries the device's own token: a sign-in is how a device *gets*
   /// one, and an invitation token is a bearer for nothing but `?type=auth`.
+  ///
+  /// A member who has no code at hand signs in with what they set up (issue
+  /// #233): [totpCode] is a code of their authenticator app, [userName] then
+  /// their name or a proven e-mail address of theirs; [passkey] answers the
+  /// ceremony [passkeyStart] started without a link. Success is the same
+  /// [PairResponse] either way.
   Future<PairResponse> pair({
     required String deviceName,
     String userName = "",
     String invitation = "",
     String deviceCode = "",
+    String totpCode = "",
+    PasskeyResponse? passkey,
   }) async {
     var url = "${folderUrl(const [])}?action=pair";
     var request = PairRequest(
@@ -3017,6 +3035,8 @@ class VAlbumClient {
       userName: userName,
       invitation: invitation,
       deviceCode: deviceCode,
+      totpCode: totpCode,
+      passkey: passkey,
     );
     var body = StringBuffer();
     request.writeContent(jsonStringWriter(body));

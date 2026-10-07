@@ -442,7 +442,7 @@ void main() {
       );
 
       expect(back.bodyOf("oidc-exchange"),
-          {"code": "code-9", "binding": "bind-1"});
+          {"code": "code-9", "binding": "bind-1", "deviceName": ""});
       // The code leaves the address at once, the binding the tab.
       expect(back.rewritten, [Uri.parse("http://server/valbum/s/tok-42/")]);
       expect(back.store.pendingSignIn(dataUrl), isNull);

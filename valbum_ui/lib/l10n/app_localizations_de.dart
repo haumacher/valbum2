@@ -3419,4 +3419,110 @@ class AppLocalizationsDe extends AppLocalizations {
   String propertySource(String album) {
     return 'Im Album: $album';
   }
+
+  @override
+  String get otherWaysToSignIn => 'Andere Anmeldewege…';
+
+  @override
+  String get noOtherWaysToSignIn =>
+      'Dieser Server bietet keinen anderen Anmeldeweg an.';
+
+  @override
+  String get signInWithCode => 'Anmeldecode verwenden';
+
+  @override
+  String get memberSendCodeByEmail => 'Code per E-Mail senden';
+
+  @override
+  String get memberNameOrEmailLabel =>
+      'Ihr Benutzername oder Ihre E-Mail-Adresse';
+
+  @override
+  String get memberCodeSent =>
+      'Gehört diese Adresse einem Mitglied hier, ist ein Code unterwegs.';
+
+  @override
+  String get memberAddressSignsNobodyIn =>
+      'Mit dieser Adresse meldet sich hier niemand an.';
+
+  @override
+  String get signInOptionsMemberLead =>
+      'Optional: So melden Sie sich auf einem neuen Gerät an, ohne einen Code von einem anderen Ihrer Geräte zu benötigen.';
+
+  @override
+  String get memberAddressesHeading => 'E-Mail-Adressen';
+
+  @override
+  String get memberAddressesExplanation =>
+      'Mit einer bestätigten Adresse melden Sie sich über einen an diese Adresse gesendeten Code oder mit dem dazugehörigen Konto auf der Anmeldeseite und über jeden geteilten Link an.';
+
+  @override
+  String get memberAddAddress => 'E-Mail-Adresse hinzufügen';
+
+  @override
+  String memberLinkProvider(String provider) {
+    return '$provider-Konto verknüpfen';
+  }
+
+  @override
+  String get memberAddressAdded =>
+      'Die Adresse wurde zu Ihren Anmeldewegen hinzugefügt.';
+
+  @override
+  String get wayAuthenticator => 'Ihre Authentifizierungs-App';
+
+  @override
+  String get wayPasskey => 'einen Passkey';
+
+  @override
+  String get wayEmailAddress => 'einen Code an Ihre E-Mail-Adresse';
+
+  @override
+  String get noMemberSignIns =>
+      'Kein weiterer Anmeldeweg eingerichtet: keine Authenticator-App, kein Passkey, keine E-Mail-Adresse.';
+
+  @override
+  String memberSignInsState(String ways) {
+    return 'Meldet Sie auch an: $ways';
+  }
+
+  @override
+  String get memberSignInsEntry => 'Anmeldewege…';
+
+  @override
+  String get userSignInsTooltip => 'Anmeldewege';
+
+  @override
+  String get userSignInRemoveMessage =>
+      'Damit meldet sich dieses Mitglied nicht mehr an. Es kann den Weg erneut einrichten.';
+
+  @override
+  String signInAddressRemoveTitle(String address, String name) {
+    return 'Soll die Adresse $address von $name entfernt werden?';
+  }
+
+  @override
+  String get providerNeedsBrowser =>
+      'Die Anmeldung mit einem anderen Konto funktioniert nur im Browser.';
+
+  @override
+  String providerReturnsElsewhere(String address) {
+    return 'Diese Anmeldung würde zu $address zurückführen, nicht zu dieser Seite, und könnte hier nicht abgeschlossen werden. Öffnen Sie $address im Browser und melden Sie sich dort an.';
+  }
+
+  @override
+  String get providerReturnUnknown =>
+      'Diese Seite kommt von einer Anmeldung zurück, die hier nicht begonnen wurde. Starten Sie die Anmeldung erneut.';
+
+  @override
+  String get totpCodeIncomplete =>
+      'Geben Sie die sechs Ziffern ein, die Ihre Authenticator-App anzeigt.';
+
+  @override
+  String get memberNameRequired =>
+      'Geben Sie Ihren Benutzernamen oder Ihre E-Mail-Adresse ein.';
+
+  @override
+  String get totpQrSemantics =>
+      'Einrichtungscode für eine Authenticator-App als QR-Code';
 }

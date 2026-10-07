@@ -3371,4 +3371,107 @@ class AppLocalizationsEn extends AppLocalizations {
   String propertySource(String album) {
     return 'In album: $album';
   }
+
+  @override
+  String get otherWaysToSignIn => 'Other ways to sign in…';
+
+  @override
+  String get noOtherWaysToSignIn =>
+      'This server offers no other way to sign in.';
+
+  @override
+  String get signInWithCode => 'Use a sign-in code';
+
+  @override
+  String get memberSendCodeByEmail => 'Send me a code by e-mail';
+
+  @override
+  String get memberNameOrEmailLabel => 'Your user name or e-mail address';
+
+  @override
+  String get memberCodeSent =>
+      'If this address is one of a member here, a code is on its way.';
+
+  @override
+  String get memberAddressSignsNobodyIn => 'This address signs nobody in here.';
+
+  @override
+  String get signInOptionsMemberLead =>
+      'Optional: how you sign in on a new device without a code from another device of yours.';
+
+  @override
+  String get memberAddressesHeading => 'E-mail addresses';
+
+  @override
+  String get memberAddressesExplanation =>
+      'With a confirmed address you sign in by a code sent to it, or with the account it belongs to, on the sign-in page and on every shared link.';
+
+  @override
+  String get memberAddAddress => 'Add e-mail address';
+
+  @override
+  String memberLinkProvider(String provider) {
+    return 'Link $provider account';
+  }
+
+  @override
+  String get memberAddressAdded =>
+      'The address was added to your ways to sign in.';
+
+  @override
+  String get wayAuthenticator => 'your authenticator app';
+
+  @override
+  String get wayPasskey => 'a passkey';
+
+  @override
+  String get wayEmailAddress => 'a code sent to your e-mail address';
+
+  @override
+  String get noMemberSignIns =>
+      'No other way to sign in set up: no authenticator app, no passkey, no e-mail address.';
+
+  @override
+  String memberSignInsState(String ways) {
+    return 'Also signs you in: $ways';
+  }
+
+  @override
+  String get memberSignInsEntry => 'Ways to sign in…';
+
+  @override
+  String get userSignInsTooltip => 'Ways to sign in';
+
+  @override
+  String get userSignInRemoveMessage =>
+      'It no longer signs this member in. The member can set it up again.';
+
+  @override
+  String signInAddressRemoveTitle(String address, String name) {
+    return 'Remove the address $address of $name?';
+  }
+
+  @override
+  String get providerNeedsBrowser =>
+      'Signing in with another account works in a browser only.';
+
+  @override
+  String providerReturnsElsewhere(String address) {
+    return 'This sign-in would come back to $address, not to this page, and could not be finished here. Open $address in the browser and sign in there.';
+  }
+
+  @override
+  String get providerReturnUnknown =>
+      'This page came back from a sign-in it did not start. Start the sign-in again.';
+
+  @override
+  String get totpCodeIncomplete =>
+      'Enter the six digits your authenticator app shows.';
+
+  @override
+  String get memberNameRequired => 'Enter your user name or e-mail address.';
+
+  @override
+  String get totpQrSemantics =>
+      'Setup code for an authenticator app, as a QR code';
 }

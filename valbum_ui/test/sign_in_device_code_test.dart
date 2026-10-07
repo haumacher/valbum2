@@ -108,7 +108,7 @@ void main() {
     expect(
       pair.body,
       '{"secret":"","deviceName":"Tablet","userName":"",'
-      '"invitation":"","deviceCode":"ABCD-2345"}',
+      '"invitation":"","deviceCode":"ABCD-2345","totpCode":""}',
     );
     expect(pair.headers.containsKey("Authorization"), isFalse,
         reason: "A sign-in is how a device gets a token, not what it uses.");

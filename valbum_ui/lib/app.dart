@@ -404,6 +404,23 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// the notice was dismissed (issue #88).
   String? _invitationNotice;
 
+  /// What a member's sign-in with a provider came back with, `null` while
+  /// none did or once it was dismissed (issue #233).
+  String Function(AppLocalizations l10n)? _memberNotice;
+
+  /// The exchange code a member's sign-in with a provider came back with to
+  /// the application itself, `null` where none did (issue #233).
+  String? _memberReturnCode;
+
+  /// The name this device is stored under, read for a link session, which
+  /// never loads the settings: a proof on the link that names a member signs
+  /// this browser in under it, as a code redemption would (issue #233).
+  String? _storedDeviceName;
+
+  /// Whether this link session is being left for the member's own, after a
+  /// proof on the link named a member (issue #233).
+  bool _leavingForMember = false;
+
   /// Why the session cannot start, `null` while all is well.
   ///
   /// A `410` (expired, withdrawn, used up) is the reason this exists; every
@@ -543,9 +560,15 @@ class VAlbumAppState extends State<VAlbumApp> {
     settings.addListener(_settingsChanged);
     _initialRouteInformation;
     _readInvitationNotice();
+    _readMemberReturn();
     var opened = session;
     if (opened != null && opened.isShare) {
       _contactCredential = contactStore.read(opened.dataUrl);
+      settings.store.loadDeviceName().then((name) {
+        if (mounted) {
+          setState(() => _storedDeviceName = name);
+        }
+      }, onError: (_) {});
     }
     _syncClient();
     if (session != null) {
@@ -570,6 +593,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     // A run that uploaded something changed what waits in the inbox, and the
     // badge on the start page says how much (issue #226).
     cameraRoll.addListener(_cameraRollChanged);
+    settingsLoaded.then((_) => _finishMemberSignIn());
     settingsLoaded.then((_) => cameraRoll.load()).then((_) {
       if (mounted) {
         cameraRoll.start();
@@ -613,6 +637,75 @@ class VAlbumAppState extends State<VAlbumApp> {
     if (invitationNoticeText(platformMessages, reason, signedIn: false) !=
         null) {
       _invitationNotice = reason;
+    }
+  }
+
+  /// Reads the `#oidc=<code>` a member's sign-in with a provider came back
+  /// to the application with (issue #233), and takes it out of the location
+  /// at once, so that a reload or a bookmark never carries it.
+  void _readMemberReturn() {
+    if (session != null) {
+      return;
+    }
+    var location = widget.location ?? (kIsWeb ? Uri.base : null);
+    var code = location == null ? null : oidcCodeOf(location);
+    if (code == null) {
+      return;
+    }
+    _rewriteLocation(withoutFragment(location!));
+    _memberReturnCode = code;
+  }
+
+  /// Finishes a member's sign-in with a provider (issue #233), once the
+  /// stored settings are read: on the sign-in form it signs this device in
+  /// as the member, exactly as a redeemed code; in the member's own sign-in
+  /// options it added the provider's address. Either is said in a banner, a
+  /// refusal in the server's own words.
+  Future<void> _finishMemberSignIn() async {
+    var code = _memberReturnCode;
+    _memberReturnCode = null;
+    if (code == null) {
+      return;
+    }
+    var pending = memberSignInStore.memberSignIn();
+    memberSignInStore.dropMemberSignIn();
+    String Function(AppLocalizations l10n) notice;
+    if (pending == null) {
+      // Nothing of a start is in this tab: said, never swallowed.
+      notice = (l10n) => l10n.providerReturnUnknown;
+    } else {
+      // Finished at the server it was started at, which need not be the
+      // saved one: the sign-in form may sign in at an address only typed.
+      var dataUrl = pending.dataUrl;
+      var speaker = clientFor(dataUrl);
+      try {
+        var answer = await (pending.adding ? speaker : speaker.withToken(null))
+            .oidcExchange(OidcExchange(
+          code: code,
+          binding: pending.binding,
+          deviceName: pending.deviceName,
+        ));
+        var member = answer.member;
+        if (member != null) {
+          if (settings.dataUrl != dataUrl) {
+            // The device just became somebody's there: it belongs at that
+            // server, as after an invitation.
+            await settings.save(appBaseOf(dataUrl));
+          }
+          await settings.signedInAs(member.token, member.deviceName,
+              userName: member.userName);
+          notice = (l10n) => l10n.signInSucceeded;
+        } else {
+          notice = (l10n) => l10n.memberAddressAdded;
+        }
+      } on VAlbumException catch (refusal) {
+        notice = (_) => refusal.message;
+      } catch (error) {
+        notice = (_) => "$error";
+      }
+    }
+    if (mounted) {
+      setState(() => _memberNotice = notice);
     }
   }
 
@@ -666,8 +759,9 @@ class VAlbumAppState extends State<VAlbumApp> {
     bool signInOffer = false,
   }) {
     var text = _invitationNoticeTextOf(AppLocalizations.of(context)!);
+    var memberNotice = _memberNotice?.call(AppLocalizations.of(context)!);
     var below = child ?? const SizedBox.shrink();
-    if (text == null && !emailOffer && !signInOffer) {
+    if (text == null && memberNotice == null && !emailOffer && !signInOffer) {
       return below;
     }
     return Column(
@@ -685,6 +779,19 @@ class VAlbumAppState extends State<VAlbumApp> {
                     TextButton(
                       key: const Key("invitation-notice-dismiss"),
                       onPressed: () => setState(() => _invitationNotice = null),
+                      child: Text(AppLocalizations.of(context)!.dismiss),
+                    ),
+                  ],
+                ),
+              if (memberNotice != null)
+                MaterialBanner(
+                  key: const Key("member-sign-in-notice"),
+                  content: Text(memberNotice),
+                  leading: const Icon(Icons.info_outline),
+                  actions: [
+                    TextButton(
+                      key: const Key("member-sign-in-notice-dismiss"),
+                      onPressed: () => setState(() => _memberNotice = null),
                       child: Text(AppLocalizations.of(context)!.dismiss),
                     ),
                   ],
@@ -817,9 +924,12 @@ class VAlbumAppState extends State<VAlbumApp> {
     var link = session!;
     if (link.isShare) {
       await _returnFromSignIn(link);
-      if (!mounted) {
+      if (!mounted || _leavingForMember) {
         return;
       }
+    }
+    if (_leavingForMember) {
+      return;
     }
     var probe = client!;
     AuthInfo answer;
@@ -970,7 +1080,12 @@ class VAlbumAppState extends State<VAlbumApp> {
     }
     try {
       var answer = await client!.oidcExchange(
-        OidcExchange(code: code, binding: pending.binding),
+        OidcExchange(
+          code: code,
+          binding: pending.binding,
+          // Should the address be a member's, the device they get (#233).
+          deviceName: pending.deviceName,
+        ),
       );
       _credentialArrived(answer, remember: pending.remember);
     } on VAlbumException catch (refusal) {
@@ -983,6 +1098,11 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// Keeps a credential the server answered and asks the link again as that
   /// contact (issue #202).
   void _credentialArrived(ContactCredential answer, {bool? remember}) {
+    var member = answer.member;
+    if (member != null) {
+      _becameMember(member);
+      return;
+    }
     var link = session!;
     var credential = answer.credential;
     if (credential.isNotEmpty) {
@@ -996,6 +1116,10 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// The identification card answered a credential: open the link as that
   /// contact.
   void _identified(ContactCredential answer) {
+    if (answer.member != null) {
+      _credentialArrived(answer);
+      return;
+    }
     setState(() {
       _identifyMessage = null;
       _credentialArrived(answer);
@@ -1003,12 +1127,29 @@ class VAlbumAppState extends State<VAlbumApp> {
     _confirmSession();
   }
 
+  /// A proof on the link named a member (issue #233): one identity, so this
+  /// browser is signed in as that member — the device stored exactly as a
+  /// redeemed code stores it — and leaves the link for the member's own
+  /// application, where whatever the link shares is theirs to open as a
+  /// member.
+  Future<void> _becameMember(PairResponse member) async {
+    var link = session!;
+    _leavingForMember = true;
+    await settings.save(link.appBase);
+    await settings.signedInAs(member.token, member.deviceName,
+        userName: member.userName);
+    _openUrl(link.appBase);
+  }
+
   /// A sign-in through a provider leaves the page: keep what its return
   /// needs, then go (issue #200).
-  void _signInStarted(OidcStarted started, bool remember) {
+  void _signInStarted(OidcStarted started, bool remember, String deviceName) {
     contactStore.keepSignIn(
       session!.dataUrl,
-      PendingSignIn(binding: started.binding, remember: remember),
+      PendingSignIn(
+          binding: started.binding,
+          remember: remember,
+          deviceName: deviceName),
     );
     _openUrl(started.url);
   }
@@ -1319,6 +1460,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         onCredential: _identified,
         onSignInStarted: _signInStarted,
         onSwitchPerson: _contactCredential == null ? null : _switchPerson,
+        deviceName: settings.deviceName ?? _storedDeviceName,
       );
     }
     var refusal = _shareRefusal;

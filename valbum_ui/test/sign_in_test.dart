@@ -87,7 +87,7 @@ void main() {
       expect(
         pair.body,
         '{"secret":"","deviceName":"Kamera","userName":"","invitation":"",'
-        '"deviceCode":"ABCD-EFGH"}',
+        '"deviceCode":"ABCD-EFGH","totpCode":""}',
       );
       expect(store.token, "tok-1");
       expect(store.deviceName, "Kamera");

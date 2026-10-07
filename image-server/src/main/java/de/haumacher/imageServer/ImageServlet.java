@@ -21,7 +21,9 @@ import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.Rights;
 import de.haumacher.imageServer.auth.Roles;
 import de.haumacher.imageServer.auth.ShareStore;
+import de.haumacher.imageServer.auth.SignIns;
 import de.haumacher.imageServer.auth.SpaceStore;
+import de.haumacher.imageServer.auth.TotpSignIns;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.coded.CodedPictures;
@@ -92,6 +94,7 @@ import de.haumacher.imageServer.shared.model.PersonMerge;
 import de.haumacher.imageServer.shared.model.PersonRename;
 import de.haumacher.imageServer.shared.model.PhotoRef;
 import de.haumacher.imageServer.shared.model.PresentFile;
+import de.haumacher.imageServer.shared.model.ProofMethod;
 import de.haumacher.imageServer.shared.model.RefusedFile;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ShareLink;
@@ -978,6 +981,9 @@ public class ImageServlet extends HttpServlet {
 				// What the share dialog may offer a link that is proven by an address (#211).
 				info.setProofMethods(addressProof().contactMethods());
 			}
+			// How a member signs a new browser in besides a code (issue #233): the sign-in form
+			// offers exactly these.
+			info.setSignInMethods(memberSignInMethods());
 			serveJsonObject(response, info);
 			return;
 		}
@@ -3272,9 +3278,29 @@ public class ImageServlet extends HttpServlet {
 		serveJsonObject(context.response(), devices(caller));
 	}
 
+	/** How a member signs a new browser in besides a code, see {@link AuthInfo#getSignInMethods()}. */
+	private List<ProofMethod> memberSignInMethods() {
+		List<ProofMethod> result = new ArrayList<>();
+		if (_auth.getUsers() == null) {
+			return result;
+		}
+		if (_auth.getTotp() != null) {
+			result.add(ProofMethod.create().setName(TotpSignIns.METHOD));
+		}
+		if (_passkeys.isAvailable()) {
+			result.add(ProofMethod.create().setName(Passkeys.METHOD));
+		}
+		result.addAll(addressProof().contactMethods());
+		return result;
+	}
+
 	/** The caller's own devices as the protocol carries them, the asking one marked. */
 	private DeviceList devices(Caller caller) {
 		DeviceList result = DeviceList.create();
+		if (caller.isPaired() && !caller.isShareLink() && caller.getUser() != null) {
+			// Their ways to sign in on a new browser besides a code (issue #233).
+			result.setSignIns(SignInActions.signIns(caller.getUser(), _passkeys));
+		}
 		// Not a code and never one: only that there is one and since when, see issue #92.
 		result.setBackupCodeCreated(_auth.backupCodeCreated(caller));
 		for (UserStore.Device device : _auth.devices(caller)) {
@@ -3679,7 +3705,8 @@ public class ImageServlet extends HttpServlet {
 		try {
 			AddressProof.Target target = proof.target(caller, request.getAddress(), request.getChoice());
 			serveJsonObject(context.response(), proof.verify(caller, target, request.getCode(),
-				context.request().getRemoteAddr(), request.isRemember(), request.getDisplayName()));
+				context.request().getRemoteAddr(), request.isRemember(), request.getDisplayName(),
+				request.getDeviceName()));
 		} catch (AuthService.Refused ex) {
 			LOG.warning("Refusing a code: " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());
@@ -3709,7 +3736,7 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_NOT_IMPLEMENTED, EmailProofs.NOT_CONFIGURED);
 			return null;
 		}
-		if (!AddressProof.mayProve(caller)) {
+		if (!addressProof().mayProve(caller)) {
 			if (caller.mustIdentify()) {
 				gone(context, caller);
 			} else {
@@ -3755,17 +3782,18 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, OidcLogins.providerUnknown(id == null ? "" : id));
 			return;
 		}
-		AddressProof.Target target = AddressProof.providerTarget(caller);
-		String returnUrl = _oidc.getPublicUrl() + appBase(context) + "/" + ShareStore.URL_SEGMENT + "/"
-			+ bearer(context.request()) + "/";
+		AddressProof.Target target = addressProof().providerTarget(caller);
+		// A member's sign-in (issue #233) has no link: it returns to the application itself.
+		String returnUrl = _oidc.getPublicUrl() + appBase(context) + "/"
+			+ (target.isMember() ? "" : ShareStore.URL_SEGMENT + "/" + bearer(context.request()) + "/");
 		try {
-			OidcLogins.Started started = _oidc.start(provider, new OidcLogins.Start(_space, target._link.getId(),
-				target._kind.name(), target._contact == null ? "" : target._contact.getId(), returnUrl,
-				request.isRemember(), request.getDisplayName()));
+			OidcLogins.Started started = _oidc.start(provider, new OidcLogins.Start(_space, linkId(target),
+				target._kind.name(), whom(target), returnUrl, request.isRemember(), request.getDisplayName()));
 			serveJsonObject(context.response(), OidcStarted.create()
 				.setUrl(started.getUrl())
 				.setBinding(started.getBinding())
-				.setExpires(started.getExpires().toString()));
+				.setExpires(started.getExpires().toString())
+				.setReturnUrl(returnUrl));
 		} catch (OidcLogins.Refused ex) {
 			LOG.warning("Refusing a sign-in with " + provider + ": " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());
@@ -3799,10 +3827,10 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		OidcLogins.Proven proven = _oidc.redeem(_space, request.getCode(), request.getBinding());
-		AddressProof.Target target = AddressProof.providerTarget(caller);
-		if (proven == null || !proven.getStart().getLink().equals(target._link.getId())
+		AddressProof.Target target = addressProof().providerTarget(caller);
+		if (proven == null || !proven.getStart().getLink().equals(linkId(target))
 			|| !proven.getStart().getKind().equals(target._kind.name())
-			|| !proven.getStart().getContact().equals(target._contact == null ? "" : target._contact.getId())) {
+			|| !proven.getStart().getContact().equals(whom(target))) {
 			LOG.warning("Refusing the exchange of a sign-in: " + (proven == null ? "unknown code" : "another link")
 				+ ".");
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, OidcLogins.EXCHANGE_UNKNOWN);
@@ -3817,7 +3845,7 @@ public class ImageServlet extends HttpServlet {
 			: proven.getStart().getDisplayName();
 		try {
 			serveJsonObject(context.response(), addressProof().provenByProvider(caller, target, proven.getEmail(),
-				proven.getStart().isRemember(), displayName, proven.getProvider()));
+				proven.getStart().isRemember(), displayName, proven.getProvider(), request.getDeviceName()));
 		} catch (AuthService.Refused ex) {
 			LOG.warning("Refusing a sign-in with " + proven.getProvider() + ": " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());
@@ -3839,7 +3867,7 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_NOT_IMPLEMENTED, OidcLogins.NOT_CONFIGURED);
 			return null;
 		}
-		if (AddressProof.providerTarget(caller) == null) {
+		if (addressProof().providerTarget(caller) == null) {
 			if (caller.mustIdentify()) {
 				gone(context, caller);
 			} else {
@@ -3849,6 +3877,22 @@ public class ImageServlet extends HttpServlet {
 			return null;
 		}
 		return caller;
+	}
+
+	/** The id of the link a sign-in through a provider was started on, empty for a member's. */
+	private static String linkId(AddressProof.Target target) {
+		return target._link == null ? "" : target._link.getId();
+	}
+
+	/**
+	 * Whom a sign-in through a provider is for: the contact the link asks for, the member adding an
+	 * address (issue #233), empty for nobody.
+	 */
+	private static String whom(AddressProof.Target target) {
+		if (target._user != null) {
+			return "user:" + target._user.getName();
+		}
+		return target._contact == null ? "" : target._contact.getId();
 	}
 
 	/** The bearer token of the given request, empty where it carries none. */
@@ -4678,7 +4722,7 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/** Whether the caller administers this space; the refusal is answered here if not. */
-	private boolean administrator(Context context, Caller caller) throws IOException {
+	boolean administrator(Context context, Caller caller) throws IOException {
 		if (!caller.isPaired()) {
 			unauthorized(context, caller, true);
 			return false;
@@ -4692,7 +4736,7 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/** The users of this space, as the protocol carries them. */
-	private UserList userList() {
+	UserList userList() {
 		UserList result = UserList.create();
 		for (UserStore.User user : _auth.getUsers().getUsers()) {
 			if (user.getName().isEmpty() && !user.isPending()) {
@@ -4726,6 +4770,15 @@ public class ImageServlet extends HttpServlet {
 			.setRecipient(user.getRecipient())
 			.setInvitedBy(user.getInvitedBy())
 			.setInvitation(user.getInvitation());
+		// How they sign in on a new browser besides a code (issue #233), never a secret or a key.
+		SignIns.Authenticator authenticator = user.getSignIns().getAuthenticator();
+		result.setAuthenticator(authenticator == null ? "" : authenticator.getSince());
+		for (SignIns.Passkey passkey : user.getSignIns().getPasskeys()) {
+			result.addPasskey(PersonalLinks.passkey(passkey));
+		}
+		for (ContactStore.Address address : user.getAddresses()) {
+			result.addAddresse(PersonalLinks.address(address));
+		}
 		// Who this user is in the photographs, looked up from the register, which is where the
 		// link is stored; an id and the name to show, and nothing else of that person, see #128.
 		PeopleStore.Entry person = _people.byUser(user.getName());
@@ -4968,9 +5021,15 @@ public class ImageServlet extends HttpServlet {
 
 		PairResponse pairResponse;
 		try {
-			pairResponse = _auth.pair(pairRequest);
+			// The client address counts guesses at an authenticator app (issue #233); nothing else asks.
+			String totp = pairRequest.getTotpCode();
+			String client = totp == null || totp.isBlank() ? null : request.getRemoteAddr();
+			pairResponse = _auth.pair(pairRequest, client, _passkeys, _space);
 		} catch (PairRefused ex) {
 			LOG.warning("Refusing to pair device '" + pairRequest.getDeviceName() + "': " + ex.getMessage());
+			if (ex.getRetryAfter() > 0) {
+				response.setHeader("Retry-After", Long.toString(ex.getRetryAfter()));
+			}
 			errorInfo(context, ex.getStatus(), ex.getMessage());
 			return;
 		}

@@ -33,6 +33,9 @@ public class ContactCredential extends de.haumacher.msgbuf.data.AbstractDataObje
 	/** @see #getContact() */
 	private static final String CONTACT__PROP = "contact";
 
+	/** @see #getMember() */
+	private static final String MEMBER__PROP = "member";
+
 	private String _credential = "";
 
 	private String _expires = "";
@@ -40,6 +43,8 @@ public class ContactCredential extends de.haumacher.msgbuf.data.AbstractDataObje
 	private boolean _remember = false;
 
 	private de.haumacher.imageServer.shared.model.ContactInfo _contact = null;
+
+	private de.haumacher.imageServer.shared.model.PairResponse _member = null;
 
 	/**
 	 * Creates a {@link ContactCredential} instance.
@@ -137,6 +142,37 @@ public class ContactCredential extends de.haumacher.msgbuf.data.AbstractDataObje
 		return _contact != null;
 	}
 
+	/**
+	 * Set where the proof named a member rather than a contact (issue #233): the browser is signed
+	 * in as that member &mdash; a new device, exactly as redeeming a code adds one &mdash; and
+	 * {@link #getCredential()} is empty. One identity: a member's address, authenticator app or passkey
+	 * never creates or identifies a contact, on any link. The app stores the token as a code
+	 * redemption stores it and continues as the member.
+	 */
+	public final de.haumacher.imageServer.shared.model.PairResponse getMember() {
+		return _member;
+	}
+
+	/**
+	 * @see #getMember()
+	 */
+	public de.haumacher.imageServer.shared.model.ContactCredential setMember(de.haumacher.imageServer.shared.model.PairResponse value) {
+		internalSetMember(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getMember()} without chain call utility. */
+	protected final void internalSetMember(de.haumacher.imageServer.shared.model.PairResponse value) {
+		_member = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getMember()} has a value.
+	 */
+	public final boolean hasMember() {
+		return _member != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ContactCredential readContactCredential(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ContactCredential result = new de.haumacher.imageServer.shared.model.ContactCredential();
@@ -162,6 +198,10 @@ public class ContactCredential extends de.haumacher.msgbuf.data.AbstractDataObje
 			out.name(CONTACT__PROP);
 			getContact().writeTo(out);
 		}
+		if (hasMember()) {
+			out.name(MEMBER__PROP);
+			getMember().writeTo(out);
+		}
 	}
 
 	@Override
@@ -171,6 +211,7 @@ public class ContactCredential extends de.haumacher.msgbuf.data.AbstractDataObje
 			case EXPIRES__PROP: setExpires(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case REMEMBER__PROP: setRemember(in.nextBoolean()); break;
 			case CONTACT__PROP: setContact(de.haumacher.imageServer.shared.model.ContactInfo.readContactInfo(in)); break;
+			case MEMBER__PROP: setMember(de.haumacher.imageServer.shared.model.PairResponse.readPairResponse(in)); break;
 			default: super.readField(in, field);
 		}
 	}

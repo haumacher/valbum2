@@ -85,12 +85,10 @@ public class TestTotpLinks extends PersonalLinkTestCase {
 	}
 
 	public void testOnlyARecognisedContactSetsOneUp() throws Exception {
-		FakeResponse member = post("/", "{}", SharingFixture.ALICE, java.util.Map.of("action", "totp-setup"));
-		assertEquals(HttpServletResponse.SC_FORBIDDEN, member.status());
-		assertEquals(SignInActions.SIGN_INS_REFUSED, errorMessage(member));
-
+		// A signed-in member sets up their own since issue #233, see TestMemberSignIns.
 		FakeResponse link = post("/", "{}", zooToken("view"), java.util.Map.of("action", "totp-setup"));
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, link.status());
+		assertEquals(SignInActions.SIGN_INS_REFUSED, errorMessage(link));
 
 		FakeResponse nobody = post("/", "{}", null, java.util.Map.of("action", "totp-setup"));
 		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, nobody.status());

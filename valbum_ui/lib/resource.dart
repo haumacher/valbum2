@@ -2792,6 +2792,25 @@ class PairRequest extends _JsonObject {
 	///  </p>
 	String deviceCode;
 
+	///  A code of the member's authenticator app, see issue #233: with {@link #userName} naming the
+	///  member, the way a member signs a new browser in where no device of theirs is at hand.
+	/// 
+	///  <p>
+	///  The rules of a contact's code (issue #208): the app must have been confirmed, a code works
+	///  once, and five wrong codes within fifteen minutes lock the name for fifteen minutes. An
+	///  unknown name is answered exactly like a wrong code. Read only where {@link #deviceCode} is
+	///  empty; success is what redeeming a code is &mdash; a new device of that member, answered as a
+	///  {@link PairResponse}.
+	///  </p>
+	String totpCode;
+
+	///  A member's passkey, see issue #233: the answer to the ceremony
+	///  <code>?action=passkey-start</code> starts for a caller that holds nothing, which names nobody
+	///  &mdash; the passkey names the member. Only the {@link PasskeyResponse#ticket} and
+	///  {@link PasskeyResponse#response} are read. Read only where {@link #deviceCode} and
+	///  {@link #totpCode} are empty; a contact's passkey signs nobody in here.
+	PasskeyResponse? passkey;
+
 	/// Creates a PairRequest.
 	PairRequest({
 			this.secret = "", 
@@ -2799,6 +2818,8 @@ class PairRequest extends _JsonObject {
 			this.userName = "", 
 			this.invitation = "", 
 			this.deviceCode = "", 
+			this.totpCode = "", 
+			this.passkey, 
 	});
 
 	/// Parses a PairRequest from a string source.
@@ -2839,6 +2860,14 @@ class PairRequest extends _JsonObject {
 				deviceCode = json.expectString();
 				break;
 			}
+			case "totpCode": {
+				totpCode = json.expectString();
+				break;
+			}
+			case "passkey": {
+				passkey = json.tryNull() ? null : PasskeyResponse.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -2861,6 +2890,15 @@ class PairRequest extends _JsonObject {
 
 		json.addKey("deviceCode");
 		json.addString(deviceCode);
+
+		json.addKey("totpCode");
+		json.addString(totpCode);
+
+		var _passkey = passkey;
+		if (_passkey != null) {
+			json.addKey("passkey");
+			_passkey.writeContent(json);
+		}
 	}
 
 }
@@ -3077,6 +3115,13 @@ class AuthInfo extends _JsonObject {
 	///  </p>
 	int inboxCount;
 
+	///  The ways a member signs a new browser in besides a code (issue #233), answered to everybody,
+	///  signed in or not, so that the sign-in form offers exactly these: <code>totp</code> (name or
+	///  e-mail address and a code of the authenticator app), <code>passkey</code> (only with a public
+	///  address), <code>mail-code</code> (where the server can mail a code) and
+	///  <code>oidc:&lt;provider&gt;</code> per provider of OpenID Connect.
+	List<ProofMethod> signInMethods;
+
 	/// Creates a AuthInfo.
 	AuthInfo({
 			this.mode = "", 
@@ -3094,6 +3139,7 @@ class AuthInfo extends _JsonObject {
 			this.proofMethods = const [], 
 			this.inbox = "", 
 			this.inboxCount = 0, 
+			this.signInMethods = const [], 
 	});
 
 	/// Parses a AuthInfo from a string source.
@@ -3183,6 +3229,19 @@ class AuthInfo extends _JsonObject {
 				inboxCount = json.expectInt();
 				break;
 			}
+			case "signInMethods": {
+				json.expectArray();
+				signInMethods = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ProofMethod.read(json);
+						if (value != null) {
+							signInMethods.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3245,6 +3304,13 @@ class AuthInfo extends _JsonObject {
 
 		json.addKey("inboxCount");
 		json.addNumber(inboxCount);
+
+		json.addKey("signInMethods");
+		json.startArray();
+		for (var _element in signInMethods) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 }
@@ -3461,7 +3527,9 @@ class ShareInfo extends _JsonObject {
 }
 
 ///  The ways a contact is recognised on another browser besides their link, as the contact sees
-///  them: an authenticator app (issue #208) and passkeys (issue #204).
+///  them: an authenticator app (issue #208) and passkeys (issue #204). Since issue #233 the same for
+///  a member, who signs a new browser in with them ({@link DeviceList#signIns}); the requests that
+///  change them serve both, and pick the holder from the caller.
 /// 
 ///  <p>
 ///  Answered in {@link ShareInfo#signIns} and by the requests that change them
@@ -3479,11 +3547,19 @@ class ContactSignIns extends _JsonObject {
 	///  (<code>VALBUM_PUBLIC_URL</code>), whose host is the relying party (issue #204).
 	bool passkeysOffered;
 
+	///  A member's proven e-mail addresses (issue #233): each signs them in through a mailed code or a
+	///  provider of OpenID Connect, on the sign-in form and on any link. Added by a proof
+	///  (<code>?action=prove-email</code>/<code>verify-email</code>, <code>oidc-start</code>), removed by
+	///  <code>?action=remove-sign-in</code> with the method <code>email</code> and the address as id.
+	///  Empty for a contact, whose addresses the contact's own requests answer.
+	List<ContactAddress> addresses;
+
 	/// Creates a ContactSignIns.
 	ContactSignIns({
 			this.authenticator = "", 
 			this.passkeys = const [], 
 			this.passkeysOffered = false, 
+			this.addresses = const [], 
 	});
 
 	/// Parses a ContactSignIns from a string source.
@@ -3525,6 +3601,19 @@ class ContactSignIns extends _JsonObject {
 				passkeysOffered = json.expectBool();
 				break;
 			}
+			case "addresses": {
+				json.expectArray();
+				addresses = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ContactAddress.read(json);
+						if (value != null) {
+							addresses.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3545,6 +3634,13 @@ class ContactSignIns extends _JsonObject {
 
 		json.addKey("passkeysOffered");
 		json.addBool(passkeysOffered);
+
+		json.addKey("addresses");
+		json.startArray();
+		for (var _element in addresses) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 }
@@ -3639,12 +3735,17 @@ class PasskeyResponse extends _JsonObject {
 	///  The name the contact wants to be greeted by; empty keeps what they had (sign-in only).
 	String displayName;
 
+	///  The name of this browser as a member's device, where the proof names a member and signs them
+	///  in (issue #233, see {@link ContactCredential#member}); empty for "Unnamed device".
+	String deviceName;
+
 	/// Creates a PasskeyResponse.
 	PasskeyResponse({
 			this.ticket = "", 
 			this.response = "", 
 			this.remember = false, 
 			this.displayName = "", 
+			this.deviceName = "", 
 	});
 
 	/// Parses a PasskeyResponse from a string source.
@@ -3681,6 +3782,10 @@ class PasskeyResponse extends _JsonObject {
 				displayName = json.expectString();
 				break;
 			}
+			case "deviceName": {
+				deviceName = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3700,6 +3805,9 @@ class PasskeyResponse extends _JsonObject {
 
 		json.addKey("displayName");
 		json.addString(displayName);
+
+		json.addKey("deviceName");
+		json.addString(deviceName);
 	}
 
 }
@@ -5693,6 +5801,17 @@ class UserEntry extends _JsonObject {
 	///  </p>
 	String personName;
 
+	///  Since when an authenticator app signs this user in on a new browser, an ISO-8601 instant;
+	///  empty while none does (issue #233). Never the secret. Answered to the administrator, who may
+	///  remove it (<code>?action=remove-user-sign-in</code>).
+	String authenticator;
+
+	///  This user's passkeys (issue #233), in the order they were registered; never a key.
+	List<ContactPasskey> passkeys;
+
+	///  This user's proven e-mail addresses (issue #233), each a way to sign in.
+	List<ContactAddress> addresses;
+
 	/// Creates a UserEntry.
 	UserEntry({
 			this.name = "", 
@@ -5708,6 +5827,9 @@ class UserEntry extends _JsonObject {
 			this.invitation = "", 
 			this.person = "", 
 			this.personName = "", 
+			this.authenticator = "", 
+			this.passkeys = const [], 
+			this.addresses = const [], 
 	});
 
 	/// Parses a UserEntry from a string source.
@@ -5780,6 +5902,36 @@ class UserEntry extends _JsonObject {
 				personName = json.expectString();
 				break;
 			}
+			case "authenticator": {
+				authenticator = json.expectString();
+				break;
+			}
+			case "passkeys": {
+				json.expectArray();
+				passkeys = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ContactPasskey.read(json);
+						if (value != null) {
+							passkeys.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "addresses": {
+				json.expectArray();
+				addresses = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = ContactAddress.read(json);
+						if (value != null) {
+							addresses.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -5826,6 +5978,23 @@ class UserEntry extends _JsonObject {
 
 		json.addKey("personName");
 		json.addString(personName);
+
+		json.addKey("authenticator");
+		json.addString(authenticator);
+
+		json.addKey("passkeys");
+		json.startArray();
+		for (var _element in passkeys) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("addresses");
+		json.startArray();
+		for (var _element in addresses) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 }
@@ -6023,10 +6192,17 @@ class DeviceList extends _JsonObject {
 	///  </p>
 	String backupCodeCreated;
 
+	///  The caller's own ways to sign in on a new browser besides a code (issue #233): their
+	///  authenticator app and their passkeys, which they set up and remove with the actions a contact
+	///  uses (<code>totp-setup</code>, <code>passkey-register</code>, <code>remove-sign-in</code>);
+	///  what the sign-out warning names among the ways back.
+	ContactSignIns? signIns;
+
 	/// Creates a DeviceList.
 	DeviceList({
 			this.devices = const [], 
 			this.backupCodeCreated = "", 
+			this.signIns, 
 	});
 
 	/// Parses a DeviceList from a string source.
@@ -6064,6 +6240,10 @@ class DeviceList extends _JsonObject {
 				backupCodeCreated = json.expectString();
 				break;
 			}
+			case "signIns": {
+				signIns = json.tryNull() ? null : ContactSignIns.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -6081,6 +6261,12 @@ class DeviceList extends _JsonObject {
 
 		json.addKey("backupCodeCreated");
 		json.addString(backupCodeCreated);
+
+		var _signIns = signIns;
+		if (_signIns != null) {
+			json.addKey("signIns");
+			_signIns.writeContent(json);
+		}
 	}
 
 }
@@ -8238,12 +8424,20 @@ class ContactCredential extends _JsonObject {
 	///  The contact it identifies.
 	ContactInfo? contact;
 
+	///  Set where the proof named a member rather than a contact (issue #233): the browser is signed
+	///  in as that member &mdash; a new device, exactly as redeeming a code adds one &mdash; and
+	///  {@link #credential} is empty. One identity: a member's address, authenticator app or passkey
+	///  never creates or identifies a contact, on any link. The app stores the token as a code
+	///  redemption stores it and continues as the member.
+	PairResponse? member;
+
 	/// Creates a ContactCredential.
 	ContactCredential({
 			this.credential = "", 
 			this.expires = "", 
 			this.remember = false, 
 			this.contact, 
+			this.member, 
 	});
 
 	/// Parses a ContactCredential from a string source.
@@ -8280,6 +8474,10 @@ class ContactCredential extends _JsonObject {
 				contact = json.tryNull() ? null : ContactInfo.read(json);
 				break;
 			}
+			case "member": {
+				member = json.tryNull() ? null : PairResponse.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -8301,6 +8499,12 @@ class ContactCredential extends _JsonObject {
 		if (_contact != null) {
 			json.addKey("contact");
 			_contact.writeContent(json);
+		}
+
+		var _member = member;
+		if (_member != null) {
+			json.addKey("member");
+			_member.writeContent(json);
 		}
 	}
 
@@ -8688,11 +8892,18 @@ class OidcStarted extends _JsonObject {
 	///  Until when the sign-in may be finished, an ISO-8601 instant.
 	String expires;
 
+	///  The page the browser comes back to, <code>#oidc=&lt;code&gt;</code> appended (issue #233):
+	///  spelled from <code>VALBUM_PUBLIC_URL</code>. A page whose own address has another origin cannot
+	///  finish the sign-in &mdash; what it kept for the return lies in its own storage &mdash; and
+	///  says so before it leaves rather than after.
+	String returnUrl;
+
 	/// Creates a OidcStarted.
 	OidcStarted({
 			this.url = "", 
 			this.binding = "", 
 			this.expires = "", 
+			this.returnUrl = "", 
 	});
 
 	/// Parses a OidcStarted from a string source.
@@ -8725,6 +8936,10 @@ class OidcStarted extends _JsonObject {
 				expires = json.expectString();
 				break;
 			}
+			case "returnUrl": {
+				returnUrl = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -8741,6 +8956,9 @@ class OidcStarted extends _JsonObject {
 
 		json.addKey("expires");
 		json.addString(expires);
+
+		json.addKey("returnUrl");
+		json.addString(returnUrl);
 	}
 
 }
@@ -8762,10 +8980,15 @@ class OidcExchange extends _JsonObject {
 	///  The {@link OidcStarted#binding} of the start.
 	String binding;
 
+	///  The name of this browser as a member's device, where the proof names a member and signs them
+	///  in (issue #233, see {@link ContactCredential#member}); empty for "Unnamed device".
+	String deviceName;
+
 	/// Creates a OidcExchange.
 	OidcExchange({
 			this.code = "", 
 			this.binding = "", 
+			this.deviceName = "", 
 	});
 
 	/// Parses a OidcExchange from a string source.
@@ -8794,6 +9017,10 @@ class OidcExchange extends _JsonObject {
 				binding = json.expectString();
 				break;
 			}
+			case "deviceName": {
+				deviceName = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -8807,6 +9034,9 @@ class OidcExchange extends _JsonObject {
 
 		json.addKey("binding");
 		json.addString(binding);
+
+		json.addKey("deviceName");
+		json.addString(deviceName);
 	}
 
 }
@@ -8975,6 +9205,10 @@ class EmailVerify extends _JsonObject {
 	///  is recognised already.
 	String displayName;
 
+	///  The name of this browser as a member's device, where the proof names a member and signs them
+	///  in (issue #233, see {@link ContactCredential#member}); empty for "Unnamed device".
+	String deviceName;
+
 	/// Creates a EmailVerify.
 	EmailVerify({
 			this.address = "", 
@@ -8982,6 +9216,7 @@ class EmailVerify extends _JsonObject {
 			this.code = "", 
 			this.remember = false, 
 			this.displayName = "", 
+			this.deviceName = "", 
 	});
 
 	/// Parses a EmailVerify from a string source.
@@ -9022,6 +9257,10 @@ class EmailVerify extends _JsonObject {
 				displayName = json.expectString();
 				break;
 			}
+			case "deviceName": {
+				deviceName = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -9044,6 +9283,9 @@ class EmailVerify extends _JsonObject {
 
 		json.addKey("displayName");
 		json.addString(displayName);
+
+		json.addKey("deviceName");
+		json.addString(deviceName);
 	}
 
 }
@@ -9154,12 +9396,17 @@ class TotpCode extends _JsonObject {
 	///  The name the contact wants to be greeted by; empty keeps what they had.
 	String displayName;
 
+	///  The name of this browser as a member's device, where the proof names a member and signs them
+	///  in (issue #233, see {@link ContactCredential#member}); empty for "Unnamed device".
+	String deviceName;
+
 	/// Creates a TotpCode.
 	TotpCode({
 			this.code = "", 
 			this.address = "", 
 			this.remember = false, 
 			this.displayName = "", 
+			this.deviceName = "", 
 	});
 
 	/// Parses a TotpCode from a string source.
@@ -9196,6 +9443,10 @@ class TotpCode extends _JsonObject {
 				displayName = json.expectString();
 				break;
 			}
+			case "deviceName": {
+				deviceName = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -9215,6 +9466,9 @@ class TotpCode extends _JsonObject {
 
 		json.addKey("displayName");
 		json.addString(displayName);
+
+		json.addKey("deviceName");
+		json.addString(deviceName);
 	}
 
 }
@@ -9227,15 +9481,22 @@ class SignInRemove extends _JsonObject {
 	///  The id of the contact; ignored where the contact removes their own.
 	String contact;
 
-	///  <code>totp</code> for the authenticator app, <code>passkey</code> for a passkey (issue #204).
+	///  The name of the user whose way to sign in the administrator removes, at
+	///  <code>?action=remove-user-sign-in</code> (issue #233); ignored everywhere else.
+	String user;
+
+	///  <code>totp</code> for the authenticator app, <code>passkey</code> for a passkey (issue #204),
+	///  <code>email</code> for a member's proven e-mail address (issue #233).
 	String method;
 
-	///  Which one of several: the {@link ContactPasskey#id} of a passkey; empty for the authenticator app.
+	///  Which one of several: the {@link ContactPasskey#id} of a passkey, the address of an
+	///  <code>email</code>; empty for the authenticator app.
 	String id;
 
 	/// Creates a SignInRemove.
 	SignInRemove({
 			this.contact = "", 
+			this.user = "", 
 			this.method = "", 
 			this.id = "", 
 	});
@@ -9262,6 +9523,10 @@ class SignInRemove extends _JsonObject {
 				contact = json.expectString();
 				break;
 			}
+			case "user": {
+				user = json.expectString();
+				break;
+			}
 			case "method": {
 				method = json.expectString();
 				break;
@@ -9280,6 +9545,9 @@ class SignInRemove extends _JsonObject {
 
 		json.addKey("contact");
 		json.addString(contact);
+
+		json.addKey("user");
+		json.addString(user);
 
 		json.addKey("method");
 		json.addString(method);

@@ -21,6 +21,8 @@
 /// log line or the device's settings store.
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 /// One area of the browser's storage: `localStorage` or `sessionStorage`.
@@ -69,7 +71,46 @@ class PendingSignIn {
   /// Whether the credential is to be remembered on this device.
   final bool remember;
 
-  const PendingSignIn({required this.binding, required this.remember});
+  /// The name of this browser as a member's device, should the address the
+  /// provider proves be a member's (issue #233).
+  final String deviceName;
+
+  const PendingSignIn({
+    required this.binding,
+    required this.remember,
+    this.deviceName = "",
+  });
+}
+
+/// A member's sign-in with a provider that left the page (issue #233): on
+/// the sign-in form, or adding the provider's address in the member's own
+/// sign-in options. It comes back to the application itself as
+/// `<app base>#oidc=<code>`, not to a link.
+///
+/// It names its own server: the sign-in form may sign in at an address that
+/// is not the saved one, and the return must finish there all the same.
+@immutable
+class PendingMemberSignIn {
+  /// The data URL of the server the sign-in was started at.
+  final String dataUrl;
+
+  /// The `OidcStarted.binding` of the start.
+  final String binding;
+
+  /// The name of this browser as the member's device, where the sign-in
+  /// signs one in.
+  final String deviceName;
+
+  /// Whether a signed-in member adds the provider's address to themselves
+  /// (the exchange then carries their token) rather than signing in.
+  final bool adding;
+
+  const PendingMemberSignIn({
+    required this.dataUrl,
+    required this.binding,
+    required this.deviceName,
+    this.adding = false,
+  });
 }
 
 /// The contact credentials of this browser, one per space.
@@ -163,6 +204,19 @@ class ContactCredentialStore {
     if (value == null) {
       return null;
     }
+    if (value.startsWith("{")) {
+      try {
+        var fields = jsonDecode(value) as Map<String, dynamic>;
+        return PendingSignIn(
+          remember: fields["remember"] == true,
+          binding: fields["binding"] as String,
+          deviceName: fields["deviceName"] as String? ?? "",
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+    // As a page of the release before kept it: `<remember>|<binding>`.
     var split = value.indexOf("|");
     if (split < 0) {
       return null;
@@ -176,12 +230,56 @@ class ContactCredentialStore {
   /// Keeps what a sign-in needs when the page comes back, see
   /// [PendingSignIn].
   void keepSignIn(String dataUrl, PendingSignIn pending) =>
-      _guarded(() => session.set(signInKey(dataUrl),
-          "${pending.remember ? "1" : "0"}|${pending.binding}"));
+      _guarded(() => session.set(
+          signInKey(dataUrl),
+          jsonEncode({
+            "remember": pending.remember,
+            "binding": pending.binding,
+            "deviceName": pending.deviceName,
+          })));
 
   /// Forgets the [PendingSignIn]: it is used once.
   void dropSignIn(String dataUrl) =>
       _guarded(() => session.remove(signInKey(dataUrl)));
+
+  /// The key of the [PendingMemberSignIn]: one per tab, whatever server it
+  /// names, since the page that comes back may have another one saved.
+  static const String memberSignInKey = "valbum.memberOidc";
+
+  /// The member's sign-in that left the page for a provider, `null` where
+  /// none did (issue #233).
+  PendingMemberSignIn? memberSignIn() {
+    var value = _guarded<String?>(() => session.get(memberSignInKey));
+    if (value == null) {
+      return null;
+    }
+    try {
+      var fields = jsonDecode(value) as Map<String, dynamic>;
+      return PendingMemberSignIn(
+        dataUrl: fields["dataUrl"] as String,
+        binding: fields["binding"] as String,
+        deviceName: fields["deviceName"] as String,
+        adding: fields["adding"] == true,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Keeps what a member's sign-in needs when the page comes back.
+  void keepMemberSignIn(PendingMemberSignIn pending) =>
+      _guarded(() => session.set(
+          memberSignInKey,
+          jsonEncode({
+            "dataUrl": pending.dataUrl,
+            "binding": pending.binding,
+            "deviceName": pending.deviceName,
+            "adding": pending.adding,
+          })));
+
+  /// Forgets the [PendingMemberSignIn]: it is used once.
+  void dropMemberSignIn() =>
+      _guarded(() => session.remove(memberSignInKey));
 
   /// Runs one access to the browser's storage, answering `null` where it
   /// throws.

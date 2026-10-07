@@ -21,7 +21,8 @@ import com.webauthn4j.data.attestation.statement.NoneAttestationStatement;
 import com.webauthn4j.data.client.Origin;
 import com.webauthn4j.data.client.challenge.DefaultChallenge;
 import com.webauthn4j.server.ServerProperty;
-import de.haumacher.imageServer.auth.ContactStore;
+import de.haumacher.imageServer.auth.SignInHolder;
+import de.haumacher.imageServer.auth.SignIns;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.WriterAdapter;
 import java.io.IOException;
@@ -45,8 +46,8 @@ import java.util.function.Function;
 import java.util.logging.Logger;
 
 /**
- * Passkeys of the contacts of personal share links, see issue #204: WebAuthn registration and
- * assertion through <a href="https://github.com/webauthn4j/webauthn4j">webauthn4j</a>.
+ * Passkeys of the contacts of personal share links (issue #204) and of the members (issue #233):
+ * WebAuthn registration and assertion through <a href="https://github.com/webauthn4j/webauthn4j">webauthn4j</a>.
  *
  * <p>
  * One instance per server, like the sign-in through OpenID Connect: the relying party is the host
@@ -96,6 +97,13 @@ public class Passkeys {
 	 * of somebody the link does not let in, a signature that does not hold.
 	 */
 	public static final String SIGN_IN_REFUSED = "This passkey does not open this link.";
+
+	/**
+	 * What a member's sign-in with a passkey is refused with (issue #233), whatever was wrong: a
+	 * passkey no member of this space holds &mdash; a contact's among them &mdash;, a signature
+	 * that does not hold.
+	 */
+	public static final String MEMBER_SIGN_IN_REFUSED = "This passkey signs nobody in here.";
 
 	/** What is answered while too many ceremonies are under way. */
 	public static final String TOO_MANY = "Too many passkey requests are under way. Try again in a few minutes.";
@@ -156,9 +164,9 @@ public class Passkeys {
 	}
 
 	/** What a sign-in proved: whose passkey it was, and what to write down about its use. */
-	public static final class Asserted {
+	public static final class Asserted<H extends SignInHolder> {
 
-		private final ContactStore.Contact _contact;
+		private final H _holder;
 
 		private final String _id;
 
@@ -166,16 +174,16 @@ public class Passkeys {
 
 		private final boolean _backupState;
 
-		Asserted(ContactStore.Contact contact, String id, long counter, boolean backupState) {
-			_contact = contact;
+		Asserted(H holder, String id, long counter, boolean backupState) {
+			_holder = holder;
 			_id = id;
 			_counter = counter;
 			_backupState = backupState;
 		}
 
-		/** The contact whose passkey signed. */
-		public ContactStore.Contact getContact() {
-			return _contact;
+		/** The holder whose passkey signed. */
+		public H getHolder() {
+			return _holder;
 		}
 
 		/** The credential id. */
@@ -274,17 +282,21 @@ public class Passkeys {
 	}
 
 	/**
-	 * Starts registering a passkey for the given contact.
+	 * Starts registering a passkey for the given holder: a contact or a member (issue #233).
 	 *
 	 * @param binding
-	 *        Who the ceremony belongs to: the space and the contact; the answer must name the same.
+	 *        Who the ceremony belongs to: the space and the holder; the answer must name the same.
+	 * @param handle
+	 *        The WebAuthn user handle, see {@link SignInHolder#passkeyHandle(String)}.
 	 * @param rpName
 	 *        The name of the relying party the browser shows: the space's.
-	 * @param exclude
-	 *        The contact's passkeys, which the authenticator need not make again.
 	 */
-	public Started registration(String binding, ContactStore.Contact contact, String rpName, List<String> exclude)
-			throws Refused {
+	public Started registration(String binding, SignInHolder holder, String handle, String rpName) throws Refused {
+		List<String> exclude = new ArrayList<>();
+		for (SignIns.Passkey passkey : holder.getSignIns().getPasskeys()) {
+			// The holder's passkeys, which the authenticator need not make again.
+			exclude.add(passkey.getId());
+		}
 		available();
 		byte[] challenge = random(32);
 		StringWriter buffer = new StringWriter();
@@ -300,11 +312,11 @@ public class Passkeys {
 			json.name("user");
 			json.beginObject();
 			json.name("id");
-			json.value(base64Url(contact.getId().getBytes(StandardCharsets.UTF_8)));
+			json.value(base64Url(handle.getBytes(StandardCharsets.UTF_8)));
 			json.name("name");
-			json.value(contact.greeting());
+			json.value(holder.getSignInName());
 			json.name("displayName");
-			json.value(contact.greeting());
+			json.value(holder.getSignInName());
 			json.endObject();
 			json.name("challenge");
 			json.value(base64Url(challenge));
@@ -348,7 +360,7 @@ public class Passkeys {
 	 *         <code>400</code> {@link #TICKET_UNKNOWN} for an answer to no registration of this
 	 *         binding under way, {@link #REGISTRATION_FAILED} for one that does not hold.
 	 */
-	public ContactStore.Passkey register(String binding, String ticket, String response) throws Refused {
+	public SignIns.Passkey register(String binding, String ticket, String response) throws Refused {
 		available();
 		Pending pending = take(ticket, Purpose.REGISTER, binding);
 		RegistrationData data;
@@ -370,7 +382,7 @@ public class Passkeys {
 				transports.add(transport.getValue());
 			}
 		}
-		return new ContactStore.Passkey(base64Url(credential.getCredentialId()), now().toString(), "",
+		return new SignIns.Passkey(base64Url(credential.getCredentialId()), now().toString(), "",
 			base64Url(_converter.convert(credential)), authenticator.getSignCount(), authenticator.isFlagUV(),
 			authenticator.isFlagBE(), authenticator.isFlagBS(), transports);
 	}
@@ -408,21 +420,32 @@ public class Passkeys {
 	}
 
 	/**
+	 * Checks the browser's answer to a sign-in on a personal link, see
+	 * {@link #check(String, String, String, Function, java.util.function.Predicate, String)}: every
+	 * failure is {@link #SIGN_IN_REFUSED}.
+	 */
+	public <H extends SignInHolder> Asserted<H> check(String binding, String ticket, String response,
+			Function<String, H> lookup, java.util.function.Predicate<H> admits) throws Refused {
+		return check(binding, ticket, response, lookup, admits, SIGN_IN_REFUSED);
+	}
+
+	/**
 	 * Checks the browser's answer to a sign-in.
 	 *
 	 * @param lookup
-	 *        The passkey of a credential id in the caller's space, <code>null</code> for one it does
-	 *        not know.
+	 *        The holder of a credential id among those the sign-in may name &mdash; the contacts of
+	 *        the caller's space, or its members &mdash;, <code>null</code> for one nobody there holds.
 	 * @param admits
-	 *        Whether the link lets the given contact in.
+	 *        Whether the sign-in lets the given holder in.
+	 * @param refusal
+	 *        What everything but an unknown ticket is refused with.
 	 * @throws Refused
 	 *         <code>400</code> {@link #TICKET_UNKNOWN} for an answer to no sign-in of this binding
-	 *         under way; <code>403</code> {@link #SIGN_IN_REFUSED} for everything else, whatever
-	 *         it was.
+	 *         under way; <code>403</code> with the given refusal for everything else, whatever it
+	 *         was.
 	 */
-	public Asserted check(String binding, String ticket, String response,
-			Function<String, ContactStore.PasskeyHolder> lookup,
-			java.util.function.Predicate<ContactStore.Contact> admits) throws Refused {
+	public <H extends SignInHolder> Asserted<H> check(String binding, String ticket, String response,
+			Function<String, H> lookup, java.util.function.Predicate<H> admits, String refusal) throws Refused {
 		available();
 		Pending pending = take(ticket, Purpose.SIGN_IN, binding);
 		AuthenticationData data;
@@ -430,15 +453,15 @@ public class Passkeys {
 			data = _manager.parseAuthenticationResponseJSON(response);
 		} catch (RuntimeException ex) {
 			LOG.warning("Refusing an unreadable passkey: " + ex);
-			throw new Refused(403, SIGN_IN_REFUSED);
+			throw new Refused(403, refusal);
 		}
 		String id = base64Url(data.getCredentialId());
-		ContactStore.PasskeyHolder holder = lookup.apply(id);
-		if (holder == null) {
-			LOG.info("Refusing a passkey this space does not know.");
-			throw new Refused(403, SIGN_IN_REFUSED);
+		H holder = lookup.apply(id);
+		SignIns.Passkey passkey = holder == null ? null : holder.getSignIns().passkey(id);
+		if (passkey == null) {
+			LOG.info("Refusing a passkey nobody here holds.");
+			throw new Refused(403, refusal);
 		}
-		ContactStore.Passkey passkey = holder.getPasskey();
 		try {
 			AttestedCredentialData credential = _converter.convert(Base64.getUrlDecoder().decode(passkey.getData()));
 			Set<AuthenticatorTransport> transports = new HashSet<>();
@@ -451,17 +474,17 @@ public class Passkeys {
 				transports);
 			_manager.verify(data, new AuthenticationParameters(serverProperty(pending), record, null, false, true));
 		} catch (RuntimeException ex) {
-			LOG.warning("Refusing the passkey of " + holder.getContact() + ": " + ex);
-			throw new Refused(403, SIGN_IN_REFUSED);
+			LOG.warning("Refusing the passkey of " + holder.getSignInKey() + ": " + ex);
+			throw new Refused(403, refusal);
 		}
 		// Checked only once the signature holds: a credential id alone says nothing about whom a
-		// link lets in.
-		if (!admits.test(holder.getContact())) {
-			LOG.info("Refusing the passkey of " + holder.getContact() + ", whom the link does not let in.");
-			throw new Refused(403, SIGN_IN_REFUSED);
+		// sign-in lets in.
+		if (!admits.test(holder)) {
+			LOG.info("Refusing the passkey of " + holder.getSignInKey() + ", whom this sign-in does not let in.");
+			throw new Refused(403, refusal);
 		}
 		AuthenticatorData<?> authenticator = data.getAuthenticatorData();
-		return new Asserted(holder.getContact(), id, authenticator.getSignCount(), authenticator.isFlagBS());
+		return new Asserted<>(holder, id, authenticator.getSignCount(), authenticator.isFlagBS());
 	}
 
 	/** Now, by the clock of this instance. */

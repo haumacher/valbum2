@@ -6,6 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.ContactStore;
 import de.haumacher.imageServer.auth.ShareStore;
+import de.haumacher.imageServer.auth.SignIns;
 import de.haumacher.imageServer.shared.model.AddressKind;
 import de.haumacher.imageServer.shared.model.Contact;
 import de.haumacher.imageServer.shared.model.ContactAddress;
@@ -124,7 +125,7 @@ public final class PersonalLinks {
 		for (ContactStore.Address address : contact.getAddresses()) {
 			result.addAddresse(address(address));
 		}
-		for (ContactStore.Passkey passkey : contact.getPasskeys()) {
+		for (SignIns.Passkey passkey : contact.getPasskeys()) {
 			result.addPasskey(passkey(passkey));
 		}
 		for (ContactStore.Session session : contact.getSessions()) {
@@ -140,7 +141,7 @@ public final class PersonalLinks {
 	}
 
 	/** One passkey on the wire (issue #204): when it was made and last used, never its key. */
-	public static ContactPasskey passkey(ContactStore.Passkey passkey) {
+	public static ContactPasskey passkey(SignIns.Passkey passkey) {
 		return ContactPasskey.create()
 			.setId(passkey.getId())
 			.setCreated(passkey.getCreated())

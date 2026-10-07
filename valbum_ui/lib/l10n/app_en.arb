@@ -5576,5 +5576,173 @@
       }
     },
     "x-translated": "8019bc1a"
+  },
+  "otherWaysToSignIn": "Other ways to sign in…",
+  "@otherWaysToSignIn": {
+    "description": "Opens the ways a member signs a new browser in besides a sign-in code, on the sign-in form (issue #233)",
+    "x-translated": "fe6daa88"
+  },
+  "noOtherWaysToSignIn": "This server offers no other way to sign in.",
+  "@noOtherWaysToSignIn": {
+    "description": "Said on the sign-in form where the server offers a member no way in besides a code (issue #233)",
+    "x-translated": "dcb8867e"
+  },
+  "signInWithCode": "Use a sign-in code",
+  "@signInWithCode": {
+    "description": "Switches the sign-in form back to the sign-in code (issue #233)",
+    "x-translated": "4f74321d"
+  },
+  "memberSendCodeByEmail": "Send me a code by e-mail",
+  "@memberSendCodeByEmail": {
+    "description": "Switches the sign-in form to a code mailed to a member's proven address (issue #233)",
+    "x-translated": "31762dfd"
+  },
+  "memberNameOrEmailLabel": "Your user name or e-mail address",
+  "@memberNameOrEmailLabel": {
+    "description": "The field naming the member whose authenticator app signs them in, on the sign-in form (issue #233)",
+    "x-translated": "77330b25"
+  },
+  "memberCodeSent": "If this address is one of a member here, a code is on its way.",
+  "@memberCodeSent": {
+    "description": "Said after a code was asked for on the sign-in form; the same whether or not the address is known (issue #233)",
+    "x-translated": "90e52b34"
+  },
+  "memberAddressSignsNobodyIn": "This address signs nobody in here.",
+  "@memberAddressSignsNobodyIn": {
+    "description": "Said where a proven address named no member on the sign-in form (issue #233)",
+    "x-translated": "cc185a51"
+  },
+  "signInOptionsMemberLead": "Optional: how you sign in on a new device without a code from another device of yours.",
+  "@signInOptionsMemberLead": {
+    "description": "The lead of a member's own sign-in options (issue #233)",
+    "x-translated": "93773c93"
+  },
+  "memberAddressesHeading": "E-mail addresses",
+  "@memberAddressesHeading": {
+    "description": "The heading of a member's proven e-mail addresses in their sign-in options (issue #233)",
+    "x-translated": "dbee08c"
+  },
+  "memberAddressesExplanation": "With a confirmed address you sign in by a code sent to it, or with the account it belongs to, on the sign-in page and on every shared link.",
+  "@memberAddressesExplanation": {
+    "description": "Explains a member's proven addresses (issue #233)",
+    "x-translated": "5f6d961"
+  },
+  "memberAddAddress": "Add e-mail address",
+  "@memberAddAddress": {
+    "description": "Starts adding an e-mail address to a member's ways to sign in (issue #233)",
+    "x-translated": "72e6e7e1"
+  },
+  "memberLinkProvider": "Link {provider} account",
+  "@memberLinkProvider": {
+    "description": "Proves the address of an account of a provider such as Google as a member's way to sign in (issue #233)",
+    "placeholders": {
+      "provider": {
+        "type": "String",
+        "example": "Google"
+      }
+    },
+    "x-translated": "753ab35f"
+  },
+  "memberAddressAdded": "The address was added to your ways to sign in.",
+  "@memberAddressAdded": {
+    "description": "Said when a member comes back from a provider whose address was added (issue #233)",
+    "x-translated": "868c8431"
+  },
+  "wayAuthenticator": "your authenticator app",
+  "@wayAuthenticator": {
+    "description": "A way back after signing out of the last device, in a list (issue #233)",
+    "x-translated": "29679e0f"
+  },
+  "wayPasskey": "a passkey",
+  "@wayPasskey": {
+    "description": "A way back after signing out of the last device, in a list (issue #233)",
+    "x-translated": "c98e081d"
+  },
+  "wayEmailAddress": "a code sent to your e-mail address",
+  "@wayEmailAddress": {
+    "description": "A way back after signing out of the last device, in a list (issue #233)",
+    "x-translated": "e09fc82"
+  },
+  "noMemberSignIns": "No other way to sign in set up: no authenticator app, no passkey, no e-mail address.",
+  "@noMemberSignIns": {
+    "description": "The state of a member's ways to sign in where there is none (issue #233)",
+    "x-translated": "7200e825"
+  },
+  "memberSignInsState": "Also signs you in: {ways}",
+  "@memberSignInsState": {
+    "description": "The state of a member's ways to sign in, listed (issue #233)",
+    "placeholders": {
+      "ways": {
+        "type": "String",
+        "example": "Authenticator app, 1 passkey"
+      }
+    },
+    "x-translated": "9f9fdcf1"
+  },
+  "memberSignInsEntry": "Ways to sign in…",
+  "@memberSignInsEntry": {
+    "description": "Opens a member's own ways to sign in on a new device (issue #233)",
+    "x-translated": "9229f776"
+  },
+  "userSignInsTooltip": "Ways to sign in",
+  "@userSignInsTooltip": {
+    "description": "Opens how a member signs in besides a code, for the administrator (issue #233)",
+    "x-translated": "9a5640f6"
+  },
+  "userSignInRemoveMessage": "It no longer signs this member in. The member can set it up again.",
+  "@userSignInRemoveMessage": {
+    "description": "The question before the administrator removes a member's way to sign in (issue #233)",
+    "x-translated": "fe6a0192"
+  },
+  "signInAddressRemoveTitle": "Remove the address {address} of {name}?",
+  "@signInAddressRemoveTitle": {
+    "description": "The title of the question before removing a member's e-mail address (issue #233)",
+    "placeholders": {
+      "address": {
+        "type": "String",
+        "example": "alice@example.org"
+      },
+      "name": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "555c5e10"
+  },
+  "providerNeedsBrowser": "Signing in with another account works in a browser only.",
+  "@providerNeedsBrowser": {
+    "description": "Refusal before a sign-in with a provider such as Google off the web: nothing would come back (issue #233)",
+    "x-translated": "84adc23a"
+  },
+  "providerReturnsElsewhere": "This sign-in would come back to {address}, not to this page, and could not be finished here. Open {address} in the browser and sign in there.",
+  "@providerReturnsElsewhere": {
+    "description": "Refusal before a sign-in with a provider leaves a page whose address differs from the server's public address (issue #233)",
+    "placeholders": {
+      "address": {
+        "type": "String",
+        "example": "https://photos.example.org"
+      }
+    },
+    "x-translated": "c0d403c2"
+  },
+  "providerReturnUnknown": "This page came back from a sign-in it did not start. Start the sign-in again.",
+  "@providerReturnUnknown": {
+    "description": "Said when the app comes back from a provider but this tab kept nothing of a start (issue #233)",
+    "x-translated": "5addd035"
+  },
+  "totpCodeIncomplete": "Enter the six digits your authenticator app shows.",
+  "@totpCodeIncomplete": {
+    "description": "Refused before sending where the code of an authenticator app is not six digits (issue #233)",
+    "x-translated": "e3df35f"
+  },
+  "memberNameRequired": "Enter your user name or e-mail address.",
+  "@memberNameRequired": {
+    "description": "Refused before sending where the sign-in form's authenticator app names nobody (issue #233)",
+    "x-translated": "b62145c5"
+  },
+  "totpQrSemantics": "Setup code for an authenticator app, as a QR code",
+  "@totpQrSemantics": {
+    "description": "What a screen reader says of the QR code that sets up an authenticator app (issue #233)",
+    "x-translated": "77eeb339"
   }
 }

@@ -2,7 +2,9 @@ package de.haumacher.imageServer.shared.model;
 
 /**
  * The ways a contact is recognised on another browser besides their link, as the contact sees
- * them: an authenticator app (issue #208) and passkeys (issue #204).
+ * them: an authenticator app (issue #208) and passkeys (issue #204). Since issue #233 the same for
+ * a member, who signs a new browser in with them ({@link DeviceList#getSignIns()}); the requests that
+ * change them serve both, and pick the holder from the caller.
  *
  * <p>
  * Answered in {@link ShareInfo#getSignIns()} and by the requests that change them
@@ -31,11 +33,16 @@ public class ContactSignIns extends de.haumacher.msgbuf.data.AbstractDataObject 
 	/** @see #isPasskeysOffered() */
 	private static final String PASSKEYS_OFFERED__PROP = "passkeysOffered";
 
+	/** @see #getAddresses() */
+	private static final String ADDRESSES__PROP = "addresses";
+
 	private String _authenticator = "";
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.ContactPasskey> _passkeys = new java.util.ArrayList<>();
 
 	private boolean _passkeysOffered = false;
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.ContactAddress> _addresses = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link ContactSignIns} instance.
@@ -129,6 +136,52 @@ public class ContactSignIns extends de.haumacher.msgbuf.data.AbstractDataObject 
 		_passkeysOffered = value;
 	}
 
+	/**
+	 * A member's proven e-mail addresses (issue #233): each signs them in through a mailed code or a
+	 * provider of OpenID Connect, on the sign-in form and on any link. Added by a proof
+	 * (<code>?action=prove-email</code>/<code>verify-email</code>, <code>oidc-start</code>), removed by
+	 * <code>?action=remove-sign-in</code> with the method <code>email</code> and the address as id.
+	 * Empty for a contact, whose addresses the contact's own requests answer.
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.ContactAddress> getAddresses() {
+		return _addresses;
+	}
+
+	/**
+	 * @see #getAddresses()
+	 */
+	public de.haumacher.imageServer.shared.model.ContactSignIns setAddresses(java.util.List<? extends de.haumacher.imageServer.shared.model.ContactAddress> value) {
+		internalSetAddresses(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getAddresses()} without chain call utility. */
+	protected final void internalSetAddresses(java.util.List<? extends de.haumacher.imageServer.shared.model.ContactAddress> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'addresses' cannot be null.");
+		_addresses.clear();
+		_addresses.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getAddresses()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.ContactSignIns addAddresse(de.haumacher.imageServer.shared.model.ContactAddress value) {
+		internalAddAddresse(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addAddresse(de.haumacher.imageServer.shared.model.ContactAddress)} without chain call utility. */
+	protected final void internalAddAddresse(de.haumacher.imageServer.shared.model.ContactAddress value) {
+		_addresses.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getAddresses()} list.
+	 */
+	public final void removeAddresse(de.haumacher.imageServer.shared.model.ContactAddress value) {
+		_addresses.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ContactSignIns readContactSignIns(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ContactSignIns result = new de.haumacher.imageServer.shared.model.ContactSignIns();
@@ -154,6 +207,12 @@ public class ContactSignIns extends de.haumacher.msgbuf.data.AbstractDataObject 
 		out.endArray();
 		out.name(PASSKEYS_OFFERED__PROP);
 		out.value(isPasskeysOffered());
+		out.name(ADDRESSES__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.ContactAddress x : getAddresses()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -169,6 +228,14 @@ public class ContactSignIns extends de.haumacher.msgbuf.data.AbstractDataObject 
 			}
 			break;
 			case PASSKEYS_OFFERED__PROP: setPasskeysOffered(in.nextBoolean()); break;
+			case ADDRESSES__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addAddresse(de.haumacher.imageServer.shared.model.ContactAddress.readContactAddress(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

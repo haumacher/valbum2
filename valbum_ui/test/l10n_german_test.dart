@@ -810,7 +810,7 @@ void sliceTwo() {
                 label: "Sommerfest",
               ),
               onCredential: (_) {},
-              onSignInStarted: (_, __) {},
+              onSignInStarted: (_, __, ___) {},
             ),
             locale: const Locale("de"),
           ),

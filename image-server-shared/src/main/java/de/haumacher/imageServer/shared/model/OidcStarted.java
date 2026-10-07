@@ -24,11 +24,16 @@ public class OidcStarted extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getExpires() */
 	private static final String EXPIRES__PROP = "expires";
 
+	/** @see #getReturnUrl() */
+	private static final String RETURN_URL__PROP = "returnUrl";
+
 	private String _url = "";
 
 	private String _binding = "";
 
 	private String _expires = "";
+
+	private String _returnUrl = "";
 
 	/**
 	 * Creates a {@link OidcStarted} instance.
@@ -101,6 +106,29 @@ public class OidcStarted extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_expires = value;
 	}
 
+	/**
+	 * The page the browser comes back to, <code>#oidc=&lt;code&gt;</code> appended (issue #233):
+	 * spelled from <code>VALBUM_PUBLIC_URL</code>. A page whose own address has another origin cannot
+	 * finish the sign-in &mdash; what it kept for the return lies in its own storage &mdash; and
+	 * says so before it leaves rather than after.
+	 */
+	public final String getReturnUrl() {
+		return _returnUrl;
+	}
+
+	/**
+	 * @see #getReturnUrl()
+	 */
+	public de.haumacher.imageServer.shared.model.OidcStarted setReturnUrl(String value) {
+		internalSetReturnUrl(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getReturnUrl()} without chain call utility. */
+	protected final void internalSetReturnUrl(String value) {
+		_returnUrl = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.OidcStarted readOidcStarted(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.OidcStarted result = new de.haumacher.imageServer.shared.model.OidcStarted();
@@ -122,6 +150,8 @@ public class OidcStarted extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getBinding());
 		out.name(EXPIRES__PROP);
 		out.value(getExpires());
+		out.name(RETURN_URL__PROP);
+		out.value(getReturnUrl());
 	}
 
 	@Override
@@ -130,6 +160,7 @@ public class OidcStarted extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case URL__PROP: setUrl(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case BINDING__PROP: setBinding(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case EXPIRES__PROP: setExpires(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case RETURN_URL__PROP: setReturnUrl(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}
